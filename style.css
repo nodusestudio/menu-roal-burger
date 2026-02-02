@@ -332,20 +332,56 @@ body::before {
     opacity: 0.3;
 }
 
+/* Botón Mega para Menú Digital */
+.mega-button {
+    font-size: 1.4rem !important;
+    padding: 28px 35px !important;
+    border-width: 3px !important;
+    animation: constantGlow 2s ease-in-out infinite alternate !important;
+    transform: scale(1.1);
+    margin: 20px 0 !important;
+}
+
+@keyframes constantGlow {
+    0% {
+        box-shadow: 
+            0 0 20px rgba(255, 96, 0, 0.6),
+            0 0 40px rgba(255, 96, 0, 0.4),
+            0 0 60px rgba(255, 96, 0, 0.2);
+    }
+    100% {
+        box-shadow: 
+            0 0 30px rgba(255, 96, 0, 0.8),
+            0 0 60px rgba(255, 96, 0, 0.6),
+            0 0 90px rgba(255, 96, 0, 0.4);
+    }
+}
+
+.mega-button:hover {
+    animation: none !important;
+    box-shadow: 
+        0 0 40px rgba(255, 96, 0, 0.8),
+        0 0 80px rgba(255, 96, 0, 0.6),
+        0 0 120px rgba(255, 96, 0, 0.4) !important;
+}
+
 /* Animación Pulse para WhatsApp */
 .pulse-animation {
-    animation: pulse 2s infinite;
+    animation: pulse 1.5s infinite;
 }
 
 @keyframes pulse {
     0% {
-        box-shadow: 0 0 0 0 rgba(255, 96, 0, 0.7);
+        box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.8);
+        transform: scale(1);
     }
     50% {
-        box-shadow: 0 0 0 15px rgba(255, 96, 0, 0);
+        box-shadow: 0 0 0 20px rgba(37, 211, 102, 0);
+        transform: scale(1.05);
     }
     100% {
-        box-shadow: 0 0 0 0 rgba(255, 96, 0, 0);
+        box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
+        transform: scale(1);
     }
 }
 
@@ -486,6 +522,12 @@ body::before {
         font-size: 1.1rem;
     }
 
+    .mega-button {
+        font-size: 1.2rem !important;
+        padding: 24px 30px !important;
+        transform: scale(1.05) !important;
+    }
+
     .info-card {
         padding: 20px;
     }
@@ -514,6 +556,12 @@ body::before {
 
     .button-text {
         font-size: 0.9rem;
+    }
+
+    .mega-button {
+        font-size: 1.1rem !important;
+        padding: 22px 25px !important;
+        transform: scale(1) !important;
     }
 
     .info-item .icon {

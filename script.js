@@ -1,16 +1,45 @@
 // Función para abrir enlaces
 function openLink(platform) {
+    // Reproducir sonido de clic
+    playClickSound();
+    
     const links = {
-        menu: 'https://tu-menu-digital.com', // Reemplaza con tu enlace de menú
-        whatsapp: 'https://wa.me/573001234567?text=Hola%20ROAL%20BURGER,%20quiero%20hacer%20un%20pedido', // Reemplaza con tu número
-        instagram: 'https://instagram.com/roalburger', // Reemplaza con tu Instagram
-        tiktok: 'https://tiktok.com/@roalburger', // Reemplaza con tu TikTok
-        facebook: 'https://facebook.com/roalburger' // Reemplaza con tu Facebook
+        menu: 'https://www.canva.com/design/DAG9leXXwYI/WTjtjCuINBxFfyNuF0xARA/watch?utm_content=DAG9leXXwYI&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=h0ce484e385',
+        whatsapp: 'https://wa.me/573144689509',
+        instagram: 'https://www.instagram.com/roalburger',
+        tiktok: 'https://www.tiktok.com/@roalburger',
+        facebook: 'https://www.facebook.com/roalburger'
     };
 
     if (links[platform]) {
         window.open(links[platform], '_blank');
     }
+}
+
+// Función para reproducir sonido de clic
+function playClickSound() {
+    // Crear contexto de audio
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Crear oscilador para el sonido
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    // Conectar oscilador al gain y al destino
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // Configurar sonido (frecuencia alta y breve)
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    oscillator.type = 'sine';
+    
+    // Configurar volumen (muy bajo para ser sutil)
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    
+    // Reproducir sonido muy breve
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
 }
 
 // Animación de entrada para los botones
