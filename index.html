@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROAL BURGER - Enlaces</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Banner -->
+        <div class="banner">
+            <img src="portada.jpeg" alt="ROAL BURGER Banner">
+        </div>
+
+        <!-- Logo/Título -->
+        <div class="logo-section">
+            <h1 class="brand-name">ROAL BURGER</h1>
+            <p class="tagline">Comida rápida con acento venezolano</p>
+        </div>
+
+        <!-- Card de Información -->
+        <div class="info-card">
+            <div class="info-item">
+                <span class="icon">📍</span>
+                <div class="info-text">
+                    <strong>Nuestra Ubicación</strong>
+                    <p>Armenia - Quindío, Barrio Las Américas<br>Calle 22 #29-59</p>
+                </div>
+            </div>
+            <div class="info-item">
+                <span class="icon">⏰</span>
+                <div class="info-text">
+                    <strong>Horario de Atención</strong>
+                    <p>De 4:00 P.M. a 10:30 P.M.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botones de Enlaces -->
+        <div class="links-container">
+            <!-- Botón Destacado - Menú -->
+            <a href="#" class="link-button featured-button" onclick="openLink('menu'); return false;">
+                <span class="button-icon">📖</span>
+                <span class="button-text">Ver Nuestro Menú Digital</span>
+                <span class="button-arrow">→</span>
+            </a>
+
+            <!-- WhatsApp -->
+            <a href="#" class="link-button whatsapp-button" onclick="openLink('whatsapp'); return false;">
+                <span class="button-icon">🍔</span>
+                <span class="button-text">¡Pide tu Burger Ahora! (WhatsApp)</span>
+                <span class="button-arrow">→</span>
+            </a>
+
+            <!-- Instagram -->
+            <a href="#" class="link-button instagram-button" onclick="openLink('instagram'); return false;">
+                <span class="button-icon">📸</span>
+                <span class="button-text">Momentos ROAL en Instagram</span>
+                <span class="button-arrow">→</span>
+            </a>
+
+            <!-- TikTok -->
+            <a href="#" class="link-button tiktok-button" onclick="openLink('tiktok'); return false;">
+                <span class="button-icon">🎬</span>
+                <span class="button-text">Sabor Real en TikTok</span>
+                <span class="button-arrow">→</span>
+            </a>
+
+            <!-- Facebook -->
+            <a href="#" class="link-button facebook-button" onclick="openLink('facebook'); return false;">
+                <span class="button-icon">📘</span>
+                <span class="button-text">Comunidad ROAL en Facebook</span>
+                <span class="button-arrow">→</span>
+            </a>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>ROAL BURGER - Comida rapida con acento venezoalno</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
