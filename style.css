@@ -33,6 +33,510 @@ body::before {
     z-index: 0;
 }
 
+/* ========== PANTALLA DE ENTRADA INTERACTIVA ========== */
+.pre-entry-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    z-index: 10001;
+    background: #000000;
+    background-image: url('portada.jpeg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.pre-entry-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(20, 20, 20, 0.6) 100%);
+    z-index: 1;
+}
+
+.pre-entry-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    max-width: 600px;
+    padding: 40px 20px;
+    animation: preEntryFadeIn 1.5s ease-out;
+}
+
+.pre-entry-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: 4.5rem;
+    font-weight: 700;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    margin-bottom: 20px;
+    text-shadow: 
+        0 0 30px rgba(255, 96, 0, 0.8),
+        0 4px 8px rgba(0, 0, 0, 0.9);
+    line-height: 1;
+}
+
+.pre-entry-subtitle {
+    font-family: 'Roboto', sans-serif;
+    font-size: 1.4rem;
+    color: #e0e0e0;
+    margin-bottom: 40px;
+    font-weight: 300;
+    letter-spacing: 2px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.enter-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px 50px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.3rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-decoration: none;
+    color: #ffffff;
+    background: none;
+    border: none;
+    position: relative;
+    border-radius: 50px;
+    overflow: hidden;
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 
+        0 10px 40px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    min-height: 70px;
+    touch-action: manipulation;
+}
+
+.btn-icon {
+    font-size: 1.8rem;
+    filter: drop-shadow(0 0 8px rgba(255, 96, 0, 0.6));
+}
+
+.glass-shine-enter {
+    position: absolute;
+    top: -2px;
+    left: -100%;
+    width: 100%;
+    height: calc(100% + 4px);
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(255, 255, 255, 0.4), 
+        transparent);
+    transition: left 0.6s ease;
+}
+
+.enter-button:hover {
+    transform: translateY(-4px) scale(1.08);
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    box-shadow: 
+        0 15px 50px rgba(0, 0, 0, 0.5),
+        0 0 40px rgba(255, 96, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+}
+
+.enter-button:hover .glass-shine-enter {
+    left: 100%;
+}
+
+.enter-button:active {
+    transform: translateY(-2px) scale(1.05);
+}
+
+.pre-entry-container.fade-out {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s ease-out;
+}
+
+@keyframes preEntryFadeIn {
+    0% {
+        opacity: 0;
+        transform: translateY(60px) scale(0.9);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Responsive para pantalla de entrada */
+@media (max-width: 768px) {
+    .pre-entry-title {
+        font-size: 3.5rem;
+        letter-spacing: 3px;
+    }
+    
+    .pre-entry-subtitle {
+        font-size: 1.2rem;
+        margin-bottom: 35px;
+    }
+    
+    .enter-button {
+        padding: 18px 40px;
+        font-size: 1.2rem;
+        min-height: 65px;
+    }
+}
+
+@media (max-width: 480px) {
+    .pre-entry-title {
+        font-size: 2.8rem;
+        letter-spacing: 2px;
+    }
+    
+    .pre-entry-subtitle {
+        font-size: 1.1rem;
+        margin-bottom: 30px;
+    }
+    
+    .enter-button {
+        padding: 16px 35px;
+        font-size: 1.1rem;
+        min-height: 60px;
+    }
+}
+
+/* ========== FIN PANTALLA DE ENTRADA ========== */
+
+/* ========== SPLASH SCREEN CON VIDEO ========== */
+.splash-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    z-index: 10000;
+    background-color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.splash-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+.skip-button {
+    position: absolute;
+    top: 30px;
+    right: 30px;
+    padding: 12px 24px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #ffffff;
+    border: none;
+    border-radius: 30px;
+    cursor: pointer;
+    opacity: 0;
+    transition: all 0.4s ease;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 
+        0 4px 16px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    min-height: 44px;
+    touch-action: manipulation;
+}
+
+.skip-button.show {
+    opacity: 1;
+}
+
+.skip-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 
+        0 6px 20px rgba(0, 0, 0, 0.4),
+        0 0 20px rgba(255, 255, 255, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.skip-button:active {
+    transform: translateY(0) scale(1.02);
+}
+
+.splash-container.fade-out {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease-out;
+}
+
+/* Responsive para splash screen */
+@media (max-width: 768px) {
+    .skip-button {
+        top: 20px;
+        right: 20px;
+        padding: 10px 20px;
+        font-size: 13px;
+        min-height: 40px;
+    }
+}
+
+@media (max-width: 480px) {
+    .skip-button {
+        top: 15px;
+        right: 15px;
+        padding: 8px 16px;
+        font-size: 12px;
+        min-height: 36px;
+    }
+}
+
+/* ========== FIN SPLASH SCREEN ========== */
+
+/* ========== HERO SECTION 2026 CON GLASSMORPHISM ========== */
+.hero-section {
+    width: 100%;
+    min-height: 60vh;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 40px;
+    overflow: hidden;
+    border-radius: 20px;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+}
+
+.hero-background {
+    width: 100%;
+    height: 100%;
+    background-image: url('portada.jpeg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+}
+
+.hero-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.6) 0%, rgba(20, 20, 20, 0.5) 100%);
+    z-index: 1;
+}
+
+.hero-content {
+    position: relative;
+    z-index: 3;
+    text-align: center;
+    max-width: 800px;
+    padding: 40px 20px;
+    animation: heroFadeIn 1.5s ease-out;
+}
+
+.hero-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: 4rem;
+    font-weight: 700;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 15px;
+    text-shadow: 
+        0 0 20px rgba(255, 96, 0, 0.6),
+        0 4px 8px rgba(0, 0, 0, 0.8),
+        0 8px 16px rgba(0, 0, 0, 0.4);
+    line-height: 1.1;
+}
+
+.hero-subtitle {
+    font-family: 'Roboto', sans-serif;
+    font-size: 1.3rem;
+    color: #e0e0e0;
+    margin-bottom: 30px;
+    font-weight: 300;
+    letter-spacing: 1px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+/* BOTÓN GLASSMORPHISM 2026 */
+.hero-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px 40px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-decoration: none;
+    color: #ffffff;
+    position: relative;
+    border-radius: 50px;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    min-height: 60px;
+    touch-action: manipulation;
+}
+
+.glass-shine {
+    position: absolute;
+    top: -2px;
+    left: -100%;
+    width: 100%;
+    height: calc(100% + 4px);
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(255, 255, 255, 0.3), 
+        transparent);
+    transition: left 0.6s ease;
+}
+
+.hero-cta-btn:hover {
+    transform: translateY(-3px) scale(1.05);
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: 
+        0 12px 40px rgba(0, 0, 0, 0.4),
+        0 0 30px rgba(255, 255, 255, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.hero-cta-btn:hover .glass-shine {
+    left: 100%;
+}
+
+.hero-cta-btn:active {
+    transform: translateY(-1px) scale(1.02);
+}
+
+.btn-text {
+    position: relative;
+    z-index: 2;
+}
+
+/* Animación del Hero */
+@keyframes heroFadeIn {
+    0% {
+        opacity: 0;
+        transform: translateY(50px) scale(0.95);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* RESPONSIVE HERO */
+@media (max-width: 768px) {
+    .hero-section {
+        min-height: 50vh;
+        margin-bottom: 30px;
+        border-radius: 15px;
+    }
+    
+    .hero-background {
+        min-height: 50vh;
+    }
+    
+    .hero-content {
+        padding: 30px 15px;
+    }
+    
+    .hero-title {
+        font-size: 3rem;
+        letter-spacing: 2px;
+        margin-bottom: 12px;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.1rem;
+        margin-bottom: 25px;
+    }
+    
+    .hero-cta-btn {
+        padding: 16px 32px;
+        font-size: 1.2rem;
+        letter-spacing: 1px;
+        min-height: 56px;
+        min-width: 200px;
+    }
+}
+
+@media (max-width: 480px) {
+    .hero-section {
+        min-height: 45vh;
+        border-radius: 10px;
+    }
+    
+    .hero-background {
+        min-height: 45vh;
+    }
+    
+    .hero-content {
+        padding: 25px 12px;
+    }
+    
+    .hero-title {
+        font-size: 2rem;
+        letter-spacing: 1px;
+    }
+    
+    .hero-subtitle {
+        font-size: 1rem;
+        margin-bottom: 20px;
+    }
+    
+    .hero-cta-btn {
+        padding: 14px 28px;
+        font-size: 1.1rem;
+        min-height: 52px;
+        min-width: 180px;
+    }
+}
+
+/* ========== FIN HERO SECTION ========== */
+
 .container {
     max-width: 680px;
     margin: 0 auto;
@@ -566,5 +1070,387 @@ body::before {
 
     .info-item .icon {
         font-size: 1.6rem;
+    }
+}
+
+/* Estilos para la Modal del Menú */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(5px);
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.modal-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 20px 20px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.close-button {
+    position: fixed;
+    top: 20px;
+    right: 30px;
+    color: #ff6000;
+    font-size: 50px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.7);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    border: 2px solid #ff6000;
+}
+
+.close-button:hover {
+    background: rgba(255, 96, 0, 0.2);
+    transform: scale(1.1);
+    box-shadow: 0 0 20px rgba(255, 96, 0, 0.5);
+}
+
+.menu-images-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    max-width: 800px;
+    padding-bottom: 40px;
+}
+
+.menu-image {
+    width: 100%;
+    height: auto;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(255, 96, 0, 0.3);
+    transition: transform 0.3s ease;
+    border: 2px solid rgba(255, 96, 0, 0.2);
+}
+
+.menu-image:hover {
+    transform: scale(1.02);
+    box-shadow: 0 15px 40px rgba(255, 96, 0, 0.5);
+}
+
+/* Animación de fade in */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        backdrop-filter: blur(0px);
+    }
+    to {
+        opacity: 1;
+        backdrop-filter: blur(5px);
+    }
+}
+
+/* Estilos responsive para móviles */
+@media (max-width: 768px) {
+    .close-button {
+        top: 15px;
+        right: 15px;
+        font-size: 35px;
+        width: 45px;
+        height: 45px;
+    }
+    
+    .modal-content {
+        padding: 80px 15px 20px;
+    }
+    
+    .menu-images-container {
+        gap: 15px;
+    }
+    
+    .menu-image {
+        border-radius: 10px;
+        box-shadow: 0 8px 25px rgba(255, 96, 0, 0.3);
+    }
+}
+
+/* Botón Flotante de WhatsApp - Optimizado para no tapar contenido */
+.whatsapp-float {
+    position: fixed;
+    bottom: 85px; /* Aumentado para no tapar el carrusel */
+    right: 25px;
+    background-color: #25D366;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 50px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 500;
+    font-size: 14px;
+    box-shadow: 0 4px 20px rgba(37, 211, 102, 0.4);
+    z-index: 10001;
+    transition: all 0.3s ease;
+    transform: translateX(100px);
+    opacity: 0;
+    animation: slideInFloat 1s ease-out 2s forwards;
+    max-width: 200px; /* Limitar ancho máximo */
+}
+
+.whatsapp-float:hover {
+    background-color: #20c25a;
+    transform: translateY(-2px) translateX(0);
+    box-shadow: 0 6px 25px rgba(37, 211, 102, 0.6);
+    text-decoration: none;
+    color: white;
+}
+
+.whatsapp-float svg {
+    flex-shrink: 0;
+}
+
+.whatsapp-float span {
+    white-space: nowrap;
+}
+
+/* Animación slide-in para el botón flotante */
+@keyframes slideInFloat {
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Responsive para el botón flotante - Optimizado para móviles */
+@media (max-width: 768px) {
+    .whatsapp-float {
+        bottom: 80px; /* Más espacio en móvil para no tapar carrusel */
+        right: 15px;
+        padding: 10px 16px;
+        font-size: 13px;
+        max-width: 180px;
+    }
+    
+    .whatsapp-float span {
+        display: none; /* Ocultar texto en móvil para ahorrar espacio */
+    }
+    
+    .whatsapp-float {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        justify-content: center;
+        padding: 0;
+    }
+    
+    .whatsapp-float svg {
+        width: 24px;
+        height: 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .whatsapp-float {
+        bottom: 75px; /* Ajuste fino para pantallas muy pequeñas */
+        right: 12px;
+        width: 45px;
+        height: 45px;
+    }
+    
+    .whatsapp-float svg {
+        width: 22px;
+        height: 22px;
+    }
+}
+
+/* Carrusel Móvil Optimizado */
+.mobile-carousel {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding: 10px 5px 20px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    scroll-behavior: smooth;
+}
+
+.mobile-carousel::-webkit-scrollbar {
+    display: none;
+}
+
+.product-card-mobile {
+    flex: 0 0 250px;
+    scroll-snap-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.2s ease;
+}
+
+.product-card-mobile:active {
+    transform: scale(0.98);
+}
+
+.card-image-wrapper {
+    width: 100%;
+    aspect-ratio: 1/1;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 25px rgba(255, 96, 0, 0.3);
+    border: 2px solid rgba(255, 96, 0, 0.2);
+    transition: all 0.3s ease;
+}
+
+.card-image-wrapper:hover {
+    box-shadow: 0 12px 35px rgba(255, 96, 0, 0.4);
+    border-color: rgba(255, 96, 0, 0.4);
+}
+
+.product-image-mobile {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.card-image-wrapper:hover .product-image-mobile {
+    transform: scale(1.05);
+}
+
+.mobile-order-btn {
+    margin-top: 10px;
+    background: linear-gradient(135deg, #ff6000, #ff8533);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 15px rgba(255, 96, 0, 0.4);
+    transition: all 0.3s ease;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    width: 100%;
+    text-align: center;
+}
+
+.mobile-order-btn:hover,
+.mobile-order-btn:active {
+    background: linear-gradient(135deg, #ff8533, #ffaa66);
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 6px 20px rgba(255, 96, 0, 0.6);
+    text-decoration: none;
+    color: white;
+}
+
+/* Optimización para botones táctiles móviles */
+.neon-button {
+    min-height: 44px;
+    touch-action: manipulation;
+}
+
+.whatsapp-float {
+    min-height: 50px;
+    touch-action: manipulation;
+}
+
+/* Responsive específico para móvil */
+@media (max-width: 768px) {
+    .mobile-carousel {
+        gap: 15px;
+        padding: 10px 0 20px;
+    }
+    
+    .product-card-mobile {
+        flex: 0 0 220px;
+    }
+    
+    .mobile-order-btn {
+        padding: 10px 20px;
+        font-size: 13px;
+        min-height: 40px;
+        margin-top: 8px;
+    }
+    
+    .card-image-wrapper {
+        border-radius: 15px;
+        box-shadow: 0 6px 20px rgba(255, 96, 0, 0.3);
+    }
+}
+
+@media (max-width: 480px) {
+    .product-card-mobile {
+        flex: 0 0 200px;
+    }
+    
+    .mobile-order-btn {
+        padding: 8px 16px;
+        font-size: 12px;
+        margin-top: 6px;
+    }
+}
+
+/* Botón de Google Maps */
+.maps-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 500;
+    font-size: 13px;
+    border: 2px solid #ff6000;
+    box-shadow: 0 4px 12px rgba(255, 96, 0, 0.2);
+    transition: all 0.3s ease;
+    min-height: 40px;
+}
+
+.maps-btn:hover {
+    background: linear-gradient(145deg, #ff6000, #ff8533);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(255, 96, 0, 0.4);
+    text-decoration: none;
+    color: white;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.maps-icon {
+    font-size: 14px;
+}
+
+@media (max-width: 768px) {
+    .maps-btn {
+        padding: 8px 14px;
+        font-size: 12px;
+        min-height: 36px;
+    }
+    
+    .maps-icon {
+        font-size: 13px;
     }
 }
