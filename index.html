@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROAL BURGER - Enlaces</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- ===== CONFIGURACIÓN DE ANÁLISIS Y MÉTRICAS ===== -->
+    <!-- Google Analytics 4 (GA4) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-JV7JET43NX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-JV7JET43NX');
+    </script>
+    
+    <!-- Microsoft Clarity - Mapas de Calor y Grabaciones -->
+    <script type="text/javascript">
+        (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "vbb6nousfo");
+    </script>
+    <!-- ===== FIN CONFIGURACIÓN DE ANALYTICS ===== -->
+</head>
+<body>
+    <div class="container" id="main-menu" style="visibility: visible;">
+        <!-- Sección 'Otros Favoritos' -->
+        <div class="featured-section">
+            <h2 class="section-title">🔥 LOS MAS PEDIDOS 🔥</h2>
+            <div class="mobile-carousel">
+                <div class="product-card-mobile">
+                    <div class="card-image-wrapper">
+                        <img src="PLUS.PNG" alt="PLUS" class="product-image-mobile">
+                    </div>
+                    <a href="https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Me%20interesa%20PLUS" target="_blank" class="mobile-order-btn" id="btn-plus" onclick="trackProductInterest('PLUS', 'btn-plus')">¡Lo Quiero!</a>
+                </div>
+                <div class="product-card-mobile">
+                    <div class="card-image-wrapper">
+                        <img src="CORDILLERA.PNG" alt="CORDILLERA" class="product-image-mobile">
+                    </div>
+                    <a href="https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Me%20interesa%20CORDILLERA" target="_blank" class="mobile-order-btn" id="btn-cordillera" onclick="trackProductInterest('CORDILLERA', 'btn-cordillera')">¡Lo Quiero!</a>
+                </div>
+                <div class="product-card-mobile">
+                    <div class="card-image-wrapper">
+                        <img src="EMPAREJADOS.jpeg" alt="EMPAREJADOS" class="product-image-mobile">
+                    </div>
+                    <a href="https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Me%20interesa%20EMPAREJADOS" target="_blank" class="mobile-order-btn" id="btn-emparejados" onclick="trackProductInterest('EMPAREJADOS', 'btn-emparejados')">¡Lo Quiero!</a>
+                </div>
+                <div class="product-card-mobile">
+                    <div class="card-image-wrapper">
+                        <img src="DE LA CASA.jpeg" alt="DE LA CASA" class="product-image-mobile">
+                    </div>
+                    <a href="https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Me%20interesa%20DE%20LA%20CASA" target="_blank" class="mobile-order-btn" id="btn-delacasa" onclick="trackProductInterest('DE LA CASA', 'btn-delacasa')">¡Lo Quiero!</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card de Información -->
+        <div class="info-card">
+            <div class="info-item">
+                <span class="icon">📍</span>
+                <div class="info-text">
+                    <strong>Nuestra Ubicación</strong>
+                    <p>Cl. 22 #29-59, Armenia, Quindío<br>(Barrio Las Américas)</p>
+                    <a href="https://maps.google.com/?cid=10239939241884810084&g_mp=Cidnb29nbGUubWFwcy5wbGFjZXMudjEuUGxhY2VzLlNlYXJjaFRleHQ" target="_blank" class="maps-btn">
+                        <span class="maps-icon">🗺️</span>
+                        Ver en Google Maps
+                    </a>
+                </div>
+            </div>
+            <div class="info-item">
+                <span class="icon">⏰</span>
+                <div class="info-text">
+                    <strong>Horario de Atención</strong>
+                    <p>Lunes a Domingo: 4:00 P.M. a 10:30 P.M.<br><small style="color: #ff6b35; font-weight: bold;">🚫 Miércoles: Cerrado</small></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botones de Enlaces -->
+        <div class="links-container">
+            <!-- Botón Destacado - Menú -->
+            <a href="#" class="neon-button featured-button mega-button" id="btn-menu" onclick="openLink('menu'); trackButtonClick('btn-menu', 'Ver Menú Digital'); return false;">
+                <span class="button-icon">📱</span>
+                <span class="button-text">VER NUESTRO MENÚ DIGITAL</span>
+                <div class="neon-border"></div>
+            </a>
+
+            <!-- WhatsApp Pulsante -->
+            <a href="https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor" target="_blank" class="neon-button whatsapp-button pulse-animation" id="btn-whatsapp-main" onclick="trackButtonClick('btn-whatsapp-main', 'WhatsApp Principal')">
+                <span class="button-icon">📱</span>
+                <span class="button-text">¡PIDE TU DOMICILIO AQUÍ!</span>
+                <div class="neon-border"></div>
+            </a>
+
+            <!-- Instagram -->
+            <a href="#" class="neon-button instagram-button" id="btn-instagram" onclick="openLink('instagram'); trackButtonClick('btn-instagram', 'Instagram'); return false;">
+                <span class="button-icon">📷</span>
+                <span class="button-text">MOMENTOS ROAL EN INSTAGRAM</span>
+                <div class="neon-border"></div>
+            </a>
+
+            <!-- TikTok -->
+            <a href="#" class="neon-button tiktok-button" id="btn-tiktok" onclick="openLink('tiktok'); trackButtonClick('btn-tiktok', 'TikTok'); return false;">
+                <span class="button-icon">🎵</span>
+                <span class="button-text">SABOR REAL EN TIKTOK</span>
+                <div class="neon-border"></div>
+            </a>
+
+            <!-- Facebook -->
+            <a href="#" class="neon-button facebook-button" id="btn-facebook" onclick="openLink('facebook'); trackButtonClick('btn-facebook', 'Facebook'); return false;">
+                <span class="button-icon">👥</span>
+                <span class="button-text">COMUNIDAD ROAL EN FACEBOOK</span>
+                <div class="neon-border"></div>
+            </a>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>ROAL BURGER - COMIDA RAPIDA CON ACENTO VENEZOLANO</p>
+        </footer>
+    </div>
+
+    <!-- Modal del Menú Digital -->
+    <div id="menuModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeMenuModal()">&times;</span>
+            <div class="menu-images-container">
+                <img src="menu1.png" alt="Menú ROAL BURGER - Página 1" class="menu-image">
+                <img src="menu2.png" alt="Menú ROAL BURGER - Página 2" class="menu-image">
+                <img src="menu3.png" alt="Menú ROAL BURGER - Página 3" class="menu-image">
+                <img src="menu4.png" alt="Menú ROAL BURGER - Página 4" class="menu-image">
+            </div>
+        </div>
+    </div>
+
+    <!-- Botón Flotante de WhatsApp -->
+    <a href="https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor" target="_blank" class="whatsapp-float" id="btn-whatsapp-flotante" onclick="trackButtonClick('btn-whatsapp-flotante', 'WhatsApp Flotante')">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.890-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.787"/>
+        </svg>
+        <span>Haz tu pedido aquí</span>
+    </a>
+
+    <script src="script.js"></script>
+</body>
+</html>
