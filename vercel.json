@@ -1,5 +1,15 @@
 {
   "version": 2,
+  "redirects": [
+    {
+      "source": "/:path*",
+      "missing": [
+        { "type": "host", "value": "menu-roal-burger-main.vercel.app" }
+      ],
+      "destination": "https://menu-roal-burger-main.vercel.app/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
