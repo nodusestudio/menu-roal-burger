@@ -233,6 +233,18 @@ const CATEGORY_IMAGE_ALIASES = {
     combosdetemporadas: 'COMBOS DE TEMPORADAS.png'
 };
 
+const PINNED_CATEGORY_BUTTONS = [
+    { key: 'burger premium', name: 'BURGER PREMIUM', matchKeys: ['burger premium'] },
+    { key: 'burger clasicas', name: 'BURGER CLASICAS', matchKeys: ['burger clasicas', 'burger clasica'] },
+    { key: 'pepitos venezolanos', name: 'PEPITOS VENEZOLANOS', matchKeys: ['pepitos venezolanos', 'pepitos'] },
+    { key: 'perros y salchipapas', name: 'PERROS Y SALCHIPAPAS', matchKeys: ['perros y salchipapas', 'perros calientes y salchipapas'] },
+    { key: 'entradas', name: 'ENTRADAS', matchKeys: ['entradas'] },
+    { key: 'combos burger', name: 'COMBOS BURGER', matchKeys: ['combos burger'] },
+    { key: 'combos perros y express', name: 'COMBOS PERROS Y EXPRESS', matchKeys: ['combos perros y express', 'combos de perros y express'] },
+    { key: 'combos familiares', name: 'COMBOS FAMILIARES', matchKeys: ['combos familiares'] },
+    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA', matchKeys: ['combos de temporada', 'combos de temporadas'] }
+];
+
 const SECTION_CATEGORY_KEYS = {
     'menu-burger-premium': 'burger premium',
     'menu-burger-clasicas': 'burger clasicas',
@@ -850,7 +862,52 @@ function ensureForcedExplorerCategories(categories) {
     });
 }
 
-function getCategoryProducts(categoryKey) {
+function ensurePinnedExplorerCategories(categories) {
+    const pinnedMap = new Map();
+
+    PINNED_CATEGORY_BUTTONS.forEach((item) => {
+        const key = normalizeCategoryKey(item.key);
+        if (!key) {
+            return;
+        }
+
+        pinnedMap.set(key, {
+            key,
+            name: item.name,
+            matchKeys: (item.matchKeys || [item.key]).map((value) => normalizeCategoryKey(value))
+        });
+    });
+
+    categories.forEach((item) => {
+        const key = normalizeCategoryKey(item.key);
+        if (!key || pinnedMap.has(key)) {
+            return;
+        }
+
+        pinnedMap.set(key, {
+            key,
+            name: item.name,
+            matchKeys: [key]
+        });
+    });
+
+    const pinnedOrder = new Map(PINNED_CATEGORY_BUTTONS.map((item, index) => [normalizeCategoryKey(item.key), index]));
+
+    return Array.from(pinnedMap.values()).sort((a, b) => {
+        const aPriority = pinnedOrder.has(a.key) ? pinnedOrder.get(a.key) : 999;
+        const bPriority = pinnedOrder.has(b.key) ? pinnedOrder.get(b.key) : 999;
+
+        if (aPriority !== bPriority) {
+            return aPriority - bPriority;
+        }
+
+        return a.name.localeCompare(b.name, 'es');
+    });
+}
+
+function getCategoryProducts(category) {
+    const selectedKeys = new Set((category?.matchKeys || [category?.key || '']).map((value) => normalizeCategoryKey(value)).filter(Boolean));
+
     return latestProducts
         .map((product) => {
             const nombre = product.nombre || product.name || 'Producto';
@@ -875,7 +932,7 @@ function getCategoryProducts(categoryKey) {
                 return false;
             }
 
-            return key === categoryKey;
+            return selectedKeys.has(key);
         })
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 }
@@ -887,7 +944,7 @@ function renderCategoryExplorer(nextKey) {
         return;
     }
 
-    const categories = ensureForcedExplorerCategories(getExplorerCategories());
+    const categories = ensurePinnedExplorerCategories(ensureForcedExplorerCategories(getExplorerCategories()));
     grid.innerHTML = '';
 
     if (!categories.length) {
@@ -932,7 +989,7 @@ function renderCategoryExplorer(nextKey) {
     });
 
     const selectedCategory = categories.find((item) => item.key === selectedCategoryKey) || categories[0];
-    const products = getCategoryProducts(selectedCategory.key);
+    const products = getCategoryProducts(selectedCategory);
 
     const heroWrap = document.createElement('div');
     heroWrap.className = 'category-hero-wrap';
