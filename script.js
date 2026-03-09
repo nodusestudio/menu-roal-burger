@@ -781,6 +781,16 @@ function renderCategoryExplorer(nextKey) {
         const row = document.createElement('div');
         row.className = 'category-product-row';
 
+        const thumb = document.createElement('img');
+        thumb.className = 'category-product-thumb';
+        thumb.src = product.image_url || 'logo.png';
+        thumb.alt = product.nombre;
+        thumb.loading = 'lazy';
+        thumb.decoding = 'async';
+        thumb.addEventListener('error', () => {
+            thumb.src = 'logo.png';
+        });
+
         const info = document.createElement('div');
         const title = document.createElement('strong');
         title.textContent = product.nombre;
@@ -789,10 +799,6 @@ function renderCategoryExplorer(nextKey) {
         price.textContent = `$ ${Number(product.precio || 0).toLocaleString('es-CO')}`;
         info.appendChild(title);
         info.appendChild(price);
-
-        const categoryLabel = document.createElement('span');
-        categoryLabel.className = 'muted';
-        categoryLabel.textContent = selectedCategory.name;
 
         const orderBtn = document.createElement('a');
         const btnId = `btn-category-${selectedCategory.key}-${index + 1}`;
@@ -805,8 +811,8 @@ function renderCategoryExplorer(nextKey) {
             trackProductInterest(product.nombre, btnId);
         });
 
+        row.appendChild(thumb);
         row.appendChild(info);
-        row.appendChild(categoryLabel);
         row.appendChild(orderBtn);
         list.appendChild(row);
     });
