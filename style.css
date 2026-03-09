@@ -735,12 +735,14 @@ body::before {
 }
 
 .category-hero-wrap {
-    margin-bottom: 10px;
+    width: min(100%, 1080px);
+    aspect-ratio: 1 / 1;
+    margin: 0 auto 10px;
 }
 
 .category-hero-image {
     width: 100%;
-    max-height: 300px;
+    height: 100%;
     object-fit: contain;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.14);
