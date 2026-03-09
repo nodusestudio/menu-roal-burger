@@ -165,6 +165,32 @@ const DEFAULT_BRANDING = {
 const BRANDING_THEMES = ['fodexa', 'slate', 'ivory', 'cobalt', 'ember', 'mono'];
 let globalInteractionVolume = DEFAULT_BRANDING.interactionVolume;
 
+const LOCAL_PRODUCT_IMAGE_FILES = [
+    'bebidas y adicionales.png',
+    'BURGER CLASICAS.png',
+    'BURGER PREMIUM.png',
+    'COMBOS BURGER.png',
+    'COMBOS DE PERROS Y EXPRESS.png',
+    'COMBOS DE TEMPORADAS.png',
+    'COMBOS FAMILIARES.png',
+    'CORDILLERA.png',
+    'empanadas.png',
+    'entradas.png',
+    'menu combo emparejado.png',
+    'PEPITOS VENEZOLANOS.png',
+    'PERROS CALIENTES Y SALCHIPAPAS.png',
+    'PLUS.png'
+];
+
+const LOCAL_PRODUCT_IMAGE_MAP = LOCAL_PRODUCT_IMAGE_FILES.reduce((acc, fileName) => {
+    const base = fileName.replace(/\.png$/i, '');
+    const key = normalizeCategoryKey(base).replace(/[^a-z0-9]+/g, '');
+    if (key) {
+        acc.set(key, fileName);
+    }
+    return acc;
+}, new Map());
+
 const SECTION_CATEGORY_KEYS = {
     'menu-burger-premium': 'burger premium',
     'menu-burger-clasicas': 'burger clasicas',
@@ -182,6 +208,27 @@ function normalizeCategoryKey(value) {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .trim();
+}
+
+function normalizeAssetLookup(value) {
+    return normalizeCategoryKey(value).replace(/[^a-z0-9]+/g, '');
+}
+
+function resolveProductImage(product) {
+    const productName = String(product?.nombre || product?.name || '').trim();
+    const normalizedProductName = normalizeAssetLookup(productName);
+    const localMatch = LOCAL_PRODUCT_IMAGE_MAP.get(normalizedProductName);
+
+    if (localMatch) {
+        return localMatch;
+    }
+
+    const remote = String(product?.image_url || '').trim();
+    if (remote) {
+        return remote;
+    }
+
+    return 'logo.png';
 }
 
 function isCategoryAllowed(categoryName) {
@@ -312,7 +359,7 @@ function renderDynamicCategorySections() {
         grouped.get(key).products.push({
             nombre,
             precio,
-            image_url: product.image_url || 'logo.png',
+            image_url: resolveProductImage(product),
             estado: product.estado || (product.paused ? 'paused' : 'active')
         });
     });
@@ -419,7 +466,7 @@ function renderFeaturedCards(carousel) {
             return {
                 id: product.id,
                 nombre: product.nombre || product.name || 'Producto',
-                image_url: product.image_url || 'logo.png',
+                image_url: resolveProductImage(product),
                 estado,
                 es_destacado: esDestacado,
                 categoria,
@@ -712,7 +759,7 @@ function getCategoryProducts(categoryKey) {
                 nombre,
                 precio,
                 categoria,
-                image_url: product.image_url || 'logo.png',
+                image_url: resolveProductImage(product),
                 estado
             };
         })
