@@ -173,6 +173,33 @@ function normalizeCategoryKey(value) {
         .trim();
 }
 
+function isCategoryAllowed(categoryName) {
+    if (!activeCategories || !activeCategories.size) {
+        return true;
+    }
+
+    const key = normalizeCategoryKey(categoryName);
+    if (!key) {
+        return true;
+    }
+
+    if (activeCategories.has(key)) {
+        return true;
+    }
+
+    if (key.startsWith('combos') && activeCategories.has('combos')) {
+        return true;
+    }
+
+    for (const activeKey of activeCategories) {
+        if (key.includes(activeKey) || activeKey.includes(key)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function normalizeButtonConfig(raw, id) {
     return {
         id: String(id || raw.id || '').trim(),
@@ -348,7 +375,7 @@ function renderFeaturedCards(carousel) {
             };
         })
         .filter((product) => {
-            const categoryAllowed = !activeCategories || activeCategories.has(normalizeCategoryKey(product.categoria));
+            const categoryAllowed = isCategoryAllowed(product.categoria);
             return product.es_destacado && product.estado !== 'paused' && categoryAllowed;
         })
         .sort((a, b) => {

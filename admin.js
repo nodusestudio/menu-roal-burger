@@ -140,6 +140,14 @@ const ADMIN_USERNAME = 'roalburger';
 const ADMIN_PASSWORD = 'Roalburger*2019';
 const ADMIN_DEVICE_AUTH_KEY = 'roal_admin_device_auth';
 
+const adminAuthForm = document.getElementById('adminAuthForm');
+const authUsernameInput = document.getElementById('authUsername');
+const authPasswordInput = document.getElementById('authPassword');
+const authRememberDeviceInput = document.getElementById('authRememberDevice');
+const authError = document.getElementById('authError');
+const authForgotBtn = document.getElementById('authForgotBtn');
+const authRegisterBtn = document.getElementById('authRegisterBtn');
+
 const productForm = document.getElementById('productForm');
 const featuredForm = document.getElementById('featuredForm');
 const categoryForm = document.getElementById('categoryForm');
@@ -251,50 +259,71 @@ function setupCardCollapse() {
 async function ensureAdminAuth() {
     try {
         if (window.localStorage.getItem(ADMIN_DEVICE_AUTH_KEY) === 'true') {
+            document.body.classList.remove('admin-locked');
+            document.body.classList.add('admin-unlocked');
             return;
         }
     } catch (error) {
         // Ignore storage restrictions in private mode.
     }
 
-    const username = (window.prompt('Acceso administrador: usuario') || '').trim();
-    if (!username) {
-        window.location.href = 'index.html';
-        throw new Error('Acceso cancelado.');
+    document.body.classList.add('admin-locked');
+    document.body.classList.remove('admin-unlocked');
+
+    if (authUsernameInput) {
+        authUsernameInput.focus();
     }
 
-    const password = window.prompt('Acceso administrador: contrasena');
-    if (!password) {
-        window.location.href = 'index.html';
-        throw new Error('Acceso cancelado.');
-    }
-
-    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
-        try {
-            window.localStorage.removeItem(ADMIN_DEVICE_AUTH_KEY);
-        } catch (error) {
-            // Ignore storage restrictions in private mode.
+    await new Promise((resolve, reject) => {
+        if (!adminAuthForm) {
+            reject(new Error('No se encontro el formulario de autenticacion.'));
+            return;
         }
 
-        window.alert('Credenciales incorrectas. Verifica usuario y contrasena.');
-        window.location.href = 'index.html';
-        throw new Error('Credenciales invalidas.');
-    }
+        const onSubmit = (event) => {
+            event.preventDefault();
 
-    const rememberThisDevice = window.confirm('Deseas guardar el acceso en este dispositivo para no volver a pedir credenciales?');
-    if (rememberThisDevice) {
-        try {
-            window.localStorage.setItem(ADMIN_DEVICE_AUTH_KEY, 'true');
-        } catch (error) {
-            // Ignore storage restrictions in private mode.
-        }
-    } else {
-        try {
-            window.localStorage.removeItem(ADMIN_DEVICE_AUTH_KEY);
-        } catch (error) {
-            // Ignore storage restrictions in private mode.
-        }
-    }
+            const username = String(authUsernameInput?.value || '').trim();
+            const password = String(authPasswordInput?.value || '');
+
+            if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+                if (authError) {
+                    authError.textContent = 'Credenciales incorrectas. Verifica usuario y contrasena.';
+                    authError.classList.add('show');
+                }
+
+                try {
+                    window.localStorage.removeItem(ADMIN_DEVICE_AUTH_KEY);
+                } catch (error) {
+                    // Ignore storage restrictions in private mode.
+                }
+                return;
+            }
+
+            if (authError) {
+                authError.classList.remove('show');
+                authError.textContent = '';
+            }
+
+            try {
+                if (authRememberDeviceInput && authRememberDeviceInput.checked) {
+                    window.localStorage.setItem(ADMIN_DEVICE_AUTH_KEY, 'true');
+                } else {
+                    window.localStorage.removeItem(ADMIN_DEVICE_AUTH_KEY);
+                }
+            } catch (error) {
+                // Ignore storage restrictions in private mode.
+            }
+
+            document.body.classList.remove('admin-locked');
+            document.body.classList.add('admin-unlocked');
+
+            adminAuthForm.removeEventListener('submit', onSubmit);
+            resolve();
+        };
+
+        adminAuthForm.addEventListener('submit', onSubmit);
+    });
 }
 
 function normalizeProduct(raw) {
@@ -1280,6 +1309,18 @@ if (buttonVolumeInput && buttonVolumeOut) {
     });
 }
 
+if (authForgotBtn) {
+    authForgotBtn.addEventListener('click', () => {
+        window.alert('Para recuperar el acceso, contacta al administrador principal para cambio de contrasena.');
+    });
+}
+
+if (authRegisterBtn) {
+    authRegisterBtn.addEventListener('click', () => {
+        window.alert('El registro de nuevos administradores se gestiona de forma interna por seguridad.');
+    });
+}
+
 async function initAdmin() {
     try {
         const services = initFirebaseServices();
@@ -1295,6 +1336,8 @@ async function initAdmin() {
         await seedDataIfNeeded();
         await reloadDataAndRender();
     } catch (error) {
+        document.body.classList.add('admin-locked');
+        document.body.classList.remove('admin-unlocked');
         showNotice(`Error de conexion con Firebase: ${error.message || 'revisa la configuracion.'}`, 'error');
     }
 }
