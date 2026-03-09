@@ -77,6 +77,11 @@
             gap: 18px;
         }
 
+        .admin-dashboard {
+            display: grid;
+            gap: 16px;
+        }
+
         .admin-card {
             background: var(--admin-bg-card);
             border: 1px solid var(--admin-border);
@@ -112,8 +117,17 @@
             letter-spacing: 0.6px;
         }
 
+        .card-body {
+            overflow: hidden;
+            max-height: 2200px;
+            opacity: 1;
+            transition: max-height 0.28s ease, opacity 0.25s ease;
+        }
+
         .card-body.collapsed {
-            display: none;
+            max-height: 0;
+            opacity: 0;
+            pointer-events: none;
         }
 
         .admin-form,
@@ -388,6 +402,50 @@
             color: #ffd3d3;
             background: rgba(220, 70, 70, 0.15);
             border-color: rgba(220, 70, 70, 0.35);
+        }
+
+        .skeleton-grid {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .skeleton-item {
+            height: 56px;
+            border-radius: 10px;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 87, 34, 0.22), rgba(255, 255, 255, 0.08));
+            background-size: 200% 100%;
+            animation: adminSkeleton 1.2s infinite linear;
+        }
+
+        @keyframes adminSkeleton {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .metrics-chart-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .metrics-row {
+            display: grid;
+            grid-template-columns: minmax(0, 140px) 1fr auto;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .metrics-bar-track {
+            height: 11px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.09);
+            overflow: hidden;
+        }
+
+        .metrics-bar-fill {
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #ff5722, #ff8a65);
         }
 
         .admin-tabs {
@@ -668,16 +726,35 @@
         </header>
 
         <nav class="admin-tabs" id="adminTabNav">
-            <button type="button" class="admin-tab-btn active" data-tab-target="inventario">Inventario</button>
-            <button type="button" class="admin-tab-btn" data-tab-target="botones">Botones</button>
-            <button type="button" class="admin-tab-btn" data-tab-target="configuracion">Configuracion</button>
-            <button type="button" class="admin-tab-btn" data-tab-target="estadisticas">Estadisticas</button>
+            <button type="button" class="admin-tab-btn active" data-tab-target="inventario">📦 Inventario</button>
+            <button type="button" class="admin-tab-btn" data-tab-target="categorias">📂 Categorias</button>
+            <button type="button" class="admin-tab-btn" data-tab-target="metricas">📈 Metricas</button>
         </nav>
 
         <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
 
-        <section class="admin-grid">
+        <section class="admin-grid admin-dashboard">
             <div class="admin-tab-panel active" data-tab-panel="inventario">
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Dashboard de Inventario</h2>
+                    </div>
+                    <div class="card-body" id="card-inventory-search">
+                        <form class="inline-form" style="margin-bottom: 10px;">
+                            <div class="admin-field full">
+                                <label for="inventorySearchInput">Buscador de productos</label>
+                                <input type="text" id="inventorySearchInput" placeholder="Busca por nombre de producto...">
+                            </div>
+                        </form>
+                        <div id="inventorySkeleton" class="skeleton-grid">
+                            <div class="skeleton-item"></div>
+                            <div class="skeleton-item"></div>
+                            <div class="skeleton-item"></div>
+                        </div>
+                        <div id="inventoryQuickList" class="stack-list"></div>
+                    </div>
+                </article>
+
                 <article class="admin-card">
                     <div class="card-head">
                         <h2>Agregar Producto</h2>
@@ -734,7 +811,9 @@
                     <div id="featuredList" class="stack-list"></div>
                     </div>
                 </article>
+            </div>
 
+            <div class="admin-tab-panel" data-tab-panel="categorias">
                 <article class="admin-card">
                     <div class="card-head">
                         <h2>Categorias del Menu</h2>
@@ -911,10 +990,10 @@
                 </article>
             </div>
 
-            <div class="admin-tab-panel" data-tab-panel="estadisticas">
+            <div class="admin-tab-panel" data-tab-panel="metricas">
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>Estadisticas</h2>
+                        <h2>Metricas de Clics por Producto</h2>
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-stats" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-stats">
@@ -928,6 +1007,7 @@
                             <div class="stat-value" id="topProduct">--</div>
                         </div>
                     </div>
+                    <div id="metricsChartList" class="metrics-chart-list" style="margin-top: 12px;"></div>
                     </div>
                 </article>
             </div>
