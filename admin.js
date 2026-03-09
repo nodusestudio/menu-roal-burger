@@ -39,6 +39,106 @@ const seedProducts = [
     }
 ];
 
+const defaultButtons = [
+    {
+        id: 'btn-menu',
+        label: 'VER NUESTRO MENU DIGITAL',
+        icon: '📱',
+        actionType: 'menu-modal',
+        link: '',
+        buttonType: 'neon',
+        color: '#ff6000',
+        size: 'xl',
+        soundEnabled: true,
+        volume: 0.1,
+        estado: 'active',
+        visible: true,
+        order: 1
+    },
+    {
+        id: 'btn-whatsapp-main',
+        label: 'PIDE TU DOMICILIO AQUI',
+        icon: '📱',
+        actionType: 'external',
+        link: 'https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
+        buttonType: 'solid',
+        color: '#25d366',
+        size: 'lg',
+        soundEnabled: true,
+        volume: 0.1,
+        estado: 'active',
+        visible: true,
+        order: 2
+    },
+    {
+        id: 'btn-instagram',
+        label: 'MOMENTOS ROAL EN INSTAGRAM',
+        icon: '📷',
+        actionType: 'external',
+        link: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
+        buttonType: 'glass',
+        color: '#e1306c',
+        size: 'md',
+        soundEnabled: true,
+        volume: 0.08,
+        estado: 'active',
+        visible: true,
+        order: 3
+    },
+    {
+        id: 'btn-tiktok',
+        label: 'SABOR REAL EN TIKTOK',
+        icon: '🎵',
+        actionType: 'external',
+        link: 'https://www.tiktok.com/@roalburger',
+        buttonType: 'glass',
+        color: '#00f2ea',
+        size: 'md',
+        soundEnabled: true,
+        volume: 0.08,
+        estado: 'active',
+        visible: true,
+        order: 4
+    },
+    {
+        id: 'btn-facebook',
+        label: 'COMUNIDAD ROAL EN FACEBOOK',
+        icon: '👥',
+        actionType: 'external',
+        link: 'https://www.facebook.com/share/17ukpFaQz3/?mibextid=wwXIfr',
+        buttonType: 'minimal',
+        color: '#1877f2',
+        size: 'md',
+        soundEnabled: false,
+        volume: 0.05,
+        estado: 'active',
+        visible: true,
+        order: 5
+    }
+];
+
+const BRAND_TEMPLATES = {
+    flame: { primaryColor: '#ff6000', secondaryColor: '#ff8533', accentColor: '#25d366' },
+    ocean: { primaryColor: '#0f4c81', secondaryColor: '#46c3ff', accentColor: '#19c7c0' },
+    forest: { primaryColor: '#0f5132', secondaryColor: '#55d38d', accentColor: '#b3ff7a' },
+    midnight: { primaryColor: '#20274e', secondaryColor: '#5f7cff', accentColor: '#f9c94a' },
+    sunset: { primaryColor: '#a33a2f', secondaryColor: '#ff9f68', accentColor: '#ffd166' }
+};
+
+const defaultBranding = {
+    restaurantName: 'ROAL BURGER',
+    slogan: 'Comida rapida con acento venezolano',
+    logoUrl: 'logo.png',
+    primaryColor: '#ff6000',
+    secondaryColor: '#ff8533',
+    accentColor: '#25d366',
+    template: 'flame',
+    updated_at: null
+};
+
+const ADMIN_USERNAME = 'roalburger';
+const ADMIN_PASSWORD = 'Roalburger*2019';
+
 const productForm = document.getElementById('productForm');
 const featuredForm = document.getElementById('featuredForm');
 const categoryForm = document.getElementById('categoryForm');
@@ -51,32 +151,78 @@ const imageFileInput = document.getElementById('productImageFile');
 const totalClicksEl = document.getElementById('totalClicks');
 const topProductEl = document.getElementById('topProduct');
 
+const buttonConfigForm = document.getElementById('buttonConfigForm');
+const buttonConfigList = document.getElementById('buttonConfigList');
+const buttonVolumeInput = document.getElementById('buttonVolume');
+const buttonVolumeOut = document.getElementById('buttonVolumeOut');
+const buttonEditIdInput = document.getElementById('buttonEditId');
+const buttonSaveBtn = document.getElementById('buttonSaveBtn');
+
+const brandingForm = document.getElementById('brandingForm');
+const templateGrid = document.getElementById('templateGrid');
+const previewLogo = document.getElementById('previewLogo');
+const previewName = document.getElementById('previewName');
+const previewSlogan = document.getElementById('previewSlogan');
+const brandingPreview = document.getElementById('brandingPreview');
+
 let firebaseDb;
 let firebaseStorage;
-let firebaseAuth;
 let productsState = [];
 let categoriesState = [];
+let buttonsState = [];
+let brandingState = { ...defaultBranding };
 
-const ADMIN_USERNAME = 'roalburger';
-const ADMIN_PASSWORD = 'Roalburger*2019';
+function showNotice(text, type = 'ok') {
+    if (!notice) {
+        return;
+    }
+    notice.textContent = text;
+    notice.className = `notice show ${type}`;
+}
 
-async function ensureAdminAuth() {
-    const username = (window.prompt('Acceso administrador: usuario') || '').trim();
-    if (!username) {
-        window.location.href = 'index.html';
-        throw new Error('Acceso cancelado.');
+function hideNotice() {
+    if (!notice) {
+        return;
+    }
+    notice.className = 'notice';
+    notice.textContent = '';
+}
+
+function slugify(text) {
+    return String(text || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-');
+}
+
+function firestoreNow() {
+    return firebase.firestore.FieldValue.serverTimestamp();
+}
+
+function setupTabs() {
+    const nav = document.getElementById('adminTabNav');
+    if (!nav) {
+        return;
     }
 
-    const password = window.prompt('Acceso administrador: contrasena');
-    if (!password) {
-        window.location.href = 'index.html';
-        throw new Error('Acceso cancelado.');
+    const buttons = Array.from(nav.querySelectorAll('.admin-tab-btn'));
+    const panels = Array.from(document.querySelectorAll('.admin-tab-panel'));
+
+    function activateTab(target) {
+        buttons.forEach((button) => {
+            button.classList.toggle('active', button.dataset.tabTarget === target);
+        });
+
+        panels.forEach((panel) => {
+            panel.classList.toggle('active', panel.dataset.tabPanel === target);
+        });
     }
 
-    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
-        window.location.href = 'index.html';
-        throw new Error('Credenciales invalidas.');
-    }
+    buttons.forEach((button) => {
+        button.addEventListener('click', () => activateTab(button.dataset.tabTarget));
+    });
 }
 
 function setupCardCollapse() {
@@ -101,27 +247,23 @@ function setupCardCollapse() {
     });
 }
 
-function showNotice(text, type = 'ok') {
-    notice.textContent = text;
-    notice.className = `notice show ${type}`;
-}
+async function ensureAdminAuth() {
+    const username = (window.prompt('Acceso administrador: usuario') || '').trim();
+    if (!username) {
+        window.location.href = 'index.html';
+        throw new Error('Acceso cancelado.');
+    }
 
-function hideNotice() {
-    notice.className = 'notice';
-    notice.textContent = '';
-}
+    const password = window.prompt('Acceso administrador: contrasena');
+    if (!password) {
+        window.location.href = 'index.html';
+        throw new Error('Acceso cancelado.');
+    }
 
-function slugify(text) {
-    return text
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-');
-}
-
-function firestoreNow() {
-    return firebase.firestore.FieldValue.serverTimestamp();
+    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+        window.location.href = 'index.html';
+        throw new Error('Credenciales invalidas.');
+    }
 }
 
 function normalizeProduct(raw) {
@@ -136,6 +278,38 @@ function normalizeProduct(raw) {
         image_url: raw.image_url || 'logo.png',
         created_at: raw.created_at,
         updated_at: raw.updated_at
+    };
+}
+
+function normalizeButton(raw) {
+    return {
+        id: String(raw.id || '').trim(),
+        label: String(raw.label || 'Boton').trim(),
+        icon: String(raw.icon || '🔗').trim(),
+        actionType: raw.actionType === 'menu-modal' ? 'menu-modal' : 'external',
+        link: String(raw.link || '').trim(),
+        buttonType: ['neon', 'solid', 'glass', 'minimal'].includes(raw.buttonType) ? raw.buttonType : 'neon',
+        color: String(raw.color || '#ff6000'),
+        size: ['sm', 'md', 'lg', 'xl'].includes(raw.size) ? raw.size : 'md',
+        soundEnabled: raw.soundEnabled !== false,
+        volume: Number.isFinite(Number(raw.volume)) ? Math.max(0, Math.min(1, Number(raw.volume))) : 0.1,
+        estado: raw.estado === 'paused' ? 'paused' : 'active',
+        visible: raw.visible !== false,
+        order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 99,
+        updated_at: raw.updated_at || null
+    };
+}
+
+function normalizeBranding(raw) {
+    return {
+        restaurantName: String(raw.restaurantName || defaultBranding.restaurantName),
+        slogan: String(raw.slogan || defaultBranding.slogan),
+        logoUrl: String(raw.logoUrl || defaultBranding.logoUrl),
+        primaryColor: String(raw.primaryColor || defaultBranding.primaryColor),
+        secondaryColor: String(raw.secondaryColor || defaultBranding.secondaryColor),
+        accentColor: String(raw.accentColor || defaultBranding.accentColor),
+        template: BRAND_TEMPLATES[raw.template] ? raw.template : defaultBranding.template,
+        updated_at: raw.updated_at || null
     };
 }
 
@@ -159,6 +333,23 @@ async function fetchProducts() {
             const bTs = b.created_at && typeof b.created_at.toMillis === 'function' ? b.created_at.toMillis() : 0;
             return aTs - bTs;
         });
+}
+
+async function fetchButtons() {
+    const snapshot = await firebaseDb.collection('botones').get();
+    buttonsState = snapshot.docs
+        .map((doc) => normalizeButton({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => a.order - b.order);
+}
+
+async function fetchBranding() {
+    const doc = await firebaseDb.collection('configuracion').doc('marca').get();
+    if (!doc.exists) {
+        brandingState = { ...defaultBranding };
+        return;
+    }
+
+    brandingState = normalizeBranding(doc.data());
 }
 
 async function seedDataIfNeeded() {
@@ -194,6 +385,29 @@ async function seedDataIfNeeded() {
             });
         });
         await batch.commit();
+    }
+
+    const buttonsCheck = await firebaseDb.collection('botones').limit(1).get();
+    if (buttonsCheck.empty) {
+        const batch = firebaseDb.batch();
+        defaultButtons.forEach((button) => {
+            const ref = firebaseDb.collection('botones').doc(button.id);
+            batch.set(ref, {
+                ...button,
+                created_at: firestoreNow(),
+                updated_at: firestoreNow()
+            });
+        });
+        await batch.commit();
+    }
+
+    const brandingCheck = await firebaseDb.collection('configuracion').doc('marca').get();
+    if (!brandingCheck.exists) {
+        await firebaseDb.collection('configuracion').doc('marca').set({
+            ...defaultBranding,
+            created_at: firestoreNow(),
+            updated_at: firestoreNow()
+        });
     }
 }
 
@@ -363,6 +577,126 @@ function renderFeaturedProducts() {
     renderFeaturedSelect();
 }
 
+function renderButtonsList() {
+    if (!buttonConfigList) {
+        return;
+    }
+
+    buttonConfigList.innerHTML = '';
+    const rows = [...buttonsState].sort((a, b) => a.order - b.order);
+
+    rows.forEach((button) => {
+        const row = document.createElement('div');
+        row.className = 'list-item';
+
+        const stateClass = button.estado === 'active' ? 'visible' : 'hidden';
+        const stateText = button.estado === 'active' ? 'Activo' : 'Pausado';
+
+        row.innerHTML = `
+            <div class="product-main"><span>${button.icon} ${button.label}</span></div>
+            <div class="muted">${button.id} | ${button.actionType === 'menu-modal' ? 'Menu modal' : 'Enlace'} | ${button.buttonType} | ${button.size}</div>
+            <span class="state-pill ${stateClass}">${stateText}</span>
+            <button class="mini-btn" data-action="edit-button" data-button-id="${button.id}">Editar</button>
+            <button class="mini-btn" data-action="toggle-button" data-button-id="${button.id}">${button.estado === 'active' ? 'Pausar' : 'Activar'}</button>
+            <button class="mini-btn remove" data-action="toggle-visible" data-button-id="${button.id}">${button.visible ? 'Ocultar' : 'Mostrar'}</button>
+            <button class="mini-btn remove" data-action="delete-button" data-button-id="${button.id}">Eliminar</button>
+        `;
+
+        buttonConfigList.appendChild(row);
+    });
+}
+
+function resetButtonForm() {
+    if (!buttonConfigForm) {
+        return;
+    }
+    buttonConfigForm.reset();
+    buttonEditIdInput.value = '';
+    if (buttonSaveBtn) {
+        buttonSaveBtn.textContent = 'Guardar boton';
+    }
+    if (buttonVolumeOut && buttonVolumeInput) {
+        buttonVolumeOut.textContent = Number(buttonVolumeInput.value).toFixed(2);
+    }
+}
+
+function setButtonForm(button) {
+    if (!buttonConfigForm) {
+        return;
+    }
+
+    buttonConfigForm.buttonId.value = button.id;
+    buttonConfigForm.buttonLabel.value = button.label;
+    buttonConfigForm.buttonIcon.value = button.icon;
+    buttonConfigForm.buttonActionType.value = button.actionType;
+    buttonConfigForm.buttonLink.value = button.link;
+    buttonConfigForm.buttonType.value = button.buttonType;
+    buttonConfigForm.buttonColor.value = button.color;
+    buttonConfigForm.buttonSize.value = button.size;
+    buttonConfigForm.buttonOrder.value = String(button.order);
+    buttonConfigForm.buttonState.value = button.estado;
+    buttonConfigForm.buttonVisible.value = button.visible ? 'true' : 'false';
+    buttonConfigForm.buttonVolume.value = String(button.volume);
+    buttonConfigForm.buttonSoundEnabled.checked = button.soundEnabled;
+
+    buttonEditIdInput.value = button.id;
+    if (buttonSaveBtn) {
+        buttonSaveBtn.textContent = 'Actualizar boton';
+    }
+    if (buttonVolumeOut) {
+        buttonVolumeOut.textContent = Number(button.volume).toFixed(2);
+    }
+}
+
+function renderBrandingForm() {
+    if (!brandingForm) {
+        return;
+    }
+
+    brandingForm.restaurantName.value = brandingState.restaurantName;
+    brandingForm.restaurantSlogan.value = brandingState.slogan;
+    brandingForm.restaurantLogo.value = brandingState.logoUrl;
+    brandingForm.brandPrimaryColor.value = brandingState.primaryColor;
+    brandingForm.brandSecondaryColor.value = brandingState.secondaryColor;
+    brandingForm.brandAccentColor.value = brandingState.accentColor;
+    brandingForm.brandTemplate.value = brandingState.template;
+
+    renderBrandingPreview();
+}
+
+function renderBrandingPreview() {
+    if (!brandingForm || !previewName || !previewSlogan || !brandingPreview || !previewLogo) {
+        return;
+    }
+
+    const name = String(brandingForm.restaurantName.value || '').trim() || defaultBranding.restaurantName;
+    const slogan = String(brandingForm.restaurantSlogan.value || '').trim() || defaultBranding.slogan;
+    const logo = String(brandingForm.restaurantLogo.value || '').trim() || defaultBranding.logoUrl;
+    const primary = String(brandingForm.brandPrimaryColor.value || defaultBranding.primaryColor);
+    const secondary = String(brandingForm.brandSecondaryColor.value || defaultBranding.secondaryColor);
+
+    previewName.textContent = name;
+    previewSlogan.textContent = slogan;
+    previewLogo.src = logo;
+    previewLogo.alt = `Logo ${name}`;
+
+    brandingPreview.style.borderColor = `${primary}77`;
+    brandingPreview.style.background = `linear-gradient(135deg, ${primary}22, ${secondary}16)`;
+}
+
+function applyTemplateToForm(templateName) {
+    if (!brandingForm || !BRAND_TEMPLATES[templateName]) {
+        return;
+    }
+
+    const template = BRAND_TEMPLATES[templateName];
+    brandingForm.brandTemplate.value = templateName;
+    brandingForm.brandPrimaryColor.value = template.primaryColor;
+    brandingForm.brandSecondaryColor.value = template.secondaryColor;
+    brandingForm.brandAccentColor.value = template.accentColor;
+    renderBrandingPreview();
+}
+
 async function uploadImageToFirebase(file, productName) {
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const safeName = slugify(productName) || 'producto';
@@ -406,9 +740,17 @@ async function syncStats() {
 }
 
 async function reloadDataAndRender() {
-    await Promise.all([fetchCategories(), fetchProducts()]);
+    await Promise.all([
+        fetchCategories(),
+        fetchProducts(),
+        fetchButtons(),
+        fetchBranding()
+    ]);
+
     renderCategories();
     renderFeaturedProducts();
+    renderButtonsList();
+    renderBrandingForm();
     await syncStats();
 }
 
@@ -745,18 +1087,182 @@ categoryList.addEventListener('click', async (event) => {
     }
 });
 
+buttonConfigForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    hideNotice();
+
+    const formData = new FormData(buttonConfigForm);
+    const payload = normalizeButton({
+        id: String(formData.get('buttonId') || '').trim(),
+        label: String(formData.get('buttonLabel') || '').trim(),
+        icon: String(formData.get('buttonIcon') || '🔗').trim(),
+        actionType: String(formData.get('buttonActionType') || 'external').trim(),
+        link: String(formData.get('buttonLink') || '').trim(),
+        buttonType: String(formData.get('buttonType') || 'neon').trim(),
+        color: String(formData.get('buttonColor') || '#ff6000').trim(),
+        size: String(formData.get('buttonSize') || 'md').trim(),
+        soundEnabled: formData.get('buttonSoundEnabled') === 'on',
+        volume: Number(formData.get('buttonVolume') || 0.1),
+        estado: String(formData.get('buttonState') || 'active').trim(),
+        visible: String(formData.get('buttonVisible') || 'true') === 'true',
+        order: Number(formData.get('buttonOrder') || 99)
+    });
+
+    if (!payload.id || !payload.label) {
+        showNotice('Debes completar ID y texto del boton.', 'error');
+        return;
+    }
+
+    if (payload.actionType === 'external' && !payload.link) {
+        showNotice('Los botones externos deben tener enlace.', 'error');
+        return;
+    }
+
+    try {
+        await firebaseDb.collection('botones').doc(payload.id).set({
+            ...payload,
+            updated_at: firestoreNow()
+        }, { merge: true });
+
+        await reloadDataAndRender();
+        resetButtonForm();
+        showNotice('Boton guardado correctamente.', 'ok');
+    } catch (error) {
+        showNotice(`No se pudo guardar el boton: ${error.message || 'Error inesperado.'}`, 'error');
+    }
+});
+
+buttonConfigList.addEventListener('click', async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const action = target.dataset.action;
+    const buttonId = target.dataset.buttonId;
+    if (!action || !buttonId) {
+        return;
+    }
+
+    const selected = buttonsState.find((item) => item.id === buttonId);
+    if (!selected) {
+        showNotice('Boton no encontrado.', 'error');
+        return;
+    }
+
+    try {
+        if (action === 'edit-button') {
+            setButtonForm(selected);
+            showNotice(`Editando ${selected.id}.`, 'ok');
+            return;
+        }
+
+        if (action === 'toggle-button') {
+            const estado = selected.estado === 'active' ? 'paused' : 'active';
+            await firebaseDb.collection('botones').doc(buttonId).update({
+                estado,
+                updated_at: firestoreNow()
+            });
+            await reloadDataAndRender();
+            showNotice(`Boton ${buttonId}: ${estado === 'active' ? 'activado' : 'pausado'}.`, 'ok');
+            return;
+        }
+
+        if (action === 'toggle-visible') {
+            await firebaseDb.collection('botones').doc(buttonId).update({
+                visible: !selected.visible,
+                updated_at: firestoreNow()
+            });
+            await reloadDataAndRender();
+            showNotice(`Boton ${buttonId}: ${selected.visible ? 'oculto' : 'visible'}.`, 'ok');
+            return;
+        }
+
+        if (action === 'delete-button') {
+            const confirmed = window.confirm(`Eliminar boton ${buttonId}?`);
+            if (!confirmed) {
+                return;
+            }
+
+            await firebaseDb.collection('botones').doc(buttonId).delete();
+            await reloadDataAndRender();
+            resetButtonForm();
+            showNotice(`Boton ${buttonId} eliminado.`, 'ok');
+        }
+    } catch (error) {
+        showNotice(`No se pudo actualizar el boton: ${error.message || 'Error inesperado.'}`, 'error');
+    }
+});
+
+brandingForm.addEventListener('input', () => {
+    renderBrandingPreview();
+});
+
+brandingForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    hideNotice();
+
+    const formData = new FormData(brandingForm);
+    const payload = normalizeBranding({
+        restaurantName: String(formData.get('restaurantName') || '').trim(),
+        slogan: String(formData.get('restaurantSlogan') || '').trim(),
+        logoUrl: String(formData.get('restaurantLogo') || '').trim(),
+        primaryColor: String(formData.get('brandPrimaryColor') || '#ff6000').trim(),
+        secondaryColor: String(formData.get('brandSecondaryColor') || '#ff8533').trim(),
+        accentColor: String(formData.get('brandAccentColor') || '#25d366').trim(),
+        template: String(formData.get('brandTemplate') || 'flame').trim()
+    });
+
+    try {
+        await firebaseDb.collection('configuracion').doc('marca').set({
+            ...payload,
+            updated_at: firestoreNow()
+        }, { merge: true });
+
+        brandingState = payload;
+        renderBrandingForm();
+        showNotice('Configuracion de marca guardada.', 'ok');
+    } catch (error) {
+        showNotice(`No se pudo guardar la configuracion: ${error.message || 'Error inesperado.'}`, 'error');
+    }
+});
+
+if (templateGrid) {
+    templateGrid.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const template = target.dataset.template;
+        if (!template) {
+            return;
+        }
+
+        applyTemplateToForm(template);
+    });
+}
+
+if (buttonVolumeInput && buttonVolumeOut) {
+    buttonVolumeInput.addEventListener('input', () => {
+        buttonVolumeOut.textContent = Number(buttonVolumeInput.value).toFixed(2);
+    });
+}
+
 async function initAdmin() {
     try {
         const services = initFirebaseServices();
         firebaseDb = services.db;
         firebaseStorage = services.storage;
-        firebaseAuth = services.auth;
 
         await ensureAdminAuth();
 
+        setupTabs();
+        setupCardCollapse();
+        resetButtonForm();
+
         await seedDataIfNeeded();
         await reloadDataAndRender();
-        setupCardCollapse();
     } catch (error) {
         showNotice(`Error de conexion con Firebase: ${error.message || 'revisa la configuracion.'}`, 'error');
     }

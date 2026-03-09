@@ -1,13 +1,4 @@
-// Splash/video handling removed: main content shows immediately.
-
-// ========== FUNCIONES DE TRACKING ==========
-
-// Función principal para rastrear clics en botones
 function trackButtonClick(buttonId, buttonName) {
-    // Log para verificación
-    console.log(`🎯 CLICK TRACKED: ${buttonName} (ID: ${buttonId}) - Timestamp: ${new Date().toISOString()}`);
-    
-    // Google Analytics 4 - ACTIVO
     if (typeof gtag === 'function') {
         gtag('event', 'click', {
             event_category: 'engagement',
@@ -15,20 +6,14 @@ function trackButtonClick(buttonId, buttonName) {
             button_id: buttonId
         });
     }
-    
-    // Microsoft Clarity tracking - ACTIVO
+
     if (window.clarity) {
-        window.clarity("set", "button_interaction", buttonName);
-        window.clarity("set", "button_id", buttonId);
+        window.clarity('set', 'button_interaction', buttonName);
+        window.clarity('set', 'button_id', buttonId);
     }
 }
 
-// Función específica para rastrear interés por productos
 function trackProductInterest(productName, buttonId) {
-    // Log detallado para productos
-    console.log(`🍔 INTERÉS EN PRODUCTO: ${productName} (Botón: ${buttonId}) - Timestamp: ${new Date().toISOString()}`);
-    
-    // Google Analytics 4 - Evento de interés en producto - ACTIVO
     if (typeof gtag === 'function') {
         gtag('event', 'interes_producto', {
             event_category: 'ecommerce',
@@ -37,8 +22,7 @@ function trackProductInterest(productName, buttonId) {
             button_location: buttonId,
             action: 'whatsapp_interest'
         });
-        
-        // También como evento de select_item para ecommerce
+
         gtag('event', 'select_item', {
             item_list_name: 'Lo Mas Pedido',
             items: [{
@@ -47,22 +31,16 @@ function trackProductInterest(productName, buttonId) {
             }]
         });
     }
-    
-    // Microsoft Clarity tracking para productos - ACTIVO
+
     if (window.clarity) {
-        window.clarity("set", "producto_interes", productName);
-        window.clarity("set", "button_clicked", buttonId);
+        window.clarity('set', 'producto_interes', productName);
+        window.clarity('set', 'button_clicked', buttonId);
     }
-    
-    // Llamar también al tracking general
-    trackButtonClick(buttonId, `Interés en ${productName}`);
+
+    trackButtonClick(buttonId, `Interes en ${productName}`);
 }
 
-// Función para rastrear apertura del modal del menú
 function trackMenuModal() {
-    console.log('🍔 MENÚ MODAL ABIERTO - Timestamp: ' + new Date().toISOString());
-    
-    // Google Analytics 4 - ACTIVO
     if (typeof gtag === 'function') {
         gtag('event', 'view_item_list', {
             event_category: 'engagement',
@@ -70,23 +48,111 @@ function trackMenuModal() {
             item_list_name: 'Menu ROAL BURGER'
         });
     }
-    
-    // Microsoft Clarity tracking del menú - ACTIVO
+
     if (window.clarity) {
-        window.clarity("set", "menu_modal", "opened");
-        window.clarity("set", "user_action", "view_menu");
+        window.clarity('set', 'menu_modal', 'opened');
+        window.clarity('set', 'user_action', 'view_menu');
     }
 }
-
-// ========== FUNCIONES ORIGINALES ACTUALIZADAS ==========
 
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
+let buttonsUnsubscribe = null;
+let brandingUnsubscribe = null;
 let latestProducts = [];
 let activeCategories = null;
 let activeCategoryMeta = [];
+let buttonConfigsMap = new Map();
+
+const DEFAULT_PUBLIC_BUTTONS = {
+    'btn-menu': {
+        id: 'btn-menu',
+        label: 'VER NUESTRO MENU DIGITAL',
+        icon: '📱',
+        actionType: 'menu-modal',
+        link: '',
+        buttonType: 'neon',
+        color: '#ff6000',
+        size: 'xl',
+        soundEnabled: true,
+        volume: 0.1,
+        estado: 'active',
+        visible: true,
+        order: 1
+    },
+    'btn-whatsapp-main': {
+        id: 'btn-whatsapp-main',
+        label: 'PIDE TU DOMICILIO AQUI',
+        icon: '📱',
+        actionType: 'external',
+        link: 'https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
+        buttonType: 'solid',
+        color: '#25d366',
+        size: 'lg',
+        soundEnabled: true,
+        volume: 0.1,
+        estado: 'active',
+        visible: true,
+        order: 2
+    },
+    'btn-instagram': {
+        id: 'btn-instagram',
+        label: 'MOMENTOS ROAL EN INSTAGRAM',
+        icon: '📷',
+        actionType: 'external',
+        link: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
+        buttonType: 'glass',
+        color: '#e1306c',
+        size: 'md',
+        soundEnabled: true,
+        volume: 0.08,
+        estado: 'active',
+        visible: true,
+        order: 3
+    },
+    'btn-tiktok': {
+        id: 'btn-tiktok',
+        label: 'SABOR REAL EN TIKTOK',
+        icon: '🎵',
+        actionType: 'external',
+        link: 'https://www.tiktok.com/@roalburger',
+        buttonType: 'glass',
+        color: '#00f2ea',
+        size: 'md',
+        soundEnabled: true,
+        volume: 0.08,
+        estado: 'active',
+        visible: true,
+        order: 4
+    },
+    'btn-facebook': {
+        id: 'btn-facebook',
+        label: 'COMUNIDAD ROAL EN FACEBOOK',
+        icon: '👥',
+        actionType: 'external',
+        link: 'https://www.facebook.com/share/17ukpFaQz3/?mibextid=wwXIfr',
+        buttonType: 'minimal',
+        color: '#1877f2',
+        size: 'md',
+        soundEnabled: false,
+        volume: 0.05,
+        estado: 'active',
+        visible: true,
+        order: 5
+    }
+};
+
+const DEFAULT_BRANDING = {
+    restaurantName: 'ROAL BURGER',
+    slogan: 'Comida rapida con acento venezolano',
+    logoUrl: 'logo.png',
+    primaryColor: '#ff6000',
+    secondaryColor: '#ff8533',
+    accentColor: '#25d366',
+    template: 'flame'
+};
 
 const SECTION_CATEGORY_KEYS = {
     'menu-burger-premium': 'burger premium',
@@ -105,6 +171,36 @@ function normalizeCategoryKey(value) {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .trim();
+}
+
+function normalizeButtonConfig(raw, id) {
+    return {
+        id: String(id || raw.id || '').trim(),
+        label: String(raw.label || 'Boton').trim(),
+        icon: String(raw.icon || '🔗').trim(),
+        actionType: raw.actionType === 'menu-modal' ? 'menu-modal' : 'external',
+        link: String(raw.link || '').trim(),
+        buttonType: ['neon', 'solid', 'glass', 'minimal'].includes(raw.buttonType) ? raw.buttonType : 'neon',
+        color: String(raw.color || '#ff6000').trim(),
+        size: ['sm', 'md', 'lg', 'xl'].includes(raw.size) ? raw.size : 'md',
+        soundEnabled: raw.soundEnabled !== false,
+        volume: Number.isFinite(Number(raw.volume)) ? Math.max(0, Math.min(1, Number(raw.volume))) : 0.1,
+        estado: raw.estado === 'paused' ? 'paused' : 'active',
+        visible: raw.visible !== false,
+        order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 99
+    };
+}
+
+function normalizeBranding(raw) {
+    return {
+        restaurantName: String(raw.restaurantName || DEFAULT_BRANDING.restaurantName),
+        slogan: String(raw.slogan || DEFAULT_BRANDING.slogan),
+        logoUrl: String(raw.logoUrl || DEFAULT_BRANDING.logoUrl),
+        primaryColor: String(raw.primaryColor || DEFAULT_BRANDING.primaryColor),
+        secondaryColor: String(raw.secondaryColor || DEFAULT_BRANDING.secondaryColor),
+        accentColor: String(raw.accentColor || DEFAULT_BRANDING.accentColor),
+        template: ['flame', 'ocean', 'forest', 'midnight', 'sunset'].includes(raw.template) ? raw.template : DEFAULT_BRANDING.template
+    };
 }
 
 function applyCategoryVisibility() {
@@ -149,9 +245,7 @@ function renderDynamicCategorySections() {
 
     container.querySelectorAll('.dynamic-category-section').forEach((node) => node.remove());
 
-    const staticCategoryKeys = new Set(
-        Object.values(SECTION_CATEGORY_KEYS).map((value) => normalizeCategoryKey(value))
-    );
+    const staticCategoryKeys = new Set(Object.values(SECTION_CATEGORY_KEYS).map((value) => normalizeCategoryKey(value)));
 
     const grouped = new Map();
     latestProducts.forEach((product) => {
@@ -188,49 +282,49 @@ function renderDynamicCategorySections() {
             title.textContent = category.name;
             section.appendChild(title);
 
-            if (!data.products.length) {
+            const visibleProducts = data.products.filter((product) => product.estado !== 'paused');
+
+            if (!visibleProducts.length) {
                 const empty = document.createElement('p');
                 empty.textContent = 'No hay productos cargados en esta categoria.';
                 empty.style.color = '#b6b6b6';
                 empty.style.fontSize = '0.95rem';
                 section.appendChild(empty);
             } else {
-                data.products
-                    .filter((product) => product.estado !== 'paused')
-                    .forEach((product) => {
-                        const card = document.createElement('div');
-                        card.style.display = 'grid';
-                        card.style.gridTemplateColumns = '68px 1fr auto';
-                        card.style.gap = '10px';
-                        card.style.alignItems = 'center';
-                        card.style.padding = '10px';
-                        card.style.border = '1px solid rgba(255,255,255,0.12)';
-                        card.style.borderRadius = '10px';
-                        card.style.marginBottom = '10px';
-                        card.style.background = 'rgba(0,0,0,0.22)';
+                visibleProducts.forEach((product) => {
+                    const card = document.createElement('div');
+                    card.style.display = 'grid';
+                    card.style.gridTemplateColumns = '68px 1fr auto';
+                    card.style.gap = '10px';
+                    card.style.alignItems = 'center';
+                    card.style.padding = '10px';
+                    card.style.border = '1px solid rgba(255,255,255,0.12)';
+                    card.style.borderRadius = '10px';
+                    card.style.marginBottom = '10px';
+                    card.style.background = 'rgba(0,0,0,0.22)';
 
-                        const img = document.createElement('img');
-                        img.src = product.image_url;
-                        img.alt = product.nombre;
-                        img.style.width = '68px';
-                        img.style.height = '68px';
-                        img.style.objectFit = 'cover';
-                        img.style.borderRadius = '8px';
+                    const img = document.createElement('img');
+                    img.src = product.image_url;
+                    img.alt = product.nombre;
+                    img.style.width = '68px';
+                    img.style.height = '68px';
+                    img.style.objectFit = 'cover';
+                    img.style.borderRadius = '8px';
 
-                        const name = document.createElement('div');
-                        name.textContent = product.nombre;
-                        name.style.fontWeight = '600';
+                    const name = document.createElement('div');
+                    name.textContent = product.nombre;
+                    name.style.fontWeight = '600';
 
-                        const price = document.createElement('div');
-                        price.textContent = `$ ${Number(product.precio).toLocaleString('es-CO')}`;
-                        price.style.color = '#ffb27a';
-                        price.style.fontWeight = '700';
+                    const price = document.createElement('div');
+                    price.textContent = `$ ${Number(product.precio).toLocaleString('es-CO')}`;
+                    price.style.color = 'var(--brand-secondary, #ffb27a)';
+                    price.style.fontWeight = '700';
 
-                        card.appendChild(img);
-                        card.appendChild(name);
-                        card.appendChild(price);
-                        section.appendChild(card);
-                    });
+                    card.appendChild(img);
+                    card.appendChild(name);
+                    card.appendChild(price);
+                    section.appendChild(card);
+                });
             }
 
             container.appendChild(section);
@@ -254,7 +348,7 @@ function renderFeaturedCards(carousel) {
             };
         })
         .filter((product) => {
-            const categoryAllowed = !activeCategories || activeCategories.has(product.categoria);
+            const categoryAllowed = !activeCategories || activeCategories.has(normalizeCategoryKey(product.categoria));
             return product.es_destacado && product.estado !== 'paused' && categoryAllowed;
         })
         .sort((a, b) => {
@@ -270,8 +364,7 @@ function renderFeaturedCards(carousel) {
 
     carousel.innerHTML = '';
 
-    for (let index = 0; index < featuredProducts.length; index += 1) {
-        const product = featuredProducts[index];
+    featuredProducts.forEach((product, index) => {
         const safeName = String(product.nombre || 'Producto').trim() || 'Producto';
         const buttonId = `btn-featured-${index + 1}`;
 
@@ -292,7 +385,7 @@ function renderFeaturedCards(carousel) {
         button.target = '_blank';
         button.rel = 'noopener noreferrer';
         button.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${safeName}`)}`;
-        button.textContent = '¡Lo Quiero!';
+        button.textContent = 'Lo Quiero';
         button.addEventListener('click', () => {
             trackProductInterest(safeName, buttonId);
         });
@@ -301,6 +394,242 @@ function renderFeaturedCards(carousel) {
         card.appendChild(imageWrap);
         card.appendChild(button);
         carousel.appendChild(card);
+    });
+}
+
+function getButtonConfigByPlatform(platform) {
+    if (platform === 'menu') {
+        return buttonConfigsMap.get('btn-menu') || DEFAULT_PUBLIC_BUTTONS['btn-menu'];
+    }
+    if (platform === 'instagram') {
+        return buttonConfigsMap.get('btn-instagram') || DEFAULT_PUBLIC_BUTTONS['btn-instagram'];
+    }
+    if (platform === 'tiktok') {
+        return buttonConfigsMap.get('btn-tiktok') || DEFAULT_PUBLIC_BUTTONS['btn-tiktok'];
+    }
+    if (platform === 'facebook') {
+        return buttonConfigsMap.get('btn-facebook') || DEFAULT_PUBLIC_BUTTONS['btn-facebook'];
+    }
+    if (platform === 'whatsapp') {
+        return buttonConfigsMap.get('btn-whatsapp-main') || DEFAULT_PUBLIC_BUTTONS['btn-whatsapp-main'];
+    }
+    return null;
+}
+
+function playClickSound(volume = 0.1) {
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.type = 'sine';
+
+        const safeVolume = Math.max(0, Math.min(1, Number(volume) || 0.1));
+        gainNode.gain.setValueAtTime(safeVolume, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.1);
+    } catch (error) {
+        // Ignore audio failures on restricted devices.
+    }
+}
+
+function createOrGetPublicButton(buttonConfig) {
+    const container = document.querySelector('.links-container');
+    if (!container) {
+        return null;
+    }
+
+    let button = document.getElementById(buttonConfig.id);
+    if (!button) {
+        button = document.createElement('a');
+        button.id = buttonConfig.id;
+        button.className = 'neon-button config-btn';
+
+        const icon = document.createElement('span');
+        icon.className = 'button-icon';
+
+        const text = document.createElement('span');
+        text.className = 'button-text';
+
+        const border = document.createElement('div');
+        border.className = 'neon-border';
+
+        button.appendChild(icon);
+        button.appendChild(text);
+        button.appendChild(border);
+
+        container.appendChild(button);
+    }
+
+    return button;
+}
+
+function applyButtonStyles(button, cfg) {
+    button.classList.add('config-btn');
+    button.classList.remove('btn-type-neon', 'btn-type-solid', 'btn-type-glass', 'btn-type-minimal');
+    button.classList.remove('btn-size-sm', 'btn-size-md', 'btn-size-lg', 'btn-size-xl');
+    button.classList.remove('pulse-animation', 'featured-button', 'whatsapp-button', 'instagram-button', 'tiktok-button', 'facebook-button', 'mega-button');
+
+    button.classList.add(`btn-type-${cfg.buttonType}`);
+    button.classList.add(`btn-size-${cfg.size}`);
+
+    button.style.setProperty('--btn-custom-color', cfg.color || '#ff6000');
+    button.style.opacity = cfg.estado === 'paused' ? '0.45' : '1';
+
+    const iconEl = button.querySelector('.button-icon');
+    const textEl = button.querySelector('.button-text');
+
+    if (iconEl) {
+        iconEl.textContent = cfg.icon || '🔗';
+    }
+
+    if (textEl) {
+        textEl.textContent = cfg.label || 'BOTON';
+    }
+}
+
+function bindButtonAction(button, cfg) {
+    const clone = button.cloneNode(true);
+    button.parentNode.replaceChild(clone, button);
+
+    clone.removeAttribute('onclick');
+
+    if (!cfg.visible) {
+        clone.style.display = 'none';
+        return clone;
+    }
+
+    clone.style.display = '';
+
+    clone.addEventListener('click', (event) => {
+        event.preventDefault();
+
+        trackButtonClick(cfg.id, cfg.label || cfg.id);
+
+        if (cfg.soundEnabled) {
+            playClickSound(cfg.volume);
+        }
+
+        if (cfg.estado === 'paused') {
+            return;
+        }
+
+        if (cfg.actionType === 'menu-modal') {
+            openMenuModal();
+            trackMenuModal();
+            return;
+        }
+
+        const safeLink = cfg.link || '#';
+        window.open(safeLink, '_blank', 'noopener');
+    });
+
+    return clone;
+}
+
+function renderConfiguredButtons() {
+    const container = document.querySelector('.links-container');
+    if (!container) {
+        return;
+    }
+
+    const mergedButtons = new Map();
+    Object.values(DEFAULT_PUBLIC_BUTTONS).forEach((item) => {
+        mergedButtons.set(item.id, { ...item });
+    });
+    buttonConfigsMap.forEach((value, key) => {
+        mergedButtons.set(key, { ...value });
+    });
+
+    const ordered = Array.from(mergedButtons.values()).sort((a, b) => a.order - b.order);
+
+    ordered.forEach((cfg) => {
+        const button = createOrGetPublicButton(cfg);
+        if (!button) {
+            return;
+        }
+
+        applyButtonStyles(button, cfg);
+        const bound = bindButtonAction(button, cfg);
+        container.appendChild(bound);
+    });
+}
+
+function ensureBrandBanner() {
+    const container = document.getElementById('main-menu');
+    if (!container) {
+        return null;
+    }
+
+    let banner = document.getElementById('brandBanner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'brandBanner';
+        banner.className = 'brand-banner';
+
+        const logo = document.createElement('img');
+        logo.id = 'brandBannerLogo';
+        logo.className = 'brand-banner-logo';
+
+        const wrap = document.createElement('div');
+
+        const title = document.createElement('h2');
+        title.id = 'brandBannerTitle';
+
+        const slogan = document.createElement('p');
+        slogan.id = 'brandBannerSlogan';
+
+        wrap.appendChild(title);
+        wrap.appendChild(slogan);
+        banner.appendChild(logo);
+        banner.appendChild(wrap);
+
+        container.insertBefore(banner, container.firstChild);
+    }
+
+    return banner;
+}
+
+function applyBrandingConfig(configRaw) {
+    const config = normalizeBranding(configRaw || {});
+
+    const root = document.documentElement;
+    root.style.setProperty('--brand-primary', config.primaryColor);
+    root.style.setProperty('--brand-secondary', config.secondaryColor);
+    root.style.setProperty('--brand-accent', config.accentColor);
+
+    document.body.dataset.theme = config.template;
+    document.title = `${config.restaurantName} - Enlaces`;
+
+    const footer = document.querySelector('.footer p');
+    if (footer) {
+        footer.textContent = `${config.restaurantName} - ${config.slogan}`;
+    }
+
+    const banner = ensureBrandBanner();
+    if (banner) {
+        const logo = document.getElementById('brandBannerLogo');
+        const title = document.getElementById('brandBannerTitle');
+        const slogan = document.getElementById('brandBannerSlogan');
+
+        if (logo) {
+            logo.src = config.logoUrl || 'logo.png';
+            logo.alt = `Logo ${config.restaurantName}`;
+        }
+
+        if (title) {
+            title.textContent = config.restaurantName;
+        }
+
+        if (slogan) {
+            slogan.textContent = config.slogan;
+        }
     }
 }
 
@@ -321,7 +650,7 @@ async function renderPublicFeaturedFromAdmin() {
         return;
     }
 
-    if (featuredProductsUnsubscribe || categoriesUnsubscribe) {
+    if (featuredProductsUnsubscribe || categoriesUnsubscribe || buttonsUnsubscribe || brandingUnsubscribe) {
         return;
     }
 
@@ -346,10 +675,22 @@ async function renderPublicFeaturedFromAdmin() {
         renderDynamicCategorySections();
         renderFeaturedCards(carousel);
     });
+
+    buttonsUnsubscribe = firebaseDb.collection('botones').onSnapshot((snapshot) => {
+        buttonConfigsMap = new Map();
+        snapshot.docs.forEach((doc) => {
+            buttonConfigsMap.set(doc.id, normalizeButtonConfig(doc.data(), doc.id));
+        });
+        renderConfiguredButtons();
+    });
+
+    brandingUnsubscribe = firebaseDb.collection('configuracion').doc('marca').onSnapshot((doc) => {
+        applyBrandingConfig(doc.exists ? doc.data() : DEFAULT_BRANDING);
+    });
 }
 
 function buildDynamicWhatsAppUrl(sectionName) {
-    const message = `Hola ROAL BURGER, estoy interesado en uno de los productos de la sección ${sectionName}`;
+    const message = `Hola ROAL BURGER, estoy interesado en uno de los productos de la seccion ${sectionName}`;
     return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`;
 }
 
@@ -436,10 +777,7 @@ function setupMenuNavigation() {
             setActiveMenuNavLink(targetId);
             closeDrawerMenu();
 
-            targetSection.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
+            targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     });
 
@@ -479,182 +817,74 @@ function setupMenuNavigation() {
     }
 }
 
-// Función para abrir enlaces
 function openLink(platform) {
-    // Reproducir sonido de clic
-    playClickSound();
-    
-    // Si es el menú, abrir modal en lugar de enlace externo
-    if (platform === 'menu') {
+    const config = getButtonConfigByPlatform(platform);
+    if (!config) {
+        return;
+    }
+
+    if (config.soundEnabled) {
+        playClickSound(config.volume);
+    }
+
+    if (config.estado === 'paused') {
+        return;
+    }
+
+    if (config.actionType === 'menu-modal') {
         openMenuModal();
-        trackMenuModal(); // Tracking del modal
-        return;
-    }
-    
-    const links = {
-        whatsapp: 'https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
-        instagram: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
-        tiktok: 'https://www.tiktok.com/@roalburger',
-        facebook: 'https://www.facebook.com/share/17ukpFaQz3/?mibextid=wwXIfr'
-    };
-
-    if (links[platform]) {
-        window.open(links[platform], '_blank');
-    }
-}
-
-function goBackFromPublic() {
-    trackButtonClick('btn-back', 'Volver Atras');
-
-    if (window.history.length > 1) {
-        window.history.back();
+        trackMenuModal();
         return;
     }
 
-    window.location.href = 'admin.html';
+    if (config.link) {
+        window.open(config.link, '_blank', 'noopener');
+    }
 }
 
-// Función para abrir la modal del menú
 function openMenuModal() {
     const modal = document.getElementById('menuModal');
+    if (!modal) {
+        return;
+    }
+
     modal.style.display = 'block';
-    document.body.style.overflow = 'hidden'; // Prevenir scroll del body
+    document.body.style.overflow = 'hidden';
     updateDynamicWhatsAppLink(activeMenuSection);
 }
 
-// Función para cerrar la modal del menú
 function closeMenuModal() {
     const modal = document.getElementById('menuModal');
+    if (!modal) {
+        return;
+    }
+
     modal.style.display = 'none';
-    document.body.style.overflow = 'auto'; // Restaurar scroll del body
+    document.body.style.overflow = 'auto';
     closeDrawerMenu();
 }
 
-// Cerrar modal al hacer clic fuera del contenido
 window.onclick = function(event) {
     const modal = document.getElementById('menuModal');
     if (event.target === modal) {
         closeMenuModal();
     }
-}
+};
 
-// Cerrar modal con la tecla ESC
-document.addEventListener('keydown', function(event) {
+document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         closeMenuModal();
     }
 });
 
-// Función para reproducir sonido de clic
-function playClickSound() {
-    // Crear contexto de audio
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Crear oscilador para el sonido
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    // Conectar oscilador al gain y al destino
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    // Configurar sonido (frecuencia alta y breve)
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-    oscillator.type = 'sine';
-    
-    // Configurar volumen (muy bajo para ser sutil)
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-    
-    // Reproducir sonido muy breve
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.1);
-}
-
-// Animación de entrada para los botones
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', () => {
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
     renderPublicFeaturedFromAdmin();
 
-    const buttons = document.querySelectorAll('.link-button');
-    const infoCard = document.querySelector('.info-card');
-    
-    // Animación de la tarjeta de información
-    setTimeout(() => {
-        infoCard.style.opacity = '0';
-        infoCard.style.transform = 'translateY(20px)';
-        infoCard.style.transition = 'all 0.6s ease';
-        
-        setTimeout(() => {
-            infoCard.style.opacity = '1';
-            infoCard.style.transform = 'translateY(0)';
-        }, 100);
-    }, 200);
-    
-    // Animación de los botones
-    buttons.forEach((button, index) => {
-        button.style.opacity = '0';
-        button.style.transform = 'translateY(20px)';
-        
-        setTimeout(() => {
-            button.style.transition = 'all 0.6s ease';
-            button.style.opacity = '1';
-            button.style.transform = 'translateY(0)';
-        }, 300 + (index * 100));
-    });
+    applyBrandingConfig(DEFAULT_BRANDING);
+    buttonConfigsMap = new Map(
+        Object.values(DEFAULT_PUBLIC_BUTTONS).map((button) => [button.id, { ...button }])
+    );
+    renderConfiguredButtons();
 });
-
-// Efecto de partículas al hacer hover (opcional)
-document.querySelectorAll('.link-button').forEach(button => {
-    button.addEventListener('mouseenter', function() {
-        this.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
-    });
-    
-    button.addEventListener('mouseleave', function() {
-        this.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
-    });
-});
-
-// Añadir efecto de ripple al hacer clic
-document.querySelectorAll('.link-button').forEach(button => {
-    button.addEventListener('click', function(e) {
-        const ripple = document.createElement('span');
-        const rect = this.getBoundingClientRect();
-        const size = Math.max(rect.width, rect.height);
-        const x = e.clientX - rect.left - size / 2;
-        const y = e.clientY - rect.top - size / 2;
-        
-        ripple.style.width = ripple.style.height = size + 'px';
-        ripple.style.left = x + 'px';
-        ripple.style.top = y + 'px';
-        ripple.classList.add('ripple');
-        
-        this.appendChild(ripple);
-        
-        setTimeout(() => {
-            ripple.remove();
-        }, 600);
-    });
-});
-
-// CSS para el efecto ripple
-const style = document.createElement('style');
-style.textContent = `
-    .ripple {
-        position: absolute;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.3);
-        transform: scale(0);
-        animation: ripple-animation 0.6s ease-out;
-        pointer-events: none;
-    }
-    
-    @keyframes ripple-animation {
-        to {
-            transform: scale(4);
-            opacity: 0;
-        }
-    }
-`;
-document.head.appendChild(style);

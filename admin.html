@@ -390,6 +390,103 @@
             border-color: rgba(220, 70, 70, 0.35);
         }
 
+        .admin-tabs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .admin-tab-btn {
+            border: 1px solid rgba(255, 96, 0, 0.35);
+            background: rgba(255, 96, 0, 0.12);
+            color: #fff;
+            border-radius: 999px;
+            padding: 10px 14px;
+            cursor: pointer;
+            font-family: 'Oswald', sans-serif;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            font-size: 0.78rem;
+        }
+
+        .admin-tab-btn.active {
+            background: linear-gradient(90deg, #ff6000, #ff812f);
+            border-color: rgba(255, 129, 47, 0.85);
+            box-shadow: 0 8px 20px rgba(255, 96, 0, 0.3);
+        }
+
+        .admin-tab-panel {
+            display: none;
+        }
+
+        .admin-tab-panel.active {
+            display: grid;
+            gap: 18px;
+        }
+
+        .form-note {
+            font-size: 0.8rem;
+            color: var(--admin-muted);
+            margin-top: 4px;
+        }
+
+        .range-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .range-wrap output {
+            min-width: 38px;
+            text-align: right;
+            color: #ffd7b8;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .template-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .template-chip {
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            min-height: 52px;
+            cursor: pointer;
+            color: #fff;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .preview-box {
+            margin-top: 12px;
+            border: 1px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: 14px;
+            background: rgba(0, 0, 0, 0.28);
+        }
+
+        .preview-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .preview-brand img {
+            width: 54px;
+            height: 54px;
+            border-radius: 10px;
+            object-fit: cover;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
         @media (max-width: 980px) {
             .list-item {
                 grid-template-columns: 1fr;
@@ -415,99 +512,269 @@
         <header class="admin-header">
             <div class="admin-title-wrap">
                 <h1>Panel Admin ROAL</h1>
-                <p>Control de productos, categorias y vitrina de los mas pedidos.</p>
+                <p>Control de inventario, botones publicos y configuracion de marca.</p>
             </div>
             <a class="admin-link" href="index.html">Ir al menu publico</a>
         </header>
 
+        <nav class="admin-tabs" id="adminTabNav">
+            <button type="button" class="admin-tab-btn active" data-tab-target="inventario">Inventario</button>
+            <button type="button" class="admin-tab-btn" data-tab-target="botones">Botones</button>
+            <button type="button" class="admin-tab-btn" data-tab-target="configuracion">Configuracion</button>
+            <button type="button" class="admin-tab-btn" data-tab-target="estadisticas">Estadisticas</button>
+        </nav>
+
+        <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
+
         <section class="admin-grid">
-            <article class="admin-card">
-                <div class="card-head">
-                    <h2>Agregar Producto</h2>
-                    <button type="button" class="card-collapse-btn" data-collapse-target="card-add-product" aria-expanded="true">Retraer</button>
-                </div>
-                <div class="card-body" id="card-add-product">
-                <form id="productForm" class="admin-form">
-                    <div class="admin-field">
-                        <label for="productName">Nombre</label>
-                        <input type="text" id="productName" name="name" placeholder="Ej: Doble Crispy" required>
+            <div class="admin-tab-panel active" data-tab-panel="inventario">
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Agregar Producto</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-add-product" aria-expanded="true">Retraer</button>
                     </div>
-                    <div class="admin-field">
-                        <label for="productPrice">Precio</label>
-                        <input type="number" id="productPrice" name="price" placeholder="Ej: 24900" min="0" step="100" required>
+                    <div class="card-body" id="card-add-product">
+                    <form id="productForm" class="admin-form">
+                        <div class="admin-field">
+                            <label for="productName">Nombre</label>
+                            <input type="text" id="productName" name="name" placeholder="Ej: Doble Crispy" required>
+                        </div>
+                        <div class="admin-field">
+                            <label for="productPrice">Precio</label>
+                            <input type="number" id="productPrice" name="price" placeholder="Ej: 24900" min="0" step="100" required>
+                        </div>
+                        <div class="admin-field">
+                            <label for="productCategory">Categoria</label>
+                            <select id="productCategory" name="category" required></select>
+                        </div>
+                        <div class="admin-field">
+                            <label for="productImageFile">Imagen desde PC o movil</label>
+                            <input type="file" id="productImageFile" name="imageFile" accept="image/*" capture="environment">
+                            <p class="admin-hint">Se sube a Firebase Storage. Recomendado: maximo 20 MB.</p>
+                        </div>
+                        <div class="admin-field full">
+                            <label for="productImageUrl">o Ruta/URL de imagen</label>
+                            <input type="text" id="productImageUrl" name="imageUrl" placeholder="Ej: PLUS.png o https://...">
+                        </div>
+                        <button type="submit" class="admin-button">Agregar producto</button>
+                    </form>
                     </div>
-                    <div class="admin-field">
-                        <label for="productCategory">Categoria</label>
-                        <select id="productCategory" name="category" required></select>
-                    </div>
-                    <div class="admin-field">
-                        <label for="productImageFile">Imagen desde PC o Movil</label>
-                        <input type="file" id="productImageFile" name="imageFile" accept="image/*" capture="environment">
-                        <p class="admin-hint">Se sube a Supabase Storage (bucket publico). Capacidad sugerida: hasta 20 MB por imagen.</p>
-                    </div>
-                    <div class="admin-field full">
-                        <label for="productImageUrl">o Ruta/URL de imagen</label>
-                        <input type="text" id="productImageUrl" name="imageUrl" placeholder="Ej: PLUS.png o https://...">
-                    </div>
-                    <button type="submit" class="admin-button">Agregar producto</button>
-                </form>
-                <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
-                </div>
-            </article>
+                </article>
 
-            <article class="admin-card">
-                <div class="card-head">
-                    <h2>Gestion de Inventario (Los mas pedidos)</h2>
-                    <button type="button" class="card-collapse-btn" data-collapse-target="card-featured" aria-expanded="true">Retraer</button>
-                </div>
-                <div class="card-body" id="card-featured">
-                <form id="featuredForm" class="inline-form">
-                    <div class="admin-field">
-                        <label for="featuredProductSelect">Agregar producto a Los mas pedidos</label>
-                        <select id="featuredProductSelect"></select>
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Gestion de Inventario (Los mas pedidos)</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-featured" aria-expanded="true">Retraer</button>
                     </div>
-                    <button type="submit" class="ghost-button">Agregar</button>
-                </form>
-                <p class="muted" style="margin-bottom: 12px;">Maximo 5 productos en esta seccion.</p>
-                <div id="featuredList" class="stack-list"></div>
-                </div>
-            </article>
+                    <div class="card-body" id="card-featured">
+                    <form id="featuredForm" class="inline-form">
+                        <div class="admin-field">
+                            <label for="featuredProductSelect">Agregar producto a Los mas pedidos</label>
+                            <select id="featuredProductSelect"></select>
+                        </div>
+                        <button type="submit" class="ghost-button">Agregar</button>
+                    </form>
+                    <p class="muted" style="margin-bottom: 12px;">Maximo 5 productos en esta seccion.</p>
+                    <div id="featuredList" class="stack-list"></div>
+                    </div>
+                </article>
 
-            <article class="admin-card">
-                <div class="card-head">
-                    <h2>Categorias del Menu</h2>
-                    <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
-                </div>
-                <div class="card-body" id="card-categories">
-                <form id="categoryForm" class="inline-form">
-                    <div class="admin-field">
-                        <label for="newCategoryName">Nueva categoria</label>
-                        <input type="text" id="newCategoryName" name="categoryName" placeholder="Ej: Postres" required>
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Categorias del Menu</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
                     </div>
-                    <button type="submit" class="ghost-button">Crear categoria</button>
-                </form>
-                <div id="categoryList" class="stack-list"></div>
-                </div>
-            </article>
+                    <div class="card-body" id="card-categories">
+                    <form id="categoryForm" class="inline-form">
+                        <div class="admin-field">
+                            <label for="newCategoryName">Nueva categoria</label>
+                            <input type="text" id="newCategoryName" name="categoryName" placeholder="Ej: Postres" required>
+                        </div>
+                        <button type="submit" class="ghost-button">Crear categoria</button>
+                    </form>
+                    <div id="categoryList" class="stack-list"></div>
+                    </div>
+                </article>
+            </div>
 
-            <article class="admin-card">
-                <div class="card-head">
-                    <h2>Estadisticas</h2>
-                    <button type="button" class="card-collapse-btn" data-collapse-target="card-stats" aria-expanded="true">Retraer</button>
-                </div>
-                <div class="card-body" id="card-stats">
-                <div class="stats-grid">
-                    <div class="stat-box">
-                        <div class="stat-label">Clics Totales</div>
-                        <div class="stat-value" id="totalClicks">--</div>
+            <div class="admin-tab-panel" data-tab-panel="botones">
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Botones del Sitio Publico</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-buttons" aria-expanded="true">Retraer</button>
                     </div>
-                    <div class="stat-box">
-                        <div class="stat-label">Producto Estrella</div>
-                        <div class="stat-value" id="topProduct">--</div>
+                    <div class="card-body" id="card-buttons">
+                        <form id="buttonConfigForm" class="admin-form">
+                            <div class="admin-field">
+                                <label for="buttonId">ID del boton</label>
+                                <input type="text" id="buttonId" name="buttonId" placeholder="Ej: btn-menu" required>
+                                <p class="form-note">IDs actuales: btn-menu, btn-whatsapp-main, btn-instagram, btn-tiktok, btn-facebook.</p>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonLabel">Texto</label>
+                                <input type="text" id="buttonLabel" name="buttonLabel" placeholder="Ej: VER MENU DIGITAL" required>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonIcon">Icono</label>
+                                <input type="text" id="buttonIcon" name="buttonIcon" placeholder="Ej: 📱">
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonActionType">Accion</label>
+                                <select id="buttonActionType" name="buttonActionType">
+                                    <option value="external">Abrir enlace</option>
+                                    <option value="menu-modal">Abrir menu digital (modal)</option>
+                                </select>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="buttonLink">Link destino</label>
+                                <input type="text" id="buttonLink" name="buttonLink" placeholder="https://...">
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonType">Tipo de boton</label>
+                                <select id="buttonType" name="buttonType">
+                                    <option value="neon">Neon</option>
+                                    <option value="solid">Solido</option>
+                                    <option value="glass">Glass</option>
+                                    <option value="minimal">Minimal</option>
+                                </select>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonColor">Color base</label>
+                                <input type="color" id="buttonColor" name="buttonColor" value="#ff6000">
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonSize">Tamano</label>
+                                <select id="buttonSize" name="buttonSize">
+                                    <option value="sm">Pequeno</option>
+                                    <option value="md" selected>Medio</option>
+                                    <option value="lg">Grande</option>
+                                    <option value="xl">Extra grande</option>
+                                </select>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonOrder">Orden visual</label>
+                                <input type="number" id="buttonOrder" name="buttonOrder" min="1" step="1" value="1">
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonState">Estado</label>
+                                <select id="buttonState" name="buttonState">
+                                    <option value="active">Activo</option>
+                                    <option value="paused">Pausado</option>
+                                </select>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonVisible">Visible</label>
+                                <select id="buttonVisible" name="buttonVisible">
+                                    <option value="true">Si</option>
+                                    <option value="false">No</option>
+                                </select>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="buttonVolume">Volumen del sonido de clic</label>
+                                <div class="range-wrap">
+                                    <input type="range" id="buttonVolume" name="buttonVolume" min="0" max="1" step="0.05" value="0.1">
+                                    <output id="buttonVolumeOut">0.10</output>
+                                </div>
+                            </div>
+                            <div class="admin-field full">
+                                <label>
+                                    <input type="checkbox" id="buttonSoundEnabled" name="buttonSoundEnabled" checked>
+                                    Sonido activo
+                                </label>
+                            </div>
+                            <input type="hidden" id="buttonEditId" name="buttonEditId" value="">
+                            <button type="submit" class="admin-button" id="buttonSaveBtn">Guardar boton</button>
+                        </form>
+                        <div id="buttonConfigList" class="stack-list" style="margin-top: 14px;"></div>
                     </div>
-                </div>
-                </div>
-            </article>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="configuracion">
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Configuracion de Marca</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-branding" aria-expanded="true">Retraer</button>
+                    </div>
+                    <div class="card-body" id="card-branding">
+                        <form id="brandingForm" class="admin-form">
+                            <div class="admin-field">
+                                <label for="restaurantName">Nombre del restaurante</label>
+                                <input type="text" id="restaurantName" name="restaurantName" placeholder="Ej: ROAL BURGER" required>
+                            </div>
+                            <div class="admin-field">
+                                <label for="restaurantSlogan">Eslogan</label>
+                                <input type="text" id="restaurantSlogan" name="restaurantSlogan" placeholder="Ej: Sabor real en cada mordida" required>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="restaurantLogo">Logo URL/Ruta</label>
+                                <input type="text" id="restaurantLogo" name="restaurantLogo" placeholder="Ej: logo.png o https://...">
+                            </div>
+                            <div class="admin-field">
+                                <label for="brandPrimaryColor">Color principal</label>
+                                <input type="color" id="brandPrimaryColor" name="brandPrimaryColor" value="#ff6000">
+                            </div>
+                            <div class="admin-field">
+                                <label for="brandSecondaryColor">Color secundario</label>
+                                <input type="color" id="brandSecondaryColor" name="brandSecondaryColor" value="#ff8533">
+                            </div>
+                            <div class="admin-field">
+                                <label for="brandAccentColor">Color acento</label>
+                                <input type="color" id="brandAccentColor" name="brandAccentColor" value="#25d366">
+                            </div>
+                            <div class="admin-field">
+                                <label for="brandTemplate">Plantilla visual</label>
+                                <select id="brandTemplate" name="brandTemplate">
+                                    <option value="flame">Flame</option>
+                                    <option value="ocean">Ocean</option>
+                                    <option value="forest">Forest</option>
+                                    <option value="midnight">Midnight</option>
+                                    <option value="sunset">Sunset</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="admin-button">Guardar configuracion</button>
+                        </form>
+                        <div class="template-grid" id="templateGrid">
+                            <button type="button" class="template-chip" data-template="flame" style="background: linear-gradient(135deg, #ff5e00, #ff9c4a);">Flame</button>
+                            <button type="button" class="template-chip" data-template="ocean" style="background: linear-gradient(135deg, #0f4c81, #46c3ff);">Ocean</button>
+                            <button type="button" class="template-chip" data-template="forest" style="background: linear-gradient(135deg, #0f5132, #55d38d);">Forest</button>
+                            <button type="button" class="template-chip" data-template="midnight" style="background: linear-gradient(135deg, #20274e, #5f7cff);">Midnight</button>
+                            <button type="button" class="template-chip" data-template="sunset" style="background: linear-gradient(135deg, #a33a2f, #ff9f68);">Sunset</button>
+                        </div>
+                        <div class="preview-box" id="brandingPreview">
+                            <div class="preview-brand">
+                                <img id="previewLogo" src="logo.png" alt="Preview logo">
+                                <div>
+                                    <strong id="previewName">ROAL BURGER</strong>
+                                    <p id="previewSlogan" class="muted">Comida rapida con acento venezolano</p>
+                                </div>
+                            </div>
+                            <p class="muted">Vista previa rapida de colores y textos.</p>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="estadisticas">
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Estadisticas</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-stats" aria-expanded="true">Retraer</button>
+                    </div>
+                    <div class="card-body" id="card-stats">
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-label">Clics Totales</div>
+                            <div class="stat-value" id="totalClicks">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Producto Estrella</div>
+                            <div class="stat-value" id="topProduct">--</div>
+                        </div>
+                    </div>
+                    </div>
+                </article>
+            </div>
         </section>
     </main>
 

@@ -4,6 +4,12 @@
     box-sizing: border-box;
 }
 
+:root {
+    --brand-primary: #ff6000;
+    --brand-secondary: #ff8533;
+    --brand-accent: #25d366;
+}
+
 body {
     font-family: 'Roboto', sans-serif;
     background: #000000;
@@ -16,6 +22,34 @@ body {
     padding: 0;
     color: #fff;
     overflow-x: hidden;
+}
+
+body[data-theme='ocean'] {
+    background-image:
+        radial-gradient(circle at 20% 20%, rgba(70, 195, 255, 0.2) 0%, transparent 40%),
+        radial-gradient(circle at 80% 80%, rgba(15, 76, 129, 0.3) 0%, transparent 45%),
+        linear-gradient(140deg, #03121f 0%, #071b2d 55%, #08273f 100%);
+}
+
+body[data-theme='forest'] {
+    background-image:
+        radial-gradient(circle at 18% 18%, rgba(85, 211, 141, 0.16) 0%, transparent 45%),
+        radial-gradient(circle at 85% 75%, rgba(15, 81, 50, 0.35) 0%, transparent 50%),
+        linear-gradient(145deg, #05150c 0%, #0a2214 55%, #102d1d 100%);
+}
+
+body[data-theme='midnight'] {
+    background-image:
+        radial-gradient(circle at 16% 22%, rgba(95, 124, 255, 0.2) 0%, transparent 48%),
+        radial-gradient(circle at 86% 78%, rgba(32, 39, 78, 0.45) 0%, transparent 50%),
+        linear-gradient(140deg, #070814 0%, #10142b 55%, #181f3f 100%);
+}
+
+body[data-theme='sunset'] {
+    background-image:
+        radial-gradient(circle at 20% 18%, rgba(255, 159, 104, 0.2) 0%, transparent 50%),
+        radial-gradient(circle at 82% 80%, rgba(163, 58, 47, 0.36) 0%, transparent 52%),
+        linear-gradient(140deg, #1a0908 0%, #2a0f0d 52%, #3c1714 100%);
 }
 
 /* Textura de carbón */
@@ -735,7 +769,7 @@ body::before {
 
 .info-text strong {
     display: block;
-    color: #FF6000;
+    color: var(--brand-primary);
     font-size: 1.1rem;
     margin-bottom: 5px;
     font-weight: 600;
@@ -984,7 +1018,7 @@ body::before {
 
 .footer p {
     margin: 0;
-    color: #FF6000;
+    color: var(--brand-primary);
     font-weight: 300;
 }
 
@@ -1630,4 +1664,93 @@ body::before {
     .maps-icon {
         font-size: 13px;
     }
+}
+
+.neon-button.config-btn {
+    border-color: var(--btn-custom-color, var(--brand-primary));
+    color: var(--btn-custom-color, var(--brand-primary));
+}
+
+.neon-button.config-btn:hover {
+    background: var(--btn-custom-color, var(--brand-primary));
+    border-color: var(--btn-custom-color, var(--brand-primary));
+    color: #000;
+    box-shadow:
+        0 0 20px color-mix(in srgb, var(--btn-custom-color, var(--brand-primary)) 55%, transparent),
+        0 0 40px color-mix(in srgb, var(--btn-custom-color, var(--brand-primary)) 35%, transparent);
+}
+
+.neon-button.btn-type-solid {
+    background: var(--btn-custom-color, var(--brand-primary));
+    color: #000;
+}
+
+.neon-button.btn-type-solid:hover {
+    filter: brightness(1.08);
+}
+
+.neon-button.btn-type-glass {
+    background: color-mix(in srgb, var(--btn-custom-color, var(--brand-primary)) 18%, transparent);
+    border-color: color-mix(in srgb, var(--btn-custom-color, var(--brand-primary)) 65%, #ffffff 10%);
+    backdrop-filter: blur(6px);
+}
+
+.neon-button.btn-type-minimal {
+    border-style: dashed;
+    border-width: 1px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.neon-button.btn-size-sm {
+    font-size: 0.88rem;
+    padding: 12px 18px;
+}
+
+.neon-button.btn-size-md {
+    font-size: 1.02rem;
+    padding: 16px 24px;
+}
+
+.neon-button.btn-size-lg {
+    font-size: 1.16rem;
+    padding: 20px 28px;
+}
+
+.neon-button.btn-size-xl {
+    font-size: 1.3rem;
+    padding: 26px 34px;
+    border-width: 3px;
+}
+
+.brand-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 22px;
+    border: 1px solid color-mix(in srgb, var(--brand-primary) 45%, transparent);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 22%, transparent), color-mix(in srgb, var(--brand-secondary) 16%, transparent));
+    border-radius: 14px;
+    padding: 14px 16px;
+}
+
+.brand-banner-logo {
+    width: 62px;
+    height: 62px;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.brand-banner h2 {
+    font-family: 'Oswald', sans-serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-size: 1.35rem;
+    color: #fff;
+}
+
+.brand-banner p {
+    color: #ddd;
+    font-size: 0.9rem;
+    margin-top: 2px;
 }
