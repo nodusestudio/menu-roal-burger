@@ -874,10 +874,6 @@ function renderCategoryExplorer(nextKey) {
     if (!products.length) {
         panel.innerHTML = '';
         panel.appendChild(heroWrap);
-        const empty = document.createElement('p');
-        empty.className = 'category-empty';
-        empty.textContent = `No hay productos activos en ${selectedCategory.name}.`;
-        panel.appendChild(empty);
         return;
     }
 
