@@ -191,12 +191,14 @@ const LOCAL_PRODUCT_IMAGE_MAP = LOCAL_PRODUCT_IMAGE_FILES.reduce((acc, fileName)
     return acc;
 }, new Map());
 
-const CATEGORY_BUTTON_PRIORITY = ['burger premium', 'burger clasicas', 'burger clasica'];
+const CATEGORY_BUTTON_PRIORITY = ['burger premium', 'burger clasicas', 'burger clasica', 'pepitos'];
 
 const CATEGORY_IMAGE_ALIASES = {
     burgerclasica: 'BURGER CLASICAS.png',
     burgerclasicas: 'BURGER CLASICAS.png',
-    burgerpremium: 'BURGER PREMIUM.png'
+    burgerpremium: 'BURGER PREMIUM.png',
+    pepitos: 'PEPITOS VENEZOLANOS.png',
+    pepitosvenezolanos: 'PEPITOS VENEZOLANOS.png'
 };
 
 const SECTION_CATEGORY_KEYS = {
