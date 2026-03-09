@@ -99,6 +99,18 @@
 
         <!-- Botones de Enlaces -->
         <div class="links-container">
+            <a href="#" class="neon-button tiktok-button" id="btn-back" onclick="goBackFromPublic(); return false;">
+                <span class="button-icon">↩️</span>
+                <span class="button-text">VOLVER ATRAS</span>
+                <div class="neon-border"></div>
+            </a>
+
+            <a href="admin.html" class="neon-button facebook-button" id="btn-admin-return">
+                <span class="button-icon">⚙️</span>
+                <span class="button-text">VOLVER AL ADMINISTRADOR</span>
+                <div class="neon-border"></div>
+            </a>
+
             <!-- Botón Destacado - Menú -->
             <a href="#" class="neon-button featured-button mega-button" id="btn-menu" onclick="openLink('menu'); trackButtonClick('btn-menu', 'Ver Menú Digital'); return false;">
                 <span class="button-icon">📱</span>
@@ -234,6 +246,10 @@
         <span>Haz tu pedido aquí</span>
     </a>
 
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
+    <script src="firebase-config.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

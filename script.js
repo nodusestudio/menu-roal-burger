@@ -82,6 +82,92 @@ function trackMenuModal() {
 
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 let activeMenuSection = 'PORTADA';
+let featuredProductsUnsubscribe = null;
+
+async function renderPublicFeaturedFromAdmin() {
+    const carousel = document.querySelector('.featured-section .mobile-carousel');
+    if (!carousel) {
+        return;
+    }
+
+    if (typeof initFirebaseServices !== 'function') {
+        return;
+    }
+
+    let firebaseDb;
+    try {
+        firebaseDb = initFirebaseServices().db;
+    } catch (error) {
+        return;
+    }
+
+    if (featuredProductsUnsubscribe) {
+        return;
+    }
+
+    featuredProductsUnsubscribe = firebaseDb.collection('productos').onSnapshot((snapshot) => {
+        const featuredProducts = snapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .map((product) => {
+                const estado = product.estado || (product.paused ? 'paused' : 'active');
+                const esDestacado = product.es_destacado === true || product.featured === true;
+                return {
+                    id: product.id,
+                    nombre: product.nombre || product.name || 'Producto',
+                    image_url: product.image_url || 'logo.png',
+                    estado,
+                    es_destacado: esDestacado,
+                    updated_at: product.updated_at
+                };
+            })
+            .filter((product) => product.es_destacado && product.estado !== 'paused')
+            .sort((a, b) => {
+                const aTs = a.updated_at && typeof a.updated_at.toMillis === 'function' ? a.updated_at.toMillis() : 0;
+                const bTs = b.updated_at && typeof b.updated_at.toMillis === 'function' ? b.updated_at.toMillis() : 0;
+                return bTs - aTs;
+            })
+            .slice(0, 5);
+
+        if (!featuredProducts.length) {
+            return;
+        }
+
+        carousel.innerHTML = '';
+
+        for (let index = 0; index < featuredProducts.length; index += 1) {
+            const product = featuredProducts[index];
+            const safeName = String(product.nombre || 'Producto').trim() || 'Producto';
+            const buttonId = `btn-featured-${index + 1}`;
+
+            const card = document.createElement('div');
+            card.className = 'product-card-mobile';
+
+            const imageWrap = document.createElement('div');
+            imageWrap.className = 'card-image-wrapper';
+
+            const image = document.createElement('img');
+            image.className = 'product-image-mobile';
+            image.alt = safeName;
+            image.src = product.image_url;
+
+            const button = document.createElement('a');
+            button.className = 'mobile-order-btn';
+            button.id = buttonId;
+            button.target = '_blank';
+            button.rel = 'noopener noreferrer';
+            button.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${safeName}`)}`;
+            button.textContent = '¡Lo Quiero!';
+            button.addEventListener('click', () => {
+                trackProductInterest(safeName, buttonId);
+            });
+
+            imageWrap.appendChild(image);
+            card.appendChild(imageWrap);
+            card.appendChild(button);
+            carousel.appendChild(card);
+        }
+    });
+}
 
 function buildDynamicWhatsAppUrl(sectionName) {
     const message = `Hola ROAL BURGER, estoy interesado en uno de los productos de la sección ${sectionName}`;
@@ -238,6 +324,17 @@ function openLink(platform) {
     }
 }
 
+function goBackFromPublic() {
+    trackButtonClick('btn-back', 'Volver Atras');
+
+    if (window.history.length > 1) {
+        window.history.back();
+        return;
+    }
+
+    window.location.href = 'admin.html';
+}
+
 // Función para abrir la modal del menú
 function openMenuModal() {
     const modal = document.getElementById('menuModal');
@@ -299,6 +396,7 @@ function playClickSound() {
 document.addEventListener('DOMContentLoaded', function() {
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
+    renderPublicFeaturedFromAdmin();
 
     const buttons = document.querySelectorAll('.link-button');
     const infoCard = document.querySelector('.info-card');

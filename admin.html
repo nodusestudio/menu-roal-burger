@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROAL BURGER | Admin</title>
+    <meta name="description" content="Panel administrativo de ROAL BURGER para gestion de productos, categorias y mas pedidos.">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --admin-accent: #ff6000;
+            --admin-bg-card: rgba(18, 18, 18, 0.85);
+            --admin-border: rgba(255, 96, 0, 0.3);
+            --admin-muted: #b6b6b6;
+            --admin-ok: #18c67a;
+            --admin-off: #8f8f8f;
+        }
+
+        .admin-page {
+            position: relative;
+            z-index: 1;
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 32px 20px 60px;
+        }
+
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding: 20px;
+            border: 1px solid var(--admin-border);
+            border-radius: 16px;
+            background: linear-gradient(130deg, rgba(255, 96, 0, 0.16), rgba(0, 0, 0, 0.62));
+            backdrop-filter: blur(8px);
+        }
+
+        .admin-title-wrap h1 {
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(1.8rem, 3vw, 2.6rem);
+            letter-spacing: 2px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .admin-title-wrap p {
+            color: var(--admin-muted);
+            font-size: 0.95rem;
+        }
+
+        .admin-link {
+            text-decoration: none;
+            color: #fff;
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.85rem;
+            border: 1px solid var(--admin-border);
+            padding: 10px 16px;
+            border-radius: 999px;
+            transition: 0.25s ease;
+        }
+
+        .admin-link:hover {
+            background: rgba(255, 96, 0, 0.2);
+            border-color: rgba(255, 96, 0, 0.8);
+        }
+
+        .admin-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 18px;
+        }
+
+        .admin-card {
+            background: var(--admin-bg-card);
+            border: 1px solid var(--admin-border);
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .admin-card h2 {
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1.4px;
+            font-size: 1.3rem;
+        }
+
+        .card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .card-collapse-btn {
+            border: 1px solid rgba(255, 96, 0, 0.45);
+            background: rgba(255, 96, 0, 0.12);
+            color: #fff;
+            border-radius: 8px;
+            padding: 7px 10px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .card-body.collapsed {
+            display: none;
+        }
+
+        .admin-form,
+        .inline-form {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .inline-form {
+            margin-bottom: 14px;
+        }
+
+        .admin-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .admin-field label {
+            color: var(--admin-muted);
+            font-size: 0.85rem;
+        }
+
+        .admin-field input,
+        .admin-field select {
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(6, 6, 6, 0.75);
+            color: #fff;
+            padding: 11px 12px;
+            font-family: 'Roboto', sans-serif;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .admin-field input:focus,
+        .admin-field select:focus {
+            border-color: var(--admin-accent);
+        }
+
+        .admin-field.full {
+            grid-column: 1 / -1;
+        }
+
+        .admin-hint {
+            color: var(--admin-muted);
+            font-size: 0.8rem;
+            margin-top: 4px;
+        }
+
+        .admin-button,
+        .ghost-button {
+            border-radius: 10px;
+            padding: 11px 12px;
+            cursor: pointer;
+            font-family: 'Oswald', sans-serif;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .admin-button {
+            grid-column: 1 / -1;
+            border: 1px solid transparent;
+            background: linear-gradient(90deg, #ff6000, #ff812f);
+            color: #fff;
+        }
+
+        .admin-button:hover,
+        .ghost-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 18px rgba(255, 96, 0, 0.35);
+        }
+
+        .ghost-button {
+            border: 1px solid rgba(255, 96, 0, 0.45);
+            background: rgba(255, 96, 0, 0.12);
+            color: #fff;
+        }
+
+        .stack-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .list-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) auto auto auto;
+            gap: 10px;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .product-main {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .product-main img {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.04);
+            flex-shrink: 0;
+        }
+
+        .product-main span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .muted {
+            color: var(--admin-muted);
+            font-size: 0.92rem;
+        }
+
+        .state-pill {
+            font-size: 0.76rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            text-align: center;
+            min-width: 78px;
+        }
+
+        .state-pill.visible,
+        .state-pill.active {
+            background: rgba(24, 198, 122, 0.2);
+            color: var(--admin-ok);
+            border: 1px solid rgba(24, 198, 122, 0.45);
+        }
+
+        .state-pill.hidden,
+        .state-pill.inactive {
+            background: rgba(143, 143, 143, 0.2);
+            color: var(--admin-off);
+            border: 1px solid rgba(143, 143, 143, 0.45);
+        }
+
+        .mini-btn {
+            border: 1px solid rgba(255, 96, 0, 0.45);
+            background: rgba(255, 96, 0, 0.12);
+            color: #fff;
+            border-radius: 8px;
+            padding: 8px 10px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .mini-btn.remove {
+            border-color: rgba(255, 255, 255, 0.24);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .category-viewer {
+            margin-top: 12px;
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.25);
+        }
+
+        .category-viewer h3 {
+            font-family: 'Oswald', sans-serif;
+            font-size: 1rem;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .category-product-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .category-product-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto auto;
+            gap: 8px;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 9px 10px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .category-products-inline {
+            display: none;
+            margin-top: 8px;
+            margin-bottom: 8px;
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .category-products-inline.show {
+            display: block;
+        }
+
+        .product-state-tag {
+            font-size: 0.72rem;
+            color: #ffd18a;
+            border: 1px solid rgba(255, 209, 138, 0.45);
+            border-radius: 999px;
+            padding: 2px 7px;
+            margin-left: 8px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .stat-box {
+            border: 1px dashed rgba(255, 255, 255, 0.25);
+            border-radius: 10px;
+            padding: 16px;
+            min-height: 95px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-label {
+            color: var(--admin-muted);
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-family: 'Oswald', sans-serif;
+            font-size: 1.8rem;
+            color: #fff;
+        }
+
+        .notice {
+            display: none;
+            margin-top: 12px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            border: 1px solid transparent;
+        }
+
+        .notice.show {
+            display: block;
+        }
+
+        .notice.ok {
+            color: #b5ffdc;
+            background: rgba(24, 198, 122, 0.15);
+            border-color: rgba(24, 198, 122, 0.35);
+        }
+
+        .notice.error {
+            color: #ffd3d3;
+            background: rgba(220, 70, 70, 0.15);
+            border-color: rgba(220, 70, 70, 0.35);
+        }
+
+        @media (max-width: 980px) {
+            .list-item {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 860px) {
+            .admin-form,
+            .inline-form,
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .admin-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="admin-page">
+        <header class="admin-header">
+            <div class="admin-title-wrap">
+                <h1>Panel Admin ROAL</h1>
+                <p>Control de productos, categorias y vitrina de los mas pedidos.</p>
+            </div>
+            <a class="admin-link" href="index.html">Ir al menu publico</a>
+        </header>
+
+        <section class="admin-grid">
+            <article class="admin-card">
+                <div class="card-head">
+                    <h2>Agregar Producto</h2>
+                    <button type="button" class="card-collapse-btn" data-collapse-target="card-add-product" aria-expanded="true">Retraer</button>
+                </div>
+                <div class="card-body" id="card-add-product">
+                <form id="productForm" class="admin-form">
+                    <div class="admin-field">
+                        <label for="productName">Nombre</label>
+                        <input type="text" id="productName" name="name" placeholder="Ej: Doble Crispy" required>
+                    </div>
+                    <div class="admin-field">
+                        <label for="productPrice">Precio</label>
+                        <input type="number" id="productPrice" name="price" placeholder="Ej: 24900" min="0" step="100" required>
+                    </div>
+                    <div class="admin-field">
+                        <label for="productCategory">Categoria</label>
+                        <select id="productCategory" name="category" required></select>
+                    </div>
+                    <div class="admin-field">
+                        <label for="productImageFile">Imagen desde PC o Movil</label>
+                        <input type="file" id="productImageFile" name="imageFile" accept="image/*" capture="environment">
+                        <p class="admin-hint">Se sube a Supabase Storage (bucket publico). Capacidad sugerida: hasta 20 MB por imagen.</p>
+                    </div>
+                    <div class="admin-field full">
+                        <label for="productImageUrl">o Ruta/URL de imagen</label>
+                        <input type="text" id="productImageUrl" name="imageUrl" placeholder="Ej: PLUS.png o https://...">
+                    </div>
+                    <button type="submit" class="admin-button">Agregar producto</button>
+                </form>
+                <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
+                </div>
+            </article>
+
+            <article class="admin-card">
+                <div class="card-head">
+                    <h2>Gestion de Inventario (Los mas pedidos)</h2>
+                    <button type="button" class="card-collapse-btn" data-collapse-target="card-featured" aria-expanded="true">Retraer</button>
+                </div>
+                <div class="card-body" id="card-featured">
+                <form id="featuredForm" class="inline-form">
+                    <div class="admin-field">
+                        <label for="featuredProductSelect">Agregar producto a Los mas pedidos</label>
+                        <select id="featuredProductSelect"></select>
+                    </div>
+                    <button type="submit" class="ghost-button">Agregar</button>
+                </form>
+                <p class="muted" style="margin-bottom: 12px;">Maximo 5 productos en esta seccion.</p>
+                <div id="featuredList" class="stack-list"></div>
+                </div>
+            </article>
+
+            <article class="admin-card">
+                <div class="card-head">
+                    <h2>Categorias del Menu</h2>
+                    <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
+                </div>
+                <div class="card-body" id="card-categories">
+                <form id="categoryForm" class="inline-form">
+                    <div class="admin-field">
+                        <label for="newCategoryName">Nueva categoria</label>
+                        <input type="text" id="newCategoryName" name="categoryName" placeholder="Ej: Postres" required>
+                    </div>
+                    <button type="submit" class="ghost-button">Crear categoria</button>
+                </form>
+                <div id="categoryList" class="stack-list"></div>
+                </div>
+            </article>
+
+            <article class="admin-card">
+                <div class="card-head">
+                    <h2>Estadisticas</h2>
+                    <button type="button" class="card-collapse-btn" data-collapse-target="card-stats" aria-expanded="true">Retraer</button>
+                </div>
+                <div class="card-body" id="card-stats">
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-label">Clics Totales</div>
+                        <div class="stat-value" id="totalClicks">--</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Producto Estrella</div>
+                        <div class="stat-value" id="topProduct">--</div>
+                    </div>
+                </div>
+                </div>
+            </article>
+        </section>
+    </main>
+
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>
