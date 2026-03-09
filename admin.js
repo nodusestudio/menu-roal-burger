@@ -180,7 +180,11 @@ const inventorySkeleton = document.getElementById('inventorySkeleton');
 const metricsChartList = document.getElementById('metricsChartList');
 const previewRefreshBtn = document.getElementById('previewRefreshBtn');
 const liveMenuPreview = document.getElementById('liveMenuPreview');
+const previewViewportControls = document.getElementById('previewViewportControls');
+const previewViewportWrap = document.getElementById('previewViewportWrap');
 const categoryQuickFilters = document.getElementById('categoryQuickFilters');
+const advancedSettingsToggle = document.getElementById('advancedSettingsToggle');
+const advancedSettingsPanel = document.getElementById('advancedSettingsPanel');
 
 const productEditModal = document.getElementById('productEditModal');
 const productEditForm = document.getElementById('productEditForm');
@@ -276,8 +280,8 @@ function setupAccordion() {
     const groupMap = {
         inventario: ['inventario'],
         categorias: ['categorias'],
-        diseno: ['configuracion'],
-        configuracion: ['botones', 'metricas']
+        diseno: ['configuracion', 'botones'],
+        metricas: ['metricas']
     };
 
     function activateAccordion(target) {
@@ -296,6 +300,42 @@ function setupAccordion() {
     });
 
     activateAccordion('inventario');
+}
+
+function setupAdvancedSettingsPanel() {
+    if (!advancedSettingsToggle || !advancedSettingsPanel) {
+        return;
+    }
+
+    advancedSettingsToggle.addEventListener('click', () => {
+        const collapsed = advancedSettingsPanel.classList.toggle('collapsed');
+        advancedSettingsToggle.setAttribute('aria-expanded', String(!collapsed));
+    });
+}
+
+function setupPreviewViewportControls() {
+    if (!previewViewportControls || !previewViewportWrap) {
+        return;
+    }
+
+    previewViewportControls.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const mode = String(target.dataset.previewSize || '').trim().toLowerCase();
+        if (!mode) {
+            return;
+        }
+
+        previewViewportWrap.classList.remove('mobile', 'tablet', 'desktop');
+        previewViewportWrap.classList.add(mode);
+
+        Array.from(previewViewportControls.querySelectorAll('.viewport-btn')).forEach((button) => {
+            button.classList.toggle('active', button === target);
+        });
+    });
 }
 
 function setupCardCollapse() {
@@ -824,8 +864,10 @@ function renderInventoryQuickList() {
             </div>
             <div class="muted">$ ${Number(product.precio || 0).toLocaleString('es-CO')} - ${product.categoria || 'Sin categoria'}</div>
             <span class="state-pill ${stateClass}">${stateText}</span>
-            <button class="mini-btn" data-action="quick-toggle-state" data-product-id="${product.id}">${product.estado === 'active' ? 'Pausar' : 'Activar'}</button>
-            <button class="mini-btn" data-action="quick-toggle-featured" data-product-id="${product.id}">${product.es_destacado ? 'Quitar destacado' : 'Destacar'}</button>
+            <div class="inventory-actions">
+                <button class="mini-btn" data-action="quick-toggle-state" data-product-id="${product.id}">${product.estado === 'active' ? 'Pausar' : 'Activar'}</button>
+                <button class="mini-btn" data-action="quick-toggle-featured" data-product-id="${product.id}">${product.es_destacado ? 'Quitar destacado' : 'Destacar'}</button>
+            </div>
         `;
 
         inventoryQuickList.appendChild(row);
@@ -2033,6 +2075,8 @@ async function initAdmin() {
         firebaseStorage = services.storage;
 
         setupAccordion();
+        setupAdvancedSettingsPanel();
+        setupPreviewViewportControls();
         setupCardCollapse();
         resetButtonForm();
 

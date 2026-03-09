@@ -809,6 +809,249 @@
             line-height: 1;
         }
 
+        /* SaaS refresh */
+        :root {
+            --admin-accent: #ff7a1a;
+            --admin-accent-soft: rgba(255, 122, 26, 0.16);
+            --admin-bg-page: #0f1116;
+            --admin-bg-elev: #151922;
+            --admin-bg-elev-2: #1b2130;
+            --admin-text: #ffffff;
+            --admin-text-soft: #c6cdd8;
+            --admin-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.28);
+        }
+
+        body {
+            background: radial-gradient(circle at 20% 8%, #1a1f2b 0%, #0f1116 46%, #0c0e13 100%);
+        }
+
+        .admin-shell {
+            display: flex;
+            min-height: 100vh;
+            gap: 12px;
+        }
+
+        .admin-sidebar {
+            position: relative;
+            width: min(58vw, 860px);
+            min-width: 640px;
+            max-width: none;
+            height: auto;
+            border-right: 0;
+            background: transparent;
+            overflow: visible;
+            padding: 18px 8px 18px 12px;
+        }
+
+        .admin-page {
+            width: 100%;
+            padding: 18px 10px 36px 96px;
+        }
+
+        .admin-preview-pane {
+            margin-left: 0;
+            width: 42vw;
+            min-width: 360px;
+            padding: 18px 14px 20px 0;
+        }
+
+        .admin-header,
+        .admin-card,
+        .preview-head,
+        .preview-iframe-wrap {
+            border: 0;
+            box-shadow: var(--admin-shadow-soft);
+            background: var(--admin-bg-elev);
+        }
+
+        .admin-header {
+            border-radius: 14px;
+            background: linear-gradient(130deg, rgba(255, 122, 26, 0.09), rgba(255, 255, 255, 0.02));
+        }
+
+        .admin-title-wrap p,
+        .muted,
+        .form-note,
+        .admin-field label,
+        .stat-label,
+        .admin-hint {
+            color: var(--admin-text-soft);
+        }
+
+        .admin-link {
+            border-color: rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .sidebar-section-label,
+        .sidebar-filters {
+            display: none;
+        }
+
+        .admin-accordion {
+            position: absolute;
+            top: 26px;
+            left: 12px;
+            flex-direction: column;
+            gap: 8px;
+            margin: 0;
+        }
+
+        .admin-accordion-trigger {
+            min-width: 64px;
+            min-height: 56px;
+            padding: 8px 4px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--admin-bg-elev-2);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            font-size: 0.61rem;
+            line-height: 1.1;
+            letter-spacing: 0.4px;
+            color: var(--admin-text-soft);
+        }
+
+        .admin-accordion-trigger .nav-icon {
+            font-size: 1.08rem;
+            line-height: 1;
+        }
+
+        .admin-accordion-trigger.active {
+            background: linear-gradient(180deg, rgba(255, 122, 26, 0.26), rgba(255, 122, 26, 0.08));
+            border-color: rgba(255, 122, 26, 0.35);
+            box-shadow: inset 0 0 0 1px rgba(255, 122, 26, 0.22);
+            color: #ffffff;
+        }
+
+        .admin-card {
+            border-radius: 14px;
+            background: linear-gradient(160deg, rgba(255, 255, 255, 0.01), rgba(0, 0, 0, 0.2)), var(--admin-bg-elev);
+        }
+
+        .card-head h2,
+        .admin-card h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1rem;
+            letter-spacing: 0.6px;
+            text-transform: none;
+        }
+
+        .list-item,
+        .category-product-item,
+        .stat-box,
+        .preview-box {
+            border: 0;
+            background: rgba(255, 255, 255, 0.03);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+        }
+
+        #inventoryQuickList .list-item {
+            grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.85fr) auto auto;
+            border-radius: 12px;
+            min-height: 62px;
+        }
+
+        #inventoryQuickList .list-item .inventory-actions {
+            opacity: 0;
+            transform: translateY(4px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            display: flex;
+            gap: 8px;
+        }
+
+        #inventoryQuickList .list-item:hover .inventory-actions {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        #inventoryQuickList .mini-btn {
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            font-size: 0.68rem;
+            padding: 7px 9px;
+        }
+
+        .preview-head {
+            align-items: center;
+            gap: 10px;
+        }
+
+        .preview-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+        }
+
+        .viewport-btn {
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            border-radius: 999px;
+            padding: 7px 10px;
+            cursor: pointer;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .viewport-btn.active {
+            border-color: rgba(255, 122, 26, 0.45);
+            background: rgba(255, 122, 26, 0.2);
+        }
+
+        .preview-viewport.mobile .preview-iframe {
+            width: 390px;
+            margin: 0 auto;
+            border-radius: 14px;
+            min-height: calc(100vh - 160px);
+        }
+
+        .preview-viewport.tablet .preview-iframe {
+            width: 820px;
+            max-width: 100%;
+            margin: 0 auto;
+            border-radius: 12px;
+            min-height: calc(100vh - 160px);
+        }
+
+        .preview-viewport.desktop .preview-iframe {
+            width: 100%;
+            min-height: calc(100vh - 120px);
+        }
+
+        .advanced-toggle {
+            margin-top: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            border-radius: 10px;
+            padding: 10px 12px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .advanced-settings {
+            margin-top: 12px;
+            max-height: 580px;
+            opacity: 1;
+            overflow: hidden;
+            transition: max-height 0.25s ease, opacity 0.2s ease;
+        }
+
+        .advanced-settings.collapsed {
+            max-height: 0;
+            opacity: 0;
+            pointer-events: none;
+        }
+
         @media (max-width: 980px) {
             .list-item {
                 grid-template-columns: 1fr;
@@ -816,13 +1059,30 @@
         }
 
         @media (max-width: 860px) {
+            .admin-shell {
+                display: block;
+                gap: 10px;
+            }
+
             .admin-sidebar {
                 position: static;
                 width: 100%;
                 min-width: 0;
                 max-width: none;
                 height: auto;
-                border-right: 0;
+                padding: 0 12px;
+            }
+
+            .admin-accordion {
+                position: static;
+                flex-direction: row;
+                overflow-x: auto;
+            }
+
+            .admin-accordion-trigger {
+                min-width: 118px;
+                flex-direction: row;
+                gap: 8px;
             }
 
             .admin-preview-pane {
@@ -891,10 +1151,10 @@
 
         <div class="sidebar-section-label">Paneles</div>
         <nav class="admin-accordion" id="adminAccordionNav">
-            <button type="button" class="admin-accordion-trigger active" data-accordion-target="inventario">Inventario</button>
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="categorias">Categorias</button>
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="diseno">Diseno</button>
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion">Configuracion</button>
+            <button type="button" class="admin-accordion-trigger active" data-accordion-target="inventario"><span class="nav-icon">📦</span><span>Inventario</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="diseno"><span class="nav-icon">🎨</span><span>Diseno</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="categorias"><span class="nav-icon">📂</span><span>Categorias</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
         </nav>
 
         <div class="sidebar-section-label">Filtros Rapidos</div>
@@ -1058,7 +1318,8 @@
                                     <option value="Space Grotesk, sans-serif">Space Grotesk</option>
                                 </select>
                             </div>
-                            <div class="admin-field full">
+                            <button type="button" class="advanced-toggle" id="advancedSettingsToggle" aria-expanded="false">Configuracion Avanzada</button>
+                            <div class="admin-field full advanced-settings collapsed" id="advancedSettingsPanel">
                                 <div class="fine-tune-grid">
                                     <div class="admin-field">
                                         <label for="designBgColor">Fondo landing</label>
@@ -1236,9 +1497,14 @@
     <section class="admin-preview-pane" aria-label="Vista previa en vivo">
         <div class="preview-head">
             <strong>Live Preview Menu Publico</strong>
+            <div class="preview-controls" id="previewViewportControls">
+                <button type="button" class="viewport-btn active" data-preview-size="mobile">Movil</button>
+                <button type="button" class="viewport-btn" data-preview-size="tablet">Tablet</button>
+                <button type="button" class="viewport-btn" data-preview-size="desktop">Desktop</button>
+            </div>
             <button type="button" class="preview-refresh-btn" id="previewRefreshBtn">Recargar Vista</button>
         </div>
-        <div class="preview-iframe-wrap">
+        <div class="preview-iframe-wrap preview-viewport mobile" id="previewViewportWrap">
             <iframe id="liveMenuPreview" class="preview-iframe" src="index.html" title="Vista previa menu publico"></iframe>
         </div>
     </section>
