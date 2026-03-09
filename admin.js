@@ -53,8 +53,34 @@ const topProductEl = document.getElementById('topProduct');
 
 let firebaseDb;
 let firebaseStorage;
+let firebaseAuth;
 let productsState = [];
 let categoriesState = [];
+
+async function ensureAdminAuth() {
+    if (!firebaseAuth) {
+        window.location.href = 'index.html';
+        throw new Error('No se pudo validar el acceso de administrador.');
+    }
+
+    if (firebaseAuth.currentUser) {
+        return;
+    }
+
+    const email = window.prompt('Acceso administrador: correo Firebase');
+    if (!email) {
+        window.location.href = 'index.html';
+        throw new Error('Acceso cancelado.');
+    }
+
+    const password = window.prompt('Acceso administrador: contrasena');
+    if (!password) {
+        window.location.href = 'index.html';
+        throw new Error('Acceso cancelado.');
+    }
+
+    await firebaseAuth.signInWithEmailAndPassword(email, password);
+}
 
 function setupCardCollapse() {
     const buttons = document.querySelectorAll('.card-collapse-btn');
@@ -205,6 +231,7 @@ function createCategoryRow(category) {
         <div class="muted">Categoria del menu</div>
         <span class="state-pill ${stateClass}">${stateText}</span>
         <button class="mini-btn" data-category-id="${category.id}" data-action="toggle-category">${toggleText}</button>
+        <button class="mini-btn remove" data-category-id="${category.id}" data-action="delete-category">Eliminar</button>
         <button class="mini-btn remove" data-category-id="${category.id}" data-action="view-category">Ver mas</button>
     `;
 
@@ -571,6 +598,34 @@ categoryList.addEventListener('click', async (event) => {
         return;
     }
 
+    if (action === 'delete-category') {
+        const category = categoriesState.find((item) => item.id === categoryId);
+        if (!category) {
+            showNotice('Categoria no encontrada.', 'error');
+            return;
+        }
+
+        const hasProducts = productsState.some((product) => product.categoria === category.name);
+        if (hasProducts) {
+            showNotice('No puedes eliminar la categoria porque tiene productos asociados.', 'error');
+            return;
+        }
+
+        const confirmed = window.confirm(`Eliminar categoria ${category.name}?`);
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            await firebaseDb.collection('categorias').doc(categoryId).delete();
+            await reloadDataAndRender();
+            showNotice('Categoria eliminada.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo eliminar la categoria: ${error.message || 'Error inesperado.'}`, 'error');
+        }
+        return;
+    }
+
     if (action !== 'toggle-category') {
         return;
     }
@@ -698,6 +753,9 @@ async function initAdmin() {
         const services = initFirebaseServices();
         firebaseDb = services.db;
         firebaseStorage = services.storage;
+        firebaseAuth = services.auth;
+
+        await ensureAdminAuth();
 
         await seedDataIfNeeded();
         await reloadDataAndRender();

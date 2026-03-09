@@ -24,6 +24,7 @@ function initFirebaseServices() {
 
     return {
         db: firebase.firestore(),
-        storage: firebase.storage()
+        storage: firebase.storage(),
+        auth: typeof firebase.auth === 'function' ? firebase.auth() : null
     };
 }
