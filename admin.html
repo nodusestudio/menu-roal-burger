@@ -721,6 +721,29 @@
             font-size: 0.78rem;
         }
 
+        .password-input-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .password-input-wrap input {
+            flex: 1;
+        }
+
+        .password-toggle-btn {
+            border: 1px solid rgba(255, 96, 0, 0.45);
+            background: rgba(255, 96, 0, 0.14);
+            color: #fff;
+            border-radius: 10px;
+            padding: 10px 12px;
+            min-width: 90px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
         body.admin-locked .admin-page {
             display: none;
         }
@@ -818,14 +841,17 @@
             <h2>Acceso Administrador</h2>
             <p>Ingresa tus credenciales para abrir el panel.</p>
             <div id="authError" class="auth-error" role="alert"></div>
-            <form id="adminAuthForm" class="admin-form" style="grid-template-columns: 1fr;">
+            <form id="adminAuthForm" class="admin-form" method="post" style="grid-template-columns: 1fr;">
                 <div class="admin-field">
                     <label for="authUsername">Usuario</label>
                     <input type="text" id="authUsername" name="username" autocomplete="username" required>
                 </div>
                 <div class="admin-field">
                     <label for="authPassword">Contrasena</label>
-                    <input type="password" id="authPassword" name="password" autocomplete="current-password" required>
+                    <div class="password-input-wrap">
+                        <input type="password" id="authPassword" name="password" autocomplete="current-password" required>
+                        <button type="button" id="authPasswordToggle" class="password-toggle-btn" aria-label="Mostrar contrasena" aria-pressed="false">Mostrar</button>
+                    </div>
                 </div>
                 <div class="admin-field">
                     <label>

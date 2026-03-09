@@ -147,6 +147,7 @@ const authRememberDeviceInput = document.getElementById('authRememberDevice');
 const authError = document.getElementById('authError');
 const authForgotBtn = document.getElementById('authForgotBtn');
 const authRegisterBtn = document.getElementById('authRegisterBtn');
+const authPasswordToggle = document.getElementById('authPasswordToggle');
 
 const productForm = document.getElementById('productForm');
 const featuredQuickForm = document.getElementById('featuredQuickForm');
@@ -331,6 +332,11 @@ async function ensureAdminAuth() {
                     authError.classList.add('show');
                 }
 
+                if (authPasswordInput) {
+                    authPasswordInput.focus();
+                    authPasswordInput.select();
+                }
+
                 try {
                     window.localStorage.removeItem(ADMIN_DEVICE_AUTH_KEY);
                 } catch (error) {
@@ -357,11 +363,24 @@ async function ensureAdminAuth() {
             document.body.classList.remove('admin-locked');
             document.body.classList.add('admin-unlocked');
 
+            if (window.history && typeof window.history.replaceState === 'function') {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+
             adminAuthForm.removeEventListener('submit', onSubmit);
             resolve();
         };
 
         adminAuthForm.addEventListener('submit', onSubmit);
+    });
+}
+
+if (authPasswordToggle && authPasswordInput) {
+    authPasswordToggle.addEventListener('click', () => {
+        const isHidden = authPasswordInput.type === 'password';
+        authPasswordInput.type = isHidden ? 'text' : 'password';
+        authPasswordToggle.textContent = isHidden ? 'Ocultar' : 'Mostrar';
+        authPasswordToggle.setAttribute('aria-pressed', String(isHidden));
     });
 }
 
@@ -1838,11 +1857,11 @@ if (authRegisterBtn) {
 
 async function initAdmin() {
     try {
+        await ensureAdminAuth();
+
         const services = initFirebaseServices();
         firebaseDb = services.db;
         firebaseStorage = services.storage;
-
-        await ensureAdminAuth();
 
         setupTabs();
         setupCardCollapse();
@@ -1853,8 +1872,12 @@ async function initAdmin() {
         setupLiveFirebaseSync();
     } catch (error) {
         setInventoryLoading(false);
-        document.body.classList.add('admin-locked');
-        document.body.classList.remove('admin-unlocked');
+
+        if (!document.body.classList.contains('admin-unlocked')) {
+            document.body.classList.add('admin-locked');
+            document.body.classList.remove('admin-unlocked');
+        }
+
         showNotice(`Error de conexion con Firebase: ${error.message || 'revisa la configuracion.'}`, 'error');
     }
 }
