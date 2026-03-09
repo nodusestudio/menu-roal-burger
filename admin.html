@@ -825,10 +825,15 @@
             background: radial-gradient(circle at 20% 8%, #1a1f2b 0%, #0f1116 46%, #0c0e13 100%);
         }
 
+        body.admin-unlocked {
+            overflow: hidden;
+        }
+
         .admin-shell {
             display: flex;
-            min-height: 100vh;
+            height: 100vh;
             gap: 12px;
+            overflow: hidden;
         }
 
         .admin-sidebar {
@@ -836,10 +841,11 @@
             width: min(58vw, 860px);
             min-width: 640px;
             max-width: none;
-            height: auto;
+            height: 100vh;
             border-right: 0;
             background: transparent;
-            overflow: visible;
+            overflow-y: auto;
+            overflow-x: hidden;
             padding: 18px 8px 18px 12px;
         }
 
@@ -852,7 +858,9 @@
             margin-left: 0;
             width: 42vw;
             min-width: 360px;
+            height: 100vh;
             padding: 18px 14px 20px 0;
+            overflow: hidden;
         }
 
         .admin-header,
@@ -1059,9 +1067,15 @@
         }
 
         @media (max-width: 860px) {
+            body.admin-unlocked {
+                overflow: auto;
+            }
+
             .admin-shell {
                 display: block;
+                height: auto;
                 gap: 10px;
+                overflow: visible;
             }
 
             .admin-sidebar {
@@ -1070,6 +1084,7 @@
                 min-width: 0;
                 max-width: none;
                 height: auto;
+                overflow: visible;
                 padding: 0 12px;
             }
 
@@ -1088,6 +1103,8 @@
             .admin-preview-pane {
                 margin-left: 0;
                 width: 100%;
+                height: auto;
+                overflow: visible;
                 padding: 12px;
             }
 
@@ -1496,7 +1513,7 @@
 
     <section class="admin-preview-pane" aria-label="Vista previa en vivo">
         <div class="preview-head">
-            <strong>Live Preview Menu Publico</strong>
+            <strong>Vista Previa</strong>
             <div class="preview-controls" id="previewViewportControls">
                 <button type="button" class="viewport-btn active" data-preview-size="mobile">Movil</button>
                 <button type="button" class="viewport-btn" data-preview-size="tablet">Tablet</button>
