@@ -8,15 +8,15 @@
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --admin-accent: #ff6000;
-            --admin-bg-card: rgba(18, 18, 18, 0.85);
-            --admin-border: rgba(255, 96, 0, 0.3);
-            --admin-muted: #b6b6b6;
-            --admin-ok: #18c67a;
-            --admin-off: #8f8f8f;
+            --admin-accent: #2f6fdd;
+            --admin-bg-card: rgba(20, 24, 33, 0.9);
+            --admin-border: rgba(110, 130, 165, 0.36);
+            --admin-muted: #a8b1c4;
+            --admin-ok: #43c09c;
+            --admin-off: #7f8aa2;
         }
 
         .admin-shell {
@@ -32,8 +32,8 @@
             max-width: 520px;
             height: 100vh;
             overflow-y: auto;
-            border-right: 1px solid rgba(255, 87, 34, 0.35);
-            background: #121212;
+            border-right: 1px solid rgba(110, 130, 165, 0.32);
+            background: #121a28;
             backdrop-filter: blur(8px);
             z-index: 2;
         }
@@ -60,7 +60,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border: 1px solid rgba(255, 87, 34, 0.32);
+            border: 1px solid rgba(110, 130, 165, 0.32);
             border-radius: 12px;
             padding: 10px 12px;
             background: rgba(10, 10, 10, 0.82);
@@ -74,8 +74,8 @@
         }
 
         .preview-refresh-btn {
-            border: 1px solid rgba(255, 87, 34, 0.55);
-            background: rgba(255, 87, 34, 0.12);
+            border: 1px solid rgba(110, 130, 165, 0.55);
+            background: rgba(63, 89, 138, 0.2);
             color: #fff;
             border-radius: 8px;
             padding: 7px 10px;
@@ -86,7 +86,7 @@
 
         .preview-iframe-wrap {
             flex: 1;
-            border: 1px solid rgba(255, 87, 34, 0.32);
+            border: 1px solid rgba(110, 130, 165, 0.3);
             border-radius: 14px;
             overflow: hidden;
             background: #060606;
@@ -109,12 +109,12 @@
             padding: 20px;
             border: 1px solid var(--admin-border);
             border-radius: 16px;
-            background: linear-gradient(130deg, rgba(255, 96, 0, 0.16), rgba(0, 0, 0, 0.62));
+            background: linear-gradient(130deg, rgba(47, 111, 221, 0.22), rgba(10, 13, 20, 0.72));
             backdrop-filter: blur(8px);
         }
 
         .admin-title-wrap h1 {
-            font-family: 'Oswald', sans-serif;
+            font-family: 'Space Grotesk', sans-serif;
             font-size: clamp(1.8rem, 3vw, 2.6rem);
             letter-spacing: 2px;
             margin-bottom: 6px;
@@ -129,7 +129,7 @@
         .admin-link {
             text-decoration: none;
             color: #fff;
-            font-family: 'Oswald', sans-serif;
+            font-family: 'Space Grotesk', sans-serif;
             text-transform: uppercase;
             letter-spacing: 1px;
             font-size: 0.85rem;
@@ -148,7 +148,7 @@
             font-family: 'Oswald', sans-serif;
             text-transform: uppercase;
             letter-spacing: 0.9px;
-            color: #ff9f7a;
+            color: #b8c8e8;
             font-size: 0.82rem;
             margin: 4px 0 8px;
         }
@@ -559,30 +559,32 @@
             background: linear-gradient(90deg, #ff5722, #ff8a65);
         }
 
-        .admin-tabs {
+        .admin-accordion {
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
             margin-bottom: 18px;
         }
 
-        .admin-tab-btn {
-            border: 1px solid rgba(255, 96, 0, 0.35);
-            background: rgba(255, 96, 0, 0.12);
+        .admin-accordion-trigger {
+            border: 1px solid rgba(110, 130, 165, 0.42);
+            background: rgba(44, 59, 88, 0.34);
             color: #fff;
-            border-radius: 999px;
+            border-radius: 12px;
             padding: 10px 14px;
             cursor: pointer;
-            font-family: 'Oswald', sans-serif;
+            font-family: 'Space Grotesk', sans-serif;
             letter-spacing: 0.8px;
             text-transform: uppercase;
             font-size: 0.78rem;
+            min-width: 140px;
+            text-align: left;
         }
 
-        .admin-tab-btn.active {
-            background: linear-gradient(90deg, #ff6000, #ff812f);
-            border-color: rgba(255, 129, 47, 0.85);
-            box-shadow: 0 8px 20px rgba(255, 96, 0, 0.3);
+        .admin-accordion-trigger.active {
+            background: linear-gradient(90deg, #2f6fdd, #5c8ee2);
+            border-color: rgba(130, 171, 244, 0.85);
+            box-shadow: 0 8px 20px rgba(47, 111, 221, 0.26);
         }
 
         .admin-tab-panel {
@@ -616,7 +618,7 @@
 
         .template-grid {
             display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 10px;
             margin-top: 10px;
         }
@@ -630,6 +632,13 @@
             font-size: 0.72rem;
             text-transform: uppercase;
             letter-spacing: 0.8px;
+        }
+
+        .fine-tune-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 12px;
         }
 
         .preview-box {
@@ -824,7 +833,8 @@
 
             .admin-form,
             .inline-form,
-            .stats-grid {
+            .stats-grid,
+            .fine-tune-grid {
                 grid-template-columns: 1fr;
             }
 
@@ -879,19 +889,13 @@
             <a class="admin-link" href="index.html" target="_blank" rel="noopener noreferrer">Ir al menu publico</a>
         </header>
 
-        <nav class="admin-tabs" id="adminTabNav">
-            <button type="button" class="admin-tab-btn active" data-tab-target="inventario">📦 Inventario</button>
-            <button type="button" class="admin-tab-btn" data-tab-target="categorias">📂 Categorias</button>
-            <button type="button" class="admin-tab-btn" data-tab-target="configuracion">🎨 Marca</button>
-            <button type="button" class="admin-tab-btn" data-tab-target="metricas">📈 Metricas</button>
+        <div class="sidebar-section-label">Paneles</div>
+        <nav class="admin-accordion" id="adminAccordionNav">
+            <button type="button" class="admin-accordion-trigger active" data-accordion-target="inventario">Inventario</button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="categorias">Categorias</button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="diseno">Diseno</button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion">Configuracion</button>
         </nav>
-
-        <div class="sidebar-section-label">Gestion de Productos</div>
-        <div class="sidebar-actions">
-            <button type="button" class="sidebar-action-btn active" data-tab-target="inventario">Inventario</button>
-            <button type="button" class="sidebar-action-btn" data-tab-target="categorias">Categorias</button>
-            <button type="button" class="sidebar-action-btn" data-tab-target="configuracion">Configuracion Marca</button>
-        </div>
 
         <div class="sidebar-section-label">Filtros Rapidos</div>
         <div class="sidebar-filters" id="categoryQuickFilters">
@@ -1037,21 +1041,65 @@
                             <div class="admin-field">
                                 <label for="brandTemplate">Plantilla visual</label>
                                 <select id="brandTemplate" name="brandTemplate">
-                                    <option value="flame">Flame</option>
-                                    <option value="ocean">Ocean</option>
-                                    <option value="forest">Forest</option>
-                                    <option value="midnight">Midnight</option>
-                                    <option value="sunset">Sunset</option>
+                                    <option value="fodexa">Fodexa</option>
+                                    <option value="slate">Slate Pro</option>
+                                    <option value="ivory">Ivory Pro</option>
+                                    <option value="cobalt">Cobalt Pro</option>
+                                    <option value="ember">Ember Pro</option>
+                                    <option value="mono">Mono Pro</option>
                                 </select>
+                            </div>
+                            <div class="admin-field">
+                                <label for="designFontFamily">Google Font</label>
+                                <select id="designFontFamily" name="designFontFamily">
+                                    <option value="Roboto, sans-serif">Roboto</option>
+                                    <option value="Manrope, sans-serif">Manrope</option>
+                                    <option value="Plus Jakarta Sans, sans-serif">Plus Jakarta Sans</option>
+                                    <option value="Space Grotesk, sans-serif">Space Grotesk</option>
+                                </select>
+                            </div>
+                            <div class="admin-field full">
+                                <div class="fine-tune-grid">
+                                    <div class="admin-field">
+                                        <label for="designBgColor">Fondo landing</label>
+                                        <input type="color" id="designBgColor" name="designBgColor" value="#070b12">
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="designButtonBorderColor">Borde botones</label>
+                                        <input type="color" id="designButtonBorderColor" name="designButtonBorderColor" value="#8fa4cc">
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="designFontSize">Tamano base de fuente</label>
+                                        <div class="range-wrap">
+                                            <input type="range" id="designFontSize" name="designFontSize" min="14" max="22" step="1" value="16">
+                                            <output id="designFontSizeOut">16px</output>
+                                        </div>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="interactionVolume">Volumen interaccion</label>
+                                        <div class="range-wrap">
+                                            <input type="range" id="interactionVolume" name="interactionVolume" min="0" max="1" step="0.05" value="0.1">
+                                            <output id="interactionVolumeOut">0.10</output>
+                                        </div>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="animationSpeed">Velocidad animaciones</label>
+                                        <div class="range-wrap">
+                                            <input type="range" id="animationSpeed" name="animationSpeed" min="0.6" max="1.8" step="0.1" value="1">
+                                            <output id="animationSpeedOut">1.0x</output>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <button type="submit" class="admin-button">Guardar configuracion</button>
                         </form>
                         <div class="template-grid" id="templateGrid">
-                            <button type="button" class="template-chip" data-template="flame" style="background: linear-gradient(135deg, #ff5e00, #ff9c4a);">Flame</button>
-                            <button type="button" class="template-chip" data-template="ocean" style="background: linear-gradient(135deg, #0f4c81, #46c3ff);">Ocean</button>
-                            <button type="button" class="template-chip" data-template="forest" style="background: linear-gradient(135deg, #0f5132, #55d38d);">Forest</button>
-                            <button type="button" class="template-chip" data-template="midnight" style="background: linear-gradient(135deg, #20274e, #5f7cff);">Midnight</button>
-                            <button type="button" class="template-chip" data-template="sunset" style="background: linear-gradient(135deg, #a33a2f, #ff9f68);">Sunset</button>
+                            <button type="button" class="template-chip" data-template="fodexa" style="background: linear-gradient(135deg, #1f2735, #56617a);">Fodexa</button>
+                            <button type="button" class="template-chip" data-template="slate" style="background: linear-gradient(135deg, #111827, #334155);">Slate</button>
+                            <button type="button" class="template-chip" data-template="ivory" style="background: linear-gradient(135deg, #f5f1e8, #d5c7ad); color: #1b1b1b;">Ivory</button>
+                            <button type="button" class="template-chip" data-template="cobalt" style="background: linear-gradient(135deg, #123a74, #2a63b8);">Cobalt</button>
+                            <button type="button" class="template-chip" data-template="ember" style="background: linear-gradient(135deg, #4b1d1a, #9b3d2f);">Ember</button>
+                            <button type="button" class="template-chip" data-template="mono" style="background: linear-gradient(135deg, #1c1c1c, #5b5b5b);">Mono</button>
                         </div>
                         <div class="preview-box" id="brandingPreview">
                             <div class="preview-brand">

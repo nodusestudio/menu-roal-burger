@@ -118,23 +118,33 @@ const defaultButtons = [
 ];
 
 const BRAND_TEMPLATES = {
-    flame: { primaryColor: '#ff6000', secondaryColor: '#ff8533', accentColor: '#25d366' },
-    ocean: { primaryColor: '#0f4c81', secondaryColor: '#46c3ff', accentColor: '#19c7c0' },
-    forest: { primaryColor: '#0f5132', secondaryColor: '#55d38d', accentColor: '#b3ff7a' },
-    midnight: { primaryColor: '#20274e', secondaryColor: '#5f7cff', accentColor: '#f9c94a' },
-    sunset: { primaryColor: '#a33a2f', secondaryColor: '#ff9f68', accentColor: '#ffd166' }
+    fodexa: { primaryColor: '#2f6fdd', secondaryColor: '#5f95ea', accentColor: '#43c09c', bgColor: '#0e1420', buttonBorderColor: '#8ca9da' },
+    slate: { primaryColor: '#334155', secondaryColor: '#64748b', accentColor: '#22c55e', bgColor: '#0b1220', buttonBorderColor: '#95a4bc' },
+    ivory: { primaryColor: '#b89b63', secondaryColor: '#d8c29a', accentColor: '#6d4d2e', bgColor: '#f3efe6', buttonBorderColor: '#c5b188' },
+    cobalt: { primaryColor: '#1d4f99', secondaryColor: '#2f72cb', accentColor: '#39b5f2', bgColor: '#081a33', buttonBorderColor: '#6a9fe8' },
+    ember: { primaryColor: '#8a2b1d', secondaryColor: '#c94f36', accentColor: '#f2ab4b', bgColor: '#1b0e0d', buttonBorderColor: '#ce826f' },
+    mono: { primaryColor: '#3a3a3a', secondaryColor: '#626262', accentColor: '#b8b8b8', bgColor: '#101010', buttonBorderColor: '#8a8a8a' }
 };
 
 const defaultBranding = {
     restaurantName: 'ROAL BURGER',
     slogan: 'Comida rapida con acento venezolano',
     logoUrl: 'logo.png',
-    primaryColor: '#ff6000',
-    secondaryColor: '#ff8533',
-    accentColor: '#25d366',
-    template: 'flame',
+    primaryColor: '#2f6fdd',
+    secondaryColor: '#5f95ea',
+    accentColor: '#43c09c',
+    template: 'fodexa',
+    bgColor: '#0e1420',
+    buttonBorderColor: '#8ca9da',
+    fontFamily: 'Roboto, sans-serif',
+    fontSizeBase: 16,
+    interactionVolume: 0.1,
+    animationSpeed: 1,
     updated_at: null
 };
+
+const CONFIG_COLLECTION = 'configuracion';
+const CONFIG_DOC_ID = 'config_landing';
 
 const ADMIN_USERNAME = 'roalburger';
 const ADMIN_PASSWORD = 'Roalburger*2019';
@@ -198,6 +208,12 @@ const previewLogo = document.getElementById('previewLogo');
 const previewName = document.getElementById('previewName');
 const previewSlogan = document.getElementById('previewSlogan');
 const brandingPreview = document.getElementById('brandingPreview');
+const designFontSizeInput = document.getElementById('designFontSize');
+const designFontSizeOut = document.getElementById('designFontSizeOut');
+const interactionVolumeInput = document.getElementById('interactionVolume');
+const interactionVolumeOut = document.getElementById('interactionVolumeOut');
+const animationSpeedInput = document.getElementById('animationSpeed');
+const animationSpeedOut = document.getElementById('animationSpeedOut');
 
 let firebaseDb;
 let firebaseStorage;
@@ -237,41 +253,49 @@ function slugify(text) {
         .replace(/-+/g, '-');
 }
 
+function normalizeCategoryKey(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+}
+
 function firestoreNow() {
     return firebase.firestore.FieldValue.serverTimestamp();
 }
 
-function setupTabs() {
-    const nav = document.getElementById('adminTabNav');
+function setupAccordion() {
+    const nav = document.getElementById('adminAccordionNav');
     if (!nav) {
         return;
     }
 
-    const buttons = Array.from(nav.querySelectorAll('.admin-tab-btn'));
-    const sidebarButtons = Array.from(document.querySelectorAll('.sidebar-action-btn'));
+    const buttons = Array.from(nav.querySelectorAll('.admin-accordion-trigger'));
     const panels = Array.from(document.querySelectorAll('.admin-tab-panel'));
+    const groupMap = {
+        inventario: ['inventario'],
+        categorias: ['categorias'],
+        diseno: ['configuracion'],
+        configuracion: ['botones', 'metricas']
+    };
 
-    function activateTab(target) {
+    function activateAccordion(target) {
+        const visiblePanels = groupMap[target] || [];
         buttons.forEach((button) => {
-            button.classList.toggle('active', button.dataset.tabTarget === target);
-        });
-
-        sidebarButtons.forEach((button) => {
-            button.classList.toggle('active', button.dataset.tabTarget === target);
+            button.classList.toggle('active', button.dataset.accordionTarget === target);
         });
 
         panels.forEach((panel) => {
-            panel.classList.toggle('active', panel.dataset.tabPanel === target);
+            panel.classList.toggle('active', visiblePanels.includes(panel.dataset.tabPanel));
         });
     }
 
     buttons.forEach((button) => {
-        button.addEventListener('click', () => activateTab(button.dataset.tabTarget));
+        button.addEventListener('click', () => activateAccordion(button.dataset.accordionTarget));
     });
 
-    sidebarButtons.forEach((button) => {
-        button.addEventListener('click', () => activateTab(button.dataset.tabTarget));
-    });
+    activateAccordion('inventario');
 }
 
 function setupCardCollapse() {
@@ -419,14 +443,26 @@ function normalizeButton(raw) {
 }
 
 function normalizeBranding(raw) {
+    const templateName = BRAND_TEMPLATES[raw.template] ? raw.template : defaultBranding.template;
+    const templateConfig = BRAND_TEMPLATES[templateName] || BRAND_TEMPLATES.fodexa;
+    const normalizedFontSize = Number(raw.fontSizeBase);
+    const normalizedInteraction = Number(raw.interactionVolume);
+    const normalizedSpeed = Number(raw.animationSpeed);
+
     return {
         restaurantName: String(raw.restaurantName || defaultBranding.restaurantName),
         slogan: String(raw.slogan || defaultBranding.slogan),
         logoUrl: String(raw.logoUrl || defaultBranding.logoUrl),
-        primaryColor: String(raw.primaryColor || defaultBranding.primaryColor),
-        secondaryColor: String(raw.secondaryColor || defaultBranding.secondaryColor),
-        accentColor: String(raw.accentColor || defaultBranding.accentColor),
-        template: BRAND_TEMPLATES[raw.template] ? raw.template : defaultBranding.template,
+        primaryColor: String(raw.primaryColor || templateConfig.primaryColor || defaultBranding.primaryColor),
+        secondaryColor: String(raw.secondaryColor || templateConfig.secondaryColor || defaultBranding.secondaryColor),
+        accentColor: String(raw.accentColor || templateConfig.accentColor || defaultBranding.accentColor),
+        template: templateName,
+        bgColor: String(raw.bgColor || templateConfig.bgColor || defaultBranding.bgColor),
+        buttonBorderColor: String(raw.buttonBorderColor || templateConfig.buttonBorderColor || defaultBranding.buttonBorderColor),
+        fontFamily: String(raw.fontFamily || defaultBranding.fontFamily),
+        fontSizeBase: Number.isFinite(normalizedFontSize) ? Math.max(14, Math.min(22, normalizedFontSize)) : defaultBranding.fontSizeBase,
+        interactionVolume: Number.isFinite(normalizedInteraction) ? Math.max(0, Math.min(1, normalizedInteraction)) : defaultBranding.interactionVolume,
+        animationSpeed: Number.isFinite(normalizedSpeed) ? Math.max(0.6, Math.min(1.8, normalizedSpeed)) : defaultBranding.animationSpeed,
         updated_at: raw.updated_at || null
     };
 }
@@ -461,7 +497,7 @@ async function fetchButtons() {
 }
 
 async function fetchBranding() {
-    const doc = await firebaseDb.collection('configuracion').doc('marca').get();
+    const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).get();
     if (!doc.exists) {
         brandingState = { ...defaultBranding };
         return;
@@ -519,9 +555,9 @@ async function seedDataIfNeeded() {
         await batch.commit();
     }
 
-    const brandingCheck = await firebaseDb.collection('configuracion').doc('marca').get();
+    const brandingCheck = await firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).get();
     if (!brandingCheck.exists) {
-        await firebaseDb.collection('configuracion').doc('marca').set({
+        await firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).set({
             ...defaultBranding,
             created_at: firestoreNow(),
             updated_at: firestoreNow()
@@ -876,7 +912,7 @@ function setupLiveFirebaseSync() {
         liveSubscriptions.push(unsubscribe);
     });
 
-    const configUnsubscribe = firebaseDb.collection('configuracion').doc('marca').onSnapshot(() => {
+    const configUnsubscribe = firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).onSnapshot(() => {
         reloadDataAndRender();
         queueLivePreviewRefresh();
     });
@@ -996,6 +1032,22 @@ function renderBrandingForm() {
     brandingForm.brandSecondaryColor.value = brandingState.secondaryColor;
     brandingForm.brandAccentColor.value = brandingState.accentColor;
     brandingForm.brandTemplate.value = brandingState.template;
+    brandingForm.designBgColor.value = brandingState.bgColor;
+    brandingForm.designButtonBorderColor.value = brandingState.buttonBorderColor;
+    brandingForm.designFontFamily.value = brandingState.fontFamily;
+    brandingForm.designFontSize.value = String(brandingState.fontSizeBase);
+    brandingForm.interactionVolume.value = String(brandingState.interactionVolume);
+    brandingForm.animationSpeed.value = String(brandingState.animationSpeed);
+
+    if (designFontSizeOut) {
+        designFontSizeOut.textContent = `${brandingState.fontSizeBase}px`;
+    }
+    if (interactionVolumeOut) {
+        interactionVolumeOut.textContent = Number(brandingState.interactionVolume).toFixed(2);
+    }
+    if (animationSpeedOut) {
+        animationSpeedOut.textContent = `${Number(brandingState.animationSpeed).toFixed(1)}x`;
+    }
 
     renderBrandingPreview();
 }
@@ -1010,6 +1062,13 @@ function renderBrandingPreview() {
     const logo = String(brandingForm.restaurantLogo.value || '').trim() || defaultBranding.logoUrl;
     const primary = String(brandingForm.brandPrimaryColor.value || defaultBranding.primaryColor);
     const secondary = String(brandingForm.brandSecondaryColor.value || defaultBranding.secondaryColor);
+    const accent = String(brandingForm.brandAccentColor.value || defaultBranding.accentColor);
+    const bgColor = String(brandingForm.designBgColor.value || defaultBranding.bgColor);
+    const buttonBorderColor = String(brandingForm.designButtonBorderColor.value || defaultBranding.buttonBorderColor);
+    const fontFamily = String(brandingForm.designFontFamily.value || defaultBranding.fontFamily);
+    const fontSizeBase = Number(brandingForm.designFontSize.value || defaultBranding.fontSizeBase);
+    const interactionVolume = Number(brandingForm.interactionVolume.value || defaultBranding.interactionVolume);
+    const animationSpeed = Number(brandingForm.animationSpeed.value || defaultBranding.animationSpeed);
 
     previewName.textContent = name;
     previewSlogan.textContent = slogan;
@@ -1017,7 +1076,82 @@ function renderBrandingPreview() {
     previewLogo.alt = `Logo ${name}`;
 
     brandingPreview.style.borderColor = `${primary}77`;
-    brandingPreview.style.background = `linear-gradient(135deg, ${primary}22, ${secondary}16)`;
+    brandingPreview.style.background = `linear-gradient(135deg, ${bgColor}, ${secondary}16)`;
+    brandingPreview.style.fontFamily = fontFamily;
+
+    if (designFontSizeOut) {
+        designFontSizeOut.textContent = `${Math.round(fontSizeBase)}px`;
+    }
+    if (interactionVolumeOut) {
+        interactionVolumeOut.textContent = interactionVolume.toFixed(2);
+    }
+    if (animationSpeedOut) {
+        animationSpeedOut.textContent = `${animationSpeed.toFixed(1)}x`;
+    }
+
+    applyDesignToPreviewFrame({
+        template: brandingForm.brandTemplate.value,
+        primaryColor: primary,
+        secondaryColor: secondary,
+        accentColor: accent,
+        bgColor,
+        buttonBorderColor,
+        fontFamily,
+        fontSizeBase,
+        interactionVolume,
+        animationSpeed
+    });
+}
+
+function applyDesignToPreviewFrame(config) {
+    if (!liveMenuPreview || !liveMenuPreview.contentDocument) {
+        return;
+    }
+
+    const previewDoc = liveMenuPreview.contentDocument;
+    const previewBody = previewDoc.body;
+    if (!previewBody) {
+        return;
+    }
+
+    previewBody.dataset.theme = config.template || defaultBranding.template;
+
+    const previewRoot = previewDoc.documentElement;
+    previewRoot.style.setProperty('--brand-primary', config.primaryColor || defaultBranding.primaryColor);
+    previewRoot.style.setProperty('--brand-secondary', config.secondaryColor || defaultBranding.secondaryColor);
+    previewRoot.style.setProperty('--brand-accent', config.accentColor || defaultBranding.accentColor);
+    previewRoot.style.setProperty('--landing-bg-color', config.bgColor || defaultBranding.bgColor);
+    previewRoot.style.setProperty('--landing-button-border-color', config.buttonBorderColor || defaultBranding.buttonBorderColor);
+    previewRoot.style.setProperty('--landing-font-family', config.fontFamily || defaultBranding.fontFamily);
+    previewRoot.style.setProperty('--landing-font-size-base', `${config.fontSizeBase || defaultBranding.fontSizeBase}px`);
+    previewRoot.style.setProperty('--landing-animation-speed', String(config.animationSpeed || defaultBranding.animationSpeed));
+
+    ensurePreviewGoogleFont(previewDoc, config.fontFamily || defaultBranding.fontFamily);
+}
+
+function ensurePreviewGoogleFont(previewDoc, fontFamily) {
+    const family = String(fontFamily || '').toLowerCase();
+    const familyParamMap = {
+        roboto: 'Roboto:wght@300;400;500;700',
+        manrope: 'Manrope:wght@400;500;700;800',
+        'plus jakarta sans': 'Plus+Jakarta+Sans:wght@400;600;700',
+        'space grotesk': 'Space+Grotesk:wght@400;500;700'
+    };
+
+    const key = Object.keys(familyParamMap).find((item) => family.includes(item));
+    if (!key || !previewDoc.head) {
+        return;
+    }
+
+    let link = previewDoc.getElementById('dynamicLandingFont');
+    if (!link) {
+        link = previewDoc.createElement('link');
+        link.id = 'dynamicLandingFont';
+        link.rel = 'stylesheet';
+        previewDoc.head.appendChild(link);
+    }
+
+    link.href = `https://fonts.googleapis.com/css2?family=${familyParamMap[key]}&display=swap`;
 }
 
 function applyTemplateToForm(templateName) {
@@ -1030,6 +1164,8 @@ function applyTemplateToForm(templateName) {
     brandingForm.brandPrimaryColor.value = template.primaryColor;
     brandingForm.brandSecondaryColor.value = template.secondaryColor;
     brandingForm.brandAccentColor.value = template.accentColor;
+    brandingForm.designBgColor.value = template.bgColor;
+    brandingForm.designButtonBorderColor.value = template.buttonBorderColor;
     renderBrandingPreview();
 }
 
@@ -1801,14 +1937,20 @@ brandingForm.addEventListener('submit', async (event) => {
         restaurantName: String(formData.get('restaurantName') || '').trim(),
         slogan: String(formData.get('restaurantSlogan') || '').trim(),
         logoUrl: String(formData.get('restaurantLogo') || '').trim(),
-        primaryColor: String(formData.get('brandPrimaryColor') || '#ff6000').trim(),
-        secondaryColor: String(formData.get('brandSecondaryColor') || '#ff8533').trim(),
-        accentColor: String(formData.get('brandAccentColor') || '#25d366').trim(),
-        template: String(formData.get('brandTemplate') || 'flame').trim()
+        primaryColor: String(formData.get('brandPrimaryColor') || defaultBranding.primaryColor).trim(),
+        secondaryColor: String(formData.get('brandSecondaryColor') || defaultBranding.secondaryColor).trim(),
+        accentColor: String(formData.get('brandAccentColor') || defaultBranding.accentColor).trim(),
+        template: String(formData.get('brandTemplate') || defaultBranding.template).trim(),
+        bgColor: String(formData.get('designBgColor') || defaultBranding.bgColor).trim(),
+        buttonBorderColor: String(formData.get('designButtonBorderColor') || defaultBranding.buttonBorderColor).trim(),
+        fontFamily: String(formData.get('designFontFamily') || defaultBranding.fontFamily).trim(),
+        fontSizeBase: Number(formData.get('designFontSize') || defaultBranding.fontSizeBase),
+        interactionVolume: Number(formData.get('interactionVolume') || defaultBranding.interactionVolume),
+        animationSpeed: Number(formData.get('animationSpeed') || defaultBranding.animationSpeed)
     });
 
     try {
-        await firebaseDb.collection('configuracion').doc('marca').set({
+        await firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).set({
             ...payload,
             updated_at: firestoreNow()
         }, { merge: true });
@@ -1843,6 +1985,33 @@ if (buttonVolumeInput && buttonVolumeOut) {
     });
 }
 
+if (designFontSizeInput && designFontSizeOut) {
+    designFontSizeInput.addEventListener('input', () => {
+        designFontSizeOut.textContent = `${Math.round(Number(designFontSizeInput.value || 16))}px`;
+        renderBrandingPreview();
+    });
+}
+
+if (interactionVolumeInput && interactionVolumeOut) {
+    interactionVolumeInput.addEventListener('input', () => {
+        interactionVolumeOut.textContent = Number(interactionVolumeInput.value || 0.1).toFixed(2);
+        renderBrandingPreview();
+    });
+}
+
+if (animationSpeedInput && animationSpeedOut) {
+    animationSpeedInput.addEventListener('input', () => {
+        animationSpeedOut.textContent = `${Number(animationSpeedInput.value || 1).toFixed(1)}x`;
+        renderBrandingPreview();
+    });
+}
+
+if (liveMenuPreview) {
+    liveMenuPreview.addEventListener('load', () => {
+        renderBrandingPreview();
+    });
+}
+
 if (authForgotBtn) {
     authForgotBtn.addEventListener('click', () => {
         window.alert('Para recuperar el acceso, contacta al administrador principal para cambio de contrasena.');
@@ -1863,7 +2032,7 @@ async function initAdmin() {
         firebaseDb = services.db;
         firebaseStorage = services.storage;
 
-        setupTabs();
+        setupAccordion();
         setupCardCollapse();
         resetButtonForm();
 

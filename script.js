@@ -148,11 +148,20 @@ const DEFAULT_BRANDING = {
     restaurantName: 'ROAL BURGER',
     slogan: 'Comida rapida con acento venezolano',
     logoUrl: 'logo.png',
-    primaryColor: '#ff6000',
-    secondaryColor: '#ff8533',
-    accentColor: '#25d366',
-    template: 'flame'
+    primaryColor: '#2f6fdd',
+    secondaryColor: '#5f95ea',
+    accentColor: '#43c09c',
+    template: 'fodexa',
+    bgColor: '#0e1420',
+    buttonBorderColor: '#8ca9da',
+    fontFamily: 'Roboto, sans-serif',
+    fontSizeBase: 16,
+    interactionVolume: 0.1,
+    animationSpeed: 1
 };
+
+const BRANDING_THEMES = ['fodexa', 'slate', 'ivory', 'cobalt', 'ember', 'mono'];
+let globalInteractionVolume = DEFAULT_BRANDING.interactionVolume;
 
 const SECTION_CATEGORY_KEYS = {
     'menu-burger-premium': 'burger premium',
@@ -219,6 +228,10 @@ function normalizeButtonConfig(raw, id) {
 }
 
 function normalizeBranding(raw) {
+    const normalizedFontSize = Number(raw.fontSizeBase);
+    const normalizedInteraction = Number(raw.interactionVolume);
+    const normalizedSpeed = Number(raw.animationSpeed);
+
     return {
         restaurantName: String(raw.restaurantName || DEFAULT_BRANDING.restaurantName),
         slogan: String(raw.slogan || DEFAULT_BRANDING.slogan),
@@ -226,7 +239,13 @@ function normalizeBranding(raw) {
         primaryColor: String(raw.primaryColor || DEFAULT_BRANDING.primaryColor),
         secondaryColor: String(raw.secondaryColor || DEFAULT_BRANDING.secondaryColor),
         accentColor: String(raw.accentColor || DEFAULT_BRANDING.accentColor),
-        template: ['flame', 'ocean', 'forest', 'midnight', 'sunset'].includes(raw.template) ? raw.template : DEFAULT_BRANDING.template
+        template: BRANDING_THEMES.includes(raw.template) ? raw.template : DEFAULT_BRANDING.template,
+        bgColor: String(raw.bgColor || DEFAULT_BRANDING.bgColor),
+        buttonBorderColor: String(raw.buttonBorderColor || DEFAULT_BRANDING.buttonBorderColor),
+        fontFamily: String(raw.fontFamily || DEFAULT_BRANDING.fontFamily),
+        fontSizeBase: Number.isFinite(normalizedFontSize) ? Math.max(14, Math.min(22, normalizedFontSize)) : DEFAULT_BRANDING.fontSizeBase,
+        interactionVolume: Number.isFinite(normalizedInteraction) ? Math.max(0, Math.min(1, normalizedInteraction)) : DEFAULT_BRANDING.interactionVolume,
+        animationSpeed: Number.isFinite(normalizedSpeed) ? Math.max(0.6, Math.min(1.8, normalizedSpeed)) : DEFAULT_BRANDING.animationSpeed
     };
 }
 
@@ -486,7 +505,7 @@ function playClickSound(volume = 0.1) {
         oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
         oscillator.type = 'sine';
 
-        const safeVolume = Math.max(0, Math.min(1, Number(volume) || 0.1));
+        const safeVolume = Math.max(0, Math.min(1, (Number(volume) || 0.1) * (Number(globalInteractionVolume) || 0.1)));
         gainNode.gain.setValueAtTime(safeVolume, audioContext.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
 
@@ -661,6 +680,15 @@ function applyBrandingConfig(configRaw) {
     root.style.setProperty('--brand-primary', config.primaryColor);
     root.style.setProperty('--brand-secondary', config.secondaryColor);
     root.style.setProperty('--brand-accent', config.accentColor);
+    root.style.setProperty('--landing-bg-color', config.bgColor);
+    root.style.setProperty('--landing-button-border-color', config.buttonBorderColor);
+    root.style.setProperty('--landing-font-family', config.fontFamily);
+    root.style.setProperty('--landing-font-size-base', `${config.fontSizeBase}px`);
+    root.style.setProperty('--landing-animation-speed', String(config.animationSpeed));
+
+    ensureLandingGoogleFont(config.fontFamily);
+
+    globalInteractionVolume = config.interactionVolume;
 
     document.body.dataset.theme = config.template;
     document.title = `${config.restaurantName} - Enlaces`;
@@ -689,6 +717,31 @@ function applyBrandingConfig(configRaw) {
             slogan.textContent = config.slogan;
         }
     }
+}
+
+function ensureLandingGoogleFont(fontFamily) {
+    const family = String(fontFamily || '').toLowerCase();
+    const familyParamMap = {
+        roboto: 'Roboto:wght@300;400;500;700',
+        manrope: 'Manrope:wght@400;500;700;800',
+        'plus jakarta sans': 'Plus+Jakarta+Sans:wght@400;600;700',
+        'space grotesk': 'Space+Grotesk:wght@400;500;700'
+    };
+
+    const key = Object.keys(familyParamMap).find((item) => family.includes(item));
+    if (!key) {
+        return;
+    }
+
+    let link = document.getElementById('dynamicLandingFont');
+    if (!link) {
+        link = document.createElement('link');
+        link.id = 'dynamicLandingFont';
+        link.rel = 'stylesheet';
+        document.head.appendChild(link);
+    }
+
+    link.href = `https://fonts.googleapis.com/css2?family=${familyParamMap[key]}&display=swap`;
 }
 
 async function renderPublicFeaturedFromAdmin() {
@@ -742,7 +795,7 @@ async function renderPublicFeaturedFromAdmin() {
         renderConfiguredButtons();
     });
 
-    brandingUnsubscribe = firebaseDb.collection('configuracion').doc('marca').onSnapshot((doc) => {
+    brandingUnsubscribe = firebaseDb.collection('configuracion').doc('config_landing').onSnapshot((doc) => {
         applyBrandingConfig(doc.exists ? doc.data() : DEFAULT_BRANDING);
     });
 }

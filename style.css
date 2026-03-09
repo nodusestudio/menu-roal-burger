@@ -5,14 +5,20 @@
 }
 
 :root {
-    --brand-primary: #ff6000;
-    --brand-secondary: #ff8533;
-    --brand-accent: #25d366;
+    --brand-primary: #2f6fdd;
+    --brand-secondary: #5f95ea;
+    --brand-accent: #43c09c;
+    --landing-bg-color: #0e1420;
+    --landing-button-border-color: #8ca9da;
+    --landing-font-family: 'Roboto', sans-serif;
+    --landing-font-size-base: 16px;
+    --landing-animation-speed: 1;
 }
 
 body {
-    font-family: 'Roboto', sans-serif;
-    background: #000000;
+    font-family: var(--landing-font-family);
+    font-size: var(--landing-font-size-base);
+    background: var(--landing-bg-color);
     background-image: 
         radial-gradient(circle at 25% 25%, #1a1a1a 0%, transparent 50%),
         radial-gradient(circle at 75% 75%, #1a1a1a 0%, transparent 50%),
@@ -24,32 +30,47 @@ body {
     overflow-x: hidden;
 }
 
-body[data-theme='ocean'] {
+body[data-theme='fodexa'] {
     background-image:
-        radial-gradient(circle at 20% 20%, rgba(70, 195, 255, 0.2) 0%, transparent 40%),
-        radial-gradient(circle at 80% 80%, rgba(15, 76, 129, 0.3) 0%, transparent 45%),
-        linear-gradient(140deg, #03121f 0%, #071b2d 55%, #08273f 100%);
+        radial-gradient(circle at 18% 18%, rgba(83, 122, 197, 0.22) 0%, transparent 44%),
+        radial-gradient(circle at 82% 82%, rgba(20, 36, 66, 0.48) 0%, transparent 50%),
+        linear-gradient(140deg, #0a1323 0%, #131f33 55%, #1a2942 100%);
 }
 
-body[data-theme='forest'] {
+body[data-theme='slate'] {
     background-image:
-        radial-gradient(circle at 18% 18%, rgba(85, 211, 141, 0.16) 0%, transparent 45%),
-        radial-gradient(circle at 85% 75%, rgba(15, 81, 50, 0.35) 0%, transparent 50%),
-        linear-gradient(145deg, #05150c 0%, #0a2214 55%, #102d1d 100%);
+        radial-gradient(circle at 20% 20%, rgba(83, 109, 148, 0.2) 0%, transparent 40%),
+        radial-gradient(circle at 80% 80%, rgba(28, 39, 56, 0.45) 0%, transparent 48%),
+        linear-gradient(140deg, #0b1220 0%, #121b2b 55%, #1a2638 100%);
 }
 
-body[data-theme='midnight'] {
+body[data-theme='ivory'] {
     background-image:
-        radial-gradient(circle at 16% 22%, rgba(95, 124, 255, 0.2) 0%, transparent 48%),
-        radial-gradient(circle at 86% 78%, rgba(32, 39, 78, 0.45) 0%, transparent 50%),
-        linear-gradient(140deg, #070814 0%, #10142b 55%, #181f3f 100%);
+        radial-gradient(circle at 18% 18%, rgba(224, 208, 176, 0.3) 0%, transparent 46%),
+        radial-gradient(circle at 85% 75%, rgba(176, 150, 111, 0.28) 0%, transparent 50%),
+        linear-gradient(145deg, #f4f0e7 0%, #efe8d8 55%, #e6dcc7 100%);
+    color: #1f1c15;
 }
 
-body[data-theme='sunset'] {
+body[data-theme='cobalt'] {
     background-image:
-        radial-gradient(circle at 20% 18%, rgba(255, 159, 104, 0.2) 0%, transparent 50%),
-        radial-gradient(circle at 82% 80%, rgba(163, 58, 47, 0.36) 0%, transparent 52%),
-        linear-gradient(140deg, #1a0908 0%, #2a0f0d 52%, #3c1714 100%);
+        radial-gradient(circle at 16% 22%, rgba(57, 147, 242, 0.24) 0%, transparent 48%),
+        radial-gradient(circle at 86% 78%, rgba(18, 57, 114, 0.45) 0%, transparent 50%),
+        linear-gradient(140deg, #071427 0%, #0b1f39 55%, #11305a 100%);
+}
+
+body[data-theme='ember'] {
+    background-image:
+        radial-gradient(circle at 20% 18%, rgba(201, 85, 57, 0.2) 0%, transparent 50%),
+        radial-gradient(circle at 82% 80%, rgba(113, 40, 31, 0.4) 0%, transparent 52%),
+        linear-gradient(140deg, #170a09 0%, #27100d 52%, #3a1712 100%);
+}
+
+body[data-theme='mono'] {
+    background-image:
+        radial-gradient(circle at 20% 18%, rgba(130, 130, 130, 0.16) 0%, transparent 50%),
+        radial-gradient(circle at 82% 80%, rgba(62, 62, 62, 0.36) 0%, transparent 52%),
+        linear-gradient(140deg, #101010 0%, #1b1b1b 52%, #2b2b2b 100%);
 }
 
 /* Textura de carbón */
@@ -155,7 +176,7 @@ body::before {
     box-shadow: 
         0 10px 40px rgba(0, 0, 0, 0.4),
         inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all calc(0.4s * var(--landing-animation-speed)) cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     min-height: 70px;
     touch-action: manipulation;
@@ -176,7 +197,7 @@ body::before {
         transparent, 
         rgba(255, 255, 255, 0.4), 
         transparent);
-    transition: left 0.6s ease;
+    transition: left calc(0.6s * var(--landing-animation-speed)) ease;
 }
 
 .enter-button:hover {
@@ -201,7 +222,7 @@ body::before {
 .pre-entry-container.fade-out {
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.6s ease-out;
+    transition: opacity calc(0.6s * var(--landing-animation-speed)) ease-out;
 }
 
 @keyframes preEntryFadeIn {
@@ -806,11 +827,11 @@ body::before {
     text-transform: uppercase;
     letter-spacing: 1px;
     background: transparent;
-    border: 2px solid #FF6000;
-    color: #FF6000;
+    border: 2px solid var(--landing-button-border-color, var(--brand-primary));
+    color: var(--landing-button-border-color, var(--brand-primary));
     position: relative;
     overflow: hidden;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all calc(0.4s * var(--landing-animation-speed)) cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
 }
 
@@ -822,7 +843,7 @@ body::before {
     width: 100%;
     height: 100%;
     background: linear-gradient(90deg, transparent, rgba(255, 96, 0, 0.1), transparent);
-    transition: left 0.6s ease;
+    transition: left calc(0.6s * var(--landing-animation-speed)) ease;
 }
 
 .neon-button:hover::before {
@@ -830,7 +851,7 @@ body::before {
 }
 
 .neon-button:hover {
-    background: #FF6000;
+    background: var(--landing-button-border-color, var(--brand-primary));
     color: #000;
     box-shadow: 
         0 0 20px rgba(255, 96, 0, 0.5),
@@ -860,10 +881,10 @@ body::before {
     right: -2px;
     bottom: -2px;
     border-radius: 12px;
-    background: linear-gradient(45deg, #FF6000, transparent, #FF6000);
+    background: linear-gradient(45deg, var(--landing-button-border-color, var(--brand-primary)), transparent, var(--landing-button-border-color, var(--brand-primary)));
     z-index: -1;
     opacity: 0;
-    transition: opacity 0.4s ease;
+    transition: opacity calc(0.4s * var(--landing-animation-speed)) ease;
 }
 
 .neon-button:hover .neon-border {
