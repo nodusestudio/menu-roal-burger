@@ -869,7 +869,7 @@ function renderCategoryExplorer(nextKey) {
     heroImage.alt = `Imagen de ${selectedCategory.name}`;
     heroImage.loading = 'lazy';
     heroImage.decoding = 'async';
-    heroImage.src = (products[0] && products[0].image_url) ? products[0].image_url : resolveCategoryImage(selectedCategory.name);
+    heroImage.src = resolveCategoryImage(selectedCategory.name);
     heroImage.addEventListener('error', () => {
         heroImage.src = resolveCategoryImage(selectedCategory.name);
     });
