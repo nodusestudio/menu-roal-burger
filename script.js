@@ -193,6 +193,10 @@ const LOCAL_PRODUCT_IMAGE_MAP = LOCAL_PRODUCT_IMAGE_FILES.reduce((acc, fileName)
 
 const CATEGORY_BUTTON_PRIORITY = ['burger premium', 'burger clasicas', 'burger clasica', 'pepitos'];
 
+const FORCED_CATEGORY_BUTTONS = [
+    { key: 'pepitos', name: 'PEPITOS VENEZOLANOS' }
+];
+
 const CATEGORY_IMAGE_ALIASES = {
     burgerclasica: 'BURGER CLASICAS.png',
     burgerclasicas: 'BURGER CLASICAS.png',
@@ -763,6 +767,16 @@ function getExplorerCategories() {
         }
         keys.add(key);
         uniqueMap.set(key, { name: cleanName, key });
+    });
+
+    FORCED_CATEGORY_BUTTONS.forEach((item) => {
+        const key = normalizeCategoryKey(item.key);
+        const name = String(item.name || '').trim();
+        if (!key || !name) {
+            return;
+        }
+
+        uniqueMap.set(key, { key, name });
     });
 
     const priorityIndex = new Map(CATEGORY_BUTTON_PRIORITY.map((item, index) => [item, index]));
