@@ -153,6 +153,8 @@ const featuredQuickForm = document.getElementById('featuredQuickForm');
 const featuredQuickToggle = document.getElementById('featuredQuickToggle');
 const featuredQuickNameInput = document.getElementById('featuredQuickName');
 const featuredQuickImageInput = document.getElementById('featuredQuickImage');
+const featuredQuickSubmitBtn = document.getElementById('featuredQuickSubmitBtn');
+const featuredQuickStatus = document.getElementById('featuredQuickStatus');
 const categoryForm = document.getElementById('categoryForm');
 const productCategorySelect = document.getElementById('productCategory');
 const featuredList = document.getElementById('featuredList');
@@ -635,6 +637,19 @@ function toggleFeaturedQuickForm(forceOpen) {
     }
 }
 
+function setFeaturedQuickLoading(isLoading) {
+    if (featuredQuickSubmitBtn) {
+        featuredQuickSubmitBtn.disabled = isLoading;
+        featuredQuickSubmitBtn.textContent = isLoading
+            ? 'Guardando...'
+            : 'Guardar en los mas pedidos';
+    }
+
+    if (featuredQuickStatus) {
+        featuredQuickStatus.style.display = isLoading ? 'block' : 'none';
+    }
+}
+
 function renderButtonsList() {
     if (!buttonConfigList) {
         return;
@@ -880,10 +895,12 @@ productForm.addEventListener('submit', async (event) => {
 featuredQuickForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     hideNotice();
+    setFeaturedQuickLoading(true);
 
     const featuredCount = productsState.filter((product) => product.es_destacado).length;
     if (featuredCount >= MAX_FEATURED) {
         showNotice('Solo puedes tener 5 productos en Los mas pedidos.', 'error');
+        setFeaturedQuickLoading(false);
         return;
     }
 
@@ -891,11 +908,13 @@ featuredQuickForm.addEventListener('submit', async (event) => {
     const imageFile = featuredQuickImageInput && featuredQuickImageInput.files ? featuredQuickImageInput.files[0] : null;
     if (!nombre || !imageFile) {
         showNotice('Debes ingresar nombre e imagen del producto.', 'error');
+        setFeaturedQuickLoading(false);
         return;
     }
 
     if (imageFile.size > 20 * 1024 * 1024) {
         showNotice('La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
+        setFeaturedQuickLoading(false);
         return;
     }
 
@@ -935,6 +954,8 @@ featuredQuickForm.addEventListener('submit', async (event) => {
         );
     } catch (error) {
         showNotice(`No se pudo actualizar: ${error.message || 'Error inesperado.'}`, 'error');
+    } finally {
+        setFeaturedQuickLoading(false);
     }
 });
 

@@ -678,8 +678,9 @@
                             <label for="featuredQuickImage">Cargar imagen</label>
                             <input type="file" id="featuredQuickImage" name="featuredQuickImage" accept="image/*" required>
                         </div>
-                        <button type="submit" class="ghost-button">Guardar en los mas pedidos</button>
+                        <button type="submit" class="ghost-button" id="featuredQuickSubmitBtn">Guardar en los mas pedidos</button>
                     </form>
+                    <p class="muted" id="featuredQuickStatus" style="margin-bottom: 10px; display: none;">Guardando producto...</p>
                     <button type="button" class="ghost-button" id="featuredQuickToggle" style="margin-bottom: 12px;">Agregar</button>
                     <p class="muted" style="margin-bottom: 12px;">Maximo 5 productos en esta seccion.</p>
                     <div id="featuredList" class="stack-list"></div>
