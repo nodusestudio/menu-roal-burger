@@ -149,10 +149,12 @@ const authForgotBtn = document.getElementById('authForgotBtn');
 const authRegisterBtn = document.getElementById('authRegisterBtn');
 
 const productForm = document.getElementById('productForm');
-const featuredForm = document.getElementById('featuredForm');
+const featuredQuickForm = document.getElementById('featuredQuickForm');
+const featuredQuickToggle = document.getElementById('featuredQuickToggle');
+const featuredQuickNameInput = document.getElementById('featuredQuickName');
+const featuredQuickImageInput = document.getElementById('featuredQuickImage');
 const categoryForm = document.getElementById('categoryForm');
 const productCategorySelect = document.getElementById('productCategory');
-const featuredProductSelect = document.getElementById('featuredProductSelect');
 const featuredList = document.getElementById('featuredList');
 const categoryList = document.getElementById('categoryList');
 const notice = document.getElementById('adminNotice');
@@ -577,26 +579,6 @@ function getInlineContainerByCategoryId(categoryId) {
     return document.getElementById(`category-products-${categoryId}`);
 }
 
-function renderFeaturedSelect() {
-    const notFeatured = productsState.filter((product) => !product.es_destacado);
-    featuredProductSelect.innerHTML = '';
-
-    if (!notFeatured.length) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'No hay productos disponibles';
-        featuredProductSelect.appendChild(option);
-        return;
-    }
-
-    notFeatured.forEach((product) => {
-        const option = document.createElement('option');
-        option.value = product.id;
-        option.textContent = `${product.nombre} (${product.categoria})`;
-        featuredProductSelect.appendChild(option);
-    });
-}
-
 function createFeaturedRow(product) {
     const row = document.createElement('div');
     row.className = 'list-item';
@@ -634,7 +616,23 @@ function renderFeaturedProducts() {
         });
     }
 
-    renderFeaturedSelect();
+}
+
+function toggleFeaturedQuickForm(forceOpen) {
+    if (!featuredQuickForm || !featuredQuickToggle) {
+        return;
+    }
+
+    const currentOpen = featuredQuickForm.dataset.open === 'true';
+    const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !currentOpen;
+
+    featuredQuickForm.dataset.open = shouldOpen ? 'true' : 'false';
+    featuredQuickForm.style.display = shouldOpen ? 'grid' : 'none';
+    featuredQuickToggle.textContent = shouldOpen ? 'Cancelar' : 'Agregar';
+
+    if (shouldOpen && featuredQuickNameInput) {
+        featuredQuickNameInput.focus();
+    }
 }
 
 function renderButtonsList() {
@@ -866,15 +864,9 @@ productForm.addEventListener('submit', async (event) => {
     }
 });
 
-featuredForm.addEventListener('submit', async (event) => {
+featuredQuickForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     hideNotice();
-
-    const selectedId = featuredProductSelect.value;
-    if (!selectedId) {
-        showNotice('No hay productos disponibles para agregar.', 'error');
-        return;
-    }
 
     const featuredCount = productsState.filter((product) => product.es_destacado).length;
     if (featuredCount >= MAX_FEATURED) {
@@ -882,19 +874,48 @@ featuredForm.addEventListener('submit', async (event) => {
         return;
     }
 
+    const nombre = String(featuredQuickNameInput?.value || '').trim();
+    const imageFile = featuredQuickImageInput && featuredQuickImageInput.files ? featuredQuickImageInput.files[0] : null;
+    if (!nombre || !imageFile) {
+        showNotice('Debes ingresar nombre e imagen del producto.', 'error');
+        return;
+    }
+
+    if (imageFile.size > 20 * 1024 * 1024) {
+        showNotice('La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
+        return;
+    }
+
     try {
-        await firebaseDb.collection('productos').doc(selectedId).update({
-            es_destacado: true,
+        const imageUrl = await uploadImageToFirebase(imageFile, nombre);
+        const fallbackCategory = categoriesState.find((category) => category.active)?.name || 'Adicionales';
+        const id = `${slugify(nombre)}-${Date.now()}`;
+
+        await firebaseDb.collection('productos').doc(id).set({
+            nombre,
+            precio: 0,
+            categoria: fallbackCategory,
             estado: 'active',
+            es_destacado: true,
+            image_url: imageUrl,
+            created_at: firestoreNow(),
             updated_at: firestoreNow()
         });
 
         await reloadDataAndRender();
+        featuredQuickForm.reset();
+        toggleFeaturedQuickForm(false);
         showNotice('Producto agregado a Los mas pedidos.', 'ok');
     } catch (error) {
         showNotice(`No se pudo actualizar: ${error.message || 'Error inesperado.'}`, 'error');
     }
 });
+
+if (featuredQuickToggle) {
+    featuredQuickToggle.addEventListener('click', () => {
+        toggleFeaturedQuickForm();
+    });
+}
 
 featuredList.addEventListener('click', async (event) => {
     const target = event.target;

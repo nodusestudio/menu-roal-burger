@@ -665,17 +665,22 @@
 
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>Gestion de Inventario (Los mas pedidos)</h2>
+                        <h2>Los mas pedidos</h2>
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-featured" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-featured">
-                    <form id="featuredForm" class="inline-form">
+                    <form id="featuredQuickForm" class="inline-form" style="display: none;" data-open="false">
                         <div class="admin-field">
-                            <label for="featuredProductSelect">Agregar producto a Los mas pedidos</label>
-                            <select id="featuredProductSelect"></select>
+                            <label for="featuredQuickName">Nombre del producto</label>
+                            <input type="text" id="featuredQuickName" name="featuredQuickName" placeholder="Ej: Burger Triple" required>
                         </div>
-                        <button type="submit" class="ghost-button">Agregar</button>
+                        <div class="admin-field">
+                            <label for="featuredQuickImage">Cargar imagen</label>
+                            <input type="file" id="featuredQuickImage" name="featuredQuickImage" accept="image/*" required>
+                        </div>
+                        <button type="submit" class="ghost-button">Guardar en los mas pedidos</button>
                     </form>
+                    <button type="button" class="ghost-button" id="featuredQuickToggle" style="margin-bottom: 12px;">Agregar</button>
                     <p class="muted" style="margin-bottom: 12px;">Maximo 5 productos en esta seccion.</p>
                     <div id="featuredList" class="stack-list"></div>
                     </div>
