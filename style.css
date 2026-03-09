@@ -686,7 +686,7 @@ body::before {
 .category-chip {
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 12px;
-    padding: 12px 10px;
+    padding: 10px;
     background: linear-gradient(150deg, rgba(255, 255, 255, 0.05), rgba(15, 15, 15, 0.4));
     color: #f8f8f8;
     font-family: 'Oswald', sans-serif;
@@ -695,6 +695,25 @@ body::before {
     text-transform: uppercase;
     cursor: pointer;
     transition: border-color 0.25s ease, transform 0.2s ease, background 0.25s ease;
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 8px;
+    align-items: center;
+    text-align: left;
+}
+
+.category-chip-thumb {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.category-chip-label {
+    display: block;
+    line-height: 1.1;
 }
 
 .category-chip:hover {

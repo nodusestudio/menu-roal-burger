@@ -191,6 +191,8 @@ const LOCAL_PRODUCT_IMAGE_MAP = LOCAL_PRODUCT_IMAGE_FILES.reduce((acc, fileName)
     return acc;
 }, new Map());
 
+const CATEGORY_BUTTON_PRIORITY = ['burger premium'];
+
 const SECTION_CATEGORY_KEYS = {
     'menu-burger-premium': 'burger premium',
     'menu-burger-clasicas': 'burger clasicas',
@@ -229,6 +231,12 @@ function resolveProductImage(product) {
     }
 
     return 'logo.png';
+}
+
+function resolveCategoryImage(categoryName) {
+    const normalizedCategory = normalizeAssetLookup(categoryName);
+    const localMatch = LOCAL_PRODUCT_IMAGE_MAP.get(normalizedCategory);
+    return localMatch || 'logo.png';
 }
 
 function isCategoryAllowed(categoryName) {
@@ -745,7 +753,18 @@ function getExplorerCategories() {
         uniqueMap.set(key, { name: cleanName, key });
     });
 
-    return Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    const priorityIndex = new Map(CATEGORY_BUTTON_PRIORITY.map((item, index) => [item, index]));
+
+    return Array.from(uniqueMap.values()).sort((a, b) => {
+        const aPriority = priorityIndex.has(a.key) ? priorityIndex.get(a.key) : 999;
+        const bPriority = priorityIndex.has(b.key) ? priorityIndex.get(b.key) : 999;
+
+        if (aPriority !== bPriority) {
+            return aPriority - bPriority;
+        }
+
+        return a.name.localeCompare(b.name, 'es');
+    });
 }
 
 function getCategoryProducts(categoryKey) {
@@ -805,7 +824,23 @@ function renderCategoryExplorer(nextKey) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `category-chip${category.key === selectedCategoryKey ? ' active' : ''}`;
-        button.textContent = category.name;
+
+        const thumb = document.createElement('img');
+        thumb.className = 'category-chip-thumb';
+        thumb.src = resolveCategoryImage(category.name);
+        thumb.alt = category.name;
+        thumb.loading = 'lazy';
+        thumb.decoding = 'async';
+        thumb.addEventListener('error', () => {
+            thumb.src = 'logo.png';
+        });
+
+        const label = document.createElement('span');
+        label.className = 'category-chip-label';
+        label.textContent = category.name;
+
+        button.appendChild(thumb);
+        button.appendChild(label);
         button.addEventListener('click', () => {
             selectedCategoryKey = category.key;
             renderCategoryExplorer(category.key);
