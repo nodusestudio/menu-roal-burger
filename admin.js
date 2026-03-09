@@ -770,14 +770,41 @@ function applyTemplateToForm(templateName) {
     renderBrandingPreview();
 }
 
+function withTimeout(promise, timeoutMs, timeoutMessage) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(timeoutMessage));
+        }, timeoutMs);
+
+        promise
+            .then((value) => {
+                clearTimeout(timer);
+                resolve(value);
+            })
+            .catch((error) => {
+                clearTimeout(timer);
+                reject(error);
+            });
+    });
+}
+
 async function uploadImageToFirebase(file, productName) {
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const safeName = slugify(productName) || 'producto';
     const path = `${FIREBASE_STORAGE_FOLDER}/${safeName}-${Date.now()}.${ext}`;
 
     const storageRef = firebaseStorage.ref().child(path);
-    await storageRef.put(file);
-    return storageRef.getDownloadURL();
+    await withTimeout(
+        storageRef.put(file),
+        12000,
+        'La subida de imagen tardo demasiado. Verifica Firebase Storage/CORS.'
+    );
+
+    return withTimeout(
+        storageRef.getDownloadURL(),
+        7000,
+        'No se pudo obtener la URL de la imagen desde Firebase Storage.'
+    );
 }
 
 function readFileAsDataUrl(file) {
