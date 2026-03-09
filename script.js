@@ -318,7 +318,38 @@ function renderDynamicCategorySections() {
                 empty.style.fontSize = '0.95rem';
                 section.appendChild(empty);
             } else {
+                const isAdicionales = normalizeCategoryKey(category.name) === 'adicionales';
+
                 visibleProducts.forEach((product) => {
+                    if (isAdicionales) {
+                        const image = document.createElement('img');
+                        image.className = 'menu-image';
+                        image.src = product.image_url;
+                        image.alt = product.nombre;
+                        section.appendChild(image);
+
+                        const meta = document.createElement('div');
+                        meta.style.display = 'flex';
+                        meta.style.justifyContent = 'space-between';
+                        meta.style.alignItems = 'center';
+                        meta.style.margin = '8px 2px 14px';
+                        meta.style.fontWeight = '700';
+                        meta.style.fontSize = '1rem';
+                        meta.style.color = '#fff';
+
+                        const name = document.createElement('span');
+                        name.textContent = product.nombre;
+
+                        const price = document.createElement('span');
+                        price.textContent = `$ ${Number(product.precio).toLocaleString('es-CO')}`;
+                        price.style.color = 'var(--brand-secondary, #ffb27a)';
+
+                        meta.appendChild(name);
+                        meta.appendChild(price);
+                        section.appendChild(meta);
+                        return;
+                    }
+
                     const card = document.createElement('div');
                     card.style.display = 'grid';
                     card.style.gridTemplateColumns = '68px 1fr auto';
