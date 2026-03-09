@@ -199,11 +199,21 @@ const CATEGORY_BUTTON_PRIORITY = [
     'pepitos',
     'perros y salchipapas',
     'perros calientes y salchipapas',
-    'entradas'
+    'entradas',
+    'combos burger',
+    'combos perros y express',
+    'combos de perros y express',
+    'combos familiares',
+    'combos de temporada',
+    'combos de temporadas'
 ];
 
 const FORCED_CATEGORY_BUTTONS = [
-    { key: 'pepitos venezolanos', name: 'PEPITOS VENEZOLANOS' }
+    { key: 'pepitos venezolanos', name: 'PEPITOS VENEZOLANOS' },
+    { key: 'combos burger', name: 'COMBOS BURGER' },
+    { key: 'combos perros y express', name: 'COMBOS PERROS Y EXPRESS' },
+    { key: 'combos familiares', name: 'COMBOS FAMILIARES' },
+    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA' }
 ];
 
 const CATEGORY_IMAGE_ALIASES = {
@@ -214,7 +224,13 @@ const CATEGORY_IMAGE_ALIASES = {
     pepitosvenezolanos: 'PEPITOS VENEZOLANOS.png',
     perrosysalchipapas: 'PERROS CALIENTES Y SALCHIPAPAS.png',
     perroscalientesysalchipapas: 'PERROS CALIENTES Y SALCHIPAPAS.png',
-    entradas: 'entradas.png'
+    entradas: 'entradas.png',
+    combosburger: 'COMBOS BURGER.png',
+    combosperrosyexpress: 'COMBOS DE PERROS Y EXPRESS.png',
+    combosdeperrosyexpress: 'COMBOS DE PERROS Y EXPRESS.png',
+    combosfamiliares: 'COMBOS FAMILIARES.png',
+    combosdetemporada: 'COMBOS DE TEMPORADAS.png',
+    combosdetemporadas: 'COMBOS DE TEMPORADAS.png'
 };
 
 const SECTION_CATEGORY_KEYS = {
