@@ -138,6 +138,7 @@ const defaultBranding = {
 
 const ADMIN_USERNAME = 'roalburger';
 const ADMIN_PASSWORD = 'Roalburger*2019';
+const ADMIN_DEVICE_AUTH_KEY = 'roal_admin_device_auth';
 
 const productForm = document.getElementById('productForm');
 const featuredForm = document.getElementById('featuredForm');
@@ -248,6 +249,14 @@ function setupCardCollapse() {
 }
 
 async function ensureAdminAuth() {
+    try {
+        if (window.localStorage.getItem(ADMIN_DEVICE_AUTH_KEY) === 'true') {
+            return;
+        }
+    } catch (error) {
+        // Ignore storage restrictions in private mode.
+    }
+
     const username = (window.prompt('Acceso administrador: usuario') || '').trim();
     if (!username) {
         window.location.href = 'index.html';
@@ -261,8 +270,30 @@ async function ensureAdminAuth() {
     }
 
     if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+        try {
+            window.localStorage.removeItem(ADMIN_DEVICE_AUTH_KEY);
+        } catch (error) {
+            // Ignore storage restrictions in private mode.
+        }
+
+        window.alert('Credenciales incorrectas. Verifica usuario y contrasena.');
         window.location.href = 'index.html';
         throw new Error('Credenciales invalidas.');
+    }
+
+    const rememberThisDevice = window.confirm('Deseas guardar el acceso en este dispositivo para no volver a pedir credenciales?');
+    if (rememberThisDevice) {
+        try {
+            window.localStorage.setItem(ADMIN_DEVICE_AUTH_KEY, 'true');
+        } catch (error) {
+            // Ignore storage restrictions in private mode.
+        }
+    } else {
+        try {
+            window.localStorage.removeItem(ADMIN_DEVICE_AUTH_KEY);
+        } catch (error) {
+            // Ignore storage restrictions in private mode.
+        }
     }
 }
 
