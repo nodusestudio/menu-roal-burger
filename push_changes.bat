@@ -9,7 +9,7 @@ echo Añadiendo todos los cambios...
 git add -A
 
 echo Haciendo commit...
-git commit -m "Fix: Eliminación de video intro y ajuste de títulos en Web App"
+git commit -m "Fix: Eliminación de video intro y ajuste de títulos en landing page"
 if errorlevel 1 (
     echo No se hizo commit (posible: no hay cambios o hay conflictos). Revisa 'git status'.
     pause

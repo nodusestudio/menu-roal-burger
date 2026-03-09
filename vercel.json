@@ -2,9 +2,12 @@
   "version": 2,
   "redirects": [
     {
-      "source": "/",
-      "destination": "/menu.html",
-      "permanent": false
+      "source": "/:path*",
+      "missing": [
+        { "type": "host", "value": "menu-roal-burger-main.vercel.app" }
+      ],
+      "destination": "https://menu-roal-burger-main.vercel.app/:path*",
+      "permanent": true
     }
   ]
 }
