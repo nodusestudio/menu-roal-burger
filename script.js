@@ -87,6 +87,59 @@ let categoriesUnsubscribe = null;
 let latestProducts = [];
 let activeCategories = null;
 
+const SECTION_CATEGORY_KEYS = {
+    'menu-burger-premium': 'burger premium',
+    'menu-burger-clasicas': 'burger clasicas',
+    'menu-perros-salchipapas': 'perros y salchipapas',
+    'menu-entradas': 'entradas',
+    'menu-combos-burger': 'combos',
+    'menu-combos-perros': 'combos',
+    'menu-combos-familiares': 'combos',
+    'menu-combos-temporada': 'combos'
+};
+
+function normalizeCategoryKey(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+}
+
+function applyCategoryVisibility() {
+    if (!activeCategories) {
+        return;
+    }
+
+    Object.entries(SECTION_CATEGORY_KEYS).forEach(([sectionId, categoryKey]) => {
+        const section = document.getElementById(sectionId);
+        const navLink = document.querySelector(`.menu-nav-link[data-target="${sectionId}"]`);
+        const visible = activeCategories.has(categoryKey);
+
+        if (section) {
+            section.style.display = visible ? '' : 'none';
+        }
+
+        if (navLink) {
+            navLink.style.display = visible ? '' : 'none';
+        }
+    });
+
+    const activeLink = document.querySelector('.menu-nav-link.active');
+    if (activeLink && activeLink.style.display === 'none') {
+        const firstVisible = Array.from(document.querySelectorAll('.menu-nav-link')).find((link) => link.style.display !== 'none');
+        if (firstVisible) {
+            const targetId = firstVisible.dataset.target;
+            const targetSection = document.getElementById(targetId);
+            if (targetSection) {
+                const sectionName = targetSection.dataset.sectionName || targetSection.querySelector('.menu-section-title')?.textContent?.trim() || 'PORTADA';
+                updateDynamicWhatsAppLink(sectionName);
+                setActiveMenuNavLink(targetId);
+            }
+        }
+    }
+}
+
 function renderFeaturedCards(carousel) {
     const featuredProducts = latestProducts
         .map((product) => {
@@ -185,8 +238,9 @@ async function renderPublicFeaturedFromAdmin() {
             snapshot.docs
                 .map((doc) => doc.data())
                 .filter((category) => category.active !== false)
-                .map((category) => category.name)
+                .map((category) => normalizeCategoryKey(category.name))
         );
+        applyCategoryVisibility();
         renderFeaturedCards(carousel);
     });
 }
