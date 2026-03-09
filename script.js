@@ -851,8 +851,33 @@ function renderCategoryExplorer(nextKey) {
     const selectedCategory = categories.find((item) => item.key === selectedCategoryKey) || categories[0];
     const products = getCategoryProducts(selectedCategory.key);
 
+    const heroWrap = document.createElement('div');
+    heroWrap.className = 'category-hero-wrap';
+
+    const heroImage = document.createElement('img');
+    heroImage.className = 'category-hero-image';
+    heroImage.alt = `Imagen de ${selectedCategory.name}`;
+    heroImage.loading = 'lazy';
+    heroImage.decoding = 'async';
+    heroImage.src = (products[0] && products[0].image_url) ? products[0].image_url : resolveCategoryImage(selectedCategory.name);
+    heroImage.addEventListener('error', () => {
+        heroImage.src = resolveCategoryImage(selectedCategory.name);
+    });
+
+    const heroTitle = document.createElement('p');
+    heroTitle.className = 'category-hero-title';
+    heroTitle.textContent = selectedCategory.name;
+
+    heroWrap.appendChild(heroImage);
+    heroWrap.appendChild(heroTitle);
+
     if (!products.length) {
-        panel.innerHTML = `<p class="category-empty">No hay productos activos en ${selectedCategory.name}.</p>`;
+        panel.innerHTML = '';
+        panel.appendChild(heroWrap);
+        const empty = document.createElement('p');
+        empty.className = 'category-empty';
+        empty.textContent = `No hay productos activos en ${selectedCategory.name}.`;
+        panel.appendChild(empty);
         return;
     }
 
@@ -900,6 +925,7 @@ function renderCategoryExplorer(nextKey) {
     });
 
     panel.innerHTML = '';
+    panel.appendChild(heroWrap);
     panel.appendChild(list);
 }
 
