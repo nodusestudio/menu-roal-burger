@@ -64,6 +64,7 @@ let brandingUnsubscribe = null;
 let latestProducts = [];
 let activeCategories = null;
 let activeCategoryMeta = [];
+let allCategoryMeta = [];
 let buttonConfigsMap = new Map();
 let selectedCategoryKey = '';
 
@@ -672,23 +673,32 @@ function renderSocialMiniLinks() {
 }
 
 function getExplorerCategories() {
-    const source = activeCategoryMeta.length
-        ? activeCategoryMeta.map((item) => item.name)
-        : latestProducts.map((product) => product.categoria || product.category || '');
-
-    const unique = [];
+    const uniqueMap = new Map();
     const keys = new Set();
-    source.forEach((name) => {
+
+    allCategoryMeta.forEach((item) => {
+        const name = item?.name;
         const cleanName = String(name || '').trim();
         const key = normalizeCategoryKey(cleanName);
         if (!cleanName || !key || keys.has(key)) {
             return;
         }
         keys.add(key);
-        unique.push({ name: cleanName, key });
+        uniqueMap.set(key, { name: cleanName, key });
     });
 
-    return unique;
+    latestProducts.forEach((product) => {
+        const name = product.categoria || product.category || '';
+        const cleanName = String(name || '').trim();
+        const key = normalizeCategoryKey(cleanName);
+        if (!cleanName || !key || keys.has(key)) {
+            return;
+        }
+        keys.add(key);
+        uniqueMap.set(key, { name: cleanName, key });
+    });
+
+    return Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'es'));
 }
 
 function getCategoryProducts(categoryKey) {
@@ -716,7 +726,7 @@ function getCategoryProducts(categoryKey) {
                 return false;
             }
 
-            return key === categoryKey || key.includes(categoryKey) || categoryKey.includes(key);
+            return key === categoryKey;
         })
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 }
@@ -940,6 +950,14 @@ async function renderPublicFeaturedFromAdmin() {
     });
 
     categoriesUnsubscribe = firebaseDb.collection('categorias').onSnapshot((snapshot) => {
+        allCategoryMeta = snapshot.docs
+            .map((doc) => doc.data())
+            .map((category) => ({
+                name: category.name,
+                key: normalizeCategoryKey(category.name)
+            }))
+            .filter((category) => category.name && category.key);
+
         const active = snapshot.docs
             .map((doc) => doc.data())
             .filter((category) => category.active !== false)

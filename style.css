@@ -669,15 +669,12 @@ body::before {
     text-shadow: 0 0 15px rgba(255, 96, 0, 0.4);
 }
 
-.section-title-secondary {
-    font-size: 1.4rem;
-    margin-bottom: 16px;
-    text-shadow: none;
-    color: #f0f2f6;
-}
-
 .category-grid-section {
     margin-bottom: 28px;
+}
+
+.social-title {
+    margin-bottom: 14px;
 }
 
 .category-grid {
@@ -763,7 +760,7 @@ body::before {
     display: flex;
     justify-content: center;
     gap: 10px;
-    margin: 8px 0 18px;
+    margin: 6px 0 22px;
 }
 
 .social-mini-icon {
