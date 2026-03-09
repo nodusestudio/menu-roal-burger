@@ -765,6 +765,19 @@ async function uploadImageToFirebase(file, productName) {
     return storageRef.getDownloadURL();
 }
 
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            resolve(String(reader.result || ''));
+        };
+        reader.onerror = () => {
+            reject(new Error('No se pudo leer la imagen local.'));
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 async function getStatDocument(metric) {
     const byId = await firebaseDb.collection('estadisticas').doc(metric).get();
     if (byId.exists) {
@@ -887,7 +900,16 @@ featuredQuickForm.addEventListener('submit', async (event) => {
     }
 
     try {
-        const imageUrl = await uploadImageToFirebase(imageFile, nombre);
+        let imageUrl;
+        let usedLocalFallback = false;
+
+        try {
+            imageUrl = await uploadImageToFirebase(imageFile, nombre);
+        } catch (uploadError) {
+            imageUrl = await readFileAsDataUrl(imageFile);
+            usedLocalFallback = true;
+        }
+
         const fallbackCategory = categoriesState.find((category) => category.active)?.name || 'Adicionales';
         const id = `${slugify(nombre)}-${Date.now()}`;
 
@@ -905,7 +927,12 @@ featuredQuickForm.addEventListener('submit', async (event) => {
         await reloadDataAndRender();
         featuredQuickForm.reset();
         toggleFeaturedQuickForm(false);
-        showNotice('Producto agregado a Los mas pedidos.', 'ok');
+        showNotice(
+            usedLocalFallback
+                ? 'Producto agregado a Los mas pedidos. Se guardo la imagen en modo local por restriccion de Storage.'
+                : 'Producto agregado a Los mas pedidos.',
+            'ok'
+        );
     } catch (error) {
         showNotice(`No se pudo actualizar: ${error.message || 'Error inesperado.'}`, 'error');
     }
