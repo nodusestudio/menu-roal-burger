@@ -164,6 +164,19 @@ const imageFileInput = document.getElementById('productImageFile');
 const totalClicksEl = document.getElementById('totalClicks');
 const topProductEl = document.getElementById('topProduct');
 
+const productEditModal = document.getElementById('productEditModal');
+const productEditForm = document.getElementById('productEditForm');
+const productEditCloseBtn = document.getElementById('productEditCloseBtn');
+const editProductIdInput = document.getElementById('editProductId');
+const editProductNameInput = document.getElementById('editProductName');
+const editProductPriceInput = document.getElementById('editProductPrice');
+const editProductCategorySelect = document.getElementById('editProductCategory');
+const editProductStateSelect = document.getElementById('editProductState');
+const editProductFeaturedSelect = document.getElementById('editProductFeatured');
+const editProductImageFileInput = document.getElementById('editProductImageFile');
+const editProductImageUrlInput = document.getElementById('editProductImageUrl');
+const productEditSaveBtn = document.getElementById('productEditSaveBtn');
+
 const buttonConfigForm = document.getElementById('buttonConfigForm');
 const buttonConfigList = document.getElementById('buttonConfigList');
 const buttonVolumeInput = document.getElementById('buttonVolume');
@@ -184,6 +197,7 @@ let productsState = [];
 let categoriesState = [];
 let buttonsState = [];
 let brandingState = { ...defaultBranding };
+let editingCategoryContextId = null;
 
 function showNotice(text, type = 'ok') {
     if (!notice) {
@@ -490,6 +504,59 @@ function renderCategorySelect() {
     if (activeCategories.some((category) => category.name === previousValue)) {
         productCategorySelect.value = previousValue;
     }
+}
+
+function renderEditProductCategorySelect(selectedCategoryName) {
+    if (!editProductCategorySelect) {
+        return;
+    }
+
+    editProductCategorySelect.innerHTML = '';
+    categoriesState.forEach((category) => {
+        const option = document.createElement('option');
+        option.value = category.name;
+        option.textContent = `${category.name}${category.active ? '' : ' (inactiva)'}`;
+        editProductCategorySelect.appendChild(option);
+    });
+
+    if (selectedCategoryName) {
+        editProductCategorySelect.value = selectedCategoryName;
+    }
+}
+
+function closeProductEditModal() {
+    if (!productEditModal || !productEditForm) {
+        return;
+    }
+
+    productEditModal.classList.remove('show');
+    productEditModal.setAttribute('aria-hidden', 'true');
+    productEditForm.reset();
+    editingCategoryContextId = null;
+
+    if (productEditSaveBtn) {
+        productEditSaveBtn.disabled = false;
+        productEditSaveBtn.textContent = 'Guardar cambios';
+    }
+}
+
+function openProductEditModal(product, categoryId) {
+    if (!productEditModal || !productEditForm || !product) {
+        return;
+    }
+
+    editingCategoryContextId = categoryId;
+    editProductIdInput.value = product.id;
+    editProductNameInput.value = product.nombre;
+    editProductPriceInput.value = String(Number(product.precio || 0));
+    renderEditProductCategorySelect(product.categoria);
+    editProductStateSelect.value = product.estado === 'paused' ? 'paused' : 'active';
+    editProductFeaturedSelect.value = product.es_destacado ? 'true' : 'false';
+    editProductImageUrlInput.value = product.image_url || '';
+
+    productEditModal.classList.add('show');
+    productEditModal.setAttribute('aria-hidden', 'false');
+    editProductNameInput.focus();
 }
 
 function createCategoryRow(category) {
@@ -1170,40 +1237,7 @@ categoryList.addEventListener('click', async (event) => {
 
     try {
         if (action === 'edit-product') {
-            const nextName = window.prompt('Nuevo nombre del producto:', product.nombre);
-            if (nextName === null) {
-                return;
-            }
-
-            const trimmedName = nextName.trim();
-            if (!trimmedName) {
-                showNotice('El nombre no puede estar vacio.', 'error');
-                return;
-            }
-
-            const nextPriceRaw = window.prompt('Nuevo precio del producto:', String(product.precio));
-            if (nextPriceRaw === null) {
-                return;
-            }
-
-            const nextPrice = Number(nextPriceRaw);
-            if (!Number.isFinite(nextPrice) || nextPrice <= 0) {
-                showNotice('Precio invalido.', 'error');
-                return;
-            }
-
-            await firebaseDb.collection('productos').doc(productId).update({
-                nombre: trimmedName,
-                precio: nextPrice,
-                updated_at: firestoreNow()
-            });
-
-            await reloadDataAndRender();
-            const category = categoriesState.find((item) => item.id === categoryId);
-            if (category) {
-                renderCategoryProductsInline(getInlineContainerByCategoryId(categoryId), category, true);
-            }
-            showNotice('Producto editado correctamente.', 'ok');
+            openProductEditModal(product, categoryId);
             return;
         }
 
@@ -1242,6 +1276,107 @@ categoryList.addEventListener('click', async (event) => {
         showNotice(`No se pudo actualizar el producto: ${error.message || 'Error inesperado.'}`, 'error');
     }
 });
+
+if (productEditCloseBtn) {
+    productEditCloseBtn.addEventListener('click', () => {
+        closeProductEditModal();
+    });
+}
+
+if (productEditModal) {
+    productEditModal.addEventListener('click', (event) => {
+        if (event.target === productEditModal) {
+            closeProductEditModal();
+        }
+    });
+}
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && productEditModal && productEditModal.classList.contains('show')) {
+        closeProductEditModal();
+    }
+});
+
+if (productEditForm) {
+    productEditForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice();
+
+        const productId = String(editProductIdInput?.value || '').trim();
+        const nombre = String(editProductNameInput?.value || '').trim();
+        const precio = Number(editProductPriceInput?.value || 0);
+        const categoria = String(editProductCategorySelect?.value || '').trim();
+        const estado = editProductStateSelect?.value === 'paused' ? 'paused' : 'active';
+        const esDestacado = editProductFeaturedSelect?.value === 'true';
+        const imageUrlInput = String(editProductImageUrlInput?.value || '').trim();
+        const imageFile = editProductImageFileInput && editProductImageFileInput.files
+            ? editProductImageFileInput.files[0]
+            : null;
+
+        if (!productId || !nombre || !categoria) {
+            showNotice('Completa nombre y categoria del producto.', 'error');
+            return;
+        }
+
+        if (!Number.isFinite(precio) || precio < 0) {
+            showNotice('Precio invalido.', 'error');
+            return;
+        }
+
+        if (!imageFile && !imageUrlInput) {
+            showNotice('Debes mantener imagen actual o cargar una nueva.', 'error');
+            return;
+        }
+
+        if (imageFile && imageFile.size > 20 * 1024 * 1024) {
+            showNotice('La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
+            return;
+        }
+
+        if (productEditSaveBtn) {
+            productEditSaveBtn.disabled = true;
+            productEditSaveBtn.textContent = 'Guardando...';
+        }
+
+        try {
+            let finalImageUrl = imageUrlInput;
+            if (imageFile) {
+                try {
+                    finalImageUrl = await uploadImageToFirebase(imageFile, nombre);
+                } catch (uploadError) {
+                    finalImageUrl = await readFileAsDataUrl(imageFile);
+                }
+            }
+
+            await firebaseDb.collection('productos').doc(productId).update({
+                nombre,
+                precio,
+                categoria,
+                estado,
+                es_destacado: esDestacado,
+                image_url: finalImageUrl,
+                updated_at: firestoreNow()
+            });
+
+            await reloadDataAndRender();
+            if (editingCategoryContextId) {
+                const category = categoriesState.find((item) => item.id === editingCategoryContextId);
+                if (category) {
+                    renderCategoryProductsInline(getInlineContainerByCategoryId(editingCategoryContextId), category, true);
+                }
+            }
+
+            closeProductEditModal();
+            showNotice('Producto editado correctamente.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo actualizar el producto: ${error.message || 'Error inesperado.'}`, 'error');
+            if (productEditSaveBtn) {
+                productEditSaveBtn.disabled = false;
+                productEditSaveBtn.textContent = 'Guardar cambios';
+            }
+        }
+    });
+}
 
 buttonConfigForm.addEventListener('submit', async (event) => {
     event.preventDefault();
