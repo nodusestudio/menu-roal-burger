@@ -33,7 +33,7 @@
             height: 100vh;
             overflow-y: auto;
             border-right: 1px solid rgba(255, 87, 34, 0.35);
-            background: rgba(0, 0, 0, 0.8);
+            background: #121212;
             backdrop-filter: blur(8px);
             z-index: 2;
         }
@@ -142,6 +142,44 @@
         .admin-link:hover {
             background: rgba(255, 96, 0, 0.2);
             border-color: rgba(255, 96, 0, 0.8);
+        }
+
+        .sidebar-section-label {
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            color: #ff9f7a;
+            font-size: 0.82rem;
+            margin: 4px 0 8px;
+        }
+
+        .sidebar-actions,
+        .sidebar-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .sidebar-action-btn,
+        .category-filter-btn {
+            border: 1px solid rgba(255, 87, 34, 0.42);
+            background: rgba(255, 87, 34, 0.12);
+            color: #fff;
+            border-radius: 999px;
+            padding: 8px 11px;
+            font-size: 0.74rem;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+
+        .category-filter-btn.active,
+        .sidebar-action-btn.active {
+            background: linear-gradient(90deg, #ff5722, #ff7b45);
+            border-color: rgba(255, 123, 69, 0.9);
+            color: #111;
+            font-weight: 700;
         }
 
         .admin-grid {
@@ -818,8 +856,24 @@
         <nav class="admin-tabs" id="adminTabNav">
             <button type="button" class="admin-tab-btn active" data-tab-target="inventario">📦 Inventario</button>
             <button type="button" class="admin-tab-btn" data-tab-target="categorias">📂 Categorias</button>
+            <button type="button" class="admin-tab-btn" data-tab-target="configuracion">🎨 Marca</button>
             <button type="button" class="admin-tab-btn" data-tab-target="metricas">📈 Metricas</button>
         </nav>
+
+        <div class="sidebar-section-label">Gestion de Productos</div>
+        <div class="sidebar-actions">
+            <button type="button" class="sidebar-action-btn active" data-tab-target="inventario">Inventario</button>
+            <button type="button" class="sidebar-action-btn" data-tab-target="categorias">Categorias</button>
+            <button type="button" class="sidebar-action-btn" data-tab-target="configuracion">Configuracion Marca</button>
+        </div>
+
+        <div class="sidebar-section-label">Filtros Rapidos</div>
+        <div class="sidebar-filters" id="categoryQuickFilters">
+            <button type="button" class="category-filter-btn active" data-filter-category="all">Todos</button>
+            <button type="button" class="category-filter-btn" data-filter-category="burger clasicas">BURGER CLASSIC</button>
+            <button type="button" class="category-filter-btn" data-filter-category="combos">COMBOS</button>
+            <button type="button" class="category-filter-btn" data-filter-category="bebidas">BEBIDAS</button>
+        </div>
 
         <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
 
@@ -922,6 +976,71 @@
                 </article>
             </div>
 
+            <div class="admin-tab-panel" data-tab-panel="configuracion">
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Configuracion de Marca</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-branding" aria-expanded="true">Retraer</button>
+                    </div>
+                    <div class="card-body" id="card-branding">
+                        <form id="brandingForm" class="admin-form">
+                            <div class="admin-field">
+                                <label for="restaurantName">Nombre del restaurante</label>
+                                <input type="text" id="restaurantName" name="restaurantName" placeholder="Ej: ROAL BURGER" required>
+                            </div>
+                            <div class="admin-field">
+                                <label for="restaurantSlogan">Eslogan</label>
+                                <input type="text" id="restaurantSlogan" name="restaurantSlogan" placeholder="Ej: Sabor real en cada mordida" required>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="restaurantLogo">Logo URL/Ruta</label>
+                                <input type="text" id="restaurantLogo" name="restaurantLogo" placeholder="Ej: logo.png o https://...">
+                            </div>
+                            <div class="admin-field">
+                                <label for="brandPrimaryColor">Color principal</label>
+                                <input type="color" id="brandPrimaryColor" name="brandPrimaryColor" value="#ff6000">
+                            </div>
+                            <div class="admin-field">
+                                <label for="brandSecondaryColor">Color secundario</label>
+                                <input type="color" id="brandSecondaryColor" name="brandSecondaryColor" value="#ff8533">
+                            </div>
+                            <div class="admin-field">
+                                <label for="brandAccentColor">Color acento</label>
+                                <input type="color" id="brandAccentColor" name="brandAccentColor" value="#25d366">
+                            </div>
+                            <div class="admin-field">
+                                <label for="brandTemplate">Plantilla visual</label>
+                                <select id="brandTemplate" name="brandTemplate">
+                                    <option value="flame">Flame</option>
+                                    <option value="ocean">Ocean</option>
+                                    <option value="forest">Forest</option>
+                                    <option value="midnight">Midnight</option>
+                                    <option value="sunset">Sunset</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="admin-button">Guardar configuracion</button>
+                        </form>
+                        <div class="template-grid" id="templateGrid">
+                            <button type="button" class="template-chip" data-template="flame" style="background: linear-gradient(135deg, #ff5e00, #ff9c4a);">Flame</button>
+                            <button type="button" class="template-chip" data-template="ocean" style="background: linear-gradient(135deg, #0f4c81, #46c3ff);">Ocean</button>
+                            <button type="button" class="template-chip" data-template="forest" style="background: linear-gradient(135deg, #0f5132, #55d38d);">Forest</button>
+                            <button type="button" class="template-chip" data-template="midnight" style="background: linear-gradient(135deg, #20274e, #5f7cff);">Midnight</button>
+                            <button type="button" class="template-chip" data-template="sunset" style="background: linear-gradient(135deg, #a33a2f, #ff9f68);">Sunset</button>
+                        </div>
+                        <div class="preview-box" id="brandingPreview">
+                            <div class="preview-brand">
+                                <img id="previewLogo" src="logo.png" alt="Preview logo">
+                                <div>
+                                    <strong id="previewName">ROAL BURGER</strong>
+                                    <p id="previewSlogan" class="muted">Comida rapida con acento venezolano</p>
+                                </div>
+                            </div>
+                            <p class="muted">Vista previa rapida de colores y textos.</p>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
             <div class="admin-tab-panel" data-tab-panel="botones">
                 <article class="admin-card">
                     <div class="card-head">
@@ -1011,71 +1130,6 @@
                             <button type="submit" class="admin-button" id="buttonSaveBtn">Guardar boton</button>
                         </form>
                         <div id="buttonConfigList" class="stack-list" style="margin-top: 14px;"></div>
-                    </div>
-                </article>
-            </div>
-
-            <div class="admin-tab-panel" data-tab-panel="configuracion">
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Configuracion de Marca</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-branding" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-branding">
-                        <form id="brandingForm" class="admin-form">
-                            <div class="admin-field">
-                                <label for="restaurantName">Nombre del restaurante</label>
-                                <input type="text" id="restaurantName" name="restaurantName" placeholder="Ej: ROAL BURGER" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="restaurantSlogan">Eslogan</label>
-                                <input type="text" id="restaurantSlogan" name="restaurantSlogan" placeholder="Ej: Sabor real en cada mordida" required>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="restaurantLogo">Logo URL/Ruta</label>
-                                <input type="text" id="restaurantLogo" name="restaurantLogo" placeholder="Ej: logo.png o https://...">
-                            </div>
-                            <div class="admin-field">
-                                <label for="brandPrimaryColor">Color principal</label>
-                                <input type="color" id="brandPrimaryColor" name="brandPrimaryColor" value="#ff6000">
-                            </div>
-                            <div class="admin-field">
-                                <label for="brandSecondaryColor">Color secundario</label>
-                                <input type="color" id="brandSecondaryColor" name="brandSecondaryColor" value="#ff8533">
-                            </div>
-                            <div class="admin-field">
-                                <label for="brandAccentColor">Color acento</label>
-                                <input type="color" id="brandAccentColor" name="brandAccentColor" value="#25d366">
-                            </div>
-                            <div class="admin-field">
-                                <label for="brandTemplate">Plantilla visual</label>
-                                <select id="brandTemplate" name="brandTemplate">
-                                    <option value="flame">Flame</option>
-                                    <option value="ocean">Ocean</option>
-                                    <option value="forest">Forest</option>
-                                    <option value="midnight">Midnight</option>
-                                    <option value="sunset">Sunset</option>
-                                </select>
-                            </div>
-                            <button type="submit" class="admin-button">Guardar configuracion</button>
-                        </form>
-                        <div class="template-grid" id="templateGrid">
-                            <button type="button" class="template-chip" data-template="flame" style="background: linear-gradient(135deg, #ff5e00, #ff9c4a);">Flame</button>
-                            <button type="button" class="template-chip" data-template="ocean" style="background: linear-gradient(135deg, #0f4c81, #46c3ff);">Ocean</button>
-                            <button type="button" class="template-chip" data-template="forest" style="background: linear-gradient(135deg, #0f5132, #55d38d);">Forest</button>
-                            <button type="button" class="template-chip" data-template="midnight" style="background: linear-gradient(135deg, #20274e, #5f7cff);">Midnight</button>
-                            <button type="button" class="template-chip" data-template="sunset" style="background: linear-gradient(135deg, #a33a2f, #ff9f68);">Sunset</button>
-                        </div>
-                        <div class="preview-box" id="brandingPreview">
-                            <div class="preview-brand">
-                                <img id="previewLogo" src="logo.png" alt="Preview logo">
-                                <div>
-                                    <strong id="previewName">ROAL BURGER</strong>
-                                    <p id="previewSlogan" class="muted">Comida rapida con acento venezolano</p>
-                                </div>
-                            </div>
-                            <p class="muted">Vista previa rapida de colores y textos.</p>
-                        </div>
                     </div>
                 </article>
             </div>

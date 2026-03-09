@@ -169,6 +169,7 @@ const inventorySkeleton = document.getElementById('inventorySkeleton');
 const metricsChartList = document.getElementById('metricsChartList');
 const previewRefreshBtn = document.getElementById('previewRefreshBtn');
 const liveMenuPreview = document.getElementById('liveMenuPreview');
+const categoryQuickFilters = document.getElementById('categoryQuickFilters');
 
 const productEditModal = document.getElementById('productEditModal');
 const productEditForm = document.getElementById('productEditForm');
@@ -206,6 +207,9 @@ let brandingState = { ...defaultBranding };
 let editingCategoryContextId = null;
 let inventorySearchTerm = '';
 let productClicksState = [];
+let inventoryCategoryFilter = 'all';
+let liveSubscriptions = [];
+let previewRefreshTimer = null;
 
 function showNotice(text, type = 'ok') {
     if (!notice) {
@@ -243,10 +247,15 @@ function setupTabs() {
     }
 
     const buttons = Array.from(nav.querySelectorAll('.admin-tab-btn'));
+    const sidebarButtons = Array.from(document.querySelectorAll('.sidebar-action-btn'));
     const panels = Array.from(document.querySelectorAll('.admin-tab-panel'));
 
     function activateTab(target) {
         buttons.forEach((button) => {
+            button.classList.toggle('active', button.dataset.tabTarget === target);
+        });
+
+        sidebarButtons.forEach((button) => {
             button.classList.toggle('active', button.dataset.tabTarget === target);
         });
 
@@ -256,6 +265,10 @@ function setupTabs() {
     }
 
     buttons.forEach((button) => {
+        button.addEventListener('click', () => activateTab(button.dataset.tabTarget));
+    });
+
+    sidebarButtons.forEach((button) => {
         button.addEventListener('click', () => activateTab(button.dataset.tabTarget));
     });
 }
@@ -712,6 +725,14 @@ function renderInventoryQuickList() {
     inventoryQuickList.innerHTML = '';
     const term = inventorySearchTerm.trim().toLowerCase();
     const filtered = productsState.filter((product) => {
+        const productCategoryKey = normalizeCategoryKey(product.categoria || '');
+        const categoryMatch = inventoryCategoryFilter === 'all'
+            || productCategoryKey.includes(inventoryCategoryFilter)
+            || inventoryCategoryFilter.includes(productCategoryKey);
+        if (!categoryMatch) {
+            return false;
+        }
+
         if (!term) {
             return true;
         }
@@ -721,7 +742,7 @@ function renderInventoryQuickList() {
     if (!productsState.length) {
         const empty = document.createElement('p');
         empty.className = 'muted';
-        empty.textContent = 'No hay productos aun. Agrega el primero!';
+        empty.textContent = 'Listo para recibir tus nuevos combos';
         inventoryQuickList.appendChild(empty);
         return;
     }
@@ -798,6 +819,49 @@ function renderMetricsChart() {
             row.appendChild(value);
             metricsChartList.appendChild(row);
         });
+}
+
+function refreshLivePreview() {
+    if (!liveMenuPreview) {
+        return;
+    }
+
+    const baseUrl = liveMenuPreview.src.split('?')[0];
+    liveMenuPreview.src = `${baseUrl}?t=${Date.now()}`;
+}
+
+function queueLivePreviewRefresh() {
+    if (previewRefreshTimer) {
+        clearTimeout(previewRefreshTimer);
+    }
+
+    previewRefreshTimer = setTimeout(() => {
+        refreshLivePreview();
+    }, 450);
+}
+
+function setupLiveFirebaseSync() {
+    if (!firebaseDb) {
+        return;
+    }
+
+    liveSubscriptions.forEach((unsubscribe) => unsubscribe());
+    liveSubscriptions = [];
+
+    const collections = ['productos', 'categorias', 'botones'];
+    collections.forEach((collectionName) => {
+        const unsubscribe = firebaseDb.collection(collectionName).onSnapshot(() => {
+            reloadDataAndRender();
+            queueLivePreviewRefresh();
+        });
+        liveSubscriptions.push(unsubscribe);
+    });
+
+    const configUnsubscribe = firebaseDb.collection('configuracion').doc('marca').onSnapshot(() => {
+        reloadDataAndRender();
+        queueLivePreviewRefresh();
+    });
+    liveSubscriptions.push(configUnsubscribe);
 }
 
 function toggleFeaturedQuickForm(forceOpen) {
@@ -1213,6 +1277,24 @@ if (inventorySearchInput) {
     });
 }
 
+if (categoryQuickFilters) {
+    categoryQuickFilters.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const nextFilter = String(target.dataset.filterCategory || 'all').trim().toLowerCase();
+        inventoryCategoryFilter = nextFilter || 'all';
+
+        Array.from(categoryQuickFilters.querySelectorAll('.category-filter-btn')).forEach((button) => {
+            button.classList.toggle('active', button === target);
+        });
+
+        renderInventoryQuickList();
+    });
+}
+
 if (inventoryQuickList) {
     inventoryQuickList.addEventListener('click', async (event) => {
         const target = event.target;
@@ -1257,8 +1339,7 @@ if (inventoryQuickList) {
 
 if (previewRefreshBtn && liveMenuPreview) {
     previewRefreshBtn.addEventListener('click', () => {
-        const separator = liveMenuPreview.src.includes('?') ? '&' : '?';
-        liveMenuPreview.src = `${liveMenuPreview.src.split('?')[0]}${separator}t=${Date.now()}`;
+        refreshLivePreview();
     });
 }
 
@@ -1769,6 +1850,7 @@ async function initAdmin() {
 
         await seedDataIfNeeded();
         await reloadDataAndRender();
+        setupLiveFirebaseSync();
     } catch (error) {
         setInventoryLoading(false);
         document.body.classList.add('admin-locked');
