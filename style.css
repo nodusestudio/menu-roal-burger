@@ -669,6 +669,121 @@ body::before {
     text-shadow: 0 0 15px rgba(255, 96, 0, 0.4);
 }
 
+.section-title-secondary {
+    font-size: 1.4rem;
+    margin-bottom: 16px;
+    text-shadow: none;
+    color: #f0f2f6;
+}
+
+.category-grid-section {
+    margin-bottom: 28px;
+}
+
+.category-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+}
+
+.category-chip {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 12px 10px;
+    background: linear-gradient(150deg, rgba(255, 255, 255, 0.05), rgba(15, 15, 15, 0.4));
+    color: #f8f8f8;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.88rem;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 0.25s ease, transform 0.2s ease, background 0.25s ease;
+}
+
+.category-chip:hover {
+    border-color: rgba(255, 96, 0, 0.5);
+    transform: translateY(-2px);
+}
+
+.category-chip.active {
+    border-color: rgba(255, 96, 0, 0.72);
+    background: linear-gradient(160deg, rgba(255, 96, 0, 0.2), rgba(255, 255, 255, 0.02));
+}
+
+.category-products-panel {
+    margin-top: 12px;
+    border-radius: 12px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.category-products-list {
+    display: grid;
+    gap: 8px;
+}
+
+.category-product-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.22);
+}
+
+.category-product-row strong {
+    font-family: 'Oswald', sans-serif;
+    letter-spacing: 0.5px;
+}
+
+.category-product-row .muted {
+    font-size: 0.82rem;
+}
+
+.category-order-btn {
+    border: 1px solid rgba(255, 96, 0, 0.5);
+    background: rgba(255, 96, 0, 0.14);
+    color: #fff;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    text-decoration: none;
+    letter-spacing: 0.4px;
+}
+
+.category-empty {
+    color: #b7b7b7;
+    font-size: 0.9rem;
+}
+
+.social-mini-bar {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 8px 0 18px;
+}
+
+.social-mini-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: #efefef;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.social-mini-icon:hover {
+    color: #ff6000;
+    border-color: rgba(255, 96, 0, 0.55);
+    transform: translateY(-2px);
+}
+
 .menu-carousel {
     display: flex;
     gap: 20px;
@@ -810,6 +925,7 @@ body::before {
     flex-direction: column;
     gap: 15px;
     margin-bottom: 40px;
+    display: none;
 }
 
 /* Botones Estilo Neón */

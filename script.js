@@ -65,6 +65,7 @@ let latestProducts = [];
 let activeCategories = null;
 let activeCategoryMeta = [];
 let buttonConfigsMap = new Map();
+let selectedCategoryKey = '';
 
 const DEFAULT_PUBLIC_BUTTONS = {
     'btn-menu': {
@@ -613,6 +614,7 @@ function bindButtonAction(button, cfg) {
 function renderConfiguredButtons() {
     const container = document.querySelector('.links-container');
     if (!container) {
+        renderSocialMiniLinks();
         return;
     }
 
@@ -626,7 +628,13 @@ function renderConfiguredButtons() {
 
     const ordered = Array.from(mergedButtons.values()).sort((a, b) => a.order - b.order);
 
+    const excludedButtons = new Set(['btn-menu', 'btn-whatsapp-main', 'btn-instagram', 'btn-tiktok', 'btn-facebook']);
+
     ordered.forEach((cfg) => {
+        if (excludedButtons.has(cfg.id)) {
+            return;
+        }
+
         const button = createOrGetPublicButton(cfg);
         if (!button) {
             return;
@@ -636,6 +644,165 @@ function renderConfiguredButtons() {
         const bound = bindButtonAction(button, cfg);
         container.appendChild(bound);
     });
+
+    renderSocialMiniLinks();
+}
+
+function renderSocialMiniLinks() {
+    const map = {
+        instagram: document.getElementById('social-instagram'),
+        tiktok: document.getElementById('social-tiktok'),
+        facebook: document.getElementById('social-facebook')
+    };
+
+    Object.entries(map).forEach(([platform, anchor]) => {
+        if (!anchor) {
+            return;
+        }
+
+        const cfg = getButtonConfigByPlatform(platform);
+        if (!cfg || cfg.visible === false || cfg.estado === 'paused') {
+            anchor.style.display = 'none';
+            return;
+        }
+
+        anchor.style.display = '';
+        anchor.href = cfg.link || '#';
+    });
+}
+
+function getExplorerCategories() {
+    const source = activeCategoryMeta.length
+        ? activeCategoryMeta.map((item) => item.name)
+        : latestProducts.map((product) => product.categoria || product.category || '');
+
+    const unique = [];
+    const keys = new Set();
+    source.forEach((name) => {
+        const cleanName = String(name || '').trim();
+        const key = normalizeCategoryKey(cleanName);
+        if (!cleanName || !key || keys.has(key)) {
+            return;
+        }
+        keys.add(key);
+        unique.push({ name: cleanName, key });
+    });
+
+    return unique;
+}
+
+function getCategoryProducts(categoryKey) {
+    return latestProducts
+        .map((product) => {
+            const nombre = product.nombre || product.name || 'Producto';
+            const precio = Number(product.precio ?? product.price ?? 0);
+            const estado = String(product.estado || (product.paused ? 'paused' : 'active')).toLowerCase();
+            const categoria = String(product.categoria || product.category || '').trim();
+            return {
+                nombre,
+                precio,
+                categoria,
+                image_url: product.image_url || 'logo.png',
+                estado
+            };
+        })
+        .filter((product) => {
+            if (product.estado === 'paused') {
+                return false;
+            }
+
+            const key = normalizeCategoryKey(product.categoria);
+            if (!key) {
+                return false;
+            }
+
+            return key === categoryKey || key.includes(categoryKey) || categoryKey.includes(key);
+        })
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+function renderCategoryExplorer(nextKey) {
+    const grid = document.getElementById('categoryGrid');
+    const panel = document.getElementById('categoryProductsPanel');
+    if (!grid || !panel) {
+        return;
+    }
+
+    const categories = getExplorerCategories();
+    grid.innerHTML = '';
+
+    if (!categories.length) {
+        panel.innerHTML = '<p class="category-empty">No hay categorias disponibles por ahora.</p>';
+        return;
+    }
+
+    if (nextKey) {
+        selectedCategoryKey = nextKey;
+    }
+
+    if (!selectedCategoryKey || !categories.some((item) => item.key === selectedCategoryKey)) {
+        selectedCategoryKey = categories[0].key;
+    }
+
+    categories.forEach((category) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `category-chip${category.key === selectedCategoryKey ? ' active' : ''}`;
+        button.textContent = category.name;
+        button.addEventListener('click', () => {
+            selectedCategoryKey = category.key;
+            renderCategoryExplorer(category.key);
+        });
+        grid.appendChild(button);
+    });
+
+    const selectedCategory = categories.find((item) => item.key === selectedCategoryKey) || categories[0];
+    const products = getCategoryProducts(selectedCategory.key);
+
+    if (!products.length) {
+        panel.innerHTML = `<p class="category-empty">No hay productos activos en ${selectedCategory.name}.</p>`;
+        return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'category-products-list';
+
+    products.forEach((product, index) => {
+        const row = document.createElement('div');
+        row.className = 'category-product-row';
+
+        const info = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = product.nombre;
+        const price = document.createElement('div');
+        price.className = 'muted';
+        price.textContent = `$ ${Number(product.precio || 0).toLocaleString('es-CO')}`;
+        info.appendChild(title);
+        info.appendChild(price);
+
+        const categoryLabel = document.createElement('span');
+        categoryLabel.className = 'muted';
+        categoryLabel.textContent = selectedCategory.name;
+
+        const orderBtn = document.createElement('a');
+        const btnId = `btn-category-${selectedCategory.key}-${index + 1}`;
+        orderBtn.className = 'category-order-btn';
+        orderBtn.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${product.nombre}`)}`;
+        orderBtn.target = '_blank';
+        orderBtn.rel = 'noopener noreferrer';
+        orderBtn.textContent = 'Pedir';
+        orderBtn.addEventListener('click', () => {
+            trackProductInterest(product.nombre, btnId);
+        });
+
+        row.appendChild(info);
+        row.appendChild(categoryLabel);
+        row.appendChild(orderBtn);
+        list.appendChild(row);
+    });
+
+    panel.innerHTML = '';
+    panel.appendChild(list);
 }
 
 function ensureBrandBanner() {
@@ -769,6 +936,7 @@ async function renderPublicFeaturedFromAdmin() {
         latestProducts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         renderDynamicCategorySections();
         renderFeaturedCards(carousel);
+        renderCategoryExplorer();
     });
 
     categoriesUnsubscribe = firebaseDb.collection('categorias').onSnapshot((snapshot) => {
@@ -785,6 +953,7 @@ async function renderPublicFeaturedFromAdmin() {
         applyCategoryVisibility();
         renderDynamicCategorySections();
         renderFeaturedCards(carousel);
+        renderCategoryExplorer();
     });
 
     buttonsUnsubscribe = firebaseDb.collection('botones').onSnapshot((snapshot) => {
@@ -998,4 +1167,5 @@ document.addEventListener('DOMContentLoaded', () => {
         Object.values(DEFAULT_PUBLIC_BUTTONS).map((button) => [button.id, { ...button }])
     );
     renderConfiguredButtons();
+    renderCategoryExplorer();
 });
