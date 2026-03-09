@@ -198,7 +198,8 @@ const CATEGORY_BUTTON_PRIORITY = [
     'pepitos venezolanos',
     'pepitos',
     'perros y salchipapas',
-    'perros calientes y salchipapas'
+    'perros calientes y salchipapas',
+    'entradas'
 ];
 
 const FORCED_CATEGORY_BUTTONS = [
@@ -212,7 +213,8 @@ const CATEGORY_IMAGE_ALIASES = {
     pepitos: 'PEPITOS VENEZOLANOS.png',
     pepitosvenezolanos: 'PEPITOS VENEZOLANOS.png',
     perrosysalchipapas: 'PERROS CALIENTES Y SALCHIPAPAS.png',
-    perroscalientesysalchipapas: 'PERROS CALIENTES Y SALCHIPAPAS.png'
+    perroscalientesysalchipapas: 'PERROS CALIENTES Y SALCHIPAPAS.png',
+    entradas: 'entradas.png'
 };
 
 const SECTION_CATEGORY_KEYS = {
