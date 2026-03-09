@@ -57,18 +57,12 @@ let firebaseAuth;
 let productsState = [];
 let categoriesState = [];
 
+const ADMIN_USERNAME = 'roalburger';
+const ADMIN_PASSWORD = 'Roalburger*2019';
+
 async function ensureAdminAuth() {
-    if (!firebaseAuth) {
-        window.location.href = 'index.html';
-        throw new Error('No se pudo validar el acceso de administrador.');
-    }
-
-    if (firebaseAuth.currentUser) {
-        return;
-    }
-
-    const email = window.prompt('Acceso administrador: correo Firebase');
-    if (!email) {
+    const username = (window.prompt('Acceso administrador: usuario') || '').trim();
+    if (!username) {
         window.location.href = 'index.html';
         throw new Error('Acceso cancelado.');
     }
@@ -79,7 +73,10 @@ async function ensureAdminAuth() {
         throw new Error('Acceso cancelado.');
     }
 
-    await firebaseAuth.signInWithEmailAndPassword(email, password);
+    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+        window.location.href = 'index.html';
+        throw new Error('Credenciales invalidas.');
+    }
 }
 
 function setupCardCollapse() {
