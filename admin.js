@@ -340,6 +340,24 @@ function setupPreviewViewportControls() {
 
 function setupCardCollapse() {
     const buttons = document.querySelectorAll('.card-collapse-btn');
+
+    // Start with all panels collapsed so users explicitly expand what they need.
+    buttons.forEach((button) => {
+        const targetId = button.dataset.collapseTarget;
+        if (!targetId) {
+            return;
+        }
+
+        const body = document.getElementById(targetId);
+        if (!body) {
+            return;
+        }
+
+        body.classList.add('collapsed');
+        button.textContent = 'Desplegar';
+        button.setAttribute('aria-expanded', 'false');
+    });
+
     buttons.forEach((button) => {
         button.addEventListener('click', () => {
             const targetId = button.dataset.collapseTarget;
@@ -357,6 +375,45 @@ function setupCardCollapse() {
             button.textContent = expanded ? 'Retraer' : 'Desplegar';
             button.setAttribute('aria-expanded', String(expanded));
         });
+    });
+}
+
+function setupSectionSaveButtons() {
+    document.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const section = String(target.dataset.sectionSave || '').trim().toLowerCase();
+        if (!section) {
+            return;
+        }
+
+        if (section === 'inventario' && productForm) {
+            productForm.requestSubmit();
+            return;
+        }
+
+        if (section === 'categorias' && categoryForm) {
+            categoryForm.requestSubmit();
+            return;
+        }
+
+        if (section === 'configuracion' && brandingForm) {
+            brandingForm.requestSubmit();
+            return;
+        }
+
+        if (section === 'botones' && buttonConfigForm) {
+            buttonConfigForm.requestSubmit();
+            return;
+        }
+
+        if (section === 'metricas') {
+            await reloadDataAndRender();
+            showNotice('Metricas actualizadas.', 'ok');
+        }
     });
 }
 
@@ -2078,6 +2135,7 @@ async function initAdmin() {
         setupAdvancedSettingsPanel();
         setupPreviewViewportControls();
         setupCardCollapse();
+        setupSectionSaveButtons();
         resetButtonForm();
 
         await seedDataIfNeeded();

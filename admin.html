@@ -938,6 +938,55 @@
         .admin-card {
             border-radius: 14px;
             background: linear-gradient(160deg, rgba(255, 255, 255, 0.01), rgba(0, 0, 0, 0.2)), var(--admin-bg-elev);
+            padding: 14px;
+        }
+
+        .admin-header {
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+
+        .admin-form,
+        .inline-form {
+            gap: 8px;
+        }
+
+        .admin-field input,
+        .admin-field select {
+            padding: 9px 10px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .card-head {
+            margin-bottom: 8px;
+        }
+
+        .stack-list {
+            gap: 8px;
+        }
+
+        .list-item {
+            padding: 10px;
+            gap: 8px;
+        }
+
+        .section-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 8px;
+        }
+
+        .section-save-btn {
+            border: 1px solid rgba(255, 122, 26, 0.32);
+            background: rgba(255, 122, 26, 0.14);
+            color: #fff;
+            border-radius: 8px;
+            padding: 7px 11px;
+            cursor: pointer;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .card-head h2,
@@ -1186,9 +1235,13 @@
 
         <section class="admin-grid admin-dashboard">
             <div class="admin-tab-panel active" data-tab-panel="inventario">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" data-section-save="inventario">Guardar Inventario</button>
+                </div>
                 <article class="admin-card">
                     <div class="card-head">
                         <h2>Dashboard de Inventario</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-inventory-search" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-inventory-search">
                         <form class="inline-form" style="margin-bottom: 10px;">
@@ -1265,6 +1318,9 @@
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="categorias">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" data-section-save="categorias">Guardar Categorias</button>
+                </div>
                 <article class="admin-card">
                     <div class="card-head">
                         <h2>Categorias del Menu</h2>
@@ -1284,6 +1340,9 @@
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="configuracion">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" data-section-save="configuracion">Guardar Diseno</button>
+                </div>
                 <article class="admin-card">
                     <div class="card-head">
                         <h2>Configuracion de Marca</h2>
@@ -1394,6 +1453,9 @@
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="botones">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" data-section-save="botones">Guardar Botones</button>
+                </div>
                 <article class="admin-card">
                     <div class="card-head">
                         <h2>Botones del Sitio Publico</h2>
@@ -1487,6 +1549,9 @@
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="metricas">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" data-section-save="metricas">Actualizar Metricas</button>
+                </div>
                 <article class="admin-card">
                     <div class="card-head">
                         <h2>Metricas de Clics por Producto</h2>
