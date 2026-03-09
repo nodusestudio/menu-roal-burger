@@ -191,10 +191,10 @@ const LOCAL_PRODUCT_IMAGE_MAP = LOCAL_PRODUCT_IMAGE_FILES.reduce((acc, fileName)
     return acc;
 }, new Map());
 
-const CATEGORY_BUTTON_PRIORITY = ['burger premium', 'burger clasicas', 'burger clasica', 'pepitos'];
+const CATEGORY_BUTTON_PRIORITY = ['burger premium', 'burger clasicas', 'burger clasica', 'pepitos venezolanos', 'pepitos'];
 
 const FORCED_CATEGORY_BUTTONS = [
-    { key: 'pepitos', name: 'PEPITOS VENEZOLANOS' }
+    { key: 'pepitos venezolanos', name: 'PEPITOS VENEZOLANOS' }
 ];
 
 const CATEGORY_IMAGE_ALIASES = {
@@ -793,6 +793,35 @@ function getExplorerCategories() {
     });
 }
 
+function ensureForcedExplorerCategories(categories) {
+    const byKey = new Map(categories.map((item) => [normalizeCategoryKey(item.key), item]));
+
+    FORCED_CATEGORY_BUTTONS.forEach((item) => {
+        const key = normalizeCategoryKey(item.key);
+        const name = String(item.name || '').trim();
+        if (!key || !name) {
+            return;
+        }
+
+        byKey.set(key, { key, name });
+    });
+
+    const priorityIndex = new Map(CATEGORY_BUTTON_PRIORITY.map((item, index) => [normalizeCategoryKey(item), index]));
+
+    return Array.from(byKey.values()).sort((a, b) => {
+        const aKey = normalizeCategoryKey(a.key);
+        const bKey = normalizeCategoryKey(b.key);
+        const aPriority = priorityIndex.has(aKey) ? priorityIndex.get(aKey) : 999;
+        const bPriority = priorityIndex.has(bKey) ? priorityIndex.get(bKey) : 999;
+
+        if (aPriority !== bPriority) {
+            return aPriority - bPriority;
+        }
+
+        return a.name.localeCompare(b.name, 'es');
+    });
+}
+
 function getCategoryProducts(categoryKey) {
     return latestProducts
         .map((product) => {
@@ -830,7 +859,7 @@ function renderCategoryExplorer(nextKey) {
         return;
     }
 
-    const categories = getExplorerCategories();
+    const categories = ensureForcedExplorerCategories(getExplorerCategories());
     grid.innerHTML = '';
 
     if (!categories.length) {
