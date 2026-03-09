@@ -163,6 +163,12 @@ const notice = document.getElementById('adminNotice');
 const imageFileInput = document.getElementById('productImageFile');
 const totalClicksEl = document.getElementById('totalClicks');
 const topProductEl = document.getElementById('topProduct');
+const inventorySearchInput = document.getElementById('inventorySearchInput');
+const inventoryQuickList = document.getElementById('inventoryQuickList');
+const inventorySkeleton = document.getElementById('inventorySkeleton');
+const metricsChartList = document.getElementById('metricsChartList');
+const previewRefreshBtn = document.getElementById('previewRefreshBtn');
+const liveMenuPreview = document.getElementById('liveMenuPreview');
 
 const productEditModal = document.getElementById('productEditModal');
 const productEditForm = document.getElementById('productEditForm');
@@ -198,6 +204,8 @@ let categoriesState = [];
 let buttonsState = [];
 let brandingState = { ...defaultBranding };
 let editingCategoryContextId = null;
+let inventorySearchTerm = '';
+let productClicksState = [];
 
 function showNotice(text, type = 'ok') {
     if (!notice) {
@@ -687,6 +695,111 @@ function renderFeaturedProducts() {
 
 }
 
+function setInventoryLoading(isLoading) {
+    if (inventorySkeleton) {
+        inventorySkeleton.style.display = isLoading ? 'grid' : 'none';
+    }
+    if (inventoryQuickList) {
+        inventoryQuickList.style.display = isLoading ? 'none' : 'grid';
+    }
+}
+
+function renderInventoryQuickList() {
+    if (!inventoryQuickList) {
+        return;
+    }
+
+    inventoryQuickList.innerHTML = '';
+    const term = inventorySearchTerm.trim().toLowerCase();
+    const filtered = productsState.filter((product) => {
+        if (!term) {
+            return true;
+        }
+        return String(product.nombre || '').toLowerCase().includes(term);
+    });
+
+    if (!productsState.length) {
+        const empty = document.createElement('p');
+        empty.className = 'muted';
+        empty.textContent = 'No hay productos aun. Agrega el primero!';
+        inventoryQuickList.appendChild(empty);
+        return;
+    }
+
+    if (!filtered.length) {
+        const empty = document.createElement('p');
+        empty.className = 'muted';
+        empty.textContent = 'No se encontraron productos con ese nombre.';
+        inventoryQuickList.appendChild(empty);
+        return;
+    }
+
+    filtered.forEach((product) => {
+        const row = document.createElement('div');
+        row.className = 'list-item';
+
+        const stateClass = product.estado === 'active' ? 'visible' : 'hidden';
+        const stateText = product.estado === 'active' ? 'Activo' : 'Pausado';
+
+        row.innerHTML = `
+            <div class="product-main">
+                <img src="${product.image_url || 'logo.png'}" alt="${product.nombre}">
+                <span>${product.nombre}</span>
+            </div>
+            <div class="muted">$ ${Number(product.precio || 0).toLocaleString('es-CO')} - ${product.categoria || 'Sin categoria'}</div>
+            <span class="state-pill ${stateClass}">${stateText}</span>
+            <button class="mini-btn" data-action="quick-toggle-state" data-product-id="${product.id}">${product.estado === 'active' ? 'Pausar' : 'Activar'}</button>
+            <button class="mini-btn" data-action="quick-toggle-featured" data-product-id="${product.id}">${product.es_destacado ? 'Quitar destacado' : 'Destacar'}</button>
+        `;
+
+        inventoryQuickList.appendChild(row);
+    });
+}
+
+function renderMetricsChart() {
+    if (!metricsChartList) {
+        return;
+    }
+
+    metricsChartList.innerHTML = '';
+    if (!productClicksState.length) {
+        const empty = document.createElement('p');
+        empty.className = 'muted';
+        empty.textContent = 'Sin datos de clics por producto aun.';
+        metricsChartList.appendChild(empty);
+        return;
+    }
+
+    const maxValue = Math.max(...productClicksState.map((item) => item.clicks), 1);
+    productClicksState
+        .sort((a, b) => b.clicks - a.clicks)
+        .slice(0, 12)
+        .forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'metrics-row';
+
+            const label = document.createElement('span');
+            label.className = 'muted';
+            label.textContent = item.product;
+
+            const track = document.createElement('div');
+            track.className = 'metrics-bar-track';
+
+            const fill = document.createElement('div');
+            fill.className = 'metrics-bar-fill';
+            fill.style.width = `${Math.max(6, (item.clicks / maxValue) * 100)}%`;
+
+            const value = document.createElement('strong');
+            value.textContent = String(item.clicks);
+
+            track.appendChild(fill);
+            row.appendChild(label);
+            row.appendChild(track);
+            row.appendChild(value);
+            metricsChartList.appendChild(row);
+        });
+}
+
 function toggleFeaturedQuickForm(forceOpen) {
     if (!featuredQuickForm || !featuredQuickToggle) {
         return;
@@ -919,19 +1032,53 @@ async function syncStats() {
     }
 }
 
+async function fetchProductClickMetrics() {
+    try {
+        const snapshot = await firebaseDb.collection('estadisticas').get();
+        const parsed = [];
+
+        snapshot.docs.forEach((doc) => {
+            const data = doc.data() || {};
+            const metricName = String(data.metric || doc.id || '').toLowerCase();
+            const isProductMetric = metricName.includes('product') || metricName.includes('producto');
+            if (!isProductMetric) {
+                return;
+            }
+
+            const clicks = Number(data.value_number ?? data.clicks ?? 0);
+            if (!Number.isFinite(clicks) || clicks <= 0) {
+                return;
+            }
+
+            const product = String(data.value_text || data.product || data.product_name || metricName.replace(/[_-]/g, ' ')).trim();
+            parsed.push({ product: product || 'Producto', clicks });
+        });
+
+        productClicksState = parsed;
+    } catch (error) {
+        productClicksState = [];
+    }
+}
+
 async function reloadDataAndRender() {
+    setInventoryLoading(true);
+
     await Promise.all([
         fetchCategories(),
         fetchProducts(),
         fetchButtons(),
-        fetchBranding()
+        fetchBranding(),
+        fetchProductClickMetrics()
     ]);
 
     renderCategories();
     renderFeaturedProducts();
+    renderInventoryQuickList();
     renderButtonsList();
     renderBrandingForm();
+    renderMetricsChart();
     await syncStats();
+    setInventoryLoading(false);
 }
 
 productForm.addEventListener('submit', async (event) => {
@@ -1056,6 +1203,62 @@ featuredQuickForm.addEventListener('submit', async (event) => {
 if (featuredQuickToggle) {
     featuredQuickToggle.addEventListener('click', () => {
         toggleFeaturedQuickForm();
+    });
+}
+
+if (inventorySearchInput) {
+    inventorySearchInput.addEventListener('input', (event) => {
+        inventorySearchTerm = String(event.target.value || '');
+        renderInventoryQuickList();
+    });
+}
+
+if (inventoryQuickList) {
+    inventoryQuickList.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const action = target.dataset.action;
+        const productId = target.dataset.productId;
+        if (!action || !productId) {
+            return;
+        }
+
+        const product = productsState.find((item) => item.id === productId);
+        if (!product) {
+            return;
+        }
+
+        try {
+            if (action === 'quick-toggle-state') {
+                const estado = product.estado === 'active' ? 'paused' : 'active';
+                await firebaseDb.collection('productos').doc(productId).update({
+                    estado,
+                    updated_at: firestoreNow()
+                });
+            }
+
+            if (action === 'quick-toggle-featured') {
+                const featured = !product.es_destacado;
+                await firebaseDb.collection('productos').doc(productId).update({
+                    es_destacado: featured,
+                    updated_at: firestoreNow()
+                });
+            }
+
+            await reloadDataAndRender();
+        } catch (error) {
+            showNotice(`No se pudo actualizar el producto: ${error.message || 'Error inesperado.'}`, 'error');
+        }
+    });
+}
+
+if (previewRefreshBtn && liveMenuPreview) {
+    previewRefreshBtn.addEventListener('click', () => {
+        const separator = liveMenuPreview.src.includes('?') ? '&' : '?';
+        liveMenuPreview.src = `${liveMenuPreview.src.split('?')[0]}${separator}t=${Date.now()}`;
     });
 }
 
@@ -1567,6 +1770,7 @@ async function initAdmin() {
         await seedDataIfNeeded();
         await reloadDataAndRender();
     } catch (error) {
+        setInventoryLoading(false);
         document.body.classList.add('admin-locked');
         document.body.classList.remove('admin-unlocked');
         showNotice(`Error de conexion con Firebase: ${error.message || 'revisa la configuracion.'}`, 'error');
