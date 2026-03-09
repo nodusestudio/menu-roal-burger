@@ -191,7 +191,15 @@ const LOCAL_PRODUCT_IMAGE_MAP = LOCAL_PRODUCT_IMAGE_FILES.reduce((acc, fileName)
     return acc;
 }, new Map());
 
-const CATEGORY_BUTTON_PRIORITY = ['burger premium', 'burger clasicas', 'burger clasica', 'pepitos venezolanos', 'pepitos'];
+const CATEGORY_BUTTON_PRIORITY = [
+    'burger premium',
+    'burger clasicas',
+    'burger clasica',
+    'pepitos venezolanos',
+    'pepitos',
+    'perros y salchipapas',
+    'perros calientes y salchipapas'
+];
 
 const FORCED_CATEGORY_BUTTONS = [
     { key: 'pepitos venezolanos', name: 'PEPITOS VENEZOLANOS' }
@@ -202,7 +210,9 @@ const CATEGORY_IMAGE_ALIASES = {
     burgerclasicas: 'BURGER CLASICAS.png',
     burgerpremium: 'BURGER PREMIUM.png',
     pepitos: 'PEPITOS VENEZOLANOS.png',
-    pepitosvenezolanos: 'PEPITOS VENEZOLANOS.png'
+    pepitosvenezolanos: 'PEPITOS VENEZOLANOS.png',
+    perrosysalchipapas: 'PERROS CALIENTES Y SALCHIPAPAS.png',
+    perroscalientesysalchipapas: 'PERROS CALIENTES Y SALCHIPAPAS.png'
 };
 
 const SECTION_CATEGORY_KEYS = {
