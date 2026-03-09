@@ -459,6 +459,7 @@ featuredForm.addEventListener('submit', async (event) => {
     try {
         await firebaseDb.collection('productos').doc(selectedId).update({
             es_destacado: true,
+            estado: 'active',
             updated_at: firestoreNow()
         });
 

@@ -86,6 +86,7 @@ let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
 let latestProducts = [];
 let activeCategories = null;
+let activeCategoryMeta = [];
 
 const SECTION_CATEGORY_KEYS = {
     'menu-burger-premium': 'burger premium',
@@ -138,6 +139,102 @@ function applyCategoryVisibility() {
             }
         }
     }
+}
+
+function renderDynamicCategorySections() {
+    const container = document.querySelector('.menu-images-container');
+    if (!container || !activeCategories) {
+        return;
+    }
+
+    container.querySelectorAll('.dynamic-category-section').forEach((node) => node.remove());
+
+    const staticCategoryKeys = new Set(
+        Object.values(SECTION_CATEGORY_KEYS).map((value) => normalizeCategoryKey(value))
+    );
+
+    const grouped = new Map();
+    latestProducts.forEach((product) => {
+        const nombre = product.nombre || product.name || 'Producto';
+        const precio = Number(product.precio ?? product.price ?? 0);
+        const categoria = product.categoria || product.category || '';
+        const key = normalizeCategoryKey(categoria);
+        if (!key || !activeCategories.has(key) || staticCategoryKeys.has(key)) {
+            return;
+        }
+
+        if (!grouped.has(key)) {
+            grouped.set(key, { displayName: categoria, products: [] });
+        }
+
+        grouped.get(key).products.push({
+            nombre,
+            precio,
+            image_url: product.image_url || 'logo.png',
+            estado: product.estado || (product.paused ? 'paused' : 'active')
+        });
+    });
+
+    activeCategoryMeta
+        .filter((category) => !staticCategoryKeys.has(category.key))
+        .forEach((category) => {
+            const data = grouped.get(category.key) || { displayName: category.name, products: [] };
+            const section = document.createElement('section');
+            section.className = 'menu-section dynamic-category-section';
+            section.dataset.sectionName = category.name;
+
+            const title = document.createElement('h3');
+            title.className = 'menu-section-title';
+            title.textContent = category.name;
+            section.appendChild(title);
+
+            if (!data.products.length) {
+                const empty = document.createElement('p');
+                empty.textContent = 'No hay productos cargados en esta categoria.';
+                empty.style.color = '#b6b6b6';
+                empty.style.fontSize = '0.95rem';
+                section.appendChild(empty);
+            } else {
+                data.products
+                    .filter((product) => product.estado !== 'paused')
+                    .forEach((product) => {
+                        const card = document.createElement('div');
+                        card.style.display = 'grid';
+                        card.style.gridTemplateColumns = '68px 1fr auto';
+                        card.style.gap = '10px';
+                        card.style.alignItems = 'center';
+                        card.style.padding = '10px';
+                        card.style.border = '1px solid rgba(255,255,255,0.12)';
+                        card.style.borderRadius = '10px';
+                        card.style.marginBottom = '10px';
+                        card.style.background = 'rgba(0,0,0,0.22)';
+
+                        const img = document.createElement('img');
+                        img.src = product.image_url;
+                        img.alt = product.nombre;
+                        img.style.width = '68px';
+                        img.style.height = '68px';
+                        img.style.objectFit = 'cover';
+                        img.style.borderRadius = '8px';
+
+                        const name = document.createElement('div');
+                        name.textContent = product.nombre;
+                        name.style.fontWeight = '600';
+
+                        const price = document.createElement('div');
+                        price.textContent = `$ ${Number(product.precio).toLocaleString('es-CO')}`;
+                        price.style.color = '#ffb27a';
+                        price.style.fontWeight = '700';
+
+                        card.appendChild(img);
+                        card.appendChild(name);
+                        card.appendChild(price);
+                        section.appendChild(card);
+                    });
+            }
+
+            container.appendChild(section);
+        });
 }
 
 function renderFeaturedCards(carousel) {
@@ -230,17 +327,23 @@ async function renderPublicFeaturedFromAdmin() {
 
     featuredProductsUnsubscribe = firebaseDb.collection('productos').onSnapshot((snapshot) => {
         latestProducts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        renderDynamicCategorySections();
         renderFeaturedCards(carousel);
     });
 
     categoriesUnsubscribe = firebaseDb.collection('categorias').onSnapshot((snapshot) => {
-        activeCategories = new Set(
-            snapshot.docs
-                .map((doc) => doc.data())
-                .filter((category) => category.active !== false)
-                .map((category) => normalizeCategoryKey(category.name))
-        );
+        const active = snapshot.docs
+            .map((doc) => doc.data())
+            .filter((category) => category.active !== false)
+            .map((category) => ({
+                name: category.name,
+                key: normalizeCategoryKey(category.name)
+            }));
+
+        activeCategoryMeta = active;
+        activeCategories = new Set(active.map((item) => item.key));
         applyCategoryVisibility();
+        renderDynamicCategorySections();
         renderFeaturedCards(carousel);
     });
 }
