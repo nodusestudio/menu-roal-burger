@@ -265,6 +265,7 @@ const SECTION_CATEGORY_KEYS = {
 };
 
 const HIDDEN_PRODUCT_KEYS = new Set(['de la casa']);
+const HIDDEN_PRODUCT_NAME_PARTS = ['de la casa'];
 
 function normalizeCategoryKey(value) {
     return String(value || '')
@@ -280,7 +281,15 @@ function normalizeAssetLookup(value) {
 
 function shouldHideProductByName(name) {
     const key = normalizeCategoryKey(name);
-    return key ? HIDDEN_PRODUCT_KEYS.has(key) : false;
+    if (!key) {
+        return false;
+    }
+
+    if (HIDDEN_PRODUCT_KEYS.has(key)) {
+        return true;
+    }
+
+    return HIDDEN_PRODUCT_NAME_PARTS.some((part) => key.includes(part));
 }
 
 function resolveProductImage(product) {
