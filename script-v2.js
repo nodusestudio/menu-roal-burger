@@ -67,7 +67,6 @@ let activeCategoryMeta = [];
 let allCategoryMeta = [];
 let buttonConfigsMap = new Map();
 let selectedCategoryKey = '';
-let featuredCarouselAutoPlayTimer = null;
 let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
 let featuredCarouselAnimationFrame = null;
@@ -602,9 +601,11 @@ function renderFeaturedCards(carousel) {
         featuredItems.push(seedItems[featuredItems.length % seedItems.length]);
     }
 
+    const loopItems = [...featuredItems, ...featuredItems];
+
     carousel.innerHTML = '';
 
-    featuredItems.forEach((item, index) => {
+    loopItems.forEach((item, index) => {
         const safeName = String(item.nombre || 'Producto').trim() || 'Producto';
         const buttonId = `btn-featured-${index + 1}`;
 
@@ -636,6 +637,8 @@ function renderFeaturedCards(carousel) {
         carousel.appendChild(card);
     });
 
+    carousel.scrollLeft = 0;
+
     setupFeaturedCarouselAutoplay(carousel);
 }
 
@@ -643,11 +646,6 @@ function stopFeaturedCarouselAutoplay() {
     const carousel = document.querySelector('.featured-section .mobile-carousel');
     if (carousel) {
         carousel.classList.remove('is-auto-playing');
-    }
-
-    if (featuredCarouselAutoPlayTimer) {
-        clearInterval(featuredCarouselAutoPlayTimer);
-        featuredCarouselAutoPlayTimer = null;
     }
 
     if (featuredCarouselAnimationFrame) {
@@ -689,8 +687,8 @@ function startFeaturedCarouselAutoplay(carousel) {
             return;
         }
 
-        const maxScrollLeft = Math.max(0, carousel.scrollWidth - carousel.clientWidth);
-        if (!maxScrollLeft) {
+        const loopWidth = carousel.scrollWidth / 2;
+        if (!loopWidth || loopWidth <= carousel.clientWidth) {
             featuredCarouselAnimationFrame = requestAnimationFrame(animate);
             return;
         }
@@ -703,8 +701,8 @@ function startFeaturedCarouselAutoplay(carousel) {
         featuredCarouselLastTimestamp = timestamp;
 
         const next = carousel.scrollLeft + (speedPxPerSecond * deltaSeconds);
-        if (next >= maxScrollLeft - 1) {
-            carousel.scrollLeft = 0;
+        if (next >= loopWidth) {
+            carousel.scrollLeft = next - loopWidth;
         } else {
             carousel.scrollLeft = next;
         }
