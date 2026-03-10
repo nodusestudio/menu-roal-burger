@@ -1103,7 +1103,7 @@ function getCategoryProducts(category) {
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 }
 
-function renderCategoryExplorer(nextKey) {
+function renderCategoryExplorer(nextKey, options = {}) {
     const grid = document.getElementById('categoryGrid');
     const panel = document.getElementById('categoryProductsPanel');
     if (!grid || !panel) {
@@ -1149,7 +1149,7 @@ function renderCategoryExplorer(nextKey) {
         button.appendChild(label);
         button.addEventListener('click', () => {
             selectedCategoryKey = category.key;
-            renderCategoryExplorer(category.key);
+            renderCategoryExplorer(category.key, { fromUserClick: true });
         });
         grid.appendChild(button);
     });
@@ -1180,6 +1180,14 @@ function renderCategoryExplorer(nextKey) {
     if (!products.length || shouldHideCategoryList(selectedCategory)) {
         panel.innerHTML = '';
         panel.appendChild(heroWrap);
+
+        if (options.fromUserClick) {
+            panel.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            panel.classList.remove('focus-highlight');
+            void panel.offsetWidth;
+            panel.classList.add('focus-highlight');
+        }
+
         return;
     }
 
@@ -1229,6 +1237,28 @@ function renderCategoryExplorer(nextKey) {
     panel.innerHTML = '';
     panel.appendChild(heroWrap);
     panel.appendChild(list);
+
+    if (options.fromUserClick) {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        panel.classList.remove('focus-highlight');
+        void panel.offsetWidth;
+        panel.classList.add('focus-highlight');
+    }
+}
+
+function focusMenuSection(targetSection, targetId) {
+    if (!targetSection) {
+        return;
+    }
+
+    const sectionName = targetSection.dataset.sectionName || targetSection.querySelector('.menu-section-title')?.textContent?.trim() || 'PORTADA';
+    updateDynamicWhatsAppLink(sectionName);
+    setActiveMenuNavLink(targetId);
+
+    targetSection.classList.remove('focus-highlight');
+    void targetSection.offsetWidth;
+    targetSection.classList.add('focus-highlight');
+    targetSection.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 }
 
 function ensureBrandBanner() {
@@ -1486,12 +1516,11 @@ function setupMenuNavigation() {
                 return;
             }
 
-            const sectionName = targetSection.dataset.sectionName || targetSection.querySelector('.menu-section-title')?.textContent?.trim() || 'PORTADA';
-            updateDynamicWhatsAppLink(sectionName);
-            setActiveMenuNavLink(targetId);
+            link.classList.remove('click-feedback');
+            void link.offsetWidth;
+            link.classList.add('click-feedback');
             closeDrawerMenu();
-
-            targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            focusMenuSection(targetSection, targetId);
         });
     });
 
