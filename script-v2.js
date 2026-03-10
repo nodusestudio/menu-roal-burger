@@ -268,7 +268,7 @@ const SECTION_CATEGORY_KEYS = {
     'menu-combos-temporada': 'combos'
 };
 
-const HIDDEN_PRODUCT_KEYS = new Set(['de la casa', 'plus', 'burger plus']);
+const HIDDEN_PRODUCT_KEYS = new Set(['de la casa', 'plus', 'burger plus', 'empanadas', 'empanada']);
 const HIDDEN_PRODUCT_NAME_PARTS = ['de la casa'];
 
 function normalizeCategoryKey(value) {
@@ -560,7 +560,8 @@ function renderDynamicCategorySections() {
 function renderFeaturedCards(carousel) {
     const fixedFeaturedCards = [
         { nombre: 'COMBO DE LA CASA', image_url: 'DE LA CASA.jpeg' },
-        { nombre: 'BURGER PLUS', image_url: 'PLUS.png' }
+        { nombre: 'BURGER PLUS', image_url: 'PLUS.png' },
+        { nombre: 'EMPANADAS', image_url: 'empanadas.png' }
     ];
 
     const featuredProducts = latestProducts
