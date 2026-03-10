@@ -559,6 +559,61 @@
             background: linear-gradient(90deg, #ff5722, #ff8a65);
         }
 
+        .metrics-subtitle {
+            margin-top: 12px;
+            margin-bottom: 8px;
+            color: #d3dcf1;
+            font-size: 0.82rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .stats-grid.metrics-kpi-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .metrics-insights-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .metrics-insight-card {
+            border-radius: 10px;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+        }
+
+        .metrics-insight-card h3 {
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.95rem;
+            letter-spacing: 0.6px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .metrics-mini-list {
+            display: grid;
+            gap: 8px;
+        }
+
+        .metrics-mini-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+            color: #d6deef;
+            font-size: 0.86rem;
+        }
+
+        .metrics-mini-row strong {
+            color: #fff;
+            font-family: 'Oswald', sans-serif;
+            letter-spacing: 0.5px;
+        }
+
         .admin-accordion {
             display: flex;
             gap: 10px;
@@ -1164,6 +1219,10 @@
                 grid-template-columns: 1fr;
             }
 
+            .metrics-insights-grid {
+                grid-template-columns: 1fr;
+            }
+
             .admin-header {
                 flex-direction: column;
                 align-items: flex-start;
@@ -1558,7 +1617,7 @@
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-stats" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-stats">
-                    <div class="stats-grid">
+                    <div class="stats-grid metrics-kpi-grid">
                         <div class="stat-box">
                             <div class="stat-label">Clics Totales</div>
                             <div class="stat-value" id="totalClicks">--</div>
@@ -1567,8 +1626,47 @@
                             <div class="stat-label">Producto Estrella</div>
                             <div class="stat-value" id="topProduct">--</div>
                         </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Productos Activos</div>
+                            <div class="stat-value" id="metricActiveProducts">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Productos Pausados</div>
+                            <div class="stat-value" id="metricPausedProducts">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Destacados Activos</div>
+                            <div class="stat-value" id="metricFeaturedProducts">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Categorias Activas</div>
+                            <div class="stat-value" id="metricActiveCategories">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Botones Visibles</div>
+                            <div class="stat-value" id="metricVisibleButtons">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Precio Promedio</div>
+                            <div class="stat-value" id="metricAveragePrice">--</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Clics WhatsApp</div>
+                            <div class="stat-value" id="metricWhatsappClicks">--</div>
+                        </div>
                     </div>
+                    <div class="metrics-subtitle">Interes por producto</div>
                     <div id="metricsChartList" class="metrics-chart-list" style="margin-top: 12px;"></div>
+                    <div class="metrics-insights-grid">
+                        <div class="metrics-insight-card">
+                            <h3>Categorias con mas interes</h3>
+                            <div id="metricsCategoryList" class="metrics-mini-list"></div>
+                        </div>
+                        <div class="metrics-insight-card">
+                            <h3>Indicadores Operativos</h3>
+                            <div id="metricsInsightsList" class="metrics-mini-list"></div>
+                        </div>
+                    </div>
                     </div>
                 </article>
             </div>

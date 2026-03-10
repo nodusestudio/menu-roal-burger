@@ -178,6 +178,15 @@ const inventorySearchInput = document.getElementById('inventorySearchInput');
 const inventoryQuickList = document.getElementById('inventoryQuickList');
 const inventorySkeleton = document.getElementById('inventorySkeleton');
 const metricsChartList = document.getElementById('metricsChartList');
+const metricsCategoryList = document.getElementById('metricsCategoryList');
+const metricsInsightsList = document.getElementById('metricsInsightsList');
+const metricActiveProductsEl = document.getElementById('metricActiveProducts');
+const metricPausedProductsEl = document.getElementById('metricPausedProducts');
+const metricFeaturedProductsEl = document.getElementById('metricFeaturedProducts');
+const metricActiveCategoriesEl = document.getElementById('metricActiveCategories');
+const metricVisibleButtonsEl = document.getElementById('metricVisibleButtons');
+const metricAveragePriceEl = document.getElementById('metricAveragePrice');
+const metricWhatsappClicksEl = document.getElementById('metricWhatsappClicks');
 const previewRefreshBtn = document.getElementById('previewRefreshBtn');
 const liveMenuPreview = document.getElementById('liveMenuPreview');
 const previewViewportControls = document.getElementById('previewViewportControls');
@@ -231,6 +240,13 @@ let productClicksState = [];
 let inventoryCategoryFilter = 'all';
 let liveSubscriptions = [];
 let previewRefreshTimer = null;
+let metricsEventsState = {
+    total: 0,
+    whatsapp: 0,
+    menu: 0,
+    social: 0,
+    products: 0
+};
 
 function showNotice(text, type = 'ok') {
     if (!notice) {
@@ -975,6 +991,125 @@ function renderMetricsChart() {
         });
 }
 
+function formatMoney(value) {
+    return `$ ${Number(value || 0).toLocaleString('es-CO')}`;
+}
+
+function getMatchedProductForMetric(metricProductName) {
+    const metricKey = normalizeCategoryKey(metricProductName);
+    if (!metricKey) {
+        return null;
+    }
+
+    const exact = productsState.find((product) => normalizeCategoryKey(product.nombre) === metricKey);
+    if (exact) {
+        return exact;
+    }
+
+    return productsState.find((product) => {
+        const productKey = normalizeCategoryKey(product.nombre);
+        return productKey.includes(metricKey) || metricKey.includes(productKey);
+    }) || null;
+}
+
+function renderMiniRows(container, rows, emptyText) {
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = '';
+    if (!rows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'muted';
+        empty.textContent = emptyText;
+        container.appendChild(empty);
+        return;
+    }
+
+    rows.forEach((rowData) => {
+        const row = document.createElement('div');
+        row.className = 'metrics-mini-row';
+
+        const label = document.createElement('span');
+        label.textContent = rowData.label;
+
+        const value = document.createElement('strong');
+        value.textContent = rowData.value;
+
+        row.appendChild(label);
+        row.appendChild(value);
+        container.appendChild(row);
+    });
+}
+
+function renderMetricsOverview() {
+    const totalProducts = productsState.length;
+    const activeProducts = productsState.filter((product) => product.estado === 'active').length;
+    const pausedProducts = Math.max(0, totalProducts - activeProducts);
+    const featuredProducts = productsState.filter((product) => product.es_destacado && product.estado === 'active').length;
+    const activeCategories = categoriesState.filter((category) => category.active !== false).length;
+    const visibleButtons = buttonsState.filter((button) => button.visible !== false && button.estado === 'active').length;
+
+    const pricedProducts = productsState.filter((product) => Number(product.precio) > 0);
+    const averagePrice = pricedProducts.length
+        ? pricedProducts.reduce((sum, product) => sum + Number(product.precio || 0), 0) / pricedProducts.length
+        : 0;
+
+    if (metricActiveProductsEl) {
+        metricActiveProductsEl.textContent = Number(activeProducts).toLocaleString('es-CO');
+    }
+    if (metricPausedProductsEl) {
+        metricPausedProductsEl.textContent = Number(pausedProducts).toLocaleString('es-CO');
+    }
+    if (metricFeaturedProductsEl) {
+        metricFeaturedProductsEl.textContent = Number(featuredProducts).toLocaleString('es-CO');
+    }
+    if (metricActiveCategoriesEl) {
+        metricActiveCategoriesEl.textContent = Number(activeCategories).toLocaleString('es-CO');
+    }
+    if (metricVisibleButtonsEl) {
+        metricVisibleButtonsEl.textContent = Number(visibleButtons).toLocaleString('es-CO');
+    }
+    if (metricAveragePriceEl) {
+        metricAveragePriceEl.textContent = averagePrice > 0 ? formatMoney(Math.round(averagePrice)) : '--';
+    }
+    if (metricWhatsappClicksEl) {
+        metricWhatsappClicksEl.textContent = Number(metricsEventsState.whatsapp || 0).toLocaleString('es-CO');
+    }
+
+    const clicksByCategory = new Map();
+    productClicksState.forEach((item) => {
+        const matched = getMatchedProductForMetric(item.product);
+        const categoryName = matched?.categoria || 'Sin categoria';
+        const key = normalizeCategoryKey(categoryName) || 'sin-categoria';
+        const current = clicksByCategory.get(key) || { name: categoryName, clicks: 0 };
+        current.clicks += Number(item.clicks || 0);
+        clicksByCategory.set(key, current);
+    });
+
+    const categoryRows = Array.from(clicksByCategory.values())
+        .sort((a, b) => b.clicks - a.clicks)
+        .slice(0, 6)
+        .map((item) => ({
+            label: item.name,
+            value: Number(item.clicks).toLocaleString('es-CO')
+        }));
+
+    renderMiniRows(metricsCategoryList, categoryRows, 'Sin suficiente data por categoria.');
+
+    const productsWithClicks = new Set(productClicksState.map((item) => normalizeCategoryKey(item.product))).size;
+    const activeShare = totalProducts > 0 ? Math.round((activeProducts / totalProducts) * 100) : 0;
+    const featuredShare = activeProducts > 0 ? Math.round((featuredProducts / activeProducts) * 100) : 0;
+    const insights = [
+        { label: 'Catalogo activo', value: `${activeShare}%` },
+        { label: 'Destacados sobre activos', value: `${featuredShare}%` },
+        { label: 'Productos con data de clics', value: Number(productsWithClicks).toLocaleString('es-CO') },
+        { label: 'Eventos medidos', value: Number(metricsEventsState.total || 0).toLocaleString('es-CO') }
+    ];
+
+    renderMiniRows(metricsInsightsList, insights, 'Sin indicadores disponibles por ahora.');
+}
+
 function refreshLivePreview() {
     if (!liveMenuPreview) {
         return;
@@ -1339,14 +1474,19 @@ async function syncStats() {
             getStatDocument('top_product')
         ]);
 
+        const derivedTotal = productClicksState.reduce((sum, item) => sum + Number(item.clicks || 0), 0);
+        const topFromClicks = [...productClicksState].sort((a, b) => b.clicks - a.clicks)[0];
+
         totalClicksEl.textContent = clicksData && clicksData.value_number != null
             ? Number(clicksData.value_number).toLocaleString('es-CO')
-            : '--';
+            : (derivedTotal > 0 ? Number(derivedTotal).toLocaleString('es-CO') : '--');
 
-        topProductEl.textContent = (topProductData && topProductData.value_text) || '--';
+        topProductEl.textContent = (topProductData && topProductData.value_text) || topFromClicks?.product || '--';
     } catch (error) {
-        totalClicksEl.textContent = '--';
-        topProductEl.textContent = '--';
+        const derivedTotal = productClicksState.reduce((sum, item) => sum + Number(item.clicks || 0), 0);
+        const topFromClicks = [...productClicksState].sort((a, b) => b.clicks - a.clicks)[0];
+        totalClicksEl.textContent = derivedTotal > 0 ? Number(derivedTotal).toLocaleString('es-CO') : '--';
+        topProductEl.textContent = topFromClicks?.product || '--';
     }
 }
 
@@ -1354,27 +1494,52 @@ async function fetchProductClickMetrics() {
     try {
         const snapshot = await firebaseDb.collection('estadisticas').get();
         const parsed = [];
+        const events = {
+            total: 0,
+            whatsapp: 0,
+            menu: 0,
+            social: 0,
+            products: 0
+        };
 
         snapshot.docs.forEach((doc) => {
             const data = doc.data() || {};
             const metricName = String(data.metric || doc.id || '').toLowerCase();
+            const metricValue = Number(data.value_number ?? data.clicks ?? 0);
+            if (Number.isFinite(metricValue) && metricValue > 0) {
+                events.total += metricValue;
+            }
+
+            if (metricName.includes('whatsapp')) {
+                events.whatsapp += Number.isFinite(metricValue) ? Math.max(0, metricValue) : 0;
+            }
+            if (metricName.includes('menu')) {
+                events.menu += Number.isFinite(metricValue) ? Math.max(0, metricValue) : 0;
+            }
+            if (metricName.includes('instagram') || metricName.includes('facebook') || metricName.includes('tiktok') || metricName.includes('social')) {
+                events.social += Number.isFinite(metricValue) ? Math.max(0, metricValue) : 0;
+            }
+
             const isProductMetric = metricName.includes('product') || metricName.includes('producto');
             if (!isProductMetric) {
                 return;
             }
 
-            const clicks = Number(data.value_number ?? data.clicks ?? 0);
+            const clicks = metricValue;
             if (!Number.isFinite(clicks) || clicks <= 0) {
                 return;
             }
 
             const product = String(data.value_text || data.product || data.product_name || metricName.replace(/[_-]/g, ' ')).trim();
             parsed.push({ product: product || 'Producto', clicks });
+            events.products += clicks;
         });
 
         productClicksState = parsed;
+        metricsEventsState = events;
     } catch (error) {
         productClicksState = [];
+        metricsEventsState = { total: 0, whatsapp: 0, menu: 0, social: 0, products: 0 };
     }
 }
 
@@ -1396,6 +1561,7 @@ async function reloadDataAndRender() {
     renderBrandingForm();
     renderMetricsChart();
     await syncStats();
+    renderMetricsOverview();
     setInventoryLoading(false);
 }
 
