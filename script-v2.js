@@ -67,6 +67,9 @@ let activeCategoryMeta = [];
 let allCategoryMeta = [];
 let buttonConfigsMap = new Map();
 let selectedCategoryKey = '';
+let featuredCarouselAutoPlayTimer = null;
+let featuredCarouselResumeTimer = null;
+let featuredCarouselUserPaused = false;
 
 const DEFAULT_PUBLIC_BUTTONS = {
     'btn-menu': {
@@ -648,6 +651,131 @@ function renderFeaturedCards(carousel) {
         card.appendChild(button);
         carousel.appendChild(card);
     });
+
+    setupFeaturedCarouselAutoplay(carousel);
+}
+
+function stopFeaturedCarouselAutoplay() {
+    if (featuredCarouselAutoPlayTimer) {
+        clearInterval(featuredCarouselAutoPlayTimer);
+        featuredCarouselAutoPlayTimer = null;
+    }
+}
+
+function updateFeaturedCarouselToggleLabel() {
+    const toggle = document.getElementById('featuredCarouselToggle');
+    if (!toggle) {
+        return;
+    }
+
+    toggle.textContent = featuredCarouselUserPaused ? 'Reanudar carrusel' : 'Pausar carrusel';
+    toggle.setAttribute('aria-pressed', featuredCarouselUserPaused ? 'true' : 'false');
+}
+
+function startFeaturedCarouselAutoplay(carousel) {
+    if (!carousel || featuredCarouselUserPaused) {
+        return;
+    }
+
+    const cards = carousel.querySelectorAll('.product-card-mobile');
+    if (!cards.length) {
+        return;
+    }
+
+    stopFeaturedCarouselAutoplay();
+    featuredCarouselAutoPlayTimer = setInterval(() => {
+        if (featuredCarouselUserPaused) {
+            return;
+        }
+
+        const maxScrollLeft = Math.max(0, carousel.scrollWidth - carousel.clientWidth);
+        if (!maxScrollLeft) {
+            return;
+        }
+
+        const firstCard = cards[0];
+        const step = Math.max(180, Math.round(firstCard?.offsetWidth || 220));
+        const next = carousel.scrollLeft + step;
+
+        if (next >= maxScrollLeft - 8) {
+            carousel.scrollTo({ left: 0, behavior: 'smooth' });
+            return;
+        }
+
+        carousel.scrollTo({ left: next, behavior: 'smooth' });
+    }, 2600);
+}
+
+function setupFeaturedCarouselAutoplay(carousel) {
+    const section = carousel?.closest('.featured-section');
+    if (!section) {
+        return;
+    }
+
+    let controls = section.querySelector('.featured-carousel-controls');
+    if (!controls) {
+        controls = document.createElement('div');
+        controls.className = 'featured-carousel-controls';
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.id = 'featuredCarouselToggle';
+        toggle.className = 'featured-carousel-toggle';
+        toggle.addEventListener('click', () => {
+            featuredCarouselUserPaused = !featuredCarouselUserPaused;
+            updateFeaturedCarouselToggleLabel();
+            if (featuredCarouselUserPaused) {
+                stopFeaturedCarouselAutoplay();
+                return;
+            }
+            startFeaturedCarouselAutoplay(carousel);
+        });
+
+        controls.appendChild(toggle);
+        carousel.insertAdjacentElement('afterend', controls);
+    }
+
+    updateFeaturedCarouselToggleLabel();
+
+    if (carousel.dataset.autoplayBound !== 'true') {
+        carousel.addEventListener('pointerenter', () => {
+            stopFeaturedCarouselAutoplay();
+        });
+
+        carousel.addEventListener('pointerleave', () => {
+            if (featuredCarouselUserPaused) {
+                return;
+            }
+            stopFeaturedCarouselAutoplay();
+            featuredCarouselResumeTimer = setTimeout(() => {
+                startFeaturedCarouselAutoplay(carousel);
+            }, 900);
+        });
+
+        carousel.addEventListener('touchstart', () => {
+            stopFeaturedCarouselAutoplay();
+            if (featuredCarouselResumeTimer) {
+                clearTimeout(featuredCarouselResumeTimer);
+                featuredCarouselResumeTimer = null;
+            }
+        }, { passive: true });
+
+        carousel.addEventListener('touchend', () => {
+            if (featuredCarouselUserPaused) {
+                return;
+            }
+            if (featuredCarouselResumeTimer) {
+                clearTimeout(featuredCarouselResumeTimer);
+            }
+            featuredCarouselResumeTimer = setTimeout(() => {
+                startFeaturedCarouselAutoplay(carousel);
+            }, 1200);
+        }, { passive: true });
+
+        carousel.dataset.autoplayBound = 'true';
+    }
+
+    startFeaturedCarouselAutoplay(carousel);
 }
 
 function getButtonConfigByPlatform(platform) {
