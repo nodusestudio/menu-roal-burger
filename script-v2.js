@@ -601,7 +601,7 @@ function renderFeaturedCards(carousel) {
         featuredItems.push(seedItems[featuredItems.length % seedItems.length]);
     }
 
-    const loopItems = [...featuredItems, ...featuredItems];
+    const loopItems = [...featuredItems, ...featuredItems, ...featuredItems];
 
     carousel.innerHTML = '';
 
@@ -637,7 +637,7 @@ function renderFeaturedCards(carousel) {
         carousel.appendChild(card);
     });
 
-    carousel.scrollLeft = 0;
+    carousel.scrollLeft = Math.floor(carousel.scrollWidth / 3);
 
     setupFeaturedCarouselAutoplay(carousel);
 }
@@ -679,7 +679,8 @@ function startFeaturedCarouselAutoplay(carousel) {
     stopFeaturedCarouselAutoplay();
     carousel.classList.add('is-auto-playing');
 
-    const speedPxPerSecond = 34;
+    const isMobileViewport = window.matchMedia('(max-width: 768px)').matches;
+    const speedPxPerSecond = isMobileViewport ? 24 : 34;
 
     const animate = (timestamp) => {
         if (featuredCarouselUserPaused) {
@@ -687,8 +688,8 @@ function startFeaturedCarouselAutoplay(carousel) {
             return;
         }
 
-        const loopWidth = carousel.scrollWidth / 2;
-        if (!loopWidth || loopWidth <= carousel.clientWidth) {
+        const segmentWidth = carousel.scrollWidth / 3;
+        if (!segmentWidth || segmentWidth <= carousel.clientWidth) {
             featuredCarouselAnimationFrame = requestAnimationFrame(animate);
             return;
         }
@@ -701,8 +702,8 @@ function startFeaturedCarouselAutoplay(carousel) {
         featuredCarouselLastTimestamp = timestamp;
 
         const next = carousel.scrollLeft + (speedPxPerSecond * deltaSeconds);
-        if (next >= loopWidth) {
-            carousel.scrollLeft = next - loopWidth;
+        if (next >= segmentWidth * 2) {
+            carousel.scrollLeft = next - segmentWidth;
         } else {
             carousel.scrollLeft = next;
         }
