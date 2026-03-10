@@ -554,6 +554,11 @@ function renderDynamicCategorySections() {
 }
 
 function renderFeaturedCards(carousel) {
+    const fixedFeaturedCard = {
+        nombre: 'COMBO DE LA CASA',
+        image_url: 'DE LA CASA.jpeg'
+    };
+
     const featuredProducts = latestProducts
         .map((product) => {
             const estado = product.estado || (product.paused ? 'paused' : 'active');
@@ -580,10 +585,6 @@ function renderFeaturedCards(carousel) {
             return bTs - aTs;
         })
         .slice(0, 5);
-
-    if (!featuredProducts.length) {
-        return;
-    }
 
     carousel.innerHTML = '';
 
@@ -618,6 +619,33 @@ function renderFeaturedCards(carousel) {
         card.appendChild(button);
         carousel.appendChild(card);
     });
+
+    const comboCasaCard = document.createElement('div');
+    comboCasaCard.className = 'product-card-mobile';
+
+    const comboCasaImageWrap = document.createElement('div');
+    comboCasaImageWrap.className = 'card-image-wrapper';
+
+    const comboCasaImage = document.createElement('img');
+    comboCasaImage.className = 'product-image-mobile';
+    comboCasaImage.alt = fixedFeaturedCard.nombre;
+    comboCasaImage.src = fixedFeaturedCard.image_url;
+
+    const comboCasaButton = document.createElement('a');
+    comboCasaButton.className = 'mobile-order-btn';
+    comboCasaButton.id = 'btn-featured-combo-casa';
+    comboCasaButton.target = '_blank';
+    comboCasaButton.rel = 'noopener noreferrer';
+    comboCasaButton.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${fixedFeaturedCard.nombre}`)}`;
+    comboCasaButton.textContent = 'Lo Quiero';
+    comboCasaButton.addEventListener('click', () => {
+        trackProductInterest(fixedFeaturedCard.nombre, 'btn-featured-combo-casa');
+    });
+
+    comboCasaImageWrap.appendChild(comboCasaImage);
+    comboCasaCard.appendChild(comboCasaImageWrap);
+    comboCasaCard.appendChild(comboCasaButton);
+    carousel.appendChild(comboCasaCard);
 }
 
 function getButtonConfigByPlatform(platform) {
