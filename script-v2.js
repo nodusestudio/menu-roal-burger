@@ -558,8 +558,8 @@ function renderDynamicCategorySections() {
 
 function renderFeaturedCards(carousel) {
     const fixedFeaturedCards = [
-        { nombre: 'COMBO DE LA CASA', image_url: 'DE LA CASA.jpeg', buttonId: 'btn-featured-combo-casa' },
-        { nombre: 'BURGER PLUS', image_url: 'PLUS.png', buttonId: 'btn-featured-burger-plus' }
+        { nombre: 'COMBO DE LA CASA', image_url: 'DE LA CASA.jpeg' },
+        { nombre: 'BURGER PLUS', image_url: 'PLUS.png' }
     ];
 
     const featuredProducts = latestProducts
@@ -589,10 +589,21 @@ function renderFeaturedCards(carousel) {
         })
         .slice(0, 5);
 
+    const featuredItems = [
+        ...featuredProducts.map((item) => ({ nombre: item.nombre, image_url: item.image_url })),
+        ...fixedFeaturedCards
+    ];
+
+    // Ensure enough cards to create horizontal overflow and visible autoplay.
+    const seedItems = [...featuredItems];
+    while (featuredItems.length < 4 && seedItems.length) {
+        featuredItems.push(seedItems[featuredItems.length % seedItems.length]);
+    }
+
     carousel.innerHTML = '';
 
-    featuredProducts.forEach((product, index) => {
-        const safeName = String(product.nombre || 'Producto').trim() || 'Producto';
+    featuredItems.forEach((item, index) => {
+        const safeName = String(item.nombre || 'Producto').trim() || 'Producto';
         const buttonId = `btn-featured-${index + 1}`;
 
         const card = document.createElement('div');
@@ -604,7 +615,7 @@ function renderFeaturedCards(carousel) {
         const image = document.createElement('img');
         image.className = 'product-image-mobile';
         image.alt = safeName;
-        image.src = product.image_url;
+        image.src = item.image_url;
 
         const button = document.createElement('a');
         button.className = 'mobile-order-btn';
@@ -615,35 +626,6 @@ function renderFeaturedCards(carousel) {
         button.textContent = 'Lo Quiero';
         button.addEventListener('click', () => {
             trackProductInterest(safeName, buttonId);
-        });
-
-        imageWrap.appendChild(image);
-        card.appendChild(imageWrap);
-        card.appendChild(button);
-        carousel.appendChild(card);
-    });
-
-    fixedFeaturedCards.forEach((fixedCard) => {
-        const card = document.createElement('div');
-        card.className = 'product-card-mobile';
-
-        const imageWrap = document.createElement('div');
-        imageWrap.className = 'card-image-wrapper';
-
-        const image = document.createElement('img');
-        image.className = 'product-image-mobile';
-        image.alt = fixedCard.nombre;
-        image.src = fixedCard.image_url;
-
-        const button = document.createElement('a');
-        button.className = 'mobile-order-btn';
-        button.id = fixedCard.buttonId;
-        button.target = '_blank';
-        button.rel = 'noopener noreferrer';
-        button.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${fixedCard.nombre}`)}`;
-        button.textContent = 'Lo Quiero';
-        button.addEventListener('click', () => {
-            trackProductInterest(fixedCard.nombre, fixedCard.buttonId);
         });
 
         imageWrap.appendChild(image);
@@ -737,20 +719,6 @@ function setupFeaturedCarouselAutoplay(carousel) {
     updateFeaturedCarouselToggleLabel();
 
     if (carousel.dataset.autoplayBound !== 'true') {
-        carousel.addEventListener('pointerenter', () => {
-            stopFeaturedCarouselAutoplay();
-        });
-
-        carousel.addEventListener('pointerleave', () => {
-            if (featuredCarouselUserPaused) {
-                return;
-            }
-            stopFeaturedCarouselAutoplay();
-            featuredCarouselResumeTimer = setTimeout(() => {
-                startFeaturedCarouselAutoplay(carousel);
-            }, 900);
-        });
-
         carousel.addEventListener('touchstart', () => {
             stopFeaturedCarouselAutoplay();
             if (featuredCarouselResumeTimer) {
