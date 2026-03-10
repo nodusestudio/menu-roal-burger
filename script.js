@@ -863,7 +863,8 @@ function ensureForcedExplorerCategories(categories) {
 }
 
 function ensurePinnedExplorerCategories(categories) {
-    const pinnedMap = new Map();
+    const inputMap = new Map((categories || []).map((item) => [normalizeCategoryKey(item.key), item]));
+    const pinnedList = [];
 
     PINNED_CATEGORY_BUTTONS.forEach((item) => {
         const key = normalizeCategoryKey(item.key);
@@ -871,38 +872,15 @@ function ensurePinnedExplorerCategories(categories) {
             return;
         }
 
-        pinnedMap.set(key, {
+        const existing = inputMap.get(key);
+        pinnedList.push({
             key,
-            name: item.name,
+            name: existing?.name || item.name,
             matchKeys: (item.matchKeys || [item.key]).map((value) => normalizeCategoryKey(value))
         });
     });
 
-    categories.forEach((item) => {
-        const key = normalizeCategoryKey(item.key);
-        if (!key || pinnedMap.has(key)) {
-            return;
-        }
-
-        pinnedMap.set(key, {
-            key,
-            name: item.name,
-            matchKeys: [key]
-        });
-    });
-
-    const pinnedOrder = new Map(PINNED_CATEGORY_BUTTONS.map((item, index) => [normalizeCategoryKey(item.key), index]));
-
-    return Array.from(pinnedMap.values()).sort((a, b) => {
-        const aPriority = pinnedOrder.has(a.key) ? pinnedOrder.get(a.key) : 999;
-        const bPriority = pinnedOrder.has(b.key) ? pinnedOrder.get(b.key) : 999;
-
-        if (aPriority !== bPriority) {
-            return aPriority - bPriority;
-        }
-
-        return a.name.localeCompare(b.name, 'es');
-    });
+    return pinnedList;
 }
 
 function getCategoryProducts(category) {
