@@ -371,6 +371,14 @@
                 return;
             }
 
+            Array.from(grid.querySelectorAll('.category-chip')).forEach((chip) => {
+                const text = String(chip.textContent || '').trim().toUpperCase();
+                const isFixed = chip.getAttribute('data-fixed-category') === 'combos-burger';
+                if (!isFixed && text === 'COMBOS') {
+                    chip.remove();
+                }
+            });
+
             const existing = grid.querySelector('[data-fixed-category="combos-burger"]');
             if (existing) {
                 existing.remove();
