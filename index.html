@@ -332,5 +332,74 @@
         }
     })();
     </script>
+    <script>
+    (function() {
+        function createCombosBurgerButton() {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'category-chip';
+            button.setAttribute('data-fixed-category', 'combos-burger');
+
+            const thumb = document.createElement('img');
+            thumb.className = 'category-chip-thumb';
+            thumb.src = 'COMBOS BURGER.png';
+            thumb.alt = 'COMBOS BURGER';
+            thumb.loading = 'lazy';
+            thumb.decoding = 'async';
+            thumb.addEventListener('error', () => {
+                thumb.src = 'logo.png';
+            });
+
+            const label = document.createElement('span');
+            label.className = 'category-chip-label';
+            label.textContent = 'COMBOS BURGER';
+
+            button.appendChild(thumb);
+            button.appendChild(label);
+            button.addEventListener('click', () => {
+                if (typeof window.renderCategoryExplorer === 'function') {
+                    window.renderCategoryExplorer('combos burger');
+                }
+            });
+
+            return button;
+        }
+
+        function ensureCombosBurgerNextToEntradas() {
+            const grid = document.getElementById('categoryGrid');
+            if (!grid) {
+                return;
+            }
+
+            const existing = grid.querySelector('[data-fixed-category="combos-burger"]');
+            if (existing) {
+                existing.remove();
+            }
+
+            const chips = Array.from(grid.querySelectorAll('.category-chip'));
+            const entradasButton = chips.find((chip) => /entradas/i.test(chip.textContent || ''));
+            if (!entradasButton) {
+                return;
+            }
+
+            const combosBurgerButton = createCombosBurgerButton();
+            entradasButton.insertAdjacentElement('afterend', combosBurgerButton);
+        }
+
+        const observer = new MutationObserver(() => {
+            ensureCombosBurgerNextToEntradas();
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const grid = document.getElementById('categoryGrid');
+            if (!grid) {
+                return;
+            }
+
+            observer.observe(grid, { childList: true });
+            ensureCombosBurgerNextToEntradas();
+        });
+    })();
+    </script>
 </body>
 </html>
