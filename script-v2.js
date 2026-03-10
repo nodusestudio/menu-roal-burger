@@ -70,6 +70,8 @@ let selectedCategoryKey = '';
 let featuredCarouselAutoPlayTimer = null;
 let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
+let featuredCarouselAnimationFrame = null;
+let featuredCarouselLastTimestamp = 0;
 
 const DEFAULT_PUBLIC_BUTTONS = {
     'btn-menu': {
@@ -638,10 +640,22 @@ function renderFeaturedCards(carousel) {
 }
 
 function stopFeaturedCarouselAutoplay() {
+    const carousel = document.querySelector('.featured-section .mobile-carousel');
+    if (carousel) {
+        carousel.classList.remove('is-auto-playing');
+    }
+
     if (featuredCarouselAutoPlayTimer) {
         clearInterval(featuredCarouselAutoPlayTimer);
         featuredCarouselAutoPlayTimer = null;
     }
+
+    if (featuredCarouselAnimationFrame) {
+        cancelAnimationFrame(featuredCarouselAnimationFrame);
+        featuredCarouselAnimationFrame = null;
+    }
+
+    featuredCarouselLastTimestamp = 0;
 }
 
 function updateFeaturedCarouselToggleLabel() {
@@ -665,26 +679,40 @@ function startFeaturedCarouselAutoplay(carousel) {
     }
 
     stopFeaturedCarouselAutoplay();
-    featuredCarouselAutoPlayTimer = setInterval(() => {
+    carousel.classList.add('is-auto-playing');
+
+    const speedPxPerSecond = 34;
+
+    const animate = (timestamp) => {
         if (featuredCarouselUserPaused) {
+            stopFeaturedCarouselAutoplay();
             return;
         }
 
         const maxScrollLeft = Math.max(0, carousel.scrollWidth - carousel.clientWidth);
         if (!maxScrollLeft) {
+            featuredCarouselAnimationFrame = requestAnimationFrame(animate);
             return;
         }
 
-        const speedPerTick = 1.2;
-        const next = carousel.scrollLeft + speedPerTick;
+        if (!featuredCarouselLastTimestamp) {
+            featuredCarouselLastTimestamp = timestamp;
+        }
 
+        const deltaSeconds = Math.max(0, (timestamp - featuredCarouselLastTimestamp) / 1000);
+        featuredCarouselLastTimestamp = timestamp;
+
+        const next = carousel.scrollLeft + (speedPxPerSecond * deltaSeconds);
         if (next >= maxScrollLeft - 1) {
-            carousel.scrollTo({ left: 0, behavior: 'auto' });
-            return;
+            carousel.scrollLeft = 0;
+        } else {
+            carousel.scrollLeft = next;
         }
 
-        carousel.scrollTo({ left: next, behavior: 'auto' });
-    }, 24);
+        featuredCarouselAnimationFrame = requestAnimationFrame(animate);
+    };
+
+    featuredCarouselAnimationFrame = requestAnimationFrame(animate);
 }
 
 function setupFeaturedCarouselAutoplay(carousel) {

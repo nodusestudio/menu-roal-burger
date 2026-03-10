@@ -1697,6 +1697,11 @@ body::before {
     scroll-behavior: smooth;
 }
 
+.mobile-carousel.is-auto-playing {
+    scroll-snap-type: none;
+    scroll-behavior: auto;
+}
+
 .featured-carousel-controls {
     display: flex;
     justify-content: center;
