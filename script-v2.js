@@ -258,6 +258,8 @@ const SECTION_CATEGORY_KEYS = {
     'menu-combos-temporada': 'combos'
 };
 
+const HIDDEN_PRODUCT_KEYS = new Set(['de la casa']);
+
 function normalizeCategoryKey(value) {
     return String(value || '')
         .toLowerCase()
@@ -268,6 +270,11 @@ function normalizeCategoryKey(value) {
 
 function normalizeAssetLookup(value) {
     return normalizeCategoryKey(value).replace(/[^a-z0-9]+/g, '');
+}
+
+function shouldHideProductByName(name) {
+    const key = normalizeCategoryKey(name);
+    return key ? HIDDEN_PRODUCT_KEYS.has(key) : false;
 }
 
 function resolveProductImage(product) {
@@ -413,6 +420,9 @@ function renderDynamicCategorySections() {
         const nombre = product.nombre || product.name || 'Producto';
         const precio = Number(product.precio ?? product.price ?? 0);
         const categoria = product.categoria || product.category || '';
+        if (shouldHideProductByName(nombre)) {
+            return;
+        }
         const key = normalizeCategoryKey(categoria);
         if (!key || !activeCategories.has(key) || staticCategoryKeys.has(key)) {
             return;
@@ -529,9 +539,10 @@ function renderFeaturedCards(carousel) {
             const estado = product.estado || (product.paused ? 'paused' : 'active');
             const esDestacado = product.es_destacado === true || product.featured === true;
             const categoria = product.categoria || product.category || '';
+            const nombre = product.nombre || product.name || 'Producto';
             return {
                 id: product.id,
-                nombre: product.nombre || product.name || 'Producto',
+                nombre,
                 image_url: resolveProductImage(product),
                 estado,
                 es_destacado: esDestacado,
@@ -541,7 +552,7 @@ function renderFeaturedCards(carousel) {
         })
         .filter((product) => {
             const categoryAllowed = isCategoryAllowed(product.categoria);
-            return product.es_destacado && product.estado !== 'paused' && categoryAllowed;
+            return product.es_destacado && product.estado !== 'paused' && categoryAllowed && !shouldHideProductByName(product.nombre);
         })
         .sort((a, b) => {
             const aTs = a.updated_at && typeof a.updated_at.toMillis === 'function' ? a.updated_at.toMillis() : 0;
@@ -904,6 +915,10 @@ function getCategoryProducts(category) {
         })
         .filter((product) => {
             if (product.estado === 'paused') {
+                return false;
+            }
+
+            if (shouldHideProductByName(product.nombre)) {
                 return false;
             }
 
