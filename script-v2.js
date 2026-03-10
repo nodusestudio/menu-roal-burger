@@ -1176,8 +1176,24 @@ function renderCategoryExplorer(nextKey, options = {}) {
     heroTitle.className = 'category-hero-title';
     heroTitle.textContent = selectedCategory.name;
 
+    const categoryOrderBtn = document.createElement('a');
+    const categoryOrderBtnId = `btn-category-head-${selectedCategory.key || 'general'}`;
+    categoryOrderBtn.className = 'category-hero-order-btn';
+    categoryOrderBtn.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Quiero hacer un pedido de la categoria ${selectedCategory.name}`)}`;
+    categoryOrderBtn.target = '_blank';
+    categoryOrderBtn.rel = 'noopener noreferrer';
+    categoryOrderBtn.textContent = 'Hacer pedido';
+    categoryOrderBtn.addEventListener('click', () => {
+        trackButtonClick(categoryOrderBtnId, `Pedido categoria ${selectedCategory.name}`);
+    });
+
+    const heroHead = document.createElement('div');
+    heroHead.className = 'category-hero-head';
+    heroHead.appendChild(heroTitle);
+    heroHead.appendChild(categoryOrderBtn);
+
     heroWrap.appendChild(heroImage);
-    heroWrap.appendChild(heroTitle);
+    heroWrap.appendChild(heroHead);
 
     if (!products.length || shouldHideCategoryList(selectedCategory)) {
         panel.innerHTML = '';
