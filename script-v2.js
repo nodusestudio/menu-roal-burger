@@ -227,6 +227,7 @@ const CATEGORY_IMAGE_ALIASES = {
     perroscalientesysalchipapas: 'PERROS CALIENTES Y SALCHIPAPAS.png',
     entradas: 'entradas.png',
     combosburger: 'COMBOS BURGER.png',
+    combosperros: 'PERROS CALIENTES Y SALCHIPAPAS.png',
     combosperrosyexpress: 'COMBOS DE PERROS Y EXPRESS.png',
     combosdeperrosyexpress: 'COMBOS DE PERROS Y EXPRESS.png',
     combosfamiliares: 'COMBOS FAMILIARES.png',
@@ -240,10 +241,10 @@ const PINNED_CATEGORY_BUTTONS = [
     { key: 'pepitos venezolanos', name: 'PEPITOS VENEZOLANOS', matchKeys: ['pepitos venezolanos', 'pepitos'] },
     { key: 'perros y salchipapas', name: 'PERROS Y SALCHIPAPAS', matchKeys: ['perros y salchipapas', 'perros calientes y salchipapas'] },
     { key: 'entradas', name: 'ENTRADAS', matchKeys: ['entradas'] },
-    { key: 'combos burger', name: 'COMBOS BURGER', matchKeys: ['combos burger', 'combos'] },
-    { key: 'combos perros', name: 'COMBOS PERROS', matchKeys: ['combos perros', 'combos perros y express', 'combos de perros y express', 'combos'] },
-    { key: 'combos familiares', name: 'COMBOS FAMILIARES', matchKeys: ['combos familiares', 'combos'] },
-    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA', matchKeys: ['combos de temporada', 'combos de temporadas', 'combos'] }
+    { key: 'combos burger', name: 'COMBOS BURGER', matchKeys: ['combos burger', 'combo burger', 'combos de burger'] },
+    { key: 'combos perros', name: 'COMBOS PERROS', matchKeys: ['combos perros', 'combos perros y express', 'combos de perros y express', 'combos de perros', 'combos express'] },
+    { key: 'combos familiares', name: 'COMBOS FAMILIARES', matchKeys: ['combos familiares', 'combo familiar'] },
+    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA', matchKeys: ['combos de temporada', 'combos de temporadas', 'combos temporada'] }
 ];
 
 const SECTION_CATEGORY_KEYS = {
@@ -792,7 +793,7 @@ function getExplorerCategories() {
         const name = item?.name;
         const cleanName = String(name || '').trim();
         const key = normalizeCategoryKey(cleanName);
-        if (!cleanName || !key || keys.has(key)) {
+        if (!cleanName || !key || keys.has(key) || key === 'adicionales' || key === 'combos') {
             return;
         }
         keys.add(key);
