@@ -201,6 +201,7 @@ const CATEGORY_BUTTON_PRIORITY = [
     'perros calientes y salchipapas',
     'entradas',
     'combos burger',
+    'combos perros',
     'combos perros y express',
     'combos de perros y express',
     'combos familiares',
@@ -211,7 +212,7 @@ const CATEGORY_BUTTON_PRIORITY = [
 const FORCED_CATEGORY_BUTTONS = [
     { key: 'pepitos venezolanos', name: 'PEPITOS VENEZOLANOS' },
     { key: 'combos burger', name: 'COMBOS BURGER' },
-    { key: 'combos perros y express', name: 'COMBOS PERROS Y EXPRESS' },
+    { key: 'combos perros', name: 'COMBOS PERROS' },
     { key: 'combos familiares', name: 'COMBOS FAMILIARES' },
     { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA' }
 ];
@@ -239,10 +240,10 @@ const PINNED_CATEGORY_BUTTONS = [
     { key: 'pepitos venezolanos', name: 'PEPITOS VENEZOLANOS', matchKeys: ['pepitos venezolanos', 'pepitos'] },
     { key: 'perros y salchipapas', name: 'PERROS Y SALCHIPAPAS', matchKeys: ['perros y salchipapas', 'perros calientes y salchipapas'] },
     { key: 'entradas', name: 'ENTRADAS', matchKeys: ['entradas'] },
-    { key: 'combos burger', name: 'COMBOS BURGER', matchKeys: ['combos burger'] },
-    { key: 'combos perros y express', name: 'COMBOS PERROS Y EXPRESS', matchKeys: ['combos perros y express', 'combos de perros y express'] },
-    { key: 'combos familiares', name: 'COMBOS FAMILIARES', matchKeys: ['combos familiares'] },
-    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA', matchKeys: ['combos de temporada', 'combos de temporadas'] }
+    { key: 'combos burger', name: 'COMBOS BURGER', matchKeys: ['combos burger', 'combos'] },
+    { key: 'combos perros', name: 'COMBOS PERROS', matchKeys: ['combos perros', 'combos perros y express', 'combos de perros y express', 'combos'] },
+    { key: 'combos familiares', name: 'COMBOS FAMILIARES', matchKeys: ['combos familiares', 'combos'] },
+    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA', matchKeys: ['combos de temporada', 'combos de temporadas', 'combos'] }
 ];
 
 const SECTION_CATEGORY_KEYS = {
@@ -802,7 +803,7 @@ function getExplorerCategories() {
         const name = product.categoria || product.category || '';
         const cleanName = String(name || '').trim();
         const key = normalizeCategoryKey(cleanName);
-        if (!cleanName || !key || keys.has(key)) {
+        if (!cleanName || !key || keys.has(key) || key === 'adicionales' || key === 'combos') {
             return;
         }
         keys.add(key);
