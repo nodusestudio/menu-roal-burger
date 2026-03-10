@@ -264,7 +264,7 @@ const SECTION_CATEGORY_KEYS = {
     'menu-combos-temporada': 'combos'
 };
 
-const HIDDEN_PRODUCT_KEYS = new Set(['de la casa']);
+const HIDDEN_PRODUCT_KEYS = new Set(['de la casa', 'plus', 'burger plus']);
 const HIDDEN_PRODUCT_NAME_PARTS = ['de la casa'];
 
 function normalizeCategoryKey(value) {
@@ -554,10 +554,10 @@ function renderDynamicCategorySections() {
 }
 
 function renderFeaturedCards(carousel) {
-    const fixedFeaturedCard = {
-        nombre: 'COMBO DE LA CASA',
-        image_url: 'DE LA CASA.jpeg'
-    };
+    const fixedFeaturedCards = [
+        { nombre: 'COMBO DE LA CASA', image_url: 'DE LA CASA.jpeg', buttonId: 'btn-featured-combo-casa' },
+        { nombre: 'BURGER PLUS', image_url: 'PLUS.png', buttonId: 'btn-featured-burger-plus' }
+    ];
 
     const featuredProducts = latestProducts
         .map((product) => {
@@ -620,32 +620,34 @@ function renderFeaturedCards(carousel) {
         carousel.appendChild(card);
     });
 
-    const comboCasaCard = document.createElement('div');
-    comboCasaCard.className = 'product-card-mobile';
+    fixedFeaturedCards.forEach((fixedCard) => {
+        const card = document.createElement('div');
+        card.className = 'product-card-mobile';
 
-    const comboCasaImageWrap = document.createElement('div');
-    comboCasaImageWrap.className = 'card-image-wrapper';
+        const imageWrap = document.createElement('div');
+        imageWrap.className = 'card-image-wrapper';
 
-    const comboCasaImage = document.createElement('img');
-    comboCasaImage.className = 'product-image-mobile';
-    comboCasaImage.alt = fixedFeaturedCard.nombre;
-    comboCasaImage.src = fixedFeaturedCard.image_url;
+        const image = document.createElement('img');
+        image.className = 'product-image-mobile';
+        image.alt = fixedCard.nombre;
+        image.src = fixedCard.image_url;
 
-    const comboCasaButton = document.createElement('a');
-    comboCasaButton.className = 'mobile-order-btn';
-    comboCasaButton.id = 'btn-featured-combo-casa';
-    comboCasaButton.target = '_blank';
-    comboCasaButton.rel = 'noopener noreferrer';
-    comboCasaButton.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${fixedFeaturedCard.nombre}`)}`;
-    comboCasaButton.textContent = 'Lo Quiero';
-    comboCasaButton.addEventListener('click', () => {
-        trackProductInterest(fixedFeaturedCard.nombre, 'btn-featured-combo-casa');
+        const button = document.createElement('a');
+        button.className = 'mobile-order-btn';
+        button.id = fixedCard.buttonId;
+        button.target = '_blank';
+        button.rel = 'noopener noreferrer';
+        button.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${fixedCard.nombre}`)}`;
+        button.textContent = 'Lo Quiero';
+        button.addEventListener('click', () => {
+            trackProductInterest(fixedCard.nombre, fixedCard.buttonId);
+        });
+
+        imageWrap.appendChild(image);
+        card.appendChild(imageWrap);
+        card.appendChild(button);
+        carousel.appendChild(card);
     });
-
-    comboCasaImageWrap.appendChild(comboCasaImage);
-    comboCasaCard.appendChild(comboCasaImageWrap);
-    comboCasaCard.appendChild(comboCasaButton);
-    carousel.appendChild(comboCasaCard);
 }
 
 function getButtonConfigByPlatform(platform) {
