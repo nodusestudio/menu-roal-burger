@@ -206,7 +206,9 @@ const CATEGORY_BUTTON_PRIORITY = [
     'combos de perros y express',
     'combos familiares',
     'combos de temporada',
-    'combos de temporadas'
+    'combos de temporadas',
+    'bebidas y adicionales',
+    'adicionales'
 ];
 
 const FORCED_CATEGORY_BUTTONS = [
@@ -214,7 +216,8 @@ const FORCED_CATEGORY_BUTTONS = [
     { key: 'combos burger', name: 'COMBOS BURGER' },
     { key: 'combos perros', name: 'COMBOS PERROS' },
     { key: 'combos familiares', name: 'COMBOS FAMILIARES' },
-    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA' }
+    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA' },
+    { key: 'bebidas y adicionales', name: 'BEBIDAS Y ADICIONALES' }
 ];
 
 const CATEGORY_IMAGE_ALIASES = {
@@ -232,7 +235,9 @@ const CATEGORY_IMAGE_ALIASES = {
     combosdeperrosyexpress: 'COMBOS DE PERROS Y EXPRESS.png',
     combosfamiliares: 'COMBOS FAMILIARES.png',
     combosdetemporada: 'COMBOS DE TEMPORADAS.png',
-    combosdetemporadas: 'COMBOS DE TEMPORADAS.png'
+    combosdetemporadas: 'COMBOS DE TEMPORADAS.png',
+    bebidasyadicionales: 'bebidas y adicionales.png',
+    adicionales: 'bebidas y adicionales.png'
 };
 
 const PINNED_CATEGORY_BUTTONS = [
@@ -244,7 +249,8 @@ const PINNED_CATEGORY_BUTTONS = [
     { key: 'combos burger', name: 'COMBOS BURGER', matchKeys: ['combos burger', 'combo burger', 'combos de burger'] },
     { key: 'combos perros', name: 'COMBOS PERROS', matchKeys: ['combos perros', 'combos perros y express', 'combos de perros y express', 'combos de perros', 'combos express'] },
     { key: 'combos familiares', name: 'COMBOS FAMILIARES', matchKeys: ['combos familiares', 'combo familiar'] },
-    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA', matchKeys: ['combos de temporada', 'combos de temporadas', 'combos temporada'] }
+    { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA', matchKeys: ['combos de temporada', 'combos de temporadas', 'combos temporada'] },
+    { key: 'bebidas y adicionales', name: 'BEBIDAS Y ADICIONALES', matchKeys: ['bebidas y adicionales', 'adicionales', 'bebidas'] }
 ];
 
 const SECTION_CATEGORY_KEYS = {
