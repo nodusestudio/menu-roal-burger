@@ -1692,9 +1692,8 @@ body::before {
     overflow-x: auto;
     padding: 10px 5px 20px;
     scroll-snap-type: x mandatory;
-    scrollbar-width: thin;
-    scrollbar-color: #ff6000 #1a1a1a;
-    -ms-overflow-style: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     scroll-behavior: smooth;
 }
 
@@ -1725,23 +1724,7 @@ body::before {
 }
 
 .mobile-carousel::-webkit-scrollbar {
-    height: 8px;
-}
-
-.mobile-carousel::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
-}
-
-.mobile-carousel::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #ff6000, #ff8533);
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(255, 96, 0, 0.4);
-}
-
-.mobile-carousel::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #ff8533, #ffaa66);
-    box-shadow: 0 0 15px rgba(255, 96, 0, 0.6);
+    display: none;
 }
 
 .product-card-mobile {

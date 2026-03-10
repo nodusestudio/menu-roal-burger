@@ -693,17 +693,16 @@ function startFeaturedCarouselAutoplay(carousel) {
             return;
         }
 
-        const firstCard = cards[0];
-        const step = Math.max(180, Math.round(firstCard?.offsetWidth || 220));
-        const next = carousel.scrollLeft + step;
+        const speedPerTick = 1.2;
+        const next = carousel.scrollLeft + speedPerTick;
 
-        if (next >= maxScrollLeft - 8) {
-            carousel.scrollTo({ left: 0, behavior: 'smooth' });
+        if (next >= maxScrollLeft - 1) {
+            carousel.scrollTo({ left: 0, behavior: 'auto' });
             return;
         }
 
-        carousel.scrollTo({ left: next, behavior: 'smooth' });
-    }, 2600);
+        carousel.scrollTo({ left: next, behavior: 'auto' });
+    }, 24);
 }
 
 function setupFeaturedCarouselAutoplay(carousel) {
