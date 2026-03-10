@@ -292,6 +292,11 @@ function shouldHideProductByName(name) {
     return HIDDEN_PRODUCT_NAME_PARTS.some((part) => key.includes(part));
 }
 
+function shouldHideCategoryList(category) {
+    const key = normalizeCategoryKey(category?.key || category?.name || '');
+    return key === 'bebidas y adicionales' || key === 'adicionales';
+}
+
 function resolveProductImage(product) {
     const productName = String(product?.nombre || product?.name || '').trim();
     const normalizedProductName = normalizeAssetLookup(productName);
@@ -1021,7 +1026,7 @@ function renderCategoryExplorer(nextKey) {
     heroWrap.appendChild(heroImage);
     heroWrap.appendChild(heroTitle);
 
-    if (!products.length) {
+    if (!products.length || shouldHideCategoryList(selectedCategory)) {
         panel.innerHTML = '';
         panel.appendChild(heroWrap);
         return;
