@@ -560,7 +560,6 @@ function renderDynamicCategorySections() {
 function renderFeaturedCards(carousel) {
     const fixedFeaturedCards = [
         { nombre: 'COMBO DE LA CASA', image_url: 'DE LA CASA.jpeg' },
-        { nombre: 'BURGER PLUS', image_url: 'PLUS.png' },
         { nombre: 'EMPANADAS', image_url: 'empanadas.png' }
     ];
 
