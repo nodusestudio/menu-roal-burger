@@ -11,15 +11,6 @@ const seedCategories = [
 
 const seedProducts = [
     {
-        id: 'plus',
-        nombre: 'PLUS',
-        precio: 21900,
-        categoria: 'Adicionales',
-        estado: 'active',
-        es_destacado: true,
-        image_url: 'PLUS.png'
-    },
-    {
         id: 'emparejados',
         nombre: 'EMPAREJADOS',
         precio: 19900,

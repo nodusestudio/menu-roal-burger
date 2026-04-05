@@ -178,8 +178,7 @@ const LOCAL_PRODUCT_IMAGE_FILES = [
     'entradas.png',
     'menu combo emparejado.png',
     'PEPITOS VENEZOLANOS.png',
-    'PERROS CALIENTES Y SALCHIPAPAS.png',
-    'PLUS.png'
+    'PERROS CALIENTES Y SALCHIPAPAS.png'
 ];
 
 const LOCAL_PRODUCT_IMAGE_MAP = LOCAL_PRODUCT_IMAGE_FILES.reduce((acc, fileName) => {
