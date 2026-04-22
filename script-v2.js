@@ -558,6 +558,7 @@ function renderDynamicCategorySections() {
 
 function renderFeaturedCards(carousel) {
     const fixedFeaturedCards = [
+        { nombre: 'PROMO BURGER RANCHERA', image_url: 'promo-ranchera.png.jpeg' },
         { nombre: 'COMBO DE LA CASA', image_url: 'DE LA CASA.jpeg' },
         { nombre: 'EMPANADAS', image_url: 'empanadas.png' }
     ];
@@ -1623,20 +1624,48 @@ function closeMenuModal() {
     closeDrawerMenu();
 }
 
+
+
+// ===== MODAL DE PROMOCI&#211;N - BURGER RANCHERA =====
+function initPromoModal() {
+    if (sessionStorage.getItem('promoRancheraShown')) return;
+    setTimeout(function () {
+        var modal = document.getElementById('promoModal');
+        if (modal) {
+            modal.classList.add('is-open');
+            document.body.style.overflow = 'hidden';
+            sessionStorage.setItem('promoRancheraShown', '1');
+        }
+    }, 2000);
+}
+
+function closePromoModal() {
+    var modal = document.getElementById('promoModal');
+    if (modal) {
+        modal.classList.remove('is-open');
+        document.body.style.overflow = 'auto';
+    }
+}
 window.onclick = function(event) {
-    const modal = document.getElementById('menuModal');
-    if (event.target === modal) {
+    const menuModal = document.getElementById('menuModal');
+    if (event.target === menuModal) {
         closeMenuModal();
+    }
+    const promoModal = document.getElementById('promoModal');
+    if (event.target === promoModal) {
+        closePromoModal();
     }
 };
 
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         closeMenuModal();
+        closePromoModal();
     }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    initPromoModal();
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
     renderPublicFeaturedFromAdmin();
