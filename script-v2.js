@@ -1626,7 +1626,7 @@ function closeMenuModal() {
 
 
 
-// ===== MODAL DE PROMOCI&#211;N - BURGER RANCHERA =====
+// ===== MODAL DE PROMOCIÓN - BURGER RANCHERA =====
 function initPromoModal() {
     if (sessionStorage.getItem('promoRancheraShown')) return;
     setTimeout(function () {
