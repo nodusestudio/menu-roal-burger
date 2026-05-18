@@ -1627,7 +1627,9 @@ function closeMenuModal() {
 
 
 // ===== MODAL DE PROMOCIÓN - BURGER RANCHERA =====
+// OCULTO temporalmente - descomentar para reactivar
 function initPromoModal() {
+    return; // Modal oculto. Para reactivar, eliminar esta línea.
     if (sessionStorage.getItem('promoRancheraShown')) return;
     setTimeout(function () {
         var modal = document.getElementById('promoModal');
