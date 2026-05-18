@@ -559,8 +559,7 @@ function renderDynamicCategorySections() {
 function renderFeaturedCards(carousel) {
     const fixedFeaturedCards = [
         { nombre: 'PROMO BURGER RANCHERA', image_url: 'promo-ranchera.png.jpeg' },
-        { nombre: 'COMBO DE LA CASA', image_url: 'DE LA CASA.jpeg' },
-        { nombre: 'EMPANADAS', image_url: 'empanadas.png' }
+        { nombre: 'COMBO DE LA CASA', image_url: 'DE LA CASA.jpeg' }
     ];
 
     const featuredProducts = latestProducts
