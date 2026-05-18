@@ -18,16 +18,38 @@
 body {
     font-family: var(--landing-font-family);
     font-size: var(--landing-font-size-base);
-    background: var(--landing-bg-color);
+    background: transparent;
+    min-height: 100vh;
+    padding: 0;
+    color: #1f1c15;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* Fondo fijo con la imagen real - siempre visible, los temas JS no lo tocan */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     background-image: url('fondo.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
     background-attachment: fixed;
-    min-height: 100vh;
-    padding: 0;
-    color: #1f1c15;
-    overflow-x: hidden;
+    filter: saturate(0.7);
+    opacity: 0.5;
+    z-index: -2;
+    pointer-events: none;
+}
+
+/* Modo vertical (portrait) — usa la imagen vertical */
+@media (orientation: portrait) {
+    body::after {
+        background-image: url('fondo vertical.png');
+    }
 }
 
 body[data-theme='fodexa'] {
@@ -662,11 +684,11 @@ body::before {
     font-family: 'Oswald', sans-serif;
     font-size: 2.2rem;
     font-weight: 600;
-    color: #FF6000;
+    color: #000000;
     text-transform: uppercase;
     letter-spacing: 2px;
     margin-bottom: 30px;
-    text-shadow: 0 0 15px rgba(255, 96, 0, 0.4);
+    text-shadow: none;
 }
 
 .category-grid-section {
@@ -688,12 +710,15 @@ body::before {
     gap: 10px;
 }
 
+/* ---- GLASS EFFECT (ESTILO APPLE) ---- */
 .category-chip {
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
     border-radius: 12px;
     padding: 10px;
-    background: linear-gradient(150deg, rgba(255, 255, 255, 0.05), rgba(15, 15, 15, 0.4));
-    color: #f8f8f8;
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: #000000;
     font-family: 'Oswald', sans-serif;
     font-size: 0.88rem;
     letter-spacing: 0.8px;
@@ -712,8 +737,8 @@ body::before {
     height: 34px;
     border-radius: 8px;
     object-fit: cover;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.3);
 }
 
 .category-chip-label {
@@ -728,15 +753,17 @@ body::before {
 
 .category-chip.active {
     border-color: rgba(255, 96, 0, 0.72);
-    background: linear-gradient(160deg, rgba(255, 96, 0, 0.2), rgba(255, 255, 255, 0.02));
+    background: linear-gradient(160deg, rgba(255, 96, 0, 0.2), rgba(255, 255, 255, 0.4));
 }
 
 .category-products-panel {
     margin-top: 12px;
     border-radius: 12px;
     padding: 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 .focus-highlight {
@@ -768,8 +795,10 @@ body::before {
     height: 100%;
     object-fit: contain;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
 }
 
 .category-hero-head {
@@ -784,12 +813,14 @@ body::before {
     font-family: 'Oswald', sans-serif;
     font-size: 0.95rem;
     letter-spacing: 0.6px;
-    color: #f2f2f2;
+    color: #000000;
     text-transform: uppercase;
     min-height: 40px;
     border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     padding: 10px 12px;
     display: flex;
     align-items: center;
@@ -800,9 +831,11 @@ body::before {
 .category-hero-order-btn {
     min-height: 40px;
     border-radius: 10px;
-    border: 1px solid rgba(255, 96, 0, 0.6);
-    background: rgba(255, 96, 0, 0.16);
-    color: #fff;
+    border: 1px solid rgba(255, 96, 0, 0.5);
+    background: rgba(255, 96, 0, 0.15);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: #000000;
     text-decoration: none;
     font-family: 'Oswald', sans-serif;
     font-size: 0.9rem;
@@ -817,7 +850,7 @@ body::before {
 }
 
 .category-hero-order-btn:hover {
-    background: rgba(255, 96, 0, 0.28);
+    background: rgba(255, 96, 0, 0.25);
     border-color: rgba(255, 133, 51, 0.9);
 }
 
@@ -833,7 +866,10 @@ body::before {
     align-items: center;
     padding: 8px 10px;
     border-radius: 10px;
-    background: rgba(0, 0, 0, 0.22);
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .category-product-thumb {
@@ -841,23 +877,27 @@ body::before {
     height: 56px;
     border-radius: 10px;
     object-fit: cover;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.15);
 }
 
 .category-product-row strong {
     font-family: 'Oswald', sans-serif;
     letter-spacing: 0.5px;
+    color: #000000;
 }
 
 .category-product-row .muted {
     font-size: 0.82rem;
+    color: #000000;
 }
 
 .category-order-btn {
     border: 1px solid rgba(255, 96, 0, 0.5);
-    background: rgba(255, 96, 0, 0.14);
-    color: #fff;
+    background: rgba(255, 96, 0, 0.15);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #000000;
     border-radius: 8px;
     padding: 6px 10px;
     font-size: 0.72rem;
@@ -867,7 +907,7 @@ body::before {
 }
 
 .category-empty {
-    color: #b7b7b7;
+    color: #333333;
     font-size: 0.9rem;
 }
 
@@ -884,9 +924,11 @@ body::before {
     border-radius: 8px;
     display: grid;
     place-items: center;
-    color: #efefef;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #000000;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
     transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
@@ -921,8 +963,10 @@ body::before {
 
 .menu-card {
     min-width: 220px;
-    background: linear-gradient(145deg, #1a1a1a, #0f0f0f);
-    border: 2px solid rgba(255, 96, 0, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
     border-radius: 15px;
     padding: 25px 20px;
     text-align: center;
@@ -969,7 +1013,7 @@ body::before {
 .menu-card h3 {
     font-family: 'Oswald', sans-serif;
     font-size: 1.3rem;
-    color: #fff;
+    color: #000000;
     margin-bottom: 10px;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -985,18 +1029,20 @@ body::before {
 
 .card-subtitle {
     font-size: 0.9rem;
-    color: #ccc;
+    color: #333333;
     font-style: italic;
 }
 
-/* Card de Información */
+/* Card de Información (glass) */
 .info-card {
-    background: linear-gradient(155deg, rgba(255, 255, 255, 0.03), rgba(12, 18, 30, 0.72));
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-radius: 14px;
     padding: 18px;
     margin-bottom: 30px;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.25);
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
@@ -1008,8 +1054,10 @@ body::before {
     margin-bottom: 0;
     padding: 12px;
     border-radius: 10px;
-    background: rgba(8, 12, 20, 0.32);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .info-item:last-child {
@@ -1031,7 +1079,7 @@ body::before {
 
 .info-text strong {
     display: block;
-    color: #f4f7ff;
+    color: #000000;
     font-size: 0.95rem;
     margin-bottom: 4px;
     font-weight: 600;
@@ -1041,7 +1089,7 @@ body::before {
 }
 
 .info-text p {
-    color: rgba(232, 239, 255, 0.9);
+    color: #000000;
     line-height: 1.45;
     font-size: 0.9rem;
 }
@@ -1671,7 +1719,7 @@ body::before {
 /* Botón Flotante de WhatsApp - Optimizado para no tapar contenido */
 .whatsapp-float {
     position: fixed;
-    bottom: 85px; /* Aumentado para no tapar el carrusel */
+    bottom: 85px;
     right: 25px;
     background-color: #25D366;
     color: white;
@@ -1690,7 +1738,7 @@ body::before {
     transform: translateX(100px);
     opacity: 0;
     animation: slideInFloat 1s ease-out 2s forwards;
-    max-width: 200px; /* Limitar ancho máximo */
+    max-width: 200px;
 }
 
 .whatsapp-float:hover {
@@ -1720,7 +1768,7 @@ body::before {
 /* Responsive para el botón flotante - Optimizado para móviles */
 @media (max-width: 768px) {
     .whatsapp-float {
-        bottom: 80px; /* Más espacio en móvil para no tapar carrusel */
+        bottom: 80px;
         right: 15px;
         padding: 10px 16px;
         font-size: 13px;
@@ -1728,7 +1776,7 @@ body::before {
     }
     
     .whatsapp-float span {
-        display: none; /* Ocultar texto en móvil para ahorrar espacio */
+        display: none;
     }
     
     .whatsapp-float {
@@ -1747,7 +1795,7 @@ body::before {
 
 @media (max-width: 480px) {
     .whatsapp-float {
-        bottom: 75px; /* Ajuste fino para pantallas muy pequeñas */
+        bottom: 75px;
         right: 12px;
         width: 45px;
         height: 45px;
@@ -1786,8 +1834,10 @@ body::before {
 
 .featured-carousel-toggle {
     border: 1px solid rgba(255, 96, 0, 0.45);
-    background: rgba(12, 20, 35, 0.7);
-    color: #ffd4b5;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #000000;
     border-radius: 999px;
     padding: 8px 14px;
     font-family: 'Roboto', sans-serif;
@@ -1800,7 +1850,7 @@ body::before {
 
 .featured-carousel-toggle:hover {
     background: rgba(255, 96, 0, 0.2);
-    color: #fff;
+    color: #000000;
     border-color: rgba(255, 133, 51, 0.8);
 }
 
@@ -1948,27 +1998,29 @@ body::before {
     align-items: center;
     gap: 8px;
     margin-top: 10px;
-    background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
-    color: white;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #000000;
     padding: 10px 16px;
     border-radius: 25px;
     text-decoration: none;
     font-family: 'Roboto', sans-serif;
     font-weight: 500;
     font-size: 13px;
-    border: 2px solid #ff6000;
-    box-shadow: 0 4px 12px rgba(255, 96, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     transition: all 0.3s ease;
     min-height: 40px;
 }
 
 .maps-btn:hover {
-    background: linear-gradient(145deg, #ff6000, #ff8533);
+    background: rgba(255, 96, 0, 0.25);
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(255, 96, 0, 0.4);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
     text-decoration: none;
-    color: white;
-    border-color: rgba(255, 255, 255, 0.3);
+    color: #000000;
+    border-color: rgba(255, 96, 0, 0.5);
 }
 
 .maps-icon {
@@ -2048,8 +2100,10 @@ body::before {
     align-items: center;
     gap: 14px;
     margin-bottom: 22px;
-    border: 1px solid color-mix(in srgb, var(--brand-primary) 45%, transparent);
-    background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 22%, transparent), color-mix(in srgb, var(--brand-secondary) 16%, transparent));
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-radius: 14px;
     padding: 14px 16px;
 }
@@ -2059,7 +2113,8 @@ body::before {
     height: 62px;
     object-fit: cover;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
 }
 
 .brand-banner h2 {
@@ -2067,11 +2122,11 @@ body::before {
     letter-spacing: 1px;
     text-transform: uppercase;
     font-size: 1.35rem;
-    color: #fff;
+    color: #000000;
 }
 
 .brand-banner p {
-    color: #ddd;
+    color: #000000;
     font-size: 0.9rem;
     margin-top: 2px;
 }
@@ -2212,5 +2267,3 @@ body::before {
     color: #ffffff;
 }
 /* ===== FIN MODAL DE PROMOCIÓN ===== */
-
-
