@@ -803,55 +803,41 @@ body::before {
 
 .category-hero-head {
     margin-top: 8px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px;
+    display: flex;
+    justify-content: center;
 }
 
 .category-hero-title {
-    margin-top: 0;
-    font-family: 'Oswald', sans-serif;
-    font-size: 0.95rem;
-    letter-spacing: 0.6px;
-    color: #000000;
-    text-transform: uppercase;
-    min-height: 40px;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    background: rgba(255, 255, 255, 0.15);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    padding: 10px 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
+    display: none;
 }
 
 .category-hero-order-btn {
-    min-height: 40px;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 96, 0, 0.5);
-    background: rgba(255, 96, 0, 0.15);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    color: #000000;
+    height: 56px;
+    width: 80%;
+    max-width: 320px;
+    border: none;
+    background-image: url('boton.png');
+    background-size: 100% 100%;
+    background-position: center;
+    background-repeat: no-repeat;
+    color: #ffffff;
     text-decoration: none;
     font-family: 'Oswald', sans-serif;
-    font-size: 0.9rem;
-    letter-spacing: 0.6px;
+    font-size: 1rem;
+    letter-spacing: 0.8px;
     text-transform: uppercase;
-    padding: 10px 12px;
+    padding: 0 20px;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
     transition: all 0.22s ease;
+    border-radius: 0;
 }
 
 .category-hero-order-btn:hover {
-    background: rgba(255, 96, 0, 0.25);
-    border-color: rgba(255, 133, 51, 0.9);
+    filter: brightness(1.1);
+    transform: scale(1.03);
 }
 
 .category-products-list {
@@ -893,17 +879,18 @@ body::before {
 }
 
 .category-order-btn {
-    border: 1px solid rgba(255, 96, 0, 0.5);
-    background: rgba(255, 96, 0, 0.15);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    color: #000000;
-    border-radius: 8px;
+    border: none;
+    background-image: url('boton.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    color: #ffffff;
     padding: 6px 10px;
     font-size: 0.72rem;
     text-transform: uppercase;
     text-decoration: none;
     letter-spacing: 0.4px;
+    border-radius: 8px;
 }
 
 .category-empty {
@@ -1900,34 +1887,37 @@ body::before {
     transform: scale(1.05);
 }
 
+/* BOTÓN "LO QUIERO" CON boton.png */
 .mobile-order-btn {
     margin-top: 10px;
-    background: linear-gradient(135deg, #ff6000, #ff8533);
+    background-image: url('boton.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     color: white;
     padding: 12px 24px;
-    border-radius: 25px;
     text-decoration: none;
     font-family: 'Roboto', sans-serif;
     font-weight: 600;
     font-size: 14px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    box-shadow: 0 4px 15px rgba(255, 96, 0, 0.4);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     transition: all 0.3s ease;
-    min-height: 44px;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    border: none;
     width: 100%;
     text-align: center;
+    border-radius: 25px;
 }
 
 .mobile-order-btn:hover,
 .mobile-order-btn:active {
-    background: linear-gradient(135deg, #ff8533, #ffaa66);
     transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 6px 20px rgba(255, 96, 0, 0.6);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
     text-decoration: none;
     color: white;
 }
@@ -1971,12 +1961,16 @@ body::before {
         gap: 6px;
     }
 
-    .category-hero-title,
+    .category-hero-title {
+        display: none;
+    }
+
     .category-hero-order-btn {
-        min-height: 38px;
-        font-size: 0.82rem;
+        height: 50px;
+        font-size: 0.88rem;
         letter-spacing: 0.4px;
-        padding: 8px;
+        padding: 0 16px;
+        width: 85%;
     }
 }
 
