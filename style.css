@@ -8,7 +8,7 @@
     --brand-primary: #2f6fdd;
     --brand-secondary: #5f95ea;
     --brand-accent: #43c09c;
-    --landing-bg-color: #0e1420;
+    --landing-bg-color: #f9e9d0;
     --landing-button-border-color: #8ca9da;
     --landing-font-family: 'Roboto', sans-serif;
     --landing-font-size-base: 16px;
@@ -26,15 +26,15 @@ body {
     background-attachment: fixed;
     min-height: 100vh;
     padding: 0;
-    color: #fff;
+    color: #1f1c15;
     overflow-x: hidden;
 }
 
 body[data-theme='fodexa'] {
     background-image:
-        radial-gradient(circle at 18% 18%, rgba(83, 122, 197, 0.22) 0%, transparent 44%),
-        radial-gradient(circle at 82% 82%, rgba(20, 36, 66, 0.48) 0%, transparent 50%),
-        linear-gradient(140deg, #0a1323 0%, #131f33 55%, #1a2942 100%);
+        radial-gradient(circle at 18% 18%, rgba(249, 233, 208, 0.3) 0%, transparent 44%),
+        radial-gradient(circle at 82% 82%, rgba(220, 200, 170, 0.3) 0%, transparent 50%),
+        linear-gradient(140deg, #f9e9d0 0%, #f5e3c5 55%, #f0dbb8 100%);
 }
 
 body[data-theme='slate'] {
