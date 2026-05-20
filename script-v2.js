@@ -565,8 +565,8 @@ function renderFeaturedCards(carousel) {
         'FAMILIAR #4'
     ];
     const pedidosImages = pedidosNames.map(name => {
-        // Carpeta con espacio normal, solo el archivo codificado
-        return 'menu-roal-burger-main/los mas pedidos/' + encodeURIComponent(name) + '.png';
+        // Carpeta junto a index.html, solo el archivo codificado
+        return 'los mas pedidos/' + encodeURIComponent(name) + '.png';
     });
     const loopItems = pedidosImages.map((img, i) => ({ nombre: pedidosNames[i], image_url: img }));
     carousel.innerHTML = '';
