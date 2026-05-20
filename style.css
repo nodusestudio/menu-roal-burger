@@ -812,32 +812,37 @@ body::before {
 }
 
 .category-hero-order-btn {
-    height: 56px;
-    width: 80%;
-    max-width: 320px;
-    border: none;
-    background-image: url('boton.png');
-    background-size: 100% 100%;
-    background-position: center;
-    background-repeat: no-repeat;
-    color: #ffffff;
+    margin-top: 10px;
+    background: #ff6600;
+    color: white;
+    padding: 0 28px;
     text-decoration: none;
-    font-family: 'Oswald', sans-serif;
-    font-size: 1rem;
-    letter-spacing: 0.8px;
+    font-family: 'Roboto', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
     text-transform: uppercase;
-    padding: 0 20px;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
+    transition: all 0.3s ease;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
+    border: none;
+    width: auto;
     text-align: center;
-    transition: all 0.22s ease;
-    border-radius: 0;
+    border-radius: 25px;
+    white-space: nowrap;
+    line-height: 1;
 }
 
-.category-hero-order-btn:hover {
-    filter: brightness(1.1);
-    transform: scale(1.03);
+.category-hero-order-btn:hover,
+.category-hero-order-btn:active {
+    background: #e55a00;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 102, 0, 0.6);
+    text-decoration: none;
+    color: white;
 }
 
 .category-products-list {
@@ -1890,34 +1895,34 @@ body::before {
 /* BOTÓN "LO QUIERO" CON boton.png */
 .mobile-order-btn {
     margin-top: 10px;
-    background-image: url('boton.png');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    background: #ff6600;
     color: white;
-    padding: 12px 24px;
+    padding: 0 28px;
     text-decoration: none;
     font-family: 'Roboto', sans-serif;
     font-weight: 600;
     font-size: 14px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
     transition: all 0.3s ease;
     height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
     border: none;
-    width: 100%;
+    width: auto;
     text-align: center;
     border-radius: 25px;
+    white-space: nowrap;
+    line-height: 1;
 }
 
 .mobile-order-btn:hover,
 .mobile-order-btn:active {
-    transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    background: #e55a00;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 102, 0, 0.6);
     text-decoration: none;
     color: white;
 }
@@ -1945,10 +1950,11 @@ body::before {
     }
     
     .mobile-order-btn {
-        padding: 10px 20px;
+        padding: 0 22px;
         font-size: 13px;
-        min-height: 40px;
+        height: 40px;
         margin-top: 8px;
+        width: auto;
     }
     
     .card-image-wrapper {
@@ -1966,11 +1972,10 @@ body::before {
     }
 
     .category-hero-order-btn {
-        height: 50px;
-        font-size: 0.88rem;
-        letter-spacing: 0.4px;
-        padding: 0 16px;
-        width: 85%;
+        padding: 0 22px;
+        font-size: 13px;
+        height: 40px;
+        width: auto;
     }
 }
 
@@ -1980,9 +1985,11 @@ body::before {
     }
     
     .mobile-order-btn {
-        padding: 8px 16px;
+        padding: 0 18px;
         font-size: 12px;
+        height: 36px;
         margin-top: 6px;
+        width: auto;
     }
 }
 
