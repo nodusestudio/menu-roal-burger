@@ -558,17 +558,13 @@ function renderDynamicCategorySections() {
 
 function renderFeaturedCards(carousel) {
     // Mostrar solo imágenes de la carpeta 'los mas pedidos'
-    const pedidosNames = [
-        'DE LA CASA',
-        'EMPAREJADOS',
-        'FAMILIAR #3',
-        'FAMILIAR #4'
+    const pedidos = [
+        { nombre: 'DE LA CASA', archivo: 'de la casa.png' },
+        { nombre: 'EMPAREJADOS', archivo: 'emparejados.png' },
+        { nombre: 'FAMILIAR 3', archivo: 'familiar 3.png' },
+        { nombre: 'FAMILIAR 4', archivo: 'familiar 4.png' }
     ];
-    const pedidosImages = pedidosNames.map(name => {
-        // Carpeta junto a index.html, solo el archivo codificado
-        return 'los mas pedidos/' + encodeURIComponent(name) + '.png';
-    });
-    const loopItems = pedidosImages.map((img, i) => ({ nombre: pedidosNames[i], image_url: img }));
+    const loopItems = pedidos.map(item => ({ nombre: item.nombre, image_url: 'los mas pedidos/' + encodeURIComponent(item.archivo) }));
     carousel.innerHTML = '';
     loopItems.forEach((item, index) => {
         const safeName = String(item.nombre || 'Producto').trim() || 'Producto';
