@@ -557,87 +557,48 @@ function renderDynamicCategorySections() {
 }
 
 function renderFeaturedCards(carousel) {
-    const fixedFeaturedCards = [
-        { nombre: 'PROMO BURGER RANCHERA', image_url: 'promo-ranchera.png.jpeg' },
-        { nombre: 'COMBO DE LA CASA', image_url: 'DE LA CASA.jpeg' }
+    // Mostrar solo imágenes de la carpeta 'los mas pedidos'
+    const pedidosImages = [
+        'los mas pedidos/DE LA CASA.png',
+        'los mas pedidos/EMPAREJADOS.png',
+        'los mas pedidos/FAMILIAR #3.png',
+        'los mas pedidos/FAMILIAR #4.png'
     ];
-
-    const featuredProducts = latestProducts
-        .map((product) => {
-            const estado = product.estado || (product.paused ? 'paused' : 'active');
-            const esDestacado = product.es_destacado === true || product.featured === true;
-            const categoria = product.categoria || product.category || '';
-            const nombre = product.nombre || product.name || 'Producto';
-            return {
-                id: product.id,
-                nombre,
-                image_url: resolveProductImage(product),
-                estado,
-                es_destacado: esDestacado,
-                categoria,
-                updated_at: product.updated_at
-            };
-        })
-        .filter((product) => {
-            const categoryAllowed = isCategoryAllowed(product.categoria);
-            return product.es_destacado && product.estado !== 'paused' && categoryAllowed && !shouldHideProductByName(product.nombre);
-        })
-        .sort((a, b) => {
-            const aTs = a.updated_at && typeof a.updated_at.toMillis === 'function' ? a.updated_at.toMillis() : 0;
-            const bTs = b.updated_at && typeof b.updated_at.toMillis === 'function' ? b.updated_at.toMillis() : 0;
-            return bTs - aTs;
-        })
-        .slice(0, 5);
-
-    const featuredItems = [
-        ...featuredProducts.map((item) => ({ nombre: item.nombre, image_url: item.image_url })),
-        ...fixedFeaturedCards
+    const pedidosNames = [
+        'DE LA CASA',
+        'EMPAREJADOS',
+        'FAMILIAR #3',
+        'FAMILIAR #4'
     ];
-
-    // Ensure enough cards to create horizontal overflow and visible autoplay.
-    const seedItems = [...featuredItems];
-    while (featuredItems.length < 4 && seedItems.length) {
-        featuredItems.push(seedItems[featuredItems.length % seedItems.length]);
-    }
-
-    const loopItems = [...featuredItems, ...featuredItems, ...featuredItems];
-
+    const loopItems = pedidosImages.map((img, i) => ({ nombre: pedidosNames[i], image_url: img }));
     carousel.innerHTML = '';
-
     loopItems.forEach((item, index) => {
         const safeName = String(item.nombre || 'Producto').trim() || 'Producto';
         const buttonId = `btn-featured-${index + 1}`;
-
         const card = document.createElement('div');
         card.className = 'product-card-mobile';
-
         const imageWrap = document.createElement('div');
         imageWrap.className = 'card-image-wrapper';
-
         const image = document.createElement('img');
         image.className = 'product-image-mobile';
         image.alt = safeName;
         image.src = item.image_url;
-
         const button = document.createElement('a');
         button.className = 'mobile-order-btn';
         button.id = buttonId;
         button.target = '_blank';
         button.rel = 'noopener noreferrer';
         button.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${safeName}`)}`;
-        button.textContent = 'Lo Quiero';
+        button.textContent = '¡Lo Quiero!';
         button.addEventListener('click', () => {
             trackProductInterest(safeName, buttonId);
         });
-
         imageWrap.appendChild(image);
         card.appendChild(imageWrap);
         card.appendChild(button);
         carousel.appendChild(card);
     });
-
-    carousel.scrollLeft = Math.floor(carousel.scrollWidth / 3);
-
+    carousel.scrollLeft = 0;
     setupFeaturedCarouselAutoplay(carousel);
 }
 
