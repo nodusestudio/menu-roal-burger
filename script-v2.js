@@ -1354,7 +1354,7 @@ function ensureLandingGoogleFont(fontFamily) {
 }
 
 async function renderPublicFeaturedFromAdmin() {
-    const carousel = document.querySelector('.featured-section .mobile-carousel');
+    const carousel = document.getElementById('featured-carousel-dynamic');
     if (!carousel) {
         return;
     }
@@ -1640,6 +1640,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
     renderPublicFeaturedFromAdmin();
+    // Carrusel de destacados local (por si no hay firebase)
+    const featuredCarousel = document.getElementById('featured-carousel-dynamic');
+    if (featuredCarousel) {
+        renderFeaturedCards(featuredCarousel);
+    }
 
     applyBrandingConfig(DEFAULT_BRANDING);
     buttonConfigsMap = new Map(
