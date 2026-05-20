@@ -558,18 +558,16 @@ function renderDynamicCategorySections() {
 
 function renderFeaturedCards(carousel) {
     // Mostrar solo imágenes de la carpeta 'los mas pedidos'
-    const pedidosImages = [
-        'los mas pedidos/DE LA CASA.png',
-        'los mas pedidos/EMPAREJADOS.png',
-        'los mas pedidos/FAMILIAR #3.png',
-        'los mas pedidos/FAMILIAR #4.png'
-    ];
     const pedidosNames = [
         'DE LA CASA',
         'EMPAREJADOS',
         'FAMILIAR #3',
         'FAMILIAR #4'
     ];
+    const pedidosImages = pedidosNames.map(name => {
+        // Codifica espacios y caracteres especiales para la URL
+        return 'los%20mas%20pedidos/' + encodeURIComponent(name) + '.png';
+    });
     const loopItems = pedidosImages.map((img, i) => ({ nombre: pedidosNames[i], image_url: img }));
     carousel.innerHTML = '';
     loopItems.forEach((item, index) => {
