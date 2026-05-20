@@ -1,0 +1,12 @@
+<!-- Restaurar el brand-banner grande antes del bloque de información y eliminar el banner pequeño de la parte superior. -->
+
+<!-- 1. Elimina el brand-banner pequeño de la parte superior si existe. -->
+<!-- 2. Justo antes del bloque de información (antes de <!-- Card de Información -->), agrega: -->
+<div class="brand-banner liquid-glass" style="margin-bottom: 24px;">
+    <img src="logo.png" alt="Logo ROAL BURGER" class="brand-banner-logo">
+    <div class="brand-banner-textblock">
+        <span class="brand-banner-title">ROAL BURGER</span>
+    </div>
+</div>
+
+<!-- Así solo quedará el banner grande antes del bloque de información, como estaba antes del último cambio. -->

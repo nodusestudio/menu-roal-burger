@@ -1278,38 +1278,8 @@ function focusMenuSection(targetSection, targetId) {
 }
 
 function ensureBrandBanner() {
-    const container = document.getElementById('main-menu');
-    if (!container) {
-        return null;
-    }
-
-    let banner = document.getElementById('brandBanner');
-    if (!banner) {
-        banner = document.createElement('div');
-        banner.id = 'brandBanner';
-        banner.className = 'brand-banner';
-
-        const logo = document.createElement('img');
-        logo.id = 'brandBannerLogo';
-        logo.className = 'brand-banner-logo';
-
-        const wrap = document.createElement('div');
-
-        const title = document.createElement('h2');
-        title.id = 'brandBannerTitle';
-
-        const slogan = document.createElement('p');
-        slogan.id = 'brandBannerSlogan';
-
-        wrap.appendChild(title);
-        wrap.appendChild(slogan);
-        banner.appendChild(logo);
-        banner.appendChild(wrap);
-
-        container.insertBefore(banner, container.firstChild);
-    }
-
-    return banner;
+    // Eliminado: No generar banner dinámico, solo usar el estático en el HTML
+    return null;
 }
 
 function applyBrandingConfig(configRaw) {

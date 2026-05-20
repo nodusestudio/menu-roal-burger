@@ -1,3 +1,7 @@
+/* Forzar tamaño grande del nombre en el banner principal */
+.brand-banner-title {
+    font-size: 6.3rem !important;
+}
 * {
     margin: 0;
     padding: 0;
@@ -615,7 +619,7 @@ body::before {
 /* ========== FIN HERO SECTION ========== */
 
 .container {
-    max-width: 680px;
+    max-width: 980px;
     margin: 0 auto;
     padding: 20px;
     position: relative;
@@ -676,18 +680,18 @@ body::before {
 
 /* Sección 'Lo Más Pedido' */
 .featured-section {
-    margin-bottom: 40px;
+    margin-bottom: 86px;
     text-align: center;
 }
 
 .section-title {
     font-family: 'Oswald', sans-serif;
-    font-size: 2.2rem;
-    font-weight: 600;
+    font-size: 3.5rem;
+    font-weight: 700;
     color: #000000;
     text-transform: uppercase;
-    letter-spacing: 2px;
-    margin-bottom: 30px;
+    letter-spacing: 8px;
+    margin-bottom: 64px;
     text-shadow: none;
 }
 
@@ -730,6 +734,104 @@ body::before {
     gap: 8px;
     align-items: center;
     text-align: left;
+}
+
+/* UNIVERSAL LIQUID GLASS BOX */
+.liquid-glass {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 18px;
+    border: 1.5px solid rgba(255, 255, 255, 0.28);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.10);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    padding: 18px 22px;
+    margin-bottom: 18px;
+    color: #000000;
+    font-family: 'Oswald', 'Roboto', sans-serif;
+    font-size: 1.1rem;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 8px rgba(255,255,255,0.08);
+    transition: box-shadow 0.3s, border-color 0.3s;
+    position: relative;
+    overflow: visible;
+    z-index: 1;
+}
+
+/* Borde animado naranja futurista visible */
+.liquid-glass::after {
+    content: '';
+    position: absolute;
+    top: -3px; left: -3px; right: -3px; bottom: -3px;
+    border-radius: 22px;
+    pointer-events: none;
+    z-index: 2;
+    background: conic-gradient(
+        from 0deg,
+        #ff9100 0%,
+        #ffb347 20%,
+        #ff9100 40%,
+        #ff9100 60%,
+        #ffb347 80%,
+        #ff9100 100%
+    );
+    opacity: 0.55;
+    filter: blur(1.5px) brightness(1.2);
+    animation: border-glow-rotate 3s linear infinite;
+    clip-path: polygon(
+        0% 0%, 100% 0%, 100% 100%, 0% 100%,
+        0% 0%, 3px 3px, calc(100% - 3px) 3px, calc(100% - 3px) calc(100% - 3px), 3px calc(100% - 3px), 3px 3px
+    );
+}
+
+@keyframes border-glow-rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+}
+
+/* Borde animado naranja futurista sutil */
+.liquid-glass::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+    pointer-events: none;
+    padding: 2px;
+    background: conic-gradient(
+        from 0deg,
+        #ff9100 0%,
+        #ffb347 20%,
+        #ff9100 40%,
+        #ff9100 60%,
+        #ffb347 80%,
+        #ff9100 100%
+    );
+    mask:
+        linear-gradient(#fff 0 0) content-box, 
+        linear-gradient(#fff 0 0);
+    -webkit-mask:
+        linear-gradient(#fff 0 0) content-box, 
+        linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+    z-index: 2;
+    opacity: 0.7;
+    animation: border-glow-rotate 4s linear infinite;
+}
+
+@keyframes border-glow-rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+}
+
+.liquid-glass h1, .liquid-glass h2, .liquid-glass h3, .liquid-glass h4, .liquid-glass h5, .liquid-glass h6, .liquid-glass p, .liquid-glass span, .liquid-glass label, .liquid-glass small {
+    color: #000000;
+    text-shadow: 0 1px 8px rgba(255,255,255,0.08);
+}
+
+.liquid-glass strong {
+    color: #222;
 }
 
 .category-chip-thumb {
@@ -1322,7 +1424,7 @@ body::before {
 
 .footer p {
     margin: 0;
-    color: var(--brand-primary);
+    color: #000000;
     font-weight: 300;
 }
 
@@ -1802,7 +1904,8 @@ body::before {
 /* Carrusel Móvil Optimizado */
 .mobile-carousel {
     display: flex;
-    gap: 20px;
+    justify-content: center;
+    gap: 36px;
     overflow-x: auto;
     padding: 10px 5px 20px;
     scroll-snap-type: x mandatory;
@@ -1851,7 +1954,7 @@ body::before {
 }
 
 .product-card-mobile {
-    flex: 0 0 250px;
+    flex: 0 0 370px;
     scroll-snap-align: center;
     display: flex;
     flex-direction: column;
@@ -1894,26 +1997,26 @@ body::before {
 
 /* BOTÓN "LO QUIERO" CON boton.png */
 .mobile-order-btn {
-    margin-top: 10px;
+    margin-top: 18px;
     background: #ff6600;
     color: white;
-    padding: 0 28px;
+    padding: 0 42px;
     text-decoration: none;
     font-family: 'Roboto', sans-serif;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 21px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
     transition: all 0.3s ease;
-    height: 48px;
+    height: 72px;
     display: flex;
     align-items: center;
     justify-content: center;
     border: none;
     width: auto;
     text-align: center;
-    border-radius: 25px;
+    border-radius: 32px;
     white-space: nowrap;
     line-height: 1;
 }
@@ -1940,7 +2043,17 @@ body::before {
 
 /* Responsive específico para móvil */
 @media (max-width: 768px) {
+    .section-title {
+        letter-spacing: 4px;
+        margin-bottom: 34px;
+    }
+
+    .featured-section {
+        margin-bottom: 54px;
+    }
+
     .mobile-carousel {
+        justify-content: flex-start;
         gap: 15px;
         padding: 10px 0 20px;
     }
@@ -2098,38 +2211,156 @@ body::before {
 
 .brand-banner {
     display: flex;
+    flex-direction: row;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 22px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    background: rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-radius: 14px;
-    padding: 14px 16px;
+    justify-content: flex-start;
+    gap: 22px;
+    width: 100%;
+    max-width: 960px;
+    min-height: 136px;
+    margin: 10px auto 44px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(225, 206, 176, 0.76);
+    backdrop-filter: blur(9px);
+    -webkit-backdrop-filter: blur(9px);
+    border-radius: 20px;
+    padding: 22px 26px;
+    box-shadow: 0 18px 45px rgba(84, 54, 28, 0.12);
 }
 
 .brand-banner-logo {
-    width: 62px;
-    height: 62px;
-    object-fit: cover;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+    flex: 0 0 auto;
+    width: 92px;
+    height: 92px;
+    object-fit: contain;
+    border-radius: 14px;
+    border: 0;
+    background: #ff6600;
+    box-shadow: 0 10px 22px rgba(84, 54, 28, 0.18);
+    margin-bottom: 0;
+    padding: 8px;
+}
+
+.brand-banner > div {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    margin-left: 0;
+    margin-right: 0;
+    padding: 0;
+}
+
+.brand-banner-textblock {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 0;
+}
+
+.brand-banner-title {
+    font-family: 'Oswald', sans-serif;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-size: 6.3rem;
+    font-weight: 700;
+    color: #111;
+    text-align: left;
+    margin: 0;
+    line-height: 1.1;
+    padding: 0;
+    width: 100%;
+    display: block;
+}
+
+.brand-banner-slogan {
+    color: #111;
+    font-size: 1.05rem;
+    margin: 0;
+    text-align: left;
+    width: 100%;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+    padding: 0;
+    display: block;
+}
+}
+
+
 }
 
 .brand-banner h2 {
     font-family: 'Oswald', sans-serif;
-    letter-spacing: 1px;
+    letter-spacing: 3px;
     text-transform: uppercase;
-    font-size: 1.35rem;
+    font-size: 2.1rem;
+    font-weight: 700;
     color: #000000;
+    text-align: left;
+    width: 100%;
+    margin: 0;
+    line-height: 1.1;
 }
 
 .brand-banner p {
     color: #000000;
-    font-size: 0.9rem;
-    margin-top: 2px;
+    font-size: 1.35rem;
+    margin: 0;
+    text-align: left;
+    width: 100%;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+}
+
+@media (max-width: 768px) {
+    .brand-banner {
+        min-height: auto;
+        gap: 14px;
+        margin: 4px auto 34px;
+        padding: 16px;
+        border-radius: 16px;
+    }
+
+    .brand-banner-logo {
+        width: 76px;
+        height: 76px;
+        border-radius: 12px;
+        padding: 7px;
+    }
+
+    .brand-banner h2 {
+        font-size: 1.55rem;
+        letter-spacing: 1.8px;
+    }
+
+    .brand-banner p {
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .brand-banner {
+        gap: 12px;
+        padding: 14px;
+    }
+
+    .brand-banner-logo {
+        width: 64px;
+        height: 64px;
+    }
+
+    .brand-banner h2 {
+        font-size: 1.25rem;
+        letter-spacing: 1.3px;
+    }
+
+    .brand-banner p {
+        font-size: 0.9rem;
+    }
 }
 
 /* ===== MODAL DE PROMOCIÓN - BURGER RANCHERA ===== */
