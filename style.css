@@ -756,6 +756,46 @@ body::before {
     overflow: visible;
     z-index: 1;
 }
+
+/* Animación de borde tipo barra de progreso naranja */
+.liquid-glass::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 18px;
+    pointer-events: none;
+    z-index: 2;
+    border: 2.5px solid transparent;
+    background: none;
+}
+.liquid-glass::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 18px;
+    pointer-events: none;
+    z-index: 3;
+    border: 2.5px solid transparent;
+    background: conic-gradient(
+        from 0deg,
+        orange 0deg,
+        orange 90deg,
+        #fff0 90deg,
+        #fff0 360deg
+    );
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+    animation: progress-border-anim 2s linear infinite;
+    opacity: 0.85;
+}
+
+@keyframes progress-border-anim {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+}
 }
 
 /* Borde animado naranja futurista sutil */
