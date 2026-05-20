@@ -756,37 +756,6 @@ body::before {
     overflow: visible;
     z-index: 1;
 }
-
-/* Borde animado naranja futurista visible */
-.liquid-glass::after {
-    content: '';
-    position: absolute;
-    top: -3px; left: -3px; right: -3px; bottom: -3px;
-    border-radius: 22px;
-    pointer-events: none;
-    z-index: 2;
-    background: conic-gradient(
-        from 0deg,
-        #ff9100 0%,
-        #ffb347 20%,
-        #ff9100 40%,
-        #ff9100 60%,
-        #ffb347 80%,
-        #ff9100 100%
-    );
-    opacity: 0.55;
-    filter: blur(1.5px) brightness(1.2);
-    animation: border-glow-rotate 3s linear infinite;
-    clip-path: polygon(
-        0% 0%, 100% 0%, 100% 100%, 0% 100%,
-        0% 0%, 3px 3px, calc(100% - 3px) 3px, calc(100% - 3px) calc(100% - 3px), 3px calc(100% - 3px), 3px 3px
-    );
-}
-
-@keyframes border-glow-rotate {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
 }
 
 /* Borde animado naranja futurista sutil */
