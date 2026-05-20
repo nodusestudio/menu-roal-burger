@@ -556,44 +556,43 @@ function renderDynamicCategorySections() {
         });
 }
 
-function renderFeaturedCards(carousel) {
-    // Mostrar solo imágenes de la carpeta 'los mas pedidos'
-    const pedidos = [
-        { nombre: 'DE LA CASA', archivo: 'de la casa.png' },
-        { nombre: 'EMPAREJADOS', archivo: 'emparejados.png' },
-        { nombre: 'FAMILIAR 3', archivo: 'familiar 3.png' },
-        { nombre: 'FAMILIAR 4', archivo: 'familiar 4.png' }
-    ];
-    const loopItems = pedidos.map(item => ({ nombre: item.nombre, image_url: 'los mas pedidos/' + item.archivo }));
-    carousel.innerHTML = '';
-    loopItems.forEach((item, index) => {
-        const safeName = String(item.nombre || 'Producto').trim() || 'Producto';
-        const buttonId = `btn-featured-${index + 1}`;
-        const card = document.createElement('div');
-        card.className = 'product-card-mobile';
-        const imageWrap = document.createElement('div');
-        imageWrap.className = 'card-image-wrapper';
-        const image = document.createElement('img');
-        image.className = 'product-image-mobile';
-        image.alt = safeName;
-        image.src = item.image_url;
-        const button = document.createElement('a');
-        button.className = 'mobile-order-btn';
-        button.id = buttonId;
-        button.target = '_blank';
-        button.rel = 'noopener noreferrer';
-        button.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${safeName}`)}`;
-        button.textContent = '¡Lo Quiero!';
-        button.addEventListener('click', () => {
-            trackProductInterest(safeName, buttonId);
+function renderFeaturedCards(carousel, items) {
+        // Renderiza solo las imágenes locales fijas de los más pedidos
+        const localFeaturedImages = [
+            './losmaspedidos/delacasa.png.png',
+            './losmaspedidos/emparejados.png.png',
+            './losmaspedidos/familiar3.png.png',
+            './losmaspedidos/familiar4.png.png'
+        ];
+        carousel.innerHTML = '';
+        localFeaturedImages.forEach((imgSrc, index) => {
+            const safeName = `Producto ${index + 1}`;
+            const buttonId = `btn-featured-${index + 1}`;
+            const card = document.createElement('div');
+            card.className = 'product-card-mobile';
+            const imageWrap = document.createElement('div');
+            imageWrap.className = 'card-image-wrapper';
+            const image = document.createElement('img');
+            image.className = 'product-image-mobile';
+            image.alt = safeName;
+            image.src = imgSrc;
+            const button = document.createElement('a');
+            button.className = 'mobile-order-btn';
+            button.id = buttonId;
+            button.target = '_blank';
+            button.rel = 'noopener noreferrer';
+            button.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${safeName}`)}`;
+            button.textContent = '¡Lo Quiero!';
+            button.addEventListener('click', () => {
+                trackProductInterest(safeName, buttonId);
+            });
+            imageWrap.appendChild(image);
+            card.appendChild(imageWrap);
+            card.appendChild(button);
+            carousel.appendChild(card);
         });
-        imageWrap.appendChild(image);
-        card.appendChild(imageWrap);
-        card.appendChild(button);
-        carousel.appendChild(card);
-    });
-    carousel.scrollLeft = 0;
-    setupFeaturedCarouselAutoplay(carousel);
+        carousel.scrollLeft = 0;
+        setupFeaturedCarouselAutoplay(carousel);
 }
 
 function stopFeaturedCarouselAutoplay() {
@@ -1594,11 +1593,35 @@ document.addEventListener('DOMContentLoaded', () => {
     initPromoModal();
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
-    renderPublicFeaturedFromAdmin();
-    // Carrusel de destacados local (por si no hay firebase)
+    // Carrusel de destacados: fallback local inmediato, luego Firestore si responde
     const featuredCarousel = document.getElementById('featured-carousel-dynamic');
+    // Array local con rutas en la raíz del proyecto
+    const localFeatured = [
+        { nombre: 'DE LA CASA', image_url: 'losmaspedidos/delacasa.png' },
+        { nombre: 'EMPAREJADOS', image_url: 'losmaspedidos/emparejados.png' },
+        { nombre: 'FAMILIAR 3', image_url: 'losmaspedidos/familiar3.png' },
+        { nombre: 'FAMILIAR 4', image_url: 'losmaspedidos/familiar4.png' }
+    ];
     if (featuredCarousel) {
-        renderFeaturedCards(featuredCarousel);
+        renderFeaturedCards(featuredCarousel, localFeatured);
+        // Intentar cargar desde Firestore si está disponible
+        if (typeof initFirebaseServices === 'function') {
+            try {
+                const firebaseDb = initFirebaseServices().db;
+                firebaseDb.collection('productos').where('es_destacado', '==', true).get().then((snapshot) => {
+                    const featuredFromDb = snapshot.docs.map((doc) => {
+                        const data = doc.data();
+                        return {
+                            nombre: data.nombre || data.name || 'Producto',
+                            image_url: data.image_url || ''
+                        };
+                    }).filter(item => item.image_url);
+                    if (featuredFromDb.length > 0) {
+                        renderFeaturedCards(featuredCarousel, featuredFromDb);
+                    }
+                }).catch(() => {/* fallback silencioso */});
+            } catch (e) {/* fallback silencioso */}
+        }
     }
 
     applyBrandingConfig(DEFAULT_BRANDING);
