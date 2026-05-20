@@ -564,7 +564,7 @@ function renderFeaturedCards(carousel) {
         { nombre: 'FAMILIAR 3', archivo: 'familiar 3.png' },
         { nombre: 'FAMILIAR 4', archivo: 'familiar 4.png' }
     ];
-    const loopItems = pedidos.map(item => ({ nombre: item.nombre, image_url: 'los mas pedidos/' + encodeURIComponent(item.archivo) }));
+    const loopItems = pedidos.map(item => ({ nombre: item.nombre, image_url: 'los mas pedidos/' + item.archivo }));
     carousel.innerHTML = '';
     loopItems.forEach((item, index) => {
         const safeName = String(item.nombre || 'Producto').trim() || 'Producto';
