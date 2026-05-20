@@ -775,20 +775,17 @@ body::before {
     border-radius: 18px;
     pointer-events: none;
     z-index: 3;
-    border: 2.5px solid transparent;
-    background: conic-gradient(
-        from 0deg,
-        orange 0deg,
-        orange 90deg,
-        #fff0 90deg,
-        #fff0 360deg
-    );
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask-composite: exclude;
-    -webkit-mask-composite: xor;
-    animation: progress-border-anim 2s linear infinite;
-    opacity: 0.85;
+        border: 3px solid transparent;
+        background:
+            conic-gradient(
+                from 0deg,
+                orange 0deg 18deg,
+                #fff0 18deg 360deg
+            );
+        -webkit-mask-image: none;
+        mask-image: none;
+        animation: progress-border-anim 1.2s linear infinite;
+        opacity: 1;
 }
 
 @keyframes progress-border-anim {
