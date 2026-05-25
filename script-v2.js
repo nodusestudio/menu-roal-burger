@@ -70,9 +70,16 @@ let selectedCategoryKey = '';
 let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
 
-function buildProductWhatsAppUrl(productName) {
+function getSelectedCategoryName() {
+    const categories = ensurePinnedExplorerCategories(ensureForcedExplorerCategories(getExplorerCategories()));
+    const selectedCategory = categories.find((item) => item.key === selectedCategoryKey);
+    return selectedCategory?.name || 'NUESTROS PRODUCTOS';
+}
+
+function buildProductWhatsAppUrl(productName, categoryName) {
     const safeProductName = String(productName || 'producto').trim() || 'producto';
-    return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Quiero pedir ${safeProductName}`)}`;
+    const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
+    return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName}`)}`;
 }
 let featuredCarouselAnimationFrame = null;
 let featuredCarouselLastTimestamp = 0;
@@ -726,21 +733,26 @@ function renderFeaturedCards(carousel, items) {
         carousel.innerHTML = '';
         localFeaturedImages.forEach((item, index) => {
             const safeName = item.name;
+            const featuredCategoryName = 'LOS MAS PEDIDOS';
             const buttonId = `btn-featured-${index + 1}`;
             const card = document.createElement('div');
             card.className = 'product-card-mobile';
             const imageWrap = document.createElement('div');
             imageWrap.className = 'card-image-wrapper';
+            imageWrap.style.cursor = 'zoom-in';
             const image = document.createElement('img');
             image.className = 'product-image-mobile';
             image.alt = safeName;
             image.src = item.src;
+            imageWrap.addEventListener('click', () => {
+                abrirModalBebida(safeName, item.src, featuredCategoryName);
+            });
             const button = document.createElement('a');
             button.className = 'mobile-order-btn';
             button.id = buttonId;
             button.target = '_blank';
             button.rel = 'noopener noreferrer';
-            button.href = buildProductWhatsAppUrl(safeName);
+            button.href = buildProductWhatsAppUrl(safeName, featuredCategoryName);
             button.textContent = '¡Lo Quiero!';
             button.addEventListener('click', () => {
                 trackProductInterest(safeName, buttonId);
@@ -1599,7 +1611,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
         const orderBtn = document.createElement('a');
         const btnId = `btn-category-${selectedCategory.key}-${index + 1}`;
         orderBtn.className = 'category-order-btn';
-        orderBtn.href = buildProductWhatsAppUrl(product.nombre);
+        orderBtn.href = buildProductWhatsAppUrl(product.nombre, selectedCategory.name);
         orderBtn.target = '_blank';
         orderBtn.rel = 'noopener noreferrer';
         orderBtn.textContent = 'Pedir';
@@ -1625,7 +1637,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
     }
 }
 // --- FUNCIÓN GLOBAL MODAL BEBIDAS ---
-function abrirModalBebida(nombre, ruta) {
+function abrirModalBebida(nombre, ruta, categoria) {
     const prev = document.getElementById('bebidas-modal');
     if (prev) prev.remove();
 
@@ -1658,7 +1670,7 @@ function abrirModalBebida(nombre, ruta) {
 
     const orderButton = document.createElement('a');
     orderButton.className = 'bebidas-modal-btn bebidas-modal-btn-primary';
-    orderButton.href = buildProductWhatsAppUrl(nombre);
+    orderButton.href = buildProductWhatsAppUrl(nombre, categoria);
     orderButton.target = '_blank';
     orderButton.rel = 'noopener noreferrer';
     orderButton.textContent = 'Pedir este producto';
