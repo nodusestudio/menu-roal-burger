@@ -46,7 +46,15 @@
 
         <section class="category-grid-section liquid-glass" aria-label="Nuestros productos">
             <h2 class="section-title">NUESTROS PRODUCTOS</h2>
-            <div class="category-grid" id="categoryGrid"></div>
+            <div class="category-grid" id="categoryGrid">
+                <button class="category-btn">BURGER PREMIUM</button>
+                <button class="category-btn">BURGER CLASICAS</button>
+                <button class="category-btn">PEPITOS VENEZOLANOS</button>
+                <button class="category-btn">PERROS CALIENTES</button>
+                <button class="category-btn">ENTRADAS</button>
+                <button class="category-btn">BEBIDAS Y ADICIONALES</button>
+                <button class="category-btn">SALCHIPAPAS</button>
+            </div>
             <div class="category-products-panel" id="categoryProductsPanel">
                 <p class="category-empty">Selecciona una categoria para ver productos.</p>
             </div>
@@ -184,10 +192,7 @@
     <div id="promoModal" class="promo-modal" role="dialog" aria-modal="true" aria-label="Promoción Burger Ranchera">
         <div class="promo-modal-card">
             <button class="promo-modal-close" onclick="closePromoModal()" aria-label="Cerrar promoción">&times;</button>
-                        <video class="promo-modal-img" controls autoplay loop muted>
-                            <source src="mes de las madres.mp4" type="video/mp4">
-                            Tu navegador no soporta el video.
-                        </video>
+                        <!-- Video promocional eliminado para evitar error 404 -->
                         <p class="promo-modal-text">hola 👋 quiero informacion de los combos especiales del dia de la madre 🍔❤️</p>
             <div class="promo-modal-actions">
                 <a href="https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quiero%20informaci%C3%B3n%20y%20pedir%20los%20combos%20especiales%20del%20D%C3%ADa%20de%20la%20Madre%20%F0%9F%8D%94%F0%9F%8C%B9" target="_blank" rel="noopener noreferrer" class="promo-btn promo-btn-order" onclick="trackButtonClick('btn-promo-madres', 'Combos Día de la Madre - Pedir Ya')">¡PEDIR YA! 📲</a>

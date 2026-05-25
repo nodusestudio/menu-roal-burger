@@ -69,6 +69,11 @@ let buttonConfigsMap = new Map();
 let selectedCategoryKey = '';
 let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
+
+function buildProductWhatsAppUrl(productName) {
+    const safeProductName = String(productName || 'producto').trim() || 'producto';
+    return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Quiero pedir ${safeProductName}`)}`;
+}
 let featuredCarouselAnimationFrame = null;
 let featuredCarouselLastTimestamp = 0;
 
@@ -170,7 +175,8 @@ const BRANDING_THEMES = ['fodexa', 'slate', 'ivory', 'cobalt', 'ember', 'mono'];
 let globalInteractionVolume = DEFAULT_BRANDING.interactionVolume;
 
 const LOCAL_PRODUCT_IMAGE_FILES = [
-    'bebidas y adicionales.png',
+    './bebidasyadicionales/bebidas.png',
+    './bebidasyadicionales/adicionales.png',
     'BURGER CLASICAS.png',
     'BURGER PREMIUM.png',
     'COMBOS BURGER.png',
@@ -220,7 +226,10 @@ const FORCED_CATEGORY_BUTTONS = [
     { key: 'combos perros', name: 'COMBOS PERROS' },
     { key: 'combos familiares', name: 'COMBOS FAMILIARES' },
     { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA' },
-    { key: 'bebidas y adicionales', name: 'BEBIDAS Y ADICIONALES' }
+    { key: 'bebidas y adicionales', name: 'BEBIDAS Y ADICIONALES' },
+    { key: 'perros y salchipapas', name: 'PERROS CALIENTES' },
+    { key: 'salchipapas', name: 'SALCHIPAPAS' },
+    { key: 'salchipapa', name: 'SALCHIPAPA' }
 ];
 
 const CATEGORY_IMAGE_ALIASES = {
@@ -239,19 +248,23 @@ const CATEGORY_IMAGE_ALIASES = {
     combosfamiliares: 'COMBOS FAMILIARES.png',
     combosdetemporada: 'COMBOS DE TEMPORADAS.png',
     combosdetemporadas: 'COMBOS DE TEMPORADAS.png',
-    bebidasyadicionales: 'bebidas y adicionales.png',
-    adicionales: 'bebidas y adicionales.png'
+    bebidasyadicionales: './bebidasyadicionales/bebidas.png',
+    adicionales: './bebidasyadicionales/adicionales.png'
 };
 
 const PINNED_CATEGORY_BUTTONS = [
     { key: 'burger premium', name: 'BURGER PREMIUM', matchKeys: ['burger premium'] },
     { key: 'burger clasicas', name: 'BURGER CLASICAS', matchKeys: ['burger clasicas', 'burger clasica'] },
     { key: 'pepitos venezolanos', name: 'PEPITOS VENEZOLANOS', matchKeys: ['pepitos venezolanos', 'pepitos'] },
-    { key: 'perros y salchipapas', name: 'PERROS Y SALCHIPAPAS', matchKeys: ['perros y salchipapas', 'perros calientes y salchipapas'] },
+    { key: 'perros y salchipapas', name: 'PERROS CALIENTES', matchKeys: ['perros y salchipapas', 'perros calientes', 'perros calientes y salchipapas'] },
     { key: 'entradas', name: 'ENTRADAS', matchKeys: ['entradas'] },
     { key: 'combos burger', name: 'COMBOS BURGER', matchKeys: ['combos burger', 'combo burger', 'combos de burger'] },
     { key: 'combos perros', name: 'COMBOS PERROS', matchKeys: ['combos perros', 'combos perros y express', 'combos de perros y express', 'combos de perros', 'combos express'] },
     { key: 'combos familiares', name: 'COMBOS FAMILIARES', matchKeys: ['combos familiares', 'combo familiar'] },
+    { key: 'salchipapas', name: 'SALCHIPAPAS', matchKeys: ['salchipapas', 'salchipapa'] },
+    { key: 'combos con papas y bebida', name: 'COMBOS CON PAPAS Y BEBIDA', matchKeys: ['combos con papas y bebida'] },
+    { key: 'combos mixtos', name: 'COMBOS MIXTOS', matchKeys: ['combos mixtos'] },
+    { key: 'nuestras salsas', name: 'NUESTRAS SALSAS', matchKeys: ['nuestras salsas'] },
     { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA', matchKeys: ['combos de temporada', 'combos de temporadas', 'combos temporada'] },
     { key: 'bebidas y adicionales', name: 'BEBIDAS Y ADICIONALES', matchKeys: ['bebidas y adicionales', 'adicionales', 'bebidas'] }
 ];
@@ -301,10 +314,19 @@ function shouldHideCategoryList(category) {
 }
 
 function resolveProductImage(product) {
-    const productName = String(product?.nombre || product?.name || '').trim();
-    const normalizedProductName = normalizeAssetLookup(productName);
-    const localMatch = LOCAL_PRODUCT_IMAGE_MAP.get(normalizedProductName);
+    let productName = String(product?.nombre || product?.name || '').trim();
+    let normalizedProductName = normalizeAssetLookup(productName);
+    const categoryKey = normalizeCategoryKey(product?.categoria || product?.category || '');
 
+    // Si es pepitos venezolanos, usar siempre la ruta directa y extensión real
+    if (categoryKey === 'pepitosvenezolanos' || categoryKey === 'pepitos venezolanos') {
+        if (normalizedProductName.includes('ranchero')) {
+            return 'pepitosvenezolanos/pepitoranchero.png';
+        }
+        return `pepitosvenezolanos/pepito${normalizedProductName}.png`;
+    }
+
+    const localMatch = LOCAL_PRODUCT_IMAGE_MAP.get(normalizedProductName);
     if (localMatch) {
         return localMatch;
     }
@@ -319,10 +341,13 @@ function resolveProductImage(product) {
 
 function resolveCategoryImage(categoryName) {
     const normalizedCategory = normalizeAssetLookup(categoryName);
+    if (normalizedCategory === 'bebidasyadicionales') {
+        // Siempre devolver la imagen correcta de la galería
+        return './bebidasyadicionales/adicionales.png';
+    }
     if (CATEGORY_IMAGE_ALIASES[normalizedCategory]) {
         return CATEGORY_IMAGE_ALIASES[normalizedCategory];
     }
-
     const localMatch = LOCAL_PRODUCT_IMAGE_MAP.get(normalizedCategory);
     return localMatch || 'logo.png';
 }
@@ -478,6 +503,166 @@ function renderDynamicCategorySections() {
 
             const visibleProducts = data.products.filter((product) => product.estado !== 'paused');
 
+            const categoriaSeleccionada = category.name;
+            const catNormalizada = typeof categoriaSeleccionada === 'string' ? categoriaSeleccionada.trim().toUpperCase() : '';
+
+            // --- SALCHIPAPAS ---
+            if (catNormalizada.includes("SALCHIPAPA")) {
+                const contenedorMenu = document.getElementById("products-container") || document.querySelector(".products-grid") || document.getElementById("categoryProductsPanel") || document.querySelector(".menu-images-container");
+                if (contenedorMenu) {
+                    contenedorMenu.innerHTML = ""; 
+                }
+                const galeriaHTML = `
+                    <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                        <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Salchi Normal', './salchipapas/salchinormal.png')">
+                            <img src="./salchipapas/salchinormal.png" style="width: 100%; border-radius: 8px;" alt="Salchi Normal">
+                            <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Salchi Normal</p>
+                        </div>
+                        <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Salchi Super', './salchipapas/salchisuper.png')">
+                            <img src="./salchipapas/salchisuper.png" style="width: 100%; border-radius: 8px;" alt="Salchi Super">
+                            <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Salchi Super</p>
+                        </div>
+                    </div>
+                `;
+                if (contenedorMenu) {
+                    contenedorMenu.insertAdjacentHTML("beforeend", galeriaHTML);
+                }
+                return; // Detiene la ejecución para que no se ruede a los perros
+            }
+
+            // --- BEBIDAS Y ADICIONALES ---
+            if (catNormalizada.includes("BEBIDAS") || catNormalizada.includes("ADICIONALES")) {
+                // 1. Limpiar el contenedor de raíz usando todos los selectores posibles
+                const contenedorMenu = document.getElementById("products-container") || document.querySelector(".products-grid") || document.getElementById("categoryProductsPanel") || document.querySelector(".menu-images-container");
+                if (contenedorMenu) {
+                    contenedorMenu.innerHTML = ""; 
+                }
+                // 2. Inyectar la galería con el nombre de archivo REAL (adiciones.png)
+                const galeriaHTML = `
+                    <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                        <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Adicionales', './bebidasyadicionales/adiciones.png')">
+                            <img src="./bebidasyadicionales/adiciones.png" style="width: 100%; border-radius: 8px;" alt="Adicionales">
+                            <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Adicionales</p>
+                        </div>
+                        <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Bebidas', './bebidasyadicionales/bebidas.png')">
+                            <img src="./bebidasyadicionales/bebidas.png" style="width: 100%; border-radius: 8px;" alt="Bebidas">
+                            <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Bebidas</p>
+                        </div>
+                    </div>
+                `;
+                if (contenedorMenu) {
+                    contenedorMenu.insertAdjacentHTML("beforeend", galeriaHTML);
+                }
+                return; // Bloquear cualquier renderizado viejo
+            }
+
+            // --- PERROS CALIENTES ---
+            else if ((catNormalizada.includes("PERROS") || catNormalizada.includes("PERRO")) && !catNormalizada.includes("SALCHIPAPA")) {
+                // Aquí va el renderizado de perros calientes, si existe
+                // ...
+            }
+            // Modal para galería de bebidas/adicionales
+            function openBebidasModal(imgSrc, title) {
+                // Eliminar modal previo si existe
+                const prev = document.getElementById('bebidas-modal');
+                if (prev) prev.remove();
+
+                const modalBg = document.createElement('div');
+                modalBg.id = 'bebidas-modal';
+                modalBg.style.position = 'fixed';
+                modalBg.style.top = '0';
+                modalBg.style.left = '0';
+                modalBg.style.width = '100vw';
+                modalBg.style.height = '100vh';
+                modalBg.style.background = 'rgba(0,0,0,0.97)';
+                modalBg.style.display = 'flex';
+                modalBg.style.alignItems = 'center';
+                modalBg.style.justifyContent = 'center';
+                modalBg.style.zIndex = '99999';
+                modalBg.style.width = '100vw';
+                modalBg.style.height = '100vh';
+                modalBg.style.top = '0';
+                modalBg.style.left = '0';
+                modalBg.style.position = 'fixed';
+
+                const modalContent = document.createElement('div');
+                modalContent.style.background = 'rgba(20,20,20,0.98)';
+                modalContent.style.borderRadius = '16px';
+                modalContent.style.padding = '24px 18px 18px 18px';
+                modalContent.style.display = 'flex';
+                modalContent.style.flexDirection = 'column';
+                modalContent.style.alignItems = 'center';
+                modalContent.style.maxWidth = '95vw';
+                modalContent.style.maxHeight = '90vh';
+                modalContent.style.boxShadow = '0 4px 32px 0 rgba(0,0,0,0.25)';
+
+                const img = document.createElement('img');
+                img.src = imgSrc;
+                img.alt = title;
+                img.style.maxWidth = '80vw';
+                img.style.maxHeight = '55vh';
+                img.style.borderRadius = '12px';
+                img.style.marginBottom = '18px';
+                img.style.boxShadow = '0 2px 12px 0 rgba(0,0,0,0.18)';
+
+                const titleDiv = document.createElement('div');
+                titleDiv.textContent = title;
+                titleDiv.style.fontWeight = '700';
+                titleDiv.style.fontSize = '1.25rem';
+                titleDiv.style.color = '#fff';
+                titleDiv.style.marginBottom = '18px';
+                titleDiv.style.textAlign = 'center';
+
+                // Botones
+                const btnsRow = document.createElement('div');
+                btnsRow.style.display = 'flex';
+                btnsRow.style.gap = '18px';
+                btnsRow.style.marginTop = '8px';
+
+                // Botón Regresar
+                const closeBtn = document.createElement('button');
+                closeBtn.textContent = 'Regresar';
+                closeBtn.style.background = '#222';
+                closeBtn.style.color = '#fff';
+                closeBtn.style.fontWeight = '600';
+                closeBtn.style.fontSize = '1rem';
+                closeBtn.style.border = 'none';
+                closeBtn.style.borderRadius = '8px';
+                closeBtn.style.padding = '10px 22px';
+                closeBtn.style.cursor = 'pointer';
+                closeBtn.style.boxShadow = '0 1px 4px 0 rgba(0,0,0,0.10)';
+                closeBtn.onclick = () => {
+                    modalBg.remove();
+                };
+
+                // Botón Pedir este producto
+                const pedirBtn = document.createElement('a');
+                pedirBtn.textContent = 'Pedir este producto';
+                pedirBtn.style.background = '#ff6000';
+                pedirBtn.style.color = '#fff';
+                pedirBtn.style.fontWeight = '700';
+                pedirBtn.style.fontSize = '1rem';
+                pedirBtn.style.border = 'none';
+                pedirBtn.style.borderRadius = '8px';
+                pedirBtn.style.padding = '10px 22px';
+                pedirBtn.style.cursor = 'pointer';
+                pedirBtn.style.textDecoration = 'none';
+                pedirBtn.style.boxShadow = '0 1px 4px 0 rgba(0,0,0,0.10)';
+                pedirBtn.href = buildProductWhatsAppUrl(title);
+                pedirBtn.target = '_blank';
+                pedirBtn.rel = 'noopener noreferrer';
+
+                btnsRow.appendChild(closeBtn);
+                btnsRow.appendChild(pedirBtn);
+
+                modalContent.appendChild(img);
+                modalContent.appendChild(titleDiv);
+                modalContent.appendChild(btnsRow);
+                modalBg.appendChild(modalContent);
+
+                document.body.appendChild(modalBg);
+            }
+            // ...resto de categorías normales...
             if (!visibleProducts.length) {
                 const empty = document.createElement('p');
                 empty.textContent = 'No hay productos cargados en esta categoria.';
@@ -485,36 +670,11 @@ function renderDynamicCategorySections() {
                 empty.style.fontSize = '0.95rem';
                 section.appendChild(empty);
             } else {
-                const isAdicionales = normalizeCategoryKey(category.name) === 'adicionales';
-
                 visibleProducts.forEach((product) => {
-                    if (isAdicionales) {
-                        const image = document.createElement('img');
-                        image.className = 'menu-image';
-                        image.src = product.image_url;
-                        image.alt = product.nombre;
-                        section.appendChild(image);
-
-                        const meta = document.createElement('div');
-                        meta.style.display = 'flex';
-                        meta.style.justifyContent = 'space-between';
-                        meta.style.alignItems = 'center';
-                        meta.style.margin = '8px 2px 14px';
-                        meta.style.fontWeight = '700';
-                        meta.style.fontSize = '1rem';
-                        meta.style.color = '#fff';
-
-                        const name = document.createElement('span');
-                        name.textContent = product.nombre;
-
-                        const price = document.createElement('span');
-                        price.textContent = `$ ${Number(product.precio).toLocaleString('es-CO')}`;
-                        price.style.color = 'var(--brand-secondary, #ffb27a)';
-
-                        meta.appendChild(name);
-                        meta.appendChild(price);
-                        section.appendChild(meta);
-                        return;
+                    // Intercept image path for pepitoranchero only
+                    let rutaImagen = product.image_url || '';
+                    if (rutaImagen.includes('pepitoranchero.png')) {
+                        rutaImagen = './pepitosvenezolanos/pepitoranchero.png';
                     }
 
                     const card = document.createElement('div');
@@ -529,7 +689,7 @@ function renderDynamicCategorySections() {
                     card.style.background = 'rgba(0,0,0,0.22)';
 
                     const img = document.createElement('img');
-                    img.src = product.image_url;
+                    img.src = rutaImagen;
                     img.alt = product.nombre;
                     img.style.width = '68px';
                     img.style.height = '68px';
@@ -551,7 +711,6 @@ function renderDynamicCategorySections() {
                     section.appendChild(card);
                 });
             }
-
             container.appendChild(section);
         });
 }
@@ -559,14 +718,14 @@ function renderDynamicCategorySections() {
 function renderFeaturedCards(carousel, items) {
         // Renderiza solo las imágenes locales fijas de los más pedidos
         const localFeaturedImages = [
-            './losmaspedidos/delacasa.png.png',
-            './losmaspedidos/emparejados.png.png',
-            './losmaspedidos/familiar3.png.png',
-            './losmaspedidos/familiar4.png.png'
+            { name: 'DE LA CASA', src: './losmaspedidos/delacasa.png.png' },
+            { name: 'EMPAREJADOS', src: './losmaspedidos/emparejados.png.png' },
+            { name: 'FAMILIAR 3', src: './losmaspedidos/familiar3.png.png' },
+            { name: 'FAMILIAR 4', src: './losmaspedidos/familiar4.png.png' }
         ];
         carousel.innerHTML = '';
-        localFeaturedImages.forEach((imgSrc, index) => {
-            const safeName = `Producto ${index + 1}`;
+        localFeaturedImages.forEach((item, index) => {
+            const safeName = item.name;
             const buttonId = `btn-featured-${index + 1}`;
             const card = document.createElement('div');
             card.className = 'product-card-mobile';
@@ -575,13 +734,13 @@ function renderFeaturedCards(carousel, items) {
             const image = document.createElement('img');
             image.className = 'product-image-mobile';
             image.alt = safeName;
-            image.src = imgSrc;
+            image.src = item.src;
             const button = document.createElement('a');
             button.className = 'mobile-order-btn';
             button.id = buttonId;
             button.target = '_blank';
             button.rel = 'noopener noreferrer';
-            button.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${safeName}`)}`;
+            button.href = buildProductWhatsAppUrl(safeName);
             button.textContent = '¡Lo Quiero!';
             button.addEventListener('click', () => {
                 trackProductInterest(safeName, buttonId);
@@ -925,11 +1084,22 @@ function getExplorerCategories() {
     const uniqueMap = new Map();
     const keys = new Set();
 
+
+    // Excluir combos de temporada, familiares, perros, burger y variantes
+    const EXCLUDE_KEYS = new Set([
+        'adicionales',
+        'combos',
+        'combos de temporada', 'combos de temporadas', 'combos temporada',
+        'combos familiares', 'combo familiar',
+        'combos perros', 'combos de perros', 'combos perros y express', 'combos de perros y express', 'combos express',
+        'combos burger', 'combo burger', 'combos de burger'
+    ]);
+
     allCategoryMeta.forEach((item) => {
         const name = item?.name;
         const cleanName = String(name || '').trim();
         const key = normalizeCategoryKey(cleanName);
-        if (!cleanName || !key || keys.has(key) || key === 'adicionales' || key === 'combos') {
+        if (!cleanName || !key || keys.has(key) || EXCLUDE_KEYS.has(key)) {
             return;
         }
         keys.add(key);
@@ -940,7 +1110,7 @@ function getExplorerCategories() {
         const name = product.categoria || product.category || '';
         const cleanName = String(name || '').trim();
         const key = normalizeCategoryKey(cleanName);
-        if (!cleanName || !key || keys.has(key) || key === 'adicionales' || key === 'combos') {
+        if (!cleanName || !key || keys.has(key) || EXCLUDE_KEYS.has(key)) {
             return;
         }
         keys.add(key);
@@ -974,13 +1144,22 @@ function getExplorerCategories() {
 function ensureForcedExplorerCategories(categories) {
     const byKey = new Map(categories.map((item) => [normalizeCategoryKey(item.key), item]));
 
+
+    // Excluir combos de temporada, familiares, perros, burger de los forzados
     FORCED_CATEGORY_BUTTONS.forEach((item) => {
         const key = normalizeCategoryKey(item.key);
         const name = String(item.name || '').trim();
         if (!key || !name) {
             return;
         }
-
+        if ([
+            'combos de temporada', 'combos de temporadas', 'combos temporada',
+            'combos familiares', 'combo familiar',
+            'combos perros', 'combos de perros', 'combos perros y express', 'combos de perros y express', 'combos express',
+            'combos burger', 'combo burger', 'combos de burger'
+        ].includes(key)) {
+            return;
+        }
         byKey.set(key, { key, name });
     });
 
@@ -1004,12 +1183,20 @@ function ensurePinnedExplorerCategories(categories) {
     const inputMap = new Map((categories || []).map((item) => [normalizeCategoryKey(item.key), item]));
     const pinnedList = [];
 
+    // Excluir combos de temporada, familiares, perros, burger de los pinneados
     PINNED_CATEGORY_BUTTONS.forEach((item) => {
         const key = normalizeCategoryKey(item.key);
         if (!key) {
             return;
         }
-
+        if ([
+            'combos de temporada', 'combos de temporadas', 'combos temporada',
+            'combos familiares', 'combo familiar',
+            'combos perros', 'combos de perros', 'combos perros y express', 'combos de perros y express', 'combos express',
+            'combos burger', 'combo burger', 'combos de burger'
+        ].includes(key)) {
+            return;
+        }
         const existing = inputMap.get(key);
         pinnedList.push({
             key,
@@ -1085,21 +1272,10 @@ function renderCategoryExplorer(nextKey, options = {}) {
         button.type = 'button';
         button.className = `category-chip${category.key === selectedCategoryKey ? ' active' : ''}`;
 
-        const thumb = document.createElement('img');
-        thumb.className = 'category-chip-thumb';
-        thumb.src = resolveCategoryImage(category.name);
-        thumb.alt = category.name;
-        thumb.loading = 'lazy';
-        thumb.decoding = 'async';
-        thumb.addEventListener('error', () => {
-            thumb.src = 'logo.png';
-        });
-
         const label = document.createElement('span');
         label.className = 'category-chip-label';
         label.textContent = category.name;
 
-        button.appendChild(thumb);
         button.appendChild(label);
         button.addEventListener('click', () => {
             selectedCategoryKey = category.key;
@@ -1109,6 +1285,239 @@ function renderCategoryExplorer(nextKey, options = {}) {
     });
 
     const selectedCategory = categories.find((item) => item.key === selectedCategoryKey) || categories[0];
+
+    // --- INICIO LÓGICA MANUAL BEBIDAS Y ADICIONALES Y OTRAS ---
+    if (selectedCategory.name) {
+        const catNorm = selectedCategory.name.trim().toUpperCase();
+        // BEBIDAS Y ADICIONALES
+        if (catNorm.includes('BEBIDAS') || catNorm.includes('ADICIONALES')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Adicionales', './bebidasyadicionales/adiciones.png')">
+                        <img src="./bebidasyadicionales/adiciones.png" style="width: 100%; border-radius: 8px;" alt="Adicionales">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Adicionales</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Bebidas', './bebidasyadicionales/bebidas.png')">
+                        <img src="./bebidasyadicionales/bebidas.png" style="width: 100%; border-radius: 8px;" alt="Bebidas">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Bebidas</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // BURGER CLASICAS
+        if (catNorm.includes('CLASICAS')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Normal', './burgerclasicas/burgernormal.png')">
+                        <img src="./burgerclasicas/burgernormal.png" style="width: 100%; border-radius: 8px;" alt="Normal">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Normal</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Super', './burgerclasicas/burgersuper.png')">
+                        <img src="./burgerclasicas/burgersuper.png" style="width: 100%; border-radius: 8px;" alt="Super">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Super</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // BURGER PREMIUM
+        if (catNorm.includes('PREMIUM')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Caracas', './burgerpremium/burgercaracas.png')">
+                        <img src="./burgerpremium/burgercaracas.png" style="width: 100%; border-radius: 8px;" alt="Caracas">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Caracas</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Cordillera', './burgerpremium/burgercordillera.png')">
+                        <img src="./burgerpremium/burgercordillera.png" style="width: 100%; border-radius: 8px;" alt="Cordillera">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Cordillera</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Papuda', './burgerpremium/burgerpapuda.png')">
+                        <img src="./burgerpremium/burgerpapuda.png" style="width: 100%; border-radius: 8px;" alt="Papuda">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Papuda</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Plus', './burgerpremium/burgerplus.png')">
+                        <img src="./burgerpremium/burgerplus.png" style="width: 100%; border-radius: 8px;" alt="Plus">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Plus</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Ranchera', './burgerpremium/burgerranchera.png')">
+                        <img src="./burgerpremium/burgerranchera.png" style="width: 100%; border-radius: 8px;" alt="Ranchera">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Ranchera</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Triplete', './burgerpremium/burgertriplete.png')">
+                        <img src="./burgerpremium/burgertriplete.png" style="width: 100%; border-radius: 8px;" alt="Triplete">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Triplete</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // ENTRADAS
+        if (catNorm.includes('ENTRADAS')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Papas a la Francesa', './entradas/papas.png')">
+                        <img src="./entradas/papas.png" style="width: 100%; border-radius: 8px;" alt="Papas a la Francesa">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Papas a la Francesa</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Tequeños', './entradas/tequenos.png')">
+                        <img src="./entradas/tequenos.png" style="width: 100%; border-radius: 8px;" alt="Tequeños">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Tequeños</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // PEPTIOS VENEZOLANOS
+        if (catNorm.includes('PEPITOS')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Mix', './pepitosvenezolanos/pepitomix.png')">
+                        <img src="./pepitosvenezolanos/pepitomix.png" style="width: 100%; border-radius: 8px;" alt="Mix">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Mix</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Plus', './pepitosvenezolanos/pepitoplus.png')">
+                        <img src="./pepitosvenezolanos/pepitoplus.png" style="width: 100%; border-radius: 8px;" alt="Plus">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Plus</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Ranchero', './pepitosvenezolanos/pepitoranchero.png')">
+                        <img src="./pepitosvenezolanos/pepitoranchero.png" style="width: 100%; border-radius: 8px;" alt="Ranchero">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Ranchero</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Urbano', './pepitosvenezolanos/pepitourbano.png')">
+                        <img src="./pepitosvenezolanos/pepitourbano.png" style="width: 100%; border-radius: 8px;" alt="Urbano">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Urbano</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // SALCHIPAPAS
+        if (catNorm.includes('SALCHIPAPA')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Salchi Normal', './salchipapas/salchinormal.png')">
+                        <img src="./salchipapas/salchinormal.png" style="width: 100%; border-radius: 8px;" alt="Salchi Normal">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Salchi Normal</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Salchi Super', './salchipapas/salchisuper.png')">
+                        <img src="./salchipapas/salchisuper.png" style="width: 100%; border-radius: 8px;" alt="Salchi Super">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Salchi Super</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // PERROS CALIENTES
+        if (catNorm.includes('PERROS') && !catNorm.includes('SALCHIPAPA')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Especial', './perroscalientes/perroespecial.png')">
+                        <img src="./perroscalientes/perroespecial.png" style="width: 100%; border-radius: 8px;" alt="Especial">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Especial</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Normal', './perroscalientes/perronormal.png')">
+                        <img src="./perroscalientes/perronormal.png" style="width: 100%; border-radius: 8px;" alt="Normal">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Normal</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Super', './perroscalientes/perrosuper.png')">
+                        <img src="./perroscalientes/perrosuper.png" style="width: 100%; border-radius: 8px;" alt="Super">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Super</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // COMBOS CON PAPAS Y BEBIDA
+        if (catNorm.includes('COMBOS CON PAPAS Y BEBIDA')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Combo Burger Normal', './combosconpapasybebidas/comboburgernormal.png')">
+                        <img src="./combosconpapasybebidas/comboburgernormal.png" style="width: 100%; border-radius: 8px;" alt="Combo Burger Normal">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Combo Burger Normal</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Combo Burger Papuda', './combosconpapasybebidas/comboburgerpapuda.png')">
+                        <img src="./combosconpapasybebidas/comboburgerpapuda.png" style="width: 100%; border-radius: 8px;" alt="Combo Burger Papuda">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Combo Burger Papuda</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Combo Burger Super', './combosconpapasybebidas/comboburgersuper.png')">
+                        <img src="./combosconpapasybebidas/comboburgersuper.png" style="width: 100%; border-radius: 8px;" alt="Combo Burger Super">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Combo Burger Super</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Combo Perro Normal', './combosconpapasybebidas/comboperronormal.png')">
+                        <img src="./combosconpapasybebidas/comboperronormal.png" style="width: 100%; border-radius: 8px;" alt="Combo Perro Normal">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Combo Perro Normal</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // COMBOS MIXTOS
+        if (catNorm.includes('COMBOS MIXTOS')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('De La Casa', './combosmixtos/delacasa.png')">
+                        <img src="./combosmixtos/delacasa.png" style="width: 100%; border-radius: 8px;" alt="De La Casa">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">De La Casa</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Emparejados', './combosmixtos/emparejados.png')">
+                        <img src="./combosmixtos/emparejados.png" style="width: 100%; border-radius: 8px;" alt="Emparejados">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Emparejados</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Familiar 3', './combosmixtos/familiar3.png')">
+                        <img src="./combosmixtos/familiar3.png" style="width: 100%; border-radius: 8px;" alt="Familiar 3">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Familiar 3</p>
+                    </div>
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Familiar 4', './combosmixtos/familiar4.png')">
+                        <img src="./combosmixtos/familiar4.png" style="width: 100%; border-radius: 8px;" alt="Familiar 4">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Familiar 4</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // NUESTRAS SALSAS
+        if (catNorm.includes('NUESTRAS SALSAS')) {
+            panel.innerHTML = "";
+            const galeriaHTML = `
+                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr; gap: 15px; padding: 20px; max-width: 420px; margin: 0 auto;">
+                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Salsas de la Casa', './nuestrassalsas/salsasdelacasa.png')">
+                        <img src="./nuestrassalsas/salsasdelacasa.png" style="width: 100%; border-radius: 8px;" alt="Salsas de la Casa">
+                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Salsas de la Casa</p>
+                    </div>
+                </div>
+            `;
+            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            return;
+        }
+        // NO combos de temporada
+        if (catNorm.includes('COMBOS DE TEMPORADA') || catNorm.includes('COMBOS DE TEMPORADAS') || catNorm.includes('COMBOS TEMPORADA')) {
+            // No mostrar nada especial para combos de temporada
+            panel.innerHTML = '';
+            panel.insertAdjacentHTML('beforeend', '<p class="category-empty">No hay productos cargados en esta categoria.</p>');
+            return;
+        }
+    }
+
     const products = getCategoryProducts(selectedCategory);
 
     const heroWrap = document.createElement('div');
@@ -1190,7 +1599,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
         const orderBtn = document.createElement('a');
         const btnId = `btn-category-${selectedCategory.key}-${index + 1}`;
         orderBtn.className = 'category-order-btn';
-        orderBtn.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Me interesa ${product.nombre}`)}`;
+        orderBtn.href = buildProductWhatsAppUrl(product.nombre);
         orderBtn.target = '_blank';
         orderBtn.rel = 'noopener noreferrer';
         orderBtn.textContent = 'Pedir';
@@ -1214,6 +1623,61 @@ function renderCategoryExplorer(nextKey, options = {}) {
         void panel.offsetWidth;
         panel.classList.add('focus-highlight');
     }
+}
+// --- FUNCIÓN GLOBAL MODAL BEBIDAS ---
+function abrirModalBebida(nombre, ruta) {
+    const prev = document.getElementById('bebidas-modal');
+    if (prev) prev.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'bebidas-modal';
+    modal.className = 'bebidas-modal-overlay';
+
+    const card = document.createElement('div');
+    card.className = 'bebidas-modal-card liquid-glass';
+
+    const image = document.createElement('img');
+    image.className = 'bebidas-modal-image';
+    image.src = ruta;
+    image.alt = nombre;
+
+    const title = document.createElement('div');
+    title.className = 'bebidas-modal-title';
+    title.textContent = nombre;
+
+    const actions = document.createElement('div');
+    actions.className = 'bebidas-modal-actions';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'bebidas-modal-btn bebidas-modal-btn-secondary';
+    closeButton.textContent = 'Regresar';
+    closeButton.addEventListener('click', () => {
+        modal.remove();
+    });
+
+    const orderButton = document.createElement('a');
+    orderButton.className = 'bebidas-modal-btn bebidas-modal-btn-primary';
+    orderButton.href = buildProductWhatsAppUrl(nombre);
+    orderButton.target = '_blank';
+    orderButton.rel = 'noopener noreferrer';
+    orderButton.textContent = 'Pedir este producto';
+
+    actions.appendChild(closeButton);
+    actions.appendChild(orderButton);
+
+    card.appendChild(image);
+    card.appendChild(title);
+    card.appendChild(actions);
+    modal.appendChild(card);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            modal.remove();
+        }
+    });
+
+    document.body.appendChild(modal);
 }
 
 function focusMenuSection(targetSection, targetId) {

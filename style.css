@@ -815,7 +815,20 @@ body::before {
 
 .category-chip-label {
     display: block;
-    line-height: 1.1;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #5A3A1B;
+        display: block;
+        text-align: center;
+        width: 100%;
+        margin: 0 auto;
+    }
+
+    .category-chip {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 }
 
 .category-chip:hover {
@@ -2467,5 +2480,129 @@ body::before {
 .promo-btn-menu:hover {
     border-color: rgba(255, 255, 255, 0.50);
     color: #ffffff;
+}
+
+.bebidas-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background:
+        radial-gradient(circle at top, rgba(255, 179, 71, 0.22), transparent 34%),
+        radial-gradient(circle at bottom, rgba(200, 75, 0, 0.20), transparent 30%),
+        rgba(58, 32, 22, 0.74);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+
+.bebidas-modal-card {
+    width: min(92vw, 420px);
+    max-height: 90vh;
+    overflow-y: auto;
+    margin: 0;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    background: linear-gradient(180deg, rgba(255, 248, 236, 0.52), rgba(245, 221, 188, 0.34));
+    border: 1.5px solid rgba(255, 199, 132, 0.55);
+    box-shadow: 0 18px 48px rgba(67, 37, 23, 0.30);
+    animation: promoSlideUp 0.32s ease-out;
+}
+
+.bebidas-modal-image {
+    width: 100%;
+    max-height: 58vh;
+    object-fit: contain;
+    border-radius: 16px;
+    background: rgba(255, 250, 244, 0.54);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 10px 24px rgba(67, 37, 23, 0.18);
+}
+
+.bebidas-modal-title {
+    width: 100%;
+    text-align: center;
+    font-family: 'Oswald', 'Roboto', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: 0.03em;
+    color: #5a3a1b;
+    text-transform: uppercase;
+}
+
+.bebidas-modal-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1.35fr;
+    gap: 12px;
+}
+
+.bebidas-modal-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 56px;
+    padding: 12px 18px;
+    border-radius: 14px;
+    font-family: 'Oswald', 'Roboto', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.bebidas-modal-btn:hover {
+    transform: translateY(-2px);
+}
+
+.bebidas-modal-btn-secondary {
+    border: 1.5px solid rgba(140, 90, 44, 0.24);
+    background: rgba(255, 247, 235, 0.72);
+    color: #5a3a1b;
+    box-shadow: 0 10px 24px rgba(67, 37, 23, 0.10);
+}
+
+.bebidas-modal-btn-secondary:hover {
+    border-color: rgba(200, 75, 0, 0.38);
+    background: rgba(255, 247, 235, 0.92);
+}
+
+.bebidas-modal-btn-primary {
+    border: 1px solid rgba(255, 132, 0, 0.22);
+    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    color: #fff7ef;
+    box-shadow: 0 12px 28px rgba(200, 75, 0, 0.28);
+}
+
+.bebidas-modal-btn-primary:hover {
+    background: linear-gradient(135deg, #ff8c1a, #ff6000);
+    box-shadow: 0 16px 32px rgba(200, 75, 0, 0.36);
+}
+
+@media (max-width: 480px) {
+    .bebidas-modal-overlay {
+        padding: 14px;
+    }
+
+    .bebidas-modal-card {
+        width: 100%;
+        padding: 14px;
+        gap: 14px;
+    }
+
+    .bebidas-modal-title {
+        font-size: 1.45rem;
+    }
+
+    .bebidas-modal-actions {
+        grid-template-columns: 1fr;
+    }
 }
 /* ===== FIN MODAL DE PROMOCIÓN ===== */
