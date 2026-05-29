@@ -453,8 +453,9 @@ function getCartTotalAmount() {
     return shoppingCart.reduce((total, item) => total + (getCartItemUnitPrice(item) * Number(item.quantity || 0)), 0);
 }
 
-function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }) {
+function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, options = {}) {
     const normalized = normalizeOrderOptions(orderOptions);
+    const includeComment = options.includeComment !== false;
     let optionLabel = 'Producto solo';
 
     if (normalized.type === 'combo-mixed') {
@@ -469,7 +470,7 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }) {
         optionLabel = getComboButtonCopy(categoryName).solo;
     }
 
-    if (normalized.comment) {
+    if (includeComment && normalized.comment) {
         return `${optionLabel} | Comentario: ${normalized.comment}`;
     }
 
@@ -485,7 +486,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
         const subtotal = unitPrice * Number(item.quantity || 0);
         const details = [
             `${index + 1}. ${item.productName} (${item.categoryName})`,
-            `   Opcion: ${getCartOptionLabel(item.categoryName, item.orderOptions)}`,
+            `   Opcion: ${getCartOptionLabel(item.categoryName, item.orderOptions, { includeComment: false })}`,
             `   Cantidad: ${item.quantity}`,
             `   Precio: ${formatCurrency(unitPrice)} | Subtotal: ${formatCurrency(subtotal)}`
         ];
@@ -500,7 +501,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
         deliveryAddress ? `Domicilio para: ${deliveryAddress}` : ''
     ].filter(Boolean);
 
-    return `${header}\n\n${customerDetails.join('\n')}${customerDetails.length ? '\n\n' : ''}${lines.join('\n\n')}\n\nTotal de productos: ${getCartProductCount()}\nTotal a pagar: ${formatCurrency(getCartTotalAmount())}`;
+    return `${header}\n\n${customerDetails.join('\n')}${customerDetails.length ? '\n\n' : ''}${lines.join('\n\n')}\n\nTotal de productos: ${getCartProductCount()}\nTotal en productos: ${formatCurrency(getCartTotalAmount())}\nCosto de domicilio: pendiente por definir`;
 }
 
 function openCartDrawer() {
