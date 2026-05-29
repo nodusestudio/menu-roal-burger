@@ -103,6 +103,36 @@ function isComboCategory(categoryName) {
         || ((normalizedCategory.includes('perro') || normalizedCategory.includes('perros')) && !normalizedCategory.includes('salchipapa'));
 }
 
+function getComboButtonCopy(categoryName) {
+    const normalizedCategory = normalizeCategoryKey(categoryName);
+
+    if (normalizedCategory.includes('pepito')) {
+        return {
+            solo: 'Solo el pepito',
+            combo: 'Lo quiero en combo'
+        };
+    }
+
+    if (normalizedCategory.includes('burger')) {
+        return {
+            solo: 'Solo la burger',
+            combo: 'La quiero en combo'
+        };
+    }
+
+    if (normalizedCategory.includes('perro') || normalizedCategory.includes('perros')) {
+        return {
+            solo: 'Solo el perro',
+            combo: 'Lo quiero en combo'
+        };
+    }
+
+    return {
+        solo: 'Producto solo',
+        combo: 'Quiero combo'
+    };
+}
+
 function buildOrderMessage(productName, categoryName, orderOptions = { type: 'solo' }) {
     const safeProductName = String(productName || 'producto').trim() || 'producto';
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
@@ -219,22 +249,55 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
     peopleLabel.style.fontFamily = 'Oswald, sans-serif';
     peopleLabel.style.fontSize = '1rem';
 
-    const peopleSelect = document.createElement('select');
-    peopleSelect.style.minHeight = '48px';
-    peopleSelect.style.padding = '0 14px';
-    peopleSelect.style.borderRadius = '12px';
-    peopleSelect.style.border = '1px solid rgba(140, 90, 44, 0.24)';
-    peopleSelect.style.background = '#fffdfa';
-    peopleSelect.style.color = '#4f311d';
-    peopleSelect.style.fontSize = '0.98rem';
-    peopleSelect.innerHTML = '<option value="">Elige una opcion</option><option value="1">Para 1 persona</option><option value="2">Para 2 personas</option><option value="3">Para 3 personas</option><option value="4">Para 4 personas</option>';
+    const peopleButtonsWrap = document.createElement('div');
+    peopleButtonsWrap.style.display = 'grid';
+    peopleButtonsWrap.style.gridTemplateColumns = '1fr';
+    peopleButtonsWrap.style.gap = '10px';
 
-    const help = document.createElement('p');
-    help.style.margin = '0';
-    help.style.textAlign = 'center';
-    help.style.lineHeight = '1.45';
-    help.style.color = '#4f311d';
-    help.textContent = 'Si eliges 1 o 2 personas lleva bebidas de 250 ml. Si eliges 3 o 4 personas lleva una bebida de 1 litro.';
+    let selectedPeopleCount = 0;
+    const peopleButtons = [];
+
+    function setPeopleSelection(nextCount) {
+        selectedPeopleCount = Number(nextCount || 0);
+        peopleButtons.forEach(({ count, button }) => {
+            const isActive = count === selectedPeopleCount;
+            button.style.background = isActive ? 'linear-gradient(135deg, #ff7a00, #ff5a00)' : 'rgba(255, 247, 235, 0.92)';
+            button.style.color = isActive ? '#fff7ef' : '#5a3a1b';
+            button.style.borderColor = isActive ? 'transparent' : 'rgba(140, 90, 44, 0.24)';
+            button.style.boxShadow = isActive ? '0 12px 28px rgba(200, 75, 0, 0.18)' : 'none';
+        });
+        if (selectedPeopleCount) {
+            peopleLabel.style.display = 'none';
+            peopleButtonsWrap.style.display = 'none';
+        }
+        refreshDrinkSelectors(selectedPeopleCount);
+    }
+
+    [
+        { count: 1, label: '1 PERSONA = 1 BEBIDA 250ML' },
+        { count: 2, label: '2 PERSONAS = 2 BEBIDAS 250ML' },
+        { count: 3, label: '3 PERSONAS = 1 BEBIDA 1000ML' },
+        { count: 4, label: '4 PERSONAS = 1 BEBIDA 1000ML' }
+    ].forEach((item) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = item.label;
+        button.style.minHeight = '50px';
+        button.style.padding = '10px 14px';
+        button.style.borderRadius = '12px';
+        button.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+        button.style.background = 'rgba(255, 247, 235, 0.92)';
+        button.style.color = '#5a3a1b';
+        button.style.fontFamily = 'Oswald, sans-serif';
+        button.style.fontSize = '0.95rem';
+        button.style.lineHeight = '1.2';
+        button.style.cursor = 'pointer';
+        button.addEventListener('click', () => {
+            setPeopleSelection(item.count);
+        });
+        peopleButtons.push({ count: item.count, button });
+        peopleButtonsWrap.appendChild(button);
+    });
 
     const drinksWrap = document.createElement('div');
     drinksWrap.style.display = 'flex';
@@ -343,10 +406,6 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
         };
     }
 
-    peopleSelect.addEventListener('change', () => {
-        refreshDrinkSelectors(peopleSelect.value);
-    });
-
     drinksWrap.appendChild(drinksTitle);
     drinksWrap.appendChild(drinkSelectsContainer);
     drinksWrap.appendChild(confirmButton);
@@ -362,8 +421,7 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
     card.appendChild(category);
     card.appendChild(topNote);
     card.appendChild(peopleLabel);
-    card.appendChild(peopleSelect);
-    card.appendChild(help);
+    card.appendChild(peopleButtonsWrap);
     card.appendChild(drinksWrap);
     modal.appendChild(card);
 
@@ -373,6 +431,7 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
 
 function openComboChoiceModal(productName, categoryName, buttonId) {
     closeComboChoiceModal();
+    const buttonCopy = getComboButtonCopy(categoryName);
 
     const modal = document.createElement('div');
     modal.id = 'combo-choice-modal';
@@ -450,7 +509,7 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
 
     const soloButton = document.createElement('button');
     soloButton.type = 'button';
-    soloButton.textContent = 'Producto solo';
+    soloButton.textContent = buttonCopy.solo;
     soloButton.style.minHeight = '52px';
     soloButton.style.borderRadius = '14px';
     soloButton.style.border = '1px solid rgba(140, 90, 44, 0.24)';
@@ -469,7 +528,7 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
 
     const comboButton = document.createElement('button');
     comboButton.type = 'button';
-    comboButton.textContent = 'Quiero combo';
+    comboButton.textContent = buttonCopy.combo;
     comboButton.style.minHeight = '52px';
     comboButton.style.borderRadius = '14px';
     comboButton.style.border = 'none';
