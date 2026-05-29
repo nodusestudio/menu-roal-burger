@@ -2036,6 +2036,32 @@ body::before {
     font-weight: 700;
 }
 
+.cart-added-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 150px;
+    transform: translateX(-50%) translateY(18px);
+    z-index: 10004;
+    width: min(90vw, 420px);
+    padding: 14px 18px;
+    border-radius: 16px;
+    background: rgba(55, 30, 14, 0.94);
+    color: #fff7ef;
+    text-align: center;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.98rem;
+    line-height: 1.35;
+    box-shadow: 0 14px 30px rgba(33, 17, 8, 0.28);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.cart-added-toast.is-visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
 .cart-overlay {
     position: fixed;
     inset: 0;

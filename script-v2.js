@@ -234,6 +234,7 @@ let cartUI = null;
 let supportUI = null;
 let activeSupportTopic = '';
 let checkoutInfoUI = null;
+let cartToastTimeout = null;
 
 function syncBodyScrollLock() {
     const menuModal = document.getElementById('menuModal');
@@ -250,6 +251,7 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
     return {
         type: String(orderOptions.type || 'solo'),
         drink: String(orderOptions.drink || '').trim(),
+        flavor: String(orderOptions.flavor || '').trim(),
         drinks: Array.isArray(orderOptions.drinks) ? orderOptions.drinks.map((item) => String(item || '').trim()).filter(Boolean) : [],
         peopleCount: Number(orderOptions.peopleCount || 0),
         comment: String(orderOptions.comment || '').trim(),
@@ -264,6 +266,7 @@ function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo'
         categoryName: String(categoryName || '').trim(),
         type: normalized.type,
         drink: normalized.drink,
+        flavor: normalized.flavor,
         drinks: normalized.drinks,
         peopleCount: normalized.peopleCount,
         comment: normalized.comment,
@@ -470,6 +473,10 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
         optionLabel = getComboButtonCopy(categoryName).solo;
     }
 
+    if (normalized.flavor) {
+        optionLabel = `${optionLabel} | Sabor: ${normalized.flavor}`;
+    }
+
     if (includeComment && normalized.comment) {
         return `${optionLabel} | Comentario: ${normalized.comment}`;
     }
@@ -586,6 +593,8 @@ function submitCheckoutInfo() {
     });
     closeCheckoutInfoModal();
     window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+    clearCart();
+    closeCartDrawer();
 }
 
 function openCheckoutInfoModal() {
@@ -640,6 +649,58 @@ function openCheckoutInfoModal() {
     checkoutInfoUI.name.focus();
 }
 
+function getProductToastCopy(categoryName, productName) {
+    const safeCategoryName = String(categoryName || '').trim();
+    const safeProductName = String(productName || 'producto').trim() || 'producto';
+    const normalizedLabel = normalizeCategoryKey(`${safeCategoryName} ${safeProductName}`);
+    const feminineTerms = [
+        'burger',
+        'hamburguesa',
+        'salchipapa',
+        'salchi',
+        'bebida',
+        'gaseosa',
+        'postobon',
+        'cocacola',
+        'agua',
+        'malta',
+        'frescolita',
+        'golden'
+    ];
+
+    const usesFeminine = feminineTerms.some((term) => normalizedLabel.includes(term));
+    return {
+        article: usesFeminine ? 'Una' : 'Un',
+        adjective: usesFeminine ? 'agregada' : 'agregado'
+    };
+}
+
+function showCartAddedToast(categoryName, productName) {
+    const safeCategoryName = String(categoryName || '').trim();
+    const safeProductName = String(productName || 'Producto').trim() || 'Producto';
+    const toastCopy = getProductToastCopy(safeCategoryName, safeProductName);
+    let toast = document.getElementById('cartAddedToast');
+
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'cartAddedToast';
+        toast.className = 'cart-added-toast';
+        document.body.appendChild(toast);
+    }
+
+    const label = [safeCategoryName, safeProductName].filter(Boolean).join(' ');
+    toast.textContent = `${toastCopy.article} ${label} ha sido ${toastCopy.adjective} a tu carrito`;
+    toast.classList.add('is-visible');
+
+    if (cartToastTimeout) {
+        window.clearTimeout(cartToastTimeout);
+    }
+
+    cartToastTimeout = window.setTimeout(() => {
+        toast.classList.remove('is-visible');
+    }, 2000);
+}
+
 function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId) {
     if (buttonId) {
         trackProductInterest(productName, buttonId);
@@ -668,6 +729,7 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
 
     saveCartState();
     renderCartUI();
+    showCartAddedToast(safeCategoryName, safeProductName);
 }
 
 function renderCartUI() {
@@ -1373,7 +1435,7 @@ function getBebidasYAdicionalesOptions(productName) {
     if (normalizedProduct.includes('bebida')) {
         return [
             { label: 'Postobon 250 ml.', price: '3.500' },
-            { label: 'Postobon 400 ml.', price: '4.500' },
+            { label: 'Postobon 450 ml.', price: '4.500' },
             { label: 'Postobon 1000 ml.', price: '7.000' },
             { label: 'Cocacola 250 ml.', price: '4.000' },
             { label: 'Cocacola 400 ml.', price: '5.500' },
@@ -1385,6 +1447,32 @@ function getBebidasYAdicionalesOptions(productName) {
             { label: 'Frescolita 355 ml.', price: '8.000' },
             { label: 'Golden 355 ml.', price: '8.000' }
         ];
+    }
+
+    return [];
+}
+
+function getBebidaFlavorOptions(optionLabel) {
+    const normalizedOption = normalizeCategoryKey(optionLabel);
+
+    if (normalizedOption.includes('postobon 250')) {
+        return ['Pepsi Zero', 'Colombiana', 'Manzana'];
+    }
+
+    if (normalizedOption.includes('postobon 450')) {
+        return ['Pepsi Original', 'Colombiana', 'Naranja', 'Manzana'];
+    }
+
+    if (normalizedOption.includes('postobon 1000')) {
+        return ['Pepsi Original', 'Pepsi Zero', 'Colombiana', 'Naranja', 'Uva', 'Toronja', 'Manzana'];
+    }
+
+    if (normalizedOption.includes('hit 500') || normalizedOption.includes('hit 1000')) {
+        return ['Naranja/Pina', 'Mora', 'Mango', 'Frutas tropicales', 'Lulo'];
+    }
+
+    if (normalizedOption.includes('golden 355')) {
+        return ['Manzana'];
     }
 
     return [];
@@ -1467,10 +1555,20 @@ function openBebidasYAdicionalesOptionsModal(productName, categoryName, buttonId
 
     const commentField = createOrderCommentField();
 
-    productOptions.forEach((optionItem) => {
+    function addBebidaOptionToCart(optionItem, flavor = '') {
+        closeComboChoiceModal();
+        addItemToCart(`${productName} - ${optionItem.label}`, categoryName, {
+            ...extraOptions,
+            type: 'solo',
+            flavor,
+            comment: commentField.textarea.value
+        }, buttonId);
+    }
+
+    function createSelectionButton(label, onClick) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = `${optionItem.label} - ${optionItem.price}`;
+        button.textContent = label;
         button.style.minHeight = '50px';
         button.style.padding = '10px 14px';
         button.style.borderRadius = '12px';
@@ -1481,16 +1579,46 @@ function openBebidasYAdicionalesOptionsModal(productName, categoryName, buttonId
         button.style.fontSize = '0.95rem';
         button.style.lineHeight = '1.2';
         button.style.cursor = 'pointer';
-        button.addEventListener('click', () => {
-            closeComboChoiceModal();
-            addItemToCart(`${productName} - ${optionItem.label}`, categoryName, {
-                ...extraOptions,
-                type: 'solo',
-                comment: commentField.textarea.value
-            }, buttonId);
+        button.addEventListener('click', onClick);
+        return button;
+    }
+
+    function renderMainOptions() {
+        optionButtons.innerHTML = '';
+        description.textContent = 'Selecciona la opcion que quieres agregar a tu carrito.';
+
+        productOptions.forEach((optionItem) => {
+            const button = createSelectionButton(`${optionItem.label} - ${optionItem.price}`, () => {
+                const flavors = getBebidaFlavorOptions(optionItem.label);
+                if (!flavors.length) {
+                    addBebidaOptionToCart(optionItem);
+                    return;
+                }
+
+                renderFlavorOptions(optionItem, flavors);
+            });
+            optionButtons.appendChild(button);
         });
-        optionButtons.appendChild(button);
-    });
+    }
+
+    function renderFlavorOptions(optionItem, flavors) {
+        optionButtons.innerHTML = '';
+        description.textContent = `Selecciona el sabor para ${optionItem.label}.`;
+
+        flavors.forEach((flavorName) => {
+            const flavorButton = createSelectionButton(flavorName, () => {
+                addBebidaOptionToCart(optionItem, flavorName);
+            });
+            optionButtons.appendChild(flavorButton);
+        });
+
+        const backButton = createSelectionButton('Volver a las bebidas', () => {
+            renderMainOptions();
+        });
+        optionButtons.appendChild(backButton);
+    }
+
+    renderMainOptions();
 
     modal.addEventListener('click', (event) => {
         if (event.target === modal) {
@@ -3910,10 +4038,18 @@ function abrirModalBebida(nombre, ruta, categoria) {
 
     const orderButton = document.createElement('button');
     const safeCategory = categoria || getSelectedCategoryName();
+    const normalizedName = normalizeCategoryKey(nombre);
+    const normalizedCategory = normalizeCategoryKey(safeCategory);
     const buttonId = `btn-modal-${normalizeAssetLookup(safeCategory)}-${normalizeAssetLookup(nombre)}`;
     orderButton.type = 'button';
     orderButton.className = 'bebidas-modal-btn bebidas-modal-btn-primary';
-    orderButton.textContent = 'Pedir este producto';
+    orderButton.textContent = normalizedCategory.includes('combos mixtos') || normalizedCategory.includes('combos con papas y bebida')
+        ? 'Seleccionar combo'
+        : normalizedName.includes('adicion')
+        ? 'Seleccionar adicion'
+        : normalizedName.includes('bebida')
+            ? 'Seleccionar bebida'
+            : 'Pedir este producto';
     orderButton.addEventListener('click', () => {
         modal.remove();
         startProductOrderFlow(nombre, safeCategory, buttonId, { imagePath: ruta });
