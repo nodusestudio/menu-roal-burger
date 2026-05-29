@@ -86,10 +86,67 @@ const COMBO_EXTRA_PRICE = 7000;
 const COMBO_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_SMALL_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_LARGE_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana', 'Naranja', 'Uva', 'Toronja', 'Pepsi Original'];
+const PROMO_DAY_IMAGE_PATH = './promodeldia/diadelahamburguesa.jpg';
+const MANUAL_IMAGE_BASE_PRICES = {
+    './burgerpremium/burgercaracas.png': 26000,
+    './burgerpremium/burgercordillera.png': 34000,
+    './burgerpremium/burgerpapuda.png': 20000,
+    './burgerpremium/burgerplus.png': 30000,
+    './burgerpremium/burgerranchera.png': 30000,
+    './burgerpremium/burgertriplete.png': 29000,
+    './burgerclasicas/burgersuper.png': 19000,
+    './perroscalientes/perroespecial.png': 15000,
+    './perroscalientes/perronormal.png': 12000,
+    './perroscalientes/perrosuper.png': 16000,
+    './pepitosvenezolanos/pepitomix.png': 29000,
+    './pepitosvenezolanos/pepitoplus.png': 36000,
+    './pepitosvenezolanos/pepitoranchero.png': 34000,
+    './pepitosvenezolanos/pepitourbano.png': 30000,
+    './salchipapas/salchinormal.png': 12000,
+    './combosmixtos/delacasa.png': 49000,
+    './combosmixtos/emparejados.png': 45000,
+    './combosmixtos/familiar3.png': 48000,
+    './combosmixtos/familiar4.png': 44000,
+    './promodeldia/diadelahamburguesa.jpg': 21000
+};
+const COMBOS_CON_PAPAS_IMAGE_PRICES = {
+    './combosconpapasybebidas/comboburgernormal.png': { 1: 21000, 2: 38000, 3: 57000, 4: 73000 },
+    './combosconpapasybebidas/comboburgerpapuda.png': { 1: 27000, 2: 48000, 3: 70000, 4: 91000 },
+    './combosconpapasybebidas/comboburgersuper.png': { 1: 26000, 2: 46000, 3: 68000, 4: 87000 },
+    './combosconpapasybebidas/comboperronormal.png': { 1: 17000, 2: 25000, 3: 38000, 4: 49000 }
+};
+
+function normalizeImageAssetPath(value) {
+    const normalized = String(value || '').trim().replace(/\\/g, '/');
+    if (!normalized) {
+        return '';
+    }
+
+    if (normalized.startsWith('./')) {
+        return normalized;
+    }
+
+    return `./${normalized.replace(/^\.?\//, '')}`;
+}
 
 function isCombosConPapasCategory(categoryName) {
     const normalizedCategory = normalizeCategoryKey(categoryName);
     return normalizedCategory.includes('combos con papas y bebida');
+}
+
+function isCombosMixtosCategory(categoryName) {
+    const normalizedCategory = normalizeCategoryKey(categoryName);
+    return normalizedCategory.includes('combos mixtos');
+}
+
+function isEntradasCategory(categoryName) {
+    const normalizedCategory = normalizeCategoryKey(categoryName);
+    return normalizedCategory.includes('entradas');
+}
+
+function isBebidasYAdicionalesCategory(categoryName) {
+    const normalizedCategory = normalizeCategoryKey(categoryName);
+    return normalizedCategory.includes('bebidas') || normalizedCategory.includes('adicionales');
 }
 
 function isComboCategory(categoryName) {
@@ -136,6 +193,14 @@ function getComboButtonCopy(categoryName) {
 function buildOrderMessage(productName, categoryName, orderOptions = { type: 'solo' }) {
     const safeProductName = String(productName || 'producto').trim() || 'producto';
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
+
+    if (orderOptions.type === 'combo-mixed') {
+        const safeDrink = String(orderOptions.drink || COMBO_MEAL_LARGE_DRINK_OPTIONS[0]).trim() || COMBO_MEAL_LARGE_DRINK_OPTIONS[0];
+        return appendCommentText(
+            `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} con bebida de 1 litro sabor ${safeDrink}.`,
+            orderOptions
+        );
+    }
 
     if (orderOptions.type === 'combo-meal') {
         const peopleCount = Number(orderOptions.peopleCount || 1);
@@ -186,7 +251,8 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         drink: String(orderOptions.drink || '').trim(),
         drinks: Array.isArray(orderOptions.drinks) ? orderOptions.drinks.map((item) => String(item || '').trim()).filter(Boolean) : [],
         peopleCount: Number(orderOptions.peopleCount || 0),
-        comment: String(orderOptions.comment || '').trim()
+        comment: String(orderOptions.comment || '').trim(),
+        imagePath: normalizeImageAssetPath(orderOptions.imagePath || '')
     };
 }
 
@@ -199,7 +265,8 @@ function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo'
         drink: normalized.drink,
         drinks: normalized.drinks,
         peopleCount: normalized.peopleCount,
-        comment: normalized.comment
+        comment: normalized.comment,
+        imagePath: normalized.imagePath
     });
 }
 
@@ -232,11 +299,166 @@ function getCartProductCount() {
     return shoppingCart.reduce((total, item) => total + Number(item.quantity || 0), 0);
 }
 
+function parseLocalizedPrice(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+
+    const digits = String(value || '').replace(/[^\d]/g, '');
+    return digits ? Number(digits) : 0;
+}
+
+function formatCurrency(value) {
+    return `$ ${Number(value || 0).toLocaleString('es-CO')}`;
+}
+
+function findLatestProductPrice(productName, categoryName) {
+    const normalizedProductName = normalizeCategoryKey(productName);
+    const normalizedCategoryName = normalizeCategoryKey(categoryName);
+
+    const exactMatch = latestProducts.find((product) => {
+        const productNameKey = normalizeCategoryKey(product.nombre || product.name || '');
+        const categoryKey = normalizeCategoryKey(product.categoria || product.category || '');
+        return productNameKey === normalizedProductName && categoryKey === normalizedCategoryName;
+    });
+
+    if (exactMatch) {
+        return parseLocalizedPrice(exactMatch.precio ?? exactMatch.price ?? 0);
+    }
+
+    const fallbackByName = latestProducts.find((product) => {
+        const productNameKey = normalizeCategoryKey(product.nombre || product.name || '');
+        return productNameKey === normalizedProductName;
+    });
+
+    return fallbackByName ? parseLocalizedPrice(fallbackByName.precio ?? fallbackByName.price ?? 0) : 0;
+}
+
+function resolveStaticOptionPrice(productName, categoryName) {
+    const normalizedCategoryName = normalizeCategoryKey(categoryName);
+    const normalizedProductName = normalizeCategoryKey(productName);
+
+    if (normalizedCategoryName.includes('entradas')) {
+        const options = getEntradaOptions(productName);
+        const matched = options.find((item) => normalizedProductName.includes(normalizeCategoryKey(item.label)));
+        return matched ? parseLocalizedPrice(matched.price) : 0;
+    }
+
+    if (normalizedCategoryName.includes('bebidas') || normalizedCategoryName.includes('adicionales')) {
+        const options = getBebidasYAdicionalesOptions(productName);
+        const matched = options.find((item) => normalizedProductName.includes(normalizeCategoryKey(item.label)));
+        return matched ? parseLocalizedPrice(matched.price) : 0;
+    }
+
+    return 0;
+}
+
+function getBurgerClasicasOptions(productName) {
+    const normalizedProduct = normalizeCategoryKey(productName);
+
+    if (!normalizedProduct || !normalizedProduct.includes('normal')) {
+        return [];
+    }
+
+    return [
+        { label: 'Pequena | 1 carne', price: '14.000' },
+        { label: 'Pequena | 2 carne', price: '18.000' },
+        { label: 'Mediana | 1 carne', price: '17.000' },
+        { label: 'Mediana | 2 carne', price: '22.000' }
+    ];
+}
+
+function getSalchipapaOptions(productName) {
+    const normalizedProduct = normalizeCategoryKey(productName);
+
+    if (!normalizedProduct || !normalizedProduct.includes('super')) {
+        return [];
+    }
+
+    return [
+        { label: 'Pequena', price: '19.000' },
+        { label: 'Grande', price: '34.000' }
+    ];
+}
+
+function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
+    const normalizedOptions = normalizeOrderOptions(orderOptions);
+    const imagePath = normalizedOptions.imagePath;
+    if (!imagePath) {
+        return 0;
+    }
+
+    const normalizedProductName = normalizeCategoryKey(productName);
+
+    if (COMBOS_CON_PAPAS_IMAGE_PRICES[imagePath]) {
+        const peopleCount = Number(normalizedOptions.peopleCount || 0);
+        return Number(COMBOS_CON_PAPAS_IMAGE_PRICES[imagePath][peopleCount] || 0);
+    }
+
+    if (imagePath === './burgerclasicas/burgernormal.png') {
+        if (normalizedProductName.includes('pequena') && normalizedProductName.includes('2 carne')) {
+            return 18000;
+        }
+        if (normalizedProductName.includes('mediana') && normalizedProductName.includes('2 carne')) {
+            return 22000;
+        }
+        if (normalizedProductName.includes('pequena')) {
+            return 14000;
+        }
+        return 17000;
+    }
+
+    if (imagePath === './salchipapas/salchisuper.png') {
+        if (normalizedProductName.includes('grande')) {
+            return 34000;
+        }
+        return 19000;
+    }
+
+    return Number(MANUAL_IMAGE_BASE_PRICES[imagePath] || 0);
+}
+
+function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 'solo' }) {
+    const normalizedOptions = normalizeOrderOptions(orderOptions);
+    const manualImagePrice = resolveManualImagePrice(productName, normalizedOptions);
+    if (manualImagePrice > 0) {
+        return normalizedOptions.type === 'combo' ? manualImagePrice + COMBO_EXTRA_PRICE : manualImagePrice;
+    }
+
+    const staticOptionPrice = resolveStaticOptionPrice(productName, categoryName);
+    if (staticOptionPrice > 0) {
+        return staticOptionPrice;
+    }
+
+    const basePrice = findLatestProductPrice(productName, categoryName);
+
+    if (normalizedOptions.type === 'combo') {
+        return basePrice + COMBO_EXTRA_PRICE;
+    }
+
+    return basePrice;
+}
+
+function getCartItemUnitPrice(item) {
+    const storedPrice = Number(item?.unitPrice || 0);
+    if (storedPrice > 0) {
+        return storedPrice;
+    }
+
+    return resolveCartUnitPrice(item?.productName, item?.categoryName, item?.orderOptions);
+}
+
+function getCartTotalAmount() {
+    return shoppingCart.reduce((total, item) => total + (getCartItemUnitPrice(item) * Number(item.quantity || 0)), 0);
+}
+
 function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }) {
     const normalized = normalizeOrderOptions(orderOptions);
     let optionLabel = 'Producto solo';
 
-    if (normalized.type === 'combo-meal') {
+    if (normalized.type === 'combo-mixed') {
+        optionLabel = `Combo mixto | Bebida 1 litro | ${normalized.drink}`;
+    } else if (normalized.type === 'combo-meal') {
         const peopleCount = Number(normalized.peopleCount || 1);
         const drinkText = normalized.drinks.join(', ');
         optionLabel = `${peopleCount} persona${peopleCount === 1 ? '' : 's'} | ${peopleCount >= 3 ? '1 bebida 1000ML' : `${peopleCount} bebida${peopleCount === 1 ? '' : 's'} 250ML`} | ${drinkText}`;
@@ -256,10 +478,13 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }) {
 function buildCartCheckoutMessage() {
     const header = 'Hola ROAL BURGER! Quiero hacer este pedido:';
     const lines = shoppingCart.map((item, index) => {
+        const unitPrice = getCartItemUnitPrice(item);
+        const subtotal = unitPrice * Number(item.quantity || 0);
         const details = [
             `${index + 1}. ${item.productName} (${item.categoryName})`,
             `   Opcion: ${getCartOptionLabel(item.categoryName, item.orderOptions)}`,
-            `   Cantidad: ${item.quantity}`
+            `   Cantidad: ${item.quantity}`,
+            `   Precio: ${formatCurrency(unitPrice)} | Subtotal: ${formatCurrency(subtotal)}`
         ];
         if (item.orderOptions?.comment) {
             details.push(`   Comentario: ${item.orderOptions.comment}`);
@@ -267,7 +492,7 @@ function buildCartCheckoutMessage() {
         return details.join('\n');
     });
 
-    return `${header}\n\n${lines.join('\n\n')}\n\nTotal de productos: ${getCartProductCount()}`;
+    return `${header}\n\n${lines.join('\n\n')}\n\nTotal de productos: ${getCartProductCount()}\nTotal a pagar: ${formatCurrency(getCartTotalAmount())}`;
 }
 
 function openCartDrawer() {
@@ -324,17 +549,20 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
     const safeProductName = String(productName || 'producto').trim() || 'producto';
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
     const normalizedOptions = normalizeOrderOptions(orderOptions);
+    const unitPrice = resolveCartUnitPrice(safeProductName, safeCategoryName, normalizedOptions);
     const itemKey = getCartItemKey(safeProductName, safeCategoryName, normalizedOptions);
     const existingItem = shoppingCart.find((item) => item.itemKey === itemKey);
 
     if (existingItem) {
         existingItem.quantity = Number(existingItem.quantity || 0) + 1;
+        existingItem.unitPrice = unitPrice;
     } else {
         shoppingCart.push({
             itemKey,
             productName: safeProductName,
             categoryName: safeCategoryName,
             orderOptions: normalizedOptions,
+            unitPrice,
             quantity: 1
         });
     }
@@ -365,6 +593,8 @@ function renderCartUI() {
     }
 
     shoppingCart.forEach((item) => {
+        const unitPrice = getCartItemUnitPrice(item);
+        const subtotal = unitPrice * Number(item.quantity || 0);
         const row = document.createElement('div');
         row.className = 'cart-item';
 
@@ -382,9 +612,14 @@ function renderCartUI() {
         option.className = 'cart-item-option';
         option.textContent = getCartOptionLabel(item.categoryName, item.orderOptions);
 
+        const price = document.createElement('p');
+        price.className = 'cart-item-option';
+        price.textContent = `Precio: ${formatCurrency(unitPrice)} | Subtotal: ${formatCurrency(subtotal)}`;
+
         info.appendChild(title);
         info.appendChild(category);
         info.appendChild(option);
+        info.appendChild(price);
 
         const controls = document.createElement('div');
         controls.className = 'cart-item-controls';
@@ -427,7 +662,7 @@ function renderCartUI() {
         cartUI.list.appendChild(row);
     });
 
-    cartUI.summary.textContent = `${shoppingCart.length} referencia${shoppingCart.length === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'}`;
+    cartUI.summary.textContent = `${shoppingCart.length} referencia${shoppingCart.length === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'} | Total ${formatCurrency(getCartTotalAmount())}`;
     cartUI.checkout.disabled = false;
     cartUI.clear.disabled = false;
 }
@@ -766,7 +1001,126 @@ function createOrderCommentField() {
     return { wrap, textarea };
 }
 
-function openProductCommentModal(productName, categoryName, buttonId) {
+function openImageOptionModal(productName, categoryName, buttonId, extraOptions = {}, modalConfig = {}) {
+    const optionItems = Array.isArray(modalConfig.optionItems) ? modalConfig.optionItems : [];
+    if (!optionItems.length) {
+        openProductCommentModal(productName, categoryName, buttonId, extraOptions);
+        return;
+    }
+
+    closeComboChoiceModal();
+
+    const modal = document.createElement('div');
+    modal.id = 'combo-choice-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '100001';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.background = 'rgba(31, 18, 10, 0.76)';
+    modal.style.backdropFilter = 'blur(8px)';
+    modal.style.webkitBackdropFilter = 'blur(8px)';
+
+    const card = document.createElement('div');
+    card.style.width = 'min(92vw, 460px)';
+    card.style.maxHeight = '86vh';
+    card.style.overflowY = 'auto';
+    card.style.position = 'relative';
+    card.style.padding = '22px';
+    card.style.borderRadius = '20px';
+    card.style.background = 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(245,221,188,0.92))';
+    card.style.boxShadow = '0 20px 48px rgba(67, 37, 23, 0.28)';
+    card.style.border = '1px solid rgba(255, 180, 108, 0.55)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '14px';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Cerrar seleccion de opcion');
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.width = '38px';
+    closeButton.style.height = '38px';
+    closeButton.style.border = 'none';
+    closeButton.style.borderRadius = '999px';
+    closeButton.style.background = 'rgba(90, 58, 27, 0.14)';
+    closeButton.style.color = '#5a3a1b';
+    closeButton.style.fontSize = '1.7rem';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', closeComboChoiceModal);
+
+    const title = document.createElement('h3');
+    title.textContent = productName;
+    title.style.margin = '0';
+    title.style.textAlign = 'center';
+    title.style.fontFamily = 'Oswald, sans-serif';
+    title.style.fontSize = '1.85rem';
+    title.style.lineHeight = '1';
+    title.style.textTransform = 'uppercase';
+    title.style.color = '#5a3a1b';
+
+    const description = document.createElement('p');
+    description.textContent = modalConfig.description || 'Selecciona la opcion que quieres agregar a tu carrito.';
+    description.style.margin = '0';
+    description.style.textAlign = 'center';
+    description.style.lineHeight = '1.45';
+    description.style.color = '#4f311d';
+
+    const optionButtons = document.createElement('div');
+    optionButtons.style.display = 'grid';
+    optionButtons.style.gridTemplateColumns = '1fr';
+    optionButtons.style.gap = '10px';
+
+    const commentField = createOrderCommentField();
+
+    optionItems.forEach((optionItem) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = `${optionItem.label} - ${optionItem.price}`;
+        button.style.minHeight = '50px';
+        button.style.padding = '10px 14px';
+        button.style.borderRadius = '12px';
+        button.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+        button.style.background = 'rgba(255, 247, 235, 0.92)';
+        button.style.color = '#5a3a1b';
+        button.style.fontFamily = 'Oswald, sans-serif';
+        button.style.fontSize = '0.95rem';
+        button.style.lineHeight = '1.2';
+        button.style.cursor = 'pointer';
+        button.addEventListener('click', () => {
+            closeComboChoiceModal();
+            addItemToCart(`${productName} - ${optionItem.label}`, categoryName, {
+                ...extraOptions,
+                type: 'solo',
+                comment: commentField.textarea.value
+            }, buttonId);
+        });
+        optionButtons.appendChild(button);
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeComboChoiceModal();
+        }
+    });
+
+    card.appendChild(closeButton);
+    card.appendChild(title);
+    card.appendChild(description);
+    card.appendChild(optionButtons);
+    card.appendChild(commentField.wrap);
+    modal.appendChild(card);
+
+    document.body.style.overflow = 'hidden';
+    document.body.appendChild(modal);
+}
+
+function openProductCommentModal(productName, categoryName, buttonId, extraOptions = {}) {
     closeComboChoiceModal();
 
     const modal = document.createElement('div');
@@ -853,7 +1207,11 @@ function openProductCommentModal(productName, categoryName, buttonId) {
     confirmButton.style.cursor = 'pointer';
     confirmButton.addEventListener('click', () => {
         closeComboChoiceModal();
-        addItemToCart(productName, categoryName, { type: 'solo', comment: commentField.textarea.value }, buttonId);
+        addItemToCart(productName, categoryName, {
+            ...extraOptions,
+            type: 'solo',
+            comment: commentField.textarea.value
+        }, buttonId);
     });
 
     modal.addEventListener('click', (event) => {
@@ -874,7 +1232,449 @@ function openProductCommentModal(productName, categoryName, buttonId) {
     document.body.appendChild(modal);
 }
 
-function openCombosConPapasModal(productName, categoryName, buttonId) {
+function getEntradaOptions(productName) {
+    const normalizedProduct = normalizeCategoryKey(productName);
+
+    if (normalizedProduct.includes('papas')) {
+        return [
+            { label: 'Pequena (150 gr.)', price: '7.000' },
+            { label: 'Mediana (300 gr.)', price: '11.000' },
+            { label: 'Grande (450 gr.)', price: '16.000' }
+        ];
+    }
+
+    if (normalizedProduct.includes('teque')) {
+        return [
+            { label: 'X5 unidades', price: '11.000' },
+            { label: 'X10 unidades', price: '20.000' }
+        ];
+    }
+
+    return [];
+}
+
+function getBebidasYAdicionalesOptions(productName) {
+    const normalizedProduct = normalizeCategoryKey(productName);
+
+    if (normalizedProduct.includes('adicion')) {
+        return [
+            { label: 'Carne de burger pequena', price: '6.000' },
+            { label: 'Carne de burger mediana', price: '7.000' },
+            { label: 'Filete de pollo mediano', price: '7.000' },
+            { label: 'Chorizo de cerdo (porcion)', price: '5.000' },
+            { label: 'Chuleta ahumada', price: '9.000' },
+            { label: 'Salchicha americana', price: '4.000' },
+            { label: 'Tocineta ahumada', price: '4.000' },
+            { label: 'Queso tipo mozzarella', price: '3.000' },
+            { label: 'Huevo de gallina', price: '2.000' },
+            { label: 'Huevos de codorniz (5 und.)', price: '4.000' }
+        ];
+    }
+
+    if (normalizedProduct.includes('bebida')) {
+        return [
+            { label: 'Postobon 250 ml.', price: '3.500' },
+            { label: 'Postobon 400 ml.', price: '4.500' },
+            { label: 'Postobon 1000 ml.', price: '7.000' },
+            { label: 'Cocacola 250 ml.', price: '4.000' },
+            { label: 'Cocacola 400 ml.', price: '5.500' },
+            { label: 'Cocacola 1500 ml.', price: '9.000' },
+            { label: 'Hit 500 ml.', price: '5.000' },
+            { label: 'Hit 1000 ml.', price: '8.000' },
+            { label: 'Agua 600 ml.', price: '3.500' },
+            { label: 'Malta Polar 355 ml.', price: '8.000' },
+            { label: 'Frescolita 355 ml.', price: '8.000' },
+            { label: 'Golden 355 ml.', price: '8.000' }
+        ];
+    }
+
+    return [];
+}
+
+function openBebidasYAdicionalesOptionsModal(productName, categoryName, buttonId, extraOptions = {}) {
+    closeComboChoiceModal();
+
+    const productOptions = getBebidasYAdicionalesOptions(productName);
+    if (!productOptions.length) {
+        openProductCommentModal(productName, categoryName, buttonId);
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'combo-choice-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '100001';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.background = 'rgba(31, 18, 10, 0.76)';
+    modal.style.backdropFilter = 'blur(8px)';
+    modal.style.webkitBackdropFilter = 'blur(8px)';
+
+    const card = document.createElement('div');
+    card.style.width = 'min(92vw, 460px)';
+    card.style.maxHeight = '86vh';
+    card.style.overflowY = 'auto';
+    card.style.position = 'relative';
+    card.style.padding = '22px';
+    card.style.borderRadius = '20px';
+    card.style.background = 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(245,221,188,0.92))';
+    card.style.boxShadow = '0 20px 48px rgba(67, 37, 23, 0.28)';
+    card.style.border = '1px solid rgba(255, 180, 108, 0.55)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '14px';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Cerrar seleccion de opcion');
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.width = '38px';
+    closeButton.style.height = '38px';
+    closeButton.style.border = 'none';
+    closeButton.style.borderRadius = '999px';
+    closeButton.style.background = 'rgba(90, 58, 27, 0.14)';
+    closeButton.style.color = '#5a3a1b';
+    closeButton.style.fontSize = '1.7rem';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', closeComboChoiceModal);
+
+    const title = document.createElement('h3');
+    title.textContent = productName;
+    title.style.margin = '0';
+    title.style.textAlign = 'center';
+    title.style.fontFamily = 'Oswald, sans-serif';
+    title.style.fontSize = '1.85rem';
+    title.style.lineHeight = '1';
+    title.style.textTransform = 'uppercase';
+    title.style.color = '#5a3a1b';
+
+    const description = document.createElement('p');
+    description.textContent = 'Selecciona la opcion que quieres agregar a tu carrito.';
+    description.style.margin = '0';
+    description.style.textAlign = 'center';
+    description.style.lineHeight = '1.45';
+    description.style.color = '#4f311d';
+
+    const optionButtons = document.createElement('div');
+    optionButtons.style.display = 'grid';
+    optionButtons.style.gridTemplateColumns = '1fr';
+    optionButtons.style.gap = '10px';
+
+    const commentField = createOrderCommentField();
+
+    productOptions.forEach((optionItem) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = `${optionItem.label} - ${optionItem.price}`;
+        button.style.minHeight = '50px';
+        button.style.padding = '10px 14px';
+        button.style.borderRadius = '12px';
+        button.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+        button.style.background = 'rgba(255, 247, 235, 0.92)';
+        button.style.color = '#5a3a1b';
+        button.style.fontFamily = 'Oswald, sans-serif';
+        button.style.fontSize = '0.95rem';
+        button.style.lineHeight = '1.2';
+        button.style.cursor = 'pointer';
+        button.addEventListener('click', () => {
+            closeComboChoiceModal();
+            addItemToCart(`${productName} - ${optionItem.label}`, categoryName, {
+                ...extraOptions,
+                type: 'solo',
+                comment: commentField.textarea.value
+            }, buttonId);
+        });
+        optionButtons.appendChild(button);
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeComboChoiceModal();
+        }
+    });
+
+    card.appendChild(closeButton);
+    card.appendChild(title);
+    card.appendChild(description);
+    card.appendChild(optionButtons);
+    card.appendChild(commentField.wrap);
+    modal.appendChild(card);
+
+    document.body.style.overflow = 'hidden';
+    document.body.appendChild(modal);
+}
+
+function openEntradasOptionsModal(productName, categoryName, buttonId, extraOptions = {}) {
+    closeComboChoiceModal();
+
+    const entradaOptions = getEntradaOptions(productName);
+    if (!entradaOptions.length) {
+        openProductCommentModal(productName, categoryName, buttonId);
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'combo-choice-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '100001';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.background = 'rgba(31, 18, 10, 0.76)';
+    modal.style.backdropFilter = 'blur(8px)';
+    modal.style.webkitBackdropFilter = 'blur(8px)';
+
+    const card = document.createElement('div');
+    card.style.width = 'min(92vw, 430px)';
+    card.style.position = 'relative';
+    card.style.padding = '22px';
+    card.style.borderRadius = '20px';
+    card.style.background = 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(245,221,188,0.92))';
+    card.style.boxShadow = '0 20px 48px rgba(67, 37, 23, 0.28)';
+    card.style.border = '1px solid rgba(255, 180, 108, 0.55)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '14px';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Cerrar seleccion de entrada');
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.width = '38px';
+    closeButton.style.height = '38px';
+    closeButton.style.border = 'none';
+    closeButton.style.borderRadius = '999px';
+    closeButton.style.background = 'rgba(90, 58, 27, 0.14)';
+    closeButton.style.color = '#5a3a1b';
+    closeButton.style.fontSize = '1.7rem';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', closeComboChoiceModal);
+
+    const title = document.createElement('h3');
+    title.textContent = productName;
+    title.style.margin = '0';
+    title.style.textAlign = 'center';
+    title.style.fontFamily = 'Oswald, sans-serif';
+    title.style.fontSize = '1.85rem';
+    title.style.lineHeight = '1';
+    title.style.textTransform = 'uppercase';
+    title.style.color = '#5a3a1b';
+
+    const description = document.createElement('p');
+    description.textContent = 'Selecciona la opcion que quieres agregar a tu carrito.';
+    description.style.margin = '0';
+    description.style.textAlign = 'center';
+    description.style.lineHeight = '1.45';
+    description.style.color = '#4f311d';
+
+    const optionButtons = document.createElement('div');
+    optionButtons.style.display = 'grid';
+    optionButtons.style.gridTemplateColumns = '1fr';
+    optionButtons.style.gap = '10px';
+
+    const commentField = createOrderCommentField();
+
+    entradaOptions.forEach((optionItem) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = `${optionItem.label} - ${optionItem.price}`;
+        button.style.minHeight = '50px';
+        button.style.padding = '10px 14px';
+        button.style.borderRadius = '12px';
+        button.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+        button.style.background = 'rgba(255, 247, 235, 0.92)';
+        button.style.color = '#5a3a1b';
+        button.style.fontFamily = 'Oswald, sans-serif';
+        button.style.fontSize = '0.95rem';
+        button.style.lineHeight = '1.2';
+        button.style.cursor = 'pointer';
+        button.addEventListener('click', () => {
+            closeComboChoiceModal();
+            addItemToCart(`${productName} - ${optionItem.label}`, categoryName, {
+                ...extraOptions,
+                type: 'solo',
+                comment: commentField.textarea.value
+            }, buttonId);
+        });
+        optionButtons.appendChild(button);
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeComboChoiceModal();
+        }
+    });
+
+    card.appendChild(closeButton);
+    card.appendChild(title);
+    card.appendChild(description);
+    card.appendChild(optionButtons);
+    card.appendChild(commentField.wrap);
+    modal.appendChild(card);
+
+    document.body.style.overflow = 'hidden';
+    document.body.appendChild(modal);
+}
+
+function openCombosMixtosModal(productName, categoryName, buttonId, extraOptions = {}) {
+    closeComboChoiceModal();
+
+    const modal = document.createElement('div');
+    modal.id = 'combo-choice-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '100001';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.background = 'rgba(31, 18, 10, 0.76)';
+    modal.style.backdropFilter = 'blur(8px)';
+    modal.style.webkitBackdropFilter = 'blur(8px)';
+
+    const card = document.createElement('div');
+    card.style.width = 'min(92vw, 430px)';
+    card.style.position = 'relative';
+    card.style.padding = '22px';
+    card.style.borderRadius = '20px';
+    card.style.background = 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(245,221,188,0.92))';
+    card.style.boxShadow = '0 20px 48px rgba(67, 37, 23, 0.28)';
+    card.style.border = '1px solid rgba(255, 180, 108, 0.55)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '14px';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Cerrar seleccion de bebida');
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.width = '38px';
+    closeButton.style.height = '38px';
+    closeButton.style.border = 'none';
+    closeButton.style.borderRadius = '999px';
+    closeButton.style.background = 'rgba(90, 58, 27, 0.14)';
+    closeButton.style.color = '#5a3a1b';
+    closeButton.style.fontSize = '1.7rem';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', closeComboChoiceModal);
+
+    const title = document.createElement('h3');
+    title.textContent = productName;
+    title.style.margin = '0';
+    title.style.textAlign = 'center';
+    title.style.fontFamily = 'Oswald, sans-serif';
+    title.style.fontSize = '1.85rem';
+    title.style.lineHeight = '1';
+    title.style.textTransform = 'uppercase';
+    title.style.color = '#5a3a1b';
+
+    const category = document.createElement('p');
+    category.textContent = categoryName;
+    category.style.margin = '-4px 0 0';
+    category.style.textAlign = 'center';
+    category.style.fontFamily = 'Oswald, sans-serif';
+    category.style.fontSize = '0.95rem';
+    category.style.letterSpacing = '0.08em';
+    category.style.textTransform = 'uppercase';
+    category.style.color = '#8b5527';
+
+    const description = document.createElement('p');
+    description.textContent = 'Selecciona el sabor de la bebida de 1 litro que quieres para este combo.';
+    description.style.margin = '0';
+    description.style.textAlign = 'center';
+    description.style.lineHeight = '1.45';
+    description.style.color = '#4f311d';
+
+    const drinkSelect = document.createElement('select');
+    drinkSelect.style.minHeight = '48px';
+    drinkSelect.style.padding = '0 14px';
+    drinkSelect.style.borderRadius = '12px';
+    drinkSelect.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+    drinkSelect.style.background = '#fffdfa';
+    drinkSelect.style.color = '#4f311d';
+    drinkSelect.style.fontSize = '0.98rem';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Elige sabor de 1 litro';
+    drinkSelect.appendChild(placeholder);
+
+    COMBO_MEAL_LARGE_DRINK_OPTIONS.forEach((drinkName) => {
+        const option = document.createElement('option');
+        option.value = drinkName;
+        option.textContent = drinkName;
+        drinkSelect.appendChild(option);
+    });
+
+    const commentField = createOrderCommentField();
+
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.textContent = 'Enviar a mi carrito';
+    confirmButton.disabled = true;
+    confirmButton.style.minHeight = '52px';
+    confirmButton.style.borderRadius = '14px';
+    confirmButton.style.border = 'none';
+    confirmButton.style.background = 'linear-gradient(135deg, #ff7a00, #ff5a00)';
+    confirmButton.style.color = '#fff7ef';
+    confirmButton.style.fontFamily = 'Oswald, sans-serif';
+    confirmButton.style.fontSize = '1.02rem';
+    confirmButton.style.cursor = 'pointer';
+    confirmButton.style.opacity = '0.5';
+
+    drinkSelect.addEventListener('change', () => {
+        const enabled = Boolean(drinkSelect.value);
+        confirmButton.disabled = !enabled;
+        confirmButton.style.opacity = enabled ? '1' : '0.5';
+    });
+
+    confirmButton.addEventListener('click', () => {
+        if (!drinkSelect.value) {
+            return;
+        }
+        closeComboChoiceModal();
+        addItemToCart(productName, categoryName, {
+            ...extraOptions,
+            type: 'combo-mixed',
+            drink: drinkSelect.value,
+            comment: commentField.textarea.value
+        }, buttonId);
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeComboChoiceModal();
+        }
+    });
+
+    card.appendChild(closeButton);
+    card.appendChild(title);
+    card.appendChild(category);
+    card.appendChild(description);
+    card.appendChild(drinkSelect);
+    card.appendChild(commentField.wrap);
+    card.appendChild(confirmButton);
+    modal.appendChild(card);
+
+    document.body.style.overflow = 'hidden';
+    document.body.appendChild(modal);
+}
+
+function openCombosConPapasModal(productName, categoryName, buttonId, extraOptions = {}) {
     closeComboChoiceModal();
     const normalizedProductName = normalizeCategoryKey(productName);
     const comboHeaderNote = normalizedProductName.includes('perro')
@@ -1109,6 +1909,7 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
 
             closeComboChoiceModal();
             addItemToCart(productName, categoryName, {
+                ...extraOptions,
                 type: 'combo-meal',
                 peopleCount: count,
                 drinks: drinkValues,
@@ -1141,7 +1942,7 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
     document.body.appendChild(modal);
 }
 
-function openComboChoiceModal(productName, categoryName, buttonId) {
+function openComboChoiceModal(productName, categoryName, buttonId, extraOptions = {}) {
     closeComboChoiceModal();
     const buttonCopy = getComboButtonCopy(categoryName);
 
@@ -1235,6 +2036,7 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
     soloButton.addEventListener('click', () => {
         closeComboChoiceModal();
         addItemToCart(productName, categoryName, {
+            ...extraOptions,
             type: 'solo',
             comment: commentField.textarea.value
         }, buttonId);
@@ -1331,6 +2133,7 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
         }
         closeComboChoiceModal();
         addItemToCart(productName, categoryName, {
+            ...extraOptions,
             type: 'combo',
             drink: comboSelect.value,
             comment: commentField.textarea.value
@@ -1366,19 +2169,58 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
     document.body.appendChild(modal);
 }
 
-function startProductOrderFlow(productName, categoryName, buttonId) {
+function startProductOrderFlow(productName, categoryName, buttonId, extraOptions = {}) {
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
+    const normalizedOptions = normalizeOrderOptions(extraOptions);
+
+    if (normalizeCategoryKey(safeCategoryName).includes('burger clasicas')) {
+        const burgerOptions = getBurgerClasicasOptions(productName);
+        if (burgerOptions.length) {
+            openImageOptionModal(productName, safeCategoryName, buttonId, normalizedOptions, {
+                optionItems: burgerOptions,
+                description: 'Selecciona el tamano y la cantidad de carne que ves en la imagen.'
+            });
+            return;
+        }
+    }
+
+    if (normalizeCategoryKey(safeCategoryName).includes('salchipapa')) {
+        const salchipapaOptions = getSalchipapaOptions(productName);
+        if (salchipapaOptions.length) {
+            openImageOptionModal(productName, safeCategoryName, buttonId, normalizedOptions, {
+                optionItems: salchipapaOptions,
+                description: 'Selecciona el tamano que quieres agregar segun la imagen.'
+            });
+            return;
+        }
+    }
+
     if (isCombosConPapasCategory(safeCategoryName)) {
-        openCombosConPapasModal(productName, safeCategoryName, buttonId);
+        openCombosConPapasModal(productName, safeCategoryName, buttonId, normalizedOptions);
+        return;
+    }
+
+    if (isCombosMixtosCategory(safeCategoryName)) {
+        openCombosMixtosModal(productName, safeCategoryName, buttonId, normalizedOptions);
+        return;
+    }
+
+    if (isEntradasCategory(safeCategoryName)) {
+        openEntradasOptionsModal(productName, safeCategoryName, buttonId, normalizedOptions);
+        return;
+    }
+
+    if (isBebidasYAdicionalesCategory(safeCategoryName)) {
+        openBebidasYAdicionalesOptionsModal(productName, safeCategoryName, buttonId, normalizedOptions);
         return;
     }
 
     if (!isComboCategory(safeCategoryName)) {
-        openProductCommentModal(productName, safeCategoryName, buttonId);
+        openProductCommentModal(productName, safeCategoryName, buttonId, normalizedOptions);
         return;
     }
 
-    openComboChoiceModal(productName, safeCategoryName, buttonId);
+    openComboChoiceModal(productName, safeCategoryName, buttonId, normalizedOptions);
 }
 let featuredCarouselAnimationFrame = null;
 let featuredCarouselLastTimestamp = 0;
@@ -2034,7 +2876,7 @@ function renderFeaturedCards(carousel, items) {
         carousel.innerHTML = '';
         localFeaturedImages.forEach((item, index) => {
             const safeName = item.name;
-            const featuredCategoryName = 'LOS MAS PEDIDOS';
+            const featuredCategoryName = 'COMBOS MIXTOS';
             const buttonId = `btn-featured-${index + 1}`;
             const card = document.createElement('div');
             card.className = 'product-card-mobile';
@@ -2975,7 +3817,7 @@ function abrirModalBebida(nombre, ruta, categoria) {
     orderButton.textContent = 'Pedir este producto';
     orderButton.addEventListener('click', () => {
         modal.remove();
-        startProductOrderFlow(nombre, safeCategory, buttonId);
+        startProductOrderFlow(nombre, safeCategory, buttonId, { imagePath: ruta });
     });
 
     actions.appendChild(closeButton);
@@ -3369,10 +4211,12 @@ function showPromoBurgerOptions() {
 
 function orderPromoBurger(burgerName) {
     const safeBurgerName = String(burgerName || '').trim() || 'Burger Ranchera';
-    const message = `Hola ROAL BURGER, quiero pedir la promo del dia de la imagen: ${safeBurgerName}.`;
     trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${safeBurgerName}`);
     closePromoModal();
-    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+    addItemToCart(safeBurgerName, 'PROMO DEL DIA', {
+        type: 'solo',
+        imagePath: PROMO_DAY_IMAGE_PATH
+    }, 'btn-promo-dia-order');
 }
 
 function closePromoModal() {
