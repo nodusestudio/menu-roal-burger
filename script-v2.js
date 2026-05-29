@@ -233,6 +233,7 @@ let shoppingCart = [];
 let cartUI = null;
 let supportUI = null;
 let activeSupportTopic = '';
+let checkoutInfoUI = null;
 
 function syncBodyScrollLock() {
     const menuModal = document.getElementById('menuModal');
@@ -475,8 +476,10 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }) {
     return optionLabel;
 }
 
-function buildCartCheckoutMessage() {
+function buildCartCheckoutMessage(customerInfo = {}) {
     const header = 'Hola ROAL BURGER! Quiero hacer este pedido:';
+    const customerName = String(customerInfo.name || '').trim();
+    const deliveryAddress = String(customerInfo.address || '').trim();
     const lines = shoppingCart.map((item, index) => {
         const unitPrice = getCartItemUnitPrice(item);
         const subtotal = unitPrice * Number(item.quantity || 0);
@@ -492,7 +495,12 @@ function buildCartCheckoutMessage() {
         return details.join('\n');
     });
 
-    return `${header}\n\n${lines.join('\n\n')}\n\nTotal de productos: ${getCartProductCount()}\nTotal a pagar: ${formatCurrency(getCartTotalAmount())}`;
+    const customerDetails = [
+        customerName ? `Nombre: ${customerName}` : '',
+        deliveryAddress ? `Domicilio para: ${deliveryAddress}` : ''
+    ].filter(Boolean);
+
+    return `${header}\n\n${customerDetails.join('\n')}${customerDetails.length ? '\n\n' : ''}${lines.join('\n\n')}\n\nTotal de productos: ${getCartProductCount()}\nTotal a pagar: ${formatCurrency(getCartTotalAmount())}`;
 }
 
 function openCartDrawer() {
@@ -536,9 +544,99 @@ function checkoutCart() {
         return;
     }
 
+    openCheckoutInfoModal();
+}
+
+function closeCheckoutInfoModal() {
+    if (!checkoutInfoUI) {
+        return;
+    }
+
+    checkoutInfoUI.modal.remove();
+    checkoutInfoUI = null;
+    syncBodyScrollLock();
+}
+
+function submitCheckoutInfo() {
+    if (!checkoutInfoUI) {
+        return;
+    }
+
+    const customerName = String(checkoutInfoUI.name.value || '').trim();
+    const deliveryAddress = String(checkoutInfoUI.address.value || '').trim();
+
+    if (!customerName) {
+        checkoutInfoUI.feedback.textContent = 'Escribe el nombre de quien recibe el pedido.';
+        checkoutInfoUI.name.focus();
+        return;
+    }
+
+    if (!deliveryAddress) {
+        checkoutInfoUI.feedback.textContent = 'Escribe la direccion del domicilio.';
+        checkoutInfoUI.address.focus();
+        return;
+    }
+
+    checkoutInfoUI.feedback.textContent = '';
     trackButtonClick('btn-cart-checkout', 'Checkout carrito');
-    const message = buildCartCheckoutMessage();
+    const message = buildCartCheckoutMessage({
+        name: customerName,
+        address: deliveryAddress
+    });
+    closeCheckoutInfoModal();
     window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+}
+
+function openCheckoutInfoModal() {
+    closeCheckoutInfoModal();
+
+    const modal = document.createElement('div');
+    modal.id = 'checkout-info-modal';
+    modal.className = 'support-modal';
+    modal.classList.add('is-open');
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Datos del domicilio">
+            <button type="button" class="support-modal-close" aria-label="Cerrar datos del domicilio">&times;</button>
+            <p class="support-modal-kicker">Antes de enviar</p>
+            <h3 class="support-modal-title">Datos del domicilio</h3>
+            <p class="support-modal-text">Necesitamos saber a nombre de quien va el pedido y para donde va el domicilio.</p>
+            <label class="support-field">
+                <span>Nombre de quien recibe</span>
+                <input type="text" id="checkoutCustomerName" placeholder="Escribe el nombre">
+            </label>
+            <label class="support-field">
+                <span>Direccion del domicilio</span>
+                <textarea id="checkoutDeliveryAddress" rows="4" placeholder="Escribe la direccion completa"></textarea>
+            </label>
+            <p class="support-feedback" id="checkoutInfoFeedback"></p>
+            <div class="support-actions">
+                <button type="button" class="support-send-btn">Enviar pedido por WhatsApp</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    checkoutInfoUI = {
+        modal,
+        close: modal.querySelector('.support-modal-close'),
+        name: modal.querySelector('#checkoutCustomerName'),
+        address: modal.querySelector('#checkoutDeliveryAddress'),
+        feedback: modal.querySelector('#checkoutInfoFeedback'),
+        send: modal.querySelector('.support-send-btn')
+    };
+
+    checkoutInfoUI.close.addEventListener('click', closeCheckoutInfoModal);
+    checkoutInfoUI.send.addEventListener('click', submitCheckoutInfo);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeCheckoutInfoModal();
+        }
+    });
+
+    syncBodyScrollLock();
+    checkoutInfoUI.name.focus();
 }
 
 function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId) {
