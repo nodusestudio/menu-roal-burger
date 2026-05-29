@@ -158,6 +158,308 @@ function openWhatsAppOrder(productName, categoryName, orderOptions = { type: 'so
     window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
 }
 
+const CART_STORAGE_KEY = 'roalburger-cart-v1';
+let shoppingCart = [];
+let cartUI = null;
+
+function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
+    return {
+        type: String(orderOptions.type || 'solo'),
+        drink: String(orderOptions.drink || '').trim(),
+        drinks: Array.isArray(orderOptions.drinks) ? orderOptions.drinks.map((item) => String(item || '').trim()).filter(Boolean) : [],
+        peopleCount: Number(orderOptions.peopleCount || 0)
+    };
+}
+
+function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo' }) {
+    const normalized = normalizeOrderOptions(orderOptions);
+    return JSON.stringify({
+        productName: String(productName || '').trim(),
+        categoryName: String(categoryName || '').trim(),
+        type: normalized.type,
+        drink: normalized.drink,
+        drinks: normalized.drinks,
+        peopleCount: normalized.peopleCount
+    });
+}
+
+function loadCartState() {
+    try {
+        const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+        shoppingCart = raw ? JSON.parse(raw) : [];
+    } catch (error) {
+        shoppingCart = [];
+    }
+}
+
+function saveCartState() {
+    try {
+        window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(shoppingCart));
+    } catch (error) {
+        // Ignorar si el navegador bloquea storage.
+    }
+}
+
+function getCartProductCount() {
+    return shoppingCart.reduce((total, item) => total + Number(item.quantity || 0), 0);
+}
+
+function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }) {
+    const normalized = normalizeOrderOptions(orderOptions);
+
+    if (normalized.type === 'combo-meal') {
+        const peopleCount = Number(normalized.peopleCount || 1);
+        const drinkText = normalized.drinks.join(', ');
+        return `${peopleCount} persona${peopleCount === 1 ? '' : 's'} | ${peopleCount >= 3 ? '1 bebida 1000ML' : `${peopleCount} bebida${peopleCount === 1 ? '' : 's'} 250ML`} | ${drinkText}`;
+    }
+
+    if (normalized.type === 'combo') {
+        return `${getComboButtonCopy(categoryName).combo} | ${normalized.drink}`;
+    }
+
+    if (isComboCategory(categoryName)) {
+        return getComboButtonCopy(categoryName).solo;
+    }
+
+    return 'Producto solo';
+}
+
+function buildCartCheckoutMessage() {
+    const header = 'Hola ROAL BURGER! Quiero hacer este pedido:';
+    const lines = shoppingCart.map((item, index) => {
+        const details = [
+            `${index + 1}. ${item.productName} (${item.categoryName})`,
+            `   Opcion: ${getCartOptionLabel(item.categoryName, item.orderOptions)}`,
+            `   Cantidad: ${item.quantity}`
+        ];
+        return details.join('\n');
+    });
+
+    return `${header}\n\n${lines.join('\n\n')}\n\nTotal de productos: ${getCartProductCount()}`;
+}
+
+function openCartDrawer() {
+    if (!cartUI) {
+        return;
+    }
+    cartUI.drawer.classList.add('is-open');
+    cartUI.overlay.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeCartDrawer() {
+    if (!cartUI) {
+        return;
+    }
+    cartUI.drawer.classList.remove('is-open');
+    cartUI.overlay.classList.remove('is-open');
+    document.body.style.overflow = 'auto';
+}
+
+function updateCartItemQuantity(itemKey, delta) {
+    const item = shoppingCart.find((entry) => entry.itemKey === itemKey);
+    if (!item) {
+        return;
+    }
+
+    item.quantity = Number(item.quantity || 0) + delta;
+    shoppingCart = shoppingCart.filter((entry) => Number(entry.quantity || 0) > 0);
+    saveCartState();
+    renderCartUI();
+}
+
+function clearCart() {
+    shoppingCart = [];
+    saveCartState();
+    renderCartUI();
+}
+
+function checkoutCart() {
+    if (!shoppingCart.length) {
+        return;
+    }
+
+    trackButtonClick('btn-cart-checkout', 'Checkout carrito');
+    const message = buildCartCheckoutMessage();
+    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+}
+
+function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId) {
+    if (buttonId) {
+        trackProductInterest(productName, buttonId);
+    }
+
+    const safeProductName = String(productName || 'producto').trim() || 'producto';
+    const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
+    const normalizedOptions = normalizeOrderOptions(orderOptions);
+    const itemKey = getCartItemKey(safeProductName, safeCategoryName, normalizedOptions);
+    const existingItem = shoppingCart.find((item) => item.itemKey === itemKey);
+
+    if (existingItem) {
+        existingItem.quantity = Number(existingItem.quantity || 0) + 1;
+    } else {
+        shoppingCart.push({
+            itemKey,
+            productName: safeProductName,
+            categoryName: safeCategoryName,
+            orderOptions: normalizedOptions,
+            quantity: 1
+        });
+    }
+
+    saveCartState();
+    renderCartUI();
+    openCartDrawer();
+}
+
+function renderCartUI() {
+    if (!cartUI) {
+        return;
+    }
+
+    const totalItems = getCartProductCount();
+    cartUI.badge.textContent = String(totalItems);
+    cartUI.badge.hidden = totalItems === 0;
+    cartUI.list.innerHTML = '';
+
+    if (!shoppingCart.length) {
+        const empty = document.createElement('p');
+        empty.className = 'cart-empty';
+        empty.textContent = 'Todavia no has agregado productos al carrito.';
+        cartUI.list.appendChild(empty);
+        cartUI.summary.textContent = 'Tu carrito esta vacio.';
+        cartUI.checkout.disabled = true;
+        cartUI.clear.disabled = true;
+        return;
+    }
+
+    shoppingCart.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'cart-item';
+
+        const info = document.createElement('div');
+        info.className = 'cart-item-info';
+
+        const title = document.createElement('strong');
+        title.textContent = item.productName;
+
+        const category = document.createElement('p');
+        category.className = 'cart-item-category';
+        category.textContent = item.categoryName;
+
+        const option = document.createElement('p');
+        option.className = 'cart-item-option';
+        option.textContent = getCartOptionLabel(item.categoryName, item.orderOptions);
+
+        info.appendChild(title);
+        info.appendChild(category);
+        info.appendChild(option);
+
+        const controls = document.createElement('div');
+        controls.className = 'cart-item-controls';
+
+        const minus = document.createElement('button');
+        minus.type = 'button';
+        minus.className = 'cart-qty-btn';
+        minus.textContent = '-';
+        minus.addEventListener('click', () => {
+            updateCartItemQuantity(item.itemKey, -1);
+        });
+
+        const quantity = document.createElement('span');
+        quantity.className = 'cart-qty-value';
+        quantity.textContent = String(item.quantity);
+
+        const plus = document.createElement('button');
+        plus.type = 'button';
+        plus.className = 'cart-qty-btn';
+        plus.textContent = '+';
+        plus.addEventListener('click', () => {
+            updateCartItemQuantity(item.itemKey, 1);
+        });
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'cart-remove-btn';
+        remove.textContent = 'Quitar';
+        remove.addEventListener('click', () => {
+            updateCartItemQuantity(item.itemKey, -Number(item.quantity || 1));
+        });
+
+        controls.appendChild(minus);
+        controls.appendChild(quantity);
+        controls.appendChild(plus);
+        controls.appendChild(remove);
+
+        row.appendChild(info);
+        row.appendChild(controls);
+        cartUI.list.appendChild(row);
+    });
+
+    cartUI.summary.textContent = `${shoppingCart.length} referencia${shoppingCart.length === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'}`;
+    cartUI.checkout.disabled = false;
+    cartUI.clear.disabled = false;
+}
+
+function initCartUI() {
+    if (cartUI) {
+        renderCartUI();
+        return;
+    }
+
+    loadCartState();
+
+    const fab = document.createElement('button');
+    fab.type = 'button';
+    fab.className = 'cart-fab';
+    fab.innerHTML = '<span class="cart-fab-icon">🛒</span><span class="cart-fab-label">Carrito</span><span class="cart-fab-badge" hidden>0</span>';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'cart-overlay';
+
+    const drawer = document.createElement('aside');
+    drawer.className = 'cart-drawer liquid-glass';
+    drawer.innerHTML = `
+        <div class="cart-drawer-header">
+            <div>
+                <h3 class="cart-drawer-title">Tu carrito</h3>
+                <p class="cart-drawer-subtitle">Agrega productos y al final envia un solo pedido.</p>
+            </div>
+            <button type="button" class="cart-close-btn" aria-label="Cerrar carrito">&times;</button>
+        </div>
+        <div class="cart-items" id="cartItems"></div>
+        <div class="cart-drawer-footer">
+            <p class="cart-summary" id="cartSummary"></p>
+            <button type="button" class="cart-checkout-btn" id="cartCheckoutBtn">Hacer pedido por WhatsApp</button>
+            <button type="button" class="cart-clear-btn" id="cartClearBtn">Vaciar carrito</button>
+        </div>
+    `;
+
+    document.body.appendChild(fab);
+    document.body.appendChild(overlay);
+    document.body.appendChild(drawer);
+
+    cartUI = {
+        fab,
+        badge: fab.querySelector('.cart-fab-badge'),
+        overlay,
+        drawer,
+        close: drawer.querySelector('.cart-close-btn'),
+        list: drawer.querySelector('#cartItems'),
+        summary: drawer.querySelector('#cartSummary'),
+        checkout: drawer.querySelector('#cartCheckoutBtn'),
+        clear: drawer.querySelector('#cartClearBtn')
+    };
+
+    fab.addEventListener('click', openCartDrawer);
+    overlay.addEventListener('click', closeCartDrawer);
+    cartUI.close.addEventListener('click', closeCartDrawer);
+    cartUI.checkout.addEventListener('click', checkoutCart);
+    cartUI.clear.addEventListener('click', clearCart);
+
+    renderCartUI();
+}
+
 function closeComboChoiceModal() {
     const modal = document.getElementById('combo-choice-modal');
     if (modal) {
@@ -398,11 +700,11 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
             }
 
             closeComboChoiceModal();
-            openWhatsAppOrder(productName, categoryName, {
+            addItemToCart(productName, categoryName, {
                 type: 'combo-meal',
                 peopleCount: count,
                 drinks: drinkValues
-            });
+            }, buttonId);
         };
     }
 
@@ -519,11 +821,8 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
     soloButton.style.fontSize = '1.02rem';
     soloButton.style.cursor = 'pointer';
     soloButton.addEventListener('click', () => {
-        if (buttonId) {
-            trackProductInterest(productName, buttonId);
-        }
         closeComboChoiceModal();
-        openWhatsAppOrder(productName, categoryName, { type: 'solo' });
+        addItemToCart(productName, categoryName, { type: 'solo' }, buttonId);
     });
 
     const comboButton = document.createElement('button');
@@ -615,11 +914,8 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
         if (!comboSelect.value) {
             return;
         }
-        if (buttonId) {
-            trackProductInterest(`${productName} - combo ${comboSelect.value}`, buttonId);
-        }
         closeComboChoiceModal();
-        openWhatsAppOrder(productName, categoryName, { type: 'combo', drink: comboSelect.value });
+        addItemToCart(productName, categoryName, { type: 'combo', drink: comboSelect.value }, buttonId);
     });
 
     comboPanel.appendChild(comboLabel);
@@ -657,10 +953,7 @@ function startProductOrderFlow(productName, categoryName, buttonId) {
     }
 
     if (!isComboCategory(safeCategoryName)) {
-        if (buttonId) {
-            trackProductInterest(productName, buttonId);
-        }
-        openWhatsAppOrder(productName, safeCategoryName, { type: 'solo' });
+        addItemToCart(productName, safeCategoryName, { type: 'solo' }, buttonId);
         return;
     }
 
@@ -1228,7 +1521,9 @@ function renderDynamicCategorySections() {
                 };
 
                 // Botón Pedir este producto
-                const pedirBtn = document.createElement('a');
+                const pedirBtn = document.createElement('button');
+                const buttonId = `btn-gallery-${normalizeAssetLookup(title)}`;
+                pedirBtn.type = 'button';
                 pedirBtn.textContent = 'Pedir este producto';
                 pedirBtn.style.background = '#ff6000';
                 pedirBtn.style.color = '#fff';
@@ -1238,11 +1533,11 @@ function renderDynamicCategorySections() {
                 pedirBtn.style.borderRadius = '8px';
                 pedirBtn.style.padding = '10px 22px';
                 pedirBtn.style.cursor = 'pointer';
-                pedirBtn.style.textDecoration = 'none';
                 pedirBtn.style.boxShadow = '0 1px 4px 0 rgba(0,0,0,0.10)';
-                pedirBtn.href = buildProductWhatsAppUrl(title);
-                pedirBtn.target = '_blank';
-                pedirBtn.rel = 'noopener noreferrer';
+                pedirBtn.addEventListener('click', () => {
+                    modalBg.remove();
+                    startProductOrderFlow(title, getSelectedCategoryName(), buttonId);
+                });
 
                 btnsRow.appendChild(closeBtn);
                 btnsRow.appendChild(pedirBtn);
@@ -1332,15 +1627,14 @@ function renderFeaturedCards(carousel, items) {
             imageWrap.addEventListener('click', () => {
                 abrirModalBebida(safeName, item.src, featuredCategoryName);
             });
-            const button = document.createElement('a');
+            const button = document.createElement('button');
             button.className = 'mobile-order-btn';
             button.id = buttonId;
-            button.target = '_blank';
-            button.rel = 'noopener noreferrer';
-            button.href = buildProductWhatsAppUrl(safeName, featuredCategoryName);
+            button.type = 'button';
             button.textContent = '¡Lo Quiero!';
-            button.addEventListener('click', () => {
-                trackProductInterest(safeName, buttonId);
+            button.addEventListener('click', (event) => {
+                event.preventDefault();
+                startProductOrderFlow(safeName, featuredCategoryName, buttonId);
             });
             imageWrap.appendChild(image);
             card.appendChild(imageWrap);
@@ -2685,6 +2979,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    initCartUI();
     initPromoModal();
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
