@@ -2098,6 +2098,7 @@ body::before {
 .cart-close-btn,
 .cart-qty-btn,
 .cart-remove-btn,
+.cart-continue-btn,
 .cart-checkout-btn,
 .cart-clear-btn {
     border: none;
@@ -2186,12 +2187,18 @@ body::before {
     gap: 10px;
 }
 
+.cart-continue-btn,
 .cart-checkout-btn,
 .cart-clear-btn {
     min-height: 50px;
     border-radius: 14px;
     font-family: 'Oswald', sans-serif;
     font-size: 1rem;
+}
+
+.cart-continue-btn {
+    background: rgba(255, 247, 235, 0.92);
+    color: #5a3a1b;
 }
 
 .cart-checkout-btn {

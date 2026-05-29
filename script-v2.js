@@ -341,7 +341,6 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
 
     saveCartState();
     renderCartUI();
-    openCartDrawer();
 }
 
 function renderCartUI() {
@@ -462,6 +461,7 @@ function initCartUI() {
         <div class="cart-items" id="cartItems"></div>
         <div class="cart-drawer-footer">
             <p class="cart-summary" id="cartSummary"></p>
+            <button type="button" class="cart-continue-btn" id="cartContinueBtn">Seguir en el menu</button>
             <button type="button" class="cart-checkout-btn" id="cartCheckoutBtn">Hacer pedido por WhatsApp</button>
             <button type="button" class="cart-clear-btn" id="cartClearBtn">Vaciar carrito</button>
         </div>
@@ -479,6 +479,7 @@ function initCartUI() {
         close: drawer.querySelector('.cart-close-btn'),
         list: drawer.querySelector('#cartItems'),
         summary: drawer.querySelector('#cartSummary'),
+        continue: drawer.querySelector('#cartContinueBtn'),
         checkout: drawer.querySelector('#cartCheckoutBtn'),
         clear: drawer.querySelector('#cartClearBtn')
     };
@@ -486,6 +487,7 @@ function initCartUI() {
     fab.addEventListener('click', openCartDrawer);
     overlay.addEventListener('click', closeCartDrawer);
     cartUI.close.addEventListener('click', closeCartDrawer);
+    cartUI.continue.addEventListener('click', closeCartDrawer);
     cartUI.checkout.addEventListener('click', checkoutCart);
     cartUI.clear.addEventListener('click', clearCart);
 
@@ -840,7 +842,7 @@ function openProductCommentModal(productName, categoryName, buttonId) {
 
     const confirmButton = document.createElement('button');
     confirmButton.type = 'button';
-    confirmButton.textContent = 'Agregar al carrito';
+    confirmButton.textContent = 'Enviar a mi carrito';
     confirmButton.style.minHeight = '52px';
     confirmButton.style.borderRadius = '14px';
     confirmButton.style.border = 'none';
@@ -1030,7 +1032,7 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
 
     const confirmButton = document.createElement('button');
     confirmButton.type = 'button';
-    confirmButton.textContent = 'Enviar pedido';
+    confirmButton.textContent = 'Enviar a mi carrito';
     confirmButton.disabled = true;
     confirmButton.style.minHeight = '52px';
     confirmButton.style.borderRadius = '14px';
@@ -1299,7 +1301,7 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
 
     const comboConfirm = document.createElement('button');
     comboConfirm.type = 'button';
-    comboConfirm.textContent = 'Enviar pedido en combo';
+    comboConfirm.textContent = 'Enviar a mi carrito';
     comboConfirm.disabled = true;
     comboConfirm.style.minHeight = '52px';
     comboConfirm.style.borderRadius = '14px';
