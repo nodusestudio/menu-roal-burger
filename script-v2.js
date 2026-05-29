@@ -2025,19 +2025,49 @@ function closeMenuModal() {
 
 
 
-// ===== MODAL DE PROMOCIÓN - BURGER RANCHERA =====
-// OCULTO temporalmente - descomentar para reactivar
+// ===== MODAL DE PROMOCIÓN =====
+const PROMO_DAY_NAME = 'Hamburguesa del dia';
+
+function resetPromoSelection() {
+    const selector = document.getElementById('promoBurgerSelector');
+    const orderButton = document.getElementById('promoOrderButton');
+    if (selector) {
+        selector.hidden = true;
+    }
+    if (orderButton) {
+        orderButton.textContent = 'Pedir promo del dia';
+    }
+}
+
 function initPromoModal() {
-    return; // Modal oculto. Para reactivar, eliminar esta línea.
-    if (sessionStorage.getItem('promoRancheraShown')) return;
     setTimeout(function () {
         var modal = document.getElementById('promoModal');
         if (modal) {
+            resetPromoSelection();
             modal.classList.add('is-open');
             document.body.style.overflow = 'hidden';
-            sessionStorage.setItem('promoRancheraShown', '1');
         }
     }, 2000);
+}
+
+function showPromoBurgerOptions() {
+    const selector = document.getElementById('promoBurgerSelector');
+    const orderButton = document.getElementById('promoOrderButton');
+    if (selector) {
+        selector.hidden = false;
+    }
+    if (orderButton) {
+        orderButton.textContent = 'Elige tu burger';
+    }
+    trackButtonClick('btn-promo-dia', `${PROMO_DAY_NAME} - Elegir burger`);
+}
+
+function orderPromoBurger(burgerName) {
+    const safeBurgerName = String(burgerName || '').trim() || 'Burger Ranchera';
+    const message = `Hola ROAL BURGER, quiero pedir la promo del dia de la imagen: ${safeBurgerName}.`;
+    trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${safeBurgerName}`);
+    closePromoModal();
+    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
 }
 
 function closePromoModal() {
@@ -2045,6 +2075,7 @@ function closePromoModal() {
     if (modal) {
         modal.classList.remove('is-open');
         document.body.style.overflow = 'auto';
+        resetPromoSelection();
     }
 }
 window.onclick = function(event) {

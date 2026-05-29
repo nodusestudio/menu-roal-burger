@@ -2350,7 +2350,7 @@ body::before {
     }
 }
 
-/* ===== MODAL DE PROMOCIÓN - BURGER RANCHERA ===== */
+/* ===== MODAL DE PROMOCIÓN ===== */
 .promo-modal {
     display: none;
     position: fixed;
@@ -2360,8 +2360,8 @@ body::before {
     width: 100%;
     height: 100%;
     background-color: rgba(0, 0, 0, 0.90);
-    backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     align-items: center;
     justify-content: center;
 }
@@ -2373,9 +2373,9 @@ body::before {
 
 .promo-modal-card {
     position: relative;
-    background: #0a0a0a;
+    background: linear-gradient(180deg, #fff6e8 0%, #ffd7aa 100%);
     border: 1px solid rgba(255, 96, 0, 0.30);
-    border-radius: 16px;
+    border-radius: 22px;
     max-width: 420px;
     width: 92%;
     max-height: 92vh;
@@ -2384,7 +2384,7 @@ body::before {
     flex-direction: column;
     align-items: center;
     padding: 0 0 24px;
-    box-shadow: 0 0 40px rgba(255, 96, 0, 0.15), 0 8px 32px rgba(0, 0, 0, 0.80);
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
     animation: promoSlideUp 0.40s ease-out;
 }
 
@@ -2397,8 +2397,8 @@ body::before {
     position: absolute;
     top: 12px;
     right: 14px;
-    background: rgba(0, 0, 0, 0.65);
-    border: 1.5px solid rgba(255, 255, 255, 0.18);
+    background: rgba(39, 21, 8, 0.72);
+    border: 1.5px solid rgba(255, 255, 255, 0.22);
     color: #fff;
     font-size: 26px;
     line-height: 1;
@@ -2420,21 +2420,90 @@ body::before {
 
 .promo-modal-img {
     width: 100%;
-    border-radius: 16px 16px 0 0;
+    border-radius: 22px 22px 0 0;
     object-fit: cover;
-    max-height: 60vh;
+    max-height: 58vh;
     display: block;
 }
 
-.promo-modal-text {
-    font-family: 'Courier New', Courier, monospace;
-    color: #f5e6c8;
-    font-size: 1rem;
+.promo-modal-body {
+    width: 100%;
+    padding: 18px 20px 8px;
+    box-sizing: border-box;
+}
+
+.promo-modal-kicker {
+    margin: 0 0 6px;
+    color: #a84b00;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.82rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
     text-align: center;
-    padding: 20px 20px 8px;
+}
+
+.promo-modal-title {
+    margin: 0;
+    color: #351707;
+    font-family: 'Oswald', sans-serif;
+    font-size: 2rem;
+    line-height: 1;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.promo-modal-text {
+    font-family: 'Roboto', sans-serif;
+    color: #4c2a16;
+    font-size: 0.98rem;
+    text-align: center;
+    padding: 12px 0 0;
     line-height: 1.55;
     letter-spacing: 0.01em;
     margin: 0;
+}
+
+.promo-modal-selector {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: 16px;
+    background: rgba(255, 248, 239, 0.88);
+    border: 1px solid rgba(168, 75, 0, 0.14);
+}
+
+.promo-modal-selector-title {
+    margin: 0 0 10px;
+    text-align: center;
+    font-family: 'Oswald', sans-serif;
+    color: #5e2f0f;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.promo-modal-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.promo-option-btn {
+    min-height: 48px;
+    border: 1px solid rgba(168, 75, 0, 0.18);
+    border-radius: 12px;
+    background: #ffffff;
+    color: #4c2a16;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.promo-option-btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 96, 0, 0.45);
+    box-shadow: 0 10px 22px rgba(168, 75, 0, 0.12);
 }
 
 .promo-modal-actions {
@@ -2463,27 +2532,37 @@ body::before {
 }
 
 .promo-btn-order {
-    background: #c84b00;
+    background: linear-gradient(135deg, #ff7a00, #ff5400);
     color: #fff;
     border: none;
-    box-shadow: 0 4px 14px rgba(200, 75, 0, 0.45);
+    box-shadow: 0 10px 24px rgba(200, 75, 0, 0.32);
 }
 
 .promo-btn-order:hover {
-    background: #e05500;
+    background: linear-gradient(135deg, #ff8b18, #ff6210);
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(200, 75, 0, 0.65);
+    box-shadow: 0 14px 28px rgba(200, 75, 0, 0.38);
 }
 
 .promo-btn-menu {
     background: transparent;
-    color: #cccccc;
-    border: 1px solid rgba(255, 255, 255, 0.20);
+    color: #5e2f0f;
+    border: 1px solid rgba(94, 47, 15, 0.24);
 }
 
 .promo-btn-menu:hover {
-    border-color: rgba(255, 255, 255, 0.50);
-    color: #ffffff;
+    border-color: rgba(94, 47, 15, 0.48);
+    color: #351707;
+}
+
+@media (max-width: 480px) {
+    .promo-modal-title {
+        font-size: 1.7rem;
+    }
+
+    .promo-modal-options {
+        grid-template-columns: 1fr;
+    }
 }
 
 .bebidas-modal-overlay {

@@ -191,14 +191,25 @@
             </div>
         </div>
     </div>
-    <!-- Modal de Promoción - Burger Ranchera -->
-    <div id="promoModal" class="promo-modal" role="dialog" aria-modal="true" aria-label="Promoción Burger Ranchera">
+    <!-- Modal de Promoción -->
+    <div id="promoModal" class="promo-modal" role="dialog" aria-modal="true" aria-label="Promoción del día">
         <div class="promo-modal-card">
             <button class="promo-modal-close" onclick="closePromoModal()" aria-label="Cerrar promoción">&times;</button>
-                        <!-- Video promocional eliminado para evitar error 404 -->
-                        <p class="promo-modal-text">hola 👋 quiero informacion de los combos especiales del dia de la madre 🍔❤️</p>
+            <img src="promodeldia/diadelahamburguesa.jpg" alt="Promo del día hamburguesa" class="promo-modal-img">
+            <div class="promo-modal-body">
+                <p class="promo-modal-kicker">Promo del dia</p>
+                <h3 class="promo-modal-title">Hamburguesa del dia</h3>
+                <p class="promo-modal-text">Pide la promo del dia y elige la hamburguesa exacta para que tu pedido llegue claro por WhatsApp.</p>
+                <div class="promo-modal-selector" id="promoBurgerSelector" hidden>
+                    <p class="promo-modal-selector-title">Elige tu burger</p>
+                    <div class="promo-modal-options">
+                        <button class="promo-option-btn" type="button" onclick="orderPromoBurger('Burger Ranchera')">Burger Ranchera</button>
+                        <button class="promo-option-btn" type="button" onclick="orderPromoBurger('Burger Plus')">Burger Plus</button>
+                    </div>
+                </div>
+            </div>
             <div class="promo-modal-actions">
-                <a href="https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quiero%20informaci%C3%B3n%20y%20pedir%20los%20combos%20especiales%20del%20D%C3%ADa%20de%20la%20Madre%20%F0%9F%8D%94%F0%9F%8C%B9" target="_blank" rel="noopener noreferrer" class="promo-btn promo-btn-order" onclick="trackButtonClick('btn-promo-madres', 'Combos Día de la Madre - Pedir Ya')">¡PEDIR YA! 📲</a>
+                <button class="promo-btn promo-btn-order" type="button" id="promoOrderButton" onclick="showPromoBurgerOptions()">Pedir promo del dia</button>
                 <button class="promo-btn promo-btn-menu" onclick="closePromoModal()">Ver Menú 🍔</button>
             </div>
         </div>
