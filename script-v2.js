@@ -139,18 +139,23 @@ function buildOrderMessage(productName, categoryName, orderOptions = { type: 'so
 
     if (orderOptions.type === 'combo-meal') {
         const peopleCount = Number(orderOptions.peopleCount || 1);
-        const drinkSize = peopleCount >= 3 ? '1 litro' : '250 ml';
         const drinkLabels = Array.isArray(orderOptions.drinks) ? orderOptions.drinks.filter(Boolean) : [];
         const drinksText = drinkLabels.join(', ');
-        return `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} para ${peopleCount} persona${peopleCount === 1 ? '' : 's'} con ${peopleCount >= 3 ? 'una bebida de 1 litro' : `${peopleCount} bebida${peopleCount === 1 ? '' : 's'} de 250 ml`} sabor ${drinksText} y su descripcion completa del combo.`;
+        return appendCommentText(
+            `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} para ${peopleCount} persona${peopleCount === 1 ? '' : 's'} con ${peopleCount >= 3 ? 'una bebida de 1 litro' : `${peopleCount} bebida${peopleCount === 1 ? '' : 's'} de 250 ml`} sabor ${drinksText} y su descripcion completa del combo.`,
+            orderOptions
+        );
     }
 
     if (orderOptions.type !== 'combo') {
-        return `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName}.`;
+        return appendCommentText(`Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName}.`, orderOptions);
     }
 
     const safeDrink = String(orderOptions.drink || COMBO_DRINK_OPTIONS[0]).trim() || COMBO_DRINK_OPTIONS[0];
-    return `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} en combo (+$${COMBO_EXTRA_PRICE.toLocaleString('es-CO')}) con bebida ${safeDrink}.`;
+    return appendCommentText(
+        `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} en combo (+$${COMBO_EXTRA_PRICE.toLocaleString('es-CO')}) con bebida ${safeDrink}.`,
+        orderOptions
+    );
 }
 
 function openWhatsAppOrder(productName, categoryName, orderOptions = { type: 'solo' }) {
@@ -161,13 +166,27 @@ function openWhatsAppOrder(productName, categoryName, orderOptions = { type: 'so
 const CART_STORAGE_KEY = 'roalburger-cart-v1';
 let shoppingCart = [];
 let cartUI = null;
+let supportUI = null;
+let activeSupportTopic = '';
+
+function syncBodyScrollLock() {
+    const menuModal = document.getElementById('menuModal');
+    const promoModal = document.getElementById('promoModal');
+    const supportModal = supportUI?.modal || document.getElementById('supportModal');
+    const isMenuOpen = Boolean(menuModal && menuModal.style.display === 'block');
+    const isPromoOpen = Boolean(promoModal && promoModal.classList.contains('is-open'));
+    const isCartOpen = Boolean(cartUI && cartUI.drawer.classList.contains('is-open'));
+    const isSupportOpen = Boolean(supportModal && supportModal.classList.contains('is-open'));
+    document.body.style.overflow = isMenuOpen || isPromoOpen || isCartOpen || isSupportOpen ? 'hidden' : 'auto';
+}
 
 function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
     return {
         type: String(orderOptions.type || 'solo'),
         drink: String(orderOptions.drink || '').trim(),
         drinks: Array.isArray(orderOptions.drinks) ? orderOptions.drinks.map((item) => String(item || '').trim()).filter(Boolean) : [],
-        peopleCount: Number(orderOptions.peopleCount || 0)
+        peopleCount: Number(orderOptions.peopleCount || 0),
+        comment: String(orderOptions.comment || '').trim()
     };
 }
 
@@ -179,8 +198,17 @@ function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo'
         type: normalized.type,
         drink: normalized.drink,
         drinks: normalized.drinks,
-        peopleCount: normalized.peopleCount
+        peopleCount: normalized.peopleCount,
+        comment: normalized.comment
     });
+}
+
+function appendCommentText(baseText, orderOptions = { type: 'solo' }) {
+    const comment = String(orderOptions.comment || '').trim();
+    if (!comment) {
+        return baseText;
+    }
+    return `${baseText} Comentario: ${comment}.`;
 }
 
 function loadCartState() {
@@ -206,22 +234,23 @@ function getCartProductCount() {
 
 function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }) {
     const normalized = normalizeOrderOptions(orderOptions);
+    let optionLabel = 'Producto solo';
 
     if (normalized.type === 'combo-meal') {
         const peopleCount = Number(normalized.peopleCount || 1);
         const drinkText = normalized.drinks.join(', ');
-        return `${peopleCount} persona${peopleCount === 1 ? '' : 's'} | ${peopleCount >= 3 ? '1 bebida 1000ML' : `${peopleCount} bebida${peopleCount === 1 ? '' : 's'} 250ML`} | ${drinkText}`;
+        optionLabel = `${peopleCount} persona${peopleCount === 1 ? '' : 's'} | ${peopleCount >= 3 ? '1 bebida 1000ML' : `${peopleCount} bebida${peopleCount === 1 ? '' : 's'} 250ML`} | ${drinkText}`;
+    } else if (normalized.type === 'combo') {
+        optionLabel = `${getComboButtonCopy(categoryName).combo} | ${normalized.drink}`;
+    } else if (isComboCategory(categoryName)) {
+        optionLabel = getComboButtonCopy(categoryName).solo;
     }
 
-    if (normalized.type === 'combo') {
-        return `${getComboButtonCopy(categoryName).combo} | ${normalized.drink}`;
+    if (normalized.comment) {
+        return `${optionLabel} | Comentario: ${normalized.comment}`;
     }
 
-    if (isComboCategory(categoryName)) {
-        return getComboButtonCopy(categoryName).solo;
-    }
-
-    return 'Producto solo';
+    return optionLabel;
 }
 
 function buildCartCheckoutMessage() {
@@ -232,6 +261,9 @@ function buildCartCheckoutMessage() {
             `   Opcion: ${getCartOptionLabel(item.categoryName, item.orderOptions)}`,
             `   Cantidad: ${item.quantity}`
         ];
+        if (item.orderOptions?.comment) {
+            details.push(`   Comentario: ${item.orderOptions.comment}`);
+        }
         return details.join('\n');
     });
 
@@ -244,7 +276,7 @@ function openCartDrawer() {
     }
     cartUI.drawer.classList.add('is-open');
     cartUI.overlay.classList.add('is-open');
-    document.body.style.overflow = 'hidden';
+    syncBodyScrollLock();
 }
 
 function closeCartDrawer() {
@@ -253,7 +285,7 @@ function closeCartDrawer() {
     }
     cartUI.drawer.classList.remove('is-open');
     cartUI.overlay.classList.remove('is-open');
-    document.body.style.overflow = 'auto';
+    syncBodyScrollLock();
 }
 
 function updateCartItemQuantity(itemKey, delta) {
@@ -460,12 +492,384 @@ function initCartUI() {
     renderCartUI();
 }
 
+function getSupportSocialEntries() {
+    return [
+        { label: 'Instagram', config: getButtonConfigByPlatform('instagram') },
+        { label: 'TikTok', config: getButtonConfigByPlatform('tiktok') },
+        { label: 'Facebook', config: getButtonConfigByPlatform('facebook') }
+    ].filter((item) => item.config && item.config.visible !== false && item.config.estado !== 'paused' && item.config.link);
+}
+
+function buildSupportWhatsAppMessage(name, details, topicKey) {
+    const safeName = String(name || '').trim();
+    const safeDetails = String(details || '').trim();
+    const topicLabelMap = {
+        horario: 'Horario',
+        direccion: 'Direccion',
+        redes: 'Nuestras redes',
+        reclamos: 'Quejas o reclamos'
+    };
+    const topicLabel = topicLabelMap[topicKey] || 'Ayuda general';
+    return [
+        'Hola ROAL BURGER! Necesito ayuda o informacion.',
+        `Nombre: ${safeName}`,
+        `Tema: ${topicLabel}`,
+        `Consulta: ${safeDetails || `Quiero informacion sobre ${topicLabel.toLowerCase()}.`}`
+    ].join('\n');
+}
+
+function renderSupportAnswer(topicKey) {
+    if (!supportUI) {
+        return;
+    }
+
+    const answer = supportUI.answer;
+    answer.innerHTML = '';
+
+    const title = document.createElement('h4');
+    title.className = 'support-answer-title';
+    const body = document.createElement('div');
+    body.className = 'support-answer-body';
+
+    if (topicKey === 'horario') {
+        title.textContent = 'Horario de atencion';
+        body.textContent = 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.';
+    } else if (topicKey === 'direccion') {
+        title.textContent = 'Direccion';
+        body.textContent = 'Cl. 22 #29-59, Armenia, Quindio. Barrio Las Americas.';
+    } else if (topicKey === 'redes') {
+        title.textContent = 'Nuestras redes';
+        const socials = getSupportSocialEntries();
+        if (!socials.length) {
+            body.textContent = 'En este momento nuestras redes no estan disponibles.';
+        } else {
+            const list = document.createElement('div');
+            list.className = 'support-link-list';
+            socials.forEach((item) => {
+                const link = document.createElement('a');
+                link.className = 'support-link-chip';
+                link.href = item.config.link;
+                link.target = '_blank';
+                link.rel = 'noopener';
+                link.textContent = item.label;
+                list.appendChild(link);
+            });
+            body.appendChild(list);
+        }
+    } else if (topicKey === 'reclamos') {
+        title.textContent = 'Quejas o reclamos';
+        body.textContent = 'Escribenos tu queja, reclamo o novedad y la enviaremos directo por WhatsApp para darte respuesta.';
+    } else {
+        title.textContent = 'En que te podemos ayudar';
+        body.textContent = 'Selecciona una pregunta frecuente o escribenos tu consulta y te la enviamos por WhatsApp.';
+    }
+
+    answer.appendChild(title);
+    answer.appendChild(body);
+}
+
+function applySupportTopic(topicKey) {
+    activeSupportTopic = topicKey;
+    if (!supportUI) {
+        return;
+    }
+
+    supportUI.topicButtons.forEach((button) => {
+        button.classList.toggle('is-active', button.dataset.topic === topicKey);
+    });
+
+    const promptMap = {
+        horario: 'Quiero informacion sobre el horario.',
+        direccion: 'Quiero informacion sobre la direccion.',
+        redes: 'Quiero conocer sus redes sociales.',
+        reclamos: 'Quiero registrar una queja o reclamo.'
+    };
+
+    if (supportUI.details && promptMap[topicKey]) {
+        supportUI.details.value = promptMap[topicKey];
+    }
+
+    renderSupportAnswer(topicKey);
+}
+
+function resetSupportState() {
+    activeSupportTopic = '';
+    if (!supportUI) {
+        return;
+    }
+
+    supportUI.name.value = '';
+    supportUI.details.value = '';
+    supportUI.feedback.textContent = '';
+    supportUI.topicButtons.forEach((button) => {
+        button.classList.remove('is-active');
+    });
+    renderSupportAnswer('');
+}
+
+function closeSupportModal() {
+    if (!supportUI) {
+        return;
+    }
+
+    supportUI.modal.classList.remove('is-open');
+    syncBodyScrollLock();
+}
+
+function sendSupportRequest() {
+    if (!supportUI) {
+        return;
+    }
+
+    const name = String(supportUI.name.value || '').trim();
+    const details = String(supportUI.details.value || '').trim();
+
+    if (!name) {
+        supportUI.feedback.textContent = 'Escribe tu nombre para continuar.';
+        supportUI.name.focus();
+        return;
+    }
+
+    if (!details && !activeSupportTopic) {
+        supportUI.feedback.textContent = 'Selecciona una pregunta frecuente o escribe tu mensaje.';
+        supportUI.details.focus();
+        return;
+    }
+
+    supportUI.feedback.textContent = '';
+    trackButtonClick('btn-whatsapp-flotante-send', `Ayuda WhatsApp - ${activeSupportTopic || 'consulta libre'}`);
+    const message = buildSupportWhatsAppMessage(name, details, activeSupportTopic);
+    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+    resetSupportState();
+    closeSupportModal();
+}
+
+function openSupportModal() {
+    if (!supportUI) {
+        initSupportModal();
+    }
+
+    supportUI.feedback.textContent = '';
+    supportUI.modal.classList.add('is-open');
+    syncBodyScrollLock();
+    if (!activeSupportTopic) {
+        renderSupportAnswer('');
+    }
+    supportUI.name.focus();
+}
+
+function initSupportModal() {
+    if (supportUI) {
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'supportModal';
+    modal.className = 'support-modal';
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Ayuda e informacion">
+            <button type="button" class="support-modal-close" aria-label="Cerrar ayuda">&times;</button>
+            <p class="support-modal-kicker">Ayuda e informacion</p>
+            <h3 class="support-modal-title">En que te podemos ayudar</h3>
+            <p class="support-modal-text">Responde rapido una duda frecuente o envianos tu consulta por WhatsApp.</p>
+            <div class="support-topic-grid">
+                <button type="button" class="support-topic-btn" data-topic="horario">Horario</button>
+                <button type="button" class="support-topic-btn" data-topic="direccion">Direccion</button>
+                <button type="button" class="support-topic-btn" data-topic="redes">Nuestras redes</button>
+                <button type="button" class="support-topic-btn" data-topic="reclamos">Quejas o reclamos</button>
+            </div>
+            <div class="support-answer" id="supportAnswer"></div>
+            <label class="support-field">
+                <span>Tu nombre</span>
+                <input type="text" id="supportName" placeholder="Escribe tu nombre">
+            </label>
+            <label class="support-field">
+                <span>Tu mensaje</span>
+                <textarea id="supportDetails" rows="4" placeholder="Cuentanos que necesitas"></textarea>
+            </label>
+            <p class="support-feedback" id="supportFeedback"></p>
+            <div class="support-actions">
+                <button type="button" class="support-send-btn">Enviar a WhatsApp</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    supportUI = {
+        modal,
+        close: modal.querySelector('.support-modal-close'),
+        answer: modal.querySelector('#supportAnswer'),
+        name: modal.querySelector('#supportName'),
+        details: modal.querySelector('#supportDetails'),
+        feedback: modal.querySelector('#supportFeedback'),
+        send: modal.querySelector('.support-send-btn'),
+        topicButtons: Array.from(modal.querySelectorAll('.support-topic-btn'))
+    };
+
+    supportUI.close.addEventListener('click', closeSupportModal);
+    supportUI.send.addEventListener('click', sendSupportRequest);
+    supportUI.topicButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            applySupportTopic(button.dataset.topic || '');
+        });
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeSupportModal();
+        }
+    });
+
+    renderSupportAnswer('');
+}
+
 function closeComboChoiceModal() {
     const modal = document.getElementById('combo-choice-modal');
     if (modal) {
         modal.remove();
     }
     document.body.style.overflow = 'auto';
+}
+
+function createOrderCommentField() {
+    const wrap = document.createElement('label');
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.gap = '8px';
+
+    const title = document.createElement('span');
+    title.textContent = 'Comentario para tu pedido';
+    title.style.color = '#5a3a1b';
+    title.style.fontFamily = 'Oswald, sans-serif';
+    title.style.fontSize = '0.98rem';
+
+    const textarea = document.createElement('textarea');
+    textarea.rows = 3;
+    textarea.placeholder = 'Ej: sin salsas, sin cebolla, bien tostado';
+    textarea.style.width = '100%';
+    textarea.style.padding = '12px 14px';
+    textarea.style.borderRadius = '12px';
+    textarea.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+    textarea.style.background = '#fffdfa';
+    textarea.style.color = '#4f311d';
+    textarea.style.fontSize = '0.96rem';
+    textarea.style.fontFamily = 'Roboto, sans-serif';
+    textarea.style.resize = 'vertical';
+    textarea.style.minHeight = '84px';
+
+    wrap.appendChild(title);
+    wrap.appendChild(textarea);
+
+    return { wrap, textarea };
+}
+
+function openProductCommentModal(productName, categoryName, buttonId) {
+    closeComboChoiceModal();
+
+    const modal = document.createElement('div');
+    modal.id = 'combo-choice-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '100001';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.background = 'rgba(31, 18, 10, 0.76)';
+    modal.style.backdropFilter = 'blur(8px)';
+    modal.style.webkitBackdropFilter = 'blur(8px)';
+
+    const card = document.createElement('div');
+    card.style.width = 'min(92vw, 430px)';
+    card.style.position = 'relative';
+    card.style.padding = '22px';
+    card.style.borderRadius = '20px';
+    card.style.background = 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(245,221,188,0.92))';
+    card.style.boxShadow = '0 20px 48px rgba(67, 37, 23, 0.28)';
+    card.style.border = '1px solid rgba(255, 180, 108, 0.55)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '14px';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Cerrar comentario del pedido');
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.width = '38px';
+    closeButton.style.height = '38px';
+    closeButton.style.border = 'none';
+    closeButton.style.borderRadius = '999px';
+    closeButton.style.background = 'rgba(90, 58, 27, 0.14)';
+    closeButton.style.color = '#5a3a1b';
+    closeButton.style.fontSize = '1.7rem';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', closeComboChoiceModal);
+
+    const title = document.createElement('h3');
+    title.textContent = productName;
+    title.style.margin = '0';
+    title.style.textAlign = 'center';
+    title.style.fontFamily = 'Oswald, sans-serif';
+    title.style.fontSize = '1.85rem';
+    title.style.lineHeight = '1';
+    title.style.textTransform = 'uppercase';
+    title.style.color = '#5a3a1b';
+
+    const category = document.createElement('p');
+    category.textContent = categoryName;
+    category.style.margin = '-4px 0 0';
+    category.style.textAlign = 'center';
+    category.style.fontFamily = 'Oswald, sans-serif';
+    category.style.fontSize = '0.95rem';
+    category.style.letterSpacing = '0.08em';
+    category.style.textTransform = 'uppercase';
+    category.style.color = '#8b5527';
+
+    const description = document.createElement('p');
+    description.textContent = 'Si quieres, agrega una indicacion especial para este producto.';
+    description.style.margin = '0';
+    description.style.textAlign = 'center';
+    description.style.lineHeight = '1.45';
+    description.style.color = '#4f311d';
+
+    const commentField = createOrderCommentField();
+
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.textContent = 'Agregar al carrito';
+    confirmButton.style.minHeight = '52px';
+    confirmButton.style.borderRadius = '14px';
+    confirmButton.style.border = 'none';
+    confirmButton.style.background = 'linear-gradient(135deg, #ff7a00, #ff5a00)';
+    confirmButton.style.color = '#fff7ef';
+    confirmButton.style.fontFamily = 'Oswald, sans-serif';
+    confirmButton.style.fontSize = '1.02rem';
+    confirmButton.style.cursor = 'pointer';
+    confirmButton.addEventListener('click', () => {
+        closeComboChoiceModal();
+        addItemToCart(productName, categoryName, { type: 'solo', comment: commentField.textarea.value }, buttonId);
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeComboChoiceModal();
+        }
+    });
+
+    card.appendChild(closeButton);
+    card.appendChild(title);
+    card.appendChild(category);
+    card.appendChild(description);
+    card.appendChild(commentField.wrap);
+    card.appendChild(confirmButton);
+    modal.appendChild(card);
+
+    document.body.style.overflow = 'hidden';
+    document.body.appendChild(modal);
 }
 
 function openCombosConPapasModal(productName, categoryName, buttonId) {
@@ -617,6 +1021,8 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
     drinksTitle.style.fontFamily = 'Oswald, sans-serif';
     drinksTitle.style.fontSize = '0.98rem';
 
+    const commentField = createOrderCommentField();
+
     const drinkSelectsContainer = document.createElement('div');
     drinkSelectsContainer.style.display = 'flex';
     drinkSelectsContainer.style.flexDirection = 'column';
@@ -703,13 +1109,15 @@ function openCombosConPapasModal(productName, categoryName, buttonId) {
             addItemToCart(productName, categoryName, {
                 type: 'combo-meal',
                 peopleCount: count,
-                drinks: drinkValues
+                drinks: drinkValues,
+                comment: commentField.textarea.value
             }, buttonId);
         };
     }
 
     drinksWrap.appendChild(drinksTitle);
     drinksWrap.appendChild(drinkSelectsContainer);
+    drinksWrap.appendChild(commentField.wrap);
     drinksWrap.appendChild(confirmButton);
 
     modal.addEventListener('click', (event) => {
@@ -809,6 +1217,8 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
     actionRow.style.gridTemplateColumns = '1fr 1fr';
     actionRow.style.gap = '12px';
 
+    const commentField = createOrderCommentField();
+
     const soloButton = document.createElement('button');
     soloButton.type = 'button';
     soloButton.textContent = buttonCopy.solo;
@@ -822,7 +1232,10 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
     soloButton.style.cursor = 'pointer';
     soloButton.addEventListener('click', () => {
         closeComboChoiceModal();
-        addItemToCart(productName, categoryName, { type: 'solo' }, buttonId);
+        addItemToCart(productName, categoryName, {
+            type: 'solo',
+            comment: commentField.textarea.value
+        }, buttonId);
     });
 
     const comboButton = document.createElement('button');
@@ -842,7 +1255,7 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
 
     const comboPanel = document.createElement('div');
     comboPanel.hidden = true;
-    comboPanel.style.display = 'flex';
+    comboPanel.style.display = 'none';
     comboPanel.style.flexDirection = 'column';
     comboPanel.style.gap = '10px';
     comboPanel.style.padding = '14px';
@@ -915,12 +1328,17 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
             return;
         }
         closeComboChoiceModal();
-        addItemToCart(productName, categoryName, { type: 'combo', drink: comboSelect.value }, buttonId);
+        addItemToCart(productName, categoryName, {
+            type: 'combo',
+            drink: comboSelect.value,
+            comment: commentField.textarea.value
+        }, buttonId);
     });
 
     comboPanel.appendChild(comboLabel);
     comboPanel.appendChild(comboSelect);
     comboPanel.appendChild(comboHelp);
+    comboPanel.appendChild(commentField.wrap);
     comboPanel.appendChild(comboConfirm);
 
     modal.addEventListener('click', (event) => {
@@ -933,6 +1351,7 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
     card.appendChild(title);
     card.appendChild(category);
     card.appendChild(description);
+    card.appendChild(commentField.wrap);
     card.appendChild(actionRow);
     card.appendChild(comboPanel);
     modal.appendChild(card);
@@ -953,7 +1372,7 @@ function startProductOrderFlow(productName, categoryName, buttonId) {
     }
 
     if (!isComboCategory(safeCategoryName)) {
-        addItemToCart(productName, safeCategoryName, { type: 'solo' }, buttonId);
+        openProductCommentModal(productName, safeCategoryName, buttonId);
         return;
     }
 
@@ -2746,8 +3165,8 @@ function updateDynamicWhatsAppLink(sectionName) {
         return;
     }
 
-    floatingButton.href = buildDynamicWhatsAppUrl(activeMenuSection);
     floatingButton.setAttribute('data-section-name', activeMenuSection);
+    floatingButton.setAttribute('aria-label', `Ayuda e informacion sobre ${activeMenuSection}`);
 }
 
 function setActiveMenuNavLink(targetId) {
@@ -2851,9 +3270,11 @@ function setupMenuNavigation() {
 
     const floatingButton = document.getElementById('btn-whatsapp-flotante');
     if (floatingButton) {
-        floatingButton.addEventListener('click', () => {
+        floatingButton.addEventListener('click', (event) => {
+            event.preventDefault();
             updateDynamicWhatsAppLink();
-            trackButtonClick('btn-whatsapp-flotante', `WhatsApp Flotante - ${activeMenuSection}`);
+            trackButtonClick('btn-whatsapp-flotante', `Ayuda e informacion - ${activeMenuSection}`);
+            openSupportModal();
         });
     }
 }
@@ -2890,7 +3311,7 @@ function openMenuModal() {
     }
 
     modal.style.display = 'block';
-    document.body.style.overflow = 'hidden';
+    syncBodyScrollLock();
     updateDynamicWhatsAppLink(activeMenuSection);
 }
 
@@ -2901,8 +3322,8 @@ function closeMenuModal() {
     }
 
     modal.style.display = 'none';
-    document.body.style.overflow = 'auto';
     closeDrawerMenu();
+    syncBodyScrollLock();
 }
 
 
@@ -2927,7 +3348,7 @@ function initPromoModal() {
         if (modal) {
             resetPromoSelection();
             modal.classList.add('is-open');
-            document.body.style.overflow = 'hidden';
+            syncBodyScrollLock();
         }
     }, 2000);
 }
@@ -2956,8 +3377,8 @@ function closePromoModal() {
     var modal = document.getElementById('promoModal');
     if (modal) {
         modal.classList.remove('is-open');
-        document.body.style.overflow = 'auto';
         resetPromoSelection();
+        syncBodyScrollLock();
     }
 }
 window.onclick = function(event) {
@@ -2975,11 +3396,13 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         closeMenuModal();
         closePromoModal();
+        closeSupportModal();
     }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
     initCartUI();
+    initSupportModal();
     initPromoModal();
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
