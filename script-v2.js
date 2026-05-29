@@ -81,6 +81,277 @@ function buildProductWhatsAppUrl(productName, categoryName) {
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
     return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName}`)}`;
 }
+
+const COMBO_EXTRA_PRICE = 7000;
+const COMBO_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
+
+function isComboCategory(categoryName) {
+    const normalizedCategory = normalizeCategoryKey(categoryName);
+    if (!normalizedCategory) {
+        return false;
+    }
+
+    return normalizedCategory.includes('burger')
+        || normalizedCategory.includes('pepito')
+        || ((normalizedCategory.includes('perro') || normalizedCategory.includes('perros')) && !normalizedCategory.includes('salchipapa'));
+}
+
+function buildOrderMessage(productName, categoryName, orderOptions = { type: 'solo' }) {
+    const safeProductName = String(productName || 'producto').trim() || 'producto';
+    const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
+
+    if (orderOptions.type !== 'combo') {
+        return `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName}.`;
+    }
+
+    const safeDrink = String(orderOptions.drink || COMBO_DRINK_OPTIONS[0]).trim() || COMBO_DRINK_OPTIONS[0];
+    return `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} en combo (+$${COMBO_EXTRA_PRICE.toLocaleString('es-CO')}) con bebida ${safeDrink}.`;
+}
+
+function openWhatsAppOrder(productName, categoryName, orderOptions = { type: 'solo' }) {
+    const message = buildOrderMessage(productName, categoryName, orderOptions);
+    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+}
+
+function closeComboChoiceModal() {
+    const modal = document.getElementById('combo-choice-modal');
+    if (modal) {
+        modal.remove();
+    }
+    document.body.style.overflow = 'auto';
+}
+
+function openComboChoiceModal(productName, categoryName, buttonId) {
+    closeComboChoiceModal();
+
+    const modal = document.createElement('div');
+    modal.id = 'combo-choice-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '100001';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.background = 'rgba(31, 18, 10, 0.76)';
+    modal.style.backdropFilter = 'blur(8px)';
+    modal.style.webkitBackdropFilter = 'blur(8px)';
+
+    const card = document.createElement('div');
+    card.style.width = 'min(92vw, 430px)';
+    card.style.position = 'relative';
+    card.style.padding = '22px';
+    card.style.borderRadius = '20px';
+    card.style.background = 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(245,221,188,0.92))';
+    card.style.boxShadow = '0 20px 48px rgba(67, 37, 23, 0.28)';
+    card.style.border = '1px solid rgba(255, 180, 108, 0.55)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '14px';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Cerrar seleccion de combo');
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.width = '38px';
+    closeButton.style.height = '38px';
+    closeButton.style.border = 'none';
+    closeButton.style.borderRadius = '999px';
+    closeButton.style.background = 'rgba(90, 58, 27, 0.14)';
+    closeButton.style.color = '#5a3a1b';
+    closeButton.style.fontSize = '1.7rem';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', closeComboChoiceModal);
+
+    const title = document.createElement('h3');
+    title.textContent = productName;
+    title.style.margin = '0';
+    title.style.textAlign = 'center';
+    title.style.fontFamily = 'Oswald, sans-serif';
+    title.style.fontSize = '1.85rem';
+    title.style.lineHeight = '1';
+    title.style.textTransform = 'uppercase';
+    title.style.color = '#5a3a1b';
+
+    const category = document.createElement('p');
+    category.textContent = categoryName;
+    category.style.margin = '-4px 0 0';
+    category.style.textAlign = 'center';
+    category.style.fontFamily = 'Oswald, sans-serif';
+    category.style.fontSize = '0.95rem';
+    category.style.letterSpacing = '0.08em';
+    category.style.textTransform = 'uppercase';
+    category.style.color = '#8b5527';
+
+    const description = document.createElement('p');
+    description.textContent = `Quieres este producto en combo por $${COMBO_EXTRA_PRICE.toLocaleString('es-CO')} adicional? Incluye 75 gr de papas a la francesa y una gaseosa de 250 ml.`;
+    description.style.margin = '0';
+    description.style.textAlign = 'center';
+    description.style.lineHeight = '1.45';
+    description.style.color = '#4f311d';
+
+    const actionRow = document.createElement('div');
+    actionRow.style.display = 'grid';
+    actionRow.style.gridTemplateColumns = '1fr 1fr';
+    actionRow.style.gap = '12px';
+
+    const soloButton = document.createElement('button');
+    soloButton.type = 'button';
+    soloButton.textContent = 'Producto solo';
+    soloButton.style.minHeight = '52px';
+    soloButton.style.borderRadius = '14px';
+    soloButton.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+    soloButton.style.background = 'rgba(255, 247, 235, 0.92)';
+    soloButton.style.color = '#5a3a1b';
+    soloButton.style.fontFamily = 'Oswald, sans-serif';
+    soloButton.style.fontSize = '1.02rem';
+    soloButton.style.cursor = 'pointer';
+    soloButton.addEventListener('click', () => {
+        if (buttonId) {
+            trackProductInterest(productName, buttonId);
+        }
+        closeComboChoiceModal();
+        openWhatsAppOrder(productName, categoryName, { type: 'solo' });
+    });
+
+    const comboButton = document.createElement('button');
+    comboButton.type = 'button';
+    comboButton.textContent = 'Quiero combo';
+    comboButton.style.minHeight = '52px';
+    comboButton.style.borderRadius = '14px';
+    comboButton.style.border = 'none';
+    comboButton.style.background = 'linear-gradient(135deg, #ff7a00, #ff5a00)';
+    comboButton.style.color = '#fff7ef';
+    comboButton.style.fontFamily = 'Oswald, sans-serif';
+    comboButton.style.fontSize = '1.02rem';
+    comboButton.style.cursor = 'pointer';
+
+    actionRow.appendChild(soloButton);
+    actionRow.appendChild(comboButton);
+
+    const comboPanel = document.createElement('div');
+    comboPanel.hidden = true;
+    comboPanel.style.display = 'flex';
+    comboPanel.style.flexDirection = 'column';
+    comboPanel.style.gap = '10px';
+    comboPanel.style.padding = '14px';
+    comboPanel.style.borderRadius = '16px';
+    comboPanel.style.background = 'rgba(255, 253, 248, 0.7)';
+    comboPanel.style.border = '1px solid rgba(140, 90, 44, 0.16)';
+
+    const comboLabel = document.createElement('label');
+    comboLabel.textContent = 'Selecciona el sabor de la bebida';
+    comboLabel.style.color = '#5a3a1b';
+    comboLabel.style.fontFamily = 'Oswald, sans-serif';
+    comboLabel.style.fontSize = '0.98rem';
+
+    const comboSelect = document.createElement('select');
+    comboSelect.style.minHeight = '48px';
+    comboSelect.style.padding = '0 14px';
+    comboSelect.style.borderRadius = '12px';
+    comboSelect.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+    comboSelect.style.background = '#fffdfa';
+    comboSelect.style.color = '#4f311d';
+    comboSelect.style.fontSize = '0.98rem';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Elige una bebida';
+    comboSelect.appendChild(placeholder);
+
+    COMBO_DRINK_OPTIONS.forEach((drinkName) => {
+        const option = document.createElement('option');
+        option.value = drinkName;
+        option.textContent = drinkName;
+        comboSelect.appendChild(option);
+    });
+
+    const comboHelp = document.createElement('p');
+    comboHelp.textContent = 'Incluye 75 gr de papas a la francesa y una gaseosa de 250 ml.';
+    comboHelp.style.margin = '0';
+    comboHelp.style.textAlign = 'center';
+    comboHelp.style.lineHeight = '1.45';
+    comboHelp.style.color = '#4f311d';
+
+    const comboConfirm = document.createElement('button');
+    comboConfirm.type = 'button';
+    comboConfirm.textContent = 'Enviar pedido en combo';
+    comboConfirm.disabled = true;
+    comboConfirm.style.minHeight = '52px';
+    comboConfirm.style.borderRadius = '14px';
+    comboConfirm.style.border = 'none';
+    comboConfirm.style.background = 'linear-gradient(135deg, #ff7a00, #ff5a00)';
+    comboConfirm.style.color = '#fff7ef';
+    comboConfirm.style.fontFamily = 'Oswald, sans-serif';
+    comboConfirm.style.fontSize = '1.02rem';
+    comboConfirm.style.cursor = 'pointer';
+    comboConfirm.style.opacity = '0.5';
+
+    comboSelect.addEventListener('change', () => {
+        const enabled = Boolean(comboSelect.value);
+        comboConfirm.disabled = !enabled;
+        comboConfirm.style.opacity = enabled ? '1' : '0.5';
+    });
+
+    comboButton.addEventListener('click', () => {
+        comboPanel.hidden = false;
+        comboPanel.style.display = 'flex';
+        comboSelect.focus();
+    });
+
+    comboConfirm.addEventListener('click', () => {
+        if (!comboSelect.value) {
+            return;
+        }
+        if (buttonId) {
+            trackProductInterest(`${productName} - combo ${comboSelect.value}`, buttonId);
+        }
+        closeComboChoiceModal();
+        openWhatsAppOrder(productName, categoryName, { type: 'combo', drink: comboSelect.value });
+    });
+
+    comboPanel.appendChild(comboLabel);
+    comboPanel.appendChild(comboSelect);
+    comboPanel.appendChild(comboHelp);
+    comboPanel.appendChild(comboConfirm);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeComboChoiceModal();
+        }
+    });
+
+    card.appendChild(closeButton);
+    card.appendChild(title);
+    card.appendChild(category);
+    card.appendChild(description);
+    card.appendChild(actionRow);
+    card.appendChild(comboPanel);
+    modal.appendChild(card);
+
+    if (window.innerWidth <= 480) {
+        actionRow.style.gridTemplateColumns = '1fr';
+    }
+
+    document.body.style.overflow = 'hidden';
+    document.body.appendChild(modal);
+}
+
+function startProductOrderFlow(productName, categoryName, buttonId) {
+    const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
+    if (!isComboCategory(safeCategoryName)) {
+        if (buttonId) {
+            trackProductInterest(productName, buttonId);
+        }
+        openWhatsAppOrder(productName, safeCategoryName, { type: 'solo' });
+        return;
+    }
+
+    openComboChoiceModal(productName, safeCategoryName, buttonId);
+}
 let featuredCarouselAnimationFrame = null;
 let featuredCarouselLastTimestamp = 0;
 
@@ -1608,15 +1879,14 @@ function renderCategoryExplorer(nextKey, options = {}) {
         info.appendChild(title);
         info.appendChild(price);
 
-        const orderBtn = document.createElement('a');
+        const orderBtn = document.createElement('button');
         const btnId = `btn-category-${selectedCategory.key}-${index + 1}`;
+        orderBtn.type = 'button';
         orderBtn.className = 'category-order-btn';
-        orderBtn.href = buildProductWhatsAppUrl(product.nombre, selectedCategory.name);
-        orderBtn.target = '_blank';
-        orderBtn.rel = 'noopener noreferrer';
         orderBtn.textContent = 'Pedir';
-        orderBtn.addEventListener('click', () => {
-            trackProductInterest(product.nombre, btnId);
+        orderBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            startProductOrderFlow(product.nombre, selectedCategory.name, btnId);
         });
 
         row.appendChild(thumb);
@@ -1668,12 +1938,16 @@ function abrirModalBebida(nombre, ruta, categoria) {
         modal.remove();
     });
 
-    const orderButton = document.createElement('a');
+    const orderButton = document.createElement('button');
+    const safeCategory = categoria || getSelectedCategoryName();
+    const buttonId = `btn-modal-${normalizeAssetLookup(safeCategory)}-${normalizeAssetLookup(nombre)}`;
+    orderButton.type = 'button';
     orderButton.className = 'bebidas-modal-btn bebidas-modal-btn-primary';
-    orderButton.href = buildProductWhatsAppUrl(nombre, categoria);
-    orderButton.target = '_blank';
-    orderButton.rel = 'noopener noreferrer';
     orderButton.textContent = 'Pedir este producto';
+    orderButton.addEventListener('click', () => {
+        modal.remove();
+        startProductOrderFlow(nombre, safeCategory, buttonId);
+    });
 
     actions.appendChild(closeButton);
     actions.appendChild(orderButton);
