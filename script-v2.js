@@ -84,6 +84,13 @@ function buildProductWhatsAppUrl(productName, categoryName) {
 
 const COMBO_EXTRA_PRICE = 7000;
 const COMBO_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
+const COMBO_MEAL_SMALL_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
+const COMBO_MEAL_LARGE_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana', 'Naranja', 'Uva', 'Toronja', 'Pepsi Original'];
+
+function isCombosConPapasCategory(categoryName) {
+    const normalizedCategory = normalizeCategoryKey(categoryName);
+    return normalizedCategory.includes('combos con papas y bebida');
+}
 
 function isComboCategory(categoryName) {
     const normalizedCategory = normalizeCategoryKey(categoryName);
@@ -99,6 +106,14 @@ function isComboCategory(categoryName) {
 function buildOrderMessage(productName, categoryName, orderOptions = { type: 'solo' }) {
     const safeProductName = String(productName || 'producto').trim() || 'producto';
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
+
+    if (orderOptions.type === 'combo-meal') {
+        const peopleCount = Number(orderOptions.peopleCount || 1);
+        const drinkSize = peopleCount >= 3 ? '1 litro' : '250 ml';
+        const drinkLabels = Array.isArray(orderOptions.drinks) ? orderOptions.drinks.filter(Boolean) : [];
+        const drinksText = drinkLabels.join(', ');
+        return `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} para ${peopleCount} persona${peopleCount === 1 ? '' : 's'} con ${peopleCount >= 3 ? 'una bebida de 1 litro' : `${peopleCount} bebida${peopleCount === 1 ? '' : 's'} de 250 ml`} sabor ${drinksText} y su descripcion completa del combo.`;
+    }
 
     if (orderOptions.type !== 'combo') {
         return `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName}.`;
@@ -119,6 +134,241 @@ function closeComboChoiceModal() {
         modal.remove();
     }
     document.body.style.overflow = 'auto';
+}
+
+function openCombosConPapasModal(productName, categoryName, buttonId) {
+    closeComboChoiceModal();
+    const normalizedProductName = normalizeCategoryKey(productName);
+    const comboHeaderNote = normalizedProductName.includes('perro')
+        ? 'Cada perro lleva un servicio de papas a la francesa de 75 gr.'
+        : 'Cada burger lleva un servicio de papas a la francesa de 75 gr.';
+
+    const modal = document.createElement('div');
+    modal.id = 'combo-choice-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '100001';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.background = 'rgba(31, 18, 10, 0.76)';
+    modal.style.backdropFilter = 'blur(8px)';
+    modal.style.webkitBackdropFilter = 'blur(8px)';
+
+    const card = document.createElement('div');
+    card.style.width = 'min(92vw, 430px)';
+    card.style.position = 'relative';
+    card.style.padding = '22px';
+    card.style.borderRadius = '20px';
+    card.style.background = 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(245,221,188,0.92))';
+    card.style.boxShadow = '0 20px 48px rgba(67, 37, 23, 0.28)';
+    card.style.border = '1px solid rgba(255, 180, 108, 0.55)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '14px';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Cerrar seleccion de combo');
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.width = '38px';
+    closeButton.style.height = '38px';
+    closeButton.style.border = 'none';
+    closeButton.style.borderRadius = '999px';
+    closeButton.style.background = 'rgba(90, 58, 27, 0.14)';
+    closeButton.style.color = '#5a3a1b';
+    closeButton.style.fontSize = '1.7rem';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', closeComboChoiceModal);
+
+    const title = document.createElement('h3');
+    title.textContent = productName;
+    title.style.margin = '0';
+    title.style.textAlign = 'center';
+    title.style.fontFamily = 'Oswald, sans-serif';
+    title.style.fontSize = '1.85rem';
+    title.style.lineHeight = '1';
+    title.style.textTransform = 'uppercase';
+    title.style.color = '#5a3a1b';
+
+    const category = document.createElement('p');
+    category.textContent = categoryName;
+    category.style.margin = '-4px 0 0';
+    category.style.textAlign = 'center';
+    category.style.fontFamily = 'Oswald, sans-serif';
+    category.style.fontSize = '0.95rem';
+    category.style.letterSpacing = '0.08em';
+    category.style.textTransform = 'uppercase';
+    category.style.color = '#8b5527';
+
+    const topNote = document.createElement('p');
+    topNote.textContent = comboHeaderNote;
+    topNote.style.margin = '0';
+    topNote.style.textAlign = 'center';
+    topNote.style.lineHeight = '1.45';
+    topNote.style.color = '#4f311d';
+    topNote.style.fontWeight = '700';
+
+    const peopleLabel = document.createElement('label');
+    peopleLabel.textContent = 'Para cuantas personas';
+    peopleLabel.style.color = '#5a3a1b';
+    peopleLabel.style.fontFamily = 'Oswald, sans-serif';
+    peopleLabel.style.fontSize = '1rem';
+
+    const peopleSelect = document.createElement('select');
+    peopleSelect.style.minHeight = '48px';
+    peopleSelect.style.padding = '0 14px';
+    peopleSelect.style.borderRadius = '12px';
+    peopleSelect.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+    peopleSelect.style.background = '#fffdfa';
+    peopleSelect.style.color = '#4f311d';
+    peopleSelect.style.fontSize = '0.98rem';
+    peopleSelect.innerHTML = '<option value="">Elige una opcion</option><option value="1">Para 1 persona</option><option value="2">Para 2 personas</option><option value="3">Para 3 personas</option><option value="4">Para 4 personas</option>';
+
+    const help = document.createElement('p');
+    help.style.margin = '0';
+    help.style.textAlign = 'center';
+    help.style.lineHeight = '1.45';
+    help.style.color = '#4f311d';
+    help.textContent = 'Si eliges 1 o 2 personas lleva bebidas de 250 ml. Si eliges 3 o 4 personas lleva una bebida de 1 litro.';
+
+    const drinksWrap = document.createElement('div');
+    drinksWrap.style.display = 'flex';
+    drinksWrap.style.flexDirection = 'column';
+    drinksWrap.style.gap = '10px';
+    drinksWrap.style.padding = '14px';
+    drinksWrap.style.borderRadius = '16px';
+    drinksWrap.style.background = 'rgba(255, 253, 248, 0.7)';
+    drinksWrap.style.border = '1px solid rgba(140, 90, 44, 0.16)';
+    drinksWrap.hidden = true;
+
+    const drinksTitle = document.createElement('p');
+    drinksTitle.style.margin = '0';
+    drinksTitle.style.color = '#5a3a1b';
+    drinksTitle.style.fontFamily = 'Oswald, sans-serif';
+    drinksTitle.style.fontSize = '0.98rem';
+
+    const drinkSelectsContainer = document.createElement('div');
+    drinkSelectsContainer.style.display = 'flex';
+    drinkSelectsContainer.style.flexDirection = 'column';
+    drinkSelectsContainer.style.gap = '10px';
+
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.textContent = 'Enviar pedido';
+    confirmButton.disabled = true;
+    confirmButton.style.minHeight = '52px';
+    confirmButton.style.borderRadius = '14px';
+    confirmButton.style.border = 'none';
+    confirmButton.style.background = 'linear-gradient(135deg, #ff7a00, #ff5a00)';
+    confirmButton.style.color = '#fff7ef';
+    confirmButton.style.fontFamily = 'Oswald, sans-serif';
+    confirmButton.style.fontSize = '1.02rem';
+    confirmButton.style.cursor = 'pointer';
+    confirmButton.style.opacity = '0.5';
+
+    function refreshDrinkSelectors(peopleCount) {
+        const count = Number(peopleCount || 0);
+        drinkSelectsContainer.innerHTML = '';
+        drinksWrap.hidden = !count;
+        drinksWrap.style.display = count ? 'flex' : 'none';
+        confirmButton.disabled = true;
+        confirmButton.style.opacity = '0.5';
+
+        if (!count) {
+            return;
+        }
+
+        const isLargeDrink = count >= 3;
+        const requiredSelects = isLargeDrink ? 1 : count;
+        const drinkOptions = isLargeDrink ? COMBO_MEAL_LARGE_DRINK_OPTIONS : COMBO_MEAL_SMALL_DRINK_OPTIONS;
+        drinksTitle.textContent = isLargeDrink
+            ? 'Selecciona el sabor de la bebida de 1 litro'
+            : `Selecciona ${requiredSelects} bebida${requiredSelects === 1 ? '' : 's'} de 250 ml`;
+
+        const selects = [];
+
+        for (let index = 0; index < requiredSelects; index += 1) {
+            const select = document.createElement('select');
+            select.style.minHeight = '48px';
+            select.style.padding = '0 14px';
+            select.style.borderRadius = '12px';
+            select.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+            select.style.background = '#fffdfa';
+            select.style.color = '#4f311d';
+            select.style.fontSize = '0.98rem';
+
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = isLargeDrink ? 'Elige sabor de 1 litro' : `Elige bebida ${index + 1}`;
+            select.appendChild(placeholder);
+
+            drinkOptions.forEach((drinkName) => {
+                const option = document.createElement('option');
+                option.value = drinkName;
+                option.textContent = drinkName;
+                select.appendChild(option);
+            });
+
+            select.addEventListener('change', () => {
+                const enabled = selects.every((item) => Boolean(item.value));
+                confirmButton.disabled = !enabled;
+                confirmButton.style.opacity = enabled ? '1' : '0.5';
+            });
+
+            selects.push(select);
+            drinkSelectsContainer.appendChild(select);
+        }
+
+        confirmButton.onclick = () => {
+            const drinkValues = selects.map((select) => select.value).filter(Boolean);
+            if (drinkValues.length !== requiredSelects) {
+                return;
+            }
+
+            if (buttonId) {
+                trackProductInterest(`${productName} - ${count} personas - ${drinkValues.join(', ')}`, buttonId);
+            }
+
+            closeComboChoiceModal();
+            openWhatsAppOrder(productName, categoryName, {
+                type: 'combo-meal',
+                peopleCount: count,
+                drinks: drinkValues
+            });
+        };
+    }
+
+    peopleSelect.addEventListener('change', () => {
+        refreshDrinkSelectors(peopleSelect.value);
+    });
+
+    drinksWrap.appendChild(drinksTitle);
+    drinksWrap.appendChild(drinkSelectsContainer);
+    drinksWrap.appendChild(confirmButton);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeComboChoiceModal();
+        }
+    });
+
+    card.appendChild(closeButton);
+    card.appendChild(title);
+    card.appendChild(category);
+    card.appendChild(topNote);
+    card.appendChild(peopleLabel);
+    card.appendChild(peopleSelect);
+    card.appendChild(help);
+    card.appendChild(drinksWrap);
+    modal.appendChild(card);
+
+    document.body.style.overflow = 'hidden';
+    document.body.appendChild(modal);
 }
 
 function openComboChoiceModal(productName, categoryName, buttonId) {
@@ -342,6 +592,11 @@ function openComboChoiceModal(productName, categoryName, buttonId) {
 
 function startProductOrderFlow(productName, categoryName, buttonId) {
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
+    if (isCombosConPapasCategory(safeCategoryName)) {
+        openCombosConPapasModal(productName, safeCategoryName, buttonId);
+        return;
+    }
+
     if (!isComboCategory(safeCategoryName)) {
         if (buttonId) {
             trackProductInterest(productName, buttonId);
