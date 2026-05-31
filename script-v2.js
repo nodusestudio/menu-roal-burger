@@ -56,6 +56,14 @@ function trackMenuModal() {
 }
 
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
+const ORDERING_SCHEDULE = {
+    timeZone: 'America/Bogota',
+    startMinutes: 16 * 60,
+    endMinutes: 22 * 60,
+    label: 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.',
+    openMessage: 'Abierto ahora. Ya puedes hacer tu pedido.',
+    closedMessage: 'Cerrado ahora. Los pedidos se habilitan de 4:00 P.M. a 10:00 P.M.'
+};
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
@@ -69,6 +77,117 @@ let buttonConfigsMap = new Map();
 let selectedCategoryKey = '';
 let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
+let orderingStatusToastTimer = null;
+
+function getCurrentOrderingMinutes(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: ORDERING_SCHEDULE.timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    }).formatToParts(now);
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+    return (hour * 60) + minute;
+}
+
+function getOrderingAvailability(now = new Date()) {
+    const currentMinutes = getCurrentOrderingMinutes(now);
+    const isOpen = currentMinutes >= ORDERING_SCHEDULE.startMinutes && currentMinutes < ORDERING_SCHEDULE.endMinutes;
+
+    return {
+        isOpen,
+        scheduleLabel: ORDERING_SCHEDULE.label,
+        statusLabel: isOpen ? ORDERING_SCHEDULE.openMessage : ORDERING_SCHEDULE.closedMessage
+    };
+}
+
+function canPlaceOrdersNow() {
+    return getOrderingAvailability().isOpen;
+}
+
+function showOrderingClosedMessage() {
+    const availability = getOrderingAvailability();
+    let toast = document.getElementById('orderingStatusToast');
+
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'orderingStatusToast';
+        toast.className = 'ordering-status-toast';
+        document.body.appendChild(toast);
+    }
+
+    toast.textContent = availability.statusLabel;
+    toast.classList.add('is-visible');
+
+    if (orderingStatusToastTimer) {
+        window.clearTimeout(orderingStatusToastTimer);
+    }
+
+    orderingStatusToastTimer = window.setTimeout(() => {
+        toast.classList.remove('is-visible');
+    }, 2600);
+}
+
+function syncBusinessHoursStatus() {
+    const availability = getOrderingAvailability();
+    const hoursText = document.getElementById('businessHoursText');
+    const statusText = document.getElementById('businessHoursStatus');
+
+    if (hoursText) {
+        hoursText.textContent = availability.scheduleLabel;
+    }
+
+    if (statusText) {
+        statusText.textContent = availability.statusLabel;
+        statusText.classList.toggle('is-open', availability.isOpen);
+        statusText.classList.toggle('is-closed', !availability.isOpen);
+    }
+}
+
+function setOrderControlAvailability(control) {
+    if (!control) {
+        return;
+    }
+
+    const availability = getOrderingAvailability();
+    const isCheckoutButton = control.classList.contains('cart-checkout-btn');
+    const openLabel = control.dataset.openLabel || control.textContent.trim();
+    let closedLabel = control.dataset.closedLabel || '';
+
+    if (!control.dataset.openLabel) {
+        control.dataset.openLabel = openLabel;
+    }
+
+    if (!closedLabel) {
+        closedLabel = isCheckoutButton ? 'Pedidos cerrados' : 'Cerrado';
+        control.dataset.closedLabel = closedLabel;
+    }
+
+    control.textContent = availability.isOpen ? control.dataset.openLabel : control.dataset.closedLabel;
+    control.classList.toggle('is-ordering-closed', !availability.isOpen);
+    control.title = availability.isOpen ? '' : ORDERING_SCHEDULE.closedMessage;
+
+    if (control.tagName === 'BUTTON') {
+        control.disabled = isCheckoutButton ? (!availability.isOpen || !shoppingCart.length) : !availability.isOpen;
+        return;
+    }
+
+    if (!control.dataset.orderHref && control.getAttribute('href')) {
+        control.dataset.orderHref = control.getAttribute('href');
+    }
+
+    control.setAttribute('href', availability.isOpen ? (control.dataset.orderHref || '#') : '#');
+    control.setAttribute('aria-disabled', availability.isOpen ? 'false' : 'true');
+    control.tabIndex = availability.isOpen ? 0 : -1;
+}
+
+function syncOrderingAvailabilityUI() {
+    syncBusinessHoursStatus();
+    document.querySelectorAll('.mobile-order-btn, .category-order-btn, .category-hero-order-btn, .cart-checkout-btn, .promo-btn-order').forEach((control) => {
+        setOrderControlAvailability(control);
+    });
+}
 
 function getSelectedCategoryName() {
     const categories = ensurePinnedExplorerCategories(ensureForcedExplorerCategories(getExplorerCategories()));
@@ -224,6 +343,11 @@ function buildOrderMessage(productName, categoryName, orderOptions = { type: 'so
 }
 
 function openWhatsAppOrder(productName, categoryName, orderOptions = { type: 'solo' }) {
+    if (!canPlaceOrdersNow()) {
+        showOrderingClosedMessage();
+        return;
+    }
+
     const message = buildOrderMessage(productName, categoryName, orderOptions);
     window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
 }
@@ -552,6 +676,11 @@ function checkoutCart() {
         return;
     }
 
+    if (!canPlaceOrdersNow()) {
+        showOrderingClosedMessage();
+        return;
+    }
+
     openCheckoutInfoModal();
 }
 
@@ -567,6 +696,12 @@ function closeCheckoutInfoModal() {
 
 function submitCheckoutInfo() {
     if (!checkoutInfoUI) {
+        return;
+    }
+
+    if (!canPlaceOrdersNow()) {
+        checkoutInfoUI.feedback.textContent = ORDERING_SCHEDULE.closedMessage;
+        showOrderingClosedMessage();
         return;
     }
 
@@ -702,6 +837,11 @@ function showCartAddedToast(categoryName, productName) {
 }
 
 function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId) {
+    if (!canPlaceOrdersNow()) {
+        showOrderingClosedMessage();
+        return;
+    }
+
     if (buttonId) {
         trackProductInterest(productName, buttonId);
     }
@@ -750,6 +890,7 @@ function renderCartUI() {
         cartUI.summary.textContent = 'Tu carrito esta vacio.';
         cartUI.checkout.disabled = true;
         cartUI.clear.disabled = true;
+        syncOrderingAvailabilityUI();
         return;
     }
 
@@ -824,8 +965,9 @@ function renderCartUI() {
     });
 
     cartUI.summary.textContent = `${shoppingCart.length} referencia${shoppingCart.length === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'} | Total ${formatCurrency(getCartTotalAmount())}`;
-    cartUI.checkout.disabled = false;
+    cartUI.checkout.disabled = !canPlaceOrdersNow();
     cartUI.clear.disabled = false;
+    syncOrderingAvailabilityUI();
 }
 
 function initCartUI() {
@@ -2397,6 +2539,11 @@ function openComboChoiceModal(productName, categoryName, buttonId, extraOptions 
 }
 
 function startProductOrderFlow(productName, categoryName, buttonId, extraOptions = {}) {
+    if (!canPlaceOrdersNow()) {
+        showOrderingClosedMessage();
+        return;
+    }
+
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
     const normalizedOptions = normalizeOrderOptions(extraOptions);
 
@@ -3132,6 +3279,7 @@ function renderFeaturedCards(carousel, items) {
             carousel.appendChild(card);
         });
         carousel.scrollLeft = 0;
+        syncOrderingAvailabilityUI();
         setupFeaturedCarouselAutoplay(carousel);
 }
 
@@ -3925,7 +4073,13 @@ function renderCategoryExplorer(nextKey, options = {}) {
     categoryOrderBtn.target = '_blank';
     categoryOrderBtn.rel = 'noopener noreferrer';
     categoryOrderBtn.textContent = 'Hacer pedido';
-    categoryOrderBtn.addEventListener('click', () => {
+    categoryOrderBtn.addEventListener('click', (event) => {
+        if (!canPlaceOrdersNow()) {
+            event.preventDefault();
+            showOrderingClosedMessage();
+            return;
+        }
+
         trackButtonClick(categoryOrderBtnId, `Pedido categoria ${selectedCategory.name}`);
     });
 
@@ -3996,6 +4150,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
     panel.innerHTML = '';
     panel.appendChild(heroWrap);
     panel.appendChild(list);
+    syncOrderingAvailabilityUI();
 
     if (options.fromUserClick) {
         panel.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
@@ -4433,6 +4588,11 @@ function initPromoModal() {
 }
 
 function showPromoBurgerOptions() {
+    if (!canPlaceOrdersNow()) {
+        showOrderingClosedMessage();
+        return;
+    }
+
     const selector = document.getElementById('promoBurgerSelector');
     const orderButton = document.getElementById('promoOrderButton');
     if (selector) {
@@ -4445,6 +4605,11 @@ function showPromoBurgerOptions() {
 }
 
 function orderPromoBurger(burgerName) {
+    if (!canPlaceOrdersNow()) {
+        showOrderingClosedMessage();
+        return;
+    }
+
     const safeBurgerName = String(burgerName || '').trim() || 'Burger Ranchera';
     trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${safeBurgerName}`);
     closePromoModal();
@@ -4487,6 +4652,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initPromoModal();
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
+    syncOrderingAvailabilityUI();
+    window.setInterval(syncOrderingAvailabilityUI, 60000);
     // Carrusel de destacados: fallback local inmediato, luego Firestore si responde
     const featuredCarousel = document.getElementById('featured-carousel-dynamic');
     // Array local con rutas en la raíz del proyecto
