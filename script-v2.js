@@ -62,7 +62,7 @@ const ORDERING_SCHEDULE = {
     endMinutes: 22 * 60,
     label: 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.',
     openMessage: 'Abierto ahora. Ya puedes hacer tu pedido.',
-    closedMessage: 'Cerrado ahora. Los pedidos se habilitan de 4:00 P.M. a 10:00 P.M.'
+    closedMessage: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.'
 };
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
@@ -151,25 +151,18 @@ function setOrderControlAvailability(control) {
     }
 
     const availability = getOrderingAvailability();
-    const isCheckoutButton = control.classList.contains('cart-checkout-btn');
     const openLabel = control.dataset.openLabel || control.textContent.trim();
-    let closedLabel = control.dataset.closedLabel || '';
 
     if (!control.dataset.openLabel) {
         control.dataset.openLabel = openLabel;
     }
 
-    if (!closedLabel) {
-        closedLabel = isCheckoutButton ? 'Pedidos cerrados' : 'Cerrado';
-        control.dataset.closedLabel = closedLabel;
-    }
-
-    control.textContent = availability.isOpen ? control.dataset.openLabel : control.dataset.closedLabel;
-    control.classList.toggle('is-ordering-closed', !availability.isOpen);
+    control.textContent = control.dataset.openLabel;
+    control.classList.remove('is-ordering-closed');
     control.title = availability.isOpen ? '' : ORDERING_SCHEDULE.closedMessage;
 
     if (control.tagName === 'BUTTON') {
-        control.disabled = isCheckoutButton ? (!availability.isOpen || !shoppingCart.length) : !availability.isOpen;
+        control.disabled = control.classList.contains('cart-checkout-btn') ? !shoppingCart.length : false;
         return;
     }
 
@@ -177,9 +170,9 @@ function setOrderControlAvailability(control) {
         control.dataset.orderHref = control.getAttribute('href');
     }
 
-    control.setAttribute('href', availability.isOpen ? (control.dataset.orderHref || '#') : '#');
-    control.setAttribute('aria-disabled', availability.isOpen ? 'false' : 'true');
-    control.tabIndex = availability.isOpen ? 0 : -1;
+    control.setAttribute('href', control.dataset.orderHref || '#');
+    control.setAttribute('aria-disabled', 'false');
+    control.tabIndex = 0;
 }
 
 function syncOrderingAvailabilityUI() {
@@ -205,7 +198,14 @@ const COMBO_EXTRA_PRICE = 7000;
 const COMBO_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_SMALL_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_LARGE_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana', 'Naranja', 'Uva', 'Toronja', 'Pepsi Original'];
-const PROMO_DAY_IMAGE_PATH = './promodeldia/diadelahamburguesa.jpg';
+const RECOMMENDED_DAY_FALLBACK_PRODUCT = {
+    nombre: 'Ranchera',
+    categoria: 'BURGER PREMIUM',
+    image_url: './burgerpremium/burgerranchera.png',
+    estado: 'active'
+};
+const RECOMMENDED_DAY_DISCOUNT_RATE = 0.2;
+const RECOMMENDED_DAY_EXCLUDED_CATEGORY_PARTS = ['bebidas y adicionales', 'adicionales', 'bebidas', 'nuestras salsas'];
 const MANUAL_IMAGE_BASE_PRICES = {
     './burgerpremium/burgercaracas.png': 26000,
     './burgerpremium/burgercordillera.png': 34000,
@@ -379,7 +379,10 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         drinks: Array.isArray(orderOptions.drinks) ? orderOptions.drinks.map((item) => String(item || '').trim()).filter(Boolean) : [],
         peopleCount: Number(orderOptions.peopleCount || 0),
         comment: String(orderOptions.comment || '').trim(),
-        imagePath: normalizeImageAssetPath(orderOptions.imagePath || '')
+        imagePath: normalizeImageAssetPath(orderOptions.imagePath || ''),
+        recommendedDiscount: orderOptions.recommendedDiscount === true,
+        discountRate: Number.isFinite(Number(orderOptions.discountRate)) ? Math.max(0, Math.min(1, Number(orderOptions.discountRate))) : 0,
+        allowClosedOrder: orderOptions.allowClosedOrder === true
     };
 }
 
@@ -394,7 +397,10 @@ function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo'
         drinks: normalized.drinks,
         peopleCount: normalized.peopleCount,
         comment: normalized.comment,
-        imagePath: normalized.imagePath
+        imagePath: normalized.imagePath,
+        recommendedDiscount: normalized.recommendedDiscount,
+        discountRate: normalized.discountRate,
+        allowClosedOrder: normalized.allowClosedOrder
     });
 }
 
@@ -549,22 +555,32 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
 function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 'solo' }) {
     const normalizedOptions = normalizeOrderOptions(orderOptions);
     const manualImagePrice = resolveManualImagePrice(productName, normalizedOptions);
+    const applyDiscount = (price) => {
+        if (!normalizedOptions.recommendedDiscount) {
+            return price;
+        }
+
+        const discountRate = normalizedOptions.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE;
+        return Math.round(Number(price || 0) * (1 - discountRate));
+    };
+
     if (manualImagePrice > 0) {
-        return normalizedOptions.type === 'combo' ? manualImagePrice + COMBO_EXTRA_PRICE : manualImagePrice;
+        const resolvedPrice = normalizedOptions.type === 'combo' ? manualImagePrice + COMBO_EXTRA_PRICE : manualImagePrice;
+        return applyDiscount(resolvedPrice);
     }
 
     const staticOptionPrice = resolveStaticOptionPrice(productName, categoryName);
     if (staticOptionPrice > 0) {
-        return staticOptionPrice;
+        return applyDiscount(staticOptionPrice);
     }
 
     const basePrice = findLatestProductPrice(productName, categoryName);
 
     if (normalizedOptions.type === 'combo') {
-        return basePrice + COMBO_EXTRA_PRICE;
+        return applyDiscount(basePrice + COMBO_EXTRA_PRICE);
     }
 
-    return basePrice;
+    return applyDiscount(basePrice);
 }
 
 function getCartItemUnitPrice(item) {
@@ -595,6 +611,11 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
         optionLabel = `${getComboButtonCopy(categoryName).combo} | ${normalized.drink}`;
     } else if (isComboCategory(categoryName)) {
         optionLabel = getComboButtonCopy(categoryName).solo;
+    }
+
+    if (normalized.recommendedDiscount) {
+        const discountPercent = Math.round((normalized.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE) * 100);
+        optionLabel = `${optionLabel} | Recomendado del dia -${discountPercent}%`;
     }
 
     if (normalized.flavor) {
@@ -837,6 +858,8 @@ function showCartAddedToast(categoryName, productName) {
 }
 
 function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId) {
+    const normalizedOptions = normalizeOrderOptions(orderOptions);
+
     if (!canPlaceOrdersNow()) {
         showOrderingClosedMessage();
         return;
@@ -848,7 +871,6 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
 
     const safeProductName = String(productName || 'producto').trim() || 'producto';
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
-    const normalizedOptions = normalizeOrderOptions(orderOptions);
     const unitPrice = resolveCartUnitPrice(safeProductName, safeCategoryName, normalizedOptions);
     const itemKey = getCartItemKey(safeProductName, safeCategoryName, normalizedOptions);
     const existingItem = shoppingCart.find((item) => item.itemKey === itemKey);
@@ -965,7 +987,7 @@ function renderCartUI() {
     });
 
     cartUI.summary.textContent = `${shoppingCart.length} referencia${shoppingCart.length === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'} | Total ${formatCurrency(getCartTotalAmount())}`;
-    cartUI.checkout.disabled = !canPlaceOrdersNow();
+    cartUI.checkout.disabled = !shoppingCart.length;
     cartUI.clear.disabled = false;
     syncOrderingAvailabilityUI();
 }
@@ -3240,17 +3262,92 @@ function renderDynamicCategorySections() {
 }
 
 function renderFeaturedCards(carousel, items) {
-        // Renderiza solo las imágenes locales fijas de los más pedidos
-        const localFeaturedImages = [
-            { name: 'DE LA CASA', src: './losmaspedidos/delacasa.png.png' },
-            { name: 'EMPAREJADOS', src: './losmaspedidos/emparejados.png.png' },
-            { name: 'FAMILIAR 3', src: './losmaspedidos/familiar3.png.png' },
-            { name: 'FAMILIAR 4', src: './losmaspedidos/familiar4.png.png' }
+        const featuredFallbackItems = [
+            {
+                name: 'Combo Burger Normal',
+                src: './losmaspedidos/comboburgernormal.png',
+                category: 'COMBOS CON PAPAS Y BEBIDA',
+                orderImageSrc: './combosconpapasybebidas/comboburgernormal.png'
+            },
+            {
+                name: 'Combo Burger Papuda',
+                src: './losmaspedidos/comboburgerpapuda.png',
+                category: 'COMBOS CON PAPAS Y BEBIDA',
+                orderImageSrc: './combosconpapasybebidas/comboburgerpapuda.png'
+            },
+            {
+                name: 'Combo Burger Super',
+                src: './losmaspedidos/comboburgersuper.png',
+                category: 'COMBOS CON PAPAS Y BEBIDA',
+                orderImageSrc: './combosconpapasybebidas/comboburgersuper.png'
+            },
+            {
+                name: 'Combo Perro Normal',
+                src: './losmaspedidos/comboperronormal.png',
+                category: 'COMBOS CON PAPAS Y BEBIDA',
+                orderImageSrc: './combosconpapasybebidas/comboperronormal.png'
+            },
+            {
+                name: 'De La Casa',
+                src: './losmaspedidos/combodelacasa.png',
+                category: 'COMBOS MIXTOS',
+                orderImageSrc: './combosmixtos/delacasa.png'
+            },
+            {
+                name: 'Emparejados',
+                src: './losmaspedidos/comboemparejados.png',
+                category: 'COMBOS MIXTOS',
+                orderImageSrc: './combosmixtos/emparejados.png'
+            },
+            {
+                name: 'Familiar 3',
+                src: './losmaspedidos/combofamiliar3.png',
+                category: 'COMBOS MIXTOS',
+                orderImageSrc: './combosmixtos/familiar3.png'
+            },
+            {
+                name: 'Familiar 4',
+                src: './losmaspedidos/combofamiliar4.png',
+                category: 'COMBOS MIXTOS',
+                orderImageSrc: './combosmixtos/familiar4.png'
+            }
         ];
+        const featuredImageMap = {
+            'comboburgernormal.png': './combosconpapasybebidas/comboburgernormal.png',
+            'comboburgerpapuda.png': './combosconpapasybebidas/comboburgerpapuda.png',
+            'comboburgersuper.png': './combosconpapasybebidas/comboburgersuper.png',
+            'comboperronormal.png': './combosconpapasybebidas/comboperronormal.png',
+            'combodelacasa.png': './combosmixtos/delacasa.png',
+            'comboemparejados.png': './combosmixtos/emparejados.png',
+            'combofamiliar3.png': './combosmixtos/familiar3.png',
+            'combofamiliar4.png': './combosmixtos/familiar4.png'
+        };
+        const rawItems = Array.isArray(items) && items.length ? items : featuredFallbackItems;
+        const resolvedItems = rawItems.map((item) => {
+            const safeName = String(item?.nombre || item?.name || item?.title || '').trim() || 'Producto';
+            const displaySrc = normalizeImageAssetPath(item?.src || item?.image_url || '');
+            const explicitCategory = String(item?.category || item?.categoria || '').trim();
+            const normalizedName = normalizeCategoryKey(safeName);
+            const mappedOrderImage = displaySrc
+                ? featuredImageMap[displaySrc.split('/').pop()] || ''
+                : '';
+            const safeCategory = explicitCategory
+                || (displaySrc.includes('combosconpapasybebidas') || normalizedName.includes('combo burger') || normalizedName.includes('combo perro')
+                    ? 'COMBOS CON PAPAS Y BEBIDA'
+                    : 'COMBOS MIXTOS');
+            const orderImageSrc = normalizeImageAssetPath(item?.orderImageSrc || item?.order_image_url || mappedOrderImage || displaySrc);
+
+            return {
+                name: safeName,
+                src: displaySrc,
+                category: safeCategory,
+                orderImageSrc
+            };
+        }).filter((item) => item.src);
         carousel.innerHTML = '';
-        localFeaturedImages.forEach((item, index) => {
+        resolvedItems.forEach((item, index) => {
             const safeName = item.name;
-            const featuredCategoryName = 'COMBOS MIXTOS';
+            const featuredCategoryName = item.category;
             const buttonId = `btn-featured-${index + 1}`;
             const card = document.createElement('div');
             card.className = 'product-card-mobile';
@@ -3262,7 +3359,7 @@ function renderFeaturedCards(carousel, items) {
             image.alt = safeName;
             image.src = item.src;
             imageWrap.addEventListener('click', () => {
-                abrirModalBebida(safeName, item.src, featuredCategoryName);
+                abrirModalBebida(safeName, item.src, featuredCategoryName, { orderImagePath: item.orderImageSrc });
             });
             const button = document.createElement('button');
             button.className = 'mobile-order-btn';
@@ -3271,7 +3368,7 @@ function renderFeaturedCards(carousel, items) {
             button.textContent = '¡Lo Quiero!';
             button.addEventListener('click', (event) => {
                 event.preventDefault();
-                startProductOrderFlow(safeName, featuredCategoryName, buttonId);
+                startProductOrderFlow(safeName, featuredCategoryName, buttonId, { imagePath: item.orderImageSrc });
             });
             imageWrap.appendChild(image);
             card.appendChild(imageWrap);
@@ -4160,7 +4257,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
     }
 }
 // --- FUNCIÓN GLOBAL MODAL BEBIDAS ---
-function abrirModalBebida(nombre, ruta, categoria) {
+function abrirModalBebida(nombre, ruta, categoria, options = {}) {
     const prev = document.getElementById('bebidas-modal');
     if (prev) prev.remove();
 
@@ -4207,7 +4304,7 @@ function abrirModalBebida(nombre, ruta, categoria) {
             : 'Pedir este producto';
     orderButton.addEventListener('click', () => {
         modal.remove();
-        startProductOrderFlow(nombre, safeCategory, buttonId, { imagePath: ruta });
+        startProductOrderFlow(nombre, safeCategory, buttonId, { imagePath: options.orderImagePath || ruta });
     });
 
     actions.appendChild(closeButton);
@@ -4344,6 +4441,7 @@ async function renderPublicFeaturedFromAdmin() {
         renderDynamicCategorySections();
         renderFeaturedCards(carousel);
         renderCategoryExplorer();
+        updatePromoModalContent();
     });
 
     categoriesUnsubscribe = firebaseDb.collection('categorias').onSnapshot((snapshot) => {
@@ -4369,6 +4467,7 @@ async function renderPublicFeaturedFromAdmin() {
         renderDynamicCategorySections();
         renderFeaturedCards(carousel);
         renderCategoryExplorer();
+        updatePromoModalContent();
     });
 
     buttonsUnsubscribe = firebaseDb.collection('botones').onSnapshot((snapshot) => {
@@ -4562,17 +4661,184 @@ function closeMenuModal() {
 
 
 
-// ===== MODAL DE PROMOCIÓN =====
-const PROMO_DAY_NAME = 'Hamburguesa del dia';
+// ===== MODAL DE RECOMENDADO =====
+const PROMO_DAY_NAME = 'Recomendado del dia';
+let currentRecommendedProduct = null;
 
-function resetPromoSelection() {
-    const selector = document.getElementById('promoBurgerSelector');
-    const orderButton = document.getElementById('promoOrderButton');
-    if (selector) {
-        selector.hidden = true;
+function getCurrentBogotaDateParts(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: ORDERING_SCHEDULE.timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(now);
+
+    return {
+        year: Number(parts.find((part) => part.type === 'year')?.value || 0),
+        month: Number(parts.find((part) => part.type === 'month')?.value || 1),
+        day: Number(parts.find((part) => part.type === 'day')?.value || 1)
+    };
+}
+
+function isExcludedRecommendedCategory(categoryName) {
+    const normalizedCategory = normalizeCategoryKey(categoryName);
+    if (normalizedCategory.includes('combo')) {
+        return true;
     }
+    return RECOMMENDED_DAY_EXCLUDED_CATEGORY_PARTS.some((part) => normalizedCategory.includes(part));
+}
+
+function getRecommendedFallbackProduct() {
+    return {
+        nombre: RECOMMENDED_DAY_FALLBACK_PRODUCT.nombre,
+        categoria: RECOMMENDED_DAY_FALLBACK_PRODUCT.categoria,
+        image_url: normalizeImageAssetPath(RECOMMENDED_DAY_FALLBACK_PRODUCT.image_url),
+        estado: 'active'
+    };
+}
+
+function getEligibleRecommendedProducts() {
+    const eligibleProducts = latestProducts
+        .map((product) => {
+            const nombre = String(product.nombre || product.name || '').trim();
+            const categoria = String(product.categoria || product.category || '').trim();
+            const estado = String(product.estado || (product.paused ? 'paused' : 'active')).toLowerCase();
+            return {
+                nombre,
+                categoria,
+                estado,
+                image_url: normalizeImageAssetPath(resolveProductImage(product))
+            };
+        })
+        .filter((product) => {
+            if (!product.nombre || !product.categoria) {
+                return false;
+            }
+
+            if (product.estado === 'paused') {
+                return false;
+            }
+
+            if (shouldHideProductByName(product.nombre)) {
+                return false;
+            }
+
+            if (isExcludedRecommendedCategory(product.categoria)) {
+                return false;
+            }
+
+            if (!isCategoryAllowed(product.categoria)) {
+                return false;
+            }
+
+            return Boolean(product.image_url);
+        })
+        .sort((a, b) => `${a.categoria} ${a.nombre}`.localeCompare(`${b.categoria} ${b.nombre}`, 'es'));
+
+    return eligibleProducts.length ? eligibleProducts : [getRecommendedFallbackProduct()];
+}
+
+function getRecommendedProductSignature(product) {
+    return `${normalizeCategoryKey(product?.categoria || '')}::${normalizeCategoryKey(product?.nombre || '')}`;
+}
+
+function createSeededRandom(seed) {
+    let value = Math.abs(Number(seed || 1)) % 2147483647;
+    if (!value) {
+        value = 1;
+    }
+
+    return () => {
+        value = (value * 48271) % 2147483647;
+        return (value - 1) / 2147483646;
+    };
+}
+
+function buildRecommendedCycleOrder(products, cycleIndex) {
+    const orderedProducts = products.slice();
+    const random = createSeededRandom((products.length * 97) + cycleIndex + 1);
+
+    for (let index = orderedProducts.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(random() * (index + 1));
+        const current = orderedProducts[index];
+        orderedProducts[index] = orderedProducts[swapIndex];
+        orderedProducts[swapIndex] = current;
+    }
+
+    if (cycleIndex > 0 && orderedProducts.length > 1) {
+        const previousOrder = buildRecommendedCycleOrder(products, cycleIndex - 1);
+        const previousLastSignature = getRecommendedProductSignature(previousOrder[previousOrder.length - 1]);
+        const currentFirstSignature = getRecommendedProductSignature(orderedProducts[0]);
+
+        if (previousLastSignature === currentFirstSignature) {
+            const current = orderedProducts[0];
+            orderedProducts[0] = orderedProducts[1];
+            orderedProducts[1] = current;
+        }
+    }
+
+    return orderedProducts;
+}
+
+function getRecommendedProductOfDay(now = new Date()) {
+    const eligibleProducts = getEligibleRecommendedProducts();
+    if (eligibleProducts.length === 1) {
+        return eligibleProducts[0];
+    }
+
+    const { year, month, day } = getCurrentBogotaDateParts(now);
+    const daySerial = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+    const cycleLength = eligibleProducts.length;
+    const cycleIndex = Math.floor(daySerial / cycleLength);
+    const dayOffset = daySerial % cycleLength;
+    const cycleOrder = buildRecommendedCycleOrder(eligibleProducts, cycleIndex);
+    return cycleOrder[dayOffset];
+}
+
+function updatePromoModalContent() {
+    const recommendedProduct = getRecommendedProductOfDay();
+    currentRecommendedProduct = recommendedProduct;
+
+    const modal = document.getElementById('promoModal');
+    const image = document.getElementById('promoModalImage');
+    const kicker = document.getElementById('promoModalKicker');
+    const title = document.getElementById('promoModalTitle');
+    const text = document.getElementById('promoModalText');
+    const orderButton = document.getElementById('promoOrderButton');
+
+    if (modal) {
+        modal.setAttribute('aria-label', `${PROMO_DAY_NAME}: ${recommendedProduct.nombre}`);
+    }
+
+    if (image) {
+        image.src = recommendedProduct.image_url || 'logo.png';
+        image.alt = `Recomendado del dia: ${recommendedProduct.nombre}`;
+    }
+
+    if (kicker) {
+        kicker.textContent = PROMO_DAY_NAME;
+    }
+
+    if (title) {
+        title.textContent = recommendedProduct.nombre;
+    }
+
+    if (text) {
+        const basePrice = resolveCartUnitPrice(recommendedProduct.nombre, recommendedProduct.categoria, {
+            type: 'solo',
+            imagePath: recommendedProduct.image_url
+        });
+        const discountPrice = resolveCartUnitPrice(recommendedProduct.nombre, recommendedProduct.categoria, {
+            type: 'solo',
+            imagePath: recommendedProduct.image_url,
+            recommendedDiscount: true,
+            discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
+        });
+        text.textContent = `Hoy te recomendamos ${recommendedProduct.nombre} de la categoria ${recommendedProduct.categoria}. Tiene 20% de descuento: antes ${formatCurrency(basePrice)} y hoy ${formatCurrency(discountPrice)}.`;
+    }
+
     if (orderButton) {
-        orderButton.textContent = 'Pedir promo del dia';
+        orderButton.textContent = `Pedir ${recommendedProduct.nombre} con 20% OFF`;
     }
 }
 
@@ -4580,42 +4846,27 @@ function initPromoModal() {
     setTimeout(function () {
         var modal = document.getElementById('promoModal');
         if (modal) {
-            resetPromoSelection();
+            updatePromoModalContent();
             modal.classList.add('is-open');
             syncBodyScrollLock();
         }
     }, 2000);
 }
 
-function showPromoBurgerOptions() {
+function orderDailyRecommendation() {
     if (!canPlaceOrdersNow()) {
         showOrderingClosedMessage();
         return;
     }
 
-    const selector = document.getElementById('promoBurgerSelector');
-    const orderButton = document.getElementById('promoOrderButton');
-    if (selector) {
-        selector.hidden = false;
-    }
-    if (orderButton) {
-        orderButton.textContent = 'Elige tu burger';
-    }
-    trackButtonClick('btn-promo-dia', `${PROMO_DAY_NAME} - Elegir burger`);
-}
-
-function orderPromoBurger(burgerName) {
-    if (!canPlaceOrdersNow()) {
-        showOrderingClosedMessage();
-        return;
-    }
-
-    const safeBurgerName = String(burgerName || '').trim() || 'Burger Ranchera';
-    trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${safeBurgerName}`);
+    const recommendedProduct = currentRecommendedProduct || getRecommendedProductOfDay();
+    trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${recommendedProduct.nombre}`);
     closePromoModal();
-    addItemToCart(safeBurgerName, 'PROMO DEL DIA', {
+    addItemToCart(recommendedProduct.nombre, recommendedProduct.categoria, {
         type: 'solo',
-        imagePath: PROMO_DAY_IMAGE_PATH
+        imagePath: recommendedProduct.image_url,
+        recommendedDiscount: true,
+        discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
     }, 'btn-promo-dia-order');
 }
 
@@ -4623,7 +4874,6 @@ function closePromoModal() {
     var modal = document.getElementById('promoModal');
     if (modal) {
         modal.classList.remove('is-open');
-        resetPromoSelection();
         syncBodyScrollLock();
     }
 }
@@ -4658,31 +4908,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const featuredCarousel = document.getElementById('featured-carousel-dynamic');
     // Array local con rutas en la raíz del proyecto
     const localFeatured = [
-        { nombre: 'DE LA CASA', image_url: 'losmaspedidos/delacasa.png' },
-        { nombre: 'EMPAREJADOS', image_url: 'losmaspedidos/emparejados.png' },
-        { nombre: 'FAMILIAR 3', image_url: 'losmaspedidos/familiar3.png' },
-        { nombre: 'FAMILIAR 4', image_url: 'losmaspedidos/familiar4.png' }
+        { nombre: 'Combo Burger Normal', image_url: 'losmaspedidos/comboburgernormal.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'Combo Burger Papuda', image_url: 'losmaspedidos/comboburgerpapuda.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'Combo Burger Super', image_url: 'losmaspedidos/comboburgersuper.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'Combo Perro Normal', image_url: 'losmaspedidos/comboperronormal.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'De La Casa', image_url: 'losmaspedidos/combodelacasa.png', categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Emparejados', image_url: 'losmaspedidos/comboemparejados.png', categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Familiar 3', image_url: 'losmaspedidos/combofamiliar3.png', categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Familiar 4', image_url: 'losmaspedidos/combofamiliar4.png', categoria: 'COMBOS MIXTOS' }
     ];
     if (featuredCarousel) {
         renderFeaturedCards(featuredCarousel, localFeatured);
-        // Intentar cargar desde Firestore si está disponible
-        if (typeof initFirebaseServices === 'function') {
-            try {
-                const firebaseDb = initFirebaseServices().db;
-                firebaseDb.collection('productos').where('es_destacado', '==', true).get().then((snapshot) => {
-                    const featuredFromDb = snapshot.docs.map((doc) => {
-                        const data = doc.data();
-                        return {
-                            nombre: data.nombre || data.name || 'Producto',
-                            image_url: data.image_url || ''
-                        };
-                    }).filter(item => item.image_url);
-                    if (featuredFromDb.length > 0) {
-                        renderFeaturedCards(featuredCarousel, featuredFromDb);
-                    }
-                }).catch(() => {/* fallback silencioso */});
-            } catch (e) {/* fallback silencioso */}
-        }
+        // Este carrusel se controla con la galeria local de /losmaspedidos
+        // para evitar que destacados antiguos de Firestore sobrescriban imagenes rotas.
     }
 
     applyBrandingConfig(DEFAULT_BRANDING);

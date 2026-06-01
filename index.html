@@ -193,24 +193,20 @@
         </div>
     </div>
     <!-- Modal de Promoción -->
-    <div id="promoModal" class="promo-modal" role="dialog" aria-modal="true" aria-label="Promoción del día">
+    <div id="promoModal" class="promo-modal" role="dialog" aria-modal="true" aria-label="Recomendado del dia">
         <div class="promo-modal-card">
             <button class="promo-modal-close" onclick="closePromoModal()" aria-label="Cerrar promoción">&times;</button>
-            <img src="promodeldia/diadelahamburguesa.jpg" alt="Promo del día hamburguesa" class="promo-modal-img">
+            <div class="promo-modal-media">
+                <img src="logo.png" alt="Recomendado del dia" class="promo-modal-img" id="promoModalImage">
+                <span class="promo-modal-badge">-20% OFF</span>
+            </div>
             <div class="promo-modal-body">
-                <p class="promo-modal-kicker">Promo del dia</p>
-                <h3 class="promo-modal-title">Hamburguesa del dia</h3>
-                <p class="promo-modal-text">Pide la promo del dia y elige la hamburguesa exacta para que tu pedido llegue claro por WhatsApp.</p>
-                <div class="promo-modal-selector" id="promoBurgerSelector" hidden>
-                    <p class="promo-modal-selector-title">Elige tu burger</p>
-                    <div class="promo-modal-options">
-                        <button class="promo-option-btn" type="button" onclick="orderPromoBurger('Burger Ranchera')">Burger Ranchera</button>
-                        <button class="promo-option-btn" type="button" onclick="orderPromoBurger('Burger Plus')">Burger Plus</button>
-                    </div>
-                </div>
+                <p class="promo-modal-kicker" id="promoModalKicker">Recomendado del dia</p>
+                <h3 class="promo-modal-title" id="promoModalTitle">Producto recomendado</h3>
+                <p class="promo-modal-text" id="promoModalText">Cada dia te mostramos un producto distinto del menu para que descubras algo nuevo.</p>
             </div>
             <div class="promo-modal-actions">
-                <button class="promo-btn promo-btn-order" type="button" id="promoOrderButton" onclick="showPromoBurgerOptions()">Pedir promo del dia</button>
+                <button class="promo-btn promo-btn-order" type="button" id="promoOrderButton" onclick="orderDailyRecommendation()">Pedir recomendado</button>
                 <button class="promo-btn promo-btn-menu" onclick="closePromoModal()">Ver Menú 🍔</button>
             </div>
         </div>
