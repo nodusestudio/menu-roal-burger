@@ -64,6 +64,7 @@ const ORDERING_SCHEDULE = {
     openMessage: 'Abierto ahora. Ya puedes hacer tu pedido.',
     closedMessage: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.'
 };
+const ORDER_SENT_CONFIRMATION_MESSAGE = 'Recibimos tu pedido. Un asesor te escribira pronto con el total y el valor del domicilio.';
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
@@ -78,6 +79,7 @@ let selectedCategoryKey = '';
 let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
 let orderingStatusToastTimer = null;
+let orderSentToastTimer = null;
 
 function getCurrentOrderingMinutes(now = new Date()) {
     const parts = new Intl.DateTimeFormat('en-GB', {
@@ -127,6 +129,28 @@ function showOrderingClosedMessage() {
     orderingStatusToastTimer = window.setTimeout(() => {
         toast.classList.remove('is-visible');
     }, 2600);
+}
+
+function showOrderSentMessage() {
+    let toast = document.getElementById('orderSentToast');
+
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'orderSentToast';
+        toast.className = 'order-sent-toast';
+        document.body.appendChild(toast);
+    }
+
+    toast.textContent = ORDER_SENT_CONFIRMATION_MESSAGE;
+    toast.classList.add('is-visible');
+
+    if (orderSentToastTimer) {
+        window.clearTimeout(orderSentToastTimer);
+    }
+
+    orderSentToastTimer = window.setTimeout(() => {
+        toast.classList.remove('is-visible');
+    }, 3200);
 }
 
 function syncBusinessHoursStatus() {
@@ -191,7 +215,7 @@ function getSelectedCategoryName() {
 function buildProductWhatsAppUrl(productName, categoryName) {
     const safeProductName = String(productName || 'producto').trim() || 'producto';
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
-    return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName}`)}`;
+    return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`PEDIDO\nProducto: ${safeProductName}\nCategoria: ${safeCategoryName}`)}`;
 }
 
 const COMBO_EXTRA_PRICE = 7000;
@@ -312,34 +336,18 @@ function getComboButtonCopy(categoryName) {
 function buildOrderMessage(productName, categoryName, orderOptions = { type: 'solo' }) {
     const safeProductName = String(productName || 'producto').trim() || 'producto';
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
+    const detail = getWhatsAppOrderDetail(safeCategoryName, orderOptions);
+    const messageLines = [
+        'PEDIDO',
+        `Producto: ${safeProductName}`,
+        `Categoria: ${safeCategoryName}`
+    ];
 
-    if (orderOptions.type === 'combo-mixed') {
-        const safeDrink = String(orderOptions.drink || COMBO_MEAL_LARGE_DRINK_OPTIONS[0]).trim() || COMBO_MEAL_LARGE_DRINK_OPTIONS[0];
-        return appendCommentText(
-            `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} con bebida de 1 litro sabor ${safeDrink}.`,
-            orderOptions
-        );
+    if (detail) {
+        messageLines.push(`Detalle: ${detail}`);
     }
 
-    if (orderOptions.type === 'combo-meal') {
-        const peopleCount = Number(orderOptions.peopleCount || 1);
-        const drinkLabels = Array.isArray(orderOptions.drinks) ? orderOptions.drinks.filter(Boolean) : [];
-        const drinksText = drinkLabels.join(', ');
-        return appendCommentText(
-            `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} para ${peopleCount} persona${peopleCount === 1 ? '' : 's'} con ${peopleCount >= 3 ? 'una bebida de 1 litro' : `${peopleCount} bebida${peopleCount === 1 ? '' : 's'} de 250 ml`} sabor ${drinksText} y su descripcion completa del combo.`,
-            orderOptions
-        );
-    }
-
-    if (orderOptions.type !== 'combo') {
-        return appendCommentText(`Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName}.`, orderOptions);
-    }
-
-    const safeDrink = String(orderOptions.drink || COMBO_DRINK_OPTIONS[0]).trim() || COMBO_DRINK_OPTIONS[0];
-    return appendCommentText(
-        `Hola ROAL BURGER! Quiero pedir de la categoria ${safeCategoryName} el producto ${safeProductName} en combo (+$${COMBO_EXTRA_PRICE.toLocaleString('es-CO')}) con bebida ${safeDrink}.`,
-        orderOptions
-    );
+    return appendCommentText(messageLines.join('\n'), orderOptions);
 }
 
 function openWhatsAppOrder(productName, categoryName, orderOptions = { type: 'solo' }) {
@@ -350,6 +358,7 @@ function openWhatsAppOrder(productName, categoryName, orderOptions = { type: 'so
 
     const message = buildOrderMessage(productName, categoryName, orderOptions);
     window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+    showOrderSentMessage();
 }
 
 const CART_STORAGE_KEY = 'roalburger-cart-v1';
@@ -409,7 +418,42 @@ function appendCommentText(baseText, orderOptions = { type: 'solo' }) {
     if (!comment) {
         return baseText;
     }
-    return `${baseText} Comentario: ${comment}.`;
+    return `${baseText}\nNota: ${comment}`;
+}
+
+function getWhatsAppOrderDetail(categoryName, orderOptions = { type: 'solo' }) {
+    const normalized = normalizeOrderOptions(orderOptions);
+    const parts = [];
+
+    if (normalized.type === 'combo-mixed') {
+        parts.push('Combo mixto');
+        if (normalized.drink) {
+            parts.push(`Bebida 1L: ${normalized.drink}`);
+        }
+    } else if (normalized.type === 'combo-meal') {
+        const peopleCount = Number(normalized.peopleCount || 1);
+        const drinkText = normalized.drinks.join(', ');
+        parts.push(`${peopleCount} persona${peopleCount === 1 ? '' : 's'}`);
+        if (drinkText) {
+            parts.push(`Bebidas: ${drinkText}`);
+        }
+    } else if (normalized.type === 'combo') {
+        parts.push('Combo');
+        if (normalized.drink) {
+            parts.push(`Bebida: ${normalized.drink}`);
+        }
+    }
+
+    if (normalized.flavor) {
+        parts.push(`Sabor: ${normalized.flavor}`);
+    }
+
+    if (normalized.recommendedDiscount) {
+        const discountPercent = Math.round((normalized.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE) * 100);
+        parts.push(`Recomendado -${discountPercent}%`);
+    }
+
+    return parts.join(' | ');
 }
 
 function loadCartState() {
@@ -630,30 +674,30 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
 }
 
 function buildCartCheckoutMessage(customerInfo = {}) {
-    const header = 'Hola ROAL BURGER! Quiero hacer este pedido:';
+    const header = 'PEDIDO';
     const customerName = String(customerInfo.name || '').trim();
     const deliveryAddress = String(customerInfo.address || '').trim();
     const lines = shoppingCart.map((item, index) => {
-        const unitPrice = getCartItemUnitPrice(item);
-        const subtotal = unitPrice * Number(item.quantity || 0);
+        const optionLabel = getWhatsAppOrderDetail(item.categoryName, item.orderOptions);
         const details = [
-            `${index + 1}. ${item.productName} (${item.categoryName})`,
-            `   Opcion: ${getCartOptionLabel(item.categoryName, item.orderOptions, { includeComment: false })}`,
-            `   Cantidad: ${item.quantity}`,
-            `   Precio: ${formatCurrency(unitPrice)} | Subtotal: ${formatCurrency(subtotal)}`
+            `${index + 1}. ${item.productName} x${item.quantity}`,
+            `   Categoria: ${item.categoryName}`
         ];
+        if (optionLabel) {
+            details.push(`   Detalle: ${optionLabel}`);
+        }
         if (item.orderOptions?.comment) {
-            details.push(`   Comentario: ${item.orderOptions.comment}`);
+            details.push(`   Nota: ${item.orderOptions.comment}`);
         }
         return details.join('\n');
     });
 
     const customerDetails = [
-        customerName ? `Nombre: ${customerName}` : '',
-        deliveryAddress ? `Domicilio para: ${deliveryAddress}` : ''
+        customerName ? `Cliente: ${customerName}` : '',
+        deliveryAddress ? `Entrega: ${deliveryAddress}` : ''
     ].filter(Boolean);
 
-    return `${header}\n\n${customerDetails.join('\n')}${customerDetails.length ? '\n\n' : ''}${lines.join('\n\n')}\n\nTotal de productos: ${getCartProductCount()}\nTotal en productos: ${formatCurrency(getCartTotalAmount())}\nCosto de domicilio: pendiente por definir`;
+    return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nTotal: ${formatCurrency(getCartTotalAmount())}`;
 }
 
 function openCartDrawer() {
@@ -749,6 +793,7 @@ function submitCheckoutInfo() {
     });
     closeCheckoutInfoModal();
     window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+    showOrderSentMessage();
     clearCart();
     closeCartDrawer();
 }
