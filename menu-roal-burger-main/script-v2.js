@@ -228,6 +228,27 @@ function normalizeAssetLookup(value) {
     return normalizeCategoryKey(value).replace(/[^a-z0-9]+/g, '');
 }
 
+function normalizeImageAssetPath(value) {
+    const normalized = String(value || '').trim().replace(/\\/g, '/');
+    if (!normalized) {
+        return '';
+    }
+
+    if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
+        return normalized;
+    }
+
+    if (normalized.startsWith('/')) {
+        return normalized;
+    }
+
+    if (normalized.startsWith('./')) {
+        return normalized;
+    }
+
+    return `./${normalized.replace(/^\.?\//, '')}`;
+}
+
 function buildParentRelativeImagePath(value) {
     const normalized = String(value || '').trim().replace(/\\/g, '/');
     if (!normalized || /^(https?:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
@@ -302,97 +323,76 @@ function isIOSDevice() {
 function updateShortcutInstallUI() {
     const button = document.getElementById('installShortcutButton');
     const text = document.getElementById('installShortcutButtonText');
-    const hint = document.getElementById('installShortcutHint');
-    if (!button || !text || !hint) {
-        return;
-    }
+    const cards = products.map((product) => ({
+        name: product.nombre,
+        image: product.image_url || 'logo.png',
+        orderImagePath: product.image_url || 'logo.png',
+        fallbackImage: 'logo.png'
+    }));
 
-    if (deferredInstallPrompt) {
-        text.textContent = 'Instalar acceso directo';
-        hint.textContent = 'Instala ROAL BURGER en este dispositivo con el isotipo oficial.';
-        return;
-    }
+    panel.innerHTML = '';
 
-    if (isMobileDevice()) {
-        text.textContent = 'Guardar en tu movil';
-        hint.textContent = isIOSDevice()
-            ? 'En iPhone o iPad usa Compartir y luego Anadir a pantalla de inicio.'
-            : 'Guarda o comparte el enlace oficial para tenerlo a un toque en tu movil.';
-        return;
-    }
+    const gallery = document.createElement('div');
+    gallery.className = 'bebidas-gallery-grid';
+    gallery.style.display = 'grid';
+    gallery.style.gridTemplateColumns = cards.length === 1 ? '1fr' : '1fr 1fr';
+    gallery.style.gap = '15px';
+    gallery.style.padding = '20px';
 
-    text.textContent = 'Descargar acceso directo';
-    hint.textContent = 'Descarga un acceso directo para tu PC con el isotipo oficial de ROAL BURGER.';
-}
+    if (!cards.length || shouldHideCategoryList(selectedCategory)) {
+        panel.innerHTML = '<p class="category-empty">No hay productos cargados en esta categoria.</p>';
 
-function downloadDesktopShortcut() {
-    const url = getOfficialMenuUrl();
-    const iconUrl = new URL('/isotipo.png', url).href;
-    const shortcutContent = `[InternetShortcut]\r\nURL=${url}\r\nIconFile=${iconUrl}\r\nIconIndex=0\r\n`;
-    const blob = new Blob([shortcutContent], { type: 'application/internet-shortcut' });
-    const objectUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = objectUrl;
-    link.download = 'ROAL BURGER.url';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(objectUrl);
-}
-
-async function handleShortcutInstall() {
-    const url = getOfficialMenuUrl();
-
-    if (deferredInstallPrompt) {
-        deferredInstallPrompt.prompt();
-        await deferredInstallPrompt.userChoice.catch(() => null);
-        deferredInstallPrompt = null;
-        updateShortcutInstallUI();
-        return;
-    }
-
-    if (!isMobileDevice()) {
-        downloadDesktopShortcut();
-        return;
-    }
-
-    if (navigator.share) {
-        try {
-            await navigator.share({
-                title: 'ROAL BURGER',
-                text: 'Guarda el enlace oficial de ROAL BURGER.',
-                url
-            });
-            return;
-        } catch (error) {
-            // Continua con el siguiente fallback si el navegador cancela la accion.
+        if (options.fromUserClick) {
+            panel.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            panel.classList.remove('focus-highlight');
+            void panel.offsetWidth;
+            panel.classList.add('focus-highlight');
         }
-    }
 
-    if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url).catch(() => null);
-    }
-
-    window.alert(isIOSDevice()
-        ? 'El enlace oficial ya esta listo. En iPhone o iPad abre Compartir y luego Anadir a pantalla de inicio.'
-        : 'El enlace oficial ya esta listo. Si tu navegador no ofrece instalar, abre el menu del navegador y elige Anadir a pantalla de inicio.');
-}
-
-function initShortcutInstallUI() {
-    const button = document.getElementById('installShortcutButton');
-    if (!button || button.dataset.shortcutReady === '1') {
-        updateShortcutInstallUI();
         return;
     }
 
-    button.dataset.shortcutReady = '1';
-    button.addEventListener('click', handleShortcutInstall);
-    updateShortcutInstallUI();
-}
+    if (cards.length === 1) {
+        gallery.style.maxWidth = '420px';
+        gallery.style.margin = '0 auto';
+    }
 
-window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
-    deferredInstallPrompt = event;
+    cards.forEach((card) => {
+        const item = document.createElement('div');
+        item.className = 'card-pequena';
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', () => {
+            abrirModalBebida(card.name, card.image, selectedCategory.name, { orderImagePath: card.orderImagePath || card.image });
+        });
+
+        const image = document.createElement('img');
+        const fallbackImage = card.fallbackImage || card.image || 'logo.png';
+        image.src = card.image || fallbackImage;
+        image.alt = card.name;
+        image.style.width = '100%';
+        image.style.borderRadius = '8px';
+        image.addEventListener('error', () => {
+            if (image.getAttribute('src') === fallbackImage) {
+                image.src = 'logo.png';
+                return;
+            }
+
+            image.src = fallbackImage;
+        });
+
+        const label = document.createElement('p');
+        label.textContent = card.name;
+        label.style.textAlign = 'center';
+        label.style.fontWeight = 'bold';
+        label.style.marginTop = '5px';
+        label.style.color = '#000';
+
+        item.appendChild(image);
+        item.appendChild(label);
+        gallery.appendChild(item);
+    });
+
+    panel.appendChild(gallery);
     updateShortcutInstallUI();
 });
 
@@ -447,6 +447,15 @@ function resolveProductImage(product) {
 
 function resolveCategoryImage(categoryName) {
     const normalizedCategory = normalizeAssetLookup(categoryName);
+    const remoteCategory = (Array.isArray(activeCategoryMeta) ? activeCategoryMeta : [])
+        .concat(Array.isArray(allCategoryMeta) ? allCategoryMeta : [])
+        .find((category) => normalizeCategoryKey(category?.name) === normalizeCategory);
+    const remoteImage = String(remoteCategory?.image_url || '').trim();
+
+    if (remoteImage) {
+        return remoteImage;
+    }
+
     if (normalizedCategory === 'bebidasyadicionales') {
         return './bebidasyadicionales/adicionales.png';
     }
@@ -1196,7 +1205,12 @@ function ensurePinnedExplorerCategories(categories) {
         });
     });
 
-    return pinnedList;
+    const pinnedKeys = new Set(pinnedList.map((item) => normalizeCategoryKey(item.key)));
+    const dynamicRemainder = Array.from(inputMap.values())
+        .filter((item) => !pinnedKeys.has(normalizeCategoryKey(item.key)))
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'));
+
+    return [...pinnedList, ...dynamicRemainder];
 }
 
 function getCategoryProducts(category) {
@@ -1292,16 +1306,6 @@ function renderCategoryExplorer(nextKey, options = {}) {
     const heroWrap = document.createElement('div');
     heroWrap.className = 'category-hero-wrap';
 
-    const heroImage = document.createElement('img');
-    heroImage.className = 'category-hero-image';
-    heroImage.alt = `Imagen de ${selectedCategory.name}`;
-    heroImage.loading = 'lazy';
-    heroImage.decoding = 'async';
-    heroImage.src = resolveCategoryImage(selectedCategory.name);
-    heroImage.addEventListener('error', () => {
-        heroImage.src = resolveCategoryImage(selectedCategory.name);
-    });
-
     const heroTitle = document.createElement('p');
     heroTitle.className = 'category-hero-title';
     heroTitle.textContent = selectedCategory.name;
@@ -1322,12 +1326,18 @@ function renderCategoryExplorer(nextKey, options = {}) {
     heroHead.appendChild(heroTitle);
     heroHead.appendChild(categoryOrderBtn);
 
-    heroWrap.appendChild(heroImage);
     heroWrap.appendChild(heroHead);
 
     if (!products.length || shouldHideCategoryList(selectedCategory)) {
         panel.innerHTML = '';
         panel.appendChild(heroWrap);
+
+        if (!shouldHideCategoryList(selectedCategory)) {
+            const empty = document.createElement('p');
+            empty.className = 'category-empty';
+            empty.textContent = 'No hay productos cargados en esta categoria.';
+            panel.appendChild(empty);
+        }
 
         if (options.fromUserClick) {
             panel.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
@@ -1548,7 +1558,8 @@ async function renderPublicFeaturedFromAdmin() {
             .map((doc) => doc.data())
             .map((category) => ({
                 name: category.name,
-                key: normalizeCategoryKey(category.name)
+                key: normalizeCategoryKey(category.name),
+                image_url: String(category.image_url || '').trim()
             }))
             .filter((category) => category.name && category.key);
 
@@ -1557,7 +1568,8 @@ async function renderPublicFeaturedFromAdmin() {
             .filter((category) => category.active !== false)
             .map((category) => ({
                 name: category.name,
-                key: normalizeCategoryKey(category.name)
+                key: normalizeCategoryKey(category.name),
+                image_url: String(category.image_url || '').trim()
             }));
 
         activeCategoryMeta = active;

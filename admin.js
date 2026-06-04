@@ -169,6 +169,8 @@ const adminSignOutBtn = document.getElementById('adminSignOutBtn');
 
 const categoryForm = document.getElementById('categoryForm');
 const categoryList = document.getElementById('categoryList');
+const openCreateCategoryBtn = document.getElementById('openCreateCategoryBtn');
+const openCreateProductBtn = document.getElementById('openCreateProductBtn');
 const notice = document.getElementById('adminNotice');
 const totalClicksEl = document.getElementById('totalClicks');
 const topProductEl = document.getElementById('topProduct');
@@ -189,6 +191,32 @@ const previewViewportControls = document.getElementById('previewViewportControls
 const previewViewportWrap = document.getElementById('previewViewportWrap');
 const advancedSettingsToggle = document.getElementById('advancedSettingsToggle');
 const advancedSettingsPanel = document.getElementById('advancedSettingsPanel');
+
+const categoryProductsModal = document.getElementById('categoryProductsModal');
+const categoryProductsModalTitle = document.getElementById('categoryProductsModalTitle');
+const categoryProductsModalMeta = document.getElementById('categoryProductsModalMeta');
+const categoryProductsModalBody = document.getElementById('categoryProductsModalBody');
+const categoryProductsModalCloseBtn = document.getElementById('categoryProductsModalCloseBtn');
+
+const categoryCreateModal = document.getElementById('categoryCreateModal');
+const categoryCreateForm = document.getElementById('categoryCreateForm');
+const categoryCreateCloseBtn = document.getElementById('categoryCreateCloseBtn');
+const modalCategoryNameInput = document.getElementById('modalCategoryName');
+const categoryCreateSaveBtn = document.getElementById('categoryCreateSaveBtn');
+const categoryCreateFeedback = document.getElementById('categoryCreateFeedback');
+
+const productCreateModal = document.getElementById('productCreateModal');
+const productCreateForm = document.getElementById('productCreateForm');
+const productCreateCloseBtn = document.getElementById('productCreateCloseBtn');
+const createProductNameInput = document.getElementById('createProductName');
+const createProductPriceInput = document.getElementById('createProductPrice');
+const createProductCategorySelect = document.getElementById('createProductCategory');
+const createProductStateSelect = document.getElementById('createProductState');
+const createProductFeaturedSelect = document.getElementById('createProductFeatured');
+const createProductImageFileInput = document.getElementById('createProductImageFile');
+const createProductImageUrlInput = document.getElementById('createProductImageUrl');
+const productCreateSaveBtn = document.getElementById('productCreateSaveBtn');
+const productCreateFeedback = document.getElementById('productCreateFeedback');
 
 const productEditModal = document.getElementById('productEditModal');
 const productEditForm = document.getElementById('productEditForm');
@@ -231,6 +259,7 @@ let categoriesState = [];
 let buttonsState = [];
 let brandingState = { ...defaultBranding };
 let editingCategoryContextId = null;
+let activeCategoryModalId = null;
 let productClicksState = [];
 let liveSubscriptions = [];
 let previewRefreshTimer = null;
@@ -257,6 +286,30 @@ function hideNotice() {
     }
     notice.className = 'notice';
     notice.textContent = '';
+}
+
+function showModalFeedback(element, text, type = 'ok') {
+    if (!element) {
+        return;
+    }
+
+    element.textContent = text;
+    element.className = `modal-feedback show ${type}`;
+}
+
+function hideModalFeedback(element) {
+    if (!element) {
+        return;
+    }
+
+    element.textContent = '';
+    element.className = 'modal-feedback';
+}
+
+function waitForUiDelay(delayMs = 700) {
+    return new Promise((resolve) => {
+        window.setTimeout(resolve, delayMs);
+    });
 }
 
 function slugify(text) {
@@ -772,17 +825,133 @@ function renderEditProductCategorySelect(selectedCategoryName) {
         return;
     }
 
-    editProductCategorySelect.innerHTML = '';
+    renderCategoryOptions(editProductCategorySelect, selectedCategoryName);
+}
+
+function renderCategoryOptions(selectElement, selectedCategoryName) {
+    if (!selectElement) {
+        return;
+    }
+
+    selectElement.innerHTML = '';
     categoriesState.forEach((category) => {
         const option = document.createElement('option');
         option.value = category.name;
         option.textContent = `${category.name}${category.active ? '' : ' (inactiva)'}`;
-        editProductCategorySelect.appendChild(option);
+        selectElement.appendChild(option);
     });
 
     if (selectedCategoryName) {
-        editProductCategorySelect.value = selectedCategoryName;
+        selectElement.value = selectedCategoryName;
     }
+}
+
+function closeCategoryCreateModal() {
+    if (!categoryCreateModal || !categoryCreateForm) {
+        return;
+    }
+
+    categoryCreateModal.classList.remove('show');
+    categoryCreateModal.setAttribute('aria-hidden', 'true');
+    categoryCreateForm.reset();
+    hideModalFeedback(categoryCreateFeedback);
+
+    if (categoryCreateSaveBtn) {
+        categoryCreateSaveBtn.disabled = false;
+        categoryCreateSaveBtn.textContent = 'Crear categoria';
+    }
+}
+
+function openCategoryCreateModal() {
+    if (!categoryCreateModal) {
+        return;
+    }
+
+    hideModalFeedback(categoryCreateFeedback);
+    categoryCreateModal.classList.add('show');
+    categoryCreateModal.setAttribute('aria-hidden', 'false');
+    if (modalCategoryNameInput) {
+        modalCategoryNameInput.focus();
+    }
+}
+
+function closeProductCreateModal() {
+    if (!productCreateModal || !productCreateForm) {
+        return;
+    }
+
+    productCreateModal.classList.remove('show');
+    productCreateModal.setAttribute('aria-hidden', 'true');
+    productCreateForm.reset();
+    hideModalFeedback(productCreateFeedback);
+
+    if (productCreateSaveBtn) {
+        productCreateSaveBtn.disabled = false;
+        productCreateSaveBtn.textContent = 'Crear producto';
+    }
+}
+
+function openProductCreateModal(preselectedCategoryName = '') {
+    if (!productCreateModal) {
+        return;
+    }
+
+    hideModalFeedback(productCreateFeedback);
+    renderCategoryOptions(createProductCategorySelect, preselectedCategoryName);
+    if (createProductStateSelect) {
+        createProductStateSelect.value = 'active';
+    }
+    if (createProductFeaturedSelect) {
+        createProductFeaturedSelect.value = 'false';
+    }
+
+    productCreateModal.classList.add('show');
+    productCreateModal.setAttribute('aria-hidden', 'false');
+    if (createProductNameInput) {
+        createProductNameInput.focus();
+    }
+}
+
+function buildDefaultProductImage(nombre, categoria) {
+    const matchedByName = productsState.find((product) => normalizeCategoryKey(product.nombre) === normalizeCategoryKey(nombre));
+    if (matchedByName?.image_url) {
+        return matchedByName.image_url;
+    }
+
+    const matchedByCategory = categoriesState.find((category) => normalizeCategoryKey(category.name) === normalizeCategoryKey(categoria));
+    if (matchedByCategory?.image_url) {
+        return matchedByCategory.image_url;
+    }
+
+    return 'logo.png';
+}
+
+async function createCategoryByName(rawName) {
+    const name = String(rawName || '').trim();
+
+    if (!name) {
+        showNotice('Debes escribir el nombre de la categoria.', 'error');
+        return false;
+    }
+
+    const exists = categoriesState.some((category) => category.name.toLowerCase() === name.toLowerCase());
+    if (exists) {
+        showNotice('Esa categoria ya existe.', 'error');
+        return false;
+    }
+
+    const id = `${slugify(name)}-${Date.now()}`;
+    await firebaseDb.collection('categorias').doc(id).set({
+        name,
+        image_url: '',
+        active: true,
+        created_at: firestoreNow(),
+        updated_at: firestoreNow()
+    });
+
+    await reloadDataAndRender();
+    showNotice('Categoria creada y activada.', 'ok');
+    return true;
 }
 
 function closeProductEditModal() {
@@ -820,33 +989,171 @@ function openProductEditModal(product, categoryId) {
     editProductNameInput.focus();
 }
 
+function closeCategoryProductsModal() {
+    if (!categoryProductsModal || !categoryProductsModalBody || !categoryProductsModalMeta) {
+        return;
+    }
+
+    categoryProductsModal.classList.remove('show');
+    categoryProductsModal.setAttribute('aria-hidden', 'true');
+    categoryProductsModalBody.innerHTML = '';
+    categoryProductsModalMeta.innerHTML = '';
+    activeCategoryModalId = null;
+}
+
+function renderCategoryProductsModal(category) {
+    if (!categoryProductsModalTitle || !categoryProductsModalMeta || !categoryProductsModalBody || !category) {
+        return;
+    }
+
+    const products = productsState
+        .filter((product) => product.categoria === category.name)
+        .sort((left, right) => left.nombre.localeCompare(right.nombre, 'es', { sensitivity: 'base' }));
+
+    categoryProductsModalTitle.textContent = category.name;
+    categoryProductsModalMeta.innerHTML = `
+        <span class="category-modal-chip">${products.length} producto${products.length === 1 ? '' : 's'}</span>
+        <span class="category-modal-chip">${category.active ? 'Visible en publico' : 'Oculta en publico'}</span>
+    `;
+
+    if (!products.length) {
+        categoryProductsModalBody.innerHTML = '<div class="category-modal-empty">Esta categoria todavia no tiene productos cargados.</div>';
+        return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'category-modal-list';
+
+    products.forEach((product) => {
+        const item = document.createElement('div');
+        item.className = 'category-modal-product';
+        const isPaused = product.estado === 'paused';
+        const stateClass = isPaused ? 'paused' : 'active';
+        const stateText = isPaused ? 'Pausado' : 'Activo';
+        const featuredTag = product.es_destacado ? '<span class="category-modal-chip">Destacado</span>' : '';
+        const imageSrc = product.image_url || category.image_url || 'logo.png';
+
+        item.innerHTML = `
+            <img class="category-modal-product-image" src="${imageSrc}" alt="${product.nombre}">
+            <div class="category-modal-product-copy">
+                <div class="category-modal-product-head">
+                    <strong class="category-modal-product-name">${product.nombre}</strong>
+                    <span class="product-state-tag ${stateClass}">${stateText}</span>
+                    ${featuredTag}
+                </div>
+                <div class="category-modal-product-meta">
+                    <span class="category-price-chip">${formatMoney(product.precio)}</span>
+                    <span class="category-modal-chip">${category.name}</span>
+                </div>
+            </div>
+            <div class="category-modal-product-actions">
+                <button class="mini-btn" data-action="edit-product" data-product-id="${product.id}" data-category-id="${category.id}">Editar</button>
+                <button class="mini-btn" data-action="pause-product" data-product-id="${product.id}" data-category-id="${category.id}">${isPaused ? 'Reanudar' : 'Pausar'}</button>
+                <button class="mini-btn remove" data-action="delete-product" data-product-id="${product.id}" data-category-id="${category.id}">Eliminar</button>
+            </div>
+        `;
+
+        list.appendChild(item);
+    });
+
+    categoryProductsModalBody.innerHTML = '';
+    categoryProductsModalBody.appendChild(list);
+}
+
+function openCategoryProductsModal(categoryId) {
+    if (!categoryProductsModal) {
+        return;
+    }
+
+    const category = categoriesState.find((item) => item.id === categoryId);
+    if (!category) {
+        showNotice('Categoria no encontrada.', 'error');
+        return;
+    }
+
+    activeCategoryModalId = categoryId;
+    renderCategoryProductsModal(category);
+    categoryProductsModal.classList.add('show');
+    categoryProductsModal.setAttribute('aria-hidden', 'false');
+}
+
+async function handleCategoryProductAction(action, productId, categoryId) {
+    const product = productsState.find((item) => item.id === productId);
+    if (!product) {
+        showNotice('Producto no encontrado.', 'error');
+        return;
+    }
+
+    try {
+        if (action === 'edit-product') {
+            openProductEditModal(product, categoryId);
+            return;
+        }
+
+        if (action === 'delete-product') {
+            const confirmed = window.confirm(`Eliminar ${product.nombre}?`);
+            if (!confirmed) {
+                return;
+            }
+
+            await firebaseDb.collection('productos').doc(productId).delete();
+            await reloadDataAndRender();
+            showNotice('Producto eliminado.', 'ok');
+            return;
+        }
+
+        if (action === 'pause-product') {
+            const estado = product.estado === 'paused' ? 'active' : 'paused';
+            await firebaseDb.collection('productos').doc(productId).update({
+                estado,
+                updated_at: firestoreNow()
+            });
+
+            await reloadDataAndRender();
+            showNotice(`Producto ${estado === 'paused' ? 'pausado' : 'reanudado'}.`, 'ok');
+        }
+    } catch (error) {
+        showNotice(`No se pudo actualizar el producto: ${error.message || 'Error inesperado.'}`, 'error');
+    }
+}
+
 function createCategoryRow(category) {
     const wrapper = document.createElement('div');
     const row = document.createElement('div');
-    row.className = 'list-item';
+    row.className = 'list-item category-list-item';
 
     const stateClass = category.active ? 'active' : 'inactive';
     const stateText = category.active ? 'Activa' : 'Inactiva';
     const toggleText = category.active ? 'Desactivar' : 'Activar';
-    const categoryThumb = category.image_url
-        ? `<img src="${category.image_url}" alt="${category.name}">`
-        : '';
+    const productsCount = productsState.filter((product) => product.categoria === category.name).length;
+    const categoryThumb = category.image_url || 'logo.png';
 
     row.innerHTML = `
-        <div class="product-main">${categoryThumb}<span>${category.name}</span></div>
-        <div class="muted">Categoria del menu</div>
-        <span class="state-pill ${stateClass}">${stateText}</span>
-        <button class="mini-btn" data-category-id="${category.id}" data-action="toggle-category">${toggleText}</button>
-        <button class="mini-btn remove" data-category-id="${category.id}" data-action="delete-category">Eliminar</button>
-        <button class="mini-btn remove" data-category-id="${category.id}" data-action="view-category">Ver mas</button>
+        <button type="button" class="category-trigger" data-category-id="${category.id}" data-action="view-category">
+            <div class="category-trigger-main">
+                <img class="category-trigger-thumb" src="${categoryThumb}" alt="${category.name}">
+                <div class="category-trigger-copy">
+                    <span class="category-trigger-name">${category.name}</span>
+                    <span class="category-trigger-subtitle">Toca para ver y controlar los productos de esta categoria.</span>
+                    <div class="category-meta-row">
+                        <span class="state-pill ${stateClass}">${stateText}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="category-trigger-meta">
+                <div class="category-trigger-count">
+                    <strong>${productsCount}</strong>
+                    <span>Productos</span>
+                </div>
+            </div>
+        </button>
+        <div class="category-actions">
+            <button class="mini-btn" data-category-id="${category.id}" data-action="toggle-category">${toggleText}</button>
+            <button class="mini-btn remove" data-category-id="${category.id}" data-action="delete-category">Eliminar</button>
+        </div>
     `;
 
-    const inline = document.createElement('div');
-    inline.className = 'category-products-inline';
-    inline.id = `category-products-${category.id}`;
-
     wrapper.appendChild(row);
-    wrapper.appendChild(inline);
     return wrapper;
 }
 
@@ -855,60 +1162,6 @@ function renderCategories() {
     categoriesState.forEach((category) => {
         categoryList.appendChild(createCategoryRow(category));
     });
-}
-
-function renderCategoryProductsInline(container, category, isVisible) {
-    if (!container || !category) {
-        return;
-    }
-
-    container.innerHTML = '';
-    if (!isVisible) {
-        container.classList.remove('show');
-        return;
-    }
-
-    const products = productsState.filter((product) => product.categoria === category.name);
-    container.classList.add('show');
-
-    const title = document.createElement('h3');
-    title.textContent = `Productos en ${category.name}`;
-    container.appendChild(title);
-
-    if (!products.length) {
-        const empty = document.createElement('p');
-        empty.className = 'muted';
-        empty.textContent = 'No hay productos agregados en esta categoria.';
-        container.appendChild(empty);
-        return;
-    }
-
-    const list = document.createElement('div');
-    list.className = 'category-product-list';
-
-    products.forEach((product) => {
-        const item = document.createElement('div');
-        item.className = 'category-product-item';
-        const pausedTag = product.estado === 'paused' ? '<span class="product-state-tag">Pausado</span>' : '';
-
-        item.innerHTML = `
-            <div>
-                <span>${product.nombre}</span>${pausedTag}
-                <div class="muted">$ ${Number(product.precio).toLocaleString('es-CO')}</div>
-            </div>
-            <button class="mini-btn" data-action="edit-product" data-product-id="${product.id}" data-category-id="${category.id}">Editar</button>
-            <button class="mini-btn remove" data-action="delete-product" data-product-id="${product.id}" data-category-id="${category.id}">Eliminar</button>
-            <button class="mini-btn" data-action="pause-product" data-product-id="${product.id}" data-category-id="${category.id}">${product.estado === 'paused' ? 'Reanudar' : 'Pausar'}</button>
-        `;
-
-        list.appendChild(item);
-    });
-
-    container.appendChild(list);
-}
-
-function getInlineContainerByCategoryId(categoryId) {
-    return document.getElementById(`category-products-${categoryId}`);
 }
 
 function createFeaturedRow(product) {
@@ -1416,6 +1669,72 @@ function readFileAsDataUrl(file) {
     });
 }
 
+function loadImageElementFromFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('No se pudo procesar la imagen seleccionada.'));
+            image.src = String(reader.result || '');
+        };
+        reader.onerror = () => reject(new Error('No se pudo leer la imagen local.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function compressImageToDataUrl(file, options = {}) {
+    const {
+        maxWidth = 1280,
+        maxHeight = 1280,
+        mimeType = 'image/jpeg',
+        startQuality = 0.82,
+        minQuality = 0.45,
+        maxLength = 900000
+    } = options;
+
+    const image = await loadImageElementFromFile(file);
+    let width = image.naturalWidth || image.width;
+    let height = image.naturalHeight || image.height;
+
+    const scale = Math.min(1, maxWidth / Math.max(width, 1), maxHeight / Math.max(height, 1));
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+        throw new Error('No se pudo preparar la imagen para guardarla.');
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    let quality = startQuality;
+    let dataUrl = canvas.toDataURL(mimeType, quality);
+
+    while (dataUrl.length > maxLength && quality > minQuality) {
+        quality = Math.max(minQuality, quality - 0.08);
+        dataUrl = canvas.toDataURL(mimeType, quality);
+    }
+
+    if (dataUrl.length > maxLength) {
+        throw new Error('La imagen sigue siendo demasiado pesada para guardarla localmente. Reduce su tamano o usa una imagen mas ligera.');
+    }
+
+    return dataUrl;
+}
+
+async function resolveProductImageUpload(file, productName) {
+    try {
+        return await uploadImageToFirebase(file, productName);
+    } catch (uploadError) {
+        return compressImageToDataUrl(file);
+    }
+}
+
 async function getStatDocument(metric) {
     const byId = await firebaseDb.collection('estadisticas').doc(metric).get();
     if (byId.exists) {
@@ -1539,6 +1858,15 @@ async function reloadDataAndRender() {
     renderMetricsChart();
     await syncStats();
     renderMetricsOverview();
+
+    if (activeCategoryModalId) {
+        const activeCategory = categoriesState.find((category) => category.id === activeCategoryModalId);
+        if (activeCategory) {
+            openCategoryProductsModal(activeCategoryModalId);
+        } else {
+            closeCategoryProductsModal();
+        }
+    }
 }
 
 categoryForm.addEventListener('submit', async (event) => {
@@ -1548,30 +1876,11 @@ categoryForm.addEventListener('submit', async (event) => {
     const formData = new FormData(categoryForm);
     const name = String(formData.get('categoryName') || '').trim();
 
-    if (!name) {
-        showNotice('Debes escribir el nombre de la categoria.', 'error');
-        return;
-    }
-
-    const exists = categoriesState.some((category) => category.name.toLowerCase() === name.toLowerCase());
-    if (exists) {
-        showNotice('Esa categoria ya existe.', 'error');
-        return;
-    }
-
     try {
-        const id = `${slugify(name)}-${Date.now()}`;
-        await firebaseDb.collection('categorias').doc(id).set({
-            name,
-            image_url: '',
-            active: true,
-            created_at: firestoreNow(),
-            updated_at: firestoreNow()
-        });
-
-        categoryForm.reset();
-        await reloadDataAndRender();
-        showNotice('Categoria creada y activada.', 'ok');
+        const created = await createCategoryByName(name);
+        if (created) {
+            categoryForm.reset();
+        }
     } catch (error) {
         showNotice(`No se pudo crear la categoria: ${error.message || 'Error inesperado.'}`, 'error');
     }
@@ -1579,28 +1888,25 @@ categoryForm.addEventListener('submit', async (event) => {
 
 categoryList.addEventListener('click', async (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
+    if (!(target instanceof Element)) {
         return;
     }
 
-    const action = target.dataset.action;
-    const categoryId = target.dataset.categoryId;
+    const actionButton = target.closest('button[data-action]');
+    if (!(actionButton instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const action = actionButton.dataset.action;
+    const categoryId = actionButton.dataset.categoryId;
 
     if (!action) {
         return;
     }
 
-    if (categoryId && !target.dataset.productId) {
+    if (categoryId && !actionButton.dataset.productId) {
         if (action === 'view-category') {
-            const category = categoriesState.find((item) => item.id === categoryId);
-            if (!category) {
-                showNotice('Categoria no encontrada.', 'error');
-                return;
-            }
-
-            const inline = getInlineContainerByCategoryId(categoryId);
-            const shouldShow = !(inline && inline.classList.contains('show'));
-            renderCategoryProductsInline(inline, category, shouldShow);
+            openCategoryProductsModal(categoryId);
             return;
         }
 
@@ -1611,21 +1917,32 @@ categoryList.addEventListener('click', async (event) => {
                 return;
             }
 
-            const hasProducts = productsState.some((product) => product.categoria === category.name);
-            if (hasProducts) {
-                showNotice('No puedes eliminar la categoria porque tiene productos asociados.', 'error');
-                return;
-            }
-
-            const confirmed = window.confirm(`Eliminar la categoria ${category.name}?`);
+            const relatedProducts = productsState.filter((product) => product.categoria === category.name);
+            const confirmed = window.confirm(
+                relatedProducts.length
+                    ? `Eliminar la categoria ${category.name} y sus ${relatedProducts.length} producto${relatedProducts.length === 1 ? '' : 's'} asociados? Esta accion no se puede deshacer.`
+                    : `Eliminar la categoria ${category.name}? Esta accion no se puede deshacer.`
+            );
             if (!confirmed) {
                 return;
             }
 
             try {
-                await firebaseDb.collection('categorias').doc(categoryId).delete();
+                const batch = firebaseDb.batch();
+                batch.delete(firebaseDb.collection('categorias').doc(categoryId));
+
+                relatedProducts.forEach((product) => {
+                    batch.delete(firebaseDb.collection('productos').doc(product.id));
+                });
+
+                await batch.commit();
                 await reloadDataAndRender();
-                showNotice('Categoria eliminada.', 'ok');
+                showNotice(
+                    relatedProducts.length
+                        ? `Categoria eliminada junto con ${relatedProducts.length} producto${relatedProducts.length === 1 ? '' : 's'}.`
+                        : 'Categoria eliminada.',
+                    'ok'
+                );
             } catch (error) {
                 showNotice(`No se pudo eliminar la categoria: ${error.message || 'Error inesperado.'}`, 'error');
             }
@@ -1653,7 +1970,7 @@ categoryList.addEventListener('click', async (event) => {
         }
     }
 
-    const productId = target.dataset.productId;
+    const productId = actionButton.dataset.productId;
     if (!productId || !categoryId) {
         return;
     }
@@ -1662,53 +1979,90 @@ categoryList.addEventListener('click', async (event) => {
         return;
     }
 
-    const product = productsState.find((item) => item.id === productId);
-    if (!product) {
-        showNotice('Producto no encontrado.', 'error');
-        return;
-    }
-
-    try {
-        if (action === 'edit-product') {
-            openProductEditModal(product, categoryId);
-            return;
-        }
-
-        if (action === 'delete-product') {
-            const confirmed = window.confirm(`Eliminar ${product.nombre}?`);
-            if (!confirmed) {
-                return;
-            }
-
-            await firebaseDb.collection('productos').doc(productId).delete();
-
-            await reloadDataAndRender();
-            const category = categoriesState.find((item) => item.id === categoryId);
-            if (category) {
-                renderCategoryProductsInline(getInlineContainerByCategoryId(categoryId), category, true);
-            }
-            showNotice('Producto eliminado.', 'ok');
-            return;
-        }
-
-        if (action === 'pause-product') {
-            const estado = product.estado === 'paused' ? 'active' : 'paused';
-            await firebaseDb.collection('productos').doc(productId).update({
-                estado,
-                updated_at: firestoreNow()
-            });
-
-            await reloadDataAndRender();
-            const category = categoriesState.find((item) => item.id === categoryId);
-            if (category) {
-                renderCategoryProductsInline(getInlineContainerByCategoryId(categoryId), category, true);
-            }
-            showNotice(`Producto ${estado === 'paused' ? 'pausado' : 'reanudado'}.`, 'ok');
-        }
-    } catch (error) {
-        showNotice(`No se pudo actualizar el producto: ${error.message || 'Error inesperado.'}`, 'error');
-    }
+    await handleCategoryProductAction(action, productId, categoryId);
 });
+
+if (categoryProductsModalCloseBtn) {
+    categoryProductsModalCloseBtn.addEventListener('click', () => {
+        closeCategoryProductsModal();
+    });
+}
+
+if (categoryProductsModal) {
+    categoryProductsModal.addEventListener('click', async (event) => {
+        if (event.target === categoryProductsModal) {
+            closeCategoryProductsModal();
+            return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const actionButton = target.closest('button[data-action]');
+        if (!(actionButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const action = actionButton.dataset.action;
+        const productId = actionButton.dataset.productId;
+        const categoryId = actionButton.dataset.categoryId;
+
+        if (!action || !productId || !categoryId) {
+            return;
+        }
+
+        if (action !== 'edit-product' && action !== 'delete-product' && action !== 'pause-product') {
+            return;
+        }
+
+        await handleCategoryProductAction(action, productId, categoryId);
+    });
+}
+
+if (openCreateCategoryBtn) {
+    openCreateCategoryBtn.addEventListener('click', () => {
+        openCategoryCreateModal();
+    });
+}
+
+if (openCreateProductBtn) {
+    openCreateProductBtn.addEventListener('click', () => {
+        const preselectedCategoryName = activeCategoryModalId
+            ? (categoriesState.find((category) => category.id === activeCategoryModalId)?.name || '')
+            : '';
+        openProductCreateModal(preselectedCategoryName);
+    });
+}
+
+if (categoryCreateCloseBtn) {
+    categoryCreateCloseBtn.addEventListener('click', () => {
+        closeCategoryCreateModal();
+    });
+}
+
+if (categoryCreateModal) {
+    categoryCreateModal.addEventListener('click', (event) => {
+        if (event.target === categoryCreateModal) {
+            closeCategoryCreateModal();
+        }
+    });
+}
+
+if (productCreateCloseBtn) {
+    productCreateCloseBtn.addEventListener('click', () => {
+        closeProductCreateModal();
+    });
+}
+
+if (productCreateModal) {
+    productCreateModal.addEventListener('click', (event) => {
+        if (event.target === productCreateModal) {
+            closeProductCreateModal();
+        }
+    });
+}
 
 if (productEditCloseBtn) {
     productEditCloseBtn.addEventListener('click', () => {
@@ -1727,8 +2081,165 @@ if (productEditModal) {
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && productEditModal && productEditModal.classList.contains('show')) {
         closeProductEditModal();
+        return;
+    }
+
+    if (event.key === 'Escape' && productCreateModal && productCreateModal.classList.contains('show')) {
+        closeProductCreateModal();
+        return;
+    }
+
+    if (event.key === 'Escape' && categoryCreateModal && categoryCreateModal.classList.contains('show')) {
+        closeCategoryCreateModal();
+        return;
+    }
+
+    if (event.key === 'Escape' && categoryProductsModal && categoryProductsModal.classList.contains('show')) {
+        closeCategoryProductsModal();
     }
 });
+
+if (categoryCreateForm) {
+    categoryCreateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice();
+        hideModalFeedback(categoryCreateFeedback);
+
+        const name = String(modalCategoryNameInput?.value || '').trim();
+
+        if (!name) {
+            showModalFeedback(categoryCreateFeedback, 'Debes escribir el nombre de la categoria.', 'error');
+            return;
+        }
+
+        if (categoryCreateSaveBtn) {
+            categoryCreateSaveBtn.disabled = true;
+            categoryCreateSaveBtn.textContent = 'Creando...';
+        }
+
+        try {
+            const created = await createCategoryByName(name);
+            if (created) {
+                showModalFeedback(categoryCreateFeedback, 'Categoria creada correctamente.', 'ok');
+                await waitForUiDelay(650);
+                closeCategoryCreateModal();
+            }
+        } catch (error) {
+            showNotice(`No se pudo crear la categoria: ${error.message || 'Error inesperado.'}`, 'error');
+            showModalFeedback(categoryCreateFeedback, `No se pudo crear la categoria: ${error.message || 'Error inesperado.'}`, 'error');
+            if (categoryCreateSaveBtn) {
+                categoryCreateSaveBtn.disabled = false;
+                categoryCreateSaveBtn.textContent = 'Crear categoria';
+            }
+        }
+    });
+}
+
+if (productCreateForm) {
+    productCreateForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice();
+        hideModalFeedback(productCreateFeedback);
+
+        const nombre = String(createProductNameInput?.value || '').trim();
+        const precio = Number(createProductPriceInput?.value || 0);
+        const categoria = String(createProductCategorySelect?.value || '').trim();
+        const estado = createProductStateSelect?.value === 'paused' ? 'paused' : 'active';
+        const esDestacado = createProductFeaturedSelect?.value === 'true';
+        const imageUrlInput = String(createProductImageUrlInput?.value || '').trim();
+        const imageFile = createProductImageFileInput && createProductImageFileInput.files
+            ? createProductImageFileInput.files[0]
+            : null;
+
+        if (!categoriesState.length) {
+            showNotice('Primero crea o sincroniza al menos una categoria.', 'error');
+            showModalFeedback(productCreateFeedback, 'Primero crea o sincroniza al menos una categoria.', 'error');
+            return;
+        }
+
+        if (!nombre || !categoria) {
+            showNotice('Completa nombre y categoria del producto.', 'error');
+            showModalFeedback(productCreateFeedback, 'Completa nombre y categoria del producto.', 'error');
+            return;
+        }
+
+        if (!Number.isFinite(precio) || precio < 0) {
+            showNotice('Precio invalido.', 'error');
+            showModalFeedback(productCreateFeedback, 'Precio invalido.', 'error');
+            return;
+        }
+
+        const categoryExists = categoriesState.some((category) => normalizeCategoryKey(category.name) === normalizeCategoryKey(categoria));
+        if (!categoryExists) {
+            showNotice('La categoria seleccionada no existe o no esta cargada.', 'error');
+            showModalFeedback(productCreateFeedback, 'La categoria seleccionada no existe o no esta cargada.', 'error');
+            return;
+        }
+
+        if (imageFile && imageFile.size > 20 * 1024 * 1024) {
+            showNotice('La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
+            showModalFeedback(productCreateFeedback, 'La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
+            return;
+        }
+
+        const duplicatedProduct = productsState.some((product) => {
+            return normalizeCategoryKey(product.nombre) === normalizeCategoryKey(nombre)
+                && normalizeCategoryKey(product.categoria) === normalizeCategoryKey(categoria);
+        });
+
+        if (duplicatedProduct) {
+            showNotice('Ese producto ya existe en la categoria seleccionada.', 'error');
+            showModalFeedback(productCreateFeedback, 'Ese producto ya existe en la categoria seleccionada.', 'error');
+            return;
+        }
+
+        if (productCreateSaveBtn) {
+            productCreateSaveBtn.disabled = true;
+            productCreateSaveBtn.textContent = 'Creando...';
+        }
+
+        try {
+            let finalImageUrl = imageUrlInput || buildDefaultProductImage(nombre, categoria);
+            if (imageFile) {
+                finalImageUrl = await resolveProductImageUpload(imageFile, nombre);
+            }
+
+            const safeSlug = slugify(nombre) || `producto-${Date.now()}`;
+            const productId = `${safeSlug}-${Date.now()}`;
+            await firebaseDb.collection('productos').doc(productId).set({
+                id: productId,
+                nombre,
+                precio,
+                categoria,
+                estado,
+                es_destacado: esDestacado,
+                image_url: finalImageUrl,
+                source: 'admin_panel',
+                created_at: firestoreNow(),
+                updated_at: firestoreNow()
+            });
+
+            await reloadDataAndRender();
+            showModalFeedback(productCreateFeedback, 'Producto creado correctamente.', 'ok');
+            await waitForUiDelay(650);
+            closeProductCreateModal();
+
+            const createdCategory = categoriesState.find((category) => category.name === categoria);
+            if (createdCategory) {
+                openCategoryProductsModal(createdCategory.id);
+            }
+
+            showNotice('Producto creado correctamente.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo crear el producto: ${error.message || 'Error inesperado.'}`, 'error');
+            showModalFeedback(productCreateFeedback, `No se pudo crear el producto: ${error.message || 'Error inesperado.'}`, 'error');
+            if (productCreateSaveBtn) {
+                productCreateSaveBtn.disabled = false;
+                productCreateSaveBtn.textContent = 'Crear producto';
+            }
+        }
+    });
+}
 
 if (productEditForm) {
     productEditForm.addEventListener('submit', async (event) => {
@@ -1774,11 +2285,7 @@ if (productEditForm) {
         try {
             let finalImageUrl = imageUrlInput;
             if (imageFile) {
-                try {
-                    finalImageUrl = await uploadImageToFirebase(imageFile, nombre);
-                } catch (uploadError) {
-                    finalImageUrl = await readFileAsDataUrl(imageFile);
-                }
+                finalImageUrl = await resolveProductImageUpload(imageFile, nombre);
             }
 
             await firebaseDb.collection('productos').doc(productId).update({
@@ -1792,12 +2299,6 @@ if (productEditForm) {
             });
 
             await reloadDataAndRender();
-            if (editingCategoryContextId) {
-                const category = categoriesState.find((item) => item.id === editingCategoryContextId);
-                if (category) {
-                    renderCategoryProductsInline(getInlineContainerByCategoryId(editingCategoryContextId), category, true);
-                }
-            }
 
             closeProductEditModal();
             showNotice('Producto editado correctamente.', 'ok');

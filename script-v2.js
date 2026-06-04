@@ -212,6 +212,14 @@ function normalizeImageAssetPath(value) {
         return '';
     }
 
+    if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
+        return normalized;
+    }
+
+    if (normalized.startsWith('/')) {
+        return normalized;
+    }
+
     if (normalized.startsWith('./')) {
         return normalized;
     }
@@ -639,16 +647,16 @@ function resolveStaticOptionPrice(productName, categoryName) {
     if (normalizedCategoryName.includes('entradas')) {
         const options = getEntradaOptions(productName);
         const matched = options.find((item) => normalizedProductName.includes(normalizeCategoryKey(item.label)));
-        return matched ? parseLocalizedPrice(matched.price) : 0;
+        return matched ? parseLocalizedPrice(matched.price) : null;
     }
 
     if (normalizedCategoryName.includes('bebidas') || normalizedCategoryName.includes('adicionales')) {
         const options = getBebidasYAdicionalesOptions(productName);
         const matched = options.find((item) => normalizedProductName.includes(normalizeCategoryKey(item.label)));
-        return matched ? parseLocalizedPrice(matched.price) : 0;
+        return matched ? parseLocalizedPrice(matched.price) : null;
     }
 
-    return 0;
+    return null;
 }
 
 function getBurgerClasicasOptions(productName) {
@@ -683,14 +691,15 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
     const normalizedOptions = normalizeOrderOptions(orderOptions);
     const imagePath = normalizedOptions.imagePath;
     if (!imagePath) {
-        return 0;
+        return null;
     }
 
     const normalizedProductName = normalizeCategoryKey(productName);
 
     if (COMBOS_CON_PAPAS_IMAGE_PRICES[imagePath]) {
         const peopleCount = Number(normalizedOptions.peopleCount || 0);
-        return Number(COMBOS_CON_PAPAS_IMAGE_PRICES[imagePath][peopleCount] || 0);
+        const comboPrice = COMBOS_CON_PAPAS_IMAGE_PRICES[imagePath][peopleCount];
+        return comboPrice === undefined ? null : Number(comboPrice);
     }
 
     if (imagePath === './burgerclasicas/burgernormal.png') {
@@ -713,7 +722,11 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
         return 19000;
     }
 
-    return Number(MANUAL_IMAGE_BASE_PRICES[imagePath] || 0);
+    if (Object.prototype.hasOwnProperty.call(MANUAL_IMAGE_BASE_PRICES, imagePath)) {
+        return Number(MANUAL_IMAGE_BASE_PRICES[imagePath]);
+    }
+
+    return null;
 }
 
 function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 'solo' }) {
@@ -728,13 +741,13 @@ function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 
         return Math.round(Number(price || 0) * (1 - discountRate));
     };
 
-    if (manualImagePrice > 0) {
+    if (manualImagePrice !== null && manualImagePrice !== undefined) {
         const resolvedPrice = normalizedOptions.type === 'combo' ? manualImagePrice + COMBO_EXTRA_PRICE : manualImagePrice;
         return applyDiscount(resolvedPrice);
     }
 
     const staticOptionPrice = resolveStaticOptionPrice(productName, categoryName);
-    if (staticOptionPrice > 0) {
+    if (staticOptionPrice !== null && staticOptionPrice !== undefined) {
         return applyDiscount(staticOptionPrice);
     }
 
@@ -748,8 +761,9 @@ function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 
 }
 
 function getCartItemUnitPrice(item) {
-    const storedPrice = Number(item?.unitPrice || 0);
-    if (storedPrice > 0) {
+    const hasStoredPrice = item && item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '';
+    const storedPrice = Number(item?.unitPrice ?? 0);
+    if (hasStoredPrice && Number.isFinite(storedPrice)) {
         return storedPrice;
     }
 
@@ -3050,6 +3064,15 @@ function resolveProductImage(product) {
 
 function resolveCategoryImage(categoryName) {
     const normalizedCategory = normalizeAssetLookup(categoryName);
+    const remoteCategory = (Array.isArray(activeCategoryMeta) ? activeCategoryMeta : [])
+        .concat(Array.isArray(allCategoryMeta) ? allCategoryMeta : [])
+        .find((category) => normalizeCategoryKey(category?.name) === normalizeCategory);
+    const remoteImage = String(remoteCategory?.image_url || '').trim();
+
+    if (remoteImage) {
+        return remoteImage;
+    }
+
     if (normalizedCategory === 'bebidasyadicionales') {
         // Siempre devolver la imagen correcta de la galería
         return './bebidasyadicionales/adicionales.png';
@@ -4006,7 +4029,12 @@ function ensurePinnedExplorerCategories(categories) {
         });
     });
 
-    return pinnedList;
+    const pinnedKeys = new Set(pinnedList.map((item) => normalizeCategoryKey(item.key)));
+    const dynamicRemainder = Array.from(inputMap.values())
+        .filter((item) => !pinnedKeys.has(normalizeCategoryKey(item.key)))
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'));
+
+    return [...pinnedList, ...dynamicRemainder];
 }
 
 function getCategoryProducts(category, options = {}) {
@@ -4293,108 +4321,17 @@ function renderCategoryExplorer(nextKey, options = {}) {
         }
     }
 
-    const heroWrap = document.createElement('div');
-    heroWrap.className = 'category-hero-wrap';
+    const rendered = renderManualCategoryGallery(
+        panel,
+        selectedCategory.name,
+        [],
+        products,
+        allCategoryProducts
+    );
 
-    const heroImage = document.createElement('img');
-    heroImage.className = 'category-hero-image';
-    heroImage.alt = `Imagen de ${selectedCategory.name}`;
-    heroImage.loading = 'lazy';
-    heroImage.decoding = 'async';
-    heroImage.src = resolveCategoryImage(selectedCategory.name);
-    heroImage.addEventListener('error', () => {
-        heroImage.src = resolveCategoryImage(selectedCategory.name);
-    });
-
-    const heroTitle = document.createElement('p');
-    heroTitle.className = 'category-hero-title';
-    heroTitle.textContent = selectedCategory.name;
-
-    const categoryOrderBtn = document.createElement('a');
-    const categoryOrderBtnId = `btn-category-head-${selectedCategory.key || 'general'}`;
-    categoryOrderBtn.className = 'category-hero-order-btn';
-    categoryOrderBtn.href = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`Hola ROAL BURGER! Quiero hacer un pedido de la categoria ${selectedCategory.name}`)}`;
-    categoryOrderBtn.target = '_blank';
-    categoryOrderBtn.rel = 'noopener noreferrer';
-    categoryOrderBtn.textContent = 'Hacer pedido';
-    categoryOrderBtn.addEventListener('click', (event) => {
-        if (!canPlaceOrdersNow()) {
-            event.preventDefault();
-            showOrderingClosedMessage();
-            return;
-        }
-
-        trackButtonClick(categoryOrderBtnId, `Pedido categoria ${selectedCategory.name}`);
-    });
-
-    const heroHead = document.createElement('div');
-    heroHead.className = 'category-hero-head';
-    heroHead.appendChild(heroTitle);
-    heroHead.appendChild(categoryOrderBtn);
-
-    heroWrap.appendChild(heroImage);
-    heroWrap.appendChild(heroHead);
-
-    if (!products.length || shouldHideCategoryList(selectedCategory)) {
-        panel.innerHTML = '';
-        panel.appendChild(heroWrap);
-
-        if (options.fromUserClick) {
-            panel.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-            panel.classList.remove('focus-highlight');
-            void panel.offsetWidth;
-            panel.classList.add('focus-highlight');
-        }
-
-        return;
+    if (!rendered) {
+        panel.innerHTML = '<p class="category-empty">No hay productos cargados en esta categoria.</p>';
     }
-
-    const list = document.createElement('div');
-    list.className = 'category-products-list';
-
-    products.forEach((product, index) => {
-        const row = document.createElement('div');
-        row.className = 'category-product-row';
-
-        const thumb = document.createElement('img');
-        thumb.className = 'category-product-thumb';
-        thumb.src = product.image_url || 'logo.png';
-        thumb.alt = product.nombre;
-        thumb.loading = 'lazy';
-        thumb.decoding = 'async';
-        thumb.addEventListener('error', () => {
-            thumb.src = 'logo.png';
-        });
-
-        const info = document.createElement('div');
-        const title = document.createElement('strong');
-        title.textContent = product.nombre;
-        const price = document.createElement('div');
-        price.className = 'muted';
-        price.textContent = `$ ${Number(product.precio || 0).toLocaleString('es-CO')}`;
-        info.appendChild(title);
-        info.appendChild(price);
-
-        const orderBtn = document.createElement('button');
-        const btnId = `btn-category-${selectedCategory.key}-${index + 1}`;
-        orderBtn.type = 'button';
-        orderBtn.className = 'category-order-btn';
-        orderBtn.textContent = 'Pedir';
-        orderBtn.addEventListener('click', (event) => {
-            event.preventDefault();
-            startProductOrderFlow(product.nombre, selectedCategory.name, btnId);
-        });
-
-        row.appendChild(thumb);
-        row.appendChild(info);
-        row.appendChild(orderBtn);
-        list.appendChild(row);
-    });
-
-    panel.innerHTML = '';
-    panel.appendChild(heroWrap);
-    panel.appendChild(list);
-    syncOrderingAvailabilityUI();
 
     if (options.fromUserClick) {
         panel.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
@@ -4402,6 +4339,8 @@ function renderCategoryExplorer(nextKey, options = {}) {
         void panel.offsetWidth;
         panel.classList.add('focus-highlight');
     }
+
+    syncOrderingAvailabilityUI();
 }
 // --- FUNCIÓN GLOBAL MODAL BEBIDAS ---
 function abrirModalBebida(nombre, ruta, categoria, options = {}) {
@@ -4596,7 +4535,8 @@ async function renderPublicFeaturedFromAdmin() {
             .map((doc) => doc.data())
             .map((category) => ({
                 name: category.name,
-                key: normalizeCategoryKey(category.name)
+                key: normalizeCategoryKey(category.name),
+                image_url: String(category.image_url || '').trim()
             }))
             .filter((category) => category.name && category.key);
 
@@ -4605,7 +4545,8 @@ async function renderPublicFeaturedFromAdmin() {
             .filter((category) => category.active !== false)
             .map((category) => ({
                 name: category.name,
-                key: normalizeCategoryKey(category.name)
+                key: normalizeCategoryKey(category.name),
+                image_url: String(category.image_url || '').trim()
             }));
 
         activeCategoryMeta = active;

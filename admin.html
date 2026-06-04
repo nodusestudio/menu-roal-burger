@@ -504,14 +504,23 @@
 
         .category-products-inline {
             display: none;
-            margin-top: 8px;
+            margin-top: 10px;
             margin-bottom: 8px;
             border: 1px solid rgba(255, 255, 255, 0.18);
-            border-radius: 12px;
-            padding: 14px;
-            background: rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 16px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
+        }
+
+        .category-products-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
         }
 
         .category-products-inline h3 {
@@ -519,7 +528,21 @@
             font-family: 'Oswald', sans-serif;
             font-size: 1rem;
             letter-spacing: 1px;
-            margin-bottom: 12px;
+            margin-bottom: 0;
+            text-transform: uppercase;
+        }
+
+        .category-products-summary {
+            display: inline-flex;
+            align-items: center;
+            min-height: 30px;
+            padding: 6px 11px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.08);
+            color: #edf4ff;
+            font-size: 0.73rem;
+            letter-spacing: 0.45px;
             text-transform: uppercase;
         }
 
@@ -527,13 +550,409 @@
             display: block;
         }
 
-        .product-state-tag {
+        .category-inline-form {
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: end;
+        }
+
+        .category-inline-form .ghost-button {
+            min-width: 170px;
+        }
+
+        .category-list-item {
+            grid-template-columns: 1fr;
+            gap: 10px;
+            padding: 0;
+            border-radius: 24px;
+            border: 0;
+            background: transparent;
+        }
+
+        .category-trigger {
+            width: 100%;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 14px;
+            align-items: center;
+            padding: 18px 20px;
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: linear-gradient(135deg, rgba(255, 123, 69, 0.18), rgba(18, 26, 46, 0.92));
+            color: #fff;
+            text-align: left;
+            cursor: pointer;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.2);
+            transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+        }
+
+        .category-trigger:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 173, 123, 0.34);
+            box-shadow: 0 22px 44px rgba(0, 0, 0, 0.28);
+        }
+
+        .category-trigger-main {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+        }
+
+        .category-trigger-thumb {
+            width: 56px;
+            height: 56px;
+            border-radius: 18px;
+            object-fit: cover;
+            flex-shrink: 0;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.06);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+        }
+
+        .category-trigger-copy {
+            display: grid;
+            gap: 7px;
+            min-width: 0;
+        }
+
+        .category-trigger-name {
+            font-family: 'Oswald', sans-serif;
+            font-size: 1.1rem;
+            letter-spacing: 0.8px;
+            line-height: 1.05;
+            text-transform: uppercase;
+            color: #fff8f1;
+            word-break: break-word;
+        }
+
+        .category-trigger-subtitle {
+            color: rgba(239, 246, 255, 0.78);
+            font-size: 0.82rem;
+            letter-spacing: 0.35px;
+        }
+
+        .category-trigger-meta {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 96px;
+            min-height: 54px;
+            padding: 8px 12px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.09);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            text-align: center;
+        }
+
+        .category-trigger-count {
+            display: grid;
+            gap: 2px;
+            justify-items: center;
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            color: #fff;
+            line-height: 1;
+        }
+
+        .category-trigger-count strong {
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+
+        .category-trigger-count span {
             font-size: 0.72rem;
+            letter-spacing: 0.55px;
+            color: rgba(255, 247, 240, 0.88);
+        }
+
+        .category-meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .category-count-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 28px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.08);
+            color: #eef4ff;
+            font-size: 0.75rem;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+        }
+
+        .category-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 0 6px;
+        }
+
+        .category-actions .state-pill {
+            min-width: 92px;
+        }
+
+        .category-actions .mini-btn,
+        .category-product-actions .mini-btn {
+            min-width: 0;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            letter-spacing: 0.45px;
+            line-height: 1;
+        }
+
+        .category-actions .mini-btn.remove,
+        .category-product-actions .mini-btn.remove {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .category-product-item {
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 14px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+        }
+
+        .category-product-copy {
+            min-width: 0;
+            display: grid;
+            gap: 10px;
+        }
+
+        .category-product-head {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .category-product-title {
+            font-size: 0.98rem;
+            line-height: 1.25;
+            word-break: break-word;
+        }
+
+        .category-product-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .category-price-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(255, 123, 69, 0.16);
+            border: 1px solid rgba(255, 123, 69, 0.28);
+            color: #fff5ee;
+            font-size: 0.76rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .category-product-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+            align-items: center;
+        }
+
+        .category-products-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 10040;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            background: rgba(0, 0, 0, 0.78);
+        }
+
+        .category-products-modal.show {
+            display: flex;
+        }
+
+        .category-products-modal-card {
+            width: min(100%, 1080px);
+            max-height: min(92vh, 960px);
+            overflow: auto;
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: linear-gradient(180deg, rgba(14, 20, 34, 0.98), rgba(8, 11, 20, 0.98));
+            box-shadow: 0 28px 70px rgba(0, 0, 0, 0.42);
+        }
+
+        .category-products-modal-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            padding: 24px 24px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .category-products-modal-title {
+            display: grid;
+            gap: 8px;
+        }
+
+        .category-products-modal-title h3 {
+            margin: 0;
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(1.4rem, 3vw, 2rem);
+            line-height: 1;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #fff8ef;
+        }
+
+        .category-products-modal-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .category-modal-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 30px;
+            padding: 6px 11px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.08);
+            color: #eef4ff;
+            font-size: 0.74rem;
+            letter-spacing: 0.45px;
+            text-transform: uppercase;
+        }
+
+        .category-products-modal-close {
+            border: 1px solid rgba(255, 123, 69, 0.34);
+            background: rgba(255, 123, 69, 0.12);
+            color: #fff;
+            border-radius: 999px;
+            padding: 10px 14px;
+            cursor: pointer;
+            font-size: 0.76rem;
+            letter-spacing: 0.55px;
+            text-transform: uppercase;
+        }
+
+        .category-products-modal-body {
+            padding: 20px 24px 24px;
+        }
+
+        .category-modal-list {
+            display: grid;
+            gap: 14px;
+        }
+
+        .category-modal-empty {
+            padding: 22px;
+            border-radius: 22px;
+            border: 1px dashed rgba(255, 255, 255, 0.18);
+            background: rgba(255, 255, 255, 0.04);
+            color: #dbe6fb;
+        }
+
+        .category-modal-product {
+            display: grid;
+            grid-template-columns: 84px minmax(0, 1fr) auto;
+            gap: 16px;
+            align-items: center;
+            padding: 16px;
+            border-radius: 22px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
+        }
+
+        .category-modal-product-image {
+            width: 84px;
+            height: 84px;
+            border-radius: 20px;
+            object-fit: cover;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
+        }
+
+        .category-modal-product-copy {
+            display: grid;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .category-modal-product-head {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .category-modal-product-name {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1.2;
+            word-break: break-word;
+        }
+
+        .category-modal-product-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .category-modal-product-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .category-modal-product-actions .mini-btn {
+            min-width: 0;
+            padding: 8px 12px;
+            border-radius: 999px;
+        }
+
+        .product-state-tag {
+            display: inline-flex;
+            align-items: center;
+            min-height: 26px;
+            font-size: 0.7rem;
+            border-radius: 999px;
+            padding: 3px 8px;
+            margin-left: 0;
+            letter-spacing: 0.35px;
+            text-transform: uppercase;
+        }
+
+        .product-state-tag.active {
+            color: #defceb;
+            border: 1px solid rgba(67, 192, 156, 0.55);
+            background: rgba(67, 192, 156, 0.16);
+        }
+
+        .product-state-tag.paused {
             color: #fef5d7;
             border: 1px solid rgba(255, 209, 138, 0.65);
-            border-radius: 999px;
-            padding: 2px 7px;
-            margin-left: 8px;
             background: rgba(255, 209, 138, 0.18);
         }
 
@@ -585,6 +1004,33 @@
         }
 
         .notice.error {
+            color: #ffd3d3;
+            background: rgba(220, 70, 70, 0.15);
+            border-color: rgba(220, 70, 70, 0.35);
+        }
+
+        .modal-feedback {
+            display: none;
+            margin-top: 10px;
+            margin-bottom: 4px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-size: 0.86rem;
+            border: 1px solid transparent;
+            line-height: 1.4;
+        }
+
+        .modal-feedback.show {
+            display: block;
+        }
+
+        .modal-feedback.ok {
+            color: #b5ffdc;
+            background: rgba(24, 198, 122, 0.15);
+            border-color: rgba(24, 198, 122, 0.35);
+        }
+
+        .modal-feedback.error {
             color: #ffd3d3;
             background: rgba(220, 70, 70, 0.15);
             border-color: rgba(220, 70, 70, 0.35);
@@ -1053,6 +1499,13 @@
         .admin-header {
             border-radius: 14px;
             background: linear-gradient(130deg, rgba(255, 122, 26, 0.09), rgba(255, 255, 255, 0.02));
+            padding: 16px 18px;
+            margin-bottom: 12px;
+        }
+
+        .admin-title-wrap p {
+            max-width: 46ch;
+            line-height: 1.45;
         }
 
         .admin-title-wrap p,
@@ -1081,12 +1534,13 @@
             flex-direction: column;
             gap: 8px;
             margin: 0;
+            margin-bottom: 12px;
         }
 
         .admin-accordion-trigger {
             min-width: 64px;
-            min-height: 56px;
-            padding: 8px 4px;
+            min-height: 76px;
+            padding: 12px 10px;
             border-radius: 12px;
             border: 1px solid rgba(255, 255, 255, 0.08);
             background: var(--admin-bg-elev-2);
@@ -1099,6 +1553,21 @@
             line-height: 1.1;
             letter-spacing: 0.4px;
             color: var(--admin-text-soft);
+        }
+
+        .admin-tab-panel[data-tab-panel="categorias"] .admin-card {
+            padding: 16px;
+            border-radius: 18px;
+        }
+
+        .admin-tab-panel[data-tab-panel="categorias"] .card-head {
+            margin-bottom: 12px;
+            align-items: flex-start;
+        }
+
+        .admin-tab-panel[data-tab-panel="categorias"] .card-head h2 {
+            font-size: 1.06rem;
+            line-height: 1.15;
         }
 
         .admin-accordion-trigger .nav-icon {
@@ -1167,6 +1636,23 @@
             font-size: 0.72rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+        }
+
+        .section-action-btn {
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            border-radius: 999px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .section-action-btn.primary {
+            border-color: rgba(255, 122, 26, 0.36);
+            background: rgba(255, 122, 26, 0.18);
         }
 
         .card-head h2,
@@ -1358,6 +1844,53 @@
             .list-item {
                 grid-template-columns: 1fr;
             }
+
+            .category-inline-form {
+                grid-template-columns: 1fr;
+            }
+
+            .category-inline-form .ghost-button,
+            .category-actions .mini-btn,
+            .category-product-actions .mini-btn,
+            .category-modal-product-actions .mini-btn {
+                width: 100%;
+            }
+
+            .category-list-item,
+            .category-product-item {
+                grid-template-columns: 1fr;
+            }
+
+            .category-trigger {
+                grid-template-columns: 1fr;
+            }
+
+            .category-trigger-meta {
+                width: 100%;
+            }
+
+            .category-actions,
+            .category-product-actions {
+                justify-content: stretch;
+            }
+
+            .category-products-header {
+                align-items: flex-start;
+            }
+
+            .category-modal-product {
+                grid-template-columns: 1fr;
+            }
+
+            .category-modal-product-image {
+                width: 100%;
+                max-width: 180px;
+                height: 180px;
+            }
+
+            .category-modal-product-actions {
+                justify-content: stretch;
+            }
         }
 
         @media (max-width: 860px) {
@@ -1480,6 +2013,8 @@
         <section class="admin-grid admin-dashboard">
             <div class="admin-tab-panel active" data-tab-panel="categorias">
                 <div class="section-toolbar">
+                    <button type="button" class="section-action-btn primary" id="openCreateCategoryBtn">Crear categoria</button>
+                    <button type="button" class="section-action-btn" id="openCreateProductBtn">Crear producto</button>
                     <button type="button" class="section-save-btn" data-section-save="categorias">Guardar Categorias</button>
                 </div>
                 <article class="admin-card">
@@ -1488,7 +2023,7 @@
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-categories">
-                    <form id="categoryForm" class="inline-form">
+                    <form id="categoryForm" class="inline-form category-inline-form">
                         <div class="admin-field">
                             <label for="newCategoryName">Nueva categoria</label>
                             <input type="text" id="newCategoryName" name="categoryName" placeholder="Ej: Postres" required>
@@ -1794,6 +2329,85 @@
             <iframe id="liveMenuPreview" class="preview-iframe" src="index.html?adminPreview=1" title="Vista previa de Publico"></iframe>
         </div>
     </section>
+    </div>
+
+    <div class="category-products-modal" id="categoryProductsModal" aria-hidden="true">
+        <div class="category-products-modal-card">
+            <div class="category-products-modal-head">
+                <div class="category-products-modal-title">
+                    <h3 id="categoryProductsModalTitle">Categoria</h3>
+                    <div class="category-products-modal-meta" id="categoryProductsModalMeta"></div>
+                </div>
+                <button type="button" class="category-products-modal-close" id="categoryProductsModalCloseBtn">Cerrar</button>
+            </div>
+            <div class="category-products-modal-body" id="categoryProductsModalBody"></div>
+        </div>
+    </div>
+
+    <div class="product-edit-modal" id="categoryCreateModal" aria-hidden="true">
+        <div class="product-edit-card">
+            <div class="product-edit-head">
+                <h3>Crear categoria</h3>
+                <button type="button" class="product-edit-close" id="categoryCreateCloseBtn">&times;</button>
+            </div>
+            <form id="categoryCreateForm" class="admin-form admin-form-single">
+                <div class="admin-field">
+                    <label for="modalCategoryName">Nombre de la categoria</label>
+                    <input type="text" id="modalCategoryName" name="modalCategoryName" placeholder="Ej: Postres" required>
+                </div>
+                <div id="categoryCreateFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
+                <button type="submit" class="admin-button" id="categoryCreateSaveBtn">Crear categoria</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="product-edit-modal" id="productCreateModal" aria-hidden="true">
+        <div class="product-edit-card">
+            <div class="product-edit-head">
+                <h3>Crear producto</h3>
+                <button type="button" class="product-edit-close" id="productCreateCloseBtn">&times;</button>
+            </div>
+            <form id="productCreateForm" class="admin-form">
+                <div class="admin-field">
+                    <label for="createProductName">Nombre</label>
+                    <input type="text" id="createProductName" name="createProductName" required>
+                </div>
+                <div class="admin-field">
+                    <label for="createProductPrice">Precio</label>
+                    <input type="number" id="createProductPrice" name="createProductPrice" min="0" step="100" required>
+                </div>
+                <div class="admin-field">
+                    <label for="createProductCategory">Categoria</label>
+                    <select id="createProductCategory" name="createProductCategory" required></select>
+                </div>
+                <div class="admin-field">
+                    <label for="createProductState">Estado</label>
+                    <select id="createProductState" name="createProductState">
+                        <option value="active">Activo</option>
+                        <option value="paused">Pausado</option>
+                    </select>
+                </div>
+                <div class="admin-field">
+                    <label for="createProductFeatured">Destacado del catalogo</label>
+                    <select id="createProductFeatured" name="createProductFeatured">
+                        <option value="false">No</option>
+                        <option value="true">Si</option>
+                    </select>
+                </div>
+                <div class="admin-field">
+                    <label for="createProductImageFile">Imagen</label>
+                    <input type="file" id="createProductImageFile" name="createProductImageFile" accept="image/*">
+                </div>
+                <div class="admin-field full">
+                    <label for="createProductImageUrl">Ruta/URL imagen</label>
+                    <input type="text" id="createProductImageUrl" name="createProductImageUrl" placeholder="Ej: PLUS.png o https://...">
+                </div>
+                <div class="admin-field full">
+                    <div id="productCreateFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
+                </div>
+                <button type="submit" class="admin-button" id="productCreateSaveBtn">Crear producto</button>
+            </form>
+        </div>
     </div>
 
     <div class="product-edit-modal" id="productEditModal" aria-hidden="true">
