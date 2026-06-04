@@ -1,59 +1,4 @@
-function trackButtonClick(buttonId, buttonName) {
-    if (typeof gtag === 'function') {
-        gtag('event', 'click', {
-            event_category: 'engagement',
-            event_label: buttonName,
-            button_id: buttonId
-        });
-    }
-
-    if (window.clarity) {
-        window.clarity('set', 'button_interaction', buttonName);
-        window.clarity('set', 'button_id', buttonId);
-    }
-}
-
-function trackProductInterest(productName, buttonId) {
-    if (typeof gtag === 'function') {
-        gtag('event', 'interes_producto', {
-            event_category: 'ecommerce',
-            event_label: productName,
-            item_name: productName,
-            button_location: buttonId,
-            action: 'whatsapp_interest'
-        });
-
-        gtag('event', 'select_item', {
-            item_list_name: 'Lo Mas Pedido',
-            items: [{
-                item_name: productName,
-                item_category: 'Producto Principal'
-            }]
-        });
-    }
-
-    if (window.clarity) {
-        window.clarity('set', 'producto_interes', productName);
-        window.clarity('set', 'button_clicked', buttonId);
-    }
-
-    trackButtonClick(buttonId, `Interes en ${productName}`);
-}
-
-function trackMenuModal() {
-    if (typeof gtag === 'function') {
-        gtag('event', 'view_item_list', {
-            event_category: 'engagement',
-            event_label: 'Menu Digital',
-            item_list_name: 'Menu ROAL BURGER'
-        });
-    }
-
-    if (window.clarity) {
-        window.clarity('set', 'menu_modal', 'opened');
-        window.clarity('set', 'user_action', 'view_menu');
-    }
-}
+// Tracking functions moved to tracking.js
 
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 let activeMenuSection = 'PORTADA';
@@ -282,6 +227,63 @@ function normalizeAssetLookup(value) {
     return normalizeCategoryKey(value).replace(/[^a-z0-9]+/g, '');
 }
 
+function buildParentRelativeImagePath(value) {
+    const normalized = String(value || '').trim().replace(/\\/g, '/');
+    if (!normalized || /^(https?:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
+        return '';
+    }
+
+    if (normalized.startsWith('../')) {
+        return `../${normalized}`;
+    }
+
+    if (normalized.startsWith('./')) {
+        return `../${normalized.slice(2)}`;
+    }
+
+    if (normalized.startsWith('/')) {
+        return `..${normalized}`;
+    }
+
+    return `../${normalized}`;
+}
+
+function applyImageFallback(imageElement) {
+    if (!(imageElement instanceof HTMLImageElement)) {
+        return;
+    }
+
+    const currentSource = imageElement.getAttribute('src') || '';
+    const fallbackSource = buildParentRelativeImagePath(currentSource);
+
+    if (!fallbackSource || fallbackSource === currentSource || imageElement.dataset.roalFallbackApplied === '1') {
+        return;
+    }
+
+    imageElement.dataset.roalFallbackApplied = '1';
+    imageElement.src = fallbackSource;
+}
+
+function installImageFallbackHandler() {
+    if (window.__roalBurgerImageFallbackInstalled) {
+        return;
+    }
+
+    window.__roalBurgerImageFallbackInstalled = true;
+
+    document.addEventListener('error', (event) => {
+        applyImageFallback(event.target);
+    }, true);
+
+    document.querySelectorAll('img').forEach((imageElement) => {
+        if (imageElement.complete && imageElement.naturalWidth === 0) {
+            applyImageFallback(imageElement);
+        }
+    });
+}
+
+installImageFallbackHandler();
+
 function shouldHideProductByName(name) {
     const key = normalizeCategoryKey(name);
     if (!key) {
@@ -491,7 +493,7 @@ function renderDynamicCategorySections() {
                     if (isAdicionales) {
                         const image = document.createElement('img');
                         image.className = 'menu-image';
-                        image.src = product.image_url;
+                        image.src = normalizeImageAssetPath(product.image_url);
                         image.alt = product.nombre;
                         section.appendChild(image);
 
@@ -529,7 +531,7 @@ function renderDynamicCategorySections() {
                     card.style.background = 'rgba(0,0,0,0.22)';
 
                     const img = document.createElement('img');
-                    img.src = product.image_url;
+                    img.src = normalizeImageAssetPath(product.image_url);
                     img.alt = product.nombre;
                     img.style.width = '68px';
                     img.style.height = '68px';
@@ -902,7 +904,7 @@ function bindButtonAction(button, cfg) {
         }
 
         const safeLink = cfg.link || '#';
-        window.open(safeLink, '_blank', 'noopener');
+        window.open(safeLink, '_blank', 'noopener,noreferrer');
     });
 
     return clone;
@@ -1598,7 +1600,7 @@ function openLink(platform) {
     }
 
     if (config.link) {
-        window.open(config.link, '_blank', 'noopener');
+        window.open(config.link, '_blank', 'noopener,noreferrer');
     }
 }
 

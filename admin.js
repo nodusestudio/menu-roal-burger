@@ -1,34 +1,54 @@
 const MAX_FEATURED = 5;
 
-const seedCategories = [
-    { id: 'burger-clasicas', name: 'Burger Clasicas', active: true },
-    { id: 'burger-premium', name: 'Burger Premium', active: true },
-    { id: 'perros-salchipapas', name: 'Perros y Salchipapas', active: true },
-    { id: 'entradas', name: 'Entradas', active: true },
-    { id: 'combos', name: 'Combos', active: true },
-    { id: 'adicionales', name: 'Adicionales', active: true }
+const PUBLIC_CATEGORY_CATALOG = [
+    { id: 'burger-premium', name: 'BURGER PREMIUM', active: true, image_url: './burgerpremium/burgerranchera.png' },
+    { id: 'burger-clasicas', name: 'BURGER CLASICAS', active: true, image_url: './burgerclasicas/burgernormal.png' },
+    { id: 'pepitos-venezolanos', name: 'PEPITOS VENEZOLANOS', active: true, image_url: './pepitosvenezolanos/pepitoranchero.png' },
+    { id: 'perros-calientes', name: 'PERROS CALIENTES', active: true, image_url: './perroscalientes/perroespecial.png' },
+    { id: 'entradas', name: 'ENTRADAS', active: true, image_url: './entradas/papas.png' },
+    { id: 'salchipapas', name: 'SALCHIPAPAS', active: true, image_url: './salchipapas/salchinormal.png' },
+    { id: 'combos-papas-bebida', name: 'COMBOS CON PAPAS Y BEBIDA', active: true, image_url: './combosconpapasybebidas/comboburgernormal.png' },
+    { id: 'combos-mixtos', name: 'COMBOS MIXTOS', active: true, image_url: './combosmixtos/delacasa.png' },
+    { id: 'nuestras-salsas', name: 'NUESTRAS SALSAS', active: true, image_url: './nuestrassalsas/salsasdelacasa.png' },
+    { id: 'bebidas-adicionales', name: 'BEBIDAS Y ADICIONALES', active: true, image_url: './bebidasyadicionales/bebidas.png' }
 ];
 
-const seedProducts = [
-    {
-        id: 'emparejados',
-        nombre: 'EMPAREJADOS',
-        precio: 19900,
-        categoria: 'Combos',
-        estado: 'active',
-        es_destacado: true,
-        image_url: 'EMPAREJADOS.jpeg'
-    },
-    {
-        id: 'empanadas',
-        nombre: 'EMPANADAS',
-        precio: 11900,
-        categoria: 'Entradas',
-        estado: 'active',
-        es_destacado: true,
-        image_url: 'empanadas.png'
-    }
+const PUBLIC_PRODUCT_CATALOG = [
+    { id: 'burger-clasicas-normal', nombre: 'Normal', precio: 17000, categoria: 'BURGER CLASICAS', estado: 'active', es_destacado: false, image_url: './burgerclasicas/burgernormal.png' },
+    { id: 'burger-clasicas-super', nombre: 'Super', precio: 19000, categoria: 'BURGER CLASICAS', estado: 'active', es_destacado: false, image_url: './burgerclasicas/burgersuper.png' },
+    { id: 'burger-premium-caracas', nombre: 'Caracas', precio: 26000, categoria: 'BURGER PREMIUM', estado: 'active', es_destacado: false, image_url: './burgerpremium/burgercaracas.png' },
+    { id: 'burger-premium-cordillera', nombre: 'Cordillera', precio: 34000, categoria: 'BURGER PREMIUM', estado: 'active', es_destacado: false, image_url: './burgerpremium/burgercordillera.png' },
+    { id: 'burger-premium-papuda', nombre: 'Papuda', precio: 20000, categoria: 'BURGER PREMIUM', estado: 'active', es_destacado: false, image_url: './burgerpremium/burgerpapuda.png' },
+    { id: 'burger-premium-plus', nombre: 'Plus', precio: 30000, categoria: 'BURGER PREMIUM', estado: 'active', es_destacado: false, image_url: './burgerpremium/burgerplus.png' },
+    { id: 'burger-premium-ranchera', nombre: 'Ranchera', precio: 30000, categoria: 'BURGER PREMIUM', estado: 'active', es_destacado: false, image_url: './burgerpremium/burgerranchera.png' },
+    { id: 'burger-premium-triplete', nombre: 'Triplete', precio: 29000, categoria: 'BURGER PREMIUM', estado: 'active', es_destacado: false, image_url: './burgerpremium/burgertriplete.png' },
+    { id: 'pepitos-mix', nombre: 'Mix', precio: 29000, categoria: 'PEPITOS VENEZOLANOS', estado: 'active', es_destacado: false, image_url: './pepitosvenezolanos/pepitomix.png' },
+    { id: 'pepitos-plus', nombre: 'Plus', precio: 36000, categoria: 'PEPITOS VENEZOLANOS', estado: 'active', es_destacado: false, image_url: './pepitosvenezolanos/pepitoplus.png' },
+    { id: 'pepitos-ranchero', nombre: 'Ranchero', precio: 34000, categoria: 'PEPITOS VENEZOLANOS', estado: 'active', es_destacado: false, image_url: './pepitosvenezolanos/pepitoranchero.png' },
+    { id: 'pepitos-urbano', nombre: 'Urbano', precio: 30000, categoria: 'PEPITOS VENEZOLANOS', estado: 'active', es_destacado: false, image_url: './pepitosvenezolanos/pepitourbano.png' },
+    { id: 'perros-especial', nombre: 'Especial', precio: 15000, categoria: 'PERROS CALIENTES', estado: 'active', es_destacado: false, image_url: './perroscalientes/perroespecial.png' },
+    { id: 'perros-normal', nombre: 'Normal', precio: 12000, categoria: 'PERROS CALIENTES', estado: 'active', es_destacado: false, image_url: './perroscalientes/perronormal.png' },
+    { id: 'perros-super', nombre: 'Super', precio: 16000, categoria: 'PERROS CALIENTES', estado: 'active', es_destacado: false, image_url: './perroscalientes/perrosuper.png' },
+    { id: 'entradas-papas-francesa', nombre: 'Papas a la Francesa', precio: 8000, categoria: 'ENTRADAS', estado: 'active', es_destacado: false, image_url: './entradas/papas.png' },
+    { id: 'entradas-tequenos', nombre: 'Tequenos', precio: 8000, categoria: 'ENTRADAS', estado: 'active', es_destacado: false, image_url: './entradas/tequenos.png' },
+    { id: 'salchipapas-normal', nombre: 'Salchi Normal', precio: 12000, categoria: 'SALCHIPAPAS', estado: 'active', es_destacado: false, image_url: './salchipapas/salchinormal.png' },
+    { id: 'salchipapas-super', nombre: 'Salchi Super', precio: 19000, categoria: 'SALCHIPAPAS', estado: 'active', es_destacado: false, image_url: './salchipapas/salchisuper.png' },
+    { id: 'combos-papas-burger-normal', nombre: 'Combo Burger Normal', precio: 21000, categoria: 'COMBOS CON PAPAS Y BEBIDA', estado: 'active', es_destacado: false, image_url: './combosconpapasybebidas/comboburgernormal.png' },
+    { id: 'combos-papas-burger-papuda', nombre: 'Combo Burger Papuda', precio: 27000, categoria: 'COMBOS CON PAPAS Y BEBIDA', estado: 'active', es_destacado: false, image_url: './combosconpapasybebidas/comboburgerpapuda.png' },
+    { id: 'combos-papas-burger-super', nombre: 'Combo Burger Super', precio: 26000, categoria: 'COMBOS CON PAPAS Y BEBIDA', estado: 'active', es_destacado: false, image_url: './combosconpapasybebidas/comboburgersuper.png' },
+    { id: 'combos-papas-perro-normal', nombre: 'Combo Perro Normal', precio: 17000, categoria: 'COMBOS CON PAPAS Y BEBIDA', estado: 'active', es_destacado: false, image_url: './combosconpapasybebidas/comboperronormal.png' },
+    { id: 'combos-mixtos-de-la-casa', nombre: 'De La Casa', precio: 49000, categoria: 'COMBOS MIXTOS', estado: 'active', es_destacado: false, image_url: './combosmixtos/delacasa.png' },
+    { id: 'combos-mixtos-emparejados', nombre: 'Emparejados', precio: 45000, categoria: 'COMBOS MIXTOS', estado: 'active', es_destacado: false, image_url: './combosmixtos/emparejados.png' },
+    { id: 'combos-mixtos-familiar-3', nombre: 'Familiar 3', precio: 48000, categoria: 'COMBOS MIXTOS', estado: 'active', es_destacado: false, image_url: './combosmixtos/familiar3.png' },
+    { id: 'combos-mixtos-familiar-4', nombre: 'Familiar 4', precio: 44000, categoria: 'COMBOS MIXTOS', estado: 'active', es_destacado: false, image_url: './combosmixtos/familiar4.png' },
+    { id: 'bebidas-adicionales-adicionales', nombre: 'Adicionales', precio: 2000, categoria: 'BEBIDAS Y ADICIONALES', estado: 'active', es_destacado: false, image_url: './bebidasyadicionales/adiciones.png' },
+    { id: 'bebidas-adicionales-bebidas', nombre: 'Bebidas', precio: 3500, categoria: 'BEBIDAS Y ADICIONALES', estado: 'active', es_destacado: false, image_url: './bebidasyadicionales/bebidas.png' },
+    { id: 'nuestras-salsas-salsas-casa', nombre: 'Salsas de la Casa', precio: 1000, categoria: 'NUESTRAS SALSAS', estado: 'active', es_destacado: false, image_url: './nuestrassalsas/salsasdelacasa.png' }
 ];
+
+const seedCategories = PUBLIC_CATEGORY_CATALOG;
+
+const seedProducts = PUBLIC_PRODUCT_CATALOG;
 
 const defaultButtons = [
     {
@@ -137,10 +157,6 @@ const defaultBranding = {
 const CONFIG_COLLECTION = 'configuracion';
 const CONFIG_DOC_ID = 'config_landing';
 
-const ADMIN_USERNAME = 'roalburger';
-const ADMIN_PASSWORD = 'Roalburger*2019';
-const ADMIN_DEVICE_AUTH_KEY = 'roal_admin_device_auth';
-
 const adminAuthForm = document.getElementById('adminAuthForm');
 const authUsernameInput = document.getElementById('authUsername');
 const authPasswordInput = document.getElementById('authPassword');
@@ -149,6 +165,7 @@ const authError = document.getElementById('authError');
 const authForgotBtn = document.getElementById('authForgotBtn');
 const authRegisterBtn = document.getElementById('authRegisterBtn');
 const authPasswordToggle = document.getElementById('authPasswordToggle');
+const adminSignOutBtn = document.getElementById('adminSignOutBtn');
 
 const productForm = document.getElementById('productForm');
 const featuredQuickForm = document.getElementById('featuredQuickForm');
@@ -166,6 +183,7 @@ const imageFileInput = document.getElementById('productImageFile');
 const totalClicksEl = document.getElementById('totalClicks');
 const topProductEl = document.getElementById('topProduct');
 const inventorySearchInput = document.getElementById('inventorySearchInput');
+const importPublicCatalogBtn = document.getElementById('importPublicCatalogBtn');
 const inventoryQuickList = document.getElementById('inventoryQuickList');
 const inventorySkeleton = document.getElementById('inventorySkeleton');
 const metricsChartList = document.getElementById('metricsChartList');
@@ -178,6 +196,7 @@ const metricActiveCategoriesEl = document.getElementById('metricActiveCategories
 const metricVisibleButtonsEl = document.getElementById('metricVisibleButtons');
 const metricAveragePriceEl = document.getElementById('metricAveragePrice');
 const metricWhatsappClicksEl = document.getElementById('metricWhatsappClicks');
+const metricDailyVisitorsEl = document.getElementById('metricDailyVisitors');
 const previewRefreshBtn = document.getElementById('previewRefreshBtn');
 const liveMenuPreview = document.getElementById('liveMenuPreview');
 const previewViewportControls = document.getElementById('previewViewportControls');
@@ -221,6 +240,7 @@ const animationSpeedOut = document.getElementById('animationSpeedOut');
 
 let firebaseDb;
 let firebaseStorage;
+let firebaseAuth;
 let productsState = [];
 let categoriesState = [];
 let buttonsState = [];
@@ -236,7 +256,8 @@ let metricsEventsState = {
     whatsapp: 0,
     menu: 0,
     social: 0,
-    products: 0
+    products: 0,
+    dailyVisitors: 0
 };
 
 function showNotice(text, type = 'ok') {
@@ -425,18 +446,23 @@ function setupSectionSaveButtons() {
 }
 
 async function ensureAdminAuth() {
-    try {
-        if (window.localStorage.getItem(ADMIN_DEVICE_AUTH_KEY) === 'true') {
-            document.body.classList.remove('admin-locked');
-            document.body.classList.add('admin-unlocked');
-            return;
-        }
-    } catch (error) {
-        // Ignore storage restrictions in private mode.
+    if (!firebaseAuth) {
+        throw new Error('Firebase Auth no esta disponible en este panel.');
     }
 
     document.body.classList.add('admin-locked');
     document.body.classList.remove('admin-unlocked');
+
+    if (authError) {
+        authError.classList.remove('show');
+        authError.textContent = '';
+    }
+
+    if (firebaseAuth.currentUser) {
+        document.body.classList.remove('admin-locked');
+        document.body.classList.add('admin-unlocked');
+        return firebaseAuth.currentUser;
+    }
 
     if (authUsernameInput) {
         authUsernameInput.focus();
@@ -448,44 +474,50 @@ async function ensureAdminAuth() {
             return;
         }
 
-        const onSubmit = (event) => {
-            event.preventDefault();
+        let settled = false;
 
-            const username = String(authUsernameInput?.value || '').trim();
-            const password = String(authPasswordInput?.value || '');
+        const mapAuthError = (error) => {
+            switch (error?.code) {
+                case 'auth/invalid-email':
+                    return 'El correo no tiene un formato valido.';
+                case 'auth/invalid-credential':
+                case 'auth/wrong-password':
+                case 'auth/user-not-found':
+                    return 'Credenciales incorrectas o cuenta no registrada en Firebase Auth.';
+                case 'auth/too-many-requests':
+                    return 'Demasiados intentos. Espera un momento antes de reintentar.';
+                case 'auth/network-request-failed':
+                    return 'No se pudo conectar con Firebase. Revisa tu conexion.';
+                case 'auth/configuration-not-found':
+                case 'auth/operation-not-allowed':
+                    return 'Firebase Auth no tiene habilitado el acceso por correo y contrasena para este proyecto.';
+                default:
+                    return error?.message || 'No se pudo iniciar sesion en Firebase Auth.';
+            }
+        };
 
-            if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
-                if (authError) {
-                    authError.textContent = 'Credenciales incorrectas. Verifica usuario y contrasena.';
-                    authError.classList.add('show');
-                }
+        const showAuthFailure = (message) => {
+            if (authError) {
+                authError.textContent = message;
+                authError.classList.add('show');
+            }
 
-                if (authPasswordInput) {
-                    authPasswordInput.focus();
-                    authPasswordInput.select();
-                }
+            if (authPasswordInput) {
+                authPasswordInput.focus();
+                authPasswordInput.select();
+            }
+        };
 
-                try {
-                    window.localStorage.removeItem(ADMIN_DEVICE_AUTH_KEY);
-                } catch (error) {
-                    // Ignore storage restrictions in private mode.
-                }
+        const finishUnlock = (user) => {
+            if (settled) {
                 return;
             }
+
+            settled = true;
 
             if (authError) {
                 authError.classList.remove('show');
                 authError.textContent = '';
-            }
-
-            try {
-                if (authRememberDeviceInput && authRememberDeviceInput.checked) {
-                    window.localStorage.setItem(ADMIN_DEVICE_AUTH_KEY, 'true');
-                } else {
-                    window.localStorage.removeItem(ADMIN_DEVICE_AUTH_KEY);
-                }
-            } catch (error) {
-                // Ignore storage restrictions in private mode.
             }
 
             document.body.classList.remove('admin-locked');
@@ -496,7 +528,45 @@ async function ensureAdminAuth() {
             }
 
             adminAuthForm.removeEventListener('submit', onSubmit);
-            resolve();
+            unsubscribe();
+            resolve(user);
+        };
+
+        const unsubscribe = firebaseAuth.onAuthStateChanged((user) => {
+            if (user) {
+                finishUnlock(user);
+            }
+        }, (error) => {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            adminAuthForm.removeEventListener('submit', onSubmit);
+            reject(error);
+        });
+
+        const onSubmit = async (event) => {
+            event.preventDefault();
+
+            const username = String(authUsernameInput?.value || '').trim();
+            const password = String(authPasswordInput?.value || '');
+
+            if (!username || !password) {
+                showAuthFailure('Ingresa el correo y la contrasena de tu cuenta admin en Firebase Auth.');
+                return;
+            }
+
+            try {
+                const persistence = authRememberDeviceInput && authRememberDeviceInput.checked
+                    ? firebase.auth.Auth.Persistence.LOCAL
+                    : firebase.auth.Auth.Persistence.SESSION;
+
+                await firebaseAuth.setPersistence(persistence);
+                await firebaseAuth.signInWithEmailAndPassword(username, password);
+            } catch (error) {
+                showAuthFailure(mapAuthError(error));
+            }
         };
 
         adminAuthForm.addEventListener('submit', onSubmit);
@@ -524,6 +594,17 @@ function normalizeProduct(raw) {
         image_url: raw.image_url || 'logo.png',
         created_at: raw.created_at,
         updated_at: raw.updated_at
+    };
+}
+
+function normalizeCategory(raw) {
+    return {
+        id: String(raw.id || '').trim(),
+        name: String(raw.name || raw.nombre || '').trim(),
+        image_url: String(raw.image_url || '').trim(),
+        active: raw.active !== false,
+        created_at: raw.created_at || null,
+        updated_at: raw.updated_at || null
     };
 }
 
@@ -574,11 +655,7 @@ function normalizeBranding(raw) {
 async function fetchCategories() {
     const snapshot = await firebaseDb.collection('categorias').get();
     categoriesState = snapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .map((category) => ({
-            ...category,
-            active: category.active !== false
-        }))
+        .map((doc) => normalizeCategory({ id: doc.id, ...doc.data() }))
         .sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
 }
 
@@ -618,6 +695,7 @@ async function seedDataIfNeeded() {
             const ref = firebaseDb.collection('categorias').doc(category.id);
             batch.set(ref, {
                 name: category.name,
+                image_url: category.image_url || '',
                 active: category.active,
                 created_at: firestoreNow(),
                 updated_at: firestoreNow()
@@ -667,6 +745,49 @@ async function seedDataIfNeeded() {
             updated_at: firestoreNow()
         });
     }
+}
+
+async function syncPublicCatalogToFirestore() {
+    if (!firebaseDb) {
+        throw new Error('Firestore no esta listo en el panel.');
+    }
+
+    const now = firestoreNow();
+    const existingCategories = new Map(categoriesState.map((category) => [category.id, category]));
+    const existingProducts = new Map(productsState.map((product) => [product.id, product]));
+    const batch = firebaseDb.batch();
+
+    PUBLIC_CATEGORY_CATALOG.forEach((category) => {
+        const current = existingCategories.get(category.id);
+        const ref = firebaseDb.collection('categorias').doc(category.id);
+
+        batch.set(ref, {
+            name: category.name,
+            image_url: category.image_url || '',
+            active: current ? current.active !== false : category.active,
+            created_at: current?.created_at || now,
+            updated_at: now
+        }, { merge: true });
+    });
+
+    PUBLIC_PRODUCT_CATALOG.forEach((product) => {
+        const current = existingProducts.get(product.id);
+        const ref = firebaseDb.collection('productos').doc(product.id);
+
+        batch.set(ref, {
+            nombre: product.nombre,
+            precio: product.precio,
+            categoria: product.categoria,
+            estado: current?.estado === 'paused' ? 'paused' : product.estado,
+            es_destacado: current?.es_destacado === true || product.es_destacado === true,
+            image_url: product.image_url,
+            source: 'public_catalog',
+            created_at: current?.created_at || now,
+            updated_at: now
+        }, { merge: true });
+    });
+
+    await batch.commit();
 }
 
 function renderCategorySelect() {
@@ -739,6 +860,21 @@ function openProductEditModal(product, categoryId) {
     editProductNameInput.focus();
 }
 
+function startNewProductForCategory(category) {
+    if (!category || !productForm || !productCategorySelect) {
+        return;
+    }
+
+    productForm.reset();
+    productCategorySelect.value = category.name;
+    productForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    const nameInput = document.getElementById('productName');
+    if (nameInput instanceof HTMLInputElement) {
+        nameInput.focus();
+    }
+}
+
 function createCategoryRow(category) {
     const wrapper = document.createElement('div');
     const row = document.createElement('div');
@@ -747,11 +883,15 @@ function createCategoryRow(category) {
     const stateClass = category.active ? 'active' : 'inactive';
     const stateText = category.active ? 'Activa' : 'Inactiva';
     const toggleText = category.active ? 'Desactivar' : 'Activar';
+    const categoryThumb = category.image_url
+        ? `<img src="${category.image_url}" alt="${category.name}">`
+        : '';
 
     row.innerHTML = `
-        <div class="product-main"><span>${category.name}</span></div>
+        <div class="product-main">${categoryThumb}<span>${category.name}</span></div>
         <div class="muted">Categoria del menu</div>
         <span class="state-pill ${stateClass}">${stateText}</span>
+        <button class="mini-btn" data-category-id="${category.id}" data-action="add-product">Agregar producto</button>
         <button class="mini-btn" data-category-id="${category.id}" data-action="toggle-category">${toggleText}</button>
         <button class="mini-btn remove" data-category-id="${category.id}" data-action="delete-category">Eliminar</button>
         <button class="mini-btn remove" data-category-id="${category.id}" data-action="view-category">Ver mas</button>
@@ -857,7 +997,7 @@ function renderFeaturedProducts() {
     if (!featured.length) {
         const empty = document.createElement('p');
         empty.className = 'muted';
-        empty.textContent = 'Todavia no hay productos en Los mas pedidos.';
+        empty.textContent = 'Todavia no hay productos destacados en el catalogo.';
         featuredList.appendChild(empty);
     } else {
         featured.forEach((product) => {
@@ -1067,6 +1207,11 @@ function renderMetricsOverview() {
     if (metricWhatsappClicksEl) {
         metricWhatsappClicksEl.textContent = Number(metricsEventsState.whatsapp || 0).toLocaleString('es-CO');
     }
+    if (metricDailyVisitorsEl) {
+        metricDailyVisitorsEl.textContent = metricsEventsState.dailyVisitors > 0
+            ? Number(metricsEventsState.dailyVisitors).toLocaleString('es-CO')
+            : '--';
+    }
 
     const clicksByCategory = new Map();
     productClicksState.forEach((item) => {
@@ -1106,8 +1251,10 @@ function refreshLivePreview() {
         return;
     }
 
-    const baseUrl = liveMenuPreview.src.split('?')[0];
-    liveMenuPreview.src = `${baseUrl}?t=${Date.now()}`;
+    const currentUrl = new URL(liveMenuPreview.src, window.location.href);
+    currentUrl.searchParams.set('adminPreview', '1');
+    currentUrl.searchParams.set('t', String(Date.now()));
+    liveMenuPreview.src = currentUrl.toString();
 }
 
 function queueLivePreviewRefresh() {
@@ -1154,7 +1301,7 @@ function toggleFeaturedQuickForm(forceOpen) {
 
     featuredQuickForm.dataset.open = shouldOpen ? 'true' : 'false';
     featuredQuickForm.style.display = shouldOpen ? 'grid' : 'none';
-    featuredQuickToggle.textContent = shouldOpen ? 'Cancelar' : 'Agregar';
+    featuredQuickToggle.textContent = shouldOpen ? 'Cancelar' : 'Agregar rapido';
 
     if (shouldOpen && featuredQuickNameInput) {
         featuredQuickNameInput.focus();
@@ -1162,11 +1309,15 @@ function toggleFeaturedQuickForm(forceOpen) {
 }
 
 function setFeaturedQuickLoading(isLoading) {
+    if (!featuredQuickForm) {
+        return;
+    }
+
     if (featuredQuickSubmitBtn) {
         featuredQuickSubmitBtn.disabled = isLoading;
         featuredQuickSubmitBtn.textContent = isLoading
             ? 'Guardando...'
-            : 'Guardar en los mas pedidos';
+            : 'Guardar destacado rapido';
     }
 
     if (featuredQuickStatus) {
@@ -1511,6 +1662,24 @@ async function fetchProductClickMetrics() {
                 events.social += Number.isFinite(metricValue) ? Math.max(0, metricValue) : 0;
             }
 
+            const recognizedDailyVisitorsMetric = [
+                'personas',
+                'personas_por_dia',
+                'personas-dia',
+                'personas_dia',
+                'visitantes',
+                'visitas',
+                'visitas_por_dia',
+                'ingresos',
+                'entradas',
+                'daily_visitors',
+                'daily_visits'
+            ].some((key) => metricName.includes(key));
+
+            if (recognizedDailyVisitorsMetric) {
+                events.dailyVisitors = Math.max(events.dailyVisitors, Number.isFinite(metricValue) ? Math.max(0, metricValue) : 0);
+            }
+
             const isProductMetric = metricName.includes('product') || metricName.includes('producto');
             if (!isProductMetric) {
                 return;
@@ -1608,72 +1777,12 @@ productForm.addEventListener('submit', async (event) => {
     }
 });
 
-featuredQuickForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    hideNotice();
-    setFeaturedQuickLoading(true);
-
-    const featuredCount = productsState.filter((product) => product.es_destacado).length;
-    if (featuredCount >= MAX_FEATURED) {
-        showNotice('Solo puedes tener 5 productos en Los mas pedidos.', 'error');
-        setFeaturedQuickLoading(false);
-        return;
-    }
-
-    const nombre = String(featuredQuickNameInput?.value || '').trim();
-    const imageFile = featuredQuickImageInput && featuredQuickImageInput.files ? featuredQuickImageInput.files[0] : null;
-    if (!nombre || !imageFile) {
-        showNotice('Debes ingresar nombre e imagen del producto.', 'error');
-        setFeaturedQuickLoading(false);
-        return;
-    }
-
-    if (imageFile.size > 20 * 1024 * 1024) {
-        showNotice('La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
-        setFeaturedQuickLoading(false);
-        return;
-    }
-
-    try {
-        let imageUrl;
-        let usedLocalFallback = false;
-
-        try {
-            imageUrl = await uploadImageToFirebase(imageFile, nombre);
-        } catch (uploadError) {
-            imageUrl = await readFileAsDataUrl(imageFile);
-            usedLocalFallback = true;
-        }
-
-        const fallbackCategory = categoriesState.find((category) => category.active)?.name || 'Adicionales';
-        const id = `${slugify(nombre)}-${Date.now()}`;
-
-        await firebaseDb.collection('productos').doc(id).set({
-            nombre,
-            precio: 0,
-            categoria: fallbackCategory,
-            estado: 'active',
-            es_destacado: true,
-            image_url: imageUrl,
-            created_at: firestoreNow(),
-            updated_at: firestoreNow()
-        });
-
-        await reloadDataAndRender();
-        featuredQuickForm.reset();
-        toggleFeaturedQuickForm(false);
-        showNotice(
-            usedLocalFallback
-                ? 'Producto agregado a Los mas pedidos. Se guardo la imagen en modo local por restriccion de Storage.'
-                : 'Producto agregado a Los mas pedidos.',
-            'ok'
-        );
-    } catch (error) {
-        showNotice(`No se pudo actualizar: ${error.message || 'Error inesperado.'}`, 'error');
-    } finally {
-        setFeaturedQuickLoading(false);
-    }
-});
+if (featuredQuickForm) {
+    featuredQuickForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        showNotice('El alta rapida de destacados fue desactivada. Crea el producto completo en inventario y luego marcalo como destacado.', 'error');
+    });
+}
 
 if (featuredQuickToggle) {
     featuredQuickToggle.addEventListener('click', () => {
@@ -1685,6 +1794,25 @@ if (inventorySearchInput) {
     inventorySearchInput.addEventListener('input', (event) => {
         inventorySearchTerm = String(event.target.value || '');
         renderInventoryQuickList();
+    });
+}
+
+if (importPublicCatalogBtn) {
+    importPublicCatalogBtn.addEventListener('click', async () => {
+        hideNotice();
+
+        const confirmed = window.confirm('Esto sincronizara en Firestore el menu publico actual con categorias, productos e imagenes. Los estados pausado y destacados ya existentes se conservaran. Deseas continuar?');
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            await syncPublicCatalogToFirestore();
+            await reloadDataAndRender();
+            showNotice(`Menu publico sincronizado: ${PUBLIC_CATEGORY_CATALOG.length} categorias y ${PUBLIC_PRODUCT_CATALOG.length} productos cargados en el panel.`, 'ok');
+        } catch (error) {
+            showNotice(`No se pudo sincronizar el menu publico: ${error.message || 'Error inesperado.'}`, 'error');
+        }
     });
 }
 
@@ -1789,7 +1917,7 @@ featuredList.addEventListener('click', async (event) => {
                 updated_at: firestoreNow()
             });
             await reloadDataAndRender();
-            showNotice(`${product.nombre} ya no esta en Los mas pedidos.`, 'ok');
+            showNotice(`${product.nombre} ya no esta marcado como destacado.`, 'ok');
         }
     } catch (error) {
         showNotice(`No se pudo actualizar: ${error.message || 'Error inesperado.'}`, 'error');
@@ -1817,6 +1945,7 @@ categoryForm.addEventListener('submit', async (event) => {
         const id = `${slugify(name)}-${Date.now()}`;
         await firebaseDb.collection('categorias').doc(id).set({
             name,
+            image_url: '',
             active: true,
             created_at: firestoreNow(),
             updated_at: firestoreNow()
@@ -1852,6 +1981,18 @@ categoryList.addEventListener('click', async (event) => {
         const inline = getInlineContainerByCategoryId(categoryId);
         const shouldShow = !(inline && inline.classList.contains('show'));
         renderCategoryProductsInline(inline, category, shouldShow);
+        return;
+    }
+
+    if (action === 'add-product') {
+        const category = categoriesState.find((item) => item.id === categoryId);
+        if (!category) {
+            showNotice('Categoria no encontrada.', 'error');
+            return;
+        }
+
+        startNewProductForCategory(category);
+        showNotice(`Listo para agregar un producto en ${category.name}.`, 'ok');
         return;
     }
 
@@ -2269,24 +2410,71 @@ if (liveMenuPreview) {
 }
 
 if (authForgotBtn) {
-    authForgotBtn.addEventListener('click', () => {
-        window.alert('Para recuperar el acceso, contacta al administrador principal para cambio de contrasena.');
+    authForgotBtn.addEventListener('click', async () => {
+        const email = String(authUsernameInput?.value || '').trim();
+
+        if (!firebaseAuth) {
+            window.alert('Firebase Auth no esta disponible en este momento.');
+            return;
+        }
+
+        if (!email) {
+            window.alert('Ingresa primero el correo administrador para enviar el enlace de recuperacion.');
+            authUsernameInput?.focus();
+            return;
+        }
+
+        try {
+            await firebaseAuth.sendPasswordResetEmail(email);
+            window.alert('Se envio un correo de recuperacion si la cuenta existe en Firebase Auth.');
+        } catch (error) {
+            window.alert(`No se pudo enviar el correo de recuperacion: ${error.message || 'error inesperado.'}`);
+        }
     });
 }
 
 if (authRegisterBtn) {
     authRegisterBtn.addEventListener('click', () => {
-        window.alert('El registro de nuevos administradores se gestiona de forma interna por seguridad.');
+        window.alert('El alta de administradores debe hacerse desde Firebase Console o una herramienta interna segura.');
+    });
+}
+
+if (adminSignOutBtn) {
+    adminSignOutBtn.addEventListener('click', async () => {
+        if (!firebaseAuth) {
+            return;
+        }
+
+        try {
+            await firebaseAuth.signOut();
+            document.body.classList.add('admin-locked');
+            document.body.classList.remove('admin-unlocked');
+
+            if (authPasswordInput) {
+                authPasswordInput.value = '';
+            }
+
+            if (authError) {
+                authError.classList.remove('show');
+                authError.textContent = '';
+            }
+
+            authUsernameInput?.focus();
+            showNotice('Sesion cerrada.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo cerrar sesion: ${error.message || 'error inesperado.'}`, 'error');
+        }
     });
 }
 
 async function initAdmin() {
     try {
-        await ensureAdminAuth();
-
         const services = initFirebaseServices();
         firebaseDb = services.db;
         firebaseStorage = services.storage;
+        firebaseAuth = services.auth;
+
+        await ensureAdminAuth();
 
         setupAccordion();
         setupAdvancedSettingsPanel();

@@ -1,61 +1,8 @@
-function trackButtonClick(buttonId, buttonName) {
-    if (typeof gtag === 'function') {
-        gtag('event', 'click', {
-            event_category: 'engagement',
-            event_label: buttonName,
-            button_id: buttonId
-        });
-    }
-
-    if (window.clarity) {
-        window.clarity('set', 'button_interaction', buttonName);
-        window.clarity('set', 'button_id', buttonId);
-    }
-}
-
-function trackProductInterest(productName, buttonId) {
-    if (typeof gtag === 'function') {
-        gtag('event', 'interes_producto', {
-            event_category: 'ecommerce',
-            event_label: productName,
-            item_name: productName,
-            button_location: buttonId,
-            action: 'whatsapp_interest'
-        });
-
-        gtag('event', 'select_item', {
-            item_list_name: 'Lo Mas Pedido',
-            items: [{
-                item_name: productName,
-                item_category: 'Producto Principal'
-            }]
-        });
-    }
-
-    if (window.clarity) {
-        window.clarity('set', 'producto_interes', productName);
-        window.clarity('set', 'button_clicked', buttonId);
-    }
-
-    trackButtonClick(buttonId, `Interes en ${productName}`);
-}
-
-function trackMenuModal() {
-    if (typeof gtag === 'function') {
-        gtag('event', 'view_item_list', {
-            event_category: 'engagement',
-            event_label: 'Menu Digital',
-            item_list_name: 'Menu ROAL BURGER'
-        });
-    }
-
-    if (window.clarity) {
-        window.clarity('set', 'menu_modal', 'opened');
-        window.clarity('set', 'user_action', 'view_menu');
-    }
-}
+// Tracking functions moved to tracking.js
 
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
+const PAGE_URL_PARAMS = new URLSearchParams(window.location.search);
+const IS_ADMIN_PREVIEW = PAGE_URL_PARAMS.get('adminPreview') === '1';
 const ORDERING_SCHEDULE = {
     timeZone: 'America/Bogota',
     startMinutes: 16 * 60,
@@ -223,9 +170,9 @@ const COMBO_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_SMALL_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_LARGE_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana', 'Naranja', 'Uva', 'Toronja', 'Pepsi Original'];
 const RECOMMENDED_DAY_FALLBACK_PRODUCT = {
-    nombre: 'Ranchera',
+    nombre: 'Caracas',
     categoria: 'BURGER PREMIUM',
-    image_url: './burgerpremium/burgerranchera.png',
+    image_url: './burgerpremium/burgercaracas.png',
     estado: 'active'
 };
 const RECOMMENDED_DAY_DISCOUNT_RATE = 0.2;
@@ -271,6 +218,63 @@ function normalizeImageAssetPath(value) {
 
     return `./${normalized.replace(/^\.?\//, '')}`;
 }
+
+function buildParentRelativeImagePath(value) {
+    const normalized = String(value || '').trim().replace(/\\/g, '/');
+    if (!normalized || /^(https?:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
+        return '';
+    }
+
+    if (normalized.startsWith('../')) {
+        return `../${normalized}`;
+    }
+
+    if (normalized.startsWith('./')) {
+        return `../${normalized.slice(2)}`;
+    }
+
+    if (normalized.startsWith('/')) {
+        return `..${normalized}`;
+    }
+
+    return `../${normalized}`;
+}
+
+function applyImageFallback(imageElement) {
+    if (!(imageElement instanceof HTMLImageElement)) {
+        return;
+    }
+
+    const currentSource = imageElement.getAttribute('src') || '';
+    const fallbackSource = buildParentRelativeImagePath(currentSource);
+
+    if (!fallbackSource || fallbackSource === currentSource || imageElement.dataset.roalFallbackApplied === '1') {
+        return;
+    }
+
+    imageElement.dataset.roalFallbackApplied = '1';
+    imageElement.src = fallbackSource;
+}
+
+function installImageFallbackHandler() {
+    if (window.__roalBurgerImageFallbackInstalled) {
+        return;
+    }
+
+    window.__roalBurgerImageFallbackInstalled = true;
+
+    document.addEventListener('error', (event) => {
+        applyImageFallback(event.target);
+    }, true);
+
+    document.querySelectorAll('img').forEach((imageElement) => {
+        if (imageElement.complete && imageElement.naturalWidth === 0) {
+            applyImageFallback(imageElement);
+        }
+    });
+}
+
+installImageFallbackHandler();
 
 function isCombosConPapasCategory(categoryName) {
     const normalizedCategory = normalizeCategoryKey(categoryName);
@@ -357,7 +361,7 @@ function openWhatsAppOrder(productName, categoryName, orderOptions = { type: 'so
     }
 
     const message = buildOrderMessage(productName, categoryName, orderOptions);
-    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
     showOrderSentMessage();
 }
 
@@ -792,7 +796,7 @@ function submitCheckoutInfo() {
         address: deliveryAddress
     });
     closeCheckoutInfoModal();
-    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
     showOrderSentMessage();
     clearCart();
     closeCartDrawer();
@@ -1246,7 +1250,7 @@ function sendSupportRequest() {
     supportUI.feedback.textContent = '';
     trackButtonClick('btn-whatsapp-flotante-send', `Ayuda WhatsApp - ${activeSupportTopic || 'consulta libre'}`);
     const message = buildSupportWhatsAppMessage(name, details, activeSupportTopic);
-    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
     resetSupportState();
     closeSupportModal();
 }
@@ -3186,7 +3190,7 @@ function renderDynamicCategorySections() {
                 modalContent.style.boxShadow = '0 4px 32px 0 rgba(0,0,0,0.25)';
 
                 const img = document.createElement('img');
-                img.src = imgSrc;
+                img.src = normalizeImageAssetPath(imgSrc);
                 img.alt = title;
                 img.style.maxWidth = '80vw';
                 img.style.maxHeight = '55vh';
@@ -3280,7 +3284,7 @@ function renderDynamicCategorySections() {
                     card.style.background = 'rgba(0,0,0,0.22)';
 
                     const img = document.createElement('img');
-                    img.src = rutaImagen;
+                    img.src = normalizeImageAssetPath(rutaImagen);
                     img.alt = product.nombre;
                     img.style.width = '68px';
                     img.style.height = '68px';
@@ -3685,7 +3689,7 @@ function bindButtonAction(button, cfg) {
         }
 
         const safeLink = cfg.link || '#';
-        window.open(safeLink, '_blank', 'noopener');
+        window.open(safeLink, '_blank', 'noopener,noreferrer');
     });
 
     return clone;
@@ -4678,7 +4682,7 @@ function openLink(platform) {
     }
 
     if (config.link) {
-        window.open(config.link, '_blank', 'noopener');
+        window.open(config.link, '_blank', 'noopener,noreferrer');
     }
 }
 
@@ -4778,9 +4782,23 @@ function getEligibleRecommendedProducts() {
 
             return Boolean(product.image_url);
         })
-        .sort((a, b) => `${a.categoria} ${a.nombre}`.localeCompare(`${b.categoria} ${b.nombre}`, 'es'));
 
-    return eligibleProducts.length ? eligibleProducts : [getRecommendedFallbackProduct()];
+    const uniqueEligibleProducts = [];
+    const seenRecommendedProducts = new Set();
+
+    eligibleProducts.forEach((product) => {
+        const signature = getRecommendedProductSignature(product);
+        if (!signature || seenRecommendedProducts.has(signature)) {
+            return;
+        }
+
+        seenRecommendedProducts.add(signature);
+        uniqueEligibleProducts.push(product);
+    });
+
+    uniqueEligibleProducts.sort((a, b) => `${a.categoria} ${a.nombre}`.localeCompare(`${b.categoria} ${b.nombre}`, 'es'));
+
+    return uniqueEligibleProducts.length ? uniqueEligibleProducts : [getRecommendedFallbackProduct()];
 }
 
 function getRecommendedProductSignature(product) {
@@ -4888,6 +4906,10 @@ function updatePromoModalContent() {
 }
 
 function initPromoModal() {
+    if (IS_ADMIN_PREVIEW) {
+        return;
+    }
+
     setTimeout(function () {
         var modal = document.getElementById('promoModal');
         if (modal) {
@@ -4972,6 +4994,7 @@ document.addEventListener('DOMContentLoaded', () => {
     buttonConfigsMap = new Map(
         Object.values(DEFAULT_PUBLIC_BUTTONS).map((button) => [button.id, { ...button }])
     );
+    renderPublicFeaturedFromAdmin();
     renderConfiguredButtons();
     renderCategoryExplorer();
 });

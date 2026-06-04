@@ -4,23 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ROAL BURGER | Admin</title>
-    <meta name="description" content="Panel administrativo de ROAL BURGER para gestion de productos, categorias y mas pedidos.">
+    <meta name="description" content="Panel administrativo de ROAL BURGER para gestion de productos, categorias, botones y branding.">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --admin-accent: #2f6fdd;
-            --admin-bg-card: rgba(20, 24, 33, 0.9);
-            --admin-border: rgba(110, 130, 165, 0.36);
-            --admin-muted: #a8b1c4;
+            --admin-accent: #ff7b45;
+            --admin-accent-soft: rgba(255, 123, 69, 0.18);
+            --admin-bg-card: rgba(12, 18, 34, 0.75);
+            --admin-bg-panel: rgba(15, 22, 42, 0.68);
+            --admin-border: rgba(255, 255, 255, 0.12);
+            --admin-muted: #b8c8e8;
             --admin-ok: #43c09c;
-            --admin-off: #7f8aa2;
+            --admin-off: #8f9db7;
+            --glass-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
         }
 
         .admin-shell {
             min-height: 100vh;
+            background: radial-gradient(circle at top left, rgba(255, 123, 69, 0.08), transparent 28%),
+                        radial-gradient(circle at bottom right, rgba(67, 192, 156, 0.08), transparent 28%);
         }
 
         .admin-sidebar {
@@ -28,13 +33,16 @@
             top: 0;
             left: 0;
             width: 30%;
-            min-width: 360px;
+            min-width: 340px;
             max-width: 520px;
             height: 100vh;
             overflow-y: auto;
-            border-right: 1px solid rgba(110, 130, 165, 0.32);
-            background: #121a28;
-            backdrop-filter: blur(8px);
+            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(180deg, rgba(12, 17, 33, 0.95), rgba(10, 13, 22, 0.92));
+            background-clip: padding-box;
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06), var(--glass-shadow);
             z-index: 2;
         }
 
@@ -84,6 +92,13 @@
             text-transform: uppercase;
         }
 
+        .session-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
         .preview-iframe-wrap {
             flex: 1;
             border: 1px solid rgba(110, 130, 165, 0.3);
@@ -100,6 +115,18 @@
             background: #000;
         }
 
+        .admin-form-single {
+            grid-template-columns: 1fr;
+        }
+
+        .muted-stack-8 {
+            margin-bottom: 8px;
+        }
+
+        .muted-stack-12 {
+            margin-bottom: 12px;
+        }
+
         .admin-header {
             display: flex;
             justify-content: space-between;
@@ -110,6 +137,7 @@
             border: 1px solid var(--admin-border);
             border-radius: 16px;
             background: linear-gradient(130deg, rgba(47, 111, 221, 0.22), rgba(10, 13, 20, 0.72));
+            -webkit-backdrop-filter: blur(8px);
             backdrop-filter: blur(8px);
         }
 
@@ -163,23 +191,32 @@
 
         .sidebar-action-btn,
         .category-filter-btn {
-            border: 1px solid rgba(255, 87, 34, 0.42);
-            background: rgba(255, 87, 34, 0.12);
-            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.06);
+            color: #edf2ff;
             border-radius: 999px;
-            padding: 8px 11px;
-            font-size: 0.74rem;
-            letter-spacing: 0.6px;
+            padding: 10px 14px;
+            font-size: 0.72rem;
+            letter-spacing: 0.7px;
             text-transform: uppercase;
             cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+        }
+
+        .category-filter-btn:hover,
+        .sidebar-action-btn:hover {
+            transform: translateY(-1px);
+            background: rgba(255, 255, 255, 0.12);
         }
 
         .category-filter-btn.active,
         .sidebar-action-btn.active {
-            background: linear-gradient(90deg, #ff5722, #ff7b45);
-            border-color: rgba(255, 123, 69, 0.9);
-            color: #111;
+            background: linear-gradient(135deg, rgba(255, 123, 69, 0.9), rgba(255, 183, 96, 0.9));
+            border-color: rgba(255, 255, 255, 0.22);
+            color: #0d1117;
             font-weight: 700;
+            box-shadow: 0 14px 28px rgba(255, 123, 69, 0.18);
         }
 
         .admin-grid {
@@ -196,9 +233,11 @@
         .admin-card {
             background: var(--admin-bg-card);
             border: 1px solid var(--admin-border);
-            border-radius: 14px;
-            padding: 20px;
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+            border-radius: 22px;
+            padding: 22px;
+            box-shadow: var(--glass-shadow);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
         }
 
         .admin-card h2 {
@@ -206,6 +245,20 @@
             text-transform: uppercase;
             letter-spacing: 1.4px;
             font-size: 1.3rem;
+            color: #fdfdfd;
+        }
+
+        .admin-card p,
+        .admin-card span,
+        .admin-card label,
+        .category-product-item,
+        .category-viewer h3,
+        .product-main span,
+        .state-pill,
+        .category-filter-btn,
+        .sidebar-action-btn,
+        .admin-accordion-trigger {
+            color: #f5f8ff;
         }
 
         .card-head {
@@ -358,10 +411,12 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            color: #f7fbff;
+            font-weight: 700;
         }
 
         .muted {
-            color: var(--admin-muted);
+            color: #d9e5ff;
             font-size: 0.92rem;
         }
 
@@ -409,10 +464,12 @@
 
         .category-viewer {
             margin-top: 12px;
-            border: 1px dashed rgba(255, 255, 255, 0.2);
-            border-radius: 10px;
-            padding: 12px;
-            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 12px;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
         }
 
         .category-viewer h3 {
@@ -421,6 +478,7 @@
             letter-spacing: 1px;
             margin-bottom: 10px;
             text-transform: uppercase;
+            color: #fdfdfd;
         }
 
         .category-product-list {
@@ -431,22 +489,38 @@
         .category-product-item {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto auto auto;
-            gap: 8px;
+            gap: 10px;
             align-items: center;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 9px 10px;
-            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 14px;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #f8fbff;
+        }
+
+        .category-product-item strong {
+            color: #ffffff;
         }
 
         .category-products-inline {
             display: none;
             margin-top: 8px;
             margin-bottom: 8px;
-            border: 1px dashed rgba(255, 255, 255, 0.2);
-            border-radius: 10px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 12px;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+        }
+
+        .category-products-inline h3 {
+            color: #fdfdfd;
+            font-family: 'Oswald', sans-serif;
+            font-size: 1rem;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
         }
 
         .category-products-inline.show {
@@ -455,11 +529,12 @@
 
         .product-state-tag {
             font-size: 0.72rem;
-            color: #ffd18a;
-            border: 1px solid rgba(255, 209, 138, 0.45);
+            color: #fef5d7;
+            border: 1px solid rgba(255, 209, 138, 0.65);
             border-radius: 999px;
             padding: 2px 7px;
             margin-left: 8px;
+            background: rgba(255, 209, 138, 0.18);
         }
 
         .stats-grid {
@@ -689,6 +764,43 @@
             letter-spacing: 0.8px;
         }
 
+        .template-chip-fodexa {
+            background: linear-gradient(135deg, #1f2735, #56617a);
+        }
+
+        .template-chip-slate {
+            background: linear-gradient(135deg, #111827, #334155);
+        }
+
+        .template-chip-ivory {
+            background: linear-gradient(135deg, #f5f1e8, #d5c7ad);
+            color: #1b1b1b;
+        }
+
+        .template-chip-cobalt {
+            background: linear-gradient(135deg, #123a74, #2a63b8);
+        }
+
+        .template-chip-ember {
+            background: linear-gradient(135deg, #4b1d1a, #9b3d2f);
+        }
+
+        .template-chip-mono {
+            background: linear-gradient(135deg, #1c1c1c, #5b5b5b);
+        }
+
+        .inline-form-tight {
+            margin-bottom: 10px;
+        }
+
+        .stack-list-top-14 {
+            margin-top: 14px;
+        }
+
+        .metrics-chart-list-top-12 {
+            margin-top: 12px;
+        }
+
         .fine-tune-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -765,6 +877,17 @@
 
         .auth-error.show {
             display: block;
+        }
+
+        .auth-warning {
+            margin-bottom: 12px;
+            border: 1px solid rgba(255, 193, 7, 0.35);
+            background: rgba(255, 193, 7, 0.12);
+            color: #ffe8a3;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 0.84rem;
+            line-height: 1.45;
         }
 
         .admin-auth-links {
@@ -1029,6 +1152,8 @@
         .section-toolbar {
             display: flex;
             justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
             margin-bottom: 8px;
         }
 
@@ -1056,15 +1181,80 @@
         .category-product-item,
         .stat-box,
         .preview-box {
-            border: 0;
-            background: rgba(255, 255, 255, 0.03);
-            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 30px rgba(0, 0, 0, 0.18);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
         }
 
         #inventoryQuickList .list-item {
             grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.85fr) auto auto;
-            border-radius: 12px;
-            min-height: 62px;
+            border-radius: 18px;
+            min-height: 70px;
+            padding: 16px;
+        }
+
+        .product-main {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .product-main img {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 16px;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+        }
+
+        .product-main span,
+        .category-viewer h3,
+        .category-product-item strong,
+        .card-head h2 {
+            color: #f8fbff;
+        }
+
+        .category-viewer h3 {
+            font-size: 1rem;
+            letter-spacing: 0.6px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .product-main span {
+            font-size: 0.98rem;
+            font-weight: 700;
+            color: #f7fbff;
+            letter-spacing: 0.35px;
+            text-shadow: 0 1px 10px rgba(0, 0, 0, 0.25);
+        }
+
+        .category-product-list {
+            display: grid;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .category-product-item {
+            padding: 16px;
+            border-radius: 18px;
+            grid-template-columns: 1fr auto;
+            display: grid;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .category-product-item strong {
+            color: #f6f8ff;
+        }
+
+        .list-item:hover,
+        .category-product-item:hover {
+            transform: translateY(-1px);
+            transition: transform 0.2s ease;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
         }
 
         #inventoryQuickList .list-item .inventory-actions {
@@ -1236,10 +1426,11 @@
             <h2>Acceso Administrador</h2>
             <p>Ingresa tus credenciales para abrir el panel.</p>
             <div id="authError" class="auth-error" role="alert"></div>
-            <form id="adminAuthForm" class="admin-form" method="post" style="grid-template-columns: 1fr;">
+            <div class="auth-warning">Acceso legado: esta proteccion vive en el frontend y no reemplaza una autenticacion real de produccion.</div>
+            <form id="adminAuthForm" class="admin-form admin-form-single" method="post">
                 <div class="admin-field">
-                    <label for="authUsername">Usuario</label>
-                    <input type="text" id="authUsername" name="username" autocomplete="username" required>
+                    <label for="authUsername">Correo</label>
+                    <input type="email" id="authUsername" name="username" autocomplete="username" placeholder="admin@tu-negocio.com" required>
                 </div>
                 <div class="admin-field">
                     <label for="authPassword">Contrasena</label>
@@ -1271,7 +1462,10 @@
                 <h1>Panel Admin ROAL</h1>
                 <p>Control de inventario, botones publicos y configuracion de marca.</p>
             </div>
-            <a class="admin-link" href="index.html" target="_blank" rel="noopener noreferrer">Ir al menu publico</a>
+            <div class="session-actions">
+                <a class="admin-link" href="index.html" target="_blank" rel="noopener noreferrer">Ir al menu publico</a>
+                <button type="button" class="preview-refresh-btn" id="adminSignOutBtn">Cerrar sesion</button>
+            </div>
         </header>
 
         <div class="sidebar-section-label">Paneles</div>
@@ -1295,6 +1489,7 @@
         <section class="admin-grid admin-dashboard">
             <div class="admin-tab-panel active" data-tab-panel="inventario">
                 <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" id="importPublicCatalogBtn">Sincronizar Menu Publico</button>
                     <button type="button" class="section-save-btn" data-section-save="inventario">Guardar Inventario</button>
                 </div>
                 <article class="admin-card">
@@ -1303,7 +1498,7 @@
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-inventory-search" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-inventory-search">
-                        <form class="inline-form" style="margin-bottom: 10px;">
+                        <form class="inline-form inline-form-tight">
                             <div class="admin-field full">
                                 <label for="inventorySearchInput">Buscador de productos</label>
                                 <input type="text" id="inventorySearchInput" placeholder="Busca por nombre de producto...">
@@ -1339,7 +1534,7 @@
                         </div>
                         <div class="admin-field">
                             <label for="productImageFile">Imagen desde PC o movil</label>
-                            <input type="file" id="productImageFile" name="imageFile" accept="image/*" capture="environment">
+                            <input type="file" id="productImageFile" name="imageFile" accept="image/*">
                             <p class="admin-hint">Se sube a Firebase Storage. Recomendado: maximo 20 MB.</p>
                         </div>
                         <div class="admin-field full">
@@ -1353,24 +1548,13 @@
 
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>Los mas pedidos</h2>
+                        <h2>Destacados del catalogo</h2>
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-featured" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-featured">
-                    <form id="featuredQuickForm" class="inline-form" style="display: none;" data-open="false">
-                        <div class="admin-field">
-                            <label for="featuredQuickName">Nombre del producto</label>
-                            <input type="text" id="featuredQuickName" name="featuredQuickName" placeholder="Ej: Burger Triple" required>
-                        </div>
-                        <div class="admin-field">
-                            <label for="featuredQuickImage">Cargar imagen</label>
-                            <input type="file" id="featuredQuickImage" name="featuredQuickImage" accept="image/*" required>
-                        </div>
-                        <button type="submit" class="ghost-button" id="featuredQuickSubmitBtn">Guardar en los mas pedidos</button>
-                    </form>
-                    <p class="muted" id="featuredQuickStatus" style="margin-bottom: 10px; display: none;">Guardando producto...</p>
-                    <button type="button" class="ghost-button" id="featuredQuickToggle" style="margin-bottom: 12px;">Agregar</button>
-                    <p class="muted" style="margin-bottom: 12px;">Maximo 5 productos en esta seccion.</p>
+                    <p class="muted muted-stack-8">Maximo 5 productos destacados en Firestore.</p>
+                    <p class="muted muted-stack-8">Usa el inventario para crear productos completos y luego marcarlos como destacados.</p>
+                    <p class="muted muted-stack-12">Nota: esta seccion no controla el carrusel fijo de "Los mas pedidos" del inicio. Solo marca destacados del catalogo.</p>
                     <div id="featuredList" class="stack-list"></div>
                     </div>
                 </article>
@@ -1490,12 +1674,12 @@
                             <button type="submit" class="admin-button">Guardar configuracion</button>
                         </form>
                         <div class="template-grid" id="templateGrid">
-                            <button type="button" class="template-chip" data-template="fodexa" style="background: linear-gradient(135deg, #1f2735, #56617a);">Fodexa</button>
-                            <button type="button" class="template-chip" data-template="slate" style="background: linear-gradient(135deg, #111827, #334155);">Slate</button>
-                            <button type="button" class="template-chip" data-template="ivory" style="background: linear-gradient(135deg, #f5f1e8, #d5c7ad); color: #1b1b1b;">Ivory</button>
-                            <button type="button" class="template-chip" data-template="cobalt" style="background: linear-gradient(135deg, #123a74, #2a63b8);">Cobalt</button>
-                            <button type="button" class="template-chip" data-template="ember" style="background: linear-gradient(135deg, #4b1d1a, #9b3d2f);">Ember</button>
-                            <button type="button" class="template-chip" data-template="mono" style="background: linear-gradient(135deg, #1c1c1c, #5b5b5b);">Mono</button>
+                            <button type="button" class="template-chip template-chip-fodexa" data-template="fodexa">Fodexa</button>
+                            <button type="button" class="template-chip template-chip-slate" data-template="slate">Slate</button>
+                            <button type="button" class="template-chip template-chip-ivory" data-template="ivory">Ivory</button>
+                            <button type="button" class="template-chip template-chip-cobalt" data-template="cobalt">Cobalt</button>
+                            <button type="button" class="template-chip template-chip-ember" data-template="ember">Ember</button>
+                            <button type="button" class="template-chip template-chip-mono" data-template="mono">Mono</button>
                         </div>
                         <div class="preview-box" id="brandingPreview">
                             <div class="preview-brand">
@@ -1602,7 +1786,7 @@
                             <input type="hidden" id="buttonEditId" name="buttonEditId" value="">
                             <button type="submit" class="admin-button" id="buttonSaveBtn">Guardar boton</button>
                         </form>
-                        <div id="buttonConfigList" class="stack-list" style="margin-top: 14px;"></div>
+                        <div id="buttonConfigList" class="stack-list stack-list-top-14"></div>
                     </div>
                 </article>
             </div>
@@ -1635,7 +1819,7 @@
                             <div class="stat-value" id="metricPausedProducts">--</div>
                         </div>
                         <div class="stat-box">
-                            <div class="stat-label">Destacados Activos</div>
+                            <div class="stat-label">Destacados En Catalogo</div>
                             <div class="stat-value" id="metricFeaturedProducts">--</div>
                         </div>
                         <div class="stat-box">
@@ -1654,9 +1838,13 @@
                             <div class="stat-label">Clics WhatsApp</div>
                             <div class="stat-value" id="metricWhatsappClicks">--</div>
                         </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Personas por día</div>
+                            <div class="stat-value" id="metricDailyVisitors">--</div>
+                        </div>
                     </div>
                     <div class="metrics-subtitle">Interes por producto</div>
-                    <div id="metricsChartList" class="metrics-chart-list" style="margin-top: 12px;"></div>
+                    <div id="metricsChartList" class="metrics-chart-list metrics-chart-list-top-12"></div>
                     <div class="metrics-insights-grid">
                         <div class="metrics-insight-card">
                             <h3>Categorias con mas interes</h3>
@@ -1685,7 +1873,7 @@
             <button type="button" class="preview-refresh-btn" id="previewRefreshBtn">Recargar Vista</button>
         </div>
         <div class="preview-iframe-wrap preview-viewport mobile" id="previewViewportWrap">
-            <iframe id="liveMenuPreview" class="preview-iframe" src="index.html" title="Vista previa menu publico"></iframe>
+            <iframe id="liveMenuPreview" class="preview-iframe" src="index.html?adminPreview=1" title="Vista previa menu publico"></iframe>
         </div>
     </section>
     </div>
@@ -1718,7 +1906,7 @@
                     </select>
                 </div>
                 <div class="admin-field">
-                    <label for="editProductFeatured">Los mas pedidos</label>
+                    <label for="editProductFeatured">Destacado del catalogo</label>
                     <select id="editProductFeatured" name="editProductFeatured">
                         <option value="false">No</option>
                         <option value="true">Si</option>
@@ -1742,6 +1930,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="firebase-config.js"></script>
+    <script src="tracking.js"></script>
     <script src="admin.js"></script>
 </body>
 </html>
