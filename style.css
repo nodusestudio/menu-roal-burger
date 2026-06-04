@@ -2727,6 +2727,32 @@ a.is-ordering-closed {
     font-size: 14px;
 }
 
+.shortcut-section {
+    text-align: center;
+}
+
+.shortcut-install-btn {
+    justify-content: center;
+    width: 100%;
+    max-width: 360px;
+    margin: 0 auto;
+    border: 1px solid rgba(255, 145, 0, 0.35);
+}
+
+.shortcut-install-icon {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.shortcut-install-hint {
+    margin-top: 12px;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    text-align: center;
+}
+
 @media (max-width: 768px) {
     .maps-btn {
         padding: 8px 14px;
@@ -2736,6 +2762,15 @@ a.is-ordering-closed {
     
     .maps-icon {
         font-size: 13px;
+    }
+
+    .shortcut-install-btn {
+        max-width: 100%;
+    }
+
+    .shortcut-install-icon {
+        width: 24px;
+        height: 24px;
     }
 }
 

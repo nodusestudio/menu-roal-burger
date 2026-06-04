@@ -276,6 +276,122 @@ function installImageFallbackHandler() {
 
 installImageFallbackHandler();
 
+let deferredInstallPrompt = null;
+
+function getOfficialMenuUrl() {
+    return document.querySelector('link[rel="canonical"]')?.href || window.location.href;
+}
+
+function isMobileDevice() {
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+}
+
+function isIOSDevice() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function updateShortcutInstallUI() {
+    const button = document.getElementById('installShortcutButton');
+    const text = document.getElementById('installShortcutButtonText');
+    const hint = document.getElementById('installShortcutHint');
+    if (!button || !text || !hint) {
+        return;
+    }
+
+    if (deferredInstallPrompt) {
+        text.textContent = 'Instalar acceso directo';
+        hint.textContent = 'Instala ROAL BURGER en este dispositivo con el isotipo oficial.';
+        return;
+    }
+
+    if (isMobileDevice()) {
+        text.textContent = 'Guardar en tu movil';
+        hint.textContent = isIOSDevice()
+            ? 'En iPhone o iPad usa Compartir y luego Anadir a pantalla de inicio.'
+            : 'Guarda o comparte el enlace oficial para tenerlo a un toque en tu movil.';
+        return;
+    }
+
+    text.textContent = 'Descargar acceso directo';
+    hint.textContent = 'Descarga un acceso directo para tu PC con el isotipo oficial de ROAL BURGER.';
+}
+
+function downloadDesktopShortcut() {
+    const url = getOfficialMenuUrl();
+    const iconUrl = new URL('/isotipo.png', url).href;
+    const shortcutContent = `[InternetShortcut]\r\nURL=${url}\r\nIconFile=${iconUrl}\r\nIconIndex=0\r\n`;
+    const blob = new Blob([shortcutContent], { type: 'application/internet-shortcut' });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = 'ROAL BURGER.url';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+}
+
+async function handleShortcutInstall() {
+    const url = getOfficialMenuUrl();
+
+    if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice.catch(() => null);
+        deferredInstallPrompt = null;
+        updateShortcutInstallUI();
+        return;
+    }
+
+    if (!isMobileDevice()) {
+        downloadDesktopShortcut();
+        return;
+    }
+
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: 'ROAL BURGER',
+                text: 'Guarda el enlace oficial de ROAL BURGER.',
+                url
+            });
+            return;
+        } catch (error) {
+            // Continua con el siguiente fallback si el navegador cancela la accion.
+        }
+    }
+
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url).catch(() => null);
+    }
+
+    window.alert(isIOSDevice()
+        ? 'El enlace oficial ya esta listo. En iPhone o iPad abre Compartir y luego Anadir a pantalla de inicio.'
+        : 'El enlace oficial ya esta listo. Si tu navegador no ofrece instalar, abre el menu del navegador y elige Anadir a pantalla de inicio.');
+}
+
+function initShortcutInstallUI() {
+    const button = document.getElementById('installShortcutButton');
+    if (!button || button.dataset.shortcutReady === '1') {
+        updateShortcutInstallUI();
+        return;
+    }
+
+    button.dataset.shortcutReady = '1';
+    button.addEventListener('click', handleShortcutInstall);
+    updateShortcutInstallUI();
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    updateShortcutInstallUI();
+});
+
+window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    updateShortcutInstallUI();
+});
+
 function isCombosConPapasCategory(categoryName) {
     const normalizedCategory = normalizeCategoryKey(categoryName);
     return normalizedCategory.includes('combos con papas y bebida');
@@ -4949,6 +5065,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCartUI();
     initSupportModal();
     initPromoModal();
+    initShortcutInstallUI();
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
     syncOrderingAvailabilityUI();
