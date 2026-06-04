@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ROAL BURGER | Admin</title>
-    <meta name="description" content="Panel administrativo de ROAL BURGER para gestion de productos, categorias, botones y branding.">
+    <meta name="description" content="Panel Admin de ROAL BURGER para gestionar categorias, botones, metricas y configuracion de marca.">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1424,7 +1424,7 @@
     <section class="admin-auth-overlay" id="adminAuthOverlay" aria-label="Acceso administrador">
         <div class="admin-auth-card">
             <h2>Acceso Administrador</h2>
-            <p>Ingresa tus credenciales para abrir el panel.</p>
+            <p>Ingresa tus credenciales para abrir Admin.</p>
             <div id="authError" class="auth-error" role="alert"></div>
             <div class="auth-warning">Acceso legado: esta proteccion vive en el frontend y no reemplaza una autenticacion real de produccion.</div>
             <form id="adminAuthForm" class="admin-form admin-form-single" method="post">
@@ -1459,114 +1459,32 @@
     <main class="admin-page">
         <header class="admin-header">
             <div class="admin-title-wrap">
-                <h1>Panel Admin ROAL</h1>
-                <p>Control de inventario, botones publicos y configuracion de marca.</p>
+                <h1>Admin ROAL</h1>
+                <p>Control de categorias, botones de Publico, metricas y configuracion de marca.</p>
             </div>
             <div class="session-actions">
-                <a class="admin-link" href="index.html" target="_blank" rel="noopener noreferrer">Ir al menu publico</a>
+                <a class="admin-link" href="index.html" target="_blank" rel="noopener noreferrer">Ir a Publico</a>
                 <button type="button" class="preview-refresh-btn" id="adminSignOutBtn">Cerrar sesion</button>
             </div>
         </header>
 
         <div class="sidebar-section-label">Paneles</div>
         <nav class="admin-accordion" id="adminAccordionNav">
-            <button type="button" class="admin-accordion-trigger active" data-accordion-target="inventario"><span class="nav-icon">📦</span><span>Inventario</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="diseno"><span class="nav-icon">🎨</span><span>Diseno</span></button>
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="categorias"><span class="nav-icon">📂</span><span>Categorias</span></button>
+            <button type="button" class="admin-accordion-trigger active" data-accordion-target="categorias"><span class="nav-icon">📂</span><span>Categorias</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
         </nav>
-
-        <div class="sidebar-section-label">Filtros Rapidos</div>
-        <div class="sidebar-filters" id="categoryQuickFilters">
-            <button type="button" class="category-filter-btn active" data-filter-category="all">Todos</button>
-            <button type="button" class="category-filter-btn" data-filter-category="burger clasicas">BURGER CLASSIC</button>
-            <button type="button" class="category-filter-btn" data-filter-category="combos">COMBOS</button>
-            <button type="button" class="category-filter-btn" data-filter-category="bebidas">BEBIDAS</button>
-        </div>
 
         <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
 
         <section class="admin-grid admin-dashboard">
-            <div class="admin-tab-panel active" data-tab-panel="inventario">
-                <div class="section-toolbar">
-                    <button type="button" class="section-save-btn" id="importPublicCatalogBtn">Sincronizar Menu Publico</button>
-                    <button type="button" class="section-save-btn" data-section-save="inventario">Guardar Inventario</button>
-                </div>
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Dashboard de Inventario</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-inventory-search" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-inventory-search">
-                        <form class="inline-form inline-form-tight">
-                            <div class="admin-field full">
-                                <label for="inventorySearchInput">Buscador de productos</label>
-                                <input type="text" id="inventorySearchInput" placeholder="Busca por nombre de producto...">
-                            </div>
-                        </form>
-                        <div id="inventorySkeleton" class="skeleton-grid">
-                            <div class="skeleton-item"></div>
-                            <div class="skeleton-item"></div>
-                            <div class="skeleton-item"></div>
-                        </div>
-                        <div id="inventoryQuickList" class="stack-list"></div>
-                    </div>
-                </article>
-
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Agregar Producto</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-add-product" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-add-product">
-                    <form id="productForm" class="admin-form">
-                        <div class="admin-field">
-                            <label for="productName">Nombre</label>
-                            <input type="text" id="productName" name="name" placeholder="Ej: Doble Crispy" required>
-                        </div>
-                        <div class="admin-field">
-                            <label for="productPrice">Precio</label>
-                            <input type="number" id="productPrice" name="price" placeholder="Ej: 24900" min="0" step="100" required>
-                        </div>
-                        <div class="admin-field">
-                            <label for="productCategory">Categoria</label>
-                            <select id="productCategory" name="category" required></select>
-                        </div>
-                        <div class="admin-field">
-                            <label for="productImageFile">Imagen desde PC o movil</label>
-                            <input type="file" id="productImageFile" name="imageFile" accept="image/*">
-                            <p class="admin-hint">Se sube a Firebase Storage. Recomendado: maximo 20 MB.</p>
-                        </div>
-                        <div class="admin-field full">
-                            <label for="productImageUrl">o Ruta/URL de imagen</label>
-                            <input type="text" id="productImageUrl" name="imageUrl" placeholder="Ej: PLUS.png o https://...">
-                        </div>
-                        <button type="submit" class="admin-button">Agregar producto</button>
-                    </form>
-                    </div>
-                </article>
-
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Destacados del catalogo</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-featured" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-featured">
-                    <p class="muted muted-stack-8">Maximo 5 productos destacados en Firestore.</p>
-                    <p class="muted muted-stack-8">Usa el inventario para crear productos completos y luego marcarlos como destacados.</p>
-                    <p class="muted muted-stack-12">Nota: esta seccion no controla el carrusel fijo de "Los mas pedidos" del inicio. Solo marca destacados del catalogo.</p>
-                    <div id="featuredList" class="stack-list"></div>
-                    </div>
-                </article>
-            </div>
-
-            <div class="admin-tab-panel" data-tab-panel="categorias">
+            <div class="admin-tab-panel active" data-tab-panel="categorias">
                 <div class="section-toolbar">
                     <button type="button" class="section-save-btn" data-section-save="categorias">Guardar Categorias</button>
                 </div>
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>Categorias del Menu</h2>
+                        <h2>Categorias de Publico</h2>
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-categories">
@@ -1701,7 +1619,7 @@
                 </div>
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>Botones del Sitio Publico</h2>
+                        <h2>Botones de Publico</h2>
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-buttons" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-buttons">
@@ -1723,7 +1641,7 @@
                                 <label for="buttonActionType">Accion</label>
                                 <select id="buttonActionType" name="buttonActionType">
                                     <option value="external">Abrir enlace</option>
-                                    <option value="menu-modal">Abrir menu digital (modal)</option>
+                                    <option value="menu-modal">Abrir Publico (modal)</option>
                                 </select>
                             </div>
                             <div class="admin-field full">
@@ -1862,18 +1780,18 @@
     </main>
     </aside>
 
-    <section class="admin-preview-pane" aria-label="Vista previa en vivo">
+    <section class="admin-preview-pane" aria-label="Vista previa de Publico">
         <div class="preview-head">
-            <strong>Vista Previa</strong>
+            <strong>Vista previa de Publico</strong>
             <div class="preview-controls" id="previewViewportControls">
                 <button type="button" class="viewport-btn active" data-preview-size="mobile">Movil</button>
                 <button type="button" class="viewport-btn" data-preview-size="tablet">Tablet</button>
                 <button type="button" class="viewport-btn" data-preview-size="desktop">Desktop</button>
             </div>
-            <button type="button" class="preview-refresh-btn" id="previewRefreshBtn">Recargar Vista</button>
+            <button type="button" class="preview-refresh-btn" id="previewRefreshBtn">Recargar Publico</button>
         </div>
         <div class="preview-iframe-wrap preview-viewport mobile" id="previewViewportWrap">
-            <iframe id="liveMenuPreview" class="preview-iframe" src="index.html?adminPreview=1" title="Vista previa menu publico"></iframe>
+            <iframe id="liveMenuPreview" class="preview-iframe" src="index.html?adminPreview=1" title="Vista previa de Publico"></iframe>
         </div>
     </section>
     </div>

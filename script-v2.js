@@ -2776,7 +2776,7 @@ const LOCAL_PRODUCT_IMAGE_FILES = [
     'COMBOS DE PERROS Y EXPRESS.png',
     'COMBOS DE TEMPORADAS.png',
     'COMBOS FAMILIARES.png',
-    'CORDILLERA.png',
+    './burgerpremium/burgercordillera.png',
     'empanadas.png',
     'entradas.png',
     'menu combo emparejado.png',
@@ -2873,7 +2873,7 @@ const SECTION_CATEGORY_KEYS = {
     'menu-combos-temporada': 'combos'
 };
 
-const HIDDEN_PRODUCT_KEYS = new Set(['de la casa', 'plus', 'burger plus', 'empanadas', 'empanada']);
+const HIDDEN_PRODUCT_KEYS = new Set(['de la casa', 'empanadas', 'empanada']);
 const HIDDEN_PRODUCT_NAME_PARTS = ['de la casa'];
 
 function normalizeCategoryKey(value) {
@@ -3758,6 +3758,9 @@ function renderSocialMiniLinks() {
 function getExplorerCategories() {
     const uniqueMap = new Map();
     const keys = new Set();
+    const sourceCategories = Array.isArray(activeCategoryMeta) && activeCategoryMeta.length
+        ? activeCategoryMeta
+        : allCategoryMeta;
 
 
     // Excluir combos de temporada, familiares, perros, burger y variantes
@@ -3770,7 +3773,7 @@ function getExplorerCategories() {
         'combos burger', 'combo burger', 'combos de burger'
     ]);
 
-    allCategoryMeta.forEach((item) => {
+    sourceCategories.forEach((item) => {
         const name = item?.name;
         const cleanName = String(name || '').trim();
         const key = normalizeCategoryKey(cleanName);
@@ -3796,6 +3799,10 @@ function getExplorerCategories() {
         const key = normalizeCategoryKey(item.key);
         const name = String(item.name || '').trim();
         if (!key || !name) {
+            return;
+        }
+
+        if (!isCategoryAllowed(name)) {
             return;
         }
 
@@ -3825,6 +3832,9 @@ function ensureForcedExplorerCategories(categories) {
         const key = normalizeCategoryKey(item.key);
         const name = String(item.name || '').trim();
         if (!key || !name) {
+            return;
+        }
+        if (!isCategoryAllowed(name)) {
             return;
         }
         if ([
@@ -3883,7 +3893,8 @@ function ensurePinnedExplorerCategories(categories) {
     return pinnedList;
 }
 
-function getCategoryProducts(category) {
+function getCategoryProducts(category, options = {}) {
+    const includePaused = options.includePaused === true;
     const selectedKeys = new Set((category?.matchKeys || [category?.key || '']).map((value) => normalizeCategoryKey(value)).filter(Boolean));
 
     return latestProducts
@@ -3901,7 +3912,7 @@ function getCategoryProducts(category) {
             };
         })
         .filter((product) => {
-            if (product.estado === 'paused') {
+            if (!includePaused && product.estado === 'paused') {
                 return false;
             }
 
@@ -3919,6 +3930,106 @@ function getCategoryProducts(category) {
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 }
 
+function renderManualCategoryGallery(panel, categoryName, cards, visibleProducts, allProducts) {
+    if (!panel || !categoryName || !Array.isArray(cards)) {
+        return false;
+    }
+
+    const visibleLookup = new Map(
+        (visibleProducts || [])
+            .map((product) => [normalizeAssetLookup(product?.nombre || ''), product])
+            .filter(([key]) => Boolean(key))
+    );
+    const visibleNames = new Set(
+        (visibleProducts || [])
+            .map((product) => normalizeAssetLookup(product?.nombre || ''))
+            .filter(Boolean)
+    );
+    const filteredCards = cards
+        .filter((card) => visibleNames.has(normalizeAssetLookup(card?.name || '')))
+        .map((card) => {
+            const matchedProduct = visibleLookup.get(normalizeAssetLookup(card?.name || ''));
+            const matchedImage = matchedProduct?.image_url || card.image;
+            return {
+                ...card,
+                image: matchedImage,
+                orderImagePath: matchedImage,
+                fallbackImage: card.image
+            };
+        });
+    const hasCatalogProducts = Array.isArray(allProducts) && allProducts.length > 0;
+    const staticNames = new Set(cards.map((card) => normalizeAssetLookup(card?.name || '')).filter(Boolean));
+    const extraCards = (visibleProducts || [])
+        .filter((product) => !staticNames.has(normalizeAssetLookup(product?.nombre || '')))
+        .map((product) => ({
+            name: product.nombre,
+            image: product.image_url || 'logo.png',
+            orderImagePath: product.image_url || 'logo.png',
+            fallbackImage: 'logo.png'
+        }));
+
+    if (hasCatalogProducts && !(visibleProducts || []).length) {
+        panel.innerHTML = '<p class="category-empty">No hay productos cargados en esta categoria.</p>';
+        return true;
+    }
+
+    const finalCards = filteredCards.length || extraCards.length
+        ? [...filteredCards, ...extraCards]
+        : cards;
+
+    panel.innerHTML = '';
+
+    const gallery = document.createElement('div');
+    gallery.className = 'bebidas-gallery-grid';
+    gallery.style.display = 'grid';
+    gallery.style.gridTemplateColumns = finalCards.length === 1 ? '1fr' : '1fr 1fr';
+    gallery.style.gap = '15px';
+    gallery.style.padding = '20px';
+
+    if (finalCards.length === 1) {
+        gallery.style.maxWidth = '420px';
+        gallery.style.margin = '0 auto';
+    }
+
+    finalCards.forEach((card) => {
+        const item = document.createElement('div');
+        item.className = 'card-pequena';
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', () => {
+            abrirModalBebida(card.name, card.image, categoryName, { orderImagePath: card.orderImagePath || card.image });
+        });
+
+        const image = document.createElement('img');
+        const fallbackImage = card.fallbackImage || card.image || 'logo.png';
+        image.src = card.image || fallbackImage;
+        image.alt = card.name;
+        image.style.width = '100%';
+        image.style.borderRadius = '8px';
+        image.addEventListener('error', () => {
+            if (image.getAttribute('src') === fallbackImage) {
+                image.src = 'logo.png';
+                return;
+            }
+
+            image.src = fallbackImage;
+        });
+
+        const label = document.createElement('p');
+        label.textContent = card.name;
+        label.style.textAlign = 'center';
+        label.style.fontWeight = 'bold';
+        label.style.marginTop = '5px';
+        label.style.color = '#000';
+
+        item.appendChild(image);
+        item.appendChild(label);
+        gallery.appendChild(item);
+    });
+
+    panel.appendChild(gallery);
+    return true;
+}
+
 function renderCategoryExplorer(nextKey, options = {}) {
     const grid = document.getElementById('categoryGrid');
     const panel = document.getElementById('categoryProductsPanel');
@@ -3926,7 +4037,8 @@ function renderCategoryExplorer(nextKey, options = {}) {
         return;
     }
 
-    const categories = ensurePinnedExplorerCategories(ensureForcedExplorerCategories(getExplorerCategories()));
+    const categories = ensurePinnedExplorerCategories(ensureForcedExplorerCategories(getExplorerCategories()))
+        .filter((category) => isCategoryAllowed(category.name || category.key));
     grid.innerHTML = '';
 
     if (!categories.length) {
@@ -3960,228 +4072,100 @@ function renderCategoryExplorer(nextKey, options = {}) {
     });
 
     const selectedCategory = categories.find((item) => item.key === selectedCategoryKey) || categories[0];
+    const products = getCategoryProducts(selectedCategory);
+    const allCategoryProducts = getCategoryProducts(selectedCategory, { includePaused: true });
 
     // --- INICIO LÓGICA MANUAL BEBIDAS Y ADICIONALES Y OTRAS ---
     if (selectedCategory.name) {
         const catNorm = selectedCategory.name.trim().toUpperCase();
         // BEBIDAS Y ADICIONALES
         if (catNorm.includes('BEBIDAS') || catNorm.includes('ADICIONALES')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Adicionales', './bebidasyadicionales/adiciones.png')">
-                        <img src="./bebidasyadicionales/adiciones.png" style="width: 100%; border-radius: 8px;" alt="Adicionales">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Adicionales</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Bebidas', './bebidasyadicionales/bebidas.png')">
-                        <img src="./bebidasyadicionales/bebidas.png" style="width: 100%; border-radius: 8px;" alt="Bebidas">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Bebidas</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'Adicionales', image: './bebidasyadicionales/adiciones.png' },
+                { name: 'Bebidas', image: './bebidasyadicionales/bebidas.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // BURGER CLASICAS
         if (catNorm.includes('CLASICAS')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Normal', './burgerclasicas/burgernormal.png')">
-                        <img src="./burgerclasicas/burgernormal.png" style="width: 100%; border-radius: 8px;" alt="Normal">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Normal</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Super', './burgerclasicas/burgersuper.png')">
-                        <img src="./burgerclasicas/burgersuper.png" style="width: 100%; border-radius: 8px;" alt="Super">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Super</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'Normal', image: './burgerclasicas/burgernormal.png' },
+                { name: 'Super', image: './burgerclasicas/burgersuper.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // BURGER PREMIUM
         if (catNorm.includes('PREMIUM')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Caracas', './burgerpremium/burgercaracas.png')">
-                        <img src="./burgerpremium/burgercaracas.png" style="width: 100%; border-radius: 8px;" alt="Caracas">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Caracas</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Cordillera', './burgerpremium/burgercordillera.png')">
-                        <img src="./burgerpremium/burgercordillera.png" style="width: 100%; border-radius: 8px;" alt="Cordillera">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Cordillera</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Papuda', './burgerpremium/burgerpapuda.png')">
-                        <img src="./burgerpremium/burgerpapuda.png" style="width: 100%; border-radius: 8px;" alt="Papuda">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Papuda</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Plus', './burgerpremium/burgerplus.png')">
-                        <img src="./burgerpremium/burgerplus.png" style="width: 100%; border-radius: 8px;" alt="Plus">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Plus</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Ranchera', './burgerpremium/burgerranchera.png')">
-                        <img src="./burgerpremium/burgerranchera.png" style="width: 100%; border-radius: 8px;" alt="Ranchera">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Ranchera</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Triplete', './burgerpremium/burgertriplete.png')">
-                        <img src="./burgerpremium/burgertriplete.png" style="width: 100%; border-radius: 8px;" alt="Triplete">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Triplete</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'Caracas', image: './burgerpremium/burgercaracas.png' },
+                { name: 'Cordillera', image: './burgerpremium/burgercordillera.png' },
+                { name: 'Papuda', image: './burgerpremium/burgerpapuda.png' },
+                { name: 'Plus', image: './burgerpremium/burgerplus.png' },
+                { name: 'Ranchera', image: './burgerpremium/burgerranchera.png' },
+                { name: 'Triplete', image: './burgerpremium/burgertriplete.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // ENTRADAS
         if (catNorm.includes('ENTRADAS')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Papas a la Francesa', './entradas/papas.png')">
-                        <img src="./entradas/papas.png" style="width: 100%; border-radius: 8px;" alt="Papas a la Francesa">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Papas a la Francesa</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Tequeños', './entradas/tequenos.png')">
-                        <img src="./entradas/tequenos.png" style="width: 100%; border-radius: 8px;" alt="Tequeños">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Tequeños</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'Papas a la Francesa', image: './entradas/papas.png' },
+                { name: 'Tequeños', image: './entradas/tequenos.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // PEPTIOS VENEZOLANOS
         if (catNorm.includes('PEPITOS')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Mix', './pepitosvenezolanos/pepitomix.png')">
-                        <img src="./pepitosvenezolanos/pepitomix.png" style="width: 100%; border-radius: 8px;" alt="Mix">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Mix</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Plus', './pepitosvenezolanos/pepitoplus.png')">
-                        <img src="./pepitosvenezolanos/pepitoplus.png" style="width: 100%; border-radius: 8px;" alt="Plus">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Plus</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Ranchero', './pepitosvenezolanos/pepitoranchero.png')">
-                        <img src="./pepitosvenezolanos/pepitoranchero.png" style="width: 100%; border-radius: 8px;" alt="Ranchero">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Ranchero</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Urbano', './pepitosvenezolanos/pepitourbano.png')">
-                        <img src="./pepitosvenezolanos/pepitourbano.png" style="width: 100%; border-radius: 8px;" alt="Urbano">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Urbano</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'Mix', image: './pepitosvenezolanos/pepitomix.png' },
+                { name: 'Plus', image: './pepitosvenezolanos/pepitoplus.png' },
+                { name: 'Ranchero', image: './pepitosvenezolanos/pepitoranchero.png' },
+                { name: 'Urbano', image: './pepitosvenezolanos/pepitourbano.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // SALCHIPAPAS
         if (catNorm.includes('SALCHIPAPA')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Salchi Normal', './salchipapas/salchinormal.png')">
-                        <img src="./salchipapas/salchinormal.png" style="width: 100%; border-radius: 8px;" alt="Salchi Normal">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Salchi Normal</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Salchi Super', './salchipapas/salchisuper.png')">
-                        <img src="./salchipapas/salchisuper.png" style="width: 100%; border-radius: 8px;" alt="Salchi Super">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Salchi Super</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'Salchi Normal', image: './salchipapas/salchinormal.png' },
+                { name: 'Salchi Super', image: './salchipapas/salchisuper.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // PERROS CALIENTES
         if (catNorm.includes('PERROS') && !catNorm.includes('SALCHIPAPA')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Especial', './perroscalientes/perroespecial.png')">
-                        <img src="./perroscalientes/perroespecial.png" style="width: 100%; border-radius: 8px;" alt="Especial">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Especial</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Normal', './perroscalientes/perronormal.png')">
-                        <img src="./perroscalientes/perronormal.png" style="width: 100%; border-radius: 8px;" alt="Normal">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Normal</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Super', './perroscalientes/perrosuper.png')">
-                        <img src="./perroscalientes/perrosuper.png" style="width: 100%; border-radius: 8px;" alt="Super">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Super</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'Especial', image: './perroscalientes/perroespecial.png' },
+                { name: 'Normal', image: './perroscalientes/perronormal.png' },
+                { name: 'Super', image: './perroscalientes/perrosuper.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // COMBOS CON PAPAS Y BEBIDA
         if (catNorm.includes('COMBOS CON PAPAS Y BEBIDA')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Combo Burger Normal', './combosconpapasybebidas/comboburgernormal.png')">
-                        <img src="./combosconpapasybebidas/comboburgernormal.png" style="width: 100%; border-radius: 8px;" alt="Combo Burger Normal">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Combo Burger Normal</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Combo Burger Papuda', './combosconpapasybebidas/comboburgerpapuda.png')">
-                        <img src="./combosconpapasybebidas/comboburgerpapuda.png" style="width: 100%; border-radius: 8px;" alt="Combo Burger Papuda">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Combo Burger Papuda</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Combo Burger Super', './combosconpapasybebidas/comboburgersuper.png')">
-                        <img src="./combosconpapasybebidas/comboburgersuper.png" style="width: 100%; border-radius: 8px;" alt="Combo Burger Super">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Combo Burger Super</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Combo Perro Normal', './combosconpapasybebidas/comboperronormal.png')">
-                        <img src="./combosconpapasybebidas/comboperronormal.png" style="width: 100%; border-radius: 8px;" alt="Combo Perro Normal">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Combo Perro Normal</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'Combo Burger Normal', image: './combosconpapasybebidas/comboburgernormal.png' },
+                { name: 'Combo Burger Papuda', image: './combosconpapasybebidas/comboburgerpapuda.png' },
+                { name: 'Combo Burger Super', image: './combosconpapasybebidas/comboburgersuper.png' },
+                { name: 'Combo Perro Normal', image: './combosconpapasybebidas/comboperronormal.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // COMBOS MIXTOS
         if (catNorm.includes('COMBOS MIXTOS')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 20px;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('De La Casa', './combosmixtos/delacasa.png')">
-                        <img src="./combosmixtos/delacasa.png" style="width: 100%; border-radius: 8px;" alt="De La Casa">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">De La Casa</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Emparejados', './combosmixtos/emparejados.png')">
-                        <img src="./combosmixtos/emparejados.png" style="width: 100%; border-radius: 8px;" alt="Emparejados">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Emparejados</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Familiar 3', './combosmixtos/familiar3.png')">
-                        <img src="./combosmixtos/familiar3.png" style="width: 100%; border-radius: 8px;" alt="Familiar 3">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Familiar 3</p>
-                    </div>
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Familiar 4', './combosmixtos/familiar4.png')">
-                        <img src="./combosmixtos/familiar4.png" style="width: 100%; border-radius: 8px;" alt="Familiar 4">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Familiar 4</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'De La Casa', image: './combosmixtos/delacasa.png' },
+                { name: 'Emparejados', image: './combosmixtos/emparejados.png' },
+                { name: 'Familiar 3', image: './combosmixtos/familiar3.png' },
+                { name: 'Familiar 4', image: './combosmixtos/familiar4.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // NUESTRAS SALSAS
         if (catNorm.includes('NUESTRAS SALSAS')) {
-            panel.innerHTML = "";
-            const galeriaHTML = `
-                <div class="bebidas-gallery-grid" style="display: grid; grid-template-columns: 1fr; gap: 15px; padding: 20px; max-width: 420px; margin: 0 auto;">
-                    <div class="card-pequena" style="cursor: pointer;" onclick="abrirModalBebida('Salsas de la Casa', './nuestrassalsas/salsasdelacasa.png')">
-                        <img src="./nuestrassalsas/salsasdelacasa.png" style="width: 100%; border-radius: 8px;" alt="Salsas de la Casa">
-                        <p style="text-align: center; font-weight: bold; margin-top: 5px; color: #000;">Salsas de la Casa</p>
-                    </div>
-                </div>
-            `;
-            panel.insertAdjacentHTML("beforeend", galeriaHTML);
+            renderManualCategoryGallery(panel, selectedCategory.name, [
+                { name: 'Salsas de la Casa', image: './nuestrassalsas/salsasdelacasa.png' }
+            ], products, allCategoryProducts);
             return;
         }
         // NO combos de temporada
@@ -4192,8 +4176,6 @@ function renderCategoryExplorer(nextKey, options = {}) {
             return;
         }
     }
-
-    const products = getCategoryProducts(selectedCategory);
 
     const heroWrap = document.createElement('div');
     heroWrap.className = 'category-hero-wrap';

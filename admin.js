@@ -167,25 +167,11 @@ const authRegisterBtn = document.getElementById('authRegisterBtn');
 const authPasswordToggle = document.getElementById('authPasswordToggle');
 const adminSignOutBtn = document.getElementById('adminSignOutBtn');
 
-const productForm = document.getElementById('productForm');
-const featuredQuickForm = document.getElementById('featuredQuickForm');
-const featuredQuickToggle = document.getElementById('featuredQuickToggle');
-const featuredQuickNameInput = document.getElementById('featuredQuickName');
-const featuredQuickImageInput = document.getElementById('featuredQuickImage');
-const featuredQuickSubmitBtn = document.getElementById('featuredQuickSubmitBtn');
-const featuredQuickStatus = document.getElementById('featuredQuickStatus');
 const categoryForm = document.getElementById('categoryForm');
-const productCategorySelect = document.getElementById('productCategory');
-const featuredList = document.getElementById('featuredList');
 const categoryList = document.getElementById('categoryList');
 const notice = document.getElementById('adminNotice');
-const imageFileInput = document.getElementById('productImageFile');
 const totalClicksEl = document.getElementById('totalClicks');
 const topProductEl = document.getElementById('topProduct');
-const inventorySearchInput = document.getElementById('inventorySearchInput');
-const importPublicCatalogBtn = document.getElementById('importPublicCatalogBtn');
-const inventoryQuickList = document.getElementById('inventoryQuickList');
-const inventorySkeleton = document.getElementById('inventorySkeleton');
 const metricsChartList = document.getElementById('metricsChartList');
 const metricsCategoryList = document.getElementById('metricsCategoryList');
 const metricsInsightsList = document.getElementById('metricsInsightsList');
@@ -201,7 +187,6 @@ const previewRefreshBtn = document.getElementById('previewRefreshBtn');
 const liveMenuPreview = document.getElementById('liveMenuPreview');
 const previewViewportControls = document.getElementById('previewViewportControls');
 const previewViewportWrap = document.getElementById('previewViewportWrap');
-const categoryQuickFilters = document.getElementById('categoryQuickFilters');
 const advancedSettingsToggle = document.getElementById('advancedSettingsToggle');
 const advancedSettingsPanel = document.getElementById('advancedSettingsPanel');
 
@@ -246,9 +231,7 @@ let categoriesState = [];
 let buttonsState = [];
 let brandingState = { ...defaultBranding };
 let editingCategoryContextId = null;
-let inventorySearchTerm = '';
 let productClicksState = [];
-let inventoryCategoryFilter = 'all';
 let liveSubscriptions = [];
 let previewRefreshTimer = null;
 let metricsEventsState = {
@@ -306,7 +289,6 @@ function setupAccordion() {
     const buttons = Array.from(nav.querySelectorAll('.admin-accordion-trigger'));
     const panels = Array.from(document.querySelectorAll('.admin-tab-panel'));
     const groupMap = {
-        inventario: ['inventario'],
         categorias: ['categorias'],
         diseno: ['configuracion', 'botones'],
         metricas: ['metricas']
@@ -327,7 +309,7 @@ function setupAccordion() {
         button.addEventListener('click', () => activateAccordion(button.dataset.accordionTarget));
     });
 
-    activateAccordion('inventario');
+    activateAccordion('categorias');
 }
 
 function setupAdvancedSettingsPanel() {
@@ -415,11 +397,6 @@ function setupSectionSaveButtons() {
 
         const section = String(target.dataset.sectionSave || '').trim().toLowerCase();
         if (!section) {
-            return;
-        }
-
-        if (section === 'inventario' && productForm) {
-            productForm.requestSubmit();
             return;
         }
 
@@ -790,23 +767,6 @@ async function syncPublicCatalogToFirestore() {
     await batch.commit();
 }
 
-function renderCategorySelect() {
-    const activeCategories = categoriesState.filter((category) => category.active);
-    const previousValue = productCategorySelect.value;
-
-    productCategorySelect.innerHTML = '<option value="">Seleccionar</option>';
-    activeCategories.forEach((category) => {
-        const option = document.createElement('option');
-        option.value = category.name;
-        option.textContent = category.name;
-        productCategorySelect.appendChild(option);
-    });
-
-    if (activeCategories.some((category) => category.name === previousValue)) {
-        productCategorySelect.value = previousValue;
-    }
-}
-
 function renderEditProductCategorySelect(selectedCategoryName) {
     if (!editProductCategorySelect) {
         return;
@@ -860,21 +820,6 @@ function openProductEditModal(product, categoryId) {
     editProductNameInput.focus();
 }
 
-function startNewProductForCategory(category) {
-    if (!category || !productForm || !productCategorySelect) {
-        return;
-    }
-
-    productForm.reset();
-    productCategorySelect.value = category.name;
-    productForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-    const nameInput = document.getElementById('productName');
-    if (nameInput instanceof HTMLInputElement) {
-        nameInput.focus();
-    }
-}
-
 function createCategoryRow(category) {
     const wrapper = document.createElement('div');
     const row = document.createElement('div');
@@ -891,7 +836,6 @@ function createCategoryRow(category) {
         <div class="product-main">${categoryThumb}<span>${category.name}</span></div>
         <div class="muted">Categoria del menu</div>
         <span class="state-pill ${stateClass}">${stateText}</span>
-        <button class="mini-btn" data-category-id="${category.id}" data-action="add-product">Agregar producto</button>
         <button class="mini-btn" data-category-id="${category.id}" data-action="toggle-category">${toggleText}</button>
         <button class="mini-btn remove" data-category-id="${category.id}" data-action="delete-category">Eliminar</button>
         <button class="mini-btn remove" data-category-id="${category.id}" data-action="view-category">Ver mas</button>
@@ -911,7 +855,6 @@ function renderCategories() {
     categoriesState.forEach((category) => {
         categoryList.appendChild(createCategoryRow(category));
     });
-    renderCategorySelect();
 }
 
 function renderCategoryProductsInline(container, category, isVisible) {
@@ -988,94 +931,6 @@ function createFeaturedRow(product) {
     `;
 
     return row;
-}
-
-function renderFeaturedProducts() {
-    const featured = productsState.filter((product) => product.es_destacado).slice(0, MAX_FEATURED);
-    featuredList.innerHTML = '';
-
-    if (!featured.length) {
-        const empty = document.createElement('p');
-        empty.className = 'muted';
-        empty.textContent = 'Todavia no hay productos destacados en el catalogo.';
-        featuredList.appendChild(empty);
-    } else {
-        featured.forEach((product) => {
-            featuredList.appendChild(createFeaturedRow(product));
-        });
-    }
-
-}
-
-function setInventoryLoading(isLoading) {
-    if (inventorySkeleton) {
-        inventorySkeleton.style.display = isLoading ? 'grid' : 'none';
-    }
-    if (inventoryQuickList) {
-        inventoryQuickList.style.display = isLoading ? 'none' : 'grid';
-    }
-}
-
-function renderInventoryQuickList() {
-    if (!inventoryQuickList) {
-        return;
-    }
-
-    inventoryQuickList.innerHTML = '';
-    const term = inventorySearchTerm.trim().toLowerCase();
-    const filtered = productsState.filter((product) => {
-        const productCategoryKey = normalizeCategoryKey(product.categoria || '');
-        const categoryMatch = inventoryCategoryFilter === 'all'
-            || productCategoryKey.includes(inventoryCategoryFilter)
-            || inventoryCategoryFilter.includes(productCategoryKey);
-        if (!categoryMatch) {
-            return false;
-        }
-
-        if (!term) {
-            return true;
-        }
-        return String(product.nombre || '').toLowerCase().includes(term);
-    });
-
-    if (!productsState.length) {
-        const empty = document.createElement('p');
-        empty.className = 'muted';
-        empty.textContent = 'Listo para recibir tus nuevos combos';
-        inventoryQuickList.appendChild(empty);
-        return;
-    }
-
-    if (!filtered.length) {
-        const empty = document.createElement('p');
-        empty.className = 'muted';
-        empty.textContent = 'No se encontraron productos con ese nombre.';
-        inventoryQuickList.appendChild(empty);
-        return;
-    }
-
-    filtered.forEach((product) => {
-        const row = document.createElement('div');
-        row.className = 'list-item';
-
-        const stateClass = product.estado === 'active' ? 'visible' : 'hidden';
-        const stateText = product.estado === 'active' ? 'Activo' : 'Pausado';
-
-        row.innerHTML = `
-            <div class="product-main">
-                <img src="${product.image_url || 'logo.png'}" alt="${product.nombre}">
-                <span>${product.nombre}</span>
-            </div>
-            <div class="muted">$ ${Number(product.precio || 0).toLocaleString('es-CO')} - ${product.categoria || 'Sin categoria'}</div>
-            <span class="state-pill ${stateClass}">${stateText}</span>
-            <div class="inventory-actions">
-                <button class="mini-btn" data-action="quick-toggle-state" data-product-id="${product.id}">${product.estado === 'active' ? 'Pausar' : 'Activar'}</button>
-                <button class="mini-btn" data-action="quick-toggle-featured" data-product-id="${product.id}">${product.es_destacado ? 'Quitar destacado' : 'Destacar'}</button>
-            </div>
-        `;
-
-        inventoryQuickList.appendChild(row);
-    });
 }
 
 function renderMetricsChart() {
@@ -1289,40 +1144,6 @@ function setupLiveFirebaseSync() {
         queueLivePreviewRefresh();
     });
     liveSubscriptions.push(configUnsubscribe);
-}
-
-function toggleFeaturedQuickForm(forceOpen) {
-    if (!featuredQuickForm || !featuredQuickToggle) {
-        return;
-    }
-
-    const currentOpen = featuredQuickForm.dataset.open === 'true';
-    const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !currentOpen;
-
-    featuredQuickForm.dataset.open = shouldOpen ? 'true' : 'false';
-    featuredQuickForm.style.display = shouldOpen ? 'grid' : 'none';
-    featuredQuickToggle.textContent = shouldOpen ? 'Cancelar' : 'Agregar rapido';
-
-    if (shouldOpen && featuredQuickNameInput) {
-        featuredQuickNameInput.focus();
-    }
-}
-
-function setFeaturedQuickLoading(isLoading) {
-    if (!featuredQuickForm) {
-        return;
-    }
-
-    if (featuredQuickSubmitBtn) {
-        featuredQuickSubmitBtn.disabled = isLoading;
-        featuredQuickSubmitBtn.textContent = isLoading
-            ? 'Guardando...'
-            : 'Guardar destacado rapido';
-    }
-
-    if (featuredQuickStatus) {
-        featuredQuickStatus.style.display = isLoading ? 'block' : 'none';
-    }
 }
 
 function renderButtonsList() {
@@ -1704,8 +1525,6 @@ async function fetchProductClickMetrics() {
 }
 
 async function reloadDataAndRender() {
-    setInventoryLoading(true);
-
     await Promise.all([
         fetchCategories(),
         fetchProducts(),
@@ -1715,214 +1534,12 @@ async function reloadDataAndRender() {
     ]);
 
     renderCategories();
-    renderFeaturedProducts();
-    renderInventoryQuickList();
     renderButtonsList();
     renderBrandingForm();
     renderMetricsChart();
     await syncStats();
     renderMetricsOverview();
-    setInventoryLoading(false);
 }
-
-productForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    hideNotice();
-
-    const formData = new FormData(productForm);
-    const nombre = String(formData.get('name') || '').trim();
-    const precio = Number(formData.get('price'));
-    const categoria = String(formData.get('category') || '').trim();
-    const imageUrl = String(formData.get('imageUrl') || '').trim();
-    const imageFile = imageFileInput.files && imageFileInput.files[0] ? imageFileInput.files[0] : null;
-
-    if (!nombre || !precio || !categoria) {
-        showNotice('Completa nombre, precio y categoria.', 'error');
-        return;
-    }
-
-    if (!imageFile && !imageUrl) {
-        showNotice('Debes subir una imagen o indicar una ruta/URL.', 'error');
-        return;
-    }
-
-    if (imageFile && imageFile.size > 20 * 1024 * 1024) {
-        showNotice('La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
-        return;
-    }
-
-    try {
-        let finalImageUrl = imageUrl;
-        if (imageFile) {
-            finalImageUrl = await uploadImageToFirebase(imageFile, nombre);
-        }
-
-        const id = `${slugify(nombre)}-${Date.now()}`;
-        await firebaseDb.collection('productos').doc(id).set({
-            nombre,
-            precio,
-            categoria,
-            estado: 'active',
-            es_destacado: false,
-            image_url: finalImageUrl,
-            created_at: firestoreNow(),
-            updated_at: firestoreNow()
-        });
-
-        productForm.reset();
-        await reloadDataAndRender();
-        showNotice('Producto agregado correctamente en Firebase.', 'ok');
-    } catch (error) {
-        showNotice(`No se pudo guardar el producto: ${error.message || 'Error inesperado.'}`, 'error');
-    }
-});
-
-if (featuredQuickForm) {
-    featuredQuickForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        showNotice('El alta rapida de destacados fue desactivada. Crea el producto completo en inventario y luego marcalo como destacado.', 'error');
-    });
-}
-
-if (featuredQuickToggle) {
-    featuredQuickToggle.addEventListener('click', () => {
-        toggleFeaturedQuickForm();
-    });
-}
-
-if (inventorySearchInput) {
-    inventorySearchInput.addEventListener('input', (event) => {
-        inventorySearchTerm = String(event.target.value || '');
-        renderInventoryQuickList();
-    });
-}
-
-if (importPublicCatalogBtn) {
-    importPublicCatalogBtn.addEventListener('click', async () => {
-        hideNotice();
-
-        const confirmed = window.confirm('Esto sincronizara en Firestore el menu publico actual con categorias, productos e imagenes. Los estados pausado y destacados ya existentes se conservaran. Deseas continuar?');
-        if (!confirmed) {
-            return;
-        }
-
-        try {
-            await syncPublicCatalogToFirestore();
-            await reloadDataAndRender();
-            showNotice(`Menu publico sincronizado: ${PUBLIC_CATEGORY_CATALOG.length} categorias y ${PUBLIC_PRODUCT_CATALOG.length} productos cargados en el panel.`, 'ok');
-        } catch (error) {
-            showNotice(`No se pudo sincronizar el menu publico: ${error.message || 'Error inesperado.'}`, 'error');
-        }
-    });
-}
-
-if (categoryQuickFilters) {
-    categoryQuickFilters.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLButtonElement)) {
-            return;
-        }
-
-        const nextFilter = String(target.dataset.filterCategory || 'all').trim().toLowerCase();
-        inventoryCategoryFilter = nextFilter || 'all';
-
-        Array.from(categoryQuickFilters.querySelectorAll('.category-filter-btn')).forEach((button) => {
-            button.classList.toggle('active', button === target);
-        });
-
-        renderInventoryQuickList();
-    });
-}
-
-if (inventoryQuickList) {
-    inventoryQuickList.addEventListener('click', async (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLButtonElement)) {
-            return;
-        }
-
-        const action = target.dataset.action;
-        const productId = target.dataset.productId;
-        if (!action || !productId) {
-            return;
-        }
-
-        const product = productsState.find((item) => item.id === productId);
-        if (!product) {
-            return;
-        }
-
-        try {
-            if (action === 'quick-toggle-state') {
-                const estado = product.estado === 'active' ? 'paused' : 'active';
-                await firebaseDb.collection('productos').doc(productId).update({
-                    estado,
-                    updated_at: firestoreNow()
-                });
-            }
-
-            if (action === 'quick-toggle-featured') {
-                const featured = !product.es_destacado;
-                await firebaseDb.collection('productos').doc(productId).update({
-                    es_destacado: featured,
-                    updated_at: firestoreNow()
-                });
-            }
-
-            await reloadDataAndRender();
-        } catch (error) {
-            showNotice(`No se pudo actualizar el producto: ${error.message || 'Error inesperado.'}`, 'error');
-        }
-    });
-}
-
-if (previewRefreshBtn && liveMenuPreview) {
-    previewRefreshBtn.addEventListener('click', () => {
-        refreshLivePreview();
-    });
-}
-
-featuredList.addEventListener('click', async (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
-        return;
-    }
-
-    const productId = target.dataset.productId;
-    const action = target.dataset.action;
-    if (!productId || !action) {
-        return;
-    }
-
-    const product = productsState.find((item) => item.id === productId);
-    if (!product) {
-        showNotice('Producto no encontrado.', 'error');
-        return;
-    }
-
-    try {
-        if (action === 'toggle-featured-state') {
-            const estado = product.estado === 'active' ? 'paused' : 'active';
-            await firebaseDb.collection('productos').doc(productId).update({
-                estado,
-                updated_at: firestoreNow()
-            });
-            await reloadDataAndRender();
-            showNotice(`Estado actualizado para ${product.nombre}.`, 'ok');
-        }
-
-        if (action === 'remove-featured') {
-            await firebaseDb.collection('productos').doc(productId).update({
-                es_destacado: false,
-                updated_at: firestoreNow()
-            });
-            await reloadDataAndRender();
-            showNotice(`${product.nombre} ya no esta marcado como destacado.`, 'ok');
-        }
-    } catch (error) {
-        showNotice(`No se pudo actualizar: ${error.message || 'Error inesperado.'}`, 'error');
-    }
-});
 
 categoryForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1930,8 +1547,9 @@ categoryForm.addEventListener('submit', async (event) => {
 
     const formData = new FormData(categoryForm);
     const name = String(formData.get('categoryName') || '').trim();
+
     if (!name) {
-        showNotice('Escribe un nombre de categoria valido.', 'error');
+        showNotice('Debes escribir el nombre de la categoria.', 'error');
         return;
     }
 
@@ -1965,99 +1583,78 @@ categoryList.addEventListener('click', async (event) => {
         return;
     }
 
+    const action = target.dataset.action;
     const categoryId = target.dataset.categoryId;
-    const action = target.dataset.action;
-    if (!categoryId || !action) {
+
+    if (!action) {
         return;
     }
 
-    if (action === 'view-category') {
-        const category = categoriesState.find((item) => item.id === categoryId);
-        if (!category) {
-            showNotice('Categoria no encontrada.', 'error');
+    if (categoryId && !target.dataset.productId) {
+        if (action === 'view-category') {
+            const category = categoriesState.find((item) => item.id === categoryId);
+            if (!category) {
+                showNotice('Categoria no encontrada.', 'error');
+                return;
+            }
+
+            const inline = getInlineContainerByCategoryId(categoryId);
+            const shouldShow = !(inline && inline.classList.contains('show'));
+            renderCategoryProductsInline(inline, category, shouldShow);
             return;
         }
 
-        const inline = getInlineContainerByCategoryId(categoryId);
-        const shouldShow = !(inline && inline.classList.contains('show'));
-        renderCategoryProductsInline(inline, category, shouldShow);
-        return;
-    }
+        if (action === 'delete-category') {
+            const category = categoriesState.find((item) => item.id === categoryId);
+            if (!category) {
+                showNotice('Categoria no encontrada.', 'error');
+                return;
+            }
 
-    if (action === 'add-product') {
-        const category = categoriesState.find((item) => item.id === categoryId);
-        if (!category) {
-            showNotice('Categoria no encontrada.', 'error');
+            const hasProducts = productsState.some((product) => product.categoria === category.name);
+            if (hasProducts) {
+                showNotice('No puedes eliminar la categoria porque tiene productos asociados.', 'error');
+                return;
+            }
+
+            const confirmed = window.confirm(`Eliminar la categoria ${category.name}?`);
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                await firebaseDb.collection('categorias').doc(categoryId).delete();
+                await reloadDataAndRender();
+                showNotice('Categoria eliminada.', 'ok');
+            } catch (error) {
+                showNotice(`No se pudo eliminar la categoria: ${error.message || 'Error inesperado.'}`, 'error');
+            }
             return;
         }
 
-        startNewProductForCategory(category);
-        showNotice(`Listo para agregar un producto en ${category.name}.`, 'ok');
-        return;
-    }
+        if (action === 'toggle-category') {
+            const category = categoriesState.find((item) => item.id === categoryId);
+            if (!category) {
+                showNotice('Categoria no encontrada.', 'error');
+                return;
+            }
 
-    if (action === 'delete-category') {
-        const category = categoriesState.find((item) => item.id === categoryId);
-        if (!category) {
-            showNotice('Categoria no encontrada.', 'error');
+            try {
+                await firebaseDb.collection('categorias').doc(categoryId).update({
+                    active: !category.active,
+                    updated_at: firestoreNow()
+                });
+                await reloadDataAndRender();
+                showNotice(`Categoria ${category.active ? 'desactivada' : 'activada'}.`, 'ok');
+            } catch (error) {
+                showNotice(`No se pudo actualizar la categoria: ${error.message || 'Error inesperado.'}`, 'error');
+            }
             return;
         }
-
-        const hasProducts = productsState.some((product) => product.categoria === category.name);
-        if (hasProducts) {
-            showNotice('No puedes eliminar la categoria porque tiene productos asociados.', 'error');
-            return;
-        }
-
-        const confirmed = window.confirm(`Eliminar categoria ${category.name}?`);
-        if (!confirmed) {
-            return;
-        }
-
-        try {
-            await firebaseDb.collection('categorias').doc(categoryId).delete();
-            await reloadDataAndRender();
-            showNotice('Categoria eliminada.', 'ok');
-        } catch (error) {
-            showNotice(`No se pudo eliminar la categoria: ${error.message || 'Error inesperado.'}`, 'error');
-        }
-        return;
     }
 
-    if (action !== 'toggle-category') {
-        return;
-    }
-
-    const category = categoriesState.find((item) => item.id === categoryId);
-    if (!category) {
-        showNotice('Categoria no encontrada.', 'error');
-        return;
-    }
-
-    try {
-        await firebaseDb.collection('categorias').doc(categoryId).update({
-            active: !category.active,
-            updated_at: firestoreNow()
-        });
-
-        await reloadDataAndRender();
-        showNotice(`Categoria ${category.name}: ${!category.active ? 'activada' : 'desactivada'}.`, 'ok');
-    } catch (error) {
-        showNotice(`No se pudo actualizar la categoria: ${error.message || 'Error inesperado.'}`, 'error');
-    }
-});
-
-categoryList.addEventListener('click', async (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
-        return;
-    }
-
-    const action = target.dataset.action;
     const productId = target.dataset.productId;
-    const categoryId = target.dataset.categoryId;
-
-    if (!action || !productId || !categoryId) {
+    if (!productId || !categoryId) {
         return;
     }
 
@@ -2487,8 +2084,6 @@ async function initAdmin() {
         await reloadDataAndRender();
         setupLiveFirebaseSync();
     } catch (error) {
-        setInventoryLoading(false);
-
         if (!document.body.classList.contains('admin-unlocked')) {
             document.body.classList.add('admin-locked');
             document.body.classList.remove('admin-unlocked');
