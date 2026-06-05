@@ -2115,6 +2115,10 @@ a.is-ordering-closed {
     gap: 6px;
 }
 
+.support-field[hidden] {
+    display: none !important;
+}
+
 .support-field input,
 .support-field textarea {
     width: 100%;

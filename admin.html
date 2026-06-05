@@ -26,18 +26,21 @@
             min-height: 100vh;
             background: radial-gradient(circle at top left, rgba(255, 123, 69, 0.08), transparent 28%),
                         radial-gradient(circle at bottom right, rgba(67, 192, 156, 0.08), transparent 28%);
+            display: block;
+            height: auto;
+            overflow: visible;
         }
 
         .admin-sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 30%;
-            min-width: 340px;
-            max-width: 520px;
-            height: 100vh;
-            overflow-y: auto;
-            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            position: relative;
+            top: auto;
+            left: auto;
+            width: 100%;
+            min-width: 0;
+            max-width: none;
+            height: auto;
+            overflow: visible;
+            border-right: 0;
             background: linear-gradient(180deg, rgba(12, 17, 33, 0.95), rgba(10, 13, 22, 0.92));
             background-clip: padding-box;
             -webkit-backdrop-filter: blur(20px);
@@ -51,34 +54,8 @@
             z-index: 1;
             width: 100%;
             margin: 0;
-            padding: 20px 16px 40px;
-        }
-
-        .admin-preview-pane {
-            margin-left: max(30%, 360px);
-            width: calc(100% - max(30%, 360px));
-            min-height: 100vh;
-            padding: 18px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .preview-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border: 1px solid rgba(110, 130, 165, 0.32);
-            border-radius: 12px;
-            padding: 10px 12px;
-            background: rgba(10, 10, 10, 0.82);
-        }
-
-        .preview-head strong {
-            font-family: 'Oswald', sans-serif;
-            letter-spacing: 1px;
-            color: #fff;
-            text-transform: uppercase;
+            max-width: 1680px;
+            padding: 20px 24px 40px;
         }
 
         .preview-refresh-btn {
@@ -97,22 +74,6 @@
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
-        }
-
-        .preview-iframe-wrap {
-            flex: 1;
-            border: 1px solid rgba(110, 130, 165, 0.3);
-            border-radius: 14px;
-            overflow: hidden;
-            background: #060606;
-        }
-
-        .preview-iframe {
-            width: 100%;
-            height: 100%;
-            min-height: calc(100vh - 100px);
-            border: 0;
-            background: #000;
         }
 
         .admin-form-single {
@@ -236,8 +197,8 @@
             border-radius: 22px;
             padding: 22px;
             box-shadow: var(--glass-shadow);
-            backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
         }
 
         .admin-card h2 {
@@ -462,14 +423,649 @@
             background: rgba(255, 255, 255, 0.08);
         }
 
+        .state-pill.pending {
+            background: rgba(255, 184, 77, 0.18);
+            color: #ffcf73;
+            border: 1px solid rgba(255, 184, 77, 0.42);
+        }
+
+        .state-pill.processing {
+            background: rgba(47, 111, 221, 0.18);
+            color: #8fc1ff;
+            border: 1px solid rgba(47, 111, 221, 0.42);
+        }
+
+        .state-pill.awaiting-delivery {
+            background: rgba(255, 122, 26, 0.18);
+            color: #ffbf80;
+            border: 1px solid rgba(255, 122, 26, 0.42);
+            animation: courierBlink 0.95s ease-in-out infinite alternate;
+        }
+
+        .state-pill.ready-pickup {
+            background: rgba(255, 214, 10, 0.18);
+            color: #ffe27d;
+            border: 1px solid rgba(255, 214, 10, 0.4);
+        }
+
+        .state-pill.success {
+            background: rgba(24, 198, 122, 0.2);
+            color: var(--admin-ok);
+            border: 1px solid rgba(24, 198, 122, 0.45);
+        }
+
+        .state-pill.cancelled {
+            background: rgba(255, 99, 99, 0.18);
+            color: #ff9b9b;
+            border: 1px solid rgba(255, 99, 99, 0.4);
+        }
+
+        .orders-workspace {
+            display: grid;
+            grid-template-columns: minmax(0, 7fr) minmax(320px, 3fr);
+            gap: 18px;
+            align-items: start;
+        }
+
+        .orders-lanes {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+            min-height: 72vh;
+        }
+
+        .orders-lane,
+        .ticket-panel {
+            position: relative;
+            overflow: hidden;
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(9, 15, 29, 0.42));
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 24px 60px rgba(0, 0, 0, 0.3);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            backdrop-filter: blur(16px) saturate(180%);
+        }
+
+        .orders-lane::before,
+        .ticket-panel::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(140deg, rgba(255, 255, 255, 0.12), transparent 38%, rgba(113, 175, 255, 0.08));
+            opacity: 0.8;
+        }
+
+        .orders-lane {
+            padding: 18px;
+            display: grid;
+            gap: 14px;
+            align-content: start;
+        }
+
+        .orders-lane-header,
+        .ticket-header,
+        .ticket-summary-line,
+        .ticket-contact-link,
+        .ticket-customer-row,
+        .ticket-print-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .orders-lane-header {
+            position: relative;
+            z-index: 1;
+            padding-bottom: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .orders-lane-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1rem;
+            letter-spacing: 0.8px;
+            color: #fff;
+            text-transform: uppercase;
+        }
+
+        .orders-lane-title strong {
+            display: block;
+            font-size: 1.02rem;
+            font-weight: 700;
+        }
+
+        .orders-lane-title span {
+            display: block;
+            font-size: 0.72rem;
+            color: rgba(222, 235, 255, 0.72);
+            letter-spacing: 0.4px;
+            margin-top: 4px;
+        }
+
+        .orders-lane-icon {
+            width: 44px;
+            height: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 16px;
+            font-size: 1.15rem;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        }
+
+        .kanban-count {
+            min-width: 38px;
+            min-height: 38px;
+            padding: 0 12px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .kanban-list {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            gap: 12px;
+            align-content: start;
+            min-height: 120px;
+        }
+
+        .kanban-order-card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 22px;
+            padding: 14px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(9, 14, 26, 0.5));
+            cursor: pointer;
+            transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+            display: grid;
+            gap: 10px;
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            backdrop-filter: blur(16px) saturate(180%);
+        }
+
+        .kanban-order-card::after {
+            content: '';
+            position: absolute;
+            inset: 1px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            pointer-events: none;
+        }
+
+        .kanban-order-card:hover,
+        .kanban-order-card.is-selected {
+            transform: translateY(-2px);
+            border-color: rgba(255, 149, 64, 0.48);
+            box-shadow: 0 22px 36px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(255, 149, 64, 0.12);
+        }
+
+        .kanban-order-card.is-selected {
+            background: linear-gradient(145deg, rgba(255, 160, 74, 0.18), rgba(9, 14, 26, 0.55));
+        }
+
+        .kanban-order-card.is-attention {
+            animation: orderPulse 1.2s ease-in-out infinite alternate;
+        }
+
+        .kanban-order-top,
+        .kanban-order-bottom {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .kanban-order-code {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .kanban-order-time,
+        .kanban-order-type,
+        .kanban-empty,
+        .ticket-empty,
+        .ticket-note,
+        .ticket-copy-muted,
+        .ticket-table .ticket-line-meta,
+        .ticket-note-line {
+            color: var(--admin-muted);
+            margin: 0;
+        }
+
+        .kanban-order-name,
+        .ticket-paper strong,
+        .ticket-table strong,
+        .ticket-total strong,
+        .ticket-brand-name,
+        .ticket-customer-name,
+        .ticket-total-row.is-grand-total {
+            color: #fff;
+        }
+
+        .kanban-order-total {
+            font-weight: 700;
+            color: #ffdd9f;
+        }
+
+        .kanban-order-status-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding-top: 6px;
+        }
+
+        .order-wait-timer {
+            color: #ffd8ab;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.76rem;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+        }
+
+        .kanban-order-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .order-action-btn {
+            flex: 1 1 160px;
+            min-height: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 12px;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #f8fbff;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+        }
+
+        .order-action-btn:hover {
+            transform: translateY(-1px);
+            border-color: rgba(255, 160, 74, 0.48);
+            background: rgba(255, 160, 74, 0.16);
+        }
+
+        .order-action-btn:disabled {
+            opacity: 0.6;
+            cursor: wait;
+            transform: none;
+        }
+
+        .order-action-btn-delivered {
+            background: rgba(67, 192, 156, 0.18);
+            border-color: rgba(67, 192, 156, 0.32);
+        }
+
+        .order-action-btn-delivered:hover {
+            background: rgba(67, 192, 156, 0.26);
+            border-color: rgba(67, 192, 156, 0.42);
+        }
+
+        .order-action-btn-ready {
+            background: rgba(255, 214, 10, 0.14);
+            border-color: rgba(255, 214, 10, 0.32);
+            color: #fff1a6;
+        }
+
+        .order-action-btn-ready:hover {
+            background: rgba(255, 214, 10, 0.22);
+            border-color: rgba(255, 214, 10, 0.42);
+        }
+
+        .order-action-btn-receive {
+            background: rgba(47, 111, 221, 0.2);
+            border-color: rgba(47, 111, 221, 0.38);
+            color: #cfe5ff;
+        }
+
+        .order-action-btn-receive:hover {
+            background: rgba(47, 111, 221, 0.28);
+            border-color: rgba(47, 111, 221, 0.5);
+        }
+
+        .kanban-order-card-compact {
+            padding: 12px 14px;
+            gap: 0;
+        }
+
+        .kanban-order-compact-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .kanban-order-card-compact .kanban-order-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .order-action-btn-view {
+            flex: 0 0 auto;
+            min-height: 34px;
+            padding: 8px 12px;
+            background: rgba(47, 111, 221, 0.2);
+            border-color: rgba(47, 111, 221, 0.32);
+        }
+
+        .order-action-btn-view:hover {
+            background: rgba(47, 111, 221, 0.28);
+            border-color: rgba(47, 111, 221, 0.42);
+        }
+
+        .ticket-panel {
+            min-height: 72vh;
+            position: sticky;
+            top: 18px;
+            padding: 16px;
+            display: grid;
+            gap: 16px;
+            align-content: start;
+        }
+
+        .ticket-header {
+            position: relative;
+            z-index: 1;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .ticket-title {
+            font-family: 'Space Grotesk', sans-serif;
+            color: #fff;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
+        }
+
+        .ticket-body {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            gap: 16px;
+            align-content: start;
+            min-height: 100%;
+        }
+
+        .ticket-empty {
+            display: grid;
+            place-items: center;
+            text-align: center;
+            min-height: 58vh;
+            padding: 28px;
+            border: 1px dashed rgba(255, 255, 255, 0.14);
+            border-radius: 22px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .ticket-empty strong {
+            display: block;
+            color: #fff;
+            margin-bottom: 10px;
+        }
+
+        .ticket-paper-wrap {
+            display: grid;
+            gap: 14px;
+        }
+
+        .ticket-paper {
+            position: relative;
+            background: linear-gradient(180deg, #ffffff 0%, #fbfbf8 100%);
+            color: #171717;
+            border-radius: 18px;
+            padding: 22px 20px 18px;
+            box-shadow: 0 18px 34px rgba(0, 0, 0, 0.28);
+            font-family: 'Roboto Mono', 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        .ticket-paper::before,
+        .ticket-paper::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 12px;
+            background:
+                radial-gradient(circle at 6px 6px, transparent 6px, #f6f4ef 6.5px);
+            background-size: 12px 12px;
+            pointer-events: none;
+        }
+
+        .ticket-paper::before {
+            top: -6px;
+        }
+
+        .ticket-paper::after {
+            bottom: -6px;
+            transform: rotate(180deg);
+        }
+
+        .ticket-brand {
+            text-align: center;
+            display: grid;
+            gap: 8px;
+            padding-bottom: 14px;
+            border-bottom: 1px dashed rgba(23, 23, 23, 0.25);
+        }
+
+        .ticket-brand-logo {
+            width: 58px;
+            height: 58px;
+            object-fit: contain;
+            margin: 0 auto;
+            filter: grayscale(1) contrast(1.2);
+        }
+
+        .ticket-brand-name {
+            color: #0f0f0f;
+            font-family: 'Oswald', sans-serif;
+            font-size: 1.45rem;
+            letter-spacing: 1.6px;
+            text-transform: uppercase;
+        }
+
+        .ticket-brand-copy,
+        .ticket-order-meta,
+        .ticket-note-line,
+        .ticket-copy-muted {
+            font-size: 0.8rem;
+            color: #585858;
+        }
+
+        .ticket-order-meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            text-transform: uppercase;
+        }
+
+        .ticket-section {
+            display: grid;
+            gap: 8px;
+            padding-top: 14px;
+            border-top: 1px dashed rgba(23, 23, 23, 0.2);
+        }
+
+        .ticket-section-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #666;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .ticket-customer-card {
+            display: grid;
+            gap: 10px;
+            padding: 10px 0 0;
+        }
+
+        .ticket-customer-name {
+            font-size: 1rem;
+            color: #111;
+        }
+
+        .ticket-customer-row {
+            align-items: flex-start;
+            color: #2d2d2d;
+            font-size: 0.85rem;
+        }
+
+        .ticket-customer-row span:last-child {
+            text-align: right;
+            max-width: 68%;
+        }
+
+        .ticket-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 2px;
+        }
+
+        .ticket-table th,
+        .ticket-table td {
+            padding: 8px 0;
+            border-bottom: 1px dashed rgba(23, 23, 23, 0.18);
+            text-align: left;
+            vertical-align: top;
+            color: #151515;
+            font-size: 0.85rem;
+        }
+
+        .ticket-table th {
+            font-size: 0.72rem;
+            color: #6a6a6a;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .ticket-table th:last-child,
+        .ticket-table td:last-child {
+            text-align: right;
+        }
+
+        .ticket-line-meta {
+            display: block;
+            margin-top: 3px;
+            font-size: 0.74rem;
+            line-height: 1.4;
+            color: #6d6d6d;
+        }
+
+        .ticket-total {
+            display: grid;
+            gap: 7px;
+            padding-top: 14px;
+            border-top: 1px dashed rgba(23, 23, 23, 0.2);
+        }
+
+        .ticket-summary-line {
+            width: 100%;
+            color: #191919;
+            font-size: 0.84rem;
+        }
+
+        .ticket-total-row.is-grand-total {
+            font-size: 1rem;
+            font-weight: 800;
+            color: #101010;
+        }
+
+        .ticket-footer-copy {
+            padding-top: 12px;
+            border-top: 1px dashed rgba(23, 23, 23, 0.2);
+            text-align: center;
+            display: grid;
+            gap: 4px;
+            color: #606060;
+            font-size: 0.72rem;
+        }
+
+        .ticket-print-btn {
+            width: 100%;
+            border: 0;
+            border-radius: 18px;
+            padding: 16px 18px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.96rem;
+            font-weight: 700;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+            color: #fff;
+            background: linear-gradient(135deg, #ff7a1a, #ff9c3d);
+            box-shadow: 0 16px 28px rgba(255, 122, 26, 0.34);
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+        }
+
+        .ticket-print-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 20px 34px rgba(255, 122, 26, 0.4);
+            filter: saturate(1.06);
+        }
+
+        .ticket-print-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        @keyframes orderPulse {
+            from {
+                box-shadow: 0 0 0 rgba(255, 122, 26, 0.1);
+            }
+            to {
+                box-shadow: 0 0 0 10px rgba(255, 122, 26, 0.02);
+            }
+        }
+
+        @keyframes courierBlink {
+            from {
+                opacity: 0.55;
+                box-shadow: 0 0 0 rgba(255, 122, 26, 0.12);
+            }
+            to {
+                opacity: 1;
+                box-shadow: 0 0 0 7px rgba(255, 122, 26, 0.04);
+            }
+        }
+
         .category-viewer {
             margin-top: 12px;
             border: 1px solid rgba(255, 255, 255, 0.16);
             border-radius: 12px;
             padding: 14px;
             background: rgba(255, 255, 255, 0.06);
-            backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
+            backdrop-filter: blur(18px);
         }
 
         .category-viewer h3 {
@@ -510,8 +1106,8 @@
             border-radius: 16px;
             padding: 16px;
             background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
-            backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
+            backdrop-filter: blur(18px);
         }
 
         .category-products-header {
@@ -1470,47 +2066,36 @@
         }
 
         body.admin-unlocked {
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         .admin-shell {
             display: flex;
-            height: 100vh;
-            gap: 12px;
-            overflow: hidden;
+            height: auto;
+            gap: 0;
+            overflow: visible;
         }
 
         .admin-sidebar {
             position: relative;
-            width: min(58vw, 860px);
-            min-width: 640px;
+            width: 100%;
+            min-width: 0;
             max-width: none;
-            height: 100vh;
+            height: auto;
             border-right: 0;
             background: transparent;
-            overflow-y: auto;
-            overflow-x: hidden;
-            padding: 18px 8px 18px 12px;
+            overflow: visible;
+            padding: 18px 14px 18px 14px;
         }
 
         .admin-page {
             width: 100%;
-            padding: 18px 10px 36px 96px;
-        }
-
-        .admin-preview-pane {
-            margin-left: 0;
-            width: 42vw;
-            min-width: 360px;
-            height: 100vh;
-            padding: 18px 14px 20px 0;
-            overflow: hidden;
+            padding: 18px 14px 36px 96px;
         }
 
         .admin-header,
-        .admin-card,
-        .preview-head,
-        .preview-iframe-wrap {
+        .admin-card {
             border: 0;
             box-shadow: var(--admin-shadow-soft);
             background: var(--admin-bg-elev);
@@ -1523,61 +2108,24 @@
             margin-bottom: 12px;
         }
 
-        .admin-title-wrap p {
-            max-width: 46ch;
-            line-height: 1.45;
+        .orders-workspace {
+            grid-template-columns: minmax(0, 7fr) minmax(340px, 3fr);
         }
 
-        .admin-title-wrap p,
-        .muted,
-        .form-note,
-        .admin-field label,
-        .stat-label,
-        .admin-hint {
-            color: var(--admin-text-soft);
-        }
-
-        .admin-link {
-            border-color: rgba(255, 255, 255, 0.12);
-            background: rgba(255, 255, 255, 0.04);
-        }
-
-        .sidebar-section-label,
-        .sidebar-filters {
-            display: none;
-        }
-
-        .admin-accordion {
-            position: absolute;
-            top: 26px;
-            left: 12px;
-            flex-direction: column;
-            gap: 8px;
-            margin: 0;
-            margin-bottom: 12px;
-        }
-
-        .admin-accordion-trigger {
-            min-width: 64px;
-            min-height: 76px;
-            padding: 12px 10px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            background: var(--admin-bg-elev-2);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            font-size: 0.61rem;
-            line-height: 1.1;
-            letter-spacing: 0.4px;
-            color: var(--admin-text-soft);
+        .orders-lanes {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .admin-tab-panel[data-tab-panel="categorias"] .admin-card {
             padding: 16px;
             border-radius: 18px;
+        }
+
+        .categories-workspace {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 16px;
+            align-items: start;
         }
 
         .admin-tab-panel[data-tab-panel="categorias"] .card-head {
@@ -1690,8 +2238,8 @@
             border: 1px solid rgba(255, 255, 255, 0.08);
             background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
             box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 30px rgba(0, 0, 0, 0.18);
-            backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
+            backdrop-filter: blur(18px);
         }
 
         #inventoryQuickList .list-item {
@@ -1794,6 +2342,26 @@
             align-items: center;
             gap: 6px;
             margin-left: auto;
+            flex-wrap: wrap;
+        }
+
+        .preview-viewport {
+            width: 100%;
+            overflow: auto;
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(5, 8, 15, 0.44);
+            padding: 14px;
+        }
+
+        .preview-iframe {
+            display: block;
+            width: 100%;
+            min-height: calc(100vh - 120px);
+            border: 0;
+            background: #0f1116;
+            border-radius: 14px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
         }
 
         .viewport-btn {
@@ -1861,6 +2429,10 @@
         }
 
         @media (max-width: 980px) {
+            .categories-workspace {
+                grid-template-columns: 1fr;
+            }
+
             .list-item {
                 grid-template-columns: 1fr;
             }
@@ -1947,14 +2519,6 @@
                 gap: 8px;
             }
 
-            .admin-preview-pane {
-                margin-left: 0;
-                width: 100%;
-                height: auto;
-                overflow: visible;
-                padding: 12px;
-            }
-
             .admin-form,
             .inline-form,
             .stats-grid,
@@ -1964,6 +2528,20 @@
 
             .metrics-insights-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .orders-workspace,
+            .orders-lanes {
+                grid-template-columns: 1fr;
+            }
+
+            .ticket-panel {
+                position: static;
+                min-height: 0;
+            }
+
+            .orders-lane {
+                min-height: 0;
             }
 
             .admin-header {
@@ -2013,7 +2591,6 @@
         <header class="admin-header">
             <div class="admin-title-wrap">
                 <h1>Admin ROAL</h1>
-                <p>Control de categorias, metricas e informacion del negocio.</p>
             </div>
             <div class="session-actions">
                 <a class="admin-link" href="index.html" target="_blank" rel="noopener noreferrer">Ir a Publico</a>
@@ -2025,6 +2602,7 @@
         <nav class="admin-accordion" id="adminAccordionNav">
             <button type="button" class="admin-accordion-trigger" data-accordion-target="diseno"><span class="nav-icon">🎨</span><span>Diseno</span></button>
             <button type="button" class="admin-accordion-trigger active" data-accordion-target="categorias"><span class="nav-icon">📂</span><span>Categorias</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="pedidos"><span class="nav-icon">🧾</span><span>Pedidos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
         </nav>
 
@@ -2037,20 +2615,95 @@
                     <button type="button" class="section-action-btn" id="openCreateProductBtn">Crear producto</button>
                     <button type="button" class="section-save-btn" data-section-save="categorias">Guardar Categorias</button>
                 </div>
+                <div class="categories-workspace">
+                    <article class="admin-card">
+                        <div class="card-head">
+                            <h2>Categorias de Publico</h2>
+                            <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
+                        </div>
+                        <div class="card-body" id="card-categories">
+                        <form id="categoryForm" class="inline-form category-inline-form">
+                            <div class="admin-field">
+                                <label for="newCategoryName">Nueva categoria</label>
+                                <input type="text" id="newCategoryName" name="categoryName" placeholder="Ej: Postres" required>
+                            </div>
+                            <button type="submit" class="ghost-button">Crear categoria</button>
+                        </form>
+                        <div id="categoryList" class="stack-list"></div>
+                        </div>
+                    </article>
+                </div>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="pedidos">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" data-section-save="pedidos">Actualizar pedidos</button>
+                </div>
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>Categorias de Publico</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
+                        <h2>Recepcion de Pedidos</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-orders" aria-expanded="true">Retraer</button>
                     </div>
-                    <div class="card-body" id="card-categories">
-                    <form id="categoryForm" class="inline-form category-inline-form">
-                        <div class="admin-field">
-                            <label for="newCategoryName">Nueva categoria</label>
-                            <input type="text" id="newCategoryName" name="categoryName" placeholder="Ej: Postres" required>
+                    <div class="card-body" id="card-orders">
+                        <div class="orders-workspace">
+                            <div class="orders-lanes" id="ordersBoard">
+                                <section class="orders-lane">
+                                    <div class="orders-lane-header">
+                                        <div class="orders-lane-title">
+                                            <span class="orders-lane-icon" aria-hidden="true">📥</span>
+                                            <div>
+                                                <strong>1. Sin leer</strong>
+                                                <span>Pedidos nuevos pendientes por revisar</span>
+                                            </div>
+                                        </div>
+                                        <span class="kanban-count" id="ordersCountUnread">0</span>
+                                    </div>
+                                    <div class="kanban-list" id="ordersColumnUnread"></div>
+                                </section>
+                                <section class="orders-lane">
+                                    <div class="orders-lane-header">
+                                        <div class="orders-lane-title">
+                                            <span class="orders-lane-icon" aria-hidden="true">🛍️</span>
+                                            <div>
+                                                <strong>2. Llevar</strong>
+                                                <span>Pedidos para retirar en local</span>
+                                            </div>
+                                        </div>
+                                        <span class="kanban-count" id="ordersCountTakeaway">0</span>
+                                    </div>
+                                    <div class="kanban-list" id="ordersColumnTakeaway"></div>
+                                </section>
+                                <section class="orders-lane">
+                                    <div class="orders-lane-header">
+                                        <div class="orders-lane-title">
+                                            <span class="orders-lane-icon" aria-hidden="true">🛵</span>
+                                            <div>
+                                                <strong>3. Domicilios</strong>
+                                                <span>Pedidos con entrega a casa</span>
+                                            </div>
+                                        </div>
+                                        <span class="kanban-count" id="ordersCountDelivery">0</span>
+                                    </div>
+                                    <div class="kanban-list" id="ordersColumnDelivery"></div>
+                                </section>
+                            </div>
+                            <aside class="ticket-panel" id="orderTicketPanel" aria-live="polite">
+                                <div class="ticket-header">
+                                    <div>
+                                        <div class="ticket-title">Previsualizacion de Ticket</div>
+                                        <p class="ticket-note">Selecciona una orden para imprimir solo el recibo termico.</p>
+                                    </div>
+                                </div>
+                                <div class="ticket-body" id="orderTicketBody">
+                                    <div class="ticket-empty">
+                                        <div>
+                                            <strong>Ticket listo para seleccion</strong>
+                                            <p>Haz clic en cualquier tarjeta del flujo para cargar el pedido en formato de impresora termica.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </aside>
                         </div>
-                        <button type="submit" class="ghost-button">Crear categoria</button>
-                    </form>
-                    <div id="categoryList" class="stack-list"></div>
                     </div>
                 </article>
             </div>
@@ -2194,20 +2847,6 @@
     </main>
     </aside>
 
-    <section class="admin-preview-pane" aria-label="Vista previa de Publico">
-        <div class="preview-head">
-            <strong>Vista previa de Publico</strong>
-            <div class="preview-controls" id="previewViewportControls">
-                <button type="button" class="viewport-btn active" data-preview-size="mobile">Movil</button>
-                <button type="button" class="viewport-btn" data-preview-size="tablet">Tablet</button>
-                <button type="button" class="viewport-btn" data-preview-size="desktop">Desktop</button>
-            </div>
-            <button type="button" class="preview-refresh-btn" id="previewRefreshBtn">Recargar Publico</button>
-        </div>
-        <div class="preview-iframe-wrap preview-viewport mobile" id="previewViewportWrap">
-            <iframe id="liveMenuPreview" class="preview-iframe" src="index.html?adminPreview=1" title="Vista previa de Publico"></iframe>
-        </div>
-    </section>
     </div>
 
     <div class="category-products-modal" id="categoryProductsModal" aria-hidden="true">

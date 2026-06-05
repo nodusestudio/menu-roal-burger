@@ -1,6 +1,12 @@
 // Tracking functions moved to tracking.js
 
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
+const ORDERS_COLLECTION = 'pedidos';
+const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
+const ORDER_CODE_PREFIX = 'RB';
+const ORDER_CODE_START = 2026;
+const DELIVERY_FEE_AMOUNT = 6000;
+const ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS = true;
 const PAGE_URL_PARAMS = new URLSearchParams(window.location.search);
 const IS_ADMIN_PREVIEW = PAGE_URL_PARAMS.get('adminPreview') === '1';
 const ORDERING_SCHEDULE = {
@@ -11,7 +17,9 @@ const ORDERING_SCHEDULE = {
     openMessage: 'Abierto ahora. Ya puedes hacer tu pedido.',
     closedMessage: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.'
 };
-const ORDER_SENT_CONFIRMATION_MESSAGE = 'Recibimos tu pedido. Un asesor te escribira pronto con el total y el valor del domicilio.';
+const ORDER_SENT_CONFIRMATION_MESSAGE = 'Tu pedido ha sido enviado exitosamente al restaurante. En un momento recibiras la confirmacion con tiempo aproximado de entrega.';
+const TRANSFER_PAYMENT_CONFIRMATION_MESSAGE = 'En un momento uno de nuestros asesores se comunicara contigo por WhatsApp para pasarte la informacion de la cuenta.';
+const CASH_PAYMENT_CONFIRMATION_MESSAGE = 'Tu pedido ya fue enviado al restaurante, manejamos un tiempo de entrega de 50 min aproximadamente, uno de nuestros asesores se comunicara contigo a la brevedad posible para confirmar el pedido.';
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
@@ -27,6 +35,63 @@ let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
 let orderingStatusToastTimer = null;
 let orderSentToastTimer = null;
+let publicFirebaseDbInstance = null;
+let orderSentConfirmationUI = null;
+let paymentFlowUI = null;
+
+function getCheckoutFulfillmentType(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'pickup') {
+        return 'pickup';
+    }
+    if (normalized === 'delivery') {
+        return 'delivery';
+    }
+    return '';
+}
+
+function getCheckoutDeliveryFee(fulfillmentType) {
+    return getCheckoutFulfillmentType(fulfillmentType) === 'delivery' ? DELIVERY_FEE_AMOUNT : 0;
+}
+
+function getCheckoutOrderTotal(fulfillmentType) {
+    return getCartTotalAmount() + getCheckoutDeliveryFee(fulfillmentType);
+}
+
+function getCheckoutDiscountAmount() {
+    return getCartDiscountTotalAmount();
+}
+
+function formatSequentialOrderCode(sequenceNumber) {
+    return `${ORDER_CODE_PREFIX}-${String(sequenceNumber).padStart(4, '0')}`;
+}
+
+async function reserveNextOrderCode(db, orderRef, payload) {
+    const sequenceRef = db.collection(ORDERS_COLLECTION).doc(ORDER_SEQUENCE_DOC_ID);
+    let reservedCode = '';
+
+    await db.runTransaction(async (transaction) => {
+        const sequenceSnapshot = await transaction.get(sequenceRef);
+        const currentSequence = Number(sequenceSnapshot.exists ? sequenceSnapshot.data()?.current : ORDER_CODE_START - 1);
+        const nextSequence = Number.isFinite(currentSequence)
+            ? Math.max(currentSequence + 1, ORDER_CODE_START)
+            : ORDER_CODE_START;
+        reservedCode = formatSequentialOrderCode(nextSequence);
+
+        transaction.set(sequenceRef, {
+            metaType: 'order_sequence',
+            current: nextSequence,
+            updatedAt: getPublicServerTimestamp()
+        }, { merge: true });
+
+        transaction.set(orderRef, {
+            ...payload,
+            code: reservedCode
+        });
+    });
+
+    return reservedCode;
+}
 
 function getCurrentOrderingMinutes(now = new Date()) {
     const parts = new Intl.DateTimeFormat('en-GB', {
@@ -42,12 +107,15 @@ function getCurrentOrderingMinutes(now = new Date()) {
 
 function getOrderingAvailability(now = new Date()) {
     const currentMinutes = getCurrentOrderingMinutes(now);
-    const isOpen = currentMinutes >= ORDERING_SCHEDULE.startMinutes && currentMinutes < ORDERING_SCHEDULE.endMinutes;
+    const isWithinSchedule = currentMinutes >= ORDERING_SCHEDULE.startMinutes && currentMinutes < ORDERING_SCHEDULE.endMinutes;
+    const isOpen = ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS ? true : isWithinSchedule;
 
     return {
         isOpen,
         scheduleLabel: ORDERING_SCHEDULE.label,
-        statusLabel: isOpen ? ORDERING_SCHEDULE.openMessage : ORDERING_SCHEDULE.closedMessage
+        statusLabel: isOpen
+            ? (ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS ? 'Modo pruebas activo. Puedes hacer pedidos fuera del horario.' : ORDERING_SCHEDULE.openMessage)
+            : ORDERING_SCHEDULE.closedMessage
     };
 }
 
@@ -78,26 +146,88 @@ function showOrderingClosedMessage() {
     }, 2600);
 }
 
-function showOrderSentMessage() {
-    let toast = document.getElementById('orderSentToast');
-
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'orderSentToast';
-        toast.className = 'order-sent-toast';
-        document.body.appendChild(toast);
+function closeOrderSentMessage() {
+    if (!orderSentConfirmationUI) {
+        return;
     }
 
-    toast.textContent = ORDER_SENT_CONFIRMATION_MESSAGE;
-    toast.classList.add('is-visible');
+    orderSentConfirmationUI.modal.remove();
+    orderSentConfirmationUI = null;
+    syncBodyScrollLock();
+}
 
-    if (orderSentToastTimer) {
-        window.clearTimeout(orderSentToastTimer);
+function showOrderSentMessage(message = ORDER_SENT_CONFIRMATION_MESSAGE) {
+    closeOrderSentMessage();
+
+    const modal = document.createElement('div');
+    modal.id = 'orderSentConfirmationModal';
+    modal.className = 'support-modal';
+    modal.classList.add('is-open');
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Confirmacion de pedido enviado">
+            <p class="support-modal-kicker">Pedido enviado</p>
+            <h3 class="support-modal-title">Informacion importante</h3>
+            <p class="support-modal-text">${message}</p>
+            <div class="support-actions">
+                <button type="button" class="support-send-btn">Entendido</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    orderSentConfirmationUI = {
+        modal,
+        accept: modal.querySelector('.support-send-btn')
+    };
+
+    orderSentConfirmationUI.accept.addEventListener('click', closeOrderSentMessage);
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeOrderSentMessage();
+        }
+    });
+
+    syncBodyScrollLock();
+}
+
+function buildWhatsAppOrderConfirmationText(orderData = {}) {
+    const orderCode = String(orderData.code || orderData.id || '').trim();
+    const customerName = String(orderData.customerName || '').trim() || 'Cliente';
+    const total = formatCurrency(Number(orderData.total || 0));
+
+    return `¡Hola ROAL BURGER! Acabo de registrar mi pedido a través de la aplicación web. El número de mi pedido es [${orderCode}] a nombre de [${customerName}] por un total de [${total}]. Quedo atento a la confirmación. ¡Muchas gracias!`;
+}
+
+function openOrderConfirmationWhatsApp(orderData = {}) {
+    const message = buildWhatsAppOrderConfirmationText(orderData);
+    const url = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`;
+    const whatsappWindow = window.open(url, '_blank', 'noopener,noreferrer');
+
+    if (!whatsappWindow) {
+        window.location.href = url;
+    }
+}
+
+function getPublicFirebaseDb() {
+    if (publicFirebaseDbInstance) {
+        return publicFirebaseDbInstance;
     }
 
-    orderSentToastTimer = window.setTimeout(() => {
-        toast.classList.remove('is-visible');
-    }, 3200);
+    if (typeof initFirebaseServices !== 'function') {
+        throw new Error('Firebase no esta disponible para guardar pedidos.');
+    }
+
+    publicFirebaseDbInstance = initFirebaseServices().db;
+    return publicFirebaseDbInstance;
+}
+
+function getPublicServerTimestamp() {
+    if (window.firebase?.firestore?.FieldValue?.serverTimestamp) {
+        return window.firebase.firestore.FieldValue.serverTimestamp();
+    }
+
+    return new Date();
 }
 
 function syncBusinessHoursStatus() {
@@ -306,22 +436,19 @@ function updateShortcutInstallUI() {
         return;
     }
 
+    hint.hidden = true;
+
     if (deferredInstallPrompt) {
         text.textContent = 'Instalar acceso directo';
-        hint.textContent = 'Instala ROAL BURGER en este dispositivo con el isotipo oficial.';
         return;
     }
 
     if (isMobileDevice()) {
         text.textContent = 'Guardar en tu movil';
-        hint.textContent = isIOSDevice()
-            ? 'En iPhone o iPad usa Compartir y luego Anadir a pantalla de inicio.'
-            : 'Guarda o comparte el enlace oficial para tenerlo a un toque en tu movil.';
         return;
     }
 
     text.textContent = 'Descargar acceso directo';
-    hint.textContent = 'Descarga un acceso directo para tu PC con el isotipo oficial de ROAL BURGER.';
 }
 
 function downloadDesktopShortcut() {
@@ -505,7 +632,10 @@ function syncBodyScrollLock() {
     const isPromoOpen = Boolean(promoModal && promoModal.classList.contains('is-open'));
     const isCartOpen = Boolean(cartUI && cartUI.drawer.classList.contains('is-open'));
     const isSupportOpen = Boolean(supportModal && supportModal.classList.contains('is-open'));
-    document.body.style.overflow = isMenuOpen || isPromoOpen || isCartOpen || isSupportOpen ? 'hidden' : 'auto';
+    const isCheckoutOpen = Boolean(checkoutInfoUI && checkoutInfoUI.modal.classList.contains('is-open'));
+    const isPaymentFlowOpen = Boolean(paymentFlowUI && paymentFlowUI.modal.classList.contains('is-open'));
+    const isOrderSentOpen = Boolean(orderSentConfirmationUI && orderSentConfirmationUI.modal.classList.contains('is-open'));
+    document.body.style.overflow = isMenuOpen || isPromoOpen || isCartOpen || isSupportOpen || isCheckoutOpen || isPaymentFlowOpen || isOrderSentOpen ? 'hidden' : 'auto';
 }
 
 function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
@@ -770,6 +900,30 @@ function getCartItemUnitPrice(item) {
     return resolveCartUnitPrice(item?.productName, item?.categoryName, item?.orderOptions);
 }
 
+function getCartItemOriginalUnitPrice(item) {
+    const normalizedOptions = normalizeOrderOptions(item?.orderOptions);
+    if (!normalizedOptions.recommendedDiscount) {
+        return getCartItemUnitPrice(item);
+    }
+
+    return resolveCartUnitPrice(item?.productName, item?.categoryName, {
+        ...normalizedOptions,
+        recommendedDiscount: false,
+        discountRate: 0
+    });
+}
+
+function getCartItemDiscountAmount(item) {
+    const quantity = Number(item?.quantity || 0);
+    const originalUnitPrice = getCartItemOriginalUnitPrice(item);
+    const currentUnitPrice = getCartItemUnitPrice(item);
+    return Math.max(0, (originalUnitPrice - currentUnitPrice) * quantity);
+}
+
+function getCartDiscountTotalAmount() {
+    return shoppingCart.reduce((total, item) => total + getCartItemDiscountAmount(item), 0);
+}
+
 function getCartTotalAmount() {
     return shoppingCart.reduce((total, item) => total + (getCartItemUnitPrice(item) * Number(item.quantity || 0)), 0);
 }
@@ -811,6 +965,13 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const header = 'PEDIDO';
     const customerName = String(customerInfo.name || '').trim();
     const deliveryAddress = String(customerInfo.address || '').trim();
+    const fulfillmentType = getCheckoutFulfillmentType(customerInfo.fulfillmentType);
+    const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
+    const discountAmount = getCheckoutDiscountAmount();
+    const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
+    const cashChangeRequired = customerInfo.cashChangeRequired === true;
+    const cashTenderAmount = Number(customerInfo.cashTenderAmount || 0);
+    const orderTotal = getCartTotalAmount() + deliveryFee;
     const lines = shoppingCart.map((item, index) => {
         const optionLabel = getWhatsAppOrderDetail(item.categoryName, item.orderOptions);
         const details = [
@@ -828,10 +989,90 @@ function buildCartCheckoutMessage(customerInfo = {}) {
 
     const customerDetails = [
         customerName ? `Cliente: ${customerName}` : '',
-        deliveryAddress ? `Entrega: ${deliveryAddress}` : ''
+        `Entrega: ${fulfillmentType === 'delivery' ? 'Domicilio' : 'Recoger en el restaurante'}`,
+        deliveryAddress ? `Direccion: ${deliveryAddress}` : '',
+        paymentMethod === 'transferencia' ? 'Pago: Transferencia llave / breve' : '',
+        paymentMethod === 'efectivo' ? `Pago: Efectivo${cashChangeRequired && cashTenderAmount > 0 ? ` | Paga con: ${formatCurrency(cashTenderAmount)}` : ' | Lleva completo'}` : ''
     ].filter(Boolean);
 
-    return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nTotal: ${formatCurrency(getCartTotalAmount())}`;
+    return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nSubtotal: ${formatCurrency(getCartTotalAmount())}${discountAmount > 0 ? `\nDescuento: ${formatCurrency(discountAmount)}` : ''}\nDomicilio: ${formatCurrency(deliveryFee)}\nTotal: ${formatCurrency(orderTotal)}`;
+}
+
+function buildCartOrderItems() {
+    return shoppingCart.map((item, index) => {
+        const quantity = Number(item.quantity || 0);
+        const unitPrice = getCartItemUnitPrice(item);
+        const optionLabel = getCartOptionLabel(item.categoryName, item.orderOptions, { includeComment: false });
+        const note = String(item.orderOptions?.comment || '').trim();
+
+        return {
+            index: index + 1,
+            itemKey: item.itemKey,
+            productName: String(item.productName || '').trim(),
+            categoryName: String(item.categoryName || '').trim(),
+            quantity,
+            unitPrice,
+            subtotal: unitPrice * quantity,
+            optionLabel,
+            note,
+            orderOptions: normalizeOrderOptions(item.orderOptions)
+        };
+    });
+}
+
+async function createOrderFromCart(customerInfo = {}) {
+    const db = getPublicFirebaseDb();
+    const orderRef = db.collection(ORDERS_COLLECTION).doc();
+    const items = buildCartOrderItems();
+    const subtotal = getCartTotalAmount();
+    const totalItems = getCartProductCount();
+    const customerName = String(customerInfo.name || '').trim();
+    const fulfillmentType = getCheckoutFulfillmentType(customerInfo.fulfillmentType);
+    const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
+    const total = subtotal + deliveryFee;
+    const deliveryAddress = String(customerInfo.address || '').trim();
+    const customerPhone = String(customerInfo.phone || '').trim();
+    const customerPhoneDigits = customerPhone.replace(/\D+/g, '');
+    const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
+    const cashChangeRequired = customerInfo.cashChangeRequired === true;
+    const cashTenderAmount = cashChangeRequired ? Number(customerInfo.cashTenderAmount || 0) : null;
+
+    const orderCode = await reserveNextOrderCode(db, orderRef, {
+        status: 'pendiente',
+        customerName,
+        customerPhone,
+        customerPhoneDigits,
+        fulfillmentType,
+        deliveryAddress,
+        items,
+        itemCount: items.length,
+        totalItems,
+        subtotal,
+        deliveryFee,
+        total,
+        paymentMethod,
+        cashChangeRequired,
+        cashTenderAmount: Number.isFinite(cashTenderAmount) ? cashTenderAmount : null,
+        currency: 'COP',
+        source: 'web',
+        createdAt: getPublicServerTimestamp(),
+        updatedAt: getPublicServerTimestamp(),
+        summaryMessage: buildCartCheckoutMessage({
+            name: customerName,
+            fulfillmentType,
+            address: deliveryAddress,
+            paymentMethod,
+            cashChangeRequired,
+            cashTenderAmount
+        })
+    });
+
+    return {
+        id: orderRef.id,
+        code: orderCode,
+        customerName,
+        total
+    };
 }
 
 function openCartDrawer() {
@@ -893,7 +1134,176 @@ function closeCheckoutInfoModal() {
     syncBodyScrollLock();
 }
 
-function submitCheckoutInfo() {
+function closePaymentFlowModal() {
+    if (!paymentFlowUI) {
+        return;
+    }
+
+    paymentFlowUI.modal.remove();
+    paymentFlowUI = null;
+    syncBodyScrollLock();
+}
+
+function updatePaymentFlowState() {
+    if (!paymentFlowUI) {
+        return;
+    }
+
+    const paymentMethod = String(paymentFlowUI.method.value || '').trim().toLowerCase();
+    const cashChoice = String(paymentFlowUI.cashChoice.value || '').trim().toLowerCase();
+    const needsCashChoice = paymentMethod === 'efectivo';
+    const needsTenderAmount = needsCashChoice && cashChoice === 'cambio';
+
+    paymentFlowUI.cashOptions.hidden = !needsCashChoice;
+    paymentFlowUI.cashChoice.required = needsCashChoice;
+    paymentFlowUI.tenderField.hidden = !needsTenderAmount;
+    paymentFlowUI.tenderAmount.required = needsTenderAmount;
+    paymentFlowUI.tenderAmount.disabled = !needsTenderAmount;
+
+    if (!needsCashChoice) {
+        paymentFlowUI.cashChoice.value = '';
+    }
+
+    if (!needsTenderAmount) {
+        paymentFlowUI.tenderAmount.value = '';
+    }
+}
+
+async function submitPaymentFlow() {
+    if (!paymentFlowUI) {
+        return;
+    }
+
+    const paymentMethod = String(paymentFlowUI.method.value || '').trim().toLowerCase();
+    const cashChoice = String(paymentFlowUI.cashChoice.value || '').trim().toLowerCase();
+    const orderTotal = Number(paymentFlowUI.orderData.total || 0);
+    const tenderAmountValue = String(paymentFlowUI.tenderAmount.value || '').trim();
+    const tenderAmount = Number(tenderAmountValue.replace(/\D+/g, ''));
+
+    if (!paymentMethod) {
+        paymentFlowUI.feedback.textContent = 'Escoge el medio de pago para continuar.';
+        paymentFlowUI.method.focus();
+        return;
+    }
+
+    if (paymentMethod === 'efectivo' && !cashChoice) {
+        paymentFlowUI.feedback.textContent = `Indica si tienes los ${formatCurrency(orderTotal)} completos o si necesitas cambio.`;
+        paymentFlowUI.cashChoice.focus();
+        return;
+    }
+
+    if (paymentMethod === 'efectivo' && cashChoice === 'cambio') {
+        if (!Number.isFinite(tenderAmount) || tenderAmount <= 0) {
+            paymentFlowUI.feedback.textContent = 'Escribe la cantidad con la que vas a pagar.';
+            paymentFlowUI.tenderAmount.focus();
+            return;
+        }
+
+        if (tenderAmount < orderTotal) {
+            paymentFlowUI.feedback.textContent = `La cantidad debe ser igual o mayor a ${formatCurrency(orderTotal)}.`;
+            paymentFlowUI.tenderAmount.focus();
+            return;
+        }
+    }
+
+    paymentFlowUI.feedback.textContent = '';
+    paymentFlowUI.send.disabled = true;
+    paymentFlowUI.send.textContent = 'Guardando pedido...';
+
+    try {
+        const savedOrder = await createOrderFromCart({
+            ...paymentFlowUI.orderData,
+            paymentMethod,
+            cashChangeRequired: paymentMethod === 'efectivo' ? cashChoice === 'cambio' : false,
+            cashTenderAmount: paymentMethod === 'efectivo' && cashChoice === 'cambio' ? tenderAmount : null
+        });
+
+        paymentFlowUI.send.textContent = 'Abriendo WhatsApp...';
+
+        closePaymentFlowModal();
+        clearCart();
+        closeCartDrawer();
+        openOrderConfirmationWhatsApp(savedOrder);
+    } catch (error) {
+        paymentFlowUI.feedback.textContent = `No se pudo enviar el pedido: ${error.message || 'error inesperado.'}`;
+        paymentFlowUI.send.disabled = false;
+        paymentFlowUI.send.textContent = 'Confirmar pedido';
+    }
+}
+
+function openPaymentFlowModal(orderData) {
+    closePaymentFlowModal();
+
+    const total = Number(orderData?.total || 0);
+    const modal = document.createElement('div');
+    modal.id = 'paymentFlowModal';
+    modal.className = 'support-modal';
+    modal.classList.add('is-open');
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Medio de pago">
+            <button type="button" class="support-modal-close" aria-label="Cerrar medio de pago">&times;</button>
+            <p class="support-modal-kicker">Medio de pago</p>
+            <h3 class="support-modal-title">Como vas a pagar tu pedido</h3>
+            <p class="support-modal-text">Total a pagar: ${formatCurrency(total)}</p>
+            <label class="support-field">
+                <span>Selecciona el medio de pago</span>
+                <select id="paymentMethodSelect">
+                    <option value="" selected disabled>Escoge aca tu medio de pago</option>
+                    <option value="transferencia">Transferencia llave / breve</option>
+                    <option value="efectivo">Efectivo</option>
+                </select>
+            </label>
+            <div class="support-field" id="paymentCashOptions" hidden>
+                <span>Pago en efectivo</span>
+                <select id="paymentCashChoice">
+                    <option value="" selected disabled>Escoge una opcion</option>
+                    <option value="completo">Tengo completo</option>
+                    <option value="cambio">Necesito cambio</option>
+                </select>
+            </div>
+            <label class="support-field" id="paymentTenderField" hidden>
+                <span>Con cuanto vas a pagar</span>
+                <input type="text" id="paymentTenderAmount" inputmode="numeric" placeholder="Escribe el valor con el que pagas">
+            </label>
+            <p class="support-feedback" id="paymentFlowFeedback"></p>
+            <div class="support-actions">
+                <button type="button" class="support-send-btn">Confirmar pedido</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    paymentFlowUI = {
+        modal,
+        orderData,
+        close: modal.querySelector('.support-modal-close'),
+        method: modal.querySelector('#paymentMethodSelect'),
+        cashOptions: modal.querySelector('#paymentCashOptions'),
+        cashChoice: modal.querySelector('#paymentCashChoice'),
+        tenderField: modal.querySelector('#paymentTenderField'),
+        tenderAmount: modal.querySelector('#paymentTenderAmount'),
+        feedback: modal.querySelector('#paymentFlowFeedback'),
+        send: modal.querySelector('.support-send-btn')
+    };
+
+    paymentFlowUI.close.addEventListener('click', closePaymentFlowModal);
+    paymentFlowUI.method.addEventListener('change', updatePaymentFlowState);
+    paymentFlowUI.cashChoice.addEventListener('change', updatePaymentFlowState);
+    paymentFlowUI.send.addEventListener('click', submitPaymentFlow);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closePaymentFlowModal();
+        }
+    });
+
+    syncBodyScrollLock();
+    updatePaymentFlowState();
+    paymentFlowUI.method.focus();
+}
+
+async function submitCheckoutInfo() {
     if (!checkoutInfoUI) {
         return;
     }
@@ -905,7 +1315,10 @@ function submitCheckoutInfo() {
     }
 
     const customerName = String(checkoutInfoUI.name.value || '').trim();
+    const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
     const deliveryAddress = String(checkoutInfoUI.address.value || '').trim();
+    const customerPhone = String(checkoutInfoUI.phone.value || '').trim();
+    const phoneDigits = customerPhone.replace(/\D+/g, '');
 
     if (!customerName) {
         checkoutInfoUI.feedback.textContent = 'Escribe el nombre de quien recibe el pedido.';
@@ -913,23 +1326,79 @@ function submitCheckoutInfo() {
         return;
     }
 
-    if (!deliveryAddress) {
+    if (!fulfillmentType) {
+        checkoutInfoUI.feedback.textContent = 'Escoge como deseas recibir tu pedido.';
+        checkoutInfoUI.fulfillmentType.focus();
+        return;
+    }
+
+    if (fulfillmentType === 'delivery' && !deliveryAddress) {
         checkoutInfoUI.feedback.textContent = 'Escribe la direccion del domicilio.';
         checkoutInfoUI.address.focus();
         return;
     }
 
+    if (phoneDigits.length < 10) {
+        checkoutInfoUI.feedback.textContent = 'Escribe un telefono valido para confirmar el pedido.';
+        checkoutInfoUI.phone.focus();
+        return;
+    }
+
     checkoutInfoUI.feedback.textContent = '';
-    trackButtonClick('btn-cart-checkout', 'Checkout carrito');
-    const message = buildCartCheckoutMessage({
-        name: customerName,
-        address: deliveryAddress
-    });
-    closeCheckoutInfoModal();
-    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
-    showOrderSentMessage();
-    clearCart();
-    closeCartDrawer();
+    checkoutInfoUI.send.disabled = true;
+    checkoutInfoUI.send.textContent = 'Enviando pedido...';
+
+    try {
+        trackButtonClick('btn-cart-checkout', 'Checkout carrito');
+        const orderData = {
+            name: customerName,
+            fulfillmentType,
+            address: fulfillmentType === 'delivery' ? deliveryAddress : '',
+            phone: customerPhone
+        };
+        closeCheckoutInfoModal();
+        openPaymentFlowModal({
+            ...orderData,
+            total: getCheckoutOrderTotal(fulfillmentType)
+        });
+    } catch (error) {
+        checkoutInfoUI.feedback.textContent = `No se pudo enviar el pedido: ${error.message || 'error inesperado.'}`;
+        checkoutInfoUI.send.disabled = false;
+        checkoutInfoUI.send.textContent = 'Enviar pedido';
+    }
+}
+
+function updateCheckoutInfoModalState() {
+    if (!checkoutInfoUI) {
+        return;
+    }
+
+    const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
+    const requiresAddress = fulfillmentType === 'delivery';
+    const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
+    const discountAmount = getCheckoutDiscountAmount();
+    const orderTotal = getCheckoutOrderTotal(fulfillmentType);
+
+    checkoutInfoUI.addressField.hidden = !requiresAddress;
+    checkoutInfoUI.address.required = requiresAddress;
+    checkoutInfoUI.address.disabled = !requiresAddress;
+
+    if (!requiresAddress) {
+        checkoutInfoUI.address.value = '';
+    }
+
+    if (checkoutInfoUI.deliveryFeeValue) {
+        checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(deliveryFee);
+    }
+
+    if (checkoutInfoUI.discountRow && checkoutInfoUI.discountValue) {
+        checkoutInfoUI.discountRow.hidden = discountAmount <= 0;
+        checkoutInfoUI.discountValue.textContent = formatCurrency(discountAmount);
+    }
+
+    if (checkoutInfoUI.orderTotalValue) {
+        checkoutInfoUI.orderTotalValue.textContent = formatCurrency(orderTotal);
+    }
 }
 
 function openCheckoutInfoModal() {
@@ -940,22 +1409,46 @@ function openCheckoutInfoModal() {
     modal.className = 'support-modal';
     modal.classList.add('is-open');
     modal.innerHTML = `
-        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Datos del domicilio">
-            <button type="button" class="support-modal-close" aria-label="Cerrar datos del domicilio">&times;</button>
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Datos del pedido">
+            <button type="button" class="support-modal-close" aria-label="Cerrar datos del pedido">&times;</button>
             <p class="support-modal-kicker">Antes de enviar</p>
-            <h3 class="support-modal-title">Datos del domicilio</h3>
-            <p class="support-modal-text">Necesitamos saber a nombre de quien va el pedido y para donde va el domicilio.</p>
+            <h3 class="support-modal-title">Datos del pedido</h3>
+            <p class="support-modal-text">Confirma si el pedido es para domicilio o para recoger en el restaurante y completa los datos de contacto.</p>
             <label class="support-field">
                 <span>Nombre de quien recibe</span>
                 <input type="text" id="checkoutCustomerName" placeholder="Escribe el nombre">
             </label>
             <label class="support-field">
+                <span>Como deseas recibir tu pedido</span>
+                <select id="checkoutFulfillmentType">
+                    <option value="" selected disabled>Escoge aca como recibir tu pedido</option>
+                    <option value="pickup">Recoger en el restaurante</option>
+                    <option value="delivery">Domicilio</option>
+                </select>
+            </label>
+            <label class="support-field" id="checkoutDeliveryAddressField" hidden>
                 <span>Direccion del domicilio</span>
                 <textarea id="checkoutDeliveryAddress" rows="4" placeholder="Escribe la direccion completa"></textarea>
             </label>
+            <label class="support-field">
+                <span>Telefono</span>
+                <input type="tel" id="checkoutCustomerPhone" placeholder="Escribe el telefono de contacto">
+            </label>
+            <div class="support-field">
+                <span>Costo del domicilio</span>
+                <strong id="checkoutDeliveryFeeValue">${formatCurrency(DELIVERY_FEE_AMOUNT)}</strong>
+            </div>
+            <div class="support-field" id="checkoutDiscountRow" hidden>
+                <span>Descuento aplicado</span>
+                <strong id="checkoutDiscountValue">${formatCurrency(getCheckoutDiscountAmount())}</strong>
+            </div>
+            <div class="support-field">
+                <span>Total del pedido</span>
+                <strong id="checkoutOrderTotalValue">${formatCurrency(getCheckoutOrderTotal('pickup'))}</strong>
+            </div>
             <p class="support-feedback" id="checkoutInfoFeedback"></p>
             <div class="support-actions">
-                <button type="button" class="support-send-btn">Enviar pedido por WhatsApp</button>
+                <button type="button" class="support-send-btn">Enviar pedido</button>
             </div>
         </div>
     `;
@@ -966,13 +1459,21 @@ function openCheckoutInfoModal() {
         modal,
         close: modal.querySelector('.support-modal-close'),
         name: modal.querySelector('#checkoutCustomerName'),
+        fulfillmentType: modal.querySelector('#checkoutFulfillmentType'),
+        addressField: modal.querySelector('#checkoutDeliveryAddressField'),
         address: modal.querySelector('#checkoutDeliveryAddress'),
+        phone: modal.querySelector('#checkoutCustomerPhone'),
+        deliveryFeeValue: modal.querySelector('#checkoutDeliveryFeeValue'),
+        discountRow: modal.querySelector('#checkoutDiscountRow'),
+        discountValue: modal.querySelector('#checkoutDiscountValue'),
+        orderTotalValue: modal.querySelector('#checkoutOrderTotalValue'),
         feedback: modal.querySelector('#checkoutInfoFeedback'),
         send: modal.querySelector('.support-send-btn')
     };
 
     checkoutInfoUI.close.addEventListener('click', closeCheckoutInfoModal);
     checkoutInfoUI.send.addEventListener('click', submitCheckoutInfo);
+    checkoutInfoUI.fulfillmentType.addEventListener('change', updateCheckoutInfoModalState);
 
     modal.addEventListener('click', (event) => {
         if (event.target === modal) {
@@ -981,6 +1482,7 @@ function openCheckoutInfoModal() {
     });
 
     syncBodyScrollLock();
+    updateCheckoutInfoModalState();
     checkoutInfoUI.name.focus();
 }
 
@@ -1097,7 +1599,9 @@ function renderCartUI() {
 
     shoppingCart.forEach((item) => {
         const unitPrice = getCartItemUnitPrice(item);
+        const originalUnitPrice = getCartItemOriginalUnitPrice(item);
         const subtotal = unitPrice * Number(item.quantity || 0);
+        const discountAmount = getCartItemDiscountAmount(item);
         const row = document.createElement('div');
         row.className = 'cart-item';
 
@@ -1119,10 +1623,19 @@ function renderCartUI() {
         price.className = 'cart-item-option';
         price.textContent = `Precio: ${formatCurrency(unitPrice)} | Subtotal: ${formatCurrency(subtotal)}`;
 
+        const discount = document.createElement('p');
+        discount.className = 'cart-item-option';
+        if (discountAmount > 0) {
+            discount.textContent = `Descuento aplicado: ${formatCurrency(discountAmount)}`;
+        }
+
         info.appendChild(title);
         info.appendChild(category);
         info.appendChild(option);
         info.appendChild(price);
+        if (discountAmount > 0) {
+            info.appendChild(discount);
+        }
 
         const controls = document.createElement('div');
         controls.className = 'cart-item-controls';
@@ -1165,7 +1678,8 @@ function renderCartUI() {
         cartUI.list.appendChild(row);
     });
 
-    cartUI.summary.textContent = `${shoppingCart.length} referencia${shoppingCart.length === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'} | Total ${formatCurrency(getCartTotalAmount())}`;
+    const cartDiscountTotal = getCartDiscountTotalAmount();
+    cartUI.summary.textContent = `${shoppingCart.length} referencia${shoppingCart.length === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'}${cartDiscountTotal > 0 ? ` | Descuento ${formatCurrency(cartDiscountTotal)}` : ''} | Total ${formatCurrency(getCartTotalAmount())}`;
     cartUI.checkout.disabled = !shoppingCart.length;
     cartUI.clear.disabled = false;
     syncOrderingAvailabilityUI();
@@ -1193,7 +1707,7 @@ function initCartUI() {
         <div class="cart-drawer-header">
             <div>
                 <h3 class="cart-drawer-title">Tu carrito</h3>
-                <p class="cart-drawer-subtitle">Agrega productos y al final envia un solo pedido.</p>
+                <p class="cart-drawer-subtitle">Agrega productos y envia un solo pedido directo al administrador.</p>
             </div>
             <button type="button" class="cart-close-btn" aria-label="Cerrar carrito">&times;</button>
         </div>
@@ -1201,7 +1715,7 @@ function initCartUI() {
         <div class="cart-drawer-footer">
             <p class="cart-summary" id="cartSummary"></p>
             <button type="button" class="cart-continue-btn" id="cartContinueBtn">Seguir en el menu</button>
-            <button type="button" class="cart-checkout-btn" id="cartCheckoutBtn">Hacer pedido por WhatsApp</button>
+            <button type="button" class="cart-checkout-btn" id="cartCheckoutBtn">Enviar pedido</button>
             <button type="button" class="cart-clear-btn" id="cartClearBtn">Vaciar carrito</button>
         </div>
     `;
@@ -4936,7 +5450,7 @@ function updatePromoModalContent() {
             recommendedDiscount: true,
             discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
         });
-        text.textContent = `Hoy te recomendamos ${recommendedProduct.nombre} de la categoria ${recommendedProduct.categoria}. Tiene 20% de descuento: antes ${formatCurrency(basePrice)} y hoy ${formatCurrency(discountPrice)}.`;
+        text.textContent = `Hoy te recomendamos ${recommendedProduct.nombre} de la categoria ${recommendedProduct.categoria}. Tiene 20% de descuento y hoy te queda en ${formatCurrency(discountPrice)}.`;
     }
 
     if (orderButton) {

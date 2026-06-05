@@ -164,6 +164,7 @@ const defaultBranding = {
 
 const CONFIG_COLLECTION = 'configuracion';
 const CONFIG_DOC_ID = 'config_landing';
+const ORDERS_COLLECTION = 'pedidos';
 
 const adminAuthForm = document.getElementById('adminAuthForm');
 const authUsernameInput = document.getElementById('authUsername');
@@ -192,6 +193,15 @@ const metricActiveCategoriesEl = document.getElementById('metricActiveCategories
 const metricAveragePriceEl = document.getElementById('metricAveragePrice');
 const metricWhatsappClicksEl = document.getElementById('metricWhatsappClicks');
 const metricDailyVisitorsEl = document.getElementById('metricDailyVisitors');
+const ordersBoard = document.getElementById('ordersBoard');
+const ordersColumnUnread = document.getElementById('ordersColumnUnread');
+const ordersColumnTakeaway = document.getElementById('ordersColumnTakeaway');
+const ordersColumnDelivery = document.getElementById('ordersColumnDelivery');
+const ordersCountUnread = document.getElementById('ordersCountUnread');
+const ordersCountTakeaway = document.getElementById('ordersCountTakeaway');
+const ordersCountDelivery = document.getElementById('ordersCountDelivery');
+const orderTicketPanel = document.getElementById('orderTicketPanel');
+const orderTicketBody = document.getElementById('orderTicketBody');
 const previewRefreshBtn = document.getElementById('previewRefreshBtn');
 const liveMenuPreview = document.getElementById('liveMenuPreview');
 const previewViewportControls = document.getElementById('previewViewportControls');
@@ -269,11 +279,18 @@ let productsState = [];
 let categoriesState = [];
 let buttonsState = [];
 let brandingState = { ...defaultBranding };
+let ordersState = [];
+let selectedOrderId = null;
+let knownOrderIds = new Set();
+let hasLoadedOrdersOnce = false;
+let orderAnnouncementQueue = Promise.resolve();
+let orderBellAudioContext = null;
 let editingCategoryContextId = null;
 let activeCategoryModalId = null;
 let productClicksState = [];
 let liveSubscriptions = [];
 let previewRefreshTimer = null;
+let ordersRealtimeTimer = null;
 let metricsEventsState = {
     total: 0,
     whatsapp: 0,
@@ -344,6 +361,126 @@ function firestoreNow() {
     return firebase.firestore.FieldValue.serverTimestamp();
 }
 
+function getSafeCustomerAnnouncementName(value) {
+    const normalized = String(value || '').trim().replace(/\s+/g, ' ');
+    return normalized || 'cliente sin nombre';
+}
+
+function getOrderBellAudioContext() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+        return null;
+    }
+
+    if (!orderBellAudioContext) {
+        orderBellAudioContext = new AudioContextClass();
+    }
+
+    return orderBellAudioContext;
+}
+
+function playOrderBell() {
+    const audioContext = getOrderBellAudioContext();
+    if (!audioContext) {
+        return Promise.resolve();
+    }
+
+    if (audioContext.state === 'suspended') {
+        return audioContext.resume()
+            .catch(() => undefined)
+            .then(() => playOrderBell());
+    }
+
+    return new Promise((resolve) => {
+        const startAt = audioContext.currentTime + 0.02;
+        const playWhistleBurst = (burstStart) => {
+            const masterGain = audioContext.createGain();
+            const bandpassFilter = audioContext.createBiquadFilter();
+            const oscillatorA = audioContext.createOscillator();
+            const oscillatorB = audioContext.createOscillator();
+
+            bandpassFilter.type = 'bandpass';
+            bandpassFilter.frequency.setValueAtTime(2200, burstStart);
+            bandpassFilter.Q.setValueAtTime(8, burstStart);
+
+            oscillatorA.type = 'square';
+            oscillatorA.frequency.setValueAtTime(1850, burstStart);
+            oscillatorA.frequency.linearRampToValueAtTime(2050, burstStart + 0.08);
+            oscillatorA.frequency.linearRampToValueAtTime(1800, burstStart + 0.2);
+
+            oscillatorB.type = 'sawtooth';
+            oscillatorB.frequency.setValueAtTime(925, burstStart);
+            oscillatorB.frequency.linearRampToValueAtTime(1025, burstStart + 0.08);
+            oscillatorB.frequency.linearRampToValueAtTime(900, burstStart + 0.2);
+
+            masterGain.gain.setValueAtTime(0.0001, burstStart);
+            masterGain.gain.exponentialRampToValueAtTime(0.28, burstStart + 0.02);
+            masterGain.gain.exponentialRampToValueAtTime(0.22, burstStart + 0.12);
+            masterGain.gain.exponentialRampToValueAtTime(0.0001, burstStart + 0.24);
+
+            oscillatorA.connect(bandpassFilter);
+            oscillatorB.connect(bandpassFilter);
+            bandpassFilter.connect(masterGain);
+            masterGain.connect(audioContext.destination);
+
+            oscillatorA.start(burstStart);
+            oscillatorB.start(burstStart);
+            oscillatorA.stop(burstStart + 0.26);
+            oscillatorB.stop(burstStart + 0.26);
+        };
+
+        playWhistleBurst(startAt);
+        playWhistleBurst(startAt + 0.32);
+
+        window.setTimeout(resolve, 720);
+    });
+}
+
+function speakOrderAnnouncement(customerName) {
+    if (!('speechSynthesis' in window) || typeof window.SpeechSynthesisUtterance !== 'function') {
+        return;
+    }
+
+    const utterance = new window.SpeechSynthesisUtterance(`Nuevo pedido de ${getSafeCustomerAnnouncementName(customerName)}`);
+    utterance.lang = 'es-CO';
+    utterance.rate = 0.96;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    orderAnnouncementQueue = orderAnnouncementQueue
+        .catch(() => undefined)
+        .then(() => playOrderBell())
+        .then(() => new Promise((resolve) => {
+            utterance.onend = () => resolve();
+            utterance.onerror = () => resolve();
+            window.speechSynthesis.speak(utterance);
+        }));
+}
+
+function announceNewOrders(orders) {
+    const currentOrderIds = new Set(orders.map((order) => order.id));
+
+    if (!hasLoadedOrdersOnce) {
+        knownOrderIds = currentOrderIds;
+        hasLoadedOrdersOnce = true;
+        return;
+    }
+
+    const newOrders = orders.filter((order) => !knownOrderIds.has(order.id));
+    knownOrderIds = currentOrderIds;
+
+    if (!newOrders.length) {
+        return;
+    }
+
+    newOrders
+        .slice()
+        .reverse()
+        .forEach((order) => {
+            speakOrderAnnouncement(order.customerName);
+        });
+}
+
 function setupAccordion() {
     const nav = document.getElementById('adminAccordionNav');
     if (!nav) {
@@ -355,6 +492,7 @@ function setupAccordion() {
     const groupMap = {
         categorias: ['categorias'],
         diseno: ['configuracion', 'botones'],
+        pedidos: ['pedidos'],
         metricas: ['metricas']
     };
 
@@ -414,6 +552,7 @@ function setupPreviewViewportControls() {
 
 function setupCardCollapse() {
     const buttons = document.querySelectorAll('.card-collapse-btn');
+    const alwaysExpandedTargets = new Set(['card-orders']);
 
     // Start with all panels collapsed so users explicitly expand what they need.
     buttons.forEach((button) => {
@@ -427,6 +566,14 @@ function setupCardCollapse() {
             return;
         }
 
+        if (alwaysExpandedTargets.has(targetId)) {
+            body.classList.remove('collapsed');
+            button.textContent = 'Siempre visible';
+            button.setAttribute('aria-expanded', 'true');
+            button.hidden = true;
+            return;
+        }
+
         body.classList.add('collapsed');
         button.textContent = 'Desplegar';
         button.setAttribute('aria-expanded', 'false');
@@ -436,6 +583,10 @@ function setupCardCollapse() {
         button.addEventListener('click', () => {
             const targetId = button.dataset.collapseTarget;
             if (!targetId) {
+                return;
+            }
+
+            if (alwaysExpandedTargets.has(targetId)) {
                 return;
             }
 
@@ -482,6 +633,12 @@ function setupSectionSaveButtons() {
         if (section === 'metricas') {
             await reloadDataAndRender();
             showNotice('Metricas actualizadas.', 'ok');
+            return;
+        }
+
+        if (section === 'pedidos') {
+            await reloadDataAndRender();
+            showNotice('Pedidos actualizados.', 'ok');
         }
     });
 }
@@ -701,6 +858,98 @@ function normalizeBranding(raw) {
     };
 }
 
+function normalizeOrderItem(raw, index = 0) {
+    return {
+        index: Number(raw.index || index + 1),
+        itemKey: String(raw.itemKey || `item-${index + 1}`),
+        productName: String(raw.productName || raw.nombre || 'Producto').trim(),
+        categoryName: String(raw.categoryName || raw.categoria || '').trim(),
+        quantity: Number(raw.quantity || 0),
+        unitPrice: Number(raw.unitPrice ?? raw.precio ?? 0),
+        subtotal: Number(raw.subtotal ?? ((Number(raw.quantity || 0)) * Number(raw.unitPrice ?? raw.precio ?? 0))),
+        optionLabel: String(raw.optionLabel || '').trim(),
+        note: String(raw.note || raw.comment || '').trim()
+    };
+}
+
+function normalizeOrder(raw) {
+    const items = Array.isArray(raw.items) ? raw.items.map((item, index) => normalizeOrderItem(item, index)) : [];
+    const subtotal = Number(raw.subtotal ?? 0);
+    const parsedDeliveryFee = raw.deliveryFee === null || raw.deliveryFee === undefined || raw.deliveryFee === ''
+        ? null
+        : Number(raw.deliveryFee);
+    const deliveryFee = Number.isFinite(parsedDeliveryFee) ? Math.max(0, parsedDeliveryFee) : null;
+    const rawTotal = raw.total === null || raw.total === undefined || raw.total === '' ? null : Number(raw.total);
+    const total = Number.isFinite(rawTotal) ? rawTotal : (deliveryFee !== null ? subtotal + deliveryFee : null);
+    const rawStatus = String(raw.status || '').trim().toLowerCase();
+    let status = 'pendiente';
+    if (rawStatus === 'esperando_domiciliario' || rawStatus === 'esperando domiciliario') {
+        status = 'esperando_domiciliario';
+    } else if (rawStatus === 'listo_recoger' || rawStatus === 'pedido_listo' || rawStatus === 'pedido listo' || rawStatus === 'listo para recoger') {
+        status = 'listo_recoger';
+    } else if (rawStatus === 'preparacion' || rawStatus === 'confirmado' || rawStatus === 'cocina' || rawStatus === 'en_cocina') {
+        status = 'preparacion';
+    } else if (rawStatus === 'camino' || rawStatus === 'en_camino') {
+        status = 'camino';
+    } else if (rawStatus === 'entregado' || rawStatus === 'cancelado') {
+        status = 'entregado';
+    }
+
+    const rawOrderType = String(raw.orderType || raw.tipo || '').trim().toLowerCase();
+    const address = String(raw.deliveryAddress || '').trim();
+    const isTakeaway = ['retiro', 'llevar', 'local', 'recoger', 'pickup', 'takeaway'].some((value) => rawOrderType.includes(value));
+    const isDelivery = ['domicilio', 'delivery', 'entrega', 'casa', 'home'].some((value) => rawOrderType.includes(value));
+    const orderType = isTakeaway
+        ? 'retiro'
+        : (isDelivery || address ? 'domicilio' : 'retiro');
+
+    return {
+        id: String(raw.id || '').trim(),
+        code: String(raw.code || `RB-${String(raw.id || '').slice(-6).toUpperCase()}`).trim(),
+        customerName: String(raw.customerName || '').trim(),
+        customerPhone: String(raw.customerPhone || '').trim(),
+        customerPhoneDigits: String(raw.customerPhoneDigits || '').trim(),
+        paymentMethod: String(raw.paymentMethod || '').trim().toLowerCase(),
+        cashChangeRequired: raw.cashChangeRequired === true,
+        cashTenderAmount: Number.isFinite(Number(raw.cashTenderAmount)) ? Number(raw.cashTenderAmount) : null,
+        deliveryAddress: address,
+        items,
+        itemCount: Number(raw.itemCount || items.length),
+        totalItems: Number(raw.totalItems || items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)),
+        subtotal,
+        deliveryFee,
+        total,
+        currency: String(raw.currency || 'COP'),
+        source: String(raw.source || 'web').trim(),
+        orderType,
+        status,
+        summaryMessage: String(raw.summaryMessage || '').trim(),
+        courierRequestedAt: raw.courierRequestedAt || raw.courier_requested_at || null,
+        readyForPickupAt: raw.readyForPickupAt || raw.ready_for_pickup_at || null,
+        deliveredAt: raw.deliveredAt || raw.delivered_at || null,
+        createdAt: raw.createdAt || raw.created_at || null,
+        updatedAt: raw.updatedAt || raw.updated_at || null
+    };
+}
+
+function ensureOrdersRealtimeTicker() {
+    if (ordersRealtimeTimer || !ordersBoard) {
+        return;
+    }
+
+    ordersRealtimeTimer = window.setInterval(() => {
+        if (!ordersState.some((order) => order.status === 'esperando_domiciliario' || order.status === 'entregado')) {
+            return;
+        }
+
+        renderOrders();
+    }, 1000);
+}
+
+function isOrderSequenceMeta(raw) {
+    return String(raw.metaType || '').trim().toLowerCase() === 'order_sequence';
+}
+
 async function fetchCategories() {
     const snapshot = await firebaseDb.collection('categorias').get();
     categoriesState = snapshot.docs
@@ -734,6 +983,19 @@ async function fetchBranding() {
     }
 
     brandingState = normalizeBranding(doc.data());
+}
+
+async function fetchOrders() {
+    const snapshot = await firebaseDb.collection(ORDERS_COLLECTION).get();
+    ordersState = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((raw) => !isOrderSequenceMeta(raw))
+        .map((raw) => normalizeOrder(raw))
+        .sort((a, b) => {
+            const aTs = a.createdAt && typeof a.createdAt.toMillis === 'function' ? a.createdAt.toMillis() : 0;
+            const bTs = b.createdAt && typeof b.createdAt.toMillis === 'function' ? b.createdAt.toMillis() : 0;
+            return bTs - aTs;
+        });
 }
 
 async function seedDataIfNeeded() {
@@ -1253,6 +1515,712 @@ function formatMoney(value) {
     return `$ ${Number(value || 0).toLocaleString('es-CO')}`;
 }
 
+function formatOrderTime(value) {
+    if (!value) {
+        return '--:--';
+    }
+
+    const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return '--:--';
+    }
+
+    return new Intl.DateTimeFormat('es-CO', {
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(date);
+}
+
+function formatElapsedTime(value) {
+    if (!value) {
+        return 'just now';
+    }
+
+    const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return 'just now';
+    }
+
+    const elapsedMs = Date.now() - date.getTime();
+    const elapsedSeconds = Math.max(0, Math.round(elapsedMs / 1000));
+
+    if (elapsedSeconds < 60) {
+        return 'just now';
+    }
+
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+    if (elapsedMinutes < 60) {
+        return `${elapsedMinutes}m ago`;
+    }
+
+    const elapsedHours = Math.floor(elapsedMinutes / 60);
+    if (elapsedHours < 24) {
+        return `${elapsedHours}h ago`;
+    }
+
+    const elapsedDays = Math.floor(elapsedHours / 24);
+    return `${elapsedDays}d ago`;
+}
+
+function formatLiveDuration(value) {
+    if (!value) {
+        return 'hace 0s';
+    }
+
+    const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return 'hace 0s';
+    }
+
+    const elapsedMs = Math.max(0, Date.now() - date.getTime());
+    const totalSeconds = Math.floor(elapsedMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+        return `hace ${hours}h ${minutes}m`;
+    }
+
+    if (minutes > 0) {
+        return `hace ${minutes}m ${seconds}s`;
+    }
+
+    return `hace ${seconds}s`;
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatOrderDate(value) {
+    if (!value) {
+        return 'Sin fecha';
+    }
+
+    const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return 'Sin fecha';
+    }
+
+    return new Intl.DateTimeFormat('es-CO', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+    }).format(date);
+}
+
+function getOrderStatusMeta(status) {
+    switch (status) {
+        case 'esperando_domiciliario':
+            return { label: 'Esperando domiciliario', className: 'awaiting-delivery' };
+        case 'listo_recoger':
+            return { label: 'Pedido listo', className: 'ready-pickup' };
+        case 'preparacion':
+            return { label: 'En cocina', className: 'processing' };
+        case 'camino':
+            return { label: 'En camino', className: 'processing' };
+        case 'entregado':
+            return { label: 'Entregado', className: 'success' };
+        default:
+            return { label: 'Nuevo', className: 'pending' };
+    }
+}
+
+function getOrderColumnKey(order) {
+    if (order.status === 'pendiente') {
+        return 'unread';
+    }
+
+    return order.orderType === 'domicilio' ? 'delivery' : 'takeaway';
+}
+
+function getOrderTypeLabel(order) {
+    return order.orderType === 'retiro' ? 'Llevar' : 'Domicilio';
+}
+
+function getOrderDisplayTotal(order) {
+    if (Number.isFinite(Number(order.total))) {
+        return Number(order.total);
+    }
+
+    return Number(order.subtotal || 0) + Number(order.deliveryFee || 0);
+}
+
+function buildOrderWhatsAppLink(order) {
+    const digits = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D+/g, '');
+    if (!digits) {
+        return '';
+    }
+
+    const message = encodeURIComponent(`Hola ${order.customerName || ''}, te escribimos desde ROAL BURGER por tu pedido ${order.code}.`);
+    return `https://wa.me/${digits}?text=${message}`;
+}
+
+async function copyTextToClipboard(text) {
+    const normalizedText = String(text || '');
+    if (!normalizedText) {
+        return false;
+    }
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(normalizedText);
+        return true;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = normalizedText;
+    textarea.setAttribute('readonly', 'true');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    try {
+        return document.execCommand('copy');
+    } finally {
+        textarea.remove();
+    }
+}
+
+function buildCourierRequestMessage(order) {
+    const address = String(order.deliveryAddress || 'sin direccion registrada').trim();
+    return `Buenas, me mandas un domiciliario porfavor, va para ${address}`;
+}
+
+function buildOrderItemSummary(order) {
+    if (!Array.isArray(order.items) || !order.items.length) {
+        return 'Sin productos registrados';
+    }
+
+    return order.items.map((item) => {
+        const parts = [`${Number(item.quantity || 0)} x ${String(item.productName || 'Producto').trim()}`];
+        if (item.categoryName) {
+            parts.push(`Categoria: ${String(item.categoryName).trim()}`);
+        }
+        if (item.optionLabel) {
+            parts.push(`Detalle: ${String(item.optionLabel).trim()}`);
+        }
+        if (item.note) {
+            parts.push(`Nota: ${String(item.note).trim()}`);
+        }
+        return `- ${parts.join(' | ')}`;
+    }).join('\n');
+}
+
+function getOrderPaymentLabel(order) {
+    if (order.paymentMethod === 'transferencia') {
+        return 'Transferencia llave / breve';
+    }
+
+    if (order.paymentMethod === 'efectivo') {
+        if (order.cashChangeRequired && Number.isFinite(Number(order.cashTenderAmount))) {
+            return `Efectivo | Paga con ${formatMoney(order.cashTenderAmount)}`;
+        }
+
+        return 'Efectivo | Tiene completo';
+    }
+
+    return 'Sin medio de pago registrado';
+}
+
+function buildReceivedOrderMessage(order) {
+    const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
+    const deliveryLabel = order.orderType === 'domicilio'
+        ? (String(order.deliveryAddress || 'Sin direccion registrada').trim() || 'Sin direccion registrada')
+        : 'Recoge en el local';
+    const phoneLabel = String(order.customerPhone || 'No registrado').trim() || 'No registrado';
+    const itemsLabel = buildOrderItemSummary(order);
+    const totalLabel = formatMoney(getOrderDisplayTotal(order));
+    const paymentLabel = getOrderPaymentLabel(order);
+
+    return `Hola ${customerName} soy Johan Rojas tu asesor del dia de hoy, me confirmas que este todo correcto por favor.
+
+Nombre: ${customerName}
+Direccion: ${deliveryLabel}
+Telefono: ${phoneLabel}
+Pedido:
+${itemsLabel}
+Total a pagar: ${totalLabel}
+Medio de pago: ${paymentLabel}
+
+Quedo atento para poder procesar tu pedido.`;
+}
+
+function buildDeliveredOrderMessage(order) {
+    const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
+    return `Hola ${customerName} tu pedido ya va en camino, que tengas muy buen provecho, te agradecemos por preferirnos, te esperamos pronto.
+
+📲 Síguenos en nuestras redes sociales y entérate de promociones, nuevos productos y contenido brutal 🔥🍔
+
+TikTok:
+https://www.tiktok.com/@roalburger?_r=1&_t=ZS-94kgEkN4aEH
+
+Instagram:
+https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr
+
+Facebook:
+https://www.facebook.com/share/1B9MGGXh6h/?mibextid=wwXIfr
+
+ROAL Burger
+Comida rápida con acento venezolano 🇻🇪🔥`;
+}
+
+function buildPickupReadyMessage(order) {
+    const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
+    return `Hola ${customerName} tu pedido ya se encuentra listo para recoger.`;
+}
+
+function buildTicketAddressLines(order) {
+    if (order.orderType !== 'domicilio') {
+        return ['Retira en el local ROAL BURGER'];
+    }
+
+    return String(order.deliveryAddress || 'Sin direccion registrada')
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+}
+
+function buildThermalTicketMarkup(order, options = {}) {
+    const printMode = options.printMode === true;
+    const whatsappLink = buildOrderWhatsAppLink(order);
+    const statusMeta = getOrderStatusMeta(order.status);
+    const deliveryText = order.deliveryFee !== null ? formatMoney(order.deliveryFee) : formatMoney(0);
+    const totalText = formatMoney(getOrderDisplayTotal(order));
+    const restaurantName = escapeHtml(brandingState.restaurantName || 'ROAL BURGER');
+    const orderDate = escapeHtml(formatOrderDate(order.createdAt));
+    const orderHour = escapeHtml(formatOrderTime(order.createdAt));
+    const elapsed = escapeHtml(formatElapsedTime(order.createdAt));
+    const addressLines = buildTicketAddressLines(order)
+        .map((line) => `<div class="ticket-customer-row"><span>•</span><span>${escapeHtml(line)}</span></div>`)
+        .join('');
+
+    const rows = order.items.map((item) => {
+        const detailParts = [
+            item.categoryName,
+            item.optionLabel,
+            item.note ? `Nota: ${item.note}` : '',
+            Number(item.unitPrice || 0) > 0 ? `Unit ${formatMoney(item.unitPrice)}` : ''
+        ].filter(Boolean);
+
+        return `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(`${item.quantity} x ${item.productName}`)}</strong>
+                    ${detailParts.length ? `<span class="ticket-line-meta">${escapeHtml(detailParts.join(' | '))}</span>` : ''}
+                </td>
+                <td>${escapeHtml(formatMoney(item.subtotal))}</td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div class="ticket-paper-wrap">
+            <article class="ticket-paper" data-ticket-print-root="true">
+                <div class="ticket-brand">
+                    <div class="ticket-brand-name">${restaurantName}</div>
+                    <div class="ticket-brand-copy">Ticket termico de recepcion</div>
+                    <div class="ticket-order-meta">
+                        <span>${escapeHtml(order.code)}</span>
+                        <span>${orderHour}</span>
+                    </div>
+                    <div class="ticket-order-meta">
+                        <span>${orderDate}</span>
+                        <span>${elapsed}</span>
+                    </div>
+                </div>
+
+                <section class="ticket-section">
+                    <div class="ticket-section-title">Cliente</div>
+                    <div class="ticket-customer-card">
+                        <strong class="ticket-customer-name">${escapeHtml(order.customerName || 'Cliente sin nombre')}</strong>
+                        <div class="ticket-customer-row">
+                            <span>Telefono</span>
+                            <span>${escapeHtml(order.customerPhone || 'No registrado')}</span>
+                        </div>
+                        <div class="ticket-customer-row">
+                            <span>Tipo</span>
+                            <span>${escapeHtml(getOrderTypeLabel(order))}</span>
+                        </div>
+                        <div class="ticket-customer-row">
+                            <span>Estado</span>
+                            <span class="state-pill ${escapeHtml(statusMeta.className)}">${escapeHtml(statusMeta.label)}</span>
+                        </div>
+                        <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion' : 'Entrega'}</div>
+                        ${addressLines}
+                        ${whatsappLink ? `<a class="ticket-contact-link" href="${whatsappLink}" target="_blank" rel="noopener noreferrer"><span>WhatsApp</span><strong>Abrir chat</strong></a>` : ''}
+                    </div>
+                </section>
+
+                <section class="ticket-section">
+                    <div class="ticket-section-title">Detalle del pedido</div>
+                    <table class="ticket-table">
+                        <thead>
+                            <tr>
+                                <th>Producto</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </section>
+
+                <section class="ticket-total">
+                    <div class="ticket-summary-line ticket-total-row">
+                        <span>Items</span>
+                        <strong>${escapeHtml(String(order.totalItems || order.itemCount || order.items.length || 0))}</strong>
+                    </div>
+                    <div class="ticket-summary-line ticket-total-row">
+                        <span>Subtotal</span>
+                        <strong>${escapeHtml(formatMoney(order.subtotal))}</strong>
+                    </div>
+                    <div class="ticket-summary-line ticket-total-row">
+                        <span>Domicilio</span>
+                        <strong>${escapeHtml(deliveryText)}</strong>
+                    </div>
+                    <div class="ticket-summary-line ticket-total-row is-grand-total">
+                        <span>Total</span>
+                        <strong>${escapeHtml(totalText)}</strong>
+                    </div>
+                </section>
+
+                <div class="ticket-footer-copy">
+                    <span>Gracias por elegir ${restaurantName}</span>
+                    <span>${escapeHtml(brandingState.address || 'ROAL BURGER')}</span>
+                </div>
+            </article>
+            ${printMode ? '' : `<div class="ticket-print-row"><button type="button" class="ticket-print-btn" data-order-ticket-action="print" data-order-id="${order.id}">🖨️ IMPRIMIR</button></div>`}
+        </div>
+    `;
+}
+
+function renderEmptyOrderTicket() {
+    if (!orderTicketBody) {
+        return;
+    }
+
+    orderTicketBody.innerHTML = `
+        <div class="ticket-empty">
+            <div>
+                <strong>Selecciona un pedido</strong>
+                <p>La orden cargada aqui se convertira en un ticket termico listo para la impresora del negocio.</p>
+            </div>
+        </div>
+    `;
+}
+
+function renderOrderTicket(order) {
+    if (!orderTicketBody) {
+        return;
+    }
+
+    if (!order) {
+        renderEmptyOrderTicket();
+        return;
+    }
+
+    orderTicketBody.innerHTML = buildThermalTicketMarkup(order);
+}
+
+function renderKanbanEmptyState(container) {
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = '<div class="kanban-empty">Sin pedidos</div>';
+}
+
+function createOrderCard(order) {
+    const card = document.createElement('article');
+    card.className = 'kanban-order-card';
+    const statusMeta = getOrderStatusMeta(order.status);
+    if (order.status === 'pendiente' || order.status === 'esperando_domiciliario') {
+        card.classList.add('is-attention');
+    }
+    if (order.id === selectedOrderId) {
+        card.classList.add('is-selected');
+    }
+
+    card.dataset.orderId = order.id;
+
+    if (order.status === 'entregado') {
+        card.classList.add('kanban-order-card-compact');
+        card.innerHTML = `
+            <div class="kanban-order-compact-row">
+                <span class="kanban-order-name">${escapeHtml(order.customerName || 'Cliente sin nombre')}</span>
+                <span class="order-wait-timer">${escapeHtml(formatLiveDuration(order.deliveredAt || order.updatedAt || order.createdAt))}</span>
+                <button type="button" class="order-action-btn order-action-btn-view" data-order-card-action="view" data-order-id="${order.id}">Ver</button>
+            </div>
+        `;
+        return card;
+    }
+
+    const isDeliveryOrder = order.orderType === 'domicilio';
+    const isPickupOrder = order.orderType === 'retiro';
+    const isUnreadOrder = order.status === 'pendiente';
+    const showReceiveAction = isUnreadOrder;
+    const showDeliveryAction = !isUnreadOrder && isDeliveryOrder && order.status !== 'esperando_domiciliario' && order.status !== 'camino' && order.status !== 'entregado';
+    const showPickupReadyAction = !isUnreadOrder && isPickupOrder && order.status !== 'listo_recoger' && order.status !== 'entregado';
+    const showDeliveredAction = !isUnreadOrder && order.status !== 'entregado';
+    const waitingBadge = order.status === 'esperando_domiciliario'
+        ? `
+            <div class="kanban-order-status-row">
+                <span class="state-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
+                <span class="order-wait-timer">${escapeHtml(formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt))}</span>
+            </div>
+        `
+        : (order.status === 'listo_recoger'
+            ? `
+                <div class="kanban-order-status-row">
+                    <span class="state-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
+                </div>
+            `
+            : '');
+    const actionsMarkup = order.id === selectedOrderId
+        ? `
+            <div class="kanban-order-actions">
+                ${showReceiveAction ? `<button type="button" class="order-action-btn order-action-btn-receive" data-order-card-action="recibir_pedido" data-order-id="${order.id}">Recibir pedido</button>` : ''}
+                ${showPickupReadyAction ? `<button type="button" class="order-action-btn order-action-btn-ready" data-order-card-action="listo_recoger" data-order-id="${order.id}">Pedido listo</button>` : ''}
+                ${showDeliveryAction ? `<button type="button" class="order-action-btn" data-order-card-action="esperando_domiciliario" data-order-id="${order.id}">Pedir domiciliario</button>` : ''}
+                ${showDeliveredAction ? `<button type="button" class="order-action-btn order-action-btn-delivered" data-order-card-action="entregado" data-order-id="${order.id}">Pedido entregado</button>` : ''}
+            </div>
+        `
+        : '';
+
+    card.innerHTML = `
+        <div class="kanban-order-top">
+            <strong class="kanban-order-code">#Pedido ${escapeHtml(order.code)}</strong>
+            <span class="kanban-order-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
+        </div>
+        <div class="kanban-order-name">${escapeHtml(order.customerName || 'Cliente sin nombre')}</div>
+        <div class="kanban-order-bottom">
+            <span class="kanban-order-type">${escapeHtml(getOrderTypeLabel(order))}</span>
+            <span class="kanban-order-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
+        </div>
+        ${waitingBadge}
+        ${actionsMarkup}
+    `;
+
+    return card;
+}
+
+function renderOrders() {
+    if (!ordersBoard) {
+        return;
+    }
+
+    const columns = {
+        unread: { container: ordersColumnUnread, count: ordersCountUnread, items: [] },
+        takeaway: { container: ordersColumnTakeaway, count: ordersCountTakeaway, items: [] },
+        delivery: { container: ordersColumnDelivery, count: ordersCountDelivery, items: [] }
+    };
+
+    ordersState.forEach((order) => {
+        columns[getOrderColumnKey(order)].items.push(order);
+    });
+
+    Object.values(columns).forEach((column) => {
+        if (column.count) {
+            column.count.textContent = Number(column.items.length).toLocaleString('es-CO');
+        }
+
+        if (!column.container) {
+            return;
+        }
+
+        column.container.innerHTML = '';
+        if (!column.items.length) {
+            renderKanbanEmptyState(column.container);
+            return;
+        }
+
+        column.items.forEach((order) => {
+            column.container.appendChild(createOrderCard(order));
+        });
+    });
+
+    const selectedOrder = ordersState.find((order) => order.id === selectedOrderId) || null;
+    if (!selectedOrder) {
+        selectedOrderId = null;
+    }
+
+    renderOrderTicket(selectedOrder);
+}
+
+async function updateOrder(orderId, updates) {
+    await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set({
+        ...updates,
+        updatedAt: firestoreNow()
+    }, { merge: true });
+}
+
+function openOrderPrintTicket(orderId) {
+    const order = ordersState.find((entry) => entry.id === orderId);
+    if (!order) {
+        showNotice('No se encontro el pedido para imprimir.', 'error');
+        return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=420,height=720');
+    if (!printWindow) {
+        showNotice('El navegador bloqueo la ventana de impresion.', 'error');
+        return;
+    }
+
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <title>Ticket ${escapeHtml(order.code)}</title>
+            <style>
+                @page { margin: 8mm; }
+                * { box-sizing: border-box; }
+                body {
+                    margin: 0;
+                    background: #ffffff;
+                    color: #171717;
+                    font-family: 'Courier New', monospace;
+                    padding: 0;
+                }
+                .ticket-paper-wrap {
+                    width: 80mm;
+                    margin: 0 auto;
+                    display: block;
+                }
+                .ticket-paper {
+                    position: relative;
+                    background: #fff;
+                    color: #171717;
+                    border-radius: 0;
+                    padding: 18px 14px 14px;
+                    box-shadow: none;
+                    overflow: hidden;
+                }
+                .ticket-paper::before,
+                .ticket-paper::after {
+                    content: '';
+                    position: absolute;
+                    left: 0;
+                    width: 100%;
+                    height: 12px;
+                    background: radial-gradient(circle at 6px 6px, transparent 6px, #fff 6.5px);
+                    background-size: 12px 12px;
+                }
+                .ticket-paper::before { top: -6px; }
+                .ticket-paper::after { bottom: -6px; transform: rotate(180deg); }
+                .ticket-brand {
+                    text-align: center;
+                    display: grid;
+                    gap: 6px;
+                    padding-bottom: 12px;
+                    border-bottom: 1px dashed rgba(0, 0, 0, 0.3);
+                }
+                .ticket-brand-name {
+                    font-size: 20px;
+                    font-weight: 700;
+                    letter-spacing: 1.2px;
+                    text-transform: uppercase;
+                }
+                .ticket-brand-copy,
+                .ticket-order-meta,
+                .ticket-copy-muted,
+                .ticket-line-meta,
+                .ticket-footer-copy {
+                    font-size: 11px;
+                    color: #555;
+                }
+                .ticket-order-meta,
+                .ticket-customer-row,
+                .ticket-summary-line {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 10px;
+                }
+                .ticket-section,
+                .ticket-total {
+                    display: grid;
+                    gap: 7px;
+                    padding-top: 12px;
+                    border-top: 1px dashed rgba(0, 0, 0, 0.2);
+                }
+                .ticket-section-title {
+                    font-size: 10px;
+                    color: #666;
+                    font-weight: 700;
+                    letter-spacing: 1px;
+                    text-transform: uppercase;
+                }
+                .ticket-customer-card {
+                    display: grid;
+                    gap: 8px;
+                }
+                .ticket-customer-name,
+                .ticket-total-row.is-grand-total {
+                    color: #111;
+                    font-weight: 700;
+                }
+                .ticket-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .ticket-table th,
+                .ticket-table td {
+                    padding: 7px 0;
+                    border-bottom: 1px dashed rgba(0, 0, 0, 0.18);
+                    text-align: left;
+                    vertical-align: top;
+                    font-size: 12px;
+                }
+                .ticket-table th:last-child,
+                .ticket-table td:last-child {
+                    text-align: right;
+                }
+                .ticket-table th {
+                    font-size: 10px;
+                    color: #666;
+                    text-transform: uppercase;
+                    letter-spacing: 0.8px;
+                }
+                .ticket-line-meta {
+                    display: block;
+                    margin-top: 3px;
+                }
+                .ticket-contact-link,
+                .ticket-print-row {
+                    display: none !important;
+                }
+                .ticket-footer-copy {
+                    text-align: center;
+                    padding-top: 12px;
+                    border-top: 1px dashed rgba(0, 0, 0, 0.2);
+                    display: grid;
+                    gap: 4px;
+                }
+            </style>
+        </head>
+        <body>
+            ${buildThermalTicketMarkup(order, { printMode: true })}
+            <script>
+                window.addEventListener('load', function () {
+                    window.print();
+                });
+            <\/script>
+        </body>
+        </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+}
+
 function getMatchedProductForMetric(metricProductName) {
     const metricKey = normalizeCategoryKey(metricProductName);
     if (!metricKey) {
@@ -1398,7 +2366,7 @@ function setupLiveFirebaseSync() {
     liveSubscriptions.forEach((unsubscribe) => unsubscribe());
     liveSubscriptions = [];
 
-    const collections = ['productos', 'categorias', 'botones'];
+    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION];
     collections.forEach((collectionName) => {
         const unsubscribe = firebaseDb.collection(collectionName).onSnapshot(() => {
             reloadDataAndRender();
@@ -1907,12 +2875,16 @@ async function reloadDataAndRender() {
         fetchProducts(),
         fetchButtons(),
         fetchBranding(),
+        fetchOrders(),
         fetchProductClickMetrics()
     ]);
+
+    announceNewOrders(ordersState);
 
     renderCategories();
     renderButtonsList();
     renderBrandingForm();
+    renderOrders();
     renderMetricsChart();
     await syncStats();
     renderMetricsOverview();
@@ -2156,6 +3128,128 @@ document.addEventListener('keydown', (event) => {
         closeCategoryProductsModal();
     }
 });
+
+if (ordersBoard) {
+    ordersBoard.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const actionButton = target.closest('button[data-order-card-action]');
+        if (actionButton instanceof HTMLButtonElement) {
+            const orderId = String(actionButton.dataset.orderId || '').trim();
+            const nextStatus = String(actionButton.dataset.orderCardAction || '').trim();
+            if (!orderId || !nextStatus) {
+                return;
+            }
+
+            if (nextStatus === 'view') {
+                selectedOrderId = orderId;
+                renderOrders();
+                return;
+            }
+
+            const order = ordersState.find((entry) => entry.id === orderId);
+            if (!order) {
+                return;
+            }
+
+            actionButton.disabled = true;
+            try {
+                if (nextStatus === 'recibir_pedido') {
+                    const copied = await copyTextToClipboard(buildReceivedOrderMessage(order));
+                    await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow() });
+                    showNotice(
+                        copied
+                            ? 'Pedido recibido, movido a su columna y mensaje copiado.'
+                            : 'Pedido recibido y movido a su columna. No se pudo copiar el mensaje automaticamente.',
+                        copied ? 'ok' : 'error'
+                    );
+                    return;
+                }
+
+                if (nextStatus === 'esperando_domiciliario') {
+                    const copied = await copyTextToClipboard(buildCourierRequestMessage(order));
+                    await updateOrder(orderId, { status: nextStatus, courierRequestedAt: firestoreNow() });
+                    showNotice(
+                        copied
+                            ? 'Mensaje para domiciliario copiado y pedido en espera.'
+                            : 'Pedido en espera de domiciliario. No se pudo copiar el mensaje automaticamente.',
+                        copied ? 'ok' : 'error'
+                    );
+                    return;
+                }
+
+                if (nextStatus === 'listo_recoger') {
+                    const copied = await copyTextToClipboard(buildPickupReadyMessage(order));
+                    await updateOrder(orderId, { status: nextStatus, readyForPickupAt: firestoreNow() });
+                    showNotice(
+                        copied
+                            ? 'Mensaje de pedido listo copiado y pedido marcado para recoger.'
+                            : 'Pedido marcado para recoger. No se pudo copiar el mensaje automaticamente.',
+                        copied ? 'ok' : 'error'
+                    );
+                    return;
+                }
+
+                const copied = await copyTextToClipboard(buildDeliveredOrderMessage(order));
+                await updateOrder(orderId, { status: nextStatus, deliveredAt: firestoreNow() });
+                showNotice(
+                    copied
+                        ? 'Mensaje de pedido entregado copiado y pedido cerrado.'
+                        : 'Pedido cerrado. No se pudo copiar el mensaje automaticamente.',
+                    copied ? 'ok' : 'error'
+                );
+            } catch (error) {
+                showNotice(`No se pudo actualizar el pedido: ${error.message || 'error inesperado.'}`, 'error');
+            } finally {
+                actionButton.disabled = false;
+            }
+            return;
+        }
+
+        const card = target.closest('.kanban-order-card');
+        if (!(card instanceof HTMLElement)) {
+            return;
+        }
+
+        const orderId = String(card.dataset.orderId || '').trim();
+        if (!orderId) {
+            return;
+        }
+
+        selectedOrderId = selectedOrderId === orderId ? null : orderId;
+        renderOrders();
+    });
+}
+
+if (orderTicketPanel) {
+    orderTicketPanel.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const actionButton = target.closest('button[data-order-ticket-action]');
+        if (!(actionButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const orderId = String(actionButton.dataset.orderId || '').trim();
+        if (!orderId) {
+            return;
+        }
+
+        if (actionButton.dataset.orderTicketAction === 'print') {
+            try {
+                openOrderPrintTicket(orderId);
+            } catch (error) {
+                showNotice(`No se pudo abrir la impresion: ${error.message || 'error inesperado.'}`, 'error');
+            }
+        }
+    });
+}
 
 if (categoryCreateForm) {
     categoryCreateForm.addEventListener('submit', async (event) => {
@@ -2578,6 +3672,12 @@ if (liveMenuPreview) {
     });
 }
 
+if (previewRefreshBtn) {
+    previewRefreshBtn.addEventListener('click', () => {
+        refreshLivePreview();
+    });
+}
+
 if (authForgotBtn) {
     authForgotBtn.addEventListener('click', async () => {
         const email = String(authUsernameInput?.value || '').trim();
@@ -2654,6 +3754,7 @@ async function initAdmin() {
 
         await seedDataIfNeeded();
         await reloadDataAndRender();
+        ensureOrdersRealtimeTicker();
         setupLiveFirebaseSync();
     } catch (error) {
         if (!document.body.classList.contains('admin-unlocked')) {
