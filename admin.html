@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ROAL BURGER | Admin</title>
-    <meta name="description" content="Panel Admin de ROAL BURGER para gestionar categorias, botones, metricas y configuracion de marca.">
+    <meta name="description" content="Panel Admin de ROAL BURGER para gestionar categorias, metricas e informacion del negocio.">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1278,6 +1278,26 @@
             background: rgba(255, 255, 255, 0.08);
         }
 
+        .support-link-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .support-link-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 34px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.06);
+            color: #edf2ff;
+            font-size: 0.78rem;
+            line-height: 1.35;
+        }
+
         .admin-auth-overlay {
             position: fixed;
             inset: 0;
@@ -1993,7 +2013,7 @@
         <header class="admin-header">
             <div class="admin-title-wrap">
                 <h1>Admin ROAL</h1>
-                <p>Control de categorias, botones de Publico, metricas y configuracion de marca.</p>
+                <p>Control de categorias, metricas e informacion del negocio.</p>
             </div>
             <div class="session-actions">
                 <a class="admin-link" href="index.html" target="_blank" rel="noopener noreferrer">Ir a Publico</a>
@@ -2041,7 +2061,7 @@
                 </div>
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>Configuracion de Marca</h2>
+                        <h2>Informacion del Negocio</h2>
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-branding" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-branding">
@@ -2054,192 +2074,55 @@
                                 <label for="restaurantSlogan">Eslogan</label>
                                 <input type="text" id="restaurantSlogan" name="restaurantSlogan" placeholder="Ej: Sabor real en cada mordida" required>
                             </div>
+                            <div class="admin-field">
+                                <label for="restaurantWhatsappNumber">Numero de WhatsApp</label>
+                                <input type="text" id="restaurantWhatsappNumber" name="restaurantWhatsappNumber" placeholder="Ej: 573144689509" required>
+                            </div>
                             <div class="admin-field full">
-                                <label for="restaurantLogo">Logo URL/Ruta</label>
-                                <input type="text" id="restaurantLogo" name="restaurantLogo" placeholder="Ej: logo.png o https://...">
+                                <label for="restaurantWhatsappLink">Link de WhatsApp</label>
+                                <input type="text" id="restaurantWhatsappLink" name="restaurantWhatsappLink" placeholder="Ej: https://wa.me/..." required>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="restaurantBusinessHours">Horario</label>
+                                <input type="text" id="restaurantBusinessHours" name="restaurantBusinessHours" placeholder="Ej: Lunes a Domingo: 4:00 P.M. a 10:00 P.M." required>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="restaurantAddress">Direccion</label>
+                                <input type="text" id="restaurantAddress" name="restaurantAddress" placeholder="Ej: Cl. 22 #29-59, Armenia, Quindio" required>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="restaurantLocationLink">Ubicacion</label>
+                                <input type="text" id="restaurantLocationLink" name="restaurantLocationLink" placeholder="Ej: https://maps.google.com/..." required>
                             </div>
                             <div class="admin-field">
-                                <label for="brandPrimaryColor">Color principal</label>
-                                <input type="color" id="brandPrimaryColor" name="brandPrimaryColor" value="#ff6000">
+                                <label for="restaurantInstagramLink">Instagram</label>
+                                <input type="text" id="restaurantInstagramLink" name="restaurantInstagramLink" placeholder="Ej: https://instagram.com/...">
                             </div>
                             <div class="admin-field">
-                                <label for="brandSecondaryColor">Color secundario</label>
-                                <input type="color" id="brandSecondaryColor" name="brandSecondaryColor" value="#ff8533">
+                                <label for="restaurantTiktokLink">TikTok</label>
+                                <input type="text" id="restaurantTiktokLink" name="restaurantTiktokLink" placeholder="Ej: https://tiktok.com/@...">
                             </div>
                             <div class="admin-field">
-                                <label for="brandAccentColor">Color acento</label>
-                                <input type="color" id="brandAccentColor" name="brandAccentColor" value="#25d366">
-                            </div>
-                            <div class="admin-field">
-                                <label for="brandTemplate">Plantilla visual</label>
-                                <select id="brandTemplate" name="brandTemplate">
-                                    <option value="fodexa">Fodexa</option>
-                                    <option value="slate">Slate Pro</option>
-                                    <option value="ivory">Ivory Pro</option>
-                                    <option value="cobalt">Cobalt Pro</option>
-                                    <option value="ember">Ember Pro</option>
-                                    <option value="mono">Mono Pro</option>
-                                </select>
-                            </div>
-                            <div class="admin-field">
-                                <label for="designFontFamily">Google Font</label>
-                                <select id="designFontFamily" name="designFontFamily">
-                                    <option value="Roboto, sans-serif">Roboto</option>
-                                    <option value="Manrope, sans-serif">Manrope</option>
-                                    <option value="Plus Jakarta Sans, sans-serif">Plus Jakarta Sans</option>
-                                    <option value="Space Grotesk, sans-serif">Space Grotesk</option>
-                                </select>
-                            </div>
-                            <button type="button" class="advanced-toggle" id="advancedSettingsToggle" aria-expanded="false">Configuracion Avanzada</button>
-                            <div class="admin-field full advanced-settings collapsed" id="advancedSettingsPanel">
-                                <div class="fine-tune-grid">
-                                    <div class="admin-field">
-                                        <label for="designBgColor">Fondo landing</label>
-                                        <input type="color" id="designBgColor" name="designBgColor" value="#070b12">
-                                    </div>
-                                    <div class="admin-field">
-                                        <label for="designButtonBorderColor">Borde botones</label>
-                                        <input type="color" id="designButtonBorderColor" name="designButtonBorderColor" value="#8fa4cc">
-                                    </div>
-                                    <div class="admin-field">
-                                        <label for="designFontSize">Tamano base de fuente</label>
-                                        <div class="range-wrap">
-                                            <input type="range" id="designFontSize" name="designFontSize" min="14" max="22" step="1" value="16">
-                                            <output id="designFontSizeOut">16px</output>
-                                        </div>
-                                    </div>
-                                    <div class="admin-field">
-                                        <label for="interactionVolume">Volumen interaccion</label>
-                                        <div class="range-wrap">
-                                            <input type="range" id="interactionVolume" name="interactionVolume" min="0" max="1" step="0.05" value="0.1">
-                                            <output id="interactionVolumeOut">0.10</output>
-                                        </div>
-                                    </div>
-                                    <div class="admin-field">
-                                        <label for="animationSpeed">Velocidad animaciones</label>
-                                        <div class="range-wrap">
-                                            <input type="range" id="animationSpeed" name="animationSpeed" min="0.6" max="1.8" step="0.1" value="1">
-                                            <output id="animationSpeedOut">1.0x</output>
-                                        </div>
-                                    </div>
-                                </div>
+                                <label for="restaurantFacebookLink">Facebook</label>
+                                <input type="text" id="restaurantFacebookLink" name="restaurantFacebookLink" placeholder="Ej: https://facebook.com/...">
                             </div>
                             <button type="submit" class="admin-button">Guardar configuracion</button>
                         </form>
-                        <div class="template-grid" id="templateGrid">
-                            <button type="button" class="template-chip template-chip-fodexa" data-template="fodexa">Fodexa</button>
-                            <button type="button" class="template-chip template-chip-slate" data-template="slate">Slate</button>
-                            <button type="button" class="template-chip template-chip-ivory" data-template="ivory">Ivory</button>
-                            <button type="button" class="template-chip template-chip-cobalt" data-template="cobalt">Cobalt</button>
-                            <button type="button" class="template-chip template-chip-ember" data-template="ember">Ember</button>
-                            <button type="button" class="template-chip template-chip-mono" data-template="mono">Mono</button>
-                        </div>
                         <div class="preview-box" id="brandingPreview">
                             <div class="preview-brand">
-                                <img id="previewLogo" src="logo.png" alt="Preview logo">
                                 <div>
                                     <strong id="previewName">ROAL BURGER</strong>
                                     <p id="previewSlogan" class="muted">Comida rapida con acento venezolano</p>
                                 </div>
                             </div>
-                            <p class="muted">Vista previa rapida de colores y textos.</p>
+                            <div class="support-link-list">
+                                <span class="support-link-chip" id="previewWhatsapp">WhatsApp</span>
+                                <span class="support-link-chip" id="previewBusinessHours">Horario</span>
+                            </div>
+                            <p class="muted" id="previewAddress">Direccion</p>
+                            <p class="muted" id="previewLocation">Ubicacion</p>
+                            <p class="muted" id="previewSocials">Redes sociales</p>
                         </div>
-                    </div>
-                </article>
-            </div>
-
-            <div class="admin-tab-panel" data-tab-panel="botones">
-                <div class="section-toolbar">
-                    <button type="button" class="section-save-btn" data-section-save="botones">Guardar Botones</button>
-                </div>
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Botones de Publico</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-buttons" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-buttons">
-                        <form id="buttonConfigForm" class="admin-form">
-                            <div class="admin-field">
-                                <label for="buttonId">ID del boton</label>
-                                <input type="text" id="buttonId" name="buttonId" placeholder="Ej: btn-menu" required>
-                                <p class="form-note">IDs actuales: btn-menu, btn-whatsapp-main, btn-instagram, btn-tiktok, btn-facebook.</p>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonLabel">Texto</label>
-                                <input type="text" id="buttonLabel" name="buttonLabel" placeholder="Ej: VER MENU DIGITAL" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonIcon">Icono</label>
-                                <input type="text" id="buttonIcon" name="buttonIcon" placeholder="Ej: 📱">
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonActionType">Accion</label>
-                                <select id="buttonActionType" name="buttonActionType">
-                                    <option value="external">Abrir enlace</option>
-                                    <option value="menu-modal">Abrir Publico (modal)</option>
-                                </select>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="buttonLink">Link destino</label>
-                                <input type="text" id="buttonLink" name="buttonLink" placeholder="https://...">
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonType">Tipo de boton</label>
-                                <select id="buttonType" name="buttonType">
-                                    <option value="neon">Neon</option>
-                                    <option value="solid">Solido</option>
-                                    <option value="glass">Glass</option>
-                                    <option value="minimal">Minimal</option>
-                                </select>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonColor">Color base</label>
-                                <input type="color" id="buttonColor" name="buttonColor" value="#ff6000">
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonSize">Tamano</label>
-                                <select id="buttonSize" name="buttonSize">
-                                    <option value="sm">Pequeno</option>
-                                    <option value="md" selected>Medio</option>
-                                    <option value="lg">Grande</option>
-                                    <option value="xl">Extra grande</option>
-                                </select>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonOrder">Orden visual</label>
-                                <input type="number" id="buttonOrder" name="buttonOrder" min="1" step="1" value="1">
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonState">Estado</label>
-                                <select id="buttonState" name="buttonState">
-                                    <option value="active">Activo</option>
-                                    <option value="paused">Pausado</option>
-                                </select>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonVisible">Visible</label>
-                                <select id="buttonVisible" name="buttonVisible">
-                                    <option value="true">Si</option>
-                                    <option value="false">No</option>
-                                </select>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="buttonVolume">Volumen del sonido de clic</label>
-                                <div class="range-wrap">
-                                    <input type="range" id="buttonVolume" name="buttonVolume" min="0" max="1" step="0.05" value="0.1">
-                                    <output id="buttonVolumeOut">0.10</output>
-                                </div>
-                            </div>
-                            <div class="admin-field full">
-                                <label>
-                                    <input type="checkbox" id="buttonSoundEnabled" name="buttonSoundEnabled" checked>
-                                    Sonido activo
-                                </label>
-                            </div>
-                            <input type="hidden" id="buttonEditId" name="buttonEditId" value="">
-                            <button type="submit" class="admin-button" id="buttonSaveBtn">Guardar boton</button>
-                        </form>
-                        <div id="buttonConfigList" class="stack-list stack-list-top-14"></div>
                     </div>
                 </article>
             </div>
@@ -2278,10 +2161,6 @@
                         <div class="stat-box">
                             <div class="stat-label">Categorias Activas</div>
                             <div class="stat-value" id="metricActiveCategories">--</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Botones Visibles</div>
-                            <div class="stat-value" id="metricVisibleButtons">--</div>
                         </div>
                         <div class="stat-box">
                             <div class="stat-label">Precio Promedio</div>

@@ -141,6 +141,14 @@ const defaultBranding = {
     restaurantName: 'ROAL BURGER',
     slogan: 'Comida rapida con acento venezolano',
     logoUrl: 'logo.png',
+    whatsappNumber: '573144689509',
+    whatsappLink: 'https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
+    businessHours: 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.',
+    address: 'Cl. 22 #29-59, Armenia, Quindio. Barrio Las Americas.',
+    locationLink: 'https://maps.google.com/?q=Cl.+22+%2329-59,+Armenia,+Quindio',
+    instagramLink: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
+    tiktokLink: 'https://www.tiktok.com/@roalburger',
+    facebookLink: 'https://www.facebook.com/share/17ukpFaQz3/?mibextid=wwXIfr',
     primaryColor: '#2f6fdd',
     secondaryColor: '#5f95ea',
     accentColor: '#43c09c',
@@ -181,7 +189,6 @@ const metricActiveProductsEl = document.getElementById('metricActiveProducts');
 const metricPausedProductsEl = document.getElementById('metricPausedProducts');
 const metricFeaturedProductsEl = document.getElementById('metricFeaturedProducts');
 const metricActiveCategoriesEl = document.getElementById('metricActiveCategories');
-const metricVisibleButtonsEl = document.getElementById('metricVisibleButtons');
 const metricAveragePriceEl = document.getElementById('metricAveragePrice');
 const metricWhatsappClicksEl = document.getElementById('metricWhatsappClicks');
 const metricDailyVisitorsEl = document.getElementById('metricDailyVisitors');
@@ -240,10 +247,14 @@ const buttonSaveBtn = document.getElementById('buttonSaveBtn');
 
 const brandingForm = document.getElementById('brandingForm');
 const templateGrid = document.getElementById('templateGrid');
-const previewLogo = document.getElementById('previewLogo');
 const previewName = document.getElementById('previewName');
 const previewSlogan = document.getElementById('previewSlogan');
 const brandingPreview = document.getElementById('brandingPreview');
+const previewWhatsapp = document.getElementById('previewWhatsapp');
+const previewBusinessHours = document.getElementById('previewBusinessHours');
+const previewAddress = document.getElementById('previewAddress');
+const previewLocation = document.getElementById('previewLocation');
+const previewSocials = document.getElementById('previewSocials');
 const designFontSizeInput = document.getElementById('designFontSize');
 const designFontSizeOut = document.getElementById('designFontSizeOut');
 const interactionVolumeInput = document.getElementById('interactionVolume');
@@ -668,6 +679,14 @@ function normalizeBranding(raw) {
         restaurantName: String(raw.restaurantName || defaultBranding.restaurantName),
         slogan: String(raw.slogan || defaultBranding.slogan),
         logoUrl: String(raw.logoUrl || defaultBranding.logoUrl),
+        whatsappNumber: String(raw.whatsappNumber || defaultBranding.whatsappNumber),
+        whatsappLink: String(raw.whatsappLink || defaultBranding.whatsappLink),
+        businessHours: String(raw.businessHours || defaultBranding.businessHours),
+        address: String(raw.address || defaultBranding.address),
+        locationLink: String(raw.locationLink || defaultBranding.locationLink),
+        instagramLink: String(raw.instagramLink || defaultBranding.instagramLink),
+        tiktokLink: String(raw.tiktokLink || defaultBranding.tiktokLink),
+        facebookLink: String(raw.facebookLink || defaultBranding.facebookLink),
         primaryColor: String(raw.primaryColor || templateConfig.primaryColor || defaultBranding.primaryColor),
         secondaryColor: String(raw.secondaryColor || templateConfig.secondaryColor || defaultBranding.secondaryColor),
         accentColor: String(raw.accentColor || templateConfig.accentColor || defaultBranding.accentColor),
@@ -1287,7 +1306,6 @@ function renderMetricsOverview() {
     const pausedProducts = Math.max(0, totalProducts - activeProducts);
     const featuredProducts = productsState.filter((product) => product.es_destacado && product.estado === 'active').length;
     const activeCategories = categoriesState.filter((category) => category.active !== false).length;
-    const visibleButtons = buttonsState.filter((button) => button.visible !== false && button.estado === 'active').length;
 
     const pricedProducts = productsState.filter((product) => Number(product.precio) > 0);
     const averagePrice = pricedProducts.length
@@ -1305,9 +1323,6 @@ function renderMetricsOverview() {
     }
     if (metricActiveCategoriesEl) {
         metricActiveCategoriesEl.textContent = Number(activeCategories).toLocaleString('es-CO');
-    }
-    if (metricVisibleButtonsEl) {
-        metricVisibleButtonsEl.textContent = Number(visibleButtons).toLocaleString('es-CO');
     }
     if (metricAveragePriceEl) {
         metricAveragePriceEl.textContent = averagePrice > 0 ? formatMoney(Math.round(averagePrice)) : '--';
@@ -1477,80 +1492,123 @@ function renderBrandingForm() {
 
     brandingForm.restaurantName.value = brandingState.restaurantName;
     brandingForm.restaurantSlogan.value = brandingState.slogan;
-    brandingForm.restaurantLogo.value = brandingState.logoUrl;
-    brandingForm.brandPrimaryColor.value = brandingState.primaryColor;
-    brandingForm.brandSecondaryColor.value = brandingState.secondaryColor;
-    brandingForm.brandAccentColor.value = brandingState.accentColor;
-    brandingForm.brandTemplate.value = brandingState.template;
-    brandingForm.designBgColor.value = brandingState.bgColor;
-    brandingForm.designButtonBorderColor.value = brandingState.buttonBorderColor;
-    brandingForm.designFontFamily.value = brandingState.fontFamily;
-    brandingForm.designFontSize.value = String(brandingState.fontSizeBase);
-    brandingForm.interactionVolume.value = String(brandingState.interactionVolume);
-    brandingForm.animationSpeed.value = String(brandingState.animationSpeed);
-
-    if (designFontSizeOut) {
-        designFontSizeOut.textContent = `${brandingState.fontSizeBase}px`;
-    }
-    if (interactionVolumeOut) {
-        interactionVolumeOut.textContent = Number(brandingState.interactionVolume).toFixed(2);
-    }
-    if (animationSpeedOut) {
-        animationSpeedOut.textContent = `${Number(brandingState.animationSpeed).toFixed(1)}x`;
-    }
+    brandingForm.restaurantWhatsappNumber.value = brandingState.whatsappNumber;
+    brandingForm.restaurantWhatsappLink.value = brandingState.whatsappLink;
+    brandingForm.restaurantBusinessHours.value = brandingState.businessHours;
+    brandingForm.restaurantAddress.value = brandingState.address;
+    brandingForm.restaurantLocationLink.value = brandingState.locationLink;
+    brandingForm.restaurantInstagramLink.value = brandingState.instagramLink;
+    brandingForm.restaurantTiktokLink.value = brandingState.tiktokLink;
+    brandingForm.restaurantFacebookLink.value = brandingState.facebookLink;
 
     renderBrandingPreview();
 }
 
 function renderBrandingPreview() {
-    if (!brandingForm || !previewName || !previewSlogan || !brandingPreview || !previewLogo) {
+    if (!brandingForm || !previewName || !previewSlogan || !brandingPreview) {
         return;
     }
 
     const name = String(brandingForm.restaurantName.value || '').trim() || defaultBranding.restaurantName;
     const slogan = String(brandingForm.restaurantSlogan.value || '').trim() || defaultBranding.slogan;
-    const logo = String(brandingForm.restaurantLogo.value || '').trim() || defaultBranding.logoUrl;
-    const primary = String(brandingForm.brandPrimaryColor.value || defaultBranding.primaryColor);
-    const secondary = String(brandingForm.brandSecondaryColor.value || defaultBranding.secondaryColor);
-    const accent = String(brandingForm.brandAccentColor.value || defaultBranding.accentColor);
-    const bgColor = String(brandingForm.designBgColor.value || defaultBranding.bgColor);
-    const buttonBorderColor = String(brandingForm.designButtonBorderColor.value || defaultBranding.buttonBorderColor);
-    const fontFamily = String(brandingForm.designFontFamily.value || defaultBranding.fontFamily);
-    const fontSizeBase = Number(brandingForm.designFontSize.value || defaultBranding.fontSizeBase);
-    const interactionVolume = Number(brandingForm.interactionVolume.value || defaultBranding.interactionVolume);
-    const animationSpeed = Number(brandingForm.animationSpeed.value || defaultBranding.animationSpeed);
+    const whatsappNumber = String(brandingForm.restaurantWhatsappNumber.value || '').trim() || defaultBranding.whatsappNumber;
+    const businessHours = String(brandingForm.restaurantBusinessHours.value || '').trim() || defaultBranding.businessHours;
+    const address = String(brandingForm.restaurantAddress.value || '').trim() || defaultBranding.address;
+    const locationLink = String(brandingForm.restaurantLocationLink.value || '').trim() || defaultBranding.locationLink;
+    const socialLabels = [
+        String(brandingForm.restaurantInstagramLink.value || '').trim() ? 'Instagram' : '',
+        String(brandingForm.restaurantTiktokLink.value || '').trim() ? 'TikTok' : '',
+        String(brandingForm.restaurantFacebookLink.value || '').trim() ? 'Facebook' : ''
+    ].filter(Boolean);
 
     previewName.textContent = name;
     previewSlogan.textContent = slogan;
-    previewLogo.src = logo;
-    previewLogo.alt = `Logo ${name}`;
+    brandingPreview.style.borderColor = `${brandingState.primaryColor}55`;
+    brandingPreview.style.background = `linear-gradient(135deg, ${brandingState.bgColor}, ${brandingState.secondaryColor}16)`;
+    brandingPreview.style.fontFamily = brandingState.fontFamily;
 
-    brandingPreview.style.borderColor = `${primary}77`;
-    brandingPreview.style.background = `linear-gradient(135deg, ${bgColor}, ${secondary}16)`;
-    brandingPreview.style.fontFamily = fontFamily;
+    if (previewWhatsapp) {
+        previewWhatsapp.textContent = `WhatsApp: ${whatsappNumber}`;
+    }
+    if (previewBusinessHours) {
+        previewBusinessHours.textContent = businessHours;
+    }
+    if (previewAddress) {
+        previewAddress.textContent = address;
+    }
+    if (previewLocation) {
+        previewLocation.textContent = locationLink ? `Ubicacion: ${locationLink}` : 'Ubicacion no configurada';
+    }
+    if (previewSocials) {
+        previewSocials.textContent = socialLabels.length
+            ? `Redes configuradas: ${socialLabels.join(' · ')}`
+            : 'Redes sociales no configuradas';
+    }
 
-    if (designFontSizeOut) {
-        designFontSizeOut.textContent = `${Math.round(fontSizeBase)}px`;
-    }
-    if (interactionVolumeOut) {
-        interactionVolumeOut.textContent = interactionVolume.toFixed(2);
-    }
-    if (animationSpeedOut) {
-        animationSpeedOut.textContent = `${animationSpeed.toFixed(1)}x`;
+    applyDesignToPreviewFrame(brandingState);
+}
+
+function buildWhatsAppButtonLink(number, customLink) {
+    const directLink = String(customLink || '').trim();
+    if (directLink) {
+        return directLink;
     }
 
-    applyDesignToPreviewFrame({
-        template: brandingForm.brandTemplate.value,
-        primaryColor: primary,
-        secondaryColor: secondary,
-        accentColor: accent,
-        bgColor,
-        buttonBorderColor,
-        fontFamily,
-        fontSizeBase,
-        interactionVolume,
-        animationSpeed
+    const normalizedNumber = String(number || '').replace(/\D+/g, '');
+    if (!normalizedNumber) {
+        return '';
+    }
+
+    return `https://wa.me/${normalizedNumber}?text=${encodeURIComponent('Hola ROAL BURGER! Quisiera realizar un pedido por favor')}`;
+}
+
+async function syncBrandingLinksToButtons(brandingConfig) {
+    if (!firebaseDb) {
+        return;
+    }
+
+    const buttonDefinitions = [
+        {
+            id: 'btn-whatsapp-main',
+            fallback: defaultButtons.find((button) => button.id === 'btn-whatsapp-main'),
+            link: buildWhatsAppButtonLink(brandingConfig.whatsappNumber, brandingConfig.whatsappLink),
+            visible: true
+        },
+        {
+            id: 'btn-instagram',
+            fallback: defaultButtons.find((button) => button.id === 'btn-instagram'),
+            link: String(brandingConfig.instagramLink || '').trim(),
+            visible: Boolean(String(brandingConfig.instagramLink || '').trim())
+        },
+        {
+            id: 'btn-tiktok',
+            fallback: defaultButtons.find((button) => button.id === 'btn-tiktok'),
+            link: String(brandingConfig.tiktokLink || '').trim(),
+            visible: Boolean(String(brandingConfig.tiktokLink || '').trim())
+        },
+        {
+            id: 'btn-facebook',
+            fallback: defaultButtons.find((button) => button.id === 'btn-facebook'),
+            link: String(brandingConfig.facebookLink || '').trim(),
+            visible: Boolean(String(brandingConfig.facebookLink || '').trim())
+        }
+    ];
+
+    const batch = firebaseDb.batch();
+    buttonDefinitions.forEach((definition) => {
+        if (!definition.fallback) {
+            return;
+        }
+
+        batch.set(firebaseDb.collection('botones').doc(definition.id), {
+            ...definition.fallback,
+            link: definition.link,
+            visible: definition.visible,
+            updated_at: firestoreNow()
+        }, { merge: true });
     });
+
+    await batch.commit();
 }
 
 function applyDesignToPreviewFrame(config) {
@@ -2312,112 +2370,116 @@ if (productEditForm) {
     });
 }
 
-buttonConfigForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    hideNotice();
+if (buttonConfigForm) {
+    buttonConfigForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice();
 
-    const formData = new FormData(buttonConfigForm);
-    const payload = normalizeButton({
-        id: String(formData.get('buttonId') || '').trim(),
-        label: String(formData.get('buttonLabel') || '').trim(),
-        icon: String(formData.get('buttonIcon') || '🔗').trim(),
-        actionType: String(formData.get('buttonActionType') || 'external').trim(),
-        link: String(formData.get('buttonLink') || '').trim(),
-        buttonType: String(formData.get('buttonType') || 'neon').trim(),
-        color: String(formData.get('buttonColor') || '#ff6000').trim(),
-        size: String(formData.get('buttonSize') || 'md').trim(),
-        soundEnabled: formData.get('buttonSoundEnabled') === 'on',
-        volume: Number(formData.get('buttonVolume') || 0.1),
-        estado: String(formData.get('buttonState') || 'active').trim(),
-        visible: String(formData.get('buttonVisible') || 'true') === 'true',
-        order: Number(formData.get('buttonOrder') || 99)
+        const formData = new FormData(buttonConfigForm);
+        const payload = normalizeButton({
+            id: String(formData.get('buttonId') || '').trim(),
+            label: String(formData.get('buttonLabel') || '').trim(),
+            icon: String(formData.get('buttonIcon') || '🔗').trim(),
+            actionType: String(formData.get('buttonActionType') || 'external').trim(),
+            link: String(formData.get('buttonLink') || '').trim(),
+            buttonType: String(formData.get('buttonType') || 'neon').trim(),
+            color: String(formData.get('buttonColor') || '#ff6000').trim(),
+            size: String(formData.get('buttonSize') || 'md').trim(),
+            soundEnabled: formData.get('buttonSoundEnabled') === 'on',
+            volume: Number(formData.get('buttonVolume') || 0.1),
+            estado: String(formData.get('buttonState') || 'active').trim(),
+            visible: String(formData.get('buttonVisible') || 'true') === 'true',
+            order: Number(formData.get('buttonOrder') || 99)
+        });
+
+        if (!payload.id || !payload.label) {
+            showNotice('Debes completar ID y texto del boton.', 'error');
+            return;
+        }
+
+        if (payload.actionType === 'external' && !payload.link) {
+            showNotice('Los botones externos deben tener enlace.', 'error');
+            return;
+        }
+
+        try {
+            await firebaseDb.collection('botones').doc(payload.id).set({
+                ...payload,
+                updated_at: firestoreNow()
+            }, { merge: true });
+
+            await reloadDataAndRender();
+            resetButtonForm();
+            showNotice('Boton guardado correctamente.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo guardar el boton: ${error.message || 'Error inesperado.'}`, 'error');
+        }
     });
+}
 
-    if (!payload.id || !payload.label) {
-        showNotice('Debes completar ID y texto del boton.', 'error');
-        return;
-    }
-
-    if (payload.actionType === 'external' && !payload.link) {
-        showNotice('Los botones externos deben tener enlace.', 'error');
-        return;
-    }
-
-    try {
-        await firebaseDb.collection('botones').doc(payload.id).set({
-            ...payload,
-            updated_at: firestoreNow()
-        }, { merge: true });
-
-        await reloadDataAndRender();
-        resetButtonForm();
-        showNotice('Boton guardado correctamente.', 'ok');
-    } catch (error) {
-        showNotice(`No se pudo guardar el boton: ${error.message || 'Error inesperado.'}`, 'error');
-    }
-});
-
-buttonConfigList.addEventListener('click', async (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
-        return;
-    }
-
-    const action = target.dataset.action;
-    const buttonId = target.dataset.buttonId;
-    if (!action || !buttonId) {
-        return;
-    }
-
-    const selected = buttonsState.find((item) => item.id === buttonId);
-    if (!selected) {
-        showNotice('Boton no encontrado.', 'error');
-        return;
-    }
-
-    try {
-        if (action === 'edit-button') {
-            setButtonForm(selected);
-            showNotice(`Editando ${selected.id}.`, 'ok');
+if (buttonConfigList) {
+    buttonConfigList.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) {
             return;
         }
 
-        if (action === 'toggle-button') {
-            const estado = selected.estado === 'active' ? 'paused' : 'active';
-            await firebaseDb.collection('botones').doc(buttonId).update({
-                estado,
-                updated_at: firestoreNow()
-            });
-            await reloadDataAndRender();
-            showNotice(`Boton ${buttonId}: ${estado === 'active' ? 'activado' : 'pausado'}.`, 'ok');
+        const action = target.dataset.action;
+        const buttonId = target.dataset.buttonId;
+        if (!action || !buttonId) {
             return;
         }
 
-        if (action === 'toggle-visible') {
-            await firebaseDb.collection('botones').doc(buttonId).update({
-                visible: !selected.visible,
-                updated_at: firestoreNow()
-            });
-            await reloadDataAndRender();
-            showNotice(`Boton ${buttonId}: ${selected.visible ? 'oculto' : 'visible'}.`, 'ok');
+        const selected = buttonsState.find((item) => item.id === buttonId);
+        if (!selected) {
+            showNotice('Boton no encontrado.', 'error');
             return;
         }
 
-        if (action === 'delete-button') {
-            const confirmed = window.confirm(`Eliminar boton ${buttonId}?`);
-            if (!confirmed) {
+        try {
+            if (action === 'edit-button') {
+                setButtonForm(selected);
+                showNotice(`Editando ${selected.id}.`, 'ok');
                 return;
             }
 
-            await firebaseDb.collection('botones').doc(buttonId).delete();
-            await reloadDataAndRender();
-            resetButtonForm();
-            showNotice(`Boton ${buttonId} eliminado.`, 'ok');
+            if (action === 'toggle-button') {
+                const estado = selected.estado === 'active' ? 'paused' : 'active';
+                await firebaseDb.collection('botones').doc(buttonId).update({
+                    estado,
+                    updated_at: firestoreNow()
+                });
+                await reloadDataAndRender();
+                showNotice(`Boton ${buttonId}: ${estado === 'active' ? 'activado' : 'pausado'}.`, 'ok');
+                return;
+            }
+
+            if (action === 'toggle-visible') {
+                await firebaseDb.collection('botones').doc(buttonId).update({
+                    visible: !selected.visible,
+                    updated_at: firestoreNow()
+                });
+                await reloadDataAndRender();
+                showNotice(`Boton ${buttonId}: ${selected.visible ? 'oculto' : 'visible'}.`, 'ok');
+                return;
+            }
+
+            if (action === 'delete-button') {
+                const confirmed = window.confirm(`Eliminar boton ${buttonId}?`);
+                if (!confirmed) {
+                    return;
+                }
+
+                await firebaseDb.collection('botones').doc(buttonId).delete();
+                await reloadDataAndRender();
+                resetButtonForm();
+                showNotice(`Boton ${buttonId} eliminado.`, 'ok');
+            }
+        } catch (error) {
+            showNotice(`No se pudo actualizar el boton: ${error.message || 'Error inesperado.'}`, 'error');
         }
-    } catch (error) {
-        showNotice(`No se pudo actualizar el boton: ${error.message || 'Error inesperado.'}`, 'error');
-    }
-});
+    });
+}
 
 brandingForm.addEventListener('input', () => {
     renderBrandingPreview();
@@ -2431,17 +2493,25 @@ brandingForm.addEventListener('submit', async (event) => {
     const payload = normalizeBranding({
         restaurantName: String(formData.get('restaurantName') || '').trim(),
         slogan: String(formData.get('restaurantSlogan') || '').trim(),
-        logoUrl: String(formData.get('restaurantLogo') || '').trim(),
-        primaryColor: String(formData.get('brandPrimaryColor') || defaultBranding.primaryColor).trim(),
-        secondaryColor: String(formData.get('brandSecondaryColor') || defaultBranding.secondaryColor).trim(),
-        accentColor: String(formData.get('brandAccentColor') || defaultBranding.accentColor).trim(),
-        template: String(formData.get('brandTemplate') || defaultBranding.template).trim(),
-        bgColor: String(formData.get('designBgColor') || defaultBranding.bgColor).trim(),
-        buttonBorderColor: String(formData.get('designButtonBorderColor') || defaultBranding.buttonBorderColor).trim(),
-        fontFamily: String(formData.get('designFontFamily') || defaultBranding.fontFamily).trim(),
-        fontSizeBase: Number(formData.get('designFontSize') || defaultBranding.fontSizeBase),
-        interactionVolume: Number(formData.get('interactionVolume') || defaultBranding.interactionVolume),
-        animationSpeed: Number(formData.get('animationSpeed') || defaultBranding.animationSpeed)
+        logoUrl: brandingState.logoUrl,
+        whatsappNumber: String(formData.get('restaurantWhatsappNumber') || '').trim(),
+        whatsappLink: String(formData.get('restaurantWhatsappLink') || '').trim(),
+        businessHours: String(formData.get('restaurantBusinessHours') || '').trim(),
+        address: String(formData.get('restaurantAddress') || '').trim(),
+        locationLink: String(formData.get('restaurantLocationLink') || '').trim(),
+        instagramLink: String(formData.get('restaurantInstagramLink') || '').trim(),
+        tiktokLink: String(formData.get('restaurantTiktokLink') || '').trim(),
+        facebookLink: String(formData.get('restaurantFacebookLink') || '').trim(),
+        primaryColor: brandingState.primaryColor,
+        secondaryColor: brandingState.secondaryColor,
+        accentColor: brandingState.accentColor,
+        template: brandingState.template,
+        bgColor: brandingState.bgColor,
+        buttonBorderColor: brandingState.buttonBorderColor,
+        fontFamily: brandingState.fontFamily,
+        fontSizeBase: brandingState.fontSizeBase,
+        interactionVolume: brandingState.interactionVolume,
+        animationSpeed: brandingState.animationSpeed
     });
 
     try {
@@ -2450,9 +2520,10 @@ brandingForm.addEventListener('submit', async (event) => {
             updated_at: firestoreNow()
         }, { merge: true });
 
+        await syncBrandingLinksToButtons(payload);
         brandingState = payload;
         renderBrandingForm();
-        showNotice('Configuracion de marca guardada.', 'ok');
+        showNotice('Informacion del negocio guardada.', 'ok');
     } catch (error) {
         showNotice(`No se pudo guardar la configuracion: ${error.message || 'Error inesperado.'}`, 'error');
     }
