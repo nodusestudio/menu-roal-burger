@@ -3400,6 +3400,10 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
         checkoutInfoUI.deliveryMap.setView([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude], 15);
     }
 
+    if (checkoutInfoUI.confirmLocationButton) {
+        checkoutInfoUI.confirmLocationButton.hidden = false;
+    }
+
     // Mostrar u ocultar botón para solicitar cotización manual si no hay zona
     if (checkoutInfoUI.requestQuoteButton) {
         checkoutInfoUI.requestQuoteButton.style.display = zone ? 'none' : 'inline-flex';
@@ -3910,8 +3914,17 @@ function updateCheckoutInfoModalState() {
     const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
     const orderTotal = getCheckoutOrderTotal(fulfillmentType);
 
+    const shouldShowDeliveryMap = requiresAddress && (!usingSavedAddress || !addressHasLocation);
+
     if (checkoutInfoUI.deliveryMapPanel) {
-        checkoutInfoUI.deliveryMapPanel.hidden = true;
+        checkoutInfoUI.deliveryMapPanel.hidden = !shouldShowDeliveryMap;
+        if (shouldShowDeliveryMap) {
+            window.setTimeout(initializeCheckoutDeliveryMap, 0);
+        }
+    }
+
+    if (checkoutInfoUI.confirmLocationButton) {
+        checkoutInfoUI.confirmLocationButton.hidden = !shouldShowDeliveryMap || !checkoutDeliveryLocation;
     }
 
     if (checkoutInfoUI.saveAddressField && checkoutInfoUI.saveAddressToggle && checkoutInfoUI.addressBookHint) {
@@ -4043,7 +4056,7 @@ function openCheckoutInfoModal() {
             </div>
             <p class="support-feedback" id="checkoutInfoFeedback"></p>
             <div class="support-actions">
-                <button type="button" class="support-send-btn">Enviar pedido</button>
+                <button type="button" class="support-send-btn" id="checkoutSubmitButton">Enviar pedido</button>
             </div>
         </div>
     `;
@@ -4074,7 +4087,7 @@ function openCheckoutInfoModal() {
         discountValue: modal.querySelector('#checkoutDiscountValue'),
         orderTotalValue: modal.querySelector('#checkoutOrderTotalValue'),
         feedback: modal.querySelector('#checkoutInfoFeedback'),
-        send: modal.querySelector('.support-send-btn'),
+        send: modal.querySelector('#checkoutSubmitButton'),
         savedAddresses,
         deliveryMap: null,
         deliveryMapMarker: null,

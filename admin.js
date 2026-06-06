@@ -354,6 +354,9 @@ let previewRefreshTimer = null;
 let ordersRealtimeTimer = null;
 let clipboardToastTimer = null;
 let activeMobileOrdersLane = 'takeaway';
+let adminTitleBlinkTimer = null;
+let adminTitleBlinkState = false;
+const adminBaseTitle = document.title || 'ROAL BURGER | Admin';
 let metricsEventsState = {
     total: 0,
     whatsapp: 0,
@@ -740,11 +743,13 @@ function announceNewOrders(orders) {
     if (!hasLoadedOrdersOnce) {
         knownOrderIds = currentOrderIds;
         hasLoadedOrdersOnce = true;
+        updateOrdersAttentionState();
         return;
     }
 
     const newOrders = orders.filter((order) => !knownOrderIds.has(order.id));
     knownOrderIds = currentOrderIds;
+    updateOrdersAttentionState();
 
     if (!newOrders.length) {
         return;
@@ -759,7 +764,86 @@ function announceNewOrders(orders) {
         .reverse()
         .forEach((order) => {
             speakOrderAnnouncement(order.customerName);
+            notifyNewOrder(order);
+            showNotice(`Nuevo pedido de ${order.customerName || 'cliente'}.`, 'ok');
         });
+}
+
+function getUnreadOrders() {
+    return ordersState.filter((order) => order.status === 'pendiente');
+}
+
+function updateAdminDocumentTitle(unreadCount = getUnreadOrders().length) {
+    if (unreadCount <= 0) {
+        if (adminTitleBlinkTimer) {
+            window.clearInterval(adminTitleBlinkTimer);
+            adminTitleBlinkTimer = null;
+        }
+        adminTitleBlinkState = false;
+        document.title = adminBaseTitle;
+        return;
+    }
+
+    if (!adminTitleBlinkTimer) {
+        adminTitleBlinkTimer = window.setInterval(() => {
+            const currentUnreadCount = getUnreadOrders().length;
+            const currentUnreadLabel = currentUnreadCount > 99 ? '99+' : String(currentUnreadCount);
+
+            if (currentUnreadCount <= 0) {
+                updateAdminDocumentTitle(0);
+                return;
+            }
+
+            adminTitleBlinkState = !adminTitleBlinkState;
+            document.title = adminTitleBlinkState
+                ? `(${currentUnreadLabel}) NUEVO PEDIDO`
+                : adminBaseTitle;
+        }, 900);
+    }
+
+    const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
+    document.title = `(${unreadLabel}) NUEVO PEDIDO`;
+}
+
+function updateOrdersAttentionState() {
+    const ordersTabButton = document.querySelector('.admin-accordion-trigger[data-accordion-target="pedidos"]');
+    const unreadCount = getUnreadOrders().length;
+
+    if (ordersTabButton instanceof HTMLButtonElement) {
+        ordersTabButton.classList.toggle('has-unread', unreadCount > 0);
+        ordersTabButton.classList.toggle('is-blinking', unreadCount > 0);
+        ordersTabButton.dataset.unreadCount = unreadCount > 99 ? '99+' : String(unreadCount || '');
+
+        if (unreadCount <= 0) {
+            ordersTabButton.removeAttribute('data-unread-count');
+        }
+    }
+
+    updateAdminDocumentTitle(unreadCount);
+}
+
+function notifyNewOrder(order) {
+    if (!order || typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+        return;
+    }
+
+    const notification = new Notification('Nuevo pedido en ROAL BURGER', {
+        body: `${order.customerName || 'Cliente'} | ${getOrderTypeLabel(order)} | ${formatMoney(getOrderDisplayTotal(order))}`,
+        icon: 'isotipo.png',
+        badge: 'isotipo.png',
+        tag: `roal-order-${order.id}`,
+        renotify: true,
+        requireInteraction: true
+    });
+
+    notification.onclick = () => {
+        window.focus();
+        const ordersTabButton = document.querySelector('.admin-accordion-trigger[data-accordion-target="pedidos"]');
+        ordersTabButton?.click();
+        selectedOrderId = order.id;
+        renderOrders();
+        notification.close();
+    };
 }
 
 function getUnreadMessages() {
@@ -2977,6 +3061,7 @@ function renderOrders() {
 
     renderOrderTicket(selectedOrder);
     applyMobileOrdersLane();
+    updateOrdersAttentionState();
     renderSalesDayBanner();
 }
 
