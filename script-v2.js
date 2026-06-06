@@ -3849,27 +3849,7 @@ function updateCheckoutInfoModalState() {
     const orderTotal = getCheckoutOrderTotal(fulfillmentType);
 
     if (checkoutInfoUI.deliveryMapPanel) {
-        // Mostrar mapa SOLO si: es delivery Y (dirección sin coordenadas OR nueva dirección) Y no hay confirmación
-        // Y no se ha obtenido coordenadas automáticamente por geocodificación
-        const shouldShowMap = requiresAddress && (!usingSavedAddress || (usingSavedAddress && !addressHasLocation)) && !checkoutDeliveryLocationConfirmed;
-        checkoutInfoUI.deliveryMapPanel.hidden = !shouldShowMap;
-        
-        if (shouldShowMap && !usingSavedAddress) {
-            // Solo inicializar mapa si es nueva dirección y no se geocodificó automáticamente
-            initializeCheckoutDeliveryMap();
-        } else if (shouldShowMap && usingSavedAddress && !addressHasLocation) {
-            // Inicializar mapa si dirección guardada NO tiene coordenadas
-            initializeCheckoutDeliveryMap();
-        }
-        
-        // Mostrar/ocultar botón de confirmación
-        if (checkoutInfoUI.confirmLocationButton) {
-            const hasUnconfirmedLocation = checkoutDeliveryLocation && !checkoutDeliveryLocationConfirmed;
-            checkoutInfoUI.confirmLocationButton.hidden = !hasUnconfirmedLocation;
-        }
-        
-        // No sobreescribir el mensaje si ya se estableció uno específico para dirección guardada sin coordenadas
-        checkoutInfoUI.deliveryZoneStatus.classList.toggle('is-outside-zone', Boolean((checkoutInfoUI.deliveryLatitude || checkoutInfoUI.deliveryLongitude) && !checkoutInfoUI.deliveryZone));
+        checkoutInfoUI.deliveryMapPanel.hidden = true;
     }
 
     if (checkoutInfoUI.saveAddressField && checkoutInfoUI.saveAddressToggle && checkoutInfoUI.addressBookHint) {
@@ -3888,7 +3868,7 @@ function updateCheckoutInfoModalState() {
     if (checkoutInfoUI.deliveryFeeValue) {
         checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(deliveryFee);
         if (checkoutInfoUI.requestQuoteButton) {
-            checkoutInfoUI.requestQuoteButton.style.display = checkoutInfoUI.deliveryZone ? 'none' : 'inline-flex';
+            checkoutInfoUI.requestQuoteButton.style.display = 'none';
         }
     }
 
