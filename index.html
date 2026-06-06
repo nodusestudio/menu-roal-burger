@@ -25,6 +25,45 @@
     <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="manifest" href="site.webmanifest">
     <link rel="stylesheet" href="style.css?v=20260606c">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <style>
+        .checkout-map-panel {
+            margin: 1rem 0 0;
+        }
+        .checkout-map-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+            margin-bottom: 0.9rem;
+        }
+        .checkout-map-button {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.18);
+            color: inherit;
+            padding: 0.85rem 1rem;
+            border-radius: 14px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .checkout-zone-status {
+            flex: 1 1 auto;
+            min-width: 180px;
+            font-size: 0.95rem;
+            color: #e5e7eb;
+        }
+        .checkout-zone-status.is-outside-zone {
+            color: #f8b4b4;
+        }
+        .checkout-map-area {
+            width: 100%;
+            min-height: 260px;
+            border-radius: 18px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: #f8f9fa;
+        }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -253,6 +292,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
     <script src="tracking.js"></script>
     <script src="firebase-config.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="script-v2.js?v=20260606c"></script>
 </body>
 </html>

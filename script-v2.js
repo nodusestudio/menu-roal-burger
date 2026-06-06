@@ -27,6 +27,55 @@ const ORDERING_SCHEDULE = {
 const ORDER_SENT_CONFIRMATION_MESSAGE = 'Tu pedido ha sido enviado exitosamente al restaurante. En un momento recibiras la confirmacion con tiempo aproximado de entrega.';
 const TRANSFER_PAYMENT_CONFIRMATION_MESSAGE = 'En un momento uno de nuestros asesores se comunicara contigo por WhatsApp para pasarte la informacion de la cuenta.';
 const CASH_PAYMENT_CONFIRMATION_MESSAGE = 'Tu pedido ya fue enviado al restaurante, manejamos un tiempo de entrega de 50 min aproximadamente, uno de nuestros asesores se comunicara contigo a la brevedad posible para confirmar el pedido.';
+const DELIVERY_CENTER_COORDINATES = [4.5400, -75.6800];
+const DELIVERY_GEOFENCE_ZONES = [
+    {
+        name: 'amarilla',
+        fee: 5000,
+        color: '#f6d743',
+        label: 'Zona amarilla',
+        polygon: [
+            [4.5440, -75.6855],
+            [4.5455, -75.6785],
+            [4.5430, -75.6730],
+            [4.5380, -75.6720],
+            [4.5340, -75.6765],
+            [4.5345, -75.6835]
+        ]
+    },
+    {
+        name: 'azul',
+        fee: 6000,
+        color: '#4aa1ff',
+        label: 'Zona azul',
+        polygon: [
+            [4.5480, -75.6910],
+            [4.5490, -75.6685],
+            [4.5360, -75.6625],
+            [4.5260, -75.6710],
+            [4.5265, -75.6885],
+            [4.5335, -75.6955]
+        ]
+    },
+    {
+        name: 'roja',
+        fee: 7000,
+        color: '#d32f2f',
+        label: 'Zona roja',
+        polygon: [
+            [4.5535, -75.6965],
+            [4.5580, -75.6610],
+            [4.5190, -75.6520],
+            [4.5120, -75.6760],
+            [4.5205, -75.7055],
+            [4.5335, -75.7140]
+        ]
+    }
+];
+let checkoutDeliveryZone = null;
+let checkoutDeliveryFeeAmount = 0;
+let checkoutDeliveryLocation = null;
+let checkoutDeliveryLocationConfirmed = false;
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
@@ -76,44 +125,63 @@ function normalizeCustomerPin(value) {
 function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '') {
     const normalizedAddresses = [];
     const seen = new Set();
+    let primaryFound = false;
 
-    const appendAddress = (value) => {
-        const safeValue = String(value || '').trim();
-        const normalizedKey = safeValue.toLowerCase();
-        if (!safeValue || seen.has(normalizedKey)) {
+    const appendAddressEntry = (entry) => {
+        const safeAddress = String(entry?.address || entry?.value || entry?.label || entry || '').trim();
+        const normalizedKey = safeAddress.toLowerCase();
+        if (!safeAddress || seen.has(normalizedKey)) {
             return;
         }
 
         seen.add(normalizedKey);
-        normalizedAddresses.push(safeValue);
+        const latitude = Number.isFinite(Number(entry?.latitude)) ? Number(entry.latitude) : null;
+        const longitude = Number.isFinite(Number(entry?.longitude)) ? Number(entry.longitude) : null;
+        const primary = Boolean(entry?.primary);
+
+        if (primary) {
+            primaryFound = true;
+        }
+
+        normalizedAddresses.push({
+            address: safeAddress,
+            latitude,
+            longitude,
+            primary
+        });
     };
 
-    appendAddress(primaryAddress);
+    if (primaryAddress) {
+        appendAddressEntry({ address: primaryAddress, primary: true });
+    }
 
     if (Array.isArray(rawAddresses)) {
-        rawAddresses.forEach((entry) => {
-            if (typeof entry === 'string') {
-                appendAddress(entry);
-                return;
-            }
+        rawAddresses.forEach((entry) => appendAddressEntry(entry));
+    }
 
-            if (entry && typeof entry === 'object') {
-                appendAddress(entry.address || entry.value || entry.label || '');
-            }
-        });
+    if (!primaryFound && normalizedAddresses.length > 0) {
+        normalizedAddresses[0].primary = true;
     }
 
     return normalizedAddresses.slice(0, MAX_CUSTOMER_SAVED_ADDRESSES);
 }
 
+function getCustomerPrimarySavedAddress(profile = {}) {
+    const addresses = getCustomerSavedAddresses(profile);
+    return addresses.find((entry) => entry.primary) || addresses[0] || null;
+}
+
 function appendCustomerSavedAddress(rawAddresses = [], newAddress = '') {
     const addresses = normalizeCustomerSavedAddresses(rawAddresses);
-    const safeAddress = String(newAddress || '').trim();
-    if (!safeAddress) {
+    const newEntry = typeof newAddress === 'string'
+        ? { address: String(newAddress || '').trim(), latitude: null, longitude: null, primary: false }
+        : { address: String(newAddress?.address || newAddress?.value || newAddress?.label || '').trim(), latitude: Number.isFinite(Number(newAddress?.latitude)) ? Number(newAddress.latitude) : null, longitude: Number.isFinite(Number(newAddress?.longitude)) ? Number(newAddress.longitude) : null, primary: Boolean(newAddress?.primary) };
+
+    if (!newEntry.address) {
         return addresses;
     }
 
-    return normalizeCustomerSavedAddresses([...addresses, safeAddress], addresses[0] || safeAddress);
+    return normalizeCustomerSavedAddresses([...addresses, newEntry], addresses[0]?.address || newEntry.address);
 }
 
 function parseCustomerSavedAddressesInput(rawValue = '', primaryAddress = '') {
@@ -127,6 +195,31 @@ function parseCustomerSavedAddressesInput(rawValue = '', primaryAddress = '') {
 
 function getCustomerSavedAddresses(profile = {}) {
     return normalizeCustomerSavedAddresses(profile?.savedAddresses || profile?.addresses || [], profile?.address || profile?.deliveryAddress || '');
+}
+
+function getCustomerSavedAddressLabel(savedAddressEntry) {
+    if (!savedAddressEntry) {
+        return '';
+    }
+    return String(savedAddressEntry.address || savedAddressEntry || '').trim();
+}
+
+function getSelectedCheckoutSavedAddress() {
+    if (!checkoutInfoUI || !Array.isArray(checkoutInfoUI.savedAddresses)) {
+        return null;
+    }
+
+    const selectedOption = String(checkoutInfoUI.savedAddressChoice?.value || '').trim();
+    if (!selectedOption.startsWith('saved:')) {
+        return null;
+    }
+
+    const selectedIndex = Number(selectedOption.split(':')[1]);
+    if (!Number.isFinite(selectedIndex) || selectedIndex < 0 || selectedIndex >= checkoutInfoUI.savedAddresses.length) {
+        return null;
+    }
+
+    return checkoutInfoUI.savedAddresses[selectedIndex] || null;
 }
 
 function isValidCustomerPin(value) {
@@ -152,7 +245,7 @@ function normalizeCustomerProfile(raw = {}, fallbackId = '') {
     const customerPhone = String(raw.customerPhone || raw.phone || '').trim();
     const customerPhoneDigits = normalizePhoneDigits(raw.customerPhoneDigits || customerPhone);
     const savedAddresses = getCustomerSavedAddresses(raw);
-    const address = savedAddresses[0] || String(raw.address || raw.deliveryAddress || '').trim();
+    const address = String(savedAddresses[0]?.address || raw.address || raw.deliveryAddress || '').trim();
     const customerName = String(raw.customerName || raw.name || '').trim();
 
     if (!customerPhoneDigits) {
@@ -487,8 +580,34 @@ function getCheckoutFulfillmentType(value) {
     return '';
 }
 
+function isPointInPolygon(point, polygon = []) {
+    const [lat, lng] = point;
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const [yi, xi] = polygon[i];
+        const [yj, xj] = polygon[j];
+        const intersect = ((yi > lat) !== (yj > lat)) && (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi);
+        if (intersect) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+function findDeliveryZoneForLocation(location = {}) {
+    const { latitude, longitude } = location;
+    if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) {
+        return null;
+    }
+
+    const point = [Number(latitude), Number(longitude)];
+    return DELIVERY_GEOFENCE_ZONES.find((zone) => isPointInPolygon(point, zone.polygon)) || null;
+}
+
 function getCheckoutDeliveryFee(fulfillmentType) {
-    return getCheckoutFulfillmentType(fulfillmentType) === 'delivery' ? DELIVERY_FEE_AMOUNT : 0;
+    return getCheckoutFulfillmentType(fulfillmentType) === 'delivery'
+        ? Math.max(0, Number.isFinite(checkoutDeliveryFeeAmount) ? checkoutDeliveryFeeAmount : 0)
+        : 0;
 }
 
 function getCheckoutOrderTotal(fulfillmentType) {
@@ -646,6 +765,20 @@ function openOrderConfirmationWhatsApp(orderData = {}) {
     }
 }
 
+function requestDeliveryQuote() {
+    if (!checkoutInfoUI) return;
+
+    const lat = checkoutInfoUI.deliveryLatitude;
+    const lng = checkoutInfoUI.deliveryLongitude;
+    const address = String(checkoutInfoUI.address?.value || '').trim();
+    const coordsPart = (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) ? `Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}` : '';
+    const addressPart = address ? `Direccion: ${address}` : '';
+    const text = `Hola ROAL BURGER, solicito cotizacion de domicilio. ${addressPart} ${coordsPart}`.trim();
+    const url = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(text)}`;
+    const w = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!w) window.location.href = url;
+}
+
 function getPublicFirebaseDb() {
     if (publicFirebaseDbInstance) {
         return publicFirebaseDbInstance;
@@ -689,7 +822,7 @@ async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
         const previousTotalSpent = Number(previous.totalSpent || 0);
         const fallbackAddress = String(customerInfo.profileAddress || previous.address || customerInfo.deliveryAddress || (customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' : 'Sin direccion registrada')).trim();
         const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || previous.savedAddresses || [], fallbackAddress);
-        const resolvedAddress = savedAddresses[0] || fallbackAddress;
+        const resolvedAddress = String(savedAddresses[0]?.address || fallbackAddress).trim();
 
         transaction.set(clientRef, {
             customerName: String(customerInfo.customerName || previous.customerName || '').trim(),
@@ -782,7 +915,7 @@ async function saveCustomerProfile(profileInput = {}) {
     const snapshot = await clientRef.get();
     const previous = snapshot.exists ? snapshot.data() : {};
     const savedAddresses = normalizeCustomerSavedAddresses(profileInput.savedAddresses || previous.savedAddresses || [], String(profileInput.address || '').trim());
-    const address = savedAddresses[0] || '';
+    const address = String(savedAddresses[0]?.address || '').trim();
 
     if (!address) {
         throw new Error('Escribe la direccion principal de tu perfil.');
@@ -940,6 +1073,11 @@ function populateCustomerRegisterPanel(profile = {}) {
     if (formUI.confirmPin) {
         formUI.confirmPin.value = '';
     }
+    if (Array.isArray(formUI.savedAddressesData)) {
+        formUI.savedAddressesData = getCustomerSavedAddresses(profile);
+        formUI.selectedSavedAddressIndex = 0;
+        renderCustomerRegisterSavedAddresses();
+    }
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
     formUI.hasPreviousConsent = hasConsent;
     applyCustomerConsentState(hasConsent);
@@ -949,6 +1087,7 @@ function closeCustomerRegisterModal() {
     closeCustomerConsentDocument();
     closeCustomerDeleteAccountModal();
     closeCustomerPasswordResetModal();
+    closeCustomerSavedAddressMapModal();
 
     if (!customerRegisterUI) {
         return;
@@ -1006,32 +1145,18 @@ function applyCustomerConsentState(isAuthorized = false) {
 function buildCustomerRegisterFormMarkup(profile = {}, saveLabel = 'Crear perfil') {
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
     const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
-    const savedAddresses = getCustomerSavedAddresses(profile);
-    const isEditMode = saveLabel === 'Guardar perfil';
-    const primaryAddress = String(profile.address || savedAddresses[0] || '').trim();
-    const addressesMarkup = isEditMode
-        ? `
-        <label class="support-field">
-            <span>Direccion principal</span>
-            <textarea id="customerRegisterAddress" rows="4" placeholder="Escribe tu direccion principal">${escapeHtml(primaryAddress)}</textarea>
-        </label>
-        <label class="support-field">
-            <span>Direcciones guardadas</span>
-            <textarea id="customerRegisterSavedAddresses" rows="5" placeholder="Una direccion por linea. La primera siempre sera tu direccion principal.">${escapeHtml(savedAddresses.join('\n'))}</textarea>
-            <p class="support-field-hint">Puedes editar hasta ${MAX_CUSTOMER_SAVED_ADDRESSES} direcciones. Deja una por linea y conserva la principal arriba.</p>
-        </label>`
-        : `
-        <label class="support-field">
-            <span>Direccion</span>
-            <textarea id="customerRegisterAddress" rows="4" placeholder="Escribe tu direccion">${escapeHtml(primaryAddress)}</textarea>
-        </label>`;
 
     return `
         <label class="support-field">
             <span>Nombre</span>
             <input type="text" id="customerRegisterName" value="${escapeHtml(profile.customerName || '')}" placeholder="Escribe tu nombre">
         </label>
-        ${addressesMarkup}
+        <div class="support-field">
+            <span>Direcciones guardadas</span>
+            <div id="customerRegisterSavedAddressesList" class="support-address-list"></div>
+            <button type="button" class="support-secondary-btn" id="customerRegisterAddAddress">Agregar direccion</button>
+            <p class="support-field-hint">Toca el icono del globo para abrir el mapa y anclar tu ubicación actual a esa dirección.</p>
+        </div>
         <label class="support-field">
             <span>Numero de WhatsApp</span>
             <input type="tel" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}" placeholder="Escribe tu numero de WhatsApp">
@@ -1087,8 +1212,8 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
         close: modal.querySelector('.support-modal-close'),
         feedback: modal.querySelector('#customerAuthFeedback'),
         name: modal.querySelector('#customerRegisterName'),
-        address: modal.querySelector('#customerRegisterAddress'),
-        savedAddresses: modal.querySelector('#customerRegisterSavedAddresses'),
+        savedAddressesList: modal.querySelector('#customerRegisterSavedAddressesList'),
+        addAddressButton: modal.querySelector('#customerRegisterAddAddress'),
         registerPhone: modal.querySelector('#customerRegisterPhone'),
         registerPin: modal.querySelector('#customerRegisterPin'),
         confirmPin: modal.querySelector('#customerConfirmPin'),
@@ -1097,18 +1222,40 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
         consent: modal.querySelector('#customerDataConsent'),
         save: modal.querySelector('#customerRegisterSave'),
         hasPreviousConsent: hasConsent,
-        consentViewed: hasConsent
+        consentViewed: hasConsent,
+        savedAddressesData: getCustomerSavedAddresses(profile),
+        selectedSavedAddressIndex: 0,
+        savedAddressMapModal: null,
+        savedAddressMapUI: null
     };
 
     customerRegisterUI.close?.addEventListener('click', closeCustomerRegisterModal);
     customerRegisterUI.reviewConsentButton?.addEventListener('click', openCustomerConsentDocument);
     customerRegisterUI.save?.addEventListener('click', submitCustomerProfileForm);
+    customerRegisterUI.addAddressButton?.addEventListener('click', () => {
+        if (!customerRegisterUI) {
+            return;
+        }
+        if (customerRegisterUI.savedAddressesData.length >= MAX_CUSTOMER_SAVED_ADDRESSES) {
+            customerRegisterUI.feedback.textContent = `Ya puedes guardar hasta ${MAX_CUSTOMER_SAVED_ADDRESSES} direcciones.`;
+            return;
+        }
+        customerRegisterUI.savedAddressesData.push({ address: '', latitude: null, longitude: null, primary: false });
+        customerRegisterUI.selectedSavedAddressIndex = customerRegisterUI.savedAddressesData.length - 1;
+        renderCustomerRegisterSavedAddresses();
+    });
+    customerRegisterUI.savedAddressUseLocationButton?.addEventListener('click', requestCustomerSavedAddressGeolocation);
+    customerRegisterUI.savedAddressesList?.addEventListener('input', handleSavedAddressEditorInput);
+    customerRegisterUI.savedAddressesList?.addEventListener('click', handleSavedAddressEditorAction);
+    customerRegisterUI.savedAddressesList?.addEventListener('change', handleSavedAddressEditorChange);
 
     bindCustomerPinField(customerRegisterUI.registerPin);
     bindCustomerPinField(customerRegisterUI.confirmPin);
     attachPasswordToggle(customerRegisterUI.registerPin);
     attachPasswordToggle(customerRegisterUI.confirmPin);
     applyCustomerConsentState(hasConsent);
+    renderCustomerRegisterSavedAddresses();
+    initializeCustomerSavedAddressMap();
 
     modal.addEventListener('click', (event) => {
         if (event.target === modal) {
@@ -1118,6 +1265,339 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
 
     syncBodyScrollLock();
     customerRegisterUI.name?.focus();
+}
+
+function renderCustomerRegisterSavedAddresses() {
+    if (!customerRegisterUI) {
+        return;
+    }
+
+    const addresses = customerRegisterUI.savedAddressesData || [];
+    if (addresses.length === 0) {
+        customerRegisterUI.savedAddressesList.innerHTML = `
+            <p class="support-field-hint">No hay direcciones guardadas. Agrega una para asignar ubicaciones y seleccionar una principal.</p>
+        `;
+        updateCustomerSavedAddressMap(null, null);
+        return;
+    }
+
+    if (customerRegisterUI.selectedSavedAddressIndex < 0 || customerRegisterUI.selectedSavedAddressIndex >= addresses.length) {
+        customerRegisterUI.selectedSavedAddressIndex = 0;
+    }
+
+    customerRegisterUI.savedAddressesList.innerHTML = addresses.map((entry, index) => {
+        const isSelected = index === customerRegisterUI.selectedSavedAddressIndex;
+        return `
+            <div class="support-field support-address-entry ${isSelected ? 'is-active' : ''}" data-address-index="${index}">
+                <label class="support-check">
+                    <input type="radio" name="customerSavedAddressPrimary" value="${index}" ${entry.primary ? 'checked' : ''}>
+                    <span>Principal</span>
+                </label>
+                <input type="text" class="customerSavedAddressInput" data-address-index="${index}" value="${escapeHtml(entry.address || '')}" placeholder="Direccion completa">
+                <div class="support-field-actions">
+                    <button type="button" class="support-secondary-btn customerSavedAddressSelectButton customer-address-icon-btn" aria-label="Agrega tu ubicación actual a esta dirección" title="Agrega tu ubicación actual a esta dirección" data-address-index="${index}">🌍</button>
+                    <button type="button" class="support-secondary-btn customerSavedAddressRemoveButton customer-address-icon-btn" aria-label="Eliminar direccion" title="Eliminar direccion" data-address-index="${index}">✕</button>
+                </div>
+                <p class="support-field-hint">Lat: ${entry.latitude !== null ? entry.latitude : '---'} | Lng: ${entry.longitude !== null ? entry.longitude : '---'}</p>
+            </div>
+        `;
+    }).join('');
+
+    const selectedAddress = addresses[customerRegisterUI.selectedSavedAddressIndex];
+    if (selectedAddress?.latitude !== null && selectedAddress?.longitude !== null) {
+        updateCustomerSavedAddressMap(selectedAddress.latitude, selectedAddress.longitude);
+    } else {
+        updateCustomerSavedAddressMap(null, null);
+    }
+}
+
+function getCustomerSavedAddressesFromEditor() {
+    if (!customerRegisterUI) {
+        return [];
+    }
+
+    return normalizeCustomerSavedAddresses(customerRegisterUI.savedAddressesData || []);
+}
+
+function getCustomerPrimarySavedAddressFromEditor() {
+    const addresses = getCustomerSavedAddressesFromEditor();
+    return addresses.find((entry) => entry.primary) || addresses[0] || null;
+}
+
+function setCustomerRegisterSelectedAddressIndex(index) {
+    if (!customerRegisterUI) {
+        return;
+    }
+
+    const addresses = customerRegisterUI.savedAddressesData || [];
+    if (index < 0 || index >= addresses.length) {
+        return;
+    }
+
+    customerRegisterUI.selectedSavedAddressIndex = index;
+    renderCustomerRegisterSavedAddresses();
+}
+
+function createCustomerSavedAddressMapModal() {
+    closeCustomerSavedAddressMapModal();
+
+    if (!customerRegisterUI) {
+        return;
+    }
+
+    const mapModal = document.createElement('div');
+    mapModal.className = 'support-modal is-open';
+    mapModal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Ubicación del pedido">
+            <button type="button" class="support-modal-close" aria-label="Cerrar mapa">&times;</button>
+            <p class="support-modal-kicker">Ubicación</p>
+            <h3 class="support-modal-title">Ancla tu ubicación actual</h3>
+            <p class="support-modal-text" id="customerMapStatusText">Usa el botón de abajo para capturar tu ubicación GPS.</p>
+            <div id="customerSavedAddressMapContainer" class="checkout-map-area" style="min-height:350px; margin:1rem 0;"></div>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button type="button" class="support-secondary-btn" id="customerSavedAddressUseLocation">Capturar ubicacion GPS</button>
+                <button type="button" class="support-send-btn" id="customerSavedAddressConfirmLocation" style="display: none;">Confirmar y guardar</button>
+            </div>
+            <p class="support-field-hint">Verifica que el marcador esté en la ubicación correcta antes de guardar.</p>
+        </div>
+    `;
+
+    document.body.appendChild(mapModal);
+
+    customerRegisterUI.savedAddressMapModal = mapModal;
+    customerRegisterUI.savedAddressMapUI = {
+        modal: mapModal,
+        close: mapModal.querySelector('.support-modal-close'),
+        mapContainer: mapModal.querySelector('#customerSavedAddressMapContainer'),
+        statusText: mapModal.querySelector('#customerMapStatusText'),
+        useLocationButton: mapModal.querySelector('#customerSavedAddressUseLocation'),
+        confirmButton: mapModal.querySelector('#customerSavedAddressConfirmLocation'),
+        savedAddressMap: null,
+        capturedLatitude: null,
+        capturedLongitude: null
+    };
+
+    customerRegisterUI.savedAddressMapUI.close.addEventListener('click', closeCustomerSavedAddressMapModal);
+    customerRegisterUI.savedAddressMapUI.useLocationButton.addEventListener('click', handleSavedAddressUseLocation);
+    customerRegisterUI.savedAddressMapUI.confirmButton.addEventListener('click', handleConfirmSavedAddressLocation);
+
+    initializeCustomerSavedAddressMap();
+    syncBodyScrollLock();
+}
+
+function openCustomerSavedAddressMapPanel(index = null) {
+    if (!customerRegisterUI) {
+        return;
+    }
+
+    if (Number.isFinite(index) && customerRegisterUI.savedAddressesData[index]) {
+        customerRegisterUI.selectedSavedAddressIndex = index;
+    }
+
+    createCustomerSavedAddressMapModal();
+
+    if (customerRegisterUI.savedAddressMapUI?.savedAddressMap && typeof customerRegisterUI.savedAddressMapUI.savedAddressMap.invalidateSize === 'function') {
+        setTimeout(() => customerRegisterUI.savedAddressMapUI.savedAddressMap.invalidateSize(), 50);
+    }
+}
+
+function closeCustomerSavedAddressMapModal() {
+    if (!customerRegisterUI?.savedAddressMapModal) {
+        return;
+    }
+
+    customerRegisterUI.savedAddressMapModal.remove();
+    customerRegisterUI.savedAddressMapModal = null;
+    customerRegisterUI.savedAddressMapUI = null;
+    syncBodyScrollLock();
+}
+
+function handleSavedAddressEditorInput(event) {
+    const target = event.target;
+    if (!customerRegisterUI || !target.matches('.customerSavedAddressInput')) {
+        return;
+    }
+
+    const index = Number(target.dataset.addressIndex);
+    const addresses = customerRegisterUI.savedAddressesData || [];
+    if (Number.isNaN(index) || !addresses[index]) {
+        return;
+    }
+
+    addresses[index].address = String(target.value || '').trim();
+}
+
+function handleSavedAddressEditorAction(event) {
+    if (!customerRegisterUI) {
+        return;
+    }
+
+    const button = event.target.closest('button[data-address-index]');
+    if (!button) {
+        return;
+    }
+
+    const index = Number(button.dataset.addressIndex);
+    const addresses = customerRegisterUI.savedAddressesData || [];
+    if (Number.isNaN(index) || !addresses[index]) {
+        return;
+    }
+
+    if (button.classList.contains('customerSavedAddressRemoveButton')) {
+        addresses.splice(index, 1);
+        if (customerRegisterUI.selectedSavedAddressIndex >= addresses.length) {
+            customerRegisterUI.selectedSavedAddressIndex = Math.max(0, addresses.length - 1);
+        }
+        renderCustomerRegisterSavedAddresses();
+        return;
+    }
+
+    if (button.classList.contains('customerSavedAddressSelectButton')) {
+        openCustomerSavedAddressMapPanel(index);
+        return;
+    }
+}
+
+function handleSavedAddressEditorChange(event) {
+    if (!customerRegisterUI) {
+        return;
+    }
+
+    const target = event.target;
+    if (target.name === 'customerSavedAddressPrimary') {
+        const index = Number(target.value);
+        const addresses = customerRegisterUI.savedAddressesData || [];
+        if (Number.isNaN(index) || !addresses[index]) {
+            return;
+        }
+
+        addresses.forEach((entry, entryIndex) => {
+            entry.primary = entryIndex === index;
+        });
+        customerRegisterUI.selectedSavedAddressIndex = index;
+        renderCustomerRegisterSavedAddresses();
+    }
+}
+
+function initializeCustomerSavedAddressMap() {
+    if (!customerRegisterUI || !customerRegisterUI.savedAddressMapUI || !customerRegisterUI.savedAddressMapUI.mapContainer) {
+        return;
+    }
+
+    const mapContainer = customerRegisterUI.savedAddressMapUI.mapContainer;
+    const map = L.map(mapContainer).setView([0, 0], 2);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const marker = L.marker([0, 0], { draggable: false });
+    marker.addTo(map);
+    marker.remove();
+
+    map.on('click', (event) => {
+        setCustomerSavedAddressMapLocation(event.latlng.lat, event.latlng.lng);
+    });
+
+    customerRegisterUI.savedAddressMapUI.savedAddressMap = map;
+    customerRegisterUI.savedAddressMapUI.savedAddressMarker = marker;
+}
+
+function updateCustomerSavedAddressMap(latitude, longitude) {
+    if (!customerRegisterUI || !customerRegisterUI.savedAddressMapUI || !customerRegisterUI.savedAddressMapUI.savedAddressMap || !customerRegisterUI.savedAddressMapUI.savedAddressMarker) {
+        return;
+    }
+
+    const map = customerRegisterUI.savedAddressMapUI.savedAddressMap;
+    const marker = customerRegisterUI.savedAddressMapUI.savedAddressMarker;
+
+    if (latitude === null || longitude === null) {
+        marker.remove();
+        map.setView([0, 0], 2);
+        return;
+    }
+
+    marker.setLatLng([latitude, longitude]);
+    if (!map.hasLayer(marker)) {
+        marker.addTo(map);
+    }
+    map.flyTo([latitude, longitude], 16);
+}
+
+function setCustomerSavedAddressMapLocation(latitude, longitude) {
+    if (!customerRegisterUI) {
+        return;
+    }
+
+    const index = customerRegisterUI.selectedSavedAddressIndex;
+    const addresses = customerRegisterUI.savedAddressesData || [];
+    if (!addresses[index]) {
+        return;
+    }
+
+    addresses[index].latitude = Number.isFinite(Number(latitude)) ? Number(latitude) : null;
+    addresses[index].longitude = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
+    renderCustomerRegisterSavedAddresses();
+}
+
+function requestCustomerSavedAddressGeolocation() {
+    if (!customerRegisterUI || !navigator.geolocation) {
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition((position) => {
+        setCustomerSavedAddressMapLocation(position.coords.latitude, position.coords.longitude);
+    }, (error) => {
+        if (customerRegisterUI) {
+            customerRegisterUI.feedback.textContent = 'No se pudo obtener tu ubicacion. Asegurate de permitir el acceso al GPS.';
+        }
+    }, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
+    });
+}
+
+function handleSavedAddressUseLocation() {
+    if (!customerRegisterUI || !navigator.geolocation) {
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition((position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        customerRegisterUI.savedAddressMapUI.capturedLatitude = lat;
+        customerRegisterUI.savedAddressMapUI.capturedLongitude = lng;
+        
+        updateCustomerSavedAddressMap(lat, lng);
+        
+        customerRegisterUI.savedAddressMapUI.statusText.textContent = `✓ Ubicación capturada. Verifica que el marcador sea correcto y toca "Confirmar y guardar".`;
+        customerRegisterUI.savedAddressMapUI.useLocationButton.style.display = 'none';
+        customerRegisterUI.savedAddressMapUI.confirmButton.style.display = 'block';
+    }, (error) => {
+        customerRegisterUI.savedAddressMapUI.statusText.textContent = '❌ No se pudo obtener tu ubicación. Asegúrate de permitir el acceso al GPS.';
+    }, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+    });
+}
+
+function handleConfirmSavedAddressLocation() {
+    if (!customerRegisterUI || !customerRegisterUI.savedAddressMapUI) {
+        return;
+    }
+
+    const lat = customerRegisterUI.savedAddressMapUI.capturedLatitude;
+    const lng = customerRegisterUI.savedAddressMapUI.capturedLongitude;
+    
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return;
+    }
+    
+    setCustomerSavedAddressMapLocation(lat, lng);
+    closeCustomerSavedAddressMapModal();
 }
 
 function closeCustomerDeleteAccountModal() {
@@ -1592,14 +2072,20 @@ async function submitCustomerProfileForm() {
     }
 
     const nameValue = String(formUI.name?.value || activeCustomerProfile?.customerName || '').trim();
-    const addressValue = String(formUI.address?.value || activeCustomerProfile?.address || '').trim();
-    const savedAddressesValue = parseCustomerSavedAddressesInput(formUI.savedAddresses?.value || '', addressValue);
+    const savedAddressesValue = getCustomerSavedAddressesFromEditor();
+    const primaryAddressEntry = getCustomerPrimarySavedAddressFromEditor();
+    const addressValue = String(primaryAddressEntry?.address || activeCustomerProfile?.address || '').trim();
     const phoneValue = String(formUI.registerPhone?.value || activeCustomerProfile?.customerPhone || '').trim();
     const pinValue = String(formUI.registerPin?.value || '').trim();
     const confirmPinValue = String(formUI.confirmPin?.value || '').trim();
     const acceptedDataPolicy = Boolean(formUI.consent?.checked);
 
     formUI.feedback.textContent = '';
+
+    if (!addressValue) {
+        formUI.feedback.textContent = 'Debes registrar al menos una direccion principal en tu perfil.';
+        return;
+    }
 
     try {
         const profile = await saveCustomerProfile({
@@ -1663,7 +2149,7 @@ function openCustomerAuthModal() {
                         <strong>${savedAddresses.length} de ${MAX_CUSTOMER_SAVED_ADDRESSES}</strong>
                         <div class="customer-saved-addresses-list">
                             ${savedAddresses.length
-                                ? savedAddresses.map((address, index) => `<p><strong>${index + 1}.</strong> ${escapeHtml(address)}</p>`).join('')
+                                ? savedAddresses.map((entry, index) => `<p><strong>${index + 1}.</strong> ${escapeHtml(getCustomerSavedAddressLabel(entry))}</p>`).join('')
                                 : '<p>Aun no tienes direcciones guardadas.</p>'}
                         </div>
                     </div>
@@ -2555,7 +3041,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const customerName = String(customerInfo.name || '').trim();
     const deliveryAddress = String(customerInfo.address || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(customerInfo.fulfillmentType);
-    const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
+    const deliveryFee = Number.isFinite(Number(customerInfo.deliveryFee)) ? Number(customerInfo.deliveryFee) : getCheckoutDeliveryFee(fulfillmentType);
     const discountAmount = getCheckoutDiscountAmount();
     const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
     const cashChangeRequired = customerInfo.cashChangeRequired === true;
@@ -2580,6 +3066,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
         customerName ? `Cliente: ${customerName}` : '',
         `Entrega: ${fulfillmentType === 'delivery' ? 'Domicilio' : 'Recoger en el restaurante'}`,
         deliveryAddress ? `Direccion: ${deliveryAddress}` : '',
+        customerInfo.deliveryZone ? `Zona: ${customerInfo.deliveryZone}` : '',
         paymentMethod === 'transferencia' ? 'Pago: Transferencia llave / breve' : '',
         paymentMethod === 'efectivo' ? `Pago: Efectivo${cashChangeRequired && cashTenderAmount > 0 ? ` | Paga con: ${formatCurrency(cashTenderAmount)}` : ' | Lleva completo'}` : ''
     ].filter(Boolean);
@@ -2617,7 +3104,23 @@ async function createOrderFromCart(customerInfo = {}) {
     const totalItems = getCartProductCount();
     const customerName = String(customerInfo.name || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(customerInfo.fulfillmentType);
-    const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
+    let deliveryFee = Number.isFinite(Number(customerInfo.deliveryFee)) ? Number(customerInfo.deliveryFee) : getCheckoutDeliveryFee(fulfillmentType);
+    // Recalcular y verificar tarifa (simulación server-side): si hay coordenadas, determinamos la zona esperada
+    const deliveryLatitude = Number.isFinite(Number(customerInfo.deliveryLatitude)) ? Number(customerInfo.deliveryLatitude) : null;
+    const deliveryLongitude = Number.isFinite(Number(customerInfo.deliveryLongitude)) ? Number(customerInfo.deliveryLongitude) : null;
+    let deliveryFeeVerified = false;
+    let deliveryFeeExpected = deliveryFee;
+    if (fulfillmentType === 'delivery' && Number.isFinite(Number(deliveryLatitude)) && Number.isFinite(Number(deliveryLongitude))) {
+        const expectedZone = findDeliveryZoneForLocation({ latitude: deliveryLatitude, longitude: deliveryLongitude });
+        deliveryFeeExpected = DELIVERY_FEE_AMOUNT;
+        if (Number(deliveryFee) !== Number(deliveryFeeExpected)) {
+            // Sobre-escribir la tarifa con la esperada para evitar manipulacion cliente
+            console.warn('Delivery fee mismatch: overriding client value.', { client: deliveryFee, expected: deliveryFeeExpected });
+            deliveryFee = Number(deliveryFeeExpected);
+        }
+        deliveryFeeVerified = true;
+    }
+
     const total = subtotal + deliveryFee;
     const deliveryAddress = String(customerInfo.address || '').trim();
     const customerPhone = String(customerInfo.phone || '').trim();
@@ -2640,10 +3143,17 @@ async function createOrderFromCart(customerInfo = {}) {
         totalItems,
         subtotal,
         deliveryFee,
+        costoDomicilio: deliveryFee,
         total,
         paymentMethod,
         cashChangeRequired,
         cashTenderAmount: Number.isFinite(cashTenderAmount) ? cashTenderAmount : null,
+        deliveryZone: String(customerInfo.deliveryZone || '').trim() || null,
+        deliveryLatitude: Number.isFinite(Number(customerInfo.deliveryLatitude)) ? Number(customerInfo.deliveryLatitude) : null,
+        deliveryLongitude: Number.isFinite(Number(customerInfo.deliveryLongitude)) ? Number(customerInfo.deliveryLongitude) : null,
+        deliveryFeeVerified: Boolean(deliveryFeeVerified),
+        deliveryFeeExpected: Number.isFinite(Number(deliveryFeeExpected)) ? Number(deliveryFeeExpected) : 0,
+        deliveryFeeOverridden: Number.isFinite(Number(customerInfo.deliveryFee)) ? (Number(customerInfo.deliveryFee) !== Number(deliveryFee)) : false,
         currency: 'COP',
         source: 'web',
         createdAt: getPublicServerTimestamp(),
@@ -2654,7 +3164,9 @@ async function createOrderFromCart(customerInfo = {}) {
             address: deliveryAddress,
             paymentMethod,
             cashChangeRequired,
-            cashTenderAmount
+            cashTenderAmount,
+            deliveryZone: customerInfo.deliveryZone || null,
+            deliveryFee
         })
     });
 
@@ -2763,6 +3275,155 @@ function closePaymentFlowModal() {
     paymentFlowUI.modal.remove();
     paymentFlowUI = null;
     syncBodyScrollLock();
+}
+
+function formatDeliveryZoneMessage(zone) {
+    if (!zone) {
+        return 'Sin tarifa calculada. Usa tu ubicación para definir el costo de domicilio.';
+    }
+    return `${zone.label} - ${formatCurrency(zone.fee)}`;
+}
+
+function setCheckoutDeliveryLocation(latitude, longitude) {
+    if (!checkoutInfoUI) {
+        return;
+    }
+
+    checkoutDeliveryLocation = {
+        latitude: Number(latitude),
+        longitude: Number(longitude)
+    };
+
+    const zone = findDeliveryZoneForLocation(checkoutDeliveryLocation);
+    checkoutDeliveryZone = zone?.name || null;
+    checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+    checkoutInfoUI.deliveryZone = checkoutDeliveryZone;
+    checkoutInfoUI.deliveryLatitude = checkoutDeliveryLocation.latitude;
+    checkoutInfoUI.deliveryLongitude = checkoutDeliveryLocation.longitude;
+
+    const selectedSavedAddressEntry = getSelectedCheckoutSavedAddress();
+    const selectedSavedAddressLabel = getCustomerSavedAddressLabel(selectedSavedAddressEntry);
+    const needsSavedAddressCoords = selectedSavedAddressEntry
+        && !Number.isFinite(Number(selectedSavedAddressEntry.latitude))
+        && !Number.isFinite(Number(selectedSavedAddressEntry.longitude))
+        && selectedSavedAddressLabel;
+
+    if (needsSavedAddressCoords) {
+        selectedSavedAddressEntry.latitude = checkoutDeliveryLocation.latitude;
+        selectedSavedAddressEntry.longitude = checkoutDeliveryLocation.longitude;
+        if (activeCustomerProfile) {
+            setActiveCustomerProfile({
+                ...activeCustomerProfile,
+                savedAddresses: checkoutInfoUI.savedAddresses || getCustomerSavedAddresses(activeCustomerProfile)
+            });
+        }
+    }
+
+    if (checkoutInfoUI.deliveryFeeValue) {
+        checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(checkoutDeliveryFeeAmount);
+    }
+
+    if (checkoutInfoUI.deliveryZoneStatus) {
+        checkoutInfoUI.deliveryZoneStatus.textContent = zone
+            ? formatDeliveryZoneMessage(zone)
+            : 'No estamos en la zona de reparto automática. Puedes solicitar una cotización por WhatsApp o ubicar el punto dentro de la zona.';
+        checkoutInfoUI.deliveryZoneStatus.classList.toggle('is-outside-zone', !zone);
+    }
+
+    if (checkoutInfoUI.deliveryMapMarker) {
+        checkoutInfoUI.deliveryMapMarker.setLatLng([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude]);
+    }
+
+    if (checkoutInfoUI.deliveryMap) {
+        checkoutInfoUI.deliveryMap.setView([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude], 15);
+    }
+
+    // Mostrar u ocultar botón para solicitar cotización manual si no hay zona
+    if (checkoutInfoUI.requestQuoteButton) {
+        checkoutInfoUI.requestQuoteButton.style.display = zone ? 'none' : 'inline-flex';
+    }
+
+}
+
+function initializeCheckoutDeliveryMap() {
+    if (!checkoutInfoUI || !window.L) {
+        return;
+    }
+
+    if (checkoutInfoUI.deliveryMap) {
+        // Si el mapa ya existe, invalidar tamaño para que Leaflet recalcule las dimensiones del contenedor
+        setTimeout(() => {
+            checkoutInfoUI.deliveryMap.invalidateSize();
+        }, 50);
+        return;
+    }
+
+    const map = L.map('deliveryMap', {
+        zoomControl: false,
+        attributionControl: false
+    }).setView(DELIVERY_CENTER_COORDINATES, 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    DELIVERY_GEOFENCE_ZONES.forEach((zone) => {
+        L.polygon(zone.polygon, {
+            color: zone.color,
+            fillColor: zone.color,
+            fillOpacity: 0.15,
+            weight: 2
+        }).addTo(map);
+    });
+
+    const marker = L.marker(DELIVERY_CENTER_COORDINATES, {
+        draggable: true,
+        title: 'Arrastra para ajustar tu direccion'
+    }).addTo(map);
+
+    marker.on('dragend', () => {
+        const latlng = marker.getLatLng();
+        setCheckoutDeliveryLocation(latlng.lat, latlng.lng);
+    });
+
+    map.on('click', (event) => {
+        setCheckoutDeliveryLocation(event.latlng.lat, event.latlng.lng);
+    });
+
+    checkoutInfoUI.deliveryMap = map;
+    checkoutInfoUI.deliveryMapMarker = marker;
+
+    // Invalidar tamaño después de que el mapa se haya agregado al DOM visible
+    setTimeout(() => {
+        map.invalidateSize();
+    }, 100);
+}
+
+function requestCheckoutGeolocation() {
+    if (!checkoutInfoUI) {
+        return;
+    }
+
+    if (!navigator.geolocation) {
+        checkoutInfoUI.deliveryZoneStatus.textContent = 'Tu navegador no soporta geolocalizacion. Usa el mapa para ubicar tu pedido manualmente.';
+        return;
+    }
+
+    checkoutInfoUI.deliveryZoneStatus.textContent = 'Obteniendo tu ubicacion...';
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            setCheckoutDeliveryLocation(position.coords.latitude, position.coords.longitude);
+        },
+        (error) => {
+            checkoutInfoUI.deliveryZoneStatus.textContent = 'No se pudo obtener la ubicacion. Usa el mapa para ajustar el punto de entrega.';
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 60000
+        }
+    );
 }
 
 function updatePaymentFlowState() {
@@ -2941,7 +3602,8 @@ async function submitCheckoutInfo() {
     const savedAddresses = profile ? getCustomerSavedAddresses(profile) : [];
     const selectedAddressOption = String(checkoutInfoUI.savedAddressChoice?.value || (savedAddresses.length ? 'saved:0' : 'new')).trim();
     const selectedAddressIndex = selectedAddressOption.startsWith('saved:') ? Number(selectedAddressOption.split(':')[1]) : -1;
-    const savedAddressValue = selectedAddressIndex >= 0 ? String(savedAddresses[selectedAddressIndex] || '').trim() : '';
+    const selectedSavedAddressEntry = selectedAddressIndex >= 0 ? savedAddresses[selectedAddressIndex] || null : null;
+    const savedAddressValue = selectedSavedAddressEntry ? getCustomerSavedAddressLabel(selectedSavedAddressEntry) : '';
     const typedDeliveryAddress = String(checkoutInfoUI.address.value || '').trim();
     const deliveryAddress = fulfillmentType === 'delivery'
         ? (savedAddressValue || typedDeliveryAddress)
@@ -2987,6 +3649,12 @@ async function submitCheckoutInfo() {
 
     try {
         trackButtonClick('btn-cart-checkout', 'Checkout carrito');
+        const newSavedAddressEntry = {
+            address: typedDeliveryAddress,
+            latitude: Number.isFinite(Number(checkoutInfoUI.deliveryLatitude)) ? Number(checkoutInfoUI.deliveryLatitude) : null,
+            longitude: Number.isFinite(Number(checkoutInfoUI.deliveryLongitude)) ? Number(checkoutInfoUI.deliveryLongitude) : null
+        };
+
         const orderData = {
             name: customerName,
             fulfillmentType,
@@ -2994,14 +3662,18 @@ async function submitCheckoutInfo() {
             phone: customerPhone,
             profileAddress: profile?.address || '',
             savedAddresses: shouldSaveNewAddress
-                ? appendCustomerSavedAddress(savedAddresses, typedDeliveryAddress)
-                : savedAddresses
+                ? appendCustomerSavedAddress(savedAddresses, newSavedAddressEntry)
+                : savedAddresses,
+            deliveryZone: checkoutInfoUI.deliveryZone || null,
+            deliveryLatitude: checkoutInfoUI.deliveryLatitude || null,
+            deliveryLongitude: checkoutInfoUI.deliveryLongitude || null,
+            deliveryFee: getCheckoutDeliveryFee(fulfillmentType)
         };
 
         if (profile && shouldSaveNewAddress) {
             setActiveCustomerProfile({
                 ...profile,
-                savedAddresses: appendCustomerSavedAddress(savedAddresses, typedDeliveryAddress)
+                savedAddresses: appendCustomerSavedAddress(savedAddresses, newSavedAddressEntry)
             });
         }
 
@@ -3017,6 +3689,97 @@ async function submitCheckoutInfo() {
     }
 }
 
+function geocodeAddress(addressText) {
+    if (!checkoutInfoUI) {
+        return Promise.resolve(null);
+    }
+
+    const address = String(addressText || '').trim();
+    if (!address || address.length < 5) {
+        return Promise.resolve(null);
+    }
+
+    // Agregar contexto de Armenia, Quindio para mejorar resultados
+    const searchQuery = `${address}, Armenia, Quindio, Colombia`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`;
+
+    if (checkoutInfoUI.deliveryZoneStatus) {
+        checkoutInfoUI.deliveryZoneStatus.textContent = 'Buscando dirección en el mapa...';
+    }
+
+    return fetch(url, {
+        headers: {
+            'Accept-Language': 'es',
+            'User-Agent': 'RoalBurgerApp/1.0'
+        }
+    })
+    .then((response) => {
+        if (!response.ok) {
+            throw new Error('Error al geocodificar');
+        }
+        return response.json();
+    })
+    .then((data) => {
+        if (!Array.isArray(data) || data.length === 0) {
+            if (checkoutInfoUI.deliveryZoneStatus) {
+                checkoutInfoUI.deliveryZoneStatus.textContent = 'No se encontró la dirección. Usa el mapa para ubicar el punto de entrega.';
+            }
+            return null;
+        }
+
+        const result = data[0];
+        const latitude = parseFloat(result.lat);
+        const longitude = parseFloat(result.lon);
+
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+            return null;
+        }
+
+        // Una vez tenemos coordenadas, actualizar ubicación y zona
+        setCheckoutDeliveryLocation(latitude, longitude);
+
+        // Marcar como confirmada automáticamente
+        checkoutDeliveryLocationConfirmed = true;
+
+        // Actualizar todo el estado del modal (total, mapa, botones, etc.)
+        updateCheckoutInfoModalState();
+
+        return { latitude, longitude, displayName: result.display_name };
+    })
+    .catch(() => {
+        if (checkoutInfoUI.deliveryZoneStatus) {
+            checkoutInfoUI.deliveryZoneStatus.textContent = 'No se pudo buscar la dirección. Usa el mapa para ubicar el punto de entrega.';
+        }
+        return null;
+    });
+}
+
+let geocodeDebounceTimer = null;
+
+function handleCheckoutAddressInput() {
+    if (!checkoutInfoUI) {
+        return;
+    }
+
+    if (geocodeDebounceTimer) {
+        clearTimeout(geocodeDebounceTimer);
+    }
+
+    const address = String(checkoutInfoUI.address?.value || '').trim();
+    if (address.length < 8) {
+        return;
+    }
+
+    // Mostrar indicador de que está buscando
+    if (checkoutInfoUI.deliveryZoneStatus) {
+        checkoutInfoUI.deliveryZoneStatus.textContent = 'Buscando dirección...';
+    }
+
+    geocodeDebounceTimer = setTimeout(() => {
+        geocodeAddress(address);
+    }, 1200);
+}
+
 function updateCheckoutInfoModalState() {
     if (!checkoutInfoUI) {
         return;
@@ -3024,13 +3787,21 @@ function updateCheckoutInfoModalState() {
 
     const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
     const requiresAddress = fulfillmentType === 'delivery';
+    
+    // Resetear confirmación de ubicación si cambió el tipo de cumplimiento o la dirección
+    if (fulfillmentType !== 'delivery') {
+        checkoutDeliveryLocationConfirmed = false;
+        checkoutDeliveryLocation = null;
+        checkoutDeliveryZone = null;
+        checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+    }
     const savedAddresses = Array.isArray(checkoutInfoUI.savedAddresses) ? checkoutInfoUI.savedAddresses : [];
     const hasSavedAddresses = savedAddresses.length > 0;
     const selectedAddressOption = String(checkoutInfoUI.savedAddressChoice?.value || (hasSavedAddresses ? 'saved:0' : 'new')).trim();
     const usingSavedAddress = requiresAddress && hasSavedAddresses && selectedAddressOption.startsWith('saved:');
-    const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
+    const selectedSavedAddressEntry = usingSavedAddress ? getSelectedCheckoutSavedAddress() : null;
+    const addressHasLocation = selectedSavedAddressEntry && Number.isFinite(Number(selectedSavedAddressEntry.latitude)) && Number.isFinite(Number(selectedSavedAddressEntry.longitude));
     const discountAmount = getCheckoutDiscountAmount();
-    const orderTotal = getCheckoutOrderTotal(fulfillmentType);
 
     if (checkoutInfoUI.savedAddressField) {
         checkoutInfoUI.savedAddressField.hidden = !requiresAddress || !hasSavedAddresses;
@@ -3042,6 +3813,63 @@ function updateCheckoutInfoModalState() {
 
     if (usingSavedAddress) {
         checkoutInfoUI.address.value = '';
+    }
+
+    if (usingSavedAddress && addressHasLocation) {
+        // Dirección guardada CON coordenadas: calcular tarifa automáticamente SIN mostrar mapa
+        const zone = findDeliveryZoneForLocation({ latitude: selectedSavedAddressEntry.latitude, longitude: selectedSavedAddressEntry.longitude });
+        checkoutDeliveryZone = zone?.name || null;
+        checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+        checkoutDeliveryLocation = { latitude: selectedSavedAddressEntry.latitude, longitude: selectedSavedAddressEntry.longitude };
+        checkoutDeliveryLocationConfirmed = true;  // Auto-confirmar ubicación guardada
+        checkoutInfoUI.deliveryZone = checkoutDeliveryZone;
+        checkoutInfoUI.deliveryLatitude = selectedSavedAddressEntry.latitude;
+        checkoutInfoUI.deliveryLongitude = selectedSavedAddressEntry.longitude;
+    }
+
+    if (usingSavedAddress && !addressHasLocation) {
+        // Dirección guardada SIN coordenadas: mostrar mapa y mensaje claro
+        checkoutDeliveryLocation = null;
+        checkoutDeliveryZone = null;
+        checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+        checkoutInfoUI.deliveryZone = null;
+        checkoutInfoUI.deliveryLatitude = null;
+        checkoutInfoUI.deliveryLongitude = null;
+        if (checkoutInfoUI.deliveryFeeValue) {
+            checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(checkoutDeliveryFeeAmount);
+        }
+        if (checkoutInfoUI.deliveryZoneStatus) {
+            const savedAddressText = getCustomerSavedAddressLabel(selectedSavedAddressEntry);
+            checkoutInfoUI.deliveryZoneStatus.textContent = `Esta dirección no tiene una ubicación GPS asociada. Debes asignarle una ubicación para calcular el costo de domicilio. Usa el mapa o el botón "📍 Usar mi ubicación actual".`;
+        }
+    }
+
+    // Recalcular deliveryFee y orderTotal después de actualizar checkoutDeliveryFeeAmount
+    const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
+    const orderTotal = getCheckoutOrderTotal(fulfillmentType);
+
+    if (checkoutInfoUI.deliveryMapPanel) {
+        // Mostrar mapa SOLO si: es delivery Y (dirección sin coordenadas OR nueva dirección) Y no hay confirmación
+        // Y no se ha obtenido coordenadas automáticamente por geocodificación
+        const shouldShowMap = requiresAddress && (!usingSavedAddress || (usingSavedAddress && !addressHasLocation)) && !checkoutDeliveryLocationConfirmed;
+        checkoutInfoUI.deliveryMapPanel.hidden = !shouldShowMap;
+        
+        if (shouldShowMap && !usingSavedAddress) {
+            // Solo inicializar mapa si es nueva dirección y no se geocodificó automáticamente
+            initializeCheckoutDeliveryMap();
+        } else if (shouldShowMap && usingSavedAddress && !addressHasLocation) {
+            // Inicializar mapa si dirección guardada NO tiene coordenadas
+            initializeCheckoutDeliveryMap();
+        }
+        
+        // Mostrar/ocultar botón de confirmación
+        if (checkoutInfoUI.confirmLocationButton) {
+            const hasUnconfirmedLocation = checkoutDeliveryLocation && !checkoutDeliveryLocationConfirmed;
+            checkoutInfoUI.confirmLocationButton.hidden = !hasUnconfirmedLocation;
+        }
+        
+        // No sobreescribir el mensaje si ya se estableció uno específico para dirección guardada sin coordenadas
+        checkoutInfoUI.deliveryZoneStatus.classList.toggle('is-outside-zone', Boolean((checkoutInfoUI.deliveryLatitude || checkoutInfoUI.deliveryLongitude) && !checkoutInfoUI.deliveryZone));
     }
 
     if (checkoutInfoUI.saveAddressField && checkoutInfoUI.saveAddressToggle && checkoutInfoUI.addressBookHint) {
@@ -3059,6 +3887,13 @@ function updateCheckoutInfoModalState() {
 
     if (checkoutInfoUI.deliveryFeeValue) {
         checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(deliveryFee);
+        if (checkoutInfoUI.requestQuoteButton) {
+            checkoutInfoUI.requestQuoteButton.style.display = checkoutInfoUI.deliveryZone ? 'none' : 'inline-flex';
+        }
+    }
+
+    if (checkoutInfoUI.deliveryFeeRow) {
+        checkoutInfoUI.deliveryFeeRow.hidden = !requiresAddress;
     }
 
     if (checkoutInfoUI.discountRow && checkoutInfoUI.discountValue) {
@@ -3073,6 +3908,11 @@ function updateCheckoutInfoModalState() {
 
 function openCheckoutInfoModal() {
     closeCheckoutInfoModal();
+
+    checkoutDeliveryZone = null;
+    checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+    checkoutDeliveryLocation = null;
+    checkoutDeliveryLocationConfirmed = false;
 
     const profile = activeCustomerProfile;
     const savedAddresses = profile ? getCustomerSavedAddresses(profile) : [];
@@ -3116,7 +3956,7 @@ function openCheckoutInfoModal() {
             <label class="support-field" id="checkoutSavedAddressField" hidden>
                 <span>Enviar a</span>
                 <select id="checkoutSavedAddressChoice">
-                    ${savedAddresses.map((address, index) => `<option value="saved:${index}">Direccion ${index + 1}: ${escapeHtml(address)}</option>`).join('')}
+                    ${savedAddresses.map((entry, index) => `<option value="saved:${index}">Direccion ${index + 1}: ${escapeHtml(getCustomerSavedAddressLabel(entry))}</option>`).join('')}
                     <option value="new">Agregar direccion nueva</option>
                 </select>
                 <p class="support-field-hint">Puedes usar una direccion guardada o escribir una nueva solo para este pedido.</p>
@@ -3125,6 +3965,15 @@ function openCheckoutInfoModal() {
                 <span>${profile ? 'Direccion nueva del domicilio' : 'Direccion del domicilio'}</span>
                 <textarea id="checkoutDeliveryAddress" rows="4" placeholder="Escribe la direccion completa"></textarea>
             </label>
+            <div class="checkout-map-panel" id="checkoutDeliveryMapPanel" hidden>
+                <div class="checkout-map-actions">
+                    <button type="button" id="checkoutUseLocationButton" class="support-send-btn checkout-map-button">📍 Usar mi ubicación actual</button>
+                    <span id="checkoutDeliveryZoneStatus" class="checkout-zone-status">Activa tu ubicación para calcular la tarifa de domicilio.</span>
+                    <button type="button" id="checkoutRequestQuoteButton" class="checkout-map-button" style="display:none;">📩 Solicitar cotización</button>
+                    <button type="button" id="checkoutConfirmLocationButton" class="support-send-btn checkout-map-button" hidden>✓ Confirmar ubicación</button>
+                </div>
+                <div id="deliveryMap" class="checkout-map-area"></div>
+            </div>
             ${profile ? `
             <label class="support-check" id="checkoutSaveAddressField" hidden>
                 <input type="checkbox" id="checkoutSaveAddressToggle">
@@ -3137,9 +3986,9 @@ function openCheckoutInfoModal() {
                 <input type="tel" id="checkoutCustomerPhone" placeholder="Escribe el telefono de contacto">
             </label>`}
             <div class="customer-profile-summary customer-profile-summary-grid checkout-summary-grid">
-                <div>
+                <div id="checkoutDeliveryFeeRow" hidden>
                     <span>Costo domicilio</span>
-                    <strong id="checkoutDeliveryFeeValue">${formatCurrency(DELIVERY_FEE_AMOUNT)}</strong>
+                    <strong id="checkoutDeliveryFeeValue">${formatCurrency(checkoutDeliveryFeeAmount)}</strong>
                 </div>
                 <div id="checkoutDiscountRow" hidden>
                     <span>Descuento</span>
@@ -3172,19 +4021,49 @@ function openCheckoutInfoModal() {
         saveAddressToggle: modal.querySelector('#checkoutSaveAddressToggle'),
         addressBookHint: modal.querySelector('#checkoutAddressBookHint'),
         phone: modal.querySelector('#checkoutCustomerPhone'),
+        deliveryMapPanel: modal.querySelector('#checkoutDeliveryMapPanel'),
+        useLocationButton: modal.querySelector('#checkoutUseLocationButton'),
+        confirmLocationButton: modal.querySelector('#checkoutConfirmLocationButton'),
+        deliveryZoneStatus: modal.querySelector('#checkoutDeliveryZoneStatus'),
+        requestQuoteButton: modal.querySelector('#checkoutRequestQuoteButton'),
+        deliveryFeeRow: modal.querySelector('#checkoutDeliveryFeeRow'),
         deliveryFeeValue: modal.querySelector('#checkoutDeliveryFeeValue'),
         discountRow: modal.querySelector('#checkoutDiscountRow'),
         discountValue: modal.querySelector('#checkoutDiscountValue'),
         orderTotalValue: modal.querySelector('#checkoutOrderTotalValue'),
         feedback: modal.querySelector('#checkoutInfoFeedback'),
         send: modal.querySelector('.support-send-btn'),
-        savedAddresses
+        savedAddresses,
+        deliveryMap: null,
+        deliveryMapMarker: null,
+        deliveryZone: null,
+        deliveryLatitude: null,
+        deliveryLongitude: null
     };
 
     checkoutInfoUI.close.addEventListener('click', closeCheckoutInfoModal);
     checkoutInfoUI.send.addEventListener('click', submitCheckoutInfo);
-    checkoutInfoUI.fulfillmentType.addEventListener('change', updateCheckoutInfoModalState);
-    checkoutInfoUI.savedAddressChoice?.addEventListener('change', updateCheckoutInfoModalState);
+    checkoutInfoUI.fulfillmentType.addEventListener('change', (event) => {
+        updateCheckoutInfoModalState();
+        if (getCheckoutFulfillmentType(event.target.value) === 'delivery') {
+            initializeCheckoutDeliveryMap();
+        }
+    });
+    checkoutInfoUI.savedAddressChoice?.addEventListener('change', () => {
+        checkoutDeliveryLocationConfirmed = false;
+        updateCheckoutInfoModalState();
+    });
+    checkoutInfoUI.useLocationButton?.addEventListener('click', () => {
+        initializeCheckoutDeliveryMap();
+        requestCheckoutGeolocation();
+    });
+    checkoutInfoUI.confirmLocationButton?.addEventListener('click', () => {
+        checkoutDeliveryLocationConfirmed = true;
+        updateCheckoutInfoModalState();
+    });
+    checkoutInfoUI.requestQuoteButton?.addEventListener('click', requestDeliveryQuote);
+    // Geocodificación automática al escribir la dirección
+    checkoutInfoUI.address?.addEventListener('input', handleCheckoutAddressInput);
 
     modal.addEventListener('click', (event) => {
         if (event.target === modal) {
@@ -7288,3 +8167,4 @@ document.addEventListener('DOMContentLoaded', () => {
     renderConfiguredButtons();
     renderCategoryExplorer();
 });
+
