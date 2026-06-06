@@ -2813,7 +2813,7 @@ function renderEmptyOrderTicket() {
     `;
 }
 
-function renderOrderTicket(order) {
+function renderOrderTicket(order, options = {}) {
     if (!orderTicketBody) {
         return;
     }
@@ -2824,7 +2824,10 @@ function renderOrderTicket(order) {
     }
 
     orderTicketBody.innerHTML = buildThermalTicketMarkup(order);
-    openMobileTicketPanel();
+
+    if (options.openMobile === true) {
+        openMobileTicketPanel();
+    }
 }
 
 function renderKanbanEmptyState(container) {
@@ -2854,7 +2857,7 @@ function createOrderCard(order) {
             <div class="kanban-order-compact-row">
                 <span class="kanban-order-name">${escapeHtml(order.customerName || 'Cliente sin nombre')}</span>
                 <span class="order-wait-timer">${escapeHtml(formatLiveDuration(order.deliveredAt || order.updatedAt || order.createdAt))}</span>
-                <button type="button" class="order-action-btn order-action-btn-view" data-order-card-action="view" data-order-id="${order.id}">Ver</button>
+                <button type="button" class="order-action-btn order-action-btn-view" data-order-card-action="view_ticket" data-order-id="${order.id}">Ver ticket</button>
             </div>
         `;
         return card;
@@ -2882,9 +2885,11 @@ function createOrderCard(order) {
                 </div>
             `
             : '');
+    const showViewTicketAction = isMobileAdminViewport();
     const actionsMarkup = order.id === selectedOrderId
         ? `
             <div class="kanban-order-actions">
+                ${showViewTicketAction ? `<button type="button" class="order-action-btn order-action-btn-view" data-order-card-action="view_ticket" data-order-id="${order.id}">Ver ticket</button>` : ''}
                 ${showReceiveAction ? `<button type="button" class="order-action-btn order-action-btn-receive" data-order-card-action="recibir_pedido" data-order-id="${order.id}">Recibir pedido</button>` : ''}
                 ${showPickupReadyAction ? `<button type="button" class="order-action-btn order-action-btn-ready" data-order-card-action="listo_recoger" data-order-id="${order.id}">Pedido listo</button>` : ''}
                 ${showDeliveryAction ? `<button type="button" class="order-action-btn" data-order-card-action="esperando_domiciliario" data-order-id="${order.id}">Pedir domiciliario</button>` : ''}
@@ -5269,6 +5274,18 @@ if (ordersBoard) {
             if (nextStatus === 'view') {
                 selectedOrderId = orderId;
                 renderOrders();
+                return;
+            }
+
+            if (nextStatus === 'view_ticket') {
+                const order = ordersState.find((entry) => entry.id === orderId);
+                if (!order) {
+                    return;
+                }
+
+                selectedOrderId = orderId;
+                renderOrders();
+                renderOrderTicket(order, { openMobile: true });
                 return;
             }
 
