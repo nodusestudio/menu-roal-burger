@@ -271,6 +271,7 @@ const clientEditIdInput = document.getElementById('clientEditId');
 const clientEditNameInput = document.getElementById('clientEditName');
 const clientEditPhoneInput = document.getElementById('clientEditPhone');
 const clientEditAddressInput = document.getElementById('clientEditAddress');
+const clientEditSavedAddressesInput = document.getElementById('clientEditSavedAddresses');
 const clientEditFeedback = document.getElementById('clientEditFeedback');
 const clientEditSaveBtn = document.getElementById('clientEditSaveBtn');
 
@@ -334,6 +335,48 @@ let metricsEventsState = {
     products: 0,
     dailyVisitors: 0
 };
+
+function normalizeClientSavedAddresses(rawAddresses = [], primaryAddress = '') {
+    const normalizedAddresses = [];
+    const seen = new Set();
+
+    const appendAddress = (value) => {
+        const safeValue = String(value || '').trim();
+        const normalizedKey = safeValue.toLowerCase();
+        if (!safeValue || seen.has(normalizedKey)) {
+            return;
+        }
+
+        seen.add(normalizedKey);
+        normalizedAddresses.push(safeValue);
+    };
+
+    appendAddress(primaryAddress);
+
+    if (Array.isArray(rawAddresses)) {
+        rawAddresses.forEach((entry) => {
+            if (typeof entry === 'string') {
+                appendAddress(entry);
+                return;
+            }
+
+            if (entry && typeof entry === 'object') {
+                appendAddress(entry.address || entry.value || entry.label || '');
+            }
+        });
+    }
+
+    return normalizedAddresses.slice(0, 5);
+}
+
+function parseClientSavedAddressesInput(rawValue = '', primaryAddress = '') {
+    const lines = String(rawValue || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    return normalizeClientSavedAddresses(lines, primaryAddress);
+}
 
 function showNotice(text, type = 'ok') {
     if (!notice) {
@@ -1323,22 +1366,26 @@ async function fetchClients() {
             id: doc.id,
             ...doc.data()
         }))
-        .map((raw) => ({
-            id: String(raw.id || '').trim(),
-            customerName: String(raw.customerName || '').trim() || 'Cliente sin nombre',
-            customerPhone: String(raw.customerPhone || '').trim() || 'No registrado',
-            customerPhoneDigits: String(raw.customerPhoneDigits || '').trim(),
-            address: String(raw.address || '').trim() || 'Sin direccion registrada',
-            firstOrderAt: raw.firstOrderAt || raw.createdAt || null,
-            lastOrderCode: String(raw.lastOrderCode || '').trim(),
-            lastOrderId: String(raw.lastOrderId || '').trim(),
-            lastOrderTotal: Number(raw.lastOrderTotal || 0),
-            totalOrders: Number(raw.totalOrders || 0),
-            totalSpent: Number(raw.totalSpent || 0),
-            lastOrderAt: raw.lastOrderAt || raw.updatedAt || raw.createdAt || null,
-            createdAt: raw.createdAt || null,
-            updatedAt: raw.updatedAt || null
-        }))
+        .map((raw) => {
+            const savedAddresses = normalizeClientSavedAddresses(raw.savedAddresses || raw.addresses || [], raw.address || raw.deliveryAddress || '');
+            return {
+                id: String(raw.id || '').trim(),
+                customerName: String(raw.customerName || '').trim() || 'Cliente sin nombre',
+                customerPhone: String(raw.customerPhone || '').trim() || 'No registrado',
+                customerPhoneDigits: String(raw.customerPhoneDigits || '').trim(),
+                address: savedAddresses[0] || String(raw.address || '').trim() || 'Sin direccion registrada',
+                savedAddresses,
+                firstOrderAt: raw.firstOrderAt || raw.createdAt || null,
+                lastOrderCode: String(raw.lastOrderCode || '').trim(),
+                lastOrderId: String(raw.lastOrderId || '').trim(),
+                lastOrderTotal: Number(raw.lastOrderTotal || 0),
+                totalOrders: Number(raw.totalOrders || 0),
+                totalSpent: Number(raw.totalSpent || 0),
+                lastOrderAt: raw.lastOrderAt || raw.updatedAt || raw.createdAt || null,
+                createdAt: raw.createdAt || null,
+                updatedAt: raw.updatedAt || null
+            };
+        })
         .sort((a, b) => {
             const aTs = a.lastOrderAt && typeof a.lastOrderAt.toMillis === 'function' ? a.lastOrderAt.toMillis() : 0;
             const bTs = b.lastOrderAt && typeof b.lastOrderAt.toMillis === 'function' ? b.lastOrderAt.toMillis() : 0;
@@ -2181,6 +2228,64 @@ function buildTicketCopyButton(label, value, options = {}) {
     return `<button type="button" class="ticket-copy-btn${className}" data-order-ticket-action="copy" data-copy-label="${safeLabel}" data-copy-value="${safeCopyValue}">${safeDisplay}</button>`;
 }
 
+function escapeVCardValue(value) {
+    return String(value || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,')
+        .replace(/\r?\n/g, '\\n');
+}
+
+function buildOrderContactVCard(order) {
+    const customerName = String(order.customerName || 'Cliente ROAL BURGER').trim() || 'Cliente ROAL BURGER';
+    const phoneDigits = normalizePhoneDigits(order.customerPhoneDigits || order.customerPhone || '');
+    const displayPhone = phoneDigits ? `+${phoneDigits.startsWith('57') ? phoneDigits : `57${phoneDigits}`}` : String(order.customerPhone || '').trim();
+    const address = String(order.deliveryAddress || '').trim();
+    const orderCode = String(order.code || '').trim();
+    const paymentLabel = getOrderPaymentLabel(order);
+
+    return [
+        'BEGIN:VCARD',
+        'VERSION:3.0',
+        `FN:${escapeVCardValue(customerName)}`,
+        `ORG:${escapeVCardValue('ROAL BURGER')}`,
+        displayPhone ? `TEL;TYPE=CELL:${escapeVCardValue(displayPhone)}` : '',
+        address ? `ADR;TYPE=HOME:;;${escapeVCardValue(address)};;;;` : '',
+        `NOTE:${escapeVCardValue(`Cliente ROAL BURGER${orderCode ? ` | Pedido ${orderCode}` : ''} | ${paymentLabel}`)}`,
+        'END:VCARD'
+    ].filter(Boolean).join('\r\n');
+}
+
+function isMobileContactImportContext() {
+    const userAgent = navigator.userAgent || '';
+    return /Android|iPhone|iPad|iPod/i.test(userAgent) || window.matchMedia('(max-width: 768px)').matches;
+}
+
+function openOrderContactCard(orderId) {
+    const order = ordersState.find((entry) => entry.id === orderId);
+    if (!order) {
+        throw new Error('No se encontro el pedido para crear el contacto.');
+    }
+
+    const vcard = buildOrderContactVCard(order);
+    const blob = new Blob([vcard], { type: 'text/vcard;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const customerSlug = normalizePhoneDigits(order.customerPhoneDigits || order.customerPhone || '') || order.id;
+
+    link.href = blobUrl;
+    link.rel = 'noopener';
+
+    if (!isMobileContactImportContext()) {
+        link.download = `contacto-${customerSlug}.vcf`;
+    }
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+}
+
 function buildThermalTicketMarkup(order, options = {}) {
     const printMode = options.printMode === true;
     const whatsappLink = buildOrderWhatsAppLink(order);
@@ -2191,6 +2296,7 @@ function buildThermalTicketMarkup(order, options = {}) {
     const orderDate = escapeHtml(formatOrderDate(order.createdAt));
     const orderHour = escapeHtml(formatOrderTime(order.createdAt));
     const elapsed = escapeHtml(formatElapsedTime(order.createdAt));
+    const paymentLabel = getOrderPaymentLabel(order);
     const addressLines = buildTicketAddressLines(order)
         .map((line) => `<div class="ticket-customer-row"><span>•</span>${buildTicketCopyButton('Direccion', line, { className: 'ticket-copy-btn-inline' })}</div>`)
         .join('');
@@ -2246,6 +2352,10 @@ function buildThermalTicketMarkup(order, options = {}) {
                             <span>Estado</span>
                             <span class="state-pill ${escapeHtml(statusMeta.className)}">${escapeHtml(statusMeta.label)}</span>
                         </div>
+                        <div class="ticket-customer-row">
+                            <span>Pago</span>
+                            <span>${escapeHtml(paymentLabel)}</span>
+                        </div>
                         <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion' : 'Entrega'}</div>
                         ${addressLines}
                         ${whatsappLink ? `<a class="ticket-contact-link" href="${whatsappLink}" target="_blank" rel="noopener noreferrer"><span>WhatsApp</span><strong>Abrir chat</strong></a>` : ''}
@@ -2289,7 +2399,12 @@ function buildThermalTicketMarkup(order, options = {}) {
                     <span>${escapeHtml(brandingState.address || 'ROAL BURGER')}</span>
                 </div>
             </article>
-            ${printMode ? '' : `<div class="ticket-print-row"><button type="button" class="ticket-print-btn" data-order-ticket-action="print" data-order-id="${order.id}">🖨️ IMPRIMIR</button></div>`}
+            ${printMode ? '' : `
+                <div class="ticket-print-row">
+                    <button type="button" class="ticket-print-btn ticket-action-btn" data-order-ticket-action="print" data-order-id="${order.id}">Imprimir</button>
+                    <button type="button" class="ticket-contact-btn ticket-action-btn" data-order-ticket-action="contact" data-order-id="${order.id}">Agregar contacto</button>
+                </div>
+            `}
         </div>
     `;
 }
@@ -2472,6 +2587,7 @@ function renderClients() {
 
     filteredClients.forEach((client) => {
         const row = document.createElement('tr');
+        const extraAddresses = client.savedAddresses.slice(1);
         row.innerHTML = `
             <td>
                 <div class="client-name-cell">
@@ -2480,7 +2596,10 @@ function renderClients() {
                 </div>
             </td>
             <td>${escapeHtml(client.customerPhone)}</td>
-            <td class="client-address-cell">${escapeHtml(client.address)}</td>
+            <td class="client-address-cell">
+                <strong>${escapeHtml(client.address)}</strong>
+                ${extraAddresses.length ? `<span>${escapeHtml(`${extraAddresses.length} direccion(es) adicional(es)`)}<br>${escapeHtml(extraAddresses.join(' | '))}</span>` : ''}
+            </td>
             <td>${escapeHtml(formatOrderDate(client.firstOrderAt))}</td>
             <td>${escapeHtml(formatOrderDate(client.lastOrderAt))}</td>
             <td><span class="client-metric-chip">${escapeHtml(String(client.totalOrders))}</span></td>
@@ -2527,6 +2646,7 @@ function renderMessages() {
     messagesState.forEach((message) => {
         const isResolved = message.status === 'resolved';
         const canResetPassword = message.type === 'password_reset_request' && message.customerPhoneDigits;
+        const canReply = Boolean(message.customerPhoneDigits) && message.type !== 'admin_direct_reply';
         const card = document.createElement('div');
         card.className = `message-request-card${isResolved ? ' is-resolved' : ''}`;
         card.innerHTML = `
@@ -2551,6 +2671,7 @@ function renderMessages() {
             <div class="message-request-actions">
                 <button type="button" class="message-request-btn" data-message-action="copy" data-message-id="${escapeHtml(message.id)}">Copiar mensaje</button>
                 <button type="button" class="message-request-btn primary" data-message-action="whatsapp" data-message-id="${escapeHtml(message.id)}">Abrir WhatsApp</button>
+                ${canReply ? `<button type="button" class="message-request-btn" data-message-action="reply" data-message-id="${escapeHtml(message.id)}">Responder</button>` : ''}
                 ${canResetPassword ? `<button type="button" class="message-request-btn primary" data-message-action="reset-password" data-message-id="${escapeHtml(message.id)}">Resetear contrasena</button>` : ''}
                 <button type="button" class="message-request-btn success" data-message-action="resolve" data-message-id="${escapeHtml(message.id)}">${isResolved ? 'Marcar pendiente' : 'Marcar atendido'}</button>
                 <button type="button" class="message-request-btn delete" data-message-action="delete" data-message-id="${escapeHtml(message.id)}">Eliminar</button>
@@ -2828,6 +2949,9 @@ function openCreateClientModal() {
         clientEditSaveBtn.textContent = 'Guardar cliente';
         clientEditSaveBtn.disabled = false;
     }
+    if (clientEditSavedAddressesInput) {
+        clientEditSavedAddressesInput.value = '';
+    }
     clientEditModal.classList.add('show');
     clientEditModal.setAttribute('aria-hidden', 'false');
     clientEditNameInput?.focus();
@@ -2854,6 +2978,9 @@ function openEditClientModal(client) {
     }
     if (clientEditAddressInput) {
         clientEditAddressInput.value = client.address;
+    }
+    if (clientEditSavedAddressesInput) {
+        clientEditSavedAddressesInput.value = client.savedAddresses.join('\n');
     }
     if (clientEditSaveBtn) {
         clientEditSaveBtn.textContent = 'Guardar cambios';
@@ -2889,6 +3016,32 @@ function buildCustomerPasswordResetClipboardMessage(message = {}) {
         `Vuelve a pulsar "Olvido contrasena" e ingresa nuevamente tu numero de WhatsApp ${customerPhone}.`,
         'La app te mostrara la pantalla para crear tu nueva contrasena.'
     ].join('\n');
+}
+
+async function createAdminDirectReply(message = {}, body = '') {
+    const replyBody = String(body || '').trim();
+    if (!replyBody) {
+        throw new Error('Escribe una respuesta antes de enviarla.');
+    }
+
+    const adminIdentity = getCurrentAdminIdentity();
+    await firebaseDb.collection(MESSAGES_COLLECTION).add({
+        type: 'admin_direct_reply',
+        status: 'resolved',
+        subject: `Respuesta de ROAL BURGER para ${String(message.customerName || 'cliente').trim() || 'cliente'}`,
+        body: replyBody,
+        customerName: String(message.customerName || '').trim() || 'Cliente',
+        customerPhone: String(message.customerPhone || message.customerPhoneDigits || '').trim(),
+        customerPhoneDigits: String(message.customerPhoneDigits || '').trim(),
+        customerAddress: String(message.customerAddress || '').trim(),
+        source: 'admin_panel',
+        createdAt: firestoreNow(),
+        updatedAt: firestoreNow(),
+        resolvedAt: firestoreNow(),
+        resolvedBy: adminIdentity,
+        readBy: adminIdentity,
+        adminAction: 'direct_reply_sent'
+    });
 }
 
 async function updateMessageRequest(messageId, updates) {
@@ -4145,10 +4298,13 @@ if (messagesList) {
         }
 
         if (action === 'whatsapp') {
+            const whatsappMessage = message.type === 'customer_direct_message'
+                ? `Hola ${message.customerName}, vimos tu mensaje en ROAL BURGER y queremos ayudarte.`
+                : `Hola ${message.customerName}, te escribimos desde ROAL BURGER sobre tu solicitud de reinicio de contrasena.`;
             const whatsappUrl = buildCustomerContactWhatsAppUrl(
                 message.customerName,
                 message.customerPhoneDigits,
-                `Hola ${message.customerName}, te escribimos desde ROAL BURGER sobre tu solicitud de reinicio de contrasena.`
+                whatsappMessage
             );
 
             if (!whatsappUrl) {
@@ -4187,6 +4343,28 @@ if (messagesList) {
                 showNotice('Contrasena reseteada. El cliente ya puede crear una nueva.', 'ok');
             } catch (error) {
                 showNotice(`No se pudo resetear la contrasena: ${error.message || 'error inesperado.'}`, 'error');
+            }
+            return;
+        }
+
+        if (action === 'reply') {
+            const replyBody = window.prompt(`Respuesta para ${message.customerName}:`, 'Hola, te escribimos desde ROAL BURGER para ayudarte con tu solicitud.');
+            if (replyBody === null) {
+                return;
+            }
+
+            try {
+                const adminIdentity = getCurrentAdminIdentity();
+                await createAdminDirectReply(message, replyBody);
+                await updateMessageRequest(messageId, {
+                    status: 'resolved',
+                    resolvedAt: firestoreNow(),
+                    resolvedBy: adminIdentity,
+                    adminAction: 'direct_reply_sent'
+                });
+                showNotice('Respuesta enviada al perfil del cliente.', 'ok');
+            } catch (error) {
+                showNotice(`No se pudo enviar la respuesta: ${error.message || 'error inesperado.'}`, 'error');
             }
             return;
         }
@@ -4233,6 +4411,7 @@ if (clientEditForm) {
         const customerName = String(clientEditNameInput?.value || '').trim();
         const customerPhone = String(clientEditPhoneInput?.value || '').trim();
         const address = String(clientEditAddressInput?.value || '').trim();
+        const savedAddresses = parseClientSavedAddressesInput(clientEditSavedAddressesInput?.value || '', address);
         const customerPhoneDigits = normalizePhoneDigits(customerPhone);
 
         if (!customerName || !customerPhone || !address) {
@@ -4270,7 +4449,8 @@ if (clientEditForm) {
                 customerName,
                 customerPhone,
                 customerPhoneDigits,
-                address,
+                address: savedAddresses[0] || address,
+                savedAddresses,
                 totalOrders: Number(currentClient?.totalOrders || 0),
                 totalSpent: Number(currentClient?.totalSpent || 0),
                 lastOrderCode: String(currentClient?.lastOrderCode || '').trim(),
@@ -4442,6 +4622,16 @@ if (orderTicketPanel) {
                 openOrderPrintTicket(orderId);
             } catch (error) {
                 showNotice(`No se pudo abrir la impresion: ${error.message || 'error inesperado.'}`, 'error');
+            }
+            return;
+        }
+
+        if (actionButton.dataset.orderTicketAction === 'contact') {
+            try {
+                openOrderContactCard(orderId);
+                showNotice(isMobileContactImportContext() ? 'Abriendo el contacto del cliente.' : 'Contacto del cliente descargado en formato VCF.', 'ok');
+            } catch (error) {
+                showNotice(`No se pudo crear el contacto: ${error.message || 'error inesperado.'}`, 'error');
             }
         }
     });

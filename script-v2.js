@@ -11,6 +11,7 @@ const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
 const ORDER_CODE_PREFIX = 'RB';
 const ORDER_CODE_START = 2026;
 const DELIVERY_FEE_AMOUNT = 6000;
+const MAX_CUSTOMER_SAVED_ADDRESSES = 5;
 const CUSTOMER_PROFILE_STORAGE_KEY = 'roalburger-customer-profile-v1';
 const ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS = true;
 const PAGE_URL_PARAMS = new URLSearchParams(window.location.search);
@@ -50,6 +51,10 @@ let customerRegisterUI = null;
 let customerConsentDocumentUI = null;
 let customerDeleteAccountUI = null;
 let customerPasswordResetUI = null;
+let customerOrdersUnsubscribe = null;
+let customerMessagesUnsubscribe = null;
+let customerProfileOrdersState = [];
+let customerProfileMessagesState = [];
 
 function escapeHtml(value) {
     return String(value || '')
@@ -66,6 +71,62 @@ function normalizePhoneDigits(value) {
 
 function normalizeCustomerPin(value) {
     return String(value || '').replace(/\D+/g, '').slice(0, 6);
+}
+
+function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '') {
+    const normalizedAddresses = [];
+    const seen = new Set();
+
+    const appendAddress = (value) => {
+        const safeValue = String(value || '').trim();
+        const normalizedKey = safeValue.toLowerCase();
+        if (!safeValue || seen.has(normalizedKey)) {
+            return;
+        }
+
+        seen.add(normalizedKey);
+        normalizedAddresses.push(safeValue);
+    };
+
+    appendAddress(primaryAddress);
+
+    if (Array.isArray(rawAddresses)) {
+        rawAddresses.forEach((entry) => {
+            if (typeof entry === 'string') {
+                appendAddress(entry);
+                return;
+            }
+
+            if (entry && typeof entry === 'object') {
+                appendAddress(entry.address || entry.value || entry.label || '');
+            }
+        });
+    }
+
+    return normalizedAddresses.slice(0, MAX_CUSTOMER_SAVED_ADDRESSES);
+}
+
+function appendCustomerSavedAddress(rawAddresses = [], newAddress = '') {
+    const addresses = normalizeCustomerSavedAddresses(rawAddresses);
+    const safeAddress = String(newAddress || '').trim();
+    if (!safeAddress) {
+        return addresses;
+    }
+
+    return normalizeCustomerSavedAddresses([...addresses, safeAddress], addresses[0] || safeAddress);
+}
+
+function parseCustomerSavedAddressesInput(rawValue = '', primaryAddress = '') {
+    const lines = String(rawValue || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    return normalizeCustomerSavedAddresses(lines, primaryAddress);
+}
+
+function getCustomerSavedAddresses(profile = {}) {
+    return normalizeCustomerSavedAddresses(profile?.savedAddresses || profile?.addresses || [], profile?.address || profile?.deliveryAddress || '');
 }
 
 function isValidCustomerPin(value) {
@@ -90,7 +151,8 @@ async function hashCustomerPin(pinValue) {
 function normalizeCustomerProfile(raw = {}, fallbackId = '') {
     const customerPhone = String(raw.customerPhone || raw.phone || '').trim();
     const customerPhoneDigits = normalizePhoneDigits(raw.customerPhoneDigits || customerPhone);
-    const address = String(raw.address || raw.deliveryAddress || '').trim();
+    const savedAddresses = getCustomerSavedAddresses(raw);
+    const address = savedAddresses[0] || String(raw.address || raw.deliveryAddress || '').trim();
     const customerName = String(raw.customerName || raw.name || '').trim();
 
     if (!customerPhoneDigits) {
@@ -103,6 +165,7 @@ function normalizeCustomerProfile(raw = {}, fallbackId = '') {
         customerPhone,
         customerPhoneDigits,
         address,
+        savedAddresses,
         passwordHash: String(raw.passwordHash || '').trim(),
         hasPassword: Boolean(raw.passwordHash),
         privacyConsentAccepted: Boolean(raw.privacyConsentAccepted),
@@ -164,12 +227,244 @@ function setActiveCustomerProfile(profile) {
     activeCustomerProfile = profile ? normalizeCustomerProfile(profile) : null;
     persistCustomerProfile(activeCustomerProfile);
     updateCustomerSessionUI();
+    syncCustomerProfileRealtimeStreams();
+    renderCustomerOrdersPanel();
+    renderCustomerMessagesPanel();
 }
 
 function clearActiveCustomerProfile() {
     activeCustomerProfile = null;
     persistCustomerProfile(null);
     updateCustomerSessionUI();
+    syncCustomerProfileRealtimeStreams();
+    customerProfileOrdersState = [];
+    customerProfileMessagesState = [];
+    renderCustomerOrdersPanel();
+    renderCustomerMessagesPanel();
+}
+
+function getTimestampMillis(value) {
+    if (value && typeof value.toMillis === 'function') {
+        return value.toMillis();
+    }
+    if (value instanceof Date) {
+        return value.getTime();
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+
+    const parsed = Date.parse(String(value || ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatProfileDateTime(value) {
+    const millis = getTimestampMillis(value);
+    if (!millis) {
+        return 'Sin fecha';
+    }
+
+    return new Intl.DateTimeFormat('es-CO', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+    }).format(new Date(millis));
+}
+
+function getPublicOrderStatusMeta(status = '', fulfillmentType = '') {
+    const normalized = String(status || '').trim().toLowerCase();
+    switch (normalized) {
+        case 'pendiente':
+            return { label: 'Pedido recibido', detail: 'Tu pedido fue recibido por el restaurante.', className: 'pending' };
+        case 'preparacion':
+            return { label: 'En preparacion', detail: 'Estamos preparando tu pedido.', className: 'preparing' };
+        case 'esperando_domiciliario':
+            return { label: 'Esperando domiciliario', detail: 'Tu pedido esta listo y esperando repartidor.', className: 'waiting' };
+        case 'camino':
+            return { label: 'En camino', detail: 'Tu pedido va en camino.', className: 'on-route' };
+        case 'listo_recoger':
+            return { label: 'Pedido listo', detail: 'Tu pedido ya esta listo para recoger.', className: 'ready' };
+        case 'entregado':
+            return { label: 'Entregado', detail: fulfillmentType === 'pickup' ? 'Tu pedido fue entregado en el local.' : 'Tu pedido ya fue entregado.', className: 'delivered' };
+        default:
+            return { label: 'En proceso', detail: 'Estamos revisando tu pedido.', className: 'pending' };
+    }
+}
+
+function unsubscribeCustomerProfileStreams() {
+    if (typeof customerOrdersUnsubscribe === 'function') {
+        customerOrdersUnsubscribe();
+    }
+    if (typeof customerMessagesUnsubscribe === 'function') {
+        customerMessagesUnsubscribe();
+    }
+    customerOrdersUnsubscribe = null;
+    customerMessagesUnsubscribe = null;
+}
+
+function syncCustomerProfileRealtimeStreams() {
+    unsubscribeCustomerProfileStreams();
+
+    if (!activeCustomerProfile?.customerPhoneDigits) {
+        return;
+    }
+
+    const db = getPublicFirebaseDb();
+    const phoneDigits = activeCustomerProfile.customerPhoneDigits;
+
+    customerOrdersUnsubscribe = db.collection(ORDERS_COLLECTION)
+        .where('customerPhoneDigits', '==', phoneDigits)
+        .onSnapshot((snapshot) => {
+            customerProfileOrdersState = snapshot.docs
+                .map((doc) => ({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => getTimestampMillis(b.createdAt || b.updatedAt) - getTimestampMillis(a.createdAt || a.updatedAt));
+            renderCustomerOrdersPanel();
+        }, () => undefined);
+
+    customerMessagesUnsubscribe = db.collection(MESSAGES_COLLECTION)
+        .where('customerPhoneDigits', '==', phoneDigits)
+        .onSnapshot((snapshot) => {
+            customerProfileMessagesState = snapshot.docs
+                .map((doc) => ({ id: doc.id, ...doc.data() }))
+                .filter((message) => {
+                    const type = String(message.type || '').trim();
+                    return type === 'customer_direct_message' || type === 'admin_direct_reply';
+                })
+                .sort((a, b) => getTimestampMillis(a.createdAt || a.updatedAt) - getTimestampMillis(b.createdAt || b.updatedAt));
+            renderCustomerMessagesPanel();
+        }, () => undefined);
+}
+
+function renderCustomerOrdersPanel() {
+    if (!customerAuthUI?.ordersCurrent || !customerAuthUI?.ordersHistory) {
+        return;
+    }
+
+    const currentOrder = customerProfileOrdersState.find((order) => String(order.status || '').trim().toLowerCase() !== 'entregado');
+    if (!currentOrder) {
+        customerAuthUI.ordersCurrent.innerHTML = `
+            <div class="customer-profile-empty-card">
+                <strong>No tienes pedidos en curso.</strong>
+                <p>Cuando hagas un pedido, aqui veras su estado actualizado en tiempo real.</p>
+            </div>
+        `;
+    } else {
+        const statusMeta = getPublicOrderStatusMeta(currentOrder.status, currentOrder.fulfillmentType);
+        customerAuthUI.ordersCurrent.innerHTML = `
+            <div class="customer-live-order-card ${escapeHtml(statusMeta.className)}">
+                <div class="customer-live-order-head">
+                    <div>
+                        <strong>${escapeHtml(currentOrder.code || 'Pedido en curso')}</strong>
+                        <span>${escapeHtml(formatProfileDateTime(currentOrder.createdAt || currentOrder.updatedAt))}</span>
+                    </div>
+                    <span class="customer-live-order-status ${escapeHtml(statusMeta.className)}">${escapeHtml(statusMeta.label)}</span>
+                </div>
+                <p>${escapeHtml(statusMeta.detail)}</p>
+                <div class="customer-live-order-meta">
+                    <span>${escapeHtml(currentOrder.fulfillmentType === 'pickup' ? 'Recoger en local' : 'Domicilio')}</span>
+                    <span>${escapeHtml(formatCurrency(Number(currentOrder.total || 0)))}</span>
+                    <span>${escapeHtml(`${Number(currentOrder.totalItems || currentOrder.itemCount || 0)} productos`)}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    if (!customerProfileOrdersState.length) {
+        customerAuthUI.ordersHistory.innerHTML = `
+            <div class="customer-profile-empty-card">
+                <strong>Aun no tienes historial.</strong>
+                <p>Tus pedidos anteriores apareceran aqui con su informacion completa.</p>
+            </div>
+        `;
+        return;
+    }
+
+    customerAuthUI.ordersHistory.innerHTML = customerProfileOrdersState
+        .map((order) => {
+            const statusMeta = getPublicOrderStatusMeta(order.status, order.fulfillmentType);
+            return `
+                <article class="customer-order-history-card">
+                    <div class="customer-order-history-head">
+                        <strong>${escapeHtml(order.code || 'Pedido')}</strong>
+                        <span class="customer-live-order-status ${escapeHtml(statusMeta.className)}">${escapeHtml(statusMeta.label)}</span>
+                    </div>
+                    <p>${escapeHtml(formatProfileDateTime(order.createdAt || order.updatedAt))}</p>
+                    <div class="customer-order-history-meta">
+                        <span>${escapeHtml(order.fulfillmentType === 'pickup' ? 'Recoger en local' : 'Domicilio')}</span>
+                        <span>${escapeHtml(formatCurrency(Number(order.total || 0)))}</span>
+                    </div>
+                    <div class="customer-order-history-items">
+                        ${(Array.isArray(order.items) ? order.items : []).map((item) => `<span>${escapeHtml(`${Number(item.quantity || 1)}x ${item.name || item.nombre || 'Producto'}`)}</span>`).join('')}
+                    </div>
+                </article>
+            `;
+        })
+        .join('');
+}
+
+function renderCustomerMessagesPanel() {
+    if (!customerAuthUI?.messagesThread) {
+        return;
+    }
+
+    if (!customerProfileMessagesState.length) {
+        customerAuthUI.messagesThread.innerHTML = `
+            <div class="customer-profile-empty-card">
+                <strong>No tienes mensajes aun.</strong>
+                <p>Escribe aqui si necesitas ayuda o quieres comunicarte con el restaurante.</p>
+            </div>
+        `;
+        return;
+    }
+
+    customerAuthUI.messagesThread.innerHTML = customerProfileMessagesState
+        .map((message) => {
+            const isAdminReply = String(message.type || '').trim() === 'admin_direct_reply' || String(message.source || '').trim() === 'admin_panel';
+            const authorLabel = isAdminReply ? 'ROAL BURGER' : 'Tu';
+            return `
+                <article class="customer-message-bubble ${isAdminReply ? 'is-admin' : 'is-customer'}">
+                    <strong>${escapeHtml(authorLabel)}</strong>
+                    <p>${escapeHtml(message.body || 'Sin mensaje.')}</p>
+                    <span>${escapeHtml(formatProfileDateTime(message.createdAt || message.updatedAt))}</span>
+                </article>
+            `;
+        })
+        .join('');
+
+    customerAuthUI.messagesThread.scrollTop = customerAuthUI.messagesThread.scrollHeight;
+}
+
+async function submitCustomerDirectMessage() {
+    if (!activeCustomerProfile?.customerPhoneDigits || !customerAuthUI?.messageInput || !customerAuthUI?.messageFeedback) {
+        return;
+    }
+
+    const body = String(customerAuthUI.messageInput.value || '').trim();
+    customerAuthUI.messageFeedback.textContent = '';
+    if (body.length < 3) {
+        customerAuthUI.messageFeedback.textContent = 'Escribe un mensaje corto para comunicarte con el restaurante.';
+        return;
+    }
+
+    try {
+        const db = getPublicFirebaseDb();
+        await db.collection(MESSAGES_COLLECTION).add({
+            type: 'customer_direct_message',
+            status: 'pending',
+            subject: 'Mensaje desde perfil del cliente',
+            body,
+            customerName: String(activeCustomerProfile.customerName || '').trim() || 'Cliente sin nombre',
+            customerPhone: String(activeCustomerProfile.customerPhone || '').trim() || activeCustomerProfile.customerPhoneDigits,
+            customerPhoneDigits: activeCustomerProfile.customerPhoneDigits,
+            customerAddress: String(activeCustomerProfile.address || '').trim(),
+            source: 'public_web',
+            createdAt: getPublicServerTimestamp(),
+            updatedAt: getPublicServerTimestamp()
+        });
+        customerAuthUI.messageInput.value = '';
+        customerAuthUI.messageFeedback.textContent = 'Tu mensaje fue enviado al restaurante.';
+    } catch (error) {
+        customerAuthUI.messageFeedback.textContent = error.message || 'No se pudo enviar el mensaje.';
+    }
 }
 
 function getCheckoutFulfillmentType(value) {
@@ -383,13 +678,16 @@ async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
         const previous = snapshot.exists ? snapshot.data() : {};
         const previousTotalOrders = Number(previous.totalOrders || 0);
         const previousTotalSpent = Number(previous.totalSpent || 0);
-        const resolvedAddress = String(customerInfo.deliveryAddress || previous.address || (customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' : 'Sin direccion registrada')).trim();
+        const fallbackAddress = String(customerInfo.profileAddress || previous.address || customerInfo.deliveryAddress || (customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' : 'Sin direccion registrada')).trim();
+        const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || previous.savedAddresses || [], fallbackAddress);
+        const resolvedAddress = savedAddresses[0] || fallbackAddress;
 
         transaction.set(clientRef, {
             customerName: String(customerInfo.customerName || previous.customerName || '').trim(),
             customerPhone: String(customerInfo.customerPhone || previous.customerPhone || '').trim(),
             customerPhoneDigits: String(customerInfo.customerPhoneDigits || previous.customerPhoneDigits || '').replace(/\D+/g, ''),
             address: resolvedAddress,
+            savedAddresses,
             lastOrderCode: String(orderInfo.code || previous.lastOrderCode || '').trim(),
             lastOrderId: String(orderInfo.id || previous.lastOrderId || '').trim(),
             lastOrderTotal: Number(orderInfo.total || previous.lastOrderTotal || 0),
@@ -458,7 +756,6 @@ async function saveCustomerProfile(profileInput = {}) {
     const customerName = String(profileInput.customerName || '').trim();
     const customerPhone = String(profileInput.customerPhone || '').trim();
     const customerPhoneDigits = normalizePhoneDigits(customerPhone);
-    const address = String(profileInput.address || '').trim();
     const pinValue = normalizeCustomerPin(profileInput.pin || '');
     const confirmPinValue = normalizeCustomerPin(profileInput.confirmPin || '');
     const acceptedDataPolicy = Boolean(profileInput.acceptedDataPolicy);
@@ -479,6 +776,8 @@ async function saveCustomerProfile(profileInput = {}) {
     const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
     const snapshot = await clientRef.get();
     const previous = snapshot.exists ? snapshot.data() : {};
+    const savedAddresses = normalizeCustomerSavedAddresses(profileInput.savedAddresses || previous.savedAddresses || [], String(profileInput.address || '').trim());
+    const address = savedAddresses[0] || '';
     let passwordHash = String(previous.passwordHash || '').trim();
     const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
 
@@ -503,6 +802,7 @@ async function saveCustomerProfile(profileInput = {}) {
         customerPhone,
         customerPhoneDigits,
         address,
+        savedAddresses,
         passwordHash,
         privacyConsentAccepted: acceptedDataPolicy || Boolean(previous.privacyConsentAccepted),
         marketingConsentAccepted: acceptedDataPolicy || Boolean(previous.marketingConsentAccepted),
@@ -527,6 +827,7 @@ async function saveCustomerProfile(profileInput = {}) {
         customerPhone,
         customerPhoneDigits,
         address,
+        savedAddresses,
         passwordHash,
         privacyConsentAccepted: acceptedDataPolicy || Boolean(previous.privacyConsentAccepted),
         marketingConsentAccepted: acceptedDataPolicy || Boolean(previous.marketingConsentAccepted),
@@ -694,7 +995,8 @@ function applyCustomerConsentState(isAuthorized = false) {
 
 function buildCustomerRegisterFormMarkup(profile = {}, saveLabel = 'Crear perfil') {
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
-    const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos</a>.`;
+    const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
+    const savedAddresses = getCustomerSavedAddresses(profile);
 
     return `
         <label class="support-field">
@@ -704,6 +1006,11 @@ function buildCustomerRegisterFormMarkup(profile = {}, saveLabel = 'Crear perfil
         <label class="support-field">
             <span>Direccion principal</span>
             <textarea id="customerRegisterAddress" rows="4" placeholder="Escribe tu direccion principal">${escapeHtml(profile.address || '')}</textarea>
+        </label>
+        <label class="support-field">
+            <span>Direcciones guardadas</span>
+            <textarea id="customerRegisterSavedAddresses" rows="5" placeholder="Una direccion por linea. La primera siempre sera tu direccion principal.">${escapeHtml(savedAddresses.join('\n'))}</textarea>
+            <p class="support-field-hint">Puedes editar hasta ${MAX_CUSTOMER_SAVED_ADDRESSES} direcciones. Deja una por linea y conserva la principal arriba.</p>
         </label>
         <label class="support-field">
             <span>Numero de WhatsApp</span>
@@ -761,6 +1068,7 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
         feedback: modal.querySelector('#customerAuthFeedback'),
         name: modal.querySelector('#customerRegisterName'),
         address: modal.querySelector('#customerRegisterAddress'),
+        savedAddresses: modal.querySelector('#customerRegisterSavedAddresses'),
         registerPhone: modal.querySelector('#customerRegisterPhone'),
         registerPin: modal.querySelector('#customerRegisterPin'),
         confirmPin: modal.querySelector('#customerConfirmPin'),
@@ -1082,7 +1390,7 @@ function openCustomerConsentDocument() {
             <h3 class="support-modal-title">Lee este documento antes de continuar</h3>
             <p class="support-modal-text">Para crear tu perfil debes conocer y autorizar expresamente el tratamiento de tus datos personales por parte de ROAL BURGER.</p>
             <div class="support-consent-document-frame-wrap">
-                <iframe src="${CUSTOMER_CONSENT_POLICY_URL}" title="Politica de tratamiento de datos" class="support-consent-document-frame"></iframe>
+                <iframe src="${CUSTOMER_CONSENT_POLICY_URL}" title="Politica de tratamiento de datos personales" class="support-consent-document-frame"></iframe>
             </div>
             <p class="support-field-hint">Si prefieres abrirlo aparte, <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">puedes verlo en una pestaña nueva</a>.</p>
             <div class="support-actions split">
@@ -1265,6 +1573,7 @@ async function submitCustomerProfileForm() {
 
     const nameValue = String(formUI.name?.value || activeCustomerProfile?.customerName || '').trim();
     const addressValue = String(formUI.address?.value || activeCustomerProfile?.address || '').trim();
+    const savedAddressesValue = parseCustomerSavedAddressesInput(formUI.savedAddresses?.value || '', addressValue);
     const phoneValue = String(formUI.registerPhone?.value || activeCustomerProfile?.customerPhone || '').trim();
     const pinValue = String(formUI.registerPin?.value || '').trim();
     const confirmPinValue = String(formUI.confirmPin?.value || '').trim();
@@ -1277,6 +1586,7 @@ async function submitCustomerProfileForm() {
             customerName: nameValue,
             customerPhone: phoneValue,
             address: addressValue,
+            savedAddresses: savedAddressesValue,
             pin: pinValue,
             confirmPin: confirmPinValue,
             acceptedDataPolicy
@@ -1294,8 +1604,9 @@ function openCustomerAuthModal() {
     closeCustomerAuthModal();
 
     const profile = activeCustomerProfile;
+    const savedAddresses = getCustomerSavedAddresses(profile);
     const hasConsent = Boolean(profile?.privacyConsentAccepted) && Boolean(profile?.marketingConsentAccepted);
-    const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos</a>.`;
+    const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
     const modal = document.createElement('div');
     modal.id = 'customerAuthModal';
     modal.className = 'support-modal';
@@ -1304,24 +1615,19 @@ function openCustomerAuthModal() {
         ? `
             <div class="support-modal-card liquid-glass customer-profile-modal-card" role="dialog" aria-modal="true" aria-label="Tu perfil">
                 <button type="button" class="support-modal-close" aria-label="Cerrar perfil">&times;</button>
-                <p class="support-modal-kicker">Perfil abierto</p>
-                <h3 class="support-modal-title">Tu perfil</h3>
+                <p class="support-modal-kicker">Perfil</p>
+                <h3 class="support-modal-title">${escapeHtml(profile.customerName || 'Cliente ROAL BURGER')}</h3>
                 <div class="customer-profile-hero">
                     <div class="customer-profile-avatar">${escapeHtml((profile.customerName || 'R').trim().slice(0, 1).toUpperCase())}</div>
                     <div class="customer-profile-heading">
                         <strong>${escapeHtml(profile.customerName)}</strong>
-                        <span>@${escapeHtml((profile.customerPhoneDigits || profile.customerPhone || 'roalburger').slice(-10))}</span>
                     </div>
                     <button type="button" class="support-secondary-btn customer-profile-edit-chip" id="customerEditProfileButton">Editar</button>
                 </div>
-                <div class="customer-profile-summary customer-profile-summary-grid">
-                    <div><strong>${formatCurrency(Number(profile.totalSpent || 0))}</strong><span>Total comprado</span></div>
-                    <div><strong>${Number(profile.totalOrders || 0)}</strong><span>Pedidos</span></div>
-                    <div><strong>${profile.lastOrderCode ? escapeHtml(profile.lastOrderCode) : 'Nuevo'}</strong><span>Ultimo pedido</span></div>
-                </div>
                 <div class="customer-profile-tabs" role="tablist" aria-label="Secciones del perfil">
                     <button type="button" class="customer-profile-tab is-active" data-profile-tab="info" aria-selected="true">Informacion</button>
-                    <button type="button" class="customer-profile-tab" data-profile-tab="cuenta" aria-selected="false">Cuenta</button>
+                    <button type="button" class="customer-profile-tab" data-profile-tab="pedidos" aria-selected="false">Pedidos</button>
+                    <button type="button" class="customer-profile-tab" data-profile-tab="mensajes" aria-selected="false">Mensajes</button>
                 </div>
                 <div class="customer-profile-panel" data-profile-panel="info">
                     <div class="customer-profile-info-card">
@@ -1333,20 +1639,54 @@ function openCustomerAuthModal() {
                         <strong>${escapeHtml(profile.address || 'Sin direccion principal registrada')}</strong>
                     </div>
                     <div class="customer-profile-info-card">
+                        <span>Direcciones guardadas</span>
+                        <strong>${savedAddresses.length} de ${MAX_CUSTOMER_SAVED_ADDRESSES}</strong>
+                        <div class="customer-saved-addresses-list">
+                            ${savedAddresses.length
+                                ? savedAddresses.map((address, index) => `<p><strong>${index + 1}.</strong> ${escapeHtml(address)}</p>`).join('')
+                                : '<p>Aun no tienes direcciones guardadas.</p>'}
+                        </div>
+                    </div>
+                    <div class="customer-profile-info-card">
                         <span>Tratamiento de datos</span>
                         <strong>${hasConsent ? 'Autorizado' : 'Pendiente'}</strong>
                         <p>${consentMarkup}</p>
                     </div>
-                </div>
-                <div class="customer-profile-panel" data-profile-panel="cuenta" hidden>
                     <div class="support-consent-box">
                         <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Ver autorizacion de tratamiento de datos</button>
-                        <p class="support-field-hint">Desde aqui puedes revisar tu autorizacion, editar tus datos o cerrar la cuenta.</p>
+                        <p class="support-field-hint">Desde aqui puedes revisar tu autorizacion, editar tus datos o administrar tu cuenta.</p>
                     </div>
                     <div class="support-actions stack">
                         <button type="button" class="support-secondary-btn" id="customerEditProfileButtonAlt">Editar perfil</button>
                         <button type="button" class="support-secondary-btn" id="customerLogoutButton">Cerrar sesion</button>
                         <button type="button" class="support-danger-btn" id="customerDeleteAccountButton">Eliminar cuenta</button>
+                    </div>
+                </div>
+                <div class="customer-profile-panel" data-profile-panel="pedidos" hidden>
+                    <div class="customer-profile-section-title">
+                        <strong>Pedido en curso</strong>
+                        <span>Seguimiento en tiempo real segun los movimientos del admin.</span>
+                    </div>
+                    <div id="customerOrdersCurrent"></div>
+                    <div class="customer-profile-section-title">
+                        <strong>Historial de pedidos</strong>
+                        <span>Aqui ves todos tus pedidos con el detalle principal.</span>
+                    </div>
+                    <div class="customer-order-history-list" id="customerOrdersHistory"></div>
+                </div>
+                <div class="customer-profile-panel" data-profile-panel="mensajes" hidden>
+                    <div class="customer-profile-section-title">
+                        <strong>Mensajes con el restaurante</strong>
+                        <span>Escribenos directamente y veras aqui las respuestas del admin.</span>
+                    </div>
+                    <div class="customer-messages-thread" id="customerMessagesThread"></div>
+                    <label class="support-field customer-message-composer">
+                        <span>Enviar mensaje</span>
+                        <textarea id="customerMessageInput" rows="4" placeholder="Escribe tu mensaje para el restaurante"></textarea>
+                    </label>
+                    <div class="support-actions split customer-message-actions">
+                        <span class="support-field-hint" id="customerMessageFeedback"></span>
+                        <button type="button" class="support-send-btn" id="customerSendMessageButton">Enviar</button>
                     </div>
                 </div>
                 <p class="support-feedback" id="customerAuthFeedback"></p>
@@ -1394,6 +1734,12 @@ function openCustomerAuthModal() {
         deleteAccountButton: modal.querySelector('#customerDeleteAccountButton'),
         tabButtons: Array.from(modal.querySelectorAll('[data-profile-tab]')),
         tabPanels: Array.from(modal.querySelectorAll('[data-profile-panel]')),
+        ordersCurrent: modal.querySelector('#customerOrdersCurrent'),
+        ordersHistory: modal.querySelector('#customerOrdersHistory'),
+        messagesThread: modal.querySelector('#customerMessagesThread'),
+        messageInput: modal.querySelector('#customerMessageInput'),
+        sendMessageButton: modal.querySelector('#customerSendMessageButton'),
+        messageFeedback: modal.querySelector('#customerMessageFeedback'),
         logout: modal.querySelector('#customerLogoutButton'),
         hasPreviousConsent: hasConsent,
         consentViewed: hasConsent
@@ -1416,6 +1762,7 @@ function openCustomerAuthModal() {
     customerAuthUI.editProfileButton?.addEventListener('click', openEditProfile);
     customerAuthUI.editProfileButtonAlt?.addEventListener('click', openEditProfile);
     customerAuthUI.deleteAccountButton?.addEventListener('click', openCustomerDeleteAccountModal);
+    customerAuthUI.sendMessageButton?.addEventListener('click', submitCustomerDirectMessage);
     customerAuthUI.tabButtons?.forEach((button) => {
         button.addEventListener('click', () => activateCustomerProfileTab(button.dataset.profileTab || 'info'));
     });
@@ -1435,6 +1782,8 @@ function openCustomerAuthModal() {
     syncBodyScrollLock();
     if (profile) {
         activateCustomerProfileTab('info');
+        renderCustomerOrdersPanel();
+        renderCustomerMessagesPanel();
     }
     (customerAuthUI.lookupPhone || customerAuthUI.name)?.focus();
 }
@@ -2256,6 +2605,8 @@ async function createOrderFromCart(customerInfo = {}) {
     const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
     const cashChangeRequired = customerInfo.cashChangeRequired === true;
     const cashTenderAmount = cashChangeRequired ? Number(customerInfo.cashTenderAmount || 0) : null;
+    const profileAddress = String(customerInfo.profileAddress || '').trim();
+    const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || [], profileAddress || deliveryAddress);
 
     const orderCode = await reserveNextOrderCode(db, orderRef, {
         status: 'pendiente',
@@ -2292,6 +2643,8 @@ async function createOrderFromCart(customerInfo = {}) {
         customerPhone,
         customerPhoneDigits,
         deliveryAddress,
+        profileAddress: profileAddress || deliveryAddress,
+        savedAddresses,
         fulfillmentType
     }, {
         id: orderRef.id,
@@ -2305,7 +2658,8 @@ async function createOrderFromCart(customerInfo = {}) {
             customerName,
             customerPhone,
             customerPhoneDigits,
-            address: deliveryAddress || activeCustomerProfile.address,
+            address: profileAddress || activeCustomerProfile.address,
+            savedAddresses,
             lastOrderCode: orderCode,
             lastOrderId: orderRef.id,
             lastOrderTotal: total,
@@ -2564,7 +2918,22 @@ async function submitCheckoutInfo() {
     const profile = activeCustomerProfile;
     const customerName = profile ? String(profile.customerName || '').trim() : String(checkoutInfoUI.name?.value || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
-    const deliveryAddress = String(checkoutInfoUI.address.value || '').trim();
+    const savedAddresses = profile ? getCustomerSavedAddresses(profile) : [];
+    const selectedAddressOption = String(checkoutInfoUI.savedAddressChoice?.value || (savedAddresses.length ? 'saved:0' : 'new')).trim();
+    const selectedAddressIndex = selectedAddressOption.startsWith('saved:') ? Number(selectedAddressOption.split(':')[1]) : -1;
+    const savedAddressValue = selectedAddressIndex >= 0 ? String(savedAddresses[selectedAddressIndex] || '').trim() : '';
+    const typedDeliveryAddress = String(checkoutInfoUI.address.value || '').trim();
+    const deliveryAddress = fulfillmentType === 'delivery'
+        ? (savedAddressValue || typedDeliveryAddress)
+        : '';
+    const shouldSaveNewAddress = Boolean(
+        profile
+        && fulfillmentType === 'delivery'
+        && !savedAddressValue
+        && typedDeliveryAddress
+        && checkoutInfoUI.saveAddressToggle?.checked
+        && savedAddresses.length < MAX_CUSTOMER_SAVED_ADDRESSES
+    );
     const customerPhone = profile ? String(profile.customerPhone || '').trim() : String(checkoutInfoUI.phone?.value || '').trim();
     const phoneDigits = normalizePhoneDigits(customerPhone);
 
@@ -2581,8 +2950,8 @@ async function submitCheckoutInfo() {
     }
 
     if (fulfillmentType === 'delivery' && !deliveryAddress) {
-        checkoutInfoUI.feedback.textContent = 'Escribe la direccion del domicilio.';
-        checkoutInfoUI.address.focus();
+        checkoutInfoUI.feedback.textContent = 'Escoge una direccion guardada o escribe una nueva para el domicilio.';
+        (checkoutInfoUI.savedAddressChoice || checkoutInfoUI.address)?.focus();
         return;
     }
 
@@ -2602,13 +2971,17 @@ async function submitCheckoutInfo() {
             name: customerName,
             fulfillmentType,
             address: fulfillmentType === 'delivery' ? deliveryAddress : '',
-            phone: customerPhone
+            phone: customerPhone,
+            profileAddress: profile?.address || '',
+            savedAddresses: shouldSaveNewAddress
+                ? appendCustomerSavedAddress(savedAddresses, typedDeliveryAddress)
+                : savedAddresses
         };
 
-        if (profile && fulfillmentType === 'delivery' && deliveryAddress) {
+        if (profile && shouldSaveNewAddress) {
             setActiveCustomerProfile({
                 ...profile,
-                address: deliveryAddress
+                savedAddresses: appendCustomerSavedAddress(savedAddresses, typedDeliveryAddress)
             });
         }
 
@@ -2631,13 +3004,38 @@ function updateCheckoutInfoModalState() {
 
     const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
     const requiresAddress = fulfillmentType === 'delivery';
+    const savedAddresses = Array.isArray(checkoutInfoUI.savedAddresses) ? checkoutInfoUI.savedAddresses : [];
+    const hasSavedAddresses = savedAddresses.length > 0;
+    const selectedAddressOption = String(checkoutInfoUI.savedAddressChoice?.value || (hasSavedAddresses ? 'saved:0' : 'new')).trim();
+    const usingSavedAddress = requiresAddress && hasSavedAddresses && selectedAddressOption.startsWith('saved:');
     const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
     const discountAmount = getCheckoutDiscountAmount();
     const orderTotal = getCheckoutOrderTotal(fulfillmentType);
 
-    checkoutInfoUI.addressField.hidden = !requiresAddress;
-    checkoutInfoUI.address.required = requiresAddress;
-    checkoutInfoUI.address.disabled = !requiresAddress;
+    if (checkoutInfoUI.savedAddressField) {
+        checkoutInfoUI.savedAddressField.hidden = !requiresAddress || !hasSavedAddresses;
+    }
+
+    checkoutInfoUI.addressField.hidden = !requiresAddress || usingSavedAddress;
+    checkoutInfoUI.address.required = requiresAddress && !usingSavedAddress;
+    checkoutInfoUI.address.disabled = !requiresAddress || usingSavedAddress;
+
+    if (usingSavedAddress) {
+        checkoutInfoUI.address.value = '';
+    }
+
+    if (checkoutInfoUI.saveAddressField && checkoutInfoUI.saveAddressToggle && checkoutInfoUI.addressBookHint) {
+        const canSaveMoreAddresses = savedAddresses.length < MAX_CUSTOMER_SAVED_ADDRESSES;
+        const selectedNewAddress = requiresAddress && (!hasSavedAddresses || selectedAddressOption === 'new');
+        const showSaveOption = selectedNewAddress && Boolean(activeCustomerProfile) && canSaveMoreAddresses;
+        checkoutInfoUI.saveAddressField.hidden = !showSaveOption;
+        checkoutInfoUI.saveAddressToggle.checked = showSaveOption ? checkoutInfoUI.saveAddressToggle.checked : false;
+        checkoutInfoUI.saveAddressToggle.disabled = !showSaveOption;
+        checkoutInfoUI.addressBookHint.hidden = !selectedNewAddress;
+        checkoutInfoUI.addressBookHint.textContent = canSaveMoreAddresses
+            ? `Puedes guardar esta direccion en tu perfil. Te quedan ${MAX_CUSTOMER_SAVED_ADDRESSES - savedAddresses.length} espacio(s).`
+            : 'Ya completaste tus 5 direcciones guardadas. Esta direccion solo se usara en este pedido.';
+    }
 
     if (checkoutInfoUI.deliveryFeeValue) {
         checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(deliveryFee);
@@ -2657,17 +3055,17 @@ function openCheckoutInfoModal() {
     closeCheckoutInfoModal();
 
     const profile = activeCustomerProfile;
+    const savedAddresses = profile ? getCustomerSavedAddresses(profile) : [];
     const profileSummaryMarkup = profile
         ? `
             <div class="customer-profile-summary">
                 <strong>${escapeHtml(profile.customerName)}</strong>
                 <span>WhatsApp: ${escapeHtml(profile.customerPhone)}</span>
-                <p>${escapeHtml(profile.address || 'Sin direccion principal registrada')}</p>
             </div>
         `
         : '';
     const introText = profile
-        ? 'Tu perfil ya esta abierto. Solo confirma la direccion del pedido y en el siguiente paso escoges el tipo de pago.'
+        ? ''
         : 'Confirma si el pedido es para domicilio o para recoger en el restaurante y completa los datos de contacto.';
 
     const modal = document.createElement('div');
@@ -2679,7 +3077,7 @@ function openCheckoutInfoModal() {
             <button type="button" class="support-modal-close" aria-label="Cerrar datos del pedido">&times;</button>
             <p class="support-modal-kicker">Antes de enviar</p>
             <h3 class="support-modal-title">Datos del pedido</h3>
-            <p class="support-modal-text">${introText}</p>
+            ${introText ? `<p class="support-modal-text">${introText}</p>` : ''}
             ${profileSummaryMarkup}
             ${profile ? '' : `
             <label class="support-field">
@@ -2694,26 +3092,43 @@ function openCheckoutInfoModal() {
                     <option value="delivery">Domicilio</option>
                 </select>
             </label>
+            ${profile && savedAddresses.length ? `
+            <label class="support-field" id="checkoutSavedAddressField" hidden>
+                <span>Enviar a</span>
+                <select id="checkoutSavedAddressChoice">
+                    ${savedAddresses.map((address, index) => `<option value="saved:${index}">Direccion ${index + 1}: ${escapeHtml(address)}</option>`).join('')}
+                    <option value="new">Agregar direccion nueva</option>
+                </select>
+                <p class="support-field-hint">Puedes usar una direccion guardada o escribir una nueva solo para este pedido.</p>
+            </label>` : ''}
             <label class="support-field" id="checkoutDeliveryAddressField" hidden>
-                <span>${profile ? 'Confirma tu direccion' : 'Direccion del domicilio'}</span>
+                <span>${profile ? 'Direccion nueva del domicilio' : 'Direccion del domicilio'}</span>
                 <textarea id="checkoutDeliveryAddress" rows="4" placeholder="Escribe la direccion completa"></textarea>
             </label>
+            ${profile ? `
+            <label class="support-check" id="checkoutSaveAddressField" hidden>
+                <input type="checkbox" id="checkoutSaveAddressToggle">
+                <span>Guardar esta direccion en mi perfil para usarla mas adelante.</span>
+            </label>
+            <p class="support-field-hint" id="checkoutAddressBookHint" hidden></p>` : ''}
             ${profile ? '' : `
             <label class="support-field">
                 <span>Telefono</span>
                 <input type="tel" id="checkoutCustomerPhone" placeholder="Escribe el telefono de contacto">
             </label>`}
-            <div class="support-field">
-                <span>Costo del domicilio</span>
-                <strong id="checkoutDeliveryFeeValue">${formatCurrency(DELIVERY_FEE_AMOUNT)}</strong>
-            </div>
-            <div class="support-field" id="checkoutDiscountRow" hidden>
-                <span>Descuento aplicado</span>
-                <strong id="checkoutDiscountValue">${formatCurrency(getCheckoutDiscountAmount())}</strong>
-            </div>
-            <div class="support-field">
-                <span>Total del pedido</span>
-                <strong id="checkoutOrderTotalValue">${formatCurrency(getCheckoutOrderTotal('pickup'))}</strong>
+            <div class="customer-profile-summary customer-profile-summary-grid checkout-summary-grid">
+                <div>
+                    <span>Costo domicilio</span>
+                    <strong id="checkoutDeliveryFeeValue">${formatCurrency(DELIVERY_FEE_AMOUNT)}</strong>
+                </div>
+                <div id="checkoutDiscountRow" hidden>
+                    <span>Descuento</span>
+                    <strong id="checkoutDiscountValue">${formatCurrency(getCheckoutDiscountAmount())}</strong>
+                </div>
+                <div>
+                    <span>Total</span>
+                    <strong id="checkoutOrderTotalValue">${formatCurrency(getCheckoutOrderTotal('pickup'))}</strong>
+                </div>
             </div>
             <p class="support-feedback" id="checkoutInfoFeedback"></p>
             <div class="support-actions">
@@ -2729,20 +3144,27 @@ function openCheckoutInfoModal() {
         close: modal.querySelector('.support-modal-close'),
         name: modal.querySelector('#checkoutCustomerName'),
         fulfillmentType: modal.querySelector('#checkoutFulfillmentType'),
+        savedAddressField: modal.querySelector('#checkoutSavedAddressField'),
+        savedAddressChoice: modal.querySelector('#checkoutSavedAddressChoice'),
         addressField: modal.querySelector('#checkoutDeliveryAddressField'),
         address: modal.querySelector('#checkoutDeliveryAddress'),
+        saveAddressField: modal.querySelector('#checkoutSaveAddressField'),
+        saveAddressToggle: modal.querySelector('#checkoutSaveAddressToggle'),
+        addressBookHint: modal.querySelector('#checkoutAddressBookHint'),
         phone: modal.querySelector('#checkoutCustomerPhone'),
         deliveryFeeValue: modal.querySelector('#checkoutDeliveryFeeValue'),
         discountRow: modal.querySelector('#checkoutDiscountRow'),
         discountValue: modal.querySelector('#checkoutDiscountValue'),
         orderTotalValue: modal.querySelector('#checkoutOrderTotalValue'),
         feedback: modal.querySelector('#checkoutInfoFeedback'),
-        send: modal.querySelector('.support-send-btn')
+        send: modal.querySelector('.support-send-btn'),
+        savedAddresses
     };
 
     checkoutInfoUI.close.addEventListener('click', closeCheckoutInfoModal);
     checkoutInfoUI.send.addEventListener('click', submitCheckoutInfo);
     checkoutInfoUI.fulfillmentType.addEventListener('change', updateCheckoutInfoModalState);
+    checkoutInfoUI.savedAddressChoice?.addEventListener('change', updateCheckoutInfoModalState);
 
     modal.addEventListener('click', (event) => {
         if (event.target === modal) {
@@ -2751,7 +3173,7 @@ function openCheckoutInfoModal() {
     });
 
     syncBodyScrollLock();
-    if (profile && checkoutInfoUI.address) {
+    if (profile && checkoutInfoUI.address && !savedAddresses.length) {
         checkoutInfoUI.address.value = profile.address || '';
     }
     updateCheckoutInfoModalState();
@@ -2844,6 +3266,7 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
 
     saveCartState();
     renderCartUI();
+    openCartDrawer();
     showCartAddedToast(safeCategoryName, safeProductName);
 }
 
@@ -6004,6 +6427,16 @@ function renderCategoryExplorer(nextKey, options = {}) {
     const selectedCategory = categories.find((item) => item.key === selectedCategoryKey) || categories[0];
     const products = getCategoryProducts(selectedCategory);
     const allCategoryProducts = getCategoryProducts(selectedCategory, { includePaused: true });
+    const focusProductsPanel = () => {
+        if (!options.fromUserClick) {
+            return;
+        }
+
+        panel.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        panel.classList.remove('focus-highlight');
+        void panel.offsetWidth;
+        panel.classList.add('focus-highlight');
+    };
 
     // --- INICIO LÓGICA MANUAL BEBIDAS Y ADICIONALES Y OTRAS ---
     if (selectedCategory.name) {
@@ -6014,6 +6447,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
                 { name: 'Adicionales', image: './bebidasyadicionales/adiciones.png' },
                 { name: 'Bebidas', image: './bebidasyadicionales/bebidas.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // BURGER CLASICAS
@@ -6022,6 +6456,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
                 { name: 'Normal', image: './burgerclasicas/burgernormal.png' },
                 { name: 'Super', image: './burgerclasicas/burgersuper.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // BURGER PREMIUM
@@ -6034,6 +6469,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
                 { name: 'Ranchera', image: './burgerpremium/burgerranchera.png' },
                 { name: 'Triplete', image: './burgerpremium/burgertriplete.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // ENTRADAS
@@ -6042,6 +6478,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
                 { name: 'Papas a la Francesa', image: './entradas/papas.png' },
                 { name: 'Tequeños', image: './entradas/tequenos.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // PEPTIOS VENEZOLANOS
@@ -6052,6 +6489,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
                 { name: 'Ranchero', image: './pepitosvenezolanos/pepitoranchero.png' },
                 { name: 'Urbano', image: './pepitosvenezolanos/pepitourbano.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // SALCHIPAPAS
@@ -6060,6 +6498,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
                 { name: 'Salchi Normal', image: './salchipapas/salchinormal.png' },
                 { name: 'Salchi Super', image: './salchipapas/salchisuper.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // PERROS CALIENTES
@@ -6069,6 +6508,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
                 { name: 'Normal', image: './perroscalientes/perronormal.png' },
                 { name: 'Super', image: './perroscalientes/perrosuper.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // COMBOS CON PAPAS Y BEBIDA
@@ -6079,6 +6519,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
                 { name: 'Combo Burger Super', image: './combosconpapasybebidas/comboburgersuper.png' },
                 { name: 'Combo Perro Normal', image: './combosconpapasybebidas/comboperronormal.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // COMBOS MIXTOS
@@ -6089,6 +6530,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
                 { name: 'Familiar 3', image: './combosmixtos/familiar3.png' },
                 { name: 'Familiar 4', image: './combosmixtos/familiar4.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // NUESTRAS SALSAS
@@ -6096,6 +6538,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
             renderManualCategoryGallery(panel, selectedCategory.name, [
                 { name: 'Salsas de la Casa', image: './nuestrassalsas/salsasdelacasa.png' }
             ], products, allCategoryProducts);
+            focusProductsPanel();
             return;
         }
         // NO combos de temporada
@@ -6103,6 +6546,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
             // No mostrar nada especial para combos de temporada
             panel.innerHTML = '';
             panel.insertAdjacentHTML('beforeend', '<p class="category-empty">No hay productos cargados en esta categoria.</p>');
+            focusProductsPanel();
             return;
         }
     }
@@ -6119,12 +6563,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
         panel.innerHTML = '<p class="category-empty">No hay productos cargados en esta categoria.</p>';
     }
 
-    if (options.fromUserClick) {
-        panel.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-        panel.classList.remove('focus-highlight');
-        void panel.offsetWidth;
-        panel.classList.add('focus-highlight');
-    }
+    focusProductsPanel();
 
     syncOrderingAvailabilityUI();
 }
@@ -6790,8 +7229,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-    activeCustomerProfile = loadStoredCustomerProfile();
-    updateCustomerSessionUI();
+    setActiveCustomerProfile(loadStoredCustomerProfile());
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
 
     initCartUI();
