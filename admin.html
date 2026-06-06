@@ -2436,8 +2436,9 @@
             display: none;
             align-items: center;
             justify-content: center;
-            padding: 18px;
+            padding: 12px;
             background: rgba(0, 0, 0, 0.72);
+            overflow-y: auto;
         }
 
         .product-edit-modal.show {
@@ -2579,12 +2580,14 @@
             gap: 0;
             width: min(100%, 1500px);
             height: 88vh;
+            max-height: 95vh;
             background: rgba(18, 24, 40, 0.98);
             border: 1px solid rgba(255, 255, 255, 0.12);
             border-radius: 18px;
             overflow: hidden;
             color: #eef4ff;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            min-height: 0;
         }
 
         .pos-left-panel {
@@ -2593,6 +2596,7 @@
             flex-direction: column;
             overflow: hidden;
             background: rgba(13, 18, 29, 0.6);
+            min-height: 0;
         }
 
         .pos-categories-section {
@@ -2837,6 +2841,7 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            min-height: 0;
             background: linear-gradient(180deg, rgba(18, 24, 40, 0.98), rgba(13, 18, 29, 0.95));
         }
 
@@ -2881,6 +2886,7 @@
             overflow-y: auto;
             display: flex;
             flex-direction: column;
+            min-height: 0;
         }
 
         .pos-form {
@@ -2890,6 +2896,7 @@
             padding: 12px;
             flex: 1;
             overflow-y: auto;
+            min-height: 0;
         }
 
         .pos-section {
@@ -2965,6 +2972,7 @@
             overflow-y: auto;
             padding: 0 12px;
             margin: 8px 0;
+            min-height: 0;
         }
 
         .pos-items-list {
@@ -3128,6 +3136,7 @@
             padding: 10px 12px;
             border-top: 1px solid rgba(255, 255, 255, 0.08);
             flex-shrink: 0;
+            background: linear-gradient(180deg, rgba(18, 24, 40, 0.95), rgba(13, 18, 29, 0.95));
         }
 
         .pos-save-btn {
@@ -3167,16 +3176,18 @@
                 grid-template-columns: 1fr;
                 height: auto;
                 max-height: 95vh;
+                min-height: 0;
             }
 
             .pos-left-panel {
                 border-right: none;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-                max-height: 45%;
+                max-height: 40vh;
             }
 
             .pos-right-panel {
-                min-height: 55%;
+                min-height: 0;
+                max-height: calc(95vh - 40vh - 28px);
             }
 
             .pos-products-grid {
