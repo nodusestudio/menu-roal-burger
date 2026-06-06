@@ -2868,6 +2868,40 @@ function saveCartState() {
     }
 }
 
+function playCartAddSound() {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) {
+            return;
+        }
+
+        if (!window.__roalBurgerCartAudioContext) {
+            window.__roalBurgerCartAudioContext = new AudioContext();
+        }
+
+        const audioContext = window.__roalBurgerCartAudioContext;
+        if (audioContext.state === 'suspended') {
+            audioContext.resume().catch(() => {});
+        }
+
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.12, audioContext.currentTime);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.08);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.08);
+    } catch (error) {
+        // Silence fallback for browsers without Web Audio support.
+    }
+}
+
 function getCartProductCount() {
     return shoppingCart.reduce((total, item) => total + Number(item.quantity || 0), 0);
 }
@@ -3272,7 +3306,10 @@ async function createOrderFromCart(customerInfo = {}) {
 
 function openCartDrawer() {
     if (!cartUI) {
-        return;
+        initCartUI();
+        if (!cartUI) {
+            return;
+        }
     }
     cartUI.drawer.classList.add('is-open');
     cartUI.overlay.classList.add('is-open');
@@ -3981,17 +4018,17 @@ function openCheckoutInfoModal() {
         : '';
     const introText = profile
         ? ''
-        : 'Confirma si el pedido es para domicilio o para recoger en el restaurante y completa los datos de contacto.';
+        : 'Selecciona si quieres recoger en el local o recibir a domicilio, luego completa tus datos de contacto.';
 
     const modal = document.createElement('div');
     modal.id = 'checkout-info-modal';
     modal.className = 'support-modal';
     modal.classList.add('is-open');
     modal.innerHTML = `
-        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Datos del pedido">
-            <button type="button" class="support-modal-close" aria-label="Cerrar datos del pedido">&times;</button>
-            <p class="support-modal-kicker">Antes de enviar</p>
-            <h3 class="support-modal-title">Datos del pedido</h3>
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Confirmar pedido">
+            <button type="button" class="support-modal-close" aria-label="Cerrar confirmación de pedido">&times;</button>
+            <p class="support-modal-kicker">Confirma tu pedido</p>
+            <h3 class="support-modal-title">Finaliza tu pedido</h3>
             ${introText ? `<p class="support-modal-text">${introText}</p>` : ''}
             ${profileSummaryMarkup}
             ${profile ? '' : `
@@ -4009,7 +4046,7 @@ function openCheckoutInfoModal() {
             </label>
             ${profile && savedAddresses.length ? `
             <label class="support-field" id="checkoutSavedAddressField" hidden>
-                <span>Enviar a</span>
+                <span>Elegir dirección</span>
                 <select id="checkoutSavedAddressChoice">
                     ${savedAddresses.map((entry, index) => `<option value="saved:${index}">Direccion ${index + 1}: ${escapeHtml(getCustomerSavedAddressLabel(entry))}</option>`).join('')}
                     <option value="new">Agregar direccion nueva</option>
@@ -4017,7 +4054,7 @@ function openCheckoutInfoModal() {
                 <p class="support-field-hint">Puedes usar una direccion guardada o escribir una nueva solo para este pedido.</p>
             </label>` : ''}
             <label class="support-field" id="checkoutDeliveryAddressField" hidden>
-                <span>${profile ? 'Direccion nueva del domicilio' : 'Direccion del domicilio'}</span>
+                <span>${profile ? 'Direccion de entrega' : 'Direccion de entrega'}</span>
                 <textarea id="checkoutDeliveryAddress" rows="4" placeholder="Escribe la direccion completa"></textarea>
             </label>
             <div class="checkout-map-panel" id="checkoutDeliveryMapPanel" hidden>
@@ -4042,7 +4079,7 @@ function openCheckoutInfoModal() {
             </label>`}
             <div class="customer-profile-summary customer-profile-summary-grid checkout-summary-grid">
                 <div id="checkoutDeliveryFeeRow" hidden>
-                    <span>Costo domicilio</span>
+                    <span>Costo de envío</span>
                     <strong id="checkoutDeliveryFeeValue">${formatCurrency(checkoutDeliveryFeeAmount)}</strong>
                 </div>
                 <div id="checkoutDiscountRow" hidden>
@@ -4056,7 +4093,7 @@ function openCheckoutInfoModal() {
             </div>
             <p class="support-feedback" id="checkoutInfoFeedback"></p>
             <div class="support-actions">
-                <button type="button" class="support-send-btn" id="checkoutSubmitButton">Enviar pedido</button>
+                <button type="button" class="support-send-btn" id="checkoutSubmitButton">Finalizar pedido</button>
             </div>
         </div>
     `;
@@ -4129,6 +4166,9 @@ function openCheckoutInfoModal() {
     syncBodyScrollLock();
     if (profile && checkoutInfoUI.address && !savedAddresses.length) {
         checkoutInfoUI.address.value = profile.address || '';
+    }
+    if (checkoutInfoUI.fulfillmentType) {
+        checkoutInfoUI.fulfillmentType.value = 'pickup';
     }
     updateCheckoutInfoModalState();
     (checkoutInfoUI.fulfillmentType || checkoutInfoUI.name)?.focus();
@@ -4221,12 +4261,16 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
     saveCartState();
     renderCartUI();
     openCartDrawer();
+    playCartAddSound();
     showCartAddedToast(safeCategoryName, safeProductName);
 }
 
 function renderCartUI() {
     if (!cartUI) {
-        return;
+        initCartUI();
+        if (!cartUI) {
+            return;
+        }
     }
 
     const totalItems = getCartProductCount();

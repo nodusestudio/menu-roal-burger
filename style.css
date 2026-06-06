@@ -977,30 +977,37 @@ a.is-ordering-closed {
 
 .category-chip-label {
     display: block;
-        font-size: 1rem;
-        font-weight: 600;
-        color: #5A3A1B;
-        display: block;
-        text-align: center;
-        width: 100%;
-        margin: 0 auto;
-    }
+    font-size: 1rem;
+    font-weight: 600;
+    color: #5A3A1B;
+    text-align: center;
+    width: 100%;
+    margin: 0 auto;
+}
 
-    .category-chip {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
+.category-chip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 96px;
+    gap: 10px;
+    padding: 12px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.75);
+    color: #2f170b;
+    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
 .category-chip:hover {
     border-color: rgba(255, 96, 0, 0.5);
+    background: rgba(255, 255, 255, 0.95);
     transform: translateY(-2px);
 }
 
 .category-chip.active {
-    border-color: rgba(255, 96, 0, 0.72);
-    background: linear-gradient(160deg, rgba(255, 96, 0, 0.2), rgba(255, 255, 255, 0.4));
+    border-color: rgba(255, 96, 0, 0.9);
+    background: linear-gradient(160deg, rgba(255, 96, 0, 0.28), rgba(255, 255, 255, 0.9));
 }
 
 .category-products-panel {
@@ -2231,12 +2238,34 @@ body.has-guest-register-banner .whatsapp-float {
 .support-field textarea,
 .support-field select {
     width: 100%;
-    border: 1px solid rgba(90, 58, 27, 0.16);
+    border: 1px solid rgba(90, 58, 27, 0.28);
     border-radius: 14px;
-    background: rgba(255, 251, 245, 0.92);
+    background: rgba(255, 255, 255, 0.98);
     color: #2a1b12;
     font: inherit;
-    padding: 12px 14px;
+    padding: 14px 16px;
+    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.support-field input:focus,
+.support-field textarea:focus,
+.support-field select:focus {
+    outline: none;
+    border-color: rgba(255, 96, 0, 0.75);
+    box-shadow: 0 0 0 3px rgba(255, 146, 57, 0.12);
+}
+
+.support-address-entry.is-active {
+    border-color: rgba(255, 96, 0, 0.65);
+    background: rgba(255, 247, 232, 0.92);
+}
+
+.support-category-chip {
+    justify-content: center;
+    min-height: 42px;
+    background: linear-gradient(135deg, rgba(255, 122, 0, 0.2), rgba(255, 90, 0, 0.24));
+    border: 1px solid rgba(165, 72, 0, 0.3);
+    color: #5a3a1b;
 }
 
 .support-password-wrap {
@@ -3101,8 +3130,9 @@ body.has-guest-register-banner .whatsapp-float {
     gap: 10px;
     padding: 14px;
     border-radius: 16px;
-    background: rgba(255, 255, 255, 0.32);
-    border: 1px solid rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
 .cart-item-info strong {

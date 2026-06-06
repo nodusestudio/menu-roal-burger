@@ -225,6 +225,31 @@ const salesDayStatusLabel = document.getElementById('salesDayStatusLabel');
 const salesDayStatusMeta = document.getElementById('salesDayStatusMeta');
 const salesDayDeliveredCount = document.getElementById('salesDayDeliveredCount');
 const salesDayDeliveredTotal = document.getElementById('salesDayDeliveredTotal');
+const openCreateInternalOrderBtn = document.getElementById('openCreateInternalOrderBtn');
+const internalOrderModal = document.getElementById('internalOrderModal');
+const internalOrderCloseBtn = document.getElementById('internalOrderCloseBtn');
+const internalOrderForm = document.getElementById('internalOrderForm');
+const internalOrderClientSelect = document.getElementById('internalOrderClientSelect');
+const internalOrderClientAddressField = document.getElementById('internalOrderClientAddressField');
+const internalOrderClientAddressSelect = document.getElementById('internalOrderClientAddressSelect');
+const internalOrderUseNewClientCheckbox = document.getElementById('internalOrderUseNewClient');
+const internalOrderNewClientFields = document.getElementById('internalOrderNewClientFields');
+const internalOrderNewClientNameInput = document.getElementById('internalOrderNewClientName');
+const internalOrderNewClientPhoneInput = document.getElementById('internalOrderNewClientPhone');
+const internalOrderNewClientAddressInput = document.getElementById('internalOrderNewClientAddress');
+const internalOrderTypeSelect = document.getElementById('internalOrderType');
+const internalOrderDeliveryAddressField = document.getElementById('internalOrderDeliveryAddressField');
+const internalOrderDeliveryAddressInput = document.getElementById('internalOrderDeliveryAddress');
+const internalOrderPaymentMethodSelect = document.getElementById('internalOrderPaymentMethod');
+const internalOrderProductCategorySelect = document.getElementById('internalOrderProductCategory');
+const internalOrderProductGrid = document.getElementById('internalOrderProductGrid');
+const internalOrderProductSelect = document.getElementById('internalOrderProductSelect');
+const internalOrderProductQuantityInput = document.getElementById('internalOrderProductQuantity');
+const internalOrderAddProductBtn = document.getElementById('internalOrderAddProductBtn');
+const internalOrderItemsSummary = document.getElementById('internalOrderItemsSummary');
+const internalOrderNotesInput = document.getElementById('internalOrderNotes');
+const internalOrderFeedback = document.getElementById('internalOrderFeedback');
+const internalOrderSaveBtn = document.getElementById('internalOrderSaveBtn');
 const salesSummaryDateFrom = document.getElementById('salesSummaryDateFrom');
 const salesSummaryDateTo = document.getElementById('salesSummaryDateTo');
 const salesSummaryFilterType = document.getElementById('salesSummaryFilterType');
@@ -346,6 +371,10 @@ let orderBellAudioContext = null;
 let editingCategoryContextId = null;
 let activeCategoryModalId = null;
 let activeClientEditId = null;
+let internalOrderItems = [];
+let internalOrderUseNewClient = false;
+let posSelectedCategory = null;
+let posCurrentClient = null;
 let clientsSearchTerm = '';
 let expandedClientAddressIds = new Set();
 let productClicksState = [];
@@ -1575,6 +1604,579 @@ async function fetchClients() {
             const bTs = b.lastOrderAt && typeof b.lastOrderAt.toMillis === 'function' ? b.lastOrderAt.toMillis() : 0;
             return bTs - aTs;
         });
+}
+
+function renderPosCategoriesPanel() {
+    const posCategoriesList = document.getElementById('posCategoriesList');
+    if (!posCategoriesList) {
+        return;
+    }
+
+    const categories = [...new Set(PUBLIC_PRODUCT_CATALOG.map((p) => String(p.categoria || 'Sin categoria').trim()))].sort();
+    const getCategoryThumbnail = (categoryName) => {
+        const foundProduct = PUBLIC_PRODUCT_CATALOG.find((p) => String(p.categoria || '').trim() === categoryName && String(p.image_url || '').trim());
+        return foundProduct ? String(foundProduct.image_url).trim() : 'logo.png';
+    };
+
+    posCategoriesList.innerHTML = categories
+        .map((cat) => {
+            const thumbnail = getCategoryThumbnail(cat);
+            return `
+                <button type="button" class="pos-category-btn category-chip ${posSelectedCategory === cat ? 'active' : ''}" data-category="${escapeHtml(cat)}">
+                    <img class="category-chip-thumb" src="${escapeHtml(thumbnail)}" alt="${escapeHtml(cat)}" loading="lazy" decoding="async" onerror="this.src='logo.png'" />
+                    <span class="category-chip-label">${escapeHtml(cat)}</span>
+                </button>
+            `;
+        })
+        .join('');
+
+    if (posCategoriesList.dataset.listenerAttached !== 'true') {
+        posCategoriesList.addEventListener('click', (event) => {
+            const btn = event.target.closest('.pos-category-btn');
+            if (!btn) return;
+            posSelectedCategory = btn.dataset.category;
+            renderPosCategoriesPanel();
+            renderPosProductsPanel();
+        });
+        posCategoriesList.dataset.listenerAttached = 'true';
+    }
+
+    if (!posSelectedCategory && categories.length > 0) {
+        posSelectedCategory = categories[0];
+        renderPosProductsPanel();
+    }
+}
+
+function renderPosProductsPanel() {
+    const posProductsPanel = document.getElementById('posProductsPanel');
+    if (!posProductsPanel) {
+        return;
+    }
+
+    if (!posSelectedCategory) {
+        posProductsPanel.innerHTML = '<p class="category-empty">Selecciona una categoria para ver productos.</p>';
+        return;
+    }
+
+    const categoryProducts = PUBLIC_PRODUCT_CATALOG
+            .filter((p) => String(p.categoria || '').trim() === posSelectedCategory && String(p.estado || 'active').trim() === 'active')
+        .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+
+    if (!categoryProducts.length) {
+        posProductsPanel.innerHTML = '<p class="category-empty">No hay productos disponibles</p>';
+        return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'category-products-list';
+
+    categoryProducts.forEach((product, index) => {
+        const row = document.createElement('div');
+        row.className = 'category-product-row';
+
+        const thumb = document.createElement('img');
+        thumb.className = 'category-product-thumb';
+        thumb.src = product.image_url || 'logo.png';
+        thumb.alt = product.nombre;
+        thumb.loading = 'lazy';
+        thumb.decoding = 'async';
+        thumb.addEventListener('error', () => {
+            thumb.src = 'logo.png';
+        });
+
+        const info = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = product.nombre;
+        const price = document.createElement('div');
+        price.className = 'muted';
+        price.textContent = formatMoney(Number(product.precio || 0));
+        info.appendChild(title);
+        info.appendChild(price);
+
+        const orderBtn = document.createElement('button');
+        orderBtn.type = 'button';
+        orderBtn.className = 'category-order-btn';
+        orderBtn.textContent = 'Agregar';
+        orderBtn.addEventListener('click', () => {
+            handlePosProductAdd(String(product.id || ''), String(product.nombre || ''), Number(product.precio || 0));
+        });
+
+        row.appendChild(thumb);
+        row.appendChild(info);
+        row.appendChild(orderBtn);
+        list.appendChild(row);
+    });
+
+    posProductsPanel.innerHTML = '';
+    const title = document.createElement('h4');
+    title.textContent = `${posSelectedCategory} (${categoryProducts.length})`;
+    title.style.margin = '0 0 10px';
+    title.style.color = '#5a4a3a';
+    title.style.fontSize = '1rem';
+    title.style.fontWeight = '700';
+    posProductsPanel.appendChild(title);
+    posProductsPanel.appendChild(list);
+}
+
+function handlePosProductAdd(productId, productName, productPrice) {
+    const selectedCategory = String(posSelectedCategory || '').trim();
+    if (isComboCategory(selectedCategory)) {
+        openComboBeverageModal(productId, productName, productPrice, selectedCategory);
+        return;
+    }
+
+    addProductToPosOrder(productId, productName, productPrice);
+}
+
+function isComboCategory(categoryName) {
+    return String(categoryName || '').toLowerCase().includes('combo');
+}
+
+function getBeverageOptions() {
+    return PUBLIC_PRODUCT_CATALOG
+        .filter((item) => String(item.categoria || '').trim().toLowerCase().includes('bebidas'))
+        .filter((item) => String(item.estado || 'active').trim() === 'active');
+}
+
+function openComboBeverageModal(productId, productName, productPrice, categoryName) {
+    const beverageOptions = getBeverageOptions();
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+
+    const card = document.createElement('div');
+    card.className = 'combo-modal-card';
+
+    const header = document.createElement('div');
+    header.className = 'combo-modal-header';
+    header.innerHTML = `<h4>Selecciona la bebida para <strong>${escapeHtml(productName)}</strong></h4><p class="combo-modal-subtitle">Categoria: ${escapeHtml(categoryName || 'Combo')}</p>`;
+
+    const optionsContainer = document.createElement('div');
+    optionsContainer.className = 'combo-modal-grid';
+
+    const createOptionButton = (option, label, extraClass = '') => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `combo-modal-option ${extraClass}`;
+        button.textContent = label;
+        button.addEventListener('click', () => {
+            overlay.remove();
+            const selectedName = option ? String(option.nombre || '').trim() : 'Sin bebida';
+            const selectedKey = option ? String(option.id || option.nombre || '').trim() : 'none';
+            const orderName = option ? `${productName} + ${selectedName}` : `${productName} (sin bebida)`;
+            const itemKey = `${String(productId).trim()}::${selectedKey}`;
+            addProductToPosOrder(itemKey, orderName, productPrice);
+        });
+        return button;
+    };
+
+    optionsContainer.appendChild(createOptionButton(null, 'Sin bebida', 'combo-modal-option-secondary'));
+
+    if (beverageOptions.length) {
+        beverageOptions.forEach((beverage) => {
+            optionsContainer.appendChild(createOptionButton(beverage, beverage.nombre));
+        });
+    } else {
+        const note = document.createElement('div');
+        note.className = 'combo-modal-note';
+        note.textContent = 'No se encontraron bebidas disponibles. Agregar el combo sin bebida.';
+        optionsContainer.appendChild(note);
+    }
+
+    const footer = document.createElement('div');
+    footer.className = 'combo-modal-footer';
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'combo-modal-close-btn';
+    closeBtn.textContent = 'Cancelar';
+    closeBtn.addEventListener('click', () => overlay.remove());
+    footer.appendChild(closeBtn);
+
+    card.appendChild(header);
+    card.appendChild(optionsContainer);
+    card.appendChild(footer);
+    overlay.appendChild(card);
+
+    overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+            overlay.remove();
+        }
+    });
+
+    document.body.appendChild(overlay);
+}
+
+function addProductToPosOrder(productId, productName, productPrice) {
+    productId = String(productId || '').trim();
+    productName = String(productName || 'Producto').trim();
+    productPrice = Number(productPrice || 0);
+
+    if (!productId) return;
+
+    const category = posSelectedCategory || 'Sin categoria';
+    const existing = internalOrderItems.find((item) => item.itemKey === productId);
+
+    if (existing) {
+        existing.quantity = Number(existing.quantity || 0) + 1;
+        existing.subtotal = Number(existing.quantity) * productPrice;
+    } else {
+        internalOrderItems.push({
+            itemKey: productId,
+            productId: productId,
+            productName,
+            categoryName: category,
+            quantity: 1,
+            unitPrice: productPrice,
+            subtotal: productPrice
+        });
+    }
+
+    renderPosOrderItems();
+    renderPosTotals();
+}
+
+function renderPosOrderItems() {
+    const itemsContainer = document.getElementById('internalOrderItemsSummary');
+    if (!itemsContainer) {
+        return;
+    }
+
+    if (!internalOrderItems.length) {
+            itemsContainer.innerHTML = '<div class="kanban-empty">Carrito vacio</div>';
+        return;
+    }
+
+    itemsContainer.innerHTML = internalOrderItems
+        .map((item) => `
+            <div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
+                <div class="pos-item-name">${escapeHtml(item.productName)}</div>
+                <div class="pos-item-qty-price">
+                    <div class="pos-item-qty">
+                            <button type="button" class="pos-qty-minus" data-item-key="${escapeHtml(item.itemKey)}">−</button>
+                        <input type="number" class="pos-qty-input" value="${item.quantity}" data-item-key="${escapeHtml(item.itemKey)}" min="1" />
+                            <button type="button" class="pos-qty-plus" data-item-key="${escapeHtml(item.itemKey)}">+</button>
+                    </div>
+                    <div class="pos-item-price">${formatMoney(Number(item.subtotal || 0))}</div>
+                    <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
+                </div>
+            </div>
+        `)
+        .join('');
+
+    if (itemsContainer.dataset.listenerAttached !== 'true') {
+        itemsContainer.addEventListener('click', (event) => {
+            const minusBtn = event.target.closest('.pos-qty-minus');
+            const plusBtn = event.target.closest('.pos-qty-plus');
+            const removeBtn = event.target.closest('.pos-item-remove');
+            const itemKey = (minusBtn || plusBtn || removeBtn)?.dataset.itemKey;
+            const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+
+            if (minusBtn && item) {
+                if (item.quantity > 1) {
+                    item.quantity--;
+                    item.subtotal = item.quantity * item.unitPrice;
+                } else {
+                    internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey);
+                }
+                renderPosOrderItems();
+                renderPosTotals();
+                return;
+            }
+
+            if (plusBtn && item) {
+                item.quantity++;
+                item.subtotal = item.quantity * item.unitPrice;
+                renderPosOrderItems();
+                renderPosTotals();
+                return;
+            }
+
+            if (removeBtn && itemKey) {
+                internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey);
+                renderPosOrderItems();
+                renderPosTotals();
+            }
+        });
+
+        itemsContainer.addEventListener('change', (event) => {
+            const input = event.target.closest('.pos-qty-input');
+            if (!input) return;
+            const itemKey = input.dataset.itemKey;
+            const quantity = Math.max(1, Number(input.value || 1));
+            const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+            if (item) {
+                item.quantity = quantity;
+                item.subtotal = quantity * item.unitPrice;
+                renderPosOrderItems();
+                renderPosTotals();
+            }
+        });
+
+        itemsContainer.dataset.listenerAttached = 'true';
+    }
+}
+
+function renderPosTotals() {
+    const subtotalElem = document.getElementById('posTotalSubtotal');
+    const totalElem = document.getElementById('posTotalFinal');
+    const discountInput = document.getElementById('internalOrderDiscount');
+
+    const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    const discount = Number(discountInput?.value || 0);
+    const total = Math.max(0, subtotal - discount);
+
+    if (subtotalElem) {
+        subtotalElem.textContent = formatMoney(subtotal);
+    }
+    if (totalElem) {
+        totalElem.textContent = formatMoney(total);
+    }
+}
+
+function populateInternalOrderClientSelect() {
+    if (!internalOrderClientSelect) {
+        return;
+    }
+
+    internalOrderClientSelect.innerHTML = '<option value="">Nuevo cliente</option>';
+    clientsState.forEach((client) => {
+        const option = document.createElement('option');
+        option.value = client.id;
+        option.textContent = `${client.customerName} · ${client.customerPhone}`;
+        internalOrderClientSelect.appendChild(option);
+    });
+}
+
+function renderInternalOrderClientAddressOptions() {
+    if (!internalOrderClientSelect || !internalOrderClientAddressField || !internalOrderClientAddressSelect) {
+        return;
+    }
+
+    const selectedClientId = String(internalOrderClientSelect.value || '').trim();
+    const selectedClient = clientsState.find((client) => client.id === selectedClientId);
+
+    if (!selectedClient) {
+        internalOrderClientAddressField.hidden = true;
+        internalOrderClientAddressSelect.innerHTML = '';
+        return;
+    }
+
+    const addresses = Array.isArray(selectedClient.savedAddresses) ? selectedClient.savedAddresses.filter((a) => String(a || '').trim()) : [];
+
+    if (!addresses.length) {
+        internalOrderClientAddressField.hidden = true;
+        internalOrderClientAddressSelect.innerHTML = '';
+        return;
+    }
+
+    internalOrderClientAddressSelect.innerHTML = addresses
+        .map((address) => `<option value="${escapeHtml(address)}">${escapeHtml(address)}</option>`)
+        .join('');
+    internalOrderClientAddressField.hidden = false;
+}
+
+function openInternalOrderModal() {
+    if (!internalOrderModal) {
+        return;
+    }
+
+    internalOrderItems = [];
+    internalOrderUseNewClient = false;
+    posSelectedCategory = null;
+    posCurrentClient = null;
+
+    if (internalOrderClientSelect) {
+        internalOrderClientSelect.value = '';
+    }
+    if (internalOrderClientAddressField) {
+        internalOrderClientAddressField.hidden = true;
+    }
+    if (internalOrderNewClientFields) {
+        internalOrderNewClientFields.hidden = true;
+    }
+    if (internalOrderTypeSelect) {
+        internalOrderTypeSelect.value = 'retiro';
+    }
+    if (internalOrderDeliveryAddressField) {
+        internalOrderDeliveryAddressField.hidden = true;
+    }
+    if (internalOrderPaymentMethodSelect) {
+        internalOrderPaymentMethodSelect.value = 'efectivo';
+    }
+    if (internalOrderNotesInput) {
+        internalOrderNotesInput.value = '';
+    }
+    if (internalOrderNewClientNameInput) {
+        internalOrderNewClientNameInput.value = '';
+    }
+    if (internalOrderNewClientPhoneInput) {
+        internalOrderNewClientPhoneInput.value = '';
+    }
+    if (internalOrderNewClientAddressInput) {
+        internalOrderNewClientAddressInput.value = '';
+    }
+
+    populateInternalOrderClientSelect();
+    renderPosCategoriesPanel();
+    renderPosOrderItems();
+    renderPosTotals();
+    hideModalFeedback(internalOrderFeedback);
+
+    internalOrderModal.classList.add('show');
+    internalOrderModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeInternalOrderModal() {
+    if (!internalOrderModal) {
+        return;
+    }
+
+    internalOrderModal.classList.remove('show');
+    internalOrderModal.setAttribute('aria-hidden', 'true');
+}
+
+async function submitInternalOrderForm(event) {
+    event.preventDefault();
+    hideNotice();
+    hideModalFeedback(internalOrderFeedback);
+
+    const useNewClient = !String(internalOrderClientSelect?.value || '').trim();
+    const selectedClientId = String(internalOrderClientSelect?.value || '').trim();
+    const selectedClient = clientsState.find((client) => client.id === selectedClientId);
+
+    const customerName = useNewClient
+        ? String(internalOrderNewClientNameInput?.value || '').trim()
+        : selectedClient?.customerName || '';
+    const customerPhone = useNewClient
+        ? String(internalOrderNewClientPhoneInput?.value || '').trim()
+        : selectedClient?.customerPhone || '';
+    const selectedClientAddress = !useNewClient && internalOrderClientAddressSelect
+        ? String(internalOrderClientAddressSelect.value || selectedClient?.address || '').trim()
+        : '';
+    const customerAddress = useNewClient
+        ? String(internalOrderNewClientAddressInput?.value || '').trim()
+        : selectedClientAddress || selectedClient?.address || '';
+    const orderType = String(internalOrderTypeSelect?.value || 'retiro').trim();
+    const deliveryAddress = orderType === 'domicilio'
+        ? String(internalOrderDeliveryAddressInput?.value || '').trim() || customerAddress
+        : customerAddress;
+    const paymentMethod = String(internalOrderPaymentMethodSelect?.value || 'efectivo').trim();
+    const discount = Number(internalOrderDiscount?.value || 0);
+
+    if (!customerName) {
+        showModalFeedback(internalOrderFeedback, 'Ingresa el nombre del cliente.', 'error');
+        return;
+    }
+    if (!customerPhone) {
+        showModalFeedback(internalOrderFeedback, 'Ingresa el telefono del cliente.', 'error');
+        return;
+    }
+    if (!customerAddress) {
+        showModalFeedback(internalOrderFeedback, 'Ingresa la direccion del cliente.', 'error');
+        return;
+    }
+    if (orderType === 'domicilio' && !deliveryAddress) {
+        showModalFeedback(internalOrderFeedback, 'Ingresa la direccion de entrega.', 'error');
+        return;
+    }
+    if (!internalOrderItems.length) {
+        showModalFeedback(internalOrderFeedback, 'Agrega al menos un producto al pedido.', 'error');
+        return;
+    }
+
+    try {
+        if (internalOrderSaveBtn) {
+            internalOrderSaveBtn.disabled = true;
+            internalOrderSaveBtn.textContent = 'Creando...';
+        }
+
+        const orderId = firebaseDb.collection(ORDERS_COLLECTION).doc().id;
+        const orderCode = `RB-${String(orderId || '').slice(-6).toUpperCase()}`;
+        const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+        const deliveryFee = orderType === 'domicilio' ? 0 : null;
+        const total = Math.max(0, (deliveryFee !== null ? subtotal + Number(deliveryFee) : subtotal) - discount);
+        const customerPhoneDigits = normalizePhoneDigits(customerPhone);
+        const clientId = useNewClient
+            ? buildAdminClientDocumentId({ customerName, customerPhone, address: customerAddress })
+            : selectedClientId;
+        const currentClient = clientsState.find((client) => client.id === clientId);
+        const clientTotalOrders = Number(currentClient?.totalOrders || 0) + 1;
+        const clientTotalSpent = Number(currentClient?.totalSpent || 0) + total;
+
+        await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set({
+            id: orderId,
+            code: orderCode,
+            customerName,
+            customerPhone,
+            customerPhoneDigits,
+            customerAddress,
+            deliveryAddress,
+            profileAddress: customerAddress,
+            paymentMethod,
+            cashChangeRequired: false,
+            cashTenderAmount: null,
+            orderType,
+            source: 'admin_panel',
+            status: 'pendiente',
+            items: internalOrderItems.map((item, index) => ({
+                index: index + 1,
+                itemKey: item.itemKey,
+                productId: item.productId,
+                productName: item.productName,
+                categoryName: item.categoryName,
+                quantity: Number(item.quantity || 0),
+                unitPrice: Number(item.unitPrice || 0),
+                subtotal: Number(item.subtotal || 0)
+            })),
+            itemCount: internalOrderItems.length,
+            totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+            subtotal,
+            discount,
+            deliveryFee,
+            total,
+            currency: 'COP',
+            summaryMessage: String(internalOrderNotesInput?.value || '').trim(),
+            createdAt: firestoreNow(),
+            updatedAt: firestoreNow()
+        });
+
+        await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
+            customerName,
+            customerPhone,
+            customerPhoneDigits,
+            address: customerAddress,
+            savedAddresses: [customerAddress],
+            totalOrders: clientTotalOrders,
+            totalSpent: clientTotalSpent,
+            lastOrderCode: orderCode,
+            lastOrderId: orderId,
+            lastOrderTotal: total,
+            firstOrderAt: currentClient?.firstOrderAt || firestoreNow(),
+            lastOrderAt: firestoreNow(),
+            source: currentClient?.source || 'admin_panel',
+            createdAt: currentClient?.createdAt || firestoreNow(),
+            updatedAt: firestoreNow()
+        }, { merge: true });
+
+        await reloadDataAndRender();
+        closeInternalOrderModal();
+        showNotice('Pedido creado correctamente.', 'ok');
+    } catch (error) {
+        showModalFeedback(internalOrderFeedback, `Error: ${error.message || 'error'}`, 'error');
+    } finally {
+        if (internalOrderSaveBtn) {
+            internalOrderSaveBtn.disabled = false;
+            internalOrderSaveBtn.textContent = 'Crear Pedido';
+        }
+    }
+}
+
+function closeInternalOrderModal() {
+    if (!internalOrderModal) {
+        return;
+    }
+
+    internalOrderModal.classList.remove('show');
+    internalOrderModal.setAttribute('aria-hidden', 'true');
 }
 
 async function fetchMessages() {
@@ -4953,6 +5555,62 @@ document.addEventListener('keydown', (event) => {
 if (openCreateClientBtn) {
     openCreateClientBtn.addEventListener('click', () => {
         openCreateClientModal();
+    });
+}
+
+if (openCreateInternalOrderBtn) {
+    openCreateInternalOrderBtn.addEventListener('click', () => {
+        openInternalOrderModal();
+    });
+}
+
+if (internalOrderCloseBtn) {
+    internalOrderCloseBtn.addEventListener('click', () => {
+        closeInternalOrderModal();
+    });
+}
+
+if (internalOrderForm) {
+    internalOrderForm.addEventListener('submit', submitInternalOrderForm);
+}
+
+if (internalOrderAddProductBtn) {
+    internalOrderAddProductBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        addSelectedProductToInternalOrder();
+    });
+}
+
+if (internalOrderProductCategorySelect) {
+    internalOrderProductCategorySelect.addEventListener('change', () => {
+        renderPosProductsPanel();
+    });
+}
+
+if (internalOrderProductGrid) {
+    internalOrderProductGrid.addEventListener('click', (event) => {
+        const btn = event.target.closest('.pos-add-product-btn');
+        if (!btn) return;
+        addProductToPosOrder(btn.dataset.productId, btn.dataset.productName, Number(btn.dataset.productPrice));
+    });
+}
+
+if (internalOrderClientSelect) {
+    internalOrderClientSelect.addEventListener('change', () => {
+        const isNewClient = !String(internalOrderClientSelect.value || '').trim();
+        if (internalOrderNewClientFields) {
+            internalOrderNewClientFields.hidden = !isNewClient;
+        }
+        renderInternalOrderClientAddressOptions();
+    });
+}
+
+if (internalOrderTypeSelect) {
+    internalOrderTypeSelect.addEventListener('change', () => {
+        if (!internalOrderDeliveryAddressField || !internalOrderTypeSelect) {
+            return;
+        }
+        internalOrderDeliveryAddressField.hidden = internalOrderTypeSelect.value !== 'domicilio';
     });
 }
 
