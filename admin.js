@@ -165,6 +165,7 @@ const defaultBranding = {
 const CONFIG_COLLECTION = 'configuracion';
 const CONFIG_DOC_ID = 'config_landing';
 const ORDERS_COLLECTION = 'pedidos';
+const CLIENTS_COLLECTION = 'clientes';
 
 const adminAuthForm = document.getElementById('adminAuthForm');
 const authUsernameInput = document.getElementById('authUsername');
@@ -193,6 +194,14 @@ const metricActiveCategoriesEl = document.getElementById('metricActiveCategories
 const metricAveragePriceEl = document.getElementById('metricAveragePrice');
 const metricWhatsappClicksEl = document.getElementById('metricWhatsappClicks');
 const metricDailyVisitorsEl = document.getElementById('metricDailyVisitors');
+const openCreateClientBtn = document.getElementById('openCreateClientBtn');
+const exportClientsBtn = document.getElementById('exportClientsBtn');
+const clientsExportFormat = document.getElementById('clientsExportFormat');
+const clientsExportScope = document.getElementById('clientsExportScope');
+const clientsSearchInput = document.getElementById('clientsSearchInput');
+const clientsList = document.getElementById('clientsList');
+const clientsCount = document.getElementById('clientsCount');
+const adminPublicLink = document.getElementById('adminPublicLink');
 const ordersBoard = document.getElementById('ordersBoard');
 const ordersColumnUnread = document.getElementById('ordersColumnUnread');
 const ordersColumnTakeaway = document.getElementById('ordersColumnTakeaway');
@@ -200,8 +209,11 @@ const ordersColumnDelivery = document.getElementById('ordersColumnDelivery');
 const ordersCountUnread = document.getElementById('ordersCountUnread');
 const ordersCountTakeaway = document.getElementById('ordersCountTakeaway');
 const ordersCountDelivery = document.getElementById('ordersCountDelivery');
+const ordersMobileTabs = document.getElementById('ordersMobileTabs');
 const orderTicketPanel = document.getElementById('orderTicketPanel');
 const orderTicketBody = document.getElementById('orderTicketBody');
+const mobileTicketCloseBtn = document.getElementById('mobileTicketCloseBtn');
+const mobileTicketBackdrop = document.getElementById('mobileTicketBackdrop');
 const previewRefreshBtn = document.getElementById('previewRefreshBtn');
 const liveMenuPreview = document.getElementById('liveMenuPreview');
 const previewViewportControls = document.getElementById('previewViewportControls');
@@ -248,6 +260,17 @@ const editProductImageFileInput = document.getElementById('editProductImageFile'
 const editProductImageUrlInput = document.getElementById('editProductImageUrl');
 const productEditSaveBtn = document.getElementById('productEditSaveBtn');
 
+const clientEditModal = document.getElementById('clientEditModal');
+const clientEditForm = document.getElementById('clientEditForm');
+const clientEditCloseBtn = document.getElementById('clientEditCloseBtn');
+const clientModalTitle = document.getElementById('clientModalTitle');
+const clientEditIdInput = document.getElementById('clientEditId');
+const clientEditNameInput = document.getElementById('clientEditName');
+const clientEditPhoneInput = document.getElementById('clientEditPhone');
+const clientEditAddressInput = document.getElementById('clientEditAddress');
+const clientEditFeedback = document.getElementById('clientEditFeedback');
+const clientEditSaveBtn = document.getElementById('clientEditSaveBtn');
+
 const buttonConfigForm = document.getElementById('buttonConfigForm');
 const buttonConfigList = document.getElementById('buttonConfigList');
 const buttonVolumeInput = document.getElementById('buttonVolume');
@@ -280,6 +303,7 @@ let categoriesState = [];
 let buttonsState = [];
 let brandingState = { ...defaultBranding };
 let ordersState = [];
+let clientsState = [];
 let selectedOrderId = null;
 let knownOrderIds = new Set();
 let hasLoadedOrdersOnce = false;
@@ -287,10 +311,14 @@ let orderAnnouncementQueue = Promise.resolve();
 let orderBellAudioContext = null;
 let editingCategoryContextId = null;
 let activeCategoryModalId = null;
+let activeClientEditId = null;
+let clientsSearchTerm = '';
 let productClicksState = [];
 let liveSubscriptions = [];
 let previewRefreshTimer = null;
 let ordersRealtimeTimer = null;
+let clipboardToastTimer = null;
+let activeMobileOrdersLane = 'takeaway';
 let metricsEventsState = {
     total: 0,
     whatsapp: 0,
@@ -314,6 +342,115 @@ function hideNotice() {
     }
     notice.className = 'notice';
     notice.textContent = '';
+}
+
+function showClipboardToast(message = 'Copiado') {
+    let toast = document.getElementById('clipboardToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'clipboardToast';
+        toast.className = 'clipboard-toast';
+        document.body.appendChild(toast);
+    }
+
+    toast.textContent = message;
+    toast.classList.add('show');
+
+    if (clipboardToastTimer) {
+        window.clearTimeout(clipboardToastTimer);
+    }
+
+    clipboardToastTimer = window.setTimeout(() => {
+        toast.classList.remove('show');
+    }, 1400);
+}
+
+function getSharedFirebaseConfig() {
+    return window.FIREBASE_CONFIG && typeof window.FIREBASE_CONFIG === 'object'
+        ? window.FIREBASE_CONFIG
+        : null;
+}
+
+function getFirebaseStorageFolder() {
+    return typeof window.FIREBASE_STORAGE_FOLDER === 'string' && window.FIREBASE_STORAGE_FOLDER.trim()
+        ? window.FIREBASE_STORAGE_FOLDER.trim()
+        : 'product-images';
+}
+
+function getAdminRuntimeConfig() {
+    return window.ROAL_ADMIN_RUNTIME_CONFIG && typeof window.ROAL_ADMIN_RUNTIME_CONFIG === 'object'
+        ? window.ROAL_ADMIN_RUNTIME_CONFIG
+        : {};
+}
+
+function isMobileAdminViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function applyMobileOrdersLane() {
+    const nextLane = activeMobileOrdersLane === 'delivery' ? 'delivery' : 'takeaway';
+
+    document.querySelectorAll('.orders-lane[data-mobile-lane]').forEach((lane) => {
+        const laneKey = String(lane.getAttribute('data-mobile-lane') || '').trim();
+        if (!isMobileAdminViewport()) {
+            lane.classList.remove('is-mobile-active');
+            return;
+        }
+
+        lane.classList.toggle('is-mobile-active', laneKey === nextLane);
+    });
+
+    document.querySelectorAll('[data-mobile-orders-tab]').forEach((tab) => {
+        const tabKey = String(tab.getAttribute('data-mobile-orders-tab') || '').trim();
+        const isActive = tabKey === nextLane;
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
+function openMobileTicketPanel() {
+    if (!isMobileAdminViewport()) {
+        return;
+    }
+
+    orderTicketPanel?.classList.add('is-mobile-open');
+    mobileTicketBackdrop?.classList.add('is-visible');
+    document.body.classList.add('ticket-mobile-open');
+}
+
+function closeMobileTicketPanel(options = {}) {
+    const shouldClearSelection = options.clearSelection === true;
+
+    orderTicketPanel?.classList.remove('is-mobile-open');
+    mobileTicketBackdrop?.classList.remove('is-visible');
+    document.body.classList.remove('ticket-mobile-open');
+
+    if (shouldClearSelection && selectedOrderId) {
+        selectedOrderId = null;
+    }
+}
+
+function syncResponsiveAdminState() {
+    applyMobileOrdersLane();
+
+    if (!isMobileAdminViewport()) {
+        closeMobileTicketPanel();
+    }
+}
+
+function resolvePublicAppUrl() {
+    const runtimeConfig = getAdminRuntimeConfig();
+    if (typeof runtimeConfig.publicAppUrl === 'string' && runtimeConfig.publicAppUrl.trim()) {
+        return runtimeConfig.publicAppUrl.trim();
+    }
+
+    return '/';
+}
+
+function applyAdminRuntimeLinks() {
+    if (adminPublicLink) {
+        adminPublicLink.href = resolvePublicAppUrl();
+    }
 }
 
 function showModalFeedback(element, text, type = 'ok') {
@@ -359,6 +496,21 @@ function normalizeCategoryKey(value) {
 
 function firestoreNow() {
     return firebase.firestore.FieldValue.serverTimestamp();
+}
+
+function normalizePhoneDigits(value) {
+    return String(value || '').replace(/\D+/g, '');
+}
+
+function buildAdminClientDocumentId(client = {}) {
+    const phoneDigits = normalizePhoneDigits(client.customerPhoneDigits || client.customerPhone);
+    if (phoneDigits) {
+        return `phone_${phoneDigits}`;
+    }
+
+    const nameKey = normalizeCategoryKey(client.customerName || 'cliente').replace(/[^a-z0-9]+/g, '_');
+    const addressKey = normalizeCategoryKey(client.address || 'sin_direccion').replace(/[^a-z0-9]+/g, '_');
+    return `client_${nameKey}_${addressKey}`.replace(/_+/g, '_');
 }
 
 function getSafeCustomerAnnouncementName(value) {
@@ -493,6 +645,7 @@ function setupAccordion() {
         categorias: ['categorias'],
         diseno: ['configuracion', 'botones'],
         pedidos: ['pedidos'],
+        clientes: ['clientes'],
         metricas: ['metricas']
     };
 
@@ -994,6 +1147,36 @@ async function fetchOrders() {
         .sort((a, b) => {
             const aTs = a.createdAt && typeof a.createdAt.toMillis === 'function' ? a.createdAt.toMillis() : 0;
             const bTs = b.createdAt && typeof b.createdAt.toMillis === 'function' ? b.createdAt.toMillis() : 0;
+            return bTs - aTs;
+        });
+}
+
+async function fetchClients() {
+    const snapshot = await firebaseDb.collection(CLIENTS_COLLECTION).get();
+    clientsState = snapshot.docs
+        .map((doc) => ({
+            id: doc.id,
+            ...doc.data()
+        }))
+        .map((raw) => ({
+            id: String(raw.id || '').trim(),
+            customerName: String(raw.customerName || '').trim() || 'Cliente sin nombre',
+            customerPhone: String(raw.customerPhone || '').trim() || 'No registrado',
+            customerPhoneDigits: String(raw.customerPhoneDigits || '').trim(),
+            address: String(raw.address || '').trim() || 'Sin direccion registrada',
+            firstOrderAt: raw.firstOrderAt || raw.createdAt || null,
+            lastOrderCode: String(raw.lastOrderCode || '').trim(),
+            lastOrderId: String(raw.lastOrderId || '').trim(),
+            lastOrderTotal: Number(raw.lastOrderTotal || 0),
+            totalOrders: Number(raw.totalOrders || 0),
+            totalSpent: Number(raw.totalSpent || 0),
+            lastOrderAt: raw.lastOrderAt || raw.updatedAt || raw.createdAt || null,
+            createdAt: raw.createdAt || null,
+            updatedAt: raw.updatedAt || null
+        }))
+        .sort((a, b) => {
+            const aTs = a.lastOrderAt && typeof a.lastOrderAt.toMillis === 'function' ? a.lastOrderAt.toMillis() : 0;
+            const bTs = b.lastOrderAt && typeof b.lastOrderAt.toMillis === 'function' ? b.lastOrderAt.toMillis() : 0;
             return bTs - aTs;
         });
 }
@@ -1669,6 +1852,7 @@ async function copyTextToClipboard(text) {
 
     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
         await navigator.clipboard.writeText(normalizedText);
+        showClipboardToast('Copiado');
         return true;
     }
 
@@ -1683,7 +1867,11 @@ async function copyTextToClipboard(text) {
     textarea.select();
 
     try {
-        return document.execCommand('copy');
+        const copied = document.execCommand('copy');
+        if (copied) {
+            showClipboardToast('Copiado');
+        }
+        return copied;
     } finally {
         textarea.remove();
     }
@@ -1788,6 +1976,16 @@ function buildTicketAddressLines(order) {
         .filter(Boolean);
 }
 
+function buildTicketCopyButton(label, value, options = {}) {
+    const safeValue = String(value || '').trim();
+    const safeLabel = escapeHtml(label);
+    const safeDisplay = escapeHtml(options.displayValue || safeValue || 'No registrado');
+    const safeCopyValue = escapeHtml(safeValue || 'No registrado');
+    const className = options.className ? ` ${escapeHtml(options.className)}` : '';
+
+    return `<button type="button" class="ticket-copy-btn${className}" data-order-ticket-action="copy" data-copy-label="${safeLabel}" data-copy-value="${safeCopyValue}">${safeDisplay}</button>`;
+}
+
 function buildThermalTicketMarkup(order, options = {}) {
     const printMode = options.printMode === true;
     const whatsappLink = buildOrderWhatsAppLink(order);
@@ -1799,7 +1997,7 @@ function buildThermalTicketMarkup(order, options = {}) {
     const orderHour = escapeHtml(formatOrderTime(order.createdAt));
     const elapsed = escapeHtml(formatElapsedTime(order.createdAt));
     const addressLines = buildTicketAddressLines(order)
-        .map((line) => `<div class="ticket-customer-row"><span>•</span><span>${escapeHtml(line)}</span></div>`)
+        .map((line) => `<div class="ticket-customer-row"><span>•</span>${buildTicketCopyButton('Direccion', line, { className: 'ticket-copy-btn-inline' })}</div>`)
         .join('');
 
     const rows = order.items.map((item) => {
@@ -1840,10 +2038,10 @@ function buildThermalTicketMarkup(order, options = {}) {
                 <section class="ticket-section">
                     <div class="ticket-section-title">Cliente</div>
                     <div class="ticket-customer-card">
-                        <strong class="ticket-customer-name">${escapeHtml(order.customerName || 'Cliente sin nombre')}</strong>
+                        ${buildTicketCopyButton('Cliente', order.customerName || 'Cliente sin nombre', { displayValue: order.customerName || 'Cliente sin nombre', className: 'ticket-copy-btn-name' })}
                         <div class="ticket-customer-row">
                             <span>Telefono</span>
-                            <span>${escapeHtml(order.customerPhone || 'No registrado')}</span>
+                            ${buildTicketCopyButton('Telefono', order.customerPhone || 'No registrado', { className: 'ticket-copy-btn-inline' })}
                         </div>
                         <div class="ticket-customer-row">
                             <span>Tipo</span>
@@ -1927,6 +2125,7 @@ function renderOrderTicket(order) {
     }
 
     orderTicketBody.innerHTML = buildThermalTicketMarkup(order);
+    openMobileTicketPanel();
 }
 
 function renderKanbanEmptyState(container) {
@@ -1969,6 +2168,7 @@ function createOrderCard(order) {
     const showDeliveryAction = !isUnreadOrder && isDeliveryOrder && order.status !== 'esperando_domiciliario' && order.status !== 'camino' && order.status !== 'entregado';
     const showPickupReadyAction = !isUnreadOrder && isPickupOrder && order.status !== 'listo_recoger' && order.status !== 'entregado';
     const showDeliveredAction = !isUnreadOrder && order.status !== 'entregado';
+    const showDeleteAction = order.status !== 'entregado';
     const waitingBadge = order.status === 'esperando_domiciliario'
         ? `
             <div class="kanban-order-status-row">
@@ -1990,6 +2190,7 @@ function createOrderCard(order) {
                 ${showPickupReadyAction ? `<button type="button" class="order-action-btn order-action-btn-ready" data-order-card-action="listo_recoger" data-order-id="${order.id}">Pedido listo</button>` : ''}
                 ${showDeliveryAction ? `<button type="button" class="order-action-btn" data-order-card-action="esperando_domiciliario" data-order-id="${order.id}">Pedir domiciliario</button>` : ''}
                 ${showDeliveredAction ? `<button type="button" class="order-action-btn order-action-btn-delivered" data-order-card-action="entregado" data-order-id="${order.id}">Pedido entregado</button>` : ''}
+                ${showDeleteAction ? `<button type="button" class="order-action-btn order-action-btn-delete" data-order-card-action="eliminar" data-order-id="${order.id}">Eliminar pedido</button>` : ''}
             </div>
         `
         : '';
@@ -2049,9 +2250,361 @@ function renderOrders() {
     const selectedOrder = ordersState.find((order) => order.id === selectedOrderId) || null;
     if (!selectedOrder) {
         selectedOrderId = null;
+        closeMobileTicketPanel();
     }
 
     renderOrderTicket(selectedOrder);
+    applyMobileOrdersLane();
+}
+
+function renderClients() {
+    if (!clientsList) {
+        return;
+    }
+
+    if (clientsCount) {
+        clientsCount.textContent = Number(clientsState.length).toLocaleString('es-CO');
+    }
+
+    const filteredClients = getFilteredClients();
+
+    clientsList.innerHTML = '';
+
+    if (!filteredClients.length) {
+        clientsList.innerHTML = '<tr><td class="client-empty-row" colspan="9">No hay clientes que coincidan con la busqueda actual.</td></tr>';
+        return;
+    }
+
+    filteredClients.forEach((client) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>
+                <div class="client-name-cell">
+                    <strong>${escapeHtml(client.customerName)}</strong>
+                    <span>${escapeHtml(client.id)}</span>
+                </div>
+            </td>
+            <td>${escapeHtml(client.customerPhone)}</td>
+            <td class="client-address-cell">${escapeHtml(client.address)}</td>
+            <td>${escapeHtml(formatOrderDate(client.firstOrderAt))}</td>
+            <td>${escapeHtml(formatOrderDate(client.lastOrderAt))}</td>
+            <td><span class="client-metric-chip">${escapeHtml(String(client.totalOrders))}</span></td>
+            <td>${escapeHtml(formatMoney(client.totalSpent))}</td>
+            <td>
+                <div class="client-name-cell">
+                    <strong>${escapeHtml(client.lastOrderCode || 'Sin codigo')}</strong>
+                    <span>${escapeHtml(formatMoney(client.lastOrderTotal || 0))}</span>
+                </div>
+            </td>
+            <td>
+                <div class="client-actions">
+                    <button type="button" class="client-action-btn" data-client-action="edit" data-client-id="${escapeHtml(client.id)}">Editar</button>
+                    <button type="button" class="client-action-btn delete" data-client-action="delete" data-client-id="${escapeHtml(client.id)}">Eliminar</button>
+                </div>
+            </td>
+        `;
+        clientsList.appendChild(row);
+    });
+}
+
+function getFilteredClients() {
+    return clientsState.filter((client) => {
+        if (!clientsSearchTerm) {
+            return true;
+        }
+
+        const haystack = [
+            client.customerName,
+            client.customerPhone,
+            client.address,
+            client.lastOrderCode
+        ].join(' | ');
+
+        return normalizeCategoryKey(haystack).includes(clientsSearchTerm);
+    });
+}
+
+function formatExportDate(value) {
+    if (!value) {
+        return '';
+    }
+
+    const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    return date.toISOString();
+}
+
+function escapeXml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
+function getClientExportColumns() {
+    return [
+        { key: 'id', label: 'ID Cliente' },
+        { key: 'nombre', label: 'Nombre' },
+        { key: 'telefono', label: 'Telefono' },
+        { key: 'telefono_digitos', label: 'Telefono Digitos' },
+        { key: 'direccion', label: 'Direccion' },
+        { key: 'primera_visita', label: 'Primera Visita' },
+        { key: 'ultima_visita', label: 'Ultima Visita' },
+        { key: 'total_pedidos', label: 'Total Pedidos' },
+        { key: 'gasto_total', label: 'Gasto Total' },
+        { key: 'ultimo_pedido_codigo', label: 'Ultimo Pedido Codigo' },
+        { key: 'ultimo_pedido_total', label: 'Ultimo Pedido Total' },
+        { key: 'creado_en', label: 'Creado En' },
+        { key: 'actualizado_en', label: 'Actualizado En' }
+    ];
+}
+
+function buildClientExportRows(clients) {
+    return clients.map((client) => ({
+        id: client.id,
+        nombre: client.customerName,
+        telefono: client.customerPhone,
+        telefono_digitos: client.customerPhoneDigits,
+        direccion: client.address,
+        primera_visita: formatExportDate(client.firstOrderAt),
+        ultima_visita: formatExportDate(client.lastOrderAt),
+        total_pedidos: Number(client.totalOrders || 0),
+        gasto_total: Number(client.totalSpent || 0),
+        ultimo_pedido_codigo: client.lastOrderCode || '',
+        ultimo_pedido_total: Number(client.lastOrderTotal || 0),
+        creado_en: formatExportDate(client.createdAt),
+        actualizado_en: formatExportDate(client.updatedAt)
+    }));
+}
+
+function downloadExportFile(filename, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+}
+
+function buildClientExportHtmlDocument(rows, columns, options = {}) {
+    const title = String(options.title || 'Clientes exportados').trim() || 'Clientes exportados';
+    const subtitle = String(options.subtitle || '').trim();
+    const generatedAt = new Intl.DateTimeFormat('es-CO', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+    }).format(new Date());
+    const tableRows = rows.map((row) => `
+            <tr>${columns.map((column) => `<td>${escapeHtml(String(row[column.key] ?? ''))}</td>`).join('')}</tr>
+        `).join('');
+
+    return `<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>${escapeHtml(title)}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+        h1 { margin-bottom: 8px; }
+        p { margin: 4px 0 12px; color: #4b5563; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #d0d7de; padding: 8px; text-align: left; vertical-align: top; }
+        th { background: #f3f4f6; }
+        @media print {
+            body { margin: 12mm; }
+            h1 { font-size: 18pt; }
+            table { font-size: 9pt; }
+        }
+    </style>
+</head>
+<body>
+    <h1>${escapeHtml(title)}</h1>
+    <p>Total: ${rows.length}</p>
+    <p>Generado: ${escapeHtml(generatedAt)}</p>
+    ${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}
+    <table>
+        <thead><tr>${columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join('')}</tr></thead>
+        <tbody>${tableRows}</tbody>
+    </table>
+</body>
+</html>`;
+}
+
+function printClientExportPdf(htmlContent) {
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1080,height=760');
+    if (!printWindow) {
+        throw new Error('El navegador bloqueo la ventana de impresion.');
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    printWindow.focus();
+    window.setTimeout(() => {
+        printWindow.print();
+    }, 250);
+}
+
+function exportClients(format, scope = 'filtered') {
+    const scopeKey = String(scope || 'filtered').trim().toLowerCase();
+    const selectedClients = scopeKey === 'all' ? [...clientsState] : getFilteredClients();
+    if (!selectedClients.length) {
+        showNotice(
+            scopeKey === 'all'
+                ? 'No hay clientes para exportar.'
+                : 'No hay clientes para exportar con el filtro actual.',
+            'error'
+        );
+        return;
+    }
+
+    const rows = buildClientExportRows(selectedClients);
+    const columns = getClientExportColumns();
+    const headers = columns.map((column) => column.key);
+    const headerLabels = columns.map((column) => column.label);
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const formatKey = String(format || 'csv').trim().toLowerCase();
+    const scopeLabel = scopeKey === 'all' ? 'todos los clientes' : 'los clientes filtrados';
+
+    if (formatKey === 'json') {
+        downloadExportFile(`clientes-${stamp}.json`, JSON.stringify(rows, null, 2), 'application/json;charset=utf-8');
+        showNotice(`Clientes exportados en JSON (${rows.length}).`, 'ok');
+        return;
+    }
+
+    if (formatKey === 'txt') {
+        const content = rows.map((row, index) => {
+            return [
+                `Cliente ${index + 1}`,
+                ...headers.map((header) => `${header}: ${row[header] ?? ''}`)
+            ].join('\r\n');
+        }).join('\r\n\r\n');
+        downloadExportFile(`clientes-${stamp}.txt`, content, 'text/plain;charset=utf-8');
+        showNotice(`Clientes exportados en TXT (${rows.length}).`, 'ok');
+        return;
+    }
+
+    if (formatKey === 'html') {
+        const content = buildClientExportHtmlDocument(rows, columns, {
+            title: 'Clientes exportados',
+            subtitle: `Se exportaron ${scopeLabel}.`
+        });
+        downloadExportFile(`clientes-${stamp}.html`, content, 'text/html;charset=utf-8');
+        showNotice(`Clientes exportados en HTML (${rows.length}).`, 'ok');
+        return;
+    }
+
+    if (formatKey === 'xml') {
+        const content = `<?xml version="1.0" encoding="UTF-8"?>\n<clientes>${rows.map((row) => `\n  <cliente>${headers.map((header) => `\n    <${header}>${escapeXml(row[header] ?? '')}</${header}>`).join('')}\n  </cliente>`).join('')}\n</clientes>\n`;
+        downloadExportFile(`clientes-${stamp}.xml`, content, 'application/xml;charset=utf-8');
+        showNotice(`Clientes exportados en XML (${rows.length}).`, 'ok');
+        return;
+    }
+
+    if (formatKey === 'pdf') {
+        const printableHtml = buildClientExportHtmlDocument(rows, columns, {
+            title: 'Clientes exportados en PDF',
+            subtitle: `Se exportaron ${scopeLabel}. Usa Guardar como PDF en la ventana de impresion.`
+        });
+        printClientExportPdf(printableHtml);
+        showNotice(`Vista lista para exportar ${rows.length} clientes en PDF.`, 'ok');
+        return;
+    }
+
+    const separator = formatKey === 'tsv' ? '\t' : ',';
+    const extension = formatKey === 'tsv' ? 'tsv' : 'csv';
+    const mimeType = formatKey === 'tsv' ? 'text/tab-separated-values;charset=utf-8' : 'text/csv;charset=utf-8';
+    const csvContent = [
+        headerLabels.join(separator),
+        ...rows.map((row) => headers.map((header) => {
+            const rawValue = String(row[header] ?? '');
+            const escapedValue = rawValue.replace(/"/g, '""');
+            return formatKey === 'tsv' ? escapedValue : `"${escapedValue}"`;
+        }).join(separator))
+    ].join('\r\n');
+
+    downloadExportFile(`clientes-${stamp}.${extension}`, csvContent, mimeType);
+    showNotice(`Clientes exportados en ${extension.toUpperCase()} (${rows.length}).`, 'ok');
+}
+
+function closeClientEditModal() {
+    if (!clientEditModal || !clientEditForm) {
+        return;
+    }
+
+    clientEditModal.classList.remove('show');
+    clientEditModal.setAttribute('aria-hidden', 'true');
+    clientEditForm.reset();
+    activeClientEditId = null;
+    hideModalFeedback(clientEditFeedback);
+
+    if (clientEditSaveBtn) {
+        clientEditSaveBtn.disabled = false;
+        clientEditSaveBtn.textContent = 'Guardar cliente';
+    }
+}
+
+function openCreateClientModal() {
+    if (!clientEditModal) {
+        return;
+    }
+
+    activeClientEditId = null;
+    clientEditForm?.reset();
+    hideModalFeedback(clientEditFeedback);
+    if (clientModalTitle) {
+        clientModalTitle.textContent = 'Agregar cliente';
+    }
+    if (clientEditSaveBtn) {
+        clientEditSaveBtn.textContent = 'Guardar cliente';
+        clientEditSaveBtn.disabled = false;
+    }
+    clientEditModal.classList.add('show');
+    clientEditModal.setAttribute('aria-hidden', 'false');
+    clientEditNameInput?.focus();
+}
+
+function openEditClientModal(client) {
+    if (!clientEditModal || !client || !clientEditForm) {
+        return;
+    }
+
+    activeClientEditId = client.id;
+    hideModalFeedback(clientEditFeedback);
+    if (clientModalTitle) {
+        clientModalTitle.textContent = 'Editar cliente';
+    }
+    if (clientEditIdInput) {
+        clientEditIdInput.value = client.id;
+    }
+    if (clientEditNameInput) {
+        clientEditNameInput.value = client.customerName;
+    }
+    if (clientEditPhoneInput) {
+        clientEditPhoneInput.value = client.customerPhone;
+    }
+    if (clientEditAddressInput) {
+        clientEditAddressInput.value = client.address;
+    }
+    if (clientEditSaveBtn) {
+        clientEditSaveBtn.textContent = 'Guardar cambios';
+        clientEditSaveBtn.disabled = false;
+    }
+
+    clientEditModal.classList.add('show');
+    clientEditModal.setAttribute('aria-hidden', 'false');
+    clientEditNameInput?.focus();
+}
+
+async function deleteClient(clientId) {
+    await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).delete();
 }
 
 async function updateOrder(orderId, updates) {
@@ -2059,6 +2612,10 @@ async function updateOrder(orderId, updates) {
         ...updates,
         updatedAt: firestoreNow()
     }, { merge: true });
+}
+
+async function deleteOrder(orderId) {
+    await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).delete();
 }
 
 function openOrderPrintTicket(orderId) {
@@ -2366,7 +2923,7 @@ function setupLiveFirebaseSync() {
     liveSubscriptions.forEach((unsubscribe) => unsubscribe());
     liveSubscriptions = [];
 
-    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION];
+    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION, CLIENTS_COLLECTION];
     collections.forEach((collectionName) => {
         const unsubscribe = firebaseDb.collection(collectionName).onSnapshot(() => {
             reloadDataAndRender();
@@ -2666,7 +3223,7 @@ function withTimeout(promise, timeoutMs, timeoutMessage) {
 async function uploadImageToFirebase(file, productName) {
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const safeName = slugify(productName) || 'producto';
-    const path = `${FIREBASE_STORAGE_FOLDER}/${safeName}-${Date.now()}.${ext}`;
+    const path = `${getFirebaseStorageFolder()}/${safeName}-${Date.now()}.${ext}`;
 
     const storageRef = firebaseStorage.ref().child(path);
     await withTimeout(
@@ -2876,6 +3433,7 @@ async function reloadDataAndRender() {
         fetchButtons(),
         fetchBranding(),
         fetchOrders(),
+        fetchClients(),
         fetchProductClickMetrics()
     ]);
 
@@ -2885,6 +3443,7 @@ async function reloadDataAndRender() {
     renderButtonsList();
     renderBrandingForm();
     renderOrders();
+    renderClients();
     renderMetricsChart();
     await syncStats();
     renderMetricsOverview();
@@ -3108,6 +3667,20 @@ if (productEditModal) {
     });
 }
 
+if (clientEditCloseBtn) {
+    clientEditCloseBtn.addEventListener('click', () => {
+        closeClientEditModal();
+    });
+}
+
+if (clientEditModal) {
+    clientEditModal.addEventListener('click', (event) => {
+        if (event.target === clientEditModal) {
+            closeClientEditModal();
+        }
+    });
+}
+
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && productEditModal && productEditModal.classList.contains('show')) {
         closeProductEditModal();
@@ -3126,8 +3699,184 @@ document.addEventListener('keydown', (event) => {
 
     if (event.key === 'Escape' && categoryProductsModal && categoryProductsModal.classList.contains('show')) {
         closeCategoryProductsModal();
+        return;
+    }
+
+    if (event.key === 'Escape' && clientEditModal && clientEditModal.classList.contains('show')) {
+        closeClientEditModal();
     }
 });
+
+if (openCreateClientBtn) {
+    openCreateClientBtn.addEventListener('click', () => {
+        openCreateClientModal();
+    });
+}
+
+if (clientsSearchInput) {
+    clientsSearchInput.addEventListener('input', () => {
+        clientsSearchTerm = normalizeCategoryKey(clientsSearchInput.value || '');
+        renderClients();
+    });
+}
+
+if (exportClientsBtn) {
+    exportClientsBtn.addEventListener('click', () => {
+        try {
+            exportClients(clientsExportFormat?.value || 'csv', clientsExportScope?.value || 'filtered');
+        } catch (error) {
+            showNotice(`No se pudo exportar clientes: ${error.message || 'error inesperado.'}`, 'error');
+        }
+    });
+}
+
+if (ordersMobileTabs) {
+    ordersMobileTabs.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const tab = target.closest('[data-mobile-orders-tab]');
+        if (!(tab instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        activeMobileOrdersLane = String(tab.dataset.mobileOrdersTab || 'takeaway').trim() || 'takeaway';
+        applyMobileOrdersLane();
+    });
+}
+
+mobileTicketCloseBtn?.addEventListener('click', () => {
+    closeMobileTicketPanel({ clearSelection: true });
+    renderOrders();
+});
+
+mobileTicketBackdrop?.addEventListener('click', () => {
+    closeMobileTicketPanel({ clearSelection: true });
+    renderOrders();
+});
+
+window.addEventListener('resize', () => {
+    syncResponsiveAdminState();
+});
+
+if (clientsList) {
+    clientsList.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const actionButton = target.closest('button[data-client-action]');
+        if (!(actionButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const action = String(actionButton.dataset.clientAction || '').trim();
+        const clientId = String(actionButton.dataset.clientId || '').trim();
+        if (!action || !clientId) {
+            return;
+        }
+
+        const client = clientsState.find((entry) => entry.id === clientId);
+        if (!client) {
+            showNotice('No se encontro el cliente seleccionado.', 'error');
+            return;
+        }
+
+        if (action === 'edit') {
+            openEditClientModal(client);
+            return;
+        }
+
+        if (action === 'delete') {
+            const confirmed = window.confirm(`Eliminar el cliente ${client.customerName}? Esta accion no se puede deshacer.`);
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                await deleteClient(clientId);
+                showNotice('Cliente eliminado correctamente.', 'ok');
+            } catch (error) {
+                showNotice(`No se pudo eliminar el cliente: ${error.message || 'error inesperado.'}`, 'error');
+            }
+        }
+    });
+}
+
+if (clientEditForm) {
+    clientEditForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice();
+        hideModalFeedback(clientEditFeedback);
+
+        const customerName = String(clientEditNameInput?.value || '').trim();
+        const customerPhone = String(clientEditPhoneInput?.value || '').trim();
+        const address = String(clientEditAddressInput?.value || '').trim();
+        const customerPhoneDigits = normalizePhoneDigits(customerPhone);
+
+        if (!customerName || !customerPhone || !address) {
+            showModalFeedback(clientEditFeedback, 'Completa nombre, telefono y direccion.', 'error');
+            return;
+        }
+
+        const duplicatedClient = clientsState.find((client) => {
+            if (activeClientEditId && client.id === activeClientEditId) {
+                return false;
+            }
+
+            return customerPhoneDigits && normalizePhoneDigits(client.customerPhoneDigits || client.customerPhone) === customerPhoneDigits;
+        });
+
+        if (duplicatedClient) {
+            showModalFeedback(clientEditFeedback, 'Ya existe un cliente con ese telefono.', 'error');
+            return;
+        }
+
+        if (clientEditSaveBtn) {
+            clientEditSaveBtn.disabled = true;
+            clientEditSaveBtn.textContent = 'Guardando...';
+        }
+
+        try {
+            const clientId = activeClientEditId || buildAdminClientDocumentId({
+                customerName,
+                customerPhone,
+                address
+            });
+            const currentClient = clientsState.find((client) => client.id === clientId);
+
+            await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
+                customerName,
+                customerPhone,
+                customerPhoneDigits,
+                address,
+                totalOrders: Number(currentClient?.totalOrders || 0),
+                totalSpent: Number(currentClient?.totalSpent || 0),
+                lastOrderCode: String(currentClient?.lastOrderCode || '').trim(),
+                lastOrderId: String(currentClient?.lastOrderId || '').trim(),
+                lastOrderTotal: Number(currentClient?.lastOrderTotal || 0),
+                firstOrderAt: currentClient?.firstOrderAt || firestoreNow(),
+                lastOrderAt: currentClient?.lastOrderAt || null,
+                source: activeClientEditId ? (currentClient?.source || 'admin_panel') : 'admin_panel',
+                createdAt: currentClient?.createdAt || firestoreNow(),
+                updatedAt: firestoreNow()
+            }, { merge: true });
+
+            await reloadDataAndRender();
+            closeClientEditModal();
+            showNotice(activeClientEditId ? 'Cliente actualizado correctamente.' : 'Cliente creado correctamente.', 'ok');
+        } catch (error) {
+            showModalFeedback(clientEditFeedback, `No se pudo guardar el cliente: ${error.message || 'error inesperado.'}`, 'error');
+            if (clientEditSaveBtn) {
+                clientEditSaveBtn.disabled = false;
+                clientEditSaveBtn.textContent = activeClientEditId ? 'Guardar cambios' : 'Guardar cliente';
+            }
+        }
+    });
+}
 
 if (ordersBoard) {
     ordersBoard.addEventListener('click', async (event) => {
@@ -3166,6 +3915,20 @@ if (ordersBoard) {
                             : 'Pedido recibido y movido a su columna. No se pudo copiar el mensaje automaticamente.',
                         copied ? 'ok' : 'error'
                     );
+                    return;
+                }
+
+                if (nextStatus === 'eliminar') {
+                    const confirmed = window.confirm(`Eliminar el pedido ${order.code}? Esta accion no se puede deshacer.`);
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    await deleteOrder(orderId);
+                    if (selectedOrderId === orderId) {
+                        selectedOrderId = null;
+                    }
+                    showNotice('Pedido eliminado correctamente.', 'ok');
                     return;
                 }
 
@@ -3233,6 +3996,21 @@ if (orderTicketPanel) {
 
         const actionButton = target.closest('button[data-order-ticket-action]');
         if (!(actionButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        if (actionButton.dataset.orderTicketAction === 'copy') {
+            const copyValue = String(actionButton.dataset.copyValue || '').trim();
+            const copyLabel = String(actionButton.dataset.copyLabel || 'Dato').trim();
+
+            try {
+                const copied = await copyTextToClipboard(copyValue);
+                if (!copied) {
+                    showNotice(`No se pudo copiar ${copyLabel.toLowerCase()} automaticamente.`, 'error');
+                }
+            } catch (error) {
+                showNotice(`No se pudo copiar ${copyLabel.toLowerCase()}: ${error.message || 'error inesperado.'}`, 'error');
+            }
             return;
         }
 
@@ -3738,10 +4516,17 @@ if (adminSignOutBtn) {
 
 async function initAdmin() {
     try {
+        if (!getSharedFirebaseConfig()) {
+            throw new Error('No se encontro FIREBASE_CONFIG compartido.');
+        }
+
         const services = initFirebaseServices();
         firebaseDb = services.db;
         firebaseStorage = services.storage;
         firebaseAuth = services.auth;
+
+        applyAdminRuntimeLinks();
+        syncResponsiveAdminState();
 
         await ensureAdminAuth();
 

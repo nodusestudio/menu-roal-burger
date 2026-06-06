@@ -474,6 +474,10 @@
             min-height: 72vh;
         }
 
+        .orders-mobile-tabs {
+            display: none;
+        }
+
         .orders-lane,
         .ticket-panel {
             position: relative;
@@ -749,6 +753,17 @@
             border-color: rgba(47, 111, 221, 0.5);
         }
 
+        .order-action-btn-delete {
+            background: rgba(214, 75, 75, 0.18);
+            border-color: rgba(214, 75, 75, 0.34);
+            color: #ffd0d0;
+        }
+
+        .order-action-btn-delete:hover {
+            background: rgba(214, 75, 75, 0.28);
+            border-color: rgba(214, 75, 75, 0.48);
+        }
+
         .kanban-order-card-compact {
             padding: 12px 14px;
             gap: 0;
@@ -797,6 +812,21 @@
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
+        .ticket-close-btn {
+            display: none;
+            width: 44px;
+            height: 44px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+        }
+
         .ticket-title {
             font-family: 'Space Grotesk', sans-serif;
             color: #fff;
@@ -828,6 +858,29 @@
             display: block;
             color: #fff;
             margin-bottom: 10px;
+        }
+
+        .ticket-copy-btn {
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            padding: 0;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .ticket-copy-btn:hover {
+            color: #ff8c3a;
+        }
+
+        .ticket-copy-btn-name {
+            font-weight: 700;
+            font-size: 1.08rem;
+        }
+
+        .ticket-copy-btn-inline {
+            justify-self: end;
         }
 
         .ticket-paper-wrap {
@@ -1036,6 +1089,10 @@
             opacity: 0.6;
             cursor: not-allowed;
             box-shadow: none;
+        }
+
+        .mobile-ticket-backdrop {
+            display: none;
         }
 
         @keyframes orderPulse {
@@ -1603,6 +1660,31 @@
             color: #ffd3d3;
             background: rgba(220, 70, 70, 0.15);
             border-color: rgba(220, 70, 70, 0.35);
+        }
+
+        .clipboard-toast {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 10120;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: rgba(24, 198, 122, 0.94);
+            color: #03150c;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+            opacity: 0;
+            transform: translateY(10px);
+            pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+
+        .clipboard-toast.show {
+            opacity: 1;
+            transform: translateY(0);
         }
 
         .modal-feedback {
@@ -2223,6 +2305,167 @@
             background: rgba(255, 122, 26, 0.18);
         }
 
+        .clients-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .clients-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .clients-toolbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .clients-search-wrap {
+            min-width: min(100%, 320px);
+            flex: 1 1 260px;
+        }
+
+        .clients-search-input {
+            width: 100%;
+            min-height: 42px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            padding: 0 14px;
+        }
+
+        .clients-search-input::placeholder {
+            color: rgba(198, 205, 216, 0.7);
+        }
+
+        .clients-export-select {
+            min-width: 190px;
+            min-height: 42px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            padding: 0 14px;
+        }
+
+        .clients-export-select option {
+            color: #0c1322;
+        }
+
+        .clients-table-wrap {
+            overflow: auto;
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(7, 12, 24, 0.58);
+        }
+
+        .clients-table {
+            width: 100%;
+            min-width: 980px;
+            border-collapse: collapse;
+        }
+
+        .clients-table thead th {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 0.76rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--admin-muted);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.04);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .clients-table tbody td {
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            vertical-align: middle;
+            color: #fff;
+        }
+
+        .clients-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .client-name-cell {
+            display: grid;
+            gap: 4px;
+        }
+
+        .client-name-cell strong {
+            font-family: 'Space Grotesk', sans-serif;
+            color: #fff;
+        }
+
+        .client-name-cell span,
+        .client-address-cell,
+        .client-empty-row {
+            color: var(--admin-muted);
+        }
+
+        .client-metric-chip {
+            min-height: 30px;
+            padding: 0 10px;
+            border-radius: 999px;
+            background: rgba(47, 111, 221, 0.18);
+            border: 1px solid rgba(47, 111, 221, 0.32);
+            color: #cfe5ff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .client-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .client-action-btn {
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            border-radius: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .client-action-btn:hover {
+            background: rgba(255, 160, 74, 0.16);
+            border-color: rgba(255, 160, 74, 0.4);
+        }
+
+        .client-action-btn.delete {
+            background: rgba(214, 75, 75, 0.16);
+            border-color: rgba(214, 75, 75, 0.34);
+            color: #ffd0d0;
+        }
+
+        .client-action-btn.delete:hover {
+            background: rgba(214, 75, 75, 0.24);
+            border-color: rgba(214, 75, 75, 0.46);
+        }
+
+        .client-empty-row {
+            text-align: center;
+            padding: 24px 16px !important;
+        }
+
         .card-head h2,
         .admin-card h2 {
             font-family: 'Space Grotesk', sans-serif;
@@ -2485,9 +2728,52 @@
             }
         }
 
-        @media (max-width: 860px) {
+        @media (max-width: 1024px) {
+            .admin-shell {
+                display: grid;
+                grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+                align-items: start;
+            }
+
+            .admin-sidebar {
+                position: sticky;
+                top: 0;
+                width: auto;
+                height: 100vh;
+                padding: 18px 12px 20px;
+                overflow-y: auto;
+                background: linear-gradient(180deg, rgba(8, 12, 24, 0.94), rgba(9, 14, 22, 0.84));
+                border-right: 1px solid rgba(255, 255, 255, 0.06);
+                -webkit-backdrop-filter: blur(18px);
+                backdrop-filter: blur(18px);
+            }
+
+            .admin-page {
+                padding: 20px 18px 36px;
+            }
+
+            .orders-workspace {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .orders-lanes {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                min-height: 0;
+            }
+
+            .ticket-panel {
+                position: static;
+                min-height: 0;
+            }
+        }
+
+        @media (max-width: 768px) {
             body.admin-unlocked {
                 overflow: auto;
+            }
+
+            body.ticket-mobile-open.admin-unlocked {
+                overflow: hidden;
             }
 
             .admin-shell {
@@ -2505,6 +2791,10 @@
                 height: auto;
                 overflow: visible;
                 padding: 0 12px;
+                background: transparent;
+                border-right: 0;
+                -webkit-backdrop-filter: none;
+                backdrop-filter: none;
             }
 
             .admin-accordion {
@@ -2530,23 +2820,221 @@
                 grid-template-columns: 1fr;
             }
 
-            .orders-workspace,
-            .orders-lanes {
-                grid-template-columns: 1fr;
+            .admin-header {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 16px;
             }
 
-            .ticket-panel {
-                position: static;
-                min-height: 0;
+            .session-actions {
+                width: 100%;
+            }
+
+            .session-actions .admin-link,
+            .session-actions .preview-refresh-btn {
+                flex: 1 1 180px;
+                justify-content: center;
+                text-align: center;
+            }
+
+            .admin-title-wrap h1 {
+                font-size: clamp(1.45rem, 7vw, 2rem);
+                letter-spacing: 1px;
+            }
+
+            .orders-workspace {
+                grid-template-columns: 1fr;
+                gap: 14px;
+            }
+
+            .orders-mobile-tabs {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+                margin-bottom: 8px;
+                position: sticky;
+                top: 8px;
+                z-index: 4;
+            }
+
+            .orders-mobile-tab {
+                min-height: 46px;
+                border-radius: 14px;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                background: rgba(255, 255, 255, 0.08);
+                color: #fff;
+                font-family: 'Space Grotesk', sans-serif;
+                font-size: 0.82rem;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                cursor: pointer;
+            }
+
+            .orders-mobile-tab.active {
+                background: linear-gradient(135deg, rgba(255, 123, 69, 0.92), rgba(255, 183, 96, 0.92));
+                color: #0d1117;
+                border-color: rgba(255, 255, 255, 0.24);
+            }
+
+            .orders-lanes {
+                grid-template-columns: 1fr;
+                gap: 12px;
             }
 
             .orders-lane {
                 min-height: 0;
+                padding: 14px;
             }
 
-            .admin-header {
-                flex-direction: column;
-                align-items: flex-start;
+            .orders-lane[data-mobile-lane] {
+                display: none;
+            }
+
+            .orders-lane[data-mobile-lane].is-mobile-active {
+                display: grid;
+            }
+
+            .kanban-list {
+                gap: 10px;
+            }
+
+            .kanban-order-card {
+                padding: 16px;
+                border-radius: 20px;
+                gap: 12px;
+                -webkit-backdrop-filter: none;
+                backdrop-filter: none;
+            }
+
+            .kanban-order-name {
+                font-size: 1rem;
+                line-height: 1.25;
+            }
+
+            .kanban-order-code,
+            .kanban-order-total {
+                font-size: 0.94rem;
+            }
+
+            .order-action-btn {
+                min-height: 46px;
+                padding: 12px 14px;
+                font-size: 0.82rem;
+            }
+
+            .ticket-panel {
+                position: fixed;
+                inset: 0;
+                z-index: 42;
+                display: none;
+                grid-template-rows: auto minmax(0, 1fr);
+                gap: 14px;
+                padding: 16px;
+                height: 100dvh;
+                border-radius: 0;
+                border: 0;
+                background: linear-gradient(180deg, rgba(6, 10, 20, 0.98), rgba(10, 13, 22, 0.98));
+                box-shadow: none;
+                overflow: hidden;
+                -webkit-backdrop-filter: none;
+                backdrop-filter: none;
+            }
+
+            .ticket-panel::before {
+                display: none;
+            }
+
+            .ticket-panel.is-mobile-open {
+                display: grid;
+            }
+
+            .ticket-header {
+                position: sticky;
+                top: 0;
+                z-index: 3;
+                padding: 6px 0 12px;
+                background: linear-gradient(180deg, rgba(6, 10, 20, 0.98), rgba(6, 10, 20, 0.84));
+            }
+
+            .ticket-close-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                position: absolute;
+                top: 0;
+                right: 0;
+            }
+
+            .ticket-title {
+                font-size: 0.96rem;
+            }
+
+            .ticket-note {
+                max-width: calc(100% - 64px);
+                font-size: 0.9rem;
+            }
+
+            .ticket-empty {
+                min-height: 44vh;
+                padding: 22px 18px;
+            }
+
+            .ticket-body {
+                min-height: 0;
+                overflow-y: auto;
+                padding-bottom: 16px;
+            }
+
+            .ticket-paper {
+                border-radius: 20px;
+                padding: 20px 16px 18px;
+            }
+
+            .ticket-paper-wrap {
+                padding-bottom: 0;
+            }
+
+            .ticket-print-row {
+                position: sticky;
+                bottom: 0;
+                z-index: 5;
+                margin: 0;
+                padding-top: 8px;
+                padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+                border-top: 1px solid rgba(255, 255, 255, 0.08);
+                background: linear-gradient(180deg, rgba(4, 7, 14, 0.78), rgba(4, 7, 14, 0.96));
+                box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.24);
+            }
+
+            .ticket-print-btn {
+                min-height: 52px;
+                font-size: 0.96rem;
+                letter-spacing: 0.8px;
+                box-shadow: 0 18px 32px rgba(255, 123, 69, 0.34);
+            }
+
+            .mobile-ticket-backdrop {
+                position: fixed;
+                inset: 0;
+                z-index: 41;
+                display: none;
+                background: rgba(2, 6, 14, 0.68);
+            }
+
+            .mobile-ticket-backdrop.is-visible {
+                display: block;
+            }
+
+            .section-toolbar,
+            .clients-toolbar,
+            .clients-toolbar-actions {
+                justify-content: stretch;
+            }
+
+            .section-toolbar > *,
+            .clients-toolbar-actions > * {
+                width: 100%;
             }
         }
     </style>
@@ -2593,7 +3081,7 @@
                 <h1>Admin ROAL</h1>
             </div>
             <div class="session-actions">
-                <a class="admin-link" href="index.html" target="_blank" rel="noopener noreferrer">Ir a Publico</a>
+                <a class="admin-link" id="adminPublicLink" href="/" target="_blank" rel="noopener noreferrer">Ir a Publico</a>
                 <button type="button" class="preview-refresh-btn" id="adminSignOutBtn">Cerrar sesion</button>
             </div>
         </header>
@@ -2603,6 +3091,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="diseno"><span class="nav-icon">🎨</span><span>Diseno</span></button>
             <button type="button" class="admin-accordion-trigger active" data-accordion-target="categorias"><span class="nav-icon">📂</span><span>Categorias</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="pedidos"><span class="nav-icon">🧾</span><span>Pedidos</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
         </nav>
 
@@ -2646,8 +3135,12 @@
                     </div>
                     <div class="card-body" id="card-orders">
                         <div class="orders-workspace">
+                            <div class="orders-mobile-tabs" id="ordersMobileTabs" aria-label="Cambiar vista de pedidos en movil">
+                                <button type="button" class="orders-mobile-tab active" data-mobile-orders-tab="takeaway">Llevar</button>
+                                <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="delivery">Domicilios</button>
+                            </div>
                             <div class="orders-lanes" id="ordersBoard">
-                                <section class="orders-lane">
+                                <section class="orders-lane" data-mobile-lane="unread">
                                     <div class="orders-lane-header">
                                         <div class="orders-lane-title">
                                             <span class="orders-lane-icon" aria-hidden="true">📥</span>
@@ -2660,7 +3153,7 @@
                                     </div>
                                     <div class="kanban-list" id="ordersColumnUnread"></div>
                                 </section>
-                                <section class="orders-lane">
+                                <section class="orders-lane is-mobile-active" data-mobile-lane="takeaway">
                                     <div class="orders-lane-header">
                                         <div class="orders-lane-title">
                                             <span class="orders-lane-icon" aria-hidden="true">🛍️</span>
@@ -2673,7 +3166,7 @@
                                     </div>
                                     <div class="kanban-list" id="ordersColumnTakeaway"></div>
                                 </section>
-                                <section class="orders-lane">
+                                <section class="orders-lane" data-mobile-lane="delivery">
                                     <div class="orders-lane-header">
                                         <div class="orders-lane-title">
                                             <span class="orders-lane-icon" aria-hidden="true">🛵</span>
@@ -2693,6 +3186,7 @@
                                         <div class="ticket-title">Previsualizacion de Ticket</div>
                                         <p class="ticket-note">Selecciona una orden para imprimir solo el recibo termico.</p>
                                     </div>
+                                    <button type="button" class="ticket-close-btn" id="mobileTicketCloseBtn" aria-label="Cerrar ticket">&times;</button>
                                 </div>
                                 <div class="ticket-body" id="orderTicketBody">
                                     <div class="ticket-empty">
@@ -2703,6 +3197,7 @@
                                     </div>
                                 </div>
                             </aside>
+                            <div class="mobile-ticket-backdrop" id="mobileTicketBackdrop" aria-hidden="true"></div>
                         </div>
                     </div>
                 </article>
@@ -2775,6 +3270,63 @@
                             <p class="muted" id="previewAddress">Direccion</p>
                             <p class="muted" id="previewLocation">Ubicacion</p>
                             <p class="muted" id="previewSocials">Redes sociales</p>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="clientes">
+                <div class="section-toolbar clients-toolbar">
+                    <div class="clients-toolbar-actions">
+                        <button type="button" class="section-action-btn primary" id="openCreateClientBtn">+ Agregar cliente</button>
+                        <select id="clientsExportFormat" class="clients-export-select" aria-label="Formato de exportacion de clientes">
+                            <option value="csv">CSV</option>
+                            <option value="json">JSON</option>
+                            <option value="txt">TXT</option>
+                            <option value="html">HTML</option>
+                            <option value="xml">XML</option>
+                            <option value="pdf">PDF</option>
+                            <option value="tsv">Excel compatible (TSV)</option>
+                        </select>
+                        <select id="clientsExportScope" class="clients-export-select" aria-label="Alcance de exportacion de clientes">
+                            <option value="filtered">Solo filtrados</option>
+                            <option value="all">Todos los clientes</option>
+                        </select>
+                        <button type="button" class="section-action-btn" id="exportClientsBtn">Exportar clientes</button>
+                        <button type="button" class="section-save-btn" disabled>Clientes guardados en Firebase</button>
+                    </div>
+                    <label class="clients-search-wrap" for="clientsSearchInput">
+                        <input type="search" id="clientsSearchInput" class="clients-search-input" placeholder="Buscar por nombre, telefono o direccion">
+                    </label>
+                </div>
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Base de Clientes</h2>
+                        <span class="kanban-count" id="clientsCount">0</span>
+                    </div>
+                    <div class="clients-grid">
+                        <p class="muted">Base centralizada de clientes con nombre, contacto, direccion, visitas, gasto total y acciones de gestion.</p>
+                        <div class="clients-table-wrap">
+                            <table class="clients-table">
+                                <thead>
+                                    <tr>
+                                        <th>Cliente</th>
+                                        <th>Contacto</th>
+                                        <th>Direccion</th>
+                                        <th>Primera visita</th>
+                                        <th>Ultima visita</th>
+                                        <th>Total pedidos</th>
+                                        <th>Gasto total</th>
+                                        <th>Ultimo pedido</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="clientsList">
+                                    <tr>
+                                        <td class="client-empty-row" colspan="9">Aun no hay clientes registrados.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </article>
@@ -2971,6 +3523,34 @@
                     <input type="text" id="editProductImageUrl" name="editProductImageUrl" placeholder="Ej: PLUS.png o https://...">
                 </div>
                 <button type="submit" class="admin-button" id="productEditSaveBtn">Guardar cambios</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="product-edit-modal" id="clientEditModal" aria-hidden="true">
+        <div class="product-edit-card">
+            <div class="product-edit-head">
+                <h3 id="clientModalTitle">Agregar cliente</h3>
+                <button type="button" class="product-edit-close" id="clientEditCloseBtn">&times;</button>
+            </div>
+            <form id="clientEditForm" class="admin-form">
+                <input type="hidden" id="clientEditId" name="clientEditId">
+                <div class="admin-field">
+                    <label for="clientEditName">Nombre</label>
+                    <input type="text" id="clientEditName" name="clientEditName" required>
+                </div>
+                <div class="admin-field">
+                    <label for="clientEditPhone">Telefono</label>
+                    <input type="text" id="clientEditPhone" name="clientEditPhone" required>
+                </div>
+                <div class="admin-field full">
+                    <label for="clientEditAddress">Direccion</label>
+                    <input type="text" id="clientEditAddress" name="clientEditAddress" required>
+                </div>
+                <div class="admin-field full">
+                    <div id="clientEditFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
+                </div>
+                <button type="submit" class="admin-button" id="clientEditSaveBtn">Guardar cliente</button>
             </form>
         </div>
     </div>

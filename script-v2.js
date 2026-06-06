@@ -2,6 +2,7 @@
 
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 const ORDERS_COLLECTION = 'pedidos';
+const CLIENTS_COLLECTION = 'clientes';
 const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
 const ORDER_CODE_PREFIX = 'RB';
 const ORDER_CODE_START = 2026;
@@ -228,6 +229,47 @@ function getPublicServerTimestamp() {
     }
 
     return new Date();
+}
+
+function buildClientDocumentId(customerInfo = {}) {
+    const phoneDigits = String(customerInfo.customerPhoneDigits || customerInfo.customerPhone || '').replace(/\D+/g, '');
+    if (phoneDigits) {
+        return `phone_${phoneDigits}`;
+    }
+
+    const nameKey = normalizeCategoryKey(customerInfo.customerName || 'cliente').replace(/[^a-z0-9]+/g, '_');
+    const addressKey = normalizeCategoryKey(customerInfo.deliveryAddress || customerInfo.fulfillmentType || 'sin_direccion').replace(/[^a-z0-9]+/g, '_');
+    return `client_${nameKey}_${addressKey}`.replace(/_+/g, '_');
+}
+
+async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
+    const clientId = buildClientDocumentId(customerInfo);
+    const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+
+    await db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(clientRef);
+        const previous = snapshot.exists ? snapshot.data() : {};
+        const previousTotalOrders = Number(previous.totalOrders || 0);
+        const previousTotalSpent = Number(previous.totalSpent || 0);
+        const resolvedAddress = String(customerInfo.deliveryAddress || previous.address || (customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' : 'Sin direccion registrada')).trim();
+
+        transaction.set(clientRef, {
+            customerName: String(customerInfo.customerName || previous.customerName || '').trim(),
+            customerPhone: String(customerInfo.customerPhone || previous.customerPhone || '').trim(),
+            customerPhoneDigits: String(customerInfo.customerPhoneDigits || previous.customerPhoneDigits || '').replace(/\D+/g, ''),
+            address: resolvedAddress,
+            lastOrderCode: String(orderInfo.code || previous.lastOrderCode || '').trim(),
+            lastOrderId: String(orderInfo.id || previous.lastOrderId || '').trim(),
+            lastOrderTotal: Number(orderInfo.total || previous.lastOrderTotal || 0),
+            totalOrders: previousTotalOrders + 1,
+            totalSpent: previousTotalSpent + Number(orderInfo.total || 0),
+            source: 'web',
+            firstOrderAt: previous.firstOrderAt || getPublicServerTimestamp(),
+            createdAt: previous.createdAt || getPublicServerTimestamp(),
+            updatedAt: getPublicServerTimestamp(),
+            lastOrderAt: getPublicServerTimestamp()
+        }, { merge: true });
+    });
 }
 
 function syncBusinessHoursStatus() {
@@ -1065,6 +1107,18 @@ async function createOrderFromCart(customerInfo = {}) {
             cashChangeRequired,
             cashTenderAmount
         })
+    });
+
+    await upsertClientProfile(db, {
+        customerName,
+        customerPhone,
+        customerPhoneDigits,
+        deliveryAddress,
+        fulfillmentType
+    }, {
+        id: orderRef.id,
+        code: orderCode,
+        total
     });
 
     return {
