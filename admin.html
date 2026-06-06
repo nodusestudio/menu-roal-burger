@@ -3669,10 +3669,42 @@
                 justify-content: stretch;
             }
 
+            .card-head,
+            .sales-summary-card-head,
+            .message-request-head {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .card-head .kanban-count,
+            .sales-summary-card-head .sales-summary-badge,
+            .message-request-head .message-status-chip {
+                align-self: flex-start;
+            }
+
+            .clients-search-wrap {
+                min-width: 100%;
+                flex-basis: 100%;
+            }
+
             .section-toolbar > *,
             .clients-toolbar-actions > *,
             .sales-summary-filters > * {
                 width: 100%;
+            }
+
+            .message-request-actions {
+                grid-template-columns: 1fr;
+                display: grid;
+            }
+
+            .message-request-btn,
+            .card-head .card-collapse-btn {
+                width: 100%;
+            }
+
+            .client-name-cell {
+                max-width: none;
             }
 
             .sales-summary-overview,
