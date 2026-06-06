@@ -3549,7 +3549,7 @@
             .ticket-body {
                 min-height: 0;
                 overflow-y: auto;
-                padding-bottom: 16px;
+                padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
             }
 
             .ticket-paper {
@@ -3609,7 +3609,7 @@
             }
 
             .ticket-paper-wrap {
-                padding-bottom: 0;
+                padding-bottom: 12px;
             }
 
             .ticket-print-row {
