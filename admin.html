@@ -467,6 +467,57 @@
             align-items: start;
         }
 
+        .sales-day-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+            padding: 16px 18px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: linear-gradient(135deg, rgba(255, 160, 74, 0.14), rgba(47, 111, 221, 0.16));
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .sales-day-banner-copy {
+            display: grid;
+            gap: 4px;
+        }
+
+        .sales-day-banner-copy strong {
+            color: #fff;
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .sales-day-banner-copy span {
+            color: rgba(222, 235, 255, 0.8);
+            font-size: 0.84rem;
+        }
+
+        .sales-day-banner-metrics {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .sales-day-chip {
+            min-height: 36px;
+            padding: 0 14px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #fff;
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
         .orders-lanes {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1121,6 +1172,223 @@
 
         .mobile-ticket-backdrop {
             display: none;
+        }
+
+        .sales-summary-toolbar {
+            align-items: stretch;
+        }
+
+        .sales-summary-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            width: 100%;
+            justify-content: flex-end;
+        }
+
+        .sales-summary-filters .clients-export-select {
+            min-width: 220px;
+        }
+
+        .sales-summary-date-input {
+            min-width: 180px;
+            min-height: 48px;
+            padding: 0 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(8, 13, 24, 0.78);
+            color: #fff;
+            font: inherit;
+        }
+
+        .sales-summary-date-input:focus {
+            outline: none;
+            border-color: var(--admin-accent);
+            box-shadow: 0 0 0 3px rgba(255, 123, 69, 0.18);
+        }
+
+        .sales-summary-overview {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .sales-summary-stat {
+            padding: 18px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(9, 15, 29, 0.42));
+            display: grid;
+            gap: 8px;
+        }
+
+        .sales-summary-stat span {
+            color: var(--admin-muted);
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .sales-summary-stat strong {
+            color: #fff;
+            font-size: 1.48rem;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .sales-summary-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .sales-summary-empty {
+            padding: 28px;
+            border-radius: 20px;
+            border: 1px dashed rgba(255, 255, 255, 0.18);
+            color: var(--admin-muted);
+            text-align: center;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .sales-summary-card {
+            display: grid;
+            gap: 16px;
+            padding: 18px;
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(9, 15, 29, 0.42));
+        }
+
+        .sales-summary-card-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .sales-summary-card-head strong {
+            display: block;
+            color: #fff;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1rem;
+        }
+
+        .sales-summary-card-head span,
+        .sales-summary-card-head p,
+        .sales-summary-meta,
+        .sales-summary-breakdown-note {
+            color: var(--admin-muted);
+        }
+
+        .sales-summary-card-head p {
+            margin: 6px 0 0;
+            font-size: 0.84rem;
+        }
+
+        .sales-summary-badge {
+            min-height: 34px;
+            padding: 0 12px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(67, 192, 156, 0.18);
+            border: 1px solid rgba(67, 192, 156, 0.32);
+            color: #d6fff0;
+            font-weight: 700;
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .sales-summary-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 14px;
+            font-size: 0.82rem;
+        }
+
+        .sales-summary-metrics {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .sales-summary-metric {
+            padding: 14px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: grid;
+            gap: 6px;
+        }
+
+        .sales-summary-metric span {
+            color: var(--admin-muted);
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .sales-summary-metric strong {
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        .sales-summary-breakdown {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .sales-summary-panel {
+            padding: 16px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            display: grid;
+            gap: 12px;
+        }
+
+        .sales-summary-panel h3 {
+            margin: 0;
+            color: #fff;
+            font-size: 0.9rem;
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .sales-summary-breakdown-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .sales-summary-breakdown-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 10px;
+            align-items: start;
+        }
+
+        .sales-summary-breakdown-row strong {
+            color: #fff;
+            display: block;
+        }
+
+        .sales-summary-breakdown-row span {
+            display: block;
+            color: var(--admin-muted);
+            font-size: 0.78rem;
+            margin-top: 3px;
+        }
+
+        .sales-summary-breakdown-row em {
+            font-style: normal;
+            color: #ffdd9f;
+            font-weight: 700;
+            white-space: nowrap;
         }
 
         @keyframes orderPulse {
@@ -2437,7 +2705,8 @@
         .clients-table {
             width: 100%;
             min-width: 980px;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0 10px;
         }
 
         .clients-table thead th {
@@ -2455,14 +2724,30 @@
         }
 
         .clients-table tbody td {
-            padding: 14px 16px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 12px 16px;
             vertical-align: middle;
             color: #fff;
+            background: rgba(255, 255, 255, 0.035);
+            border-top: 1px solid rgba(255, 255, 255, 0.07);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .clients-table tbody tr:hover {
             background: rgba(255, 255, 255, 0.04);
+        }
+
+        .clients-table tbody tr.client-row td:first-child,
+        .clients-table tbody tr.client-address-detail-row td:first-child {
+            border-left: 1px solid rgba(255, 255, 255, 0.07);
+            border-top-left-radius: 14px;
+            border-bottom-left-radius: 14px;
+        }
+
+        .clients-table tbody tr.client-row td:last-child,
+        .clients-table tbody tr.client-address-detail-row td:last-child {
+            border-right: 1px solid rgba(255, 255, 255, 0.07);
+            border-top-right-radius: 14px;
+            border-bottom-right-radius: 14px;
         }
 
         .messages-grid {
@@ -2587,18 +2872,110 @@
 
         .client-name-cell {
             display: grid;
-            gap: 4px;
+            gap: 3px;
+            max-width: 220px;
         }
 
         .client-name-cell strong {
             font-family: 'Space Grotesk', sans-serif;
             color: #fff;
+            line-height: 1.2;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         .client-name-cell span,
         .client-address-cell,
         .client-empty-row {
             color: var(--admin-muted);
+        }
+
+        .client-name-cell span {
+            line-height: 1.2;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .client-address-cell {
+            min-width: 240px;
+        }
+
+        .client-address-primary {
+            color: #fff;
+            line-height: 1.2;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .client-address-toggle {
+            margin-top: 6px;
+            border: none;
+            background: transparent;
+            padding: 0;
+            color: #ffb577;
+            font-size: 0.76rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .client-address-muted {
+            display: block;
+            margin-top: 6px;
+            font-size: 0.74rem;
+            color: rgba(207, 216, 235, 0.62);
+        }
+
+        .client-address-detail-row td {
+            padding: 0 16px 14px;
+            background: transparent;
+            border: none;
+        }
+
+        .client-address-detail-box {
+            display: grid;
+            gap: 10px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            background: rgba(18, 28, 44, 0.84);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .client-address-detail-box strong {
+            color: #fff;
+            font-size: 0.82rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .client-address-detail-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .client-address-detail-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 30px;
+            padding: 0 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #dfe9f8;
+            font-size: 0.76rem;
+        }
+
+        .client-address-detail-chip.is-primary {
+            background: rgba(47, 111, 221, 0.2);
+            border-color: rgba(95, 149, 234, 0.34);
+            color: #cfe5ff;
         }
 
         .client-metric-chip {
@@ -3223,13 +3600,21 @@
 
             .section-toolbar,
             .clients-toolbar,
-            .clients-toolbar-actions {
+            .clients-toolbar-actions,
+            .sales-summary-filters {
                 justify-content: stretch;
             }
 
             .section-toolbar > *,
-            .clients-toolbar-actions > * {
+            .clients-toolbar-actions > *,
+            .sales-summary-filters > * {
                 width: 100%;
+            }
+
+            .sales-summary-overview,
+            .sales-summary-metrics,
+            .sales-summary-breakdown {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -3286,6 +3671,8 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="diseno"><span class="nav-icon">🎨</span><span>Diseno</span></button>
             <button type="button" class="admin-accordion-trigger active" data-accordion-target="categorias"><span class="nav-icon">📂</span><span>Categorias</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="pedidos"><span class="nav-icon">🧾</span><span>Pedidos</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="resumen-ventas"><span class="nav-icon">💰</span><span>Resumen de ventas</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="libro"><span class="nav-icon">📚</span><span>Libro</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
@@ -3322,6 +3709,7 @@
 
             <div class="admin-tab-panel" data-tab-panel="pedidos">
                 <div class="section-toolbar">
+                    <button type="button" class="section-action-btn primary" id="closeSalesDayBtn">Cierre del dia</button>
                     <button type="button" class="section-save-btn" data-section-save="pedidos">Actualizar pedidos</button>
                 </div>
                 <article class="admin-card">
@@ -3330,6 +3718,16 @@
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-orders" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-orders">
+                        <div class="sales-day-banner" id="salesDayBanner">
+                            <div class="sales-day-banner-copy">
+                                <strong id="salesDayStatusLabel">Jornada activa</strong>
+                                <span id="salesDayStatusMeta">Abierta ahora mismo.</span>
+                            </div>
+                            <div class="sales-day-banner-metrics">
+                                <span class="sales-day-chip" id="salesDayDeliveredCount">0 entregados</span>
+                                <span class="sales-day-chip" id="salesDayDeliveredTotal">$0</span>
+                            </div>
+                        </div>
                         <div class="orders-workspace">
                             <div class="orders-mobile-tabs" id="ordersMobileTabs" aria-label="Cambiar vista de pedidos en movil">
                                 <button type="button" class="orders-mobile-tab active" data-mobile-orders-tab="takeaway">Llevar</button>
@@ -3394,6 +3792,92 @@
                                 </div>
                             </aside>
                             <div class="mobile-ticket-backdrop" id="mobileTicketBackdrop" aria-hidden="true"></div>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="resumen-ventas">
+                <div class="section-toolbar sales-summary-toolbar">
+                    <button type="button" class="section-save-btn" data-section-save="resumen-ventas">Actualizar resumen</button>
+                    <div class="sales-summary-filters">
+                        <input type="date" id="salesSummaryDateFrom" class="sales-summary-date-input" aria-label="Fecha inicial del resumen de ventas">
+                        <input type="date" id="salesSummaryDateTo" class="sales-summary-date-input" aria-label="Fecha final del resumen de ventas">
+                        <select id="salesSummaryFilterType" class="clients-export-select" aria-label="Filtrar resumen por tipo">
+                            <option value="all">Todas las ventas</option>
+                            <option value="category">Por categoria</option>
+                            <option value="product">Por producto</option>
+                        </select>
+                        <select id="salesSummaryFilterValue" class="clients-export-select" aria-label="Valor del filtro de ventas" disabled>
+                            <option value="">Selecciona un filtro</option>
+                        </select>
+                    </div>
+                </div>
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Resumen de ventas</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-sales-summary" aria-expanded="true">Retraer</button>
+                    </div>
+                    <div class="card-body" id="card-sales-summary">
+                        <div class="sales-summary-overview" id="salesSummaryOverview">
+                            <div class="sales-summary-stat">
+                                <span>Total cerrado</span>
+                                <strong id="salesSummaryTotalAmount">$0</strong>
+                            </div>
+                            <div class="sales-summary-stat">
+                                <span>Pedidos cerrados</span>
+                                <strong id="salesSummaryTotalOrders">0</strong>
+                            </div>
+                            <div class="sales-summary-stat">
+                                <span>Jornadas</span>
+                                <strong id="salesSummaryTotalDays">0</strong>
+                            </div>
+                        </div>
+                        <div class="sales-summary-list" id="salesSummaryList"></div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="libro">
+                <div class="section-toolbar sales-summary-toolbar">
+                    <button type="button" class="section-save-btn" data-section-save="libro">Actualizar libro</button>
+                </div>
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Libro contable</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-ledger-book" aria-expanded="true">Retraer</button>
+                    </div>
+                    <div class="card-body" id="card-ledger-book">
+                        <div class="sales-summary-overview ledger-overview">
+                            <div class="sales-summary-stat">
+                                <span>Ingresos registrados</span>
+                                <strong id="ledgerBookTotalIncome">$0</strong>
+                            </div>
+                            <div class="sales-summary-stat">
+                                <span>Jornadas contabilizadas</span>
+                                <strong id="ledgerBookTotalEntries">0</strong>
+                            </div>
+                            <div class="sales-summary-stat">
+                                <span>Promedio por cierre</span>
+                                <strong id="ledgerBookAverageIncome">$0</strong>
+                            </div>
+                        </div>
+                        <div class="clients-table-wrap ledger-table-wrap">
+                            <table class="clients-table ledger-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Pedidos</th>
+                                        <th>Items</th>
+                                        <th>Ventas total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ledgerBookList">
+                                    <tr>
+                                        <td class="client-empty-row" colspan="4">No hay cierres disponibles para el libro contable.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </article>

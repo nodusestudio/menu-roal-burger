@@ -167,6 +167,9 @@ const CONFIG_DOC_ID = 'config_landing';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
 const MESSAGES_COLLECTION = 'mensajes';
+const SALES_SUMMARY_COLLECTION = 'resumen_ventas';
+const SALES_DAY_STATE_COLLECTION = 'admin_estado';
+const SALES_DAY_STATE_DOC_ID = 'jornada_ventas_actual';
 
 const adminAuthForm = document.getElementById('adminAuthForm');
 const authUsernameInput = document.getElementById('authUsername');
@@ -217,6 +220,23 @@ const orderTicketPanel = document.getElementById('orderTicketPanel');
 const orderTicketBody = document.getElementById('orderTicketBody');
 const mobileTicketCloseBtn = document.getElementById('mobileTicketCloseBtn');
 const mobileTicketBackdrop = document.getElementById('mobileTicketBackdrop');
+const closeSalesDayBtn = document.getElementById('closeSalesDayBtn');
+const salesDayStatusLabel = document.getElementById('salesDayStatusLabel');
+const salesDayStatusMeta = document.getElementById('salesDayStatusMeta');
+const salesDayDeliveredCount = document.getElementById('salesDayDeliveredCount');
+const salesDayDeliveredTotal = document.getElementById('salesDayDeliveredTotal');
+const salesSummaryDateFrom = document.getElementById('salesSummaryDateFrom');
+const salesSummaryDateTo = document.getElementById('salesSummaryDateTo');
+const salesSummaryFilterType = document.getElementById('salesSummaryFilterType');
+const salesSummaryFilterValue = document.getElementById('salesSummaryFilterValue');
+const salesSummaryList = document.getElementById('salesSummaryList');
+const salesSummaryTotalAmount = document.getElementById('salesSummaryTotalAmount');
+const salesSummaryTotalOrders = document.getElementById('salesSummaryTotalOrders');
+const salesSummaryTotalDays = document.getElementById('salesSummaryTotalDays');
+const ledgerBookList = document.getElementById('ledgerBookList');
+const ledgerBookTotalIncome = document.getElementById('ledgerBookTotalIncome');
+const ledgerBookTotalEntries = document.getElementById('ledgerBookTotalEntries');
+const ledgerBookAverageIncome = document.getElementById('ledgerBookAverageIncome');
 const previewRefreshBtn = document.getElementById('previewRefreshBtn');
 const liveMenuPreview = document.getElementById('liveMenuPreview');
 const previewViewportControls = document.getElementById('previewViewportControls');
@@ -309,6 +329,8 @@ let brandingState = { ...defaultBranding };
 let ordersState = [];
 let clientsState = [];
 let messagesState = [];
+let salesSummariesState = [];
+let salesDayState = null;
 let selectedOrderId = null;
 let knownOrderIds = new Set();
 let hasLoadedOrdersOnce = false;
@@ -321,6 +343,7 @@ let editingCategoryContextId = null;
 let activeCategoryModalId = null;
 let activeClientEditId = null;
 let clientsSearchTerm = '';
+let expandedClientAddressIds = new Set();
 let productClicksState = [];
 let liveSubscriptions = [];
 let previewRefreshTimer = null;
@@ -845,6 +868,8 @@ function setupAccordion() {
         categorias: ['categorias'],
         diseno: ['configuracion', 'botones'],
         pedidos: ['pedidos'],
+        'resumen-ventas': ['resumen-ventas'],
+        libro: ['libro'],
         clientes: ['clientes'],
         mensajes: ['mensajes'],
         metricas: ['metricas']
@@ -913,7 +938,11 @@ function setupPreviewViewportControls() {
 
 function setupCardCollapse() {
     const buttons = document.querySelectorAll('.card-collapse-btn');
-    const alwaysExpandedTargets = new Set(['card-orders']);
+    const alwaysExpandedTargets = new Set(
+        Array.from(buttons)
+            .map((button) => String(button.dataset.collapseTarget || '').trim())
+            .filter(Boolean)
+    );
 
     // Start with all panels collapsed so users explicitly expand what they need.
     buttons.forEach((button) => {
@@ -1000,6 +1029,18 @@ function setupSectionSaveButtons() {
         if (section === 'pedidos') {
             await reloadDataAndRender();
             showNotice('Pedidos actualizados.', 'ok');
+            return;
+        }
+
+        if (section === 'resumen-ventas') {
+            await reloadDataAndRender();
+            showNotice('Resumen de ventas actualizado.', 'ok');
+            return;
+        }
+
+        if (section === 'libro') {
+            await reloadDataAndRender();
+            showNotice('Libro contable actualizado.', 'ok');
         }
     });
 }
@@ -1293,6 +1334,41 @@ function normalizeOrder(raw) {
     };
 }
 
+function normalizeSalesBreakdownEntry(raw = {}) {
+    return {
+        name: String(raw.name || raw.categoryName || raw.productName || 'Sin nombre').trim() || 'Sin nombre',
+        categoryName: String(raw.categoryName || raw.category || '').trim(),
+        amount: Number(raw.amount || 0),
+        quantity: Number(raw.quantity || 0),
+        orderCount: Number(raw.orderCount || raw.orders || 0)
+    };
+}
+
+function normalizeSalesSummary(raw) {
+    return {
+        id: String(raw.id || '').trim(),
+        openedAt: raw.openedAt || raw.createdAt || null,
+        closedAt: raw.closedAt || raw.updatedAt || null,
+        totalSales: Number(raw.totalSales || 0),
+        totalOrders: Number(raw.totalOrders || 0),
+        totalItems: Number(raw.totalItems || 0),
+        takeawaySales: Number(raw.takeawaySales || 0),
+        deliverySales: Number(raw.deliverySales || 0),
+        categories: Array.isArray(raw.categories) ? raw.categories.map((entry) => normalizeSalesBreakdownEntry(entry)) : [],
+        products: Array.isArray(raw.products) ? raw.products.map((entry) => normalizeSalesBreakdownEntry(entry)) : [],
+        orders: Array.isArray(raw.orders) ? raw.orders : []
+    };
+}
+
+function normalizeSalesDayState(raw) {
+    return {
+        openedAt: raw.openedAt || raw.updatedAt || null,
+        lastClosedAt: raw.lastClosedAt || null,
+        lastClosureId: String(raw.lastClosureId || '').trim(),
+        status: 'active'
+    };
+}
+
 function ensureOrdersRealtimeTicker() {
     if (ordersRealtimeTimer || !ordersBoard) {
         return;
@@ -1357,6 +1433,18 @@ async function fetchOrders() {
             const bTs = b.createdAt && typeof b.createdAt.toMillis === 'function' ? b.createdAt.toMillis() : 0;
             return bTs - aTs;
         });
+}
+
+async function fetchSalesSummaries() {
+    const snapshot = await firebaseDb.collection(SALES_SUMMARY_COLLECTION).get();
+    salesSummariesState = snapshot.docs
+        .map((doc) => normalizeSalesSummary({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => getTimestampMillis(b.closedAt) - getTimestampMillis(a.closedAt));
+}
+
+async function fetchSalesDayState() {
+    const doc = await firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(SALES_DAY_STATE_DOC_ID).get();
+    salesDayState = doc.exists ? normalizeSalesDayState(doc.data()) : null;
 }
 
 async function fetchClients() {
@@ -1956,6 +2044,14 @@ function formatOrderTime(value) {
     }).format(date);
 }
 
+function formatDateTime(value) {
+    if (!value) {
+        return 'Sin registro';
+    }
+
+    return `${formatOrderDate(value)} ${formatOrderTime(value)}`;
+}
+
 function formatElapsedTime(value) {
     if (!value) {
         return 'just now';
@@ -1993,6 +2089,19 @@ function formatLiveDuration(value) {
     }
 
     const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
+
+    function getTimestampMillis(value) {
+        if (!value) {
+            return 0;
+        }
+
+        if (typeof value.toMillis === 'function') {
+            return value.toMillis();
+        }
+
+        const parsed = new Date(value).getTime();
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
         return 'hace 0s';
     }
@@ -2034,8 +2143,7 @@ function formatOrderDate(value) {
     }
 
     return new Intl.DateTimeFormat('es-CO', {
-        dateStyle: 'medium',
-        timeStyle: 'short'
+        dateStyle: 'medium'
     }).format(date);
 }
 
@@ -2074,6 +2182,267 @@ function getOrderDisplayTotal(order) {
     }
 
     return Number(order.subtotal || 0) + Number(order.deliveryFee || 0);
+}
+
+function getDeliveredOrdersForCurrentDay() {
+    return ordersState.filter((order) => order.status === 'entregado');
+}
+
+function buildSalesSummaryPayload(deliveredOrders, openedAt, closedAt) {
+    const categoriesMap = new Map();
+    const productsMap = new Map();
+
+    let totalSales = 0;
+    let totalItems = 0;
+    let takeawaySales = 0;
+    let deliverySales = 0;
+
+    const orders = deliveredOrders.map((order) => {
+        const orderTotal = Number(getOrderDisplayTotal(order) || 0);
+        totalSales += orderTotal;
+        totalItems += Number(order.totalItems || order.itemCount || 0);
+        if (order.orderType === 'domicilio') {
+            deliverySales += orderTotal;
+        } else {
+            takeawaySales += orderTotal;
+        }
+
+        order.items.forEach((item) => {
+            const categoryName = String(item.categoryName || 'Sin categoria').trim() || 'Sin categoria';
+            const productName = String(item.productName || 'Producto').trim() || 'Producto';
+            const quantity = Number(item.quantity || 0);
+            const amount = Number(item.subtotal || ((Number(item.unitPrice || 0)) * quantity) || 0);
+
+            const categoryEntry = categoriesMap.get(categoryName) || {
+                name: categoryName,
+                amount: 0,
+                quantity: 0,
+                orderIds: new Set()
+            };
+            categoryEntry.amount += amount;
+            categoryEntry.quantity += quantity;
+            categoryEntry.orderIds.add(order.id);
+            categoriesMap.set(categoryName, categoryEntry);
+
+            const productKey = `${categoryName}__${productName}`;
+            const productEntry = productsMap.get(productKey) || {
+                name: productName,
+                categoryName,
+                amount: 0,
+                quantity: 0,
+                orderIds: new Set()
+            };
+            productEntry.amount += amount;
+            productEntry.quantity += quantity;
+            productEntry.orderIds.add(order.id);
+            productsMap.set(productKey, productEntry);
+        });
+
+        return {
+            id: order.id,
+            code: order.code,
+            customerName: order.customerName,
+            customerPhone: order.customerPhone,
+            orderType: order.orderType,
+            paymentMethod: order.paymentMethod,
+            subtotal: Number(order.subtotal || 0),
+            deliveryFee: Number(order.deliveryFee || 0),
+            total: orderTotal,
+            createdAt: order.createdAt || null,
+            deliveredAt: order.deliveredAt || order.updatedAt || null,
+            items: order.items.map((item) => ({
+                productName: item.productName,
+                categoryName: item.categoryName,
+                quantity: Number(item.quantity || 0),
+                unitPrice: Number(item.unitPrice || 0),
+                subtotal: Number(item.subtotal || 0),
+                optionLabel: item.optionLabel,
+                note: item.note
+            }))
+        };
+    });
+
+    const categories = Array.from(categoriesMap.values())
+        .map((entry) => ({
+            name: entry.name,
+            amount: entry.amount,
+            quantity: entry.quantity,
+            orderCount: entry.orderIds.size
+        }))
+        .sort((a, b) => b.amount - a.amount);
+
+    const products = Array.from(productsMap.values())
+        .map((entry) => ({
+            name: entry.name,
+            categoryName: entry.categoryName,
+            amount: entry.amount,
+            quantity: entry.quantity,
+            orderCount: entry.orderIds.size
+        }))
+        .sort((a, b) => b.amount - a.amount);
+
+    return {
+        openedAt,
+        closedAt,
+        totalSales,
+        totalOrders: deliveredOrders.length,
+        totalItems,
+        takeawaySales,
+        deliverySales,
+        categories,
+        products,
+        orders,
+        createdAt: closedAt,
+        updatedAt: closedAt
+    };
+}
+
+async function ensureActiveSalesDay() {
+    if (!firebaseDb || salesDayState?.openedAt) {
+        return false;
+    }
+
+    const now = firestoreNow();
+    await firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(SALES_DAY_STATE_DOC_ID).set({
+        openedAt: now,
+        status: 'active',
+        updatedAt: now,
+        lastClosedAt: null,
+        lastClosureId: ''
+    }, { merge: true });
+    return true;
+}
+
+function getSalesSummaryFilterOptions(type) {
+    const values = new Set();
+    if (type === 'category') {
+        salesSummariesState.forEach((summary) => {
+            summary.categories.forEach((entry) => values.add(entry.name));
+        });
+    } else if (type === 'product') {
+        salesSummariesState.forEach((summary) => {
+            summary.products.forEach((entry) => values.add(entry.name));
+        });
+    }
+
+    return Array.from(values).sort((a, b) => a.localeCompare(b, 'es'));
+}
+
+function getSalesSummaryDateKey(value) {
+    if (!value) {
+        return '';
+    }
+
+    const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function syncSalesSummaryFilterOptions() {
+    if (!salesSummaryFilterType || !salesSummaryFilterValue) {
+        return;
+    }
+
+    const type = String(salesSummaryFilterType.value || 'all');
+    const options = getSalesSummaryFilterOptions(type);
+    const previousValue = String(salesSummaryFilterValue.value || '');
+
+    if (type === 'all') {
+        salesSummaryFilterValue.innerHTML = '<option value="">Selecciona un filtro</option>';
+        salesSummaryFilterValue.disabled = true;
+        salesSummaryFilterValue.value = '';
+        return;
+    }
+
+    salesSummaryFilterValue.disabled = false;
+    salesSummaryFilterValue.innerHTML = `
+        <option value="">Todas</option>
+        ${options.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('')}
+    `;
+    salesSummaryFilterValue.value = options.includes(previousValue) ? previousValue : '';
+}
+
+function summaryMatchesFilter(summary, type, value) {
+    if (type === 'category' && value) {
+        return summary.categories.some((entry) => entry.name === value);
+    }
+
+    if (type === 'product' && value) {
+        return summary.products.some((entry) => entry.name === value);
+    }
+
+    return true;
+}
+
+function summaryMatchesDateRange(summary) {
+    const summaryDate = getSalesSummaryDateKey(summary.closedAt);
+    if (!summaryDate) {
+        return false;
+    }
+
+    const fromValue = String(salesSummaryDateFrom?.value || '').trim();
+    const toValue = String(salesSummaryDateTo?.value || '').trim();
+
+    if (fromValue && summaryDate < fromValue) {
+        return false;
+    }
+
+    if (toValue && summaryDate > toValue) {
+        return false;
+    }
+
+    return true;
+}
+
+function getSalesSummaryBreakdown(summary, type, value) {
+    if (type === 'category' && value) {
+        return {
+            categories: summary.categories.filter((entry) => entry.name === value),
+            products: summary.products.filter((entry) => entry.categoryName === value)
+        };
+    }
+
+    if (type === 'product' && value) {
+        const productEntries = summary.products.filter((entry) => entry.name === value);
+        const categories = productEntries.length
+            ? summary.categories.filter((entry) => entry.name === productEntries[0].categoryName)
+            : [];
+        return {
+            categories,
+            products: productEntries
+        };
+    }
+
+    return {
+        categories: summary.categories.slice(0, 5),
+        products: summary.products.slice(0, 5)
+    };
+}
+
+function buildSalesBreakdownMarkup(entries, emptyLabel, includeCategory = false) {
+    if (!entries.length) {
+        return `<div class="sales-summary-breakdown-note">${escapeHtml(emptyLabel)}</div>`;
+    }
+
+    return `
+        <div class="sales-summary-breakdown-list">
+            ${entries.map((entry) => `
+                <div class="sales-summary-breakdown-row">
+                    <div>
+                        <strong>${escapeHtml(entry.name)}</strong>
+                        <span>${escapeHtml(`${entry.quantity} uds · ${entry.orderCount} pedido(s)${includeCategory && entry.categoryName ? ` · ${entry.categoryName}` : ''}`)}</span>
+                    </div>
+                    <em>${escapeHtml(formatMoney(entry.amount))}</em>
+                </div>
+            `).join('')}
+        </div>
+    `;
 }
 
 function buildOrderWhatsAppLink(order) {
@@ -2565,6 +2934,206 @@ function renderOrders() {
 
     renderOrderTicket(selectedOrder);
     applyMobileOrdersLane();
+    renderSalesDayBanner();
+}
+
+function renderSalesDayBanner() {
+    const deliveredOrders = getDeliveredOrdersForCurrentDay();
+    const deliveredTotal = deliveredOrders.reduce((sum, order) => sum + Number(getOrderDisplayTotal(order) || 0), 0);
+
+    if (salesDayStatusLabel) {
+        salesDayStatusLabel.textContent = salesDayState?.openedAt ? 'Jornada activa' : 'Jornada en preparacion';
+    }
+
+    if (salesDayStatusMeta) {
+        salesDayStatusMeta.textContent = salesDayState?.openedAt
+            ? `Apertura: ${formatDateTime(salesDayState.openedAt)}`
+            : 'Se abrira automaticamente al sincronizar.';
+    }
+
+    if (salesDayDeliveredCount) {
+        salesDayDeliveredCount.textContent = `${deliveredOrders.length} entregados`;
+    }
+
+    if (salesDayDeliveredTotal) {
+        salesDayDeliveredTotal.textContent = formatMoney(deliveredTotal);
+    }
+
+    if (closeSalesDayBtn) {
+        closeSalesDayBtn.disabled = deliveredOrders.length === 0;
+        closeSalesDayBtn.textContent = deliveredOrders.length
+            ? `Cierre del dia (${deliveredOrders.length})`
+            : 'Cierre del dia';
+    }
+}
+
+function renderSalesSummaries() {
+    syncSalesSummaryFilterOptions();
+
+    const type = String(salesSummaryFilterType?.value || 'all');
+    const value = String(salesSummaryFilterValue?.value || '');
+    const filteredSummaries = salesSummariesState.filter((summary) => summaryMatchesDateRange(summary) && summaryMatchesFilter(summary, type, value));
+
+    const totalAmount = filteredSummaries.reduce((sum, summary) => sum + Number(summary.totalSales || 0), 0);
+    const totalOrders = filteredSummaries.reduce((sum, summary) => sum + Number(summary.totalOrders || 0), 0);
+
+    if (salesSummaryTotalAmount) {
+        salesSummaryTotalAmount.textContent = formatMoney(totalAmount);
+    }
+
+    if (salesSummaryTotalOrders) {
+        salesSummaryTotalOrders.textContent = Number(totalOrders).toLocaleString('es-CO');
+    }
+
+    if (salesSummaryTotalDays) {
+        salesSummaryTotalDays.textContent = Number(filteredSummaries.length).toLocaleString('es-CO');
+    }
+
+    if (!salesSummaryList) {
+        return;
+    }
+
+    if (!filteredSummaries.length) {
+        salesSummaryList.innerHTML = '<div class="sales-summary-empty">No hay cierres del dia que coincidan con ese filtro.</div>';
+        return;
+    }
+
+    salesSummaryList.innerHTML = filteredSummaries.map((summary, index) => {
+        const breakdown = getSalesSummaryBreakdown(summary, type, value);
+        const title = `Cierre ${filteredSummaries.length - index}`;
+        return `
+            <article class="sales-summary-card">
+                <div class="sales-summary-card-head">
+                    <div>
+                        <strong>${escapeHtml(title)}</strong>
+                        <p>${escapeHtml(`${formatOrderDate(summary.closedAt)} · Apertura ${formatOrderTime(summary.openedAt)} · Cierre ${formatOrderTime(summary.closedAt)}`)}</p>
+                    </div>
+                    <span class="sales-summary-badge">${escapeHtml(formatMoney(summary.totalSales))}</span>
+                </div>
+                <div class="sales-summary-meta">
+                    <span>${escapeHtml(`Abierto: ${formatDateTime(summary.openedAt)}`)}</span>
+                    <span>${escapeHtml(`Cerrado: ${formatDateTime(summary.closedAt)}`)}</span>
+                </div>
+                <div class="sales-summary-metrics">
+                    <div class="sales-summary-metric">
+                        <span>Pedidos</span>
+                        <strong>${escapeHtml(String(summary.totalOrders))}</strong>
+                    </div>
+                    <div class="sales-summary-metric">
+                        <span>Items</span>
+                        <strong>${escapeHtml(String(summary.totalItems))}</strong>
+                    </div>
+                    <div class="sales-summary-metric">
+                        <span>Llevar</span>
+                        <strong>${escapeHtml(formatMoney(summary.takeawaySales))}</strong>
+                    </div>
+                    <div class="sales-summary-metric">
+                        <span>Domicilios</span>
+                        <strong>${escapeHtml(formatMoney(summary.deliverySales))}</strong>
+                    </div>
+                </div>
+                <div class="sales-summary-breakdown">
+                    <section class="sales-summary-panel">
+                        <h3>Categorias</h3>
+                        ${buildSalesBreakdownMarkup(breakdown.categories, 'No hubo ventas para esta categoria en el cierre.', false)}
+                    </section>
+                    <section class="sales-summary-panel">
+                        <h3>Productos</h3>
+                        ${buildSalesBreakdownMarkup(breakdown.products, 'No hubo ventas para este producto en el cierre.', true)}
+                    </section>
+                </div>
+            </article>
+        `;
+    }).join('');
+}
+
+function renderLedgerBook() {
+    const entries = [...salesSummariesState].sort((a, b) => getTimestampMillis(b.closedAt) - getTimestampMillis(a.closedAt));
+    const totalIncome = entries.reduce((sum, entry) => sum + Number(entry.totalSales || 0), 0);
+    const totalEntries = entries.length;
+    const averageIncome = totalEntries ? totalIncome / totalEntries : 0;
+
+    if (ledgerBookTotalIncome) {
+        ledgerBookTotalIncome.textContent = formatMoney(totalIncome);
+    }
+
+    if (ledgerBookTotalEntries) {
+        ledgerBookTotalEntries.textContent = Number(totalEntries).toLocaleString('es-CO');
+    }
+
+    if (ledgerBookAverageIncome) {
+        ledgerBookAverageIncome.textContent = formatMoney(averageIncome);
+    }
+
+    if (!ledgerBookList) {
+        return;
+    }
+
+    if (!entries.length) {
+        ledgerBookList.innerHTML = '<tr><td class="client-empty-row" colspan="4">No hay cierres disponibles para el libro contable.</td></tr>';
+        return;
+    }
+
+    ledgerBookList.innerHTML = entries.map((entry) => {
+        return `
+            <tr>
+                <td>${escapeHtml(formatDateTime(entry.closedAt))}</td>
+                <td>${escapeHtml(String(entry.totalOrders || 0))}</td>
+                <td>${escapeHtml(String(entry.totalItems || 0))}</td>
+                <td><strong>${escapeHtml(formatMoney(entry.totalSales || 0))}</strong></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function closeCurrentSalesDay() {
+    if (!firebaseDb) {
+        throw new Error('Firestore no esta listo en el panel.');
+    }
+
+    const deliveredOrders = getDeliveredOrdersForCurrentDay();
+    if (!deliveredOrders.length) {
+        throw new Error('No hay pedidos entregados para cerrar en la jornada actual.');
+    }
+
+    if (!salesDayState?.openedAt) {
+        await ensureActiveSalesDay();
+        await fetchSalesDayState();
+    }
+
+    const closedAt = firestoreNow();
+    const openedAt = salesDayState?.openedAt || closedAt;
+    const closureId = `cierre_${Date.now()}`;
+    const totalSales = deliveredOrders.reduce((sum, order) => sum + Number(getOrderDisplayTotal(order) || 0), 0);
+    const confirmed = window.confirm(`Vas a cerrar el dia con ${deliveredOrders.length} pedido(s) entregado(s) por ${formatMoney(totalSales)}. Esta accion movera esas ventas al resumen y abrira una nueva jornada. Deseas continuar?`);
+    if (!confirmed) {
+        return false;
+    }
+
+    const batch = firebaseDb.batch();
+    batch.set(
+        firebaseDb.collection(SALES_SUMMARY_COLLECTION).doc(closureId),
+        buildSalesSummaryPayload(deliveredOrders, openedAt, closedAt)
+    );
+
+    deliveredOrders.forEach((order) => {
+        batch.delete(firebaseDb.collection(ORDERS_COLLECTION).doc(order.id));
+    });
+
+    batch.set(
+        firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(SALES_DAY_STATE_DOC_ID),
+        {
+            openedAt: closedAt,
+            status: 'active',
+            updatedAt: closedAt,
+            lastClosedAt: closedAt,
+            lastClosureId: closureId
+        },
+        { merge: true }
+    );
+
+    await batch.commit();
+    return true;
 }
 
 function renderClients() {
@@ -2587,7 +3156,9 @@ function renderClients() {
 
     filteredClients.forEach((client) => {
         const row = document.createElement('tr');
+        row.className = 'client-row';
         const extraAddresses = client.savedAddresses.slice(1);
+        const hasExpandedAddresses = expandedClientAddressIds.has(client.id);
         row.innerHTML = `
             <td>
                 <div class="client-name-cell">
@@ -2597,8 +3168,12 @@ function renderClients() {
             </td>
             <td>${escapeHtml(client.customerPhone)}</td>
             <td class="client-address-cell">
-                <strong>${escapeHtml(client.address)}</strong>
-                ${extraAddresses.length ? `<span>${escapeHtml(`${extraAddresses.length} direccion(es) adicional(es)`)}<br>${escapeHtml(extraAddresses.join(' | '))}</span>` : ''}
+                <strong class="client-address-primary">${escapeHtml(client.address)}</strong>
+                ${extraAddresses.length ? `
+                    <button type="button" class="client-address-toggle" data-client-toggle-addresses="${escapeHtml(client.id)}" aria-expanded="${hasExpandedAddresses ? 'true' : 'false'}">
+                        ${hasExpandedAddresses ? 'Ocultar direcciones' : `Ver ${extraAddresses.length} direccion(es) mas`}
+                    </button>
+                ` : '<span class="client-address-muted">Solo direccion principal</span>'}
             </td>
             <td>${escapeHtml(formatOrderDate(client.firstOrderAt))}</td>
             <td>${escapeHtml(formatOrderDate(client.lastOrderAt))}</td>
@@ -2618,6 +3193,26 @@ function renderClients() {
             </td>
         `;
         clientsList.appendChild(row);
+
+        if (extraAddresses.length && hasExpandedAddresses) {
+            const detailRow = document.createElement('tr');
+            detailRow.className = 'client-address-detail-row';
+            detailRow.innerHTML = `
+                <td colspan="9">
+                    <div class="client-address-detail-box">
+                        <strong>Direcciones guardadas</strong>
+                        <div class="client-address-detail-list">
+                            ${client.savedAddresses.map((address, index) => `
+                                <span class="client-address-detail-chip${index === 0 ? ' is-primary' : ''}">
+                                    ${escapeHtml(index === 0 ? `Principal: ${address}` : address)}
+                                </span>
+                            `).join('')}
+                        </div>
+                    </div>
+                </td>
+            `;
+            clientsList.appendChild(detailRow);
+        }
     });
 }
 
@@ -3371,7 +3966,7 @@ function setupLiveFirebaseSync() {
     liveSubscriptions.forEach((unsubscribe) => unsubscribe());
     liveSubscriptions = [];
 
-    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION, CLIENTS_COLLECTION, MESSAGES_COLLECTION];
+    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION, CLIENTS_COLLECTION, MESSAGES_COLLECTION, SALES_SUMMARY_COLLECTION, SALES_DAY_STATE_COLLECTION];
     collections.forEach((collectionName) => {
         const unsubscribe = firebaseDb.collection(collectionName).onSnapshot(() => {
             reloadDataAndRender();
@@ -3881,10 +4476,17 @@ async function reloadDataAndRender() {
         fetchButtons(),
         fetchBranding(),
         fetchOrders(),
+        fetchSalesSummaries(),
+        fetchSalesDayState(),
         fetchClients(),
         fetchMessages(),
         fetchProductClickMetrics()
     ]);
+
+    const createdSalesDay = await ensureActiveSalesDay();
+    if (createdSalesDay) {
+        await fetchSalesDayState();
+    }
 
     announceNewOrders(ordersState);
     announceNewMessages(messagesState);
@@ -3893,6 +4495,8 @@ async function reloadDataAndRender() {
     renderButtonsList();
     renderBrandingForm();
     renderOrders();
+    renderSalesSummaries();
+    renderLedgerBook();
     renderClients();
     renderMessages();
     updateMessagesAttentionState();
@@ -4172,6 +4776,49 @@ if (clientsSearchInput) {
     });
 }
 
+if (salesSummaryFilterType) {
+    salesSummaryFilterType.addEventListener('change', () => {
+        syncSalesSummaryFilterOptions();
+        renderSalesSummaries();
+    });
+}
+
+if (salesSummaryFilterValue) {
+    salesSummaryFilterValue.addEventListener('change', () => {
+        renderSalesSummaries();
+    });
+}
+
+if (salesSummaryDateFrom) {
+    salesSummaryDateFrom.addEventListener('change', () => {
+        renderSalesSummaries();
+    });
+}
+
+if (salesSummaryDateTo) {
+    salesSummaryDateTo.addEventListener('change', () => {
+        renderSalesSummaries();
+    });
+}
+
+if (closeSalesDayBtn) {
+    closeSalesDayBtn.addEventListener('click', async () => {
+        closeSalesDayBtn.disabled = true;
+        try {
+            const closed = await closeCurrentSalesDay();
+            if (!closed) {
+                return;
+            }
+            showNotice('Cierre del dia guardado y nueva jornada abierta.', 'ok');
+            await reloadDataAndRender();
+        } catch (error) {
+            showNotice(`No se pudo cerrar el dia: ${error.message || 'error inesperado.'}`, 'error');
+        } finally {
+            renderSalesDayBanner();
+        }
+    });
+}
+
 if (exportClientsBtn) {
     exportClientsBtn.addEventListener('click', () => {
         try {
@@ -4217,6 +4864,23 @@ if (clientsList) {
     clientsList.addEventListener('click', async (event) => {
         const target = event.target;
         if (!(target instanceof Element)) {
+            return;
+        }
+
+        const addressToggle = target.closest('button[data-client-toggle-addresses]');
+        if (addressToggle instanceof HTMLButtonElement) {
+            const clientId = String(addressToggle.dataset.clientToggleAddresses || '').trim();
+            if (!clientId) {
+                return;
+            }
+
+            if (expandedClientAddressIds.has(clientId)) {
+                expandedClientAddressIds.delete(clientId);
+            } else {
+                expandedClientAddressIds.add(clientId);
+            }
+
+            renderClients();
             return;
         }
 
