@@ -777,16 +777,17 @@ async function saveCustomerProfile(profileInput = {}) {
         throw new Error('Escribe un numero de WhatsApp valido.');
     }
 
-    if (!address) {
-        throw new Error('Escribe la direccion principal de tu perfil.');
-    }
-
     const clientId = `phone_${customerPhoneDigits}`;
     const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
     const snapshot = await clientRef.get();
     const previous = snapshot.exists ? snapshot.data() : {};
     const savedAddresses = normalizeCustomerSavedAddresses(profileInput.savedAddresses || previous.savedAddresses || [], String(profileInput.address || '').trim());
     const address = savedAddresses[0] || '';
+
+    if (!address) {
+        throw new Error('Escribe la direccion principal de tu perfil.');
+    }
+
     let passwordHash = String(previous.passwordHash || '').trim();
     const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
 
@@ -1006,21 +1007,31 @@ function buildCustomerRegisterFormMarkup(profile = {}, saveLabel = 'Crear perfil
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
     const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
     const savedAddresses = getCustomerSavedAddresses(profile);
+    const isEditMode = saveLabel === 'Guardar perfil';
+    const primaryAddress = String(profile.address || savedAddresses[0] || '').trim();
+    const addressesMarkup = isEditMode
+        ? `
+        <label class="support-field">
+            <span>Direccion principal</span>
+            <textarea id="customerRegisterAddress" rows="4" placeholder="Escribe tu direccion principal">${escapeHtml(primaryAddress)}</textarea>
+        </label>
+        <label class="support-field">
+            <span>Direcciones guardadas</span>
+            <textarea id="customerRegisterSavedAddresses" rows="5" placeholder="Una direccion por linea. La primera siempre sera tu direccion principal.">${escapeHtml(savedAddresses.join('\n'))}</textarea>
+            <p class="support-field-hint">Puedes editar hasta ${MAX_CUSTOMER_SAVED_ADDRESSES} direcciones. Deja una por linea y conserva la principal arriba.</p>
+        </label>`
+        : `
+        <label class="support-field">
+            <span>Direccion</span>
+            <textarea id="customerRegisterAddress" rows="4" placeholder="Escribe tu direccion">${escapeHtml(primaryAddress)}</textarea>
+        </label>`;
 
     return `
         <label class="support-field">
             <span>Nombre</span>
             <input type="text" id="customerRegisterName" value="${escapeHtml(profile.customerName || '')}" placeholder="Escribe tu nombre">
         </label>
-        <label class="support-field">
-            <span>Direccion principal</span>
-            <textarea id="customerRegisterAddress" rows="4" placeholder="Escribe tu direccion principal">${escapeHtml(profile.address || '')}</textarea>
-        </label>
-        <label class="support-field">
-            <span>Direcciones guardadas</span>
-            <textarea id="customerRegisterSavedAddresses" rows="5" placeholder="Una direccion por linea. La primera siempre sera tu direccion principal.">${escapeHtml(savedAddresses.join('\n'))}</textarea>
-            <p class="support-field-hint">Puedes editar hasta ${MAX_CUSTOMER_SAVED_ADDRESSES} direcciones. Deja una por linea y conserva la principal arriba.</p>
-        </label>
+        ${addressesMarkup}
         <label class="support-field">
             <span>Numero de WhatsApp</span>
             <input type="tel" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}" placeholder="Escribe tu numero de WhatsApp">
