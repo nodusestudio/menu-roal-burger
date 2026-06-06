@@ -3494,7 +3494,7 @@
                 inset: 0;
                 z-index: 42;
                 display: none;
-                grid-template-rows: auto minmax(0, 1fr);
+                grid-template-rows: auto 1fr;
                 gap: 14px;
                 padding: 16px;
                 height: 100dvh;
@@ -3502,7 +3502,8 @@
                 border: 0;
                 background: linear-gradient(180deg, rgba(6, 10, 20, 0.98), rgba(10, 13, 22, 0.98));
                 box-shadow: none;
-                overflow: hidden;
+                overflow-y: auto;
+                overflow-x: hidden;
                 -webkit-backdrop-filter: none;
                 backdrop-filter: none;
             }
@@ -3547,9 +3548,8 @@
             }
 
             .ticket-body {
-                min-height: 0;
-                overflow-y: auto;
-                padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+                overflow: visible;
+                padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
             }
 
             .ticket-paper {
@@ -3609,20 +3609,18 @@
             }
 
             .ticket-paper-wrap {
-                padding-bottom: 12px;
+                padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
             }
 
             .ticket-print-row {
-                position: sticky;
-                bottom: 0;
-                z-index: 5;
+                position: static;
                 margin: 0;
                 gap: 8px;
-                padding-top: 8px;
-                padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+                padding-top: 12px;
+                padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
                 border-top: 1px solid rgba(255, 255, 255, 0.08);
-                background: linear-gradient(180deg, rgba(4, 7, 14, 0.78), rgba(4, 7, 14, 0.96));
-                box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.24);
+                background: transparent;
+                box-shadow: none;
             }
 
             .ticket-print-btn {
