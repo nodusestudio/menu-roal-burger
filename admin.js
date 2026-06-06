@@ -465,7 +465,9 @@ function isMobileAdminViewport() {
 }
 
 function applyMobileOrdersLane() {
-    const nextLane = activeMobileOrdersLane === 'delivery' ? 'delivery' : 'takeaway';
+    const nextLane = ['unread', 'takeaway', 'delivery'].includes(activeMobileOrdersLane)
+        ? activeMobileOrdersLane
+        : 'takeaway';
 
     document.querySelectorAll('.orders-lane[data-mobile-lane]').forEach((lane) => {
         const laneKey = String(lane.getAttribute('data-mobile-lane') || '').trim();
@@ -746,6 +748,10 @@ function announceNewOrders(orders) {
 
     if (!newOrders.length) {
         return;
+    }
+
+    if (isMobileAdminViewport()) {
+        activeMobileOrdersLane = 'unread';
     }
 
     newOrders
