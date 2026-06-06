@@ -3,10 +3,15 @@
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
+const CUSTOMER_CONSENT_VERSION = '2026-06-05';
+const CUSTOMER_CONSENT_COPY = 'He leido y acepto que ROAL BURGER use mis datos para gestionar mi cuenta, atender pedidos, contactarme por canales oficiales y enviarme promociones, novedades y publicidad propia.';
+const CUSTOMER_CONSENT_POLICY_URL = 'politica-datos.html';
+const MESSAGES_COLLECTION = 'mensajes';
 const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
 const ORDER_CODE_PREFIX = 'RB';
 const ORDER_CODE_START = 2026;
 const DELIVERY_FEE_AMOUNT = 6000;
+const CUSTOMER_PROFILE_STORAGE_KEY = 'roalburger-customer-profile-v1';
 const ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS = true;
 const PAGE_URL_PARAMS = new URLSearchParams(window.location.search);
 const IS_ADMIN_PREVIEW = PAGE_URL_PARAMS.get('adminPreview') === '1';
@@ -39,6 +44,133 @@ let orderSentToastTimer = null;
 let publicFirebaseDbInstance = null;
 let orderSentConfirmationUI = null;
 let paymentFlowUI = null;
+let activeCustomerProfile = null;
+let customerAuthUI = null;
+let customerRegisterUI = null;
+let customerConsentDocumentUI = null;
+let customerDeleteAccountUI = null;
+let customerPasswordResetUI = null;
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function normalizePhoneDigits(value) {
+    return String(value || '').replace(/\D+/g, '');
+}
+
+function normalizeCustomerPin(value) {
+    return String(value || '').replace(/\D+/g, '').slice(0, 6);
+}
+
+function isValidCustomerPin(value) {
+    return /^\d{6}$/.test(String(value || ''));
+}
+
+async function hashCustomerPin(pinValue) {
+    const pin = normalizeCustomerPin(pinValue);
+    if (!isValidCustomerPin(pin)) {
+        throw new Error('La contrasena debe tener exactamente 6 digitos.');
+    }
+
+    if (!window.crypto?.subtle || typeof TextEncoder === 'undefined') {
+        throw new Error('Tu navegador no permite validar la contrasena.');
+    }
+
+    const encoded = new TextEncoder().encode(`roalburger:${pin}`);
+    const digest = await window.crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function normalizeCustomerProfile(raw = {}, fallbackId = '') {
+    const customerPhone = String(raw.customerPhone || raw.phone || '').trim();
+    const customerPhoneDigits = normalizePhoneDigits(raw.customerPhoneDigits || customerPhone);
+    const address = String(raw.address || raw.deliveryAddress || '').trim();
+    const customerName = String(raw.customerName || raw.name || '').trim();
+
+    if (!customerPhoneDigits) {
+        return null;
+    }
+
+    return {
+        id: String(raw.id || fallbackId || `phone_${customerPhoneDigits}`).trim(),
+        customerName,
+        customerPhone,
+        customerPhoneDigits,
+        address,
+        passwordHash: String(raw.passwordHash || '').trim(),
+        hasPassword: Boolean(raw.passwordHash),
+        privacyConsentAccepted: Boolean(raw.privacyConsentAccepted),
+        marketingConsentAccepted: Boolean(raw.marketingConsentAccepted),
+        consentAcceptedAt: raw.consentAcceptedAt || null,
+        consentVersion: String(raw.consentVersion || '').trim(),
+        totalOrders: Number(raw.totalOrders || 0),
+        totalSpent: Number(raw.totalSpent || 0),
+        lastOrderCode: String(raw.lastOrderCode || '').trim(),
+        lastOrderId: String(raw.lastOrderId || '').trim(),
+        lastOrderTotal: Number(raw.lastOrderTotal || 0)
+    };
+}
+
+function loadStoredCustomerProfile() {
+    try {
+        const raw = window.localStorage.getItem(CUSTOMER_PROFILE_STORAGE_KEY);
+        if (!raw) {
+            return null;
+        }
+
+        return normalizeCustomerProfile(JSON.parse(raw));
+    } catch (error) {
+        return null;
+    }
+}
+
+function persistCustomerProfile(profile) {
+    if (!profile) {
+        window.localStorage.removeItem(CUSTOMER_PROFILE_STORAGE_KEY);
+        return;
+    }
+
+    window.localStorage.setItem(CUSTOMER_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+}
+
+function updateCustomerSessionUI() {
+    const button = document.getElementById('customerSessionButton');
+    const kicker = document.getElementById('customerSessionKicker');
+    const label = document.getElementById('customerSessionLabel');
+
+    if (!(button instanceof HTMLButtonElement) || !kicker || !label) {
+        return;
+    }
+
+    if (activeCustomerProfile) {
+        const firstName = String(activeCustomerProfile.customerName || 'Mi perfil').trim().split(/\s+/)[0] || 'Mi perfil';
+        button.classList.add('is-authenticated');
+        kicker.textContent = 'Perfil abierto';
+        label.textContent = firstName;
+    } else {
+        button.classList.remove('is-authenticated');
+        kicker.textContent = 'Mi cuenta';
+        label.textContent = 'Iniciar sesion';
+    }
+}
+
+function setActiveCustomerProfile(profile) {
+    activeCustomerProfile = profile ? normalizeCustomerProfile(profile) : null;
+    persistCustomerProfile(activeCustomerProfile);
+    updateCustomerSessionUI();
+}
+
+function clearActiveCustomerProfile() {
+    activeCustomerProfile = null;
+    persistCustomerProfile(null);
+    updateCustomerSessionUI();
+}
 
 function getCheckoutFulfillmentType(value) {
     const normalized = String(value || '').trim().toLowerCase();
@@ -270,6 +402,1041 @@ async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
             lastOrderAt: getPublicServerTimestamp()
         }, { merge: true });
     });
+}
+
+async function fetchClientProfileByPhone(phoneValue, pinValue = '') {
+    const phoneDigits = normalizePhoneDigits(phoneValue);
+    if (phoneDigits.length < 10) {
+        throw new Error('Escribe un numero de WhatsApp valido.');
+    }
+
+    const pinHash = await hashCustomerPin(pinValue);
+
+    const db = getPublicFirebaseDb();
+    const directRef = db.collection(CLIENTS_COLLECTION).doc(`phone_${phoneDigits}`);
+    const directSnapshot = await directRef.get();
+
+    if (directSnapshot.exists) {
+        const profile = normalizeCustomerProfile({ id: directSnapshot.id, ...directSnapshot.data() }, directSnapshot.id);
+        if (!profile?.passwordHash) {
+            const resetError = new Error('Tu contrasena fue reiniciada. Crea una nueva para volver a entrar.');
+            resetError.code = 'PASSWORD_RESET_REQUIRED';
+            resetError.profile = profile;
+            throw resetError;
+        }
+        if (profile.passwordHash !== pinHash) {
+            throw new Error('La contrasena no coincide con este perfil.');
+        }
+        return profile;
+    }
+
+    const fallbackSnapshot = await db.collection(CLIENTS_COLLECTION)
+        .where('customerPhoneDigits', '==', phoneDigits)
+        .limit(1)
+        .get();
+
+    if (!fallbackSnapshot.empty) {
+        const doc = fallbackSnapshot.docs[0];
+        const profile = normalizeCustomerProfile({ id: doc.id, ...doc.data() }, doc.id);
+        if (!profile?.passwordHash) {
+            const resetError = new Error('Tu contrasena fue reiniciada. Crea una nueva para volver a entrar.');
+            resetError.code = 'PASSWORD_RESET_REQUIRED';
+            resetError.profile = profile;
+            throw resetError;
+        }
+        if (profile.passwordHash !== pinHash) {
+            throw new Error('La contrasena no coincide con este perfil.');
+        }
+        return profile;
+    }
+
+    return null;
+}
+
+async function saveCustomerProfile(profileInput = {}) {
+    const db = getPublicFirebaseDb();
+    const customerName = String(profileInput.customerName || '').trim();
+    const customerPhone = String(profileInput.customerPhone || '').trim();
+    const customerPhoneDigits = normalizePhoneDigits(customerPhone);
+    const address = String(profileInput.address || '').trim();
+    const pinValue = normalizeCustomerPin(profileInput.pin || '');
+    const confirmPinValue = normalizeCustomerPin(profileInput.confirmPin || '');
+    const acceptedDataPolicy = Boolean(profileInput.acceptedDataPolicy);
+
+    if (!customerName) {
+        throw new Error('Escribe tu nombre para guardar el perfil.');
+    }
+
+    if (customerPhoneDigits.length < 10) {
+        throw new Error('Escribe un numero de WhatsApp valido.');
+    }
+
+    if (!address) {
+        throw new Error('Escribe la direccion principal de tu perfil.');
+    }
+
+    const clientId = `phone_${customerPhoneDigits}`;
+    const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+    const snapshot = await clientRef.get();
+    const previous = snapshot.exists ? snapshot.data() : {};
+    let passwordHash = String(previous.passwordHash || '').trim();
+    const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
+
+    if (!acceptedDataPolicy && !hasPreviousConsent) {
+        throw new Error('Debes aceptar el uso de tus datos y el envio de promociones de ROAL BURGER para crear tu perfil.');
+    }
+
+    if (pinValue || confirmPinValue || !passwordHash) {
+        if (!isValidCustomerPin(pinValue)) {
+            throw new Error('Crea una contrasena numerica de 6 digitos.');
+        }
+
+        if (pinValue !== confirmPinValue) {
+            throw new Error('La confirmacion de la contrasena no coincide.');
+        }
+
+        passwordHash = await hashCustomerPin(pinValue);
+    }
+
+    await clientRef.set({
+        customerName,
+        customerPhone,
+        customerPhoneDigits,
+        address,
+        passwordHash,
+        privacyConsentAccepted: acceptedDataPolicy || Boolean(previous.privacyConsentAccepted),
+        marketingConsentAccepted: acceptedDataPolicy || Boolean(previous.marketingConsentAccepted),
+        consentAcceptedAt: previous.consentAcceptedAt || getPublicServerTimestamp(),
+        consentVersion: acceptedDataPolicy ? CUSTOMER_CONSENT_VERSION : String(previous.consentVersion || CUSTOMER_CONSENT_VERSION).trim(),
+        totalOrders: Number(previous.totalOrders || 0),
+        totalSpent: Number(previous.totalSpent || 0),
+        lastOrderCode: String(previous.lastOrderCode || '').trim(),
+        lastOrderId: String(previous.lastOrderId || '').trim(),
+        lastOrderTotal: Number(previous.lastOrderTotal || 0),
+        firstOrderAt: previous.firstOrderAt || null,
+        lastOrderAt: previous.lastOrderAt || null,
+        source: 'web_profile',
+        createdAt: previous.createdAt || getPublicServerTimestamp(),
+        updatedAt: getPublicServerTimestamp()
+    }, { merge: true });
+
+    return normalizeCustomerProfile({
+        id: clientId,
+        ...previous,
+        customerName,
+        customerPhone,
+        customerPhoneDigits,
+        address,
+        passwordHash,
+        privacyConsentAccepted: acceptedDataPolicy || Boolean(previous.privacyConsentAccepted),
+        marketingConsentAccepted: acceptedDataPolicy || Boolean(previous.marketingConsentAccepted),
+        consentAcceptedAt: previous.consentAcceptedAt || new Date(),
+        consentVersion: acceptedDataPolicy ? CUSTOMER_CONSENT_VERSION : String(previous.consentVersion || CUSTOMER_CONSENT_VERSION).trim()
+    }, clientId);
+}
+
+function closeCustomerAuthModal() {
+    closeCustomerConsentDocument();
+    closeCustomerDeleteAccountModal();
+    closeCustomerPasswordResetModal();
+
+    if (!customerAuthUI) {
+        return;
+    }
+
+    customerAuthUI.modal.remove();
+    customerAuthUI = null;
+    syncBodyScrollLock();
+}
+
+function bindCustomerPinField(input) {
+    if (!(input instanceof HTMLInputElement)) {
+        return;
+    }
+
+    input.addEventListener('input', () => {
+        const normalized = normalizeCustomerPin(input.value);
+        if (input.value !== normalized) {
+            input.value = normalized;
+        }
+    });
+}
+
+function getPasswordToggleIcon(isVisible = false) {
+    return isVisible
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.28 2.22 2.22 3.28l4.1 4.1C4.33 8.83 2.86 10.79 2 12c2.73 3.84 6.68 6 10 6 1.94 0 3.82-.62 5.47-1.75l3.25 3.25 1.06-1.06ZM9.53 10.6l3.87 3.87A2.98 2.98 0 0 1 9.53 10.6Zm2.47-4.6c-1.2 0-2.39.24-3.49.68l1.65 1.65A2.98 2.98 0 0 1 15.67 14l1.73 1.73c1.75-1.08 3.39-2.73 4.6-4.43-2.73-3.84-6.68-5.3-10-5.3Z"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-8.84 3.48-10 7 1.16 3.52 5 7 10 7s8.84-3.48 10-7c-1.16-3.52-5-7-10-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>';
+}
+
+function attachPasswordToggle(input) {
+    if (!(input instanceof HTMLInputElement) || input.dataset.passwordToggleReady === '1') {
+        return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'support-password-wrap';
+    input.parentNode?.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+
+    const toggleButton = document.createElement('button');
+    toggleButton.type = 'button';
+    toggleButton.className = 'support-password-toggle';
+    toggleButton.setAttribute('aria-label', 'Mostrar contrasena');
+    toggleButton.innerHTML = getPasswordToggleIcon(false);
+
+    toggleButton.addEventListener('click', () => {
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        toggleButton.classList.toggle('is-visible', isPassword);
+        toggleButton.innerHTML = getPasswordToggleIcon(isPassword);
+        toggleButton.setAttribute('aria-label', isPassword ? 'Ocultar contrasena' : 'Mostrar contrasena');
+    });
+
+    wrapper.appendChild(toggleButton);
+    input.dataset.passwordToggleReady = '1';
+}
+
+function getCustomerProfileFormUI() {
+    if (customerRegisterUI) {
+        return customerRegisterUI;
+    }
+
+    if (customerAuthUI?.name || customerAuthUI?.registerPhone) {
+        return customerAuthUI;
+    }
+
+    return null;
+}
+
+function populateCustomerRegisterPanel(profile = {}) {
+    const formUI = getCustomerProfileFormUI();
+    if (!formUI) {
+        return;
+    }
+
+    if (formUI.name) {
+        formUI.name.value = String(profile.customerName || '').trim();
+    }
+    if (formUI.address) {
+        formUI.address.value = String(profile.address || '').trim();
+    }
+    if (formUI.registerPhone) {
+        formUI.registerPhone.value = String(profile.customerPhone || '').trim();
+    }
+    if (formUI.registerPin) {
+        formUI.registerPin.value = '';
+    }
+    if (formUI.confirmPin) {
+        formUI.confirmPin.value = '';
+    }
+    const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
+    formUI.hasPreviousConsent = hasConsent;
+    applyCustomerConsentState(hasConsent);
+}
+
+function closeCustomerRegisterModal() {
+    closeCustomerConsentDocument();
+    closeCustomerDeleteAccountModal();
+    closeCustomerPasswordResetModal();
+
+    if (!customerRegisterUI) {
+        return;
+    }
+
+    customerRegisterUI.modal.remove();
+    customerRegisterUI = null;
+    syncBodyScrollLock();
+}
+
+function closeCustomerConsentDocument() {
+    if (!customerConsentDocumentUI) {
+        return;
+    }
+
+    customerConsentDocumentUI.modal.remove();
+    customerConsentDocumentUI = null;
+    syncBodyScrollLock();
+}
+
+function applyCustomerConsentState(isAuthorized = false) {
+    const formUI = getCustomerProfileFormUI();
+    if (!formUI?.consent) {
+        return;
+    }
+
+    const hasPreviousConsent = Boolean(formUI.hasPreviousConsent);
+    const isApproved = Boolean(isAuthorized) || hasPreviousConsent;
+
+    formUI.consent.checked = isApproved;
+    formUI.consent.disabled = true;
+    formUI.consentViewed = isApproved;
+
+    if (formUI.consentStatus) {
+        formUI.consentStatus.textContent = hasPreviousConsent
+            ? 'Esta autorizacion ya fue registrada en tu perfil.'
+            : (isApproved
+                ? 'Documento revisado y autorizacion aceptada. Ya puedes continuar.'
+                : 'Debes abrir y leer el documento antes de autorizar el manejo de tus datos.');
+    }
+
+    if (formUI.reviewConsentButton) {
+        formUI.reviewConsentButton.textContent = hasPreviousConsent || isApproved
+            ? 'Volver a ver autorizacion'
+            : 'Leer autorizacion de tratamiento de datos';
+    }
+
+    if (formUI.save) {
+        formUI.save.classList.toggle('is-disabled', !isApproved);
+        formUI.save.setAttribute('aria-disabled', isApproved ? 'false' : 'true');
+        formUI.save.title = isApproved ? '' : 'Primero debes leer y aceptar la autorizacion de tratamiento de datos.';
+    }
+}
+
+function buildCustomerRegisterFormMarkup(profile = {}, saveLabel = 'Crear perfil') {
+    const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
+    const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos</a>.`;
+
+    return `
+        <label class="support-field">
+            <span>Nombre</span>
+            <input type="text" id="customerRegisterName" value="${escapeHtml(profile.customerName || '')}" placeholder="Escribe tu nombre">
+        </label>
+        <label class="support-field">
+            <span>Direccion principal</span>
+            <textarea id="customerRegisterAddress" rows="4" placeholder="Escribe tu direccion principal">${escapeHtml(profile.address || '')}</textarea>
+        </label>
+        <label class="support-field">
+            <span>Numero de WhatsApp</span>
+            <input type="tel" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}" placeholder="Escribe tu numero de WhatsApp">
+        </label>
+        <label class="support-field">
+            <span>${saveLabel === 'Guardar perfil' ? 'Contrasena de 6 digitos' : 'Crear contrasena de 6 digitos'}</span>
+            <input type="password" id="customerRegisterPin" inputmode="numeric" maxlength="6" placeholder="${saveLabel === 'Guardar perfil' ? 'Crea o actualiza tu contrasena' : 'Crea una contrasena numerica'}">
+            <p class="support-field-hint">La usaras junto con tu WhatsApp para abrir tu perfil.</p>
+        </label>
+        <label class="support-field">
+            <span>Confirmar contrasena</span>
+            <input type="password" id="customerConfirmPin" inputmode="numeric" maxlength="6" placeholder="Confirma la contrasena">
+        </label>
+        <div class="support-consent-box">
+            <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Leer autorizacion de tratamiento de datos</button>
+            <p class="support-field-hint" id="customerConsentStatus">Debes abrir el documento antes de autorizar el manejo de tus datos.</p>
+        </div>
+        <label class="support-check" for="customerDataConsent">
+            <input type="checkbox" id="customerDataConsent" ${hasConsent ? 'checked' : ''} disabled>
+            <span>${consentMarkup}</span>
+        </label>
+        <button type="button" class="support-send-btn" id="customerRegisterSave">${saveLabel}</button>
+    `;
+}
+
+function openCustomerRegisterModal(profile = {}, options = {}) {
+    closeCustomerRegisterModal();
+
+    const title = String(options.title || 'Crear cuenta').trim();
+    const description = String(options.description || 'Completa tus datos para crear tu perfil y guardar tus proximos pedidos mas rapido.').trim();
+    const saveLabel = String(options.saveLabel || 'Crear perfil').trim();
+
+    const modal = document.createElement('div');
+    modal.id = 'customerRegisterModal';
+    modal.className = 'support-modal';
+    modal.classList.add('is-open');
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+            <button type="button" class="support-modal-close" aria-label="Cerrar registro">&times;</button>
+            <p class="support-modal-kicker">Mi cuenta</p>
+            <h3 class="support-modal-title">${escapeHtml(title)}</h3>
+            <p class="support-modal-text">${escapeHtml(description)}</p>
+            ${buildCustomerRegisterFormMarkup(profile, saveLabel)}
+            <p class="support-feedback" id="customerAuthFeedback"></p>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
+    customerRegisterUI = {
+        modal,
+        close: modal.querySelector('.support-modal-close'),
+        feedback: modal.querySelector('#customerAuthFeedback'),
+        name: modal.querySelector('#customerRegisterName'),
+        address: modal.querySelector('#customerRegisterAddress'),
+        registerPhone: modal.querySelector('#customerRegisterPhone'),
+        registerPin: modal.querySelector('#customerRegisterPin'),
+        confirmPin: modal.querySelector('#customerConfirmPin'),
+        reviewConsentButton: modal.querySelector('#customerReviewConsentButton'),
+        consentStatus: modal.querySelector('#customerConsentStatus'),
+        consent: modal.querySelector('#customerDataConsent'),
+        save: modal.querySelector('#customerRegisterSave'),
+        hasPreviousConsent: hasConsent,
+        consentViewed: hasConsent
+    };
+
+    customerRegisterUI.close?.addEventListener('click', closeCustomerRegisterModal);
+    customerRegisterUI.reviewConsentButton?.addEventListener('click', openCustomerConsentDocument);
+    customerRegisterUI.save?.addEventListener('click', submitCustomerProfileForm);
+
+    bindCustomerPinField(customerRegisterUI.registerPin);
+    bindCustomerPinField(customerRegisterUI.confirmPin);
+    attachPasswordToggle(customerRegisterUI.registerPin);
+    attachPasswordToggle(customerRegisterUI.confirmPin);
+    applyCustomerConsentState(hasConsent);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeCustomerRegisterModal();
+        }
+    });
+
+    syncBodyScrollLock();
+    customerRegisterUI.name?.focus();
+}
+
+function closeCustomerDeleteAccountModal() {
+    if (!customerDeleteAccountUI) {
+        return;
+    }
+
+    customerDeleteAccountUI.modal.remove();
+    customerDeleteAccountUI = null;
+    syncBodyScrollLock();
+}
+
+function closeCustomerPasswordResetModal() {
+    if (!customerPasswordResetUI) {
+        return;
+    }
+
+    customerPasswordResetUI.modal.remove();
+    customerPasswordResetUI = null;
+    syncBodyScrollLock();
+}
+
+async function fetchClientProfileForRecovery(phoneValue = '') {
+    const phoneDigits = normalizePhoneDigits(phoneValue);
+    if (phoneDigits.length < 10) {
+        throw new Error('Escribe un numero de WhatsApp valido.');
+    }
+
+    const db = getPublicFirebaseDb();
+    const directSnapshot = await db.collection(CLIENTS_COLLECTION).doc(`phone_${phoneDigits}`).get();
+    if (directSnapshot.exists) {
+        return normalizeCustomerProfile({ id: directSnapshot.id, ...directSnapshot.data() }, directSnapshot.id);
+    }
+
+    const fallbackSnapshot = await db.collection(CLIENTS_COLLECTION)
+        .where('customerPhoneDigits', '==', phoneDigits)
+        .limit(1)
+        .get();
+
+    if (!fallbackSnapshot.empty) {
+        const doc = fallbackSnapshot.docs[0];
+        return normalizeCustomerProfile({ id: doc.id, ...doc.data() }, doc.id);
+    }
+
+    return null;
+}
+
+async function submitCustomerNewPassword() {
+    if (!customerPasswordResetUI?.feedback) {
+        return;
+    }
+
+    const profile = customerPasswordResetUI.profile;
+    const pinValue = String(customerPasswordResetUI.pin?.value || '').trim();
+    const confirmPinValue = String(customerPasswordResetUI.confirmPin?.value || '').trim();
+    customerPasswordResetUI.feedback.textContent = '';
+
+    try {
+        const savedProfile = await saveCustomerProfile({
+            customerName: profile?.customerName || '',
+            customerPhone: profile?.customerPhone || profile?.customerPhoneDigits || '',
+            address: profile?.address || '',
+            pin: pinValue,
+            confirmPin: confirmPinValue,
+            acceptedDataPolicy: true
+        });
+
+        setActiveCustomerProfile(savedProfile);
+        closeCustomerPasswordResetModal();
+        closeCustomerAuthModal();
+    } catch (error) {
+        customerPasswordResetUI.feedback.textContent = error.message || 'No se pudo actualizar la contrasena.';
+    }
+}
+
+function openCustomerPasswordResetModal(profile = {}) {
+    closeCustomerPasswordResetModal();
+
+    const resolvedProfile = normalizeCustomerProfile(profile, String(profile.id || ''));
+    if (!resolvedProfile?.customerPhoneDigits) {
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'customerPasswordResetModal';
+    modal.className = 'support-modal';
+    modal.classList.add('is-open');
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Crear nueva contrasena">
+            <button type="button" class="support-modal-close" aria-label="Cerrar nueva contrasena">&times;</button>
+            <p class="support-modal-kicker">Nueva contrasena</p>
+            <h3 class="support-modal-title">Tu contrasena ya fue reiniciada</h3>
+            <p class="support-modal-text">Crea una nueva contrasena para volver a entrar con tu numero de WhatsApp.</p>
+            <label class="support-field">
+                <span>Numero de WhatsApp</span>
+                <input type="tel" id="customerResetPhone" value="${escapeHtml(resolvedProfile.customerPhone || resolvedProfile.customerPhoneDigits)}" readonly>
+            </label>
+            <label class="support-field">
+                <span>Nueva contrasena de 6 digitos</span>
+                <input type="password" id="customerResetPin" inputmode="numeric" maxlength="6" placeholder="Crea tu nueva contrasena">
+            </label>
+            <label class="support-field">
+                <span>Confirmar nueva contrasena</span>
+                <input type="password" id="customerResetConfirmPin" inputmode="numeric" maxlength="6" placeholder="Confirma tu nueva contrasena">
+            </label>
+            <p class="support-feedback" id="customerResetFeedback"></p>
+            <div class="support-actions split">
+                <button type="button" class="support-secondary-btn" id="customerResetCancelButton">Cancelar</button>
+                <button type="button" class="support-send-btn" id="customerResetSaveButton">Guardar contrasena</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    customerPasswordResetUI = {
+        modal,
+        profile: resolvedProfile,
+        close: modal.querySelector('.support-modal-close'),
+        cancel: modal.querySelector('#customerResetCancelButton'),
+        save: modal.querySelector('#customerResetSaveButton'),
+        pin: modal.querySelector('#customerResetPin'),
+        confirmPin: modal.querySelector('#customerResetConfirmPin'),
+        feedback: modal.querySelector('#customerResetFeedback')
+    };
+
+    customerPasswordResetUI.close?.addEventListener('click', closeCustomerPasswordResetModal);
+    customerPasswordResetUI.cancel?.addEventListener('click', closeCustomerPasswordResetModal);
+    customerPasswordResetUI.save?.addEventListener('click', submitCustomerNewPassword);
+
+    bindCustomerPinField(customerPasswordResetUI.pin);
+    bindCustomerPinField(customerPasswordResetUI.confirmPin);
+    attachPasswordToggle(customerPasswordResetUI.pin);
+    attachPasswordToggle(customerPasswordResetUI.confirmPin);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeCustomerPasswordResetModal();
+        }
+    });
+
+    syncBodyScrollLock();
+    customerPasswordResetUI.pin?.focus();
+}
+
+async function createCustomerDeleteAccountRequest(reasonValue = '', profile = activeCustomerProfile) {
+    const resolvedProfile = normalizeCustomerProfile(profile || activeCustomerProfile || {});
+    if (!resolvedProfile?.customerPhoneDigits) {
+        throw new Error('No encontramos un perfil valido para eliminar.');
+    }
+
+    const reason = String(reasonValue || '').trim();
+    if (reason.length < 10) {
+        throw new Error('Cuéntanos brevemente por que deseas eliminar la cuenta.');
+    }
+
+    const db = getPublicFirebaseDb();
+    const body = [
+        'El cliente solicito eliminar su cuenta desde la app web.',
+        `Motivo: ${reason}`,
+        `Nombre: ${resolvedProfile.customerName || 'Cliente sin nombre'}`,
+        `WhatsApp: ${resolvedProfile.customerPhone || resolvedProfile.customerPhoneDigits}`,
+        `Direccion: ${resolvedProfile.address || 'Sin direccion registrada'}`
+    ].join('\n');
+
+    await db.collection(MESSAGES_COLLECTION).add({
+        type: 'account_delete_request',
+        status: 'pending',
+        subject: 'Solicitud de eliminacion de cuenta',
+        body,
+        customerName: String(resolvedProfile.customerName || '').trim() || 'Cliente sin nombre',
+        customerPhone: String(resolvedProfile.customerPhone || '').trim() || resolvedProfile.customerPhoneDigits,
+        customerPhoneDigits: resolvedProfile.customerPhoneDigits,
+        customerAddress: String(resolvedProfile.address || '').trim(),
+        source: 'public_web',
+        createdAt: getPublicServerTimestamp(),
+        updatedAt: getPublicServerTimestamp()
+    });
+}
+
+async function submitCustomerDeleteAccountRequest() {
+    if (!customerDeleteAccountUI?.feedback || !customerDeleteAccountUI?.reason) {
+        return;
+    }
+
+    const profile = activeCustomerProfile ? { ...activeCustomerProfile } : null;
+    const reasonValue = String(customerDeleteAccountUI.reason.value || '').trim();
+    customerDeleteAccountUI.feedback.textContent = '';
+
+    try {
+        await createCustomerDeleteAccountRequest(reasonValue, profile);
+        const db = getPublicFirebaseDb();
+        await db.collection(CLIENTS_COLLECTION).doc(`phone_${profile?.customerPhoneDigits || ''}`).delete();
+        clearActiveCustomerProfile();
+        closeCustomerDeleteAccountModal();
+        closeCustomerAuthModal();
+        window.alert('Tu cuenta fue eliminada y la solicitud quedo registrada en ROAL BURGER.');
+    } catch (error) {
+        customerDeleteAccountUI.feedback.textContent = error.message || 'No se pudo eliminar la cuenta.';
+    }
+}
+
+function openCustomerDeleteAccountModal() {
+    closeCustomerDeleteAccountModal();
+
+    const profile = activeCustomerProfile;
+    if (!profile) {
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'customerDeleteAccountModal';
+    modal.className = 'support-modal';
+    modal.classList.add('is-open');
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Eliminar cuenta">
+            <button type="button" class="support-modal-close" aria-label="Cerrar eliminacion de cuenta">&times;</button>
+            <p class="support-modal-kicker">Eliminar cuenta</p>
+            <h3 class="support-modal-title">Antes de eliminar tu cuenta</h3>
+            <p class="support-modal-text">Cuéntanos por que deseas eliminarla. Esta informacion llegara al centro de mensajes del admin.</p>
+            <div class="customer-profile-summary">
+                <strong>${escapeHtml(profile.customerName)}</strong>
+                <span>WhatsApp: ${escapeHtml(profile.customerPhone)}</span>
+                <p>${escapeHtml(profile.address || 'Sin direccion principal registrada')}</p>
+            </div>
+            <label class="support-field">
+                <span>Motivo de eliminacion</span>
+                <textarea id="customerDeleteReason" rows="5" placeholder="Cuéntanos por que deseas eliminar tu cuenta"></textarea>
+            </label>
+            <p class="support-feedback" id="customerDeleteFeedback"></p>
+            <div class="support-actions split">
+                <button type="button" class="support-secondary-btn" id="customerDeleteCancelButton">Cancelar</button>
+                <button type="button" class="support-danger-btn" id="customerDeleteConfirmButton">Eliminar cuenta</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    customerDeleteAccountUI = {
+        modal,
+        close: modal.querySelector('.support-modal-close'),
+        cancel: modal.querySelector('#customerDeleteCancelButton'),
+        confirm: modal.querySelector('#customerDeleteConfirmButton'),
+        reason: modal.querySelector('#customerDeleteReason'),
+        feedback: modal.querySelector('#customerDeleteFeedback')
+    };
+
+    customerDeleteAccountUI.close?.addEventListener('click', closeCustomerDeleteAccountModal);
+    customerDeleteAccountUI.cancel?.addEventListener('click', closeCustomerDeleteAccountModal);
+    customerDeleteAccountUI.confirm?.addEventListener('click', submitCustomerDeleteAccountRequest);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeCustomerDeleteAccountModal();
+        }
+    });
+
+    syncBodyScrollLock();
+    customerDeleteAccountUI.reason?.focus();
+}
+
+function activateCustomerProfileTab(tabKey = 'info') {
+    if (!customerAuthUI?.tabButtons?.length || !customerAuthUI?.tabPanels?.length) {
+        return;
+    }
+
+    customerAuthUI.activeTab = tabKey;
+    customerAuthUI.tabButtons.forEach((button) => {
+        const isActive = button.dataset.profileTab === tabKey;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+    customerAuthUI.tabPanels.forEach((panel) => {
+        panel.hidden = panel.dataset.profilePanel !== tabKey;
+    });
+}
+
+function openCustomerConsentDocument() {
+    closeCustomerConsentDocument();
+
+    const modal = document.createElement('div');
+    modal.id = 'customerConsentDocumentModal';
+    modal.className = 'support-modal';
+    modal.classList.add('is-open');
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass support-consent-modal-card" role="dialog" aria-modal="true" aria-label="Autorizacion de tratamiento de datos">
+            <button type="button" class="support-modal-close" aria-label="Cerrar autorizacion">&times;</button>
+            <p class="support-modal-kicker">Autorizacion de datos</p>
+            <h3 class="support-modal-title">Lee este documento antes de continuar</h3>
+            <p class="support-modal-text">Para crear tu perfil debes conocer y autorizar expresamente el tratamiento de tus datos personales por parte de ROAL BURGER.</p>
+            <div class="support-consent-document-frame-wrap">
+                <iframe src="${CUSTOMER_CONSENT_POLICY_URL}" title="Politica de tratamiento de datos" class="support-consent-document-frame"></iframe>
+            </div>
+            <p class="support-field-hint">Si prefieres abrirlo aparte, <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">puedes verlo en una pestaña nueva</a>.</p>
+            <div class="support-actions split">
+                <button type="button" class="support-secondary-btn" id="customerConsentCloseButton">Cerrar</button>
+                <button type="button" class="support-send-btn" id="customerConsentAcceptButton">He leido y autorizo</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    customerConsentDocumentUI = {
+        modal,
+        close: modal.querySelector('.support-modal-close'),
+        closeButton: modal.querySelector('#customerConsentCloseButton'),
+        acceptButton: modal.querySelector('#customerConsentAcceptButton')
+    };
+
+    customerConsentDocumentUI.close?.addEventListener('click', closeCustomerConsentDocument);
+    customerConsentDocumentUI.closeButton?.addEventListener('click', closeCustomerConsentDocument);
+    customerConsentDocumentUI.acceptButton?.addEventListener('click', () => {
+        applyCustomerConsentState(true);
+        closeCustomerConsentDocument();
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeCustomerConsentDocument();
+        }
+    });
+
+    syncBodyScrollLock();
+}
+
+async function requestPublicNotificationPermission() {
+    const installHint = document.getElementById('installShortcutHint');
+    if (typeof Notification === 'undefined') {
+        if (installHint) {
+            installHint.hidden = false;
+            installHint.textContent = 'Tu navegador no permite activar notificaciones desde este dispositivo.';
+        }
+        return 'unsupported';
+    }
+
+    if (Notification.permission === 'granted') {
+        if (installHint) {
+            installHint.hidden = false;
+            installHint.textContent = 'Notificaciones activadas para novedades y promociones de ROAL BURGER.';
+        }
+        return 'granted';
+    }
+
+    if (Notification.permission === 'denied') {
+        if (installHint) {
+            installHint.hidden = false;
+            installHint.textContent = 'Las notificaciones estan bloqueadas. Si luego quieres activarlas, puedes hacerlo desde la configuracion del navegador.';
+        }
+        return 'denied';
+    }
+
+    try {
+        const permission = await Notification.requestPermission();
+        if (installHint) {
+            installHint.hidden = false;
+            installHint.textContent = permission === 'granted'
+                ? 'Notificaciones activadas para novedades y promociones de ROAL BURGER.'
+                : 'Puedes seguir usando la app sin notificaciones. Si cambias de opinion, podras activarlas mas adelante.';
+        }
+        return permission;
+    } catch (error) {
+        if (installHint) {
+            installHint.hidden = false;
+            installHint.textContent = 'No pudimos solicitar permisos de notificacion en este momento.';
+        }
+        return 'error';
+    }
+}
+
+function buildCustomerPasswordResetMessage(phoneValue = '') {
+    const phoneDigits = normalizePhoneDigits(phoneValue);
+    return [
+        'Hola ROAL BURGER, olvide la contrasena de mi perfil web.',
+        phoneDigits ? `Mi numero de WhatsApp es: ${phoneDigits}` : 'Necesito ayuda para recuperar el acceso a mi cuenta.',
+        'Por favor ayudame a restablecer mi contrasena.'
+    ].join('\n');
+}
+
+async function createCustomerPasswordResetRequest(phoneValue = '') {
+    const customerPhone = String(phoneValue || '').trim();
+    const customerPhoneDigits = normalizePhoneDigits(customerPhone);
+
+    if (customerPhoneDigits.length < 10) {
+        throw new Error('Escribe tu numero de WhatsApp para solicitar el reinicio.');
+    }
+
+    const db = getPublicFirebaseDb();
+    const messageBody = buildCustomerPasswordResetMessage(customerPhone);
+    const existingProfile = await db.collection(CLIENTS_COLLECTION).doc(`phone_${customerPhoneDigits}`).get();
+    const profileData = existingProfile.exists ? existingProfile.data() : {};
+
+    await db.collection(MESSAGES_COLLECTION).add({
+        type: 'password_reset_request',
+        status: 'pending',
+        subject: 'Solicitud de reinicio de contrasena',
+        body: messageBody,
+        customerName: String(profileData.customerName || '').trim() || 'Cliente sin nombre',
+        customerPhone,
+        customerPhoneDigits,
+        customerAddress: String(profileData.address || '').trim(),
+        source: 'public_web',
+        createdAt: getPublicServerTimestamp(),
+        updatedAt: getPublicServerTimestamp()
+    });
+}
+
+async function requestCustomerPasswordReset() {
+    if (!customerAuthUI?.feedback && !customerRegisterUI?.feedback) {
+        return;
+    }
+
+    const feedbackTarget = customerAuthUI?.feedback || customerRegisterUI?.feedback;
+    const phoneValue = String(customerAuthUI?.lookupPhone?.value || customerRegisterUI?.registerPhone?.value || customerAuthUI?.registerPhone?.value || '').trim();
+    feedbackTarget.textContent = '';
+
+    try {
+        const profile = await fetchClientProfileForRecovery(phoneValue);
+        if (profile && !profile.passwordHash) {
+            openCustomerPasswordResetModal(profile);
+            feedbackTarget.textContent = 'Tu contrasena ya fue reiniciada. Crea una nueva para continuar.';
+            return;
+        }
+
+        await createCustomerPasswordResetRequest(phoneValue);
+        feedbackTarget.textContent = 'Tu solicitud fue enviada al admin. En breve te contactaremos para reiniciar la contrasena.';
+    } catch (error) {
+        feedbackTarget.textContent = error.message || 'No se pudo enviar la solicitud.';
+    }
+}
+
+async function submitCustomerLookup() {
+    if (!customerAuthUI?.lookupPhone || !customerAuthUI?.lookupPin || !customerAuthUI.feedback) {
+        return;
+    }
+
+    const phoneValue = String(customerAuthUI.lookupPhone.value || '').trim();
+    const pinValue = String(customerAuthUI.lookupPin.value || '').trim();
+    customerAuthUI.feedback.textContent = '';
+
+    try {
+        const profile = await fetchClientProfileByPhone(phoneValue, pinValue);
+        if (!profile) {
+            customerAuthUI.feedback.textContent = 'No encontramos un perfil con esos datos. Si no tienes cuenta, pulsa Registrarse.';
+            return;
+        }
+
+        setActiveCustomerProfile(profile);
+        closeCustomerAuthModal();
+    } catch (error) {
+        if (error?.code === 'PASSWORD_RESET_REQUIRED') {
+            openCustomerPasswordResetModal(error.profile || { customerPhone: phoneValue });
+            customerAuthUI.feedback.textContent = error.message || 'Debes crear una nueva contrasena para continuar.';
+            return;
+        }
+
+        customerAuthUI.feedback.textContent = error.message || 'No se pudo abrir el perfil.';
+    }
+}
+
+async function submitCustomerProfileForm() {
+    const formUI = getCustomerProfileFormUI();
+    if (!formUI?.feedback) {
+        return;
+    }
+
+    if (!formUI.consentViewed && !formUI.hasPreviousConsent) {
+        formUI.feedback.textContent = 'Primero debes leer y aceptar la autorizacion de tratamiento de datos.';
+        formUI.reviewConsentButton?.focus();
+        return;
+    }
+
+    const nameValue = String(formUI.name?.value || activeCustomerProfile?.customerName || '').trim();
+    const addressValue = String(formUI.address?.value || activeCustomerProfile?.address || '').trim();
+    const phoneValue = String(formUI.registerPhone?.value || activeCustomerProfile?.customerPhone || '').trim();
+    const pinValue = String(formUI.registerPin?.value || '').trim();
+    const confirmPinValue = String(formUI.confirmPin?.value || '').trim();
+    const acceptedDataPolicy = Boolean(formUI.consent?.checked);
+
+    formUI.feedback.textContent = '';
+
+    try {
+        const profile = await saveCustomerProfile({
+            customerName: nameValue,
+            customerPhone: phoneValue,
+            address: addressValue,
+            pin: pinValue,
+            confirmPin: confirmPinValue,
+            acceptedDataPolicy
+        });
+
+        setActiveCustomerProfile(profile);
+        closeCustomerRegisterModal();
+        closeCustomerAuthModal();
+    } catch (error) {
+        formUI.feedback.textContent = error.message || 'No se pudo guardar el perfil.';
+    }
+}
+
+function openCustomerAuthModal() {
+    closeCustomerAuthModal();
+
+    const profile = activeCustomerProfile;
+    const hasConsent = Boolean(profile?.privacyConsentAccepted) && Boolean(profile?.marketingConsentAccepted);
+    const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos</a>.`;
+    const modal = document.createElement('div');
+    modal.id = 'customerAuthModal';
+    modal.className = 'support-modal';
+    modal.classList.add('is-open');
+    modal.innerHTML = profile
+        ? `
+            <div class="support-modal-card liquid-glass customer-profile-modal-card" role="dialog" aria-modal="true" aria-label="Tu perfil">
+                <button type="button" class="support-modal-close" aria-label="Cerrar perfil">&times;</button>
+                <p class="support-modal-kicker">Perfil abierto</p>
+                <h3 class="support-modal-title">Tu perfil</h3>
+                <div class="customer-profile-hero">
+                    <div class="customer-profile-avatar">${escapeHtml((profile.customerName || 'R').trim().slice(0, 1).toUpperCase())}</div>
+                    <div class="customer-profile-heading">
+                        <strong>${escapeHtml(profile.customerName)}</strong>
+                        <span>@${escapeHtml((profile.customerPhoneDigits || profile.customerPhone || 'roalburger').slice(-10))}</span>
+                    </div>
+                    <button type="button" class="support-secondary-btn customer-profile-edit-chip" id="customerEditProfileButton">Editar</button>
+                </div>
+                <div class="customer-profile-summary customer-profile-summary-grid">
+                    <div><strong>${formatCurrency(Number(profile.totalSpent || 0))}</strong><span>Total comprado</span></div>
+                    <div><strong>${Number(profile.totalOrders || 0)}</strong><span>Pedidos</span></div>
+                    <div><strong>${profile.lastOrderCode ? escapeHtml(profile.lastOrderCode) : 'Nuevo'}</strong><span>Ultimo pedido</span></div>
+                </div>
+                <div class="customer-profile-tabs" role="tablist" aria-label="Secciones del perfil">
+                    <button type="button" class="customer-profile-tab is-active" data-profile-tab="info" aria-selected="true">Informacion</button>
+                    <button type="button" class="customer-profile-tab" data-profile-tab="cuenta" aria-selected="false">Cuenta</button>
+                </div>
+                <div class="customer-profile-panel" data-profile-panel="info">
+                    <div class="customer-profile-info-card">
+                        <span>WhatsApp</span>
+                        <strong>${escapeHtml(profile.customerPhone || 'Sin numero')}</strong>
+                    </div>
+                    <div class="customer-profile-info-card">
+                        <span>Direccion principal</span>
+                        <strong>${escapeHtml(profile.address || 'Sin direccion principal registrada')}</strong>
+                    </div>
+                    <div class="customer-profile-info-card">
+                        <span>Tratamiento de datos</span>
+                        <strong>${hasConsent ? 'Autorizado' : 'Pendiente'}</strong>
+                        <p>${consentMarkup}</p>
+                    </div>
+                </div>
+                <div class="customer-profile-panel" data-profile-panel="cuenta" hidden>
+                    <div class="support-consent-box">
+                        <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Ver autorizacion de tratamiento de datos</button>
+                        <p class="support-field-hint">Desde aqui puedes revisar tu autorizacion, editar tus datos o cerrar la cuenta.</p>
+                    </div>
+                    <div class="support-actions stack">
+                        <button type="button" class="support-secondary-btn" id="customerEditProfileButtonAlt">Editar perfil</button>
+                        <button type="button" class="support-secondary-btn" id="customerLogoutButton">Cerrar sesion</button>
+                        <button type="button" class="support-danger-btn" id="customerDeleteAccountButton">Eliminar cuenta</button>
+                    </div>
+                </div>
+                <p class="support-feedback" id="customerAuthFeedback"></p>
+            </div>
+        `
+        : `
+            <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Iniciar sesion o registrarte">
+                <button type="button" class="support-modal-close" aria-label="Cerrar inicio de sesion">&times;</button>
+                <p class="support-modal-kicker">Mi cuenta</p>
+                <h3 class="support-modal-title">Inicia sesion</h3>
+                <p class="support-modal-text">Escribe tu numero de WhatsApp y tu contrasena de 6 digitos para abrir tu perfil.</p>
+                <label class="support-field">
+                    <span>Ingresar con WhatsApp</span>
+                    <input type="tel" id="customerLookupPhone" placeholder="Escribe tu numero de WhatsApp">
+                </label>
+                <label class="support-field">
+                    <span>Contrasena de 6 digitos</span>
+                    <input type="password" id="customerLookupPin" inputmode="numeric" maxlength="6" placeholder="Escribe tu contrasena">
+                </label>
+                <div class="support-actions stack">
+                    <button type="button" class="support-send-btn" id="customerLookupButton">Entrar</button>
+                    <div class="support-actions split">
+                        <button type="button" class="support-secondary-btn" id="customerForgotPasswordButton">Olvido contrasena</button>
+                        <button type="button" class="support-secondary-btn" id="customerRegisterToggle">Registrarse</button>
+                    </div>
+                </div>
+                <p class="support-feedback" id="customerAuthFeedback"></p>
+            </div>
+        `;
+
+    document.body.appendChild(modal);
+
+    customerAuthUI = {
+        modal,
+        close: modal.querySelector('.support-modal-close'),
+        feedback: modal.querySelector('#customerAuthFeedback'),
+        lookupPhone: modal.querySelector('#customerLookupPhone'),
+        lookupPin: modal.querySelector('#customerLookupPin'),
+        lookupButton: modal.querySelector('#customerLookupButton'),
+        forgotPasswordButton: modal.querySelector('#customerForgotPasswordButton'),
+        registerToggle: modal.querySelector('#customerRegisterToggle'),
+        reviewConsentButton: modal.querySelector('#customerReviewConsentButton'),
+        editProfileButton: modal.querySelector('#customerEditProfileButton'),
+        editProfileButtonAlt: modal.querySelector('#customerEditProfileButtonAlt'),
+        deleteAccountButton: modal.querySelector('#customerDeleteAccountButton'),
+        tabButtons: Array.from(modal.querySelectorAll('[data-profile-tab]')),
+        tabPanels: Array.from(modal.querySelectorAll('[data-profile-panel]')),
+        logout: modal.querySelector('#customerLogoutButton'),
+        hasPreviousConsent: hasConsent,
+        consentViewed: hasConsent
+    };
+
+    customerAuthUI.close?.addEventListener('click', closeCustomerAuthModal);
+    customerAuthUI.lookupButton?.addEventListener('click', submitCustomerLookup);
+    customerAuthUI.forgotPasswordButton?.addEventListener('click', requestCustomerPasswordReset);
+    customerAuthUI.registerToggle?.addEventListener('click', () => openCustomerRegisterModal({ customerPhone: customerAuthUI.lookupPhone?.value || '' }));
+    customerAuthUI.reviewConsentButton?.addEventListener('click', openCustomerConsentDocument);
+    const openEditProfile = () => {
+        const currentProfile = activeCustomerProfile ? { ...activeCustomerProfile } : {};
+        closeCustomerAuthModal();
+        openCustomerRegisterModal(currentProfile, {
+            title: 'Editar perfil',
+            description: 'Actualiza tu nombre, direccion, WhatsApp y contrasena desde esta pantalla.',
+            saveLabel: 'Guardar perfil'
+        });
+    };
+    customerAuthUI.editProfileButton?.addEventListener('click', openEditProfile);
+    customerAuthUI.editProfileButtonAlt?.addEventListener('click', openEditProfile);
+    customerAuthUI.deleteAccountButton?.addEventListener('click', openCustomerDeleteAccountModal);
+    customerAuthUI.tabButtons?.forEach((button) => {
+        button.addEventListener('click', () => activateCustomerProfileTab(button.dataset.profileTab || 'info'));
+    });
+    customerAuthUI.logout?.addEventListener('click', () => {
+        clearActiveCustomerProfile();
+        closeCustomerAuthModal();
+    });
+    bindCustomerPinField(customerAuthUI.lookupPin);
+    attachPasswordToggle(customerAuthUI.lookupPin);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeCustomerAuthModal();
+        }
+    });
+
+    syncBodyScrollLock();
+    if (profile) {
+        activateCustomerProfileTab('info');
+    }
+    (customerAuthUI.lookupPhone || customerAuthUI.name)?.focus();
 }
 
 function syncBusinessHoursStatus() {
@@ -513,14 +1680,18 @@ async function handleShortcutInstall() {
 
     if (deferredInstallPrompt) {
         deferredInstallPrompt.prompt();
-        await deferredInstallPrompt.userChoice.catch(() => null);
+        const choiceResult = await deferredInstallPrompt.userChoice.catch(() => null);
         deferredInstallPrompt = null;
         updateShortcutInstallUI();
+        if (choiceResult?.outcome === 'accepted') {
+            await requestPublicNotificationPermission();
+        }
         return;
     }
 
     if (!isMobileDevice()) {
         downloadDesktopShortcut();
+        await requestPublicNotificationPermission();
         return;
     }
 
@@ -544,6 +1715,8 @@ async function handleShortcutInstall() {
     window.alert(isIOSDevice()
         ? 'El enlace oficial ya esta listo. En iPhone o iPad abre Compartir y luego Anadir a pantalla de inicio.'
         : 'El enlace oficial ya esta listo. Si tu navegador no ofrece instalar, abre el menu del navegador y elige Anadir a pantalla de inicio.');
+
+    await requestPublicNotificationPermission();
 }
 
 function initShortcutInstallUI() {
@@ -677,7 +1850,12 @@ function syncBodyScrollLock() {
     const isCheckoutOpen = Boolean(checkoutInfoUI && checkoutInfoUI.modal.classList.contains('is-open'));
     const isPaymentFlowOpen = Boolean(paymentFlowUI && paymentFlowUI.modal.classList.contains('is-open'));
     const isOrderSentOpen = Boolean(orderSentConfirmationUI && orderSentConfirmationUI.modal.classList.contains('is-open'));
-    document.body.style.overflow = isMenuOpen || isPromoOpen || isCartOpen || isSupportOpen || isCheckoutOpen || isPaymentFlowOpen || isOrderSentOpen ? 'hidden' : 'auto';
+    const isCustomerAuthOpen = Boolean(customerAuthUI && customerAuthUI.modal.classList.contains('is-open'));
+    const isCustomerRegisterOpen = Boolean(customerRegisterUI && customerRegisterUI.modal.classList.contains('is-open'));
+    const isCustomerConsentOpen = Boolean(customerConsentDocumentUI && customerConsentDocumentUI.modal.classList.contains('is-open'));
+    const isCustomerDeleteOpen = Boolean(customerDeleteAccountUI && customerDeleteAccountUI.modal.classList.contains('is-open'));
+    const isCustomerPasswordResetOpen = Boolean(customerPasswordResetUI && customerPasswordResetUI.modal.classList.contains('is-open'));
+    document.body.style.overflow = isMenuOpen || isPromoOpen || isCartOpen || isSupportOpen || isCheckoutOpen || isPaymentFlowOpen || isOrderSentOpen || isCustomerAuthOpen || isCustomerRegisterOpen || isCustomerConsentOpen || isCustomerDeleteOpen || isCustomerPasswordResetOpen ? 'hidden' : 'auto';
 }
 
 function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
@@ -1121,6 +2299,21 @@ async function createOrderFromCart(customerInfo = {}) {
         total
     });
 
+    if (activeCustomerProfile && activeCustomerProfile.customerPhoneDigits === customerPhoneDigits) {
+        setActiveCustomerProfile({
+            ...activeCustomerProfile,
+            customerName,
+            customerPhone,
+            customerPhoneDigits,
+            address: deliveryAddress || activeCustomerProfile.address,
+            lastOrderCode: orderCode,
+            lastOrderId: orderRef.id,
+            lastOrderTotal: total,
+            totalOrders: Number(activeCustomerProfile.totalOrders || 0) + 1,
+            totalSpent: Number(activeCustomerProfile.totalSpent || 0) + total
+        });
+    }
+
     return {
         id: orderRef.id,
         code: orderCode,
@@ -1368,15 +2561,16 @@ async function submitCheckoutInfo() {
         return;
     }
 
-    const customerName = String(checkoutInfoUI.name.value || '').trim();
+    const profile = activeCustomerProfile;
+    const customerName = profile ? String(profile.customerName || '').trim() : String(checkoutInfoUI.name?.value || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
     const deliveryAddress = String(checkoutInfoUI.address.value || '').trim();
-    const customerPhone = String(checkoutInfoUI.phone.value || '').trim();
-    const phoneDigits = customerPhone.replace(/\D+/g, '');
+    const customerPhone = profile ? String(profile.customerPhone || '').trim() : String(checkoutInfoUI.phone?.value || '').trim();
+    const phoneDigits = normalizePhoneDigits(customerPhone);
 
     if (!customerName) {
         checkoutInfoUI.feedback.textContent = 'Escribe el nombre de quien recibe el pedido.';
-        checkoutInfoUI.name.focus();
+        checkoutInfoUI.name?.focus();
         return;
     }
 
@@ -1394,7 +2588,7 @@ async function submitCheckoutInfo() {
 
     if (phoneDigits.length < 10) {
         checkoutInfoUI.feedback.textContent = 'Escribe un telefono valido para confirmar el pedido.';
-        checkoutInfoUI.phone.focus();
+        checkoutInfoUI.phone?.focus();
         return;
     }
 
@@ -1410,6 +2604,14 @@ async function submitCheckoutInfo() {
             address: fulfillmentType === 'delivery' ? deliveryAddress : '',
             phone: customerPhone
         };
+
+        if (profile && fulfillmentType === 'delivery' && deliveryAddress) {
+            setActiveCustomerProfile({
+                ...profile,
+                address: deliveryAddress
+            });
+        }
+
         closeCheckoutInfoModal();
         openPaymentFlowModal({
             ...orderData,
@@ -1437,10 +2639,6 @@ function updateCheckoutInfoModalState() {
     checkoutInfoUI.address.required = requiresAddress;
     checkoutInfoUI.address.disabled = !requiresAddress;
 
-    if (!requiresAddress) {
-        checkoutInfoUI.address.value = '';
-    }
-
     if (checkoutInfoUI.deliveryFeeValue) {
         checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(deliveryFee);
     }
@@ -1458,6 +2656,20 @@ function updateCheckoutInfoModalState() {
 function openCheckoutInfoModal() {
     closeCheckoutInfoModal();
 
+    const profile = activeCustomerProfile;
+    const profileSummaryMarkup = profile
+        ? `
+            <div class="customer-profile-summary">
+                <strong>${escapeHtml(profile.customerName)}</strong>
+                <span>WhatsApp: ${escapeHtml(profile.customerPhone)}</span>
+                <p>${escapeHtml(profile.address || 'Sin direccion principal registrada')}</p>
+            </div>
+        `
+        : '';
+    const introText = profile
+        ? 'Tu perfil ya esta abierto. Solo confirma la direccion del pedido y en el siguiente paso escoges el tipo de pago.'
+        : 'Confirma si el pedido es para domicilio o para recoger en el restaurante y completa los datos de contacto.';
+
     const modal = document.createElement('div');
     modal.id = 'checkout-info-modal';
     modal.className = 'support-modal';
@@ -1467,11 +2679,13 @@ function openCheckoutInfoModal() {
             <button type="button" class="support-modal-close" aria-label="Cerrar datos del pedido">&times;</button>
             <p class="support-modal-kicker">Antes de enviar</p>
             <h3 class="support-modal-title">Datos del pedido</h3>
-            <p class="support-modal-text">Confirma si el pedido es para domicilio o para recoger en el restaurante y completa los datos de contacto.</p>
+            <p class="support-modal-text">${introText}</p>
+            ${profileSummaryMarkup}
+            ${profile ? '' : `
             <label class="support-field">
                 <span>Nombre de quien recibe</span>
                 <input type="text" id="checkoutCustomerName" placeholder="Escribe el nombre">
-            </label>
+            </label>`}
             <label class="support-field">
                 <span>Como deseas recibir tu pedido</span>
                 <select id="checkoutFulfillmentType">
@@ -1481,13 +2695,14 @@ function openCheckoutInfoModal() {
                 </select>
             </label>
             <label class="support-field" id="checkoutDeliveryAddressField" hidden>
-                <span>Direccion del domicilio</span>
+                <span>${profile ? 'Confirma tu direccion' : 'Direccion del domicilio'}</span>
                 <textarea id="checkoutDeliveryAddress" rows="4" placeholder="Escribe la direccion completa"></textarea>
             </label>
+            ${profile ? '' : `
             <label class="support-field">
                 <span>Telefono</span>
                 <input type="tel" id="checkoutCustomerPhone" placeholder="Escribe el telefono de contacto">
-            </label>
+            </label>`}
             <div class="support-field">
                 <span>Costo del domicilio</span>
                 <strong id="checkoutDeliveryFeeValue">${formatCurrency(DELIVERY_FEE_AMOUNT)}</strong>
@@ -1536,8 +2751,11 @@ function openCheckoutInfoModal() {
     });
 
     syncBodyScrollLock();
+    if (profile && checkoutInfoUI.address) {
+        checkoutInfoUI.address.value = profile.address || '';
+    }
     updateCheckoutInfoModalState();
-    checkoutInfoUI.name.focus();
+    (checkoutInfoUI.fulfillmentType || checkoutInfoUI.name)?.focus();
 }
 
 function getProductToastCopy(categoryName, productName) {
@@ -5567,10 +6785,15 @@ document.addEventListener('keydown', (event) => {
         closeMenuModal();
         closePromoModal();
         closeSupportModal();
+        closeCustomerAuthModal();
     }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    activeCustomerProfile = loadStoredCustomerProfile();
+    updateCustomerSessionUI();
+    document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
+
     initCartUI();
     initSupportModal();
     initPromoModal();

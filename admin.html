@@ -2232,6 +2232,47 @@
             color: #ffffff;
         }
 
+        .admin-accordion-trigger.has-unread {
+            position: relative;
+            border-color: rgba(255, 123, 69, 0.42);
+            box-shadow: inset 0 0 0 1px rgba(255, 123, 69, 0.18), 0 0 0 1px rgba(255, 123, 69, 0.08);
+        }
+
+        .admin-accordion-trigger.is-blinking {
+            animation: messagesTabBlink 1s ease-in-out infinite;
+        }
+
+        .admin-accordion-trigger.has-unread::after {
+            content: attr(data-unread-count);
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #ff7b45;
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        @keyframes messagesTabBlink {
+            0%, 100% {
+                background: rgba(255, 255, 255, 0.06);
+                transform: translateY(0);
+            }
+
+            50% {
+                background: rgba(255, 123, 69, 0.22);
+                transform: translateY(-1px);
+            }
+        }
+
         .admin-card {
             border-radius: 14px;
             background: linear-gradient(160deg, rgba(255, 255, 255, 0.01), rgba(0, 0, 0, 0.2)), var(--admin-bg-elev);
@@ -2394,6 +2435,126 @@
 
         .clients-table tbody tr:hover {
             background: rgba(255, 255, 255, 0.04);
+        }
+
+        .messages-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .messages-list {
+            display: grid;
+            gap: 14px;
+        }
+
+        .message-request-card {
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 16px;
+            display: grid;
+            gap: 14px;
+        }
+
+        .message-request-card.is-resolved {
+            opacity: 0.74;
+            border-color: rgba(67, 192, 156, 0.28);
+        }
+
+        .message-request-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .message-request-head strong {
+            display: block;
+            font-size: 1rem;
+            color: #fff;
+        }
+
+        .message-request-head span,
+        .message-request-meta,
+        .message-request-body p {
+            color: var(--admin-muted);
+        }
+
+        .message-request-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            font-size: 0.86rem;
+        }
+
+        .message-request-body {
+            display: grid;
+            gap: 8px;
+        }
+
+        .message-request-body p {
+            margin: 0;
+            white-space: pre-line;
+            line-height: 1.5;
+        }
+
+        .message-status-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 34px;
+            padding: 0 12px;
+            border-radius: 999px;
+            font-size: 0.74rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+
+        .message-status-chip.pending {
+            background: rgba(255, 123, 69, 0.18);
+            border-color: rgba(255, 123, 69, 0.4);
+            color: #ffd2bd;
+        }
+
+        .message-status-chip.resolved {
+            background: rgba(67, 192, 156, 0.18);
+            border-color: rgba(67, 192, 156, 0.4);
+            color: #c8ffef;
+        }
+
+        .message-request-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .message-request-btn {
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+            border-radius: 12px;
+            padding: 10px 14px;
+            cursor: pointer;
+            font-size: 0.82rem;
+        }
+
+        .message-request-btn.primary {
+            background: rgba(47, 111, 221, 0.2);
+            border-color: rgba(95, 149, 234, 0.42);
+        }
+
+        .message-request-btn.success {
+            background: rgba(67, 192, 156, 0.18);
+            border-color: rgba(67, 192, 156, 0.42);
+        }
+
+        .message-request-btn.delete {
+            background: rgba(222, 70, 70, 0.16);
+            border-color: rgba(222, 70, 70, 0.4);
         }
 
         .client-name-cell {
@@ -3092,6 +3253,7 @@
             <button type="button" class="admin-accordion-trigger active" data-accordion-target="categorias"><span class="nav-icon">📂</span><span>Categorias</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="pedidos"><span class="nav-icon">🧾</span><span>Pedidos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
         </nav>
 
@@ -3327,6 +3489,28 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="mensajes">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" disabled>Solicitudes sincronizadas con Firebase</button>
+                </div>
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Mensajes y Solicitudes</h2>
+                        <span class="kanban-count" id="messagesCount">0</span>
+                    </div>
+                    <div class="messages-grid">
+                        <p class="muted">Aqui llegan las solicitudes del sitio publico, por ejemplo reinicios de contrasena. Puedes abrir WhatsApp al cliente, copiar el mensaje, marcarlo como atendido o eliminarlo.</p>
+                        <div class="messages-list" id="messagesList">
+                            <div class="message-request-card">
+                                <div class="message-request-body">
+                                    <p>Aun no hay mensajes o solicitudes registrados.</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </article>

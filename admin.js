@@ -166,6 +166,7 @@ const CONFIG_COLLECTION = 'configuracion';
 const CONFIG_DOC_ID = 'config_landing';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
+const MESSAGES_COLLECTION = 'mensajes';
 
 const adminAuthForm = document.getElementById('adminAuthForm');
 const authUsernameInput = document.getElementById('authUsername');
@@ -201,6 +202,8 @@ const clientsExportScope = document.getElementById('clientsExportScope');
 const clientsSearchInput = document.getElementById('clientsSearchInput');
 const clientsList = document.getElementById('clientsList');
 const clientsCount = document.getElementById('clientsCount');
+const messagesList = document.getElementById('messagesList');
+const messagesCount = document.getElementById('messagesCount');
 const adminPublicLink = document.getElementById('adminPublicLink');
 const ordersBoard = document.getElementById('ordersBoard');
 const ordersColumnUnread = document.getElementById('ordersColumnUnread');
@@ -304,9 +307,13 @@ let buttonsState = [];
 let brandingState = { ...defaultBranding };
 let ordersState = [];
 let clientsState = [];
+let messagesState = [];
 let selectedOrderId = null;
 let knownOrderIds = new Set();
 let hasLoadedOrdersOnce = false;
+let knownMessageIds = new Set();
+let hasLoadedMessagesOnce = false;
+let activeAccordionSection = 'categorias';
 let orderAnnouncementQueue = Promise.resolve();
 let orderBellAudioContext = null;
 let editingCategoryContextId = null;
@@ -588,6 +595,52 @@ function playOrderBell() {
     });
 }
 
+function playMessageAlertTone() {
+    const audioContext = getOrderBellAudioContext();
+    if (!audioContext) {
+        return Promise.resolve();
+    }
+
+    if (audioContext.state === 'suspended') {
+        return audioContext.resume()
+            .catch(() => undefined)
+            .then(() => playMessageAlertTone());
+    }
+
+    return new Promise((resolve) => {
+        const startAt = audioContext.currentTime + 0.02;
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(1180, startAt);
+        oscillator.frequency.linearRampToValueAtTime(1380, startAt + 0.07);
+        oscillator.frequency.linearRampToValueAtTime(980, startAt + 0.18);
+
+        gainNode.gain.setValueAtTime(0.0001, startAt);
+        gainNode.gain.exponentialRampToValueAtTime(0.16, startAt + 0.03);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.22);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.start(startAt);
+        oscillator.stop(startAt + 0.24);
+
+        window.setTimeout(resolve, 260);
+    });
+}
+
+function getCurrentAdminIdentity() {
+    const currentUser = firebaseAuth?.currentUser;
+    if (currentUser?.email) {
+        return String(currentUser.email).trim();
+    }
+
+    const rawInput = String(authUsernameInput?.value || '').trim();
+    return rawInput || 'admin';
+}
+
 function speakOrderAnnouncement(customerName) {
     if (!('speechSynthesis' in window) || typeof window.SpeechSynthesisUtterance !== 'function') {
         return;
@@ -633,6 +686,110 @@ function announceNewOrders(orders) {
         });
 }
 
+function getUnreadMessages() {
+    return messagesState.filter((message) => !message.readAt);
+}
+
+function updateMessagesAttentionState() {
+    const messagesTabButton = document.querySelector('.admin-accordion-trigger[data-accordion-target="mensajes"]');
+    if (!(messagesTabButton instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const unreadCount = getUnreadMessages().length;
+    messagesTabButton.classList.toggle('has-unread', unreadCount > 0);
+    messagesTabButton.classList.toggle('is-blinking', unreadCount > 0 && activeAccordionSection !== 'mensajes');
+    messagesTabButton.dataset.unreadCount = unreadCount > 99 ? '99+' : String(unreadCount || '');
+
+    if (unreadCount <= 0) {
+        messagesTabButton.removeAttribute('data-unread-count');
+    }
+}
+
+function notifyNewMessage(message) {
+    if (!message || typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+        return;
+    }
+
+    const notification = new Notification('Nuevo mensaje en ROAL BURGER Admin', {
+        body: `${message.customerName}: ${message.subject}`,
+        tag: `roal-message-${message.id}`,
+        renotify: true
+    });
+
+    notification.onclick = () => {
+        window.focus();
+        const messagesTabButton = document.querySelector('.admin-accordion-trigger[data-accordion-target="mensajes"]');
+        messagesTabButton?.click();
+        notification.close();
+    };
+}
+
+function announceNewMessages(messages) {
+    const currentMessageIds = new Set(messages.map((message) => message.id));
+
+    if (!hasLoadedMessagesOnce) {
+        knownMessageIds = currentMessageIds;
+        hasLoadedMessagesOnce = true;
+        updateMessagesAttentionState();
+        return;
+    }
+
+    const newMessages = messages.filter((message) => !knownMessageIds.has(message.id));
+    knownMessageIds = currentMessageIds;
+    updateMessagesAttentionState();
+
+    if (!newMessages.length) {
+        return;
+    }
+
+    newMessages
+        .slice()
+        .reverse()
+        .forEach((message) => {
+            playMessageAlertTone();
+            notifyNewMessage(message);
+            showNotice(`Nuevo mensaje de ${message.customerName}.`, 'ok');
+        });
+}
+
+function requestAdminNotificationPermission() {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') {
+        return;
+    }
+
+    Notification.requestPermission().catch(() => undefined);
+}
+
+function markMessagesAsRead() {
+    if (!firebaseDb) {
+        return;
+    }
+
+    const unreadMessages = getUnreadMessages();
+    if (!unreadMessages.length) {
+        updateMessagesAttentionState();
+        return;
+    }
+
+    const adminIdentity = getCurrentAdminIdentity();
+
+    unreadMessages.forEach((message) => {
+        firebaseDb.collection(MESSAGES_COLLECTION).doc(message.id).set({
+            readAt: firestoreNow(),
+            readBy: adminIdentity,
+            updatedAt: firestoreNow()
+        }, { merge: true }).catch(() => undefined);
+    });
+
+    messagesState = messagesState.map((message) => (
+        unreadMessages.some((entry) => entry.id === message.id)
+            ? { ...message, readAt: new Date(), readBy: adminIdentity }
+            : message
+    ));
+    updateMessagesAttentionState();
+}
+
 function setupAccordion() {
     const nav = document.getElementById('adminAccordionNav');
     if (!nav) {
@@ -646,10 +803,12 @@ function setupAccordion() {
         diseno: ['configuracion', 'botones'],
         pedidos: ['pedidos'],
         clientes: ['clientes'],
+        mensajes: ['mensajes'],
         metricas: ['metricas']
     };
 
     function activateAccordion(target) {
+        activeAccordionSection = target;
         const visiblePanels = groupMap[target] || [];
         buttons.forEach((button) => {
             button.classList.toggle('active', button.dataset.accordionTarget === target);
@@ -658,6 +817,12 @@ function setupAccordion() {
         panels.forEach((panel) => {
             panel.classList.toggle('active', visiblePanels.includes(panel.dataset.tabPanel));
         });
+
+        if (target === 'mensajes') {
+            markMessagesAsRead();
+        } else {
+            updateMessagesAttentionState();
+        }
     }
 
     buttons.forEach((button) => {
@@ -1177,6 +1342,36 @@ async function fetchClients() {
         .sort((a, b) => {
             const aTs = a.lastOrderAt && typeof a.lastOrderAt.toMillis === 'function' ? a.lastOrderAt.toMillis() : 0;
             const bTs = b.lastOrderAt && typeof b.lastOrderAt.toMillis === 'function' ? b.lastOrderAt.toMillis() : 0;
+            return bTs - aTs;
+        });
+}
+
+async function fetchMessages() {
+    const snapshot = await firebaseDb.collection(MESSAGES_COLLECTION).get();
+    messagesState = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .map((raw) => ({
+            id: String(raw.id || '').trim(),
+            type: String(raw.type || 'general').trim(),
+            status: String(raw.status || 'pending').trim().toLowerCase() === 'resolved' ? 'resolved' : 'pending',
+            customerName: String(raw.customerName || '').trim() || 'Cliente sin nombre',
+            customerPhone: String(raw.customerPhone || '').trim() || 'No registrado',
+            customerPhoneDigits: normalizePhoneDigits(raw.customerPhoneDigits || raw.customerPhone),
+            customerAddress: String(raw.customerAddress || '').trim(),
+            subject: String(raw.subject || '').trim() || 'Solicitud del sitio web',
+            body: String(raw.body || '').trim(),
+            source: String(raw.source || 'public_web').trim(),
+            createdAt: raw.createdAt || raw.updatedAt || null,
+            updatedAt: raw.updatedAt || raw.createdAt || null,
+            resolvedAt: raw.resolvedAt || null,
+            resolvedBy: String(raw.resolvedBy || '').trim(),
+            readAt: raw.readAt || null,
+            readBy: String(raw.readBy || '').trim(),
+            adminAction: String(raw.adminAction || '').trim()
+        }))
+        .sort((a, b) => {
+            const aTs = a.createdAt && typeof a.createdAt.toMillis === 'function' ? a.createdAt.toMillis() : 0;
+            const bTs = b.createdAt && typeof b.createdAt.toMillis === 'function' ? b.createdAt.toMillis() : 0;
             return bTs - aTs;
         });
 }
@@ -2307,6 +2502,64 @@ function renderClients() {
     });
 }
 
+function renderMessages() {
+    if (!messagesList) {
+        return;
+    }
+
+    if (messagesCount) {
+        messagesCount.textContent = Number(messagesState.length).toLocaleString('es-CO');
+    }
+
+    messagesList.innerHTML = '';
+
+    if (!messagesState.length) {
+        messagesList.innerHTML = `
+            <div class="message-request-card">
+                <div class="message-request-body">
+                    <p>Aun no hay mensajes o solicitudes registrados.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    messagesState.forEach((message) => {
+        const isResolved = message.status === 'resolved';
+        const canResetPassword = message.type === 'password_reset_request' && message.customerPhoneDigits;
+        const card = document.createElement('div');
+        card.className = `message-request-card${isResolved ? ' is-resolved' : ''}`;
+        card.innerHTML = `
+            <div class="message-request-head">
+                <div>
+                    <strong>${escapeHtml(message.subject)}</strong>
+                    <span>${escapeHtml(message.customerName)} · ${escapeHtml(message.customerPhone)}</span>
+                </div>
+                <span class="message-status-chip ${isResolved ? 'resolved' : 'pending'}">${escapeHtml(isResolved ? 'Atendido' : 'Pendiente')}</span>
+            </div>
+            <div class="message-request-meta">
+                <span>Tipo: ${escapeHtml(message.type)}</span>
+                <span>Fecha: ${escapeHtml(formatOrderDate(message.createdAt))}</span>
+                <span>Origen: ${escapeHtml(message.source)}</span>
+                ${message.customerAddress ? `<span>Direccion: ${escapeHtml(message.customerAddress)}</span>` : ''}
+                ${message.readBy ? `<span>Leido por: ${escapeHtml(message.readBy)}</span>` : ''}
+                ${message.resolvedBy ? `<span>Atendido por: ${escapeHtml(message.resolvedBy)}</span>` : ''}
+            </div>
+            <div class="message-request-body">
+                <p>${escapeHtml(message.body || 'Sin detalle adicional.')}</p>
+            </div>
+            <div class="message-request-actions">
+                <button type="button" class="message-request-btn" data-message-action="copy" data-message-id="${escapeHtml(message.id)}">Copiar mensaje</button>
+                <button type="button" class="message-request-btn primary" data-message-action="whatsapp" data-message-id="${escapeHtml(message.id)}">Abrir WhatsApp</button>
+                ${canResetPassword ? `<button type="button" class="message-request-btn primary" data-message-action="reset-password" data-message-id="${escapeHtml(message.id)}">Resetear contrasena</button>` : ''}
+                <button type="button" class="message-request-btn success" data-message-action="resolve" data-message-id="${escapeHtml(message.id)}">${isResolved ? 'Marcar pendiente' : 'Marcar atendido'}</button>
+                <button type="button" class="message-request-btn delete" data-message-action="delete" data-message-id="${escapeHtml(message.id)}">Eliminar</button>
+            </div>
+        `;
+        messagesList.appendChild(card);
+    });
+}
+
 function getFilteredClients() {
     return clientsState.filter((client) => {
         if (!clientsSearchTerm) {
@@ -2335,6 +2588,15 @@ function formatExportDate(value) {
     }
 
     return date.toISOString();
+}
+
+function buildCustomerContactWhatsAppUrl(name, phoneDigits, messageText) {
+    if (!phoneDigits) {
+        return '';
+    }
+
+    const greeting = String(messageText || `Hola ${name || 'cliente'}, te escribimos desde ROAL BURGER sobre tu solicitud.`).trim();
+    return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(greeting)}`;
 }
 
 function escapeXml(value) {
@@ -2605,6 +2867,39 @@ function openEditClientModal(client) {
 
 async function deleteClient(clientId) {
     await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).delete();
+}
+
+async function resetClientPasswordByPhone(phoneDigits) {
+    const normalizedPhone = normalizePhoneDigits(phoneDigits);
+    if (!normalizedPhone) {
+        throw new Error('No se encontro un numero valido para resetear la contrasena.');
+    }
+
+    await firebaseDb.collection(CLIENTS_COLLECTION).doc(`phone_${normalizedPhone}`).set({
+        passwordHash: '',
+        updatedAt: firestoreNow()
+    }, { merge: true });
+}
+
+function buildCustomerPasswordResetClipboardMessage(message = {}) {
+    const customerName = String(message.customerName || 'cliente').trim();
+    const customerPhone = String(message.customerPhone || message.customerPhoneDigits || '').trim();
+    return [
+        `Hola ${customerName}, tu contrasena de ROAL BURGER ya fue restablecida.`,
+        `Vuelve a pulsar "Olvido contrasena" e ingresa nuevamente tu numero de WhatsApp ${customerPhone}.`,
+        'La app te mostrara la pantalla para crear tu nueva contrasena.'
+    ].join('\n');
+}
+
+async function updateMessageRequest(messageId, updates) {
+    await firebaseDb.collection(MESSAGES_COLLECTION).doc(messageId).set({
+        ...updates,
+        updatedAt: firestoreNow()
+    }, { merge: true });
+}
+
+async function deleteMessageRequest(messageId) {
+    await firebaseDb.collection(MESSAGES_COLLECTION).doc(messageId).delete();
 }
 
 async function updateOrder(orderId, updates) {
@@ -2923,7 +3218,7 @@ function setupLiveFirebaseSync() {
     liveSubscriptions.forEach((unsubscribe) => unsubscribe());
     liveSubscriptions = [];
 
-    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION, CLIENTS_COLLECTION];
+    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION, CLIENTS_COLLECTION, MESSAGES_COLLECTION];
     collections.forEach((collectionName) => {
         const unsubscribe = firebaseDb.collection(collectionName).onSnapshot(() => {
             reloadDataAndRender();
@@ -3434,16 +3729,20 @@ async function reloadDataAndRender() {
         fetchBranding(),
         fetchOrders(),
         fetchClients(),
+        fetchMessages(),
         fetchProductClickMetrics()
     ]);
 
     announceNewOrders(ordersState);
+    announceNewMessages(messagesState);
 
     renderCategories();
     renderButtonsList();
     renderBrandingForm();
     renderOrders();
     renderClients();
+    renderMessages();
+    updateMessagesAttentionState();
     renderMetricsChart();
     await syncStats();
     renderMetricsOverview();
@@ -3801,6 +4100,125 @@ if (clientsList) {
                 showNotice('Cliente eliminado correctamente.', 'ok');
             } catch (error) {
                 showNotice(`No se pudo eliminar el cliente: ${error.message || 'error inesperado.'}`, 'error');
+            }
+        }
+    });
+}
+
+if (messagesList) {
+    messagesList.addEventListener('click', async (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const actionButton = target.closest('button[data-message-action]');
+        if (!(actionButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const action = String(actionButton.dataset.messageAction || '').trim();
+        const messageId = String(actionButton.dataset.messageId || '').trim();
+        if (!action || !messageId) {
+            return;
+        }
+
+        const message = messagesState.find((entry) => entry.id === messageId);
+        if (!message) {
+            showNotice('No se encontro la solicitud seleccionada.', 'error');
+            return;
+        }
+
+        if (action === 'copy') {
+            try {
+                await copyTextToClipboard([
+                    message.subject,
+                    message.body,
+                    `Cliente: ${message.customerName}`,
+                    `WhatsApp: ${message.customerPhone}`
+                ].join('\n'));
+                showClipboardToast('Solicitud copiada');
+            } catch (error) {
+                showNotice(`No se pudo copiar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
+            }
+            return;
+        }
+
+        if (action === 'whatsapp') {
+            const whatsappUrl = buildCustomerContactWhatsAppUrl(
+                message.customerName,
+                message.customerPhoneDigits,
+                `Hola ${message.customerName}, te escribimos desde ROAL BURGER sobre tu solicitud de reinicio de contrasena.`
+            );
+
+            if (!whatsappUrl) {
+                showNotice('La solicitud no tiene un numero de WhatsApp valido.', 'error');
+                return;
+            }
+
+            window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        if (action === 'reset-password') {
+            const confirmed = window.confirm(`Resetear la contrasena del cliente ${message.customerName}? El cliente debera crear una nueva contrasena al volver a entrar.`);
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                const adminIdentity = getCurrentAdminIdentity();
+                await resetClientPasswordByPhone(message.customerPhoneDigits);
+                let copied = false;
+                try {
+                    copied = await copyTextToClipboard(buildCustomerPasswordResetClipboardMessage(message));
+                } catch (clipboardError) {
+                    copied = false;
+                }
+                await updateMessageRequest(messageId, {
+                    status: 'resolved',
+                    resolvedAt: firestoreNow(),
+                    resolvedBy: adminIdentity,
+                    adminAction: 'password_reset_completed'
+                });
+                if (copied) {
+                    showClipboardToast('Mensaje de restablecimiento copiado');
+                }
+                showNotice('Contrasena reseteada. El cliente ya puede crear una nueva.', 'ok');
+            } catch (error) {
+                showNotice(`No se pudo resetear la contrasena: ${error.message || 'error inesperado.'}`, 'error');
+            }
+            return;
+        }
+
+        if (action === 'resolve') {
+            try {
+                const nextResolved = message.status !== 'resolved';
+                const adminIdentity = getCurrentAdminIdentity();
+                await updateMessageRequest(messageId, {
+                    status: nextResolved ? 'resolved' : 'pending',
+                    resolvedAt: nextResolved ? firestoreNow() : null,
+                    resolvedBy: nextResolved ? adminIdentity : '',
+                    adminAction: nextResolved ? 'request_attended' : 'request_reopened'
+                });
+                showNotice(nextResolved ? 'Solicitud marcada como atendida.' : 'Solicitud marcada nuevamente como pendiente.', 'ok');
+            } catch (error) {
+                showNotice(`No se pudo actualizar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
+            }
+            return;
+        }
+
+        if (action === 'delete') {
+            const confirmed = window.confirm(`Eliminar la solicitud de ${message.customerName}? Esta accion no se puede deshacer.`);
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                await deleteMessageRequest(messageId);
+                showNotice('Solicitud eliminada correctamente.', 'ok');
+            } catch (error) {
+                showNotice(`No se pudo eliminar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
             }
         }
     });
@@ -4529,6 +4947,7 @@ async function initAdmin() {
         syncResponsiveAdminState();
 
         await ensureAdminAuth();
+        requestAdminNotificationPermission();
 
         setupAccordion();
         setupAdvancedSettingsPanel();
