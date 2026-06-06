@@ -233,10 +233,14 @@ const salesSummaryList = document.getElementById('salesSummaryList');
 const salesSummaryTotalAmount = document.getElementById('salesSummaryTotalAmount');
 const salesSummaryTotalOrders = document.getElementById('salesSummaryTotalOrders');
 const salesSummaryTotalDays = document.getElementById('salesSummaryTotalDays');
+const ledgerBookDateFrom = document.getElementById('ledgerBookDateFrom');
+const ledgerBookDateTo = document.getElementById('ledgerBookDateTo');
 const ledgerBookList = document.getElementById('ledgerBookList');
 const ledgerBookTotalIncome = document.getElementById('ledgerBookTotalIncome');
 const ledgerBookTotalEntries = document.getElementById('ledgerBookTotalEntries');
 const ledgerBookAverageIncome = document.getElementById('ledgerBookAverageIncome');
+const exportLedgerExcelBtn = document.getElementById('exportLedgerExcelBtn');
+const exportLedgerPdfBtn = document.getElementById('exportLedgerPdfBtn');
 const previewRefreshBtn = document.getElementById('previewRefreshBtn');
 const liveMenuPreview = document.getElementById('liveMenuPreview');
 const previewViewportControls = document.getElementById('previewViewportControls');
@@ -2381,13 +2385,17 @@ function summaryMatchesFilter(summary, type, value) {
 }
 
 function summaryMatchesDateRange(summary) {
+    return summaryMatchesDateRangeForInputs(summary, salesSummaryDateFrom, salesSummaryDateTo);
+}
+
+function summaryMatchesDateRangeForInputs(summary, fromInput, toInput) {
     const summaryDate = getSalesSummaryDateKey(summary.closedAt);
     if (!summaryDate) {
         return false;
     }
 
-    const fromValue = String(salesSummaryDateFrom?.value || '').trim();
-    const toValue = String(salesSummaryDateTo?.value || '').trim();
+    const fromValue = String(fromInput?.value || '').trim();
+    const toValue = String(toInput?.value || '').trim();
 
     if (fromValue && summaryDate < fromValue) {
         return false;
@@ -2398,6 +2406,12 @@ function summaryMatchesDateRange(summary) {
     }
 
     return true;
+}
+
+function getFilteredLedgerEntries() {
+    return [...salesSummariesState]
+        .filter((summary) => summaryMatchesDateRangeForInputs(summary, ledgerBookDateFrom, ledgerBookDateTo))
+        .sort((a, b) => getTimestampMillis(b.closedAt) - getTimestampMillis(a.closedAt));
 }
 
 function getSalesSummaryBreakdown(summary, type, value) {
@@ -3048,7 +3062,7 @@ function renderSalesSummaries() {
 }
 
 function renderLedgerBook() {
-    const entries = [...salesSummariesState].sort((a, b) => getTimestampMillis(b.closedAt) - getTimestampMillis(a.closedAt));
+    const entries = getFilteredLedgerEntries();
     const totalIncome = entries.reduce((sum, entry) => sum + Number(entry.totalSales || 0), 0);
     const totalEntries = entries.length;
     const averageIncome = totalEntries ? totalIncome / totalEntries : 0;
@@ -3084,6 +3098,65 @@ function renderLedgerBook() {
             </tr>
         `;
     }).join('');
+}
+
+function getLedgerExportColumns() {
+    return [
+        { key: 'fecha', label: 'Fecha' },
+        { key: 'pedidos', label: 'Pedidos' },
+        { key: 'items', label: 'Items' },
+        { key: 'ventas_total', label: 'Ventas total' }
+    ];
+}
+
+function buildLedgerExportRows(entries) {
+    return entries.map((entry) => ({
+        fecha: formatExportDate(entry.closedAt),
+        pedidos: Number(entry.totalOrders || 0),
+        items: Number(entry.totalItems || 0),
+        ventas_total: Number(entry.totalSales || 0)
+    }));
+}
+
+function exportLedgerBook(format) {
+    const entries = getFilteredLedgerEntries();
+    if (!entries.length) {
+        showNotice('No hay cierres en el libro para exportar con el filtro actual.', 'error');
+        return;
+    }
+
+    const rows = buildLedgerExportRows(entries);
+    const columns = getLedgerExportColumns();
+    const headers = columns.map((column) => column.key);
+    const headerLabels = columns.map((column) => column.label);
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const formatKey = String(format || 'csv').trim().toLowerCase();
+    const fromLabel = String(ledgerBookDateFrom?.value || '').trim();
+    const toLabel = String(ledgerBookDateTo?.value || '').trim();
+    const subtitle = fromLabel || toLabel
+        ? `Periodo filtrado: ${fromLabel || 'inicio'} a ${toLabel || 'hoy'}.`
+        : 'Periodo: todos los cierres registrados.';
+
+    if (formatKey === 'pdf') {
+        const printableHtml = buildClientExportHtmlDocument(rows, columns, {
+            title: 'Libro contable',
+            subtitle: `${subtitle} Usa Guardar como PDF en la ventana de impresion.`
+        });
+        printClientExportPdf(printableHtml);
+        showNotice(`Vista lista para exportar ${rows.length} cierres en PDF.`, 'ok');
+        return;
+    }
+
+    const csvContent = [
+        headerLabels.join(','),
+        ...rows.map((row) => headers.map((header) => {
+            const rawValue = String(row[header] ?? '');
+            return `"${rawValue.replace(/"/g, '""')}"`;
+        }).join(','))
+    ].join('\r\n');
+
+    downloadExportFile(`libro-contable-${stamp}.csv`, csvContent, 'text/csv;charset=utf-8');
+    showNotice(`Libro contable exportado en Excel/CSV (${rows.length}).`, 'ok');
 }
 
 async function closeCurrentSalesDay() {
@@ -4798,6 +4871,38 @@ if (salesSummaryDateFrom) {
 if (salesSummaryDateTo) {
     salesSummaryDateTo.addEventListener('change', () => {
         renderSalesSummaries();
+    });
+}
+
+if (ledgerBookDateFrom) {
+    ledgerBookDateFrom.addEventListener('change', () => {
+        renderLedgerBook();
+    });
+}
+
+if (ledgerBookDateTo) {
+    ledgerBookDateTo.addEventListener('change', () => {
+        renderLedgerBook();
+    });
+}
+
+if (exportLedgerExcelBtn) {
+    exportLedgerExcelBtn.addEventListener('click', () => {
+        try {
+            exportLedgerBook('csv');
+        } catch (error) {
+            showNotice(`No se pudo exportar el libro en Excel: ${error.message || 'error inesperado.'}`, 'error');
+        }
+    });
+}
+
+if (exportLedgerPdfBtn) {
+    exportLedgerPdfBtn.addEventListener('click', () => {
+        try {
+            exportLedgerBook('pdf');
+        } catch (error) {
+            showNotice(`No se pudo exportar el libro en PDF: ${error.message || 'error inesperado.'}`, 'error');
+        }
     });
 }
 

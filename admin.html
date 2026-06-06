@@ -3841,6 +3841,12 @@
             <div class="admin-tab-panel" data-tab-panel="libro">
                 <div class="section-toolbar sales-summary-toolbar">
                     <button type="button" class="section-save-btn" data-section-save="libro">Actualizar libro</button>
+                    <div class="sales-summary-filters">
+                        <input type="date" id="ledgerBookDateFrom" class="sales-summary-date-input" aria-label="Fecha inicial del libro contable">
+                        <input type="date" id="ledgerBookDateTo" class="sales-summary-date-input" aria-label="Fecha final del libro contable">
+                        <button type="button" class="section-action-btn" id="exportLedgerExcelBtn">Exportar Excel</button>
+                        <button type="button" class="section-action-btn primary" id="exportLedgerPdfBtn">Exportar PDF</button>
+                    </div>
                 </div>
                 <article class="admin-card">
                     <div class="card-head">
