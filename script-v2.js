@@ -206,6 +206,7 @@ function updateCustomerSessionUI() {
     const button = document.getElementById('customerSessionButton');
     const kicker = document.getElementById('customerSessionKicker');
     const label = document.getElementById('customerSessionLabel');
+    const guestRegisterBanner = document.getElementById('guestRegisterBanner');
 
     if (!(button instanceof HTMLButtonElement) || !kicker || !label) {
         return;
@@ -216,10 +217,18 @@ function updateCustomerSessionUI() {
         button.classList.add('is-authenticated');
         kicker.textContent = 'Perfil abierto';
         label.textContent = firstName;
+        if (guestRegisterBanner instanceof HTMLElement) {
+            guestRegisterBanner.hidden = true;
+        }
+        document.body.classList.remove('has-guest-register-banner');
     } else {
         button.classList.remove('is-authenticated');
         kicker.textContent = 'Mi cuenta';
         label.textContent = 'Iniciar sesion';
+        if (guestRegisterBanner instanceof HTMLElement) {
+            guestRegisterBanner.hidden = false;
+        }
+        document.body.classList.add('has-guest-register-banner');
     }
 }
 
@@ -7231,6 +7240,7 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('DOMContentLoaded', () => {
     setActiveCustomerProfile(loadStoredCustomerProfile());
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
+    document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
 
     initCartUI();
     initSupportModal();

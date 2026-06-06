@@ -2020,6 +2020,67 @@ a.is-ordering-closed {
     cursor: pointer;
 }
 
+body.has-guest-register-banner .whatsapp-float {
+    bottom: 154px;
+}
+
+.guest-register-banner {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
+    z-index: 10002;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, rgba(35, 20, 10, 0.96), rgba(68, 34, 13, 0.96));
+    border: 1px solid rgba(255, 145, 0, 0.28);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.28);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+
+.guest-register-banner[hidden] {
+    display: none !important;
+}
+
+.guest-register-banner-copy {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.guest-register-banner-copy strong {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.02rem;
+    color: #fff3df;
+    letter-spacing: 0.4px;
+}
+
+.guest-register-banner-copy span {
+    color: rgba(255, 241, 225, 0.82);
+    font-size: 0.84rem;
+    line-height: 1.35;
+}
+
+.guest-register-banner-btn {
+    min-width: 112px;
+    min-height: 42px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #ff9d1f, #ff6f00);
+    color: #1f140d;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.95rem;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    box-shadow: 0 10px 22px rgba(255, 111, 0, 0.3);
+}
+
 .support-modal {
     position: fixed;
     inset: 0;
@@ -3074,6 +3135,34 @@ a.is-ordering-closed {
         font-size: 13px;
         max-width: 180px;
     }
+
+    body.has-guest-register-banner .whatsapp-float {
+        bottom: 146px;
+    }
+
+    .guest-register-banner {
+        left: 10px;
+        right: 10px;
+        bottom: 8px;
+        gap: 10px;
+        padding: 11px 12px;
+        border-radius: 16px;
+    }
+
+    .guest-register-banner-copy strong {
+        font-size: 0.96rem;
+    }
+
+    .guest-register-banner-copy span {
+        font-size: 0.78rem;
+    }
+
+    .guest-register-banner-btn {
+        min-width: 104px;
+        min-height: 40px;
+        padding: 0 14px;
+        font-size: 0.88rem;
+    }
     
     .whatsapp-float span {
         display: none;
@@ -3098,11 +3187,38 @@ a.is-ordering-closed {
 }
 
 @media (max-width: 480px) {
+    body.has-guest-register-banner .whatsapp-float {
+        bottom: 138px;
+    }
+
     .whatsapp-float {
         bottom: 75px;
         right: 12px;
         width: 45px;
         height: 45px;
+    }
+
+    .guest-register-banner {
+        grid-template-columns: 1fr auto;
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        padding: 10px 11px;
+    }
+
+    .guest-register-banner-copy strong {
+        font-size: 0.9rem;
+    }
+
+    .guest-register-banner-copy span {
+        font-size: 0.74rem;
+    }
+
+    .guest-register-banner-btn {
+        min-width: 96px;
+        min-height: 38px;
+        padding: 0 12px;
+        font-size: 0.82rem;
     }
     
     .whatsapp-float svg {
