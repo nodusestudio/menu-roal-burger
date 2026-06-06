@@ -325,6 +325,65 @@ function updateCustomerSessionUI() {
     }
 }
 
+function getDynamicGreeting() {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return '¡Buenos días';
+    if (hour >= 12 && hour < 18) return '¡Buenas tardes';
+    return '¡Buenas noches';
+}
+
+function showWelcomeGreeting(profile) {
+    if (!profile?.customerName) return;
+
+    const firstName = profile.customerName.split(/\s+/)[0] || '';
+    if (!firstName) return;
+
+    const greeting = getDynamicGreeting();
+    const emojis = ['🎉', '🔥', '👋', '✨', '🎊'];
+    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+
+    const toast = document.createElement('div');
+    toast.id = 'welcomeGreetingToast';
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        z-index: 999999;
+        background: linear-gradient(135deg, #ff7a00, #ff5a00);
+        color: #fff7ef;
+        padding: 16px 28px;
+        border-radius: 16px;
+        font-family: 'Oswald', sans-serif;
+        font-size: 1.15rem;
+        line-height: 1.4;
+        box-shadow: 0 12px 40px rgba(255, 90, 0, 0.35);
+        border: 1px solid rgba(255,255,255,0.15);
+        text-align: center;
+        max-width: 90vw;
+        opacity: 0;
+        transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        pointer-events: none;
+        user-select: none;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+    `;
+    toast.innerHTML = `${randomEmoji} ${greeting}, <strong>${firstName}</strong>! Bienvenido a ROAL BURGER ${randomEmoji}`;
+
+    document.body.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+    });
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(-20px)';
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
+}
+
 function setActiveCustomerProfile(profile) {
     activeCustomerProfile = profile ? normalizeCustomerProfile(profile) : null;
     persistCustomerProfile(activeCustomerProfile);
@@ -332,6 +391,9 @@ function setActiveCustomerProfile(profile) {
     syncCustomerProfileRealtimeStreams();
     renderCustomerOrdersPanel();
     renderCustomerMessagesPanel();
+    if (activeCustomerProfile) {
+        showWelcomeGreeting(activeCustomerProfile);
+    }
 }
 
 function clearActiveCustomerProfile() {
