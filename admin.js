@@ -1321,6 +1321,8 @@ function normalizeOrder(raw) {
         customerName: String(raw.customerName || '').trim(),
         customerPhone: String(raw.customerPhone || '').trim(),
         customerPhoneDigits: String(raw.customerPhoneDigits || '').trim(),
+        customerAddress: String(raw.customerAddress || '').trim(),
+        profileAddress: String(raw.profileAddress || '').trim(),
         paymentMethod: String(raw.paymentMethod || '').trim().toLowerCase(),
         cashChangeRequired: raw.cashChangeRequired === true,
         cashTenderAmount: Number.isFinite(Number(raw.cashTenderAmount)) ? Number(raw.cashTenderAmount) : null,
@@ -2625,22 +2627,38 @@ function escapeVCardValue(value) {
         .replace(/\r?\n/g, '\\n');
 }
 
+function getOrderContactAddress(order) {
+    return [
+        order.deliveryAddress,
+        order.customerAddress,
+        order.profileAddress
+    ].map((value) => String(value || '').trim()).find(Boolean) || '';
+}
+
 function buildOrderContactVCard(order) {
     const customerName = String(order.customerName || 'Cliente ROAL BURGER').trim() || 'Cliente ROAL BURGER';
     const phoneDigits = normalizePhoneDigits(order.customerPhoneDigits || order.customerPhone || '');
     const displayPhone = phoneDigits ? `+${phoneDigits.startsWith('57') ? phoneDigits : `57${phoneDigits}`}` : String(order.customerPhone || '').trim();
-    const address = String(order.deliveryAddress || '').trim();
+    const address = getOrderContactAddress(order);
     const orderCode = String(order.code || '').trim();
     const paymentLabel = getOrderPaymentLabel(order);
+    const noteParts = [
+        'Cliente ROAL BURGER',
+        orderCode ? `Pedido ${orderCode}` : '',
+        paymentLabel || '',
+        displayPhone ? `Telefono ${displayPhone}` : '',
+        address ? `Direccion ${address}` : ''
+    ].filter(Boolean);
 
     return [
         'BEGIN:VCARD',
         'VERSION:3.0',
         `FN:${escapeVCardValue(customerName)}`,
+        `N:${escapeVCardValue(customerName)};;;;`,
         `ORG:${escapeVCardValue('ROAL BURGER')}`,
         displayPhone ? `TEL;TYPE=CELL:${escapeVCardValue(displayPhone)}` : '',
         address ? `ADR;TYPE=HOME:;;${escapeVCardValue(address)};;;;` : '',
-        `NOTE:${escapeVCardValue(`Cliente ROAL BURGER${orderCode ? ` | Pedido ${orderCode}` : ''} | ${paymentLabel}`)}`,
+        `NOTE:${escapeVCardValue(noteParts.join(' | '))}`,
         'END:VCARD'
     ].filter(Boolean).join('\r\n');
 }
