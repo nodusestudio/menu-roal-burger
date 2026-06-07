@@ -6158,8 +6158,7 @@ const FORCED_CATEGORY_BUTTONS = [
     { key: 'combos de temporada', name: 'COMBOS DE TEMPORADA' },
     { key: 'bebidas y adicionales', name: 'BEBIDAS Y ADICIONALES' },
     { key: 'perros y salchipapas', name: 'PERROS CALIENTES' },
-    { key: 'salchipapas', name: 'SALCHIPAPAS' },
-    { key: 'salchipapa', name: 'SALCHIPAPA' }
+    { key: 'salchipapas', name: 'SALCHIPAPAS' }
 ];
 
 const CATEGORY_IMAGE_ALIASES = {
@@ -6210,8 +6209,8 @@ const SECTION_CATEGORY_KEYS = {
     'menu-combos-temporada': 'combos'
 };
 
-const HIDDEN_PRODUCT_KEYS = new Set(['de la casa', 'empanadas', 'empanada']);
-const HIDDEN_PRODUCT_NAME_PARTS = ['de la casa'];
+const HIDDEN_PRODUCT_KEYS = new Set(['empanadas', 'empanada']);
+const HIDDEN_PRODUCT_NAME_PARTS = [];
 
 function normalizeCategoryKey(value) {
     return String(value || '')
@@ -6244,26 +6243,18 @@ function shouldHideCategoryList(category) {
 }
 
 function resolveProductImage(product) {
-    let productName = String(product?.nombre || product?.name || '').trim();
-    let normalizedProductName = normalizeAssetLookup(productName);
-    const categoryKey = normalizeCategoryKey(product?.categoria || product?.category || '');
-
-    // Si es pepitos venezolanos, usar siempre la ruta directa y extensión real
-    if (categoryKey === 'pepitosvenezolanos' || categoryKey === 'pepitos venezolanos') {
-        if (normalizedProductName.includes('ranchero')) {
-            return 'pepitosvenezolanos/pepitoranchero.png';
-        }
-        return `pepitosvenezolanos/pepito${normalizedProductName}.png`;
-    }
-
-    const localMatch = LOCAL_PRODUCT_IMAGE_MAP.get(normalizedProductName);
-    if (localMatch) {
-        return localMatch;
-    }
-
+    // Prioridad 1: image_url configurada desde el admin en Firestore
     const remote = String(product?.image_url || '').trim();
     if (remote) {
         return remote;
+    }
+
+    // Prioridad 2: mapa local de imágenes por nombre de producto
+    const productName = String(product?.nombre || product?.name || '').trim();
+    const normalizedProductName = normalizeAssetLookup(productName);
+    const localMatch = LOCAL_PRODUCT_IMAGE_MAP.get(normalizedProductName);
+    if (localMatch) {
+        return localMatch;
     }
 
     return 'logo.png';
@@ -7237,8 +7228,16 @@ function ensurePinnedExplorerCategories(categories) {
     });
 
     const pinnedKeys = new Set(pinnedList.map((item) => normalizeCategoryKey(item.key)));
+    const pinnedMatchKeys = new Set();
+    pinnedList.forEach((item) => {
+        (item.matchKeys || []).forEach((mk) => pinnedMatchKeys.add(normalizeCategoryKey(mk)));
+    });
+
     const dynamicRemainder = Array.from(inputMap.values())
-        .filter((item) => !pinnedKeys.has(normalizeCategoryKey(item.key)))
+        .filter((item) => {
+            const k = normalizeCategoryKey(item.key);
+            return !pinnedKeys.has(k) && !pinnedMatchKeys.has(k);
+        })
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'));
 
     return [...pinnedList, ...dynamicRemainder];
@@ -7281,52 +7280,29 @@ function getCategoryProducts(category, options = {}) {
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 }
 
-function renderManualCategoryGallery(panel, categoryName, cards, visibleProducts, allProducts) {
-    if (!panel || !categoryName || !Array.isArray(cards)) {
+function renderManualCategoryGallery(panel, categoryName, _cards, visibleProducts, allProducts) {
+    if (!panel || !categoryName) {
         return false;
     }
 
-    const visibleLookup = new Map(
-        (visibleProducts || [])
-            .map((product) => [normalizeAssetLookup(product?.nombre || ''), product])
-            .filter(([key]) => Boolean(key))
-    );
-    const visibleNames = new Set(
-        (visibleProducts || [])
-            .map((product) => normalizeAssetLookup(product?.nombre || ''))
-            .filter(Boolean)
-    );
-    const filteredCards = cards
-        .filter((card) => visibleNames.has(normalizeAssetLookup(card?.name || '')))
-        .map((card) => {
-            const matchedProduct = visibleLookup.get(normalizeAssetLookup(card?.name || ''));
-            const matchedImage = matchedProduct?.image_url || card.image;
-            return {
-                ...card,
-                image: matchedImage,
-                orderImagePath: matchedImage,
-                fallbackImage: card.image
-            };
-        });
     const hasCatalogProducts = Array.isArray(allProducts) && allProducts.length > 0;
-    const staticNames = new Set(cards.map((card) => normalizeAssetLookup(card?.name || '')).filter(Boolean));
-    const extraCards = (visibleProducts || [])
-        .filter((product) => !staticNames.has(normalizeAssetLookup(product?.nombre || '')))
-        .map((product) => ({
-            name: product.nombre,
-            image: product.image_url || 'logo.png',
-            orderImagePath: product.image_url || 'logo.png',
-            fallbackImage: 'logo.png'
-        }));
 
     if (hasCatalogProducts && !(visibleProducts || []).length) {
         panel.innerHTML = '<p class="category-empty">No hay productos cargados en esta categoria.</p>';
         return true;
     }
 
-    const finalCards = filteredCards.length || extraCards.length
-        ? [...filteredCards, ...extraCards]
-        : cards;
+    // Renderizar directamente desde los productos de Firestore (fuente de verdad: el admin)
+    const finalCards = (visibleProducts || []).map((product) => ({
+        name: product.nombre,
+        image: product.image_url || 'logo.png',
+        orderImagePath: product.image_url || 'logo.png',
+        fallbackImage: 'logo.png'
+    }));
+
+    if (!finalCards.length) {
+        return false;
+    }
 
     panel.innerHTML = '';
 
@@ -7351,18 +7327,14 @@ function renderManualCategoryGallery(panel, categoryName, cards, visibleProducts
         });
 
         const image = document.createElement('img');
-        const fallbackImage = card.fallbackImage || card.image || 'logo.png';
-        image.src = card.image || fallbackImage;
+        image.src = card.image;
         image.alt = card.name;
         image.style.width = '100%';
         image.style.borderRadius = '8px';
         image.addEventListener('error', () => {
-            if (image.getAttribute('src') === fallbackImage) {
+            if (image.src !== window.location.origin + '/logo.png') {
                 image.src = 'logo.png';
-                return;
             }
-
-            image.src = fallbackImage;
         });
 
         const label = document.createElement('p');
@@ -7435,119 +7407,6 @@ function renderCategoryExplorer(nextKey, options = {}) {
         void panel.offsetWidth;
         panel.classList.add('focus-highlight');
     };
-
-    // --- INICIO LÓGICA MANUAL BEBIDAS Y ADICIONALES Y OTRAS ---
-    if (selectedCategory.name) {
-        const catNorm = selectedCategory.name.trim().toUpperCase();
-        // BEBIDAS Y ADICIONALES
-        if (catNorm.includes('BEBIDAS') || catNorm.includes('ADICIONALES')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'Adicionales', image: './bebidasyadicionales/adiciones.png' },
-                { name: 'Bebidas', image: './bebidasyadicionales/bebidas.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // BURGER CLASICAS
-        if (catNorm.includes('CLASICAS')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'Normal', image: './burgerclasicas/burgernormal.png' },
-                { name: 'Super', image: './burgerclasicas/burgersuper.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // BURGER PREMIUM
-        if (catNorm.includes('PREMIUM')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'Caracas', image: './burgerpremium/burgercaracas.png' },
-                { name: 'Cordillera', image: './burgerpremium/burgercordillera.png' },
-                { name: 'Papuda', image: './burgerpremium/burgerpapuda.png' },
-                { name: 'Plus', image: './burgerpremium/burgerplus.png' },
-                { name: 'Ranchera', image: './burgerpremium/burgerranchera.png' },
-                { name: 'Triplete', image: './burgerpremium/burgertriplete.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // ENTRADAS
-        if (catNorm.includes('ENTRADAS')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'Papas a la Francesa', image: './entradas/papas.png' },
-                { name: 'Tequeños', image: './entradas/tequenos.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // PEPTIOS VENEZOLANOS
-        if (catNorm.includes('PEPITOS')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'Mix', image: './pepitosvenezolanos/pepitomix.png' },
-                { name: 'Plus', image: './pepitosvenezolanos/pepitoplus.png' },
-                { name: 'Ranchero', image: './pepitosvenezolanos/pepitoranchero.png' },
-                { name: 'Urbano', image: './pepitosvenezolanos/pepitourbano.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // SALCHIPAPAS
-        if (catNorm.includes('SALCHIPAPA')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'Salchi Normal', image: './salchipapas/salchinormal.png' },
-                { name: 'Salchi Super', image: './salchipapas/salchisuper.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // PERROS CALIENTES
-        if (catNorm.includes('PERROS') && !catNorm.includes('SALCHIPAPA')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'Especial', image: './perroscalientes/perroespecial.png' },
-                { name: 'Normal', image: './perroscalientes/perronormal.png' },
-                { name: 'Super', image: './perroscalientes/perrosuper.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // COMBOS CON PAPAS Y BEBIDA
-        if (catNorm.includes('COMBOS CON PAPAS Y BEBIDA')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'Combo Burger Normal', image: './combosconpapasybebidas/comboburgernormal.png' },
-                { name: 'Combo Burger Papuda', image: './combosconpapasybebidas/comboburgerpapuda.png' },
-                { name: 'Combo Burger Super', image: './combosconpapasybebidas/comboburgersuper.png' },
-                { name: 'Combo Perro Normal', image: './combosconpapasybebidas/comboperronormal.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // COMBOS MIXTOS
-        if (catNorm.includes('COMBOS MIXTOS')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'De La Casa', image: './combosmixtos/delacasa.png' },
-                { name: 'Emparejados', image: './combosmixtos/emparejados.png' },
-                { name: 'Familiar 3', image: './combosmixtos/familiar3.png' },
-                { name: 'Familiar 4', image: './combosmixtos/familiar4.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // NUESTRAS SALSAS
-        if (catNorm.includes('NUESTRAS SALSAS')) {
-            renderManualCategoryGallery(panel, selectedCategory.name, [
-                { name: 'Salsas de la Casa', image: './nuestrassalsas/salsasdelacasa.png' }
-            ], products, allCategoryProducts);
-            focusProductsPanel();
-            return;
-        }
-        // NO combos de temporada
-        if (catNorm.includes('COMBOS DE TEMPORADA') || catNorm.includes('COMBOS DE TEMPORADAS') || catNorm.includes('COMBOS TEMPORADA')) {
-            // No mostrar nada especial para combos de temporada
-            panel.innerHTML = '';
-            panel.insertAdjacentHTML('beforeend', '<p class="category-empty">No hay productos cargados en esta categoria.</p>');
-            focusProductsPanel();
-            return;
-        }
-    }
 
     const rendered = renderManualCategoryGallery(
         panel,
@@ -8206,7 +8065,7 @@ function closePromoModal() {
         syncBodyScrollLock();
     }
 }
-window.onclick = function(event) {
+document.addEventListener('click', function(event) {
     const menuModal = document.getElementById('menuModal');
     if (event.target === menuModal) {
         closeMenuModal();
@@ -8215,7 +8074,7 @@ window.onclick = function(event) {
     if (event.target === promoModal) {
         closePromoModal();
     }
-};
+});
 
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
@@ -8224,6 +8083,14 @@ document.addEventListener('keydown', (event) => {
         closeSupportModal();
         closeCustomerAuthModal();
     }
+});
+
+window.addEventListener('beforeunload', () => {
+    if (typeof featuredProductsUnsubscribe === 'function') featuredProductsUnsubscribe();
+    if (typeof categoriesUnsubscribe === 'function') categoriesUnsubscribe();
+    if (typeof buttonsUnsubscribe === 'function') buttonsUnsubscribe();
+    if (typeof brandingUnsubscribe === 'function') brandingUnsubscribe();
+    unsubscribeCustomerProfileStreams();
 });
 
 document.addEventListener('DOMContentLoaded', () => {

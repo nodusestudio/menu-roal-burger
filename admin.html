@@ -4267,8 +4267,7 @@
                 inset: 0;
                 z-index: 42;
                 display: none;
-                grid-template-rows: auto 1fr;
-                gap: 14px;
+                flex-direction: column;
                 padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 16px));
                 height: 100vh;
                 max-height: 100vh;
@@ -4287,13 +4286,14 @@
             }
 
             .ticket-panel.is-mobile-open {
-                display: grid;
+                display: flex;
             }
 
             .ticket-header {
                 position: sticky;
                 top: 0;
                 z-index: 3;
+                flex-shrink: 0;
                 padding: 6px 0 12px;
                 background: linear-gradient(180deg, rgba(6, 10, 20, 0.98), rgba(6, 10, 20, 0.84));
             }
@@ -4322,7 +4322,9 @@
             }
 
             .ticket-body {
+                flex: 1;
                 overflow-y: auto;
+                overflow-x: hidden;
                 min-height: 0;
                 padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
             }
