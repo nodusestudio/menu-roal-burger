@@ -4157,26 +4157,119 @@
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        .admin-tab-panel[data-tab-panel="menu"] .admin-card {
+        /* ── Menu Section: inner tabs (liquid glass) ── */
+        .menu-inner-tabs-nav {
+            display: flex;
+            gap: 5px;
+            padding: 5px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 16px 16px 0 0;
+            border-bottom: none;
+            -webkit-backdrop-filter: blur(18px) saturate(160%);
+            backdrop-filter: blur(18px) saturate(160%);
+            position: relative;
+            z-index: 1;
+        }
+
+        .menu-inner-tab {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 10px 14px;
+            border-radius: 11px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--admin-muted);
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.88rem;
+            font-weight: 600;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+            white-space: nowrap;
+            min-height: 42px;
+        }
+
+        .menu-inner-tab-icon {
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .menu-inner-tab:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.07);
+            color: #e0e8f8;
+        }
+
+        .menu-inner-tab.active {
+            background: linear-gradient(135deg, rgba(255, 123, 69, 0.26) 0%, rgba(255, 123, 69, 0.09) 100%);
+            border-color: rgba(255, 123, 69, 0.40);
+            box-shadow: inset 0 0 0 1px rgba(255, 123, 69, 0.16),
+                        0 2px 14px rgba(255, 123, 69, 0.14);
+            color: #ffffff;
+        }
+
+        .menu-inner-panels-wrap {
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-top: none;
+            border-radius: 0 0 18px 18px;
+            -webkit-backdrop-filter: blur(16px);
+            backdrop-filter: blur(16px);
+            overflow: hidden;
+        }
+
+        .menu-inner-panel {
+            display: none;
+            flex-direction: column;
+            gap: 14px;
+            padding: 18px 16px 20px;
+        }
+
+        .menu-inner-panel.active {
+            display: flex;
+        }
+
+        /* toolbar within categorías panel sits flush at top */
+        .menu-inner-panel > .section-toolbar {
+            margin-bottom: 0;
+        }
+
+        /* cards inside the inner panels — tighter radius, slightly raised */
+        .menu-inner-panel .admin-card {
             padding: 16px;
-            border-radius: 18px;
+            border-radius: 14px;
+            background: rgba(12, 18, 34, 0.65);
+            border-color: rgba(255, 255, 255, 0.10);
         }
 
-        .categories-workspace {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr);
-            gap: 16px;
-            align-items: start;
-        }
-
-        .admin-tab-panel[data-tab-panel="menu"] .card-head {
+        .menu-inner-panel .card-head {
             margin-bottom: 12px;
             align-items: flex-start;
         }
 
-        .admin-tab-panel[data-tab-panel="menu"] .card-head h2 {
-            font-size: 1.06rem;
+        .menu-inner-panel .card-head h2 {
+            font-size: 1.05rem;
             line-height: 1.15;
+        }
+
+        /* Responsive: tabs stack labels on narrow screens */
+        @media (max-width: 480px) {
+            .menu-inner-tab {
+                font-size: 0.78rem;
+                padding: 9px 8px;
+                gap: 5px;
+                letter-spacing: 0.5px;
+            }
+            .menu-inner-tab-icon {
+                font-size: 0.9rem;
+            }
+            .menu-inner-panel {
+                padding: 14px 12px 16px;
+            }
         }
 
         .admin-accordion-trigger .nav-icon {
@@ -5459,75 +5552,95 @@
 
         <section class="admin-grid admin-dashboard">
             <div class="admin-tab-panel active" data-tab-panel="menu">
-                <div class="section-toolbar">
-                    <button type="button" class="section-action-btn primary" id="openCreateCategoryBtn">Crear categoria</button>
-                    <button type="button" class="section-action-btn" id="openCreateProductBtn">Crear producto</button>
-                    <button type="button" class="section-save-btn" data-section-save="categorias">Guardar Categorias</button>
-                </div>
-                <div class="categories-workspace">
-                    <article class="admin-card">
-                        <div class="card-head">
-                            <h2>Categorias de Publico</h2>
-                            <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
+
+                <!-- ── Pestañas internas del Menu ── -->
+                <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones del Menu">
+                    <button class="menu-inner-tab active" data-menu-tab="categorias" role="tab" aria-selected="true">
+                        <span class="menu-inner-tab-icon">🏷️</span>
+                        <span>Categorías</span>
+                    </button>
+                    <button class="menu-inner-tab" data-menu-tab="acompanantes" role="tab" aria-selected="false">
+                        <span class="menu-inner-tab-icon">🍟</span>
+                        <span>Acompañantes</span>
+                    </button>
+                </nav>
+
+                <div class="menu-inner-panels-wrap">
+
+                    <!-- ── Panel: Categorías ── -->
+                    <div class="menu-inner-panel active" data-menu-panel="categorias" role="tabpanel">
+                        <div class="section-toolbar">
+                            <button type="button" class="section-action-btn primary" id="openCreateCategoryBtn">Crear categoria</button>
+                            <button type="button" class="section-action-btn" id="openCreateProductBtn">Crear producto</button>
+                            <button type="button" class="section-save-btn" data-section-save="categorias">Guardar Categorias</button>
                         </div>
-                        <div class="card-body" id="card-categories">
-                        <form id="categoryForm" class="inline-form category-inline-form">
-                            <div class="admin-field">
-                                <label for="newCategoryName">Nueva categoria</label>
-                                <input type="text" id="newCategoryName" name="categoryName" placeholder="Ej: Postres" required>
+                        <article class="admin-card">
+                            <div class="card-head">
+                                <h2>Categorias de Publico</h2>
+                                <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
                             </div>
-                            <button type="submit" class="ghost-button">Crear categoria</button>
-                        </form>
-                        <div id="categoryList" class="stack-list"></div>
-                        </div>
-                    </article>
-
-                    <!-- ══ Acompañamientos POS ══ -->
-                    <article class="admin-card">
-                        <div class="card-head">
-                            <h2>Acompañamientos POS</h2>
-                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                                <label style="display:flex;align-items:center;gap:6px;color:var(--admin-muted);font-size:0.82rem;cursor:pointer;font-weight:600;">
-                                    <input type="checkbox" id="upgradesActive" style="accent-color:var(--admin-accent);">
-                                    Activo en POS
-                                </label>
-                                <button type="button" class="card-collapse-btn" data-collapse-target="card-upgrades" aria-expanded="true">Retraer</button>
+                            <div class="card-body" id="card-categories">
+                                <form id="categoryForm" class="inline-form category-inline-form">
+                                    <div class="admin-field">
+                                        <label for="newCategoryName">Nueva categoria</label>
+                                        <input type="text" id="newCategoryName" name="categoryName" placeholder="Ej: Postres" required>
+                                    </div>
+                                    <button type="submit" class="ghost-button">Crear categoria</button>
+                                </form>
+                                <div id="categoryList" class="stack-list"></div>
                             </div>
-                        </div>
-                        <div class="card-body" id="card-upgrades">
-                            <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 18px;">
-                                Cuando un empleado selecciona un producto de las categorias configuradas, el POS pregunta automaticamente si desea acompañarlo.
-                            </p>
+                        </article>
+                    </div>
 
-                            <!-- Categorías que activan el prompt -->
-                            <div class="upgrades-section">
-                                <h4>Aplica a estas categorias del catalogo</h4>
-                                <div id="upgradeCategoriesList" class="upgrade-categories-list"></div>
-                            </div>
-
-                            <!-- Lista de opciones de acompañamiento -->
-                            <div class="upgrades-section">
-                                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-                                    <h4 style="margin:0;">Opciones de acompañamiento</h4>
-                                    <button type="button" class="ghost-button" id="addUpgradeOptionBtn" style="font-size:0.8rem;padding:5px 12px;">+ Agregar opcion</button>
-                                </div>
-                                <div id="upgradeOptionsList"></div>
-                            </div>
-
-                            <!-- Sabores de bebida -->
-                            <div class="upgrades-section">
-                                <h4>Sabores de bebida disponibles</h4>
-                                <div class="upgrade-flavors-list" id="upgradeFlavorsListAdmin"></div>
-                                <div class="upgrades-add-flavor-row">
-                                    <input type="text" class="admin-input" id="newFlavorInput" placeholder="Ej: Jugo de Mango">
-                                    <button type="button" class="ghost-button" id="addFlavorBtn">Agregar</button>
+                    <!-- ── Panel: Acompañantes ── -->
+                    <div class="menu-inner-panel" data-menu-panel="acompanantes" role="tabpanel" hidden style="display:none;">
+                        <article class="admin-card">
+                            <div class="card-head">
+                                <h2>Acompañamientos POS</h2>
+                                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                                    <label style="display:flex;align-items:center;gap:6px;color:var(--admin-muted);font-size:0.82rem;cursor:pointer;font-weight:600;">
+                                        <input type="checkbox" id="upgradesActive" style="accent-color:var(--admin-accent);">
+                                        Activo en POS
+                                    </label>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-upgrades" aria-expanded="true">Retraer</button>
                                 </div>
                             </div>
+                            <div class="card-body" id="card-upgrades">
+                                <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 18px;">
+                                    Cuando un empleado selecciona un producto de las categorias configuradas, el POS pregunta automaticamente si desea acompañarlo.
+                                </p>
 
-                            <button type="button" class="section-save-btn" id="saveUpgradesConfigBtn" style="margin-top:4px;">Guardar Acompañamientos</button>
-                        </div>
-                    </article>
-                </div>
+                                <!-- Categorías que activan el prompt -->
+                                <div class="upgrades-section">
+                                    <h4>Aplica a estas categorias del catalogo</h4>
+                                    <div id="upgradeCategoriesList" class="upgrade-categories-list"></div>
+                                </div>
+
+                                <!-- Lista de opciones de acompañamiento -->
+                                <div class="upgrades-section">
+                                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                                        <h4 style="margin:0;">Opciones de acompañamiento</h4>
+                                        <button type="button" class="ghost-button" id="addUpgradeOptionBtn" style="font-size:0.8rem;padding:5px 12px;">+ Agregar opcion</button>
+                                    </div>
+                                    <div id="upgradeOptionsList"></div>
+                                </div>
+
+                                <!-- Sabores de bebida -->
+                                <div class="upgrades-section">
+                                    <h4>Sabores de bebida disponibles</h4>
+                                    <div class="upgrade-flavors-list" id="upgradeFlavorsListAdmin"></div>
+                                    <div class="upgrades-add-flavor-row">
+                                        <input type="text" class="admin-input" id="newFlavorInput" placeholder="Ej: Jugo de Mango">
+                                        <button type="button" class="ghost-button" id="addFlavorBtn">Agregar</button>
+                                    </div>
+                                </div>
+
+                                <button type="button" class="section-save-btn" id="saveUpgradesConfigBtn" style="margin-top:4px;">Guardar Acompañamientos</button>
+                            </div>
+                        </article>
+                    </div>
+
+                </div><!-- /.menu-inner-panels-wrap -->
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="pedidos">

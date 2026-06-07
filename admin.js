@@ -6239,6 +6239,24 @@ document.getElementById('saveUpgradesConfigBtn')?.addEventListener('click', asyn
     }
 });
 
+// ── Menu: pestañas internas (Categorías / Acompañantes)
+document.querySelectorAll('.menu-inner-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+        const target = tab.dataset.menuTab;
+        document.querySelectorAll('.menu-inner-tab').forEach((t) => {
+            const isActive = t.dataset.menuTab === target;
+            t.classList.toggle('active', isActive);
+            t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        document.querySelectorAll('.menu-inner-panel').forEach((panel) => {
+            const isActive = panel.dataset.menuPanel === target;
+            panel.classList.toggle('active', isActive);
+            panel.hidden = !isActive;
+            panel.style.display = isActive ? 'flex' : 'none';
+        });
+    });
+});
+
 if (clientsSearchInput) {
     clientsSearchInput.addEventListener('input', () => {
         clientsSearchTerm = normalizeCategoryKey(clientsSearchInput.value || '');
