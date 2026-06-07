@@ -3383,15 +3383,20 @@ function buildThermalTicketMarkup(order, options = {}) {
     const printMode = options.printMode === true;
     const whatsappLink = buildOrderWhatsAppLink(order);
     const statusMeta = getOrderStatusMeta(order.status);
-    const deliveryText = order.deliveryFee !== null ? formatMoney(order.deliveryFee) : formatMoney(0);
-    const totalText = formatMoney(getOrderDisplayTotal(order));
+    const totalAmount = getOrderDisplayTotal(order);
+    const deliveryText = formatMoney(order.deliveryFee != null ? order.deliveryFee : 0);
+    const totalText = formatMoney(totalAmount);
     const restaurantName = escapeHtml(brandingState.restaurantName || 'ROAL BURGER');
     const orderDate = escapeHtml(formatOrderDate(order.createdAt));
     const orderHour = escapeHtml(formatOrderTime(order.createdAt));
     const elapsed = escapeHtml(formatElapsedTime(order.createdAt));
     const paymentLabel = getOrderPaymentLabel(order);
+    const [paymentMethod, paymentDetail] = paymentLabel.split(' | ');
+    const cashGiven = Number(order.cashTenderAmount || 0);
+    const changeAmount = order.cashChangeRequired && cashGiven > totalAmount ? cashGiven - totalAmount : null;
+
     const addressLines = buildTicketAddressLines(order)
-        .map((line) => `<div class="ticket-customer-row"><span>•</span>${buildTicketCopyButton('Direccion', line, { className: 'ticket-copy-btn-inline' })}</div>`)
+        .map((line) => `<div class="ticket-address-text">${buildTicketCopyButton('Direccion', line, {})}</div>`)
         .join('');
 
     const rows = order.items.map((item) => {
@@ -3406,7 +3411,7 @@ function buildThermalTicketMarkup(order, options = {}) {
             <tr>
                 <td>
                     <strong>${escapeHtml(`${item.quantity} x ${item.productName}`)}</strong>
-                    ${detailParts.length ? `<span class="ticket-line-meta">${escapeHtml(detailParts.join(' | '))}</span>` : ''}
+                    ${detailParts.map((p) => `<span class="ticket-line-meta">${escapeHtml(p)}</span>`).join('')}
                 </td>
                 <td>${escapeHtml(formatMoney(item.subtotal))}</td>
             </tr>
@@ -3418,7 +3423,7 @@ function buildThermalTicketMarkup(order, options = {}) {
             <article class="ticket-paper" data-ticket-print-root="true">
                 <div class="ticket-brand">
                     <div class="ticket-brand-name">${restaurantName}</div>
-                    <div class="ticket-brand-copy">Ticket termico de recepcion</div>
+                    <div class="ticket-brand-copy">Ticket de recepcion</div>
                     <div class="ticket-order-meta">
                         <span>${escapeHtml(order.code)}</span>
                         <span>${orderHour}</span>
@@ -3447,11 +3452,16 @@ function buildThermalTicketMarkup(order, options = {}) {
                         </div>
                         <div class="ticket-customer-row">
                             <span>Pago</span>
-                            <span>${escapeHtml(paymentLabel)}</span>
+                            <span>${escapeHtml(paymentMethod)}${paymentDetail ? `<span class="ticket-line-meta">${escapeHtml(paymentDetail)}</span>` : ''}</span>
                         </div>
-                        <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion' : 'Entrega'}</div>
+                    </div>
+                </section>
+
+                <section class="ticket-section">
+                    <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion de entrega' : 'Retiro en local'}</div>
+                    <div class="ticket-address-block">
                         ${addressLines}
-                        ${whatsappLink ? `<a class="ticket-contact-link" href="${whatsappLink}" target="_blank" rel="noopener noreferrer"><span>WhatsApp</span><strong>Abrir chat</strong></a>` : ''}
+                        ${whatsappLink ? `<a class="ticket-wa-btn" href="${whatsappLink}" target="_blank" rel="noopener noreferrer">💬 Abrir WhatsApp</a>` : ''}
                     </div>
                 </section>
 
@@ -3470,21 +3480,25 @@ function buildThermalTicketMarkup(order, options = {}) {
 
                 <section class="ticket-total">
                     <div class="ticket-summary-line ticket-total-row">
-                        <span>Items</span>
-                        <strong>${escapeHtml(String(order.totalItems || order.itemCount || order.items.length || 0))}</strong>
-                    </div>
-                    <div class="ticket-summary-line ticket-total-row">
                         <span>Subtotal</span>
                         <strong>${escapeHtml(formatMoney(order.subtotal))}</strong>
                     </div>
+                    ${order.orderType === 'domicilio' ? `
                     <div class="ticket-summary-line ticket-total-row">
                         <span>Domicilio</span>
                         <strong>${escapeHtml(deliveryText)}</strong>
                     </div>
+                    ` : ''}
                     <div class="ticket-summary-line ticket-total-row is-grand-total">
                         <span>Total</span>
                         <strong>${escapeHtml(totalText)}</strong>
                     </div>
+                    ${changeAmount !== null ? `
+                    <div class="ticket-summary-line ticket-total-row ticket-change-row">
+                        <span>Cambio</span>
+                        <strong>${escapeHtml(formatMoney(changeAmount))}</strong>
+                    </div>
+                    ` : ''}
                 </section>
 
                 <div class="ticket-footer-copy">
