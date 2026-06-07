@@ -1624,19 +1624,44 @@ const DEFAULT_UPGRADES_CONFIG = {
     activo: true,
     categorias_aplica: ['BURGER CLASICAS', 'BURGER PREMIUM', 'PEPITOS VENEZOLANOS', 'PERROS CALIENTES', 'SALCHIPAPAS'],
     opciones: [
-        { id: 'combo', nombre: 'Combo', detalle: 'Papas a la Francesa + Bebida', precio: 5000, activo: true, orden: 1, incluye_bebida: true },
-        { id: 'papas', nombre: 'Papas a la Francesa', detalle: '', precio: 3000, activo: true, orden: 2, incluye_bebida: false },
-        { id: 'bebida', nombre: 'Bebida', detalle: '', precio: 2000, activo: true, orden: 3, incluye_bebida: true }
-    ],
-    sabores_bebida: ['Coca-Cola', 'Pepsi', 'Jugo Natural', 'Agua', 'Sin bebida']
+        {
+            id: 'combo', nombre: 'Combo', detalle: 'Papas a la Francesa + Bebida',
+            precio: 5000, activo: true, orden: 1, tiene_variantes: false, variantes: []
+        },
+        {
+            id: 'papas', nombre: 'Papas a la Francesa', detalle: '',
+            precio: 3000, activo: true, orden: 2, tiene_variantes: false, variantes: []
+        },
+        {
+            id: 'bebida', nombre: 'Bebida', detalle: '',
+            precio: 0, activo: true, orden: 3, tiene_variantes: true,
+            variantes: [
+                {
+                    id: 'v-personal', nombre: 'Personal (300 ml)', precio_extra: 2000,
+                    sub_variantes: ['Coca-Cola', 'Pepsi', 'Jugo Natural', 'Agua', 'Sin bebida']
+                },
+                {
+                    id: 'v-grande', nombre: 'Grande (400 ml)', precio_extra: 3000,
+                    sub_variantes: ['Coca-Cola', 'Pepsi', 'Postobon 400 ml.']
+                }
+            ]
+        }
+    ]
 };
 
 async function fetchMenuUpgradesConfig() {
     try {
         const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(UPGRADES_CONFIG_DOC_ID).get();
-        menuUpgradesConfig = doc.exists
+        const raw = doc.exists
             ? { ...DEFAULT_UPGRADES_CONFIG, ...doc.data() }
             : { ...DEFAULT_UPGRADES_CONFIG };
+        // Migrar opciones antiguas (sin variantes) al nuevo formato
+        raw.opciones = (raw.opciones || []).map((opt) => ({
+            tiene_variantes: false,
+            variantes: [],
+            ...opt,
+        }));
+        menuUpgradesConfig = raw;
     } catch (_e) {
         menuUpgradesConfig = { ...DEFAULT_UPGRADES_CONFIG };
     }
@@ -1647,117 +1672,316 @@ async function saveMenuUpgradesConfig(config) {
     menuUpgradesConfig = config;
 }
 
+let _upgradeSelectedOptId = null;
+
 function renderMenuUpgradesAdmin() {
     const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-
     const activeChk = document.getElementById('upgradesActive');
     if (activeChk) activeChk.checked = !!cfg.activo;
+    _renderUpgradeCategories(cfg);
+    _renderUpgradesMasterList(cfg);
+    _renderUpgradesDetailPanel(_upgradeSelectedOptId);
+}
 
-    // Categorías
+function _renderUpgradeCategories(cfg) {
     const catList = document.getElementById('upgradeCategoriesList');
-    if (catList) {
-        catList.innerHTML = (cfg.categorias_aplica || []).map((cat) => `
-            <span class="upgrade-category-chip">
-                ${escapeHtml(cat)}
-                <button type="button" class="upgrade-category-remove" data-category="${escapeHtml(cat)}" aria-label="Quitar">&#215;</button>
-            </span>`).join('') +
-            '<button type="button" class="ghost-button" id="addUpgradeCategoryBtn" style="font-size:0.78rem;padding:4px 10px;">+ Categoría</button>';
-
-        catList.querySelectorAll('.upgrade-category-remove').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                menuUpgradesConfig.categorias_aplica = (menuUpgradesConfig.categorias_aplica || [])
-                    .filter((c) => c !== btn.dataset.category);
-                renderMenuUpgradesAdmin();
-            });
+    if (!catList) return;
+    catList.innerHTML = (cfg.categorias_aplica || []).map((cat) => `
+        <span class="upgrade-category-chip">
+            ${escapeHtml(cat)}
+            <button type="button" class="upgrade-category-remove" data-category="${escapeHtml(cat)}" aria-label="Quitar">&#215;</button>
+        </span>`).join('') +
+        '<button type="button" class="ghost-button" id="addUpgradeCategoryBtn" style="font-size:0.78rem;padding:4px 10px;">+ Categoría</button>';
+    catList.querySelectorAll('.upgrade-category-remove').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            menuUpgradesConfig.categorias_aplica = (menuUpgradesConfig.categorias_aplica || [])
+                .filter((c) => c !== btn.dataset.category);
+            _renderUpgradeCategories(menuUpgradesConfig);
         });
-        catList.querySelector('#addUpgradeCategoryBtn')?.addEventListener('click', () => {
-            const name = prompt('Nombre exacto de la categoría del catálogo (ej: BURGER PREMIUM)');
-            if (name && name.trim()) {
-                if (!menuUpgradesConfig) menuUpgradesConfig = { ...DEFAULT_UPGRADES_CONFIG };
-                menuUpgradesConfig.categorias_aplica = [
-                    ...(menuUpgradesConfig.categorias_aplica || []),
-                    name.trim().toUpperCase()
-                ];
+    });
+    catList.querySelector('#addUpgradeCategoryBtn')?.addEventListener('click', () => {
+        const name = prompt('Nombre exacto de la categoría del catálogo (ej: BURGER PREMIUM)');
+        if (name?.trim()) {
+            if (!menuUpgradesConfig) menuUpgradesConfig = { ...DEFAULT_UPGRADES_CONFIG };
+            menuUpgradesConfig.categorias_aplica = [
+                ...(menuUpgradesConfig.categorias_aplica || []),
+                name.trim().toUpperCase()
+            ];
+            _renderUpgradeCategories(menuUpgradesConfig);
+        }
+    });
+}
+
+function _renderUpgradesMasterList(cfg) {
+    const list = document.getElementById('upgradeOptionsList');
+    if (!list) return;
+    const opts = (cfg.opciones || []).sort((a, b) => (a.orden || 99) - (b.orden || 99));
+    list.innerHTML = opts.map((opt) => `
+        <div class="upgrades-master-item${_upgradeSelectedOptId === opt.id ? ' selected' : ''}"
+             data-opt-id="${escapeHtml(opt.id)}" role="button" tabindex="0">
+            <input type="checkbox" class="upgrades-master-item-check"
+                   ${opt.activo ? 'checked' : ''} data-opt-id="${escapeHtml(opt.id)}" title="Activo">
+            <span class="upgrades-master-item-name" title="${escapeHtml(opt.nombre)}">${escapeHtml(opt.nombre)}</span>
+            <span class="upgrades-master-item-dot${opt.activo ? '' : ' off'}"></span>
+            <span class="upgrades-master-item-arrow">›</span>
+            <button type="button" class="upgrades-master-item-del" data-opt-id="${escapeHtml(opt.id)}" title="Eliminar">🗑</button>
+        </div>`).join('');
+
+    list.querySelectorAll('.upgrades-master-item').forEach((item) => {
+        item.addEventListener('click', (e) => {
+            if (e.target.classList.contains('upgrades-master-item-check') ||
+                e.target.classList.contains('upgrades-master-item-del')) return;
+            _upgradeSelectedOptId = item.dataset.optId;
+            list.querySelectorAll('.upgrades-master-item').forEach((i2) =>
+                i2.classList.toggle('selected', i2.dataset.optId === _upgradeSelectedOptId));
+            _renderUpgradesDetailPanel(_upgradeSelectedOptId);
+        });
+        item.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); item.click(); }
+        });
+    });
+    list.querySelectorAll('.upgrades-master-item-check').forEach((chk) => {
+        chk.addEventListener('change', (e) => {
+            e.stopPropagation();
+            const opt = (menuUpgradesConfig?.opciones || []).find((o) => o.id === chk.dataset.optId);
+            if (opt) {
+                opt.activo = chk.checked;
+                const dot = chk.closest('.upgrades-master-item')?.querySelector('.upgrades-master-item-dot');
+                if (dot) dot.classList.toggle('off', !chk.checked);
+                // sync detail panel toggle if open
+                const detailChk = document.getElementById('detailOptActive');
+                if (detailChk && _upgradeSelectedOptId === chk.dataset.optId) detailChk.checked = chk.checked;
+            }
+        });
+    });
+    list.querySelectorAll('.upgrades-master-item-del').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = (menuUpgradesConfig?.opciones || []).findIndex((o) => o.id === btn.dataset.optId);
+            if (idx >= 0) {
+                menuUpgradesConfig.opciones.splice(idx, 1);
+                menuUpgradesConfig.opciones.forEach((o, i) => { o.orden = i + 1; });
+                if (_upgradeSelectedOptId === btn.dataset.optId) _upgradeSelectedOptId = null;
                 renderMenuUpgradesAdmin();
             }
         });
-    }
+    });
+}
 
-    // Opciones
-    const optsList = document.getElementById('upgradeOptionsList');
-    if (optsList) {
-        const opts = (cfg.opciones || []).sort((a, b) => (a.orden || 99) - (b.orden || 99));
-        optsList.innerHTML = opts.map((opt, i) => `
-            <div class="upgrade-option-row" data-idx="${i}">
-                <div class="upgrade-opt-toggle">
-                    <input type="checkbox" class="upgrade-opt-active" ${opt.activo ? 'checked' : ''} data-idx="${i}" title="Activo">
+function _buildVariantesHTML(opt) {
+    return (opt.variantes || []).map((v, vi) => `
+        <div class="upgrades-variant-card" data-v-idx="${vi}">
+            <div class="upgrades-variant-head" data-v-idx="${vi}">
+                <span class="upgrades-variant-head-name">${escapeHtml(v.nombre || 'Sin nombre')}</span>
+                <span class="upgrades-variant-head-price">+${formatMoney(Number(v.precio_extra || 0))}</span>
+                <button type="button" class="upgrades-variant-chevron" data-v-idx="${vi}" title="Expandir">▼</button>
+                <button type="button" class="upgrades-variant-del" data-v-idx="${vi}" title="Eliminar">🗑</button>
+            </div>
+            <div class="upgrades-variant-body" data-v-body="${vi}" hidden style="display:none;">
+                <div class="upgrades-detail-row">
+                    <div class="upgrades-detail-field">
+                        <label>Nombre de la variante</label>
+                        <input type="text" class="admin-input variant-nombre" value="${escapeHtml(v.nombre || '')}" placeholder="Ej: 300 ml" data-v-idx="${vi}">
+                    </div>
+                    <div class="upgrades-detail-field shrink">
+                        <label>+$ Precio</label>
+                        <input type="number" class="admin-input variant-precio" value="${Number(v.precio_extra || 0)}" min="0" step="100" data-v-idx="${vi}">
+                    </div>
                 </div>
-                <div class="upgrade-opt-details">
-                    <input type="text" class="admin-input upgrade-opt-name" value="${escapeHtml(opt.nombre)}" placeholder="Nombre" data-idx="${i}" data-field="nombre">
-                    <input type="text" class="admin-input upgrade-opt-detail" value="${escapeHtml(opt.detalle || '')}" placeholder="Detalle (opcional)" data-idx="${i}" data-field="detalle">
+                <div class="upgrades-subs-label">Sub-variantes (sabores / detalles)</div>
+                <div class="upgrades-subs-list" data-subs-vi="${vi}">
+                    ${(v.sub_variantes || []).map((s, si) => `
+                        <span class="upgrades-sub-chip">
+                            ${escapeHtml(s)}
+                            <button type="button" class="upgrades-sub-remove" data-v-idx="${vi}" data-s-idx="${si}">&#215;</button>
+                        </span>`).join('')}
                 </div>
-                <div class="upgrade-opt-price-wrap">
-                    <span class="upgrade-opt-price-label">+$</span>
-                    <input type="number" class="admin-input" style="width:75px;text-align:right;" value="${Number(opt.precio || 0)}" min="0" step="100" data-idx="${i}" data-field="precio">
+                <div class="upgrades-add-sub-row">
+                    <input type="text" class="admin-input upgrade-add-sub-input" placeholder="Ej: Coca-Cola" data-v-idx="${vi}">
+                    <button type="button" class="ghost-button upgrade-add-sub-btn" data-v-idx="${vi}" style="font-size:0.78rem;padding:5px 10px;white-space:nowrap;">+ Agregar</button>
                 </div>
-                <label class="upgrade-opt-bev-label" title="¿Incluye selección de bebida?">
-                    <input type="checkbox" ${opt.incluye_bebida ? 'checked' : ''} data-idx="${i}" data-field="incluye_bebida"> Bebida
+            </div>
+        </div>`).join('');
+}
+
+function _wireVariantInteractions(panel, optIdx) {
+    panel.querySelectorAll('.upgrades-variant-head').forEach((head) => {
+        head.addEventListener('click', (e) => {
+            if (e.target.closest('.upgrades-variant-del') || e.target.closest('.upgrades-variant-chevron')) return;
+            const card = head.closest('.upgrades-variant-card');
+            _toggleVariantBody(card);
+        });
+    });
+    panel.querySelectorAll('.upgrades-variant-chevron').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const card = btn.closest('.upgrades-variant-card');
+            _toggleVariantBody(card);
+        });
+    });
+    panel.querySelectorAll('.variant-nombre').forEach((inp) => {
+        inp.addEventListener('input', (e) => {
+            const vi = Number(e.target.dataset.vIdx);
+            menuUpgradesConfig.opciones[optIdx].variantes[vi].nombre = e.target.value;
+            const card = e.target.closest('.upgrades-variant-card');
+            const el = card?.querySelector('.upgrades-variant-head-name');
+            if (el) el.textContent = e.target.value || 'Sin nombre';
+        });
+    });
+    panel.querySelectorAll('.variant-precio').forEach((inp) => {
+        inp.addEventListener('input', (e) => {
+            const vi = Number(e.target.dataset.vIdx);
+            const p = Number(e.target.value || 0);
+            menuUpgradesConfig.opciones[optIdx].variantes[vi].precio_extra = p;
+            const card = e.target.closest('.upgrades-variant-card');
+            const el = card?.querySelector('.upgrades-variant-head-price');
+            if (el) el.textContent = '+' + formatMoney(p);
+        });
+    });
+    panel.querySelectorAll('.upgrades-variant-del').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const vi = Number(btn.dataset.vIdx);
+            menuUpgradesConfig.opciones[optIdx].variantes.splice(vi, 1);
+            _renderUpgradesDetailPanel(_upgradeSelectedOptId);
+        });
+    });
+    panel.querySelectorAll('.upgrade-add-sub-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const vi = Number(btn.dataset.vIdx);
+            const inp = panel.querySelector(`.upgrade-add-sub-input[data-v-idx="${vi}"]`);
+            if (!inp?.value.trim()) return;
+            if (!Array.isArray(menuUpgradesConfig.opciones[optIdx].variantes[vi].sub_variantes))
+                menuUpgradesConfig.opciones[optIdx].variantes[vi].sub_variantes = [];
+            menuUpgradesConfig.opciones[optIdx].variantes[vi].sub_variantes.push(inp.value.trim());
+            inp.value = '';
+            _renderUpgradesDetailPanel(_upgradeSelectedOptId);
+        });
+    });
+    panel.querySelectorAll('.upgrade-add-sub-input').forEach((inp) => {
+        inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                panel.querySelector(`.upgrade-add-sub-btn[data-v-idx="${inp.dataset.vIdx}"]`)?.click();
+            }
+        });
+    });
+    panel.querySelectorAll('.upgrades-sub-remove').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const vi = Number(btn.dataset.vIdx);
+            const si = Number(btn.dataset.sIdx);
+            menuUpgradesConfig.opciones[optIdx].variantes[vi].sub_variantes.splice(si, 1);
+            _renderUpgradesDetailPanel(_upgradeSelectedOptId);
+        });
+    });
+}
+
+function _toggleVariantBody(card) {
+    if (!card) return;
+    const body = card.querySelector('[data-v-body]');
+    const chevron = card.querySelector('.upgrades-variant-chevron');
+    if (!body) return;
+    const open = body.hidden;
+    body.hidden = !open;
+    body.style.display = open ? 'flex' : 'none';
+    if (chevron) chevron.classList.toggle('open', open);
+}
+
+function _renderUpgradesDetailPanel(optId) {
+    const panel = document.getElementById('upgradesDetailPanel');
+    if (!panel) return;
+    if (!optId) {
+        panel.innerHTML = `<div class="upgrades-detail-empty">← Selecciona un acompañamiento para configurar</div>`;
+        return;
+    }
+    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
+    const opt = (cfg.opciones || []).find((o) => o.id === optId);
+    if (!opt) { panel.innerHTML = `<div class="upgrades-detail-empty">Acompañamiento no encontrado</div>`; return; }
+    const optIdx = (cfg.opciones || []).findIndex((o) => o.id === optId);
+
+    panel.innerHTML = `
+        <div class="upgrades-detail-topbar">
+            <span class="upgrades-detail-title">${escapeHtml(opt.nombre)}</span>
+            <label class="upgrades-toggle-label">
+                <input type="checkbox" id="detailOptActive" ${opt.activo ? 'checked' : ''}> Activo
+            </label>
+        </div>
+        <div class="upgrades-detail-fields">
+            <div class="upgrades-detail-row">
+                <div class="upgrades-detail-field">
+                    <label>Nombre</label>
+                    <input type="text" class="admin-input" id="detailOptNombre" value="${escapeHtml(opt.nombre)}" placeholder="Ej: Combo">
+                </div>
+                <div class="upgrades-detail-field shrink">
+                    <label>Precio base +$</label>
+                    <input type="number" class="admin-input" id="detailOptPrecio" value="${Number(opt.precio || 0)}" min="0" step="100">
+                </div>
+            </div>
+            <div class="upgrades-detail-field">
+                <label>Descripción (opcional)</label>
+                <input type="text" class="admin-input" id="detailOptDetalle" value="${escapeHtml(opt.detalle || '')}" placeholder="Ej: Papas + Bebida">
+            </div>
+        </div>
+        <div class="upgrades-variants-section">
+            <div class="upgrades-variants-header">
+                <span class="upgrades-variants-title">Variantes</span>
+                <label class="upgrades-toggle-label" style="font-size:0.75rem;">
+                    <input type="checkbox" id="detailOptTieneVariantes" ${opt.tiene_variantes ? 'checked' : ''}> Activar variantes
                 </label>
-                <button type="button" class="upgrade-opt-delete" data-idx="${i}" title="Eliminar">🗑</button>
-            </div>`).join('');
+                <button type="button" class="ghost-button" id="addVariantBtn" style="font-size:0.76rem;padding:4px 9px;">+ Agregar</button>
+            </div>
+            <div id="upgradesVariantsList">
+                ${opt.tiene_variantes
+                    ? ((opt.variantes || []).length > 0
+                        ? _buildVariantesHTML(opt)
+                        : '<p style="font-size:0.81rem;color:var(--admin-muted);margin:0;">Sin variantes. Usa "+ Agregar".</p>')
+                    : ''}
+            </div>
+        </div>`;
 
-        optsList.querySelectorAll('.upgrade-opt-active').forEach((chk) => {
-            chk.addEventListener('change', (e) => {
-                const idx = Number(e.target.dataset.idx);
-                menuUpgradesConfig.opciones[idx].activo = e.target.checked;
-            });
+    // Wire fields
+    panel.querySelector('#detailOptActive')?.addEventListener('change', (e) => {
+        if (optIdx >= 0) {
+            menuUpgradesConfig.opciones[optIdx].activo = e.target.checked;
+            const dot = document.querySelector(`.upgrades-master-item[data-opt-id="${optId}"] .upgrades-master-item-dot`);
+            if (dot) dot.classList.toggle('off', !e.target.checked);
+            const chk = document.querySelector(`.upgrades-master-item-check[data-opt-id="${optId}"]`);
+            if (chk) chk.checked = e.target.checked;
+        }
+    });
+    panel.querySelector('#detailOptNombre')?.addEventListener('input', (e) => {
+        if (optIdx >= 0) {
+            menuUpgradesConfig.opciones[optIdx].nombre = e.target.value;
+            const nameEl = document.querySelector(`.upgrades-master-item[data-opt-id="${optId}"] .upgrades-master-item-name`);
+            if (nameEl) nameEl.textContent = e.target.value;
+            const titleEl = panel.querySelector('.upgrades-detail-title');
+            if (titleEl) titleEl.textContent = e.target.value;
+        }
+    });
+    panel.querySelector('#detailOptPrecio')?.addEventListener('input', (e) => {
+        if (optIdx >= 0) menuUpgradesConfig.opciones[optIdx].precio = Number(e.target.value || 0);
+    });
+    panel.querySelector('#detailOptDetalle')?.addEventListener('input', (e) => {
+        if (optIdx >= 0) menuUpgradesConfig.opciones[optIdx].detalle = e.target.value;
+    });
+    panel.querySelector('#detailOptTieneVariantes')?.addEventListener('change', (e) => {
+        if (optIdx >= 0) {
+            menuUpgradesConfig.opciones[optIdx].tiene_variantes = e.target.checked;
+            _renderUpgradesDetailPanel(optId);
+        }
+    });
+    panel.querySelector('#addVariantBtn')?.addEventListener('click', () => {
+        if (optIdx < 0) return;
+        if (!Array.isArray(menuUpgradesConfig.opciones[optIdx].variantes))
+            menuUpgradesConfig.opciones[optIdx].variantes = [];
+        menuUpgradesConfig.opciones[optIdx].variantes.push({
+            id: `v-${Date.now()}`, nombre: 'Nueva variante',
+            precio_extra: 0, sub_variantes: []
         });
-        optsList.querySelectorAll('input[data-field]').forEach((input) => {
-            input.addEventListener('input', (e) => {
-                const idx = Number(e.target.dataset.idx);
-                const field = e.target.dataset.field;
-                if (!field || idx == null) return;
-                if (field === 'precio') {
-                    menuUpgradesConfig.opciones[idx].precio = Number(e.target.value || 0);
-                } else if (field === 'incluye_bebida') {
-                    menuUpgradesConfig.opciones[idx].incluye_bebida = e.target.checked;
-                } else {
-                    menuUpgradesConfig.opciones[idx][field] = e.target.value;
-                }
-            });
-        });
-        optsList.querySelectorAll('input[type="checkbox"][data-field="incluye_bebida"]').forEach((chk) => {
-            chk.addEventListener('change', (e) => {
-                const idx = Number(e.target.dataset.idx);
-                menuUpgradesConfig.opciones[idx].incluye_bebida = e.target.checked;
-            });
-        });
-        optsList.querySelectorAll('.upgrade-opt-delete').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                const idx = Number(e.target.closest('[data-idx]').dataset.idx);
-                menuUpgradesConfig.opciones.splice(idx, 1);
-                menuUpgradesConfig.opciones.forEach((o, i) => { o.orden = i + 1; });
-                renderMenuUpgradesAdmin();
-            });
-        });
-    }
-
-    // Sabores
-    const flavorsList = document.getElementById('upgradeFlavorsListAdmin');
-    if (flavorsList) {
-        flavorsList.innerHTML = (cfg.sabores_bebida || []).map((f, i) => `
-            <span class="upgrade-flavor-chip">
-                ${escapeHtml(f)}
-                <button type="button" class="upgrade-flavor-remove" data-idx="${i}" aria-label="Quitar">&#215;</button>
-            </span>`).join('');
-        flavorsList.querySelectorAll('.upgrade-flavor-remove').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                const idx = Number(e.target.dataset.idx);
-                menuUpgradesConfig.sabores_bebida.splice(idx, 1);
-                renderMenuUpgradesAdmin();
-            });
-        });
-    }
+        menuUpgradesConfig.opciones[optIdx].tiene_variantes = true;
+        _renderUpgradesDetailPanel(optId);
+    });
+    if (opt.tiene_variantes) _wireVariantInteractions(panel, optIdx);
 }
 
 
@@ -2164,6 +2388,14 @@ function renderPosUpgradeStep1() {
         .filter((o) => o.activo)
         .sort((a, b) => (a.orden || 99) - (b.orden || 99));
 
+    const priceLabel = (opt) => {
+        if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
+            const min = Math.min(...opt.variantes.map((v) => Number(v.precio_extra || 0)));
+            return `desde +${formatMoney(min)}`;
+        }
+        return `+${formatMoney(Number(opt.precio || 0))}`;
+    };
+
     body.innerHTML = `
         <div class="pos-upgrade-label">Elige cómo acompañar tu pedido</div>
         <div class="pos-upgrade-options">
@@ -2180,7 +2412,7 @@ function renderPosUpgradeStep1() {
                     <div class="pos-upgrade-opt-name">${escapeHtml(opt.nombre)}</div>
                     ${opt.detalle ? `<div class="pos-upgrade-opt-detail">${escapeHtml(opt.detalle)}</div>` : ''}
                 </div>
-                <span class="pos-upgrade-opt-price">+${formatMoney(Number(opt.precio || 0))}</span>
+                <span class="pos-upgrade-opt-price">${priceLabel(opt)}</span>
             </button>`).join('')}
         </div>`;
 
@@ -2194,8 +2426,11 @@ function renderPosUpgradeStep1() {
         btn.addEventListener('click', () => {
             const opt = (cfg.opciones || []).find((o) => o.id === btn.dataset.optId);
             if (!opt) return;
-            if (opt.incluye_bebida) {
+            if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
                 renderPosUpgradeStep2(opt);
+            } else if (opt.incluye_bebida && (cfg.sabores_bebida || []).length > 0) {
+                // compatibilidad con datos legados
+                _renderPosLegacyFlavors(opt, cfg.sabores_bebida);
             } else {
                 const { productId, productName, productPrice } = _posUpgradePending;
                 addProductToPosOrder(productId, productName, productPrice + Number(opt.precio || 0), opt.nombre);
@@ -2209,31 +2444,91 @@ function renderPosUpgradeStep2(selectedOpt) {
     const body = document.getElementById('posUpgradeBody');
     const titleEl = document.getElementById('posUpgradeTitle');
     if (!body) return;
+    if (titleEl) titleEl.textContent = `${escapeHtml(selectedOpt.nombre)} — ¿Qué tamaño?`;
 
-    if (titleEl) titleEl.textContent = '¿Qué bebida quieres?';
-
-    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    const sabores = Array.isArray(cfg.sabores_bebida) ? cfg.sabores_bebida : [];
-
+    const variantes = (selectedOpt.variantes || []);
     body.innerHTML = `
-        <div class="pos-upgrade-label">${escapeHtml(selectedOpt.nombre)}: elige tu bebida</div>
+        <div class="pos-upgrade-label">${escapeHtml(selectedOpt.nombre)}: elige la variante</div>
+        <div class="pos-upgrade-options">
+            ${variantes.map((v) => `
+            <button type="button" class="pos-upgrade-opt" data-v-id="${escapeHtml(v.id)}">
+                <div>
+                    <div class="pos-upgrade-opt-name">${escapeHtml(v.nombre)}</div>
+                </div>
+                <span class="pos-upgrade-opt-price">+${formatMoney(Number(v.precio_extra || 0))}</span>
+            </button>`).join('')}
+        </div>
+        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
+
+    body.querySelectorAll('.pos-upgrade-opt[data-v-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const variant = variantes.find((v) => v.id === btn.dataset.vId);
+            if (!variant) return;
+            if ((variant.sub_variantes || []).length > 0) {
+                renderPosUpgradeStep3(selectedOpt, variant);
+            } else {
+                const { productId, productName, productPrice } = _posUpgradePending;
+                const extra = Number(selectedOpt.precio || 0) + Number(variant.precio_extra || 0);
+                const note = `${selectedOpt.nombre} – ${variant.nombre}`;
+                addProductToPosOrder(productId, productName, productPrice + extra, note);
+                closePosUpgradeSheet();
+            }
+        });
+    });
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
+}
+
+function renderPosUpgradeStep3(selectedOpt, selectedVariant) {
+    const body = document.getElementById('posUpgradeBody');
+    const titleEl = document.getElementById('posUpgradeTitle');
+    if (!body) return;
+    if (titleEl) titleEl.textContent = `${escapeHtml(selectedVariant.nombre)} — ¿Qué sabor?`;
+
+    const subs = selectedVariant.sub_variantes || [];
+    body.innerHTML = `
+        <div class="pos-upgrade-label">${escapeHtml(selectedOpt.nombre)} · ${escapeHtml(selectedVariant.nombre)}: elige el sabor</div>
         <div class="pos-flavors-grid">
-            ${sabores.map((s) => `
-            <button type="button" class="pos-flavor-btn" data-flavor="${escapeHtml(s)}">${escapeHtml(s)}</button>
-            `).join('')}
+            ${subs.map((s) => `
+            <button type="button" class="pos-flavor-btn" data-sub="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
         </div>
         <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
 
     body.querySelectorAll('.pos-flavor-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
             const { productId, productName, productPrice } = _posUpgradePending;
-            const flavor = btn.dataset.flavor;
-            const note = flavor === 'Sin bebida' ? selectedOpt.nombre : `${selectedOpt.nombre} (${flavor})`;
+            const sub = btn.dataset.sub;
+            const extra = Number(selectedOpt.precio || 0) + Number(selectedVariant.precio_extra || 0);
+            const note = sub === 'Sin bebida'
+                ? `${selectedOpt.nombre} – ${selectedVariant.nombre}`
+                : `${selectedOpt.nombre} – ${selectedVariant.nombre} (${sub})`;
+            addProductToPosOrder(productId, productName, productPrice + extra, note);
+            closePosUpgradeSheet();
+        });
+    });
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => renderPosUpgradeStep2(selectedOpt));
+}
+
+function _renderPosLegacyFlavors(selectedOpt, sabores) {
+    const body = document.getElementById('posUpgradeBody');
+    const titleEl = document.getElementById('posUpgradeTitle');
+    if (!body) return;
+    if (titleEl) titleEl.textContent = '¿Qué bebida quieres?';
+    body.innerHTML = `
+        <div class="pos-upgrade-label">${escapeHtml(selectedOpt.nombre)}: elige tu bebida</div>
+        <div class="pos-flavors-grid">
+            ${sabores.map((s) => `
+            <button type="button" class="pos-flavor-btn" data-flavor="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
+        </div>
+        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
+    body.querySelectorAll('.pos-flavor-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const { productId, productName, productPrice } = _posUpgradePending;
+            const f = btn.dataset.flavor;
+            const note = f === 'Sin bebida' ? selectedOpt.nombre : `${selectedOpt.nombre} (${f})`;
             addProductToPosOrder(productId, productName, productPrice + Number(selectedOpt.precio || 0), note);
             closePosUpgradeSheet();
         });
     });
-
     body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
 }
 
@@ -6200,29 +6495,22 @@ document.getElementById('upgradesActive')?.addEventListener('change', (e) => {
 document.getElementById('addUpgradeOptionBtn')?.addEventListener('click', () => {
     if (!menuUpgradesConfig) menuUpgradesConfig = { ...DEFAULT_UPGRADES_CONFIG };
     if (!Array.isArray(menuUpgradesConfig.opciones)) menuUpgradesConfig.opciones = [];
+    const newId = `opt-${Date.now()}`;
     menuUpgradesConfig.opciones.push({
-        id: `opt-${Date.now()}`,
-        nombre: 'Nueva opcion',
+        id: newId,
+        nombre: 'Nueva opción',
         detalle: '',
         precio: 0,
         activo: true,
         orden: menuUpgradesConfig.opciones.length + 1,
-        incluye_bebida: false
+        tiene_variantes: false,
+        variantes: []
     });
+    _upgradeSelectedOptId = newId;
     renderMenuUpgradesAdmin();
 });
 
-// ── Admin: agregar sabor de bebida
-document.getElementById('addFlavorBtn')?.addEventListener('click', () => {
-    const input = document.getElementById('newFlavorInput');
-    const val = String(input?.value || '').trim();
-    if (!val) return;
-    if (!menuUpgradesConfig) menuUpgradesConfig = { ...DEFAULT_UPGRADES_CONFIG };
-    if (!Array.isArray(menuUpgradesConfig.sabores_bebida)) menuUpgradesConfig.sabores_bebida = [];
-    menuUpgradesConfig.sabores_bebida.push(val);
-    if (input) input.value = '';
-    renderMenuUpgradesAdmin();
-});
+// (addFlavorBtn / newFlavorInput removidos — sabores ahora viven en sub-variantes de cada variante)
 
 // ── Admin: guardar config de acompañamientos
 document.getElementById('saveUpgradesConfigBtn')?.addEventListener('click', async () => {
