@@ -2626,10 +2626,548 @@
             color: #fff;
         }
 
-        /* POS System */
-        .pos-container {
+        /* ═══════════════════════════════════════════
+           POS v2 — Full-screen overlay (Loyverse style)
+           ═══════════════════════════════════════════ */
+        .pos-view {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9998;
+            background: #141922;
+            color: #eef4ff;
+        }
+        .pos-view.is-open { display: block; }
+
+        .pos-topbar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            height: 52px;
+            padding: 0 6px;
+            background: #1a2130;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            flex-shrink: 0;
+        }
+        .pos-topbar-btn {
+            width: 40px; height: 40px;
+            background: transparent;
+            border: none;
+            color: #eef4ff;
+            font-size: 1.25rem;
+            cursor: pointer;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        .pos-topbar-btn:hover { background: rgba(255,255,255,0.08); }
+        .pos-topbar-center {
+            flex: 1;
+            display: flex; align-items: center; gap: 8px;
+            min-width: 0;
+        }
+        .pos-topbar-title {
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.92rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #eef4ff;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .pos-topbar-badge {
+            background: var(--admin-accent);
+            color: #fff;
+            border-radius: 10px;
+            padding: 1px 8px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .pos-new-ticket-btn {
+            background: var(--admin-accent) !important;
+            font-size: 1.5rem !important;
+            font-weight: 700;
+            color: #fff !important;
+        }
+
+        /* ── Pantalla principal ── */
+        .pos-screen-main {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+        .pos-action-row {
             display: grid;
-            grid-template-columns: 1.1fr 1fr;
+            grid-template-columns: 1fr 1fr;
+            height: 58px;
+            flex-shrink: 0;
+        }
+        .pos-action-btn {
+            border: none; cursor: pointer;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.82rem;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px;
+            transition: filter 0.15s;
+            padding: 0 12px;
+        }
+        .pos-action-tickets {
+            background: #1f6b2e; color: #fff;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        .pos-action-tickets:hover { filter: brightness(1.12); }
+        .pos-action-cobrar {
+            background: #19892e; color: #fff;
+            flex-direction: column; gap: 1px;
+        }
+        .pos-action-cobrar:hover { filter: brightness(1.12); }
+        .pos-cobrar-amount { font-size: 1rem; font-weight: 700; line-height: 1; }
+        .pos-tickets-count-badge {
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            padding: 1px 7px;
+            font-size: 0.72rem; font-weight: 700;
+        }
+
+        /* ── Barra de categoría ── */
+        .pos-catbar {
+            display: flex; align-items: center;
+            height: 46px;
+            background: #1a2130;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            flex-shrink: 0;
+            padding: 0 8px;
+        }
+        .pos-cat-select {
+            flex: 1; height: 36px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 7px;
+            color: #eef4ff;
+            font-size: 0.85rem;
+            padding: 0 10px;
+            cursor: pointer;
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            outline: none;
+        }
+        .pos-cat-select option { background: #1a2130; color: #eef4ff; }
+
+        /* ── Grid de productos ── */
+        .pos-products-scroll {
+            flex: 1;
+            overflow-y: auto; overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            padding: 10px;
+            background: #141922;
+        }
+        .pos-product-grid-v2 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        @media (min-width: 540px) { .pos-product-grid-v2 { grid-template-columns: repeat(4, 1fr); } }
+        @media (min-width: 780px) { .pos-product-grid-v2 { grid-template-columns: repeat(5, 1fr); } }
+        @media (min-width: 1024px) { .pos-product-grid-v2 { grid-template-columns: repeat(6, 1fr); } }
+        @media (min-width: 1400px) { .pos-product-grid-v2 { grid-template-columns: repeat(8, 1fr); } }
+
+        .pos-product-btn {
+            background: var(--admin-accent);
+            border: none; border-radius: 9px;
+            color: #fff; cursor: pointer;
+            padding: 10px 6px;
+            aspect-ratio: 1;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            gap: 5px; text-align: center;
+            transition: filter 0.12s, transform 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .pos-product-btn:active { transform: scale(0.93); }
+        .pos-product-btn:hover { filter: brightness(1.1); }
+        .pos-product-btn-name {
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+            line-height: 1.2; color: #fff;
+            word-break: break-word;
+        }
+        .pos-product-btn-price {
+            font-size: 0.68rem;
+            color: rgba(255,255,255,0.82);
+            font-weight: 600;
+        }
+
+        /* ── Barra inferior (carrito) ── */
+        .pos-bottom-bar {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            height: 56px; z-index: 3;
+        }
+        .pos-bottom-inner {
+            width: 100%; height: 100%;
+            background: linear-gradient(135deg, #e05a00, #ff7a1a);
+            border: none; cursor: pointer;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 18px; color: #fff;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .pos-bottom-left { display: flex; gap: 14px; align-items: center; }
+        .pos-bottom-qty {
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.88rem; text-transform: uppercase; opacity: 0.9;
+        }
+        .pos-bottom-total-amt { font-size: 1.05rem; font-weight: 700; }
+        .pos-bottom-chevron { font-size: 0.72rem; opacity: 0.8; }
+
+        /* ── Drawer de carrito ── */
+        .pos-drawer { position: absolute; inset: 0; z-index: 20; }
+        .pos-drawer-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.55); }
+        .pos-drawer-sheet {
+            position: absolute; left: 0; right: 0; bottom: 0;
+            max-height: 82vh;
+            background: #1a2130;
+            border-radius: 16px 16px 0 0;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 -8px 32px rgba(0,0,0,0.4);
+        }
+        .pos-drawer-handle {
+            width: 36px; height: 4px;
+            background: rgba(255,255,255,0.18);
+            border-radius: 2px;
+            margin: 10px auto 0; flex-shrink: 0;
+        }
+        .pos-drawer-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            flex-shrink: 0;
+        }
+        .pos-drawer-title {
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            font-size: 0.9rem; color: #ffdca7;
+        }
+        .pos-drawer-close {
+            background: transparent; border: none;
+            color: rgba(255,255,255,0.55);
+            font-size: 1.5rem; cursor: pointer;
+            line-height: 1; padding: 2px 6px; border-radius: 4px;
+        }
+        .pos-drawer-close:hover { color: #fff; }
+        .pos-drawer-body { flex: 1; overflow-y: auto; min-height: 0; }
+        .pos-drawer-body .pos-items-list { padding: 12px 12px 4px; }
+        .pos-drawer-footer {
+            padding: 12px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            flex-shrink: 0; background: #141922;
+        }
+        .pos-cobrar-full-btn {
+            width: 100%; padding: 15px;
+            background: #19892e; border: none;
+            border-radius: 10px; color: #fff;
+            font-family: 'Oswald', sans-serif;
+            font-size: 1.1rem; text-transform: uppercase;
+            letter-spacing: 1px; cursor: pointer;
+            transition: filter 0.15s;
+        }
+        .pos-cobrar-full-btn:hover { filter: brightness(1.1); }
+
+        /* ── Pantalla de pago ── */
+        .pos-screen-payment {
+            position: absolute; inset: 0; z-index: 10;
+            background: #141922;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+        .pos-payment-body {
+            flex: 1; overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 16px;
+            display: flex; flex-direction: column; gap: 16px;
+            min-height: 0;
+        }
+        .pos-payment-amount-block { text-align: center; padding: 20px 0 8px; }
+        .pos-payment-amount-value {
+            font-family: 'Oswald', sans-serif;
+            font-size: 2.4rem; color: #fff; font-weight: 600; line-height: 1;
+        }
+        .pos-payment-amount-label { font-size: 0.8rem; color: var(--admin-muted); margin-top: 6px; }
+        .pos-payment-section { display: flex; flex-direction: column; gap: 8px; }
+        .pos-payment-section--row {
+            flex-direction: row; align-items: center; justify-content: space-between;
+        }
+        .pos-payment-label {
+            font-size: 0.76rem; text-transform: uppercase;
+            letter-spacing: 0.6px; color: var(--admin-ok); font-weight: 700;
+        }
+        .pos-payment-label--row {
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .pos-type-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .pos-type-btn {
+            padding: 11px 6px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px; color: #eef4ff;
+            font-size: 0.8rem; cursor: pointer;
+            transition: all 0.15s;
+            text-transform: uppercase;
+            font-family: 'Oswald', sans-serif;
+            letter-spacing: 0.3px;
+        }
+        .pos-type-btn.active {
+            background: rgba(255,122,26,0.2);
+            border-color: var(--admin-accent);
+            color: #ffdca7;
+        }
+        .pos-pay-input {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px; color: #eef4ff;
+            padding: 11px 12px; font-size: 0.88rem;
+            width: 100%; box-sizing: border-box;
+            outline: none; transition: border-color 0.15s;
+            font-family: inherit;
+        }
+        .pos-pay-input:focus { border-color: var(--admin-accent); }
+        .pos-pay-input::placeholder { color: rgba(180,200,230,0.38); }
+        .pos-pay-input--sm { width: 100px; flex-shrink: 0; }
+        .pos-payment-methods { display: flex; flex-direction: column; gap: 8px; }
+        .pos-pay-method-btn {
+            padding: 14px 16px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px; color: #eef4ff;
+            font-size: 0.88rem; cursor: pointer;
+            text-align: left; transition: all 0.15s;
+            font-family: 'Roboto', sans-serif;
+        }
+        .pos-pay-method-btn.active {
+            background: rgba(25,137,46,0.25);
+            border-color: #19892e; color: #fff;
+        }
+        .pos-cash-label { color: var(--admin-ok) !important; }
+        .pos-payment-footer {
+            padding: 12px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            flex-shrink: 0; background: #1a2130;
+        }
+        .pos-payment-confirm-btn {
+            width: 100%; padding: 16px;
+            background: #19892e; border: none;
+            border-radius: 10px; color: #fff;
+            font-family: 'Oswald', sans-serif;
+            font-size: 1.1rem; text-transform: uppercase;
+            letter-spacing: 1.5px; cursor: pointer;
+            transition: filter 0.15s;
+        }
+        .pos-payment-confirm-btn:hover { filter: brightness(1.1); }
+        .pos-payment-confirm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        /* ── Pantalla de tickets abiertos ── */
+        .pos-screen-tickets {
+            position: absolute; inset: 0; z-index: 10;
+            background: #141922;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+        .pos-tickets-list { flex: 1; overflow-y: auto; padding: 12px; }
+        .pos-ticket-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 14px 16px;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 10px; margin-bottom: 8px;
+            cursor: pointer; transition: background 0.15s;
+        }
+        .pos-ticket-item:hover { background: rgba(255,255,255,0.11); }
+        .pos-ticket-item.active-ticket {
+            border-color: var(--admin-accent);
+            background: var(--admin-accent-soft);
+        }
+        .pos-ticket-check {
+            width: 22px; height: 22px;
+            border: 2px solid rgba(255,255,255,0.25);
+            border-radius: 5px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.75rem; color: transparent; flex-shrink: 0;
+        }
+        .pos-ticket-item.active-ticket .pos-ticket-check {
+            background: var(--admin-accent);
+            border-color: var(--admin-accent); color: #fff;
+        }
+        .pos-ticket-info { flex: 1; min-width: 0; }
+        .pos-ticket-name { font-weight: 600; font-size: 0.9rem; color: #eef4ff; }
+        .pos-ticket-meta { font-size: 0.76rem; color: var(--admin-muted); margin-top: 2px; }
+        .pos-ticket-total { font-size: 1rem; font-weight: 700; color: #fff; flex-shrink: 0; }
+
+        /* ── Campos de formulario ── */
+        .pos-section-row { display: flex; gap: 8px; }
+        .pos-section-row .pos-field { flex: 1; }
+        .pos-field { display: flex; flex-direction: column; gap: 3px; }
+        .pos-field label {
+            font-size: 0.74rem; color: #b0bdd0; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .pos-field input,
+        .pos-field select,
+        .pos-field textarea {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #eef4ff;
+            padding: 8px 10px; border-radius: 7px;
+            font-size: 0.85rem; font-family: inherit;
+            outline: none; transition: border-color 0.15s;
+        }
+        .pos-field input:focus,
+        .pos-field select:focus,
+        .pos-field textarea:focus { border-color: rgba(255,122,26,0.6); }
+        .pos-field input::placeholder,
+        .pos-field textarea::placeholder { color: rgba(255,255,255,0.28); }
+
+        /* ── Items del carrito ── */
+        .pos-items-list { display: flex; flex-direction: column; gap: 6px; }
+        .pos-items-list .kanban-empty {
+            text-align: center; padding: 20px;
+            color: rgba(255,255,255,0.38); font-size: 0.85rem;
+        }
+        .pos-item-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 10px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.06);
+            font-size: 0.8rem; transition: background 0.15s;
+        }
+        .pos-item-row:hover { background: rgba(255,255,255,0.05); }
+        .pos-item-name { flex: 1; color: #f2f7ff; font-weight: 500; margin-right: 6px; }
+        .pos-item-note {
+            display: block; font-size: 0.72rem;
+            color: rgba(200,220,255,0.5); font-style: italic; margin-top: 1px;
+        }
+        .pos-item-qty-price { display: flex; gap: 8px; align-items: center; }
+        .pos-item-qty {
+            display: flex; gap: 2px; align-items: center;
+            background: rgba(255,255,255,0.08);
+            border-radius: 4px; padding: 2px;
+        }
+        .pos-item-qty input {
+            width: 32px; text-align: center; padding: 2px;
+            background: transparent; border: none;
+            color: #ffdca7; font-weight: 600; font-size: 0.82rem;
+        }
+        .pos-item-qty input:focus { outline: none; }
+        .pos-item-qty button {
+            border: none; background: transparent;
+            color: #c6cdd8; width: 20px; height: 20px;
+            padding: 0; border-radius: 2px; cursor: pointer;
+            font-size: 0.75rem; line-height: 1;
+        }
+        .pos-item-qty button:hover { background: rgba(255,255,255,0.1); color: #ffdca7; }
+        .pos-item-price {
+            color: #ffdca7; font-weight: 700;
+            min-width: 55px; text-align: right; font-size: 0.82rem;
+        }
+        .pos-item-remove {
+            border: none; background: transparent;
+            color: #ff9090; width: 22px; height: 22px;
+            padding: 0; cursor: pointer; font-size: 0.85rem;
+            line-height: 1; border-radius: 3px;
+        }
+        .pos-item-remove:hover { background: rgba(255,70,70,0.2); }
+
+        /* ── Totales ── */
+        .pos-totals {
+            padding: 10px 12px;
+            background: rgba(255,122,26,0.06);
+            border-top: 1px solid rgba(255,122,26,0.2);
+            display: flex; flex-direction: column; gap: 5px;
+        }
+        .pos-total-row {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.85rem; color: #c6cdd8; font-weight: 500;
+        }
+        .pos-total-row.total {
+            border-top: 1px solid rgba(255,122,26,0.3);
+            padding-top: 5px; font-weight: 700;
+            color: #ffdca7; font-size: 1rem;
+        }
+        .pos-total-row input {
+            width: 70px; text-align: right;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #eef4ff; padding: 4px 6px;
+            border-radius: 4px; font-size: 0.85rem;
+        }
+        .pos-total-row input:focus { outline: none; border-color: rgba(255,122,26,0.6); }
+
+        /* ── Buscador de clientes ── */
+        .pos-client-search-wrap { position: relative; }
+        .pos-client-search {
+            width: 100%;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #eef4ff;
+            padding: 10px 12px; border-radius: 8px;
+            font-size: 0.86rem; font-family: inherit;
+            outline: none; box-sizing: border-box;
+        }
+        .pos-client-search:focus { border-color: var(--admin-accent); }
+        .pos-client-search::placeholder { color: rgba(180,200,230,0.4); }
+        .pos-client-results {
+            position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+            background: #1e2840;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px; max-height: 200px;
+            overflow-y: auto; z-index: 100;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+        .pos-client-result-item {
+            padding: 10px 14px; cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 0.84rem;
+        }
+        .pos-client-result-item:hover { background: rgba(255,255,255,0.06); }
+        .pos-client-result-item:last-child { border-bottom: none; }
+        .pos-client-result-empty {
+            padding: 12px 14px; color: rgba(200,220,255,0.5);
+            font-size: 0.82rem; font-style: italic;
+        }
+        .pos-client-new-btn {
+            display: block; width: 100%; padding: 10px 14px;
+            background: transparent; border: none;
+            color: var(--admin-ok); font-size: 0.84rem;
+            font-weight: 700; text-transform: uppercase;
+            cursor: pointer; text-align: left;
+            border-top: 1px solid rgba(255,255,255,0.08);
+        }
+        .pos-client-card {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 12px;
+            background: rgba(67,192,156,0.1);
+            border: 1px solid rgba(67,192,156,0.3);
+            border-radius: 8px;
+        }
+        .pos-client-info { display: flex; flex-direction: column; gap: 1px; }
+        .pos-client-info strong { font-size: 0.9rem; color: #eef4ff; }
+        .pos-client-info span { font-size: 0.78rem; color: var(--admin-muted); }
+        .pos-client-clear-btn {
+            background: transparent; border: none;
+            color: rgba(255,255,255,0.5); font-size: 1.2rem;
+            cursor: pointer; line-height: 1; padding: 2px 6px;
+        }
+        .pos-client-clear-btn:hover { color: #ff9090; }
+
+        /* ── Combo modal (sin cambios) ── */
+        .combo-bev-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
             gap: 0;
             width: min(100%, 1500px);
             height: 88vh;
@@ -2643,14 +3181,7 @@
             min-height: 0;
         }
 
-        .pos-left-panel {
-            border-right: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            background: rgba(13, 18, 29, 0.6);
-            min-height: 0;
-        }
+        /* ─── legacy POS v1 CSS removed ─── */
 
         .pos-categories-section {
             padding: 16px 12px;
@@ -2723,75 +3254,285 @@
             font-weight: 500;
         }
 
-        .pos-products-grid {
+        /* --- Productos: encabezado de panel --- */
+        .pos-products-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 0 10px;
+            flex-shrink: 0;
+        }
+        .pos-products-category-name {
+            font-weight: 700;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            font-size: 0.86rem;
+        }
+        .pos-products-count {
+            background: rgba(255,255,255,0.1);
+            border-radius: 99px;
+            padding: 2px 10px;
+            font-size: 0.76rem;
+            color: rgba(200,220,255,0.75);
+            font-weight: 600;
+        }
+
+        /* --- Productos: grid de tarjetas --- */
+        .pos-product-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 8px;
             overflow-y: auto;
             flex: 1;
+            align-content: start;
         }
-
-        .pos-product-card {
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(255, 255, 255, 0.04);
-            padding: 8px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+        .pos-product-card-new {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.09);
+            border-radius: 12px;
+            overflow: hidden;
             cursor: pointer;
-            transition: all 0.2s ease;
-            text-align: center;
+            transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
         }
-
-        .pos-product-card:hover {
+        .pos-product-card-new:hover {
             transform: translateY(-2px);
-            border-color: rgba(255, 123, 69, 0.5);
-            background: rgba(255, 255, 255, 0.08);
-            box-shadow: 0 4px 12px rgba(255, 122, 26, 0.15);
+            border-color: rgba(255,122,26,0.45);
+            box-shadow: 0 6px 16px rgba(255,122,26,0.14);
         }
-
-        .pos-product-card img {
+        .pos-product-card-new:active {
+            transform: scale(0.97);
+        }
+        .pos-product-img-wrap {
+            aspect-ratio: 1 / 1;
+            overflow: hidden;
+            background: rgba(255,255,255,0.03);
+        }
+        .pos-product-img-wrap img {
             width: 100%;
-            height: 90px;
-            object-fit: contain;
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.03);
+            height: 100%;
+            object-fit: cover;
+            display: block;
         }
-
-        .pos-product-card h5 {
-            margin: 0;
-            font-size: 0.8rem;
-            line-height: 1.2;
-            min-height: 2.4em;
-            color: #f2f7ff;
-            font-weight: 500;
+        .pos-product-card-body {
+            padding: 7px 9px 9px;
         }
-
-        .pos-product-card .product-price {
-            font-weight: 700;
-            color: #ffdca7;
-            font-size: 0.9rem;
-        }
-
-        .pos-product-card button {
-            border: 1px solid rgba(255, 122, 26, 0.4);
-            background: rgba(255, 122, 26, 0.15);
-            color: #ffdca7;
-            border-radius: 6px;
-            padding: 5px 6px;
-            font-size: 0.75rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
+        .pos-product-card-name {
+            font-size: 0.78rem;
             font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
+            color: #eef4ff;
+            line-height: 1.3;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .pos-product-card-price {
+            font-size: 0.8rem;
+            color: #ff9a3d;
+            margin-top: 2px;
+            font-weight: 700;
         }
 
-        .pos-product-card button:hover {
-            background: rgba(255, 122, 26, 0.25);
-            border-color: rgba(255, 122, 26, 0.6);
+        /* --- Nota por ítem en el carrito --- */
+        .pos-item-note {
+            display: block;
+            font-size: 0.71rem;
+            color: rgba(180,205,245,0.6);
+            margin-top: 2px;
+            font-style: italic;
         }
+
+        /* --- Buscador de clientes --- */
+        .pos-client-search-wrap {
+            position: relative;
+        }
+        .pos-client-search {
+            width: 100%;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
+            padding: 9px 13px;
+            color: #eef4ff;
+            font-size: 0.86rem;
+            font-family: 'Space Grotesk', sans-serif;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        .pos-client-search::placeholder { color: rgba(180,200,230,0.42); }
+        .pos-client-search:focus {
+            outline: none;
+            border-color: rgba(255,122,26,0.52);
+            background: rgba(255,255,255,0.08);
+        }
+        .pos-client-results {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0; right: 0;
+            background: #141e30;
+            border: 1px solid rgba(255,255,255,0.13);
+            border-radius: 10px;
+            z-index: 200;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.5);
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .pos-client-result-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 9px 13px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            gap: 8px;
+            transition: background 0.15s;
+        }
+        .pos-client-result-item:last-child { border-bottom: none; }
+        .pos-client-result-item:hover { background: rgba(255,122,26,0.12); }
+        .pos-client-result-item strong { font-size: 0.86rem; color: #fff; }
+        .pos-client-result-item span { font-size: 0.76rem; color: rgba(200,220,255,0.6); white-space: nowrap; }
+        .pos-client-result-empty {
+            padding: 11px 13px;
+            font-size: 0.83rem;
+            color: rgba(200,220,255,0.6);
+        }
+        .pos-client-new-btn {
+            background: none; border: none;
+            color: #ff9a3d; font-size: 0.83rem;
+            cursor: pointer; padding: 0; font-weight: 600;
+        }
+        .pos-client-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 9px 12px;
+            background: rgba(255,122,26,0.1);
+            border: 1px solid rgba(255,122,26,0.3);
+            border-radius: 10px;
+            margin-top: 7px;
+        }
+        .pos-client-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+        .pos-client-info strong { font-size: 0.9rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pos-client-info span { font-size: 0.76rem; color: rgba(220,235,255,0.65); }
+        .pos-client-clear-btn {
+            background: rgba(255,255,255,0.1); border: none;
+            color: rgba(220,235,255,0.75); width: 28px; height: 28px;
+            border-radius: 50%; cursor: pointer; font-size: 1rem;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; transition: background 0.2s, color 0.2s;
+        }
+        .pos-client-clear-btn:hover { background: rgba(255,80,80,0.2); color: #ff8080; }
+
+        /* --- Combo modal: nuevo diseño con imágenes --- */
+        .combo-bev-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .combo-bev-card {
+            background: rgba(255,255,255,0.05);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            padding: 6px 4px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .combo-bev-card:hover { background: rgba(255,255,255,0.09); }
+        .combo-bev-card.selected {
+            border-color: #ff7a1a;
+            background: rgba(255,122,26,0.12);
+        }
+        .combo-bev-card img {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+            border-radius: 7px;
+            margin-bottom: 5px;
+            display: block;
+        }
+        .combo-bev-card span {
+            font-size: 0.7rem;
+            color: #eef4ff;
+            line-height: 1.2;
+            display: block;
+        }
+        .combo-bev-no-img {
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            color: rgba(255,255,255,0.25);
+            border-radius: 7px;
+            background: rgba(255,255,255,0.04);
+            margin-bottom: 5px;
+        }
+        .combo-modal-section-label {
+            font-size: 0.73rem;
+            font-weight: 700;
+            color: rgba(200,220,255,0.65);
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            padding: 4px 0 6px;
+        }
+        .combo-modal-note-row { padding: 4px 0 0; }
+        .combo-modal-note-label {
+            display: block;
+            font-size: 0.73rem;
+            color: rgba(200,220,255,0.65);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 5px;
+            font-weight: 700;
+        }
+        .combo-modal-note-input {
+            width: 100%;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            padding: 8px 11px;
+            color: #eef4ff;
+            font-size: 0.85rem;
+            box-sizing: border-box;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .combo-modal-note-input::placeholder { color: rgba(180,200,230,0.4); }
+        .combo-modal-note-input:focus {
+            outline: none;
+            border-color: rgba(255,122,26,0.5);
+        }
+        .combo-modal-close-x {
+            border: none;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            cursor: pointer; font-size: 1.1rem;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .combo-modal-cancel-btn {
+            flex: 1; padding: 10px;
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 10px;
+            background: transparent;
+            color: rgba(220,235,255,0.7);
+            font-size: 0.86rem; cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .combo-modal-confirm-btn {
+            flex: 2; padding: 10px;
+            border: none; border-radius: 10px;
+            background: linear-gradient(135deg, #ff7a1a, #ff9c3d);
+            color: #fff; font-size: 0.86rem;
+            font-weight: 700; cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+            transition: filter 0.2s;
+        }
+        .combo-modal-confirm-btn:hover { filter: brightness(1.1); }
 
         .combo-modal-overlay {
             position: fixed;
@@ -2805,19 +3546,28 @@
         }
 
         .combo-modal-card {
-            width: min(560px, 100%);
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.16);
+            width: min(480px, 92vw);
+            max-height: 88vh;
+            overflow-y: auto;
+            background: rgba(14, 20, 34, 0.97);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 18px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-            backdrop-filter: blur(18px);
+            box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(20px);
             padding: 18px;
             display: grid;
-            gap: 14px;
+            gap: 10px;
+        }
+
+        .combo-modal-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
         }
 
         .combo-modal-header h4 {
-            margin: 0 0 4px;
+            margin: 0 0 3px;
             color: #ffdca7;
             font-size: 1rem;
             line-height: 1.3;
@@ -2825,69 +3575,14 @@
 
         .combo-modal-subtitle {
             margin: 0;
-            color: #dcdfe8;
-            font-size: 0.85rem;
-        }
-
-        .combo-modal-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 10px;
-        }
-
-        .combo-modal-option {
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            background: rgba(255, 255, 255, 0.06);
-            color: #f7f9ff;
-            padding: 12px 10px;
-            border-radius: 12px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-            min-height: 50px;
-        }
-
-        .combo-modal-option:hover {
-            transform: translateY(-1px);
-            border-color: rgba(255, 122, 26, 0.5);
-            background: rgba(255, 255, 255, 0.12);
-        }
-
-        .combo-modal-option-secondary {
-            background: rgba(255, 255, 255, 0.12);
-            color: #ffdca7;
-            border-color: rgba(255, 122, 26, 0.5);
-        }
-
-        .combo-modal-note {
-            grid-column: 1 / -1;
-            color: rgba(255, 255, 255, 0.62);
-            font-size: 0.9rem;
-            text-align: center;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.04);
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(200, 220, 255, 0.65);
+            font-size: 0.8rem;
         }
 
         .combo-modal-footer {
             display: flex;
-            justify-content: flex-end;
-        }
-
-        .combo-modal-close-btn {
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            background: rgba(255, 255, 255, 0.08);
-            color: #f2f7ff;
-            padding: 10px 14px;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: background 0.2s ease, border-color 0.2s ease;
-        }
-
-        .combo-modal-close-btn:hover {
-            background: rgba(255, 255, 255, 0.14);
-            border-color: rgba(255, 255, 255, 0.32);
+            gap: 8px;
+            padding-top: 4px;
         }
 
         .pos-right-panel {
@@ -5063,122 +5758,196 @@
         </div>
     </div>
 
-    <!-- POS System Modal -->
-    <div class="product-edit-modal" id="internalOrderModal" aria-hidden="true">
-        <div class="pos-container">
-            <!-- Left Panel: Categorías y Productos -->
-            <div class="pos-left-panel">
-                <div class="pos-categories-section">
-                    <h3>Categorias</h3>
-                    <div class="category-grid" id="posCategoriesList"></div>
+    <!-- POS v2: Vista completa (full-screen overlay) -->
+    <div id="posView" class="pos-view" aria-hidden="true">
+
+        <!-- ══════════ PANTALLA PRINCIPAL ══════════ -->
+        <div id="posScreenMain" class="pos-screen-main">
+            <div class="pos-topbar">
+                <button type="button" class="pos-topbar-btn" id="posCloseBtn" title="Salir del POS">&#8592;</button>
+                <div class="pos-topbar-center">
+                    <span class="pos-topbar-title" id="posActiveTicketLabel">Nuevo pedido</span>
+                    <span class="pos-topbar-badge" id="posItemsCountBadge" style="display:none">0</span>
                 </div>
-                <div class="category-products-panel" id="posProductsPanel">
-                    <p class="category-empty">Selecciona una categoria para ver productos.</p>
-                </div>
+                <button type="button" class="pos-topbar-btn" id="posAddClientBtn" title="Añadir cliente">&#128101;+</button>
             </div>
 
-            <!-- Right Panel: Ticket/Carrito -->
-            <div class="pos-right-panel">
-                <!-- Ticket Header -->
-                <div class="pos-ticket-header">
-                    <h3>Crear Pedido</h3>
-                    <button type="button" class="pos-close-btn" id="internalOrderCloseBtn">&times;</button>
+            <div class="pos-action-row">
+                <button type="button" class="pos-action-btn pos-action-tickets" id="posOpenTicketsBtn">
+                    TICKETS ABIERTOS <span class="pos-tickets-count-badge" id="posTicketsCountBadge">1</span>
+                </button>
+                <button type="button" class="pos-action-btn pos-action-cobrar" id="posCobrarBtn">
+                    <span>COBRAR</span><span class="pos-cobrar-amount" id="posCobrarAmount">$0</span>
+                </button>
+            </div>
+
+            <div class="pos-catbar">
+                <select class="pos-cat-select" id="posCatSelect"></select>
+            </div>
+
+            <div class="pos-products-scroll" id="posProductsScroll">
+                <div class="pos-product-grid-v2" id="posProductGridV2"></div>
+            </div>
+
+            <div class="pos-bottom-bar" id="posBottomBar" hidden>
+                <button type="button" class="pos-bottom-inner" id="posCartToggleBtn">
+                    <div class="pos-bottom-left">
+                        <span class="pos-bottom-qty" id="posBottomQty">0 items</span>
+                        <span class="pos-bottom-total-amt" id="posBottomTotalAmt">$0</span>
+                    </div>
+                    <span class="pos-bottom-chevron">&#9650;</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ══════════ DRAWER: CARRITO ══════════ -->
+        <div id="posCartDrawer" class="pos-drawer" hidden>
+            <div class="pos-drawer-backdrop" id="posCartBackdrop"></div>
+            <div class="pos-drawer-sheet">
+                <div class="pos-drawer-handle"></div>
+                <div class="pos-drawer-head">
+                    <span class="pos-drawer-title">Pedido actual</span>
+                    <button type="button" class="pos-drawer-close" id="posCartDrawerCloseBtn">&#215;</button>
                 </div>
-
-                <!-- Ticket Body -->
-                <div class="pos-ticket-body">
-                    <form id="internalOrderForm" class="pos-form">
-                        <!-- Cliente Section -->
-                        <div class="pos-section">
-                            <h4>Cliente</h4>
-                            <div class="pos-field">
-                                <label for="internalOrderClientSelect">Seleccionar</label>
-                                <select id="internalOrderClientSelect" name="internalOrderClientSelect">
-                                    <option value="">Nuevo cliente</option>
-                                </select>
-                            </div>
-                            <div class="pos-field" id="internalOrderClientAddressField" hidden>
-                                <label for="internalOrderClientAddressSelect">Direccion</label>
-                                <select id="internalOrderClientAddressSelect" name="internalOrderClientAddressSelect"></select>
-                            </div>
-                            <div id="internalOrderNewClientFields" hidden>
-                                <div class="pos-field">
-                                    <label for="internalOrderNewClientName">Nombre</label>
-                                    <input type="text" id="internalOrderNewClientName" name="internalOrderNewClientName" placeholder="Juan Perez">
-                                </div>
-                                <div class="pos-field">
-                                    <label for="internalOrderNewClientPhone">Tel</label>
-                                    <input type="text" id="internalOrderNewClientPhone" name="internalOrderNewClientPhone" placeholder="3001234567">
-                                </div>
-                                <div class="pos-field">
-                                    <label for="internalOrderNewClientAddress">Direccion</label>
-                                    <input type="text" id="internalOrderNewClientAddress" name="internalOrderNewClientAddress" placeholder="Cl. 22 #29-59">
-                                </div>
-                            </div>
+                <div class="pos-drawer-body">
+                    <div id="internalOrderItemsSummary" class="pos-items-list"></div>
+                    <div class="pos-totals">
+                        <div class="pos-total-row">
+                            <span>Subtotal</span>
+                            <span id="posTotalSubtotal">$0</span>
                         </div>
-
-                        <!-- Pedido y Pago Section -->
-                        <div class="pos-section pos-section-row">
-                            <div class="pos-field">
-                                <label for="internalOrderType">Tipo</label>
-                                <select id="internalOrderType" name="internalOrderType" style="font-size: 0.85rem;">
-                                    <option value="retiro">Retiro</option>
-                                    <option value="domicilio">Domicilio</option>
-                                </select>
-                            </div>
-                            <div class="pos-field">
-                                <label for="internalOrderPaymentMethod">Pago</label>
-                                <select id="internalOrderPaymentMethod" name="internalOrderPaymentMethod" style="font-size: 0.85rem;">
-                                    <option value="efectivo">Efectivo</option>
-                                    <option value="tarjeta">Tarjeta</option>
-                                    <option value="otro">Otro</option>
-                                </select>
-                            </div>
+                        <div class="pos-total-row total">
+                            <span>Total</span>
+                            <span id="posTotalFinal">$0</span>
                         </div>
-
-                        <div class="pos-field" id="internalOrderDeliveryAddressField" hidden style="margin-bottom: 8px;">
-                            <label for="internalOrderDeliveryAddress">Entregar en</label>
-                            <input type="text" id="internalOrderDeliveryAddress" name="internalOrderDeliveryAddress" placeholder="Direccion">
-                        </div>
-
-                        <!-- Carrito Items (Scrollable) -->
-                        <div class="pos-cart-container">
-                            <div id="internalOrderItemsSummary" class="pos-items-list"></div>
-                        </div>
-
-                        <!-- Totales -->
-                        <div class="pos-totals">
-                            <div class="pos-total-row">
-                                <span>Subtotal</span>
-                                <span id="posTotalSubtotal">$0</span>
-                            </div>
-                            <div class="pos-total-row">
-                                <span>Dscto</span>
-                                <input type="number" id="internalOrderDiscount" name="internalOrderDiscount" min="0" value="0" placeholder="0" style="flex: 1;">
-                            </div>
-                            <div class="pos-total-row total">
-                                <span>Total</span>
-                                <span id="posTotalFinal">$0</span>
-                            </div>
-                        </div>
-
-                        <!-- Notas -->
-                        <div class="pos-field">
-                            <label for="internalOrderNotes">Notas</label>
-                            <textarea id="internalOrderNotes" name="internalOrderNotes" rows="2" placeholder="Ej: Sin cebolla..."></textarea>
-                        </div>
-
-                        <!-- Feedback -->
-                        <div id="internalOrderFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
-                    </form>
+                    </div>
                 </div>
-
-                <!-- Ticket Footer (Botón Independiente) -->
-                <div class="pos-ticket-footer">
-                    <button type="submit" class="pos-save-btn" id="internalOrderSaveBtn" form="internalOrderForm">Crear Pedido</button>
+                <div class="pos-drawer-footer">
+                    <button type="button" class="pos-cobrar-full-btn" id="posDrawerCobrarBtn">
+                        COBRAR <span id="posDrawerCobrarTotal">$0</span>
+                    </button>
                 </div>
             </div>
         </div>
+
+        <!-- ══════════ PANTALLA: COBRAR ══════════ -->
+        <div id="posScreenPayment" class="pos-screen-payment" hidden>
+            <div class="pos-topbar">
+                <button type="button" class="pos-topbar-btn" id="posPaymentBackBtn">&#8592;</button>
+                <div class="pos-topbar-center">
+                    <span class="pos-topbar-title">Cobrar pedido</span>
+                </div>
+            </div>
+            <form id="internalOrderForm" class="pos-payment-body">
+                <div class="pos-payment-amount-block">
+                    <div class="pos-payment-amount-value" id="posPaymentTotalDisplay">$0</div>
+                    <div class="pos-payment-amount-label">Importe total adeudado</div>
+                </div>
+
+                <!-- Tipo de pedido -->
+                <div class="pos-payment-section">
+                    <div class="pos-payment-label">Tipo de pedido</div>
+                    <div class="pos-type-btns">
+                        <button type="button" class="pos-type-btn active" data-type="retiro">Retiro</button>
+                        <button type="button" class="pos-type-btn" data-type="domicilio">Domicilio</button>
+                        <button type="button" class="pos-type-btn" data-type="mesa">Mesa</button>
+                    </div>
+                    <input type="hidden" id="internalOrderType" name="internalOrderType" value="retiro">
+                </div>
+
+                <!-- Dirección de entrega -->
+                <div class="pos-payment-section" id="internalOrderDeliveryAddressField" hidden>
+                    <div class="pos-payment-label">Dirección de entrega</div>
+                    <input type="text" class="pos-pay-input" id="internalOrderDeliveryAddress" name="internalOrderDeliveryAddress" placeholder="Calle, número...">
+                </div>
+
+                <!-- Cliente -->
+                <div class="pos-payment-section">
+                    <div class="pos-payment-label">Cliente</div>
+                    <div class="pos-client-search-wrap">
+                        <input type="text" id="posClientSearchInput" class="pos-client-search" placeholder="Buscar por nombre o teléfono..." autocomplete="off">
+                        <div id="posClientResults" class="pos-client-results" hidden></div>
+                    </div>
+                    <div id="posClientCard" class="pos-client-card" hidden>
+                        <div class="pos-client-info">
+                            <strong id="posClientCardName"></strong>
+                            <span id="posClientCardPhone"></span>
+                        </div>
+                        <button type="button" id="posClientClearBtn" class="pos-client-clear-btn" aria-label="Quitar cliente">&#215;</button>
+                    </div>
+                    <div class="pos-field" id="internalOrderClientAddressField" hidden>
+                        <label for="internalOrderClientAddressSelect">Dirección guardada</label>
+                        <select id="internalOrderClientAddressSelect" name="internalOrderClientAddressSelect"></select>
+                    </div>
+                    <div id="internalOrderNewClientFields" hidden>
+                        <div class="pos-section-row">
+                            <div class="pos-field">
+                                <label for="internalOrderNewClientName">Nombre *</label>
+                                <input type="text" id="internalOrderNewClientName" name="internalOrderNewClientName" placeholder="Juan Perez">
+                            </div>
+                            <div class="pos-field">
+                                <label for="internalOrderNewClientPhone">Teléfono *</label>
+                                <input type="text" id="internalOrderNewClientPhone" name="internalOrderNewClientPhone" placeholder="3001234567">
+                            </div>
+                        </div>
+                        <div class="pos-field" style="margin-top: 6px;">
+                            <label for="internalOrderNewClientAddress">Dirección</label>
+                            <input type="text" id="internalOrderNewClientAddress" name="internalOrderNewClientAddress" placeholder="Cl. 22 #29-59">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Descuento -->
+                <div class="pos-payment-section pos-payment-section--row">
+                    <div class="pos-payment-label">Descuento</div>
+                    <input type="number" class="pos-pay-input pos-pay-input--sm" id="internalOrderDiscount" name="internalOrderDiscount" min="0" value="0" placeholder="0">
+                </div>
+
+                <!-- Notas -->
+                <div class="pos-payment-section">
+                    <div class="pos-payment-label">Notas del pedido</div>
+                    <textarea class="pos-pay-input" id="internalOrderNotes" name="internalOrderNotes" rows="2" placeholder="Sin cebolla, extra salsa..."></textarea>
+                </div>
+
+                <!-- Método de pago -->
+                <div class="pos-payment-section">
+                    <div class="pos-payment-label">Método de pago</div>
+                    <div class="pos-payment-methods">
+                        <button type="button" class="pos-pay-method-btn active" data-method="efectivo">&#128181; EFECTIVO</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="bancolombia">&#127968; BANCOLOMBIA</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="nequi">&#128241; NEQUI</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="tarjeta">&#128179; TARJETA</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="rappi">&#128665; RAPPI</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="otro">&#9744; OTRO</button>
+                    </div>
+                    <input type="hidden" id="internalOrderPaymentMethod" name="internalOrderPaymentMethod" value="efectivo">
+                </div>
+
+                <!-- Efectivo recibido -->
+                <div class="pos-payment-section" id="posCashSection">
+                    <div class="pos-payment-label pos-cash-label">Efectivo recibido</div>
+                    <input type="number" class="pos-pay-input" id="posCashAmount" name="posCashAmount" placeholder="0">
+                </div>
+
+                <div id="internalOrderFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
+            </form>
+            <div class="pos-payment-footer">
+                <button type="submit" class="pos-payment-confirm-btn" id="internalOrderSaveBtn" form="internalOrderForm">CREAR PEDIDO</button>
+            </div>
+        </div>
+
+        <!-- ══════════ PANTALLA: TICKETS ABIERTOS ══════════ -->
+        <div id="posScreenTickets" class="pos-screen-tickets" hidden>
+            <div class="pos-topbar">
+                <button type="button" class="pos-topbar-btn" id="posTicketsCloseBtn">&#215;</button>
+                <div class="pos-topbar-center">
+                    <span class="pos-topbar-title">Tickets abiertos</span>
+                </div>
+                <button type="button" class="pos-topbar-btn pos-new-ticket-btn" id="posNewTicketBtn" title="Nuevo ticket">+</button>
+            </div>
+            <div class="pos-tickets-list" id="posTicketsList"></div>
+        </div>
+
     </div>
 
     <div class="product-edit-modal" id="categoryCreateModal" aria-hidden="true">
