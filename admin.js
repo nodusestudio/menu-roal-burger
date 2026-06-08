@@ -2140,8 +2140,18 @@ function renderPosProductsPanel() {
     categoryProducts.forEach((product) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'pos-product-btn';
-        btn.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
+        const imgUrl = String(product.image_url || '').trim();
+        if (imgUrl) {
+            btn.className = 'pos-product-btn has-image';
+            btn.innerHTML = `<img class="pos-product-btn-img" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">
+                <div class="pos-product-btn-info">
+                    <span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span>
+                    <span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>
+                </div>`;
+        } else {
+            btn.className = 'pos-product-btn';
+            btn.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
+        }
         btn.addEventListener('click', () => {
             handlePosProductAdd(String(product.id || ''), String(product.nombre || ''), Number(product.precio || 0));
         });
