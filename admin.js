@@ -164,6 +164,7 @@ const defaultBranding = {
 
 const CONFIG_COLLECTION = 'configuracion';
 const CONFIG_DOC_ID = 'config_landing';
+const RECOMENDADO_DIA_DOC_ID = 'recomendado_dia';
 const UPGRADES_CONFIG_DOC_ID = 'acompañamientos';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
@@ -188,6 +189,7 @@ const adminSignOutBtn = document.getElementById('adminSignOutBtn');
 const categoryForm = document.getElementById('categoryForm');
 const categoryList = document.getElementById('categoryList');
 const categoryDetailPanel = document.getElementById('categoryDetailPanel');
+const carruselTabPanel = document.getElementById('carruselTabPanel');
 const openCreateCategoryBtn = document.getElementById('openCreateCategoryBtn');
 const openCreateProductBtn = document.getElementById('openCreateProductBtn');
 let _selectedCategoryId = null;
@@ -216,6 +218,9 @@ const messagesList = document.getElementById('messagesList');
 const messagesCount = document.getElementById('messagesCount');
 const adminPublicLink = document.getElementById('adminPublicLink');
 const ordersBoard = document.getElementById('ordersBoard');
+const unreadTrayBtn = document.getElementById('unreadTrayBtn');
+const unreadTray = document.getElementById('unreadTray');
+const unreadTrayCloseBtn = document.getElementById('unreadTrayCloseBtn');
 const ordersColumnUnread = document.getElementById('ordersColumnUnread');
 const ordersColumnTakeaway = document.getElementById('ordersColumnTakeaway');
 const ordersColumnDelivery = document.getElementById('ordersColumnDelivery');
@@ -394,6 +399,9 @@ let clientsSearchTerm = '';
 let expandedClientAddressIds = new Set();
 let productClicksState = [];
 let liveSubscriptions = [];
+let recomendadoDiaState = null;
+let _recomendadoSelectedProductId = null;
+const _processedAccordionExpanded = new Set();
 let previewRefreshTimer = null;
 let ordersRealtimeTimer = null;
 let clipboardToastTimer = null;
@@ -868,6 +876,29 @@ function updateAdminDocumentTitle(unreadCount = getUnreadOrders().length) {
     document.title = `(${unreadLabel}) NUEVO PEDIDO`;
 }
 
+function openUnreadTray() {
+    if (!unreadTray || !unreadTrayBtn) return;
+    unreadTray.hidden = false;
+    unreadTrayBtn.setAttribute('aria-expanded', 'true');
+    unreadTrayBtn.classList.add('tray-is-open');
+}
+
+function closeUnreadTray() {
+    if (!unreadTray || !unreadTrayBtn) return;
+    unreadTray.hidden = true;
+    unreadTrayBtn.setAttribute('aria-expanded', 'false');
+    unreadTrayBtn.classList.remove('tray-is-open');
+}
+
+function toggleUnreadTray() {
+    if (!unreadTray) return;
+    if (unreadTray.hidden) {
+        openUnreadTray();
+    } else {
+        closeUnreadTray();
+    }
+}
+
 function updateOrdersAttentionState() {
     const ordersTabButton = document.querySelector('.admin-accordion-trigger[data-accordion-target="pedidos"]');
     const unreadCount = getUnreadOrders().length;
@@ -879,6 +910,13 @@ function updateOrdersAttentionState() {
 
         if (unreadCount <= 0) {
             ordersTabButton.removeAttribute('data-unread-count');
+        }
+    }
+
+    if (unreadTrayBtn) {
+        unreadTrayBtn.classList.toggle('has-orders', unreadCount > 0);
+        if (unreadCount <= 0 && unreadTray && !unreadTray.hidden) {
+            closeUnreadTray();
         }
     }
 
@@ -1498,11 +1536,12 @@ function normalizeOrder(raw) {
 
     const rawOrderType = String(raw.orderType || raw.tipo || '').trim().toLowerCase();
     const address = String(raw.deliveryAddress || '').trim();
-    const isTakeaway = ['retiro', 'llevar', 'local', 'recoger', 'pickup', 'takeaway'].some((value) => rawOrderType.includes(value));
-    const isDelivery = ['domicilio', 'delivery', 'entrega', 'casa', 'home'].some((value) => rawOrderType.includes(value));
-    const orderType = isTakeaway
-        ? 'retiro'
-        : (isDelivery || address ? 'domicilio' : 'retiro');
+    const isMesa = rawOrderType === 'mesa';
+    const isTakeaway = !isMesa && ['retiro', 'llevar', 'local', 'recoger', 'pickup', 'takeaway'].some((value) => rawOrderType.includes(value));
+    const isDelivery = !isMesa && ['domicilio', 'delivery', 'entrega', 'casa', 'home'].some((value) => rawOrderType.includes(value));
+    const orderType = isMesa
+        ? 'mesa'
+        : (isTakeaway ? 'retiro' : (isDelivery || address ? 'domicilio' : 'retiro'));
 
     return {
         id: String(raw.id || '').trim(),
@@ -1525,6 +1564,7 @@ function normalizeOrder(raw) {
         currency: String(raw.currency || 'COP'),
         source: String(raw.source || 'web').trim(),
         orderType,
+        mesaNumber: raw.mesaNumber ? Number(raw.mesaNumber) : null,
         status,
         summaryMessage: String(raw.summaryMessage || '').trim(),
         courierRequestedAt: raw.courierRequestedAt || raw.courier_requested_at || null,
@@ -3768,29 +3808,13 @@ function renderCategories() {
     if (!categoryList) return;
     categoryList.innerHTML = '';
 
-    // Item especial CARRUSEL fijo al tope (no es categoría de Firestore)
-    const carouselCount = productsState.filter((p) => p.es_destacado).length;
-    const carouselItem = document.createElement('div');
-    carouselItem.className = `upgrades-master-item carrusel-special${_selectedCategoryId === '__carrusel__' ? ' selected' : ''}`;
-    carouselItem.dataset.categoryId = '__carrusel__';
-    carouselItem.dataset.action = 'select-category';
-    carouselItem.innerHTML = `
-        <span class="upgrades-master-item-name" style="display:flex;align-items:center;gap:6px;">
-            <span style="font-size:1rem;">🎠</span> Carrusel
-        </span>
-        <div class="upgrades-master-badges">
-            <span class="upgrades-badge" title="${carouselCount} productos en carrusel" style="background:rgba(255,122,26,0.25);color:#ff9a50;">${carouselCount}</span>
-        </div>
-    `;
-    categoryList.appendChild(carouselItem);
-
     categoriesState.forEach((category) => {
         categoryList.appendChild(createCategoryMasterItem(category));
     });
 
-    if (_selectedCategoryId === '__carrusel__') {
-        _renderCarouselPanel();
-    } else if (_selectedCategoryId) {
+    _renderCarouselPanel();
+
+    if (_selectedCategoryId) {
         const still = categoriesState.find((c) => c.id === _selectedCategoryId);
         if (still) {
             _renderCategoryDetailPanel(_selectedCategoryId);
@@ -3815,10 +3839,9 @@ function renderCategories() {
             animation: 150,
             ghostClass: 'sortable-ghost',
             chosenClass: 'sortable-chosen',
-            draggable: '.upgrades-master-item:not(.carrusel-special)',
+            draggable: '.upgrades-master-item',
             onEnd: async (evt) => {
-                // Read actual DOM order of Firestore categories (excluding CARRUSEL)
-                const allItems = Array.from(categoryList.querySelectorAll('.upgrades-master-item:not(.carrusel-special)'));
+                const allItems = Array.from(categoryList.querySelectorAll('.upgrades-master-item'));
                 const ordered = allItems.map((el) => categoriesState.find((c) => c.id === el.dataset.categoryId)).filter(Boolean);
                 if (!ordered.length) return;
                 try {
@@ -3837,7 +3860,8 @@ function renderCategories() {
 }
 
 function _renderCarouselPanel() {
-    if (!categoryDetailPanel) return;
+    const panel = carruselTabPanel || categoryDetailPanel;
+    if (!panel) return;
 
     // Primera vez: si nada está marcado, activar automáticamente los que están en el carrusel hardcodeado
     const anyMarked = productsState.some((p) => p.es_destacado === true);
@@ -3853,7 +3877,7 @@ function _renderCarouselPanel() {
             batch.commit()
                 .then(() => reloadDataAndRender())
                 .catch((err) => showNotice(`Error activando carrusel: ${err.message || 'Error inesperado.'}`, 'error'));
-            categoryDetailPanel.innerHTML = '<div class="upgrades-detail-empty" style="padding:24px;text-align:center;font-size:0.85rem;color:var(--admin-muted);">Activando carrusel inicial…</div>';
+            panel.innerHTML = '<div class="upgrades-detail-empty" style="padding:24px;text-align:center;font-size:0.85rem;color:var(--admin-muted);">Activando carrusel inicial…</div>';
             return;
         }
     }
@@ -3882,7 +3906,7 @@ function _renderCarouselPanel() {
 
     const groupEntries = Array.from(grouped.entries());
 
-    categoryDetailPanel.innerHTML = `
+    panel.innerHTML = `
         <div class="upgrades-detail-topbar">
             <span class="upgrades-detail-topbar-title" style="display:flex;align-items:center;gap:8px;"><span>🎠</span> Carrusel del menú digital</span>
             <span style="background:rgba(255,122,26,0.25);color:#ff9a50;padding:4px 12px;border-radius:8px;font-size:0.75rem;font-weight:600;flex-shrink:0;">${carouselCount} activo${carouselCount !== 1 ? 's' : ''}</span>
@@ -3928,11 +3952,11 @@ function _renderCarouselPanel() {
     `;
 
     // Colapsar / expandir grupo
-    categoryDetailPanel.querySelectorAll('[data-action="toggle-group"]').forEach((btn) => {
+    panel.querySelectorAll('[data-action="toggle-group"]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const idx = btn.dataset.gidx;
-            const body = categoryDetailPanel.querySelector(`[data-group="${idx}"]`);
-            const arrow = categoryDetailPanel.querySelector(`[data-arrow="${idx}"]`);
+            const body = panel.querySelector(`[data-group="${idx}"]`);
+            const arrow = panel.querySelector(`[data-arrow="${idx}"]`);
             if (!body) return;
             const opening = body.style.display === 'none';
             body.style.display = opening ? 'flex' : 'none';
@@ -3941,7 +3965,7 @@ function _renderCarouselPanel() {
     });
 
     // Toggle en carrusel
-    categoryDetailPanel.querySelectorAll('[data-action="toggle-carousel"]').forEach((checkbox) => {
+    panel.querySelectorAll('[data-action="toggle-carousel"]').forEach((checkbox) => {
         checkbox.addEventListener('change', async () => {
             const pid = checkbox.dataset.productId;
             const newValue = checkbox.checked;
@@ -4443,12 +4467,12 @@ function getOrderStatusMeta(status) {
 }
 
 function getOrderColumnKey(order) {
-    if (order.status === 'pendiente') {
-        return 'unread';
-    }
-
     if (order.orderType === 'mesa') {
         return 'mesa';
+    }
+
+    if (order.status === 'pendiente') {
+        return 'unread';
     }
 
     return order.orderType === 'domicilio' ? 'delivery' : 'takeaway';
@@ -5146,54 +5170,57 @@ function renderKanbanEmptyState(container) {
 function createOrderCard(order) {
     const card = document.createElement('article');
     card.className = 'kanban-order-card';
-    const statusMeta = getOrderStatusMeta(order.status);
     if (order.status === 'pendiente' || order.status === 'esperando_domiciliario') {
         card.classList.add('is-attention');
     }
     if (order.id === selectedOrderId) {
         card.classList.add('is-selected');
     }
-
-    card.dataset.orderId = order.id;
-
     if (order.isAdminOrder || order.source === 'admin_pos') {
         card.classList.add('kanban-order-card--admin');
     }
+    card.dataset.orderId = order.id;
 
     if (order.status === 'entregado') {
         card.classList.add('kanban-order-card-compact');
         card.innerHTML = `
-            <div class="kanban-order-compact-row">
-                <span class="kanban-order-name">${escapeHtml(order.customerName || 'Cliente sin nombre')}</span>
-                <span class="kanban-order-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
+            <div class="koc-body">
+                <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
+                <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
             </div>
-            <span class="kanban-order-compact-time">${escapeHtml(formatOrderTime(order.deliveredAt || order.updatedAt || order.createdAt))}</span>
+            <div class="koc-header">
+                <strong class="koc-code">#${escapeHtml(order.code)}</strong>
+                <span class="koc-time">${escapeHtml(formatOrderTime(order.deliveredAt || order.updatedAt || order.createdAt))}</span>
+            </div>
         `;
         return card;
     }
 
+    const typeClass = order.orderType === 'domicilio' ? 'koc-type--domicilio'
+        : order.orderType === 'mesa' ? 'koc-type--mesa' : 'koc-type--retiro';
+
+    let statusRow = '';
+    if (order.status === 'esperando_domiciliario') {
+        statusRow = `
+            <div class="koc-status">
+                <span class="koc-status-badge">Esperando domiciliario</span>
+                <span class="order-wait-timer">${escapeHtml(formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt))}</span>
+            </div>`;
+    } else if (order.status === 'listo_recoger') {
+        statusRow = `
+            <div class="koc-status koc-status--ready">
+                <span class="koc-status-badge">Listo para recoger</span>
+            </div>`;
+    }
+
+    const isUnreadOrder = order.status === 'pendiente';
     const isDeliveryOrder = order.orderType === 'domicilio';
     const isPickupOrder = order.orderType === 'retiro';
-    const isUnreadOrder = order.status === 'pendiente';
     const showReceiveAction = isUnreadOrder;
     const showDeliveryAction = !isUnreadOrder && isDeliveryOrder && order.status !== 'esperando_domiciliario' && order.status !== 'camino' && order.status !== 'entregado';
     const showPickupReadyAction = !isUnreadOrder && isPickupOrder && order.status !== 'listo_recoger' && order.status !== 'entregado';
     const showDeliveredAction = !isUnreadOrder && order.status !== 'entregado';
     const showDeleteAction = order.status !== 'entregado';
-    const waitingBadge = order.status === 'esperando_domiciliario'
-        ? `
-            <div class="kanban-order-status-row">
-                <span class="state-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
-                <span class="order-wait-timer">${escapeHtml(formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt))}</span>
-            </div>
-        `
-        : (order.status === 'listo_recoger'
-            ? `
-                <div class="kanban-order-status-row">
-                    <span class="state-pill ${statusMeta.className}">${escapeHtml(statusMeta.label)}</span>
-                </div>
-            `
-            : '');
     const showViewTicketAction = isMobileAdminViewport();
     const showEditPosAction = (order.isAdminOrder || order.source === 'admin_pos') && order.status === 'pendiente';
     const actionsMarkup = order.id === selectedOrderId
@@ -5210,30 +5237,19 @@ function createOrderCard(order) {
         `
         : '';
 
-    if (order.status === 'esperando_domiciliario') {
-        card.innerHTML = `
-            <span class="kanban-order-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
-            <div class="kanban-waiting-row">
-                <span class="kanban-waiting-label">Esperando</span>
-                <span class="order-wait-timer">${escapeHtml(formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt))}</span>
-            </div>
-            ${actionsMarkup}
-        `;
-    } else {
-        card.innerHTML = `
-            <div class="kanban-order-top">
-                <span class="kanban-order-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
-                <span class="kanban-order-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
-            </div>
-            <div class="kanban-order-bottom">
-                <strong class="kanban-order-code">#${escapeHtml(order.code)}</strong>
-                <span class="kanban-order-type">${escapeHtml(getOrderTypeLabel(order))}</span>
-                <span class="kanban-order-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
-            </div>
-            ${waitingBadge}
-            ${actionsMarkup}
-        `;
-    }
+    card.innerHTML = `
+        <div class="koc-header">
+            <strong class="koc-code">#${escapeHtml(order.code)}</strong>
+            <span class="koc-type-badge ${typeClass}">${escapeHtml(getOrderTypeLabel(order))}</span>
+            <span class="koc-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
+        </div>
+        <div class="koc-body">
+            <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
+            <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
+        </div>
+        ${statusRow}
+        ${actionsMarkup}
+    `;
 
     return card;
 }
@@ -5244,10 +5260,10 @@ function renderOrders() {
     }
 
     const columns = {
-        unread: { container: ordersColumnUnread, count: ordersCountUnread, items: [] },
-        takeaway: { container: ordersColumnTakeaway, count: ordersCountTakeaway, items: [] },
-        delivery: { container: ordersColumnDelivery, count: ordersCountDelivery, items: [] },
-        mesa: { container: ordersColumnMesa, count: ordersCountMesa, items: [] }
+        unread:   { container: ordersColumnUnread,    count: ordersCountUnread,    key: 'unread',    items: [] },
+        takeaway: { container: ordersColumnTakeaway,  count: ordersCountTakeaway,  key: 'takeaway',  items: [] },
+        delivery: { container: ordersColumnDelivery,  count: ordersCountDelivery,  key: 'delivery',  items: [] },
+        mesa:     { container: ordersColumnMesa,      count: ordersCountMesa,      key: 'mesa',      items: [] }
     };
 
     ordersState.forEach((order) => {
@@ -5255,23 +5271,48 @@ function renderOrders() {
     });
 
     Object.values(columns).forEach((column) => {
+        const activeOrders    = column.items.filter((o) => o.status !== 'entregado');
+        const processedOrders = column.items.filter((o) => o.status === 'entregado');
+
         if (column.count) {
-            column.count.textContent = Number(column.items.length).toLocaleString('es-CO');
+            column.count.textContent = Number(activeOrders.length).toLocaleString('es-CO');
         }
 
-        if (!column.container) {
-            return;
-        }
+        if (!column.container) return;
 
         column.container.innerHTML = '';
-        if (!column.items.length) {
+
+        if (!activeOrders.length && !processedOrders.length) {
             renderKanbanEmptyState(column.container);
-            return;
         }
 
-        column.items.forEach((order) => {
+        activeOrders.forEach((order) => {
             column.container.appendChild(createOrderCard(order));
         });
+
+        // Acordeon de procesados — siempre al fondo
+        if (processedOrders.length > 0) {
+            const isExpanded = _processedAccordionExpanded.has(column.key);
+
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'kanban-processed-toggle' + (isExpanded ? ' is-open' : '');
+            toggle.dataset.processedCol = column.key;
+            toggle.innerHTML = `
+                <span class="kanban-processed-count-badge">${processedOrders.length}</span>
+                <span>Procesados</span>
+                <span class="kanban-processed-arrow">▼</span>`;
+            column.container.appendChild(toggle);
+
+            const section = document.createElement('div');
+            section.className = 'kanban-processed-section';
+            section.dataset.processedSection = column.key;
+            if (!isExpanded) section.hidden = true;
+            processedOrders.forEach((order) => {
+                section.appendChild(createOrderCard(order));
+            });
+            column.container.appendChild(section);
+        }
     });
 
     const selectedOrder = ordersState.find((order) => order.id === selectedOrderId) || null;
@@ -6524,6 +6565,132 @@ function renderBrandingPreview() {
     applyDesignToPreviewFrame(brandingState);
 }
 
+async function fetchRecomendadoDiaConfig() {
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(RECOMENDADO_DIA_DOC_ID).get();
+        recomendadoDiaState = doc.exists ? doc.data() : null;
+    } catch (error) {
+        recomendadoDiaState = null;
+    }
+}
+
+function renderRecomendadoDiaPanel() {
+    const autoRadio = document.getElementById('recomendadoModeAuto');
+    const manualRadio = document.getElementById('recomendadoModeManual');
+    const manualPanel = document.getElementById('recomendadoManualPanel');
+    const currentBox = document.getElementById('recomendadoCurrentBox');
+    const saveBtn = document.getElementById('saveRecomendadoDiaBtn');
+    if (!autoRadio || !manualRadio) return;
+
+    const isManual = recomendadoDiaState && recomendadoDiaState.activo;
+    autoRadio.checked = !isManual;
+    manualRadio.checked = !!isManual;
+
+    if (manualPanel) manualPanel.hidden = !isManual;
+    if (saveBtn) saveBtn.disabled = false;
+
+    if (isManual && recomendadoDiaState.producto_id) {
+        _recomendadoSelectedProductId = recomendadoDiaState.producto_id;
+        const product = productsState.find((p) => p.id === recomendadoDiaState.producto_id);
+        renderRecomendadoCurrentBox(product || null);
+    } else {
+        _recomendadoSelectedProductId = null;
+        if (currentBox) currentBox.hidden = true;
+    }
+}
+
+function renderRecomendadoCurrentBox(product) {
+    const currentBox = document.getElementById('recomendadoCurrentBox');
+    if (!currentBox) return;
+    if (!product) {
+        currentBox.hidden = true;
+        return;
+    }
+    const img = String(product.image_url || '').trim() || 'logo.png';
+    const nombre = String(product.nombre || product.name || '').trim();
+    const categoria = String(product.categoria || product.category || '').trim();
+    currentBox.innerHTML = `
+        <img src="${img}" alt="${nombre}" onerror="this.src='logo.png'">
+        <div class="recomendado-current-info">
+            <span class="recomendado-current-label">Seleccionado</span>
+            <span class="recomendado-current-name">${nombre}</span>
+            <span class="recomendado-current-cat">${categoria}</span>
+        </div>`;
+    currentBox.hidden = false;
+}
+
+function _renderRecomendadoSearchResults(term) {
+    const resultsEl = document.getElementById('recomendadoSearchResults');
+    if (!resultsEl) return;
+    const q = String(term || '').trim().toLowerCase();
+    if (!q) {
+        resultsEl.hidden = true;
+        resultsEl.innerHTML = '';
+        return;
+    }
+    const matches = productsState
+        .filter((p) => {
+            const nombre = String(p.nombre || p.name || '').toLowerCase();
+            return nombre.includes(q);
+        })
+        .slice(0, 8);
+    if (!matches.length) {
+        resultsEl.innerHTML = '<li style="padding:10px 14px;color:var(--admin-muted)">Sin resultados</li>';
+        resultsEl.hidden = false;
+        return;
+    }
+    resultsEl.innerHTML = matches.map((p) => {
+        const img = String(p.image_url || '').trim() || 'logo.png';
+        const nombre = String(p.nombre || p.name || '').trim();
+        const categoria = String(p.categoria || p.category || '').trim();
+        const isSelected = p.id === _recomendadoSelectedProductId ? ' is-selected' : '';
+        return `<li class="recomendado-result-item${isSelected}" data-recomendado-product-id="${p.id}">
+            <img src="${img}" alt="${nombre}" onerror="this.src='logo.png'">
+            <div class="recomendado-result-info">
+                <span class="recomendado-result-name">${nombre}</span>
+                <span class="recomendado-result-cat">${categoria}</span>
+            </div>
+        </li>`;
+    }).join('');
+    resultsEl.hidden = false;
+}
+
+async function saveRecomendadoDiaConfig() {
+    const saveBtn = document.getElementById('saveRecomendadoDiaBtn');
+    const manualRadio = document.getElementById('recomendadoModeManual');
+    if (!manualRadio) return;
+    const isManual = manualRadio.checked;
+
+    if (isManual && !_recomendadoSelectedProductId) {
+        showNotice('Selecciona un producto para el modo manual.', 'error');
+        return;
+    }
+
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+
+    try {
+        const selectedProduct = _recomendadoSelectedProductId
+            ? productsState.find((p) => p.id === _recomendadoSelectedProductId)
+            : null;
+
+        const payload = {
+            activo: isManual,
+            producto_id: isManual && selectedProduct ? selectedProduct.id : null,
+            producto_nombre: isManual && selectedProduct ? String(selectedProduct.nombre || '').trim() : null,
+            producto_categoria: isManual && selectedProduct ? String(selectedProduct.categoria || '').trim() : null,
+            updated_at: firestoreNow()
+        };
+
+        await firebaseDb.collection(CONFIG_COLLECTION).doc(RECOMENDADO_DIA_DOC_ID).set(payload, { merge: true });
+        recomendadoDiaState = payload;
+        showNotice(isManual ? 'Recomendado manual guardado.' : 'Recomendado automatico activado.', 'ok');
+    } catch (error) {
+        showNotice(`No se pudo guardar: ${error.message || 'Error inesperado.'}`, 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+    }
+}
+
 function buildWhatsAppButtonLink(number, customLink) {
     const directLink = String(customLink || '').trim();
     if (directLink) {
@@ -6889,7 +7056,8 @@ async function reloadDataAndRender() {
         fetchClients(),
         fetchMessages(),
         fetchProductClickMetrics(),
-        fetchMenuUpgradesConfig()
+        fetchMenuUpgradesConfig(),
+        fetchRecomendadoDiaConfig()
     ]);
 
     const createdSalesDay = await ensureActiveSalesDay();
@@ -6904,6 +7072,7 @@ async function reloadDataAndRender() {
     renderMenuUpgradesAdmin();
     renderButtonsList();
     renderBrandingForm();
+    renderRecomendadoDiaPanel();
     renderOrders();
     renderSalesSummaries();
     renderLedgerBook();
@@ -6965,11 +7134,7 @@ categoryList.addEventListener('click', async (event) => {
         _selectedCategoryId = categoryId;
         categoryList.querySelectorAll('.upgrades-master-item').forEach((el) => el.classList.remove('selected'));
         actionEl.classList.add('selected');
-        if (categoryId === '__carrusel__') {
-            _renderCarouselPanel();
-        } else {
-            _renderCategoryDetailPanel(categoryId);
-        }
+        _renderCategoryDetailPanel(categoryId);
         return;
     }
 
@@ -7200,6 +7365,21 @@ if (openCreateInternalOrderBtn) {
         openInternalOrderModal();
     });
 }
+
+if (unreadTrayBtn) {
+    unreadTrayBtn.addEventListener('click', toggleUnreadTray);
+}
+
+if (unreadTrayCloseBtn) {
+    unreadTrayCloseBtn.addEventListener('click', closeUnreadTray);
+}
+
+document.addEventListener('click', (e) => {
+    if (!unreadTray || unreadTray.hidden) return;
+    if (!unreadTray.contains(e.target) && e.target !== unreadTrayBtn && !unreadTrayBtn?.contains(e.target)) {
+        closeUnreadTray();
+    }
+});
 
 /* ─── POS v2: Event listeners ─── */
 
@@ -7938,6 +8118,23 @@ if (ordersBoard) {
             return;
         }
 
+        // Acordeon de pedidos procesados
+        const processedToggle = target.closest('[data-processed-col]');
+        if (processedToggle instanceof HTMLButtonElement) {
+            const colKey = processedToggle.dataset.processedCol;
+            const section = ordersBoard.querySelector(`[data-processed-section="${colKey}"]`);
+            if (_processedAccordionExpanded.has(colKey)) {
+                _processedAccordionExpanded.delete(colKey);
+                processedToggle.classList.remove('is-open');
+                if (section) section.hidden = true;
+            } else {
+                _processedAccordionExpanded.add(colKey);
+                processedToggle.classList.add('is-open');
+                if (section) section.hidden = false;
+            }
+            return;
+        }
+
         const actionButton = target.closest('button[data-order-card-action]');
         if (actionButton instanceof HTMLButtonElement) {
             const orderId = String(actionButton.dataset.orderId || '').trim();
@@ -7988,6 +8185,7 @@ if (ordersBoard) {
                             : 'Pedido recibido y movido a su columna. No se pudo copiar el mensaje automaticamente.',
                         copied ? 'ok' : 'error'
                     );
+                    closeUnreadTray();
                     return;
                 }
 
@@ -8007,6 +8205,7 @@ if (ordersBoard) {
                         selectedOrderId = null;
                     }
                     showNotice('Pedido eliminado correctamente.', 'ok');
+                    closeUnreadTray();
                     return;
                 }
 
@@ -8600,6 +8799,48 @@ if (adminSignOutBtn) {
             showNotice(`No se pudo cerrar sesion: ${error.message || 'error inesperado.'}`, 'error');
         }
     });
+}
+
+// ---- Recomendado del dia event listeners ----
+document.querySelectorAll('input[name="recomendadoMode"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+        const manualPanel = document.getElementById('recomendadoManualPanel');
+        const currentBox = document.getElementById('recomendadoCurrentBox');
+        const isManual = document.getElementById('recomendadoModeManual')?.checked;
+        if (manualPanel) manualPanel.hidden = !isManual;
+        if (!isManual) {
+            _recomendadoSelectedProductId = null;
+            if (currentBox) currentBox.hidden = true;
+        } else if (_recomendadoSelectedProductId) {
+            const product = productsState.find((p) => p.id === _recomendadoSelectedProductId);
+            renderRecomendadoCurrentBox(product || null);
+        }
+    });
+});
+
+const recomendadoSearchInput = document.getElementById('recomendadoProductSearch');
+if (recomendadoSearchInput) {
+    recomendadoSearchInput.addEventListener('input', (e) => {
+        _renderRecomendadoSearchResults(e.target.value);
+    });
+}
+
+const recomendadoResultsEl = document.getElementById('recomendadoSearchResults');
+if (recomendadoResultsEl) {
+    recomendadoResultsEl.addEventListener('click', (e) => {
+        const item = e.target.closest('[data-recomendado-product-id]');
+        if (!item) return;
+        _recomendadoSelectedProductId = item.dataset.recomendadoProductId;
+        const product = productsState.find((p) => p.id === _recomendadoSelectedProductId);
+        renderRecomendadoCurrentBox(product || null);
+        recomendadoResultsEl.hidden = true;
+        if (recomendadoSearchInput) recomendadoSearchInput.value = '';
+    });
+}
+
+const saveRecomendadoDiaBtn = document.getElementById('saveRecomendadoDiaBtn');
+if (saveRecomendadoDiaBtn) {
+    saveRecomendadoDiaBtn.addEventListener('click', saveRecomendadoDiaConfig);
 }
 
 async function initAdmin() {
