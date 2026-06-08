@@ -2463,7 +2463,7 @@ const RECOMMENDED_DAY_FALLBACK_PRODUCT = {
 };
 const RECOMMENDED_DAY_DISCOUNT_RATE = 0.2;
 const RECOMMENDED_DAY_SERIAL_KEY = 'roalburger-recommended-day-serial';
-const RECOMMENDED_DAY_EXCLUDED_CATEGORY_PARTS = ['bebidas y adicionales', 'adicionales', 'bebidas', 'nuestras salsas'];
+const RECOMMENDED_DAY_EXCLUDED_CATEGORY_PARTS = ['bebidas y adicionales', 'adicionales', 'bebidas', 'nuestras salsas', 'entradas'];
 const MANUAL_IMAGE_BASE_PRICES = {
     './burgerpremium/burgercaracas.png': 26000,
     './burgerpremium/burgercordillera.png': 34000,
@@ -3001,7 +3001,8 @@ function resolveStaticOptionPrice(productName, categoryName) {
     if (normalizedCategoryName.includes('entradas')) {
         const options = getEntradaOptions(productName);
         const matched = options.find((item) => normalizedProductName.includes(normalizeCategoryKey(item.label)));
-        return matched ? parseLocalizedPrice(matched.price) : null;
+        const fallback = options[0];
+        return parseLocalizedPrice((matched || fallback)?.price ?? null);
     }
 
     if (normalizedCategoryName.includes('bebidas') || normalizedCategoryName.includes('adicionales')) {
@@ -6722,7 +6723,7 @@ function renderFeaturedCards(carousel, items) {
         let effectiveItems = items;
         if (!Array.isArray(effectiveItems) || !effectiveItems.length) {
             const firestoreFeatured = (Array.isArray(latestProducts) ? latestProducts : [])
-                .filter((p) => p.es_destacado === true && p.estado !== 'paused')
+                .filter((p) => p.es_destacado === true && p.estado !== 'paused' && !isExcludedRecommendedCategory(p.categoria || p.category || ''))
                 .sort((a, b) => {
                     const oa = a.order ?? 9999;
                     const ob = b.order ?? 9999;
