@@ -168,6 +168,9 @@ const UPGRADES_CONFIG_DOC_ID = 'acompañamientos';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
 const MESSAGES_COLLECTION = 'mensajes';
+const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
+const ORDER_CODE_PREFIX = 'RB';
+const ORDER_CODE_START = 2026;
 const SALES_SUMMARY_COLLECTION = 'resumen_ventas';
 const SALES_DAY_STATE_COLLECTION = 'admin_estado';
 const SALES_DAY_STATE_DOC_ID = 'jornada_ventas_actual';
@@ -216,9 +219,11 @@ const ordersBoard = document.getElementById('ordersBoard');
 const ordersColumnUnread = document.getElementById('ordersColumnUnread');
 const ordersColumnTakeaway = document.getElementById('ordersColumnTakeaway');
 const ordersColumnDelivery = document.getElementById('ordersColumnDelivery');
+const ordersColumnMesa = document.getElementById('ordersColumnMesa');
 const ordersCountUnread = document.getElementById('ordersCountUnread');
 const ordersCountTakeaway = document.getElementById('ordersCountTakeaway');
 const ordersCountDelivery = document.getElementById('ordersCountDelivery');
+const ordersCountMesa = document.getElementById('ordersCountMesa');
 const ordersMobileTabs = document.getElementById('ordersMobileTabs');
 const orderTicketPanel = document.getElementById('orderTicketPanel');
 const orderTicketBody = document.getElementById('orderTicketBody');
@@ -392,7 +397,7 @@ let liveSubscriptions = [];
 let previewRefreshTimer = null;
 let ordersRealtimeTimer = null;
 let clipboardToastTimer = null;
-let activeMobileOrdersLane = 'takeaway';
+let activeMobileOrdersLane = 'pedidos';
 let adminTitleBlinkTimer = null;
 let adminTitleBlinkState = false;
 const adminBaseTitle = document.title || 'ROAL BURGER | Admin';
@@ -507,9 +512,9 @@ function isMobileAdminViewport() {
 }
 
 function applyMobileOrdersLane() {
-    const nextLane = ['unread', 'takeaway', 'delivery'].includes(activeMobileOrdersLane)
+    const nextLane = ['unread', 'pedidos', 'mesa'].includes(activeMobileOrdersLane)
         ? activeMobileOrdersLane
-        : 'takeaway';
+        : 'pedidos';
 
     document.querySelectorAll('.orders-lane[data-mobile-lane]').forEach((lane) => {
         const laneKey = String(lane.getAttribute('data-mobile-lane') || '').trim();
@@ -617,6 +622,25 @@ function normalizeCategoryKey(value) {
 
 function firestoreNow() {
     return firebase.firestore.FieldValue.serverTimestamp();
+}
+
+async function getNextAdminOrderCode() {
+    const sequenceRef = firebaseDb.collection(ORDERS_COLLECTION).doc(ORDER_SEQUENCE_DOC_ID);
+    let code = '';
+    await firebaseDb.runTransaction(async (transaction) => {
+        const snap = await transaction.get(sequenceRef);
+        const current = Number(snap.exists ? snap.data()?.current : ORDER_CODE_START - 1);
+        const next = Number.isFinite(current)
+            ? Math.max(current + 1, ORDER_CODE_START)
+            : ORDER_CODE_START;
+        code = `${ORDER_CODE_PREFIX}-${String(next).padStart(4, '0')}`;
+        transaction.set(sequenceRef, {
+            metaType: 'order_sequence',
+            current: next,
+            updatedAt: firestoreNow()
+        }, { merge: true });
+    });
+    return code;
 }
 
 function normalizePhoneDigits(value) {
@@ -995,6 +1019,41 @@ function setupAccordion() {
         return;
     }
 
+    const sidebar = document.querySelector('.admin-sidebar');
+    const hamburgerBtn = document.getElementById('adminNavToggleBtn');
+
+    function closeMobileNav() {
+        if (!sidebar || !hamburgerBtn) return;
+        sidebar.classList.remove('nav-open');
+        hamburgerBtn.setAttribute('aria-expanded', 'false');
+        hamburgerBtn.innerHTML = '&#9776;';
+        const overlay = document.getElementById('_navMobileOverlay');
+        if (overlay) overlay.remove();
+    }
+
+    // Toggle del menu hamburguesa en mobile
+    if (hamburgerBtn && sidebar) {
+        hamburgerBtn.addEventListener('click', () => {
+            const isOpen = sidebar.classList.toggle('nav-open');
+            hamburgerBtn.setAttribute('aria-expanded', String(isOpen));
+            hamburgerBtn.innerHTML = isOpen ? '&#10005;' : '&#9776;';
+
+            // Overlay transparente para cerrar al tocar fuera del nav
+            let overlay = document.getElementById('_navMobileOverlay');
+            if (isOpen) {
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.id = '_navMobileOverlay';
+                    overlay.style.cssText = 'position:fixed;inset:54px 0 0 0;z-index:198;background:rgba(0,0,0,0.45);';
+                    document.body.appendChild(overlay);
+                    overlay.addEventListener('click', closeMobileNav);
+                }
+            } else if (overlay) {
+                overlay.remove();
+            }
+        });
+    }
+
     const buttons = Array.from(nav.querySelectorAll('.admin-accordion-trigger'));
     const panels = Array.from(document.querySelectorAll('.admin-tab-panel'));
     const groupMap = {
@@ -1018,6 +1077,9 @@ function setupAccordion() {
         panels.forEach((panel) => {
             panel.classList.toggle('active', visiblePanels.includes(panel.dataset.tabPanel));
         });
+
+        // Cerrar el menu hamburguesa en mobile al seleccionar panel
+        if (window.innerWidth < 1024) closeMobileNav();
 
         if (target === 'mensajes') {
             markMessagesAsRead();
@@ -2138,24 +2200,31 @@ function renderPosProductsPanel() {
     }
 
     categoryProducts.forEach((product) => {
+        const card = document.createElement('div');
+        card.className = 'pos-product-card';
+
         const btn = document.createElement('button');
         btn.type = 'button';
         const imgUrl = String(product.image_url || '').trim();
+
         if (imgUrl) {
             btn.className = 'pos-product-btn has-image';
-            btn.innerHTML = `<img class="pos-product-btn-img" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">
-                <div class="pos-product-btn-info">
-                    <span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span>
-                    <span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>
-                </div>`;
+            btn.innerHTML = `<img class="pos-product-btn-img" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
+            const label = document.createElement('div');
+            label.className = 'pos-product-label';
+            label.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
+            card.appendChild(btn);
+            card.appendChild(label);
         } else {
             btn.className = 'pos-product-btn';
             btn.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
+            card.appendChild(btn);
         }
-        btn.addEventListener('click', () => {
+
+        card.addEventListener('click', () => {
             handlePosProductAdd(String(product.id || ''), String(product.nombre || ''), Number(product.precio || 0));
         });
-        grid.appendChild(btn);
+        grid.appendChild(card);
     });
 }
 
@@ -2346,6 +2415,10 @@ function addProductToPosOrder(productId, productName, productPrice, note = '') {
     renderPosBottomBar();
 }
 
+function isPosDesktop() {
+    return window.innerWidth >= 1024;
+}
+
 function renderPosBottomBar() {
     const bottomBar = document.getElementById('posBottomBar');
     const qtyElem = document.getElementById('posBottomQty');
@@ -2353,8 +2426,13 @@ function renderPosBottomBar() {
 
     const totalQty = internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
-    if (bottomBar) bottomBar.hidden = totalQty === 0;
-    if (scrollArea) scrollArea.style.paddingBottom = totalQty > 0 ? '64px' : '10px';
+    if (isPosDesktop()) {
+        if (bottomBar) bottomBar.hidden = true;
+        if (scrollArea) scrollArea.style.paddingBottom = '';
+    } else {
+        if (bottomBar) bottomBar.hidden = totalQty === 0;
+        if (scrollArea) scrollArea.style.paddingBottom = totalQty > 0 ? '64px' : '10px';
+    }
     if (qtyElem) qtyElem.textContent = `${totalQty} ${totalQty === 1 ? 'item' : 'items'}`;
 }
 
@@ -2469,10 +2547,18 @@ function renderPosTotals() {
 
 /* ─── POS v2: Upgrade sheet (acompañamientos) ─── */
 
+function _posAddWithComment(productId, productName, price, note) {
+    const comment = String(document.getElementById('posUpgradeComment')?.value || '').trim();
+    const fullNote = [note, comment].filter(Boolean).join(' — ');
+    addProductToPosOrder(productId, productName, price, fullNote || undefined);
+}
+
 function openPosUpgradeSheet(productId, productName, productPrice) {
     _posUpgradePending = { productId, productName, productPrice };
     const overlay = document.getElementById('posUpgradeOverlay');
     if (!overlay) return;
+    const commentInput = document.getElementById('posUpgradeComment');
+    if (commentInput) commentInput.value = '';
     overlay.hidden = false;
     overlay.style.display = 'flex';
     renderPosUpgradeStep1();
@@ -2528,7 +2614,7 @@ function renderPosUpgradeStep1() {
 
     body.querySelector('#posUpgradeSolo')?.addEventListener('click', () => {
         const { productId, productName, productPrice } = _posUpgradePending;
-        addProductToPosOrder(productId, productName, productPrice);
+        _posAddWithComment(productId, productName, productPrice);
         closePosUpgradeSheet();
     });
 
@@ -2543,7 +2629,7 @@ function renderPosUpgradeStep1() {
                 _renderPosLegacyFlavors(opt, cfg.sabores_bebida);
             } else {
                 const { productId, productName, productPrice } = _posUpgradePending;
-                addProductToPosOrder(productId, productName, productPrice + Number(opt.precio || 0), opt.nombre);
+                _posAddWithComment(productId, productName, productPrice + Number(opt.precio || 0), opt.nombre);
                 closePosUpgradeSheet();
             }
         });
@@ -2580,7 +2666,7 @@ function renderPosUpgradeStep2(selectedOpt) {
                 const { productId, productName, productPrice } = _posUpgradePending;
                 const extra = Number(selectedOpt.precio || 0) + Number(variant.precio_extra || 0);
                 const note = `${selectedOpt.nombre} – ${variant.nombre}`;
-                addProductToPosOrder(productId, productName, productPrice + extra, note);
+                _posAddWithComment(productId, productName, productPrice + extra, note);
                 closePosUpgradeSheet();
             }
         });
@@ -2611,7 +2697,7 @@ function renderPosUpgradeStep3(selectedOpt, selectedVariant) {
             const note = sub === 'Sin bebida'
                 ? `${selectedOpt.nombre} – ${selectedVariant.nombre}`
                 : `${selectedOpt.nombre} – ${selectedVariant.nombre} (${sub})`;
-            addProductToPosOrder(productId, productName, productPrice + extra, note);
+            _posAddWithComment(productId, productName, productPrice + extra, note);
             closePosUpgradeSheet();
         });
     });
@@ -2635,7 +2721,7 @@ function _renderPosLegacyFlavors(selectedOpt, sabores) {
             const { productId, productName, productPrice } = _posUpgradePending;
             const f = btn.dataset.flavor;
             const note = f === 'Sin bebida' ? selectedOpt.nombre : `${selectedOpt.nombre} (${f})`;
-            addProductToPosOrder(productId, productName, productPrice + Number(selectedOpt.precio || 0), note);
+            _posAddWithComment(productId, productName, productPrice + Number(selectedOpt.precio || 0), note);
             closePosUpgradeSheet();
         });
     });
@@ -2710,7 +2796,17 @@ function showPosScreen(screen) {
     if (main) { main.hidden = screen !== 'main'; main.style.display = screen === 'main' ? 'flex' : 'none'; }
     if (payment) { payment.hidden = screen !== 'payment'; payment.style.display = screen === 'payment' ? 'flex' : 'none'; }
     if (tickets) { tickets.hidden = screen !== 'tickets'; tickets.style.display = screen === 'tickets' ? 'flex' : 'none'; }
-    if (cartDrawer && screen !== 'main') { cartDrawer.hidden = true; cartDrawer.style.display = 'none'; }
+
+    if (cartDrawer) {
+        if (isPosDesktop() && screen === 'main') {
+            // En desktop el carrito es un panel fijo siempre visible
+            cartDrawer.hidden = false;
+            cartDrawer.style.display = '';
+        } else if (screen !== 'main') {
+            cartDrawer.hidden = true;
+            cartDrawer.style.display = 'none';
+        }
+    }
 
     if (screen === 'payment') {
         renderPosTotals();
@@ -2926,7 +3022,132 @@ function openInternalOrderModal() {
     showPosScreen('main');
     internalOrderModal.classList.add('is-open');
     internalOrderModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('pos-is-open');
     document.body.style.overflow = 'hidden';
+}
+
+async function saveAdminOrderQuick(config = {}) {
+    if (!internalOrderItems.length) {
+        showNotice('Agrega al menos un producto al pedido.', 'error');
+        return;
+    }
+
+    const saveBtn = document.getElementById('posDrawerSaveBtn');
+    const orderType = config.orderType || 'retiro';
+    const mesaNumber = config.mesaNumber || null;
+    const defaultName = orderType === 'mesa' && mesaNumber ? `Mesa ${mesaNumber}` : 'Pedido Admin';
+    const customerName = String(config.customerName || '').trim() || defaultName;
+    const customerPhone = String(config.customerPhone || '').trim();
+
+    try {
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+
+        const orderId = firebaseDb.collection(ORDERS_COLLECTION).doc().id;
+        const orderCode = await getNextAdminOrderCode();
+        const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+
+        const orderDoc = {
+            id: orderId,
+            code: orderCode,
+            customerName,
+            customerPhone,
+            customerPhoneDigits: normalizePhoneDigits ? normalizePhoneDigits(customerPhone) : customerPhone,
+            customerAddress: '',
+            deliveryAddress: '',
+            profileAddress: '',
+            paymentMethod: 'pendiente',
+            cashChangeRequired: false,
+            cashTenderAmount: null,
+            orderType,
+            source: 'admin_pos',
+            isAdminOrder: true,
+            status: 'pendiente',
+            items: internalOrderItems.map((item, index) => ({
+                index: index + 1,
+                itemKey: item.itemKey,
+                productId: item.productId,
+                productName: item.productName,
+                categoryName: item.categoryName,
+                optionLabel: item.note || '',
+                note: item.note || '',
+                quantity: Number(item.quantity || 0),
+                unitPrice: Number(item.unitPrice || 0),
+                subtotal: Number(item.subtotal || 0)
+            })),
+            itemCount: internalOrderItems.length,
+            totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+            subtotal,
+            discount: 0,
+            deliveryFee: orderType === 'domicilio' ? 0 : null,
+            total: subtotal,
+            currency: 'COP',
+            summaryMessage: '',
+            createdAt: firestoreNow(),
+            updatedAt: firestoreNow()
+        };
+
+        if (mesaNumber) {
+            orderDoc.mesaNumber = mesaNumber;
+        }
+
+        await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
+
+        await reloadDataAndRender();
+
+        // Limpiar el ticket actual y crear uno nuevo
+        posTickets = posTickets.filter((t) => t.id !== posActiveTicketId);
+        if (posTickets.length > 0) {
+            posActiveTicketId = posTickets[0].id;
+            internalOrderItems = posTickets[0].items;
+        } else {
+            createNewPosTicket();
+        }
+        renderPosOrderItems();
+        renderPosTotals();
+        renderPosBottomBar();
+        renderPosTicketsBadge();
+        showNotice('Pedido guardado en recepción.', 'ok');
+    } catch (error) {
+        showNotice(`Error al guardar: ${error.message || 'error'}`, 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'GUARDAR PEDIDO'; }
+    }
+}
+
+async function editAdminPosOrder(order) {
+    try {
+        const posItems = (order.items || []).map((item) => ({
+            itemKey: item.itemKey || `${item.productId || 'p'}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            productId: String(item.productId || ''),
+            productName: String(item.productName || ''),
+            categoryName: String(item.categoryName || ''),
+            note: String(item.note || item.optionLabel || ''),
+            quantity: Number(item.quantity || 1),
+            unitPrice: Number(item.unitPrice || 0),
+            subtotal: Number(item.subtotal || 0)
+        }));
+
+        await deleteOrder(order.id);
+        if (selectedOrderId === order.id) selectedOrderId = null;
+
+        openInternalOrderModal();
+
+        internalOrderItems = posItems;
+        const currentTicket = posTickets.find((t) => t.id === posActiveTicketId);
+        if (currentTicket) {
+            currentTicket.items = posItems;
+            currentTicket.label = `Editando #${order.code}`;
+        }
+        const labelEl = document.getElementById('posActiveTicketLabel');
+        if (labelEl) labelEl.textContent = `Editando #${order.code}`;
+
+        renderPosOrderItems();
+        renderPosTotals();
+        renderPosBottomBar();
+        showNotice(`Pedido #${order.code} cargado para edición.`, 'ok');
+    } catch (error) {
+        showNotice(`Error al cargar el pedido: ${error.message || 'error'}`, 'error');
+    }
 }
 
 function closeInternalOrderModal(clearCurrentTicket = false) {
@@ -2955,6 +3176,7 @@ function closeInternalOrderModal(clearCurrentTicket = false) {
     if (cartDrawer) cartDrawer.hidden = true;
     internalOrderModal.classList.remove('is-open');
     internalOrderModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('pos-is-open');
     document.body.style.overflow = '';
 }
 
@@ -3010,7 +3232,7 @@ async function submitInternalOrderForm(event) {
         }
 
         const orderId = firebaseDb.collection(ORDERS_COLLECTION).doc().id;
-        const orderCode = `RB-${String(orderId || '').slice(-6).toUpperCase()}`;
+        const orderCode = await getNextAdminOrderCode();
         const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
         const deliveryFee = orderType === 'domicilio' ? 0 : null;
         const total = Math.max(0, (deliveryFee !== null ? subtotal + Number(deliveryFee) : subtotal) - discount);
@@ -4225,11 +4447,17 @@ function getOrderColumnKey(order) {
         return 'unread';
     }
 
+    if (order.orderType === 'mesa') {
+        return 'mesa';
+    }
+
     return order.orderType === 'domicilio' ? 'delivery' : 'takeaway';
 }
 
 function getOrderTypeLabel(order) {
-    return order.orderType === 'retiro' ? 'Llevar' : 'Domicilio';
+    if (order.orderType === 'domicilio') return 'Domicilio';
+    if (order.orderType === 'mesa') return order.mesaNumber ? `Mesa ${order.mesaNumber}` : 'Mesa';
+    return 'Llevar';
 }
 
 function getOrderDisplayTotal(order) {
@@ -4817,7 +5045,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                 </section>
 
                 <section class="ticket-section">
-                    <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion de entrega' : 'Retiro en local'}</div>
+                    <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion de entrega' : order.orderType === 'mesa' ? `Mesa ${order.mesaNumber || ''}`.trim() : 'Retiro en local'}</div>
                     <div class="ticket-address-block">
                         ${addressLines}
                         ${whatsappLink ? `<a class="ticket-wa-btn" href="${whatsappLink}" target="_blank" rel="noopener noreferrer">💬 Abrir WhatsApp</a>` : ''}
@@ -4928,14 +5156,18 @@ function createOrderCard(order) {
 
     card.dataset.orderId = order.id;
 
+    if (order.isAdminOrder || order.source === 'admin_pos') {
+        card.classList.add('kanban-order-card--admin');
+    }
+
     if (order.status === 'entregado') {
         card.classList.add('kanban-order-card-compact');
         card.innerHTML = `
             <div class="kanban-order-compact-row">
                 <span class="kanban-order-name">${escapeHtml(order.customerName || 'Cliente sin nombre')}</span>
-                <span class="order-wait-timer">${escapeHtml(formatLiveDuration(order.deliveredAt || order.updatedAt || order.createdAt))}</span>
-                <button type="button" class="order-action-btn order-action-btn-view" data-order-card-action="view_ticket" data-order-id="${order.id}">Ver ticket</button>
+                <span class="kanban-order-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
             </div>
+            <span class="kanban-order-compact-time">${escapeHtml(formatOrderTime(order.deliveredAt || order.updatedAt || order.createdAt))}</span>
         `;
         return card;
     }
@@ -4963,10 +5195,12 @@ function createOrderCard(order) {
             `
             : '');
     const showViewTicketAction = isMobileAdminViewport();
+    const showEditPosAction = (order.isAdminOrder || order.source === 'admin_pos') && order.status === 'pendiente';
     const actionsMarkup = order.id === selectedOrderId
         ? `
             <div class="kanban-order-actions">
                 ${showViewTicketAction ? `<button type="button" class="order-action-btn order-action-btn-view" data-order-card-action="view_ticket" data-order-id="${order.id}">Ver ticket</button>` : ''}
+                ${showEditPosAction ? `<button type="button" class="order-action-btn order-action-btn-edit" data-order-card-action="editar_pos" data-order-id="${order.id}">&#9998; Editar pedido</button>` : ''}
                 ${showReceiveAction ? `<button type="button" class="order-action-btn order-action-btn-receive" data-order-card-action="recibir_pedido" data-order-id="${order.id}">Recibir pedido</button>` : ''}
                 ${showPickupReadyAction ? `<button type="button" class="order-action-btn order-action-btn-ready" data-order-card-action="listo_recoger" data-order-id="${order.id}">Pedido listo</button>` : ''}
                 ${showDeliveryAction ? `<button type="button" class="order-action-btn" data-order-card-action="esperando_domiciliario" data-order-id="${order.id}">Pedir domiciliario</button>` : ''}
@@ -4976,19 +5210,30 @@ function createOrderCard(order) {
         `
         : '';
 
-    card.innerHTML = `
-        <div class="kanban-order-top">
-            <strong class="kanban-order-code">#Pedido ${escapeHtml(order.code)}</strong>
-            <span class="kanban-order-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
-        </div>
-        <div class="kanban-order-name">${escapeHtml(order.customerName || 'Cliente sin nombre')}</div>
-        <div class="kanban-order-bottom">
-            <span class="kanban-order-type">${escapeHtml(getOrderTypeLabel(order))}</span>
-            <span class="kanban-order-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
-        </div>
-        ${waitingBadge}
-        ${actionsMarkup}
-    `;
+    if (order.status === 'esperando_domiciliario') {
+        card.innerHTML = `
+            <span class="kanban-order-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
+            <div class="kanban-waiting-row">
+                <span class="kanban-waiting-label">Esperando</span>
+                <span class="order-wait-timer">${escapeHtml(formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt))}</span>
+            </div>
+            ${actionsMarkup}
+        `;
+    } else {
+        card.innerHTML = `
+            <div class="kanban-order-top">
+                <span class="kanban-order-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
+                <span class="kanban-order-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
+            </div>
+            <div class="kanban-order-bottom">
+                <strong class="kanban-order-code">#${escapeHtml(order.code)}</strong>
+                <span class="kanban-order-type">${escapeHtml(getOrderTypeLabel(order))}</span>
+                <span class="kanban-order-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
+            </div>
+            ${waitingBadge}
+            ${actionsMarkup}
+        `;
+    }
 
     return card;
 }
@@ -5001,7 +5246,8 @@ function renderOrders() {
     const columns = {
         unread: { container: ordersColumnUnread, count: ordersCountUnread, items: [] },
         takeaway: { container: ordersColumnTakeaway, count: ordersCountTakeaway, items: [] },
-        delivery: { container: ordersColumnDelivery, count: ordersCountDelivery, items: [] }
+        delivery: { container: ordersColumnDelivery, count: ordersCountDelivery, items: [] },
+        mesa: { container: ordersColumnMesa, count: ordersCountMesa, items: [] }
     };
 
     ordersState.forEach((order) => {
@@ -6994,6 +7240,174 @@ document.getElementById('posCartBackdrop')?.addEventListener('click', () => {
     if (drawer) drawer.hidden = true;
 });
 
+// GUARDAR PEDIDO desde el drawer → abre modal de personalización
+document.getElementById('posDrawerSaveBtn')?.addEventListener('click', () => {
+    if (!internalOrderItems.length) {
+        showNotice('Agrega al menos un producto al pedido.', 'error');
+        return;
+    }
+    openPosTicketSetupModal();
+});
+
+// ── Modal: Personalizar ticket ────────────────────────────────────────────────
+let _ptsSelectedType = null;
+let _ptsSelectedMesa = null;
+let _ptsSelectedClient = null; // { name, phone }
+let _ptsActiveTab = 'none';
+
+function openPosTicketSetupModal() {
+    const modal = document.getElementById('posTicketSetupModal');
+    if (!modal) return;
+
+    // Reset estado
+    _ptsSelectedType = null;
+    _ptsSelectedMesa = null;
+    _ptsSelectedClient = null;
+    _ptsActiveTab = 'none';
+
+    // Reset UI
+    modal.querySelectorAll('.pts-type-btn').forEach((b) => b.classList.remove('active'));
+    const mesaGrid = document.getElementById('ptsMesaGrid');
+    if (mesaGrid) mesaGrid.setAttribute('hidden', '');
+    modal.querySelectorAll('.pts-mesa-btn').forEach((b) => b.classList.remove('active'));
+    modal.querySelectorAll('[data-pts-tab]').forEach((t) => t.classList.toggle('active', t.dataset.ptsTab === 'none'));
+    modal.querySelectorAll('.pts-client-panel').forEach((p) => p.setAttribute('hidden', ''));
+    const quickName = document.getElementById('ptsQuickName');
+    if (quickName) quickName.value = '';
+    const searchInput = document.getElementById('ptsSearchInput');
+    if (searchInput) searchInput.value = '';
+    const searchResults = document.getElementById('ptsSearchResults');
+    if (searchResults) searchResults.innerHTML = '';
+
+    _ptsUpdateConfirmBtn();
+    modal.removeAttribute('hidden');
+}
+
+function closePosTicketSetupModal() {
+    document.getElementById('posTicketSetupModal')?.setAttribute('hidden', '');
+}
+
+function _ptsUpdateConfirmBtn() {
+    const btn = document.getElementById('ptsConfirmBtn');
+    if (!btn) return;
+    const ready = !!_ptsSelectedType && (_ptsSelectedType !== 'mesa' || !!_ptsSelectedMesa);
+    btn.disabled = !ready;
+}
+
+function _ptsRenderSearchResults(query) {
+    const container = document.getElementById('ptsSearchResults');
+    if (!container) return;
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) { container.innerHTML = ''; return; }
+
+    const matches = (clientsState || []).filter((c) => {
+        const name = String(c.customerName || '').toLowerCase();
+        const phone = String(c.customerPhone || '').replace(/\D/g, '');
+        return name.includes(q) || phone.includes(q.replace(/\D/g, ''));
+    }).slice(0, 6);
+
+    if (!matches.length) {
+        container.innerHTML = '<p class="pts-no-results">Sin resultados</p>';
+        return;
+    }
+
+    container.innerHTML = matches.map((c) => `
+        <div class="pts-result-item" data-pts-client-name="${escapeHtml(c.customerName || '')}" data-pts-client-phone="${escapeHtml(c.customerPhone || '')}">
+            <div class="pts-result-name">${escapeHtml(c.customerName || 'Sin nombre')}</div>
+            <div class="pts-result-phone">${escapeHtml(c.customerPhone || '')}</div>
+        </div>
+    `).join('');
+}
+
+// ── Listeners directos del modal (más robustos que delegación global) ──────────
+document.getElementById('ptsCancelBtn')?.addEventListener('click', () => closePosTicketSetupModal());
+
+document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
+    // Leer estado desde DOM como fuente de verdad (evita problemas de caché/closure)
+    const activeTypeBtn = document.querySelector('#posTicketSetupModal .pts-type-btn.active');
+    const activeMesaBtn = document.querySelector('#posTicketSetupModal .pts-mesa-btn.active');
+    const resolvedType = (activeTypeBtn?.dataset?.ptsType) || _ptsSelectedType;
+    const resolvedMesa = activeMesaBtn ? Number(activeMesaBtn.dataset.ptsMesa) : _ptsSelectedMesa;
+
+    if (!resolvedType) return;
+
+    let customerName = '';
+    let customerPhone = '';
+    if (_ptsActiveTab === 'quick') {
+        customerName = String(document.getElementById('ptsQuickName')?.value || '').trim();
+    } else if (_ptsActiveTab === 'search' && _ptsSelectedClient) {
+        customerName = _ptsSelectedClient.name;
+        customerPhone = _ptsSelectedClient.phone;
+    }
+    closePosTicketSetupModal();
+    saveAdminOrderQuick({
+        orderType: resolvedType,
+        mesaNumber: resolvedMesa,
+        customerName,
+        customerPhone
+    });
+});
+
+// Delegación a nivel de modal para tipo/mesa/tabs/resultados
+document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) => {
+    // Tipo de pedido
+    const typeBtn = e.target.closest('[data-pts-type]');
+    if (typeBtn) {
+        _ptsSelectedType = typeBtn.dataset.ptsType;
+        _ptsSelectedMesa = null;
+        document.querySelectorAll('.pts-type-btn').forEach((b) => b.classList.toggle('active', b === typeBtn));
+        document.querySelectorAll('.pts-mesa-btn').forEach((b) => b.classList.remove('active'));
+        const mesaGrid = document.getElementById('ptsMesaGrid');
+        if (mesaGrid) {
+            if (_ptsSelectedType === 'mesa') mesaGrid.removeAttribute('hidden');
+            else mesaGrid.setAttribute('hidden', '');
+        }
+        _ptsUpdateConfirmBtn();
+        return;
+    }
+
+    // Número de mesa
+    const mesaBtn = e.target.closest('[data-pts-mesa]');
+    if (mesaBtn) {
+        _ptsSelectedMesa = Number(mesaBtn.dataset.ptsMesa);
+        document.querySelectorAll('.pts-mesa-btn').forEach((b) => b.classList.toggle('active', b === mesaBtn));
+        _ptsUpdateConfirmBtn();
+        return;
+    }
+
+    // Tabs de cliente
+    const tab = e.target.closest('[data-pts-tab]');
+    if (tab) {
+        _ptsActiveTab = tab.dataset.ptsTab;
+        _ptsSelectedClient = null;
+        document.querySelectorAll('[data-pts-tab]').forEach((t) => t.classList.toggle('active', t === tab));
+        const panelQuick = document.getElementById('ptsPanelQuick');
+        const panelSearch = document.getElementById('ptsPanelSearch');
+        if (panelQuick) panelQuick.toggleAttribute('hidden', _ptsActiveTab !== 'quick');
+        if (panelSearch) panelSearch.toggleAttribute('hidden', _ptsActiveTab !== 'search');
+        if (_ptsActiveTab !== 'search') {
+            const searchResults = document.getElementById('ptsSearchResults');
+            if (searchResults) searchResults.innerHTML = '';
+        }
+        return;
+    }
+
+    // Seleccionar cliente desde resultados
+    const resultItem = e.target.closest('.pts-result-item');
+    if (resultItem) {
+        _ptsSelectedClient = {
+            name: resultItem.dataset.ptsClientName || '',
+            phone: resultItem.dataset.ptsClientPhone || ''
+        };
+        document.querySelectorAll('.pts-result-item').forEach((r) => r.classList.toggle('active', r === resultItem));
+    }
+});
+
+// Input de búsqueda de cliente
+document.getElementById('ptsSearchInput')?.addEventListener('input', (e) => {
+    _ptsRenderSearchResults(e.target.value);
+});
+
 // COBRAR desde el drawer
 document.getElementById('posDrawerCobrarBtn')?.addEventListener('click', () => {
     const drawer = document.getElementById('posCartDrawer');
@@ -7218,7 +7632,7 @@ if (ordersMobileTabs) {
             return;
         }
 
-        activeMobileOrdersLane = String(tab.dataset.mobileOrdersTab || 'takeaway').trim() || 'takeaway';
+        activeMobileOrdersLane = String(tab.dataset.mobileOrdersTab || 'pedidos').trim() || 'pedidos';
         applyMobileOrdersLane();
     });
 }
@@ -7535,6 +7949,10 @@ if (ordersBoard) {
             if (nextStatus === 'view') {
                 selectedOrderId = orderId;
                 renderOrders();
+                requestAnimationFrame(() => {
+                    document.querySelector(`article[data-order-id="${orderId}"]`)
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
                 return;
             }
 
@@ -7547,6 +7965,10 @@ if (ordersBoard) {
                 selectedOrderId = orderId;
                 renderOrders();
                 renderOrderTicket(order, { openMobile: true });
+                requestAnimationFrame(() => {
+                    document.querySelector(`article[data-order-id="${orderId}"]`)
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
                 return;
             }
 
@@ -7566,6 +7988,11 @@ if (ordersBoard) {
                             : 'Pedido recibido y movido a su columna. No se pudo copiar el mensaje automaticamente.',
                         copied ? 'ok' : 'error'
                     );
+                    return;
+                }
+
+                if (nextStatus === 'editar_pos') {
+                    await editAdminPosOrder(order);
                     return;
                 }
 
