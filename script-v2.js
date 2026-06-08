@@ -2462,6 +2462,7 @@ const RECOMMENDED_DAY_FALLBACK_PRODUCT = {
     estado: 'active'
 };
 const RECOMMENDED_DAY_DISCOUNT_RATE = 0.2;
+const RECOMMENDED_DAY_SERIAL_KEY = 'roalburger-recommended-day-serial';
 const RECOMMENDED_DAY_EXCLUDED_CATEGORY_PARTS = ['bebidas y adicionales', 'adicionales', 'bebidas', 'nuestras salsas'];
 const MANUAL_IMAGE_BASE_PRICES = {
     './burgerpremium/burgercaracas.png': 26000,
@@ -2888,6 +2889,28 @@ function loadCartState() {
     } catch (error) {
         shoppingCart = [];
     }
+    checkAndPurgeStaleRecommendedCartItems();
+}
+
+function checkAndPurgeStaleRecommendedCartItems() {
+    try {
+        const { year, month, day } = getCurrentBogotaDateParts();
+        const todaySerial = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+        const storedSerial = Number(window.localStorage.getItem(RECOMMENDED_DAY_SERIAL_KEY) || 0);
+
+        if (storedSerial && storedSerial !== todaySerial) {
+            const before = shoppingCart.length;
+            shoppingCart = shoppingCart.filter((item) => !(item.orderOptions && item.orderOptions.recommendedDiscount));
+            if (shoppingCart.length < before) {
+                saveCartState();
+                setTimeout(() => {
+                    showCartAddedToast('Carrito actualizado', 'El recomendado del día anterior fue removido');
+                }, 2500);
+            }
+        }
+
+        window.localStorage.setItem(RECOMMENDED_DAY_SERIAL_KEY, String(todaySerial));
+    } catch (_e) {}
 }
 
 function saveCartState() {
@@ -7907,6 +7930,7 @@ function getRecommendedFallbackProduct() {
 }
 
 function getEligibleRecommendedProducts() {
+    // Incluye productos pausados — el pool debe ser estable independiente del estado
     const eligibleProducts = latestProducts
         .map((product) => {
             const nombre = String(product.nombre || product.name || '').trim();
@@ -7920,43 +7944,22 @@ function getEligibleRecommendedProducts() {
             };
         })
         .filter((product) => {
-            if (!product.nombre || !product.categoria) {
-                return false;
-            }
-
-            if (product.estado === 'paused') {
-                return false;
-            }
-
-            if (shouldHideProductByName(product.nombre)) {
-                return false;
-            }
-
-            if (isExcludedRecommendedCategory(product.categoria)) {
-                return false;
-            }
-
-            if (!isCategoryAllowed(product.categoria)) {
-                return false;
-            }
-
+            if (!product.nombre || !product.categoria) return false;
+            if (shouldHideProductByName(product.nombre)) return false;
+            if (isExcludedRecommendedCategory(product.categoria)) return false;
+            if (!isCategoryAllowed(product.categoria)) return false;
             return Boolean(product.image_url);
-        })
+        });
 
     const uniqueEligibleProducts = [];
     const seenRecommendedProducts = new Set();
 
     eligibleProducts.forEach((product) => {
         const signature = getRecommendedProductSignature(product);
-        if (!signature || seenRecommendedProducts.has(signature)) {
-            return;
-        }
-
+        if (!signature || seenRecommendedProducts.has(signature)) return;
         seenRecommendedProducts.add(signature);
         uniqueEligibleProducts.push(product);
     });
-
-    uniqueEligibleProducts.sort((a, b) => `${a.categoria} ${a.nombre}`.localeCompare(`${b.categoria} ${b.nombre}`, 'es'));
 
     return uniqueEligibleProducts.length ? uniqueEligibleProducts : [getRecommendedFallbackProduct()];
 }
@@ -7977,45 +7980,34 @@ function createSeededRandom(seed) {
     };
 }
 
-function buildRecommendedCycleOrder(products, cycleIndex) {
-    const orderedProducts = products.slice();
-    const random = createSeededRandom((products.length * 97) + cycleIndex + 1);
-
-    for (let index = orderedProducts.length - 1; index > 0; index -= 1) {
-        const swapIndex = Math.floor(random() * (index + 1));
-        const current = orderedProducts[index];
-        orderedProducts[index] = orderedProducts[swapIndex];
-        orderedProducts[swapIndex] = current;
+function _hashProductDay(key, daySerial) {
+    // Hash determinístico: resultado estable sin importar cuántos productos haya en el pool
+    let h = ((daySerial * 2654435761) >>> 0);
+    for (let i = 0; i < key.length; i++) {
+        h = (Math.imul(h ^ key.charCodeAt(i), 2246822519) >>> 0);
+        h = (Math.imul(h ^ (h >>> 13), 3266489917) >>> 0);
     }
-
-    if (cycleIndex > 0 && orderedProducts.length > 1) {
-        const previousOrder = buildRecommendedCycleOrder(products, cycleIndex - 1);
-        const previousLastSignature = getRecommendedProductSignature(previousOrder[previousOrder.length - 1]);
-        const currentFirstSignature = getRecommendedProductSignature(orderedProducts[0]);
-
-        if (previousLastSignature === currentFirstSignature) {
-            const current = orderedProducts[0];
-            orderedProducts[0] = orderedProducts[1];
-            orderedProducts[1] = current;
-        }
-    }
-
-    return orderedProducts;
+    return h >>> 0;
 }
 
 function getRecommendedProductOfDay(now = new Date()) {
-    const eligibleProducts = getEligibleRecommendedProducts();
-    if (eligibleProducts.length === 1) {
-        return eligibleProducts[0];
-    }
+    const pool = getEligibleRecommendedProducts();
+    if (!pool.length) return getRecommendedFallbackProduct();
 
     const { year, month, day } = getCurrentBogotaDateParts(now);
     const daySerial = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
-    const cycleLength = eligibleProducts.length;
-    const cycleIndex = Math.floor(daySerial / cycleLength);
-    const dayOffset = daySerial % cycleLength;
-    const cycleOrder = buildRecommendedCycleOrder(eligibleProducts, cycleIndex);
-    return cycleOrder[dayOffset];
+
+    // El producto con menor hash gana hoy — estable aunque cambien otros productos del catálogo
+    let selected = pool[0];
+    let minHash = _hashProductDay(`${pool[0].nombre}::${pool[0].categoria}`, daySerial);
+    for (let i = 1; i < pool.length; i++) {
+        const h = _hashProductDay(`${pool[i].nombre}::${pool[i].categoria}`, daySerial);
+        if (h < minHash) {
+            minHash = h;
+            selected = pool[i];
+        }
+    }
+    return selected;
 }
 
 function updatePromoModalContent() {
@@ -8028,9 +8020,14 @@ function updatePromoModalContent() {
     const title = document.getElementById('promoModalTitle');
     const text = document.getElementById('promoModalText');
     const orderButton = document.getElementById('promoOrderButton');
+    const agotadoOverlay = document.getElementById('promoAgotadoOverlay');
+    const badge = modal ? modal.querySelector('.promo-modal-badge') : null;
+
+    const isSoldOut = recommendedProduct.estado === 'paused';
 
     if (modal) {
         modal.setAttribute('aria-label', `${PROMO_DAY_NAME}: ${recommendedProduct.nombre}`);
+        modal.classList.toggle('is-sold-out', isSoldOut);
     }
 
     if (image) {
@@ -8046,22 +8043,40 @@ function updatePromoModalContent() {
         title.textContent = recommendedProduct.nombre;
     }
 
+    if (agotadoOverlay) {
+        agotadoOverlay.hidden = !isSoldOut;
+    }
+
+    if (badge) {
+        badge.style.display = isSoldOut ? 'none' : '';
+    }
+
     if (text) {
-        const basePrice = resolveCartUnitPrice(recommendedProduct.nombre, recommendedProduct.categoria, {
-            type: 'solo',
-            imagePath: recommendedProduct.image_url
-        });
-        const discountPrice = resolveCartUnitPrice(recommendedProduct.nombre, recommendedProduct.categoria, {
-            type: 'solo',
-            imagePath: recommendedProduct.image_url,
-            recommendedDiscount: true,
-            discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
-        });
-        text.textContent = `Hoy te recomendamos ${recommendedProduct.nombre} de la categoria ${recommendedProduct.categoria}. Tiene 20% de descuento y hoy te queda en ${formatCurrency(discountPrice)}.`;
+        if (isSoldOut) {
+            text.textContent = `${recommendedProduct.nombre} es nuestro recomendado de hoy pero ya está agotado. Mañana habrá uno nuevo.`;
+        } else {
+            const discountPrice = resolveCartUnitPrice(recommendedProduct.nombre, recommendedProduct.categoria, {
+                type: 'solo',
+                imagePath: recommendedProduct.image_url,
+                recommendedDiscount: true,
+                discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
+            });
+            text.textContent = `Hoy te recomendamos ${recommendedProduct.nombre} de la categoria ${recommendedProduct.categoria}. Tiene 20% de descuento y hoy te queda en ${formatCurrency(discountPrice)}.`;
+        }
     }
 
     if (orderButton) {
-        orderButton.textContent = `Pedir ${recommendedProduct.nombre} con 20% OFF`;
+        if (isSoldOut) {
+            orderButton.textContent = 'Agotado por hoy';
+            orderButton.disabled = true;
+            orderButton.style.opacity = '0.45';
+            orderButton.style.cursor = 'not-allowed';
+        } else {
+            orderButton.textContent = `Pedir ${recommendedProduct.nombre} con 20% OFF`;
+            orderButton.disabled = false;
+            orderButton.style.opacity = '';
+            orderButton.style.cursor = '';
+        }
     }
 }
 
@@ -8087,6 +8102,8 @@ function orderDailyRecommendation() {
     }
 
     const recommendedProduct = currentRecommendedProduct || getRecommendedProductOfDay();
+    if (recommendedProduct.estado === 'paused') return;
+
     trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${recommendedProduct.nombre}`);
     closePromoModal();
     addItemToCart(recommendedProduct.nombre, recommendedProduct.categoria, {
