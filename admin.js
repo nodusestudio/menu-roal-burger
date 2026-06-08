@@ -184,8 +184,11 @@ const adminSignOutBtn = document.getElementById('adminSignOutBtn');
 
 const categoryForm = document.getElementById('categoryForm');
 const categoryList = document.getElementById('categoryList');
+const categoryDetailPanel = document.getElementById('categoryDetailPanel');
 const openCreateCategoryBtn = document.getElementById('openCreateCategoryBtn');
 const openCreateProductBtn = document.getElementById('openCreateProductBtn');
+let _selectedCategoryId = null;
+let _editingProductId = null;
 const notice = document.getElementById('adminNotice');
 const totalClicksEl = document.getElementById('totalClicks');
 const topProductEl = document.getElementById('topProduct');
@@ -1322,6 +1325,9 @@ function normalizeProduct(raw) {
         estado: estado === 'paused' ? 'paused' : 'active',
         es_destacado: raw.es_destacado === true || raw.featured === true,
         image_url: raw.image_url || 'logo.png',
+        order: raw.order != null ? Number(raw.order) : undefined,
+        descripcion: raw.descripcion || '',
+        visible_pos: raw.visible_pos !== false,
         created_at: raw.created_at,
         updated_at: raw.updated_at
     };
@@ -1333,6 +1339,7 @@ function normalizeCategory(raw) {
         name: String(raw.name || raw.nombre || '').trim(),
         image_url: String(raw.image_url || '').trim(),
         active: raw.active !== false,
+        order: raw.order != null ? Number(raw.order) : undefined,
         created_at: raw.created_at || null,
         updated_at: raw.updated_at || null
     };
@@ -1523,7 +1530,12 @@ async function fetchCategories() {
     const snapshot = await firebaseDb.collection('categorias').get();
     categoriesState = snapshot.docs
         .map((doc) => normalizeCategory({ id: doc.id, ...doc.data() }))
-        .sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'));
+        .sort((a, b) => {
+            const oa = a.order ?? 9999;
+            const ob = b.order ?? 9999;
+            if (oa !== ob) return oa - ob;
+            return String(a.name || '').localeCompare(String(b.name || ''), 'es');
+        });
 }
 
 async function fetchProducts() {
@@ -1531,9 +1543,10 @@ async function fetchProducts() {
     productsState = snapshot.docs
         .map((doc) => normalizeProduct({ id: doc.id, ...doc.data() }))
         .sort((a, b) => {
-            const aTs = a.created_at && typeof a.created_at.toMillis === 'function' ? a.created_at.toMillis() : 0;
-            const bTs = b.created_at && typeof b.created_at.toMillis === 'function' ? b.created_at.toMillis() : 0;
-            return aTs - bTs;
+            const oa = a.order ?? 9999;
+            const ob = b.order ?? 9999;
+            if (oa !== ob) return oa - ob;
+            return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
         });
 }
 
@@ -2067,7 +2080,11 @@ function renderPosCategoriesPanel() {
     const select = document.getElementById('posCatSelect');
     if (!select) return;
 
-    const categories = [...new Set(PUBLIC_PRODUCT_CATALOG.map((p) => String(p.categoria || 'Sin categoria').trim()))].sort();
+    const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
+    const categoryOrder = {};
+    categoriesState.forEach((c, i) => { categoryOrder[c.name.trim()] = i; });
+    const categories = [...new Set(catalog.map((p) => String(p.categoria || 'Sin categoria').trim()))]
+        .sort((a, b) => (categoryOrder[a] ?? 999) - (categoryOrder[b] ?? 999));
 
     if (select.dataset.listenerAttached !== 'true') {
         select.addEventListener('change', () => {
@@ -2078,7 +2095,7 @@ function renderPosCategoriesPanel() {
     }
 
     select.innerHTML = categories.map((cat) => {
-        const count = PUBLIC_PRODUCT_CATALOG.filter(
+        const count = catalog.filter(
             (p) => String(p.categoria || '').trim() === cat && String(p.estado || 'active').trim() === 'active'
         ).length;
         return `<option value="${escapeHtml(cat)}">${escapeHtml(cat)} (${count})</option>`;
@@ -2103,9 +2120,15 @@ function renderPosProductsPanel() {
         return;
     }
 
-    const categoryProducts = PUBLIC_PRODUCT_CATALOG
+    const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
+    const categoryProducts = catalog
         .filter((p) => String(p.categoria || '').trim() === posSelectedCategory && String(p.estado || 'active').trim() === 'active')
-        .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+        .sort((a, b) => {
+            const oa = a.order ?? 9999;
+            const ob = b.order ?? 9999;
+            if (oa !== ob) return oa - ob;
+            return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
+        });
 
     grid.innerHTML = '';
 
@@ -3493,51 +3516,492 @@ async function handleCategoryProductAction(action, productId, categoryId) {
     }
 }
 
-function createCategoryRow(category) {
-    const wrapper = document.createElement('div');
-    const row = document.createElement('div');
-    row.className = 'list-item category-list-item';
-
-    const stateClass = category.active ? 'active' : 'inactive';
-    const stateText = category.active ? 'Activa' : 'Inactiva';
-    const toggleText = category.active ? 'Desactivar' : 'Activar';
-    const productsCount = productsState.filter((product) => product.categoria === category.name).length;
-    const categoryThumb = category.image_url || 'logo.png';
-
-    row.innerHTML = `
-        <button type="button" class="category-trigger" data-category-id="${category.id}" data-action="view-category">
-            <div class="category-trigger-main">
-                <img class="category-trigger-thumb" src="${categoryThumb}" alt="${category.name}">
-                <div class="category-trigger-copy">
-                    <span class="category-trigger-name">${category.name}</span>
-                    <span class="category-trigger-subtitle">Toca para ver y controlar los productos de esta categoria.</span>
-                    <div class="category-meta-row">
-                        <span class="state-pill ${stateClass}">${stateText}</span>
-                    </div>
-                </div>
-            </div>
-            <div class="category-trigger-meta">
-                <div class="category-trigger-count">
-                    <strong>${productsCount}</strong>
-                    <span>Productos</span>
-                </div>
-            </div>
-        </button>
-        <div class="category-actions">
-            <button class="mini-btn" data-category-id="${category.id}" data-action="toggle-category">${toggleText}</button>
-            <button class="mini-btn remove" data-category-id="${category.id}" data-action="delete-category">Eliminar</button>
+function createCategoryMasterItem(category) {
+    const count = productsState.filter((p) => p.categoria === category.name).length;
+    const isActive = category.active !== false;
+    const div = document.createElement('div');
+    div.className = `upgrades-master-item${_selectedCategoryId === category.id ? ' selected' : ''}`;
+    div.dataset.categoryId = category.id;
+    div.dataset.action = 'select-category';
+    div.innerHTML = `
+        <span class="upgrades-master-item-name">${category.name}</span>
+        <div class="upgrades-master-badges">
+            <span class="upgrades-badge${isActive ? '' : ' off'}" title="${count} productos">${count}</span>
         </div>
     `;
-
-    wrapper.appendChild(row);
-    return wrapper;
+    return div;
 }
 
 function renderCategories() {
+    if (!categoryList) return;
     categoryList.innerHTML = '';
+
+    // Item especial CARRUSEL fijo al tope (no es categoría de Firestore)
+    const carouselCount = productsState.filter((p) => p.es_destacado).length;
+    const carouselItem = document.createElement('div');
+    carouselItem.className = `upgrades-master-item carrusel-special${_selectedCategoryId === '__carrusel__' ? ' selected' : ''}`;
+    carouselItem.dataset.categoryId = '__carrusel__';
+    carouselItem.dataset.action = 'select-category';
+    carouselItem.innerHTML = `
+        <span class="upgrades-master-item-name" style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:1rem;">🎠</span> Carrusel
+        </span>
+        <div class="upgrades-master-badges">
+            <span class="upgrades-badge" title="${carouselCount} productos en carrusel" style="background:rgba(255,122,26,0.25);color:#ff9a50;">${carouselCount}</span>
+        </div>
+    `;
+    categoryList.appendChild(carouselItem);
+
     categoriesState.forEach((category) => {
-        categoryList.appendChild(createCategoryRow(category));
+        categoryList.appendChild(createCategoryMasterItem(category));
     });
+
+    if (_selectedCategoryId === '__carrusel__') {
+        _renderCarouselPanel();
+    } else if (_selectedCategoryId) {
+        const still = categoriesState.find((c) => c.id === _selectedCategoryId);
+        if (still) {
+            _renderCategoryDetailPanel(_selectedCategoryId);
+        } else {
+            _selectedCategoryId = null;
+            if (categoryDetailPanel) categoryDetailPanel.innerHTML = '<div class="upgrades-detail-empty">← Selecciona una categoría</div>';
+        }
+    }
+
+    // Auto-initialize order in Firestore if any category lacks it
+    const needsOrder = categoriesState.some((c) => c.order == null);
+    if (needsOrder) {
+        const batch = firebaseDb.batch();
+        categoriesState.forEach((cat, i) => {
+            batch.update(firebaseDb.collection('categorias').doc(cat.id), { order: i });
+        });
+        batch.commit().catch(() => {});
+    }
+
+    if (typeof Sortable !== 'undefined') {
+        Sortable.create(categoryList, {
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            draggable: '.upgrades-master-item:not(.carrusel-special)',
+            onEnd: async (evt) => {
+                // Read actual DOM order of Firestore categories (excluding CARRUSEL)
+                const allItems = Array.from(categoryList.querySelectorAll('.upgrades-master-item:not(.carrusel-special)'));
+                const ordered = allItems.map((el) => categoriesState.find((c) => c.id === el.dataset.categoryId)).filter(Boolean);
+                if (!ordered.length) return;
+                try {
+                    const batch = firebaseDb.batch();
+                    ordered.forEach((cat, i) => {
+                        batch.update(firebaseDb.collection('categorias').doc(cat.id), { order: i });
+                    });
+                    await batch.commit();
+                    await reloadDataAndRender();
+                } catch (err) {
+                    showNotice(`Error al reordenar: ${err.message || 'Error inesperado.'}`, 'error');
+                }
+            }
+        });
+    }
+}
+
+function _renderCarouselPanel() {
+    if (!categoryDetailPanel) return;
+
+    // Primera vez: si nada está marcado, activar automáticamente los que están en el carrusel hardcodeado
+    const anyMarked = productsState.some((p) => p.es_destacado === true);
+    if (!anyMarked) {
+        const defaultNames = new Set([
+            'combo burger normal', 'combo burger papuda', 'combo burger super', 'combo perro normal',
+            'de la casa', 'emparejados', 'familiar 3', 'familiar 4'
+        ]);
+        const toMark = productsState.filter((p) => defaultNames.has(String(p.nombre || '').trim().toLowerCase()));
+        if (toMark.length) {
+            const batch = firebaseDb.batch();
+            toMark.forEach((p) => batch.update(firebaseDb.collection('productos').doc(p.id), { es_destacado: true, updated_at: firestoreNow() }));
+            batch.commit()
+                .then(() => reloadDataAndRender())
+                .catch((err) => showNotice(`Error activando carrusel: ${err.message || 'Error inesperado.'}`, 'error'));
+            categoryDetailPanel.innerHTML = '<div class="upgrades-detail-empty" style="padding:24px;text-align:center;font-size:0.85rem;color:var(--admin-muted);">Activando carrusel inicial…</div>';
+            return;
+        }
+    }
+
+    const carouselCount = productsState.filter((p) => p.es_destacado).length;
+
+    // Agrupar por categoría respetando el orden de categoriesState
+    const catOrder = categoriesState.map((c) => c.name);
+    const grouped = new Map();
+    productsState
+        .slice()
+        .sort((a, b) => {
+            const ia = catOrder.indexOf(a.categoria);
+            const ib = catOrder.indexOf(b.categoria);
+            const catCmp = (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+            if (catCmp !== 0) return catCmp;
+            const oa = a.order ?? 9999, ob = b.order ?? 9999;
+            if (oa !== ob) return oa - ob;
+            return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
+        })
+        .forEach((p) => {
+            const cat = p.categoria || 'Sin categoría';
+            if (!grouped.has(cat)) grouped.set(cat, []);
+            grouped.get(cat).push(p);
+        });
+
+    const groupEntries = Array.from(grouped.entries());
+
+    categoryDetailPanel.innerHTML = `
+        <div class="upgrades-detail-topbar">
+            <span class="upgrades-detail-topbar-title" style="display:flex;align-items:center;gap:8px;"><span>🎠</span> Carrusel del menú digital</span>
+            <span style="background:rgba(255,122,26,0.25);color:#ff9a50;padding:4px 12px;border-radius:8px;font-size:0.75rem;font-weight:600;flex-shrink:0;">${carouselCount} activo${carouselCount !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="upgrades-detail-body" style="padding-top:10px;">
+            <p style="font-size:0.78rem;color:var(--admin-muted);margin:0 0 12px;line-height:1.5;">Activa los productos que aparecerán en el carrusel del menú digital. Los cambios se ven en tiempo real.</p>
+            ${groupEntries.length ? `<div style="display:flex;flex-direction:column;gap:7px;">
+                ${groupEntries.map(([cat, prods], idx) => {
+                    const catActive = prods.filter((p) => p.es_destacado).length;
+                    const expanded = catActive > 0;
+                    return `<div style="border:1.5px solid rgba(${catActive > 0 ? '255,122,26,0.35' : '255,255,255,0.08'});border-radius:12px;overflow:hidden;">
+                        <button type="button" data-action="toggle-group" data-gidx="${idx}" style="width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(${catActive > 0 ? '255,122,26,0.07' : '0,0,0,0.18'});border:none;cursor:pointer;color:#eef4ff;text-align:left;">
+                            <span style="flex:1;font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cat}</span>
+                            ${catActive
+                                ? `<span style="background:rgba(255,122,26,0.22);color:#ff9a50;padding:2px 8px;border-radius:6px;font-size:0.68rem;flex-shrink:0;">${catActive} en carrusel</span>`
+                                : `<span style="font-size:0.68rem;color:var(--admin-muted);flex-shrink:0;">${prods.length} prod.</span>`}
+                            <span data-arrow="${idx}" style="font-size:0.65rem;color:var(--admin-muted);flex-shrink:0;display:inline-block;transform:${expanded ? 'rotate(0deg)' : 'rotate(-90deg)'};">▼</span>
+                        </button>
+                        <div data-group="${idx}" style="display:${expanded ? 'flex' : 'none'};flex-direction:column;gap:5px;padding:6px 8px 8px;">
+                            ${prods.map((p) => {
+                                const img = p.image_url || '';
+                                const inCarousel = p.es_destacado === true;
+                                const isPaused = p.estado === 'paused';
+                                return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;border:1.5px solid rgba(${inCarousel ? '255,122,26,0.4' : '255,255,255,0.06'});background:rgba(${inCarousel ? '255,122,26,0.06' : '0,0,0,0.2'});${isPaused ? 'opacity:0.55;' : ''}">
+                                    <div style="width:42px;height:42px;border-radius:7px;overflow:hidden;flex-shrink:0;background:rgba(0,0,0,0.4);">
+                                        ${img ? `<img src="${img}" alt="${p.nombre}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1rem;opacity:0.2;">🍔</div>`}
+                                    </div>
+                                    <div style="flex:1;min-width:0;">
+                                        <p style="margin:0;font-size:0.78rem;color:#eef4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.nombre}</p>
+                                        ${isPaused ? `<span style="font-size:0.62rem;color:#ff6b6b;">Pausado · no aparece en carrusel</span>` : ''}
+                                    </div>
+                                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0;">
+                                        <span style="font-size:0.68rem;color:${inCarousel ? '#ff9a50' : 'var(--admin-muted)'};">${inCarousel ? 'Activo' : 'Activar'}</span>
+                                        <input type="checkbox" data-action="toggle-carousel" data-product-id="${p.id}" ${inCarousel ? 'checked' : ''} style="width:16px;height:16px;accent-color:#ff7a1a;cursor:pointer;">
+                                    </label>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>` : '<p style="font-size:0.8rem;color:var(--admin-muted);">No hay productos en Firestore aún.</p>'}
+        </div>
+    `;
+
+    // Colapsar / expandir grupo
+    categoryDetailPanel.querySelectorAll('[data-action="toggle-group"]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const idx = btn.dataset.gidx;
+            const body = categoryDetailPanel.querySelector(`[data-group="${idx}"]`);
+            const arrow = categoryDetailPanel.querySelector(`[data-arrow="${idx}"]`);
+            if (!body) return;
+            const opening = body.style.display === 'none';
+            body.style.display = opening ? 'flex' : 'none';
+            if (arrow) arrow.style.transform = opening ? 'rotate(0deg)' : 'rotate(-90deg)';
+        });
+    });
+
+    // Toggle en carrusel
+    categoryDetailPanel.querySelectorAll('[data-action="toggle-carousel"]').forEach((checkbox) => {
+        checkbox.addEventListener('change', async () => {
+            const pid = checkbox.dataset.productId;
+            const newValue = checkbox.checked;
+            try {
+                await firebaseDb.collection('productos').doc(pid).update({ es_destacado: newValue, updated_at: firestoreNow() });
+                await reloadDataAndRender();
+            } catch (err) {
+                showNotice(`Error al actualizar carrusel: ${err.message || 'Error inesperado.'}`, 'error');
+                checkbox.checked = !newValue;
+            }
+        });
+    });
+}
+
+function _renderCategoryDetailPanel(categoryId) {
+    if (!categoryDetailPanel) return;
+    const category = categoriesState.find((c) => c.id === categoryId);
+    if (!category) {
+        categoryDetailPanel.innerHTML = '<div class="upgrades-detail-empty">← Selecciona una categoría</div>';
+        return;
+    }
+    const products = productsState
+        .filter((p) => p.categoria === category.name)
+        .sort((a, b) => {
+            const oa = a.order ?? 9999;
+            const ob = b.order ?? 9999;
+            if (oa !== ob) return oa - ob;
+            return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
+        });
+
+    // Auto-initialize order in Firestore if any product in this category lacks it
+    if (products.some((p) => p.order == null)) {
+        const batch = firebaseDb.batch();
+        products.forEach((p, i) => {
+            batch.update(firebaseDb.collection('productos').doc(p.id), { order: i });
+        });
+        batch.commit().catch(() => {});
+    }
+    const isActive = category.active !== false;
+    const imageUrl = category.image_url || '';
+
+    categoryDetailPanel.innerHTML = `
+        <div class="upgrades-detail-topbar">
+            <span class="upgrades-detail-topbar-title">${category.name}</span>
+            <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+                <label class="upgrades-toggle-label">
+                    <input type="checkbox" id="catDetailActive" ${isActive ? 'checked' : ''}>
+                    Activa
+                </label>
+                <button type="button" class="mini-btn remove" id="catDetailDeleteBtn">Eliminar</button>
+            </div>
+        </div>
+        <div class="upgrades-detail-body">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+                <input type="text" class="admin-input" id="catDetailName" value="${category.name}" placeholder="Nombre categoría" style="flex:1;min-width:0;">
+                <button type="button" class="section-action-btn primary" id="catDetailAddProductBtn" style="flex-shrink:0;white-space:nowrap;">+ Agregar</button>
+            </div>
+            <div class="upgrades-section" style="margin-top:10px;">
+                <h4 style="margin:0 0 8px;font-size:0.78rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;">Productos (${products.length})</h4>
+                ${products.length
+                    ? `<div data-drag-grid style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;">
+                        ${products.map((p) => {
+                            const img = p.image_url || '';
+                            const isPaused = p.estado === 'paused';
+                            const isEditing = p.id === _editingProductId;
+                            return `<div data-drag-product-id="${p.id}" style="border-radius:10px;overflow:hidden;border:1.5px solid rgba(${isEditing ? '255,122,26,0.7' : isPaused ? '255,255,255,0.06' : '255,255,255,0.12'});background:rgba(0,0,0,0.3);opacity:${isPaused && !isEditing ? '0.55' : '1'};position:relative;">
+                                <div style="width:100%;aspect-ratio:1;background:rgba(0,0,0,0.4);overflow:hidden;">
+                                    ${img ? `<img src="${img}" alt="${p.nombre}" style="width:100%;height:100%;object-fit:cover;pointer-events:none;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.4rem;opacity:0.2;pointer-events:none;">🍔</div>`}
+                                </div>
+                                <button type="button" data-action="edit-product-inline" data-product-id="${p.id}" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:6px;border:none;background:rgba(0,0,0,0.65);color:#fff;font-size:0.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;" title="Editar">✏️</button>
+                                <button type="button" data-action="delete-product-inline" data-product-id="${p.id}" data-product-name="${p.nombre}" style="position:absolute;top:4px;left:4px;width:22px;height:22px;border-radius:6px;border:none;background:rgba(180,30,30,0.75);color:#fff;font-size:0.75rem;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;" title="Eliminar">✕</button>
+                                <div style="padding:4px 5px;">
+                                    <p style="margin:0;font-size:0.65rem;color:#eef4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${p.nombre}">${p.nombre}</p>
+                                    <span style="font-size:0.6rem;color:${isPaused ? '#ff6b6b' : '#4ade80'};">${isPaused ? 'Pausado' : 'Activo'}</span>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    ${_editingProductId && products.find((p) => p.id === _editingProductId) ? (() => {
+                        const ep = products.find((p) => p.id === _editingProductId);
+                        const eImg = ep.image_url || '';
+                        return `<div id="cpefForm" style="margin-top:12px;background:rgba(255,122,26,0.07);border:1.5px solid rgba(255,122,26,0.25);border-radius:12px;padding:14px;">
+                            <div style="display:flex;gap:12px;margin-bottom:12px;align-items:flex-start;">
+                                <div id="cpefImgPreview" style="width:70px;height:70px;border-radius:10px;overflow:hidden;flex-shrink:0;border:1.5px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.4);">
+                                    ${eImg ? `<img id="cpefImgTag" src="${eImg}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;opacity:0.25;">📷</div>`}
+                                </div>
+                                <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);font-size:0.75rem;color:#eef4ff;cursor:pointer;align-self:center;">
+                                    📷 Cargar foto
+                                    <input type="file" id="cpefFileInput" accept="image/*" style="display:none;">
+                                </label>
+                            </div>
+                            <div style="display:grid;gap:8px;">
+                                <div>
+                                    <label style="font-size:0.7rem;color:var(--admin-muted);display:block;margin-bottom:3px;">Nombre *</label>
+                                    <input type="text" id="cpefName" class="admin-input" value="${ep.nombre}" required style="width:100%;box-sizing:border-box;">
+                                </div>
+                                <div>
+                                    <label style="font-size:0.7rem;color:var(--admin-muted);display:block;margin-bottom:3px;">Precio</label>
+                                    <input type="number" id="cpefPrice" class="admin-input" value="${ep.precio || ''}" placeholder="0" min="0" style="width:100%;box-sizing:border-box;">
+                                </div>
+                                <div>
+                                    <label style="font-size:0.7rem;color:var(--admin-muted);display:block;margin-bottom:3px;">Descripción</label>
+                                    <textarea id="cpefDesc" class="admin-input" rows="2" placeholder="Descripción opcional..." style="width:100%;box-sizing:border-box;resize:vertical;">${ep.descripcion || ''}</textarea>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;">
+                                <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;color:#eef4ff;cursor:pointer;">
+                                    <input type="checkbox" id="cpefActiveMenu" ${ep.estado !== 'paused' ? 'checked' : ''}> Activo en menú
+                                </label>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;color:#eef4ff;cursor:pointer;">
+                                    <input type="checkbox" id="cpefActivePos" ${ep.visible_pos !== false ? 'checked' : ''}> Activo en POS
+                                </label>
+                            </div>
+                            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+                                <button type="button" class="section-save-btn" id="cpefSaveBtn">Guardar</button>
+                                <button type="button" class="ghost-button" id="cpefCancelBtn">Cancelar</button>
+                            </div>
+                        </div>`;
+                    })() : ''}`
+                    : '<p style="font-size:0.8rem;color:var(--admin-muted);margin:4px 0;">Sin productos aún</p>'}
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+                <button type="button" class="section-save-btn" id="catDetailSaveBtn">Guardar</button>
+            </div>
+        </div>
+    `;
+
+    categoryDetailPanel.querySelector('#catDetailSaveBtn')?.addEventListener('click', () => _saveCategoryFromDetail(categoryId));
+    categoryDetailPanel.querySelector('#catDetailAddProductBtn')?.addEventListener('click', () => openProductCreateModal(category.name));
+    categoryDetailPanel.querySelector('#catDetailDeleteBtn')?.addEventListener('click', async () => {
+        const related = productsState.filter((p) => p.categoria === category.name);
+        const msg = related.length
+            ? `¿Eliminar "${category.name}" y sus ${related.length} producto(s)? No se puede deshacer.`
+            : `¿Eliminar "${category.name}"? No se puede deshacer.`;
+        if (!window.confirm(msg)) return;
+        try {
+            const batch = firebaseDb.batch();
+            batch.delete(firebaseDb.collection('categorias').doc(categoryId));
+            related.forEach((p) => batch.delete(firebaseDb.collection('productos').doc(p.id)));
+            await batch.commit();
+            _selectedCategoryId = null;
+            categoryDetailPanel.innerHTML = '<div class="upgrades-detail-empty">← Selecciona una categoría</div>';
+            await reloadDataAndRender();
+            showNotice(related.length ? `Categoría eliminada con ${related.length} producto(s).` : 'Categoría eliminada.', 'ok');
+        } catch (e) {
+            showNotice(`Error al eliminar: ${e.message || 'Error inesperado.'}`, 'error');
+        }
+    });
+
+    const dragGrid = categoryDetailPanel.querySelector('[data-drag-grid]');
+    if (dragGrid && typeof Sortable !== 'undefined') {
+        Sortable.create(dragGrid, {
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            chosenClass: 'sortable-chosen',
+            dragClass: 'sortable-drag',
+            onEnd: async (evt) => {
+                const { oldIndex, newIndex } = evt;
+                if (oldIndex === newIndex) return;
+                const ordered = products.slice();
+                const [moved] = ordered.splice(oldIndex, 1);
+                ordered.splice(newIndex, 0, moved);
+                try {
+                    const batch = firebaseDb.batch();
+                    ordered.forEach((p, i) => {
+                        batch.update(firebaseDb.collection('productos').doc(p.id), { order: i });
+                    });
+                    await batch.commit();
+                    await reloadDataAndRender();
+                } catch (err) {
+                    showNotice(`Error al reordenar: ${err.message || 'Error inesperado.'}`, 'error');
+                }
+            }
+        });
+    }
+
+    categoryDetailPanel.querySelectorAll('[data-action="edit-product-inline"]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const pid = btn.dataset.productId;
+            _editingProductId = _editingProductId === pid ? null : pid;
+            _renderCategoryDetailPanel(categoryId);
+        });
+    });
+
+    categoryDetailPanel.querySelectorAll('[data-action="delete-product-inline"]').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const pid = btn.dataset.productId;
+            const pname = btn.dataset.productName || 'este producto';
+            if (!window.confirm(`¿Eliminar "${pname}"? No se puede deshacer.`)) return;
+            try {
+                await firebaseDb.collection('productos').doc(pid).delete();
+                if (_editingProductId === pid) _editingProductId = null;
+                await reloadDataAndRender();
+                showNotice('Producto eliminado.', 'ok');
+            } catch (e2) {
+                showNotice(`Error al eliminar: ${e2.message || 'Error inesperado.'}`, 'error');
+            }
+        });
+    });
+
+    const cpefFileInput = categoryDetailPanel.querySelector('#cpefFileInput');
+    if (cpefFileInput) {
+        cpefFileInput.addEventListener('change', () => {
+            const file = cpefFileInput.files && cpefFileInput.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                const preview = categoryDetailPanel.querySelector('#cpefImgPreview');
+                if (preview) preview.innerHTML = `<img src="${reader.result}" style="width:100%;height:100%;object-fit:cover;">`;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    categoryDetailPanel.querySelector('#cpefSaveBtn')?.addEventListener('click', () => {
+        if (_editingProductId) _saveProductInline(_editingProductId, categoryId);
+    });
+
+    categoryDetailPanel.querySelector('#cpefCancelBtn')?.addEventListener('click', () => {
+        _editingProductId = null;
+        _renderCategoryDetailPanel(categoryId);
+    });
+}
+
+async function _saveCategoryFromDetail(categoryId) {
+    const nameInput = document.getElementById('catDetailName');
+    const activeInput = document.getElementById('catDetailActive');
+    const newName = nameInput ? nameInput.value.trim() : '';
+    if (!newName) { showNotice('El nombre no puede estar vacío.', 'error'); return; }
+    try {
+        const existing = categoriesState.find((c) => c.id === categoryId);
+        await firebaseDb.collection('categorias').doc(categoryId).update({
+            name: newName,
+            image_url: existing ? (existing.image_url || '') : '',
+            active: activeInput ? activeInput.checked : true,
+            updated_at: firestoreNow()
+        });
+        _selectedCategoryId = categoryId;
+        await reloadDataAndRender();
+        showNotice('Categoría guardada.', 'ok');
+    } catch (e) {
+        showNotice(`Error al guardar: ${e.message || 'Error inesperado.'}`, 'error');
+    }
+}
+
+async function _saveProductInline(productId, categoryId) {
+    const nameInput = document.getElementById('cpefName');
+    const priceInput = document.getElementById('cpefPrice');
+    const descInput = document.getElementById('cpefDesc');
+    const activeMenuInput = document.getElementById('cpefActiveMenu');
+    const activePosInput = document.getElementById('cpefActivePos');
+    const fileInput = document.getElementById('cpefFileInput');
+
+    const name = nameInput ? nameInput.value.trim() : '';
+    if (!name) { showNotice('El nombre es obligatorio.', 'error'); return; }
+
+    const saveBtn = document.getElementById('cpefSaveBtn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando…'; }
+
+    try {
+        const product = productsState.find((p) => p.id === productId);
+        let imageUrl = product ? (product.image_url || '') : '';
+
+        const file = fileInput && fileInput.files && fileInput.files[0];
+        if (file) {
+            imageUrl = await resolveProductImageUpload(file, name);
+        }
+
+        const estado = activeMenuInput && !activeMenuInput.checked ? 'paused' : 'active';
+        const visiblePos = activePosInput ? activePosInput.checked : true;
+        const precio = priceInput ? Number(priceInput.value) || 0 : 0;
+        const descripcion = descInput ? descInput.value.trim() : '';
+
+        await firebaseDb.collection('productos').doc(productId).update({
+            nombre: name,
+            precio,
+            descripcion,
+            estado,
+            visible_pos: visiblePos,
+            image_url: imageUrl,
+            updated_at: firestoreNow()
+        });
+
+        _editingProductId = null;
+        await reloadDataAndRender();
+        showNotice('Producto guardado.', 'ok');
+    } catch (e) {
+        showNotice(`Error al guardar: ${e.message || 'Error inesperado.'}`, 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+    }
 }
 
 function createFeaturedRow(product) {
@@ -6204,22 +6668,24 @@ async function reloadDataAndRender() {
     }
 }
 
-categoryForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    hideNotice();
+if (categoryForm) {
+    categoryForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice();
 
-    const formData = new FormData(categoryForm);
-    const name = String(formData.get('categoryName') || '').trim();
+        const formData = new FormData(categoryForm);
+        const name = String(formData.get('categoryName') || '').trim();
 
-    try {
-        const created = await createCategoryByName(name);
-        if (created) {
-            categoryForm.reset();
+        try {
+            const created = await createCategoryByName(name);
+            if (created) {
+                categoryForm.reset();
+            }
+        } catch (error) {
+            showNotice(`No se pudo crear la categoria: ${error.message || 'Error inesperado.'}`, 'error');
         }
-    } catch (error) {
-        showNotice(`No se pudo crear la categoria: ${error.message || 'Error inesperado.'}`, 'error');
-    }
-});
+    });
+}
 
 categoryList.addEventListener('click', async (event) => {
     const target = event.target;
@@ -6227,19 +6693,33 @@ categoryList.addEventListener('click', async (event) => {
         return;
     }
 
-    const actionButton = target.closest('button[data-action]');
-    if (!(actionButton instanceof HTMLButtonElement)) {
+    const actionEl = target.closest('[data-action]');
+    if (!actionEl) {
         return;
     }
 
-    const action = actionButton.dataset.action;
-    const categoryId = actionButton.dataset.categoryId;
+    const action = actionEl.dataset.action;
+    const categoryId = actionEl.dataset.categoryId;
 
     if (!action) {
         return;
     }
 
-    if (categoryId && !actionButton.dataset.productId) {
+    if (action === 'select-category' && categoryId) {
+        _selectedCategoryId = categoryId;
+        categoryList.querySelectorAll('.upgrades-master-item').forEach((el) => el.classList.remove('selected'));
+        actionEl.classList.add('selected');
+        if (categoryId === '__carrusel__') {
+            _renderCarouselPanel();
+        } else {
+            _renderCategoryDetailPanel(categoryId);
+        }
+        return;
+    }
+
+    const actionButton = actionEl instanceof HTMLButtonElement ? actionEl : actionEl.querySelector('button[data-action]');
+
+    if (categoryId && !actionEl.dataset.productId) {
         if (action === 'view-category') {
             openCategoryProductsModal(categoryId);
             return;

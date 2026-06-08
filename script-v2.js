@@ -6476,7 +6476,8 @@ function renderDynamicCategorySections() {
             nombre,
             precio,
             image_url: resolveProductImage(product),
-            estado: product.estado || (product.paused ? 'paused' : 'active')
+            estado: product.estado || (product.paused ? 'paused' : 'active'),
+            order: product.order != null ? Number(product.order) : undefined
         });
     });
 
@@ -6493,7 +6494,14 @@ function renderDynamicCategorySections() {
             title.textContent = category.name;
             section.appendChild(title);
 
-            const visibleProducts = data.products.filter((product) => product.estado !== 'paused');
+            const visibleProducts = data.products
+                .filter((product) => product.estado !== 'paused')
+                .sort((a, b) => {
+                    const oa = a.order ?? 9999;
+                    const ob = b.order ?? 9999;
+                    if (oa !== ob) return oa - ob;
+                    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
+                });
 
             const categoriaSeleccionada = category.name;
             const catNormalizada = typeof categoriaSeleccionada === 'string' ? categoriaSeleccionada.trim().toUpperCase() : '';
@@ -6710,6 +6718,20 @@ function renderDynamicCategorySections() {
 }
 
 function renderFeaturedCards(carousel, items) {
+        // Si no se pasan items, usar productos con es_destacado:true de Firestore
+        let effectiveItems = items;
+        if (!Array.isArray(effectiveItems) || !effectiveItems.length) {
+            const firestoreFeatured = (Array.isArray(latestProducts) ? latestProducts : [])
+                .filter((p) => p.es_destacado === true && p.estado !== 'paused')
+                .sort((a, b) => {
+                    const oa = a.order ?? 9999;
+                    const ob = b.order ?? 9999;
+                    if (oa !== ob) return oa - ob;
+                    return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
+                });
+            if (firestoreFeatured.length) effectiveItems = firestoreFeatured;
+        }
+
         const featuredFallbackItems = [
             {
                 name: 'Combo Burger Normal',
@@ -6770,7 +6792,7 @@ function renderFeaturedCards(carousel, items) {
             'combofamiliar3.png': './combosmixtos/familiar3.png',
             'combofamiliar4.png': './combosmixtos/familiar4.png'
         };
-        const rawItems = Array.isArray(items) && items.length ? items : featuredFallbackItems;
+        const rawItems = Array.isArray(effectiveItems) && effectiveItems.length ? effectiveItems : featuredFallbackItems;
         const resolvedItems = rawItems.map((item) => {
             const safeName = String(item?.nombre || item?.name || item?.title || '').trim() || 'Producto';
             const displaySrc = normalizeImageAssetPath(item?.src || item?.image_url || '');
@@ -7172,6 +7194,13 @@ function getExplorerCategories() {
         'combos burger', 'combo burger', 'combos de burger'
     ]);
 
+    // Build order map from Firestore category data
+    const firestoreOrderMap = new Map();
+    sourceCategories.forEach((item) => {
+        const key = normalizeCategoryKey(String(item?.name || '').trim());
+        if (key && item.order != null) firestoreOrderMap.set(key, Number(item.order));
+    });
+
     sourceCategories.forEach((item) => {
         const name = item?.name;
         const cleanName = String(name || '').trim();
@@ -7180,7 +7209,7 @@ function getExplorerCategories() {
             return;
         }
         keys.add(key);
-        uniqueMap.set(key, { name: cleanName, key });
+        uniqueMap.set(key, { name: cleanName, key, order: item.order });
     });
 
     latestProducts.forEach((product) => {
@@ -7191,7 +7220,7 @@ function getExplorerCategories() {
             return;
         }
         keys.add(key);
-        uniqueMap.set(key, { name: cleanName, key });
+        uniqueMap.set(key, { name: cleanName, key, order: firestoreOrderMap.get(key) });
     });
 
     FORCED_CATEGORY_BUTTONS.forEach((item) => {
@@ -7205,19 +7234,41 @@ function getExplorerCategories() {
             return;
         }
 
-        uniqueMap.set(key, { key, name });
+        uniqueMap.set(key, { key, name, order: firestoreOrderMap.get(key) });
+    });
+
+    // Merge entries that share matchKeys (e.g. 'perros calientes' + 'perros y salchipapas' → one entry)
+    // Also attach matchKeys so getCategoryProducts can find products by any alias
+    PINNED_CATEGORY_BUTTONS.forEach((pinned) => {
+        const canonicalKey = normalizeCategoryKey(pinned.key);
+        const allMatchKeys = (pinned.matchKeys || [pinned.key]).map((mk) => normalizeCategoryKey(mk));
+        let canonicalEntry = uniqueMap.get(canonicalKey);
+        allMatchKeys.forEach((mk) => {
+            if (mk === canonicalKey) return;
+            const dup = uniqueMap.get(mk);
+            if (!dup) return;
+            if (!canonicalEntry) {
+                canonicalEntry = { key: canonicalKey, name: pinned.name || dup.name, order: dup.order };
+                uniqueMap.set(canonicalKey, canonicalEntry);
+            } else if (dup.order != null && (canonicalEntry.order == null || dup.order < canonicalEntry.order)) {
+                canonicalEntry.order = dup.order;
+            }
+            uniqueMap.delete(mk);
+        });
+        if (canonicalEntry) canonicalEntry.matchKeys = allMatchKeys;
     });
 
     const priorityIndex = new Map(CATEGORY_BUTTON_PRIORITY.map((item, index) => [item, index]));
 
     return Array.from(uniqueMap.values()).sort((a, b) => {
+        const aOrder = a.order ?? null;
+        const bOrder = b.order ?? null;
+        if (aOrder !== null && bOrder !== null) return aOrder - bOrder;
+        if (aOrder !== null) return -1;
+        if (bOrder !== null) return 1;
         const aPriority = priorityIndex.has(a.key) ? priorityIndex.get(a.key) : 999;
         const bPriority = priorityIndex.has(b.key) ? priorityIndex.get(b.key) : 999;
-
-        if (aPriority !== bPriority) {
-            return aPriority - bPriority;
-        }
-
+        if (aPriority !== bPriority) return aPriority - bPriority;
         return a.name.localeCompare(b.name, 'es');
     });
 }
@@ -7225,62 +7276,65 @@ function getExplorerCategories() {
 function ensureForcedExplorerCategories(categories) {
     const byKey = new Map(categories.map((item) => [normalizeCategoryKey(item.key), item]));
 
+    const COMBO_EXCLUDE = new Set([
+        'combos de temporada', 'combos de temporadas', 'combos temporada',
+        'combos familiares', 'combo familiar',
+        'combos perros', 'combos de perros', 'combos perros y express', 'combos de perros y express', 'combos express',
+        'combos burger', 'combo burger', 'combos de burger'
+    ]);
 
-    // Excluir combos de temporada, familiares, perros, burger de los forzados
     FORCED_CATEGORY_BUTTONS.forEach((item) => {
         const key = normalizeCategoryKey(item.key);
         const name = String(item.name || '').trim();
-        if (!key || !name) {
-            return;
-        }
-        if (!isCategoryAllowed(name)) {
-            return;
-        }
-        if ([
-            'combos de temporada', 'combos de temporadas', 'combos temporada',
-            'combos familiares', 'combo familiar',
-            'combos perros', 'combos de perros', 'combos perros y express', 'combos de perros y express', 'combos express',
-            'combos burger', 'combo burger', 'combos de burger'
-        ].includes(key)) {
-            return;
-        }
-        byKey.set(key, { key, name });
+        if (!key || !name || !isCategoryAllowed(name) || COMBO_EXCLUDE.has(key)) return;
+        if (!byKey.has(key)) byKey.set(key, { key, name });
     });
 
-    const priorityIndex = new Map(CATEGORY_BUTTON_PRIORITY.map((item, index) => [normalizeCategoryKey(item), index]));
+    const hasFirestoreOrder = Array.from(byKey.values()).some((c) => c.order != null);
+    if (hasFirestoreOrder) {
+        return Array.from(byKey.values()).sort((a, b) => {
+            const oa = a.order ?? 9999;
+            const ob = b.order ?? 9999;
+            if (oa !== ob) return oa - ob;
+            return String(a.name || '').localeCompare(String(b.name || ''), 'es');
+        });
+    }
 
+    const priorityIndex = new Map(CATEGORY_BUTTON_PRIORITY.map((item, index) => [normalizeCategoryKey(item), index]));
     return Array.from(byKey.values()).sort((a, b) => {
         const aKey = normalizeCategoryKey(a.key);
         const bKey = normalizeCategoryKey(b.key);
         const aPriority = priorityIndex.has(aKey) ? priorityIndex.get(aKey) : 999;
         const bPriority = priorityIndex.has(bKey) ? priorityIndex.get(bKey) : 999;
-
-        if (aPriority !== bPriority) {
-            return aPriority - bPriority;
-        }
-
+        if (aPriority !== bPriority) return aPriority - bPriority;
         return a.name.localeCompare(b.name, 'es');
     });
 }
 
 function ensurePinnedExplorerCategories(categories) {
+    const hasFirestoreOrder = (categories || []).some((c) => c.order != null);
+    if (hasFirestoreOrder) {
+        return (categories || []).sort((a, b) => {
+            const oa = a.order ?? 9999;
+            const ob = b.order ?? 9999;
+            if (oa !== ob) return oa - ob;
+            return String(a.name || '').localeCompare(String(b.name || ''), 'es');
+        });
+    }
+
     const inputMap = new Map((categories || []).map((item) => [normalizeCategoryKey(item.key), item]));
     const pinnedList = [];
 
-    // Excluir combos de temporada, familiares, perros, burger de los pinneados
+    const COMBO_EXCLUDE = new Set([
+        'combos de temporada', 'combos de temporadas', 'combos temporada',
+        'combos familiares', 'combo familiar',
+        'combos perros', 'combos de perros', 'combos perros y express', 'combos de perros y express', 'combos express',
+        'combos burger', 'combo burger', 'combos de burger'
+    ]);
+
     PINNED_CATEGORY_BUTTONS.forEach((item) => {
         const key = normalizeCategoryKey(item.key);
-        if (!key) {
-            return;
-        }
-        if ([
-            'combos de temporada', 'combos de temporadas', 'combos temporada',
-            'combos familiares', 'combo familiar',
-            'combos perros', 'combos de perros', 'combos perros y express', 'combos de perros y express', 'combos express',
-            'combos burger', 'combo burger', 'combos de burger'
-        ].includes(key)) {
-            return;
-        }
+        if (!key || COMBO_EXCLUDE.has(key)) return;
         const existing = inputMap.get(key);
         pinnedList.push({
             key,
@@ -7320,7 +7374,8 @@ function getCategoryProducts(category, options = {}) {
                 precio,
                 categoria,
                 image_url: resolveProductImage(product),
-                estado
+                estado,
+                order: product.order != null ? Number(product.order) : undefined
             };
         })
         .filter((product) => {
@@ -7339,7 +7394,12 @@ function getCategoryProducts(category, options = {}) {
 
             return selectedKeys.has(key);
         })
-        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+        .sort((a, b) => {
+            const oa = a.order ?? 9999;
+            const ob = b.order ?? 9999;
+            if (oa !== ob) return oa - ob;
+            return a.nombre.localeCompare(b.nombre, 'es');
+        });
 }
 
 function renderManualCategoryGallery(panel, categoryName, _cards, visibleProducts, allProducts) {
@@ -7675,14 +7735,23 @@ async function renderPublicFeaturedFromAdmin() {
     });
 
     categoriesUnsubscribe = firebaseDb.collection('categorias').onSnapshot((snapshot) => {
+        const catSort = (a, b) => {
+            const oa = a.order ?? 9999;
+            const ob = b.order ?? 9999;
+            if (oa !== ob) return oa - ob;
+            return String(a.name || '').localeCompare(String(b.name || ''), 'es');
+        };
+
         allCategoryMeta = snapshot.docs
             .map((doc) => doc.data())
             .map((category) => ({
                 name: category.name,
                 key: normalizeCategoryKey(category.name),
-                image_url: String(category.image_url || '').trim()
+                image_url: String(category.image_url || '').trim(),
+                order: category.order != null ? Number(category.order) : undefined
             }))
-            .filter((category) => category.name && category.key);
+            .filter((category) => category.name && category.key)
+            .sort(catSort);
 
         const active = snapshot.docs
             .map((doc) => doc.data())
@@ -7690,8 +7759,10 @@ async function renderPublicFeaturedFromAdmin() {
             .map((category) => ({
                 name: category.name,
                 key: normalizeCategoryKey(category.name),
-                image_url: String(category.image_url || '').trim()
-            }));
+                image_url: String(category.image_url || '').trim(),
+                order: category.order != null ? Number(category.order) : undefined
+            }))
+            .sort(catSort);
 
         activeCategoryMeta = active;
         activeCategories = new Set(active.map((item) => item.key));

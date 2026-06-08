@@ -3162,6 +3162,14 @@
             background: rgba(255,123,69,0.16);
             border-color: rgba(255,123,69,0.38);
         }
+        .upgrades-master-item.carrusel-special {
+            border-color: rgba(255,122,26,0.28);
+            background: rgba(255,122,26,0.05);
+        }
+        .upgrades-master-item.carrusel-special.selected {
+            background: rgba(255,122,26,0.18);
+            border-color: rgba(255,122,26,0.52);
+        }
         .upgrades-master-item-check { flex-shrink:0; accent-color: var(--admin-accent); cursor:pointer; }
         .upgrades-master-item-name {
             flex: 1; font-size: 0.84rem; color: #eef4ff; font-weight: 500;
@@ -4270,20 +4278,72 @@
         }
 
         .admin-sidebar {
-            position: relative;
-            width: 100%;
+            position: sticky;
+            top: 0;
+            width: 240px;
+            flex-shrink: 0;
+            height: 100vh;
+            overflow-y: auto;
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            background: linear-gradient(180deg, rgba(8, 12, 24, 0.94), rgba(9, 14, 22, 0.84));
+            -webkit-backdrop-filter: blur(18px);
+            backdrop-filter: blur(18px);
+            padding: 18px 10px 20px;
+        }
+
+        .admin-accordion {
+            flex-direction: column;
+            flex-wrap: nowrap;
+            gap: 3px;
+            margin-bottom: 0;
+        }
+
+        .admin-accordion-trigger {
             min-width: 0;
-            max-width: none;
-            height: auto;
-            border-right: 0;
-            background: transparent;
-            overflow: visible;
-            padding: 18px 14px 18px 14px;
+            width: 100%;
+            text-align: left;
+            padding: 11px 13px;
+            border-radius: 10px;
+            font-size: 0.8rem;
         }
 
         .admin-page {
+            flex: 1;
+            min-width: 0;
+            padding: 18px 24px 36px;
+        }
+
+        /* Header compacto dentro del sidebar */
+        .admin-sidebar .admin-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 14px 12px 12px;
+            margin-bottom: 14px;
+            border-radius: 12px;
+            background: linear-gradient(130deg, rgba(255, 122, 26, 0.12), rgba(10, 13, 20, 0.65));
+        }
+
+        .admin-sidebar .admin-title-wrap h1 {
+            font-size: 1.25rem;
+            letter-spacing: 1.5px;
+            margin-bottom: 0;
+        }
+
+        .admin-sidebar .session-actions {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 6px;
             width: 100%;
-            padding: 18px 14px 36px 96px;
+        }
+
+        .admin-sidebar .admin-link,
+        .admin-sidebar .preview-refresh-btn {
+            font-size: 0.72rem;
+            padding: 7px 10px;
+            text-align: center;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .admin-header,
@@ -5204,22 +5264,12 @@
 
         @media (max-width: 1024px) {
             .admin-shell {
-                display: grid;
-                grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+                display: flex;
                 align-items: start;
             }
 
             .admin-sidebar {
-                position: sticky;
-                top: 0;
-                width: auto;
-                height: 100vh;
-                padding: 18px 12px 20px;
-                overflow-y: auto;
-                background: linear-gradient(180deg, rgba(8, 12, 24, 0.94), rgba(9, 14, 22, 0.84));
-                border-right: 1px solid rgba(255, 255, 255, 0.06);
-                -webkit-backdrop-filter: blur(18px);
-                backdrop-filter: blur(18px);
+                width: 230px;
             }
 
             .admin-page {
@@ -5274,13 +5324,17 @@
             .admin-accordion {
                 position: static;
                 flex-direction: row;
+                flex-wrap: nowrap;
                 overflow-x: auto;
+                gap: 8px;
             }
 
             .admin-accordion-trigger {
+                width: auto;
                 min-width: 118px;
                 flex-direction: row;
                 gap: 8px;
+                text-align: left;
             }
 
             .admin-form,
@@ -5639,6 +5693,11 @@
             }
         }
     </style>
+    <style>
+        .sortable-ghost { opacity: 0.3; border: 2px dashed #ff7a1a !important; }
+        .sortable-chosen { cursor: grabbing !important; }
+        [data-drag-product-id] { cursor: grab; }
+    </style>
 </head>
 <body class="admin-locked">
     <section class="admin-auth-overlay" id="adminAuthOverlay" aria-label="Acceso administrador">
@@ -5676,7 +5735,6 @@
 
     <div class="admin-shell">
     <aside class="admin-sidebar">
-    <main class="admin-page">
         <header class="admin-header">
             <div class="admin-title-wrap">
                 <h1>Admin ROAL</h1>
@@ -5689,9 +5747,9 @@
 
         <div class="sidebar-section-label">Paneles</div>
         <nav class="admin-accordion" id="adminAccordionNav">
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="diseno"><span class="nav-icon">🎨</span><span>Diseno</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="pedidos"><span class="nav-icon">🧾</span><span>POS</span></button>
             <button type="button" class="admin-accordion-trigger active" data-accordion-target="menu"><span class="nav-icon">🍔</span><span>Menu</span></button>
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="pedidos"><span class="nav-icon">🧾</span><span>Pedidos</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="diseno"><span class="nav-icon">🎨</span><span>Diseno</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="resumen-ventas"><span class="nav-icon">💰</span><span>Resumen de ventas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="libro"><span class="nav-icon">📚</span><span>Libro</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
@@ -5700,7 +5758,8 @@
         </nav>
 
         <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
-
+    </aside>
+    <main class="admin-page">
         <section class="admin-grid admin-dashboard">
             <div class="admin-tab-panel active" data-tab-panel="menu">
 
@@ -5721,26 +5780,15 @@
                     <!-- ── Panel: Categorías ── -->
                     <div class="menu-inner-panel active" data-menu-panel="categorias" role="tabpanel">
                         <div class="section-toolbar">
-                            <button type="button" class="section-action-btn primary" id="openCreateCategoryBtn">Crear categoria</button>
-                            <button type="button" class="section-action-btn" id="openCreateProductBtn">Crear producto</button>
-                            <button type="button" class="section-save-btn" data-section-save="categorias">Guardar Categorias</button>
+                            <button type="button" class="section-action-btn primary" id="openCreateCategoryBtn">+ Crear categoría</button>
+                            <button type="button" class="section-action-btn" id="openCreateProductBtn">+ Crear producto</button>
                         </div>
-                        <article class="admin-card">
-                            <div class="card-head">
-                                <h2>Categorias de Publico</h2>
-                                <button type="button" class="card-collapse-btn" data-collapse-target="card-categories" aria-expanded="true">Retraer</button>
+                        <div class="upgrades-master-detail">
+                            <div class="upgrades-master-list" id="categoryList"></div>
+                            <div class="upgrades-detail-panel" id="categoryDetailPanel">
+                                <div class="upgrades-detail-empty">← Selecciona una categoría</div>
                             </div>
-                            <div class="card-body" id="card-categories">
-                                <form id="categoryForm" class="inline-form category-inline-form">
-                                    <div class="admin-field">
-                                        <label for="newCategoryName">Nueva categoria</label>
-                                        <input type="text" id="newCategoryName" name="categoryName" placeholder="Ej: Postres" required>
-                                    </div>
-                                    <button type="submit" class="ghost-button">Crear categoria</button>
-                                </form>
-                                <div id="categoryList" class="stack-list"></div>
-                            </div>
-                        </article>
+                        </div>
                     </div>
 
                     <!-- ── Panel: Acompañantes ── -->
@@ -6189,7 +6237,6 @@
             </div>
         </section>
     </main>
-    </aside>
 
     </div>
 
@@ -6562,6 +6609,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
     <script src="admin.js"></script>
