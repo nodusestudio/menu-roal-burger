@@ -2638,6 +2638,10 @@
             color: #eef4ff;
         }
         .pos-view.is-open { display: block; }
+        /* En escritorio el POS ocupa solo el área de contenido (a la derecha del sidebar) */
+        @media (min-width: 1024px) {
+            .pos-view { left: 240px; }
+        }
 
         .pos-topbar {
             display: flex;
