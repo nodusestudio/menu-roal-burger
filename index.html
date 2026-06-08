@@ -294,5 +294,95 @@
     <script src="firebase-config.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="script-v2.js?v=20260606d"></script>
+
+    <!-- ── Public Upgrade Sheet ── -->
+    <div id="publicUpgradeOverlay" class="pub-upgrade-overlay" hidden style="display:none;">
+        <div class="pub-upgrade-sheet">
+            <div class="pub-upgrade-handle"></div>
+            <div class="pub-upgrade-header">
+                <span class="pub-upgrade-title" id="publicUpgradeTitle">¿Quieres acompañarlo?</span>
+                <button type="button" class="pub-upgrade-close" id="publicUpgradeCloseBtn">&#215;</button>
+            </div>
+            <div class="pub-upgrade-body" id="publicUpgradeBody"></div>
+        </div>
+    </div>
+
+    <style>
+        .pub-upgrade-overlay {
+            position: fixed; inset: 0; z-index: 9900;
+            background: rgba(0,0,0,0.55);
+            display: flex; align-items: flex-end; justify-content: center;
+            -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+        }
+        .pub-upgrade-sheet {
+            width: 100%; max-width: 520px;
+            background: rgba(14, 20, 36, 0.96);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 22px 22px 0 0;
+            padding: 0 0 env(safe-area-inset-bottom,16px);
+            max-height: 80vh; overflow-y: auto;
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            backdrop-filter: blur(22px) saturate(180%);
+            box-shadow: 0 -12px 40px rgba(0,0,0,0.4);
+        }
+        .pub-upgrade-handle {
+            width: 38px; height: 4px; border-radius: 99px;
+            background: rgba(255,255,255,0.2); margin: 10px auto 0;
+        }
+        .pub-upgrade-header {
+            display: flex; align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .pub-upgrade-title {
+            font-family: 'Oswald', 'Roboto', sans-serif;
+            font-size: 1rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 1px; color: #fff;
+        }
+        .pub-upgrade-close {
+            background: none; border: none; color: rgba(255,255,255,0.55);
+            font-size: 1.5rem; cursor: pointer; padding: 4px 8px; line-height: 1;
+        }
+        .pub-upgrade-close:hover { color: #fff; }
+        .pub-upgrade-body { padding: 14px 16px 20px; }
+        .pub-upgrade-product {
+            font-size: 0.83rem; color: rgba(255,255,255,0.45);
+            margin-bottom: 12px; text-align: center;
+        }
+        .pub-upgrade-opts { display: flex; flex-direction: column; gap: 9px; }
+        .pub-upgrade-opt {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 13px 16px;
+            background: rgba(255,255,255,0.06);
+            border: 1.5px solid rgba(255,255,255,0.1);
+            border-radius: 12px; cursor: pointer; color: #eef4ff;
+            text-align: left; gap: 12px; width: 100%;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .pub-upgrade-opt:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+        .pub-upgrade-solo { background: rgba(255,255,255,0.03); border-style: dashed; }
+        .pub-upgrade-opt-name { font-weight: 600; font-size: 0.93rem; display: block; }
+        .pub-upgrade-opt-detail { font-size: 0.76rem; color: rgba(184,200,232,0.7); display: block; margin-top: 2px; }
+        .pub-upgrade-opt-price { font-weight: 700; font-size: 0.87rem; color: #ff7b45; flex-shrink: 0; }
+        .pub-upgrade-opt-price.muted { color: rgba(184,200,232,0.55); font-weight: 400; }
+        .pub-flavors-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 9px; }
+        .pub-flavor-btn {
+            padding: 14px 8px;
+            background: rgba(255,255,255,0.06);
+            border: 1.5px solid rgba(255,255,255,0.1);
+            border-radius: 11px; color: #eef4ff;
+            font-size: 0.9rem; cursor: pointer; text-align: center;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .pub-flavor-btn:hover { background: rgba(255,123,69,0.18); border-color: rgba(255,123,69,0.4); }
+        .pub-upgrade-back {
+            display: flex; align-items: center; gap: 5px;
+            background: none; border: none;
+            color: rgba(184,200,232,0.6); font-size: 0.84rem;
+            cursor: pointer; padding: 10px 0; margin-top: 12px;
+        }
+        .pub-upgrade-back:hover { color: #eef4ff; }
+    </style>
 </body>
 </html>

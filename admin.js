@@ -1626,15 +1626,18 @@ const DEFAULT_UPGRADES_CONFIG = {
     opciones: [
         {
             id: 'combo', nombre: 'Combo', detalle: 'Papas a la Francesa + Bebida',
-            precio: 5000, activo: true, orden: 1, tiene_variantes: false, variantes: []
+            precio: 5000, activo: true, activo_pos: true, activo_menu: true,
+            orden: 1, tiene_variantes: false, variantes: []
         },
         {
             id: 'papas', nombre: 'Papas a la Francesa', detalle: '',
-            precio: 3000, activo: true, orden: 2, tiene_variantes: false, variantes: []
+            precio: 3000, activo: true, activo_pos: true, activo_menu: true,
+            orden: 2, tiene_variantes: false, variantes: []
         },
         {
             id: 'bebida', nombre: 'Bebida', detalle: '',
-            precio: 0, activo: true, orden: 3, tiene_variantes: true,
+            precio: 0, activo: true, activo_pos: true, activo_menu: true,
+            orden: 3, tiene_variantes: true,
             variantes: [
                 {
                     id: 'v-personal', nombre: 'Personal (300 ml)', precio_extra: 2000,
@@ -1655,10 +1658,12 @@ async function fetchMenuUpgradesConfig() {
         const raw = doc.exists
             ? { ...DEFAULT_UPGRADES_CONFIG, ...doc.data() }
             : { ...DEFAULT_UPGRADES_CONFIG };
-        // Migrar opciones antiguas (sin variantes) al nuevo formato
+        // Migrar opciones antiguas al nuevo formato
         raw.opciones = (raw.opciones || []).map((opt) => ({
             tiene_variantes: false,
             variantes: [],
+            activo_pos: true,
+            activo_menu: true,
             ...opt,
         }));
         menuUpgradesConfig = raw;
@@ -1716,16 +1721,23 @@ function _renderUpgradesMasterList(cfg) {
     const list = document.getElementById('upgradeOptionsList');
     if (!list) return;
     const opts = (cfg.opciones || []).sort((a, b) => (a.orden || 99) - (b.orden || 99));
-    list.innerHTML = opts.map((opt) => `
+    list.innerHTML = opts.map((opt) => {
+        const posOn = opt.activo_pos !== false;
+        const menuOn = opt.activo_menu !== false;
+        return `
         <div class="upgrades-master-item${_upgradeSelectedOptId === opt.id ? ' selected' : ''}"
              data-opt-id="${escapeHtml(opt.id)}" role="button" tabindex="0">
             <input type="checkbox" class="upgrades-master-item-check"
                    ${opt.activo ? 'checked' : ''} data-opt-id="${escapeHtml(opt.id)}" title="Activo">
             <span class="upgrades-master-item-name" title="${escapeHtml(opt.nombre)}">${escapeHtml(opt.nombre)}</span>
-            <span class="upgrades-master-item-dot${opt.activo ? '' : ' off'}"></span>
+            <span class="upgrades-master-badges">
+                <span class="upgrades-badge${posOn ? '' : ' off'}" title="POS">P</span>
+                <span class="upgrades-badge${menuOn ? '' : ' off'}" title="Menú">M</span>
+            </span>
             <span class="upgrades-master-item-arrow">›</span>
             <button type="button" class="upgrades-master-item-del" data-opt-id="${escapeHtml(opt.id)}" title="Eliminar">🗑</button>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 
     list.querySelectorAll('.upgrades-master-item').forEach((item) => {
         item.addEventListener('click', (e) => {
@@ -1799,6 +1811,10 @@ function _buildVariantesHTML(opt) {
                 <div class="upgrades-add-sub-row">
                     <input type="text" class="admin-input upgrade-add-sub-input" placeholder="Ej: Coca-Cola" data-v-idx="${vi}">
                     <button type="button" class="ghost-button upgrade-add-sub-btn" data-v-idx="${vi}" style="font-size:0.78rem;padding:5px 10px;white-space:nowrap;">+ Agregar</button>
+                </div>
+                <div class="upgrades-copy-subs-wrap" data-copy-vi="${vi}">
+                    <button type="button" class="upgrades-copy-subs-toggle ghost-button" data-v-idx="${vi}" style="font-size:0.74rem;padding:3px 8px;opacity:0.7;">⬇ Copiar de otros</button>
+                    <div class="upgrades-copy-subs-picker" data-v-idx="${vi}" hidden style="display:none;flex-wrap:wrap;gap:5px;margin-top:6px;"></div>
                 </div>
             </div>
         </div>`).join('');
@@ -1874,6 +1890,49 @@ function _wireVariantInteractions(panel, optIdx) {
             _renderUpgradesDetailPanel(_upgradeSelectedOptId);
         });
     });
+
+    // Copiar sub-variantes de otros
+    panel.querySelectorAll('.upgrades-copy-subs-toggle').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const vi = Number(btn.dataset.vIdx);
+            const picker = panel.querySelector(`.upgrades-copy-subs-picker[data-v-idx="${vi}"]`);
+            if (!picker) return;
+            const isHidden = picker.hidden;
+            if (isHidden) {
+                // Build available subs from all other variants
+                const currentOpt = menuUpgradesConfig.opciones[optIdx];
+                const existing = new Set(currentOpt.variantes[vi].sub_variantes || []);
+                const available = new Set();
+                (menuUpgradesConfig.opciones || []).forEach((o) => {
+                    (o.variantes || []).forEach((v, vi2) => {
+                        if (o.id === currentOpt.id && vi2 === vi) return;
+                        (v.sub_variantes || []).forEach((s) => { if (!existing.has(s)) available.add(s); });
+                    });
+                });
+                if (!available.size) {
+                    picker.innerHTML = '<span style="font-size:0.75rem;color:var(--admin-muted);">Sin sub-variantes disponibles en otros productos.</span>';
+                } else {
+                    picker.innerHTML = [...available].map((s) =>
+                        `<button type="button" class="upgrades-sub-chip upgrades-copy-sub-pick" data-sub="${escapeHtml(s)}" data-v-idx="${vi}" style="cursor:pointer;">${escapeHtml(s)} +</button>`
+                    ).join('');
+                    picker.querySelectorAll('.upgrades-copy-sub-pick').forEach((chip) => {
+                        chip.addEventListener('click', () => {
+                            const vi2 = Number(chip.dataset.vIdx);
+                            if (!Array.isArray(menuUpgradesConfig.opciones[optIdx].variantes[vi2].sub_variantes))
+                                menuUpgradesConfig.opciones[optIdx].variantes[vi2].sub_variantes = [];
+                            menuUpgradesConfig.opciones[optIdx].variantes[vi2].sub_variantes.push(chip.dataset.sub);
+                            _renderUpgradesDetailPanel(_upgradeSelectedOptId);
+                        });
+                    });
+                }
+                picker.hidden = false;
+                picker.style.display = 'flex';
+            } else {
+                picker.hidden = true;
+                picker.style.display = 'none';
+            }
+        });
+    });
 }
 
 function _toggleVariantBody(card) {
@@ -1885,6 +1944,16 @@ function _toggleVariantBody(card) {
     body.hidden = !open;
     body.style.display = open ? 'flex' : 'none';
     if (chevron) chevron.classList.toggle('open', open);
+}
+
+function _syncMasterBadge(optId) {
+    const opt = (menuUpgradesConfig?.opciones || []).find((o) => o.id === optId);
+    if (!opt) return;
+    const item = document.querySelector(`.upgrades-master-item[data-opt-id="${optId}"]`);
+    if (!item) return;
+    const badges = item.querySelectorAll('.upgrades-badge');
+    if (badges[0]) badges[0].classList.toggle('off', opt.activo_pos === false);
+    if (badges[1]) badges[1].classList.toggle('off', opt.activo_menu === false);
 }
 
 function _renderUpgradesDetailPanel(optId) {
@@ -1902,9 +1971,14 @@ function _renderUpgradesDetailPanel(optId) {
     panel.innerHTML = `
         <div class="upgrades-detail-topbar">
             <span class="upgrades-detail-title">${escapeHtml(opt.nombre)}</span>
-            <label class="upgrades-toggle-label">
-                <input type="checkbox" id="detailOptActive" ${opt.activo ? 'checked' : ''}> Activo
-            </label>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <label class="upgrades-toggle-label">
+                    <input type="checkbox" id="detailOptActivoPos" ${opt.activo_pos !== false ? 'checked' : ''}> POS
+                </label>
+                <label class="upgrades-toggle-label">
+                    <input type="checkbox" id="detailOptActivoMenu" ${opt.activo_menu !== false ? 'checked' : ''}> Menú público
+                </label>
+            </div>
         </div>
         <div class="upgrades-detail-fields">
             <div class="upgrades-detail-row">
@@ -1940,13 +2014,16 @@ function _renderUpgradesDetailPanel(optId) {
         </div>`;
 
     // Wire fields
-    panel.querySelector('#detailOptActive')?.addEventListener('change', (e) => {
+    panel.querySelector('#detailOptActivoPos')?.addEventListener('change', (e) => {
         if (optIdx >= 0) {
-            menuUpgradesConfig.opciones[optIdx].activo = e.target.checked;
-            const dot = document.querySelector(`.upgrades-master-item[data-opt-id="${optId}"] .upgrades-master-item-dot`);
-            if (dot) dot.classList.toggle('off', !e.target.checked);
-            const chk = document.querySelector(`.upgrades-master-item-check[data-opt-id="${optId}"]`);
-            if (chk) chk.checked = e.target.checked;
+            menuUpgradesConfig.opciones[optIdx].activo_pos = e.target.checked;
+            _syncMasterBadge(optId);
+        }
+    });
+    panel.querySelector('#detailOptActivoMenu')?.addEventListener('change', (e) => {
+        if (optIdx >= 0) {
+            menuUpgradesConfig.opciones[optIdx].activo_menu = e.target.checked;
+            _syncMasterBadge(optId);
         }
     });
     panel.querySelector('#detailOptNombre')?.addEventListener('input', (e) => {
@@ -2385,7 +2462,7 @@ function renderPosUpgradeStep1() {
 
     const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
     const activeOpts = (cfg.opciones || [])
-        .filter((o) => o.activo)
+        .filter((o) => o.activo && o.activo_pos !== false)
         .sort((a, b) => (a.orden || 99) - (b.orden || 99));
 
     const priceLabel = (opt) => {
@@ -6520,6 +6597,8 @@ document.getElementById('saveUpgradesConfigBtn')?.addEventListener('click', asyn
     try {
         await saveMenuUpgradesConfig(menuUpgradesConfig);
         showNotice('Acompañamientos guardados correctamente.', 'ok');
+        _upgradeSelectedOptId = null;
+        renderMenuUpgradesAdmin();
     } catch (e) {
         showNotice('Error al guardar: ' + (e.message || 'revisa la conexion'), 'error');
     } finally {

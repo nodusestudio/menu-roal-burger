@@ -93,6 +93,8 @@ let orderingStatusToastTimer = null;
 let orderSentToastTimer = null;
 let publicFirebaseDbInstance = null;
 let orderSentConfirmationUI = null;
+let publicUpgradesConfig = null;
+let _publicUpgradePending = null;
 let paymentFlowUI = null;
 let activeCustomerProfile = null;
 let customerAuthUI = null;
@@ -852,6 +854,34 @@ function getPublicFirebaseDb() {
 
     publicFirebaseDbInstance = initFirebaseServices().db;
     return publicFirebaseDbInstance;
+}
+
+async function loadPublicUpgradesConfig() {
+    try {
+        const db = getPublicFirebaseDb();
+        const doc = await db.collection('configuracion').doc('acompañamientos').get();
+        const DEFAULT = {
+            activo: true,
+            categorias_aplica: ['BURGER CLASICAS', 'BURGER PREMIUM', 'PEPITOS VENEZOLANOS', 'PERROS CALIENTES', 'SALCHIPAPAS'],
+            opciones: []
+        };
+        const raw = doc.exists ? { ...DEFAULT, ...doc.data() } : { ...DEFAULT };
+        raw.opciones = (raw.opciones || []).map((o) => ({
+            tiene_variantes: false, variantes: [], activo_pos: true, activo_menu: true, ...o
+        }));
+        publicUpgradesConfig = raw;
+    } catch (_e) {
+        publicUpgradesConfig = null;
+    }
+}
+
+function _shouldShowPublicUpgrade(categoryName) {
+    if (!publicUpgradesConfig?.activo) return false;
+    const cat = String(categoryName || '').trim().toUpperCase();
+    const eligible = (publicUpgradesConfig.categorias_aplica || []).map((c) => c.toUpperCase());
+    const activeMenuOpts = (publicUpgradesConfig.opciones || [])
+        .filter((o) => o.activo && o.activo_menu !== false);
+    return eligible.includes(cat) && activeMenuOpts.length > 0;
 }
 
 function getPublicServerTimestamp() {
@@ -4227,6 +4257,15 @@ function showCartAddedToast(categoryName, productName) {
 }
 
 function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId) {
+    // Interceptar para mostrar upgrades si corresponde
+    const upgradeExtra = Number(orderOptions?.upgradeExtra || 0);
+    const upgradeHandled = !!(orderOptions?.upgradeHandled);
+    if (!upgradeHandled && _shouldShowPublicUpgrade(categoryName)) {
+        _publicUpgradePending = { productName, categoryName, orderOptions, buttonId };
+        openPublicUpgradeSheet();
+        return;
+    }
+
     const normalizedOptions = normalizeOrderOptions(orderOptions);
 
     if (!canPlaceOrdersNow()) {
@@ -4240,7 +4279,7 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
 
     const safeProductName = String(productName || 'producto').trim() || 'producto';
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
-    const unitPrice = resolveCartUnitPrice(safeProductName, safeCategoryName, normalizedOptions);
+    const unitPrice = resolveCartUnitPrice(safeProductName, safeCategoryName, normalizedOptions) + upgradeExtra;
     const itemKey = getCartItemKey(safeProductName, safeCategoryName, normalizedOptions);
     const existingItem = shoppingCart.find((item) => item.itemKey === itemKey);
 
@@ -8093,6 +8132,136 @@ window.addEventListener('beforeunload', () => {
     unsubscribeCustomerProfileStreams();
 });
 
+// ── Public Upgrade Sheet ──────────────────────────────────────────────────
+function openPublicUpgradeSheet() {
+    const overlay = document.getElementById('publicUpgradeOverlay');
+    if (!overlay || !_publicUpgradePending) return;
+    overlay.hidden = false;
+    overlay.style.display = 'flex';
+    renderPublicUpgradeStep1();
+}
+
+function closePublicUpgradeSheet() {
+    const overlay = document.getElementById('publicUpgradeOverlay');
+    if (overlay) { overlay.hidden = true; overlay.style.display = 'none'; }
+    _publicUpgradePending = null;
+}
+
+function _pubUpgBody() { return document.getElementById('publicUpgradeBody'); }
+function _pubUpgTitle() { return document.getElementById('publicUpgradeTitle'); }
+
+function renderPublicUpgradeStep1() {
+    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
+    if (!body || !_publicUpgradePending) return;
+    if (titleEl) titleEl.textContent = '¿Quieres acompañarlo?';
+    const cfg = publicUpgradesConfig;
+    const activeOpts = (cfg?.opciones || [])
+        .filter((o) => o.activo && o.activo_menu !== false)
+        .sort((a, b) => (a.orden || 99) - (b.orden || 99));
+
+    const priceLabel = (opt) => {
+        if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
+            const min = Math.min(...opt.variantes.map((v) => Number(v.precio_extra || 0)));
+            return `desde +$${min.toLocaleString('es-CO')}`;
+        }
+        return Number(opt.precio || 0) > 0 ? `+$${Number(opt.precio).toLocaleString('es-CO')}` : 'incluido';
+    };
+
+    body.innerHTML = `
+        <div class="pub-upgrade-product">${_publicUpgradePending.productName}</div>
+        <div class="pub-upgrade-opts">
+            <button type="button" class="pub-upgrade-opt pub-upgrade-solo" id="pubUpgradeSolo">
+                <span class="pub-upgrade-opt-name">Solo el producto</span>
+                <span class="pub-upgrade-opt-price muted">sin añadir</span>
+            </button>
+            ${activeOpts.map((opt) => `
+            <button type="button" class="pub-upgrade-opt" data-opt-id="${opt.id}">
+                <div>
+                    <span class="pub-upgrade-opt-name">${opt.nombre}</span>
+                    ${opt.detalle ? `<span class="pub-upgrade-opt-detail">${opt.detalle}</span>` : ''}
+                </div>
+                <span class="pub-upgrade-opt-price">${priceLabel(opt)}</span>
+            </button>`).join('')}
+        </div>`;
+
+    body.querySelector('#pubUpgradeSolo')?.addEventListener('click', () => {
+        const { productName, categoryName, orderOptions, buttonId } = _publicUpgradePending;
+        _publicUpgradePending = null;
+        addItemToCart(productName, categoryName, { ...orderOptions, upgradeHandled: true }, buttonId);
+        closePublicUpgradeSheet();
+    });
+    body.querySelectorAll('.pub-upgrade-opt[data-opt-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const opt = (cfg?.opciones || []).find((o) => o.id === btn.dataset.optId);
+            if (!opt) return;
+            if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
+                renderPublicUpgradeStep2(opt);
+            } else {
+                _applyPublicUpgrade(opt.nombre, Number(opt.precio || 0));
+            }
+        });
+    });
+}
+
+function renderPublicUpgradeStep2(opt) {
+    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
+    if (!body) return;
+    if (titleEl) titleEl.textContent = `${opt.nombre} — ¿Qué tamaño?`;
+    body.innerHTML = `
+        <div class="pub-upgrade-opts">
+            ${(opt.variantes || []).map((v) => `
+            <button type="button" class="pub-upgrade-opt" data-v-id="${v.id}">
+                <span class="pub-upgrade-opt-name">${v.nombre}</span>
+                <span class="pub-upgrade-opt-price">+$${Number(v.precio_extra || 0).toLocaleString('es-CO')}</span>
+            </button>`).join('')}
+        </div>
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
+    body.querySelectorAll('.pub-upgrade-opt[data-v-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const variant = (opt.variantes || []).find((v) => v.id === btn.dataset.vId);
+            if (!variant) return;
+            if ((variant.sub_variantes || []).length > 0) {
+                renderPublicUpgradeStep3(opt, variant);
+            } else {
+                _applyPublicUpgrade(`${opt.nombre} – ${variant.nombre}`,
+                    Number(opt.precio || 0) + Number(variant.precio_extra || 0));
+            }
+        });
+    });
+    body.querySelector('#pubUpgradeBack')?.addEventListener('click', renderPublicUpgradeStep1);
+}
+
+function renderPublicUpgradeStep3(opt, variant) {
+    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
+    if (!body) return;
+    if (titleEl) titleEl.textContent = `${variant.nombre} — ¿Qué sabor?`;
+    body.innerHTML = `
+        <div class="pub-flavors-grid">
+            ${(variant.sub_variantes || []).map((s) => `
+            <button type="button" class="pub-flavor-btn" data-sub="${s}">${s}</button>`).join('')}
+        </div>
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
+    body.querySelectorAll('.pub-flavor-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const sub = btn.dataset.sub;
+            const note = sub === 'Sin bebida'
+                ? `${opt.nombre} – ${variant.nombre}`
+                : `${opt.nombre} – ${variant.nombre} (${sub})`;
+            _applyPublicUpgrade(note, Number(opt.precio || 0) + Number(variant.precio_extra || 0));
+        });
+    });
+    body.querySelector('#pubUpgradeBack')?.addEventListener('click', () => renderPublicUpgradeStep2(opt));
+}
+
+function _applyPublicUpgrade(upgradeNote, upgradeExtra) {
+    if (!_publicUpgradePending) return;
+    const { productName, categoryName, orderOptions, buttonId } = _publicUpgradePending;
+    const finalName = `${productName} + ${upgradeNote}`;
+    _publicUpgradePending = null;
+    closePublicUpgradeSheet();
+    addItemToCart(finalName, categoryName, { ...orderOptions, upgradeHandled: true, upgradeExtra }, buttonId);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setActiveCustomerProfile(loadStoredCustomerProfile());
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
@@ -8132,5 +8301,12 @@ document.addEventListener('DOMContentLoaded', () => {
     renderPublicFeaturedFromAdmin();
     renderConfiguredButtons();
     renderCategoryExplorer();
+    loadPublicUpgradesConfig();
+
+    // Cerrar upgrade sheet público
+    document.getElementById('publicUpgradeOverlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closePublicUpgradeSheet();
+    });
+    document.getElementById('publicUpgradeCloseBtn')?.addEventListener('click', closePublicUpgradeSheet);
 });
 
