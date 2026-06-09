@@ -82,6 +82,32 @@
 </head>
 <body>
 
+    <!-- ===== PANTALLA DE INICIO ===== -->
+    <div id="splashScreen" aria-hidden="true">
+        <img src="./isotipo.png" alt="ROAL BURGER" class="splash-logo" draggable="false">
+        <span class="splash-brand">ROAL BURGER</span>
+        <span class="splash-tagline">Acento venezolano</span>
+    </div>
+    <script>
+        (function () {
+            var MIN_MS = 2200;
+            var start = Date.now();
+            function hideSplash() {
+                var el = document.getElementById('splashScreen');
+                if (!el || el.dataset.hidden) return;
+                el.dataset.hidden = '1';
+                el.classList.add('is-hiding');
+                setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 700);
+            }
+            window.addEventListener('load', function () {
+                var wait = Math.max(0, MIN_MS - (Date.now() - start));
+                setTimeout(hideSplash, wait);
+            });
+            setTimeout(hideSplash, 5000); // failsafe
+        })();
+    </script>
+    <!-- ===== FIN PANTALLA DE INICIO ===== -->
+
     <div class="container" id="main-menu">
         <div class="public-topbar">
             <button type="button" class="public-session-btn liquid-glass" id="customerSessionButton" aria-label="Iniciar sesion o abrir perfil">
@@ -226,7 +252,7 @@
                     <h3 class="menu-section-title">PEPITOS</h3>
                     <img src="./pepitosvenezolanos/pepitoranchero.png" alt="PEPITOS VENEZOLANOS" class="menu-image">
                 </section>
-
+co
                 <section class="menu-section" id="menu-perros-salchipapas" data-section-name="PERROS Y SALCHIPAPAS">
                     <h3 class="menu-section-title">PERROS CALIENTES Y SALCHIPAPAS</h3>
                     <img src="./perroscalientes/perroespecial.png" alt="PERROS CALIENTES Y SALCHIPAPAS" class="menu-image">
