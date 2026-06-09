@@ -8490,7 +8490,12 @@ function renderHomeRecBanner() {
             startProductOrderFlow(
                 String(product.nombre || product.name || ''),
                 String(product.categoria || product.category || ''),
-                'home-rec-btn'
+                'home-rec-btn',
+                {
+                    recommendedDiscount: true,
+                    discountRate: RECOMMENDED_DAY_DISCOUNT_RATE,
+                    imagePath: product.image_url
+                }
             );
         };
     }
