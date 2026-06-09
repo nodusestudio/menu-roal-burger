@@ -314,6 +314,8 @@ const editProductFeaturedSelect = document.getElementById('editProductFeatured')
 const editProductImageFileInput = document.getElementById('editProductImageFile');
 const editProductImageUrlInput = document.getElementById('editProductImageUrl');
 const productEditSaveBtn = document.getElementById('productEditSaveBtn');
+const editProductAcompActivo = document.getElementById('editProductAcompActivo');
+const editProductAcompList = document.getElementById('editProductAcompList');
 
 const clientEditModal = document.getElementById('clientEditModal');
 const clientEditForm = document.getElementById('clientEditForm');
@@ -1431,6 +1433,7 @@ function normalizeProduct(raw) {
         order: raw.order != null ? Number(raw.order) : undefined,
         descripcion: raw.descripcion || '',
         visible_pos: raw.visible_pos !== false,
+        acompanantes: raw.acompanantes || null,
         created_at: raw.created_at,
         updated_at: raw.updated_at
     };
@@ -2280,13 +2283,28 @@ function handlePosProductAdd(productId, productName, productPrice) {
         return;
     }
 
-    // Verificar si esta categoría activa el upgrade sheet de acompañamientos
+    // Verificar acompañantes: primero a nivel de producto, luego por categoría (fallback)
     const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    const activeOpts = (cfg.opciones || []).filter((o) => o.activo);
-    const appliesTo = (cfg.categorias_aplica || []).map((c) => c.toUpperCase());
-    if (cfg.activo && activeOpts.length > 0 && appliesTo.includes(selectedCategory.toUpperCase())) {
-        openPosUpgradeSheet(productId, productName, productPrice);
-        return;
+    if (cfg.activo) {
+        const productData = (PUBLIC_PRODUCT_CATALOG || []).find((p) => p.id === productId);
+        const prodAcomp = productData && productData.acompanantes;
+
+        if (prodAcomp && prodAcomp.activo && Array.isArray(prodAcomp.ids) && prodAcomp.ids.length > 0) {
+            // Nivel producto: filtrar sólo los acompañantes activados para este producto
+            const filteredOpts = (cfg.opciones || []).filter((o) => o.activo && prodAcomp.ids.includes(o.id));
+            if (filteredOpts.length > 0) {
+                openPosUpgradeSheet(productId, productName, productPrice, filteredOpts);
+                return;
+            }
+        } else {
+            // Fallback: nivel categoría (comportamiento anterior)
+            const activeOpts = (cfg.opciones || []).filter((o) => o.activo);
+            const appliesTo = (cfg.categorias_aplica || []).map((c) => c.toUpperCase());
+            if (activeOpts.length > 0 && appliesTo.includes(selectedCategory.toUpperCase())) {
+                openPosUpgradeSheet(productId, productName, productPrice);
+                return;
+            }
+        }
     }
 
     addProductToPosOrder(productId, productName, productPrice);
@@ -2596,8 +2614,8 @@ function _posAddWithComment(productId, productName, price, note) {
     addProductToPosOrder(productId, productName, price, fullNote || undefined);
 }
 
-function openPosUpgradeSheet(productId, productName, productPrice) {
-    _posUpgradePending = { productId, productName, productPrice };
+function openPosUpgradeSheet(productId, productName, productPrice, filteredOpts = null) {
+    _posUpgradePending = { productId, productName, productPrice, filteredOpts };
     const overlay = document.getElementById('posUpgradeOverlay');
     if (!overlay) return;
     const commentInput = document.getElementById('posUpgradeComment');
@@ -2623,9 +2641,10 @@ function renderPosUpgradeStep1() {
     if (nameEl) nameEl.textContent = _posUpgradePending.productName;
 
     const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    const activeOpts = (cfg.opciones || [])
-        .filter((o) => o.activo && o.activo_pos !== false)
-        .sort((a, b) => (a.orden || 99) - (b.orden || 99));
+    const activeOpts = (_posUpgradePending && _posUpgradePending.filteredOpts
+        ? _posUpgradePending.filteredOpts.filter((o) => o.activo_pos !== false)
+        : (cfg.opciones || []).filter((o) => o.activo && o.activo_pos !== false)
+    ).sort((a, b) => (a.orden || 99) - (b.orden || 99));
 
     const priceLabel = (opt) => {
         if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
@@ -3670,6 +3689,48 @@ function closeProductEditModal() {
     }
 }
 
+function renderProductAcompList(savedAcomp) {
+    if (!editProductAcompActivo || !editProductAcompList) return;
+
+    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
+    const opciones = (cfg.opciones || []).filter((o) => o.id && o.nombre);
+
+    const savedActivo = savedAcomp && savedAcomp.activo === true;
+    const savedIds = Array.isArray(savedAcomp && savedAcomp.ids) ? savedAcomp.ids : [];
+
+    editProductAcompActivo.checked = savedActivo;
+    editProductAcompList.style.display = savedActivo ? '' : 'none';
+
+    if (opciones.length === 0) {
+        editProductAcompList.innerHTML = '<p class="pedit-acomp-empty">No hay acompañantes configurados aún.</p>';
+        return;
+    }
+
+    editProductAcompList.innerHTML = opciones.map((opt) => {
+        const checked = savedIds.includes(opt.id) ? 'checked' : '';
+        const precioLabel = opt.precio > 0 ? `+$${Number(opt.precio).toLocaleString('es-CO')}` : 'Incluido';
+        const detalle = opt.detalle ? `<span class="pedit-acomp-item-detail">${opt.detalle}</span>` : '';
+        return `
+            <label class="pedit-acomp-item">
+                <input type="checkbox" name="acompId" value="${opt.id}" ${checked}>
+                <div class="pedit-acomp-item-body">
+                    <span class="pedit-acomp-item-name">${opt.nombre}</span>
+                    ${detalle}
+                </div>
+                <span class="pedit-acomp-item-price">${precioLabel}</span>
+            </label>`;
+    }).join('');
+
+    editProductAcompActivo.removeEventListener('change', _onAcompToggle);
+    editProductAcompActivo.addEventListener('change', _onAcompToggle);
+}
+
+function _onAcompToggle() {
+    if (editProductAcompList) {
+        editProductAcompList.style.display = editProductAcompActivo.checked ? '' : 'none';
+    }
+}
+
 function openProductEditModal(product, categoryId) {
     if (!productEditModal || !productEditForm || !product) {
         return;
@@ -3683,6 +3744,8 @@ function openProductEditModal(product, categoryId) {
     editProductStateSelect.value = product.estado === 'paused' ? 'paused' : 'active';
     editProductFeaturedSelect.value = product.es_destacado ? 'true' : 'false';
     editProductImageUrlInput.value = product.image_url || '';
+
+    renderProductAcompList(product.acompanantes || null);
 
     productEditModal.classList.add('show');
     productEditModal.setAttribute('aria-hidden', 'false');
@@ -8620,6 +8683,12 @@ if (productEditForm) {
             ? editProductImageFileInput.files[0]
             : null;
 
+        const acompActivo = editProductAcompActivo ? editProductAcompActivo.checked : false;
+        const acompIds = editProductAcompList
+            ? Array.from(editProductAcompList.querySelectorAll('input[name="acompId"]:checked')).map((cb) => cb.value)
+            : [];
+        const acompanantes = { activo: acompActivo, ids: acompIds };
+
         if (!productId || !nombre || !categoria) {
             showNotice('Completa nombre y categoria del producto.', 'error');
             return;
@@ -8658,6 +8727,7 @@ if (productEditForm) {
                 estado,
                 es_destacado: esDestacado,
                 image_url: finalImageUrl,
+                acompanantes,
                 updated_at: firestoreNow()
             });
 
