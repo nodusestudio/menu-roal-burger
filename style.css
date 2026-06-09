@@ -4279,3 +4279,81 @@ body.has-guest-register-banner .whatsapp-float {
     }
 }
 /* ===== FIN MODAL DE PROMOCIÓN ===== */
+
+/* ===== MODAL REGISTRO PARA PROMOS ===== */
+.promo-reg-card {
+    text-align: center;
+}
+
+.promo-reg-card .support-modal-text {
+    margin-bottom: 24px;
+    line-height: 1.6;
+}
+
+.promo-reg-card .support-modal-text strong {
+    color: #ff7a1a;
+}
+
+.promo-reg-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+.promo-reg-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 14px 20px;
+    border-radius: 50px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    border: none;
+    transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.promo-reg-btn:hover { transform: translateY(-2px); }
+.promo-reg-btn:active { transform: translateY(0); }
+
+.promo-reg-btn-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.promo-reg-btn--download {
+    background: linear-gradient(135deg, #1a73e8, #0d56c1);
+    color: #ffffff;
+    box-shadow: 0 8px 24px rgba(26, 115, 232, 0.35);
+}
+.promo-reg-btn--download:hover {
+    box-shadow: 0 12px 30px rgba(26, 115, 232, 0.5);
+}
+
+.promo-reg-btn--register {
+    background: linear-gradient(135deg, #ff7a1a, #e85d00);
+    color: #ffffff;
+    box-shadow: 0 8px 24px rgba(255, 122, 26, 0.35);
+}
+.promo-reg-btn--register:hover {
+    box-shadow: 0 12px 30px rgba(255, 122, 26, 0.5);
+}
+
+.promo-reg-btn--guest {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    font-weight: 500;
+    font-size: 0.85rem;
+    padding: 10px 20px;
+}
+.promo-reg-btn--guest:hover {
+    color: rgba(255, 255, 255, 0.65);
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    transform: none;
+}
+/* ===== FIN MODAL REGISTRO PARA PROMOS ===== */

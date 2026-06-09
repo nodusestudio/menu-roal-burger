@@ -8200,6 +8200,50 @@ function initPromoModal() {
     }, 2000);
 }
 
+function openPromoRegistrationPrompt() {
+    const existing = document.getElementById('promoRegistrationPrompt');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'promoRegistrationPrompt';
+    modal.className = 'support-modal is-open';
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass promo-reg-card" role="dialog" aria-modal="true" aria-label="Registrate para promos exclusivas">
+            <button type="button" class="support-modal-close" id="promoRegClose" aria-label="Cerrar">&times;</button>
+            <p class="support-modal-kicker">Promos exclusivas</p>
+            <h3 class="support-modal-title">Esta oferta es solo para miembros</h3>
+            <p class="support-modal-text">Para disfrutar de <strong>esta y todas nuestras promos exclusivas</strong> necesitas tener cuenta en la app de ROAL BURGER. ¡Tambien puedes descargarla directo en tu dispositivo!</p>
+            <div class="promo-reg-actions">
+                <button type="button" class="promo-reg-btn promo-reg-btn--download" id="promoRegDownload">
+                    <span class="promo-reg-btn-icon">&#8659;</span> Descargar app
+                </button>
+                <button type="button" class="promo-reg-btn promo-reg-btn--register" id="promoRegRegister">
+                    <span class="promo-reg-btn-icon">&#9788;</span> Registrarse
+                </button>
+                <button type="button" class="promo-reg-btn promo-reg-btn--guest" id="promoRegGuest">
+                    Continuar como visitante
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    syncBodyScrollLock();
+
+    modal.addEventListener('click', (e) => { if (e.target === modal) closePromoRegistrationPrompt(); });
+    document.getElementById('promoRegClose')?.addEventListener('click', closePromoRegistrationPrompt);
+    document.getElementById('promoRegDownload')?.addEventListener('click', () => { handleShortcutInstall(); });
+    document.getElementById('promoRegRegister')?.addEventListener('click', () => {
+        closePromoRegistrationPrompt();
+        openCustomerRegisterModal();
+    });
+    document.getElementById('promoRegGuest')?.addEventListener('click', closePromoRegistrationPrompt);
+}
+
+function closePromoRegistrationPrompt() {
+    const modal = document.getElementById('promoRegistrationPrompt');
+    if (modal) { modal.remove(); syncBodyScrollLock(); }
+}
+
 function orderDailyRecommendation() {
     if (!canPlaceOrdersNow()) {
         showOrderingClosedMessage();
@@ -8208,13 +8252,7 @@ function orderDailyRecommendation() {
 
     if (!activeCustomerProfile) {
         closePromoModal();
-        openCustomerAuthModal();
-        setTimeout(() => {
-            const feedback = document.getElementById('customerAuthFeedback');
-            if (feedback) {
-                feedback.textContent = 'Debes registrarte o iniciar sesion para obtener el descuento del recomendado del dia.';
-            }
-        }, 50);
+        openPromoRegistrationPrompt();
         return;
     }
 
