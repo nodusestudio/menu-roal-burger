@@ -195,18 +195,6 @@ const openCreateProductBtn = document.getElementById('openCreateProductBtn');
 let _selectedCategoryId = null;
 let _editingProductId = null;
 const notice = document.getElementById('adminNotice');
-const totalClicksEl = document.getElementById('totalClicks');
-const topProductEl = document.getElementById('topProduct');
-const metricsChartList = document.getElementById('metricsChartList');
-const metricsCategoryList = document.getElementById('metricsCategoryList');
-const metricsInsightsList = document.getElementById('metricsInsightsList');
-const metricActiveProductsEl = document.getElementById('metricActiveProducts');
-const metricPausedProductsEl = document.getElementById('metricPausedProducts');
-const metricFeaturedProductsEl = document.getElementById('metricFeaturedProducts');
-const metricActiveCategoriesEl = document.getElementById('metricActiveCategories');
-const metricAveragePriceEl = document.getElementById('metricAveragePrice');
-const metricWhatsappClicksEl = document.getElementById('metricWhatsappClicks');
-const metricDailyVisitorsEl = document.getElementById('metricDailyVisitors');
 const openCreateClientBtn = document.getElementById('openCreateClientBtn');
 const exportClientsBtn = document.getElementById('exportClientsBtn');
 const clientsExportFormat = document.getElementById('clientsExportFormat');
@@ -391,6 +379,7 @@ let internalOrderUseNewClient = false;
 let posSelectedCategory = null;
 let posCurrentClient = null;
 let posSelectedClientData = null;
+let posTicketConfig = null; // { orderType, mesaNumber, customerName, customerPhone }
 let posTickets = [];
 let posActiveTicketId = null;
 let menuUpgradesConfig = null;
@@ -400,6 +389,20 @@ let expandedClientAddressIds = new Set();
 let productClicksState = [];
 let liveSubscriptions = [];
 let recomendadoDiaState = null;
+
+// ── Bluetooth printer state ──
+let _btPrinterDevice = null;
+let _btPrinterCharacteristic = null;
+const _BT_SERVICES = [
+    '000018f0-0000-1000-8000-00805f9b34fb',
+    'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+    '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+];
+const _BT_TX_CHARS = [
+    '00002af1-0000-1000-8000-00805f9b34fb',
+    'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f',
+    '49535343-1e4d-4bd9-ba61-23c647249616',
+];
 let _recomendadoSelectedProductId = null;
 const _processedAccordionExpanded = new Set();
 let previewRefreshTimer = null;
@@ -1255,7 +1258,7 @@ function setupSectionSaveButtons() {
 
         if (section === 'metricas') {
             await reloadDataAndRender();
-            showNotice('Metricas actualizadas.', 'ok');
+            showNotice('Métricas actualizadas.', 'ok');
             return;
         }
 
@@ -2791,6 +2794,18 @@ function switchPosTicket(ticketId) {
     internalOrderItems = ticket.items;
     const label = document.getElementById('posActiveTicketLabel');
     if (label) label.textContent = ticket.label;
+    // Restaurar metadata del ticket al carrito
+    if (ticket.orderType) {
+        posTicketConfig = {
+            orderType: ticket.orderType,
+            mesaNumber: ticket.mesaNumber || null,
+            customerName: ticket.customerName || '',
+            customerPhone: ticket.customerPhone || ''
+        };
+    } else {
+        posTicketConfig = null;
+    }
+    renderPosCartTicketInfo();
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
@@ -2813,10 +2828,12 @@ function renderPosTicketsList() {
         const subtotal = ticket.items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
         const itemCount = ticket.items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
         const isActive = ticket.id === posActiveTicketId;
+        const typeLabels = { mesa: '&#9632; Mesa', retiro: '&#8599; Recoger', domicilio: '&#8962; Domicilio' };
+        const typeBadge = ticket.orderType ? `<span class="pos-ticket-type-badge">${typeLabels[ticket.orderType] || ticket.orderType}</span>` : '';
         return `<div class="pos-ticket-item ${isActive ? 'active-ticket' : ''}" data-ticket-id="${escapeHtml(ticket.id)}">
-            <div class="pos-ticket-check">${isActive ? '✓' : ''}</div>
+            <div class="pos-ticket-check">${isActive ? '&#10003;' : ''}</div>
             <div class="pos-ticket-info">
-                <div class="pos-ticket-name">${escapeHtml(ticket.label)}</div>
+                <div class="pos-ticket-name">${escapeHtml(ticket.label)}${typeBadge}</div>
                 <div class="pos-ticket-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'}</div>
             </div>
             <div class="pos-ticket-total">${formatMoney(subtotal)}</div>
@@ -2833,16 +2850,26 @@ function showPosScreen(screen) {
     const tickets = document.getElementById('posScreenTickets');
     const cartDrawer = document.getElementById('posCartDrawer');
 
-    if (main) { main.hidden = screen !== 'main'; main.style.display = screen === 'main' ? 'flex' : 'none'; }
+    // En escritorio, cuando se muestran los tickets, el main se mantiene en el flujo flex
+    // para que el carrito (30% derecho) conserve su posición; los tickets lo cubren como overlay.
+    const desktopTickets = isPosDesktop() && screen === 'tickets';
+    if (main) {
+        const showMain = screen === 'main' || desktopTickets;
+        main.hidden = !showMain;
+        main.style.display = showMain ? 'flex' : 'none';
+    }
     if (payment) { payment.hidden = screen !== 'payment'; payment.style.display = screen === 'payment' ? 'flex' : 'none'; }
     if (tickets) { tickets.hidden = screen !== 'tickets'; tickets.style.display = screen === 'tickets' ? 'flex' : 'none'; }
 
     if (cartDrawer) {
-        if (isPosDesktop() && screen === 'main') {
-            // En desktop el carrito es un panel fijo siempre visible
+        if (isPosDesktop() && screen !== 'payment') {
+            // En desktop el carrito es un panel fijo siempre visible (main y tickets)
             cartDrawer.hidden = false;
             cartDrawer.style.display = '';
-        } else if (screen !== 'main') {
+        } else if (!isPosDesktop() && screen !== 'main') {
+            cartDrawer.hidden = true;
+            cartDrawer.style.display = 'none';
+        } else if (screen === 'payment') {
             cartDrawer.hidden = true;
             cartDrawer.style.display = 'none';
         }
@@ -3211,7 +3238,9 @@ function closeInternalOrderModal(clearCurrentTicket = false) {
 
     posTickets = [];
     posActiveTicketId = null;
+    posTicketConfig = null;
     internalOrderItems = [];
+    renderPosCartTicketInfo();
     const cartDrawer = document.getElementById('posCartDrawer');
     if (cartDrawer) cartDrawer.hidden = true;
     internalOrderModal.classList.remove('is-open');
@@ -4282,48 +4311,182 @@ function createFeaturedRow(product) {
     return row;
 }
 
-function renderMetricsChart() {
-    if (!metricsChartList) {
+// ── Métricas: Pestaña Usuarios ────────────────────────────────────────────────
+
+let _metricsUsersFiltered = [];
+
+function renderMetricsUsers() {
+    const list = document.getElementById('metricsUsersList');
+    if (!list) return;
+
+    const users = (clientsState || []).slice().sort((a, b) =>
+        (b.totalOrders || 0) - (a.totalOrders || 0)
+    );
+
+    // KPIs de resumen
+    const withOrders = users.filter((u) => (u.totalOrders || 0) > 0);
+    const avgOrders = users.length
+        ? (users.reduce((s, u) => s + (u.totalOrders || 0), 0) / users.length).toFixed(1)
+        : '0';
+    const totalSpent = users.reduce((s, u) => s + (u.lastOrderTotal || 0), 0);
+
+    const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setKpi('metricsUserCount', users.length.toLocaleString('es-CO'));
+    setKpi('metricsUserWithOrders', withOrders.length.toLocaleString('es-CO'));
+    setKpi('metricsUserAvgOrders', avgOrders);
+    setKpi('metricsUserTotalSpent', formatMoney(totalSpent));
+
+    _metricsUsersFiltered = users;
+    _renderMetricsUserRows(users);
+}
+
+function _renderMetricsUserRows(users) {
+    const list = document.getElementById('metricsUsersList');
+    const countLabel = document.getElementById('metricsUsersCountLabel');
+    if (!list) return;
+    if (countLabel) countLabel.textContent = `${users.length} usuario${users.length !== 1 ? 's' : ''}`;
+
+    if (!users.length) {
+        list.innerHTML = '<p class="muted" style="padding:24px 16px;text-align:center;">Sin usuarios registrados.</p>';
         return;
     }
 
-    metricsChartList.innerHTML = '';
-    if (!productClicksState.length) {
-        const empty = document.createElement('p');
-        empty.className = 'muted';
-        empty.textContent = 'Sin datos de clics por producto aun.';
-        metricsChartList.appendChild(empty);
+    list.innerHTML = users.map((u) => {
+        const orders = u.totalOrders || 0;
+        const since = u.firstOrderAt
+            ? new Date(u.firstOrderAt.seconds ? u.firstOrderAt.seconds * 1000 : u.firstOrderAt).toLocaleDateString('es-CO', { year: 'numeric', month: 'short' })
+            : '—';
+        const orderChip = orders > 0
+            ? `<span class="metrics-chip hi">${orders} compra${orders !== 1 ? 's' : ''}</span>`
+            : `<span class="metrics-chip">Sin compras</span>`;
+        const addrCount = (u.savedAddresses || []).length;
+        const addrChip = addrCount > 0 ? `<span class="metrics-chip">${addrCount} dirección${addrCount !== 1 ? 'es' : ''}</span>` : '';
+        return `
+        <div class="metrics-user-row" data-user-phone="${escapeHtml(u.customerPhone || '')}" data-user-id="${escapeHtml(u.id || '')}">
+            <div class="metrics-user-main">
+                <div class="metrics-user-name">${escapeHtml(u.customerName || 'Sin nombre')}</div>
+                <div class="metrics-user-phone">${escapeHtml(u.customerPhone || '—')}</div>
+                <div class="metrics-user-chips">${orderChip}${addrChip}</div>
+            </div>
+            <div class="metrics-user-side">
+                <div class="metrics-user-total">${u.lastOrderTotal ? formatMoney(u.lastOrderTotal) : '—'}</div>
+                <div class="metrics-user-since">desde ${since}</div>
+            </div>
+        </div>
+        <div class="metrics-user-detail" id="metricsDetail_${escapeHtml(u.id || u.customerPhone || '')}" hidden></div>`;
+    }).join('');
+
+    // Click para expandir detalle
+    list.querySelectorAll('.metrics-user-row').forEach((row) => {
+        row.addEventListener('click', () => _toggleMetricsUserDetail(row));
+    });
+}
+
+async function _toggleMetricsUserDetail(row) {
+    const phone = row.dataset.userPhone;
+    const userId = row.dataset.userId;
+    const detailId = `metricsDetail_${userId || phone}`;
+    const detail = document.getElementById(detailId);
+    if (!detail) return;
+
+    const isOpen = !detail.hidden;
+    // Cerrar todos los detalles abiertos
+    document.querySelectorAll('.metrics-user-detail').forEach((d) => { d.hidden = true; });
+    document.querySelectorAll('.metrics-user-row').forEach((r) => r.classList.remove('is-expanded'));
+
+    if (isOpen) return; // si ya estaba abierto, solo cerramos
+
+    row.classList.add('is-expanded');
+    detail.hidden = false;
+    detail.innerHTML = '<p class="metrics-detail-loading">Cargando historial...</p>';
+
+    try {
+        const snap = await firebaseDb.collection(ORDERS_COLLECTION)
+            .where('customerPhone', '==', phone)
+            .orderBy('createdAt', 'desc')
+            .limit(100)
+            .get();
+
+        const orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        _renderMetricsUserDetail(detail, orders, phone);
+    } catch (e) {
+        detail.innerHTML = '<p class="metrics-detail-loading">No se pudo cargar el historial.</p>';
+    }
+}
+
+function _renderMetricsUserDetail(container, orders, phone) {
+    if (!orders.length) {
+        container.innerHTML = '<p class="metrics-detail-loading">Este usuario no tiene pedidos registrados.</p>';
         return;
     }
 
-    const maxValue = Math.max(...productClicksState.map((item) => item.clicks), 1);
-    productClicksState
-        .sort((a, b) => b.clicks - a.clicks)
-        .slice(0, 12)
-        .forEach((item) => {
-            const row = document.createElement('div');
-            row.className = 'metrics-row';
+    const total = orders.reduce((s, o) => s + Number(o.total || 0), 0);
+    const firstDate = orders.length
+        ? new Date(orders[orders.length - 1]?.createdAt?.seconds
+            ? orders[orders.length - 1].createdAt.seconds * 1000
+            : orders[orders.length - 1].createdAt)
+            .toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
+        : '—';
+    const lastDate = new Date(orders[0]?.createdAt?.seconds
+        ? orders[0].createdAt.seconds * 1000
+        : orders[0].createdAt)
+        .toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+    const avg = orders.length ? formatMoney(Math.round(total / orders.length)) : '—';
 
-            const label = document.createElement('span');
-            label.className = 'muted';
-            label.textContent = item.product;
-
-            const track = document.createElement('div');
-            track.className = 'metrics-bar-track';
-
-            const fill = document.createElement('div');
-            fill.className = 'metrics-bar-fill';
-            fill.style.width = `${Math.max(6, (item.clicks / maxValue) * 100)}%`;
-
-            const value = document.createElement('strong');
-            value.textContent = String(item.clicks);
-
-            track.appendChild(fill);
-            row.appendChild(label);
-            row.appendChild(track);
-            row.appendChild(value);
-            metricsChartList.appendChild(row);
+    // Productos más pedidos
+    const itemMap = new Map();
+    orders.forEach((o) => {
+        (o.items || []).forEach((item) => {
+            const name = item.productName || item.nombre || '?';
+            const qty = Number(item.quantity || item.cantidad || 1);
+            itemMap.set(name, (itemMap.get(name) || 0) + qty);
         });
+    });
+    const topItems = [...itemMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    // Horario preferido
+    const hourMap = new Map();
+    orders.forEach((o) => {
+        if (!o.createdAt) return;
+        const ts = o.createdAt.seconds ? o.createdAt.seconds * 1000 : Number(o.createdAt);
+        const h = new Date(ts).getHours();
+        hourMap.set(h, (hourMap.get(h) || 0) + 1);
+    });
+    const topHours = [...hourMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+        .map(([h, c]) => ({ h: `${String(h).padStart(2, '0')}:00`, c }));
+
+    // Métodos de pago
+    const payMap = new Map();
+    orders.forEach((o) => {
+        const m = o.paymentMethod || 'desconocido';
+        payMap.set(m, (payMap.get(m) || 0) + 1);
+    });
+    const payRows = [...payMap.entries()].sort((a, b) => b[1] - a[1]);
+
+    const makeCard = (title, rows) => `
+        <div class="metrics-detail-card">
+            <div class="metrics-detail-title">${title}</div>
+            <div class="metrics-detail-rows">
+                ${rows.map(([label, val]) => `
+                    <div class="metrics-detail-row">
+                        <span>${escapeHtml(String(label))}</span>
+                        <strong>${escapeHtml(String(val))}</strong>
+                    </div>`).join('')}
+            </div>
+        </div>`;
+
+    container.innerHTML = `<div class="metrics-detail-grid">
+        ${makeCard('Resumen', [
+            ['Primer pedido', firstDate],
+            ['Último pedido', lastDate],
+            ['Total pedidos', orders.length],
+            ['Gastado en total', formatMoney(total)],
+            ['Ticket promedio', avg]
+        ])}
+        ${topItems.length ? makeCard('Productos favoritos', topItems.map(([n, q]) => [n, `×${q}`])) : ''}
+        ${topHours.length ? makeCard('Horario de compra', topHours.map(({ h, c }) => [h, `${c} pedido${c !== 1 ? 's' : ''}`])) : ''}
+        ${payRows.length ? makeCard('Métodos de pago', payRows.map(([m, c]) => [m, `${c}×`])) : ''}
+    </div>`;
 }
 
 function formatMoney(value) {
@@ -5223,18 +5386,19 @@ function createOrderCard(order) {
     const showDeleteAction = order.status !== 'entregado';
     const showViewTicketAction = isMobileAdminViewport();
     const showEditPosAction = (order.isAdminOrder || order.source === 'admin_pos') && order.status === 'pendiente';
-    const actionsMarkup = order.id === selectedOrderId
-        ? `
-            <div class="kanban-order-actions">
-                ${showViewTicketAction ? `<button type="button" class="order-action-btn order-action-btn-view" data-order-card-action="view_ticket" data-order-id="${order.id}">Ver ticket</button>` : ''}
-                ${showEditPosAction ? `<button type="button" class="order-action-btn order-action-btn-edit" data-order-card-action="editar_pos" data-order-id="${order.id}">&#9998; Editar pedido</button>` : ''}
-                ${showReceiveAction ? `<button type="button" class="order-action-btn order-action-btn-receive" data-order-card-action="recibir_pedido" data-order-id="${order.id}">Recibir pedido</button>` : ''}
-                ${showPickupReadyAction ? `<button type="button" class="order-action-btn order-action-btn-ready" data-order-card-action="listo_recoger" data-order-id="${order.id}">Pedido listo</button>` : ''}
-                ${showDeliveryAction ? `<button type="button" class="order-action-btn" data-order-card-action="esperando_domiciliario" data-order-id="${order.id}">Pedir domiciliario</button>` : ''}
-                ${showDeliveredAction ? `<button type="button" class="order-action-btn order-action-btn-delivered" data-order-card-action="entregado" data-order-id="${order.id}">Pedido entregado</button>` : ''}
-                ${showDeleteAction ? `<button type="button" class="order-action-btn order-action-btn-delete" data-order-card-action="eliminar" data-order-id="${order.id}">Eliminar pedido</button>` : ''}
-            </div>
-        `
+
+    const actionButtons = [
+        showViewTicketAction ? `<button type="button" class="order-action-btn order-action-btn-view" data-order-card-action="view_ticket" data-order-id="${order.id}">Ver ticket</button>` : '',
+        showEditPosAction ? `<button type="button" class="order-action-btn order-action-btn-edit" data-order-card-action="editar_pos" data-order-id="${order.id}">&#9998; Editar pedido</button>` : '',
+        showReceiveAction ? `<button type="button" class="order-action-btn order-action-btn-receive" data-order-card-action="recibir_pedido" data-order-id="${order.id}">Recibir pedido</button>` : '',
+        showPickupReadyAction ? `<button type="button" class="order-action-btn order-action-btn-ready" data-order-card-action="listo_recoger" data-order-id="${order.id}">Pedido listo</button>` : '',
+        showDeliveryAction ? `<button type="button" class="order-action-btn" data-order-card-action="esperando_domiciliario" data-order-id="${order.id}">Pedir domiciliario</button>` : '',
+        showDeliveredAction ? `<button type="button" class="order-action-btn order-action-btn-delivered" data-order-card-action="entregado" data-order-id="${order.id}">Pedido entregado</button>` : '',
+        showDeleteAction ? `<button type="button" class="order-action-btn order-action-btn-delete" data-order-card-action="eliminar" data-order-id="${order.id}">Eliminar pedido</button>` : ''
+    ].filter(Boolean).join('');
+
+    const actionsMarkup = actionButtons
+        ? `<div class="kanban-order-actions">${actionButtons}</div>`
         : '';
 
     card.innerHTML = `
@@ -5307,7 +5471,8 @@ function renderOrders() {
             const section = document.createElement('div');
             section.className = 'kanban-processed-section';
             section.dataset.processedSection = column.key;
-            if (!isExpanded) section.hidden = true;
+            section.hidden = !isExpanded;
+            section.style.display = isExpanded ? '' : 'none';
             processedOrders.forEach((order) => {
                 section.appendChild(createOrderCard(order));
             });
@@ -6110,6 +6275,205 @@ async function deleteOrder(orderId) {
     await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).delete();
 }
 
+function renderBtPrinterStatus(status, deviceName) {
+    const dot = document.getElementById('ticketBtDot');
+    const label = document.getElementById('ticketBtLabel');
+    const btn = document.getElementById('ticketBtBtn');
+    if (!dot || !label || !btn) return;
+    dot.dataset.status = status;
+    if (status === 'connected') {
+        label.textContent = `BT: ${deviceName || 'impresora'}`;
+        btn.textContent = 'Desconectar';
+        btn.dataset.btAction = 'disconnect';
+    } else if (status === 'connecting') {
+        label.textContent = 'Conectando...';
+        btn.textContent = 'Cancelar';
+        btn.dataset.btAction = '';
+    } else {
+        label.textContent = 'Sin impresora BT';
+        btn.textContent = 'Buscar';
+        btn.dataset.btAction = 'connect';
+    }
+}
+
+async function connectBluetoothPrinter() {
+    if (!navigator.bluetooth) {
+        showNotice('Web Bluetooth no esta disponible en este navegador. Usa Chrome o Brave.', 'error');
+        return;
+    }
+    try {
+        renderBtPrinterStatus('connecting');
+        const device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: _BT_SERVICES,
+        });
+        const server = await device.gatt.connect();
+        let char = null;
+
+        // Intenta descubrir todos los servicios disponibles y busca una característica escribible
+        for (const svcUuid of _BT_SERVICES) {
+            if (char) break;
+            try {
+                const svc = await server.getPrimaryService(svcUuid);
+                let chars = [];
+                try { chars = await svc.getCharacteristics(); } catch (_) { /* ignorar */ }
+                // Primero busca por UUID conocido
+                for (const charUuid of _BT_TX_CHARS) {
+                    try {
+                        const c = await svc.getCharacteristic(charUuid);
+                        if (c.properties.write || c.properties.writeWithoutResponse) { char = c; break; }
+                    } catch (_) { /* siguiente */ }
+                }
+                // Si no encontró por UUID, toma la primera característica escribible descubierta
+                if (!char) {
+                    for (const c of chars) {
+                        if (c.properties.write || c.properties.writeWithoutResponse) { char = c; break; }
+                    }
+                }
+            } catch (_) { /* servicio no disponible */ }
+        }
+
+        if (!char) {
+            showNotice('Impresora conectada pero no se encontro caracteristica de escritura. Verifica que sea la impresora correcta.', 'error');
+            renderBtPrinterStatus('disconnected');
+            return;
+        }
+        _btPrinterDevice = device;
+        _btPrinterCharacteristic = char;
+        device.addEventListener('gattserverdisconnected', () => {
+            _btPrinterDevice = null;
+            _btPrinterCharacteristic = null;
+            renderBtPrinterStatus('disconnected');
+            showNotice('Impresora Bluetooth desconectada.', 'error');
+        });
+        renderBtPrinterStatus('connected', device.name || '');
+        showNotice(`Impresora "${device.name || 'BT'}" conectada. Ya puedes imprimir.`, 'ok');
+    } catch (err) {
+        if (err.name !== 'NotFoundError') {
+            showNotice(`Error Bluetooth: ${err.message || 'desconocido'}`, 'error');
+        }
+        renderBtPrinterStatus('disconnected');
+    }
+}
+
+function disconnectBluetoothPrinter() {
+    try { if (_btPrinterDevice?.gatt?.connected) _btPrinterDevice.gatt.disconnect(); } catch (_) { /* ignorar */ }
+    _btPrinterDevice = null;
+    _btPrinterCharacteristic = null;
+    renderBtPrinterStatus('disconnected');
+    showNotice('Impresora Bluetooth desconectada.', 'ok');
+}
+
+function _escNormalize(str) {
+    return String(str || '')
+        .replace(/[áàâã]/g, 'a').replace(/[ÁÀÂÃ]/g, 'A')
+        .replace(/[éèê]/g, 'e').replace(/[ÉÈÊ]/g, 'E')
+        .replace(/[íìî]/g, 'i').replace(/[ÍÌÎ]/g, 'I')
+        .replace(/[óòôõ]/g, 'o').replace(/[ÓÒÔÕ]/g, 'O')
+        .replace(/[úùûü]/g, 'u').replace(/[ÚÙÛÜ]/g, 'U')
+        .replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
+        .replace(/[¿¡]/g, '');
+}
+
+function buildESCPOSData(order) {
+    const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
+    const COLS = 32;
+    const bytes = [];
+    const pb = (...a) => bytes.push(...a);
+
+    function wl(str) {
+        const s = _escNormalize(str).substring(0, COLS);
+        for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
+        pb(LF);
+    }
+    function wc(left, right) {
+        const l = _escNormalize(left); const r = _escNormalize(right);
+        const pad = Math.max(1, COLS - l.substring(0, COLS - r.length - 1).length - r.length);
+        wl(l.substring(0, COLS - r.length - 1) + ' '.repeat(pad) + r);
+    }
+    function sep() { wl('-'.repeat(COLS)); }
+
+    // Init
+    pb(ESC, 0x40);
+    // Brand — center, bold, double size
+    pb(ESC, 0x61, 0x01, ESC, 0x45, 0x01, ESC, 0x21, 0x30);
+    wl(brandingState.restaurantName || 'ROAL BURGER');
+    pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
+    wl('Ticket de recepcion');
+    pb(ESC, 0x61, 0x00);
+
+    sep();
+    wl('Pedido : ' + (order.code || ''));
+    wl('Fecha  : ' + formatOrderDate(order.createdAt));
+    wl('Hora   : ' + formatOrderTime(order.createdAt));
+
+    sep();
+    wl('Cliente: ' + (order.customerName || 'N/A'));
+    wl('Tel    : ' + (order.customerPhone || 'N/A'));
+    wl('Tipo   : ' + getOrderTypeLabel(order));
+    if (order.orderType === 'domicilio' && order.deliveryAddress) {
+        wl('Dir: ' + order.deliveryAddress);
+    }
+
+    sep();
+    pb(ESC, 0x45, 0x01); wc('Producto', 'Total'); pb(ESC, 0x45, 0x00);
+    sep();
+    for (const item of (order.items || [])) {
+        wc(`${item.quantity}x ${item.productName}`, formatMoney(item.subtotal));
+        if (item.optionLabel) wl('  ' + item.optionLabel);
+        if (item.note) wl('  Nota: ' + item.note);
+    }
+
+    sep();
+    wc('Subtotal', formatMoney(order.subtotal || 0));
+    if (order.orderType === 'domicilio') wc('Domicilio', formatMoney(order.deliveryFee || 0));
+    sep();
+    pb(ESC, 0x45, 0x01, ESC, 0x21, 0x10);
+    wc('TOTAL', formatMoney(getOrderDisplayTotal(order)));
+    pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
+
+    const cashGiven = Number(order.cashTenderAmount || 0);
+    const totalAmt = getOrderDisplayTotal(order);
+    if (order.cashChangeRequired && cashGiven > totalAmt) {
+        sep();
+        wc('Pago con', formatMoney(cashGiven));
+        wc('Cambio', formatMoney(cashGiven - totalAmt));
+    }
+
+    pb(ESC, 0x61, 0x01, LF);
+    wl('Gracias por elegirnos!');
+    if (brandingState.address) wl(brandingState.address);
+    pb(LF, LF, LF);
+    // Corte completo
+    pb(GS, 0x56, 0x00);
+
+    return new Uint8Array(bytes);
+}
+
+async function _btWriteChunk(char, slice) {
+    // Intenta sin respuesta primero (más común en impresoras térmicas), luego con respuesta
+    if (char.properties?.writeWithoutResponse) {
+        try { await char.writeValueWithoutResponse(slice); return; } catch (_) { /* fallback */ }
+    }
+    await char.writeValue(slice);
+}
+
+async function printViaBluetoothESCPOS(order) {
+    if (!_btPrinterCharacteristic) return false;
+    const data = buildESCPOSData(order);
+    const CHUNK = 20; // MTU BLE mínimo seguro (BLE default es 23 - 3 = 20 bytes de payload)
+    try {
+        for (let i = 0; i < data.length; i += CHUNK) {
+            await _btWriteChunk(_btPrinterCharacteristic, data.slice(i, i + CHUNK));
+            await new Promise((r) => setTimeout(r, 80));
+        }
+        return true;
+    } catch (err) {
+        showNotice(`Error al imprimir por Bluetooth: ${err.message || 'error desconocido'}`, 'error');
+        return false;
+    }
+}
+
 function openOrderPrintTicket(orderId) {
     const order = ordersState.find((entry) => entry.id === orderId);
     if (!order) {
@@ -6117,274 +6481,24 @@ function openOrderPrintTicket(orderId) {
         return;
     }
 
-    const printWindow = window.open('', '_blank', 'width=420,height=720');
-    if (!printWindow) {
-        showNotice('El navegador bloqueo la ventana de impresion.', 'error');
+    if (_btPrinterCharacteristic) {
+        printViaBluetoothESCPOS(order).then((ok) => {
+            if (ok) showNotice('Ticket enviado a la impresora.', 'ok');
+        });
         return;
     }
 
-    printWindow.document.write(`
-        <!DOCTYPE html>
-        <html lang="es">
-        <head>
-            <meta charset="UTF-8">
-            <title>Ticket ${escapeHtml(order.code)}</title>
-            <style>
-                @page { margin: 8mm; }
-                * { box-sizing: border-box; }
-                body {
-                    margin: 0;
-                    background: #ffffff;
-                    color: #171717;
-                    font-family: 'Courier New', monospace;
-                    padding: 0;
-                }
-                .ticket-paper-wrap {
-                    width: 80mm;
-                    margin: 0 auto;
-                    display: block;
-                }
-                .ticket-paper {
-                    position: relative;
-                    background: #fff;
-                    color: #171717;
-                    border-radius: 0;
-                    padding: 18px 14px 14px;
-                    box-shadow: none;
-                    overflow: hidden;
-                }
-                .ticket-paper::before,
-                .ticket-paper::after {
-                    content: '';
-                    position: absolute;
-                    left: 0;
-                    width: 100%;
-                    height: 12px;
-                    background: radial-gradient(circle at 6px 6px, transparent 6px, #fff 6.5px);
-                    background-size: 12px 12px;
-                }
-                .ticket-paper::before { top: -6px; }
-                .ticket-paper::after { bottom: -6px; transform: rotate(180deg); }
-                .ticket-brand {
-                    text-align: center;
-                    display: grid;
-                    gap: 6px;
-                    padding-bottom: 12px;
-                    border-bottom: 1px dashed rgba(0, 0, 0, 0.3);
-                }
-                .ticket-brand-name {
-                    font-size: 20px;
-                    font-weight: 700;
-                    letter-spacing: 1.2px;
-                    text-transform: uppercase;
-                }
-                .ticket-brand-copy,
-                .ticket-order-meta,
-                .ticket-copy-muted,
-                .ticket-line-meta,
-                .ticket-footer-copy {
-                    font-size: 11px;
-                    color: #555;
-                }
-                .ticket-order-meta,
-                .ticket-customer-row,
-                .ticket-summary-line {
-                    display: flex;
-                    justify-content: space-between;
-                    gap: 10px;
-                }
-                .ticket-section,
-                .ticket-total {
-                    display: grid;
-                    gap: 7px;
-                    padding-top: 12px;
-                    border-top: 1px dashed rgba(0, 0, 0, 0.2);
-                }
-                .ticket-section-title {
-                    font-size: 10px;
-                    color: #666;
-                    font-weight: 700;
-                    letter-spacing: 1px;
-                    text-transform: uppercase;
-                }
-                .ticket-customer-card {
-                    display: grid;
-                    gap: 8px;
-                }
-                .ticket-customer-name,
-                .ticket-total-row.is-grand-total {
-                    color: #111;
-                    font-weight: 700;
-                }
-                .ticket-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                }
-                .ticket-table th,
-                .ticket-table td {
-                    padding: 7px 0;
-                    border-bottom: 1px dashed rgba(0, 0, 0, 0.18);
-                    text-align: left;
-                    vertical-align: top;
-                    font-size: 12px;
-                }
-                .ticket-table th:last-child,
-                .ticket-table td:last-child {
-                    text-align: right;
-                }
-                .ticket-table th {
-                    font-size: 10px;
-                    color: #666;
-                    text-transform: uppercase;
-                    letter-spacing: 0.8px;
-                }
-                .ticket-line-meta {
-                    display: block;
-                    margin-top: 3px;
-                }
-                .ticket-contact-link,
-                .ticket-print-row {
-                    display: none !important;
-                }
-                .ticket-footer-copy {
-                    text-align: center;
-                    padding-top: 12px;
-                    border-top: 1px dashed rgba(0, 0, 0, 0.2);
-                    display: grid;
-                    gap: 4px;
-                }
-            </style>
-        </head>
-        <body>
-            ${buildThermalTicketMarkup(order, { printMode: true })}
-            <script>
-                window.addEventListener('load', function () {
-                    window.print();
-                });
-            <\/script>
-        </body>
-        </html>
-    `);
-
-    printWindow.document.close();
-    printWindow.focus();
-}
-
-function getMatchedProductForMetric(metricProductName) {
-    const metricKey = normalizeCategoryKey(metricProductName);
-    if (!metricKey) {
-        return null;
-    }
-
-    const exact = productsState.find((product) => normalizeCategoryKey(product.nombre) === metricKey);
-    if (exact) {
-        return exact;
-    }
-
-    return productsState.find((product) => {
-        const productKey = normalizeCategoryKey(product.nombre);
-        return productKey.includes(metricKey) || metricKey.includes(productKey);
-    }) || null;
-}
-
-function renderMiniRows(container, rows, emptyText) {
-    if (!container) {
+    const printArea = document.getElementById('thermalPrintArea');
+    if (!printArea) {
+        showNotice('Error interno: area de impresion no encontrada.', 'error');
         return;
     }
 
-    container.innerHTML = '';
-    if (!rows.length) {
-        const empty = document.createElement('p');
-        empty.className = 'muted';
-        empty.textContent = emptyText;
-        container.appendChild(empty);
-        return;
-    }
-
-    rows.forEach((rowData) => {
-        const row = document.createElement('div');
-        row.className = 'metrics-mini-row';
-
-        const label = document.createElement('span');
-        label.textContent = rowData.label;
-
-        const value = document.createElement('strong');
-        value.textContent = rowData.value;
-
-        row.appendChild(label);
-        row.appendChild(value);
-        container.appendChild(row);
-    });
+    printArea.innerHTML = buildThermalTicketMarkup(order, { printMode: true });
+    window.print();
+    printArea.innerHTML = '';
 }
 
-function renderMetricsOverview() {
-    const totalProducts = productsState.length;
-    const activeProducts = productsState.filter((product) => product.estado === 'active').length;
-    const pausedProducts = Math.max(0, totalProducts - activeProducts);
-    const featuredProducts = productsState.filter((product) => product.es_destacado && product.estado === 'active').length;
-    const activeCategories = categoriesState.filter((category) => category.active !== false).length;
-
-    const pricedProducts = productsState.filter((product) => Number(product.precio) > 0);
-    const averagePrice = pricedProducts.length
-        ? pricedProducts.reduce((sum, product) => sum + Number(product.precio || 0), 0) / pricedProducts.length
-        : 0;
-
-    if (metricActiveProductsEl) {
-        metricActiveProductsEl.textContent = Number(activeProducts).toLocaleString('es-CO');
-    }
-    if (metricPausedProductsEl) {
-        metricPausedProductsEl.textContent = Number(pausedProducts).toLocaleString('es-CO');
-    }
-    if (metricFeaturedProductsEl) {
-        metricFeaturedProductsEl.textContent = Number(featuredProducts).toLocaleString('es-CO');
-    }
-    if (metricActiveCategoriesEl) {
-        metricActiveCategoriesEl.textContent = Number(activeCategories).toLocaleString('es-CO');
-    }
-    if (metricAveragePriceEl) {
-        metricAveragePriceEl.textContent = averagePrice > 0 ? formatMoney(Math.round(averagePrice)) : '--';
-    }
-    if (metricWhatsappClicksEl) {
-        metricWhatsappClicksEl.textContent = Number(metricsEventsState.whatsapp || 0).toLocaleString('es-CO');
-    }
-    if (metricDailyVisitorsEl) {
-        metricDailyVisitorsEl.textContent = metricsEventsState.dailyVisitors > 0
-            ? Number(metricsEventsState.dailyVisitors).toLocaleString('es-CO')
-            : '--';
-    }
-
-    const clicksByCategory = new Map();
-    productClicksState.forEach((item) => {
-        const matched = getMatchedProductForMetric(item.product);
-        const categoryName = matched?.categoria || 'Sin categoria';
-        const key = normalizeCategoryKey(categoryName) || 'sin-categoria';
-        const current = clicksByCategory.get(key) || { name: categoryName, clicks: 0 };
-        current.clicks += Number(item.clicks || 0);
-        clicksByCategory.set(key, current);
-    });
-
-    const categoryRows = Array.from(clicksByCategory.values())
-        .sort((a, b) => b.clicks - a.clicks)
-        .slice(0, 6)
-        .map((item) => ({
-            label: item.name,
-            value: Number(item.clicks).toLocaleString('es-CO')
-        }));
-
-    renderMiniRows(metricsCategoryList, categoryRows, 'Sin suficiente data por categoria.');
-
-    const productsWithClicks = new Set(productClicksState.map((item) => normalizeCategoryKey(item.product))).size;
-    const activeShare = totalProducts > 0 ? Math.round((activeProducts / totalProducts) * 100) : 0;
-    const featuredShare = activeProducts > 0 ? Math.round((featuredProducts / activeProducts) * 100) : 0;
-    const insights = [
-        { label: 'Catalogo activo', value: `${activeShare}%` },
-        { label: 'Destacados sobre activos', value: `${featuredShare}%` },
-        { label: 'Productos con data de clics', value: Number(productsWithClicks).toLocaleString('es-CO') },
-        { label: 'Eventos medidos', value: Number(metricsEventsState.total || 0).toLocaleString('es-CO') }
-    ];
-
-    renderMiniRows(metricsInsightsList, insights, 'Sin indicadores disponibles por ahora.');
-}
 
 function refreshLivePreview() {
     if (!liveMenuPreview) {
@@ -6951,98 +7065,9 @@ async function getStatDocument(metric) {
 }
 
 async function syncStats() {
-    try {
-        const [clicksData, topProductData] = await Promise.all([
-            getStatDocument('total_clicks'),
-            getStatDocument('top_product')
-        ]);
-
-        const derivedTotal = productClicksState.reduce((sum, item) => sum + Number(item.clicks || 0), 0);
-        const topFromClicks = [...productClicksState].sort((a, b) => b.clicks - a.clicks)[0];
-
-        totalClicksEl.textContent = clicksData && clicksData.value_number != null
-            ? Number(clicksData.value_number).toLocaleString('es-CO')
-            : (derivedTotal > 0 ? Number(derivedTotal).toLocaleString('es-CO') : '--');
-
-        topProductEl.textContent = (topProductData && topProductData.value_text) || topFromClicks?.product || '--';
-    } catch (error) {
-        const derivedTotal = productClicksState.reduce((sum, item) => sum + Number(item.clicks || 0), 0);
-        const topFromClicks = [...productClicksState].sort((a, b) => b.clicks - a.clicks)[0];
-        totalClicksEl.textContent = derivedTotal > 0 ? Number(derivedTotal).toLocaleString('es-CO') : '--';
-        topProductEl.textContent = topFromClicks?.product || '--';
-    }
+    // reservado para futuras métricas
 }
 
-async function fetchProductClickMetrics() {
-    try {
-        const snapshot = await firebaseDb.collection('estadisticas').get();
-        const parsed = [];
-        const events = {
-            total: 0,
-            whatsapp: 0,
-            menu: 0,
-            social: 0,
-            products: 0
-        };
-
-        snapshot.docs.forEach((doc) => {
-            const data = doc.data() || {};
-            const metricName = String(data.metric || doc.id || '').toLowerCase();
-            const metricValue = Number(data.value_number ?? data.clicks ?? 0);
-            if (Number.isFinite(metricValue) && metricValue > 0) {
-                events.total += metricValue;
-            }
-
-            if (metricName.includes('whatsapp')) {
-                events.whatsapp += Number.isFinite(metricValue) ? Math.max(0, metricValue) : 0;
-            }
-            if (metricName.includes('menu')) {
-                events.menu += Number.isFinite(metricValue) ? Math.max(0, metricValue) : 0;
-            }
-            if (metricName.includes('instagram') || metricName.includes('facebook') || metricName.includes('tiktok') || metricName.includes('social')) {
-                events.social += Number.isFinite(metricValue) ? Math.max(0, metricValue) : 0;
-            }
-
-            const recognizedDailyVisitorsMetric = [
-                'personas',
-                'personas_por_dia',
-                'personas-dia',
-                'personas_dia',
-                'visitantes',
-                'visitas',
-                'visitas_por_dia',
-                'ingresos',
-                'entradas',
-                'daily_visitors',
-                'daily_visits'
-            ].some((key) => metricName.includes(key));
-
-            if (recognizedDailyVisitorsMetric) {
-                events.dailyVisitors = Math.max(events.dailyVisitors, Number.isFinite(metricValue) ? Math.max(0, metricValue) : 0);
-            }
-
-            const isProductMetric = metricName.includes('product') || metricName.includes('producto');
-            if (!isProductMetric) {
-                return;
-            }
-
-            const clicks = metricValue;
-            if (!Number.isFinite(clicks) || clicks <= 0) {
-                return;
-            }
-
-            const product = String(data.value_text || data.product || data.product_name || metricName.replace(/[_-]/g, ' ')).trim();
-            parsed.push({ product: product || 'Producto', clicks });
-            events.products += clicks;
-        });
-
-        productClicksState = parsed;
-        metricsEventsState = events;
-    } catch (error) {
-        productClicksState = [];
-        metricsEventsState = { total: 0, whatsapp: 0, menu: 0, social: 0, products: 0 };
-    }
-}
 
 async function reloadDataAndRender() {
     await Promise.all([
@@ -7055,7 +7080,6 @@ async function reloadDataAndRender() {
         fetchSalesDayState(),
         fetchClients(),
         fetchMessages(),
-        fetchProductClickMetrics(),
         fetchMenuUpgradesConfig(),
         fetchRecomendadoDiaConfig()
     ]);
@@ -7079,9 +7103,8 @@ async function reloadDataAndRender() {
     renderClients();
     renderMessages();
     updateMessagesAttentionState();
-    renderMetricsChart();
+    renderMetricsUsers();
     await syncStats();
-    renderMetricsOverview();
 
     if (activeCategoryModalId) {
         const activeCategory = categoriesState.find((category) => category.id === activeCategoryModalId);
@@ -7414,16 +7437,27 @@ document.getElementById('posCartDrawerCloseBtn')?.addEventListener('click', () =
     if (drawer) drawer.hidden = true;
 });
 
+// Acceso rápido: Personalizar ticket desde el carrito (solo guarda config, no envía)
+document.getElementById('posCartCustomizeBtn')?.addEventListener('click', () => {
+    openPosTicketSetupModal(true);
+});
+
 // Backdrop del carrito
 document.getElementById('posCartBackdrop')?.addEventListener('click', () => {
     const drawer = document.getElementById('posCartDrawer');
     if (drawer) drawer.hidden = true;
 });
 
-// GUARDAR PEDIDO desde el drawer → abre modal de personalización
+// GUARDAR PEDIDO desde el drawer → usa config guardada o abre modal
 document.getElementById('posDrawerSaveBtn')?.addEventListener('click', () => {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
+        return;
+    }
+    if (posTicketConfig) {
+        saveAdminOrderQuick(posTicketConfig);
+        posTicketConfig = null;
+        renderPosCartTicketInfo();
         return;
     }
     openPosTicketSetupModal();
@@ -7434,22 +7468,63 @@ let _ptsSelectedType = null;
 let _ptsSelectedMesa = null;
 let _ptsSelectedClient = null; // { name, phone }
 let _ptsActiveTab = 'none';
+let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin enviar
 
-function openPosTicketSetupModal() {
+function renderPosCartTicketInfo() {
+    const el = document.getElementById('posCartTicketInfo');
+    if (!el) return;
+    if (!posTicketConfig) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+    }
+    const typeLabels = { mesa: 'Mesa', retiro: 'Recoger', domicilio: 'Domicilio' };
+    const typeLabel = typeLabels[posTicketConfig.orderType] || posTicketConfig.orderType;
+    const typeValue = posTicketConfig.orderType === 'mesa' && posTicketConfig.mesaNumber
+        ? `Mesa ${posTicketConfig.mesaNumber}`
+        : typeLabel;
+    const clientValue = posTicketConfig.customerName || '';
+    el.innerHTML = `
+        <div class="pos-ticket-info-row">
+            <span class="pos-ticket-info-label">Tipo</span>
+            <span class="pos-ticket-info-value">${escapeHtml(typeValue)}</span>
+        </div>
+        ${clientValue ? `<div class="pos-ticket-info-row">
+            <span class="pos-ticket-info-label">Cliente</span>
+            <span class="pos-ticket-info-value">${escapeHtml(clientValue)}</span>
+        </div>` : ''}
+    `;
+    el.hidden = false;
+}
+
+function openPosTicketSetupModal(configOnly = false) {
     const modal = document.getElementById('posTicketSetupModal');
     if (!modal) return;
 
+    _ptsConfigOnly = configOnly;
+
+    // Pre-poblar desde el ticket activo si existe metadata
+    const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
+    const prefill = configOnly && activeTicket ? activeTicket : null;
+
     // Reset estado
-    _ptsSelectedType = null;
-    _ptsSelectedMesa = null;
-    _ptsSelectedClient = null;
+    _ptsSelectedType = prefill?.orderType || null;
+    _ptsSelectedMesa = prefill?.mesaNumber || null;
+    _ptsSelectedClient = prefill?.customerName ? { name: prefill.customerName, phone: prefill.customerPhone || '' } : null;
     _ptsActiveTab = 'none';
 
     // Reset UI
-    modal.querySelectorAll('.pts-type-btn').forEach((b) => b.classList.remove('active'));
+    modal.querySelectorAll('.pts-type-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.ptsType === _ptsSelectedType);
+    });
     const mesaGrid = document.getElementById('ptsMesaGrid');
-    if (mesaGrid) mesaGrid.setAttribute('hidden', '');
-    modal.querySelectorAll('.pts-mesa-btn').forEach((b) => b.classList.remove('active'));
+    if (mesaGrid) {
+        if (_ptsSelectedType === 'mesa') mesaGrid.removeAttribute('hidden');
+        else mesaGrid.setAttribute('hidden', '');
+    }
+    modal.querySelectorAll('.pts-mesa-btn').forEach((b) => {
+        b.classList.toggle('active', Number(b.dataset.ptsMesa) === _ptsSelectedMesa);
+    });
     modal.querySelectorAll('[data-pts-tab]').forEach((t) => t.classList.toggle('active', t.dataset.ptsTab === 'none'));
     modal.querySelectorAll('.pts-client-panel').forEach((p) => p.setAttribute('hidden', ''));
     const quickName = document.getElementById('ptsQuickName');
@@ -7458,6 +7533,10 @@ function openPosTicketSetupModal() {
     if (searchInput) searchInput.value = '';
     const searchResults = document.getElementById('ptsSearchResults');
     if (searchResults) searchResults.innerHTML = '';
+
+    // Cambiar label del botón según modo
+    const confirmBtn = document.getElementById('ptsConfirmBtn');
+    if (confirmBtn) confirmBtn.textContent = configOnly ? 'Guardar configuración' : 'Guardar pedido';
 
     _ptsUpdateConfirmBtn();
     modal.removeAttribute('hidden');
@@ -7480,10 +7559,11 @@ function _ptsRenderSearchResults(query) {
     const q = String(query || '').trim().toLowerCase();
     if (!q) { container.innerHTML = ''; return; }
 
+    const qDigits = q.replace(/\D/g, '');
     const matches = (clientsState || []).filter((c) => {
         const name = String(c.customerName || '').toLowerCase();
         const phone = String(c.customerPhone || '').replace(/\D/g, '');
-        return name.includes(q) || phone.includes(q.replace(/\D/g, ''));
+        return name.includes(q) || (qDigits && phone.includes(qDigits));
     }).slice(0, 6);
 
     if (!matches.length) {
@@ -7520,12 +7600,40 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
         customerPhone = _ptsSelectedClient.phone;
     }
     closePosTicketSetupModal();
-    saveAdminOrderQuick({
-        orderType: resolvedType,
-        mesaNumber: resolvedMesa,
-        customerName,
-        customerPhone
-    });
+
+    if (_ptsConfigOnly) {
+        // Modo configuración: actualizar el ticket activo con la metadata y mostrar en carrito
+        const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
+        if (activeTicket) {
+            activeTicket.orderType = resolvedType;
+            activeTicket.mesaNumber = resolvedMesa || null;
+            activeTicket.customerName = customerName;
+            activeTicket.customerPhone = customerPhone;
+            // Actualizar label del ticket
+            const typeLabels = { mesa: 'Mesa', retiro: 'Recoger', domicilio: 'Domicilio' };
+            if (resolvedType === 'mesa' && resolvedMesa) {
+                activeTicket.label = customerName ? `Mesa ${resolvedMesa} · ${customerName}` : `Mesa ${resolvedMesa}`;
+            } else if (customerName) {
+                activeTicket.label = `${customerName} (${typeLabels[resolvedType] || resolvedType})`;
+            } else {
+                activeTicket.label = typeLabels[resolvedType] || resolvedType;
+            }
+            const labelEl = document.getElementById('posActiveTicketLabel');
+            if (labelEl) labelEl.textContent = activeTicket.label;
+        }
+        posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone };
+        renderPosCartTicketInfo();
+        return;
+    }
+
+    // Modo guardar pedido: enviar a Firestore
+    posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone };
+    renderPosCartTicketInfo();
+    if (internalOrderItems.length) {
+        saveAdminOrderQuick(posTicketConfig);
+        posTicketConfig = null;
+        renderPosCartTicketInfo();
+    }
 });
 
 // Delegación a nivel de modal para tipo/mesa/tabs/resultados
@@ -7598,6 +7706,21 @@ document.getElementById('posDrawerCobrarBtn')?.addEventListener('click', () => {
 
 // Volver desde pantalla de pago
 document.getElementById('posPaymentBackBtn')?.addEventListener('click', () => showPosScreen('main'));
+
+// Buscador de usuarios en métricas
+document.getElementById('metricsUserSearch')?.addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    if (!q) {
+        _renderMetricsUserRows(_metricsUsersFiltered);
+        return;
+    }
+    const filtered = _metricsUsersFiltered.filter((u) => {
+        const name = String(u.customerName || '').toLowerCase();
+        const phone = String(u.customerPhone || '');
+        return name.includes(q) || phone.includes(q);
+    });
+    _renderMetricsUserRows(filtered);
+});
 
 // Cerrar lista de tickets
 document.getElementById('posTicketsCloseBtn')?.addEventListener('click', () => showPosScreen('main'));
@@ -7820,6 +7943,15 @@ if (ordersMobileTabs) {
 mobileTicketCloseBtn?.addEventListener('click', () => {
     closeMobileTicketPanel({ clearSelection: true });
     renderOrders();
+});
+
+document.getElementById('ticketBtBtn')?.addEventListener('click', () => {
+    const btn = document.getElementById('ticketBtBtn');
+    if (btn?.dataset.btAction === 'disconnect') {
+        disconnectBluetoothPrinter();
+    } else {
+        connectBluetoothPrinter();
+    }
 });
 
 mobileTicketBackdrop?.addEventListener('click', () => {
@@ -8111,8 +8243,9 @@ if (clientEditForm) {
     });
 }
 
-if (ordersBoard) {
-    ordersBoard.addEventListener('click', async (event) => {
+const ordersActionRoot = document;
+if (ordersActionRoot) {
+    ordersActionRoot.addEventListener('click', async (event) => {
         const target = event.target;
         if (!(target instanceof Element)) {
             return;
@@ -8126,11 +8259,17 @@ if (ordersBoard) {
             if (_processedAccordionExpanded.has(colKey)) {
                 _processedAccordionExpanded.delete(colKey);
                 processedToggle.classList.remove('is-open');
-                if (section) section.hidden = true;
+                if (section) {
+                    section.hidden = true;
+                    section.style.display = 'none';
+                }
             } else {
                 _processedAccordionExpanded.add(colKey);
                 processedToggle.classList.add('is-open');
-                if (section) section.hidden = false;
+                if (section) {
+                    section.hidden = false;
+                    section.style.display = '';
+                }
             }
             return;
         }
@@ -8179,6 +8318,7 @@ if (ordersBoard) {
                 if (nextStatus === 'recibir_pedido') {
                     const copied = await copyTextToClipboard(buildReceivedOrderMessage(order));
                     await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow() });
+                    await reloadDataAndRender();
                     showNotice(
                         copied
                             ? 'Pedido recibido, movido a su columna y mensaje copiado.'
@@ -8201,6 +8341,7 @@ if (ordersBoard) {
                     }
 
                     await deleteOrder(orderId);
+                    await reloadDataAndRender();
                     if (selectedOrderId === orderId) {
                         selectedOrderId = null;
                     }
@@ -8261,6 +8402,11 @@ if (ordersBoard) {
 
         selectedOrderId = selectedOrderId === orderId ? null : orderId;
         renderOrders();
+
+        if (selectedOrderId) {
+            const selectedOrder = ordersState.find((entry) => entry.id === selectedOrderId) || null;
+            renderOrderTicket(selectedOrder, { openMobile: isMobileAdminViewport() });
+        }
     });
 }
 

@@ -2393,84 +2393,151 @@
             100% { background-position: -200% 0; }
         }
 
-        .metrics-chart-list {
-            display: grid;
-            gap: 8px;
-        }
-
-        .metrics-row {
-            display: grid;
-            grid-template-columns: minmax(0, 140px) 1fr auto;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .metrics-bar-track {
-            height: 11px;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.09);
-            overflow: hidden;
-        }
-
-        .metrics-bar-fill {
-            height: 100%;
-            border-radius: 999px;
-            background: linear-gradient(90deg, #ff5722, #ff8a65);
-        }
-
-        .metrics-subtitle {
-            margin-top: 12px;
-            margin-bottom: 8px;
-            color: #d3dcf1;
-            font-size: 0.82rem;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-        }
-
-        .stats-grid.metrics-kpi-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
-
-        .metrics-insights-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-            margin-top: 12px;
-        }
-
-        .metrics-insight-card {
+        /* ── Métricas: pestañas ── */
+        .metrics-tabs-nav { display: flex; gap: 6px; align-items: center; }
+        .metrics-tab-btn {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.6);
             border-radius: 10px;
-            padding: 12px;
-            background: rgba(255, 255, 255, 0.03);
-            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+            padding: 7px 16px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.78rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            cursor: pointer; transition: all 0.15s;
         }
-
-        .metrics-insight-card h3 {
-            font-family: 'Oswald', sans-serif;
-            font-size: 0.95rem;
-            letter-spacing: 0.6px;
-            margin-bottom: 8px;
-            text-transform: uppercase;
+        .metrics-tab-btn.active, .metrics-tab-btn:hover {
+            background: rgba(255,122,26,0.18);
+            border-color: rgba(255,122,26,0.4); color: #ffb07a;
         }
+        .metrics-panel { display: none; }
+        .metrics-panel.active { display: grid; gap: 16px; }
 
-        .metrics-mini-list {
+        /* ── KPI strip ── */
+        .metrics-summary-strip {
             display: grid;
-            gap: 8px;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
         }
-
-        .metrics-mini-row {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 8px;
-            align-items: center;
-            color: #d6deef;
-            font-size: 0.86rem;
+        .metrics-kpi-tile {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px; padding: 14px 16px;
+            display: flex; flex-direction: column; gap: 4px;
         }
-
-        .metrics-mini-row strong {
-            color: #fff;
+        .metrics-kpi-num {
             font-family: 'Oswald', sans-serif;
-            letter-spacing: 0.5px;
+            font-size: 1.6rem; font-weight: 700; color: #fff; line-height: 1;
+        }
+        .metrics-kpi-label {
+            font-size: 0.7rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.6px;
+            color: rgba(255,255,255,0.4);
+        }
+
+        /* ── Lista de usuarios ── */
+        .metrics-users-toolbar {
+            display: flex; align-items: center; gap: 10px;
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        .metrics-search {
+            flex: 1;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px; padding: 7px 12px;
+            color: #fff; font-size: 0.85rem;
+            font-family: 'Space Grotesk', sans-serif;
+            outline: none; transition: border-color 0.15s;
+        }
+        .metrics-search::placeholder { color: rgba(255,255,255,0.28); }
+        .metrics-search:focus { border-color: rgba(255,122,26,0.5); }
+        .metrics-users-count {
+            font-size: 0.72rem; color: rgba(255,255,255,0.3);
+            white-space: nowrap; font-family: 'Space Grotesk', sans-serif;
+        }
+        .metrics-users-list {
+            max-height: 68vh; overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.1) transparent;
+        }
+        .metrics-user-row {
+            padding: 13px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            cursor: pointer; transition: background 0.12s;
+            display: grid; grid-template-columns: 1fr auto;
+            gap: 12px; align-items: start;
+        }
+        .metrics-user-row:last-child { border-bottom: none; }
+        .metrics-user-row:hover, .metrics-user-row.is-expanded {
+            background: rgba(255,122,26,0.05);
+        }
+        .metrics-user-main { min-width: 0; }
+        .metrics-user-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.88rem; font-weight: 700; color: #eef4ff;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .metrics-user-phone {
+            font-size: 0.73rem; color: rgba(255,255,255,0.38); margin-top: 2px;
+        }
+        .metrics-user-chips {
+            display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px;
+        }
+        .metrics-chip {
+            font-size: 0.63rem; font-weight: 700;
+            font-family: 'Space Grotesk', sans-serif;
+            padding: 2px 8px; border-radius: 999px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase; letter-spacing: 0.4px;
+        }
+        .metrics-chip.hi {
+            background: rgba(255,122,26,0.13);
+            border-color: rgba(255,122,26,0.3); color: #ffb07a;
+        }
+        .metrics-user-side { text-align: right; flex-shrink: 0; }
+        .metrics-user-total {
+            font-family: 'Oswald', sans-serif; font-size: 0.95rem; color: #fff;
+        }
+        .metrics-user-since {
+            font-size: 0.68rem; color: rgba(255,255,255,0.3); margin-top: 3px;
+        }
+
+        /* ── Detalle expandido del usuario ── */
+        .metrics-user-detail {
+            padding: 14px 18px 16px;
+            background: rgba(255,122,26,0.03);
+            border-bottom: 1px solid rgba(255,122,26,0.1);
+        }
+        .metrics-detail-loading {
+            font-size: 0.8rem; color: rgba(255,255,255,0.35);
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .metrics-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+            gap: 10px;
+        }
+        .metrics-detail-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 12px; padding: 11px 14px;
+        }
+        .metrics-detail-title {
+            font-size: 0.62rem; font-weight: 700;
+            font-family: 'Space Grotesk', sans-serif;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            color: rgba(255,255,255,0.35); margin-bottom: 8px;
+        }
+        .metrics-detail-rows { display: grid; gap: 5px; }
+        .metrics-detail-row {
+            display: flex; justify-content: space-between;
+            font-size: 0.78rem; color: rgba(255,255,255,0.6);
+        }
+        .metrics-detail-row strong {
+            color: #fff; font-family: 'Space Grotesk', sans-serif; font-weight: 700;
         }
 
         /* Boton hamburguesa — oculto por defecto, visible en mobile via media query */
@@ -2584,9 +2651,6 @@
             margin-top: 14px;
         }
 
-        .metrics-chart-list-top-12 {
-            margin-top: 12px;
-        }
 
         .fine-tune-grid {
             display: grid;
@@ -2800,7 +2864,7 @@
             display: grid;
             gap: 12px;
             grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            margin-top: 8px;
+            |margin-top: 8px;
         }
 
         .internal-order-product-card {
@@ -3159,6 +3223,49 @@
             line-height: 1; padding: 2px 6px; border-radius: 4px;
         }
         .pos-drawer-close:hover { color: #fff; }
+        .pos-drawer-customize-btn {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.6);
+            font-size: 1rem; cursor: pointer;
+            line-height: 1; padding: 3px 8px; border-radius: 6px;
+            margin-left: auto; margin-right: 6px;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .pos-drawer-customize-btn:hover {
+            background: rgba(255,122,26,0.18);
+            border-color: rgba(255,122,26,0.45);
+            color: #ffb07a;
+        }
+        .pos-cart-ticket-info {
+            margin: 0 12px 10px;
+            padding: 8px 12px;
+            background: rgba(255,122,26,0.1);
+            border: 1px solid rgba(255,122,26,0.3);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .pos-cart-ticket-info[hidden] { display: none; }
+        .pos-ticket-info-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.75rem;
+        }
+        .pos-ticket-info-label {
+            color: rgba(255,255,255,0.45);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            min-width: 50px;
+        }
+        .pos-ticket-info-value {
+            color: #ffb07a;
+            font-weight: 600;
+        }
         .pos-drawer-body { flex: 1; overflow-y: auto; min-height: 0; }
         .pos-drawer-body .pos-items-list { padding: 12px 12px 4px; }
         .pos-drawer-footer {
@@ -3302,7 +3409,13 @@
             border-color: var(--admin-accent); color: #fff;
         }
         .pos-ticket-info { flex: 1; min-width: 0; }
-        .pos-ticket-name { font-weight: 600; font-size: 0.9rem; color: #eef4ff; }
+        .pos-ticket-name { font-weight: 600; font-size: 0.9rem; color: #eef4ff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .pos-ticket-type-badge {
+            font-size: 0.65rem; font-weight: 700; font-family: 'Space Grotesk', sans-serif;
+            padding: 1px 7px; border-radius: 999px;
+            background: rgba(255,122,26,0.18); border: 1px solid rgba(255,122,26,0.35);
+            color: #ffb07a; text-transform: uppercase; letter-spacing: 0.4px;
+        }
         .pos-ticket-meta { font-size: 0.76rem; color: var(--admin-muted); margin-top: 2px; }
         .pos-ticket-total { font-size: 1rem; font-weight: 700; color: #fff; flex-shrink: 0; }
 
@@ -3496,6 +3609,8 @@
             .pos-drawer-close { display: none; }
             .pos-bottom-bar { display: none; }
             #posView .pos-product-grid-v2 { grid-template-columns: repeat(5, 1fr); }
+            /* Pantalla tickets no cubre el carrito fijo */
+            .pos-screen-tickets { right: 30%; }
         }
         @media (min-width: 1400px) {
             #posView .pos-product-grid-v2 { grid-template-columns: repeat(7, 1fr); }
@@ -6270,10 +6385,6 @@
                 grid-template-columns: 1fr;
             }
 
-            .metrics-insights-grid {
-                grid-template-columns: 1fr;
-            }
-
             .admin-title-wrap h1 {
                 font-size: 1rem;
                 letter-spacing: 1px;
@@ -6833,6 +6944,8 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.15) transparent;
         }
 
         .pts-result-item {
@@ -6960,11 +7073,273 @@
         .recomendado-current-name { font-weight: 700; font-size: 0.9rem; color: var(--admin-text, #f0f0f0); }
         .recomendado-current-cat { font-size: 0.78rem; color: var(--admin-muted, #888); }
 
+        /* ── Barra Bluetooth de impresora ── */
+        .ticket-bt-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 16px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            flex-shrink: 0;
+        }
+        .ticket-bt-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            flex-shrink: 0;
+            transition: background 0.3s;
+        }
+        .ticket-bt-dot[data-status="connected"] {
+            background: #00e676;
+            box-shadow: 0 0 6px rgba(0,230,118,0.6);
+        }
+        .ticket-bt-dot[data-status="connecting"] {
+            background: #ffb300;
+            animation: btDotPulse 0.8s ease-in-out infinite;
+        }
+        @keyframes btDotPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.25; }
+        }
+        .ticket-bt-label {
+            flex: 1;
+            font-size: 0.72rem;
+            color: rgba(255,255,255,0.45);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ticket-bt-btn {
+            font-size: 0.68rem;
+            padding: 4px 10px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+        }
+        .ticket-bt-btn:hover {
+            background: rgba(255,122,26,0.18);
+            border-color: rgba(255,122,26,0.4);
+            color: #ffb07a;
+        }
+
     </style>
     <style>
         .sortable-ghost { opacity: 0.3; border: 2px dashed #ff7a1a !important; }
         .sortable-chosen { cursor: grabbing !important; }
         [data-drag-product-id] { cursor: grab; }
+    </style>
+    <style id="thermalPrintStyles">
+        /* ── Área de impresión térmica (solo visible al imprimir) ── */
+        #thermalPrintArea { display: none; }
+
+        @media print {
+            /* Ocultar toda la UI del admin */
+            body > *:not(#thermalPrintArea) { display: none !important; }
+            body { background: #ffffff !important; margin: 0 !important; padding: 0 !important; }
+
+            /* Mostrar solo el área del ticket */
+            #thermalPrintArea {
+                display: block !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+            }
+
+            @page {
+                size: 58mm auto;
+                margin: 2mm 3mm;
+            }
+
+            * { forced-color-adjust: none; box-sizing: border-box; }
+
+            /* ── Base del ticket ── */
+            .ticket-paper-wrap,
+            .ticket-paper {
+                width: 52mm !important;
+                margin: 0 auto !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                font-family: 'Courier New', Courier, monospace !important;
+                font-size: 9pt !important;
+                line-height: 1.35 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            /* ── Contenedores internos ── */
+            .ticket-paper article,
+            .ticket-paper div,
+            .ticket-paper span,
+            .ticket-paper p,
+            .ticket-paper td,
+            .ticket-paper th,
+            .ticket-paper section {
+                background: transparent !important;
+                color: #000000 !important;
+            }
+
+            /* ── Marca ── */
+            .ticket-brand {
+                text-align: center;
+                padding-bottom: 4px;
+                border-bottom: 1px dashed #000 !important;
+                margin-bottom: 5px;
+            }
+            .ticket-brand-name {
+                font-size: 13pt !important;
+                font-weight: 700 !important;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+                line-height: 1.2;
+                color: #000000 !important;
+            }
+            .ticket-brand-copy { font-size: 7.5pt !important; color: #444 !important; }
+
+            /* ── Meta del pedido ── */
+            .ticket-order-meta {
+                display: flex !important;
+                justify-content: space-between;
+                font-size: 7.5pt !important;
+                color: #444 !important;
+                margin-bottom: 3px;
+            }
+
+            /* ── Secciones ── */
+            .ticket-section {
+                margin-top: 5px;
+                padding-top: 5px;
+                border-top: 1px dashed #ccc !important;
+                page-break-inside: avoid;
+            }
+            .ticket-section-title {
+                font-size: 7pt !important;
+                font-weight: 700 !important;
+                text-transform: uppercase;
+                letter-spacing: 0.8px;
+                color: #555 !important;
+                margin-bottom: 3px;
+            }
+
+            /* ── Filas cliente ── */
+            .ticket-customer-card { display: grid !important; gap: 2px; }
+            .ticket-customer-name { font-weight: 700 !important; font-size: 9.5pt !important; }
+            .ticket-customer-row {
+                display: flex !important;
+                justify-content: space-between;
+                font-size: 8pt !important;
+                color: #333 !important;
+                gap: 4px;
+            }
+            .ticket-customer-row span:last-child {
+                text-align: right;
+                max-width: 55%;
+                word-break: break-word;
+            }
+
+            /* ── Tabla de productos ── */
+            .ticket-table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                margin-top: 2px;
+            }
+            .ticket-table th {
+                font-size: 7pt !important;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                color: #555 !important;
+                border-bottom: 1px solid #aaa !important;
+                padding-bottom: 2px;
+                text-align: left;
+            }
+            .ticket-table th:last-child { text-align: right; }
+            .ticket-table td {
+                font-size: 8.5pt !important;
+                padding: 3px 0 !important;
+                border-bottom: 1px dashed #ddd !important;
+                vertical-align: top;
+                text-align: left;
+                word-break: break-word;
+                color: #000000 !important;
+            }
+            .ticket-table td:last-child { text-align: right; white-space: nowrap; }
+            .ticket-line-meta {
+                display: block !important;
+                font-size: 7pt !important;
+                color: #666 !important;
+                margin-top: 1px;
+            }
+
+            /* ── Totales ── */
+            .ticket-total {
+                margin-top: 5px;
+                padding-top: 5px;
+                border-top: 1px dashed #ccc !important;
+                display: grid !important;
+                gap: 2px;
+            }
+            .ticket-summary-line,
+            .ticket-total-row {
+                display: flex !important;
+                justify-content: space-between;
+                font-size: 8.5pt !important;
+                gap: 4px;
+                color: #000000 !important;
+            }
+            .ticket-total-row.is-grand-total {
+                font-size: 11pt !important;
+                font-weight: 700 !important;
+                border-top: 1px solid #000 !important;
+                padding-top: 3px;
+                margin-top: 2px;
+            }
+
+            /* ── Pie ── */
+            .ticket-footer-copy {
+                margin-top: 6px;
+                padding-top: 5px;
+                border-top: 1px dashed #ccc !important;
+                text-align: center;
+                font-size: 7.5pt !important;
+                color: #444 !important;
+                line-height: 1.4;
+                display: flex !important;
+                flex-direction: column;
+                gap: 1px;
+            }
+
+            /* ── Botones de copia → texto plano al imprimir ── */
+            .ticket-copy-btn {
+                -webkit-appearance: none;
+                appearance: none;
+                background: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                font: inherit !important;
+                color: #000000 !important;
+                cursor: default;
+                display: inline !important;
+            }
+
+            /* ── Elementos NO imprimibles ── */
+            .ticket-print-row,
+            .ticket-print-btn,
+            .ticket-contact-btn,
+            .ticket-wa-btn,
+            .state-pill { display: none !important; }
+
+            /* ── Dirección ── */
+            .ticket-address-text {
+                font-size: 8pt !important;
+                color: #000000 !important;
+                word-break: break-word;
+            }
+        }
     </style>
 </head>
 <body class="admin-locked">
@@ -7225,6 +7600,11 @@
                             <aside class="ticket-panel" id="orderTicketPanel" aria-live="polite">
                                 <div class="ticket-header">
                                     <button type="button" class="ticket-close-btn" id="mobileTicketCloseBtn" aria-label="Cerrar ticket">&times;</button>
+                                </div>
+                                <div class="ticket-bt-bar" id="ticketBtBar">
+                                    <span class="ticket-bt-dot" id="ticketBtDot" data-status="off"></span>
+                                    <span class="ticket-bt-label" id="ticketBtLabel">Sin impresora BT</span>
+                                    <button type="button" class="ticket-bt-btn" id="ticketBtBtn" data-bt-action="connect">Buscar</button>
                                 </div>
                                 <div class="ticket-body" id="orderTicketBody">
                                     <div class="ticket-empty">
@@ -7487,66 +7867,43 @@
 
             <div class="admin-tab-panel" data-tab-panel="metricas">
                 <div class="section-toolbar">
-                    <button type="button" class="section-save-btn" data-section-save="metricas">Actualizar Metricas</button>
+                    <nav class="metrics-tabs-nav" role="tablist">
+                        <button type="button" class="metrics-tab-btn active" data-metrics-tab="usuarios" role="tab">Usuarios</button>
+                    </nav>
+                    <button type="button" class="section-save-btn" data-section-save="metricas">Actualizar</button>
                 </div>
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Metricas de Clics por Producto</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-stats" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-stats">
-                    <div class="stats-grid metrics-kpi-grid">
-                        <div class="stat-box">
-                            <div class="stat-label">Clics Totales</div>
-                            <div class="stat-value" id="totalClicks">--</div>
+
+                <!-- PESTAÑA: USUARIOS -->
+                <div class="metrics-panel active" id="metricsPanelUsuarios">
+                    <article class="admin-card">
+                        <div class="metrics-summary-strip">
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="metricsUserCount">—</span>
+                                <span class="metrics-kpi-label">Usuarios registrados</span>
+                            </div>
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="metricsUserWithOrders">—</span>
+                                <span class="metrics-kpi-label">Con compras</span>
+                            </div>
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="metricsUserAvgOrders">—</span>
+                                <span class="metrics-kpi-label">Compras promedio</span>
+                            </div>
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="metricsUserTotalSpent">—</span>
+                                <span class="metrics-kpi-label">Gasto total acumulado</span>
+                            </div>
                         </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Producto Estrella</div>
-                            <div class="stat-value" id="topProduct">--</div>
+                    </article>
+
+                    <article class="admin-card" style="padding: 0; overflow: hidden;">
+                        <div class="metrics-users-toolbar">
+                            <input type="text" class="metrics-search" id="metricsUserSearch" placeholder="Buscar por nombre o teléfono..." autocomplete="off">
+                            <span class="metrics-users-count" id="metricsUsersCountLabel"></span>
                         </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Productos Activos</div>
-                            <div class="stat-value" id="metricActiveProducts">--</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Productos Pausados</div>
-                            <div class="stat-value" id="metricPausedProducts">--</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Destacados En Catalogo</div>
-                            <div class="stat-value" id="metricFeaturedProducts">--</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Categorias Activas</div>
-                            <div class="stat-value" id="metricActiveCategories">--</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Precio Promedio</div>
-                            <div class="stat-value" id="metricAveragePrice">--</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Clics WhatsApp</div>
-                            <div class="stat-value" id="metricWhatsappClicks">--</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Personas por día</div>
-                            <div class="stat-value" id="metricDailyVisitors">--</div>
-                        </div>
-                    </div>
-                    <div class="metrics-subtitle">Interes por producto</div>
-                    <div id="metricsChartList" class="metrics-chart-list metrics-chart-list-top-12"></div>
-                    <div class="metrics-insights-grid">
-                        <div class="metrics-insight-card">
-                            <h3>Categorias con mas interes</h3>
-                            <div id="metricsCategoryList" class="metrics-mini-list"></div>
-                        </div>
-                        <div class="metrics-insight-card">
-                            <h3>Indicadores Operativos</h3>
-                            <div id="metricsInsightsList" class="metrics-mini-list"></div>
-                        </div>
-                    </div>
-                    </div>
-                </article>
+                        <div id="metricsUsersList" class="metrics-users-list"></div>
+                    </article>
+                </div>
             </div>
         </section>
     </main>
@@ -7615,8 +7972,10 @@
                 <div class="pos-drawer-handle"></div>
                 <div class="pos-drawer-head">
                     <span class="pos-drawer-title">Pedido actual</span>
+                    <button type="button" class="pos-drawer-customize-btn" id="posCartCustomizeBtn" title="Personalizar ticket">&#9998;</button>
                     <button type="button" class="pos-drawer-close" id="posCartDrawerCloseBtn">&#215;</button>
                 </div>
+                <div id="posCartTicketInfo" class="pos-cart-ticket-info" hidden></div>
                 <div class="pos-drawer-body">
                     <div id="internalOrderItemsSummary" class="pos-items-list"></div>
                     <div class="pos-totals">
@@ -7991,5 +8350,6 @@
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
     <script src="admin.js"></script>
+    <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
