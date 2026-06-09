@@ -4171,6 +4171,7 @@ function _renderCategoryDetailPanel(categoryId) {
                                     <input type="checkbox" id="cpefActivePos" ${ep.visible_pos !== false ? 'checked' : ''}> Activo en POS
                                 </label>
                             </div>
+                            ${_buildCpefAcompHtml(ep)}
                             <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
                                 <button type="button" class="section-save-btn" id="cpefSaveBtn">Guardar</button>
                                 <button type="button" class="ghost-button" id="cpefCancelBtn">Cancelar</button>
@@ -4282,6 +4283,15 @@ function _renderCategoryDetailPanel(categoryId) {
         _editingProductId = null;
         _renderCategoryDetailPanel(categoryId);
     });
+
+    // Toggle show/hide lista de acompañantes
+    const acompToggle = categoryDetailPanel.querySelector('#cpefAcompActivo');
+    const acompList = categoryDetailPanel.querySelector('#cpefAcompList');
+    if (acompToggle && acompList) {
+        acompToggle.addEventListener('change', () => {
+            acompList.style.display = acompToggle.checked ? 'block' : 'none';
+        });
+    }
 }
 
 async function _saveCategoryFromDetail(categoryId) {
@@ -4305,6 +4315,40 @@ async function _saveCategoryFromDetail(categoryId) {
     }
 }
 
+function _buildCpefAcompHtml(ep) {
+    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
+    const opciones = (cfg.opciones || []).filter((o) => o.id && o.nombre);
+    if (opciones.length === 0) return '';
+
+    const savedAcomp = ep.acompanantes || {};
+    const acompActivo = savedAcomp.activo === true;
+    const savedIds = Array.isArray(savedAcomp.ids) ? savedAcomp.ids : [];
+
+    const listStyle = `display:${acompActivo ? 'block' : 'none'};margin-top:8px;border:1px solid rgba(255,122,26,0.22);border-radius:10px;overflow:hidden;`;
+
+    const items = opciones.map((opt) => {
+        const checked = savedIds.includes(opt.id) ? 'checked' : '';
+        const precioLabel = opt.precio > 0 ? `+$${Number(opt.precio).toLocaleString('es-CO')}` : 'Incluido';
+        const detalle = opt.detalle ? `<span style="font-size:0.72rem;color:rgba(200,210,230,0.5);margin-top:1px;display:block;">${opt.detalle}</span>` : '';
+        return `<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer;background:rgba(255,255,255,0.02);">
+            <input type="checkbox" name="cpefAcompId" value="${opt.id}" ${checked} style="width:16px;height:16px;accent-color:#ff7a00;flex-shrink:0;cursor:pointer;">
+            <div style="flex:1;min-width:0;">
+                <span style="font-size:0.85rem;font-weight:600;color:#eef4ff;">${opt.nombre}</span>
+                ${detalle}
+            </div>
+            <span style="font-size:0.80rem;font-weight:700;color:#ff7a00;white-space:nowrap;">${precioLabel}</span>
+        </label>`;
+    }).join('');
+
+    return `<div style="margin-top:12px;">
+        <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,122,26,0.08);border:1px solid rgba(255,122,26,0.22);border-radius:10px;cursor:pointer;">
+            <span style="font-size:0.82rem;font-weight:600;color:#eef4ff;">Activar acompañantes</span>
+            <input type="checkbox" id="cpefAcompActivo" ${acompActivo ? 'checked' : ''} style="width:17px;height:17px;accent-color:#ff7a00;cursor:pointer;">
+        </label>
+        <div id="cpefAcompList" style="${listStyle}">${items}</div>
+    </div>`;
+}
+
 async function _saveProductInline(productId, categoryId) {
     const nameInput = document.getElementById('cpefName');
     const priceInput = document.getElementById('cpefPrice');
@@ -4312,6 +4356,8 @@ async function _saveProductInline(productId, categoryId) {
     const activeMenuInput = document.getElementById('cpefActiveMenu');
     const activePosInput = document.getElementById('cpefActivePos');
     const fileInput = document.getElementById('cpefFileInput');
+    const acompActivoInput = document.getElementById('cpefAcompActivo');
+    const acompListEl = document.getElementById('cpefAcompList');
 
     const name = nameInput ? nameInput.value.trim() : '';
     if (!name) { showNotice('El nombre es obligatorio.', 'error'); return; }
@@ -4333,6 +4379,12 @@ async function _saveProductInline(productId, categoryId) {
         const precio = priceInput ? Number(priceInput.value) || 0 : 0;
         const descripcion = descInput ? descInput.value.trim() : '';
 
+        const acompActivo = acompActivoInput ? acompActivoInput.checked : false;
+        const acompIds = acompListEl
+            ? Array.from(acompListEl.querySelectorAll('input[name="cpefAcompId"]:checked')).map((cb) => cb.value)
+            : [];
+        const acompanantes = { activo: acompActivo, ids: acompIds };
+
         await firebaseDb.collection('productos').doc(productId).update({
             nombre: name,
             precio,
@@ -4340,6 +4392,7 @@ async function _saveProductInline(productId, categoryId) {
             estado,
             visible_pos: visiblePos,
             image_url: imageUrl,
+            acompanantes,
             updated_at: firestoreNow()
         });
 
