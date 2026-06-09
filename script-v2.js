@@ -8444,6 +8444,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.__roalHideSplash) window.__roalHideSplash();
     });
     document.getElementById('splashSignInBtn')?.addEventListener('click', () => {
+        // Cancela el promo modal que pudo haberse encolado o abierto detrás del splash
+        _promoModalPendingOpen = false;
+        const promoModal = document.getElementById('promoModal');
+        if (promoModal) promoModal.classList.remove('is-open');
+        syncBodyScrollLock();
+
         if (window.__roalHideSplash) window.__roalHideSplash();
         setTimeout(() => openCustomerAuthModal(), 350);
     });
