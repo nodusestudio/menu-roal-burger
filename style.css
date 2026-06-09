@@ -751,10 +751,10 @@ a.is-ordering-closed {
     align-items: center;
     gap: 6px;
     padding: 8px 14px;
-    background: rgba(10, 14, 24, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(52, 24, 6, 0.88);
+    border: 1px solid rgba(120, 50, 10, 0.35);
     border-radius: 50px;
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 210, 170, 0.9);
     font-family: 'Oswald', sans-serif;
     font-size: 0.78rem;
     font-weight: 600;
@@ -767,7 +767,7 @@ a.is-ordering-closed {
     white-space: nowrap;
 }
 .topbar-help-btn:hover {
-    background: rgba(10, 14, 24, 0.95);
+    background: rgba(72, 32, 8, 0.98);
     color: #25d366;
     border-color: rgba(37, 211, 102, 0.35);
 }
@@ -3276,7 +3276,7 @@ body.has-guest-register-banner .whatsapp-float {
     .public-session-btn {
         min-width: 0;
         width: min(100%, 160px);
-        margin-left: auto;
+        margin-left: 0;
         padding: 7px 11px;
     }
 
