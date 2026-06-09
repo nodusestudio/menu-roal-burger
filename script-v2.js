@@ -8439,6 +8439,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
 
+    // Botones de la pantalla de inicio
+    document.getElementById('splashGuestBtn')?.addEventListener('click', () => {
+        if (window.__roalHideSplash) window.__roalHideSplash();
+    });
+    document.getElementById('splashSignInBtn')?.addEventListener('click', () => {
+        if (window.__roalHideSplash) window.__roalHideSplash();
+        setTimeout(() => openCustomerAuthModal(), 350);
+    });
+
     initCartUI();
     initSupportModal();
     initPromoModal();

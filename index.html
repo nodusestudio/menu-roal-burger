@@ -86,12 +86,14 @@
     <div id="splashScreen" aria-hidden="true">
         <img src="./isotipo.png" alt="ROAL BURGER" class="splash-logo" draggable="false">
         <span class="splash-brand">ROAL BURGER</span>
-        <span class="splash-tagline">Acento venezolano</span>
+        <span class="splash-tagline">Comida Rapida con Acento Venezolano</span>
+        <div class="splash-actions">
+            <button type="button" class="splash-btn splash-btn--primary" id="splashSignInBtn">Iniciar sesion</button>
+            <button type="button" class="splash-btn splash-btn--guest" id="splashGuestBtn">Ingresar como visitante</button>
+        </div>
     </div>
     <script>
         (function () {
-            var MIN_MS = 2200;
-            var start = Date.now();
             function hideSplash() {
                 var el = document.getElementById('splashScreen');
                 if (!el || el.dataset.hidden) return;
@@ -99,11 +101,8 @@
                 el.classList.add('is-hiding');
                 setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 700);
             }
-            window.addEventListener('load', function () {
-                var wait = Math.max(0, MIN_MS - (Date.now() - start));
-                setTimeout(hideSplash, wait);
-            });
-            setTimeout(hideSplash, 5000); // failsafe
+            window.__roalHideSplash = hideSplash;
+            setTimeout(hideSplash, 12000); // failsafe
         })();
     </script>
     <!-- ===== FIN PANTALLA DE INICIO ===== -->

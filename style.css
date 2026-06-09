@@ -4412,13 +4412,62 @@ body.has-guest-register-banner .whatsapp-float {
 /* Tagline */
 .splash-tagline {
     margin-top: 6px;
-    font-family: 'Oswald', 'sans-serif';
-    font-size: 0.85rem;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.82rem;
     font-weight: 400;
     color: rgba(255, 255, 255, 0.7);
-    letter-spacing: 3px;
+    letter-spacing: 2px;
     text-transform: uppercase;
+    text-align: center;
     animation: splashTextIn 0.5s ease 0.55s both;
+}
+
+/* Botones de acción */
+.splash-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-top: 36px;
+    width: 100%;
+    max-width: 300px;
+    animation: splashTextIn 0.5s ease 0.8s both;
+}
+
+.splash-btn {
+    width: 100%;
+    padding: 15px 24px;
+    border-radius: 50px;
+    border: none;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.splash-btn:active { transform: scale(0.97); }
+
+.splash-btn--primary {
+    background: #ffffff;
+    color: #f65102;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+}
+.splash-btn--primary:hover {
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+    transform: translateY(-2px);
+}
+
+.splash-btn--guest {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.8);
+    border: 2px solid rgba(255, 255, 255, 0.4) !important;
+    font-size: 0.88rem;
+}
+.splash-btn--guest:hover {
+    border-color: rgba(255, 255, 255, 0.7) !important;
+    color: #ffffff;
 }
 
 /* Animaciones */
