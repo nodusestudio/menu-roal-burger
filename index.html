@@ -81,13 +81,15 @@
     <!-- ===== FIN CONFIGURACIÓN DE ANALYTICS ===== -->
 </head>
 <body>
+    <!-- Capa de fondo ilustrado — siempre fija detrás de todo -->
+    <div id="bg-layer" aria-hidden="true"></div>
 
     <!-- ===== PANTALLA DE INICIO ===== -->
     <div id="splashScreen" aria-hidden="true">
         <img src="./isotipo.png" alt="ROAL BURGER" class="splash-logo" draggable="false">
         <span class="splash-brand">ROAL BURGER</span>
         <span class="splash-tagline">Comida Rapida con Acento Venezolano</span>
-        <div class="splash-actions">
+        <div class="splash-actions" id="splashActions">
             <button type="button" class="splash-btn splash-btn--primary" id="splashSignInBtn">Iniciar sesion</button>
             <button type="button" class="splash-btn splash-btn--guest" id="splashGuestBtn">Ingresar como visitante</button>
         </div>
@@ -103,97 +105,160 @@
             }
             window.__roalHideSplash = hideSplash;
             setTimeout(hideSplash, 12000); // failsafe
+
+            // Si ya hay sesión activa, reemplazar los dos botones por uno solo de continuar
+            try {
+                var raw = localStorage.getItem('roalburger-customer-profile-v1');
+                if (raw) {
+                    var profile = JSON.parse(raw);
+                    if (profile && profile.customerPhone) {
+                        var actions = document.getElementById('splashActions');
+                        if (actions) {
+                            var firstName = (profile.customerName || '').trim().split(/\s+/)[0];
+                            var greeting = firstName
+                                ? '¡Hola, ' + firstName + '! Ya tienes una sesión activa.'
+                                : 'Ya tienes una sesión activa.';
+                            actions.innerHTML =
+                                '<span class="splash-session-greeting">' + greeting + '</span>' +
+                                '<button type="button" class="splash-btn splash-btn--primary" id="splashContinueBtn">Continuar</button>';
+                        }
+                    }
+                }
+            } catch (e) {}
         })();
     </script>
     <!-- ===== FIN PANTALLA DE INICIO ===== -->
 
-    <div class="container" id="main-menu">
-        <div class="public-topbar">
-            <button type="button" class="public-session-btn liquid-glass" id="customerSessionButton" aria-label="Iniciar sesion o abrir perfil">
-                <span class="public-session-btn-kicker" id="customerSessionKicker">Mi cuenta</span>
-                <strong id="customerSessionLabel">Iniciar sesion</strong>
-            </button>
-            <a href="https://wa.me/573144689509" target="_blank" rel="noopener noreferrer" class="topbar-help-btn" aria-label="Ayuda por WhatsApp">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="15" height="15" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.852L.057 23.269a.75.75 0 0 0 .921.921l5.444-1.484A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.694 9.694 0 0 1-4.964-1.362l-.355-.214-3.679 1.002 1.004-3.647-.233-.374A9.718 9.718 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/></svg>
-                Ayuda
-            </a>
-        </div>
+    <!-- ===== SEGUNDA PANTALLA: HOME ===== -->
+    <div id="homeScreen" hidden>
+        <div class="home-inner">
 
-        <!-- Sección 'Otros Favoritos' -->
-        <div class="featured-section liquid-glass">
-            <h2 class="section-title">LOS MAS PEDIDOS</h2>
-            <div class="mobile-carousel" id="featured-carousel-dynamic"></div>
-        </div>
-
-        <section class="category-grid-section liquid-glass" aria-label="Nuestros productos">
-            <h2 class="section-title">NUESTROS PRODUCTOS</h2>
-            <div class="category-grid" id="categoryGrid">
-                <button class="category-btn">BURGER PREMIUM</button>
-                <button class="category-btn">BURGER CLASICAS</button>
-                <button class="category-btn">PEPITOS VENEZOLANOS</button>
-                <button class="category-btn">PERROS CALIENTES</button>
-                <button class="category-btn">ENTRADAS</button>
-                <button class="category-btn">BEBIDAS Y ADICIONALES</button>
-                <button class="category-btn">SALCHIPAPAS</button>
-            </div>
-            <div class="category-products-panel" id="categoryProductsPanel">
-                <p class="category-empty">Selecciona una categoria para ver productos.</p>
-            </div>
-        </section>
-
-        <div class="liquid-glass">
-            <h2 class="section-title social-title">REDES SOCIALES</h2>
-            <div class="social-mini-bar" aria-label="Redes sociales">
-                <a href="#" id="social-instagram" class="social-mini-icon" aria-label="Instagram" onclick="openLink('instagram'); trackButtonClick('btn-instagram', 'Instagram'); return false;">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M7 2h10a5 5 0 015 5v10a5 5 0 01-5 5H7a5 5 0 01-5-5V7a5 5 0 015-5zm10 2H7a3 3 0 00-3 3v10a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3zm-5 3.5A5.5 5.5 0 1112 18.5 5.5 5.5 0 0112 7.5zm0 2A3.5 3.5 0 1015.5 13 3.5 3.5 0 0012 9.5zm5.75-3.35a1.1 1.1 0 11-1.1 1.1 1.1 1.1 0 011.1-1.1z"/></svg>
-                </a>
-                <a href="#" id="social-tiktok" class="social-mini-icon" aria-label="TikTok" onclick="openLink('tiktok'); trackButtonClick('btn-tiktok', 'TikTok'); return false;">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M14 3c.3 1.7 1.3 3 3 3.8.8.4 1.6.6 2.5.6v2.9a8.5 8.5 0 01-3.5-.8V15a5.5 5.5 0 11-5.5-5.5c.3 0 .6 0 .9.1v3a2.5 2.5 0 102.1 2.4V3h2.5z"/></svg>
-                </a>
-                <a href="#" id="social-facebook" class="social-mini-icon" aria-label="Facebook" onclick="openLink('facebook'); trackButtonClick('btn-facebook', 'Facebook'); return false;">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M13.5 21v-8h2.7l.4-3h-3.1V8.1c0-.9.3-1.5 1.6-1.5h1.7V4c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.3V10H8v3h2.2v8h3.3z"/></svg>
-                </a>
-            </div>
-        </div>
-
-        <section class="liquid-glass shortcut-section" aria-label="Descargar acceso directo">
-            <h2 class="section-title social-title">ACCESO RAPIDO</h2>
-            <button type="button" class="maps-btn shortcut-install-btn" id="installShortcutButton">
-                <img src="isotipo.png" alt="ROAL BURGER" class="shortcut-install-icon">
-                <span id="installShortcutButtonText">Descargar acceso directo</span>
-            </button>
-            <p class="shortcut-install-hint" id="installShortcutHint" hidden></p>
-        </section>
-
-        <!-- Card de Información -->
-        <div class="info-card liquid-glass">
-            <div class="info-item">
-                <span class="icon">📍</span>
-                <div class="info-text">
-                    <strong>Nuestra Ubicación</strong>
-                    <p>Cl. 22 #29-59, Armenia, Quindío<br>(Barrio Las Américas)</p>
-                    <a href="https://maps.google.com/?cid=10239939241884810084&g_mp=Cidnb29nbGUubWFwcy5wbGFjZXMudjEuUGxhY2VzLlNlYXJjaFRleHQ" target="_blank" rel="noopener noreferrer" class="maps-btn">
-                        <span class="maps-icon">🗺️</span>
-                        Ver en Google Maps
-                    </a>
+            <!-- Banner recomendado del día -->
+            <section class="home-rec-banner" id="homeRecBanner" aria-label="Recomendado del dia">
+                <div class="home-rec-img-wrap">
+                    <img class="home-rec-img" id="homeRecImg" src="" alt="Recomendado del dia" loading="lazy">
+                    <span class="home-rec-discount-badge">-20% HOY</span>
                 </div>
-            </div>
-            <div class="info-item">
-                <span class="icon">⏰</span>
-                <div class="info-text">
-                    <strong>Horario de Atención</strong>
-                    <p id="businessHoursText">Lunes a Domingo: 4:00 P.M. a 10:00 P.M.</p>
-                    <p class="business-hours-status" id="businessHoursStatus" aria-live="polite"></p>
+                <div class="home-rec-body">
+                    <span class="home-rec-kicker">⭐ Recomendado del día</span>
+                    <strong class="home-rec-name" id="homeRecName">...</strong>
+                    <div class="home-rec-price-row">
+                        <div class="home-rec-price-block">
+                            <span class="home-rec-price-tag">Normal</span>
+                            <span class="home-rec-price-orig" id="homeRecOrigPrice"></span>
+                        </div>
+                        <div class="home-rec-price-block home-rec-price-block--hot">
+                            <span class="home-rec-price-tag">Hoy</span>
+                            <span class="home-rec-price" id="homeRecPrice"></span>
+                        </div>
+                    </div>
+                    <button type="button" class="home-rec-btn" id="homeRecBtn">¡Lo Quiero! 🔥</button>
                 </div>
-            </div>
-        </div>
+            </section>
 
-        <!-- Footer -->
-        
-        <footer class="footer liquid-glass">
-            <p>ROAL BURGER - COMIDA RAPIDA CON ACENTO VENEZOLANO</p>
-            <p class="footer-links"><a href="politica-datos.html" target="_blank" rel="noopener noreferrer">Politica de tratamiento de datos personales</a></p>
-        </footer>
+            <!-- Combos Futboleros -->
+            <section class="home-combos-section">
+                <h2 class="home-section-title">Combos Futboleros</h2>
+                <div class="mobile-carousel" id="home-combos-carousel"></div>
+            </section>
+
+            <!-- Categorías -->
+            <section class="home-categories-section">
+                <h2 class="home-section-title">Nuestro Menu</h2>
+                <div class="home-categories-grid" id="homeCategoriesGrid">
+                    <p class="home-loading-msg">Cargando categorias...</p>
+                </div>
+            </section>
+
+            <!-- Redes, dirección y horario -->
+            <div class="home-info-section">
+                <div class="liquid-glass">
+                    <h2 class="section-title social-title">REDES SOCIALES</h2>
+                    <div class="social-mini-bar" aria-label="Redes sociales">
+                        <a href="#" id="social-instagram" class="social-mini-icon" aria-label="Instagram" onclick="openLink('instagram'); trackButtonClick('btn-instagram', 'Instagram'); return false;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M7 2h10a5 5 0 015 5v10a5 5 0 01-5 5H7a5 5 0 01-5-5V7a5 5 0 015-5zm10 2H7a3 3 0 00-3 3v10a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3zm-5 3.5A5.5 5.5 0 1112 18.5 5.5 5.5 0 0112 7.5zm0 2A3.5 3.5 0 1015.5 13 3.5 3.5 0 0012 9.5zm5.75-3.35a1.1 1.1 0 11-1.1 1.1 1.1 1.1 0 011.1-1.1z"/></svg>
+                        </a>
+                        <a href="#" id="social-tiktok" class="social-mini-icon" aria-label="TikTok" onclick="openLink('tiktok'); trackButtonClick('btn-tiktok', 'TikTok'); return false;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M14 3c.3 1.7 1.3 3 3 3.8.8.4 1.6.6 2.5.6v2.9a8.5 8.5 0 01-3.5-.8V15a5.5 5.5 0 11-5.5-5.5c.3 0 .6 0 .9.1v3a2.5 2.5 0 102.1 2.4V3h2.5z"/></svg>
+                        </a>
+                        <a href="#" id="social-facebook" class="social-mini-icon" aria-label="Facebook" onclick="openLink('facebook'); trackButtonClick('btn-facebook', 'Facebook'); return false;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M13.5 21v-8h2.7l.4-3h-3.1V8.1c0-.9.3-1.5 1.6-1.5h1.7V4c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.3V10H8v3h2.2v8h3.3z"/></svg>
+                        </a>
+                    </div>
+                </div>
+
+                <section class="liquid-glass shortcut-section" aria-label="Descargar acceso directo">
+                    <h2 class="section-title social-title">ACCESO RAPIDO</h2>
+                    <button type="button" class="maps-btn shortcut-install-btn" id="installShortcutButton">
+                        <img src="isotipo.png" alt="ROAL BURGER" class="shortcut-install-icon">
+                        <span id="installShortcutButtonText">Descargar acceso directo</span>
+                    </button>
+                    <p class="shortcut-install-hint" id="installShortcutHint" hidden></p>
+                </section>
+
+                <!-- Card de Información -->
+                <div class="info-card liquid-glass">
+                    <div class="info-item">
+                        <span class="icon">📍</span>
+                        <div class="info-text">
+                            <strong>Nuestra Ubicación</strong>
+                            <p>Cl. 22 #29-59, Armenia, Quindío<br>(Barrio Las Américas)</p>
+                            <a href="https://maps.google.com/?cid=10239939241884810084&g_mp=Cidnb29nbGUubWFwcy5wbGFjZXMudjEuUGxhY2VzLlNlYXJjaFRleHQ" target="_blank" rel="noopener noreferrer" class="maps-btn">
+                                <span class="maps-icon">🗺️</span>
+                                Ver en Google Maps
+                            </a>
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <span class="icon">⏰</span>
+                        <div class="info-text">
+                            <strong>Horario de Atención</strong>
+                            <p id="businessHoursText">Lunes a Domingo: 4:00 P.M. a 10:00 P.M.</p>
+                            <p class="business-hours-status" id="businessHoursStatus" aria-live="polite"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <footer class="footer liquid-glass">
+                    <p>ROAL BURGER - COMIDA RAPIDA CON ACENTO VENEZOLANO</p>
+                    <p class="footer-links"><a href="politica-datos.html" target="_blank" rel="noopener noreferrer">Politica de tratamiento de datos personales</a></p>
+                </footer>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ===== PANTALLA DETALLE DE CATEGORÍA ===== -->
+    <div id="categoryDetailScreen" hidden>
+        <div class="cds-header">
+            <button type="button" class="cds-back-btn" id="cdsBackBtn" aria-label="Volver al inicio">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+            </button>
+            <h2 class="cds-title" id="cdsTitle">Categoria</h2>
+        </div>
+        <div class="cds-products-grid" id="cdsProductsGrid"></div>
+    </div>
+    <!-- ===== FIN SEGUNDA PANTALLA ===== -->
+
+    <!-- Topbar fija — siempre visible sobre todas las pantallas -->
+    <div class="public-topbar" id="mainTopbar">
+        <button type="button" class="public-session-btn liquid-glass" id="customerSessionButton" aria-label="Iniciar sesion o abrir perfil">
+            <span class="public-session-btn-kicker" id="customerSessionKicker">Mi cuenta</span>
+            <strong id="customerSessionLabel">Iniciar sesion</strong>
+        </button>
+        <a href="https://wa.me/573144689509" target="_blank" rel="noopener noreferrer" class="topbar-help-btn" aria-label="Ayuda por WhatsApp">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.852L.057 23.269a.75.75 0 0 0 .921.921l5.444-1.484A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.694 9.694 0 0 1-4.964-1.362l-.355-.214-3.679 1.002 1.004-3.647-.233-.374A9.718 9.718 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/></svg>
+            Ayuda
+        </a>
+    </div>
+
+    <div id="main-menu" hidden>
+        <div class="mobile-carousel" id="featured-carousel-dynamic"></div>
+        <div id="categoryGrid"></div>
+        <div id="categoryProductsPanel"></div>
     </div>
 
     <section class="guest-register-banner" id="guestRegisterBanner" hidden aria-label="Registrate para descuentos exclusivos">
@@ -288,6 +353,171 @@ co
             </div>
         </div>
     </div>
+    <!-- ===== PANTALLA CATEGORÍAS DESDE NAV ===== -->
+    <div id="navCategoriesScreen" hidden>
+        <div class="cds-header">
+            <button type="button" class="cds-back-btn" id="ncsCloseBtn" aria-label="Cerrar">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+            </button>
+            <h2 class="cds-title" id="ncsTitle">Menu</h2>
+        </div>
+        <div class="ncs-grid" id="ncsCategoriesGrid"></div>
+    </div>
+
+    <!-- ===== BUSCADOR INTELIGENTE ===== -->
+    <div id="searchScreen" hidden>
+        <div class="cds-header">
+            <button type="button" class="cds-back-btn" id="searchCloseBtn" aria-label="Cerrar búsqueda">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+            </button>
+            <div class="search-input-wrap">
+                <svg class="search-input-icon" viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true">
+                    <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                </svg>
+                <input type="search" id="searchInput" class="search-input" placeholder="¿Qué buscas hoy?" autocomplete="off" autocorrect="off" spellcheck="false">
+            </div>
+        </div>
+        <div id="searchResultsGrid" class="cds-products-grid"></div>
+    </div>
+
+    <!-- ===== PANTALLA CONFIRMACIÓN DE PEDIDO ===== -->
+    <div id="orderConfirmScreen" hidden aria-label="Pedido recibido">
+        <div class="oc-inner">
+            <div class="oc-header">
+                <div class="oc-logo-circle">
+                    <img src="isotipo.png" alt="ROAL BURGER" class="oc-logo">
+                </div>
+                <h1 class="oc-title">¡PEDIDO<br>RECIBIDO!</h1>
+                <p class="oc-subtitle">Tu orden ya está en camino al restaurante</p>
+                <div class="oc-code-badge">
+                    <span class="oc-code-label">Código del pedido</span>
+                    <span class="oc-code-value" id="ocOrderCode"></span>
+                </div>
+            </div>
+
+            <div class="oc-card">
+                <p class="oc-card-title">Resumen del pedido</p>
+                <div id="ocItemsList" class="oc-items-list"></div>
+            </div>
+
+            <div class="oc-card oc-totals-card">
+                <div class="oc-total-row">
+                    <span>Subtotal</span>
+                    <strong id="ocSubtotal"></strong>
+                </div>
+                <div class="oc-total-row" id="ocDeliveryRow">
+                    <span>Domicilio</span>
+                    <strong id="ocDeliveryFee"></strong>
+                </div>
+                <div class="oc-total-row oc-total-final">
+                    <span>Total a pagar</span>
+                    <strong id="ocTotal"></strong>
+                </div>
+            </div>
+
+            <div class="oc-card oc-info-card">
+                <div class="oc-info-row">
+                    <span class="oc-info-icon">👤</span>
+                    <div>
+                        <span class="oc-info-label">Pedido para</span>
+                        <span class="oc-info-value" id="ocCustomerName"></span>
+                    </div>
+                </div>
+                <div class="oc-info-row">
+                    <span class="oc-info-icon">💳</span>
+                    <div>
+                        <span class="oc-info-label">Método de pago</span>
+                        <span class="oc-info-value" id="ocPaymentMethod"></span>
+                    </div>
+                </div>
+                <div class="oc-info-row" id="ocAddressRow">
+                    <span class="oc-info-icon">📍</span>
+                    <div>
+                        <span class="oc-info-label">Entrega en</span>
+                        <span class="oc-info-value" id="ocAddress"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="oc-actions">
+            <button type="button" class="oc-wa-btn" id="ocWhatsAppBtn">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.852L.057 23.269a.75.75 0 0 0 .921.921l5.444-1.484A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.694 9.694 0 0 1-4.964-1.362l-.355-.214-3.679 1.002 1.004-3.647-.233-.374A9.718 9.718 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/></svg>
+                Confirmar pedido por WhatsApp
+            </button>
+            <button type="button" class="oc-menu-btn" id="ocCloseBtn">Volver al menú</button>
+        </div>
+    </div>
+    <!-- ===== FIN CONFIRMACIÓN ===== -->
+
+    <!-- Barra de navegación inferior -->
+    <nav class="bottom-auth-nav" id="bottomAuthNav" aria-label="Navegacion principal">
+        <!-- Inicio -->
+        <button class="ban-item" type="button" id="bnavInicio" aria-label="Inicio">
+            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+            </svg>
+            <div class="ban-tooltip">
+                <strong class="ban-tooltip-name">Inicio</strong>
+                <span class="ban-tooltip-desc">Volver a la pantalla principal</span>
+            </div>
+        </button>
+        <!-- Menú -->
+        <button class="ban-item" type="button" id="bnavMenu" aria-label="Menu">
+            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/>
+            </svg>
+            <div class="ban-tooltip">
+                <strong class="ban-tooltip-name">Menu</strong>
+                <span class="ban-tooltip-desc">Explora nuestros productos</span>
+            </div>
+        </button>
+        <!-- Combos -->
+        <button class="ban-item" type="button" id="bnavCombos" aria-label="Combos">
+            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15 6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.38v-6.71L5 9.21v6.7zm14 0v-6.7l-6 3.37v6.71l6-3.38z"/>
+            </svg>
+            <div class="ban-tooltip">
+                <strong class="ban-tooltip-name">Combos</strong>
+                <span class="ban-tooltip-desc">Packs con papas y bebida</span>
+            </div>
+        </button>
+        <!-- Promociones -->
+        <button class="ban-item" type="button" id="bnavPromo" aria-label="Promociones">
+            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="m21.41 11.58-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/>
+            </svg>
+            <div class="ban-tooltip">
+                <strong class="ban-tooltip-name">Promociones</strong>
+                <span class="ban-tooltip-desc">Descuentos exclusivos para ti</span>
+            </div>
+        </button>
+        <!-- Buscador -->
+        <button class="ban-item" type="button" id="bnavBuscador" aria-label="Buscar">
+            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+            </svg>
+            <div class="ban-tooltip">
+                <strong class="ban-tooltip-name">Buscar</strong>
+                <span class="ban-tooltip-desc">Encuentra cualquier producto</span>
+            </div>
+        </button>
+        <!-- Perfil -->
+        <button class="ban-item" type="button" id="bnavPerfil" aria-label="Perfil">
+            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2zm0 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z"/>
+            </svg>
+            <div class="ban-tooltip">
+                <strong class="ban-tooltip-name">Perfil</strong>
+                <span class="ban-tooltip-desc">Tu cuenta y tus pedidos</span>
+            </div>
+        </button>
+    </nav>
+
     <!-- Modal de Promoción -->
     <div id="promoModal" class="promo-modal" role="dialog" aria-modal="true" aria-label="Recomendado del dia">
         <div class="promo-modal-card">
@@ -310,14 +540,6 @@ co
             </div>
         </div>
     </div>
-
-    <!-- Botón Flotante de WhatsApp -->
-    <button type="button" class="whatsapp-float" id="btn-whatsapp-flotante" aria-label="Ayuda e informacion">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.890-5.335 11.893-11.893A11.821 11.821 0 0020.885 3.787"/>
-        </svg>
-        <span>Ayuda e info</span>
-    </button>
 
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
@@ -416,5 +638,10 @@ co
         }
         .pub-upgrade-back:hover { color: #eef4ff; }
     </style>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+    </script>
 </body>
 </html>
