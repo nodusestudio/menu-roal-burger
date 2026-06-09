@@ -739,10 +739,37 @@ a.is-ordering-closed {
 
 .public-topbar {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 12px;
     position: relative;
     z-index: 5;
+}
+
+.topbar-help-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: rgba(10, 14, 24, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50px;
+    color: rgba(255, 255, 255, 0.75);
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+    white-space: nowrap;
+}
+.topbar-help-btn:hover {
+    background: rgba(10, 14, 24, 0.95);
+    color: #25d366;
+    border-color: rgba(37, 211, 102, 0.35);
 }
 
 .public-session-btn {
