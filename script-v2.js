@@ -81,6 +81,7 @@ let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
 let buttonsUnsubscribe = null;
 let brandingUnsubscribe = null;
+let recomendadoOverrideUnsubscribe = null;
 let latestProducts = [];
 let activeCategories = null;
 let activeCategoryMeta = [];
@@ -7729,10 +7730,19 @@ async function renderPublicFeaturedFromAdmin() {
 
     featuredProductsUnsubscribe = firebaseDb.collection('productos').onSnapshot((snapshot) => {
         latestProducts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        _promoProductsReady = true;
         renderDynamicCategorySections();
         renderFeaturedCards(carousel);
         renderCategoryExplorer();
         updatePromoModalContent();
+        if (_promoModalPendingOpen) {
+            _promoModalPendingOpen = false;
+            const pendingModal = document.getElementById('promoModal');
+            if (pendingModal) {
+                pendingModal.classList.add('is-open');
+                syncBodyScrollLock();
+            }
+        }
     });
 
     categoriesUnsubscribe = firebaseDb.collection('categorias').onSnapshot((snapshot) => {
@@ -7784,6 +7794,11 @@ async function renderPublicFeaturedFromAdmin() {
 
     brandingUnsubscribe = firebaseDb.collection('configuracion').doc('config_landing').onSnapshot((doc) => {
         applyBrandingConfig(doc.exists ? doc.data() : DEFAULT_BRANDING);
+    });
+
+    recomendadoOverrideUnsubscribe = firebaseDb.collection('configuracion').doc('recomendado_dia').onSnapshot((doc) => {
+        recomendadoOverride = doc.exists ? doc.data() : null;
+        if (_promoProductsReady) updatePromoModalContent();
     });
 }
 
@@ -7968,6 +7983,9 @@ function closeMenuModal() {
 // ===== MODAL DE RECOMENDADO =====
 const PROMO_DAY_NAME = 'Recomendado del dia';
 let currentRecommendedProduct = null;
+let recomendadoOverride = null;
+let _promoProductsReady = false;
+let _promoModalPendingOpen = false;
 
 function getCurrentBogotaDateParts(now = new Date()) {
     const parts = new Intl.DateTimeFormat('en-CA', {
@@ -8063,6 +8081,18 @@ function _hashProductDay(key, daySerial) {
 }
 
 function getRecommendedProductOfDay(now = new Date()) {
+    if (recomendadoOverride && recomendadoOverride.activo && recomendadoOverride.producto_id) {
+        const overrideRaw = latestProducts.find((p) => p.id === recomendadoOverride.producto_id);
+        if (overrideRaw) {
+            return {
+                nombre: String(overrideRaw.nombre || overrideRaw.name || '').trim(),
+                categoria: String(overrideRaw.categoria || overrideRaw.category || '').trim(),
+                estado: String(overrideRaw.estado || (overrideRaw.paused ? 'paused' : 'active')).toLowerCase(),
+                image_url: normalizeImageAssetPath(resolveProductImage(overrideRaw))
+            };
+        }
+    }
+
     const pool = getEligibleRecommendedProducts();
     if (!pool.length) return getRecommendedFallbackProduct();
 
@@ -8159,10 +8189,13 @@ function initPromoModal() {
 
     setTimeout(function () {
         var modal = document.getElementById('promoModal');
-        if (modal) {
+        if (!modal) return;
+        if (_promoProductsReady) {
             updatePromoModalContent();
             modal.classList.add('is-open');
             syncBodyScrollLock();
+        } else {
+            _promoModalPendingOpen = true;
         }
     }, 2000);
 }
@@ -8170,6 +8203,18 @@ function initPromoModal() {
 function orderDailyRecommendation() {
     if (!canPlaceOrdersNow()) {
         showOrderingClosedMessage();
+        return;
+    }
+
+    if (!activeCustomerProfile) {
+        closePromoModal();
+        openCustomerAuthModal();
+        setTimeout(() => {
+            const feedback = document.getElementById('customerAuthFeedback');
+            if (feedback) {
+                feedback.textContent = 'Debes registrarte o iniciar sesion para obtener el descuento del recomendado del dia.';
+            }
+        }, 50);
         return;
     }
 
