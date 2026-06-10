@@ -3400,9 +3400,18 @@ function getSalchipapaOptions(productName) {
 
 function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
     const normalizedOptions = normalizeOrderOptions(orderOptions);
-    const imagePath = normalizedOptions.imagePath;
+    let imagePath = normalizedOptions.imagePath;
     if (!imagePath) {
         return null;
+    }
+
+    // Firebase Storage URLs (https://firebasestorage.googleapis.com/…/o/path%2Ffile.png?…)
+    // must be resolved to their local-relative path so map lookups work.
+    if (/^https?:\/\//i.test(imagePath)) {
+        try {
+            const oMatch = imagePath.match(/\/o\/([^?#]+)/i);
+            if (oMatch) imagePath = decodeURIComponent(oMatch[1]);
+        } catch (_) {}
     }
 
     const normalizedProductName = normalizeCategoryKey(productName);
@@ -3484,6 +3493,15 @@ function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 
     if (manualImagePrice !== null && manualImagePrice !== undefined) {
         const resolvedPrice = normalizedOptions.type === 'combo' ? manualImagePrice + COMBO_EXTRA_PRICE : manualImagePrice;
         return applyDiscount(resolvedPrice);
+    }
+
+    // Name-based fallback for combos mixtos (when imagePath is a Storage URL or missing)
+    if (isCombosMixtosCategory(categoryName)) {
+        const normName = normalizeCategoryKey(productName);
+        if (normName.includes('de la casa') || normName.includes('delacasa')) return applyDiscount(49000);
+        if (normName.includes('emparejados')) return applyDiscount(45000);
+        if (normName.includes('familiar') && (normName.includes('3') || normName.includes('tres'))) return applyDiscount(48000);
+        if (normName.includes('familiar') && (normName.includes('4') || normName.includes('cuatro'))) return applyDiscount(44000);
     }
 
     const staticOptionPrice = resolveStaticOptionPrice(productName, categoryName);
