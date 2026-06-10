@@ -97,6 +97,24 @@ let orderSentConfirmationUI = null;
 let publicUpgradesConfig = null;
 let _publicUpgradePending = null;
 let paymentFlowUI = null;
+
+// ── Historial para botón atrás de Android ──
+let _modalHistoryDepth = 0;
+let _skipNextPopstate = false;
+let _closingByBackBtn = false;
+
+function _pushModalState() {
+    _modalHistoryDepth++;
+    history.pushState({ roalModal: _modalHistoryDepth }, '');
+}
+
+function _popModalState() {
+    if (_modalHistoryDepth > 0) {
+        _modalHistoryDepth--;
+        _skipNextPopstate = true;
+        history.back();
+    }
+}
 let activeCustomerProfile = null;
 let customerAuthUI = null;
 let customerRegisterUI = null;
@@ -352,23 +370,22 @@ function showWelcomeGreeting(profile) {
     toast.id = 'welcomeGreetingToast';
     toast.style.cssText = `
         position: fixed;
-        bottom: 100px;
+        top: 18px;
         left: 50%;
-        transform: translateX(-50%) translateY(20px);
+        transform: translateX(-50%) translateY(-130%);
         z-index: 999999;
         background: linear-gradient(135deg, #ff7a00, #ff5a00);
         color: #fff7ef;
-        padding: 16px 28px;
-        border-radius: 16px;
+        padding: 13px 24px;
+        border-radius: 40px;
         font-family: 'Oswald', sans-serif;
-        font-size: 1.15rem;
+        font-size: 1rem;
         line-height: 1.4;
-        box-shadow: 0 12px 40px rgba(255, 90, 0, 0.35);
-        border: 1px solid rgba(255,255,255,0.15);
+        box-shadow: 0 8px 28px rgba(255, 90, 0, 0.4), 0 0 0 1px rgba(255,255,255,0.15);
         text-align: center;
-        max-width: 90vw;
+        width: min(90vw, 400px);
         opacity: 0;
-        transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        transition: opacity 0.28s ease, transform 0.32s cubic-bezier(0.34, 1.3, 0.64, 1);
         pointer-events: none;
         user-select: none;
         backdrop-filter: blur(8px);
@@ -385,8 +402,8 @@ function showWelcomeGreeting(profile) {
 
     setTimeout(() => {
         toast.style.opacity = '0';
-        toast.style.transform = 'translateX(-50%) translateY(-20px)';
-        setTimeout(() => toast.remove(), 500);
+        toast.style.transform = 'translateX(-50%) translateY(-130%)';
+        setTimeout(() => toast.remove(), 400);
     }, 4000);
 }
 
@@ -749,27 +766,32 @@ function formatSequentialOrderCode(sequenceNumber) {
 
 async function reserveNextOrderCode(db, orderRef, payload) {
     const sequenceRef = db.collection(ORDERS_COLLECTION).doc(ORDER_SEQUENCE_DOC_ID);
+    const fallbackCode = () => `${ORDER_CODE_PREFIX}-${String(Date.now() % 100000).padStart(5, '0')}`;
     let reservedCode = '';
 
-    await db.runTransaction(async (transaction) => {
-        const sequenceSnapshot = await transaction.get(sequenceRef);
-        const currentSequence = Number(sequenceSnapshot.exists ? sequenceSnapshot.data()?.current : ORDER_CODE_START - 1);
-        const nextSequence = Number.isFinite(currentSequence)
-            ? Math.max(currentSequence + 1, ORDER_CODE_START)
-            : ORDER_CODE_START;
-        reservedCode = formatSequentialOrderCode(nextSequence);
-
-        transaction.set(sequenceRef, {
-            metaType: 'order_sequence',
-            current: nextSequence,
-            updatedAt: getPublicServerTimestamp()
-        }, { merge: true });
-
-        transaction.set(orderRef, {
-            ...payload,
-            code: reservedCode
+    try {
+        const txPromise = db.runTransaction(async (transaction) => {
+            const sequenceSnapshot = await transaction.get(sequenceRef);
+            const currentSequence = Number(sequenceSnapshot.exists ? sequenceSnapshot.data()?.current : ORDER_CODE_START - 1);
+            const nextSequence = Number.isFinite(currentSequence)
+                ? Math.max(currentSequence + 1, ORDER_CODE_START)
+                : ORDER_CODE_START;
+            reservedCode = formatSequentialOrderCode(nextSequence);
+            transaction.set(sequenceRef, {
+                metaType: 'order_sequence',
+                current: nextSequence,
+                updatedAt: getPublicServerTimestamp()
+            }, { merge: true });
+            transaction.set(orderRef, { ...payload, code: reservedCode });
         });
-    });
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
+        await Promise.race([txPromise, timeout]);
+        if (!reservedCode) reservedCode = fallbackCode();
+    } catch (_e) {
+        // Fallback: guardar el pedido con código por timestamp si Firestore falla (cuota/red)
+        reservedCode = fallbackCode();
+        await orderRef.set({ ...payload, code: reservedCode });
+    }
 
     return reservedCode;
 }
@@ -3724,6 +3746,7 @@ function openCartDrawer() {
     }
     cartUI.drawer.classList.add('is-open');
     cartUI.overlay.classList.add('is-open');
+    _pushModalState();
     syncBodyScrollLock();
 }
 
@@ -3733,6 +3756,7 @@ function closeCartDrawer() {
     }
     cartUI.drawer.classList.remove('is-open');
     cartUI.overlay.classList.remove('is-open');
+    if (!_closingByBackBtn) _popModalState();
     syncBodyScrollLock();
 }
 
@@ -3784,6 +3808,7 @@ function closePaymentFlowModal() {
 
     paymentFlowUI.modal.remove();
     paymentFlowUI = null;
+    if (!_closingByBackBtn) _popModalState();
     syncBodyScrollLock();
 }
 
@@ -4082,6 +4107,7 @@ function openPaymentFlowModal(orderData) {
     `;
 
     document.body.appendChild(modal);
+    _pushModalState();
 
     paymentFlowUI = {
         modal,
@@ -4654,10 +4680,27 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
     // Interceptar para mostrar upgrades si corresponde
     const upgradeExtra = Number(orderOptions?.upgradeExtra || 0);
     const upgradeHandled = !!(orderOptions?.upgradeHandled);
-    if (!upgradeHandled && _shouldShowPublicUpgrade(categoryName)) {
-        _publicUpgradePending = { productName, categoryName, orderOptions, buttonId };
-        openPublicUpgradeSheet();
-        return;
+    if (!upgradeHandled) {
+        const cfg = publicUpgradesConfig;
+        // 1. Nivel producto: acompañantes configurados específicamente para este producto
+        const productData = _getCartItemProductData(productName);
+        const prodAcomp = productData?.acompanantes;
+        if (prodAcomp?.activo && Array.isArray(prodAcomp.ids) && prodAcomp.ids.length > 0 && cfg) {
+            const filteredOpts = (cfg.opciones || [])
+                .filter((o) => o.activo && o.activo_menu !== false && prodAcomp.ids.includes(o.id))
+                .sort((a, b) => (a.orden || 99) - (b.orden || 99));
+            if (filteredOpts.length > 0) {
+                _publicUpgradePending = { productName, categoryName, orderOptions, buttonId, filteredOpts };
+                openPublicUpgradeSheet();
+                return;
+            }
+        }
+        // 2. Nivel categoría: todas las opciones activas si la categoría está habilitada
+        if (_shouldShowPublicUpgrade(categoryName)) {
+            _publicUpgradePending = { productName, categoryName, orderOptions, buttonId };
+            openPublicUpgradeSheet();
+            return;
+        }
     }
 
     const normalizedOptions = normalizeOrderOptions(orderOptions);
@@ -4740,23 +4783,19 @@ function renderCartUI() {
         title.title = 'Toca para editar';
         title.addEventListener('click', () => openCartItemEditor(item.itemKey));
 
-        const category = document.createElement('p');
-        category.className = 'cart-item-category';
-        category.textContent = item.categoryName;
-
+        const normalizedType = normalizeOrderOptions(item.orderOptions).type;
+        const optionText = getCartOptionLabel(item.categoryName, item.orderOptions, { includeComment: false });
         const option = document.createElement('p');
         option.className = 'cart-item-option';
-        option.textContent = getCartOptionLabel(item.categoryName, item.orderOptions);
+        if (normalizedType !== 'solo') {
+            option.textContent = optionText;
+        }
 
         const price = document.createElement('p');
-        price.className = 'cart-item-option';
-        price.textContent = `Precio: ${formatCurrency(unitPrice)} | Subtotal: ${formatCurrency(subtotal)}`;
-
-        const discount = document.createElement('p');
-        discount.className = 'cart-item-option';
-        if (discountAmount > 0) {
-            discount.textContent = `Descuento aplicado: ${formatCurrency(discountAmount)}`;
-        }
+        price.className = 'cart-item-price';
+        price.textContent = discountAmount > 0
+            ? `${formatCurrency(unitPrice)} | Sub: ${formatCurrency(subtotal)} | -${formatCurrency(discountAmount)}`
+            : `${formatCurrency(unitPrice)} × ${item.quantity} = ${formatCurrency(subtotal)}`;
 
         const existingComment = String(item.orderOptions?.comment || '').trim();
         const commentBadge = document.createElement('p');
@@ -4770,16 +4809,24 @@ function renderCartUI() {
         commentBadge.addEventListener('click', () => openCartItemEditor(item.itemKey));
 
         info.appendChild(title);
-        info.appendChild(category);
-        info.appendChild(option);
-        info.appendChild(commentBadge);
+        if (normalizedType !== 'solo') info.appendChild(option);
         info.appendChild(price);
-        if (discountAmount > 0) {
-            info.appendChild(discount);
-        }
+        info.appendChild(commentBadge);
 
         const controls = document.createElement('div');
         controls.className = 'cart-item-controls';
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'cart-remove-btn';
+        remove.setAttribute('aria-label', 'Quitar producto');
+        remove.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
+        remove.addEventListener('click', () => {
+            updateCartItemQuantity(item.itemKey, -Number(item.quantity || 1));
+        });
+
+        const qtyRow = document.createElement('div');
+        qtyRow.className = 'cart-qty-row';
 
         const minus = document.createElement('button');
         minus.type = 'button';
@@ -4789,9 +4836,9 @@ function renderCartUI() {
             updateCartItemQuantity(item.itemKey, -1);
         });
 
-        const quantity = document.createElement('span');
-        quantity.className = 'cart-qty-value';
-        quantity.textContent = String(item.quantity);
+        const quantitySpan = document.createElement('span');
+        quantitySpan.className = 'cart-qty-value';
+        quantitySpan.textContent = String(item.quantity);
 
         const plus = document.createElement('button');
         plus.type = 'button';
@@ -4801,18 +4848,12 @@ function renderCartUI() {
             updateCartItemQuantity(item.itemKey, 1);
         });
 
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'cart-remove-btn';
-        remove.textContent = 'Quitar';
-        remove.addEventListener('click', () => {
-            updateCartItemQuantity(item.itemKey, -Number(item.quantity || 1));
-        });
+        qtyRow.appendChild(minus);
+        qtyRow.appendChild(quantitySpan);
+        qtyRow.appendChild(plus);
 
-        controls.appendChild(minus);
-        controls.appendChild(quantity);
-        controls.appendChild(plus);
         controls.appendChild(remove);
+        controls.appendChild(qtyRow);
 
         row.appendChild(info);
         row.appendChild(controls);
@@ -5009,16 +5050,26 @@ function initCartUI() {
         <div class="cart-drawer-header">
             <div>
                 <h3 class="cart-drawer-title">Tu carrito</h3>
-                <p class="cart-drawer-subtitle">Agrega productos y envia un solo pedido directo al administrador.</p>
             </div>
             <button type="button" class="cart-close-btn" aria-label="Cerrar carrito">&times;</button>
         </div>
         <div class="cart-items" id="cartItems"></div>
         <div class="cart-drawer-footer">
             <p class="cart-summary" id="cartSummary"></p>
-            <button type="button" class="cart-continue-btn" id="cartContinueBtn">Seguir en el menu</button>
-            <button type="button" class="cart-checkout-btn" id="cartCheckoutBtn">Enviar pedido</button>
-            <button type="button" class="cart-clear-btn" id="cartClearBtn">Vaciar carrito</button>
+            <div class="cart-action-bar">
+                <button type="button" class="cart-continue-btn" id="cartContinueBtn">
+                    <svg class="cbtn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    <span class="cbtn-lbl">Menú</span>
+                </button>
+                <button type="button" class="cart-checkout-btn" id="cartCheckoutBtn">
+                    <svg class="cbtn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.115.549 4.1 1.51 5.833L0 24l6.334-1.494A11.927 11.927 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/></svg>
+                    <span class="cbtn-lbl">Enviar pedido</span>
+                </button>
+                <button type="button" class="cart-clear-btn" id="cartClearBtn">
+                    <svg class="cbtn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                    <span class="cbtn-lbl">Vaciar</span>
+                </button>
+            </div>
         </div>
     `;
 
@@ -5170,6 +5221,7 @@ function closeSupportModal() {
     }
 
     supportUI.modal.classList.remove('is-open');
+    if (!_closingByBackBtn) _popModalState();
     syncBodyScrollLock();
 }
 
@@ -5208,6 +5260,7 @@ function openSupportModal() {
 
     supportUI.feedback.textContent = '';
     supportUI.modal.classList.add('is-open');
+    _pushModalState();
     syncBodyScrollLock();
     if (!activeSupportTopic) {
         renderSupportAnswer('');
@@ -9292,6 +9345,7 @@ function openPublicUpgradeSheet() {
     if (!overlay || !_publicUpgradePending) return;
     overlay.hidden = false;
     overlay.style.display = 'flex';
+    _pushModalState();
     renderPublicUpgradeStep1();
 }
 
@@ -9299,6 +9353,7 @@ function closePublicUpgradeSheet() {
     const overlay = document.getElementById('publicUpgradeOverlay');
     if (overlay) { overlay.hidden = true; overlay.style.display = 'none'; }
     _publicUpgradePending = null;
+    if (!_closingByBackBtn) _popModalState();
 }
 
 function _pubUpgBody() { return document.getElementById('publicUpgradeBody'); }
@@ -9309,9 +9364,11 @@ function renderPublicUpgradeStep1() {
     if (!body || !_publicUpgradePending) return;
     if (titleEl) titleEl.textContent = '¿Quieres acompañarlo?';
     const cfg = publicUpgradesConfig;
-    const activeOpts = (cfg?.opciones || [])
-        .filter((o) => o.activo && o.activo_menu !== false)
-        .sort((a, b) => (a.orden || 99) - (b.orden || 99));
+    // Usar opciones filtradas por producto si existen, o todas las activas de menú
+    const activeOpts = _publicUpgradePending.filteredOpts ||
+        (cfg?.opciones || [])
+            .filter((o) => o.activo && o.activo_menu !== false)
+            .sort((a, b) => (a.orden || 99) - (b.orden || 99));
 
     const priceLabel = (opt) => {
         if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
@@ -9506,6 +9563,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === e.currentTarget) closePublicUpgradeSheet();
     });
     document.getElementById('publicUpgradeCloseBtn')?.addEventListener('click', closePublicUpgradeSheet);
+
+    // ── Botón ATRÁS de Android: cierra el modal activo en vez de salir de la app ──
+    window.addEventListener('popstate', () => {
+        if (_skipNextPopstate) { _skipNextPopstate = false; return; }
+        if (_modalHistoryDepth > 0) {
+            _modalHistoryDepth--;
+            _closingByBackBtn = true;
+            try {
+                // Cierra de más anidado a menos anidado
+                if (paymentFlowUI) { closePaymentFlowModal(); return; }
+                const upgradeOverlay = document.getElementById('publicUpgradeOverlay');
+                if (upgradeOverlay && !upgradeOverlay.hidden) { closePublicUpgradeSheet(); return; }
+                if (supportUI?.modal?.classList.contains('is-open')) { closeSupportModal(); return; }
+                if (cartUI?.drawer.classList.contains('is-open')) { closeCartDrawer(); return; }
+            } finally {
+                _closingByBackBtn = false;
+            }
+        }
+    });
 
     // Re-render del home cuando el tab vuelve a primer plano tras inactividad
     let _lastHiddenAt = 0;

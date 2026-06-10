@@ -384,6 +384,8 @@ let posSelectedClientData = null;
 let posTicketConfig = null; // { orderType, mesaNumber, customerName, customerPhone }
 let posTickets = [];
 let posActiveTicketId = null;
+let _editingOrderData = null; // set when editing an existing order, cleared after save
+let _posSelectedTicketIds = new Set();
 let menuUpgradesConfig = null;
 let _posUpgradePending = null;
 let clientsSearchTerm = '';
@@ -639,21 +641,25 @@ function firestoreNow() {
 
 async function getNextAdminOrderCode() {
     const sequenceRef = firebaseDb.collection(ORDERS_COLLECTION).doc(ORDER_SEQUENCE_DOC_ID);
-    let code = '';
-    await firebaseDb.runTransaction(async (transaction) => {
-        const snap = await transaction.get(sequenceRef);
-        const current = Number(snap.exists ? snap.data()?.current : ORDER_CODE_START - 1);
-        const next = Number.isFinite(current)
-            ? Math.max(current + 1, ORDER_CODE_START)
-            : ORDER_CODE_START;
-        code = `${ORDER_CODE_PREFIX}-${String(next).padStart(4, '0')}`;
-        transaction.set(sequenceRef, {
-            metaType: 'order_sequence',
-            current: next,
-            updatedAt: firestoreNow()
-        }, { merge: true });
-    });
-    return code;
+    const fallback = () => `${ORDER_CODE_PREFIX}-${String(Date.now() % 100000).padStart(5, '0')}`;
+    try {
+        // Race: transacción vs timeout de 4s para no bloquear el botón en caso de cuota 429
+        let code = '';
+        const txPromise = firebaseDb.runTransaction(async (tx) => {
+            const snap = await tx.get(sequenceRef);
+            const current = Number(snap.exists ? snap.data()?.current : ORDER_CODE_START - 1);
+            const next = Number.isFinite(current)
+                ? Math.max(current + 1, ORDER_CODE_START)
+                : ORDER_CODE_START;
+            code = `${ORDER_CODE_PREFIX}-${String(next).padStart(4, '0')}`;
+            tx.set(sequenceRef, { metaType: 'order_sequence', current: next, updatedAt: firestoreNow() }, { merge: true });
+        });
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000));
+        await Promise.race([txPromise, timeout]);
+        return code || fallback();
+    } catch (_e) {
+        return fallback();
+    }
 }
 
 function normalizePhoneDigits(value) {
@@ -1804,39 +1810,35 @@ let _upgradeSelectedOptId = null;
 
 function renderMenuUpgradesAdmin() {
     const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    const activeChk = document.getElementById('upgradesActive');
-    if (activeChk) activeChk.checked = !!cfg.activo;
-    _renderUpgradeCategories(cfg);
     _renderUpgradesMasterList(cfg);
     _renderUpgradesDetailPanel(_upgradeSelectedOptId);
 }
 
-function _renderUpgradeCategories(cfg) {
-    const catList = document.getElementById('upgradeCategoriesList');
-    if (!catList) return;
-    catList.innerHTML = (cfg.categorias_aplica || []).map((cat) => `
-        <span class="upgrade-category-chip">
-            ${escapeHtml(cat)}
-            <button type="button" class="upgrade-category-remove" data-category="${escapeHtml(cat)}" aria-label="Quitar">&#215;</button>
-        </span>`).join('') +
-        '<button type="button" class="ghost-button" id="addUpgradeCategoryBtn" style="font-size:0.78rem;padding:4px 10px;">+ Categoría</button>';
-    catList.querySelectorAll('.upgrade-category-remove').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            menuUpgradesConfig.categorias_aplica = (menuUpgradesConfig.categorias_aplica || [])
-                .filter((c) => c !== btn.dataset.category);
-            _renderUpgradeCategories(menuUpgradesConfig);
-        });
-    });
-    catList.querySelector('#addUpgradeCategoryBtn')?.addEventListener('click', () => {
-        const name = prompt('Nombre exacto de la categoría del catálogo (ej: BURGER PREMIUM)');
-        if (name?.trim()) {
+function _renderUpgradeCategoryToggles(cfg) {
+    const container = document.getElementById('upgradeCategoryToggles');
+    if (!container) return;
+    const aplica = (cfg.categorias_aplica || []).map((c) => c.toUpperCase());
+    const categories = categoriesState.filter((c) => c.active !== false);
+    if (!categories.length) {
+        container.innerHTML = '<p style="color:var(--admin-muted);font-size:0.8rem;">No hay categorías disponibles aún.</p>';
+        return;
+    }
+    container.innerHTML = categories.map((cat) => {
+        const checked = aplica.includes(cat.name.toUpperCase());
+        return `
+        <label class="upgrade-cat-toggle-row">
+            <input type="checkbox" class="upgrade-cat-toggle-chk"
+                   data-cat-name="${escapeHtml(cat.name)}" ${checked ? 'checked' : ''}>
+            <span class="upgrade-cat-toggle-name">${escapeHtml(cat.name)}</span>
+        </label>`;
+    }).join('');
+    container.querySelectorAll('.upgrade-cat-toggle-chk').forEach((chk) => {
+        chk.addEventListener('change', () => {
             if (!menuUpgradesConfig) menuUpgradesConfig = { ...DEFAULT_UPGRADES_CONFIG };
-            menuUpgradesConfig.categorias_aplica = [
-                ...(menuUpgradesConfig.categorias_aplica || []),
-                name.trim().toUpperCase()
-            ];
-            _renderUpgradeCategories(menuUpgradesConfig);
-        }
+            menuUpgradesConfig.categorias_aplica = Array.from(
+                container.querySelectorAll('.upgrade-cat-toggle-chk:checked')
+            ).map((c) => c.dataset.catName);
+        });
     });
 }
 
@@ -2311,9 +2313,9 @@ function handlePosProductAdd(productId, productName, productPrice) {
         return;
     }
 
-    // Verificar acompañantes: primero a nivel de producto, luego por categoría (fallback)
+    // Verificar acompañantes: primero a nivel de producto, luego por categoría
     const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    if (cfg.activo) {
+    {
         const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
         const productData = catalog.find((p) => p.id === productId);
         const prodAcomp = productData && productData.acompanantes;
@@ -2326,12 +2328,18 @@ function handlePosProductAdd(productId, productName, productPrice) {
                 return;
             }
         } else {
-            // Fallback: nivel categoría (comportamiento anterior)
-            const activeOpts = (cfg.opciones || []).filter((o) => o.activo);
+            // Nivel categoría: usar IDs específicos de la categoría si están configurados
             const appliesTo = (cfg.categorias_aplica || []).map((c) => c.toUpperCase());
-            if (activeOpts.length > 0 && appliesTo.includes(selectedCategory.toUpperCase())) {
-                openPosUpgradeSheet(productId, productName, productPrice);
-                return;
+            if (appliesTo.includes(selectedCategory.toUpperCase())) {
+                const catIdsMap = cfg.categorias_ids || {};
+                const catIds = catIdsMap[selectedCategory] || catIdsMap[selectedCategory.toUpperCase()] || [];
+                const filteredOpts = (cfg.opciones || []).filter(
+                    (o) => o.activo && (catIds.length === 0 || catIds.includes(o.id))
+                );
+                if (filteredOpts.length > 0) {
+                    openPosUpgradeSheet(productId, productName, productPrice, filteredOpts);
+                    return;
+                }
             }
         }
     }
@@ -2659,15 +2667,18 @@ function addProductToPosOrder(productId, productName, productPrice, note = '') {
     if (!productId) return;
 
     const category = posSelectedCategory || 'Sin categoria';
-    // Items with a note are always added as new entries (not merged)
-    const existing = !note && internalOrderItems.find((item) => item.itemKey === productId && !item.note);
+
+    // itemKey determinístico por (productId + nota) → ítems con misma nota se fusionan,
+    // ítems con nota diferente (ej. "Combo" vs "Solo") quedan separados automáticamente.
+    const itemKey = note ? `${productId}::${note}` : productId;
+    const existing = internalOrderItems.find((item) => item.itemKey === itemKey);
 
     if (existing) {
         existing.quantity = Number(existing.quantity || 0) + 1;
         existing.subtotal = Number(existing.quantity) * existing.unitPrice;
     } else {
         internalOrderItems.push({
-            itemKey: note ? `${productId}::${Date.now()}` : productId,
+            itemKey,
             productId,
             productName,
             categoryName: category,
@@ -2700,9 +2711,65 @@ function renderPosBottomBar() {
         if (scrollArea) scrollArea.style.paddingBottom = '';
     } else {
         if (bottomBar) bottomBar.hidden = totalQty === 0;
-        if (scrollArea) scrollArea.style.paddingBottom = totalQty > 0 ? '64px' : '10px';
+        if (scrollArea) scrollArea.style.paddingBottom = totalQty > 0 ? '106px' : '10px';
     }
     if (qtyElem) qtyElem.textContent = `${totalQty} ${totalQty === 1 ? 'item' : 'items'}`;
+}
+
+function _openPosNoteModal(item, itemKey, container) {
+    const existing = document.getElementById('posNoteModal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'posNoteModal';
+    modal.className = 'pos-note-modal-overlay';
+    modal.innerHTML = `
+        <div class="pos-note-modal-box">
+            <p class="pos-note-modal-title">Nota para <strong>${escapeHtml(item.productName)}</strong></p>
+            <textarea class="pos-note-modal-input" maxlength="120" placeholder="Ej: sin cebolla, extra picante…">${escapeHtml(item.note || '')}</textarea>
+            <div class="pos-note-modal-actions">
+                <button type="button" class="pos-note-cancel-btn">Cancelar</button>
+                <button type="button" class="pos-note-save-btn">Guardar</button>
+            </div>
+        </div>`;
+
+    const applyNote = (note) => {
+        item.note = note;
+        const row = container.querySelector(`.pos-item-row[data-item-key="${itemKey}"]`);
+        if (row) {
+            const nameEl = row.querySelector('.pos-item-name');
+            const commentBtn = row.querySelector('.pos-item-comment-btn');
+            let noteSpan = nameEl?.querySelector('.pos-item-note');
+            if (note) {
+                if (!noteSpan) {
+                    noteSpan = document.createElement('span');
+                    noteSpan.className = 'pos-item-note';
+                    nameEl.appendChild(noteSpan);
+                }
+                noteSpan.textContent = note;
+            } else if (noteSpan) {
+                noteSpan.remove();
+            }
+            if (commentBtn) commentBtn.classList.toggle('has-note', !!note);
+        }
+        modal.remove();
+    };
+
+    modal.querySelector('.pos-note-cancel-btn').addEventListener('click', () => modal.remove());
+    modal.querySelector('.pos-note-save-btn').addEventListener('click', () => {
+        applyNote(modal.querySelector('.pos-note-modal-input').value.trim());
+    });
+    modal.querySelector('.pos-note-modal-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') modal.remove();
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            applyNote(modal.querySelector('.pos-note-modal-input').value.trim());
+        }
+    });
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+    const ta = modal.querySelector('.pos-note-modal-input');
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
 function renderPosOrderItems() {
@@ -2722,13 +2789,6 @@ function renderPosOrderItems() {
                 <div class="pos-item-name">
                     ${escapeHtml(item.productName)}
                     ${item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : ''}
-                    <div class="pos-item-comment-area" hidden>
-                        <input type="text" class="pos-item-comment-input"
-                               value="${escapeHtml(item.note || '')}"
-                               placeholder="Ej: sin cebolla…"
-                               maxlength="120"
-                               data-item-key="${escapeHtml(item.itemKey)}">
-                    </div>
                 </div>
                 <div class="pos-item-qty-price">
                     <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
@@ -2749,14 +2809,8 @@ function renderPosOrderItems() {
             const commentBtn = event.target.closest('.pos-item-comment-btn');
             if (commentBtn) {
                 const key = commentBtn.dataset.itemKey;
-                const row = itemsContainer.querySelector(`.pos-item-row[data-item-key="${key}"]`);
-                const area = row?.querySelector('.pos-item-comment-area');
-                const input = area?.querySelector('.pos-item-comment-input');
-                if (area) {
-                    const isHidden = area.hasAttribute('hidden');
-                    area.toggleAttribute('hidden', !isHidden);
-                    if (isHidden) input?.focus();
-                }
+                const item = internalOrderItems.find((i) => i.itemKey === key);
+                if (item) _openPosNoteModal(item, key, itemsContainer);
                 return;
             }
 
@@ -2808,42 +2862,6 @@ function renderPosOrderItems() {
                 renderPosOrderItems();
                 renderPosTotals();
                 renderPosBottomBar();
-            }
-        });
-
-        itemsContainer.addEventListener('focusout', (event) => {
-            const input = event.target.closest('.pos-item-comment-input');
-            if (!input) return;
-            const key = input.dataset.itemKey;
-            const item = internalOrderItems.find((i) => i.itemKey === key);
-            if (!item) return;
-            const newNote = input.value.trim();
-            item.note = newNote;
-            const row = itemsContainer.querySelector(`.pos-item-row[data-item-key="${key}"]`);
-            const nameEl = row?.querySelector('.pos-item-name');
-            const commentBtn = row?.querySelector('.pos-item-comment-btn');
-            const area = row?.querySelector('.pos-item-comment-area');
-            if (nameEl) {
-                let noteSpan = nameEl.querySelector('.pos-item-note');
-                if (newNote) {
-                    if (!noteSpan) {
-                        noteSpan = document.createElement('span');
-                        noteSpan.className = 'pos-item-note';
-                        nameEl.insertBefore(noteSpan, area);
-                    }
-                    noteSpan.textContent = newNote;
-                } else if (noteSpan) {
-                    noteSpan.remove();
-                }
-            }
-            if (commentBtn) commentBtn.classList.toggle('has-note', !!newNote);
-            if (area) area.setAttribute('hidden', '');
-        });
-
-        itemsContainer.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                const input = event.target.closest('.pos-item-comment-input');
-                if (input) input.blur();
             }
         });
 
@@ -3108,21 +3126,35 @@ function renderPosTicketsBadge() {
     if (badge) badge.textContent = posTickets.length;
 }
 
+function _refreshTicketActionBar() {
+    const bar = document.getElementById('posTicketActionBar');
+    const countBadge = document.getElementById('posTicketSelectionCount');
+    const changeTypeBtn = document.getElementById('posTicketChangeTypeBtn');
+    const n = _posSelectedTicketIds.size;
+    if (bar) bar.hidden = n === 0;
+    if (countBadge) { countBadge.style.display = n > 0 ? '' : 'none'; countBadge.textContent = n; }
+    if (changeTypeBtn) changeTypeBtn.disabled = n !== 1;
+}
+
 function renderPosTicketsList() {
     const list = document.getElementById('posTicketsList');
     if (!list) return;
     if (!posTickets.length) {
         list.innerHTML = '<p style="text-align:center;color:#b8c8e8;padding:32px 16px;font-size:0.95rem;">No hay tickets abiertos</p>';
+        _posSelectedTicketIds.clear();
+        _refreshTicketActionBar();
         return;
     }
     list.innerHTML = posTickets.map((ticket) => {
         const subtotal = ticket.items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
         const itemCount = ticket.items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
         const isActive = ticket.id === posActiveTicketId;
+        const isSelected = _posSelectedTicketIds.has(ticket.id);
         const typeLabels = { mesa: '&#9632; Mesa', retiro: '&#8599; Recoger', domicilio: '&#8962; Domicilio' };
         const typeBadge = ticket.orderType ? `<span class="pos-ticket-type-badge">${typeLabels[ticket.orderType] || ticket.orderType}</span>` : '';
-        return `<div class="pos-ticket-item ${isActive ? 'active-ticket' : ''}" data-ticket-id="${escapeHtml(ticket.id)}">
-            <div class="pos-ticket-check">${isActive ? '&#10003;' : ''}</div>
+        const classes = ['pos-ticket-item', isActive ? 'active-ticket' : '', isSelected ? 'selected-ticket' : ''].filter(Boolean).join(' ');
+        return `<div class="${classes}" data-ticket-id="${escapeHtml(ticket.id)}">
+            <div class="pos-ticket-check" data-check-id="${escapeHtml(ticket.id)}">&#10003;</div>
             <div class="pos-ticket-info">
                 <div class="pos-ticket-name">${escapeHtml(ticket.label)}${typeBadge}</div>
                 <div class="pos-ticket-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'}</div>
@@ -3130,9 +3162,42 @@ function renderPosTicketsList() {
             <div class="pos-ticket-total">${formatMoney(subtotal)}</div>
         </div>`;
     }).join('');
+
     list.querySelectorAll('.pos-ticket-item').forEach((item) => {
-        item.addEventListener('click', () => switchPosTicket(item.dataset.ticketId));
+        // Click en el check → seleccionar/deseleccionar
+        const checkEl = item.querySelector('.pos-ticket-check');
+        checkEl?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = checkEl.dataset.checkId;
+            if (_posSelectedTicketIds.has(id)) {
+                _posSelectedTicketIds.delete(id);
+                item.classList.remove('selected-ticket');
+            } else {
+                _posSelectedTicketIds.add(id);
+                item.classList.add('selected-ticket');
+            }
+            _refreshTicketActionBar();
+        });
+        // Click en la tarjeta → abrir ticket (solo si no hay selección activa)
+        item.addEventListener('click', (e) => {
+            if (e.target.closest('.pos-ticket-check')) return;
+            if (_posSelectedTicketIds.size > 0) {
+                // En modo selección, el click en la tarjeta también selecciona/deselecciona
+                const id = item.dataset.ticketId;
+                if (_posSelectedTicketIds.has(id)) {
+                    _posSelectedTicketIds.delete(id);
+                    item.classList.remove('selected-ticket');
+                } else {
+                    _posSelectedTicketIds.add(id);
+                    item.classList.add('selected-ticket');
+                }
+                _refreshTicketActionBar();
+                return;
+            }
+            switchPosTicket(item.dataset.ticketId);
+        });
     });
+    _refreshTicketActionBar();
 }
 
 function showPosScreen(screen) {
@@ -3390,18 +3455,25 @@ async function saveAdminOrderQuick(config = {}) {
         return;
     }
 
+    const isEditing = _editingOrderData !== null;
+    const editData = _editingOrderData;
+
     const saveBtn = document.getElementById('posDrawerSaveBtn');
-    const orderType = config.orderType || 'retiro';
-    const mesaNumber = config.mesaNumber || null;
+    const orderType = config.orderType || editData?.orderType || 'retiro';
+    const mesaNumber = config.mesaNumber || editData?.mesaNumber || null;
     const defaultName = orderType === 'mesa' && mesaNumber ? `Mesa ${mesaNumber}` : 'Pedido Admin';
-    const customerName = String(config.customerName || '').trim() || defaultName;
-    const customerPhone = String(config.customerPhone || '').trim();
+    const customerName = String(config.customerName || editData?.customerName || '').trim() || defaultName;
+    const customerPhone = String(config.customerPhone || editData?.customerPhone || '').trim();
 
     try {
         if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
 
-        const orderId = firebaseDb.collection(ORDERS_COLLECTION).doc().id;
-        const orderCode = await getNextAdminOrderCode();
+        const orderId = isEditing ? editData.id : firebaseDb.collection(ORDERS_COLLECTION).doc().id;
+        const orderCode = isEditing ? editData.code : await getNextAdminOrderCode();
+        const orderStatus = isEditing ? editData.status : 'pendiente';
+        const deliveryFeeVal = config.deliveryFee !== undefined && config.deliveryFee !== null
+            ? Number(config.deliveryFee)
+            : (editData?.deliveryFee != null ? Number(editData.deliveryFee) : 0);
         const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
 
         const orderDoc = {
@@ -3410,16 +3482,18 @@ async function saveAdminOrderQuick(config = {}) {
             customerName,
             customerPhone,
             customerPhoneDigits: normalizePhoneDigits ? normalizePhoneDigits(customerPhone) : customerPhone,
-            customerAddress: '',
-            deliveryAddress: '',
+            customerAddress: isEditing ? (editData.deliveryAddress || '') : '',
+            deliveryAddress: orderType === 'domicilio'
+                ? (config.deliveryAddress || editData?.deliveryAddress || '')
+                : '',
             profileAddress: '',
-            paymentMethod: 'pendiente',
+            paymentMethod: editData?.paymentMethod || 'pendiente',
             cashChangeRequired: false,
             cashTenderAmount: null,
             orderType,
             source: 'admin_pos',
             isAdminOrder: true,
-            status: 'pendiente',
+            status: orderStatus,
             items: internalOrderItems.map((item, index) => ({
                 index: index + 1,
                 itemKey: item.itemKey,
@@ -3436,15 +3510,11 @@ async function saveAdminOrderQuick(config = {}) {
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
             subtotal,
             discount: 0,
-            deliveryFee: orderType === 'domicilio'
-                ? (config.deliveryFee !== undefined && config.deliveryFee !== null ? Number(config.deliveryFee) : 0)
-                : null,
-            total: orderType === 'domicilio'
-                ? subtotal + (config.deliveryFee !== undefined && config.deliveryFee !== null ? Number(config.deliveryFee) : 0)
-                : subtotal,
+            deliveryFee: orderType === 'domicilio' ? deliveryFeeVal : null,
+            total: orderType === 'domicilio' ? subtotal + deliveryFeeVal : subtotal,
             currency: 'COP',
             summaryMessage: '',
-            createdAt: firestoreNow(),
+            createdAt: isEditing ? editData.createdAt : firestoreNow(),
             updatedAt: firestoreNow()
         };
 
@@ -3453,8 +3523,12 @@ async function saveAdminOrderQuick(config = {}) {
         }
 
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
+        _editingOrderData = null;
 
-        await reloadDataAndRender();
+        // Recarga solo pedidos (no todas las colecciones) para no saturar Firestore
+        await fetchOrders();
+        renderOrders();
+        renderSalesSummaries();
 
         // Limpiar el ticket actual y crear uno nuevo
         posTickets = posTickets.filter((t) => t.id !== posActiveTicketId);
@@ -3468,7 +3542,7 @@ async function saveAdminOrderQuick(config = {}) {
         renderPosTotals();
         renderPosBottomBar();
         renderPosTicketsBadge();
-        showNotice('Pedido guardado en recepción.', 'ok');
+        showNotice(isEditing ? 'Pedido actualizado.' : 'Pedido guardado en recepción.', 'ok');
     } catch (error) {
         showNotice(`Error al guardar: ${error.message || 'error'}`, 'error');
     } finally {
@@ -3489,7 +3563,31 @@ async function editAdminPosOrder(order) {
             subtotal: Number(item.subtotal || 0)
         }));
 
-        await deleteOrder(order.id);
+        // Preserve original order data so saveAdminOrderQuick can update in-place
+        _editingOrderData = {
+            id: order.id,
+            code: order.code,
+            status: order.status,
+            createdAt: order.createdAt,
+            orderType: order.orderType,
+            mesaNumber: order.mesaNumber || null,
+            customerName: order.customerName || '',
+            customerPhone: order.customerPhone || '',
+            deliveryAddress: order.deliveryAddress || order.customerAddress || '',
+            deliveryFee: order.deliveryFee ?? null,
+            paymentMethod: order.paymentMethod || 'pendiente'
+        };
+
+        // Pre-fill ticket config so save goes straight through without opening the setup modal
+        posTicketConfig = {
+            orderType: order.orderType,
+            mesaNumber: order.mesaNumber || null,
+            customerName: order.customerName || '',
+            customerPhone: order.customerPhone || '',
+            deliveryAddress: order.deliveryAddress || order.customerAddress || '',
+            deliveryFee: order.deliveryFee ?? null
+        };
+
         if (selectedOrderId === order.id) selectedOrderId = null;
 
         openInternalOrderModal();
@@ -3534,6 +3632,7 @@ function closeInternalOrderModal(clearCurrentTicket = false) {
     posTickets = [];
     posActiveTicketId = null;
     posTicketConfig = null;
+    _editingOrderData = null;
     internalOrderItems = [];
     renderPosCartTicketInfo();
     const cartDrawer = document.getElementById('posCartDrawer');
@@ -4489,11 +4588,17 @@ function _renderCategoryDetailPanel(categoryId) {
                     })() : ''}`
                     : '<p style="font-size:0.8rem;color:var(--admin-muted);margin:4px 0;">Sin productos aún</p>'}
             </div>
+            ${_buildCatAcompHtml(category)}
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
                 <button type="button" class="section-save-btn" id="catDetailSaveBtn">Guardar</button>
             </div>
         </div>
     `;
+
+    categoryDetailPanel.querySelector('#catAcompActivo')?.addEventListener('change', (e) => {
+        const list = categoryDetailPanel.querySelector('#catAcompList');
+        if (list) list.style.display = e.target.checked ? 'block' : 'none';
+    });
 
     categoryDetailPanel.querySelector('#catDetailSaveBtn')?.addEventListener('click', () => _saveCategoryFromDetail(categoryId));
     categoryDetailPanel.querySelector('#catDetailAddProductBtn')?.addEventListener('click', () => openProductCreateModal(category.name));
@@ -4606,22 +4711,87 @@ function _renderCategoryDetailPanel(categoryId) {
 async function _saveCategoryFromDetail(categoryId) {
     const nameInput = document.getElementById('catDetailName');
     const activeInput = document.getElementById('catDetailActive');
+    const acompActivoInput = document.getElementById('catAcompActivo');
     const newName = nameInput ? nameInput.value.trim() : '';
     if (!newName) { showNotice('El nombre no puede estar vacío.', 'error'); return; }
     try {
         const existing = categoriesState.find((c) => c.id === categoryId);
+        const oldName = existing ? existing.name : newName;
         await firebaseDb.collection('categorias').doc(categoryId).update({
             name: newName,
             image_url: existing ? (existing.image_url || '') : '',
             active: activeInput ? activeInput.checked : true,
             updated_at: firestoreNow()
         });
+
+        // Guardar config de acompañantes para esta categoría
+        if (acompActivoInput !== null && menuUpgradesConfig) {
+            const acompActivo = acompActivoInput.checked;
+            const catAcompList = document.getElementById('catAcompList');
+            const selectedIds = catAcompList
+                ? Array.from(catAcompList.querySelectorAll('input[name="catAcompId"]:checked')).map((c) => c.value)
+                : [];
+
+            // Actualizar categorias_aplica
+            const aplica = (menuUpgradesConfig.categorias_aplica || []).filter(
+                (c) => c.toUpperCase() !== oldName.toUpperCase() && c.toUpperCase() !== newName.toUpperCase()
+            );
+            if (acompActivo) aplica.push(newName);
+            menuUpgradesConfig.categorias_aplica = aplica;
+
+            // Actualizar categorias_ids
+            if (!menuUpgradesConfig.categorias_ids) menuUpgradesConfig.categorias_ids = {};
+            if (oldName !== newName) delete menuUpgradesConfig.categorias_ids[oldName];
+            if (acompActivo) {
+                menuUpgradesConfig.categorias_ids[newName] = selectedIds;
+            } else {
+                delete menuUpgradesConfig.categorias_ids[newName];
+            }
+
+            await saveMenuUpgradesConfig(menuUpgradesConfig);
+        }
+
         _selectedCategoryId = categoryId;
         await reloadDataAndRender();
         showNotice('Categoría guardada.', 'ok');
     } catch (e) {
         showNotice(`Error al guardar: ${e.message || 'Error inesperado.'}`, 'error');
     }
+}
+
+function _buildCatAcompHtml(category) {
+    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
+    const opciones = (cfg.opciones || []).filter((o) => o.id && o.nombre);
+    if (opciones.length === 0) return '';
+
+    const catName = category.name || '';
+    const aplica = (cfg.categorias_aplica || []).map((c) => c.toUpperCase());
+    const isActive = aplica.includes(catName.toUpperCase());
+    const catIdsMap = cfg.categorias_ids || {};
+    const savedIds = catIdsMap[catName] || catIdsMap[catName.toUpperCase()] || [];
+
+    const items = opciones.map((opt) => {
+        const checked = isActive && (savedIds.length === 0 || savedIds.includes(opt.id)) ? 'checked' : '';
+        const precioLabel = opt.precio > 0 ? `+$${Number(opt.precio).toLocaleString('es-CO')}` : 'Incluido';
+        const detalle = opt.detalle ? `<span style="font-size:0.72rem;color:rgba(200,210,230,0.5);margin-top:1px;display:block;">${escapeHtml(opt.detalle)}</span>` : '';
+        return `<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer;background:rgba(255,255,255,0.02);">
+            <input type="checkbox" name="catAcompId" value="${escapeHtml(opt.id)}" ${checked} style="width:16px;height:16px;accent-color:#ff7a00;flex-shrink:0;cursor:pointer;">
+            <div style="flex:1;min-width:0;">
+                <span style="font-size:0.85rem;font-weight:600;color:#eef4ff;">${escapeHtml(opt.nombre)}</span>
+                ${detalle}
+            </div>
+            <span style="font-size:0.80rem;font-weight:700;color:#ff7a00;white-space:nowrap;">${precioLabel}</span>
+        </label>`;
+    }).join('');
+
+    return `<div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;">
+        <p style="margin:0 0 8px;font-size:0.78rem;font-weight:600;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;">Acompañantes (POS)</p>
+        <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,122,26,0.08);border:1px solid rgba(255,122,26,0.22);border-radius:10px;cursor:pointer;margin-bottom:6px;">
+            <span style="font-size:0.82rem;font-weight:600;color:#eef4ff;">Activar acompañantes para esta categoría</span>
+            <input type="checkbox" id="catAcompActivo" ${isActive ? 'checked' : ''} style="width:17px;height:17px;accent-color:#ff7a00;cursor:pointer;">
+        </label>
+        <div id="catAcompList" style="display:${isActive ? 'block' : 'none'};border:1px solid rgba(255,122,26,0.22);border-radius:10px;overflow:hidden;">${items}</div>
+    </div>`;
 }
 
 function _buildCpefAcompHtml(ep) {
@@ -5055,12 +5225,12 @@ function getOrderStatusMeta(status) {
 }
 
 function getOrderColumnKey(order) {
-    if (order.orderType === 'mesa') {
-        return 'mesa';
-    }
-
     if (order.status === 'pendiente') {
         return 'unread';
+    }
+
+    if (order.orderType === 'mesa') {
+        return 'mesa';
     }
 
     return order.orderType === 'domicilio' ? 'delivery' : 'takeaway';
@@ -7928,11 +8098,6 @@ if (internalOrderForm) {
 }
 
 // Botón COBRAR (barra de acción)
-document.getElementById('posCobrarBtn')?.addEventListener('click', () => {
-    if (!internalOrderItems.length) { showNotice('Agrega productos al pedido primero.', 'warn'); return; }
-    showPosScreen('payment');
-});
-
 // Botón TICKETS ABIERTOS
 document.getElementById('posOpenTicketsBtn')?.addEventListener('click', () => showPosScreen('tickets'));
 
@@ -7940,6 +8105,14 @@ document.getElementById('posOpenTicketsBtn')?.addEventListener('click', () => sh
 document.getElementById('posCartToggleBtn')?.addEventListener('click', () => {
     const drawer = document.getElementById('posCartDrawer');
     if (drawer) drawer.hidden = false;
+});
+
+// Botones de acción en la barra inferior móvil (delegan a sus equivalentes del drawer)
+document.getElementById('posBottomSaveOrderBtn')?.addEventListener('click', () => {
+    document.getElementById('posDrawerSaveBtn')?.click();
+});
+document.getElementById('posBottomGuardarTicketBtn')?.addEventListener('click', () => {
+    document.getElementById('posGuardarTicketBtn')?.click();
 });
 
 // Cerrar drawer del carrito
@@ -8019,6 +8192,20 @@ function renderPosCartTicketInfo() {
     el.hidden = false;
     // Recalcular totales para reflejar el domicilio
     renderPosTotals();
+}
+
+function _ptsMarkOccupiedMesas() {
+    const occupiedMesas = posTickets
+        .filter((t) => t.id !== posActiveTicketId && t.orderType === 'mesa' && t.mesaNumber)
+        .map((t) => t.mesaNumber);
+    document.querySelectorAll('.pts-mesa-btn').forEach((btn) => {
+        const num = Number(btn.dataset.ptsMesa);
+        const occupied = occupiedMesas.includes(num);
+        btn.classList.toggle('occupied', occupied);
+        btn.disabled = occupied;
+        if (occupied) btn.title = `Mesa ${num} en uso`;
+        else if (!btn.classList.contains('active')) btn.title = '';
+    });
 }
 
 function openPosTicketSetupModal(configOnly = false) {
@@ -8105,6 +8292,7 @@ function openPosTicketSetupModal(configOnly = false) {
 
     _ptsUpdateConfirmBtn();
     modal.removeAttribute('hidden');
+    _ptsMarkOccupiedMesas();
 }
 
 function closePosTicketSetupModal() {
@@ -8127,13 +8315,21 @@ function _ptsRefreshDomicilioSection() {
     if (!section) return;
     if (_ptsShouldShowDomicilioSection()) {
         section.removeAttribute('hidden');
-        if (_ptsSelectedClient) _ptsFillClientAddress(_ptsSelectedClient);
+        if (_ptsSelectedClient) {
+            _ptsFillClientAddress(_ptsSelectedClient);
+        } else {
+            // Tab 'quick' sin cliente: asegurar que el input sea visible
+            const addrPicker = document.getElementById('ptsAddressPicker');
+            if (addrPicker) addrPicker.setAttribute('hidden', '');
+            const addrInput = document.getElementById('ptsDeliveryAddress');
+            if (addrInput) addrInput.removeAttribute('hidden');
+        }
     } else {
         section.setAttribute('hidden', '');
         const addrPicker = document.getElementById('ptsAddressPicker');
         if (addrPicker) addrPicker.setAttribute('hidden', '');
         const addrInput = document.getElementById('ptsDeliveryAddress');
-        if (addrInput) addrInput.value = '';
+        if (addrInput) { addrInput.value = ''; addrInput.removeAttribute('hidden'); }
         _ptsToggleFeeWrap(false);
     }
 }
@@ -8173,23 +8369,27 @@ function _ptsRenderSearchResults(query) {
 
 // Muestra el chip de cliente seleccionado y oculta el input de búsqueda
 function _ptsShowSelectedClientChip(client) {
-    const searchInput = document.getElementById('ptsSearchInput');
-    const results     = document.getElementById('ptsSearchResults');
-    const chip        = document.getElementById('ptsSelectedChip');
-    const chipLabel   = document.getElementById('ptsSelectedChipLabel');
+    const searchInput  = document.getElementById('ptsSearchInput');
+    const results      = document.getElementById('ptsSearchResults');
+    const chip         = document.getElementById('ptsSelectedChip');
+    const chipLabel    = document.getElementById('ptsSelectedChipLabel');
+    const newClientBtn = document.getElementById('ptsNewClientBtn');
     if (searchInput) searchInput.setAttribute('hidden', '');
     if (results) results.innerHTML = '';
     if (chip && chipLabel) {
         chipLabel.textContent = `✓ ${client.name}${client.phone ? '  ·  ' + client.phone : ''}`;
         chip.removeAttribute('hidden');
     }
+    if (newClientBtn) newClientBtn.setAttribute('hidden', '');
 }
 
 function _ptsHideSelectedClientChip() {
-    const searchInput = document.getElementById('ptsSearchInput');
-    const chip        = document.getElementById('ptsSelectedChip');
+    const searchInput  = document.getElementById('ptsSearchInput');
+    const chip         = document.getElementById('ptsSelectedChip');
+    const newClientBtn = document.getElementById('ptsNewClientBtn');
     if (searchInput) { searchInput.removeAttribute('hidden'); searchInput.value = ''; searchInput.focus(); }
     if (chip) chip.setAttribute('hidden', '');
+    if (newClientBtn) newClientBtn.removeAttribute('hidden');
 }
 
 // Auto-rellena la sección de dirección según las direcciones guardadas del cliente
@@ -8222,19 +8422,18 @@ function _ptsFillClientAddress(client) {
         return;
     }
 
-    // Múltiples direcciones → mostrar picker
-    addrInput.value = '';
+    // Múltiples direcciones → mostrar picker, ocultar input de texto libre
+    addrInput.setAttribute('hidden', '');
+    addrInput.value = addresses[0];
     addrPicker.removeAttribute('hidden');
     addrPicker.innerHTML = `
         <p class="pts-addr-picker-label">Selecciona dirección guardada</p>
         ${addresses.map((addr, i) => `
             <div class="pts-addr-chip${i === 0 ? ' active' : ''}" data-addr="${escapeHtml(addr)}">
-                ${i === 0 ? '📍 ' : ''}${escapeHtml(addr)}
+                ${escapeHtml(addr)}
             </div>
         `).join('')}
     `;
-    // Pre-seleccionar la primera
-    addrInput.value = addresses[0];
 
     // Pre-sugerir para la primera dirección y mostrar fee wrap
     _ptsToggleFeeWrap(true);
@@ -8245,7 +8444,7 @@ function _ptsFillClientAddress(client) {
             addrPicker.querySelectorAll('.pts-addr-chip').forEach((c) => c.classList.remove('active'));
             chip.classList.add('active');
             addrInput.value = chip.dataset.addr || '';
-            document.getElementById('ptsDeliveryFee').value = '';   // limpiar fee para nueva sugerencia
+            document.getElementById('ptsDeliveryFee').value = '';
             _ptsToggleFeeWrap(true);
             _ptsSuggestDeliveryFee(chip.dataset.addr || '');
         });
@@ -8358,6 +8557,7 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
     // Número de mesa
     const mesaBtn = e.target.closest('[data-pts-mesa]');
     if (mesaBtn) {
+        if (mesaBtn.disabled || mesaBtn.classList.contains('occupied')) return;
         _ptsSelectedMesa = Number(mesaBtn.dataset.ptsMesa);
         document.querySelectorAll('.pts-mesa-btn').forEach((b) => b.classList.toggle('active', b === mesaBtn));
         _ptsUpdateConfirmBtn();
@@ -8652,15 +8852,29 @@ document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => 
     });
 })();
 
-// COBRAR desde el drawer
+// Guardar ticket activo y abrir uno nuevo en blanco
 document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'warn');
         return;
     }
-    // Guardar ítems actuales en el ticket activo antes de abrir el modal
     const current = posTickets.find((t) => t.id === posActiveTicketId);
     if (current) current.items = internalOrderItems;
+
+    // Si el ticket ya tiene tipo de pedido configurado, guardar sin abrir modal
+    if (current?.orderType) {
+        createNewPosTicket();
+        internalOrderItems = [];
+        posTicketConfig = null;
+        renderPosCartTicketInfo();
+        renderPosOrderItems();
+        renderPosTotals();
+        renderPosBottomBar();
+        renderPosTicketsBadge();
+        showPosScreen('main');
+        return;
+    }
+
     _ptsSaveAndNew = true;
     openPosTicketSetupModal(true);
 });
@@ -8684,7 +8898,45 @@ document.getElementById('metricsUserSearch')?.addEventListener('input', (e) => {
 });
 
 // Cerrar lista de tickets
-document.getElementById('posTicketsCloseBtn')?.addEventListener('click', () => showPosScreen('main'));
+document.getElementById('posTicketsCloseBtn')?.addEventListener('click', () => {
+    _posSelectedTicketIds.clear();
+    showPosScreen('main');
+});
+
+// Eliminar tickets seleccionados
+document.getElementById('posTicketDeleteBtn')?.addEventListener('click', () => {
+    if (!_posSelectedTicketIds.size) return;
+    const count = _posSelectedTicketIds.size;
+    if (!confirm(`¿Eliminar ${count} ticket${count > 1 ? 's' : ''}?`)) return;
+    posTickets = posTickets.filter((t) => !_posSelectedTicketIds.has(t.id));
+    _posSelectedTicketIds.clear();
+    // Si se eliminó el ticket activo, activar el primero que quede
+    if (!posTickets.find((t) => t.id === posActiveTicketId)) {
+        if (posTickets.length) {
+            posActiveTicketId = posTickets[0].id;
+            internalOrderItems = posTickets[0].items;
+            posTicketConfig = null;
+        } else {
+            createNewPosTicket();
+        }
+    }
+    renderPosTicketsList();
+    renderPosTicketsBadge();
+    renderPosCartTicketInfo();
+    renderPosOrderItems();
+    renderPosTotals();
+    renderPosBottomBar();
+});
+
+// Cambiar tipo de pedido del ticket seleccionado
+document.getElementById('posTicketChangeTypeBtn')?.addEventListener('click', () => {
+    if (_posSelectedTicketIds.size !== 1) return;
+    const [selectedId] = _posSelectedTicketIds;
+    // Activar ese ticket y abrir el modal de configuración
+    switchPosTicket(selectedId);
+    _posSelectedTicketIds.clear();
+    openPosTicketSetupModal(true);
+});
 
 // Nuevo ticket
 document.getElementById('posNewTicketBtn')?.addEventListener('click', () => {
@@ -8725,12 +8977,6 @@ document.getElementById('internalOrderDiscount')?.addEventListener('input', rend
 // ── Cerrar upgrade sheet
 document.getElementById('posUpgradeCloseBtn')?.addEventListener('click', closePosUpgradeSheet);
 
-// ── Admin: toggle global de acompañamientos
-document.getElementById('upgradesActive')?.addEventListener('change', (e) => {
-    if (!menuUpgradesConfig) menuUpgradesConfig = { ...DEFAULT_UPGRADES_CONFIG };
-    menuUpgradesConfig.activo = e.target.checked;
-});
-
 // ── Admin: agregar nueva opción de acompañamiento
 document.getElementById('addUpgradeOptionBtn')?.addEventListener('click', () => {
     if (!menuUpgradesConfig) menuUpgradesConfig = { ...DEFAULT_UPGRADES_CONFIG };
@@ -8758,6 +9004,7 @@ document.getElementById('saveUpgradesConfigBtn')?.addEventListener('click', asyn
     const btn = document.getElementById('saveUpgradesConfigBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
     try {
+        menuUpgradesConfig.activo = true;
         await saveMenuUpgradesConfig(menuUpgradesConfig);
         showNotice('Acompañamientos guardados correctamente.', 'ok');
         _upgradeSelectedOptId = null;
