@@ -3251,15 +3251,16 @@
         /* ── Barra inferior (carrito) ── */
         .pos-bottom-bar {
             position: absolute; bottom: 0; left: 0; right: 0;
-            height: 56px; z-index: 3;
+            z-index: 3; display: flex; flex-direction: column;
         }
         .pos-bottom-inner {
-            width: 100%; height: 100%;
+            width: 100%; height: 50px;
             background: linear-gradient(135deg, #e05a00, #ff7a1a);
             border: none; cursor: pointer;
             display: flex; align-items: center; justify-content: space-between;
             padding: 0 18px; color: #fff;
             -webkit-tap-highlight-color: transparent;
+            flex-shrink: 0;
         }
         .pos-bottom-left { display: flex; gap: 14px; align-items: center; }
         .pos-bottom-qty {
@@ -3267,7 +3268,29 @@
             font-size: 0.88rem; text-transform: uppercase; opacity: 0.9;
         }
         .pos-bottom-total-amt { font-size: 1.05rem; font-weight: 700; }
-        .pos-bottom-chevron { font-size: 0.72rem; opacity: 0.8; }
+        .pos-bottom-chevron { font-size: 0.72rem; opacity: 0.85; display: flex; align-items: center; gap: 4px; }
+        .pos-bottom-actions {
+            display: grid; grid-template-columns: 1fr 1fr;
+            background: #141922;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            flex-shrink: 0;
+        }
+        .pos-bottom-act-btn {
+            border: none; cursor: pointer;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.78rem; letter-spacing: 0.5px;
+            text-transform: uppercase; height: 48px;
+            transition: filter 0.13s;
+        }
+        .pos-bottom-save-btn {
+            background: #1a4a8a; color: #fff;
+            border-right: 1px solid rgba(255,255,255,0.08);
+        }
+        .pos-bottom-save-btn:hover { filter: brightness(1.12); }
+        .pos-bottom-ticket-btn {
+            background: #19892e; color: #fff;
+        }
+        .pos-bottom-ticket-btn:hover { filter: brightness(1.12); }
 
         /* ── Drawer de carrito ── */
         .pos-drawer { position: absolute; inset: 0; z-index: 20; }
@@ -3485,11 +3508,40 @@
             border-radius: 5px;
             display: flex; align-items: center; justify-content: center;
             font-size: 0.75rem; color: transparent; flex-shrink: 0;
+            cursor: pointer; transition: background 0.13s, border-color 0.13s;
         }
+        .pos-ticket-check:hover { border-color: rgba(255,122,26,0.6); }
         .pos-ticket-item.active-ticket .pos-ticket-check {
             background: var(--admin-accent);
             border-color: var(--admin-accent); color: #fff;
         }
+        .pos-ticket-item.selected-ticket .pos-ticket-check {
+            background: rgba(255,122,26,0.85);
+            border-color: #ff7a1a; color: #fff;
+        }
+        .pos-ticket-item.selected-ticket {
+            border-color: rgba(255,122,26,0.55);
+            background: rgba(255,122,26,0.08);
+        }
+        .pos-ticket-action-bar {
+            display: flex; gap: 0; flex-shrink: 0;
+            border-top: 1px solid rgba(255,255,255,0.08);
+        }
+        .pos-ticket-action-bar[hidden] { display: none; }
+        .pos-ticket-action-btn {
+            flex: 1; height: 54px; border: none; cursor: pointer;
+            font-family: 'Oswald', sans-serif; font-size: 0.85rem;
+            letter-spacing: 0.4px; text-transform: uppercase;
+            transition: filter 0.13s;
+        }
+        .pos-ticket-del-btn { background: #7a1a1a; color: #ffb0b0; }
+        .pos-ticket-del-btn:hover { filter: brightness(1.18); }
+        .pos-ticket-type-btn {
+            background: #1a3a6a; color: #b0d0ff;
+            border-left: 1px solid rgba(255,255,255,0.08);
+        }
+        .pos-ticket-type-btn:hover { filter: brightness(1.18); }
+        .pos-ticket-type-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .pos-ticket-info { flex: 1; min-width: 0; }
         .pos-ticket-name { font-weight: 600; font-size: 0.9rem; color: #eef4ff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .pos-ticket-type-badge {
@@ -3766,6 +3818,19 @@
             justify-content: space-between; margin-bottom: 10px;
         }
         .upgrade-categories-list { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 6px; }
+        .upgrade-category-toggles { display: flex; flex-direction: column; gap: 2px; }
+        .upgrade-cat-toggle-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 7px 10px; border-radius: 8px; cursor: pointer;
+            transition: background 0.12s;
+        }
+        .upgrade-cat-toggle-row:hover { background: rgba(255,255,255,0.04); }
+        .upgrade-cat-toggle-name {
+            font-size: 0.82rem; color: rgba(255,255,255,0.75);
+            font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .upgrade-cat-toggle-chk { width: 16px; height: 16px; accent-color: #ff7a00; cursor: pointer; flex-shrink: 0; }
         .upgrade-category-chip {
             display: inline-flex; align-items: center; gap: 5px;
             background: var(--admin-accent-soft); border: 1px solid var(--admin-accent);
@@ -4043,6 +4108,55 @@
             background: rgba(255,154,80,0.06);
         }
         .pos-item-comment-input::placeholder { color: rgba(200,210,255,0.35); }
+
+        /* ── Modal de nota de producto (POS) ── */
+        .pos-note-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999;
+        }
+        .pos-note-modal-box {
+            background: #1a2133;
+            border: 1px solid rgba(255,154,80,0.28);
+            border-radius: 14px; padding: 20px;
+            width: min(340px, 92vw);
+            display: flex; flex-direction: column; gap: 12px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+        }
+        .pos-note-modal-title {
+            color: rgba(255,255,255,0.75); font-size: 0.8rem;
+            margin: 0; font-family: 'Space Grotesk', sans-serif;
+        }
+        .pos-note-modal-title strong { color: #ffc07a; }
+        .pos-note-modal-input {
+            width: 100%; min-height: 72px; padding: 8px 10px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,154,80,0.3);
+            border-radius: 8px; color: #e8eeff;
+            font-size: 0.82rem; font-family: inherit;
+            resize: vertical; box-sizing: border-box; outline: none;
+        }
+        .pos-note-modal-input:focus {
+            border-color: rgba(255,154,80,0.7);
+            background: rgba(255,154,80,0.05);
+        }
+        .pos-note-modal-input::placeholder { color: rgba(200,210,255,0.35); }
+        .pos-note-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .pos-note-cancel-btn {
+            padding: 7px 16px; border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: transparent; color: rgba(255,255,255,0.55);
+            cursor: pointer; font-size: 0.8rem; font-family: inherit;
+        }
+        .pos-note-cancel-btn:hover { background: rgba(255,255,255,0.06); }
+        .pos-note-save-btn {
+            padding: 7px 18px; border-radius: 8px; border: none;
+            background: rgba(255,154,80,0.85); color: #fff;
+            cursor: pointer; font-size: 0.8rem; font-weight: 700;
+            font-family: inherit;
+        }
+        .pos-note-save-btn:hover { background: rgb(255,154,80); }
 
         /* ── Totales ── */
         .pos-totals {
@@ -4512,6 +4626,7 @@
             max-height: 88vh;
             overflow-y: auto;
             background: rgba(14, 20, 34, 0.97);
+            color: #eef4ff;
             border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: 18px;
             box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55);
@@ -7371,6 +7486,19 @@
             color: #ffa060;
             box-shadow: 0 0 12px rgba(255, 149, 64, 0.28);
         }
+        .pts-mesa-btn.occupied,
+        .pts-mesa-btn:disabled {
+            opacity: 0.38; cursor: not-allowed;
+            border-color: rgba(255, 80, 80, 0.25);
+            color: rgba(255, 110, 110, 0.65);
+            background: rgba(255, 60, 60, 0.07);
+        }
+        .pts-mesa-btn.occupied:hover,
+        .pts-mesa-btn:disabled:hover {
+            background: rgba(255, 60, 60, 0.07);
+            border-color: rgba(255, 80, 80, 0.25);
+            color: rgba(255, 110, 110, 0.65);
+        }
 
         /* Tabs de cliente */
         .pts-client-tabs {
@@ -8085,25 +8213,9 @@
                         <article class="admin-card">
                             <div class="card-head">
                                 <h2>Acompañamientos POS</h2>
-                                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                                    <label style="display:flex;align-items:center;gap:6px;color:var(--admin-muted);font-size:0.82rem;cursor:pointer;font-weight:600;">
-                                        <input type="checkbox" id="upgradesActive" style="accent-color:var(--admin-accent);">
-                                        Activo en POS
-                                    </label>
-                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-upgrades" aria-expanded="true">Retraer</button>
-                                </div>
+                                <button type="button" class="card-collapse-btn" data-collapse-target="card-upgrades" aria-expanded="true">Retraer</button>
                             </div>
                             <div class="card-body" id="card-upgrades">
-                                <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 18px;">
-                                    Cuando un empleado selecciona un producto de las categorias configuradas, el POS pregunta automaticamente si desea acompañarlo.
-                                </p>
-
-                                <!-- Categorías que activan el prompt -->
-                                <div class="upgrades-section">
-                                    <h4>Aplica a estas categorias del catalogo</h4>
-                                    <div id="upgradeCategoriesList" class="upgrade-categories-list"></div>
-                                </div>
-
                                 <!-- Opciones: master-detail -->
                                 <div class="upgrades-section" style="margin-bottom:8px;">
                                     <div class="upgrades-opts-header">
@@ -8590,11 +8702,8 @@
             </div>
 
             <div class="pos-action-row">
-                <button type="button" class="pos-action-btn pos-action-tickets" id="posOpenTicketsBtn">
+                <button type="button" class="pos-action-btn pos-action-tickets" id="posOpenTicketsBtn" style="grid-column:1/-1;">
                     TICKETS ABIERTOS <span class="pos-tickets-count-badge" id="posTicketsCountBadge">1</span>
-                </button>
-                <button type="button" class="pos-action-btn pos-action-cobrar" id="posCobrarBtn">
-                    <span>COBRAR</span><span class="pos-cobrar-amount" id="posCobrarAmount">$0</span>
                 </button>
             </div>
 
@@ -8612,8 +8721,12 @@
                         <span class="pos-bottom-qty" id="posBottomQty">0 items</span>
                         <span class="pos-bottom-total-amt" id="posBottomTotalAmt">$0</span>
                     </div>
-                    <span class="pos-bottom-chevron">&#9650;</span>
+                    <span class="pos-bottom-chevron">&#9650; Ver carrito</span>
                 </button>
+                <div class="pos-bottom-actions">
+                    <button type="button" class="pos-bottom-act-btn pos-bottom-save-btn" id="posBottomSaveOrderBtn">GUARDAR PEDIDO</button>
+                    <button type="button" class="pos-bottom-act-btn pos-bottom-ticket-btn" id="posBottomGuardarTicketBtn">GUARDAR TICKET</button>
+                </div>
             </div>
         </div>
 
@@ -8768,10 +8881,15 @@
                 <button type="button" class="pos-topbar-btn" id="posTicketsCloseBtn">&#215;</button>
                 <div class="pos-topbar-center">
                     <span class="pos-topbar-title">Tickets abiertos</span>
+                    <span class="pos-topbar-badge" id="posTicketSelectionCount" style="display:none;background:#ff7a1a;">0</span>
                 </div>
                 <button type="button" class="pos-topbar-btn pos-new-ticket-btn" id="posNewTicketBtn" title="Nuevo ticket">+</button>
             </div>
             <div class="pos-tickets-list" id="posTicketsList"></div>
+            <div class="pos-ticket-action-bar" id="posTicketActionBar" hidden>
+                <button type="button" class="pos-ticket-action-btn pos-ticket-del-btn" id="posTicketDeleteBtn">🗑 Eliminar</button>
+                <button type="button" class="pos-ticket-action-btn pos-ticket-type-btn" id="posTicketChangeTypeBtn">✎ Cambiar tipo</button>
+            </div>
         </div>
 
         <!-- ══════════ SHEET: ACOMPAÑAMIENTO ══════════ -->
