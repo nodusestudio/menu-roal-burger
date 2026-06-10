@@ -14,6 +14,9 @@ const DELIVERY_FEE_AMOUNT = 6000;
 const MAX_CUSTOMER_SAVED_ADDRESSES = 5;
 const CUSTOMER_PROFILE_STORAGE_KEY = 'roalburger-customer-profile-v1';
 const ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS = true;
+// Cierre temporal — cambiar a false para reabrir el menú
+const TEMP_CLOSURE_ACTIVE = true;
+const TEMP_CLOSURE_MESSAGE = 'Estamos cerrados momentáneamente por adecuaciones en el local. ¡Pronto volvemos con todo!';
 const PAGE_URL_PARAMS = new URLSearchParams(window.location.search);
 const IS_ADMIN_PREVIEW = PAGE_URL_PARAMS.get('adminPreview') === '1';
 const ORDERING_SCHEDULE = {
@@ -809,6 +812,9 @@ function getCurrentOrderingMinutes(now = new Date()) {
 }
 
 function getOrderingAvailability(now = new Date()) {
+    if (TEMP_CLOSURE_ACTIVE) {
+        return { isOpen: false, scheduleLabel: ORDERING_SCHEDULE.label, statusLabel: TEMP_CLOSURE_MESSAGE };
+    }
     const currentMinutes = getCurrentOrderingMinutes(now);
     const isWithinSchedule = currentMinutes >= ORDERING_SCHEDULE.startMinutes && currentMinutes < ORDERING_SCHEDULE.endMinutes;
     const isOpen = ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS ? true : isWithinSchedule;
@@ -9512,6 +9518,56 @@ function _applyPublicUpgrade(upgradeNote, upgradeExtra) {
     addItemToCart(finalName, categoryName, { ...orderOptions, upgradeHandled: true, upgradeExtra }, buttonId);
 }
 
+function showTempClosureBanner() {
+    if (!TEMP_CLOSURE_ACTIVE || document.getElementById('temp-closure-banner')) return;
+
+    const style = document.createElement('style');
+    style.textContent = `
+        #temp-closure-banner {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 99998;
+            background: linear-gradient(135deg, #7a1a1a 0%, #b02020 100%);
+            color: #fff7f0;
+            padding: 13px 20px 11px;
+            text-align: center;
+            font-family: 'Oswald', 'Roboto', sans-serif;
+            letter-spacing: 0.03em;
+            line-height: 1.45;
+            box-shadow: 0 3px 16px rgba(80,0,0,0.35);
+        }
+        #temp-closure-banner .tcb-title {
+            display: block;
+            font-size: 1.05rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        #temp-closure-banner .tcb-sub {
+            display: block;
+            font-family: 'Roboto', sans-serif;
+            font-size: 0.88rem;
+            opacity: 0.88;
+            margin-top: 2px;
+        }
+    `;
+    document.head.appendChild(style);
+
+    const banner = document.createElement('div');
+    banner.id = 'temp-closure-banner';
+    banner.setAttribute('role', 'alert');
+    banner.innerHTML = `
+        <span class="tcb-title">Cerrado momentáneamente</span>
+        <span class="tcb-sub">Adecuaciones en el local &mdash; ¡Pronto volvemos con todo!</span>
+    `;
+    document.body.insertBefore(banner, document.body.firstChild);
+
+    window.requestAnimationFrame(() => {
+        const h = banner.offsetHeight;
+        if (h > 0) document.body.style.paddingTop = h + 'px';
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('has-auth-nav');
     setActiveCustomerProfile(loadStoredCustomerProfile());
@@ -9567,6 +9623,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initShortcutInstallUI();
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
+    showTempClosureBanner();
     syncOrderingAvailabilityUI();
     window.setInterval(syncOrderingAvailabilityUI, 60000);
     // Carrusel de destacados: fallback local inmediato, luego Firestore si responde
