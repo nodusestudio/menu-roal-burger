@@ -2314,7 +2314,8 @@ function handlePosProductAdd(productId, productName, productPrice) {
     // Verificar acompañantes: primero a nivel de producto, luego por categoría (fallback)
     const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
     if (cfg.activo) {
-        const productData = (PUBLIC_PRODUCT_CATALOG || []).find((p) => p.id === productId);
+        const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
+        const productData = catalog.find((p) => p.id === productId);
         const prodAcomp = productData && productData.acompanantes;
 
         if (prodAcomp && prodAcomp.activo && Array.isArray(prodAcomp.ids) && prodAcomp.ids.length > 0) {
