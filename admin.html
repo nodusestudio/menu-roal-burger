@@ -4021,6 +4021,28 @@
             line-height: 1; border-radius: 3px;
         }
         .pos-item-remove:hover { background: rgba(255,70,70,0.2); }
+        .pos-item-comment-btn {
+            border: none; background: transparent;
+            color: rgba(200,220,255,0.35); width: 22px; height: 22px;
+            padding: 0; cursor: pointer; font-size: 0.9rem;
+            line-height: 1; border-radius: 3px; flex-shrink: 0;
+            transition: color 0.15s;
+        }
+        .pos-item-comment-btn:hover { color: rgba(200,220,255,0.85); }
+        .pos-item-comment-btn.has-note { color: #ff9a50; }
+        .pos-item-comment-area { margin-top: 5px; }
+        .pos-item-comment-input {
+            width: 100%; padding: 4px 6px;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,154,80,0.3);
+            border-radius: 4px; color: #f2f7ff; font-size: 0.75rem;
+            font-family: inherit; outline: none; box-sizing: border-box;
+        }
+        .pos-item-comment-input:focus {
+            border-color: rgba(255,154,80,0.7);
+            background: rgba(255,154,80,0.06);
+        }
+        .pos-item-comment-input::placeholder { color: rgba(200,210,255,0.35); }
 
         /* ── Totales ── */
         .pos-totals {
@@ -4773,6 +4795,29 @@
             background: rgba(255, 70, 70, 0.2);
             color: #ff6b6b;
         }
+
+        .pos-item-comment-btn {
+            border: none; background: transparent;
+            color: rgba(200,220,255,0.35); width: 22px; height: 22px;
+            padding: 0; cursor: pointer; font-size: 0.9rem;
+            line-height: 1; border-radius: 3px; flex-shrink: 0;
+            transition: color 0.2s ease;
+        }
+        .pos-item-comment-btn:hover { color: rgba(200,220,255,0.85); }
+        .pos-item-comment-btn.has-note { color: #ff9a50; }
+        .pos-item-comment-area { margin-top: 5px; }
+        .pos-item-comment-input {
+            width: 100%; padding: 4px 6px;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,154,80,0.3);
+            border-radius: 4px; color: #f2f7ff; font-size: 0.75rem;
+            font-family: inherit; outline: none; box-sizing: border-box;
+        }
+        .pos-item-comment-input:focus {
+            border-color: rgba(255,154,80,0.7);
+            background: rgba(255,154,80,0.06);
+        }
+        .pos-item-comment-input::placeholder { color: rgba(200,210,255,0.35); }
 
         .pos-totals {
             padding: 10px 12px;
@@ -7486,6 +7531,27 @@
         .pts-new-client-save:disabled { opacity: 0.45; cursor: default; }
         .pts-new-client-save:not(:disabled):hover { opacity: 0.88; }
 
+        .pts-tab-new { color: rgba(255,154,80,0.65) !important; }
+        .pts-tab-new.active { color: #ff9a50 !important; background: rgba(255,120,0,0.15) !important; }
+
+        .pts-new-client-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            background: rgba(255,120,0,0.1);
+            border: 1px solid rgba(255,120,0,0.2);
+            border-radius: 10px;
+        }
+        .pts-new-client-icon { font-size: 1.25rem; line-height: 1; }
+        .pts-new-client-header-text {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: rgba(255,180,100,0.9);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
         /* Picker de direcciones múltiples */
         .pts-addr-picker {
             display: flex;
@@ -8927,8 +8993,9 @@
                 <p class="pts-section-label">Cliente <span class="pts-optional">(opcional)</span></p>
                 <div class="pts-client-tabs">
                     <button type="button" class="pts-tab active" data-pts-tab="none">Sin nombre</button>
-                    <button type="button" class="pts-tab" data-pts-tab="quick">Nombre rápido</button>
-                    <button type="button" class="pts-tab" data-pts-tab="search">Buscar cliente</button>
+                    <button type="button" class="pts-tab" data-pts-tab="quick">Rápido</button>
+                    <button type="button" class="pts-tab" data-pts-tab="search">Buscar</button>
+                    <button type="button" class="pts-tab pts-tab-new" data-pts-tab="new">👤 Nuevo</button>
                 </div>
                 <div class="pts-client-panel" id="ptsPanelQuick" hidden>
                     <input type="text" class="pts-input" id="ptsQuickName" placeholder="Nombre provisional..." autocomplete="off" maxlength="60">
@@ -8941,7 +9008,7 @@
                         <span class="pts-selected-chip-label" id="ptsSelectedChipLabel"></span>
                         <button type="button" class="pts-deselect-btn" id="ptsDeselectBtn">✕</button>
                     </div>
-                    <!-- Crear nuevo cliente -->
+                    <!-- Crear nuevo cliente (desde tab Buscar) -->
                     <button type="button" class="pts-new-client-btn" id="ptsNewClientBtn">✚ Crear nuevo cliente</button>
                     <div class="pts-new-client-form" id="ptsNewClientForm" hidden>
                         <p class="pts-new-client-form-label">Nuevo cliente</p>
@@ -8950,6 +9017,18 @@
                         <input type="text" class="pts-input" id="ptsNewClientAddr" placeholder="Dirección (opcional)" autocomplete="off" maxlength="120" style="margin-top:6px;">
                         <button type="button" class="pts-new-client-save" id="ptsNewClientSaveBtn">Guardar y seleccionar</button>
                     </div>
+                </div>
+
+                <!-- Panel: Nuevo cliente (tab dedicado) -->
+                <div class="pts-client-panel" id="ptsPanelNew" hidden>
+                    <div class="pts-new-client-header">
+                        <span class="pts-new-client-icon">👤</span>
+                        <span class="pts-new-client-header-text">Crear nuevo cliente</span>
+                    </div>
+                    <input type="text" class="pts-input" id="ptsNewTabName" placeholder="Nombre *" autocomplete="off" maxlength="60">
+                    <input type="tel" class="pts-input" id="ptsNewTabPhone" placeholder="Teléfono *" autocomplete="off" maxlength="20">
+                    <input type="text" class="pts-input" id="ptsNewTabAddr" placeholder="Dirección (opcional)" autocomplete="off" maxlength="120">
+                    <button type="button" class="pts-new-client-save" id="ptsNewTabSaveBtn">Guardar y seleccionar</button>
                 </div>
             </div>
 

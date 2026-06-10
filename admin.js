@@ -2721,8 +2721,16 @@ function renderPosOrderItems() {
                 <div class="pos-item-name">
                     ${escapeHtml(item.productName)}
                     ${item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : ''}
+                    <div class="pos-item-comment-area" hidden>
+                        <input type="text" class="pos-item-comment-input"
+                               value="${escapeHtml(item.note || '')}"
+                               placeholder="Ej: sin cebolla…"
+                               maxlength="120"
+                               data-item-key="${escapeHtml(item.itemKey)}">
+                    </div>
                 </div>
                 <div class="pos-item-qty-price">
+                    <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
                     <div class="pos-item-qty">
                         <button type="button" class="pos-qty-minus" data-item-key="${escapeHtml(item.itemKey)}">−</button>
                         <input type="number" class="pos-qty-input" value="${item.quantity}" data-item-key="${escapeHtml(item.itemKey)}" min="1" />
@@ -2737,6 +2745,20 @@ function renderPosOrderItems() {
 
     if (itemsContainer.dataset.listenerAttached !== 'true') {
         itemsContainer.addEventListener('click', (event) => {
+            const commentBtn = event.target.closest('.pos-item-comment-btn');
+            if (commentBtn) {
+                const key = commentBtn.dataset.itemKey;
+                const row = itemsContainer.querySelector(`.pos-item-row[data-item-key="${key}"]`);
+                const area = row?.querySelector('.pos-item-comment-area');
+                const input = area?.querySelector('.pos-item-comment-input');
+                if (area) {
+                    const isHidden = area.hasAttribute('hidden');
+                    area.toggleAttribute('hidden', !isHidden);
+                    if (isHidden) input?.focus();
+                }
+                return;
+            }
+
             const minusBtn = event.target.closest('.pos-qty-minus');
             const plusBtn = event.target.closest('.pos-qty-plus');
             const removeBtn = event.target.closest('.pos-item-remove');
@@ -2785,6 +2807,42 @@ function renderPosOrderItems() {
                 renderPosOrderItems();
                 renderPosTotals();
                 renderPosBottomBar();
+            }
+        });
+
+        itemsContainer.addEventListener('focusout', (event) => {
+            const input = event.target.closest('.pos-item-comment-input');
+            if (!input) return;
+            const key = input.dataset.itemKey;
+            const item = internalOrderItems.find((i) => i.itemKey === key);
+            if (!item) return;
+            const newNote = input.value.trim();
+            item.note = newNote;
+            const row = itemsContainer.querySelector(`.pos-item-row[data-item-key="${key}"]`);
+            const nameEl = row?.querySelector('.pos-item-name');
+            const commentBtn = row?.querySelector('.pos-item-comment-btn');
+            const area = row?.querySelector('.pos-item-comment-area');
+            if (nameEl) {
+                let noteSpan = nameEl.querySelector('.pos-item-note');
+                if (newNote) {
+                    if (!noteSpan) {
+                        noteSpan = document.createElement('span');
+                        noteSpan.className = 'pos-item-note';
+                        nameEl.insertBefore(noteSpan, area);
+                    }
+                    noteSpan.textContent = newNote;
+                } else if (noteSpan) {
+                    noteSpan.remove();
+                }
+            }
+            if (commentBtn) commentBtn.classList.toggle('has-note', !!newNote);
+            if (area) area.setAttribute('hidden', '');
+        });
+
+        itemsContainer.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                const input = event.target.closest('.pos-item-comment-input');
+                if (input) input.blur();
             }
         });
 
@@ -8283,11 +8341,21 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
         document.querySelectorAll('[data-pts-tab]').forEach((t) => t.classList.toggle('active', t === tab));
         const panelQuick = document.getElementById('ptsPanelQuick');
         const panelSearch = document.getElementById('ptsPanelSearch');
+        const panelNew = document.getElementById('ptsPanelNew');
         if (panelQuick) panelQuick.toggleAttribute('hidden', _ptsActiveTab !== 'quick');
         if (panelSearch) panelSearch.toggleAttribute('hidden', _ptsActiveTab !== 'search');
+        if (panelNew) panelNew.toggleAttribute('hidden', _ptsActiveTab !== 'new');
         if (_ptsActiveTab !== 'search') {
             const searchResults = document.getElementById('ptsSearchResults');
             if (searchResults) searchResults.innerHTML = '';
+        }
+        if (_ptsActiveTab !== 'new') {
+            const n = document.getElementById('ptsNewTabName');
+            const p = document.getElementById('ptsNewTabPhone');
+            const a = document.getElementById('ptsNewTabAddr');
+            if (n) n.value = '';
+            if (p) p.value = '';
+            if (a) a.value = '';
         }
         return;
     }
@@ -8470,6 +8538,72 @@ document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => 
             resetForm();
         } catch (err) {
             console.error('[POS] Error creando cliente:', err);
+            showNotice('No se pudo guardar el cliente.', 'error');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Guardar y seleccionar';
+        }
+    });
+})();
+
+(function initPtsNewClientTab() {
+    const saveBtn    = document.getElementById('ptsNewTabSaveBtn');
+    const nameInput  = document.getElementById('ptsNewTabName');
+    const phoneInput = document.getElementById('ptsNewTabPhone');
+    const addrInput  = document.getElementById('ptsNewTabAddr');
+    if (!saveBtn) return;
+
+    saveBtn.addEventListener('click', async () => {
+        const name  = String(nameInput?.value || '').trim();
+        const phone = String(phoneInput?.value || '').trim();
+        const addr  = String(addrInput?.value || '').trim();
+
+        if (!name || !phone) {
+            showNotice('Nombre y teléfono son requeridos.', 'error');
+            return;
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Guardando…';
+
+        try {
+            const phoneDigits = normalizePhoneDigits ? normalizePhoneDigits(phone) : phone;
+            const clientId = buildAdminClientDocumentId
+                ? buildAdminClientDocumentId({ customerName: name, customerPhone: phone, address: addr })
+                : `${phoneDigits}_${name.toLowerCase().replace(/\s+/g, '_')}`;
+
+            const savedAddresses = addr ? [addr] : [];
+            await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
+                customerName: name,
+                customerPhone: phone,
+                customerPhoneDigits: phoneDigits,
+                address: addr,
+                savedAddresses,
+                totalOrders: 0,
+                totalSpent: 0,
+                createdAt: firestoreNow(),
+                source: 'admin_pos'
+            }, { merge: true });
+
+            await fetchClients();
+
+            _ptsSelectedClient = { name, phone, savedAddresses };
+            _ptsShowSelectedClientChip(_ptsSelectedClient);
+            _ptsFillClientAddress(_ptsSelectedClient);
+            _ptsUpdateConfirmBtn();
+
+            // Limpiar campos y volver a la pestaña de búsqueda para mostrar el chip
+            if (nameInput) nameInput.value = '';
+            if (phoneInput) phoneInput.value = '';
+            if (addrInput) addrInput.value = '';
+
+            // Activar pestaña "search" para mostrar el chip del cliente seleccionado
+            const tabSearch = document.querySelector('.pts-tab[data-pts-tab="search"]');
+            if (tabSearch) tabSearch.click();
+
+            showNotice(`Cliente "${name}" creado y seleccionado.`, 'success');
+        } catch (err) {
+            console.error('[POS] Error creando cliente desde pestaña Nuevo:', err);
             showNotice('No se pudo guardar el cliente.', 'error');
         } finally {
             saveBtn.disabled = false;
