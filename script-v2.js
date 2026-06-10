@@ -3712,19 +3712,24 @@ async function createOrderFromCart(customerInfo = {}) {
         })
     });
 
-    await upsertClientProfile(db, {
-        customerName,
-        customerPhone,
-        customerPhoneDigits,
-        deliveryAddress,
-        profileAddress: profileAddress || deliveryAddress,
-        savedAddresses,
-        fulfillmentType
-    }, {
-        id: orderRef.id,
-        code: orderCode,
-        total
-    });
+    // Profile update is non-critical: order is already saved; don't let quota/network errors here surface as order failure
+    try {
+        await upsertClientProfile(db, {
+            customerName,
+            customerPhone,
+            customerPhoneDigits,
+            deliveryAddress,
+            profileAddress: profileAddress || deliveryAddress,
+            savedAddresses,
+            fulfillmentType
+        }, {
+            id: orderRef.id,
+            code: orderCode,
+            total
+        });
+    } catch (_profileErr) {
+        // Silently ignore — order was already saved successfully
+    }
 
     if (activeCustomerProfile && activeCustomerProfile.customerPhoneDigits === customerPhoneDigits) {
         setActiveCustomerProfile({
@@ -4072,7 +4077,10 @@ async function submitPaymentFlow() {
             paymentMethod
         });
     } catch (error) {
-        paymentFlowUI.feedback.textContent = `No se pudo enviar el pedido: ${error.message || 'error inesperado.'}`;
+        const isNetworkOrQuota = /quota|network|offline|failed to fetch|unavailable/i.test(error.message || '');
+        paymentFlowUI.feedback.textContent = isNetworkOrQuota
+            ? 'No se pudo conectar al servidor. Verifica tu conexión e intenta de nuevo.'
+            : `No se pudo enviar el pedido: ${error.message || 'error inesperado.'}`;
         paymentFlowUI.send.disabled = false;
         paymentFlowUI.send.textContent = 'Confirmar pedido';
     }
