@@ -3422,13 +3422,13 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
         const normName = normalizeAssetLookup(normalizedProductName);
         let comboKey = null;
         if (normName.includes('papuda')) {
-            comboKey = '.\combosconpapasybebidas\comboburgerpapuda.png';
+            comboKey = './combosconpapasybebidas/comboburgerpapuda.png';
         } else if (normName.includes('super')) {
-            comboKey = '.\combosconpapasybebidas\comboburgersuper.png';
+            comboKey = './combosconpapasybebidas/comboburgersuper.png';
         } else if (normName.includes('perro')) {
-            comboKey = '.\combosconpapasybebidas\comboperronormal.png';
+            comboKey = './combosconpapasybebidas/comboperronormal.png';
         } else if (normName.includes('burger') || normName.includes('normal')) {
-            comboKey = '.\combosconpapasybebidas\comboburgernormal.png';
+            comboKey = './combosconpapasybebidas/comboburgernormal.png';
         }
         if (comboKey) {
             const comboPrice = COMBOS_CON_PAPAS_IMAGE_PRICES[comboKey][normalizedOptions.peopleCount];
@@ -3503,11 +3503,18 @@ function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 
 function getCartItemUnitPrice(item) {
     const hasStoredPrice = item && item.unitPrice !== null && item.unitPrice !== undefined && item.unitPrice !== '';
     const storedPrice = Number(item?.unitPrice ?? 0);
-    if (hasStoredPrice && Number.isFinite(storedPrice)) {
+    if (hasStoredPrice && storedPrice > 0 && Number.isFinite(storedPrice)) {
         return storedPrice;
     }
 
-    return resolveCartUnitPrice(item?.productName, item?.categoryName, item?.orderOptions);
+    const recalculated = resolveCartUnitPrice(item?.productName, item?.categoryName, item?.orderOptions);
+    // Heal items stored with price=0 (e.g. before price resolution was fixed)
+    if (item && recalculated > 0) {
+        item.unitPrice = recalculated;
+        item.subtotal = recalculated * Number(item.quantity || 1);
+        saveCartState();
+    }
+    return recalculated;
 }
 
 function getCartItemOriginalUnitPrice(item) {
