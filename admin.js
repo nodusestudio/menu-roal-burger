@@ -8651,11 +8651,6 @@ document.getElementById('posNewTicketBtn')?.addEventListener('click', () => {
 });
 
 // Botón cliente en topbar principal
-document.getElementById('posAddClientBtn')?.addEventListener('click', () => {
-    if (!internalOrderItems.length) { showNotice('Agrega productos al pedido primero.', 'warn'); return; }
-    showPosScreen('payment');
-    setTimeout(() => document.getElementById('posClientSearchInput')?.focus(), 150);
-});
 
 // Botones de tipo de pedido (Retiro / Domicilio / Mesa)
 document.addEventListener('click', (event) => {
