@@ -8081,11 +8081,7 @@ function openPosTicketSetupModal(configOnly = false) {
     _ptsHideFeeSuggestion();
     const feeWrap = document.getElementById('ptsDeliveryFeeWrap');
     if (feeWrap) feeWrap.setAttribute('hidden', '');
-    if (domicilioSection) {
-        const isDom = _ptsSelectedType === 'domicilio';
-        if (isDom) domicilioSection.removeAttribute('hidden');
-        else domicilioSection.setAttribute('hidden', '');
-    }
+    _ptsRefreshDomicilioSection();
     if (addrInput) addrInput.value = (configOnly && prefill?.deliveryAddress) ? prefill.deliveryAddress : '';
     const feeInput = document.getElementById('ptsDeliveryFee');
     if (feeInput) {
@@ -8110,6 +8106,33 @@ function openPosTicketSetupModal(configOnly = false) {
 
 function closePosTicketSetupModal() {
     document.getElementById('posTicketSetupModal')?.setAttribute('hidden', '');
+}
+
+// La sección de domicilio (dirección + tarifa) solo se muestra cuando hay cliente asignado.
+// 'quick' cuenta como cliente asignado (el cajero está ingresando datos).
+// 'none' (sin nombre) nunca muestra la sección.
+// 'search'/'new' muestran la sección solo cuando _ptsSelectedClient !== null.
+function _ptsShouldShowDomicilioSection() {
+    if (_ptsSelectedType !== 'domicilio') return false;
+    if (_ptsActiveTab === 'none') return false;
+    if (_ptsActiveTab === 'quick') return true;
+    return _ptsSelectedClient !== null;
+}
+
+function _ptsRefreshDomicilioSection() {
+    const section = document.getElementById('ptsDomicilioSection');
+    if (!section) return;
+    if (_ptsShouldShowDomicilioSection()) {
+        section.removeAttribute('hidden');
+        if (_ptsSelectedClient) _ptsFillClientAddress(_ptsSelectedClient);
+    } else {
+        section.setAttribute('hidden', '');
+        const addrPicker = document.getElementById('ptsAddressPicker');
+        if (addrPicker) addrPicker.setAttribute('hidden', '');
+        const addrInput = document.getElementById('ptsDeliveryAddress');
+        if (addrInput) addrInput.value = '';
+        _ptsToggleFeeWrap(false);
+    }
 }
 
 function _ptsUpdateConfirmBtn() {
@@ -8307,19 +8330,7 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
             if (_ptsSelectedType === 'mesa') mesaGrid.removeAttribute('hidden');
             else mesaGrid.setAttribute('hidden', '');
         }
-        const domicilioSection = document.getElementById('ptsDomicilioSection');
-        if (domicilioSection) {
-            if (_ptsSelectedType === 'domicilio') {
-                domicilioSection.removeAttribute('hidden');
-                // Si hay cliente con direcciones guardadas, auto-rellenar
-                if (_ptsSelectedClient) _ptsFillClientAddress(_ptsSelectedClient);
-            } else {
-                domicilioSection.setAttribute('hidden', '');
-                // Limpiar picker si había
-                const addrPicker = document.getElementById('ptsAddressPicker');
-                if (addrPicker) addrPicker.setAttribute('hidden', '');
-            }
-        }
+        _ptsRefreshDomicilioSection();
         _ptsUpdateConfirmBtn();
         return;
     }
@@ -8357,6 +8368,9 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
             if (p) p.value = '';
             if (a) a.value = '';
         }
+        // Al cambiar de tab se pierde el cliente — limpiar sección de domicilio
+        _ptsHideSelectedClientChip();
+        _ptsRefreshDomicilioSection();
         return;
     }
 
@@ -8371,7 +8385,7 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
             savedAddresses: fullClient?.savedAddresses || []
         };
         _ptsShowSelectedClientChip(_ptsSelectedClient);
-        _ptsFillClientAddress(_ptsSelectedClient);
+        _ptsRefreshDomicilioSection();
         _ptsUpdateConfirmBtn();
         return;
     }
@@ -8380,11 +8394,7 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
     if (e.target.closest('#ptsDeselectBtn')) {
         _ptsSelectedClient = null;
         _ptsHideSelectedClientChip();
-        const addrPicker = document.getElementById('ptsAddressPicker');
-        if (addrPicker) addrPicker.setAttribute('hidden', '');
-        const addrInput = document.getElementById('ptsDeliveryAddress');
-        if (addrInput) addrInput.value = '';
-        _ptsToggleFeeWrap(false);
+        _ptsRefreshDomicilioSection();
         _ptsUpdateConfirmBtn();
         return;
     }
@@ -8533,7 +8543,7 @@ document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => 
             // Seleccionar el cliente recién creado
             _ptsSelectedClient = { name, phone, savedAddresses };
             _ptsShowSelectedClientChip(_ptsSelectedClient);
-            _ptsFillClientAddress(_ptsSelectedClient);
+            _ptsRefreshDomicilioSection();
             _ptsUpdateConfirmBtn();
             resetForm();
         } catch (err) {
@@ -8589,17 +8599,27 @@ document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => 
 
             _ptsSelectedClient = { name, phone, savedAddresses };
             _ptsShowSelectedClientChip(_ptsSelectedClient);
-            _ptsFillClientAddress(_ptsSelectedClient);
             _ptsUpdateConfirmBtn();
 
-            // Limpiar campos y volver a la pestaña de búsqueda para mostrar el chip
+            // Limpiar campos
             if (nameInput) nameInput.value = '';
             if (phoneInput) phoneInput.value = '';
             if (addrInput) addrInput.value = '';
 
-            // Activar pestaña "search" para mostrar el chip del cliente seleccionado
-            const tabSearch = document.querySelector('.pts-tab[data-pts-tab="search"]');
-            if (tabSearch) tabSearch.click();
+            // Actualizar sección de domicilio ahora que el cliente está asignado
+            _ptsRefreshDomicilioSection();
+
+            // Cambiar tab visualmente a "search" sin disparar el handler que limpiaría el cliente
+            _ptsActiveTab = 'search';
+            document.querySelectorAll('[data-pts-tab]').forEach((t) => {
+                t.classList.toggle('active', t.dataset.ptsTab === 'search');
+            });
+            const panelQuick = document.getElementById('ptsPanelQuick');
+            const panelSearch = document.getElementById('ptsPanelSearch');
+            const panelNew = document.getElementById('ptsPanelNew');
+            if (panelQuick) panelQuick.setAttribute('hidden', '');
+            if (panelSearch) panelSearch.removeAttribute('hidden');
+            if (panelNew) panelNew.setAttribute('hidden', '');
 
             showNotice(`Cliente "${name}" creado y seleccionado.`, 'success');
         } catch (err) {
