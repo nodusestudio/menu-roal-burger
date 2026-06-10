@@ -3406,10 +3406,15 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
     }
 
     const normalizedProductName = normalizeCategoryKey(productName);
+    // Normalize to forward-slash lowercase for all map lookups
+    const normalizedPath = normalizeImageAssetPath(imagePath).toLowerCase();
 
-    if (COMBOS_CON_PAPAS_IMAGE_PRICES[imagePath]) {
+    const papaKey = Object.keys(COMBOS_CON_PAPAS_IMAGE_PRICES).find(
+        (k) => normalizeImageAssetPath(k).toLowerCase() === normalizedPath
+    );
+    if (papaKey) {
         const peopleCount = Number(normalizedOptions.peopleCount || 0);
-        const comboPrice = COMBOS_CON_PAPAS_IMAGE_PRICES[imagePath][peopleCount];
+        const comboPrice = COMBOS_CON_PAPAS_IMAGE_PRICES[papaKey][peopleCount];
         return comboPrice === undefined ? null : Number(comboPrice);
     }
 
@@ -3417,13 +3422,13 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
         const normName = normalizeAssetLookup(normalizedProductName);
         let comboKey = null;
         if (normName.includes('papuda')) {
-            comboKey = './combosconpapasybebidas/comboburgerpapuda.png';
+            comboKey = '.\combosconpapasybebidas\comboburgerpapuda.png';
         } else if (normName.includes('super')) {
-            comboKey = './combosconpapasybebidas/comboburgersuper.png';
+            comboKey = '.\combosconpapasybebidas\comboburgersuper.png';
         } else if (normName.includes('perro')) {
-            comboKey = './combosconpapasybebidas/comboperronormal.png';
+            comboKey = '.\combosconpapasybebidas\comboperronormal.png';
         } else if (normName.includes('burger') || normName.includes('normal')) {
-            comboKey = './combosconpapasybebidas/comboburgernormal.png';
+            comboKey = '.\combosconpapasybebidas\comboburgernormal.png';
         }
         if (comboKey) {
             const comboPrice = COMBOS_CON_PAPAS_IMAGE_PRICES[comboKey][normalizedOptions.peopleCount];
@@ -3431,7 +3436,7 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
         }
     }
 
-    if (imagePath === './burgerclasicas/burgernormal.png') {
+    if (normalizedPath === normalizeImageAssetPath('./burgerclasicas/burgernormal.png').toLowerCase()) {
         if (normalizedProductName.includes('pequena') && normalizedProductName.includes('2 carne')) {
             return 18000;
         }
@@ -3444,16 +3449,17 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
         return 17000;
     }
 
-    if (imagePath === './salchipapas/salchisuper.png') {
+    if (normalizedPath === normalizeImageAssetPath('./salchipapas/salchisuper.png').toLowerCase()) {
         if (normalizedProductName.includes('grande')) {
             return 34000;
         }
         return 19000;
     }
 
-    if (Object.prototype.hasOwnProperty.call(MANUAL_IMAGE_BASE_PRICES, imagePath)) {
-        return Number(MANUAL_IMAGE_BASE_PRICES[imagePath]);
-    }
+    const manualKey = Object.keys(MANUAL_IMAGE_BASE_PRICES).find(
+        (k) => normalizeImageAssetPath(k).toLowerCase() === normalizedPath
+    );
+    if (manualKey) return Number(MANUAL_IMAGE_BASE_PRICES[manualKey]);
 
     return null;
 }
