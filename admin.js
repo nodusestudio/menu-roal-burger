@@ -1669,10 +1669,12 @@ async function fetchBranding() {
     const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).get();
     if (!doc.exists) {
         brandingState = { ...defaultBranding };
+        window._adminBrandingSnapshot = { ...defaultBranding };
         return;
     }
 
     brandingState = normalizeBranding(doc.data());
+    window._adminBrandingSnapshot = doc.data();
 }
 
 async function fetchOrders() {
@@ -2274,10 +2276,36 @@ function renderPosProductsPanel() {
     });
 }
 
+const POS_COMBOS_CON_PAPAS_PRICES = {
+    comboburgerpapuda: { 1: 27000, 2: 48000, 3: 70000, 4: 91000 },
+    comboburgersuper:  { 1: 26000, 2: 46000, 3: 68000, 4: 87000 },
+    comboperronormal:  { 1: 17000, 2: 25000, 3: 38000, 4: 49000 },
+    comboburgernormal: { 1: 21000, 2: 38000, 3: 57000, 4: 73000 }
+};
+const POS_BURGER_CLASICAS_OPTIONS = [
+    { label: 'Pequeña | 1 carne', price: 14000 },
+    { label: 'Pequeña | 2 carne', price: 18000 },
+    { label: 'Mediana | 1 carne', price: 17000 },
+    { label: 'Mediana | 2 carne', price: 22000 }
+];
+
 function handlePosProductAdd(productId, productName, productPrice) {
     const selectedCategory = String(posSelectedCategory || '').trim();
+    const normCat = normalizeCategoryKey(selectedCategory);
 
-    // Combos siguen con su modal propio
+    // Combos con papas y bebidas → selector de personas con precios fijos
+    if (normCat.includes('papas')) {
+        openComboConPapasPosModal(productId, productName, selectedCategory);
+        return;
+    }
+
+    // Burger Clásica Normal → opciones de tamaño y cantidad de carne
+    if (normCat.includes('burger clasicas') && normalizeCategoryKey(productName).includes('normal')) {
+        openBurgerClasicasPosModal(productId, productName);
+        return;
+    }
+
+    // Otros combos siguen con su modal propio
     if (isComboCategory(selectedCategory)) {
         openComboBeverageModal(productId, productName, productPrice, selectedCategory);
         return;
@@ -2442,6 +2470,185 @@ function openComboBeverageModal(productId, productName, productPrice, categoryNa
     document.body.appendChild(overlay);
 }
 
+function openBurgerClasicasPosModal(productId, productName) {
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+
+    const card = document.createElement('div');
+    card.className = 'combo-modal-card';
+
+    const header = document.createElement('div');
+    header.className = 'combo-modal-header';
+    const headerText = document.createElement('div');
+    headerText.innerHTML = `<h4>${escapeHtml(productName)}</h4><p class="combo-modal-subtitle">Selecciona tamano y cantidad de carne</p>`;
+    const closeX = document.createElement('button');
+    closeX.type = 'button';
+    closeX.className = 'combo-modal-close-x';
+    closeX.setAttribute('aria-label', 'Cerrar');
+    closeX.textContent = '×';
+    closeX.addEventListener('click', () => overlay.remove());
+    header.appendChild(headerText);
+    header.appendChild(closeX);
+
+    const secLabel = document.createElement('div');
+    secLabel.className = 'combo-modal-section-label';
+    secLabel.textContent = 'Elige una opcion';
+
+    const optGrid = document.createElement('div');
+    optGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px;';
+
+    const noteRow = document.createElement('div');
+    noteRow.className = 'combo-modal-note-row';
+    const noteLabel = document.createElement('label');
+    noteLabel.className = 'combo-modal-note-label';
+    noteLabel.textContent = 'Nota (opcional)';
+    const noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.className = 'combo-modal-note-input';
+    noteInput.placeholder = 'Ej: sin cebolla, bien tostada...';
+    noteRow.appendChild(noteLabel);
+    noteRow.appendChild(noteInput);
+
+    POS_BURGER_CLASICAS_OPTIONS.forEach((opt) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = 'padding:12px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;text-align:center;font-size:0.88rem;line-height:1.35;';
+        btn.innerHTML = `<strong style="display:block;font-size:0.9rem;">${escapeHtml(opt.label)}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${opt.price.toLocaleString('es-CO')}</span>`;
+        btn.addEventListener('click', () => {
+            const note = noteInput.value.trim();
+            addProductToPosOrder(
+                `${String(productId).trim()}::${opt.label.replace(/\s+/g, '_')}`,
+                `${productName} - ${opt.label}`,
+                opt.price,
+                note
+            );
+            overlay.remove();
+        });
+        optGrid.appendChild(btn);
+    });
+
+    card.appendChild(header);
+    card.appendChild(secLabel);
+    card.appendChild(optGrid);
+    card.appendChild(noteRow);
+    overlay.appendChild(card);
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+}
+
+function openComboConPapasPosModal(productId, productName, categoryName) {
+    const normProd = normalizeCategoryKey(productName).replace(/[^a-z0-9]/g, '');
+    let prices;
+    if (normProd.includes('papuda')) prices = POS_COMBOS_CON_PAPAS_PRICES.comboburgerpapuda;
+    else if (normProd.includes('super')) prices = POS_COMBOS_CON_PAPAS_PRICES.comboburgersuper;
+    else if (normProd.includes('perro')) prices = POS_COMBOS_CON_PAPAS_PRICES.comboperronormal;
+    else prices = POS_COMBOS_CON_PAPAS_PRICES.comboburgernormal;
+
+    let selectedCount = 0;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+
+    const card = document.createElement('div');
+    card.className = 'combo-modal-card';
+
+    const header = document.createElement('div');
+    header.className = 'combo-modal-header';
+    const headerText = document.createElement('div');
+    headerText.innerHTML = `<h4>${escapeHtml(productName)}</h4><p class="combo-modal-subtitle">${escapeHtml(categoryName)}</p>`;
+    const closeX = document.createElement('button');
+    closeX.type = 'button';
+    closeX.className = 'combo-modal-close-x';
+    closeX.setAttribute('aria-label', 'Cerrar');
+    closeX.textContent = '×';
+    closeX.addEventListener('click', () => overlay.remove());
+    header.appendChild(headerText);
+    header.appendChild(closeX);
+
+    const secLabel = document.createElement('div');
+    secLabel.className = 'combo-modal-section-label';
+    secLabel.textContent = 'Para cuantas personas';
+
+    const peopleGrid = document.createElement('div');
+    peopleGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px;';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'combo-modal-confirm-btn';
+    confirmBtn.textContent = 'Selecciona personas';
+    confirmBtn.disabled = true;
+    confirmBtn.style.opacity = '0.45';
+
+    const countBtns = [];
+    [1, 2, 3, 4].forEach((count) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = 'padding:12px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;text-align:center;font-size:0.88rem;line-height:1.4;transition:background 0.15s;';
+        btn.innerHTML = `<strong style="display:block;">${count} PERSONA${count > 1 ? 'S' : ''}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${prices[count].toLocaleString('es-CO')}</span>`;
+        btn.addEventListener('click', () => {
+            selectedCount = count;
+            countBtns.forEach((b) => {
+                b.style.background = 'rgba(255,255,255,0.07)';
+                b.style.borderColor = 'rgba(255,255,255,0.15)';
+            });
+            btn.style.background = 'rgba(231,111,0,0.25)';
+            btn.style.borderColor = 'var(--admin-accent,#e76f00)';
+            confirmBtn.disabled = false;
+            confirmBtn.style.opacity = '1';
+            confirmBtn.textContent = `Agregar — $${prices[count].toLocaleString('es-CO')}`;
+        });
+        countBtns.push(btn);
+        peopleGrid.appendChild(btn);
+    });
+
+    const noteRow = document.createElement('div');
+    noteRow.className = 'combo-modal-note-row';
+    const noteLabel = document.createElement('label');
+    noteLabel.className = 'combo-modal-note-label';
+    noteLabel.textContent = 'Nota (opcional)';
+    const noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.className = 'combo-modal-note-input';
+    noteInput.placeholder = 'Ej: sin papas fritas extras, sin hielo...';
+    noteRow.appendChild(noteLabel);
+    noteRow.appendChild(noteInput);
+
+    const footer = document.createElement('div');
+    footer.className = 'combo-modal-footer';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'combo-modal-cancel-btn';
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.addEventListener('click', () => overlay.remove());
+
+    confirmBtn.addEventListener('click', () => {
+        if (!selectedCount) return;
+        const note = noteInput.value.trim();
+        const optLabel = `${selectedCount} persona${selectedCount > 1 ? 's' : ''}${note ? ` | ${note}` : ''}`;
+        addProductToPosOrder(
+            `${String(productId).trim()}::${selectedCount}p`,
+            productName,
+            prices[selectedCount],
+            optLabel
+        );
+        overlay.remove();
+    });
+
+    footer.appendChild(cancelBtn);
+    footer.appendChild(confirmBtn);
+
+    card.appendChild(header);
+    card.appendChild(secLabel);
+    card.appendChild(peopleGrid);
+    card.appendChild(noteRow);
+    card.appendChild(footer);
+    overlay.appendChild(card);
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+}
+
 function addProductToPosOrder(productId, productName, productPrice, note = '') {
     productId = String(productId || '').trim();
     productName = String(productName || 'Producto').trim();
@@ -2586,19 +2793,26 @@ function renderPosOrderItems() {
 }
 
 function renderPosTotals() {
-    const subtotalElem = document.getElementById('posTotalSubtotal');
-    const totalElem = document.getElementById('posTotalFinal');
-    const discountInput = document.getElementById('internalOrderDiscount');
-    const cobrarAmount = document.getElementById('posCobrarAmount');
-    const paymentTotal = document.getElementById('posPaymentTotalDisplay');
-    const bottomTotal = document.getElementById('posBottomTotalAmt');
-    const drawerTotal = document.getElementById('posDrawerCobrarTotal');
+    const subtotalElem     = document.getElementById('posTotalSubtotal');
+    const totalElem        = document.getElementById('posTotalFinal');
+    const deliveryRow      = document.getElementById('posTotalDeliveryRow');
+    const deliveryElem     = document.getElementById('posTotalDelivery');
+    const discountInput    = document.getElementById('internalOrderDiscount');
+    const cobrarAmount     = document.getElementById('posCobrarAmount');
+    const paymentTotal     = document.getElementById('posPaymentTotalDisplay');
+    const bottomTotal      = document.getElementById('posBottomTotalAmt');
+    const drawerTotal      = document.getElementById('posDrawerCobrarTotal');
 
-    const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-    const discount = Number(discountInput?.value || 0);
-    const total = Math.max(0, subtotal - discount);
+    const subtotal  = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    const discount  = Number(discountInput?.value || 0);
+    const fee       = (posTicketConfig?.orderType === 'domicilio' && posTicketConfig?.deliveryFee != null)
+                        ? Number(posTicketConfig.deliveryFee)
+                        : 0;
+    const total     = Math.max(0, subtotal - discount + fee);
 
     if (subtotalElem) subtotalElem.textContent = formatMoney(subtotal);
+    if (deliveryRow) deliveryRow.hidden = fee <= 0;
+    if (deliveryElem) deliveryElem.textContent = formatMoney(fee);
     if (totalElem) totalElem.textContent = formatMoney(total);
     if (cobrarAmount) cobrarAmount.textContent = formatMoney(total);
     if (paymentTotal) paymentTotal.textContent = formatMoney(total);
@@ -2819,7 +3033,9 @@ function switchPosTicket(ticketId) {
             orderType: ticket.orderType,
             mesaNumber: ticket.mesaNumber || null,
             customerName: ticket.customerName || '',
-            customerPhone: ticket.customerPhone || ''
+            customerPhone: ticket.customerPhone || '',
+            deliveryAddress: ticket.deliveryAddress || '',
+            deliveryFee: ticket.deliveryFee !== undefined ? ticket.deliveryFee : null
         };
     } else {
         posTicketConfig = null;
@@ -3164,8 +3380,12 @@ async function saveAdminOrderQuick(config = {}) {
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
             subtotal,
             discount: 0,
-            deliveryFee: orderType === 'domicilio' ? 0 : null,
-            total: subtotal,
+            deliveryFee: orderType === 'domicilio'
+                ? (config.deliveryFee !== undefined && config.deliveryFee !== null ? Number(config.deliveryFee) : 0)
+                : null,
+            total: orderType === 'domicilio'
+                ? subtotal + (config.deliveryFee !== undefined && config.deliveryFee !== null ? Number(config.deliveryFee) : 0)
+                : subtotal,
             currency: 'COP',
             summaryMessage: '',
             createdAt: firestoreNow(),
@@ -3998,12 +4218,24 @@ function _renderCarouselPanel() {
 
     const groupEntries = Array.from(grouped.entries());
 
+    const currentCarouselTitle = (() => {
+        try { return window._adminBrandingSnapshot && window._adminBrandingSnapshot.carousel_title ? window._adminBrandingSnapshot.carousel_title : ''; } catch { return ''; }
+    })();
+
     panel.innerHTML = `
         <div class="upgrades-detail-topbar">
             <span class="upgrades-detail-topbar-title" style="display:flex;align-items:center;gap:8px;"><span>🎠</span> Carrusel del menú digital</span>
             <span style="background:rgba(255,122,26,0.25);color:#ff9a50;padding:4px 12px;border-radius:8px;font-size:0.75rem;font-weight:600;flex-shrink:0;">${carouselCount} activo${carouselCount !== 1 ? 's' : ''}</span>
         </div>
         <div class="upgrades-detail-body" style="padding-top:10px;">
+            <div style="background:rgba(255,122,26,0.07);border:1.5px solid rgba(255,122,26,0.22);border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+                <p style="font-size:0.72rem;font-weight:700;color:#ff9a50;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 7px;">Título de sección</p>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input id="carouselTitleInput" type="text" value="${currentCarouselTitle.replace(/"/g, '&quot;')}" placeholder="Ej: Combos Futboleros" style="flex:1;background:rgba(0,0,0,0.30);border:1.5px solid rgba(255,122,26,0.30);border-radius:8px;padding:8px 12px;color:#eef4ff;font-size:0.85rem;outline:none;" maxlength="60">
+                    <button id="carouselTitleSaveBtn" type="button" style="padding:8px 16px;background:linear-gradient(135deg,#ff7a00,#e84800);border:none;border-radius:8px;color:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;white-space:nowrap;">Guardar</button>
+                </div>
+                <p style="font-size:0.68rem;color:var(--admin-muted);margin:5px 0 0;">Se muestra encima del carrusel en el menú digital.</p>
+            </div>
             <p style="font-size:0.78rem;color:var(--admin-muted);margin:0 0 12px;line-height:1.5;">Activa los productos que aparecerán en el carrusel del menú digital. Los cambios se ven en tiempo real.</p>
             ${groupEntries.length ? `<div style="display:flex;flex-direction:column;gap:7px;">
                 ${groupEntries.map(([cat, prods], idx) => {
@@ -4042,6 +4274,27 @@ function _renderCarouselPanel() {
             </div>` : '<p style="font-size:0.8rem;color:var(--admin-muted);">No hay productos en Firestore aún.</p>'}
         </div>
     `;
+
+    // Guardar título del carrusel
+    const carouselTitleSaveBtn = panel.querySelector('#carouselTitleSaveBtn');
+    if (carouselTitleSaveBtn) {
+        carouselTitleSaveBtn.addEventListener('click', async () => {
+            const input = panel.querySelector('#carouselTitleInput');
+            const value = (input ? input.value.trim() : '') || '';
+            carouselTitleSaveBtn.disabled = true;
+            carouselTitleSaveBtn.textContent = 'Guardando…';
+            try {
+                await firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).update({ carousel_title: value, updated_at: firestoreNow() });
+                if (window._adminBrandingSnapshot) window._adminBrandingSnapshot.carousel_title = value;
+                carouselTitleSaveBtn.textContent = '✓ Guardado';
+                setTimeout(() => { carouselTitleSaveBtn.disabled = false; carouselTitleSaveBtn.textContent = 'Guardar'; }, 2000);
+            } catch (err) {
+                showNotice(`Error al guardar título: ${err.message || 'Error inesperado.'}`, 'error');
+                carouselTitleSaveBtn.disabled = false;
+                carouselTitleSaveBtn.textContent = 'Guardar';
+            }
+        });
+    }
 
     // Colapsar / expandir grupo
     panel.querySelectorAll('[data-action="toggle-group"]').forEach((btn) => {
@@ -5946,64 +6199,150 @@ function renderClients() {
     });
 }
 
+let _inboxActiveId = null;
+
+function _inboxGetTypeLabel(type) {
+    const map = {
+        password_reset_request: '🔑 Reset contraseña',
+        customer_direct_message: '💬 Mensaje directo',
+        admin_direct_reply: '↩️ Respuesta admin',
+        support_request: '🛠️ Soporte',
+        order_status_update: '📦 Estado pedido'
+    };
+    return map[type] || type;
+}
+
+function _inboxInitial(name) {
+    return String(name || '?').trim().charAt(0).toUpperCase();
+}
+
 function renderMessages() {
-    if (!messagesList) {
-        return;
+    if (!messagesList) return;
+
+    const pendingCount = messagesState.filter(m => m.status !== 'resolved').length;
+    const messagesCountEl = document.getElementById('messagesCount');
+    if (messagesCountEl) messagesCountEl.textContent = pendingCount || messagesState.length;
+
+    // Actualizar badge del FAB
+    const fab = document.getElementById('adminChatFabBadge');
+    if (fab) {
+        if (pendingCount > 0) { fab.textContent = pendingCount; fab.removeAttribute('hidden'); }
+        else fab.setAttribute('hidden', '');
     }
 
-    if (messagesCount) {
-        messagesCount.textContent = Number(messagesState.length).toLocaleString('es-CO');
+    const searchTerm = (document.getElementById('inboxSearch')?.value || '').trim().toLowerCase();
+
+    let filtered = messagesState;
+    if (searchTerm) {
+        filtered = messagesState.filter(m =>
+            String(m.customerName || '').toLowerCase().includes(searchTerm) ||
+            String(m.subject || '').toLowerCase().includes(searchTerm) ||
+            String(m.body || '').toLowerCase().includes(searchTerm)
+        );
     }
 
     messagesList.innerHTML = '';
 
-    if (!messagesState.length) {
-        messagesList.innerHTML = `
-            <div class="message-request-card">
-                <div class="message-request-body">
-                    <p>Aun no hay mensajes o solicitudes registrados.</p>
-                </div>
-            </div>
-        `;
+    if (!filtered.length) {
+        messagesList.innerHTML = '<p class="inbox-empty">Sin mensajes aún</p>';
         return;
     }
 
-    messagesState.forEach((message) => {
-        const isResolved = message.status === 'resolved';
-        const canResetPassword = message.type === 'password_reset_request' && message.customerPhoneDigits;
-        const canReply = Boolean(message.customerPhoneDigits) && message.type !== 'admin_direct_reply';
-        const card = document.createElement('div');
-        card.className = `message-request-card${isResolved ? ' is-resolved' : ''}`;
-        card.innerHTML = `
-            <div class="message-request-head">
-                <div>
-                    <strong>${escapeHtml(message.subject)}</strong>
-                    <span>${escapeHtml(message.customerName)} · ${escapeHtml(message.customerPhone)}</span>
-                </div>
-                <span class="message-status-chip ${isResolved ? 'resolved' : 'pending'}">${escapeHtml(isResolved ? 'Atendido' : 'Pendiente')}</span>
+    filtered.forEach(msg => {
+        const isActive = msg.id === _inboxActiveId;
+        const isPending = msg.status !== 'resolved';
+        const item = document.createElement('div');
+        item.className = `inbox-thread-item${isActive ? ' is-active' : ''}`;
+        item.dataset.msgId = msg.id;
+        item.innerHTML = `
+            <div class="inbox-thread-avatar">${_inboxInitial(msg.customerName)}</div>
+            <div class="inbox-thread-info">
+                <div class="inbox-thread-name">${escapeHtml(msg.customerName || 'Sin nombre')}</div>
+                <div class="inbox-thread-preview">${escapeHtml(String(msg.body || msg.subject || '').substring(0, 50))}</div>
             </div>
-            <div class="message-request-meta">
-                <span>Tipo: ${escapeHtml(message.type)}</span>
-                <span>Fecha: ${escapeHtml(formatOrderDate(message.createdAt))}</span>
-                <span>Origen: ${escapeHtml(message.source)}</span>
-                ${message.customerAddress ? `<span>Direccion: ${escapeHtml(message.customerAddress)}</span>` : ''}
-                ${message.readBy ? `<span>Leido por: ${escapeHtml(message.readBy)}</span>` : ''}
-                ${message.resolvedBy ? `<span>Atendido por: ${escapeHtml(message.resolvedBy)}</span>` : ''}
-            </div>
-            <div class="message-request-body">
-                <p>${escapeHtml(message.body || 'Sin detalle adicional.')}</p>
-            </div>
-            <div class="message-request-actions">
-                <button type="button" class="message-request-btn" data-message-action="copy" data-message-id="${escapeHtml(message.id)}">Copiar mensaje</button>
-                <button type="button" class="message-request-btn primary" data-message-action="whatsapp" data-message-id="${escapeHtml(message.id)}">Abrir WhatsApp</button>
-                ${canReply ? `<button type="button" class="message-request-btn" data-message-action="reply" data-message-id="${escapeHtml(message.id)}">Responder</button>` : ''}
-                ${canResetPassword ? `<button type="button" class="message-request-btn primary" data-message-action="reset-password" data-message-id="${escapeHtml(message.id)}">Resetear contrasena</button>` : ''}
-                <button type="button" class="message-request-btn success" data-message-action="resolve" data-message-id="${escapeHtml(message.id)}">${isResolved ? 'Marcar pendiente' : 'Marcar atendido'}</button>
-                <button type="button" class="message-request-btn delete" data-message-action="delete" data-message-id="${escapeHtml(message.id)}">Eliminar</button>
+            <div class="inbox-thread-meta">
+                <span class="inbox-thread-time">${_inboxFormatTime(msg.createdAt)}</span>
+                ${isPending ? '<span class="inbox-thread-unread"></span>' : '<span class="inbox-thread-status-dot"></span>'}
             </div>
         `;
-        messagesList.appendChild(card);
+        item.addEventListener('click', () => openInboxDetail(msg.id));
+        messagesList.appendChild(item);
     });
+
+    // Mantener el detalle si hay uno activo
+    if (_inboxActiveId) openInboxDetail(_inboxActiveId, false);
+}
+
+function _inboxFormatTime(ts) {
+    if (!ts) return '';
+    try {
+        const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+        const now = new Date();
+        const diffMs = now - d;
+        if (diffMs < 86400000) {
+            return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+        }
+        return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+    } catch { return ''; }
+}
+
+function openInboxDetail(messageId, scroll = true) {
+    _inboxActiveId = messageId;
+    const msg = messagesState.find(m => m.id === messageId);
+    const detail = document.getElementById('inboxDetail');
+    if (!detail) return;
+
+    // Marcar activo en la lista
+    document.querySelectorAll('.inbox-thread-item').forEach(el => {
+        el.classList.toggle('is-active', el.dataset.msgId === messageId);
+    });
+
+    if (!msg) {
+        detail.innerHTML = '<div class="inbox-detail-empty"><span>⚠️</span><p>Mensaje no encontrado</p></div>';
+        return;
+    }
+
+    const isResolved = msg.status === 'resolved';
+    const canResetPassword = msg.type === 'password_reset_request' && msg.customerPhoneDigits;
+    const canReply = Boolean(msg.customerPhoneDigits) && msg.type !== 'admin_direct_reply';
+    const canWhatsApp = Boolean(msg.customerPhoneDigits);
+
+    detail.innerHTML = `
+        <div class="inbox-detail-head">
+            <div class="inbox-detail-avatar">${_inboxInitial(msg.customerName)}</div>
+            <div class="inbox-detail-head-info">
+                <div class="inbox-detail-head-name">${escapeHtml(msg.customerName || 'Sin nombre')}</div>
+                <div class="inbox-detail-head-sub">${escapeHtml(msg.customerPhone || '')}${msg.customerAddress ? ' · ' + escapeHtml(msg.customerAddress) : ''}</div>
+            </div>
+            <div class="inbox-detail-head-actions">
+                ${canWhatsApp ? `<button class="inbox-head-btn blue" data-message-action="whatsapp" data-message-id="${escapeHtml(msg.id)}">📲 WhatsApp</button>` : ''}
+                ${canResetPassword ? `<button class="inbox-head-btn blue" data-message-action="reset-password" data-message-id="${escapeHtml(msg.id)}">🔑 Reset</button>` : ''}
+                <button class="inbox-head-btn ${isResolved ? '' : 'green'}" data-message-action="resolve" data-message-id="${escapeHtml(msg.id)}">${isResolved ? '↩ Reabrir' : '✓ Atendido'}</button>
+                <button class="inbox-head-btn red" data-message-action="delete" data-message-id="${escapeHtml(msg.id)}">🗑</button>
+            </div>
+        </div>
+        <div class="inbox-messages-scroll" id="inboxMsgScroll">
+            <span class="inbox-msg-info-chip">${_inboxGetTypeLabel(msg.type)} · ${escapeHtml(formatOrderDate(msg.createdAt))} · ${escapeHtml(msg.source || 'app')}</span>
+            <div class="inbox-msg-group">
+                <div class="inbox-bubble from-user">${escapeHtml(msg.subject || '')}</div>
+                ${msg.body && msg.body !== msg.subject ? `<div class="inbox-bubble from-user">${escapeHtml(msg.body)}</div>` : ''}
+                <span class="inbox-bubble-meta">${escapeHtml(_inboxFormatTime(msg.createdAt))}</span>
+            </div>
+            ${msg.adminReply ? `<div class="inbox-msg-group">
+                <div class="inbox-bubble from-admin">${escapeHtml(msg.adminReply)}</div>
+                <span class="inbox-bubble-meta">Admin · ${isResolved ? escapeHtml(_inboxFormatTime(msg.resolvedAt)) : ''}</span>
+            </div>` : ''}
+        </div>
+        ${canReply ? `<div class="inbox-reply-bar">
+            <textarea class="inbox-reply-input" id="inboxReplyInput" placeholder="Escribe una respuesta…" rows="1"></textarea>
+            <button class="inbox-reply-send" data-message-action="reply" data-message-id="${escapeHtml(msg.id)}" title="Enviar">➤</button>
+        </div>` : ''}
+    `;
+
+    if (scroll) {
+        const scrollEl = detail.querySelector('#inboxMsgScroll');
+        if (scrollEl) setTimeout(() => { scrollEl.scrollTop = scrollEl.scrollHeight; }, 50);
+    }
 }
 
 function getFilteredClients() {
@@ -7600,17 +7939,29 @@ function renderPosCartTicketInfo() {
         ? `Mesa ${posTicketConfig.mesaNumber}`
         : typeLabel;
     const clientValue = posTicketConfig.customerName || '';
+    const phoneValue = posTicketConfig.customerPhone || '';
+    const addressValue = posTicketConfig.deliveryAddress || '';
     el.innerHTML = `
         <div class="pos-ticket-info-row">
-            <span class="pos-ticket-info-label">Tipo</span>
+            <span class="pos-ticket-info-label">TIPO</span>
             <span class="pos-ticket-info-value">${escapeHtml(typeValue)}</span>
         </div>
         ${clientValue ? `<div class="pos-ticket-info-row">
-            <span class="pos-ticket-info-label">Cliente</span>
+            <span class="pos-ticket-info-label">CLIENTE</span>
             <span class="pos-ticket-info-value">${escapeHtml(clientValue)}</span>
+        </div>` : ''}
+        ${phoneValue ? `<div class="pos-ticket-info-row">
+            <span class="pos-ticket-info-label">TEL</span>
+            <span class="pos-ticket-info-value">${escapeHtml(phoneValue)}</span>
+        </div>` : ''}
+        ${addressValue ? `<div class="pos-ticket-info-row">
+            <span class="pos-ticket-info-label">DIR</span>
+            <span class="pos-ticket-info-value">${escapeHtml(addressValue)}</span>
         </div>` : ''}
     `;
     el.hidden = false;
+    // Recalcular totales para reflejar el domicilio
+    renderPosTotals();
 }
 
 function openPosTicketSetupModal(configOnly = false) {
@@ -7627,9 +7978,10 @@ function openPosTicketSetupModal(configOnly = false) {
     _ptsSelectedType = prefill?.orderType || null;
     _ptsSelectedMesa = prefill?.mesaNumber || null;
     _ptsSelectedClient = prefill?.customerName ? { name: prefill.customerName, phone: prefill.customerPhone || '' } : null;
-    _ptsActiveTab = 'none';
+    // Si hay cliente prefill, usar tab 'quick' para mostrar los datos
+    _ptsActiveTab = (_ptsSelectedClient && configOnly) ? 'quick' : 'none';
 
-    // Reset UI
+    // Reset UI — tipo
     modal.querySelectorAll('.pts-type-btn').forEach((b) => {
         b.classList.toggle('active', b.dataset.ptsType === _ptsSelectedType);
     });
@@ -7641,14 +7993,54 @@ function openPosTicketSetupModal(configOnly = false) {
     modal.querySelectorAll('.pts-mesa-btn').forEach((b) => {
         b.classList.toggle('active', Number(b.dataset.ptsMesa) === _ptsSelectedMesa);
     });
-    modal.querySelectorAll('[data-pts-tab]').forEach((t) => t.classList.toggle('active', t.dataset.ptsTab === 'none'));
+
+    // Pre-llenar cliente
+    modal.querySelectorAll('[data-pts-tab]').forEach((t) => t.classList.toggle('active', t.dataset.ptsTab === _ptsActiveTab));
     modal.querySelectorAll('.pts-client-panel').forEach((p) => p.setAttribute('hidden', ''));
     const quickName = document.getElementById('ptsQuickName');
-    if (quickName) quickName.value = '';
+    const quickPhone = document.getElementById('ptsQuickPhone');
+    if (_ptsActiveTab === 'quick') {
+        const quickPanel = document.getElementById('ptsPanelQuick');
+        if (quickPanel) quickPanel.removeAttribute('hidden');
+        if (quickName) quickName.value = _ptsSelectedClient?.name || '';
+        if (quickPhone) quickPhone.value = _ptsSelectedClient?.phone || '';
+    } else {
+        if (quickName) quickName.value = '';
+        if (quickPhone) quickPhone.value = '';
+    }
     const searchInput = document.getElementById('ptsSearchInput');
-    if (searchInput) searchInput.value = '';
+    if (searchInput) { searchInput.value = ''; searchInput.removeAttribute('hidden'); }
     const searchResults = document.getElementById('ptsSearchResults');
     if (searchResults) searchResults.innerHTML = '';
+    const selectedChip = document.getElementById('ptsSelectedChip');
+    if (selectedChip) selectedChip.setAttribute('hidden', '');
+
+    // Pre-llenar dirección (domicilio)
+    const domicilioSection = document.getElementById('ptsDomicilioSection');
+    const addrInput = document.getElementById('ptsDeliveryAddress');
+    const addrPicker = document.getElementById('ptsAddressPicker');
+    if (addrPicker) addrPicker.setAttribute('hidden', '');
+    _ptsHideFeeSuggestion();
+    const feeWrap = document.getElementById('ptsDeliveryFeeWrap');
+    if (feeWrap) feeWrap.setAttribute('hidden', '');
+    if (domicilioSection) {
+        const isDom = _ptsSelectedType === 'domicilio';
+        if (isDom) domicilioSection.removeAttribute('hidden');
+        else domicilioSection.setAttribute('hidden', '');
+    }
+    if (addrInput) addrInput.value = (configOnly && prefill?.deliveryAddress) ? prefill.deliveryAddress : '';
+    const feeInput = document.getElementById('ptsDeliveryFee');
+    if (feeInput) {
+        const prefillFee = configOnly && prefill?.deliveryFee !== undefined && prefill.deliveryFee !== null
+            ? prefill.deliveryFee
+            : '';
+        feeInput.value = prefillFee;
+    }
+    // Si ya tiene dirección pre-rellenada, mostrar fee y buscar sugerencia
+    if (configOnly && prefill?.deliveryAddress && _ptsSelectedType === 'domicilio') {
+        _ptsToggleFeeWrap(true);
+        if (!prefill.deliveryFee) _ptsSuggestDeliveryFee(prefill.deliveryAddress);
+    }
 
     // Cambiar label del botón según modo
     const confirmBtn = document.getElementById('ptsConfirmBtn');
@@ -7688,11 +8080,92 @@ function _ptsRenderSearchResults(query) {
     }
 
     container.innerHTML = matches.map((c) => `
-        <div class="pts-result-item" data-pts-client-name="${escapeHtml(c.customerName || '')}" data-pts-client-phone="${escapeHtml(c.customerPhone || '')}">
+        <div class="pts-result-item" data-pts-client-id="${escapeHtml(c.id || '')}" data-pts-client-name="${escapeHtml(c.customerName || '')}" data-pts-client-phone="${escapeHtml(c.customerPhone || '')}">
             <div class="pts-result-name">${escapeHtml(c.customerName || 'Sin nombre')}</div>
             <div class="pts-result-phone">${escapeHtml(c.customerPhone || '')}</div>
         </div>
     `).join('');
+}
+
+// Muestra el chip de cliente seleccionado y oculta el input de búsqueda
+function _ptsShowSelectedClientChip(client) {
+    const searchInput = document.getElementById('ptsSearchInput');
+    const results     = document.getElementById('ptsSearchResults');
+    const chip        = document.getElementById('ptsSelectedChip');
+    const chipLabel   = document.getElementById('ptsSelectedChipLabel');
+    if (searchInput) searchInput.setAttribute('hidden', '');
+    if (results) results.innerHTML = '';
+    if (chip && chipLabel) {
+        chipLabel.textContent = `✓ ${client.name}${client.phone ? '  ·  ' + client.phone : ''}`;
+        chip.removeAttribute('hidden');
+    }
+}
+
+function _ptsHideSelectedClientChip() {
+    const searchInput = document.getElementById('ptsSearchInput');
+    const chip        = document.getElementById('ptsSelectedChip');
+    if (searchInput) { searchInput.removeAttribute('hidden'); searchInput.value = ''; searchInput.focus(); }
+    if (chip) chip.setAttribute('hidden', '');
+}
+
+// Auto-rellena la sección de dirección según las direcciones guardadas del cliente
+function _ptsFillClientAddress(client) {
+    const activeTypeBtn = document.querySelector('#posTicketSetupModal .pts-type-btn.active');
+    const resolvedType  = activeTypeBtn?.dataset?.ptsType || _ptsSelectedType;
+    if (resolvedType !== 'domicilio') return;
+
+    const addresses = Array.isArray(client.savedAddresses)
+        ? client.savedAddresses.filter((a) => String(a || '').trim())
+        : [];
+
+    const addrInput   = document.getElementById('ptsDeliveryAddress');
+    const addrPicker  = document.getElementById('ptsAddressPicker');
+    if (!addrInput || !addrPicker) return;
+
+    if (addresses.length === 0) {
+        addrPicker.setAttribute('hidden', '');
+        addrInput.value = '';
+        addrInput.removeAttribute('hidden');
+        return;
+    }
+
+    if (addresses.length === 1) {
+        addrPicker.setAttribute('hidden', '');
+        addrInput.removeAttribute('hidden');
+        addrInput.value = addresses[0];
+        _ptsToggleFeeWrap(true);
+        _ptsSuggestDeliveryFee(addresses[0]);
+        return;
+    }
+
+    // Múltiples direcciones → mostrar picker
+    addrInput.value = '';
+    addrPicker.removeAttribute('hidden');
+    addrPicker.innerHTML = `
+        <p class="pts-addr-picker-label">Selecciona dirección guardada</p>
+        ${addresses.map((addr, i) => `
+            <div class="pts-addr-chip${i === 0 ? ' active' : ''}" data-addr="${escapeHtml(addr)}">
+                ${i === 0 ? '📍 ' : ''}${escapeHtml(addr)}
+            </div>
+        `).join('')}
+    `;
+    // Pre-seleccionar la primera
+    addrInput.value = addresses[0];
+
+    // Pre-sugerir para la primera dirección y mostrar fee wrap
+    _ptsToggleFeeWrap(true);
+    _ptsSuggestDeliveryFee(addresses[0]);
+
+    addrPicker.querySelectorAll('.pts-addr-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+            addrPicker.querySelectorAll('.pts-addr-chip').forEach((c) => c.classList.remove('active'));
+            chip.classList.add('active');
+            addrInput.value = chip.dataset.addr || '';
+            document.getElementById('ptsDeliveryFee').value = '';   // limpiar fee para nueva sugerencia
+            _ptsToggleFeeWrap(true);
+            _ptsSuggestDeliveryFee(chip.dataset.addr || '');
+        });
+    });
 }
 
 // ── Listeners directos del modal (más robustos que delegación global) ──────────
@@ -7711,10 +8184,18 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     let customerPhone = '';
     if (_ptsActiveTab === 'quick') {
         customerName = String(document.getElementById('ptsQuickName')?.value || '').trim();
+        customerPhone = String(document.getElementById('ptsQuickPhone')?.value || '').trim();
     } else if (_ptsActiveTab === 'search' && _ptsSelectedClient) {
         customerName = _ptsSelectedClient.name;
         customerPhone = _ptsSelectedClient.phone;
     }
+    const deliveryAddress = resolvedType === 'domicilio'
+        ? String(document.getElementById('ptsDeliveryAddress')?.value || '').trim()
+        : '';
+    const rawFee = resolvedType === 'domicilio'
+        ? Number(document.getElementById('ptsDeliveryFee')?.value || 0)
+        : null;
+    const deliveryFee = resolvedType === 'domicilio' ? (Number.isFinite(rawFee) && rawFee >= 0 ? rawFee : 0) : null;
     closePosTicketSetupModal();
 
     if (_ptsConfigOnly) {
@@ -7725,6 +8206,8 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
             activeTicket.mesaNumber = resolvedMesa || null;
             activeTicket.customerName = customerName;
             activeTicket.customerPhone = customerPhone;
+            activeTicket.deliveryAddress = deliveryAddress;
+            activeTicket.deliveryFee = deliveryFee;
             // Actualizar label del ticket
             const typeLabels = { mesa: 'Mesa', retiro: 'Recoger', domicilio: 'Domicilio' };
             if (resolvedType === 'mesa' && resolvedMesa) {
@@ -7737,13 +8220,13 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
             const labelEl = document.getElementById('posActiveTicketLabel');
             if (labelEl) labelEl.textContent = activeTicket.label;
         }
-        posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone };
+        posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone, deliveryAddress, deliveryFee };
         renderPosCartTicketInfo();
         return;
     }
 
     // Modo guardar pedido: enviar a Firestore
-    posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone };
+    posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone, deliveryAddress, deliveryFee };
     renderPosCartTicketInfo();
     if (internalOrderItems.length) {
         saveAdminOrderQuick(posTicketConfig);
@@ -7765,6 +8248,19 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
         if (mesaGrid) {
             if (_ptsSelectedType === 'mesa') mesaGrid.removeAttribute('hidden');
             else mesaGrid.setAttribute('hidden', '');
+        }
+        const domicilioSection = document.getElementById('ptsDomicilioSection');
+        if (domicilioSection) {
+            if (_ptsSelectedType === 'domicilio') {
+                domicilioSection.removeAttribute('hidden');
+                // Si hay cliente con direcciones guardadas, auto-rellenar
+                if (_ptsSelectedClient) _ptsFillClientAddress(_ptsSelectedClient);
+            } else {
+                domicilioSection.setAttribute('hidden', '');
+                // Limpiar picker si había
+                const addrPicker = document.getElementById('ptsAddressPicker');
+                if (addrPicker) addrPicker.setAttribute('hidden', '');
+            }
         }
         _ptsUpdateConfirmBtn();
         return;
@@ -7799,11 +8295,30 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
     // Seleccionar cliente desde resultados
     const resultItem = e.target.closest('.pts-result-item');
     if (resultItem) {
+        const clientId = resultItem.dataset.ptsClientId || '';
+        const fullClient = clientsState.find((c) => c.id === clientId) || null;
         _ptsSelectedClient = {
             name: resultItem.dataset.ptsClientName || '',
-            phone: resultItem.dataset.ptsClientPhone || ''
+            phone: resultItem.dataset.ptsClientPhone || '',
+            savedAddresses: fullClient?.savedAddresses || []
         };
-        document.querySelectorAll('.pts-result-item').forEach((r) => r.classList.toggle('active', r === resultItem));
+        _ptsShowSelectedClientChip(_ptsSelectedClient);
+        _ptsFillClientAddress(_ptsSelectedClient);
+        _ptsUpdateConfirmBtn();
+        return;
+    }
+
+    // Deseleccionar cliente
+    if (e.target.closest('#ptsDeselectBtn')) {
+        _ptsSelectedClient = null;
+        _ptsHideSelectedClientChip();
+        const addrPicker = document.getElementById('ptsAddressPicker');
+        if (addrPicker) addrPicker.setAttribute('hidden', '');
+        const addrInput = document.getElementById('ptsDeliveryAddress');
+        if (addrInput) addrInput.value = '';
+        _ptsToggleFeeWrap(false);
+        _ptsUpdateConfirmBtn();
+        return;
     }
 });
 
@@ -7811,6 +8326,157 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
 document.getElementById('ptsSearchInput')?.addEventListener('input', (e) => {
     _ptsRenderSearchResults(e.target.value);
 });
+
+// ── Sugerencia de precio de domicilio basada en pedidos anteriores ──────────
+const _PTS_FEE_STOPWORDS = new Set(['con','del','los','las','una','por','mas','sin','que','muy','bien','este','ese','esa','esos']);
+
+function _ptsSuggestDeliveryFee(addressText) {
+    const addr = String(addressText || '').trim().toLowerCase();
+    if (addr.length < 4) { _ptsHideFeeSuggestion(); return; }
+
+    // Tokenizar: palabras de 3+ chars sin stopwords
+    const tokens = addr
+        .split(/[\s,#\-\/\.]+/)
+        .filter((t) => t.length >= 3 && !_PTS_FEE_STOPWORDS.has(t));
+
+    if (!tokens.length) { _ptsHideFeeSuggestion(); return; }
+
+    // Buscar en pedidos de domicilio con deliveryFee > 0
+    const candidates = (ordersState || []).filter((o) =>
+        o.orderType === 'domicilio' &&
+        o.deliveryFee !== null && o.deliveryFee > 0 &&
+        o.deliveryAddress
+    );
+    if (!candidates.length) { _ptsHideFeeSuggestion(); return; }
+
+    // Puntuar cada candidato
+    let best = null;
+    let bestScore = 0;
+    candidates.forEach((o) => {
+        const oAddr = o.deliveryAddress.toLowerCase();
+        let score = 0;
+        tokens.forEach((t) => { if (oAddr.includes(t)) score++; });
+        const ts = o.createdAt && typeof o.createdAt.toMillis === 'function' ? o.createdAt.toMillis() : 0;
+        const bestTs = best?.createdAt && typeof best.createdAt.toMillis === 'function' ? best.createdAt.toMillis() : 0;
+        if (score > bestScore || (score === bestScore && score > 0 && ts > bestTs)) {
+            bestScore = score;
+            best = o;
+        }
+    });
+
+    if (!best || bestScore === 0) { _ptsHideFeeSuggestion(); return; }
+
+    _ptsShowFeeSuggestion(best.deliveryFee);
+}
+
+// Muestra/oculta el campo de domicilio según si hay dirección escrita
+function _ptsToggleFeeWrap(hasAddress) {
+    const wrap = document.getElementById('ptsDeliveryFeeWrap');
+    if (!wrap) return;
+    if (hasAddress) wrap.removeAttribute('hidden');
+    else { wrap.setAttribute('hidden', ''); document.getElementById('ptsDeliveryFee').value = ''; }
+}
+
+// Rellena el campo de fee solo si está vacío (no sobreescribe lo que ya escribió el usuario)
+function _ptsApplyFeeSuggestion(fee) {
+    const feeInput = document.getElementById('ptsDeliveryFee');
+    if (!feeInput) return;
+    if (!feeInput.value || Number(feeInput.value) === 0) {
+        feeInput.value = fee;
+    }
+}
+
+function _ptsShowFeeSuggestion(fee) {
+    _ptsApplyFeeSuggestion(fee);
+}
+
+function _ptsHideFeeSuggestion() { /* no-op: el campo se mantiene editable */ }
+
+// Listener con debounce en el campo de dirección
+let _ptsFeeSearchTimer = null;
+document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => {
+    const val = e.target.value.trim();
+    _ptsToggleFeeWrap(val.length > 0);
+    if (val.length > 0) {
+        clearTimeout(_ptsFeeSearchTimer);
+        _ptsFeeSearchTimer = setTimeout(() => _ptsSuggestDeliveryFee(val), 380);
+    }
+});
+
+// ── Crear nuevo cliente desde el modal POS ──────────────────────────────────
+(function initPtsNewClient() {
+    const newClientBtn  = document.getElementById('ptsNewClientBtn');
+    const newClientForm = document.getElementById('ptsNewClientForm');
+    const saveBtn       = document.getElementById('ptsNewClientSaveBtn');
+    const nameInput     = document.getElementById('ptsNewClientName');
+    const phoneInput    = document.getElementById('ptsNewClientPhone');
+    const addrInput     = document.getElementById('ptsNewClientAddr');
+    if (!newClientBtn || !newClientForm || !saveBtn) return;
+
+    function resetForm() {
+        if (nameInput) nameInput.value = '';
+        if (phoneInput) phoneInput.value = '';
+        if (addrInput) addrInput.value = '';
+        newClientForm.setAttribute('hidden', '');
+        newClientBtn.removeAttribute('hidden');
+    }
+
+    newClientBtn.addEventListener('click', () => {
+        newClientBtn.setAttribute('hidden', '');
+        newClientForm.removeAttribute('hidden');
+        nameInput?.focus();
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const name  = String(nameInput?.value || '').trim();
+        const phone = String(phoneInput?.value || '').trim();
+        const addr  = String(addrInput?.value || '').trim();
+
+        if (!name || !phone) {
+            showNotice('Nombre y teléfono son requeridos.', 'error');
+            return;
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Guardando…';
+
+        try {
+            const phoneDigits = normalizePhoneDigits ? normalizePhoneDigits(phone) : phone;
+            const clientId = buildAdminClientDocumentId
+                ? buildAdminClientDocumentId({ customerName: name, customerPhone: phone, address: addr })
+                : `${phoneDigits}_${name.toLowerCase().replace(/\s+/g, '_')}`;
+
+            const savedAddresses = addr ? [addr] : [];
+            await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
+                customerName: name,
+                customerPhone: phone,
+                customerPhoneDigits: phoneDigits,
+                address: addr,
+                savedAddresses,
+                totalOrders: 0,
+                totalSpent: 0,
+                createdAt: firestoreNow(),
+                source: 'admin_pos'
+            }, { merge: true });
+
+            // Recargar clientsState
+            await fetchClients();
+
+            // Seleccionar el cliente recién creado
+            _ptsSelectedClient = { name, phone, savedAddresses };
+            _ptsShowSelectedClientChip(_ptsSelectedClient);
+            _ptsFillClientAddress(_ptsSelectedClient);
+            _ptsUpdateConfirmBtn();
+            resetForm();
+        } catch (err) {
+            console.error('[POS] Error creando cliente:', err);
+            showNotice('No se pudo guardar el cliente.', 'error');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Guardar y seleccionar';
+        }
+    });
+})();
 
 // COBRAR desde el drawer
 document.getElementById('posDrawerCobrarBtn')?.addEventListener('click', () => {
@@ -7953,6 +8619,113 @@ if (clientsSearchInput) {
         renderClients();
     });
 }
+
+// Inbox search
+document.getElementById('inboxSearch')?.addEventListener('input', () => renderMessages());
+
+// ── Inbox compose (nuevo mensaje a cliente registrado) ──────────────────────
+(function initInboxCompose() {
+    const composeBtn    = document.getElementById('inboxComposeBtn');
+    const composePanel  = document.getElementById('inboxComposePanel');
+    const cancelBtn     = document.getElementById('inboxComposeCancelBtn');
+    const clientSearch  = document.getElementById('inboxClientSearch');
+    const clientResults = document.getElementById('inboxClientResults');
+
+    if (!composeBtn || !composePanel) return;
+
+    function showComposePanel(visible) {
+        if (visible) {
+            composePanel.removeAttribute('hidden');
+            clientSearch.value = '';
+            renderClientResults('');
+            clientSearch.focus();
+        } else {
+            composePanel.setAttribute('hidden', '');
+        }
+    }
+
+    function renderClientResults(term) {
+        if (!clientsState || clientsState.length === 0) {
+            clientResults.innerHTML = '<p class="inbox-empty">No hay clientes registrados aún</p>';
+            return;
+        }
+        const q = term.trim().toLowerCase();
+        const matches = q
+            ? clientsState.filter(c =>
+                String(c.customerName || '').toLowerCase().includes(q) ||
+                String(c.customerPhone || '').toLowerCase().includes(q)
+              )
+            : clientsState.slice(0, 20);
+
+        if (!matches.length) {
+            clientResults.innerHTML = '<p class="inbox-empty">Sin resultados</p>';
+            return;
+        }
+
+        clientResults.innerHTML = '';
+        matches.forEach(client => {
+            const initial = (client.customerName || client.customerPhone || '?').charAt(0).toUpperCase();
+            const item = document.createElement('div');
+            item.className = 'inbox-client-result-item';
+            item.innerHTML = `
+                <div class="inbox-client-avatar">${initial}</div>
+                <div class="inbox-client-info">
+                    <div class="inbox-client-name">${escapeHtml(client.customerName || 'Sin nombre')}</div>
+                    <div class="inbox-client-phone">${escapeHtml(client.customerPhone || '')}</div>
+                </div>
+            `;
+            item.addEventListener('click', () => openOrCreateConversation(client));
+            clientResults.appendChild(item);
+        });
+    }
+
+    async function openOrCreateConversation(client) {
+        showComposePanel(false);
+
+        // Buscar conversación existente de este cliente
+        const existing = messagesState.find(m =>
+            m.customerPhone === client.customerPhone ||
+            m.customerId === client.id
+        );
+        if (existing) {
+            openInboxDetail(existing.id);
+            return;
+        }
+
+        // Crear nuevo hilo en Firestore
+        try {
+            const newDoc = {
+                customerName: client.customerName || 'Cliente',
+                customerPhone: client.customerPhone || '',
+                customerId: client.id || '',
+                subject: 'Mensaje directo',
+                body: '',
+                type: 'admin_direct_message',
+                source: 'admin_panel',
+                status: 'pending',
+                replies: [],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+            const ref = await firebaseDb.collection('mensajes').add(newDoc);
+            // Esperar a que onSnapshot lo incorpore y luego abrir
+            // Como respaldo, abrimos por id inmediatamente
+            setTimeout(() => openInboxDetail(ref.id), 400);
+        } catch (err) {
+            console.error('[Inbox] Error creando conversación:', err);
+        }
+    }
+
+    composeBtn.addEventListener('click', () => {
+        const isVisible = !composePanel.hasAttribute('hidden');
+        showComposePanel(!isVisible);
+    });
+
+    cancelBtn?.addEventListener('click', () => showComposePanel(false));
+
+    clientSearch?.addEventListener('input', () => {
+        renderClientResults(clientSearch.value);
+    });
+})();
 
 if (salesSummaryFilterType) {
     salesSummaryFilterType.addEventListener('change', () => {
@@ -8141,149 +8914,128 @@ if (clientsList) {
     });
 }
 
-if (messagesList) {
-    messagesList.addEventListener('click', async (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) {
+// Delegación de acciones de mensajes en todo el panel de mensajes (sidebar + detail)
+document.addEventListener('click', async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    // FAB chat → ir a mensajes
+    if (target.closest('#adminChatFab')) {
+        const mensajesBtn = document.querySelector('[data-accordion-target="mensajes"]');
+        if (mensajesBtn) mensajesBtn.click();
+        return;
+    }
+
+    const actionButton = target.closest('button[data-message-action]');
+    if (!(actionButton instanceof HTMLButtonElement)) return;
+
+    const action = String(actionButton.dataset.messageAction || '').trim();
+    const messageId = String(actionButton.dataset.messageId || '').trim();
+    if (!action || !messageId) return;
+
+    // Para reply desde el input inline
+    if (action === 'reply') {
+        const inputEl = document.getElementById('inboxReplyInput');
+        const replyBody = inputEl ? inputEl.value.trim() : '';
+        if (!replyBody) { showNotice('Escribe un mensaje primero.', 'warn'); return; }
+        const message = messagesState.find(e => e.id === messageId);
+        if (!message) return;
+        try {
+            const adminIdentity = getCurrentAdminIdentity();
+            await createAdminDirectReply(message, replyBody);
+            await updateMessageRequest(messageId, { status: 'resolved', resolvedAt: firestoreNow(), resolvedBy: adminIdentity, adminAction: 'direct_reply_sent', adminReply: replyBody });
+            showNotice('Respuesta enviada.', 'ok');
+        } catch (err) { showNotice(`Error: ${err.message || 'error inesperado.'}`, 'error'); }
+        return;
+    }
+    const message = messagesState.find((entry) => entry.id === messageId);
+    if (!message) {
+        showNotice('No se encontro la solicitud seleccionada.', 'error');
+        return;
+    }
+
+    if (action === 'copy') {
+        try {
+            await copyTextToClipboard([
+                message.subject,
+                message.body,
+                `Cliente: ${message.customerName}`,
+                `WhatsApp: ${message.customerPhone}`
+            ].join('\n'));
+            showClipboardToast('Solicitud copiada');
+        } catch (error) {
+            showNotice(`No se pudo copiar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
+        }
+        return;
+    }
+
+    if (action === 'whatsapp') {
+        const whatsappMessage = message.type === 'customer_direct_message'
+            ? `Hola ${message.customerName}, vimos tu mensaje en ROAL BURGER y queremos ayudarte.`
+            : `Hola ${message.customerName}, te escribimos desde ROAL BURGER sobre tu solicitud de reinicio de contrasena.`;
+        const whatsappUrl = buildCustomerContactWhatsAppUrl(
+            message.customerName,
+            message.customerPhoneDigits,
+            whatsappMessage
+        );
+        if (!whatsappUrl) {
+            showNotice('La solicitud no tiene un numero de WhatsApp valido.', 'error');
             return;
         }
+        window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+        return;
+    }
 
-        const actionButton = target.closest('button[data-message-action]');
-        if (!(actionButton instanceof HTMLButtonElement)) {
-            return;
+    if (action === 'reset-password') {
+        const confirmed = window.confirm(`Resetear la contrasena del cliente ${message.customerName}? El cliente debera crear una nueva contrasena al volver a entrar.`);
+        if (!confirmed) return;
+        try {
+            const adminIdentity = getCurrentAdminIdentity();
+            await resetClientPasswordByPhone(message.customerPhoneDigits);
+            let copied = false;
+            try { copied = await copyTextToClipboard(buildCustomerPasswordResetClipboardMessage(message)); } catch (_) {}
+            await updateMessageRequest(messageId, { status: 'resolved', resolvedAt: firestoreNow(), resolvedBy: adminIdentity, adminAction: 'password_reset_completed' });
+            if (copied) showClipboardToast('Mensaje de restablecimiento copiado');
+            showNotice('Contrasena reseteada. El cliente ya puede crear una nueva.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo resetear la contrasena: ${error.message || 'error inesperado.'}`, 'error');
         }
+        return;
+    }
 
-        const action = String(actionButton.dataset.messageAction || '').trim();
-        const messageId = String(actionButton.dataset.messageId || '').trim();
-        if (!action || !messageId) {
-            return;
+    if (action === 'resolve') {
+        try {
+            const nextResolved = message.status !== 'resolved';
+            const adminIdentity = getCurrentAdminIdentity();
+            await updateMessageRequest(messageId, {
+                status: nextResolved ? 'resolved' : 'pending',
+                resolvedAt: nextResolved ? firestoreNow() : null,
+                resolvedBy: nextResolved ? adminIdentity : '',
+                adminAction: nextResolved ? 'request_attended' : 'request_reopened'
+            });
+            showNotice(nextResolved ? 'Solicitud marcada como atendida.' : 'Solicitud marcada nuevamente como pendiente.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo actualizar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
         }
+        return;
+    }
 
-        const message = messagesState.find((entry) => entry.id === messageId);
-        if (!message) {
-            showNotice('No se encontro la solicitud seleccionada.', 'error');
-            return;
+    if (action === 'delete') {
+        const confirmed = window.confirm(`Eliminar la solicitud de ${message.customerName}? Esta accion no se puede deshacer.`);
+        if (!confirmed) return;
+        try {
+            if (_inboxActiveId === messageId) {
+                _inboxActiveId = null;
+                const detail = document.getElementById('inboxDetail');
+                if (detail) detail.innerHTML = '<div class="inbox-detail-empty"><span>💬</span><p>Selecciona una conversación</p></div>';
+            }
+            await deleteMessageRequest(messageId);
+            showNotice('Solicitud eliminada correctamente.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo eliminar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
         }
-
-        if (action === 'copy') {
-            try {
-                await copyTextToClipboard([
-                    message.subject,
-                    message.body,
-                    `Cliente: ${message.customerName}`,
-                    `WhatsApp: ${message.customerPhone}`
-                ].join('\n'));
-                showClipboardToast('Solicitud copiada');
-            } catch (error) {
-                showNotice(`No se pudo copiar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
-            }
-            return;
-        }
-
-        if (action === 'whatsapp') {
-            const whatsappMessage = message.type === 'customer_direct_message'
-                ? `Hola ${message.customerName}, vimos tu mensaje en ROAL BURGER y queremos ayudarte.`
-                : `Hola ${message.customerName}, te escribimos desde ROAL BURGER sobre tu solicitud de reinicio de contrasena.`;
-            const whatsappUrl = buildCustomerContactWhatsAppUrl(
-                message.customerName,
-                message.customerPhoneDigits,
-                whatsappMessage
-            );
-
-            if (!whatsappUrl) {
-                showNotice('La solicitud no tiene un numero de WhatsApp valido.', 'error');
-                return;
-            }
-
-            window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-            return;
-        }
-
-        if (action === 'reset-password') {
-            const confirmed = window.confirm(`Resetear la contrasena del cliente ${message.customerName}? El cliente debera crear una nueva contrasena al volver a entrar.`);
-            if (!confirmed) {
-                return;
-            }
-
-            try {
-                const adminIdentity = getCurrentAdminIdentity();
-                await resetClientPasswordByPhone(message.customerPhoneDigits);
-                let copied = false;
-                try {
-                    copied = await copyTextToClipboard(buildCustomerPasswordResetClipboardMessage(message));
-                } catch (clipboardError) {
-                    copied = false;
-                }
-                await updateMessageRequest(messageId, {
-                    status: 'resolved',
-                    resolvedAt: firestoreNow(),
-                    resolvedBy: adminIdentity,
-                    adminAction: 'password_reset_completed'
-                });
-                if (copied) {
-                    showClipboardToast('Mensaje de restablecimiento copiado');
-                }
-                showNotice('Contrasena reseteada. El cliente ya puede crear una nueva.', 'ok');
-            } catch (error) {
-                showNotice(`No se pudo resetear la contrasena: ${error.message || 'error inesperado.'}`, 'error');
-            }
-            return;
-        }
-
-        if (action === 'reply') {
-            const replyBody = window.prompt(`Respuesta para ${message.customerName}:`, 'Hola, te escribimos desde ROAL BURGER para ayudarte con tu solicitud.');
-            if (replyBody === null) {
-                return;
-            }
-
-            try {
-                const adminIdentity = getCurrentAdminIdentity();
-                await createAdminDirectReply(message, replyBody);
-                await updateMessageRequest(messageId, {
-                    status: 'resolved',
-                    resolvedAt: firestoreNow(),
-                    resolvedBy: adminIdentity,
-                    adminAction: 'direct_reply_sent'
-                });
-                showNotice('Respuesta enviada al perfil del cliente.', 'ok');
-            } catch (error) {
-                showNotice(`No se pudo enviar la respuesta: ${error.message || 'error inesperado.'}`, 'error');
-            }
-            return;
-        }
-
-        if (action === 'resolve') {
-            try {
-                const nextResolved = message.status !== 'resolved';
-                const adminIdentity = getCurrentAdminIdentity();
-                await updateMessageRequest(messageId, {
-                    status: nextResolved ? 'resolved' : 'pending',
-                    resolvedAt: nextResolved ? firestoreNow() : null,
-                    resolvedBy: nextResolved ? adminIdentity : '',
-                    adminAction: nextResolved ? 'request_attended' : 'request_reopened'
-                });
-                showNotice(nextResolved ? 'Solicitud marcada como atendida.' : 'Solicitud marcada nuevamente como pendiente.', 'ok');
-            } catch (error) {
-                showNotice(`No se pudo actualizar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
-            }
-            return;
-        }
-
-        if (action === 'delete') {
-            const confirmed = window.confirm(`Eliminar la solicitud de ${message.customerName}? Esta accion no se puede deshacer.`);
-            if (!confirmed) {
-                return;
-            }
-
-            try {
-                await deleteMessageRequest(messageId);
-                showNotice('Solicitud eliminada correctamente.', 'ok');
-            } catch (error) {
-                showNotice(`No se pudo eliminar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
-            }
-        }
-    });
-}
+    }
+});
 
 if (clientEditForm) {
     clientEditForm.addEventListener('submit', async (event) => {

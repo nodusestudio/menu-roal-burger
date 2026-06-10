@@ -135,24 +135,28 @@
 
             <!-- Banner recomendado del día -->
             <section class="home-rec-banner" id="homeRecBanner" aria-label="Recomendado del dia">
-                <div class="home-rec-img-wrap">
-                    <img class="home-rec-img" id="homeRecImg" src="" alt="Recomendado del dia" loading="lazy">
+                <div class="home-rec-top-bar">
+                    <span class="home-rec-kicker">⭐ Recomendado del día</span>
                     <span class="home-rec-discount-badge">-20% HOY</span>
                 </div>
-                <div class="home-rec-body">
-                    <span class="home-rec-kicker">⭐ Recomendado del día</span>
-                    <strong class="home-rec-name" id="homeRecName">...</strong>
-                    <div class="home-rec-price-row">
-                        <div class="home-rec-price-block">
-                            <span class="home-rec-price-tag">Normal</span>
-                            <span class="home-rec-price-orig" id="homeRecOrigPrice"></span>
-                        </div>
-                        <div class="home-rec-price-block home-rec-price-block--hot">
-                            <span class="home-rec-price-tag">Hoy</span>
-                            <span class="home-rec-price" id="homeRecPrice"></span>
-                        </div>
+                <div class="home-rec-content">
+                    <div class="home-rec-img-wrap">
+                        <img class="home-rec-img" id="homeRecImg" src="" alt="Recomendado del dia" loading="lazy">
                     </div>
-                    <button type="button" class="home-rec-btn" id="homeRecBtn">¡Lo Quiero! 🔥</button>
+                    <div class="home-rec-body">
+                        <strong class="home-rec-name" id="homeRecName">...</strong>
+                        <div class="home-rec-price-row">
+                            <div class="home-rec-price-block">
+                                <span class="home-rec-price-tag">Normal</span>
+                                <span class="home-rec-price-orig" id="homeRecOrigPrice"></span>
+                            </div>
+                            <div class="home-rec-price-block home-rec-price-block--hot">
+                                <span class="home-rec-price-tag">Hoy</span>
+                                <span class="home-rec-price" id="homeRecPrice"></span>
+                            </div>
+                        </div>
+                        <button type="button" class="home-rec-btn" id="homeRecBtn">¡Lo Quiero! 🔥</button>
+                    </div>
                 </div>
             </section>
 
@@ -638,6 +642,12 @@ co
         }
         .pub-upgrade-back:hover { color: #eef4ff; }
     </style>
+    <!-- FAB chat público -->
+    <button type="button" id="publicChatFab" class="pub-chat-fab" hidden aria-label="Mis mensajes">
+        <span class="pub-chat-fab-icon">💬</span>
+        <span class="pub-chat-fab-badge" id="publicChatFabBadge" hidden>0</span>
+    </button>
+
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('./sw.js').catch(() => {});

@@ -397,6 +397,7 @@ function setActiveCustomerProfile(profile) {
     syncCustomerProfileRealtimeStreams();
     renderCustomerOrdersPanel();
     renderCustomerMessagesPanel();
+    updatePublicChatFab();
     if (activeCustomerProfile) {
         showWelcomeGreeting(activeCustomerProfile);
     }
@@ -404,12 +405,14 @@ function setActiveCustomerProfile(profile) {
 
 function clearActiveCustomerProfile() {
     activeCustomerProfile = null;
+    _chatFabSeenCount = 0;
     persistCustomerProfile(null);
     updateCustomerSessionUI();
     syncCustomerProfileRealtimeStreams();
     customerProfileOrdersState = [];
     customerProfileMessagesState = [];
     renderCustomerOrdersPanel();
+    updatePublicChatFab();
     renderCustomerMessagesPanel();
 }
 
@@ -571,16 +574,70 @@ function renderCustomerOrdersPanel() {
         .join('');
 }
 
+let _chatFabSeenCount = 0;
+
+function updatePublicChatFab() {
+    const fab = document.getElementById('publicChatFab');
+    const badge = document.getElementById('publicChatFabBadge');
+    if (!fab) return;
+
+    if (!activeCustomerProfile) {
+        fab.hidden = true;
+        return;
+    }
+
+    fab.hidden = false;
+
+    // Contar mensajes del restaurante que llegaron después del último "visto"
+    const adminMessages = customerProfileMessagesState.filter(m =>
+        String(m.type || '') === 'admin_direct_reply' ||
+        (String(m.source || '') === 'admin_panel' && String(m.type || '') !== 'customer_direct_message')
+    );
+    const unread = adminMessages.length - _chatFabSeenCount;
+
+    if (badge) {
+        if (unread > 0) {
+            badge.textContent = unread;
+            badge.hidden = false;
+        } else {
+            badge.hidden = true;
+        }
+    }
+}
+
+function openPublicChatTab() {
+    // Marcar como vistos
+    _chatFabSeenCount = customerProfileMessagesState.filter(m =>
+        String(m.type || '') === 'admin_direct_reply' ||
+        (String(m.source || '') === 'admin_panel' && String(m.type || '') !== 'customer_direct_message')
+    ).length;
+    updatePublicChatFab();
+
+    // Abrir modal de perfil si no está abierto
+    const existingModal = document.getElementById('customerAuthModal');
+    if (!existingModal) {
+        openCustomerAuthModal();
+        // Esperar a que el modal se construya y luego activar el tab de mensajes
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => activateCustomerProfileTab('mensajes'));
+        });
+    } else {
+        activateCustomerProfileTab('mensajes');
+    }
+}
+
 function renderCustomerMessagesPanel() {
+    updatePublicChatFab();
+
     if (!customerAuthUI?.messagesThread) {
         return;
     }
 
     if (!customerProfileMessagesState.length) {
         customerAuthUI.messagesThread.innerHTML = `
-            <div class="customer-profile-empty-card">
-                <strong>No tienes mensajes aun.</strong>
-                <p>Escribe aqui si necesitas ayuda o quieres comunicarte con el restaurante.</p>
+            <div class="customer-messages-empty">
+                <span>💬</span>
+                <p>Aún no hay mensajes.<br>Escríbenos y te responderemos aquí.</p>
             </div>
         `;
         return;
@@ -589,7 +646,7 @@ function renderCustomerMessagesPanel() {
     customerAuthUI.messagesThread.innerHTML = customerProfileMessagesState
         .map((message) => {
             const isAdminReply = String(message.type || '').trim() === 'admin_direct_reply' || String(message.source || '').trim() === 'admin_panel';
-            const authorLabel = isAdminReply ? 'ROAL BURGER' : 'Tu';
+            const authorLabel = isAdminReply ? 'ROAL BURGER' : 'Tú';
             return `
                 <article class="customer-message-bubble ${isAdminReply ? 'is-admin' : 'is-customer'}">
                     <strong>${escapeHtml(authorLabel)}</strong>
@@ -2505,18 +2562,20 @@ function openCustomerAuthModal() {
                     <div class="customer-order-history-list" id="customerOrdersHistory"></div>
                 </div>
                 <div class="customer-profile-panel" data-profile-panel="mensajes" hidden>
-                    <div class="customer-profile-section-title">
-                        <strong>Mensajes con el restaurante</strong>
-                        <span>Escribenos directamente y veras aqui las respuestas del admin.</span>
-                    </div>
-                    <div class="customer-messages-thread" id="customerMessagesThread"></div>
-                    <label class="support-field customer-message-composer">
-                        <span>Enviar mensaje</span>
-                        <textarea id="customerMessageInput" rows="4" placeholder="Escribe tu mensaje para el restaurante"></textarea>
-                    </label>
-                    <div class="support-actions split customer-message-actions">
-                        <span class="support-field-hint" id="customerMessageFeedback"></span>
-                        <button type="button" class="support-send-btn" id="customerSendMessageButton">Enviar</button>
+                    <div class="customer-chat-panel">
+                        <div class="customer-chat-header">
+                            <div class="customer-chat-avatar">R</div>
+                            <div class="customer-chat-header-info">
+                                <div class="customer-chat-header-name">ROAL BURGER</div>
+                                <div class="customer-chat-header-status">Respondemos por aquí y por WhatsApp</div>
+                            </div>
+                        </div>
+                        <div class="customer-messages-thread" id="customerMessagesThread"></div>
+                        <p class="customer-chat-feedback" id="customerMessageFeedback"></p>
+                        <div class="customer-chat-reply-bar">
+                            <textarea class="customer-chat-input" id="customerMessageInput" rows="1" placeholder="Escribe un mensaje…" maxlength="500"></textarea>
+                            <button type="button" class="customer-chat-send-btn" id="customerSendMessageButton" title="Enviar">➤</button>
+                        </div>
                     </div>
                 </div>
                 <p class="support-feedback" id="customerAuthFeedback"></p>
@@ -2704,6 +2763,7 @@ const MANUAL_IMAGE_BASE_PRICES = {
     './burgerpremium/burgerranchera.png': 30000,
     './burgerpremium/burgertriplete.png': 29000,
     './burgerclasicas/burgersuper.png': 19000,
+    './burgerclasicas/burgernormal.png': 17000,
     './perroscalientes/perroespecial.png': 15000,
     './perroscalientes/perronormal.png': 12000,
     './perroscalientes/perrosuper.png': 16000,
@@ -3039,6 +3099,7 @@ function syncBodyScrollLock() {
 }
 
 function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
+    const rawStatic = Number(orderOptions.staticPrice);
     return {
         type: String(orderOptions.type || 'solo'),
         drink: String(orderOptions.drink || '').trim(),
@@ -3049,7 +3110,8 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         imagePath: normalizeImageAssetPath(orderOptions.imagePath || ''),
         recommendedDiscount: orderOptions.recommendedDiscount === true,
         discountRate: Number.isFinite(Number(orderOptions.discountRate)) ? Math.max(0, Math.min(1, Number(orderOptions.discountRate))) : 0,
-        allowClosedOrder: orderOptions.allowClosedOrder === true
+        allowClosedOrder: orderOptions.allowClosedOrder === true,
+        staticPrice: Number.isFinite(rawStatic) && rawStatic > 0 ? rawStatic : null
     };
 }
 
@@ -3204,6 +3266,28 @@ function formatCurrency(value) {
     return `$ ${Number(value || 0).toLocaleString('es-CO')}`;
 }
 
+// Extrae el precio numérico de un objeto producto de forma segura.
+// Usa parseLocalizedPrice para manejar strings colombianos ("17.000", "17,000").
+// Combos con papas: usa COMBOS_CON_PAPAS_IMAGE_PRICES por imagen (precio 1 persona).
+function resolveProductDisplayPrice(product) {
+    const imgPath = normalizeImageAssetPath(product.image_url || product.imageUrl || '');
+    if (imgPath) {
+        const imgKey = imgPath.toLowerCase();
+        for (const [k, v] of Object.entries(COMBOS_CON_PAPAS_IMAGE_PRICES)) {
+            if (normalizeImageAssetPath(k).toLowerCase() === imgKey) {
+                return v[1] || 0;
+            }
+        }
+        const manualKey = Object.keys(MANUAL_IMAGE_BASE_PRICES).find(
+            (k) => normalizeImageAssetPath(k).toLowerCase() === imgKey
+        );
+        if (manualKey) return MANUAL_IMAGE_BASE_PRICES[manualKey];
+    }
+
+    const raw = product.precio ?? product.price ?? null;
+    return raw !== null ? parseLocalizedPrice(raw) : 0;
+}
+
 function findLatestProductPrice(productName, categoryName) {
     const normalizedProductName = normalizeCategoryKey(productName);
     const normalizedCategoryName = normalizeCategoryKey(categoryName);
@@ -3241,6 +3325,24 @@ function resolveStaticOptionPrice(productName, categoryName) {
         const options = getBebidasYAdicionalesOptions(productName);
         const matched = options.find((item) => normalizedProductName.includes(normalizeCategoryKey(item.label)));
         return matched ? parseLocalizedPrice(matched.price) : null;
+    }
+
+    if (normalizedCategoryName.includes('burger clasicas')) {
+        const options = getBurgerClasicasOptions(productName);
+        if (options.length) {
+            const matched = options.find((item) => normalizedProductName.includes(normalizeCategoryKey(item.label)));
+            if (matched) return parseLocalizedPrice(matched.price);
+        }
+        return null;
+    }
+
+    if (normalizedCategoryName.includes('salchipapa')) {
+        const options = getSalchipapaOptions(productName);
+        if (options.length) {
+            const matched = options.find((item) => normalizedProductName.includes(normalizeCategoryKey(item.label)));
+            if (matched) return parseLocalizedPrice(matched.price);
+        }
+        return null;
     }
 
     return null;
@@ -3289,6 +3391,24 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
         return comboPrice === undefined ? null : Number(comboPrice);
     }
 
+    if (normalizedOptions.type === 'combo-meal' && normalizedOptions.peopleCount > 0) {
+        const normName = normalizeAssetLookup(normalizedProductName);
+        let comboKey = null;
+        if (normName.includes('papuda')) {
+            comboKey = './combosconpapasybebidas/comboburgerpapuda.png';
+        } else if (normName.includes('super')) {
+            comboKey = './combosconpapasybebidas/comboburgersuper.png';
+        } else if (normName.includes('perro')) {
+            comboKey = './combosconpapasybebidas/comboperronormal.png';
+        } else if (normName.includes('burger') || normName.includes('normal')) {
+            comboKey = './combosconpapasybebidas/comboburgernormal.png';
+        }
+        if (comboKey) {
+            const comboPrice = COMBOS_CON_PAPAS_IMAGE_PRICES[comboKey][normalizedOptions.peopleCount];
+            if (comboPrice !== undefined) return Number(comboPrice);
+        }
+    }
+
     if (imagePath === './burgerclasicas/burgernormal.png') {
         if (normalizedProductName.includes('pequena') && normalizedProductName.includes('2 carne')) {
             return 18000;
@@ -3318,7 +3438,6 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
 
 function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 'solo' }) {
     const normalizedOptions = normalizeOrderOptions(orderOptions);
-    const manualImagePrice = resolveManualImagePrice(productName, normalizedOptions);
     const applyDiscount = (price) => {
         if (!normalizedOptions.recommendedDiscount) {
             return price;
@@ -3327,6 +3446,12 @@ function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 
         const discountRate = normalizedOptions.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE;
         return Math.round(Number(price || 0) * (1 - discountRate));
     };
+
+    if (normalizedOptions.staticPrice !== null) {
+        return applyDiscount(normalizedOptions.staticPrice);
+    }
+
+    const manualImagePrice = resolveManualImagePrice(productName, normalizedOptions);
 
     if (manualImagePrice !== null && manualImagePrice !== undefined) {
         const resolvedPrice = normalizedOptions.type === 'combo' ? manualImagePrice + COMBO_EXTRA_PRICE : manualImagePrice;
@@ -4611,6 +4736,9 @@ function renderCartUI() {
 
         const title = document.createElement('strong');
         title.textContent = item.productName;
+        title.className = 'cart-item-title-editable';
+        title.title = 'Toca para editar';
+        title.addEventListener('click', () => openCartItemEditor(item.itemKey));
 
         const category = document.createElement('p');
         category.className = 'cart-item-category';
@@ -4630,9 +4758,21 @@ function renderCartUI() {
             discount.textContent = `Descuento aplicado: ${formatCurrency(discountAmount)}`;
         }
 
+        const existingComment = String(item.orderOptions?.comment || '').trim();
+        const commentBadge = document.createElement('p');
+        commentBadge.className = 'cart-item-comment-badge';
+        if (existingComment) {
+            commentBadge.textContent = `💬 ${existingComment}`;
+        } else {
+            commentBadge.textContent = '✏️ Agregar nota…';
+            commentBadge.classList.add('cart-item-comment-empty');
+        }
+        commentBadge.addEventListener('click', () => openCartItemEditor(item.itemKey));
+
         info.appendChild(title);
         info.appendChild(category);
         info.appendChild(option);
+        info.appendChild(commentBadge);
         info.appendChild(price);
         if (discountAmount > 0) {
             info.appendChild(discount);
@@ -4685,6 +4825,167 @@ function renderCartUI() {
     cartUI.clear.disabled = false;
     syncOrderingAvailabilityUI();
 }
+
+/* ===== EDITOR DE ITEM DEL CARRITO ===== */
+
+function _getCartItemProductData(productName) {
+    const baseName = String(productName || '').split('+')[0].trim().toLowerCase();
+    return (latestProducts || []).find(p =>
+        String(p.nombre || p.name || '').trim().toLowerCase() === baseName
+    ) || null;
+}
+
+function openCartItemEditor(itemKey) {
+    const item = shoppingCart.find(e => e.itemKey === itemKey);
+    if (!item) return;
+
+    const productData = _getCartItemProductData(item.productName);
+    const prodAcomp = productData && productData.acompanantes;
+    const hasAcomp = prodAcomp && prodAcomp.activo && Array.isArray(prodAcomp.ids) && prodAcomp.ids.length > 0;
+
+    // Obtener opciones de acompañantes disponibles para este producto
+    let acompOptions = [];
+    if (hasAcomp) {
+        const cfg = publicUpgradesConfig || null;
+        if (cfg && Array.isArray(cfg.opciones)) {
+            acompOptions = cfg.opciones.filter(o => o.activo && prodAcomp.ids.includes(o.id));
+        }
+    }
+
+    // Eliminar sheet previo si existe
+    const existing = document.getElementById('cartItemEditorSheet');
+    if (existing) existing.remove();
+
+    const currentComment = String(item.orderOptions?.comment || '').trim();
+
+    // Detectar acompañante actualmente seleccionado (si el nombre contiene "+")
+    const currentUpgradeNote = item.productName.includes('+')
+        ? item.productName.split('+').slice(1).join('+').trim()
+        : '';
+
+    const sheet = document.createElement('div');
+    sheet.id = 'cartItemEditorSheet';
+    sheet.className = 'cie-overlay';
+    sheet.innerHTML = `
+        <div class="cie-sheet">
+            <div class="cie-header">
+                <span class="cie-product-name">${String(item.productName || '').split('+')[0].trim()}</span>
+                <button type="button" class="cie-close-btn" id="cieCloseBtn">✕</button>
+            </div>
+            <div class="cie-body">
+                ${acompOptions.length > 0 ? `
+                <div class="cie-section">
+                    <p class="cie-section-label">Acompañante</p>
+                    <div class="cie-acomp-list" id="cieAcompList">
+                        <label class="cie-acomp-item ${!currentUpgradeNote ? 'is-selected' : ''}">
+                            <input type="radio" name="cieAcomp" value="" ${!currentUpgradeNote ? 'checked' : ''}>
+                            <span class="cie-acomp-name">Sin acompañante</span>
+                            <span class="cie-acomp-price">—</span>
+                        </label>
+                        ${acompOptions.map(o => {
+                            const sel = currentUpgradeNote && currentUpgradeNote.toLowerCase().includes(String(o.nombre || '').toLowerCase());
+                            return `<label class="cie-acomp-item ${sel ? 'is-selected' : ''}">
+                                <input type="radio" name="cieAcomp" value="${o.id}" data-nombre="${o.nombre}" data-precio="${o.precio || 0}" ${sel ? 'checked' : ''}>
+                                <span class="cie-acomp-name">${o.nombre}</span>
+                                <span class="cie-acomp-price">${Number(o.precio || 0) > 0 ? '+' + formatCurrency(Number(o.precio)) : 'Incluido'}</span>
+                            </label>`;
+                        }).join('')}
+                    </div>
+                </div>` : ''}
+                <div class="cie-section">
+                    <p class="cie-section-label">Nota para cocina <span style="font-weight:400;opacity:0.6;">(opcional)</span></p>
+                    <textarea id="cieCommentTA" class="cie-comment-ta" maxlength="120" placeholder="Ej: sin cebolla, extra picante, bien cocido…">${currentComment}</textarea>
+                    <p class="cie-char-count" id="cieCharCount">${currentComment.length}/120</p>
+                </div>
+            </div>
+            <div class="cie-footer">
+                <button type="button" class="cie-save-btn" id="cieSaveBtn">Guardar cambios</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(sheet);
+    requestAnimationFrame(() => sheet.classList.add('is-open'));
+
+    // Highlight radio seleccionado al cambiar
+    sheet.querySelectorAll('input[name="cieAcomp"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            sheet.querySelectorAll('.cie-acomp-item').forEach(el => el.classList.remove('is-selected'));
+            radio.closest('.cie-acomp-item').classList.add('is-selected');
+        });
+    });
+
+    // Contador de caracteres
+    const ta = sheet.querySelector('#cieCommentTA');
+    const charCount = sheet.querySelector('#cieCharCount');
+    if (ta && charCount) {
+        ta.addEventListener('input', () => { charCount.textContent = `${ta.value.length}/120`; });
+    }
+
+    // Cerrar
+    const closeSheet = () => {
+        sheet.classList.remove('is-open');
+        setTimeout(() => sheet.remove(), 280);
+    };
+    sheet.querySelector('#cieCloseBtn').addEventListener('click', closeSheet);
+    sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
+
+    // Guardar
+    sheet.querySelector('#cieSaveBtn').addEventListener('click', () => {
+        const newComment = ta ? ta.value.trim() : '';
+        const selectedRadio = sheet.querySelector('input[name="cieAcomp"]:checked');
+        const newAcompId = selectedRadio ? selectedRadio.value : '';
+        const newAcompNombre = selectedRadio ? (selectedRadio.dataset.nombre || '') : '';
+        const newAcompPrecio = selectedRadio ? Number(selectedRadio.dataset.precio || 0) : 0;
+
+        _saveCartItemEdit(itemKey, newComment, newAcompId, newAcompNombre, newAcompPrecio);
+        closeSheet();
+    });
+}
+
+function _saveCartItemEdit(itemKey, newComment, newAcompId, newAcompNombre, newAcompPrecio) {
+    const idx = shoppingCart.findIndex(e => e.itemKey === itemKey);
+    if (idx === -1) return;
+    const item = shoppingCart[idx];
+    const savedQty = Number(item.quantity || 1);
+
+    // Reconstruir nombre base (sin acompañante previo)
+    const baseName = String(item.productName || '').split('+')[0].trim();
+    const newProductName = newAcompId && newAcompNombre
+        ? `${baseName} + ${newAcompNombre}`
+        : baseName;
+
+    const newOptions = {
+        ...item.orderOptions,
+        comment: newComment,
+        upgradeHandled: Boolean(newAcompId),
+        upgradeExtra: newAcompPrecio
+    };
+
+    const baseUnitPrice = resolveCartUnitPrice(baseName, item.categoryName, newOptions);
+    const newUnitPrice = baseUnitPrice + newAcompPrecio;
+    const newKey = getCartItemKey(newProductName, item.categoryName, newOptions);
+
+    // Verificar si ya existe un item con la misma clave (evitar duplicado)
+    const existingDup = shoppingCart.find((e, i) => e.itemKey === newKey && i !== idx);
+    if (existingDup) {
+        existingDup.quantity = Number(existingDup.quantity || 0) + savedQty;
+        shoppingCart.splice(idx, 1);
+    } else {
+        shoppingCart[idx] = {
+            ...item,
+            itemKey: newKey,
+            productName: newProductName,
+            orderOptions: newOptions,
+            unitPrice: newUnitPrice
+        };
+    }
+
+    saveCartState();
+    renderCartUI();
+}
+
+/* ===== FIN EDITOR DE ITEM DEL CARRITO ===== */
 
 function initCartUI() {
     if (cartUI) {
@@ -5116,6 +5417,7 @@ function openImageOptionModal(productName, categoryName, buttonId, extraOptions 
             addItemToCart(`${productName} - ${optionItem.label}`, categoryName, {
                 ...extraOptions,
                 type: 'solo',
+                staticPrice: parseLocalizedPrice(optionItem.price),
                 comment: commentField.textarea.value
             }, buttonId);
         });
@@ -5992,12 +6294,21 @@ function openCombosConPapasModal(productName, categoryName, buttonId, extraOptio
                 trackProductInterest(`${productName} - ${count} personas - ${drinkValues.join(', ')}`, buttonId);
             }
 
+            const normName = normalizeAssetLookup(normalizeCategoryKey(productName));
+            let comboKey = './combosconpapasybebidas/comboburgernormal.png';
+            if (normName.includes('papuda')) comboKey = './combosconpapasybebidas/comboburgerpapuda.png';
+            else if (normName.includes('super')) comboKey = './combosconpapasybebidas/comboburgersuper.png';
+            else if (normName.includes('perro')) comboKey = './combosconpapasybebidas/comboperronormal.png';
+            const comboPrices = COMBOS_CON_PAPAS_IMAGE_PRICES[comboKey];
+            const comboStaticPrice = comboPrices && comboPrices[count] !== undefined ? comboPrices[count] : null;
+
             closeComboChoiceModal();
             addItemToCart(productName, categoryName, {
                 ...extraOptions,
                 type: 'combo-meal',
                 peopleCount: count,
                 drinks: drinkValues,
+                staticPrice: comboStaticPrice,
                 comment: commentField.textarea.value
             }, buttonId);
         };
@@ -6722,7 +7033,7 @@ function renderDynamicCategorySections() {
     const grouped = new Map();
     latestProducts.forEach((product) => {
         const nombre = product.nombre || product.name || 'Producto';
-        const precio = Number(product.precio ?? product.price ?? 0);
+        const precio = resolveProductDisplayPrice(product);
         const categoria = product.categoria || product.category || '';
         if (shouldHideProductByName(nombre)) {
             return;
@@ -6967,7 +7278,7 @@ function renderDynamicCategorySections() {
                     name.style.fontWeight = '600';
 
                     const price = document.createElement('div');
-                    price.textContent = `$ ${Number(product.precio).toLocaleString('es-CO')}`;
+                    price.textContent = `$ ${resolveProductDisplayPrice(product).toLocaleString('es-CO')}`;
                     price.style.color = 'var(--brand-secondary, #ffb27a)';
                     price.style.fontWeight = '700';
 
@@ -7630,7 +7941,7 @@ function getCategoryProducts(category, options = {}) {
     return latestProducts
         .map((product) => {
             const nombre = product.nombre || product.name || 'Producto';
-            const precio = Number(product.precio ?? product.price ?? 0);
+            const precio = resolveProductDisplayPrice(product);
             const estado = String(product.estado || (product.paused ? 'paused' : 'active')).toLowerCase();
             const categoria = String(product.categoria || product.category || '').trim();
             return {
@@ -7921,6 +8232,11 @@ function applyBrandingConfig(configRaw) {
     const footer = document.querySelector('.footer p');
     if (footer) {
         footer.textContent = `${config.restaurantName} - ${config.slogan}`;
+    }
+
+    const carouselTitleEl = document.querySelector('.home-section-title');
+    if (carouselTitleEl && configRaw && configRaw.carousel_title) {
+        carouselTitleEl.textContent = configRaw.carousel_title;
     }
 
     const banner = ensureBrandBanner();
@@ -8265,7 +8581,7 @@ function getRecommendedFallbackProduct() {
         nombre: RECOMMENDED_DAY_FALLBACK_PRODUCT.nombre,
         categoria: RECOMMENDED_DAY_FALLBACK_PRODUCT.categoria,
         image_url: normalizeImageAssetPath(RECOMMENDED_DAY_FALLBACK_PRODUCT.image_url),
-        precio: raw ? Number(raw.precio || raw.price || 0) : 0,
+        precio: raw ? resolveProductDisplayPrice(raw) : parseLocalizedPrice(RECOMMENDED_DAY_FALLBACK_PRODUCT.precio ?? 0),
         estado: 'active'
     };
 }
@@ -8281,7 +8597,7 @@ function getEligibleRecommendedProducts() {
                 nombre,
                 categoria,
                 estado,
-                precio: Number(product.precio || product.price || 0),
+                precio: resolveProductDisplayPrice(product),
                 image_url: normalizeImageAssetPath(resolveProductImage(product))
             };
         })
@@ -8340,7 +8656,7 @@ function getRecommendedProductOfDay(now = new Date()) {
                 nombre: String(overrideRaw.nombre || overrideRaw.name || '').trim(),
                 categoria: String(overrideRaw.categoria || overrideRaw.category || '').trim(),
                 estado: String(overrideRaw.estado || (overrideRaw.paused ? 'paused' : 'active')).toLowerCase(),
-                precio: Number(overrideRaw.precio || overrideRaw.price || 0),
+                precio: resolveProductDisplayPrice(overrideRaw),
                 image_url: normalizeImageAssetPath(resolveProductImage(overrideRaw))
             };
         }
@@ -8440,6 +8756,10 @@ function updatePromoModalContent() {
 function setPublicTopbarVisible(visible) {
     const topbar = document.querySelector('.public-topbar');
     if (topbar) topbar.style.display = visible ? '' : 'none';
+    const chatFab = document.getElementById('publicChatFab');
+    if (chatFab && activeCustomerProfile) {
+        chatFab.style.display = visible ? '' : 'none';
+    }
 }
 
 function showHomeScreen() {
@@ -8464,22 +8784,21 @@ function renderHomeRecBanner() {
     if (!img) return;
 
     const product = getRecommendedProductOfDay();
-    if (!product) return;
+    // Si no hay datos aún pero el banner ya tiene contenido, no lo borrar
+    if (!product) {
+        if (name && name.textContent && name.textContent !== '...') return;
+        return;
+    }
 
     img.src = String(product.image_url || product.imageUrl || '');
     img.alt = String(product.nombre || product.name || 'Recomendado del dia');
     if (name)  name.textContent  = String(product.nombre || product.name || 'Recomendado del dia');
     const origPriceEl = document.getElementById('homeRecOrigPrice');
     if (price || origPriceEl) {
-        const raw = Number(product.precio || product.price || 0);
-        if (raw > 0) {
-            const discounted = Math.round(raw * 0.80);
-            if (price) price.textContent = `$${discounted.toLocaleString('es-CO')}`;
-            if (origPriceEl) origPriceEl.textContent = `$${raw.toLocaleString('es-CO')}`;
-        } else {
-            if (price) price.textContent = '';
-            if (origPriceEl) origPriceEl.textContent = '';
-        }
+        const raw = resolveProductDisplayPrice(product);
+        const discounted = Math.round(raw * 0.80);
+        if (price) price.textContent = `$${discounted.toLocaleString('es-CO')}`;
+        if (origPriceEl) origPriceEl.textContent = raw > discounted ? `$${raw.toLocaleString('es-CO')}` : '';
     }
     if (btn) {
         btn.onclick = () => {
@@ -8573,7 +8892,10 @@ function renderHomeCategoryCards() {
 
     const categories = activeCategoryMeta;
     if (!categories || categories.length === 0) {
-        grid.innerHTML = '<p class="home-loading-msg">Cargando categorias...</p>';
+        // Solo mostrar "Cargando" si todavía no hay cards renderizadas
+        if (!grid.querySelector('.home-cat-card')) {
+            grid.innerHTML = '<p class="home-loading-msg">Cargando categorias...</p>';
+        }
         return;
     }
 
@@ -8626,7 +8948,7 @@ function openCategoryDetail(cat) {
         grid.innerHTML = '';
         products.forEach((product, idx) => {
             const nombre = String(product.nombre || product.name || 'Producto').trim();
-            const precio = Number(product.precio || product.price || 0);
+            const precio = resolveProductDisplayPrice(product);
             const imgSrc = String(product.image_url || product.imageUrl || '');
             const btnId  = `btn-cds-${idx}`;
 
@@ -8651,15 +8973,11 @@ function openCategoryDetail(cat) {
             nameEl.className = 'cds-product-name';
             nameEl.textContent = nombre;
 
-            if (precio > 0) {
-                const priceEl = document.createElement('span');
-                priceEl.className = 'cds-product-price';
-                priceEl.textContent = `$${precio.toLocaleString('es-CO')}`;
-                info.appendChild(nameEl);
-                info.appendChild(priceEl);
-            } else {
-                info.appendChild(nameEl);
-            }
+            const priceEl = document.createElement('span');
+            priceEl.className = 'cds-product-price';
+            priceEl.textContent = `$${precio.toLocaleString('es-CO')}`;
+            info.appendChild(nameEl);
+            info.appendChild(priceEl);
 
             const orderBtn = document.createElement('button');
             orderBtn.type = 'button';
@@ -8814,10 +9132,10 @@ function renderSearchResults(query) {
         name.className = 'cds-product-name';
         name.textContent = String(p.nombre || '');
 
-        const raw = Number(p.precio || p.price || 0);
+        const raw = resolveProductDisplayPrice(p);
         const price = document.createElement('span');
         price.className = 'cds-product-price';
-        price.textContent = raw > 0 ? '$' + raw.toLocaleString('es-CO') : '';
+        price.textContent = '$' + raw.toLocaleString('es-CO');
 
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -9102,6 +9420,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('has-auth-nav');
     setActiveCustomerProfile(loadStoredCustomerProfile());
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
+    document.getElementById('publicChatFab')?.addEventListener('click', openPublicChatTab);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
 
     // Barra de navegación inferior — acciones
@@ -9187,5 +9506,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === e.currentTarget) closePublicUpgradeSheet();
     });
     document.getElementById('publicUpgradeCloseBtn')?.addEventListener('click', closePublicUpgradeSheet);
+
+    // Re-render del home cuando el tab vuelve a primer plano tras inactividad
+    let _lastHiddenAt = 0;
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            _lastHiddenAt = Date.now();
+        } else if (document.visibilityState === 'visible') {
+            const hiddenMs = Date.now() - _lastHiddenAt;
+            // Si estuvo oculto más de 30 segundos, forzar re-render del home
+            if (_lastHiddenAt > 0 && hiddenMs > 30000) {
+                const homeScreen = document.getElementById('homeScreen');
+                if (homeScreen && !homeScreen.hidden && homeScreen.style.display !== 'none') {
+                    renderHomeScreen();
+                }
+            }
+        }
+    });
 });
 

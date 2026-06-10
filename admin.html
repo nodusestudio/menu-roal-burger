@@ -5731,125 +5731,465 @@
             border-bottom-right-radius: 14px;
         }
 
-        .messages-grid {
+        /* ===== INBOX / MENSAJES ESTILO DM ===== */
+        .inbox-layout {
             display: grid;
-            gap: 16px;
+            grid-template-columns: 300px 1fr;
+            height: calc(100vh - 160px);
+            min-height: 500px;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(15, 8, 2, 0.65);
         }
 
-        .messages-list {
-            display: grid;
-            gap: 14px;
-        }
-
-        .message-request-card {
-            border: 1px solid rgba(255, 255, 255, 0.09);
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.04);
-            padding: 16px;
-            display: grid;
-            gap: 14px;
-        }
-
-        .message-request-card.is-resolved {
-            opacity: 0.74;
-            border-color: rgba(67, 192, 156, 0.28);
-        }
-
-        .message-request-head {
+        /* Sidebar izquierdo */
+        .inbox-sidebar {
             display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 12px;
-            flex-wrap: wrap;
+            flex-direction: column;
+            border-right: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.03);
+            overflow: hidden;
         }
-
-        .message-request-head strong {
-            display: block;
-            font-size: 1rem;
-            color: #fff;
-        }
-
-        .message-request-head span,
-        .message-request-meta,
-        .message-request-body p {
-            color: var(--admin-muted);
-        }
-
-        .message-request-meta {
+        .inbox-sidebar-head {
             display: flex;
-            flex-wrap: wrap;
-            gap: 8px 14px;
-            font-size: 0.86rem;
-        }
-
-        .message-request-body {
-            display: grid;
-            gap: 8px;
-        }
-
-        .message-request-body p {
-            margin: 0;
-            white-space: pre-line;
-            line-height: 1.5;
-        }
-
-        .message-status-chip {
-            display: inline-flex;
             align-items: center;
-            justify-content: center;
-            min-height: 34px;
-            padding: 0 12px;
+            gap: 8px;
+            padding: 16px 14px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        .inbox-sidebar-title {
+            flex: 1;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.00rem;
+            font-weight: 700;
+            color: #eef4ff;
+        }
+        .inbox-badge {
+            background: rgba(255,122,26,0.25);
+            color: #ff9a50;
+            font-size: 0.70rem;
+            font-weight: 700;
+            padding: 2px 8px;
             border-radius: 999px;
-            font-size: 0.74rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: rgba(255, 255, 255, 0.08);
-            color: #fff;
         }
-
-        .message-status-chip.pending {
-            background: rgba(255, 123, 69, 0.18);
-            border-color: rgba(255, 123, 69, 0.4);
-            color: #ffd2bd;
+        .inbox-compose-btn {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            background: rgba(196,79,0,0.20);
+            border: 1px solid rgba(196,79,0,0.35);
+            color: #ff9a50;
+            font-size: 0.80rem;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            transition: background 0.18s;
         }
-
-        .message-status-chip.resolved {
-            background: rgba(67, 192, 156, 0.18);
-            border-color: rgba(67, 192, 156, 0.4);
-            color: #c8ffef;
+        .inbox-compose-btn:hover { background: rgba(196,79,0,0.38); }
+        .inbox-compose-panel {
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            background: rgba(10,6,2,0.40);
+            padding: 10px 10px 6px;
         }
-
-        .message-request-actions {
+        .inbox-compose-header {
             display: flex;
-            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: rgba(200,180,150,0.80);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .inbox-compose-close {
+            background: transparent;
+            border: none;
+            color: rgba(200,180,150,0.60);
+            font-size: 0.78rem;
+            cursor: pointer;
+            padding: 2px 6px;
+        }
+        .inbox-compose-close:hover { color: #ff9a50; }
+        .inbox-client-results {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 6px;
+        }
+        .inbox-client-result-item {
+            display: flex;
+            align-items: center;
             gap: 10px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.14s;
+        }
+        .inbox-client-result-item:hover { background: rgba(255,255,255,0.07); }
+        .inbox-client-avatar {
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b2a1a, #6b3f1e);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #ff9a50;
+            flex-shrink: 0;
+        }
+        .inbox-client-info { flex: 1; min-width: 0; }
+        .inbox-client-name {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #eef4ff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .inbox-client-phone {
+            font-size: 0.72rem;
+            color: rgba(200,180,150,0.55);
+        }
+        .inbox-search-wrap {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .inbox-search {
+            width: 100%;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 10px;
+            padding: 7px 12px;
+            color: #eef4ff;
+            font-size: 0.80rem;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .inbox-search::placeholder { color: rgba(200,180,160,0.40); }
+        .inbox-thread-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+        .inbox-empty {
+            padding: 24px 14px;
+            font-size: 0.80rem;
+            color: var(--admin-muted);
+            text-align: center;
         }
 
-        .message-request-btn {
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: rgba(255, 255, 255, 0.06);
-            color: #fff;
-            border-radius: 12px;
+        /* Hilo de conversación en la lista */
+        .inbox-thread-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
             padding: 10px 14px;
             cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            transition: background 0.12s;
+            position: relative;
+        }
+        .inbox-thread-item:hover,
+        .inbox-thread-item.is-active {
+            background: rgba(255,122,26,0.08);
+        }
+        .inbox-thread-item.is-active {
+            border-left: 3px solid #ff7a1a;
+        }
+        .inbox-thread-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(255,122,26,0.30), rgba(255,60,0,0.20));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.00rem;
+            flex-shrink: 0;
+            font-weight: 700;
+            color: #ff9a50;
+            text-transform: uppercase;
+        }
+        .inbox-thread-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .inbox-thread-name {
+            font-family: 'Space Grotesk', sans-serif;
             font-size: 0.82rem;
+            font-weight: 600;
+            color: #eef4ff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .inbox-thread-preview {
+            font-size: 0.72rem;
+            color: var(--admin-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+        .inbox-thread-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        .inbox-thread-time {
+            font-size: 0.62rem;
+            color: var(--admin-muted);
+        }
+        .inbox-thread-unread {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff7a1a;
+        }
+        .inbox-thread-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(67,192,156,0.70);
         }
 
-        .message-request-btn.primary {
-            background: rgba(47, 111, 221, 0.2);
-            border-color: rgba(95, 149, 234, 0.42);
+        /* Panel derecho — detalle */
+        .inbox-detail {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .inbox-detail-empty {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            color: var(--admin-muted);
+            font-size: 0.85rem;
+        }
+        .inbox-detail-empty span { font-size: 2.5rem; opacity: 0.3; }
+
+        /* Header del detalle */
+        .inbox-detail-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.03);
+            flex-shrink: 0;
+        }
+        .inbox-detail-avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(255,122,26,0.30), rgba(255,60,0,0.20));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.00rem;
+            font-weight: 700;
+            color: #ff9a50;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+        .inbox-detail-head-info { flex: 1; min-width: 0; }
+        .inbox-detail-head-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.90rem;
+            font-weight: 700;
+            color: #eef4ff;
+        }
+        .inbox-detail-head-sub {
+            font-size: 0.72rem;
+            color: var(--admin-muted);
+        }
+        .inbox-detail-head-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .inbox-head-btn {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.10);
+            color: #eef4ff;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 0.72rem;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.12s;
+        }
+        .inbox-head-btn:hover { background: rgba(255,122,26,0.15); }
+        .inbox-head-btn.green { background: rgba(67,192,156,0.15); border-color: rgba(67,192,156,0.35); color: #c8ffef; }
+        .inbox-head-btn.red   { background: rgba(222,70,70,0.13); border-color: rgba(222,70,70,0.35); color: #ffc8c8; }
+        .inbox-head-btn.blue  { background: rgba(47,111,221,0.15); border-color: rgba(95,149,234,0.35); color: #c5d9ff; }
+
+        /* Burbujas de mensaje */
+        .inbox-messages-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .inbox-msg-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .inbox-msg-date-sep {
+            text-align: center;
+            font-size: 0.65rem;
+            color: var(--admin-muted);
+            margin: 8px 0;
+            position: relative;
+        }
+        .inbox-msg-date-sep::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: rgba(255,255,255,0.07);
+        }
+        .inbox-msg-date-sep span {
+            background: rgba(15,8,2,0.65);
+            padding: 0 10px;
+            position: relative;
+        }
+        .inbox-bubble {
+            max-width: 70%;
+            padding: 9px 14px;
+            border-radius: 18px;
+            font-size: 0.83rem;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+        .inbox-bubble.from-user {
+            align-self: flex-start;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.10);
+            color: #eef4ff;
+            border-bottom-left-radius: 4px;
+        }
+        .inbox-bubble.from-admin {
+            align-self: flex-end;
+            background: linear-gradient(135deg, rgba(255,122,26,0.25), rgba(200,70,0,0.20));
+            border: 1px solid rgba(255,122,26,0.30);
+            color: #fff9f2;
+            border-bottom-right-radius: 4px;
+        }
+        .inbox-bubble-meta {
+            font-size: 0.60rem;
+            color: var(--admin-muted);
+            margin-top: 3px;
+        }
+        .inbox-bubble.from-user + .inbox-bubble-meta { align-self: flex-start; }
+        .inbox-bubble.from-admin + .inbox-bubble-meta { align-self: flex-end; text-align: right; }
+
+        /* Info del mensaje (tipo, origen) */
+        .inbox-msg-info-chip {
+            align-self: center;
+            font-size: 0.63rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 999px;
+            padding: 3px 10px;
+            color: var(--admin-muted);
+            margin: 4px 0;
         }
 
-        .message-request-btn.success {
-            background: rgba(67, 192, 156, 0.18);
-            border-color: rgba(67, 192, 156, 0.42);
+        /* Footer de respuesta */
+        .inbox-reply-bar {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            padding: 10px 16px 14px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.02);
+            flex-shrink: 0;
         }
+        .inbox-reply-input {
+            flex: 1;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 20px;
+            padding: 9px 16px;
+            color: #eef4ff;
+            font-size: 0.83rem;
+            resize: none;
+            outline: none;
+            min-height: 38px;
+            max-height: 100px;
+            overflow-y: auto;
+            line-height: 1.4;
+            box-sizing: border-box;
+        }
+        .inbox-reply-input::placeholder { color: rgba(200,180,160,0.35); }
+        .inbox-reply-send {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff7a00, #e84800);
+            border: none;
+            color: #fff;
+            font-size: 1.00rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: transform 0.12s;
+        }
+        .inbox-reply-send:hover { transform: scale(1.08); }
 
-        .message-request-btn.delete {
-            background: rgba(222, 70, 70, 0.16);
-            border-color: rgba(222, 70, 70, 0.4);
+        /* Chat FAB */
+        .admin-chat-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9800;
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff7a00, #e84800);
+            border: none;
+            color: #fff;
+            font-size: 1.40rem;
+            cursor: pointer;
+            box-shadow: 0 6px 24px rgba(232,72,0,0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s, box-shadow 0.15s;
         }
+        .admin-chat-fab:hover {
+            transform: scale(1.10);
+            box-shadow: 0 8px 30px rgba(232,72,0,0.60);
+        }
+        .admin-chat-fab-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            min-width: 20px;
+            height: 20px;
+            border-radius: 999px;
+            background: #e84800;
+            border: 2px solid #0f0802;
+            color: #fff;
+            font-size: 0.62rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+        }
+        .admin-chat-fab-badge[hidden] { display: none; }
 
         .client-name-cell {
             display: grid;
@@ -6799,6 +7139,20 @@
                 flex-basis: 100%;
             }
 
+            /* Inbox responsive — columna única en móvil */
+            .inbox-layout {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            .inbox-sidebar {
+                border-right: none;
+                border-bottom: 1px solid rgba(255,255,255,0.08);
+                max-height: 300px;
+            }
+            .inbox-detail-head-actions {
+                flex-wrap: wrap;
+            }
+
             .section-toolbar > *,
             .clients-toolbar-actions > *,
             .sales-summary-filters > * {
@@ -7058,6 +7412,137 @@
             text-align: center;
             padding: 10px 0;
         }
+
+        /* Cliente seleccionado — chip */
+        .pts-selected-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: rgba(196,79,0,0.15);
+            border: 1px solid rgba(196,79,0,0.35);
+            border-radius: 10px;
+        }
+        .pts-selected-chip-label {
+            flex: 1;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #ff9a50;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .pts-deselect-btn {
+            background: transparent;
+            border: none;
+            color: rgba(255,154,80,0.60);
+            font-size: 0.80rem;
+            cursor: pointer;
+            padding: 0 2px;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .pts-deselect-btn:hover { color: #ff9a50; }
+
+        /* Nuevo cliente — botón y formulario inline */
+        .pts-new-client-btn {
+            width: 100%;
+            margin-top: 8px;
+            padding: 8px 0;
+            background: transparent;
+            border: 1px dashed rgba(255,154,80,0.30);
+            border-radius: 9px;
+            color: rgba(255,154,80,0.70);
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            letter-spacing: 0.02em;
+            transition: all 0.15s;
+        }
+        .pts-new-client-btn:hover { border-color: rgba(255,154,80,0.60); color: #ff9a50; background: rgba(255,154,80,0.05); }
+        .pts-new-client-form { margin-top: 8px; }
+        .pts-new-client-form-label {
+            font-size: 0.70rem;
+            font-weight: 700;
+            color: rgba(200,180,150,0.60);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 6px;
+        }
+        .pts-new-client-save {
+            width: 100%;
+            margin-top: 8px;
+            padding: 9px;
+            background: linear-gradient(135deg, #c44f00, #7a2e00);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .pts-new-client-save:disabled { opacity: 0.45; cursor: default; }
+        .pts-new-client-save:not(:disabled):hover { opacity: 0.88; }
+
+        /* Picker de direcciones múltiples */
+        .pts-addr-picker {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 8px;
+        }
+        .pts-addr-picker-label {
+            font-size: 0.70rem;
+            font-weight: 600;
+            color: rgba(200,180,150,0.60);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 2px;
+        }
+        .pts-addr-chip {
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 9px;
+            font-size: 0.80rem;
+            color: #d4c4a0;
+            cursor: pointer;
+            transition: all 0.12s;
+            line-height: 1.3;
+        }
+        .pts-addr-chip:hover { background: rgba(196,79,0,0.14); border-color: rgba(196,79,0,0.35); color: #ff9a50; }
+        .pts-addr-chip.active { background: rgba(196,79,0,0.20); border-color: rgba(196,79,0,0.50); color: #ff9a50; }
+
+        /* Input de valor domicilio */
+        .pts-fee-input-wrap {
+            margin-top: 7px;
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
+            padding: 0 12px;
+            transition: border-color 0.18s;
+        }
+        .pts-fee-input-wrap:focus-within { border-color: rgba(255,149,64,0.50); }
+        .pts-fee-currency {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: rgba(255,154,80,0.70);
+            margin-right: 4px;
+            user-select: none;
+        }
+        .pts-fee-input {
+            background: transparent !important;
+            border: none !important;
+            padding: 10px 0 !important;
+            flex: 1;
+        }
+        .pts-fee-input:focus { border: none !important; box-shadow: none !important; }
+        input[type=number].pts-fee-input::-webkit-inner-spin-button,
+        input[type=number].pts-fee-input::-webkit-outer-spin-button { opacity: 0.4; }
 
         /* Footer del modal */
         .pts-footer {
@@ -7927,24 +8412,43 @@
 
             <div class="admin-tab-panel" data-tab-panel="mensajes">
                 <div class="section-toolbar">
-                    <button type="button" class="section-save-btn" disabled>Solicitudes sincronizadas con Firebase</button>
+                    <button type="button" class="section-save-btn" disabled>Sincronizado en tiempo real</button>
                 </div>
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Mensajes y Solicitudes</h2>
-                        <span class="kanban-count" id="messagesCount">0</span>
-                    </div>
-                    <div class="messages-grid">
-                        <p class="muted">Aqui llegan las solicitudes del sitio publico, por ejemplo reinicios de contrasena. Puedes abrir WhatsApp al cliente, copiar el mensaje, marcarlo como atendido o eliminarlo.</p>
-                        <div class="messages-list" id="messagesList">
-                            <div class="message-request-card">
-                                <div class="message-request-body">
-                                    <p>Aun no hay mensajes o solicitudes registrados.</p>
-                                </div>
+                <div class="inbox-layout">
+                    <!-- Columna izquierda: lista de conversaciones -->
+                    <aside class="inbox-sidebar">
+                        <div class="inbox-sidebar-head">
+                            <span class="inbox-sidebar-title">Mensajes</span>
+                            <span class="inbox-badge" id="messagesCount">0</span>
+                            <button type="button" class="inbox-compose-btn" id="inboxComposeBtn" title="Nuevo mensaje">✏️</button>
+                        </div>
+                        <div class="inbox-search-wrap">
+                            <input type="text" class="inbox-search" id="inboxSearch" placeholder="Buscar conversación…">
+                        </div>
+                        <!-- Panel: buscar cliente para nuevo mensaje -->
+                        <div class="inbox-compose-panel" id="inboxComposePanel" hidden>
+                            <div class="inbox-compose-header">
+                                <span>Enviar a cliente</span>
+                                <button type="button" class="inbox-compose-close" id="inboxComposeCancelBtn">✕</button>
+                            </div>
+                            <input type="text" class="inbox-search" id="inboxClientSearch" placeholder="Buscar por nombre o teléfono…" autocomplete="off">
+                            <div class="inbox-client-results" id="inboxClientResults">
+                                <p class="inbox-empty">Escribe para buscar clientes registrados</p>
                             </div>
                         </div>
-                    </div>
-                </article>
+                        <div class="inbox-thread-list" id="messagesList">
+                            <p class="inbox-empty">Sin mensajes aún</p>
+                        </div>
+                    </aside>
+
+                    <!-- Columna derecha: detalle de conversación -->
+                    <main class="inbox-detail" id="inboxDetail">
+                        <div class="inbox-detail-empty">
+                            <span>💬</span>
+                            <p>Selecciona una conversación</p>
+                        </div>
+                    </main>
+                </div>
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="metricas">
@@ -8064,6 +8568,10 @@
                         <div class="pos-total-row">
                             <span>Subtotal</span>
                             <span id="posTotalSubtotal">$0</span>
+                        </div>
+                        <div class="pos-total-row" id="posTotalDeliveryRow" hidden>
+                            <span>Domicilio</span>
+                            <span id="posTotalDelivery">$0</span>
                         </div>
                         <div class="pos-total-row total">
                             <span>Total</span>
@@ -8424,10 +8932,36 @@
                 </div>
                 <div class="pts-client-panel" id="ptsPanelQuick" hidden>
                     <input type="text" class="pts-input" id="ptsQuickName" placeholder="Nombre provisional..." autocomplete="off" maxlength="60">
+                    <input type="text" class="pts-input" id="ptsQuickPhone" placeholder="Teléfono (opcional)" autocomplete="off" maxlength="20" style="margin-top:6px;">
                 </div>
                 <div class="pts-client-panel" id="ptsPanelSearch" hidden>
                     <input type="text" class="pts-input" id="ptsSearchInput" placeholder="Buscar por nombre o teléfono..." autocomplete="off">
                     <div class="pts-search-results" id="ptsSearchResults"></div>
+                    <div class="pts-selected-chip" id="ptsSelectedChip" hidden>
+                        <span class="pts-selected-chip-label" id="ptsSelectedChipLabel"></span>
+                        <button type="button" class="pts-deselect-btn" id="ptsDeselectBtn">✕</button>
+                    </div>
+                    <!-- Crear nuevo cliente -->
+                    <button type="button" class="pts-new-client-btn" id="ptsNewClientBtn">✚ Crear nuevo cliente</button>
+                    <div class="pts-new-client-form" id="ptsNewClientForm" hidden>
+                        <p class="pts-new-client-form-label">Nuevo cliente</p>
+                        <input type="text" class="pts-input" id="ptsNewClientName" placeholder="Nombre *" autocomplete="off" maxlength="60">
+                        <input type="tel" class="pts-input" id="ptsNewClientPhone" placeholder="Teléfono *" autocomplete="off" maxlength="20" style="margin-top:6px;">
+                        <input type="text" class="pts-input" id="ptsNewClientAddr" placeholder="Dirección (opcional)" autocomplete="off" maxlength="120" style="margin-top:6px;">
+                        <button type="button" class="pts-new-client-save" id="ptsNewClientSaveBtn">Guardar y seleccionar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dirección + domicilio (solo cuando tipo = domicilio) -->
+            <div class="pts-section" id="ptsDomicilioSection" hidden>
+                <!-- Picker de múltiples direcciones guardadas -->
+                <div class="pts-addr-picker" id="ptsAddressPicker" hidden></div>
+                <input type="text" class="pts-input" id="ptsDeliveryAddress" placeholder="📍 Dirección de entrega..." autocomplete="off" maxlength="120">
+                <!-- Valor domicilio — aparece solo cuando hay dirección -->
+                <div class="pts-fee-input-wrap" id="ptsDeliveryFeeWrap" hidden>
+                    <span class="pts-fee-currency">$</span>
+                    <input type="number" class="pts-input pts-fee-input" id="ptsDeliveryFee" placeholder="Valor domicilio" min="0" step="500">
                 </div>
             </div>
 
@@ -8438,6 +8972,12 @@
             </div>
         </div>
     </div>
+
+    <!-- ══════════ CHAT FAB ══════════ -->
+    <button type="button" id="adminChatFab" class="admin-chat-fab" title="Mensajes">
+        <span class="admin-chat-fab-icon">💬</span>
+        <span class="admin-chat-fab-badge" id="adminChatFabBadge" hidden>0</span>
+    </button>
 
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
