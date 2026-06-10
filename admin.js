@@ -2859,8 +2859,6 @@ function renderPosTotals() {
     const cobrarAmount     = document.getElementById('posCobrarAmount');
     const paymentTotal     = document.getElementById('posPaymentTotalDisplay');
     const bottomTotal      = document.getElementById('posBottomTotalAmt');
-    const drawerTotal      = document.getElementById('posDrawerCobrarTotal');
-
     const subtotal  = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
     const discount  = Number(discountInput?.value || 0);
     const fee       = (posTicketConfig?.orderType === 'domicilio' && posTicketConfig?.deliveryFee != null)
@@ -2875,7 +2873,6 @@ function renderPosTotals() {
     if (cobrarAmount) cobrarAmount.textContent = formatMoney(total);
     if (paymentTotal) paymentTotal.textContent = formatMoney(total);
     if (bottomTotal) bottomTotal.textContent = formatMoney(total);
-    if (drawerTotal) drawerTotal.textContent = formatMoney(total);
 }
 
 /* ─── POS v2: Upgrade sheet (acompañamientos) ─── */
@@ -7982,6 +7979,7 @@ let _ptsSelectedMesa = null;
 let _ptsSelectedClient = null; // { name, phone }
 let _ptsActiveTab = 'none';
 let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin enviar
+let _ptsSaveAndNew = false; // true = guardar ticket con nombre y abrir uno nuevo en blanco
 
 function renderPosCartTicketInfo() {
     const el = document.getElementById('posCartTicketInfo');
@@ -8098,7 +8096,11 @@ function openPosTicketSetupModal(configOnly = false) {
 
     // Cambiar label del botón según modo
     const confirmBtn = document.getElementById('ptsConfirmBtn');
-    if (confirmBtn) confirmBtn.textContent = configOnly ? 'Guardar configuración' : 'Guardar pedido';
+    if (confirmBtn) {
+        if (_ptsSaveAndNew) confirmBtn.textContent = 'Guardar ticket';
+        else if (configOnly) confirmBtn.textContent = 'Guardar configuración';
+        else confirmBtn.textContent = 'Guardar pedido';
+    }
 
     _ptsUpdateConfirmBtn();
     modal.removeAttribute('hidden');
@@ -8250,7 +8252,10 @@ function _ptsFillClientAddress(client) {
 }
 
 // ── Listeners directos del modal (más robustos que delegación global) ──────────
-document.getElementById('ptsCancelBtn')?.addEventListener('click', () => closePosTicketSetupModal());
+document.getElementById('ptsCancelBtn')?.addEventListener('click', () => {
+    _ptsSaveAndNew = false;
+    closePosTicketSetupModal();
+});
 
 document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     // Leer estado desde DOM como fuente de verdad (evita problemas de caché/closure)
@@ -8303,6 +8308,20 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
         }
         posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone, deliveryAddress, deliveryFee };
         renderPosCartTicketInfo();
+
+        // Modo GUARDAR TICKET: crear nuevo ticket en blanco después de nombrar el actual
+        if (_ptsSaveAndNew) {
+            _ptsSaveAndNew = false;
+            createNewPosTicket();
+            internalOrderItems = [];
+            posTicketConfig = null;
+            renderPosCartTicketInfo();
+            renderPosOrderItems();
+            renderPosTotals();
+            renderPosBottomBar();
+            renderPosTicketsBadge();
+            showPosScreen('main');
+        }
         return;
     }
 
@@ -8633,11 +8652,16 @@ document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => 
 })();
 
 // COBRAR desde el drawer
-document.getElementById('posDrawerCobrarBtn')?.addEventListener('click', () => {
-    const drawer = document.getElementById('posCartDrawer');
-    if (drawer) drawer.hidden = true;
-    if (!internalOrderItems.length) return;
-    showPosScreen('payment');
+document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => {
+    if (!internalOrderItems.length) {
+        showNotice('Agrega al menos un producto al pedido.', 'warn');
+        return;
+    }
+    // Guardar ítems actuales en el ticket activo antes de abrir el modal
+    const current = posTickets.find((t) => t.id === posActiveTicketId);
+    if (current) current.items = internalOrderItems;
+    _ptsSaveAndNew = true;
+    openPosTicketSetupModal(true);
 });
 
 // Volver desde pantalla de pago
