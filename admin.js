@@ -11229,32 +11229,45 @@ document.getElementById('cierrePrintBtn')?.addEventListener('click', () => {
 
 function _buildCierreTicketHtml(c, dateStr, timeStr) {
     const methods = c.methodTotals || {};
-    const nonZeroMethods = Object.entries(methods).filter(([, v]) => v !== 0);
-    return `<div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.7;color:#111;background:#fff;padding:16px 18px;border-radius:4px;">
-        <div style="text-align:center;margin-bottom:8px;">
-            <div style="font-weight:700;font-size:15px;letter-spacing:1px;">${escapeHtml(c.businessName || 'ROAL BURGER')}</div>
-            ${c.businessAddress ? `<div>${escapeHtml(c.businessAddress)}</div>` : ''}
-            ${c.businessPhone ? `<div>Tel: ${escapeHtml(c.businessPhone)}</div>` : ''}
-            ${c.businessNit ? `<div>NIT/RUT: ${escapeHtml(c.businessNit)}</div>` : ''}
+    const nonZeroMethods = Object.entries(methods).filter(([, v]) => Number(v) !== 0);
+    const cobradas = Number(c.transactionCount || 0) - Number(c.voidedCount || 0);
+    const methodRows = nonZeroMethods.map(([k, v]) => {
+        const meta = DPM_META[k] || { icon: '', label: k };
+        return `<tr>
+            <td style="padding:3px 0;color:#c8c0b8;">${meta.icon} ${meta.label}</td>
+            <td style="padding:3px 0;text-align:right;color:#f0ead8;font-weight:700;">${formatMoney(Number(v))}</td>
+        </tr>`;
+    }).join('');
+
+    return `<div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.6;color:#f0ead8;background:#1a1412;padding:18px 20px;border-radius:8px;border:1px solid #3a2e26;">
+        <div style="text-align:center;margin-bottom:10px;">
+            <div style="font-weight:700;font-size:16px;letter-spacing:2px;color:#ff9540;">${escapeHtml(c.businessName || 'ROAL BURGER')}</div>
+            ${c.businessAddress ? `<div style="color:#c8c0b8;font-size:12px;">${escapeHtml(c.businessAddress)}</div>` : ''}
+            ${c.businessPhone ? `<div style="color:#c8c0b8;font-size:12px;">Tel: ${escapeHtml(c.businessPhone)}</div>` : ''}
+            ${c.businessNit ? `<div style="color:#c8c0b8;font-size:12px;">NIT/RUT: ${escapeHtml(c.businessNit)}</div>` : ''}
         </div>
-        <div style="border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;text-align:center;padding:4px 0;margin-bottom:8px;font-weight:700;">
+        <div style="border-top:1px dashed #5a4a3a;border-bottom:1px dashed #5a4a3a;text-align:center;padding:5px 0;margin-bottom:10px;font-weight:700;font-size:14px;color:#ff9540;letter-spacing:2px;">
             CIERRE DE CAJA
         </div>
-        <div>Fecha: ${dateStr}</div>
-        <div>Hora cierre: ${timeStr}</div>
-        <div>Transacciones cobradas: ${Number(c.transactionCount || 0) - Number(c.voidedCount || 0)}</div>
-        ${c.voidedCount ? `<div>Anulados (excluidos): ${Number(c.voidedCount)}</div>` : ''}
-        <div style="border-top:1px dashed #aaa;margin:8px 0;padding-top:8px;">
-            <div style="font-weight:700;margin-bottom:4px;">DESGLOSE POR MÉTODO:</div>
-            ${nonZeroMethods.map(([k, v]) => {
-                const meta = DPM_META[k] || { icon: '', label: k };
-                return `<div style="display:flex;justify-content:space-between;"><span>${meta.icon} ${meta.label}</span><span style="font-weight:600;">${formatMoney(v)}</span></div>`;
-            }).join('')}
+        <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="color:#c8c0b8;">Fecha</td><td style="text-align:right;color:#f0ead8;">${dateStr}</td></tr>
+            <tr><td style="color:#c8c0b8;">Hora cierre</td><td style="text-align:right;color:#f0ead8;">${timeStr}</td></tr>
+            <tr><td style="color:#c8c0b8;">Transacciones cobradas</td><td style="text-align:right;color:#f0ead8;font-weight:700;">${cobradas}</td></tr>
+            ${c.voidedCount ? `<tr><td style="color:#fca5a5;">Anulados (excluidos)</td><td style="text-align:right;color:#fca5a5;">${Number(c.voidedCount)}</td></tr>` : ''}
+        </table>
+        <div style="border-top:1px dashed #5a4a3a;margin:10px 0 6px;padding-top:8px;font-weight:700;color:#ff9540;letter-spacing:1px;font-size:12px;">DESGLOSE POR MÉTODO</div>
+        <table style="width:100%;border-collapse:collapse;">
+            ${methodRows || '<tr><td colspan="2" style="color:#c8c0b8;text-align:center;">Sin movimientos</td></tr>'}
+        </table>
+        <div style="border-top:2px solid #ff9540;margin-top:12px;padding-top:10px;">
+            <table style="width:100%;border-collapse:collapse;">
+                <tr>
+                    <td style="font-weight:700;font-size:15px;color:#ff9540;">TOTAL NETO</td>
+                    <td style="text-align:right;font-weight:700;font-size:15px;color:#ff9540;">${formatMoney(Number(c.grandTotal || 0))}</td>
+                </tr>
+            </table>
         </div>
-        <div style="border-top:2px solid #333;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:700;font-size:15px;">
-            <span>TOTAL NETO</span><span>${formatMoney(c.grandTotal || 0)}</span>
-        </div>
-        <div style="text-align:center;margin-top:12px;font-size:11px;color:#666;">
+        <div style="text-align:center;margin-top:14px;font-size:11px;color:#7a6a5a;border-top:1px dashed #3a2e26;padding-top:8px;">
             *** Cierre de caja válido ***<br>Generado por sistema POS
         </div>
     </div>`;
