@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -730,15 +730,15 @@
         .kanban-order-card {
             position: relative;
             overflow: hidden;
-            border-radius: 22px;
-            padding: 14px 16px;
+            border-radius: 18px;
+            padding: 11px 13px;
             border: 1px solid rgba(255, 255, 255, 0.12);
             background: linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(9, 14, 26, 0.5));
             cursor: pointer;
             transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
             -webkit-backdrop-filter: blur(16px) saturate(180%);
             backdrop-filter: blur(16px) saturate(180%);
         }
@@ -747,7 +747,7 @@
             content: '';
             position: absolute;
             inset: 1px;
-            border-radius: 20px;
+            border-radius: 16px;
             border: 1px solid rgba(255, 255, 255, 0.05);
             pointer-events: none;
         }
@@ -5359,10 +5359,10 @@
 
         /* ── Tarjetas kanban compactas ── */
         .kanban-order-card {
-            padding: 8px 11px;
-            border-radius: 12px;
+            padding: 6px 9px;
+            border-radius: 10px;
             gap: 3px;
-            font-size: 0.9em;
+            font-size: 0.72em;
             -webkit-backdrop-filter: none;
             backdrop-filter: none;
         }
@@ -5883,9 +5883,32 @@
 
         .unread-tray #ordersColumnUnread {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(182px, 1fr));
+            gap: 8px;
             align-content: start;
+        }
+
+        /* ── 25%% mas pequeñas solo en Pedidos por confirmar ── */
+        .unread-tray .kanban-order-card {
+            padding: 8px 10px;
+            border-radius: 14px;
+            gap: 6px;
+        }
+        .unread-tray .kanban-order-card .koc-name {
+            font-size: 0.78rem;
+        }
+        .unread-tray .kanban-order-card .koc-total {
+            font-size: 0.75rem;
+        }
+        .unread-tray .kanban-order-card .koc-code {
+            font-size: 0.65rem;
+        }
+        .unread-tray .kanban-order-card .koc-time {
+            font-size: 0.63rem;
+        }
+        .unread-tray .kanban-order-card .koc-type-badge {
+            font-size: 0.6rem;
+            padding: 1px 7px;
         }
 
         .clients-grid {
@@ -7141,9 +7164,9 @@
             }
 
             .kanban-order-card {
-                padding: 16px;
-                border-radius: 20px;
-                gap: 12px;
+                padding: 13px;
+                border-radius: 16px;
+                gap: 8px;
                 -webkit-backdrop-filter: none;
                 backdrop-filter: none;
             }
@@ -7487,7 +7510,7 @@
         .pts-section {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
         }
         .pts-section[hidden] { display: none; }
 
@@ -7796,6 +7819,7 @@
             gap: 5px;
             margin-bottom: 8px;
         }
+        .pts-addr-picker[hidden] { display: none; }
         .pts-addr-picker-label {
             font-size: 0.70rem;
             font-weight: 600;
@@ -7892,6 +7916,695 @@
             box-shadow: 0 4px 22px rgba(255, 130, 0, 0.48);
         }
         .pts-btn-confirm:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+
+        /* ── Modal: Cobro domicilio ── */
+        /* ── Caja Diaria & Tickets ── */
+        .caja-stats-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+        .caja-stat-pill {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            padding: 10px 18px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            min-width: 120px;
+        }
+        .caja-stat-pill.total { border-color: var(--admin-accent, #ff9540); background: rgba(255,149,64,0.08); }
+        .caja-stat-pill span { font-size: 0.7rem; color: var(--admin-muted); font-family: 'Space Grotesk', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
+        .caja-stat-pill strong { font-size: 1.05rem; font-weight: 800; color: #fff; font-family: 'Space Grotesk', sans-serif; }
+        .caja-stat-pill.total strong { color: var(--admin-accent, #ff9540); }
+
+        /* Tabla genérica (tickets) */
+        .caja-table-wrap { overflow-x: auto; }
+        .caja-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.82rem;
+        }
+        .caja-table thead th {
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 700;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--admin-muted);
+            border-bottom: 1px solid var(--admin-border);
+            white-space: nowrap;
+        }
+        .caja-table tbody td {
+            padding: 9px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.85);
+            vertical-align: middle;
+        }
+        .caja-table tbody tr:last-child td { border-bottom: none; }
+        .caja-table tbody tr:hover td { background: rgba(255,255,255,0.03); }
+        .caja-table td.caja-total-cell { font-weight: 800; color: #fff; text-align: right; }
+        .caja-table th:last-child { text-align: right; }
+        .caja-empty { text-align: center; padding: 40px 16px; color: var(--admin-muted); font-size: 0.88rem; }
+
+        /* Libro contable Caja Diaria */
+        .caja-ledger-wrap { overflow-x: auto; border-radius: 0 0 16px 16px; }
+        .caja-ledger-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.78rem;
+            min-width: 820px;
+        }
+        .caja-ledger-table thead th {
+            padding: 10px 10px;
+            text-align: right;
+            font-weight: 700;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--admin-muted);
+            border-bottom: 2px solid var(--admin-border);
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            background: var(--admin-bg-card);
+            z-index: 1;
+        }
+        .caja-ledger-table thead th.col-left { text-align: left; }
+        .caja-ledger-table thead th.col-entrada { color: #6ee7b7; }
+        .caja-ledger-table thead th.col-salida  { color: #fca5a5; }
+        .caja-ledger-table tbody td {
+            padding: 8px 10px;
+            text-align: right;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            color: rgba(255,255,255,0.75);
+            vertical-align: middle;
+        }
+        .caja-ledger-table tbody td.col-left { text-align: left; }
+        .caja-ledger-table tbody tr:hover td { background: rgba(255,255,255,0.025); }
+        .caja-ledger-table tbody tr.row-voided td { opacity: 0.5; }
+        .caja-ledger-table tfoot td {
+            padding: 10px 10px;
+            text-align: right;
+            font-weight: 800;
+            font-size: 0.8rem;
+            color: #fff;
+            border-top: 2px solid var(--admin-border);
+            background: rgba(255,255,255,0.03);
+        }
+        .caja-ledger-table tfoot td.col-left { text-align: left; font-size: 0.7rem; letter-spacing: 0.5px; text-transform: uppercase; color: var(--admin-muted); }
+        .caja-ledger-table tfoot td.foot-entrada { color: #6ee7b7; }
+        .caja-ledger-table tfoot td.foot-salida  { color: #fca5a5; }
+        .caja-ledger-table tfoot td.foot-total   { color: var(--admin-accent, #ff9540); font-size: 0.9rem; }
+        .caja-cell-entrada { color: #6ee7b7; font-weight: 700; }
+        .caja-cell-salida  { color: #fca5a5; font-weight: 700; }
+        .caja-cell-total-pos { color: #fff; font-weight: 800; }
+        .caja-cell-total-neg { color: #fca5a5; font-weight: 800; }
+        .caja-cell-method   { color: rgba(255,255,255,0.55); font-weight: 600; }
+        .caja-method-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.1);
+            white-space: nowrap;
+        }
+        .caja-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .caja-type-mesa    { background: rgba(139,92,246,0.18); color: #c4b5fd; }
+        .caja-type-domicilio { background: rgba(59,130,246,0.18); color: #93c5fd; }
+        .caja-type-retiro  { background: rgba(16,185,129,0.18); color: #6ee7b7; }
+
+        /* Layout dividido tickets (desktop) */
+        .tickets-split-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .tickets-preview-col { display: none; }
+        .tickets-preview-col[hidden] { display: none !important; }
+
+        @media (min-width: 960px) {
+            .tickets-split-layout {
+                flex-direction: row;
+                align-items: flex-start;
+            }
+            .tickets-list-col { flex: 1; min-width: 0; }
+            .tickets-preview-col {
+                width: 360px;
+                flex-shrink: 0;
+                position: sticky;
+                top: 16px;
+            }
+            .tickets-preview-col:not([hidden]) { display: block; }
+        }
+
+        /* Toolbar de tickets */
+        .tickets-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 18px;
+        }
+        .tickets-toolbar input[type="date"] {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--admin-border);
+            border-radius: 8px;
+            color: #fff;
+            padding: 7px 12px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.82rem;
+        }
+        .tickets-toolbar input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(0.5); }
+        .tickets-search-btn {
+            padding: 8px 18px;
+            border-radius: 8px;
+            background: var(--admin-accent, #ff9540);
+            color: #fff;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 0.82rem;
+            border: none;
+            cursor: pointer;
+        }
+        .tickets-search-btn:hover { opacity: 0.88; }
+        .ticket-action-btn {
+            padding: 5px 12px;
+            border-radius: 7px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: opacity 0.14s;
+        }
+        .ticket-action-btn:hover { opacity: 0.8; }
+        .ticket-action-btn.preview { background: rgba(99,102,241,0.22); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.35); }
+        .ticket-action-btn.void    { background: rgba(239,68,68,0.18); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+        .ticket-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+        .ticket-voided td { opacity: 0.45; }
+        .ticket-voided-inline {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 6px;
+            font-size: 0.6rem;
+            font-weight: 800;
+            background: rgba(239,68,68,0.2);
+            color: #fca5a5;
+            border-radius: 4px;
+            vertical-align: middle;
+            letter-spacing: 0.5px;
+        }
+        .ticket-action-btn.restore { background: rgba(16,185,129,0.18); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+
+        /* Modal vista previa ticket */
+        #ticketPreviewModal {
+            position: fixed;
+            inset: 0;
+            z-index: 10400;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.75);
+            -webkit-backdrop-filter: blur(6px);
+            backdrop-filter: blur(6px);
+            padding: 16px;
+        }
+        #ticketPreviewModal[hidden] { display: none; }
+        .tpv-card {
+            width: 100%;
+            max-width: 440px;
+            max-height: 90vh;
+            overflow-y: auto;
+            background: var(--admin-bg-card);
+            border: 1px solid var(--admin-border);
+            border-radius: 20px;
+            box-shadow: var(--glass-shadow);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+        }
+        .tpv-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px 12px;
+            border-bottom: 1px solid var(--admin-border);
+            position: sticky;
+            top: 0;
+            background: var(--admin-bg-card);
+            z-index: 1;
+            border-radius: 20px 20px 0 0;
+        }
+        .tpv-header h3 { font-family: 'Space Grotesk', sans-serif; font-size: 0.95rem; font-weight: 700; color: #fff; margin: 0; }
+        .tpv-close-btn {
+            background: rgba(255,255,255,0.08);
+            border: none;
+            border-radius: 8px;
+            color: rgba(255,255,255,0.6);
+            font-size: 1.1rem;
+            width: 32px; height: 32px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+        }
+        .tpv-close-btn:hover { background: rgba(255,255,255,0.14); }
+        .tpv-body { padding: 16px 20px 20px; flex: 1; }
+        .tpv-voided-badge {
+            display: inline-block;
+            padding: 4px 14px;
+            background: rgba(239,68,68,0.18);
+            color: #fca5a5;
+            border: 1px solid rgba(239,68,68,0.3);
+            border-radius: 20px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        #deliveryPaymentModal {
+            position: fixed;
+            inset: 0;
+            z-index: 10350;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.72);
+            -webkit-backdrop-filter: blur(6px);
+            backdrop-filter: blur(6px);
+            padding: 16px;
+        }
+        #deliveryPaymentModal[hidden] { display: none; }
+
+        .dpm-card {
+            width: 100%;
+            max-width: 440px;
+            max-height: 94vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            padding: 0;
+            background: var(--admin-bg-card);
+            border: 1px solid var(--admin-border);
+            border-radius: 22px;
+            box-shadow: var(--glass-shadow);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
+        }
+        .dpm-card .dpm-header {
+            padding: 16px 20px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            flex-shrink: 0;
+        }
+        .dpm-unified-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 4px 8px;
+        }
+        .dpm-card .dpm-footer {
+            padding: 10px 16px 14px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            flex-shrink: 0;
+        }
+        .dpm-card .dpm-methods {
+            padding: 0 12px 12px;
+            gap: 8px;
+        }
+        .dpm-card .dpm-sub-section {
+            margin: 0 12px 12px;
+        }
+        .dpm-pay-divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px 6px;
+            color: var(--admin-muted);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .dpm-pay-divider::before,
+        .dpm-pay-divider::after {
+            content: '';
+            flex: 1;
+            border-top: 1px dashed rgba(255,255,255,0.12);
+        }
+
+        .dpm-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .dpm-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #fff;
+            margin: 0;
+        }
+
+        .dpm-code {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--admin-accent);
+            background: var(--admin-accent-soft);
+            padding: 3px 10px;
+            border-radius: 20px;
+        }
+
+        /* Ticket unificado dentro del modal de pago */
+        .dpm-ticket-summary:empty { display: none; }
+        .dpm-ticket-summary .ticket-paper-wrap { padding: 0; }
+        .dpm-ticket-summary .ticket-paper {
+            padding: 14px 16px 8px;
+            font-size: 0.78rem;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            border-radius: 0;
+        }
+        .dpm-ticket-summary .ticket-brand-name { font-size: 1rem; }
+        .dpm-ticket-summary .ticket-brand-copy { font-size: 0.7rem; }
+        .dpm-ticket-summary .ticket-section { margin-bottom: 8px; }
+        .dpm-ticket-summary .ticket-section-title { font-size: 0.65rem; margin-bottom: 4px; }
+        .dpm-ticket-summary .ticket-table { font-size: 0.76rem; }
+        .dpm-ticket-summary .ticket-footer-copy { display: none; }
+
+
+        .dpm-total-label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.78rem;
+            color: var(--admin-muted);
+        }
+
+        .dpm-total-amount {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .dpm-methods-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .dpm-methods-label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            color: rgba(255, 255, 255, 0.42);
+            margin: 0;
+        }
+
+        .dpm-methods {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .dpm-method-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 14px 8px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: rgba(255, 255, 255, 0.04);
+            color: rgba(255, 255, 255, 0.58);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.73rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .dpm-method-icon { font-size: 1.5em; line-height: 1; }
+        .dpm-method-btn:hover {
+            border-color: rgba(255, 149, 64, 0.38);
+            background: rgba(255, 149, 64, 0.07);
+            color: #fff;
+        }
+        .dpm-method-btn.active {
+            border-color: rgba(255, 149, 64, 0.75);
+            background: rgba(255, 149, 64, 0.16);
+            color: #ffa060;
+        }
+
+        .dpm-footer {
+            display: flex;
+            gap: 8px;
+            padding-top: 2px;
+            justify-content: flex-end;
+        }
+
+        .dpm-btn-cancel {
+            padding: 7px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: transparent;
+            color: rgba(255, 255, 255, 0.55);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.14s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .dpm-btn-cancel:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+
+        .dpm-btn-confirm {
+            padding: 7px 20px;
+            border-radius: 8px;
+            border: none;
+            background: linear-gradient(135deg, #ff9540, #e06000);
+            color: #fff;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.14s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            box-shadow: 0 3px 12px rgba(255, 130, 0, 0.28);
+        }
+        .dpm-btn-confirm:hover:not(:disabled) {
+            background: linear-gradient(135deg, #ffaa60, #ff7020);
+            box-shadow: 0 3px 16px rgba(255, 130, 0, 0.42);
+        }
+        .dpm-btn-confirm:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+
+        /* ── Sub-opciones del modal de cobro ── */
+        .dpm-sub-section[hidden],
+        .dpm-sub-panel[hidden],
+        .dpm-change-row[hidden] { display: none; }
+        .dpm-sub-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+        }
+        .dpm-sub-label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--admin-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin: 0;
+        }
+        .dpm-cash-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.13);
+            border-radius: 10px;
+            padding: 0 12px;
+        }
+        .dpm-cash-prefix {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.45);
+        }
+        .dpm-cash-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #fff;
+            padding: 10px 0;
+            min-width: 0;
+        }
+        .dpm-cash-input::placeholder { color: rgba(255,255,255,0.2); font-weight: 400; }
+        .dpm-change-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: rgba(100, 210, 130, 0.1);
+            border: 1px solid rgba(100, 210, 130, 0.22);
+            border-radius: 10px;
+        }
+        .dpm-change-label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.78rem;
+            color: rgba(255,255,255,0.65);
+        }
+        .dpm-change-amount {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: #6dd294;
+        }
+        .dpm-sub-chips {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .dpm-sub-chip {
+            flex: 1;
+            min-width: 80px;
+            padding: 9px 14px;
+            border-radius: 10px;
+            border: 1.5px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.7);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.14s ease;
+            text-align: center;
+        }
+        .dpm-sub-chip:hover { border-color: rgba(255,149,64,0.5); color: #fff; background: rgba(255,149,64,0.08); }
+        .dpm-sub-chip.active { border-color: var(--admin-accent, #ff9540); background: rgba(255,149,64,0.18); color: #fff; }
+
+        /* ── Panel de configuración de métodos de pago ── */
+        .pm-method-card {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px 16px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.09);
+            border-radius: 14px;
+            margin-bottom: 10px;
+        }
+        .pm-method-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .pm-method-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #fff;
+        }
+        .pm-method-icon { font-size: 1.1rem; }
+        .pm-toggle {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 22px;
+        }
+        .pm-toggle input { opacity: 0; width: 0; height: 0; }
+        .pm-toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.15);
+            border-radius: 22px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .pm-toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 16px; height: 16px;
+            left: 3px; top: 3px;
+            background: #fff;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+        .pm-toggle input:checked + .pm-toggle-slider { background: var(--admin-accent, #ff9540); }
+        .pm-toggle input:checked + .pm-toggle-slider::before { transform: translateX(18px); }
+        .pm-sub-options-label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: var(--admin-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .pm-sub-options-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .pm-sub-option-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1.5px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            cursor: pointer;
+            transition: all 0.14s;
+        }
+        .pm-sub-option-toggle input[type="checkbox"] { display: none; }
+        .pm-sub-option-toggle span {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.65);
+            transition: color 0.14s;
+        }
+        .pm-sub-option-toggle:has(input:checked) {
+            border-color: var(--admin-accent);
+            background: rgba(255,149,64,0.12);
+        }
+        .pm-sub-option-toggle:has(input:checked) span { color: #fff; }
 
         /* --- Recomendado del dia --- */
         .recomendado-mode-radios { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
@@ -8530,6 +9243,10 @@
                             <span class="menu-inner-tab-icon">💵</span>
                             <span>Caja Diaria</span>
                         </button>
+                        <button class="menu-inner-tab" data-section-tab="tickets" data-section-scope="informes" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">🎫</span>
+                            <span>Tickets</span>
+                        </button>
                     </nav>
                     <div class="menu-inner-panels-wrap">
 
@@ -8575,51 +9292,31 @@
                             </article>
                         </div>
 
-                        <!-- Panel: Libro Contable -->
+                        <!-- Panel: Libro Contable — Historial de cierres de caja -->
                         <div class="menu-inner-panel" data-section-panel="libro" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
-                            <div class="section-toolbar sales-summary-toolbar">
-                                <button type="button" class="section-save-btn" data-section-save="libro">Actualizar libro</button>
-                                <div class="sales-summary-filters">
-                                    <input type="date" id="ledgerBookDateFrom" class="sales-summary-date-input" aria-label="Fecha inicial del libro contable">
-                                    <input type="date" id="ledgerBookDateTo" class="sales-summary-date-input" aria-label="Fecha final del libro contable">
-                                    <button type="button" class="section-action-btn" id="exportLedgerExcelBtn">Exportar Excel</button>
-                                    <button type="button" class="section-action-btn primary" id="exportLedgerPdfBtn">Exportar PDF</button>
-                                </div>
-                            </div>
                             <article class="admin-card">
                                 <div class="card-head">
-                                    <h2>Libro contable</h2>
-                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-ledger-book" aria-expanded="true">Retraer</button>
+                                    <h2>Libro Contable</h2>
+                                    <button type="button" class="card-collapse-btn" id="refreshLibroCierresBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
                                 </div>
-                                <div class="card-body" id="card-ledger-book">
-                                    <div class="sales-summary-overview ledger-overview">
-                                        <div class="sales-summary-stat">
-                                            <span>Ingresos registrados</span>
-                                            <strong id="ledgerBookTotalIncome">$0</strong>
-                                        </div>
-                                        <div class="sales-summary-stat">
-                                            <span>Jornadas contabilizadas</span>
-                                            <strong id="ledgerBookTotalEntries">0</strong>
-                                        </div>
-                                        <div class="sales-summary-stat">
-                                            <span>Promedio por cierre</span>
-                                            <strong id="ledgerBookAverageIncome">$0</strong>
-                                        </div>
-                                    </div>
-                                    <div class="clients-table-wrap ledger-table-wrap">
-                                        <table class="clients-table ledger-table">
+                                <div class="card-body" style="padding:0;">
+                                    <div class="caja-ledger-wrap">
+                                        <table class="caja-ledger-table" style="min-width:600px;">
                                             <thead>
                                                 <tr>
-                                                    <th>Fecha</th>
-                                                    <th>Pedidos</th>
-                                                    <th>Items</th>
-                                                    <th>Ventas total</th>
+                                                    <th class="col-left">Fecha cierre</th>
+                                                    <th>Transacciones</th>
+                                                    <th>Anulados</th>
+                                                    <th>💵 Efectivo</th>
+                                                    <th>💳 Tarjeta</th>
+                                                    <th>🏦 Transferencia</th>
+                                                    <th>🔗 Link de pago</th>
+                                                    <th>Total neto</th>
+                                                    <th style="text-align:center;">Acciones</th>
                                                 </tr>
                                             </thead>
-                                            <tbody id="ledgerBookList">
-                                                <tr>
-                                                    <td class="client-empty-row" colspan="4">No hay cierres disponibles para el libro contable.</td>
-                                                </tr>
+                                            <tbody id="libroCierresList">
+                                                <tr><td class="caja-empty" colspan="9">No hay cierres de caja registrados.</td></tr>
                                             </tbody>
                                         </table>
                                     </div>
@@ -8631,14 +9328,77 @@
                         <div class="menu-inner-panel" data-section-panel="caja-diaria" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
                             <article class="admin-card">
                                 <div class="card-head">
-                                    <h2>Caja Diaria</h2>
+                                    <div style="display:flex;align-items:baseline;gap:12px;">
+                                        <h2>Caja Diaria</h2>
+                                        <span id="cajaDiariaFechaLabel" style="font-size:0.78rem;color:var(--admin-muted);font-family:'Space Grotesk',sans-serif;"></span>
+                                    </div>
+                                    <div style="display:flex;gap:8px;align-items:center;">
+                                        <button type="button" class="card-collapse-btn" id="refreshCajaDiariaBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
+                                        <button type="button" id="cerrarCajaBtn" style="font-size:0.78rem;padding:4px 14px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔒 Cerrar Caja</button>
+                                    </div>
                                 </div>
-                                <div class="card-body" id="card-caja-diaria">
-                                    <p style="color:var(--admin-muted);text-align:center;padding:40px 16px;font-size:0.95rem;">
-                                        Esta sección está en configuración. Pronto podrás ver el resumen de caja del día, ingresos por método de pago y arqueo de caja.
-                                    </p>
+                                <div class="card-body" id="card-caja-diaria" style="padding:0;">
+                                    <div class="caja-ledger-wrap">
+                                        <table class="caja-ledger-table">
+                                            <thead id="cajaDiariaHead">
+                                                <!-- generado por renderCajaDiaria() -->
+                                            </thead>
+                                            <tbody id="cajaDiariaBody">
+                                                <tr><td class="caja-empty" colspan="10">No hay cobros registrados en esta jornada.</td></tr>
+                                            </tbody>
+                                            <tfoot id="cajaDiariaFoot"></tfoot>
+                                        </table>
+                                    </div>
                                 </div>
                             </article>
+                        </div>
+
+                        <!-- Panel: Tickets -->
+                        <div class="menu-inner-panel" data-section-panel="tickets" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
+                            <div class="tickets-split-layout">
+                                <!-- Columna izquierda: tabla -->
+                                <article class="admin-card tickets-list-col">
+                                    <div class="card-head">
+                                        <h2>Tickets cobrados</h2>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="tickets-toolbar">
+                                            <input type="date" id="ticketsDateFrom" aria-label="Fecha desde">
+                                            <input type="date" id="ticketsDateTo" aria-label="Fecha hasta">
+                                            <button type="button" class="tickets-search-btn" id="ticketsSearchBtn">Buscar</button>
+                                        </div>
+                                        <div class="caja-table-wrap">
+                                            <table class="caja-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Fecha</th>
+                                                        <th>Código</th>
+                                                        <th>Cliente</th>
+                                                        <th>Tipo</th>
+                                                        <th>Método</th>
+                                                        <th>Total</th>
+                                                        <th style="text-align:center;">Acciones</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="ticketsTableBody">
+                                                    <tr><td class="caja-empty" colspan="7">Selecciona un rango de fechas y presiona Buscar.</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </article>
+                                <!-- Columna derecha: vista previa del ticket (desktop) -->
+                                <aside class="tickets-preview-col" id="ticketsSidePanel" hidden>
+                                    <article class="admin-card" style="height:100%;">
+                                        <div class="card-head">
+                                            <h2 id="ticketsSidePanelTitle">Vista previa</h2>
+                                            <button type="button" class="card-collapse-btn" id="ticketsSidePanelClose" style="font-size:0.8rem;padding:4px 12px;">✕ Cerrar</button>
+                                        </div>
+                                        <div class="card-body" id="ticketsSidePanelBody" style="overflow-y:auto;max-height:75vh;padding:8px 4px;">
+                                        </div>
+                                    </article>
+                                </aside>
+                            </div>
                         </div>
 
                     </div>
@@ -8655,6 +9415,10 @@
                         <button class="menu-inner-tab" data-section-tab="horario" data-section-scope="configuracion" role="tab" aria-selected="false">
                             <span class="menu-inner-tab-icon">🕐</span>
                             <span>Horario</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="metodos_pago" data-section-scope="configuracion" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">💳</span>
+                            <span>Métodos de pago</span>
                         </button>
                     </nav>
                     <div class="menu-inner-panels-wrap">
@@ -8760,6 +9524,24 @@
                                         <div id="horarioEstadoActual" class="horario-estado-badge"></div>
                                         <button type="submit" class="admin-button" id="horarioSaveBtn" disabled>Guardar horario</button>
                                     </form>
+                                </div>
+                            </article>
+                        </div>
+
+                        <!-- Panel: Métodos de pago -->
+                        <div class="menu-inner-panel" data-section-panel="metodos_pago" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Métodos de Pago</h2>
+                                </div>
+                                <div class="card-body" id="card-metodos-pago">
+                                    <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
+                                        Activa o desactiva cada método y configura las sub-opciones que aparecen en el modal de cobro de domicilios.
+                                    </p>
+                                    <div id="paymentConfigPanel">
+                                        <!-- renderizado por JS -->
+                                    </div>
+                                    <button type="button" class="admin-button" id="savePaymentConfigBtn" style="margin-top:8px;" disabled>Guardar métodos de pago</button>
                                 </div>
                             </article>
                         </div>
@@ -9414,6 +10196,65 @@
                 <button type="button" class="pts-btn-confirm" id="ptsConfirmBtn" disabled>Guardar pedido</button>
             </div>
         </div>
+    </div>
+
+    <!-- ══════════ MODAL: Cobro domicilio ══════════ -->
+    <!-- Modal vista previa de ticket -->
+    <div id="ticketPreviewModal" hidden>
+        <div class="tpv-card">
+            <div class="tpv-header">
+                <h3>Vista previa del ticket</h3>
+                <button type="button" class="tpv-close-btn" id="ticketPreviewCloseBtn">✕</button>
+            </div>
+            <div class="tpv-body">
+                <div id="ticketPreviewVoidedBadge" class="tpv-voided-badge" hidden>🚫 TICKET ANULADO</div>
+                <div id="ticketPreviewContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="deliveryPaymentModal" hidden>
+        <article class="dpm-card">
+            <!-- Encabezado mínimo -->
+            <div class="dpm-header">
+                <p class="dpm-title">Cobrar pedido</p>
+                <span class="dpm-code" id="dpmCode">#---</span>
+            </div>
+            <!-- Ticket + métodos en un solo bloque scrollable -->
+            <div class="dpm-unified-body" id="dpmUnifiedBody">
+                <!-- Ticket completo -->
+                <div id="dpmTicketSummary"></div>
+                <!-- Separador tipo ticket -->
+                <div class="dpm-pay-divider">
+                    <span>MÉTODO DE PAGO</span>
+                </div>
+                <!-- Botones de método -->
+                <div class="dpm-methods" id="dpmMethodsGrid"></div>
+                <!-- Sub-preguntas -->
+                <div class="dpm-sub-section" id="dpmSubSection" hidden>
+                    <div class="dpm-sub-panel" id="dpmSubEfectivo" hidden>
+                        <p class="dpm-sub-label">¿Con cuánto paga el cliente?</p>
+                        <div class="dpm-cash-wrap">
+                            <span class="dpm-cash-prefix">$</span>
+                            <input type="number" id="dpmCashInput" class="dpm-cash-input" placeholder="0" min="0" step="1000" inputmode="numeric">
+                        </div>
+                        <div class="dpm-change-row" id="dpmChangeRow" hidden>
+                            <span class="dpm-change-label">Cambio a dar</span>
+                            <strong class="dpm-change-amount" id="dpmChangeAmount">$ 0</strong>
+                        </div>
+                    </div>
+                    <div class="dpm-sub-panel" id="dpmSubChips" hidden>
+                        <p class="dpm-sub-label" id="dpmSubChipsLabel">¿Por cuál plataforma?</p>
+                        <div class="dpm-sub-chips" id="dpmSubChipsContainer"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Footer fijo abajo -->
+            <div class="dpm-footer">
+                <button type="button" class="dpm-btn-cancel" id="dpmCancelBtn">Cancelar</button>
+                <button type="button" class="dpm-btn-confirm" id="dpmConfirmBtn" disabled>Recibir pedido</button>
+            </div>
+        </article>
     </div>
 
     <!-- ══════════ CHAT FAB ══════════ -->

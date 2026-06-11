@@ -184,6 +184,7 @@ const ORDER_CODE_START = 2026;
 const SALES_SUMMARY_COLLECTION = 'resumen_ventas';
 const SALES_DAY_STATE_COLLECTION = 'admin_estado';
 const SALES_DAY_STATE_DOC_ID = 'jornada_ventas_actual';
+const CIERRES_CAJA_COLLECTION = 'cierres_caja';
 
 const adminAuthForm = document.getElementById('adminAuthForm');
 const authUsernameInput = document.getElementById('authUsername');
@@ -1641,7 +1642,7 @@ function normalizeOrder(raw) {
         status = 'entregado';
     }
 
-    const rawOrderType = String(raw.orderType || raw.tipo || '').trim().toLowerCase();
+    const rawOrderType = String(raw.orderType || raw.tipo || raw.fulfillmentType || '').trim().toLowerCase();
     const address = String(raw.deliveryAddress || '').trim();
     const isMesa = rawOrderType === 'mesa';
     const isTakeaway = !isMesa && ['retiro', 'llevar', 'local', 'recoger', 'pickup', 'takeaway'].some((value) => rawOrderType.includes(value));
@@ -1659,8 +1660,10 @@ function normalizeOrder(raw) {
         customerAddress: String(raw.customerAddress || '').trim(),
         profileAddress: String(raw.profileAddress || '').trim(),
         paymentMethod: String(raw.paymentMethod || '').trim().toLowerCase(),
+        paymentSubMethod: String(raw.paymentSubMethod || '').trim().toLowerCase(),
         cashChangeRequired: raw.cashChangeRequired === true,
         cashTenderAmount: Number.isFinite(Number(raw.cashTenderAmount)) ? Number(raw.cashTenderAmount) : null,
+        cashChangeAmount: Number.isFinite(Number(raw.cashChangeAmount)) ? Number(raw.cashChangeAmount) : null,
         deliveryAddress: address,
         items,
         itemCount: Number(raw.itemCount || items.length),
@@ -1671,6 +1674,7 @@ function normalizeOrder(raw) {
         currency: String(raw.currency || 'COP'),
         source: String(raw.source || 'web').trim(),
         orderType,
+        fulfillmentType: String(raw.fulfillmentType || '').trim().toLowerCase(),
         mesaNumber: raw.mesaNumber ? Number(raw.mesaNumber) : null,
         status,
         summaryMessage: String(raw.summaryMessage || '').trim(),
@@ -1678,7 +1682,10 @@ function normalizeOrder(raw) {
         readyForPickupAt: raw.readyForPickupAt || raw.ready_for_pickup_at || null,
         deliveredAt: raw.deliveredAt || raw.delivered_at || null,
         createdAt: raw.createdAt || raw.created_at || null,
-        updatedAt: raw.updatedAt || raw.updated_at || null
+        updatedAt: raw.updatedAt || raw.updated_at || null,
+        paidAt: raw.paidAt || raw.receivedAt || null,
+        voided: raw.voided === true,
+        voidedAt: raw.voidedAt || null
     };
 }
 
@@ -3953,7 +3960,8 @@ async function submitInternalOrderForm(event) {
             currency: 'COP',
             summaryMessage: String(internalOrderNotesInput?.value || '').trim(),
             createdAt: firestoreNow(),
-            updatedAt: firestoreNow()
+            updatedAt: firestoreNow(),
+            paidAt: firestoreNow()
         });
 
         await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
@@ -5320,34 +5328,35 @@ function formatDateTime(value) {
 
 function formatElapsedTime(value) {
     if (!value) {
-        return 'just now';
+        return 'ahora mismo';
     }
 
     const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-        return 'just now';
+        return 'ahora mismo';
     }
 
     const elapsedMs = Date.now() - date.getTime();
     const elapsedSeconds = Math.max(0, Math.round(elapsedMs / 1000));
 
     if (elapsedSeconds < 60) {
-        return 'just now';
+        return 'ahora mismo';
     }
 
     const elapsedMinutes = Math.floor(elapsedSeconds / 60);
     if (elapsedMinutes < 60) {
-        return `${elapsedMinutes}m ago`;
+        return `hace ${elapsedMinutes}min`;
     }
 
     const elapsedHours = Math.floor(elapsedMinutes / 60);
     if (elapsedHours < 24) {
-        return `${elapsedHours}h ago`;
+        return `hace ${elapsedHours}h`;
     }
 
     const elapsedDays = Math.floor(elapsedHours / 24);
-    return `${elapsedDays}d ago`;
+    return `hace ${elapsedDays}d`;
 }
+
 
 function formatLiveDuration(value) {
     if (!value) {
@@ -5799,19 +5808,26 @@ function buildOrderItemSummary(order) {
 }
 
 function getOrderPaymentLabel(order) {
-    if (order.paymentMethod === 'transferencia') {
-        return 'Transferencia llave / breve';
-    }
+    const method = String(order.paymentMethod || '').toLowerCase();
+    const sub = String(order.paymentSubMethod || '').toLowerCase();
 
-    if (order.paymentMethod === 'efectivo') {
-        if (order.cashChangeRequired && Number.isFinite(Number(order.cashTenderAmount))) {
-            return `Efectivo | Paga con ${formatMoney(order.cashTenderAmount)}`;
+    const subLabels = { nequi: 'Nequi', bold: 'Bold', bancolombia: 'Bancolombia' };
+    const subStr = subLabels[sub] || '';
+
+    if (method === 'efectivo') {
+        const tender = Number(order.cashTenderAmount || 0);
+        const change = Number(order.cashChangeAmount || 0);
+        if (order.cashChangeRequired && tender > 0) {
+            return `Efectivo | Paga con ${formatMoney(tender)} — Cambio ${formatMoney(change)}`;
         }
-
         return 'Efectivo | Tiene completo';
     }
 
-    return 'Sin medio de pago registrado';
+    if (method === 'tarjeta')       return subStr ? `Tarjeta (${subStr})` : 'Tarjeta';
+    if (method === 'transferencia') return subStr ? `Transferencia (${subStr})` : 'Transferencia';
+    if (method === 'link_pago')     return subStr ? `Link de pago (${subStr})` : 'Link de pago';
+
+    return 'Sin medio de pago';
 }
 
 function buildReceivedOrderMessage(order) {
@@ -6209,18 +6225,22 @@ function createOrderCard(order) {
             </div>
         </div>`;
     } else if (isDeliveryOrder && !isUnreadOrder && order.status !== 'entregado') {
-        // Layout domicilio: [ Pedir domiciliario → Pedido entregado | ✎ | 🗑 ]
+        // Layout domicilio: [ Pedir domiciliario → Pedido entregado | 💰? | ✎ | 🗑 ]
         const canRequestCourier = order.status !== 'esperando_domiciliario' && order.status !== 'camino';
         const mainLabel = canRequestCourier ? 'Pedir domiciliario' : 'Pedido entregado';
         const mainAction = canRequestCourier ? 'esperando_domiciliario' : 'entregado';
         const mainClass = canRequestCourier ? '' : 'order-action-btn-delivered';
+        const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+        const cobrarBtn = !isPaid
+            ? `<button type="button" class="order-action-btn order-action-btn-receive koa-icon-btn" data-order-card-action="cobrar_domicilio" data-order-id="${order.id}" title="Cobrar pedido">&#128176;</button>`
+            : '';
         const editBtn = isPosAdminOrder
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
             : '';
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
             <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
             <div class="koa-mesa-icons">
-                ${editBtn}
+                ${cobrarBtn}${editBtn}
                 <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
             </div>
         </div>`;
@@ -6241,7 +6261,8 @@ function createOrderCard(order) {
             </div>
         </div>`;
     } else {
-        // Layout compacto para pedidos pendientes: [ Recibir pedido (flex) | ✎ | 🗑 ]
+        // Layout compacto para pedidos pendientes: [ Cobrar/Recibir pedido (flex) | ✎ | 🗑 ]
+        const receiveLabel = isDeliveryOrder ? 'Cobrar pedido' : 'Recibir pedido';
         const editBtn = showEditPosAction
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
             : '';
@@ -6249,7 +6270,7 @@ function createOrderCard(order) {
             ? `<button type="button" class="order-action-btn order-action-btn-view koa-icon-btn" data-order-card-action="view_ticket" data-order-id="${order.id}" title="Ver ticket">&#128196;</button>`
             : '';
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
-            <button type="button" class="order-action-btn order-action-btn-receive koa-mesa-main" data-order-card-action="recibir_pedido" data-order-id="${order.id}">Recibir pedido</button>
+            <button type="button" class="order-action-btn order-action-btn-receive koa-mesa-main" data-order-card-action="recibir_pedido" data-order-id="${order.id}">${receiveLabel}</button>
             <div class="koa-mesa-icons">
                 ${viewBtn}${editBtn}
                 <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
@@ -7377,7 +7398,11 @@ function buildESCPOSData(order) {
 
     const cashGiven = Number(order.cashTenderAmount || 0);
     const totalAmt = getOrderDisplayTotal(order);
-    if (order.cashChangeRequired && cashGiven > totalAmt) {
+    if (order.paymentMethod === 'efectivo' && cashGiven > 0) {
+        sep();
+        wc('Pago con', formatMoney(cashGiven));
+        if (cashGiven > totalAmt) wc('Cambio', formatMoney(Number(order.cashChangeAmount || (cashGiven - totalAmt))));
+    } else if (order.cashChangeRequired && cashGiven > totalAmt) {
         sep();
         wc('Pago con', formatMoney(cashGiven));
         wc('Cambio', formatMoney(cashGiven - totalAmt));
@@ -8069,6 +8094,7 @@ async function reloadDataAndRender() {
     renderOrders();
     renderSalesSummaries();
     renderLedgerBook();
+    renderCajaDiaria();
     renderClients();
     renderMessages();
     updateMessagesAttentionState();
@@ -8626,7 +8652,7 @@ function _ptsRefreshDomicilioSection() {
         } else {
             // Tab 'quick' sin cliente: input visible y tarifa siempre accesible
             const addrPicker = document.getElementById('ptsAddressPicker');
-            if (addrPicker) addrPicker.setAttribute('hidden', '');
+            if (addrPicker) { addrPicker.setAttribute('hidden', ''); addrPicker.innerHTML = ''; }
             const addrInput = document.getElementById('ptsDeliveryAddress');
             if (addrInput) addrInput.removeAttribute('hidden');
             _ptsToggleFeeWrap(true);
@@ -8634,7 +8660,7 @@ function _ptsRefreshDomicilioSection() {
     } else {
         section.setAttribute('hidden', '');
         const addrPicker = document.getElementById('ptsAddressPicker');
-        if (addrPicker) addrPicker.setAttribute('hidden', '');
+        if (addrPicker) { addrPicker.setAttribute('hidden', ''); addrPicker.innerHTML = ''; }
         const addrInput = document.getElementById('ptsDeliveryAddress');
         if (addrInput) { addrInput.value = ''; addrInput.removeAttribute('hidden'); }
         _ptsToggleFeeWrap(false);
@@ -9372,6 +9398,12 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
             panel.hidden = !isActive;
             panel.style.display = isActive ? 'flex' : 'none';
         });
+        // Auto-cargar al abrir pestañas de Informes
+        if (scope === 'informes') {
+            if (target === 'caja-diaria') renderCajaDiaria();
+            if (target === 'tickets') _autoLoadTicketsTab();
+            if (target === 'libro') renderLibroCierres();
+        }
     });
 });
 
@@ -9946,6 +9978,12 @@ if (ordersActionRoot) {
             actionButton.disabled = true;
             try {
                 if (nextStatus === 'recibir_pedido') {
+                    const isDeliveryOrder = order.orderType === 'domicilio' || order.fulfillmentType === 'delivery';
+                    if (isDeliveryOrder) {
+                        openDeliveryPaymentModal(order);
+                        actionButton.disabled = false;
+                        return;
+                    }
                     const copied = await copyTextToClipboard(buildReceivedOrderMessage(order));
                     await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow() });
                     await reloadDataAndRender();
@@ -9956,6 +9994,12 @@ if (ordersActionRoot) {
                         copied ? 'ok' : 'error'
                     );
                     closeUnreadTray();
+                    return;
+                }
+
+                if (nextStatus === 'cobrar_domicilio') {
+                    openDeliveryPaymentModal(order, false);
+                    actionButton.disabled = false;
                     return;
                 }
 
@@ -10012,7 +10056,7 @@ if (ordersActionRoot) {
                 }
 
                 const copied = await copyTextToClipboard(buildDeliveredOrderMessage(order));
-                await updateOrder(orderId, { status: nextStatus, deliveredAt: firestoreNow() });
+                await updateOrder(orderId, { status: nextStatus, deliveredAt: firestoreNow(), paidAt: firestoreNow() });
                 showNotice(
                     copied
                         ? 'Mensaje de pedido entregado copiado y pedido cerrado.'
@@ -10717,4 +10761,863 @@ async function initAdmin() {
     }
 }
 
+// ── Modal cobro domicilio ──────────────────────────────────────────────────
+const PAYMENT_CONFIG_DOC_ID = 'payment_config';
+
+const DPM_META = {
+    efectivo:      { label: 'Efectivo',      icon: '💵', sub: null },
+    tarjeta:       { label: 'Tarjeta',       icon: '💳', subLabel: '¿Por cuál plataforma?', subOptions: [['nequi','Nequi'],['bold','Bold']] },
+    transferencia: { label: 'Transferencia', icon: '🏦', subLabel: '¿Por cuál banco?',       subOptions: [['bancolombia','Bancolombia'],['nequi','Nequi']] },
+    link_pago:     { label: 'Link de pago',  icon: '🔗', subLabel: '¿Por cuál plataforma?', subOptions: [['nequi','Nequi'],['bold','Bold']] }
+};
+
+const DPM_CONFIG_DEFAULTS = {
+    methods: { efectivo: true, tarjeta: true, transferencia: true, link_pago: true },
+    sub: { tarjeta: ['nequi','bold'], transferencia: ['bancolombia','nequi'], link_pago: ['nequi','bold'] }
+};
+
+let paymentConfig = null;
+let _dpmCurrentOrderId = null;
+let _dpmSelectedMethod = null;
+let _dpmSubMethod = null;
+let _dpmCashTender = 0;
+let _dpmOrderTotal = 0;
+let _dpmReceiveOrder = false;
+
+function getPaymentConfig() { return paymentConfig || DPM_CONFIG_DEFAULTS; }
+
+async function loadPaymentConfig() {
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(PAYMENT_CONFIG_DOC_ID).get();
+        paymentConfig = doc.exists ? { ...DPM_CONFIG_DEFAULTS, ...doc.data() } : null;
+    } catch (_) { paymentConfig = null; }
+    renderPaymentConfigPanel();
+}
+
+async function savePaymentConfig(config) {
+    await firebaseDb.collection(CONFIG_COLLECTION).doc(PAYMENT_CONFIG_DOC_ID).set(config, { merge: true });
+    paymentConfig = { ...DPM_CONFIG_DEFAULTS, ...config };
+}
+
+function renderDpmMethodButtons() {
+    const grid = document.getElementById('dpmMethodsGrid');
+    if (!grid) return;
+    const cfg = getPaymentConfig();
+    const activeKeys = Object.keys(DPM_META).filter((k) => cfg.methods[k] !== false);
+    grid.innerHTML = activeKeys.map((key) => {
+        const m = DPM_META[key];
+        return `<button type="button" class="dpm-method-btn" data-dpm-method="${key}">
+            <span class="dpm-method-icon">${m.icon}</span>
+            <span>${m.label}</span>
+        </button>`;
+    }).join('');
+}
+
+function _dpmShowSubSection(methodKey) {
+    const subSection = document.getElementById('dpmSubSection');
+    const panelEfectivo = document.getElementById('dpmSubEfectivo');
+    const panelChips = document.getElementById('dpmSubChips');
+    if (!subSection) return;
+    [panelEfectivo, panelChips].forEach((p) => p?.setAttribute('hidden', ''));
+    _dpmSubMethod = null;
+
+    if (methodKey === 'efectivo') {
+        panelEfectivo?.removeAttribute('hidden');
+        subSection.removeAttribute('hidden');
+        const cashInput = document.getElementById('dpmCashInput');
+        if (cashInput) { cashInput.value = ''; cashInput.focus(); }
+        document.getElementById('dpmChangeRow')?.setAttribute('hidden', '');
+        _dpmCashTender = 0;
+    } else {
+        const meta = DPM_META[methodKey];
+        const cfg = getPaymentConfig();
+        const activeSub = cfg.sub?.[methodKey] || (meta.subOptions || []).map(([k]) => k);
+        const availableSubs = (meta.subOptions || []).filter(([k]) => activeSub.includes(k));
+        if (availableSubs.length === 0) { subSection.setAttribute('hidden', ''); return; }
+        const chipsLabel = document.getElementById('dpmSubChipsLabel');
+        const chipsContainer = document.getElementById('dpmSubChipsContainer');
+        if (chipsLabel) chipsLabel.textContent = meta.subLabel || '¿Por cuál plataforma?';
+        if (chipsContainer) {
+            chipsContainer.innerHTML = availableSubs.map(([k, label]) =>
+                `<button type="button" class="dpm-sub-chip" data-dpm-sub="${k}">${label}</button>`
+            ).join('');
+        }
+        panelChips?.removeAttribute('hidden');
+        subSection.removeAttribute('hidden');
+    }
+}
+
+function _dpmUpdateConfirmState() {
+    const btn = document.getElementById('dpmConfirmBtn');
+    if (!btn || !_dpmSelectedMethod) { if (btn) btn.disabled = true; return; }
+    if (_dpmSelectedMethod === 'efectivo') {
+        btn.disabled = !(_dpmCashTender > 0);
+    } else {
+        btn.disabled = !_dpmSubMethod;
+    }
+}
+
+function openDeliveryPaymentModal(order, receiveOrder = true) {
+    _dpmCurrentOrderId = order.id;
+    _dpmOrderTotal = getOrderDisplayTotal(order);
+    _dpmSelectedMethod = null;
+    _dpmSubMethod = null;
+    _dpmCashTender = 0;
+    _dpmReceiveOrder = receiveOrder;
+
+    const modal = document.getElementById('deliveryPaymentModal');
+    if (!modal) return;
+
+    const _codeEl = document.getElementById('dpmCode');
+    if (_codeEl) _codeEl.textContent = `#${order.code || '---'}`;
+
+    const summaryEl = document.getElementById('dpmTicketSummary');
+    if (summaryEl) summaryEl.innerHTML = buildThermalTicketMarkup(order, { printMode: true });
+
+    document.getElementById('dpmSubSection')?.setAttribute('hidden', '');
+    document.getElementById('dpmSubEfectivo')?.setAttribute('hidden', '');
+    document.getElementById('dpmSubChips')?.setAttribute('hidden', '');
+    document.getElementById('dpmChangeRow')?.setAttribute('hidden', '');
+
+    const confirmBtn = document.getElementById('dpmConfirmBtn');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = receiveOrder ? 'Recibir pedido' : 'Registrar pago';
+    }
+
+    renderDpmMethodButtons();
+    modal.querySelectorAll('.dpm-method-btn').forEach((b) => b.classList.remove('active'));
+    modal.removeAttribute('hidden');
+}
+
+function closeDeliveryPaymentModal() {
+    document.getElementById('deliveryPaymentModal')?.setAttribute('hidden', '');
+    _dpmCurrentOrderId = null;
+    _dpmSelectedMethod = null;
+    _dpmSubMethod = null;
+    _dpmCashTender = 0;
+    _dpmReceiveOrder = false;
+}
+
+document.getElementById('deliveryPaymentModal')?.addEventListener('click', async (e) => {
+    if (e.target.closest('#dpmCancelBtn')) { closeDeliveryPaymentModal(); return; }
+
+    // Selección de método principal
+    const methodBtn = e.target.closest('[data-dpm-method]');
+    if (methodBtn) {
+        _dpmSelectedMethod = methodBtn.dataset.dpmMethod;
+        document.querySelectorAll('#dpmMethodsGrid .dpm-method-btn').forEach((b) =>
+            b.classList.toggle('active', b === methodBtn)
+        );
+        _dpmShowSubSection(_dpmSelectedMethod);
+        _dpmUpdateConfirmState();
+        return;
+    }
+
+    // Selección de sub-método (chip)
+    const subChip = e.target.closest('[data-dpm-sub]');
+    if (subChip) {
+        _dpmSubMethod = subChip.dataset.dpmSub;
+        document.querySelectorAll('#dpmSubChipsContainer .dpm-sub-chip').forEach((c) =>
+            c.classList.toggle('active', c === subChip)
+        );
+        _dpmUpdateConfirmState();
+        return;
+    }
+
+    // Confirmar
+    const confirmBtn = e.target.closest('#dpmConfirmBtn');
+    if (confirmBtn && !confirmBtn.disabled && _dpmCurrentOrderId && _dpmSelectedMethod) {
+        confirmBtn.disabled = true;
+        const orderId = _dpmCurrentOrderId;
+        const method = _dpmSelectedMethod;
+        const subMethod = _dpmSubMethod;
+        const cashTender = _dpmCashTender;
+        const orderTotal = _dpmOrderTotal;
+        const receiveOrder = _dpmReceiveOrder;
+        const order = ordersState.find((o) => o.id === orderId);
+        closeDeliveryPaymentModal();
+
+        if (order) {
+            const paymentUpdate = {
+                paymentMethod: method,
+                paymentSubMethod: subMethod || '',
+                cashTenderAmount: method === 'efectivo' ? cashTender : null,
+                cashChangeRequired: method === 'efectivo' && cashTender > orderTotal,
+                cashChangeAmount: method === 'efectivo' && cashTender > orderTotal ? cashTender - orderTotal : null,
+                paidAt: firestoreNow(),
+            };
+            try {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const paidTodayBefore = ordersState.filter((o) => {
+                    if (!o.paidAt) return false;
+                    const ms = typeof o.paidAt.toMillis === 'function' ? o.paidAt.toMillis() : Number(o.paidAt);
+                    return new Date(ms).toISOString().split('T')[0] === todayStr;
+                }).length;
+
+                if (receiveOrder) {
+                    const copied = await copyTextToClipboard(buildReceivedOrderMessage({ ...order, ...paymentUpdate }));
+                    await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow(), ...paymentUpdate });
+                    await reloadDataAndRender();
+                    showNotice(
+                        copied ? 'Pedido recibido, movido a preparación y mensaje copiado.' : 'Pedido recibido y movido a preparación.',
+                        copied ? 'ok' : 'error'
+                    );
+                    closeUnreadTray();
+                } else {
+                    await updateOrder(orderId, paymentUpdate);
+                    await reloadDataAndRender();
+                    showNotice('Pago registrado correctamente.', 'ok');
+                }
+
+                if (!_cajaDiariaAutoOpened && paidTodayBefore === 0) {
+                    _cajaDiariaAutoOpened = true;
+                    _navigateToCajaDiaria();
+                }
+            } catch (err) {
+                showNotice(`No se pudo procesar el pedido: ${err.message || 'error inesperado.'}`, 'error');
+            }
+        }
+    }
+});
+
+// Input de efectivo: calcular cambio en tiempo real
+document.getElementById('dpmCashInput')?.addEventListener('input', (e) => {
+    _dpmCashTender = Number(e.target.value) || 0;
+    const changeRow = document.getElementById('dpmChangeRow');
+    const changeEl = document.getElementById('dpmChangeAmount');
+    if (_dpmCashTender > 0 && _dpmOrderTotal > 0) {
+        const change = _dpmCashTender - _dpmOrderTotal;
+        if (changeRow) changeRow.removeAttribute('hidden');
+        if (changeEl) changeEl.textContent = change >= 0 ? formatMoney(change) : `— (faltan ${formatMoney(Math.abs(change))})`;
+        if (changeEl) changeEl.style.color = change >= 0 ? '#6dd294' : '#ff7b7b';
+    } else {
+        changeRow?.setAttribute('hidden', '');
+    }
+    _dpmUpdateConfirmState();
+});
+
+// ── Configuración de métodos de pago ──────────────────────────────────────
+function renderPaymentConfigPanel() {
+    const panel = document.getElementById('paymentConfigPanel');
+    if (!panel) return;
+    const cfg = getPaymentConfig();
+    panel.innerHTML = Object.keys(DPM_META).map((key) => {
+        const meta = DPM_META[key];
+        const isActive = cfg.methods[key] !== false;
+        const activeSubs = cfg.sub?.[key] || (meta.subOptions || []).map(([k]) => k);
+        const subOptionsHTML = meta.subOptions ? `
+            <div class="pm-sub-options-label">Sub-opciones</div>
+            <div class="pm-sub-options-list">
+                ${meta.subOptions.map(([k, label]) => `
+                    <label class="pm-sub-option-toggle">
+                        <input type="checkbox" data-pm-sub-key="${key}" data-pm-sub-val="${k}" ${activeSubs.includes(k) ? 'checked' : ''}>
+                        <span>${label}</span>
+                    </label>
+                `).join('')}
+            </div>` : '';
+        return `<div class="pm-method-card" data-pm-key="${key}">
+            <div class="pm-method-header">
+                <span class="pm-method-name"><span class="pm-method-icon">${meta.icon}</span>${meta.label}</span>
+                <label class="pm-toggle">
+                    <input type="checkbox" data-pm-method="${key}" ${isActive ? 'checked' : ''}>
+                    <span class="pm-toggle-slider"></span>
+                </label>
+            </div>
+            ${subOptionsHTML}
+        </div>`;
+    }).join('');
+
+    panel.addEventListener('change', () => {
+        document.getElementById('savePaymentConfigBtn').disabled = false;
+    });
+}
+
+document.getElementById('savePaymentConfigBtn')?.addEventListener('click', async () => {
+    const btn = document.getElementById('savePaymentConfigBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+    const methods = {};
+    const sub = {};
+    document.querySelectorAll('[data-pm-method]').forEach((cb) => {
+        methods[cb.dataset.pmMethod] = cb.checked;
+    });
+    document.querySelectorAll('[data-pm-sub-key]').forEach((cb) => {
+        const key = cb.dataset.pmSubKey;
+        if (!sub[key]) sub[key] = [];
+        if (cb.checked) sub[key].push(cb.dataset.pmSubVal);
+    });
+    try {
+        await savePaymentConfig({ methods, sub });
+        showNotice('Métodos de pago actualizados.', 'ok');
+    } catch (e) {
+        showNotice('Error al guardar: ' + (e.message || 'error'), 'error');
+    } finally {
+        if (btn) btn.textContent = 'Guardar métodos de pago';
+    }
+});
+
+// ── Caja Diaria ───────────────────────────────────────────────────────────────
+function _cajaDiariaTypeHtml(type) {
+    if (type === 'mesa')      return '<span class="caja-type-badge caja-type-mesa">Mesa</span>';
+    if (type === 'domicilio') return '<span class="caja-type-badge caja-type-domicilio">Domicilio</span>';
+    return '<span class="caja-type-badge caja-type-retiro">Para llevar</span>';
+}
+
+function _cajaDiariaMethodLabel(order) {
+    const meta = DPM_META[order.paymentMethod];
+    if (!meta) return order.paymentMethod || '—';
+    const sub = order.paymentSubMethod;
+    const subLabels = { nequi: 'Nequi', bold: 'Bold', bancolombia: 'Bancolombia' };
+    return sub && subLabels[sub] ? `${meta.icon} ${meta.label} · ${subLabels[sub]}` : `${meta.icon} ${meta.label}`;
+}
+
+function renderCajaDiaria() {
+    const headEl  = document.getElementById('cajaDiariaHead');
+    const bodyEl  = document.getElementById('cajaDiariaBody');
+    const footEl  = document.getElementById('cajaDiariaFoot');
+    const fechaEl = document.getElementById('cajaDiariaFechaLabel');
+    if (!bodyEl) return;
+
+    // Fecha actual en el encabezado
+    if (fechaEl) {
+        fechaEl.textContent = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+    }
+
+    const allPaid = ordersState.filter((o) =>
+        o.paymentMethod && o.paymentMethod !== 'pendiente'
+    );
+
+    const methodKeys = Object.keys(DPM_META);
+    const totalCols = 2 + methodKeys.length + 1; // hora + desc + métodos + total
+
+    if (allPaid.length === 0) {
+        if (headEl) headEl.innerHTML = '';
+        bodyEl.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">No hay cobros registrados en esta jornada.</td></tr>`;
+        if (footEl) footEl.innerHTML = '';
+        return;
+    }
+
+    // Cabecera
+    if (headEl) {
+        headEl.innerHTML = `<tr>
+            <th class="col-left">Hora</th>
+            <th class="col-left" style="min-width:200px;">Descripción</th>
+            ${methodKeys.map((k) => `<th>${DPM_META[k].icon} ${DPM_META[k].label}</th>`).join('')}
+            <th>Total</th>
+        </tr>`;
+    }
+
+    // Ordenar por hora de cobro
+    const sorted = [...allPaid].sort((a, b) => {
+        const ta = a.paidAt?.toDate ? a.paidAt.toDate() : new Date(a.paidAt || 0);
+        const tb = b.paidAt?.toDate ? b.paidAt.toDate() : new Date(b.paidAt || 0);
+        return ta - tb;
+    });
+
+    // Acumuladores por método (positivo = entrada, negativo si hay anulados netos)
+    const sumMethod = {};
+    methodKeys.forEach((k) => { sumMethod[k] = 0; });
+    let grandTotal = 0;
+
+    const rows = [];
+    sorted.forEach((o) => {
+        const ts   = o.paidAt || o.createdAt;
+        const hora = formatOrderTime(ts);
+        const amt  = getOrderDisplayTotal(o);
+        const baseDesc = `<strong>${escapeHtml(o.code)}</strong> · ${escapeHtml(o.customerName || '—')} · ${escapeHtml(getOrderTypeLabel(o))}`;
+
+        // Fila 1: ingreso original (siempre verde, para todos los cobrados)
+        if (sumMethod[o.paymentMethod] !== undefined) sumMethod[o.paymentMethod] += amt;
+        grandTotal += amt;
+        const mCellsIn = methodKeys.map((k) =>
+            k === o.paymentMethod
+                ? `<td style="color:#6ee7b7;font-weight:700;">${formatMoney(amt)}</td>`
+                : '<td></td>'
+        ).join('');
+        rows.push(`<tr>
+            <td class="col-left">${hora}</td>
+            <td class="col-left">${baseDesc}</td>
+            ${mCellsIn}
+            <td style="color:#6ee7b7;font-weight:800;">${formatMoney(amt)}</td>
+        </tr>`);
+
+        // Fila 2 (solo si anulado): devolución en rojo
+        if (o.voided) {
+            if (sumMethod[o.paymentMethod] !== undefined) sumMethod[o.paymentMethod] -= amt;
+            grandTotal -= amt;
+            const voidedTs = o.voidedAt || ts;
+            const horaVoid = formatOrderTime(voidedTs);
+            const mCellsOut = methodKeys.map((k) =>
+                k === o.paymentMethod
+                    ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
+                    : '<td></td>'
+            ).join('');
+            const voidDesc = `<span style="color:#fca5a5;">↩ ANULADO</span> · ${escapeHtml(o.code)} · ${escapeHtml(o.customerName || '—')}`;
+            rows.push(`<tr class="row-voided">
+                <td class="col-left" style="color:#fca5a5;">${horaVoid}</td>
+                <td class="col-left">${voidDesc}</td>
+                ${mCellsOut}
+                <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
+            </tr>`);
+        }
+    });
+    bodyEl.innerHTML = rows.join('');
+
+    // Totales al pie
+    if (footEl) {
+        const mFootCells = methodKeys.map((k) => {
+            const v = sumMethod[k];
+            if (v === 0) return '<td>—</td>';
+            const c = v > 0 ? '#6ee7b7' : '#fca5a5';
+            const s = v < 0 ? '−' : '';
+            return `<td style="color:${c};"><strong>${s}${formatMoney(Math.abs(v))}</strong></td>`;
+        }).join('');
+        const gtColor = grandTotal >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
+        const gtSign  = grandTotal < 0 ? '−' : '';
+        footEl.innerHTML = `<tr>
+            <td class="col-left" colspan="2">TOTALES</td>
+            ${mFootCells}
+            <td class="foot-total" style="color:${gtColor};">${gtSign}${formatMoney(Math.abs(grandTotal))}</td>
+        </tr>`;
+    }
+}
+
+document.getElementById('refreshCajaDiariaBtn')?.addEventListener('click', renderCajaDiaria);
+
+// ── Auto-apertura Caja Diaria al primer cobro ─────────────────────────────────
+let _cajaDiariaAutoOpened = false;
+
+function _navigateToCajaDiaria() {
+    const accordionBtn = document.querySelector('.admin-accordion-trigger[data-accordion-target="informes"]');
+    if (accordionBtn) {
+        const panel = document.getElementById('informes');
+        if (panel && !panel.classList.contains('accordion-open')) {
+            accordionBtn.click();
+        }
+    }
+    setTimeout(() => {
+        const cajaTab = document.querySelector('[data-section-tab="caja-diaria"][data-section-scope="informes"]');
+        cajaTab?.click();
+    }, 180);
+}
+
+// ── Cerrar Caja ───────────────────────────────────────────────────────────────
+async function cerrarCaja() {
+    const btn = document.getElementById('cerrarCajaBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Cerrando...'; }
+
+    try {
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const paid = ordersState.filter((o) => {
+            const paidAt = o.paidAt;
+            if (!paidAt) return false;
+            const ms = typeof paidAt.toMillis === 'function' ? paidAt.toMillis() : Number(paidAt);
+            const d = new Date(ms);
+            return d.toISOString().split('T')[0] === todayStr;
+        });
+
+        if (!paid.length) {
+            showNotice('No hay cobros registrados hoy para cerrar la caja.', 'error');
+            return;
+        }
+
+        const sumMethod = {};
+        let grandTotal = 0;
+        let voidedCount = 0;
+
+        paid.forEach((o) => {
+            const mk = o.paymentMethod;
+            const amt = Number(o.total || o.subtotal || 0);
+            if (!sumMethod[mk]) sumMethod[mk] = 0;
+            if (o.voided) {
+                voidedCount++;
+                sumMethod[mk] -= amt;
+                grandTotal -= amt;
+            } else {
+                sumMethod[mk] += amt;
+                grandTotal += amt;
+            }
+        });
+
+        const cfg = await firebaseDb.collection('configuracion').doc('negocio').get().then(s => s.exists ? s.data() : {});
+        const businessName = cfg.nombre || cfg.name || 'ROAL BURGER';
+        const businessAddress = cfg.direccion || cfg.address || '';
+        const businessPhone = cfg.telefono || cfg.phone || '';
+        const businessNit = cfg.nit || cfg.rut || '';
+
+        const closedAt = firestoreNow();
+        const closedAtDate = today;
+        const closureId = `cierre_${todayStr}_${Date.now()}`;
+
+        const methodLines = Object.entries(sumMethod).map(([k, v]) => {
+            const meta = DPM_META[k] || { icon: '', label: k };
+            return `${meta.icon} ${meta.label}: ${formatMoney(v)}`;
+        }).join('\n');
+
+        const closureDoc = {
+            id: closureId,
+            closedAt,
+            date: todayStr,
+            transactionCount: paid.length,
+            voidedCount,
+            methodTotals: sumMethod,
+            grandTotal,
+            businessName,
+            businessAddress,
+            businessPhone,
+            businessNit,
+        };
+
+        await firebaseDb.collection(CIERRES_CAJA_COLLECTION).doc(closureId).set(closureDoc);
+
+        const dateStr = closedAtDate.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+        const timeStr = closedAtDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        const ticketHtml = `
+        <div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.7;color:#111;background:#fff;padding:20px 24px;max-width:340px;margin:0 auto;border:1px solid #ddd;">
+            <div style="text-align:center;margin-bottom:8px;">
+                <div style="font-weight:700;font-size:15px;letter-spacing:1px;">${escapeHtml(businessName)}</div>
+                ${businessAddress ? `<div>${escapeHtml(businessAddress)}</div>` : ''}
+                ${businessPhone ? `<div>Tel: ${escapeHtml(businessPhone)}</div>` : ''}
+                ${businessNit ? `<div>NIT/RUT: ${escapeHtml(businessNit)}</div>` : ''}
+            </div>
+            <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;text-align:center;padding:4px 0;margin-bottom:8px;">
+                <strong>CIERRE DE CAJA</strong>
+            </div>
+            <div>Fecha: ${dateStr}</div>
+            <div>Hora cierre: ${timeStr}</div>
+            <div>Transacciones: ${paid.length}</div>
+            ${voidedCount ? `<div>Anulados: ${voidedCount}</div>` : ''}
+            <div style="border-top:1px dashed #999;margin:8px 0;padding-top:8px;">
+                <strong>DESGLOSE POR MÉTODO:</strong>
+                ${Object.entries(sumMethod).map(([k, v]) => {
+                    const meta = DPM_META[k] || { icon: '', label: k };
+                    return `<div style="display:flex;justify-content:space-between;"><span>${meta.icon} ${meta.label}</span><span>${formatMoney(v)}</span></div>`;
+                }).join('')}
+            </div>
+            <div style="border-top:2px solid #333;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:700;font-size:15px;">
+                <span>TOTAL NETO</span><span>${formatMoney(grandTotal)}</span>
+            </div>
+            <div style="text-align:center;margin-top:12px;font-size:11px;color:#666;">
+                *** Cierre de caja válido ***<br>Generado por sistema POS
+            </div>
+        </div>`;
+
+        const win = window.open('', '_blank', 'width=420,height=640,scrollbars=yes');
+        if (win) {
+            win.document.write(`<!DOCTYPE html><html><head><title>Cierre de Caja ${todayStr}</title></head><body style="margin:0;background:#f5f5f5;">${ticketHtml}<div style="text-align:center;margin:16px;"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">Imprimir</button></div></body></html>`);
+            win.document.close();
+        }
+
+        _cajaDiariaAutoOpened = false;
+        showNotice('Caja cerrada correctamente. Se generó el ticket de cierre.', 'ok');
+        await renderLibroCierres();
+    } catch (err) {
+        showNotice(`Error al cerrar caja: ${err.message || 'error inesperado.'}`, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔒 Cerrar Caja'; }
+    }
+}
+
+document.getElementById('cerrarCajaBtn')?.addEventListener('click', cerrarCaja);
+
+// ── Libro Contable: historial de cierres de caja ──────────────────────────────
+let _cierresCajaState = [];
+
+async function loadCierresCaja() {
+    const snap = await firebaseDb.collection(CIERRES_CAJA_COLLECTION)
+        .orderBy('closedAt', 'desc')
+        .limit(100)
+        .get();
+    _cierresCajaState = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return _cierresCajaState;
+}
+
+async function renderLibroCierres() {
+    const tbody = document.getElementById('libroCierresList');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:12px;color:var(--admin-muted);">Cargando…</td></tr>';
+    try {
+        const cierres = await loadCierresCaja();
+        if (!cierres.length) {
+            tbody.innerHTML = '<tr><td class="caja-empty" colspan="9">No hay cierres de caja registrados.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = cierres.map((c) => {
+            const tsMs = c.closedAt && typeof c.closedAt.toMillis === 'function' ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+            const d = tsMs ? new Date(tsMs) : null;
+            const fechaStr = d ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : c.date || '—';
+            const methods = c.methodTotals || {};
+            const methodCells = ['efectivo','tarjeta','transferencia','link'].map((k) => {
+                const v = methods[k];
+                if (!v && v !== 0) return '<td style="color:var(--admin-muted);">—</td>';
+                const color = v < 0 ? '#fca5a5' : '#6ee7b7';
+                return `<td style="color:${color};font-weight:600;">${formatMoney(Math.abs(v))}</td>`;
+            }).join('');
+            const gtColor = (c.grandTotal || 0) >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
+            return `<tr>
+                <td>${escapeHtml(fechaStr)}</td>
+                <td style="text-align:center;">${Number(c.transactionCount || 0)}</td>
+                <td style="text-align:center;">${Number(c.voidedCount || 0)}</td>
+                ${methodCells}
+                <td style="color:${gtColor};font-weight:700;">${formatMoney(c.grandTotal || 0)}</td>
+                <td style="text-align:center;"><button class="btn-reimprimir-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 10px;background:var(--admin-accent,#ff9540);color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:600;">🖨️ Reimprimir</button></td>
+            </tr>`;
+        }).join('');
+    } catch (err) {
+        tbody.innerHTML = `<tr><td class="caja-empty" colspan="9">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
+    }
+}
+
+document.getElementById('refreshLibroCierresBtn')?.addEventListener('click', renderLibroCierres);
+
+document.getElementById('libroCierresList')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-reimprimir-cierre');
+    if (!btn) return;
+    const cid = btn.dataset.cierreId;
+    const c = _cierresCajaState.find((x) => x.id === cid);
+    if (!c) return;
+    const tsMs = c.closedAt && typeof c.closedAt.toMillis === 'function' ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+    const d = tsMs ? new Date(tsMs) : new Date();
+    const dateStr = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+    const timeStr = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const methods = c.methodTotals || {};
+    const ticketHtml = `
+    <div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.7;color:#111;background:#fff;padding:20px 24px;max-width:340px;margin:0 auto;border:1px solid #ddd;">
+        <div style="text-align:center;margin-bottom:8px;">
+            <div style="font-weight:700;font-size:15px;letter-spacing:1px;">${escapeHtml(c.businessName || 'ROAL BURGER')}</div>
+            ${c.businessAddress ? `<div>${escapeHtml(c.businessAddress)}</div>` : ''}
+            ${c.businessPhone ? `<div>Tel: ${escapeHtml(c.businessPhone)}</div>` : ''}
+            ${c.businessNit ? `<div>NIT/RUT: ${escapeHtml(c.businessNit)}</div>` : ''}
+        </div>
+        <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;text-align:center;padding:4px 0;margin-bottom:8px;">
+            <strong>CIERRE DE CAJA</strong>
+        </div>
+        <div>Fecha: ${dateStr}</div>
+        <div>Hora cierre: ${timeStr}</div>
+        <div>Transacciones: ${Number(c.transactionCount || 0)}</div>
+        ${c.voidedCount ? `<div>Anulados: ${Number(c.voidedCount)}</div>` : ''}
+        <div style="border-top:1px dashed #999;margin:8px 0;padding-top:8px;">
+            <strong>DESGLOSE POR MÉTODO:</strong>
+            ${Object.entries(methods).map(([k, v]) => {
+                const meta = DPM_META[k] || { icon: '', label: k };
+                return `<div style="display:flex;justify-content:space-between;"><span>${meta.icon} ${meta.label}</span><span>${formatMoney(v)}</span></div>`;
+            }).join('')}
+        </div>
+        <div style="border-top:2px solid #333;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:700;font-size:15px;">
+            <span>TOTAL NETO</span><span>${formatMoney(c.grandTotal || 0)}</span>
+        </div>
+        <div style="text-align:center;margin-top:12px;font-size:11px;color:#666;">
+            *** Cierre de caja válido ***<br>Generado por sistema POS
+        </div>
+    </div>`;
+    const win = window.open('', '_blank', 'width=420,height=640,scrollbars=yes');
+    if (win) {
+        win.document.write(`<!DOCTYPE html><html><head><title>Reimprimir Cierre ${c.date || ''}</title></head><body style="margin:0;background:#f5f5f5;">${ticketHtml}<div style="text-align:center;margin:16px;"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">Imprimir</button></div></body></html>`);
+        win.document.close();
+    }
+});
+
+// ── Tickets (Informes) ────────────────────────────────────────────────────────
+let _ticketsData = [];
+
+function _ticketRowHtml(o) {
+    const fecha = (() => {
+        const ts = o.paidAt || o.createdAt;
+        if (!ts) return '—';
+        const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+        return new Intl.DateTimeFormat('es-CO', { dateStyle: 'short', timeStyle: 'short' }).format(d);
+    })();
+    const code   = escapeHtml(o.code || o.id.slice(-6));
+    const name   = escapeHtml(o.customerName || '—');
+    const tipo   = _cajaDiariaTypeHtml(o.orderType);
+    const method = _cajaDiariaMethodLabel(o);
+    const total  = formatMoney(getOrderDisplayTotal(o));
+    const voidedClass = o.voided ? ' class="ticket-voided"' : '';
+    const voidedBadge = o.voided ? '<span class="ticket-voided-inline">ANULADO</span>' : '';
+    const actionBtn = o.voided
+        ? `<button type="button" class="ticket-action-btn restore" data-ticket-action="restore" data-ticket-id="${o.id}">↩ Restaurar</button>`
+        : `<button type="button" class="ticket-action-btn void" data-ticket-action="void" data-ticket-id="${o.id}">🚫 Anular</button>`;
+    return `<tr${voidedClass} data-ticket-id="${o.id}">
+        <td>${fecha}</td>
+        <td><strong>${code}</strong>${voidedBadge}</td>
+        <td>${name}</td>
+        <td>${tipo}</td>
+        <td><span class="caja-method-badge">${method}</span></td>
+        <td class="caja-total-cell">${total}</td>
+        <td style="text-align:center;white-space:nowrap;">
+            <button type="button" class="ticket-action-btn preview" data-ticket-action="preview" data-ticket-id="${o.id}">👁 Ver</button>
+            ${actionBtn}
+        </td>
+    </tr>`;
+}
+
+function renderTicketsTable(orders) {
+    const bodyEl = document.getElementById('ticketsTableBody');
+    if (!bodyEl) return;
+    if (!orders || orders.length === 0) {
+        bodyEl.innerHTML = '<tr><td class="caja-empty" colspan="7">No se encontraron tickets para el período seleccionado.</td></tr>';
+        return;
+    }
+    bodyEl.innerHTML = orders.map(_ticketRowHtml).join('');
+}
+
+async function loadTicketsReport(fromDate, toDate) {
+    const start = firebase.firestore.Timestamp.fromDate(new Date(fromDate + 'T00:00:00'));
+    const end   = firebase.firestore.Timestamp.fromDate(new Date(toDate + 'T23:59:59'));
+    const snap  = await firebaseDb.collection(ORDERS_COLLECTION)
+        .where('createdAt', '>=', start)
+        .where('createdAt', '<=', end)
+        .orderBy('createdAt', 'desc')
+        .get();
+    const orders = snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() }));
+    _ticketsData = orders.filter((o) => o.paymentMethod && o.paymentMethod !== 'pendiente');
+    return _ticketsData;
+}
+
+// Tickets search button
+document.getElementById('ticketsSearchBtn')?.addEventListener('click', async () => {
+    const fromEl = document.getElementById('ticketsDateFrom');
+    const toEl   = document.getElementById('ticketsDateTo');
+    const btn    = document.getElementById('ticketsSearchBtn');
+    const from   = fromEl?.value;
+    const to     = toEl?.value;
+    if (!from || !to) { showNotice('Selecciona un rango de fechas.', 'error'); return; }
+    if (from > to)    { showNotice('La fecha de inicio debe ser menor o igual a la fecha final.', 'error'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Buscando...'; }
+    try {
+        const orders = await loadTicketsReport(from, to);
+        renderTicketsTable(orders);
+    } catch (err) {
+        showNotice('Error al buscar tickets: ' + (err.message || 'error'), 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Buscar'; }
+    }
+});
+
+// Tickets table actions (preview / void)
+document.getElementById('ticketsTableBody')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-ticket-action]');
+    if (!btn) return;
+    const action = btn.dataset.ticketAction;
+    const id     = btn.dataset.ticketId;
+    const order  = _ticketsData.find((o) => o.id === id);
+    if (!order) return;
+
+    if (action === 'preview') {
+        if (window.innerWidth >= 960) {
+            openTicketSidePanel(order);
+        } else {
+            openTicketPreviewModal(order);
+        }
+        return;
+    }
+
+    if (action === 'void') {
+        if (!window.confirm(`¿Anular el ticket ${order.code}? Se eliminará de la Caja Diaria.`)) return;
+        btn.disabled = true;
+        try {
+            await updateOrder(id, { voided: true, voidedAt: firestoreNow() });
+            const idx = _ticketsData.findIndex((o) => o.id === id);
+            if (idx !== -1) { _ticketsData[idx] = { ..._ticketsData[idx], voided: true }; }
+            renderTicketsTable(_ticketsData);
+            renderCajaDiaria();
+            const sidePanel = document.getElementById('ticketsSidePanel');
+            if (sidePanel && !sidePanel.hidden && idx !== -1) openTicketSidePanel(_ticketsData[idx]);
+            showNotice(`Ticket ${order.code} anulado.`, 'ok');
+        } catch (err) {
+            showNotice('Error al anular: ' + (err.message || 'error'), 'error');
+            btn.disabled = false;
+        }
+        return;
+    }
+
+    if (action === 'restore') {
+        if (!window.confirm(`¿Restaurar el ticket ${order.code}? Volverá a aparecer en la Caja Diaria.`)) return;
+        btn.disabled = true;
+        try {
+            await updateOrder(id, { voided: false, voidedAt: null });
+            const idx = _ticketsData.findIndex((o) => o.id === id);
+            if (idx !== -1) { _ticketsData[idx] = { ..._ticketsData[idx], voided: false }; }
+            renderTicketsTable(_ticketsData);
+            renderCajaDiaria();
+            const sidePanel = document.getElementById('ticketsSidePanel');
+            if (sidePanel && !sidePanel.hidden && idx !== -1) openTicketSidePanel(_ticketsData[idx]);
+            showNotice(`Ticket ${order.code} restaurado.`, 'ok');
+        } catch (err) {
+            showNotice('Error al restaurar: ' + (err.message || 'error'), 'error');
+            btn.disabled = false;
+        }
+    }
+});
+
+// ── Panel lateral de ticket (escritorio) ──────────────────────────────────────
+function openTicketSidePanel(order) {
+    const panel  = document.getElementById('ticketsSidePanel');
+    const body   = document.getElementById('ticketsSidePanelBody');
+    const title  = document.getElementById('ticketsSidePanelTitle');
+    if (!panel || !body) return;
+    if (title) title.textContent = order.voided ? `🚫 ${order.code} — Anulado` : `Ticket ${order.code}`;
+    body.innerHTML = buildThermalTicketMarkup(order, { printMode: true });
+    panel.removeAttribute('hidden');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeTicketSidePanel() {
+    document.getElementById('ticketsSidePanel')?.setAttribute('hidden', '');
+}
+
+document.getElementById('ticketsSidePanelClose')?.addEventListener('click', closeTicketSidePanel);
+
+// ── Modal vista previa de ticket ──────────────────────────────────────────────
+function openTicketPreviewModal(order) {
+    const modal    = document.getElementById('ticketPreviewModal');
+    const content  = document.getElementById('ticketPreviewContent');
+    const voidBadge = document.getElementById('ticketPreviewVoidedBadge');
+    if (!modal || !content) return;
+    content.innerHTML = buildThermalTicketMarkup(order);
+    if (voidBadge) {
+        if (order.voided) voidBadge.removeAttribute('hidden');
+        else voidBadge.setAttribute('hidden', '');
+    }
+    modal.removeAttribute('hidden');
+}
+
+function closeTicketPreviewModal() {
+    document.getElementById('ticketPreviewModal')?.setAttribute('hidden', '');
+}
+
+document.getElementById('ticketPreviewCloseBtn')?.addEventListener('click', closeTicketPreviewModal);
+document.getElementById('ticketPreviewModal')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('ticketPreviewModal')) closeTicketPreviewModal();
+});
+
+// Pre-load today in date filters and auto-load on tab open
+(function initTicketsDateDefaults() {
+    const today = new Date().toISOString().slice(0, 10);
+    const fromEl = document.getElementById('ticketsDateFrom');
+    const toEl   = document.getElementById('ticketsDateTo');
+    if (fromEl && !fromEl.value) fromEl.value = today;
+    if (toEl && !toEl.value)     toEl.value   = today;
+})();
+
+async function _autoLoadTicketsTab() {
+    const fromEl = document.getElementById('ticketsDateFrom');
+    const toEl   = document.getElementById('ticketsDateTo');
+    const btn    = document.getElementById('ticketsSearchBtn');
+    const from   = fromEl?.value;
+    const to     = toEl?.value;
+    if (!from || !to) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Cargando...'; }
+    try {
+        const orders = await loadTicketsReport(from, to);
+        renderTicketsTable(orders);
+    } catch (_) { /* silencioso */ }
+    finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Buscar'; }
+    }
+}
+
 initAdmin();
+loadPaymentConfig();
