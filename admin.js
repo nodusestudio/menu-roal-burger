@@ -1116,11 +1116,9 @@ function setupAccordion() {
     const panels = Array.from(document.querySelectorAll('.admin-tab-panel'));
     const groupMap = {
         menu: ['menu'],
-        diseno: ['botones'],
+        informes: ['resumen-ventas', 'libro'],
         configuracion: ['configuracion'],
         pedidos: ['pedidos'],
-        'resumen-ventas': ['resumen-ventas'],
-        libro: ['libro'],
         clientes: ['clientes'],
         mensajes: ['mensajes'],
         metricas: ['metricas']
