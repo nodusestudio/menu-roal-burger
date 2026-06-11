@@ -3663,7 +3663,6 @@ async function saveAdminOrderQuick(config = {}) {
     const editData = _editingOrderData;
 
     const saveBtn = document.getElementById('posDrawerSaveBtn');
-    const orderType = config.orderType || editData?.orderType || 'retiro';
     const mesaNumber = config.mesaNumber || editData?.mesaNumber || null;
     const defaultName = orderType === 'mesa' && mesaNumber ? `Mesa ${mesaNumber}` : 'Pedido Admin';
     const customerName = String(config.customerName || editData?.customerName || '').trim() || defaultName;
