@@ -8530,6 +8530,38 @@
                     </div>
                 </article>
 
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Horario de Pedidos</h2>
+                        <button type="button" class="card-collapse-btn" data-collapse-target="card-horario" aria-expanded="true">Retraer</button>
+                    </div>
+                    <div class="card-body" id="card-horario">
+                        <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 18px;">
+                            Define el horario en que el menú público acepta pedidos. Fuera de este rango los clientes pueden ver el menú pero no agregar al carrito.
+                        </p>
+                        <form id="horarioForm" class="admin-form">
+                            <div class="admin-field">
+                                <label for="horarioApertura">Hora de apertura</label>
+                                <input type="time" id="horarioApertura" name="horarioApertura" value="16:00" required>
+                            </div>
+                            <div class="admin-field">
+                                <label for="horarioCierre">Hora de cierre</label>
+                                <input type="time" id="horarioCierre" name="horarioCierre" value="22:00" required>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="horarioEtiqueta">Etiqueta de horario (visible en el menú)</label>
+                                <input type="text" id="horarioEtiqueta" name="horarioEtiqueta" placeholder="Ej: Lunes a Domingo: 4:00 P.M. a 10:00 P.M.">
+                            </div>
+                            <div class="admin-field full">
+                                <label for="horarioMensajeCierre">Mensaje cuando está cerrado</label>
+                                <textarea id="horarioMensajeCierre" name="horarioMensajeCierre" rows="3" placeholder="Ej: Disculpa, en este momento estamos cerrados. Nuestro horario es de 4:00 P.M. a 10:00 P.M." style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:#e8eeff;font-size:0.88rem;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
+                            </div>
+                            <div id="horarioEstadoActual" style="font-size:0.82rem;color:var(--admin-muted);padding:8px 12px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);margin-bottom:4px;"></div>
+                            <button type="submit" class="admin-button">Guardar horario</button>
+                        </form>
+                    </div>
+                </article>
+
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="clientes">

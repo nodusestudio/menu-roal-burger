@@ -164,8 +164,17 @@ const defaultBranding = {
 
 const CONFIG_COLLECTION = 'configuracion';
 const CONFIG_DOC_ID = 'config_landing';
+const HORARIO_DOC_ID = 'config_horario';
 const RECOMENDADO_DIA_DOC_ID = 'recomendado_dia';
 const UPGRADES_CONFIG_DOC_ID = 'acompañamientos';
+const DEFAULT_HORARIO = {
+    aperturaHora: 16, aperturaMinuto: 0,
+    cierreHora: 22, cierreMinuto: 0,
+    etiquetaHorario: 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.',
+    mensajeCierre: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.'
+};
+let horarioState = { ...DEFAULT_HORARIO };
+let horarioForm = null;
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
 const MESSAGES_COLLECTION = 'mensajes';
@@ -1681,6 +1690,15 @@ async function fetchBranding() {
 
     brandingState = normalizeBranding(doc.data());
     window._adminBrandingSnapshot = doc.data();
+}
+
+async function fetchHorarioConfig() {
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(HORARIO_DOC_ID).get();
+        horarioState = doc.exists ? { ...DEFAULT_HORARIO, ...doc.data() } : { ...DEFAULT_HORARIO };
+    } catch (_) {
+        horarioState = { ...DEFAULT_HORARIO };
+    }
 }
 
 async function fetchOrders() {
@@ -7297,6 +7315,30 @@ function setButtonForm(button) {
     }
 }
 
+function renderHorarioForm() {
+    if (!horarioForm) horarioForm = document.getElementById('horarioForm');
+    if (!horarioForm) return;
+    const pad = (n) => String(Number(n) || 0).padStart(2, '0');
+    horarioForm.elements['horarioApertura'].value = `${pad(horarioState.aperturaHora)}:${pad(horarioState.aperturaMinuto)}`;
+    horarioForm.elements['horarioCierre'].value = `${pad(horarioState.cierreHora)}:${pad(horarioState.cierreMinuto)}`;
+    horarioForm.elements['horarioEtiqueta'].value = horarioState.etiquetaHorario || '';
+    horarioForm.elements['horarioMensajeCierre'].value = horarioState.mensajeCierre || '';
+
+    const estadoEl = document.getElementById('horarioEstadoActual');
+    if (estadoEl) {
+        const now = new Date();
+        const parts = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false
+        }).formatToParts(now);
+        const h = Number(parts.find((p) => p.type === 'hour')?.value || 0);
+        const m = Number(parts.find((p) => p.type === 'minute')?.value || 0);
+        const mins = h * 60 + m;
+        const isOpen = mins >= horarioState.aperturaHora * 60 + horarioState.aperturaMinuto &&
+                       mins < horarioState.cierreHora * 60 + horarioState.cierreMinuto;
+        estadoEl.innerHTML = `Estado actual (hora Colombia): <strong style="color:${isOpen ? '#4cda64' : '#ff6b6b'}">${isOpen ? 'ABIERTO' : 'CERRADO'}</strong>`;
+    }
+}
+
 function renderBrandingForm() {
     if (!brandingForm) {
         return;
@@ -7762,7 +7804,8 @@ async function reloadDataAndRender() {
         fetchClients(),
         fetchMessages(),
         fetchMenuUpgradesConfig(),
-        fetchRecomendadoDiaConfig()
+        fetchRecomendadoDiaConfig(),
+        fetchHorarioConfig()
     ]);
 
     const createdSalesDay = await ensureActiveSalesDay();
@@ -7777,6 +7820,7 @@ async function reloadDataAndRender() {
     renderMenuUpgradesAdmin();
     renderButtonsList();
     renderBrandingForm();
+    renderHorarioForm();
     renderRecomendadoDiaPanel();
     renderOrders();
     renderSalesSummaries();
@@ -10129,6 +10173,34 @@ brandingForm.addEventListener('submit', async (event) => {
         showNotice(`No se pudo guardar la configuracion: ${error.message || 'Error inesperado.'}`, 'error');
     }
 });
+
+const horarioFormEl = document.getElementById('horarioForm');
+if (horarioFormEl) {
+    horarioFormEl.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        hideNotice();
+        const fd = new FormData(horarioFormEl);
+        const [aH, aM] = (fd.get('horarioApertura') || '16:00').split(':').map(Number);
+        const [cH, cM] = (fd.get('horarioCierre') || '22:00').split(':').map(Number);
+        const payload = {
+            aperturaHora: Number.isFinite(aH) ? aH : 16,
+            aperturaMinuto: Number.isFinite(aM) ? aM : 0,
+            cierreHora: Number.isFinite(cH) ? cH : 22,
+            cierreMinuto: Number.isFinite(cM) ? cM : 0,
+            etiquetaHorario: String(fd.get('horarioEtiqueta') || DEFAULT_HORARIO.etiquetaHorario).trim(),
+            mensajeCierre: String(fd.get('horarioMensajeCierre') || DEFAULT_HORARIO.mensajeCierre).trim(),
+            updatedAt: firestoreNow()
+        };
+        try {
+            await firebaseDb.collection(CONFIG_COLLECTION).doc(HORARIO_DOC_ID).set(payload, { merge: true });
+            horarioState = { ...horarioState, ...payload };
+            renderHorarioForm();
+            showNotice('Horario guardado correctamente.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo guardar el horario: ${error.message || 'Error inesperado.'}`, 'error');
+        }
+    });
+}
 
 if (templateGrid) {
     templateGrid.addEventListener('click', (event) => {

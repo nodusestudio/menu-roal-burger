@@ -13,13 +13,12 @@ const ORDER_CODE_START = 2026;
 const DELIVERY_FEE_AMOUNT = 6000;
 const MAX_CUSTOMER_SAVED_ADDRESSES = 5;
 const CUSTOMER_PROFILE_STORAGE_KEY = 'roalburger-customer-profile-v1';
-const ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS = true;
-// Cierre temporal — cambiar a false para reabrir el menú
-const TEMP_CLOSURE_ACTIVE = true;
+const ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS = false;
+const TEMP_CLOSURE_ACTIVE = false;
 const TEMP_CLOSURE_MESSAGE = 'Estamos cerrados momentáneamente por adecuaciones en el local. ¡Pronto volvemos con todo!';
 const PAGE_URL_PARAMS = new URLSearchParams(window.location.search);
 const IS_ADMIN_PREVIEW = PAGE_URL_PARAMS.get('adminPreview') === '1';
-const ORDERING_SCHEDULE = {
+let ORDERING_SCHEDULE = {
     timeZone: 'America/Bogota',
     startMinutes: 16 * 60,
     endMinutes: 22 * 60,
@@ -1190,6 +1189,27 @@ async function loadPublicUpgradesConfig() {
     } catch (_e) {
         publicUpgradesConfig = null;
     }
+}
+
+async function loadHorarioConfig() {
+    try {
+        const db = getPublicFirebaseDb();
+        const doc = await db.collection('configuracion').doc('config_horario').get();
+        if (!doc.exists) return;
+        const d = doc.data();
+        const aH = Number.isFinite(Number(d.aperturaHora)) ? Number(d.aperturaHora) : 16;
+        const aM = Number.isFinite(Number(d.aperturaMinuto)) ? Number(d.aperturaMinuto) : 0;
+        const cH = Number.isFinite(Number(d.cierreHora)) ? Number(d.cierreHora) : 22;
+        const cM = Number.isFinite(Number(d.cierreMinuto)) ? Number(d.cierreMinuto) : 0;
+        ORDERING_SCHEDULE = {
+            ...ORDERING_SCHEDULE,
+            startMinutes: aH * 60 + aM,
+            endMinutes: cH * 60 + cM,
+            label: String(d.etiquetaHorario || ORDERING_SCHEDULE.label),
+            closedMessage: String(d.mensajeCierre || ORDERING_SCHEDULE.closedMessage)
+        };
+        syncOrderingAvailabilityUI();
+    } catch (_) {}
 }
 
 function _shouldShowPublicUpgrade(categoryName) {
@@ -2734,8 +2754,8 @@ function setOrderControlAvailability(control) {
     }
 
     control.textContent = control.dataset.openLabel;
-    control.classList.remove('is-ordering-closed');
-    control.title = availability.isOpen ? '' : ORDERING_SCHEDULE.closedMessage;
+    control.classList.toggle('is-ordering-closed', !availability.isOpen);
+    control.title = availability.isOpen ? '' : availability.statusLabel;
 
     if (control.tagName === 'BUTTON') {
         control.disabled = control.classList.contains('cart-checkout-btn') ? !shoppingCart.length : false;
@@ -9653,6 +9673,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderConfiguredButtons();
     renderCategoryExplorer();
     loadPublicUpgradesConfig();
+    loadHorarioConfig();
 
     // Cerrar upgrade sheet público
     document.getElementById('publicUpgradeOverlay')?.addEventListener('click', (e) => {

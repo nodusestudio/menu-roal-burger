@@ -292,6 +292,24 @@ body::before {
 a.is-ordering-closed {
     pointer-events: auto;
 }
+.mobile-order-btn.is-ordering-closed,
+.category-order-btn.is-ordering-closed,
+.category-hero-order-btn.is-ordering-closed,
+.promo-btn-order.is-ordering-closed {
+    opacity: 0.48;
+    filter: grayscale(0.45);
+    cursor: not-allowed;
+    box-shadow: none;
+}
+.mobile-order-btn.is-ordering-closed:hover,
+.mobile-order-btn.is-ordering-closed:active,
+.category-order-btn.is-ordering-closed:hover,
+.category-hero-order-btn.is-ordering-closed:hover,
+.promo-btn-order.is-ordering-closed:hover {
+    transform: none;
+    box-shadow: none;
+    background: inherit;
+}
 
 .ordering-status-toast {
     position: fixed;
