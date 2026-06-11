@@ -554,6 +554,31 @@
             font-weight: 700;
         }
 
+        .nuevo-ticket-btn {
+            min-height: 36px;
+            padding: 0 18px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #1db954, #17a346);
+            border: 1px solid rgba(29, 185, 84, 0.45);
+            color: #fff;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .nuevo-ticket-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 16px rgba(29, 185, 84, 0.45);
+        }
+
         .orders-lanes {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -8323,7 +8348,6 @@
                         Por Confirmar
                         <span class="unread-tray-badge" id="ordersCountUnread">0</span>
                     </button>
-                    <button type="button" class="section-action-btn primary" id="openCreateInternalOrderBtn">Crear pedido interno</button>
                     <button type="button" class="section-action-btn" id="closeSalesDayBtn">Cierre del dia</button>
                     <button type="button" class="section-save-btn" data-section-save="pedidos">Actualizar pedidos</button>
                 </div>
@@ -8348,6 +8372,10 @@
                             <div class="sales-day-banner-metrics">
                                 <span class="sales-day-chip" id="salesDayDeliveredCount">0 entregados</span>
                                 <span class="sales-day-chip" id="salesDayDeliveredTotal">$0</span>
+                                <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
+                                    Nuevo Ticket
+                                </button>
                             </div>
                         </div>
                         <div class="orders-workspace">
