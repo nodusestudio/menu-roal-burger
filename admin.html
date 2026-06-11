@@ -9326,31 +9326,47 @@
 
                         <!-- Panel: Caja Diaria -->
                         <div class="menu-inner-panel" data-section-panel="caja-diaria" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
-                            <article class="admin-card">
-                                <div class="card-head">
-                                    <div style="display:flex;align-items:baseline;gap:12px;">
-                                        <h2>Caja Diaria</h2>
-                                        <span id="cajaDiariaFechaLabel" style="font-size:0.78rem;color:var(--admin-muted);font-family:'Space Grotesk',sans-serif;"></span>
+                            <div class="tickets-split-layout">
+                                <!-- Columna izquierda: tabla caja -->
+                                <article class="admin-card tickets-list-col">
+                                    <div class="card-head">
+                                        <div style="display:flex;align-items:baseline;gap:12px;">
+                                            <h2>Caja Diaria</h2>
+                                            <span id="cajaDiariaFechaLabel" style="font-size:0.78rem;color:var(--admin-muted);font-family:'Space Grotesk',sans-serif;"></span>
+                                        </div>
+                                        <div style="display:flex;gap:8px;align-items:center;">
+                                            <button type="button" class="card-collapse-btn" id="refreshCajaDiariaBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
+                                            <button type="button" id="cerrarCajaBtn" style="font-size:0.78rem;padding:4px 14px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔒 Cerrar Caja</button>
+                                        </div>
                                     </div>
-                                    <div style="display:flex;gap:8px;align-items:center;">
-                                        <button type="button" class="card-collapse-btn" id="refreshCajaDiariaBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
-                                        <button type="button" id="cerrarCajaBtn" style="font-size:0.78rem;padding:4px 14px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔒 Cerrar Caja</button>
+                                    <div class="card-body" id="card-caja-diaria" style="padding:0;">
+                                        <div class="caja-ledger-wrap">
+                                            <table class="caja-ledger-table">
+                                                <thead id="cajaDiariaHead">
+                                                    <!-- generado por renderCajaDiaria() -->
+                                                </thead>
+                                                <tbody id="cajaDiariaBody">
+                                                    <tr><td class="caja-empty" colspan="10">No hay cobros registrados en esta jornada.</td></tr>
+                                                </tbody>
+                                                <tfoot id="cajaDiariaFoot"></tfoot>
+                                            </table>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="card-body" id="card-caja-diaria" style="padding:0;">
-                                    <div class="caja-ledger-wrap">
-                                        <table class="caja-ledger-table">
-                                            <thead id="cajaDiariaHead">
-                                                <!-- generado por renderCajaDiaria() -->
-                                            </thead>
-                                            <tbody id="cajaDiariaBody">
-                                                <tr><td class="caja-empty" colspan="10">No hay cobros registrados en esta jornada.</td></tr>
-                                            </tbody>
-                                            <tfoot id="cajaDiariaFoot"></tfoot>
-                                        </table>
-                                    </div>
-                                </div>
-                            </article>
+                                </article>
+                                <!-- Columna derecha: ticket de cierre -->
+                                <aside class="tickets-preview-col" id="cierreSidePanel" hidden>
+                                    <article class="admin-card">
+                                        <div class="card-head">
+                                            <h2 id="cierreSidePanelTitle">Ticket de cierre</h2>
+                                            <button type="button" id="cierreSidePanelClose" class="card-collapse-btn" style="font-size:0.78rem;padding:4px 12px;">✕ Cerrar</button>
+                                        </div>
+                                        <div class="card-body" id="cierreSidePanelBody" style="padding:12px;"></div>
+                                        <div class="card-head" style="border-top:1px solid var(--admin-border);padding:10px 16px;justify-content:flex-end;">
+                                            <button type="button" id="cierrePrintBtn" style="font-size:0.82rem;padding:5px 18px;background:var(--admin-accent,#ff9540);color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;">🖨️ Imprimir</button>
+                                        </div>
+                                    </article>
+                                </aside>
+                            </div>
                         </div>
 
                         <!-- Panel: Tickets -->

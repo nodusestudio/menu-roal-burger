@@ -11201,6 +11201,65 @@ function _navigateToCajaDiaria() {
     }, 180);
 }
 
+// ── Panel lateral cierre de caja ──────────────────────────────────────────────
+let _cierrePrintHtml = '';
+
+function openCierreSidePanel(ticketHtml, title) {
+    const panel = document.getElementById('cierreSidePanel');
+    const body  = document.getElementById('cierreSidePanelBody');
+    const titleEl = document.getElementById('cierreSidePanelTitle');
+    if (!panel || !body) return;
+    if (titleEl) titleEl.textContent = title || 'Ticket de cierre';
+    body.innerHTML = ticketHtml;
+    _cierrePrintHtml = ticketHtml;
+    panel.removeAttribute('hidden');
+}
+
+document.getElementById('cierreSidePanelClose')?.addEventListener('click', () => {
+    document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
+});
+
+document.getElementById('cierrePrintBtn')?.addEventListener('click', () => {
+    const win = window.open('', '_blank', 'width=420,height=680,scrollbars=yes');
+    if (win) {
+        win.document.write(`<!DOCTYPE html><html><head><title>Cierre de Caja</title></head><body style="margin:0;background:#fff;">${_cierrePrintHtml}<div style="text-align:center;margin:16px;"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">Imprimir</button></div></body></html>`);
+        win.document.close();
+    }
+});
+
+function _buildCierreTicketHtml(c, dateStr, timeStr) {
+    const methods = c.methodTotals || {};
+    const nonZeroMethods = Object.entries(methods).filter(([, v]) => v !== 0);
+    return `<div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.7;color:#111;background:#fff;padding:16px 18px;border-radius:4px;">
+        <div style="text-align:center;margin-bottom:8px;">
+            <div style="font-weight:700;font-size:15px;letter-spacing:1px;">${escapeHtml(c.businessName || 'ROAL BURGER')}</div>
+            ${c.businessAddress ? `<div>${escapeHtml(c.businessAddress)}</div>` : ''}
+            ${c.businessPhone ? `<div>Tel: ${escapeHtml(c.businessPhone)}</div>` : ''}
+            ${c.businessNit ? `<div>NIT/RUT: ${escapeHtml(c.businessNit)}</div>` : ''}
+        </div>
+        <div style="border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;text-align:center;padding:4px 0;margin-bottom:8px;font-weight:700;">
+            CIERRE DE CAJA
+        </div>
+        <div>Fecha: ${dateStr}</div>
+        <div>Hora cierre: ${timeStr}</div>
+        <div>Transacciones cobradas: ${Number(c.transactionCount || 0) - Number(c.voidedCount || 0)}</div>
+        ${c.voidedCount ? `<div>Anulados (excluidos): ${Number(c.voidedCount)}</div>` : ''}
+        <div style="border-top:1px dashed #aaa;margin:8px 0;padding-top:8px;">
+            <div style="font-weight:700;margin-bottom:4px;">DESGLOSE POR MÉTODO:</div>
+            ${nonZeroMethods.map(([k, v]) => {
+                const meta = DPM_META[k] || { icon: '', label: k };
+                return `<div style="display:flex;justify-content:space-between;"><span>${meta.icon} ${meta.label}</span><span style="font-weight:600;">${formatMoney(v)}</span></div>`;
+            }).join('')}
+        </div>
+        <div style="border-top:2px solid #333;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:700;font-size:15px;">
+            <span>TOTAL NETO</span><span>${formatMoney(c.grandTotal || 0)}</span>
+        </div>
+        <div style="text-align:center;margin-top:12px;font-size:11px;color:#666;">
+            *** Cierre de caja válido ***<br>Generado por sistema POS
+        </div>
+    </div>`;
+}
+
 // ── Cerrar Caja ───────────────────────────────────────────────────────────────
 async function cerrarCaja() {
     const btn = document.getElementById('cerrarCajaBtn');
@@ -11213,8 +11272,7 @@ async function cerrarCaja() {
             const paidAt = o.paidAt;
             if (!paidAt) return false;
             const ms = typeof paidAt.toMillis === 'function' ? paidAt.toMillis() : Number(paidAt);
-            const d = new Date(ms);
-            return d.toISOString().split('T')[0] === todayStr;
+            return new Date(ms).toISOString().split('T')[0] === todayStr;
         });
 
         if (!paid.length) {
@@ -11222,22 +11280,18 @@ async function cerrarCaja() {
             return;
         }
 
+        // Los anulados se cuentan pero NO afectan los totales — su neto es $0
         const sumMethod = {};
         let grandTotal = 0;
         let voidedCount = 0;
 
         paid.forEach((o) => {
+            if (o.voided) { voidedCount++; return; }
             const mk = o.paymentMethod;
             const amt = Number(o.total || o.subtotal || 0);
             if (!sumMethod[mk]) sumMethod[mk] = 0;
-            if (o.voided) {
-                voidedCount++;
-                sumMethod[mk] -= amt;
-                grandTotal -= amt;
-            } else {
-                sumMethod[mk] += amt;
-                grandTotal += amt;
-            }
+            sumMethod[mk] += amt;
+            grandTotal += amt;
         });
 
         const cfg = await firebaseDb.collection('configuracion').doc('negocio').get().then(s => s.exists ? s.data() : {});
@@ -11247,13 +11301,7 @@ async function cerrarCaja() {
         const businessNit = cfg.nit || cfg.rut || '';
 
         const closedAt = firestoreNow();
-        const closedAtDate = today;
         const closureId = `cierre_${todayStr}_${Date.now()}`;
-
-        const methodLines = Object.entries(sumMethod).map(([k, v]) => {
-            const meta = DPM_META[k] || { icon: '', label: k };
-            return `${meta.icon} ${meta.label}: ${formatMoney(v)}`;
-        }).join('\n');
 
         const closureDoc = {
             id: closureId,
@@ -11271,47 +11319,14 @@ async function cerrarCaja() {
 
         await firebaseDb.collection(CIERRES_CAJA_COLLECTION).doc(closureId).set(closureDoc);
 
-        const dateStr = closedAtDate.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
-        const timeStr = closedAtDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const dateStr = today.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+        const timeStr = today.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-        const ticketHtml = `
-        <div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.7;color:#111;background:#fff;padding:20px 24px;max-width:340px;margin:0 auto;border:1px solid #ddd;">
-            <div style="text-align:center;margin-bottom:8px;">
-                <div style="font-weight:700;font-size:15px;letter-spacing:1px;">${escapeHtml(businessName)}</div>
-                ${businessAddress ? `<div>${escapeHtml(businessAddress)}</div>` : ''}
-                ${businessPhone ? `<div>Tel: ${escapeHtml(businessPhone)}</div>` : ''}
-                ${businessNit ? `<div>NIT/RUT: ${escapeHtml(businessNit)}</div>` : ''}
-            </div>
-            <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;text-align:center;padding:4px 0;margin-bottom:8px;">
-                <strong>CIERRE DE CAJA</strong>
-            </div>
-            <div>Fecha: ${dateStr}</div>
-            <div>Hora cierre: ${timeStr}</div>
-            <div>Transacciones: ${paid.length}</div>
-            ${voidedCount ? `<div>Anulados: ${voidedCount}</div>` : ''}
-            <div style="border-top:1px dashed #999;margin:8px 0;padding-top:8px;">
-                <strong>DESGLOSE POR MÉTODO:</strong>
-                ${Object.entries(sumMethod).map(([k, v]) => {
-                    const meta = DPM_META[k] || { icon: '', label: k };
-                    return `<div style="display:flex;justify-content:space-between;"><span>${meta.icon} ${meta.label}</span><span>${formatMoney(v)}</span></div>`;
-                }).join('')}
-            </div>
-            <div style="border-top:2px solid #333;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:700;font-size:15px;">
-                <span>TOTAL NETO</span><span>${formatMoney(grandTotal)}</span>
-            </div>
-            <div style="text-align:center;margin-top:12px;font-size:11px;color:#666;">
-                *** Cierre de caja válido ***<br>Generado por sistema POS
-            </div>
-        </div>`;
-
-        const win = window.open('', '_blank', 'width=420,height=640,scrollbars=yes');
-        if (win) {
-            win.document.write(`<!DOCTYPE html><html><head><title>Cierre de Caja ${todayStr}</title></head><body style="margin:0;background:#f5f5f5;">${ticketHtml}<div style="text-align:center;margin:16px;"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">Imprimir</button></div></body></html>`);
-            win.document.close();
-        }
+        const ticketHtml = _buildCierreTicketHtml(closureDoc, dateStr, timeStr);
+        openCierreSidePanel(ticketHtml, `Cierre ${dateStr}`);
 
         _cajaDiariaAutoOpened = false;
-        showNotice('Caja cerrada correctamente. Se generó el ticket de cierre.', 'ok');
+        showNotice('Caja cerrada correctamente.', 'ok');
         await renderLibroCierres();
     } catch (err) {
         showNotice(`Error al cerrar caja: ${err.message || 'error inesperado.'}`, 'error');
@@ -11382,41 +11397,10 @@ document.getElementById('libroCierresList')?.addEventListener('click', (e) => {
     const d = tsMs ? new Date(tsMs) : new Date();
     const dateStr = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
     const timeStr = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const methods = c.methodTotals || {};
-    const ticketHtml = `
-    <div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.7;color:#111;background:#fff;padding:20px 24px;max-width:340px;margin:0 auto;border:1px solid #ddd;">
-        <div style="text-align:center;margin-bottom:8px;">
-            <div style="font-weight:700;font-size:15px;letter-spacing:1px;">${escapeHtml(c.businessName || 'ROAL BURGER')}</div>
-            ${c.businessAddress ? `<div>${escapeHtml(c.businessAddress)}</div>` : ''}
-            ${c.businessPhone ? `<div>Tel: ${escapeHtml(c.businessPhone)}</div>` : ''}
-            ${c.businessNit ? `<div>NIT/RUT: ${escapeHtml(c.businessNit)}</div>` : ''}
-        </div>
-        <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;text-align:center;padding:4px 0;margin-bottom:8px;">
-            <strong>CIERRE DE CAJA</strong>
-        </div>
-        <div>Fecha: ${dateStr}</div>
-        <div>Hora cierre: ${timeStr}</div>
-        <div>Transacciones: ${Number(c.transactionCount || 0)}</div>
-        ${c.voidedCount ? `<div>Anulados: ${Number(c.voidedCount)}</div>` : ''}
-        <div style="border-top:1px dashed #999;margin:8px 0;padding-top:8px;">
-            <strong>DESGLOSE POR MÉTODO:</strong>
-            ${Object.entries(methods).map(([k, v]) => {
-                const meta = DPM_META[k] || { icon: '', label: k };
-                return `<div style="display:flex;justify-content:space-between;"><span>${meta.icon} ${meta.label}</span><span>${formatMoney(v)}</span></div>`;
-            }).join('')}
-        </div>
-        <div style="border-top:2px solid #333;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:700;font-size:15px;">
-            <span>TOTAL NETO</span><span>${formatMoney(c.grandTotal || 0)}</span>
-        </div>
-        <div style="text-align:center;margin-top:12px;font-size:11px;color:#666;">
-            *** Cierre de caja válido ***<br>Generado por sistema POS
-        </div>
-    </div>`;
-    const win = window.open('', '_blank', 'width=420,height=640,scrollbars=yes');
-    if (win) {
-        win.document.write(`<!DOCTYPE html><html><head><title>Reimprimir Cierre ${c.date || ''}</title></head><body style="margin:0;background:#f5f5f5;">${ticketHtml}<div style="text-align:center;margin:16px;"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">Imprimir</button></div></body></html>`);
-        win.document.close();
-    }
+    const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
+    // Navegar a Caja Diaria y mostrar en el panel lateral
+    _navigateToCajaDiaria();
+    setTimeout(() => openCierreSidePanel(ticketHtml, `Cierre ${dateStr}`), 250);
 });
 
 // ── Tickets (Informes) ────────────────────────────────────────────────────────
