@@ -394,6 +394,36 @@ let posTicketConfig = null; // { orderType, mesaNumber, customerName, customerPh
 let posTickets = [];
 let posActiveTicketId = null;
 let _editingOrderData = null; // set when editing an existing order, cleared after save
+
+const POS_TICKETS_STORAGE_KEY = 'roalburger-pos-tickets-v1';
+
+function savePosTicketsToStorage() {
+    try {
+        const current = posTickets.find((t) => t.id === posActiveTicketId);
+        if (current) current.items = [...internalOrderItems];
+        localStorage.setItem(POS_TICKETS_STORAGE_KEY, JSON.stringify({ tickets: posTickets, activeId: posActiveTicketId }));
+    } catch (_) {}
+}
+
+function loadPosTicketsFromStorage() {
+    try {
+        const raw = localStorage.getItem(POS_TICKETS_STORAGE_KEY);
+        if (!raw) return false;
+        const { tickets, activeId } = JSON.parse(raw);
+        if (!Array.isArray(tickets) || !tickets.length) return false;
+        posTickets = tickets;
+        const found = posTickets.find((t) => t.id === activeId);
+        posActiveTicketId = found ? found.id : posTickets[0].id;
+        internalOrderItems = (found || posTickets[0]).items || [];
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function clearPosTicketsStorage() {
+    try { localStorage.removeItem(POS_TICKETS_STORAGE_KEY); } catch (_) {}
+}
 let _posSelectedTicketIds = new Set();
 let menuUpgradesConfig = null;
 let _posUpgradePending = null;
@@ -3111,6 +3141,7 @@ function createNewPosTicket() {
     renderPosTicketsBadge();
     const label = document.getElementById('posActiveTicketLabel');
     if (label) label.textContent = ticket.label;
+    savePosTicketsToStorage();
     return ticket;
 }
 
@@ -3415,11 +3446,25 @@ function clearPosClient() {
 function openInternalOrderModal() {
     if (!internalOrderModal) return;
 
-    // Crear primer ticket si no hay ninguno
+    // Restaurar tickets guardados o crear uno nuevo si no hay ninguno
     if (!posTickets.length) {
-        createNewPosTicket();
+        if (!loadPosTicketsFromStorage()) {
+            createNewPosTicket();
+        }
     } else {
         internalOrderItems = posTickets.find((t) => t.id === posActiveTicketId)?.items || internalOrderItems;
+    }
+    // Reconstruir posTicketConfig desde el ticket activo si es necesario
+    const _restoredTicket = posTickets.find((t) => t.id === posActiveTicketId);
+    if (_restoredTicket?.orderType && !posTicketConfig) {
+        posTicketConfig = {
+            orderType: _restoredTicket.orderType,
+            mesaNumber: _restoredTicket.mesaNumber || null,
+            customerName: _restoredTicket.customerName || '',
+            customerPhone: _restoredTicket.customerPhone || '',
+            deliveryAddress: _restoredTicket.deliveryAddress || '',
+            deliveryFee: _restoredTicket.deliveryFee ?? null
+        };
     }
 
     posSelectedClientData = null;
@@ -3552,7 +3597,7 @@ async function saveAdminOrderQuick(config = {}) {
         renderOrders();
         renderSalesSummaries();
 
-        // Limpiar el ticket actual y crear uno nuevo
+        // Eliminar el ticket procesado y pasar al siguiente (o crear uno nuevo)
         posTickets = posTickets.filter((t) => t.id !== posActiveTicketId);
         if (posTickets.length > 0) {
             posActiveTicketId = posTickets[0].id;
@@ -3564,6 +3609,8 @@ async function saveAdminOrderQuick(config = {}) {
         renderPosTotals();
         renderPosBottomBar();
         renderPosTicketsBadge();
+        savePosTicketsToStorage();
+        showPosScreen('main');
         showNotice(isEditing ? 'Pedido actualizado.' : 'Pedido guardado en recepción.', 'ok');
     } catch (error) {
         showNotice(`Error al guardar: ${error.message || 'error'}`, 'error');
@@ -3647,8 +3694,16 @@ function closeInternalOrderModal(clearCurrentTicket = false) {
             const label = document.getElementById('posActiveTicketLabel');
             if (label) label.textContent = posTickets[0].label;
             showPosScreen('main');
+            savePosTicketsToStorage();
             return;
         }
+        // No quedan tickets — limpiar storage y cerrar
+        clearPosTicketsStorage();
+    } else {
+        // Cerrar sin procesar: guardar estado actual y mantener tickets para la próxima apertura
+        const current = posTickets.find((t) => t.id === posActiveTicketId);
+        if (current) current.items = [...internalOrderItems];
+        savePosTicketsToStorage();
     }
 
     posTickets = [];
@@ -8574,6 +8629,7 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
             renderPosTotals();
             renderPosBottomBar();
             renderPosTicketsBadge();
+            savePosTicketsToStorage();
             showPosScreen('main');
         }
         return;
@@ -8925,6 +8981,7 @@ document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => 
         renderPosTotals();
         renderPosBottomBar();
         renderPosTicketsBadge();
+        savePosTicketsToStorage();
         showPosScreen('main');
         return;
     }
@@ -8980,6 +9037,7 @@ document.getElementById('posTicketDeleteBtn')?.addEventListener('click', () => {
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
+    savePosTicketsToStorage();
 });
 
 // Cambiar tipo de pedido del ticket seleccionado
