@@ -9591,6 +9591,13 @@ function showTempClosureBanner() {
 document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('has-auth-nav');
     setActiveCustomerProfile(loadStoredCustomerProfile());
+
+    // Garantía: cualquier ruta que cierre el splash también muestra el homeScreen
+    const _origHideSplash = window.__roalHideSplash;
+    window.__roalHideSplash = function () {
+        if (_origHideSplash) _origHideSplash();
+        showHomeScreen();
+    };
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
     document.getElementById('publicChatFab')?.addEventListener('click', openPublicChatTab);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
@@ -9707,9 +9714,14 @@ document.addEventListener('DOMContentLoaded', () => {
             _lastHiddenAt = Date.now();
         } else if (document.visibilityState === 'visible') {
             const hiddenMs = Date.now() - _lastHiddenAt;
+            const homeScreen = document.getElementById('homeScreen');
+            // Si el homeScreen está oculto y la splash ya no existe, mostrarlo
+            if (homeScreen && homeScreen.hidden && !document.getElementById('splashScreen')) {
+                showHomeScreen();
+                return;
+            }
             // Si estuvo oculto más de 30 segundos, forzar re-render del home
             if (_lastHiddenAt > 0 && hiddenMs > 30000) {
-                const homeScreen = document.getElementById('homeScreen');
                 if (homeScreen && !homeScreen.hidden && homeScreen.style.display !== 'none') {
                     renderHomeScreen();
                 }

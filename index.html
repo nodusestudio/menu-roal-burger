@@ -104,7 +104,11 @@
                 setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 700);
             }
             window.__roalHideSplash = hideSplash;
-            setTimeout(hideSplash, 12000); // failsafe
+            // Failsafe: si en 12s el usuario no interactuó, cerrar splash Y mostrar home
+            setTimeout(function () {
+                if (window.__roalHideSplash) window.__roalHideSplash();
+                else hideSplash();
+            }, 12000);
 
             // Si ya hay sesión activa, reemplazar los dos botones por uno solo de continuar
             try {
@@ -551,7 +555,7 @@ co
     <script src="tracking.js"></script>
     <script src="firebase-config.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    <script src="script-v2.js?v=20260611c"></script>
+    <script src="script-v2.js?v=20260611d"></script>
 
     <!-- ── Public Upgrade Sheet ── -->
     <div id="publicUpgradeOverlay" class="pub-upgrade-overlay" hidden style="display:none;">
