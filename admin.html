@@ -579,6 +579,33 @@
             box-shadow: 0 5px 16px rgba(29, 185, 84, 0.45);
         }
 
+        .tickets-abiertos-btn {
+            min-height: 36px;
+            padding: 0 18px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background: linear-gradient(135deg, rgba(255, 123, 69, 0.28), rgba(255, 123, 69, 0.14));
+            border: 1px solid rgba(255, 123, 69, 0.55);
+            color: #ffb38a;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+        }
+
+        .tickets-abiertos-btn:hover {
+            background: linear-gradient(135deg, rgba(255, 123, 69, 0.42), rgba(255, 123, 69, 0.22));
+            box-shadow: 0 5px 16px rgba(255, 123, 69, 0.32);
+            transform: translateY(-1px);
+            color: #fff;
+        }
+
         .orders-lanes {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -8215,8 +8242,8 @@
 
         <div class="sidebar-section-label">Paneles</div>
         <nav class="admin-accordion" id="adminAccordionNav">
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="pedidos"><span class="nav-icon">🧾</span><span>POS</span></button>
-            <button type="button" class="admin-accordion-trigger active" data-accordion-target="menu"><span class="nav-icon">🍔</span><span>Articulos</span></button>
+            <button type="button" class="admin-accordion-trigger active" data-accordion-target="pedidos"><span class="nav-icon">🧾</span><span>POS</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="menu"><span class="nav-icon">🍔</span><span>Articulos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="informes"><span class="nav-icon">📊</span><span>Informes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
@@ -8233,7 +8260,7 @@
     </aside>
     <main class="admin-page">
         <section class="admin-grid admin-dashboard">
-            <div class="admin-tab-panel active" data-tab-panel="menu">
+            <div class="admin-tab-panel" data-tab-panel="menu">
 
                 <article class="admin-card menu-section-card">
 
@@ -8342,7 +8369,7 @@
 
             </div>
 
-            <div class="admin-tab-panel" data-tab-panel="pedidos">
+            <div class="admin-tab-panel active" data-tab-panel="pedidos">
                 <div class="section-toolbar">
                     <button type="button" class="section-action-btn unread-tray-btn" id="unreadTrayBtn" aria-expanded="false" aria-controls="unreadTray">
                         Por Confirmar
@@ -8375,6 +8402,10 @@
                                 <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
                                     Nuevo Ticket
+                                </button>
+                                <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                                    Tickets Abiertos
                                 </button>
                             </div>
                         </div>

@@ -1149,7 +1149,7 @@ function setupAccordion() {
         button.addEventListener('click', () => activateAccordion(button.dataset.accordionTarget));
     });
 
-    activateAccordion('menu');
+    activateAccordion('pedidos');
 }
 
 function setupAdvancedSettingsPanel() {
@@ -8117,6 +8117,12 @@ if (openCreateInternalOrderBtn) {
         openInternalOrderModal();
     });
 }
+
+// Botón "Tickets Abiertos" — abre el POS directo en la pantalla de tickets
+document.getElementById('openAdminTicketsViewBtn')?.addEventListener('click', () => {
+    openInternalOrderModal();
+    showPosScreen('tickets');
+});
 
 if (unreadTrayBtn) {
     unreadTrayBtn.addEventListener('click', toggleUnreadTray);
