@@ -7895,6 +7895,39 @@
         .sortable-ghost { opacity: 0.3; border: 2px dashed #ff7a1a !important; }
         .sortable-chosen { cursor: grabbing !important; }
         [data-drag-product-id] { cursor: grab; }
+        /* ── Utilidades de nivelación de diseño ── */
+        .admin-card.admin-card--flush { padding: 0; overflow: hidden; }
+        .admin-card.admin-card--flush > .card-body { padding: 0; }
+        .card-desc {
+            font-size: 0.82rem; color: var(--admin-muted); margin: 0 0 18px;
+        }
+        .admin-textarea {
+            width: 100%; padding: 8px 10px; border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            color: #e8eeff; font-size: 0.88rem;
+            font-family: inherit; resize: vertical; box-sizing: border-box;
+        }
+        .admin-textarea:focus {
+            outline: none; border-color: rgba(255,154,80,0.5);
+            background: rgba(255,154,80,0.04);
+        }
+        .horario-estado-badge {
+            font-size: 0.82rem; color: var(--admin-muted);
+            padding: 8px 12px; border-radius: 8px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            margin-bottom: 4px;
+        }
+        /* Inbox dentro de admin-card */
+        .admin-card--flush .inbox-layout {
+            border-radius: 0 0 inherit inherit; overflow: hidden;
+            min-height: 520px;
+        }
+        /* Clientes: card-body contiene la tabla */
+        [data-tab-panel="clientes"] .card-body { padding: 0; }
+        [data-tab-panel="clientes"] .clients-grid { padding: 14px 16px 0; }
+        [data-tab-panel="clientes"] .clients-table-wrap { padding: 8px 0 0; }
     </style>
     <style id="thermalPrintStyles">
         /* ── Área de impresión térmica (solo visible al imprimir) ── */
@@ -8535,7 +8568,7 @@
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-horario" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-horario">
-                        <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 18px;">
+                        <p class="card-desc">
                             Define el horario en que el menú público acepta pedidos. Fuera de este rango los clientes pueden ver el menú pero no agregar al carrito.
                         </p>
                         <form id="horarioForm" class="admin-form">
@@ -8553,9 +8586,9 @@
                             </div>
                             <div class="admin-field full">
                                 <label for="horarioMensajeCierre">Mensaje cuando está cerrado</label>
-                                <textarea id="horarioMensajeCierre" name="horarioMensajeCierre" rows="3" placeholder="Ej: Disculpa, en este momento estamos cerrados. Nuestro horario es de 4:00 P.M. a 10:00 P.M." style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:#e8eeff;font-size:0.88rem;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
+                                <textarea id="horarioMensajeCierre" name="horarioMensajeCierre" rows="3" class="admin-textarea" placeholder="Ej: Disculpa, en este momento estamos cerrados. Nuestro horario es de 4:00 P.M. a 10:00 P.M."></textarea>
                             </div>
-                            <div id="horarioEstadoActual" style="font-size:0.82rem;color:var(--admin-muted);padding:8px 12px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);margin-bottom:4px;"></div>
+                            <div id="horarioEstadoActual" class="horario-estado-badge"></div>
                             <button type="submit" class="admin-button">Guardar horario</button>
                         </form>
                     </div>
@@ -8587,13 +8620,15 @@
                         <input type="search" id="clientsSearchInput" class="clients-search-input" placeholder="Buscar por nombre, telefono o direccion">
                     </label>
                 </div>
-                <article class="admin-card">
+                <article class="admin-card admin-card--flush">
                     <div class="card-head">
                         <h2>Base de Clientes</h2>
                         <span class="kanban-count" id="clientsCount">0</span>
                     </div>
-                    <div class="clients-grid">
-                        <p class="muted">Base centralizada de clientes con nombre, contacto, direccion, visitas, gasto total y acciones de gestion.</p>
+                    <div class="card-body">
+                        <div class="clients-grid">
+                            <p class="muted">Base centralizada de clientes con nombre, contacto, direccion, visitas, gasto total y acciones de gestion.</p>
+                        </div>
                         <div class="clients-table-wrap">
                             <table class="clients-table">
                                 <thead>
@@ -8624,12 +8659,17 @@
                 <div class="section-toolbar">
                     <button type="button" class="section-save-btn" disabled>Sincronizado en tiempo real</button>
                 </div>
+                <article class="admin-card admin-card--flush">
+                    <div class="card-head">
+                        <h2>Mensajes</h2>
+                        <span class="kanban-count" id="messagesCount">0</span>
+                    </div>
+                    <div class="card-body">
                 <div class="inbox-layout">
                     <!-- Columna izquierda: lista de conversaciones -->
                     <aside class="inbox-sidebar">
                         <div class="inbox-sidebar-head">
-                            <span class="inbox-sidebar-title">Mensajes</span>
-                            <span class="inbox-badge" id="messagesCount">0</span>
+                            <span class="inbox-sidebar-title">Conversaciones</span>
                             <button type="button" class="inbox-compose-btn" id="inboxComposeBtn" title="Nuevo mensaje">✏️</button>
                         </div>
                         <div class="inbox-search-wrap">
@@ -8659,6 +8699,8 @@
                         </div>
                     </main>
                 </div>
+                    </div>
+                </article>
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="metricas">
@@ -8692,7 +8734,7 @@
                         </div>
                     </article>
 
-                    <article class="admin-card" style="padding: 0; overflow: hidden;">
+                    <article class="admin-card admin-card--flush">
                         <div class="metrics-users-toolbar">
                             <input type="text" class="metrics-search" id="metricsUserSearch" placeholder="Buscar por nombre o teléfono..." autocomplete="off">
                             <span class="metrics-users-count" id="metricsUsersCountLabel"></span>
