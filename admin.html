@@ -3559,8 +3559,7 @@
         }
         .pos-ticket-item:hover { background: rgba(255,255,255,0.11); }
         .pos-ticket-item.active-ticket {
-            border-color: var(--admin-accent);
-            background: var(--admin-accent-soft);
+            border-left: 3px solid var(--admin-accent);
         }
         .pos-ticket-check {
             width: 22px; height: 22px;
@@ -3571,10 +3570,6 @@
             cursor: pointer; transition: background 0.13s, border-color 0.13s;
         }
         .pos-ticket-check:hover { border-color: rgba(255,122,26,0.6); }
-        .pos-ticket-item.active-ticket .pos-ticket-check {
-            background: var(--admin-accent);
-            border-color: var(--admin-accent); color: #fff;
-        }
         .pos-ticket-item.selected-ticket .pos-ticket-check {
             background: rgba(255,122,26,0.85);
             border-color: #ff7a1a; color: #fff;
@@ -3602,6 +3597,28 @@
         }
         .pos-ticket-type-btn:hover { filter: brightness(1.18); }
         .pos-ticket-type-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pos-ticket-del-inline {
+            width: 30px; height: 30px; border: none; cursor: pointer; flex-shrink: 0;
+            background: rgba(180,40,40,0.18); border-radius: 7px; color: #ff9090;
+            font-size: 0.85rem; display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .pos-ticket-del-inline:hover { background: rgba(180,40,40,0.45); }
+        .pos-ticket-edit-inline {
+            width: 30px; height: 30px; border: none; cursor: pointer; flex-shrink: 0;
+            background: rgba(60,100,180,0.18); border-radius: 7px; color: #90b8ff;
+            font-size: 0.8rem; display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .pos-ticket-edit-inline:hover { background: rgba(60,100,180,0.42); }
+        .pos-ticket-send-inline {
+            height: 30px; padding: 0 10px; border: none; cursor: pointer; flex-shrink: 0;
+            background: rgba(30,140,80,0.22); border-radius: 7px; color: #7be0a8;
+            font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s;
+        }
+        .pos-ticket-send-inline:hover { background: rgba(30,140,80,0.42); }
         .pos-ticket-info { flex: 1; min-width: 0; }
         .pos-ticket-name { font-weight: 600; font-size: 0.9rem; color: #eef4ff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .pos-ticket-type-badge {
@@ -5465,6 +5482,34 @@
             white-space: nowrap;
             text-overflow: ellipsis;
             text-align: left;
+        }
+
+        /* Layout especial para tarjetas de mesa: fila única con botón principal + iconos */
+        .kanban-order-actions--mesa {
+            flex-direction: row;
+            align-items: stretch;
+            gap: 5px;
+        }
+
+        .kanban-order-actions--mesa .koa-mesa-main {
+            flex: 1;
+            min-width: 0;
+            width: auto;
+            text-align: center;
+        }
+
+        .kanban-order-actions--mesa .koa-mesa-icons {
+            display: flex;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+
+        .kanban-order-actions--mesa .koa-icon-btn {
+            width: 34px;
+            flex-shrink: 0;
+            padding: 0;
+            font-size: 1rem;
+            text-align: center;
         }
 
         .ticket-panel {
@@ -7649,6 +7694,9 @@
 
         /* Cliente seleccionado — chip */
         .pts-selected-chip {
+            display: none;
+        }
+        .pts-selected-chip.is-visible {
             display: flex;
             align-items: center;
             gap: 8px;
@@ -8406,6 +8454,7 @@
                                 <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
                                     Tickets Abiertos
+                                    <span id="adminTicketsCountBadge" style="display:none;background:#ff7b45;color:#fff;font-size:0.7rem;font-weight:700;min-width:18px;height:18px;border-radius:999px;padding:0 5px;line-height:18px;text-align:center;"></span>
                                 </button>
                             </div>
                         </div>
@@ -8476,6 +8525,10 @@
                         <button class="menu-inner-tab" data-section-tab="libro" data-section-scope="informes" role="tab" aria-selected="false">
                             <span class="menu-inner-tab-icon">📒</span>
                             <span>Libro Contable</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="caja-diaria" data-section-scope="informes" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">💵</span>
+                            <span>Caja Diaria</span>
                         </button>
                     </nav>
                     <div class="menu-inner-panels-wrap">
@@ -8570,6 +8623,20 @@
                                             </tbody>
                                         </table>
                                     </div>
+                                </div>
+                            </article>
+                        </div>
+
+                        <!-- Panel: Caja Diaria -->
+                        <div class="menu-inner-panel" data-section-panel="caja-diaria" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Caja Diaria</h2>
+                                </div>
+                                <div class="card-body" id="card-caja-diaria">
+                                    <p style="color:var(--admin-muted);text-align:center;padding:40px 16px;font-size:0.95rem;">
+                                        Esta sección está en configuración. Pronto podrás ver el resumen de caja del día, ingresos por método de pago y arqueo de caja.
+                                    </p>
                                 </div>
                             </article>
                         </div>
@@ -8902,7 +8969,7 @@
                     <span class="pos-bottom-chevron">&#9650; Ver carrito</span>
                 </button>
                 <div class="pos-bottom-actions">
-                    <button type="button" class="pos-bottom-act-btn pos-bottom-save-btn" id="posBottomSaveOrderBtn">GUARDAR PEDIDO</button>
+                    <button type="button" class="pos-bottom-act-btn pos-bottom-save-btn" id="posBottomSaveOrderBtn">ENVIAR TICKET</button>
                     <button type="button" class="pos-bottom-act-btn pos-bottom-ticket-btn" id="posBottomGuardarTicketBtn">GUARDAR TICKET</button>
                 </div>
             </div>
@@ -8938,7 +9005,7 @@
                 </div>
                 <div class="pos-drawer-footer">
                     <div class="pos-drawer-actions">
-                        <button type="button" class="pos-save-order-btn" id="posDrawerSaveBtn">GUARDAR PEDIDO</button>
+                        <button type="button" class="pos-save-order-btn" id="posDrawerSaveBtn">ENVIAR TICKET</button>
                         <button type="button" class="pos-cobrar-full-btn" id="posGuardarTicketBtn">
                             GUARDAR TICKET
                         </button>
@@ -9304,8 +9371,6 @@
                         <span class="pts-selected-chip-label" id="ptsSelectedChipLabel"></span>
                         <button type="button" class="pts-deselect-btn" id="ptsDeselectBtn">✕</button>
                     </div>
-                    <!-- Crear nuevo cliente (desde tab Buscar) -->
-                    <button type="button" class="pts-new-client-btn" id="ptsNewClientBtn">✚ Crear nuevo cliente</button>
                     <div class="pts-new-client-form" id="ptsNewClientForm" hidden>
                         <p class="pts-new-client-form-label">Nuevo cliente</p>
                         <input type="text" class="pts-input" id="ptsNewClientName" placeholder="Nombre *" autocomplete="off" maxlength="60">
@@ -9339,6 +9404,9 @@
                     <input type="number" class="pts-input pts-fee-input" id="ptsDeliveryFee" placeholder="Valor domicilio" min="0" step="500">
                 </div>
             </div>
+
+            <!-- Mensaje de error -->
+            <p id="ptsFeedbackMsg" style="display:none;margin:6px 0 0;font-size:0.8rem;color:#ff7b7b;font-weight:600;text-align:center;"></p>
 
             <!-- Acciones -->
             <div class="pts-footer">

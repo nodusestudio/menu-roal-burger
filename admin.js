@@ -395,34 +395,80 @@ let posTickets = [];
 let posActiveTicketId = null;
 let _editingOrderData = null; // set when editing an existing order, cleared after save
 
-const POS_TICKETS_STORAGE_KEY = 'roalburger-pos-tickets-v1';
+const POS_TICKETS_COLLECTION = 'pos_tickets';
+let posTicketsUnsubscribe = null;
 
-function savePosTicketsToStorage() {
+async function savePosTicketToFirestore(ticket) {
+    if (!ticket || !firebaseDb) return;
     try {
-        const current = posTickets.find((t) => t.id === posActiveTicketId);
-        if (current) current.items = [...internalOrderItems];
-        localStorage.setItem(POS_TICKETS_STORAGE_KEY, JSON.stringify({ tickets: posTickets, activeId: posActiveTicketId }));
-    } catch (_) {}
-}
-
-function loadPosTicketsFromStorage() {
-    try {
-        const raw = localStorage.getItem(POS_TICKETS_STORAGE_KEY);
-        if (!raw) return false;
-        const { tickets, activeId } = JSON.parse(raw);
-        if (!Array.isArray(tickets) || !tickets.length) return false;
-        posTickets = tickets;
-        const found = posTickets.find((t) => t.id === activeId);
-        posActiveTicketId = found ? found.id : posTickets[0].id;
-        internalOrderItems = (found || posTickets[0]).items || [];
-        return true;
-    } catch (_) {
-        return false;
+        const data = { ...ticket };
+        if (!data.createdAt) data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        await firebaseDb.collection(POS_TICKETS_COLLECTION).doc(ticket.id).set(data, { merge: true });
+    } catch (err) {
+        console.error('[POS] Error guardando ticket en Firestore:', err);
     }
 }
 
-function clearPosTicketsStorage() {
-    try { localStorage.removeItem(POS_TICKETS_STORAGE_KEY); } catch (_) {}
+async function deletePosTicketFromFirestore(ticketId) {
+    if (!ticketId || !firebaseDb) return;
+    try {
+        await firebaseDb.collection(POS_TICKETS_COLLECTION).doc(ticketId).delete();
+    } catch (err) {
+        console.error('[POS] Error eliminando ticket de Firestore:', err);
+    }
+}
+
+function subscribePosTickets() {
+    if (!firebaseDb) return;
+    if (posTicketsUnsubscribe) posTicketsUnsubscribe();
+    posTicketsUnsubscribe = firebaseDb.collection(POS_TICKETS_COLLECTION)
+        .orderBy('createdAt', 'asc')
+        .onSnapshot((snapshot) => {
+            const firestoreTickets = snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
+            // Preservar solo el ticket local activo si aún no fue guardado en Firestore
+            // (descartar tickets vacíos locales que no están activos para evitar acumulación)
+            const localOnlyTickets = posTickets.filter(
+                (t) => !firestoreTickets.find((ft) => ft.id === t.id) &&
+                    (t.id === posActiveTicketId || (t.items && t.items.length > 0))
+            );
+            const merged = [...firestoreTickets, ...localOnlyTickets];
+            posTickets = merged.map((ft) =>
+                ft.id === posActiveTicketId ? { ...ft, items: internalOrderItems } : ft
+            );
+            // Si el ticket activo fue eliminado por otro usuario, cambiar al primero disponible
+            if (posActiveTicketId && !posTickets.find((t) => t.id === posActiveTicketId)) {
+                if (posTickets.length) {
+                    const first = posTickets[0];
+                    posActiveTicketId = first.id;
+                    internalOrderItems = first.items || [];
+                    posTicketConfig = first.orderType ? {
+                        orderType: first.orderType, mesaNumber: first.mesaNumber || null,
+                        customerName: first.customerName || '', customerPhone: first.customerPhone || '',
+                        deliveryAddress: first.deliveryAddress || '', deliveryFee: first.deliveryFee ?? null
+                    } : null;
+                } else {
+                    posActiveTicketId = null;
+                    internalOrderItems = [];
+                    posTicketConfig = null;
+                }
+            }
+            renderPosTicketsBadge();
+            _ptsMarkOccupiedMesas();
+            const ticketsScreen = document.getElementById('posScreenTickets');
+            if (ticketsScreen && !ticketsScreen.hidden) renderPosTicketsList();
+            const modal = document.getElementById('internalOrderModal');
+            if (modal?.classList.contains('is-open')) {
+                const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
+                const labelEl = document.getElementById('posActiveTicketLabel');
+                if (labelEl && activeTicket) labelEl.textContent = activeTicket.label;
+                renderPosOrderItems();
+                renderPosTotals();
+                renderPosBottomBar();
+            }
+        }, (err) => {
+            console.error('[POS] Error en listener pos_tickets:', err);
+        });
 }
 let _posSelectedTicketIds = new Set();
 let menuUpgradesConfig = null;
@@ -489,7 +535,11 @@ function normalizeClientSavedAddresses(rawAddresses = [], primaryAddress = '') {
             }
 
             if (entry && typeof entry === 'object') {
-                appendAddress(entry.address || entry.value || entry.label || '');
+                let addrStr = entry.address ?? entry.value ?? entry.label ?? '';
+                if (typeof addrStr === 'object' && addrStr !== null) {
+                    addrStr = addrStr.address ?? addrStr.label ?? addrStr.street ?? addrStr.text ?? '';
+                }
+                appendAddress(addrStr);
             }
         });
     }
@@ -1585,6 +1635,8 @@ function normalizeOrder(raw) {
         status = 'preparacion';
     } else if (rawStatus === 'camino' || rawStatus === 'en_camino') {
         status = 'camino';
+    } else if (rawStatus === 'servido') {
+        status = 'servido';
     } else if (rawStatus === 'entregado' || rawStatus === 'cancelado') {
         status = 'entregado';
     }
@@ -3141,7 +3193,7 @@ function createNewPosTicket() {
     renderPosTicketsBadge();
     const label = document.getElementById('posActiveTicketLabel');
     if (label) label.textContent = ticket.label;
-    savePosTicketsToStorage();
+    // No guardar en Firestore hasta que tenga items (GUARDAR TICKET / ENVIAR TICKET)
     return ticket;
 }
 
@@ -3175,8 +3227,14 @@ function switchPosTicket(ticketId) {
 }
 
 function renderPosTicketsBadge() {
+    const savedCount = posTickets.filter((t) => t.items?.length > 0).length;
     const badge = document.getElementById('posTicketsCountBadge');
-    if (badge) badge.textContent = posTickets.length;
+    if (badge) badge.textContent = savedCount;
+    const adminBadge = document.getElementById('adminTicketsCountBadge');
+    if (adminBadge) {
+        adminBadge.textContent = savedCount;
+        adminBadge.style.display = savedCount > 0 ? 'inline-block' : 'none';
+    }
 }
 
 function _refreshTicketActionBar() {
@@ -3192,13 +3250,15 @@ function _refreshTicketActionBar() {
 function renderPosTicketsList() {
     const list = document.getElementById('posTicketsList');
     if (!list) return;
-    if (!posTickets.length) {
-        list.innerHTML = '<p style="text-align:center;color:#b8c8e8;padding:32px 16px;font-size:0.95rem;">No hay tickets abiertos</p>';
+    // Solo mostrar tickets con items — los tickets vacíos (en edición) no aparecen en la lista
+    const visibleTickets = posTickets.filter((t) => t.items?.length > 0);
+    if (!visibleTickets.length) {
+        list.innerHTML = '<p style="text-align:center;color:#b8c8e8;padding:32px 16px;font-size:0.95rem;">Sin tickets guardados por el momento</p>';
         _posSelectedTicketIds.clear();
         _refreshTicketActionBar();
         return;
     }
-    list.innerHTML = posTickets.map((ticket) => {
+    list.innerHTML = visibleTickets.map((ticket) => {
         const subtotal = ticket.items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
         const itemCount = ticket.items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
         const isActive = ticket.id === posActiveTicketId;
@@ -3213,6 +3273,11 @@ function renderPosTicketsList() {
                 <div class="pos-ticket-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'}</div>
             </div>
             <div class="pos-ticket-total">${formatMoney(subtotal)}</div>
+            <button type="button" class="pos-ticket-edit-inline" data-edit-ticket-id="${escapeHtml(ticket.id)}" title="Editar tipo de pedido">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+            </button>
+            <button type="button" class="pos-ticket-send-inline" data-send-ticket-id="${escapeHtml(ticket.id)}" title="Enviar a recepción">Enviar</button>
+            <button type="button" class="pos-ticket-del-inline" data-del-ticket-id="${escapeHtml(ticket.id)}" title="Eliminar ticket">🗑</button>
         </div>`;
     }).join('');
 
@@ -3231,9 +3296,68 @@ function renderPosTicketsList() {
             }
             _refreshTicketActionBar();
         });
+        // Botón editar inline → cambiar tipo/mesa del ticket
+        const editBtn = item.querySelector('.pos-ticket-edit-inline');
+        editBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = editBtn.dataset.editTicketId;
+            switchPosTicket(id);
+            openPosTicketSetupModal(true);
+        });
+
+        // Botón enviar inline → pasar directamente a recepción de pedidos
+        const sendBtn = item.querySelector('.pos-ticket-send-inline');
+        sendBtn?.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = sendBtn.dataset.sendTicketId;
+            const ticket = posTickets.find((t) => t.id === id);
+            if (!ticket) return;
+            // Guardar items del ticket activo actual antes de cambiar
+            const current = posTickets.find((t) => t.id === posActiveTicketId);
+            if (current) current.items = [...internalOrderItems];
+            // Activar el ticket a enviar
+            posActiveTicketId = id;
+            internalOrderItems = [...(ticket.items || [])];
+            posTicketConfig = ticket.orderType ? {
+                orderType: ticket.orderType,
+                mesaNumber: ticket.mesaNumber || null,
+                customerName: ticket.customerName || '',
+                customerPhone: ticket.customerPhone || '',
+                deliveryAddress: ticket.deliveryAddress || '',
+                deliveryFee: ticket.deliveryFee !== undefined ? ticket.deliveryFee : null
+            } : null;
+            await saveAdminOrderQuick(posTicketConfig || {});
+        });
+
+        // Botón eliminar inline → confirmar y borrar sin necesidad de seleccionar
+        const delBtn = item.querySelector('.pos-ticket-del-inline');
+        delBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = delBtn.dataset.delTicketId;
+            if (!confirm('¿Eliminar este ticket?')) return;
+            deletePosTicketFromFirestore(id);
+            posTickets = posTickets.filter((t) => t.id !== id);
+            _posSelectedTicketIds.delete(id);
+            if (!posTickets.find((t) => t.id === posActiveTicketId)) {
+                if (posTickets.length) {
+                    posActiveTicketId = posTickets[0].id;
+                    internalOrderItems = posTickets[0].items;
+                    posTicketConfig = null;
+                } else {
+                    createNewPosTicket();
+                }
+            }
+            renderPosTicketsList();
+            renderPosTicketsBadge();
+            renderPosCartTicketInfo();
+            renderPosOrderItems();
+            renderPosTotals();
+            renderPosBottomBar();
+        });
+
         // Click en la tarjeta → abrir ticket (solo si no hay selección activa)
         item.addEventListener('click', (e) => {
-            if (e.target.closest('.pos-ticket-check')) return;
+            if (e.target.closest('.pos-ticket-check') || e.target.closest('.pos-ticket-del-inline') || e.target.closest('.pos-ticket-edit-inline') || e.target.closest('.pos-ticket-send-inline')) return;
             if (_posSelectedTicketIds.size > 0) {
                 // En modo selección, el click en la tarjeta también selecciona/deselecciona
                 const id = item.dataset.ticketId;
@@ -3446,9 +3570,13 @@ function clearPosClient() {
 function openInternalOrderModal() {
     if (!internalOrderModal) return;
 
-    // Restaurar tickets guardados o crear uno nuevo si no hay ninguno
-    if (!posTickets.length) {
-        if (!loadPosTicketsFromStorage()) {
+    // Restaurar o activar ticket (Firestore es la fuente de verdad via subscribePosTickets)
+    if (!posActiveTicketId) {
+        if (posTickets.length) {
+            const first = posTickets[0];
+            posActiveTicketId = first.id;
+            internalOrderItems = first.items || [];
+        } else {
             createNewPosTicket();
         }
     } else {
@@ -3520,6 +3648,15 @@ async function saveAdminOrderQuick(config = {}) {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
         return;
+    }
+
+    const orderType = config.orderType || _editingOrderData?.orderType || 'retiro';
+    if (orderType === 'domicilio') {
+        const fee = config.deliveryFee ?? _editingOrderData?.deliveryFee;
+        if (fee === undefined || fee === null || fee === '' || String(fee).trim() === '') {
+            showNotice('Debes asignar un valor de domicilio antes de enviar.', 'error');
+            return;
+        }
     }
 
     const isEditing = _editingOrderData !== null;
@@ -3597,25 +3734,16 @@ async function saveAdminOrderQuick(config = {}) {
         renderOrders();
         renderSalesSummaries();
 
-        // Eliminar el ticket procesado y pasar al siguiente (o crear uno nuevo)
-        posTickets = posTickets.filter((t) => t.id !== posActiveTicketId);
-        if (posTickets.length > 0) {
-            posActiveTicketId = posTickets[0].id;
-            internalOrderItems = posTickets[0].items;
-        } else {
-            createNewPosTicket();
-        }
-        renderPosOrderItems();
-        renderPosTotals();
-        renderPosBottomBar();
-        renderPosTicketsBadge();
-        savePosTicketsToStorage();
-        showPosScreen('main');
-        showNotice(isEditing ? 'Pedido actualizado.' : 'Pedido guardado en recepción.', 'ok');
+        // Eliminar el ticket procesado de Firestore y cerrar POS
+        const _processedTicketId = posActiveTicketId;
+        deletePosTicketFromFirestore(_processedTicketId);
+        posTickets = posTickets.filter((t) => t.id !== _processedTicketId);
+        closeInternalOrderModal();
+        showNotice(isEditing ? 'Pedido actualizado.' : 'Pedido enviado a recepción.', 'ok');
     } catch (error) {
         showNotice(`Error al guardar: ${error.message || 'error'}`, 'error');
     } finally {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'GUARDAR PEDIDO'; }
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'ENVIAR TICKET'; }
     }
 }
 
@@ -3683,7 +3811,10 @@ function closeInternalOrderModal(clearCurrentTicket = false) {
     if (!internalOrderModal) return;
 
     if (clearCurrentTicket) {
-        posTickets = posTickets.filter((t) => t.id !== posActiveTicketId);
+        // Ticket procesado: eliminar de Firestore y activar el siguiente
+        const processedId = posActiveTicketId;
+        deletePosTicketFromFirestore(processedId);
+        posTickets = posTickets.filter((t) => t.id !== processedId);
         if (posTickets.length > 0) {
             posActiveTicketId = posTickets[0].id;
             internalOrderItems = posTickets[0].items;
@@ -3694,19 +3825,18 @@ function closeInternalOrderModal(clearCurrentTicket = false) {
             const label = document.getElementById('posActiveTicketLabel');
             if (label) label.textContent = posTickets[0].label;
             showPosScreen('main');
-            savePosTicketsToStorage();
             return;
         }
-        // No quedan tickets — limpiar storage y cerrar
-        clearPosTicketsStorage();
     } else {
-        // Cerrar sin procesar: guardar estado actual y mantener tickets para la próxima apertura
+        // Cerrar sin procesar: guardar en Firestore solo si tiene items
         const current = posTickets.find((t) => t.id === posActiveTicketId);
-        if (current) current.items = [...internalOrderItems];
-        savePosTicketsToStorage();
+        if (current && internalOrderItems.length > 0) {
+            current.items = [...internalOrderItems];
+            savePosTicketToFirestore(current);
+        }
     }
 
-    posTickets = [];
+    // Limpiar estado de sesión (posTickets se mantiene; Firestore es la fuente de verdad)
     posActiveTicketId = null;
     posTicketConfig = null;
     _editingOrderData = null;
@@ -5294,6 +5424,8 @@ function getOrderStatusMeta(status) {
             return { label: 'En cocina', className: 'processing' };
         case 'camino':
             return { label: 'En camino', className: 'processing' };
+        case 'servido':
+            return { label: 'Servido', className: 'ready-pickup' };
         case 'entregado':
             return { label: 'Entregado', className: 'success' };
         default:
@@ -6051,27 +6183,80 @@ function createOrderCard(order) {
     const isUnreadOrder = order.status === 'pendiente';
     const isDeliveryOrder = order.orderType === 'domicilio';
     const isPickupOrder = order.orderType === 'retiro';
+    const isMesaOrder = order.orderType === 'mesa';
     const showReceiveAction = isUnreadOrder;
-    const showDeliveryAction = !isUnreadOrder && isDeliveryOrder && order.status !== 'esperando_domiciliario' && order.status !== 'camino' && order.status !== 'entregado';
     const showPickupReadyAction = !isUnreadOrder && isPickupOrder && order.status !== 'listo_recoger' && order.status !== 'entregado';
-    const showDeliveredAction = !isUnreadOrder && order.status !== 'entregado';
+    const showDeliveredAction = !isMesaOrder && !isDeliveryOrder && !isUnreadOrder && order.status !== 'entregado';
     const showDeleteAction = order.status !== 'entregado';
     const showViewTicketAction = isMobileAdminViewport();
-    const showEditPosAction = (order.isAdminOrder || order.source === 'admin_pos') && order.status === 'pendiente';
+    const isPosAdminOrder = order.isAdminOrder || order.source === 'admin_pos';
+    const showEditPosAction = isPosAdminOrder && order.status === 'pendiente';
 
-    const actionButtons = [
-        showViewTicketAction ? `<button type="button" class="order-action-btn order-action-btn-view" data-order-card-action="view_ticket" data-order-id="${order.id}">Ver ticket</button>` : '',
-        showEditPosAction ? `<button type="button" class="order-action-btn order-action-btn-edit" data-order-card-action="editar_pos" data-order-id="${order.id}">&#9998; Editar pedido</button>` : '',
-        showReceiveAction ? `<button type="button" class="order-action-btn order-action-btn-receive" data-order-card-action="recibir_pedido" data-order-id="${order.id}">Recibir pedido</button>` : '',
-        showPickupReadyAction ? `<button type="button" class="order-action-btn order-action-btn-ready" data-order-card-action="listo_recoger" data-order-id="${order.id}">Pedido listo</button>` : '',
-        showDeliveryAction ? `<button type="button" class="order-action-btn" data-order-card-action="esperando_domiciliario" data-order-id="${order.id}">Pedir domiciliario</button>` : '',
-        showDeliveredAction ? `<button type="button" class="order-action-btn order-action-btn-delivered" data-order-card-action="entregado" data-order-id="${order.id}">Pedido entregado</button>` : '',
-        showDeleteAction ? `<button type="button" class="order-action-btn order-action-btn-delete" data-order-card-action="eliminar" data-order-id="${order.id}">Eliminar pedido</button>` : ''
-    ].filter(Boolean).join('');
+    let actionsMarkup = '';
 
-    const actionsMarkup = actionButtons
-        ? `<div class="kanban-order-actions">${actionButtons}</div>`
-        : '';
+    if (isMesaOrder && !isUnreadOrder && order.status !== 'entregado') {
+        // Layout mesa: [ Servido/Cobrar | ✎ | 🗑 ]
+        const mainLabel = order.status === 'servido' ? 'Cobrar pedido' : 'Pedido servido';
+        const mainAction = order.status === 'servido' ? 'entregado' : 'servido';
+        const mainClass = order.status === 'servido' ? 'order-action-btn-receive' : 'order-action-btn-delivered';
+        const editBtn = isPosAdminOrder
+            ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
+            : '';
+        actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
+            <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
+            <div class="koa-mesa-icons">
+                ${editBtn}
+                <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
+            </div>
+        </div>`;
+    } else if (isDeliveryOrder && !isUnreadOrder && order.status !== 'entregado') {
+        // Layout domicilio: [ Pedir domiciliario → Pedido entregado | ✎ | 🗑 ]
+        const canRequestCourier = order.status !== 'esperando_domiciliario' && order.status !== 'camino';
+        const mainLabel = canRequestCourier ? 'Pedir domiciliario' : 'Pedido entregado';
+        const mainAction = canRequestCourier ? 'esperando_domiciliario' : 'entregado';
+        const mainClass = canRequestCourier ? '' : 'order-action-btn-delivered';
+        const editBtn = isPosAdminOrder
+            ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
+            : '';
+        actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
+            <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
+            <div class="koa-mesa-icons">
+                ${editBtn}
+                <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
+            </div>
+        </div>`;
+    } else if (isPickupOrder && !isUnreadOrder && order.status !== 'entregado') {
+        // Layout para llevar: [ Pedido listo → Pedido entregado | ✎ | 🗑 ]
+        const isReady = order.status === 'listo_recoger';
+        const mainLabel = isReady ? 'Pedido entregado' : 'Pedido listo';
+        const mainAction = isReady ? 'entregado' : 'listo_recoger';
+        const mainClass = isReady ? 'order-action-btn-delivered' : 'order-action-btn-ready';
+        const editBtn = isPosAdminOrder
+            ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
+            : '';
+        actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
+            <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
+            <div class="koa-mesa-icons">
+                ${editBtn}
+                <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
+            </div>
+        </div>`;
+    } else {
+        // Layout compacto para pedidos pendientes: [ Recibir pedido (flex) | ✎ | 🗑 ]
+        const editBtn = showEditPosAction
+            ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
+            : '';
+        const viewBtn = showViewTicketAction
+            ? `<button type="button" class="order-action-btn order-action-btn-view koa-icon-btn" data-order-card-action="view_ticket" data-order-id="${order.id}" title="Ver ticket">&#128196;</button>`
+            : '';
+        actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
+            <button type="button" class="order-action-btn order-action-btn-receive koa-mesa-main" data-order-card-action="recibir_pedido" data-order-id="${order.id}">Recibir pedido</button>
+            <div class="koa-mesa-icons">
+                ${viewBtn}${editBtn}
+                <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
+            </div>
+        </div>`;
+    }
 
     card.innerHTML = `
         <div class="koc-header">
@@ -6162,6 +6347,7 @@ function renderOrders() {
     applyMobileOrdersLane();
     updateOrdersAttentionState();
     renderSalesDayBanner();
+    _ptsMarkOccupiedMesas();
 }
 
 function renderSalesDayBanner() {
@@ -8169,6 +8355,11 @@ if (openCreateClientBtn) {
 
 if (openCreateInternalOrderBtn) {
     openCreateInternalOrderBtn.addEventListener('click', () => {
+        // Siempre crear un ticket en blanco — nunca reanudar uno existente
+        posActiveTicketId = null;
+        posTicketConfig = null;
+        internalOrderItems = [];
+        createNewPosTicket();
         openInternalOrderModal();
     });
 }
@@ -8304,12 +8495,17 @@ function renderPosCartTicketInfo() {
 }
 
 function _ptsMarkOccupiedMesas() {
-    const occupiedMesas = posTickets
+    const occupiedFromTickets = posTickets
         .filter((t) => t.id !== posActiveTicketId && t.orderType === 'mesa' && t.mesaNumber)
         .map((t) => t.mesaNumber);
+    // También bloquear mesas de pedidos activos en Firestore
+    const occupiedFromOrders = (ordersState || [])
+        .filter((o) => o.orderType === 'mesa' && o.mesaNumber && !['entregado', 'cancelado'].includes(o.status))
+        .map((o) => Number(o.mesaNumber));
+    const allOccupied = [...new Set([...occupiedFromTickets, ...occupiedFromOrders])];
     document.querySelectorAll('.pts-mesa-btn').forEach((btn) => {
         const num = Number(btn.dataset.ptsMesa);
-        const occupied = occupiedMesas.includes(num);
+        const occupied = allOccupied.includes(num);
         btn.classList.toggle('occupied', occupied);
         btn.disabled = occupied;
         if (occupied) btn.title = `Mesa ${num} en uso`;
@@ -8366,7 +8562,9 @@ function openPosTicketSetupModal(configOnly = false) {
     const searchResults = document.getElementById('ptsSearchResults');
     if (searchResults) searchResults.innerHTML = '';
     const selectedChip = document.getElementById('ptsSelectedChip');
-    if (selectedChip) selectedChip.setAttribute('hidden', '');
+    const selectedChipLabel = document.getElementById('ptsSelectedChipLabel');
+    if (selectedChipLabel) selectedChipLabel.textContent = '';
+    if (selectedChip) selectedChip.classList.remove('is-visible');
 
     // Pre-llenar dirección (domicilio)
     const domicilioSection = document.getElementById('ptsDomicilioSection');
@@ -8427,11 +8625,12 @@ function _ptsRefreshDomicilioSection() {
         if (_ptsSelectedClient) {
             _ptsFillClientAddress(_ptsSelectedClient);
         } else {
-            // Tab 'quick' sin cliente: asegurar que el input sea visible
+            // Tab 'quick' sin cliente: input visible y tarifa siempre accesible
             const addrPicker = document.getElementById('ptsAddressPicker');
             if (addrPicker) addrPicker.setAttribute('hidden', '');
             const addrInput = document.getElementById('ptsDeliveryAddress');
             if (addrInput) addrInput.removeAttribute('hidden');
+            _ptsToggleFeeWrap(true);
         }
     } else {
         section.setAttribute('hidden', '');
@@ -8478,27 +8677,26 @@ function _ptsRenderSearchResults(query) {
 
 // Muestra el chip de cliente seleccionado y oculta el input de búsqueda
 function _ptsShowSelectedClientChip(client) {
+    if (!client?.name) return;
     const searchInput  = document.getElementById('ptsSearchInput');
     const results      = document.getElementById('ptsSearchResults');
     const chip         = document.getElementById('ptsSelectedChip');
     const chipLabel    = document.getElementById('ptsSelectedChipLabel');
-    const newClientBtn = document.getElementById('ptsNewClientBtn');
     if (searchInput) searchInput.setAttribute('hidden', '');
     if (results) results.innerHTML = '';
     if (chip && chipLabel) {
         chipLabel.textContent = `✓ ${client.name}${client.phone ? '  ·  ' + client.phone : ''}`;
-        chip.removeAttribute('hidden');
+        chip.classList.add('is-visible');
     }
-    if (newClientBtn) newClientBtn.setAttribute('hidden', '');
 }
 
 function _ptsHideSelectedClientChip() {
-    const searchInput  = document.getElementById('ptsSearchInput');
-    const chip         = document.getElementById('ptsSelectedChip');
-    const newClientBtn = document.getElementById('ptsNewClientBtn');
+    const searchInput = document.getElementById('ptsSearchInput');
+    const chip        = document.getElementById('ptsSelectedChip');
+    const chipLabel   = document.getElementById('ptsSelectedChipLabel');
     if (searchInput) { searchInput.removeAttribute('hidden'); searchInput.value = ''; searchInput.focus(); }
-    if (chip) chip.setAttribute('hidden', '');
-    if (newClientBtn) newClientBtn.removeAttribute('hidden');
+    if (chipLabel) chipLabel.textContent = '';
+    if (chip) chip.classList.remove('is-visible');
 }
 
 // Auto-rellena la sección de dirección según las direcciones guardadas del cliente
@@ -8566,6 +8764,14 @@ document.getElementById('ptsCancelBtn')?.addEventListener('click', () => {
     closePosTicketSetupModal();
 });
 
+function _ptsShowFeedback(msg) {
+    const el = document.getElementById('ptsFeedbackMsg');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; el.textContent = ''; }, 3500);
+}
+
 document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     // Leer estado desde DOM como fuente de verdad (evita problemas de caché/closure)
     const activeTypeBtn = document.querySelector('#posTicketSetupModal .pts-type-btn.active');
@@ -8574,6 +8780,16 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     const resolvedMesa = activeMesaBtn ? Number(activeMesaBtn.dataset.ptsMesa) : _ptsSelectedMesa;
 
     if (!resolvedType) return;
+
+    // Validar tarifa de domicilio obligatoria
+    if (resolvedType === 'domicilio') {
+        const feeRaw = String(document.getElementById('ptsDeliveryFee')?.value ?? '').trim();
+        if (!feeRaw) {
+            _ptsShowFeedback('Debes asignar un valor de domicilio.');
+            document.getElementById('ptsDeliveryFee')?.focus();
+            return;
+        }
+    }
 
     let customerName = '';
     let customerPhone = '';
@@ -8618,19 +8834,11 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
         posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone, deliveryAddress, deliveryFee };
         renderPosCartTicketInfo();
 
-        // Modo GUARDAR TICKET: crear nuevo ticket en blanco después de nombrar el actual
+        // Modo GUARDAR TICKET: guardar ticket configurado en Firestore y cerrar POS
         if (_ptsSaveAndNew) {
             _ptsSaveAndNew = false;
-            createNewPosTicket();
-            internalOrderItems = [];
-            posTicketConfig = null;
-            renderPosCartTicketInfo();
-            renderPosOrderItems();
-            renderPosTotals();
-            renderPosBottomBar();
-            renderPosTicketsBadge();
-            savePosTicketsToStorage();
-            showPosScreen('main');
+            if (activeTicket) savePosTicketToFirestore(activeTicket);
+            closeInternalOrderModal();
         }
         return;
     }
@@ -8686,7 +8894,15 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
         if (panelQuick) panelQuick.toggleAttribute('hidden', _ptsActiveTab !== 'quick');
         if (panelSearch) panelSearch.toggleAttribute('hidden', _ptsActiveTab !== 'search');
         if (panelNew) panelNew.toggleAttribute('hidden', _ptsActiveTab !== 'new');
-        if (_ptsActiveTab !== 'search') {
+        if (_ptsActiveTab === 'search') {
+            // Resetear chip y campo de búsqueda al activar el tab
+            const chip = document.getElementById('ptsSelectedChip');
+            const chipLabel = document.getElementById('ptsSelectedChipLabel');
+            if (chip) chip.classList.remove('is-visible');
+            if (chipLabel) chipLabel.textContent = '';
+            const searchInput = document.getElementById('ptsSearchInput');
+            if (searchInput) { searchInput.removeAttribute('hidden'); searchInput.value = ''; }
+        } else {
             const searchResults = document.getElementById('ptsSearchResults');
             if (searchResults) searchResults.innerHTML = '';
         }
@@ -8971,18 +9187,10 @@ document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => 
     const current = posTickets.find((t) => t.id === posActiveTicketId);
     if (current) current.items = internalOrderItems;
 
-    // Si el ticket ya tiene tipo de pedido configurado, guardar sin abrir modal
+    // Si el ticket ya tiene tipo de pedido configurado, guardar en Firestore y cerrar POS
     if (current?.orderType) {
-        createNewPosTicket();
-        internalOrderItems = [];
-        posTicketConfig = null;
-        renderPosCartTicketInfo();
-        renderPosOrderItems();
-        renderPosTotals();
-        renderPosBottomBar();
-        renderPosTicketsBadge();
-        savePosTicketsToStorage();
-        showPosScreen('main');
+        savePosTicketToFirestore(current);
+        closeInternalOrderModal();
         return;
     }
 
@@ -9019,6 +9227,8 @@ document.getElementById('posTicketDeleteBtn')?.addEventListener('click', () => {
     if (!_posSelectedTicketIds.size) return;
     const count = _posSelectedTicketIds.size;
     if (!confirm(`¿Eliminar ${count} ticket${count > 1 ? 's' : ''}?`)) return;
+    const toDelete = [..._posSelectedTicketIds];
+    toDelete.forEach((id) => deletePosTicketFromFirestore(id));
     posTickets = posTickets.filter((t) => !_posSelectedTicketIds.has(t.id));
     _posSelectedTicketIds.clear();
     // Si se eliminó el ticket activo, activar el primero que quede
@@ -9037,7 +9247,6 @@ document.getElementById('posTicketDeleteBtn')?.addEventListener('click', () => {
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
-    savePosTicketsToStorage();
 });
 
 // Cambiar tipo de pedido del ticket seleccionado
@@ -9052,6 +9261,8 @@ document.getElementById('posTicketChangeTypeBtn')?.addEventListener('click', () 
 
 // Nuevo ticket
 document.getElementById('posNewTicketBtn')?.addEventListener('click', () => {
+    posTicketConfig = null;
+    internalOrderItems = [];
     createNewPosTicket();
     renderPosOrderItems();
     renderPosTotals();
@@ -9794,6 +10005,13 @@ if (ordersActionRoot) {
                     return;
                 }
 
+                if (nextStatus === 'servido') {
+                    await updateOrder(orderId, { status: 'servido', servidoAt: firestoreNow() });
+                    await reloadDataAndRender();
+                    showNotice('Pedido marcado como servido.', 'ok');
+                    return;
+                }
+
                 const copied = await copyTextToClipboard(buildDeliveredOrderMessage(order));
                 await updateOrder(orderId, { status: nextStatus, deliveredAt: firestoreNow() });
                 showNotice(
@@ -10489,6 +10707,7 @@ async function initAdmin() {
         await reloadDataAndRender();
         ensureOrdersRealtimeTicker();
         setupLiveFirebaseSync();
+        subscribePosTickets();
     } catch (error) {
         if (!document.body.classList.contains('admin-unlocked')) {
             document.body.classList.add('admin-locked');
