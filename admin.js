@@ -1116,7 +1116,7 @@ function setupAccordion() {
     const panels = Array.from(document.querySelectorAll('.admin-tab-panel'));
     const groupMap = {
         menu: ['menu'],
-        informes: ['resumen-ventas', 'libro'],
+        informes: ['informes'],
         configuracion: ['configuracion'],
         pedidos: ['pedidos'],
         clientes: ['clientes'],
@@ -1149,7 +1149,7 @@ function setupAccordion() {
         button.addEventListener('click', () => activateAccordion(button.dataset.accordionTarget));
     });
 
-    activateAccordion('categorias');
+    activateAccordion('menu');
 }
 
 function setupAdvancedSettingsPanel() {
@@ -1264,6 +1264,10 @@ function setupSectionSaveButtons() {
 
         if (section === 'configuracion') {
             if (brandingForm) brandingForm.requestSubmit();
+            return;
+        }
+
+        if (section === 'horario') {
             if (horarioFormEl) horarioFormEl.requestSubmit();
             return;
         }
@@ -9060,17 +9064,36 @@ document.getElementById('saveUpgradesConfigBtn')?.addEventListener('click', asyn
     }
 });
 
-// ── Menu: pestañas internas (Categorías / Acompañantes)
-document.querySelectorAll('.menu-inner-tab').forEach((tab) => {
+// ── Menu: pestañas internas (Categorías / Acompañantes / Carrusel / Recomendado)
+document.querySelectorAll('.menu-inner-tab[data-menu-tab]').forEach((tab) => {
     tab.addEventListener('click', () => {
         const target = tab.dataset.menuTab;
-        document.querySelectorAll('.menu-inner-tab').forEach((t) => {
+        document.querySelectorAll('.menu-inner-tab[data-menu-tab]').forEach((t) => {
             const isActive = t.dataset.menuTab === target;
             t.classList.toggle('active', isActive);
             t.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
-        document.querySelectorAll('.menu-inner-panel').forEach((panel) => {
+        document.querySelectorAll('.menu-inner-panel[data-menu-panel]').forEach((panel) => {
             const isActive = panel.dataset.menuPanel === target;
+            panel.classList.toggle('active', isActive);
+            panel.hidden = !isActive;
+            panel.style.display = isActive ? 'flex' : 'none';
+        });
+    });
+});
+
+// ── Pestañas de sección genéricas con scope (Informes, Configuracion, etc.)
+document.querySelectorAll('[data-section-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+        const scope = tab.dataset.sectionScope;
+        const target = tab.dataset.sectionTab;
+        document.querySelectorAll(`[data-section-tab][data-section-scope="${scope}"]`).forEach((t) => {
+            const isActive = t.dataset.sectionTab === target;
+            t.classList.toggle('active', isActive);
+            t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        document.querySelectorAll(`[data-section-panel][data-section-scope="${scope}"]`).forEach((panel) => {
+            const isActive = panel.dataset.sectionPanel === target;
             panel.classList.toggle('active', isActive);
             panel.hidden = !isActive;
             panel.style.display = isActive ? 'flex' : 'none';

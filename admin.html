@@ -8399,201 +8399,245 @@
                 </article>
             </div>
 
-            <div class="admin-tab-panel" data-tab-panel="resumen-ventas">
-                <div class="section-toolbar sales-summary-toolbar">
-                    <button type="button" class="section-save-btn" data-section-save="resumen-ventas">Actualizar resumen</button>
-                    <div class="sales-summary-filters">
-                        <input type="date" id="salesSummaryDateFrom" class="sales-summary-date-input" aria-label="Fecha inicial del resumen de ventas">
-                        <input type="date" id="salesSummaryDateTo" class="sales-summary-date-input" aria-label="Fecha final del resumen de ventas">
-                        <select id="salesSummaryFilterType" class="clients-export-select" aria-label="Filtrar resumen por tipo">
-                            <option value="all">Todas las ventas</option>
-                            <option value="category">Por categoria</option>
-                            <option value="product">Por producto</option>
-                        </select>
-                        <select id="salesSummaryFilterValue" class="clients-export-select" aria-label="Valor del filtro de ventas" disabled>
-                            <option value="">Selecciona un filtro</option>
-                        </select>
-                    </div>
-                </div>
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Resumen de ventas</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-sales-summary" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-sales-summary">
-                        <div class="sales-summary-overview" id="salesSummaryOverview">
-                            <div class="sales-summary-stat">
-                                <span>Total cerrado</span>
-                                <strong id="salesSummaryTotalAmount">$0</strong>
-                            </div>
-                            <div class="sales-summary-stat">
-                                <span>Pedidos cerrados</span>
-                                <strong id="salesSummaryTotalOrders">0</strong>
-                            </div>
-                            <div class="sales-summary-stat">
-                                <span>Jornadas</span>
-                                <strong id="salesSummaryTotalDays">0</strong>
-                            </div>
-                        </div>
-                        <div class="sales-summary-list" id="salesSummaryList"></div>
-                    </div>
-                </article>
-            </div>
+            <div class="admin-tab-panel" data-tab-panel="informes">
+                <article class="admin-card menu-section-card">
+                    <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Informes">
+                        <button class="menu-inner-tab active" data-section-tab="resumen" data-section-scope="informes" role="tab" aria-selected="true">
+                            <span class="menu-inner-tab-icon">📊</span>
+                            <span>Resumen de Ventas</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="libro" data-section-scope="informes" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">📒</span>
+                            <span>Libro Contable</span>
+                        </button>
+                    </nav>
+                    <div class="menu-inner-panels-wrap">
 
-            <div class="admin-tab-panel" data-tab-panel="libro">
-                <div class="section-toolbar sales-summary-toolbar">
-                    <button type="button" class="section-save-btn" data-section-save="libro">Actualizar libro</button>
-                    <div class="sales-summary-filters">
-                        <input type="date" id="ledgerBookDateFrom" class="sales-summary-date-input" aria-label="Fecha inicial del libro contable">
-                        <input type="date" id="ledgerBookDateTo" class="sales-summary-date-input" aria-label="Fecha final del libro contable">
-                        <button type="button" class="section-action-btn" id="exportLedgerExcelBtn">Exportar Excel</button>
-                        <button type="button" class="section-action-btn primary" id="exportLedgerPdfBtn">Exportar PDF</button>
-                    </div>
-                </div>
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Libro contable</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-ledger-book" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-ledger-book">
-                        <div class="sales-summary-overview ledger-overview">
-                            <div class="sales-summary-stat">
-                                <span>Ingresos registrados</span>
-                                <strong id="ledgerBookTotalIncome">$0</strong>
+                        <!-- Panel: Resumen de Ventas -->
+                        <div class="menu-inner-panel active" data-section-panel="resumen" data-section-scope="informes" role="tabpanel">
+                            <div class="section-toolbar sales-summary-toolbar">
+                                <button type="button" class="section-save-btn" data-section-save="resumen-ventas">Actualizar resumen</button>
+                                <div class="sales-summary-filters">
+                                    <input type="date" id="salesSummaryDateFrom" class="sales-summary-date-input" aria-label="Fecha inicial del resumen de ventas">
+                                    <input type="date" id="salesSummaryDateTo" class="sales-summary-date-input" aria-label="Fecha final del resumen de ventas">
+                                    <select id="salesSummaryFilterType" class="clients-export-select" aria-label="Filtrar resumen por tipo">
+                                        <option value="all">Todas las ventas</option>
+                                        <option value="category">Por categoria</option>
+                                        <option value="product">Por producto</option>
+                                    </select>
+                                    <select id="salesSummaryFilterValue" class="clients-export-select" aria-label="Valor del filtro de ventas" disabled>
+                                        <option value="">Selecciona un filtro</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div class="sales-summary-stat">
-                                <span>Jornadas contabilizadas</span>
-                                <strong id="ledgerBookTotalEntries">0</strong>
-                            </div>
-                            <div class="sales-summary-stat">
-                                <span>Promedio por cierre</span>
-                                <strong id="ledgerBookAverageIncome">$0</strong>
-                            </div>
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Resumen de ventas</h2>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-sales-summary" aria-expanded="true">Retraer</button>
+                                </div>
+                                <div class="card-body" id="card-sales-summary">
+                                    <div class="sales-summary-overview" id="salesSummaryOverview">
+                                        <div class="sales-summary-stat">
+                                            <span>Total cerrado</span>
+                                            <strong id="salesSummaryTotalAmount">$0</strong>
+                                        </div>
+                                        <div class="sales-summary-stat">
+                                            <span>Pedidos cerrados</span>
+                                            <strong id="salesSummaryTotalOrders">0</strong>
+                                        </div>
+                                        <div class="sales-summary-stat">
+                                            <span>Jornadas</span>
+                                            <strong id="salesSummaryTotalDays">0</strong>
+                                        </div>
+                                    </div>
+                                    <div class="sales-summary-list" id="salesSummaryList"></div>
+                                </div>
+                            </article>
                         </div>
-                        <div class="clients-table-wrap ledger-table-wrap">
-                            <table class="clients-table ledger-table">
-                                <thead>
-                                    <tr>
-                                        <th>Fecha</th>
-                                        <th>Pedidos</th>
-                                        <th>Items</th>
-                                        <th>Ventas total</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ledgerBookList">
-                                    <tr>
-                                        <td class="client-empty-row" colspan="4">No hay cierres disponibles para el libro contable.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+
+                        <!-- Panel: Libro Contable -->
+                        <div class="menu-inner-panel" data-section-panel="libro" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
+                            <div class="section-toolbar sales-summary-toolbar">
+                                <button type="button" class="section-save-btn" data-section-save="libro">Actualizar libro</button>
+                                <div class="sales-summary-filters">
+                                    <input type="date" id="ledgerBookDateFrom" class="sales-summary-date-input" aria-label="Fecha inicial del libro contable">
+                                    <input type="date" id="ledgerBookDateTo" class="sales-summary-date-input" aria-label="Fecha final del libro contable">
+                                    <button type="button" class="section-action-btn" id="exportLedgerExcelBtn">Exportar Excel</button>
+                                    <button type="button" class="section-action-btn primary" id="exportLedgerPdfBtn">Exportar PDF</button>
+                                </div>
+                            </div>
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Libro contable</h2>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-ledger-book" aria-expanded="true">Retraer</button>
+                                </div>
+                                <div class="card-body" id="card-ledger-book">
+                                    <div class="sales-summary-overview ledger-overview">
+                                        <div class="sales-summary-stat">
+                                            <span>Ingresos registrados</span>
+                                            <strong id="ledgerBookTotalIncome">$0</strong>
+                                        </div>
+                                        <div class="sales-summary-stat">
+                                            <span>Jornadas contabilizadas</span>
+                                            <strong id="ledgerBookTotalEntries">0</strong>
+                                        </div>
+                                        <div class="sales-summary-stat">
+                                            <span>Promedio por cierre</span>
+                                            <strong id="ledgerBookAverageIncome">$0</strong>
+                                        </div>
+                                    </div>
+                                    <div class="clients-table-wrap ledger-table-wrap">
+                                        <table class="clients-table ledger-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Pedidos</th>
+                                                    <th>Items</th>
+                                                    <th>Ventas total</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="ledgerBookList">
+                                                <tr>
+                                                    <td class="client-empty-row" colspan="4">No hay cierres disponibles para el libro contable.</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </article>
                         </div>
+
                     </div>
                 </article>
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="configuracion">
-                <div class="section-toolbar">
-                    <button type="button" class="section-save-btn" data-section-save="configuracion">Guardar todo</button>
-                </div>
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Informacion del Negocio</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-branding" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-branding">
-                        <form id="brandingForm" class="admin-form">
-                            <div class="admin-field">
-                                <label for="restaurantName">Nombre del restaurante</label>
-                                <input type="text" id="restaurantName" name="restaurantName" placeholder="Ej: ROAL BURGER" required>
+                <article class="admin-card menu-section-card">
+                    <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Configuracion">
+                        <button class="menu-inner-tab active" data-section-tab="negocio" data-section-scope="configuracion" role="tab" aria-selected="true">
+                            <span class="menu-inner-tab-icon">🏪</span>
+                            <span>Negocio</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="horario" data-section-scope="configuracion" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">🕐</span>
+                            <span>Horario</span>
+                        </button>
+                    </nav>
+                    <div class="menu-inner-panels-wrap">
+
+                        <!-- Panel: Negocio -->
+                        <div class="menu-inner-panel active" data-section-panel="negocio" data-section-scope="configuracion" role="tabpanel">
+                            <div class="section-toolbar">
+                                <button type="button" class="section-save-btn" data-section-save="configuracion">Guardar info del negocio</button>
                             </div>
-                            <div class="admin-field">
-                                <label for="restaurantSlogan">Eslogan</label>
-                                <input type="text" id="restaurantSlogan" name="restaurantSlogan" placeholder="Ej: Sabor real en cada mordida" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="restaurantWhatsappNumber">Numero de WhatsApp</label>
-                                <input type="text" id="restaurantWhatsappNumber" name="restaurantWhatsappNumber" placeholder="Ej: 573144689509" required>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="restaurantWhatsappLink">Link de WhatsApp</label>
-                                <input type="text" id="restaurantWhatsappLink" name="restaurantWhatsappLink" placeholder="Ej: https://wa.me/..." required>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="restaurantBusinessHours">Horario</label>
-                                <input type="text" id="restaurantBusinessHours" name="restaurantBusinessHours" placeholder="Ej: Lunes a Domingo: 4:00 P.M. a 10:00 P.M." required>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="restaurantAddress">Direccion</label>
-                                <input type="text" id="restaurantAddress" name="restaurantAddress" placeholder="Ej: Cl. 22 #29-59, Armenia, Quindio" required>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="restaurantLocationLink">Ubicacion</label>
-                                <input type="text" id="restaurantLocationLink" name="restaurantLocationLink" placeholder="Ej: https://maps.google.com/..." required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="restaurantInstagramLink">Instagram</label>
-                                <input type="text" id="restaurantInstagramLink" name="restaurantInstagramLink" placeholder="Ej: https://instagram.com/...">
-                            </div>
-                            <div class="admin-field">
-                                <label for="restaurantTiktokLink">TikTok</label>
-                                <input type="text" id="restaurantTiktokLink" name="restaurantTiktokLink" placeholder="Ej: https://tiktok.com/@...">
-                            </div>
-                            <div class="admin-field">
-                                <label for="restaurantFacebookLink">Facebook</label>
-                                <input type="text" id="restaurantFacebookLink" name="restaurantFacebookLink" placeholder="Ej: https://facebook.com/...">
-                            </div>
-                            <button type="submit" class="admin-button">Guardar configuracion</button>
-                        </form>
-                        <div class="preview-box" id="brandingPreview">
-                            <div class="preview-brand">
-                                <div>
-                                    <strong id="previewName">ROAL BURGER</strong>
-                                    <p id="previewSlogan" class="muted">Comida rapida con acento venezolano</p>
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Informacion del Negocio</h2>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-branding" aria-expanded="true">Retraer</button>
                                 </div>
-                            </div>
-                            <div class="support-link-list">
-                                <span class="support-link-chip" id="previewWhatsapp">WhatsApp</span>
-                                <span class="support-link-chip" id="previewBusinessHours">Horario</span>
-                            </div>
-                            <p class="muted" id="previewAddress">Direccion</p>
-                            <p class="muted" id="previewLocation">Ubicacion</p>
-                            <p class="muted" id="previewSocials">Redes sociales</p>
+                                <div class="card-body" id="card-branding">
+                                    <form id="brandingForm" class="admin-form">
+                                        <div class="admin-field">
+                                            <label for="restaurantName">Nombre del restaurante</label>
+                                            <input type="text" id="restaurantName" name="restaurantName" placeholder="Ej: ROAL BURGER" required>
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="restaurantSlogan">Eslogan</label>
+                                            <input type="text" id="restaurantSlogan" name="restaurantSlogan" placeholder="Ej: Sabor real en cada mordida" required>
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="restaurantWhatsappNumber">Numero de WhatsApp</label>
+                                            <input type="text" id="restaurantWhatsappNumber" name="restaurantWhatsappNumber" placeholder="Ej: 573144689509" required>
+                                        </div>
+                                        <div class="admin-field full">
+                                            <label for="restaurantWhatsappLink">Link de WhatsApp</label>
+                                            <input type="text" id="restaurantWhatsappLink" name="restaurantWhatsappLink" placeholder="Ej: https://wa.me/..." required>
+                                        </div>
+                                        <div class="admin-field full">
+                                            <label for="restaurantBusinessHours">Horario</label>
+                                            <input type="text" id="restaurantBusinessHours" name="restaurantBusinessHours" placeholder="Ej: Lunes a Domingo: 4:00 P.M. a 10:00 P.M." required>
+                                        </div>
+                                        <div class="admin-field full">
+                                            <label for="restaurantAddress">Direccion</label>
+                                            <input type="text" id="restaurantAddress" name="restaurantAddress" placeholder="Ej: Cl. 22 #29-59, Armenia, Quindio" required>
+                                        </div>
+                                        <div class="admin-field full">
+                                            <label for="restaurantLocationLink">Ubicacion</label>
+                                            <input type="text" id="restaurantLocationLink" name="restaurantLocationLink" placeholder="Ej: https://maps.google.com/..." required>
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="restaurantInstagramLink">Instagram</label>
+                                            <input type="text" id="restaurantInstagramLink" name="restaurantInstagramLink" placeholder="Ej: https://instagram.com/...">
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="restaurantTiktokLink">TikTok</label>
+                                            <input type="text" id="restaurantTiktokLink" name="restaurantTiktokLink" placeholder="Ej: https://tiktok.com/@...">
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="restaurantFacebookLink">Facebook</label>
+                                            <input type="text" id="restaurantFacebookLink" name="restaurantFacebookLink" placeholder="Ej: https://facebook.com/...">
+                                        </div>
+                                        <button type="submit" class="admin-button">Guardar configuracion</button>
+                                    </form>
+                                    <div class="preview-box" id="brandingPreview">
+                                        <div class="preview-brand">
+                                            <div>
+                                                <strong id="previewName">ROAL BURGER</strong>
+                                                <p id="previewSlogan" class="muted">Comida rapida con acento venezolano</p>
+                                            </div>
+                                        </div>
+                                        <div class="support-link-list">
+                                            <span class="support-link-chip" id="previewWhatsapp">WhatsApp</span>
+                                            <span class="support-link-chip" id="previewBusinessHours">Horario</span>
+                                        </div>
+                                        <p class="muted" id="previewAddress">Direccion</p>
+                                        <p class="muted" id="previewLocation">Ubicacion</p>
+                                        <p class="muted" id="previewSocials">Redes sociales</p>
+                                    </div>
+                                </div>
+                            </article>
                         </div>
+
+                        <!-- Panel: Horario -->
+                        <div class="menu-inner-panel" data-section-panel="horario" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
+                            <div class="section-toolbar">
+                                <button type="button" class="section-save-btn" data-section-save="horario">Guardar horario</button>
+                            </div>
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Horario de Pedidos</h2>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-horario" aria-expanded="true">Retraer</button>
+                                </div>
+                                <div class="card-body" id="card-horario">
+                                    <p class="card-desc">
+                                        Define el horario en que el menú público acepta pedidos. Fuera de este rango los clientes pueden ver el menú pero no agregar al carrito.
+                                    </p>
+                                    <form id="horarioForm" class="admin-form">
+                                        <div class="admin-field">
+                                            <label for="horarioApertura">Hora de apertura</label>
+                                            <input type="time" id="horarioApertura" name="horarioApertura" value="16:00" required>
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="horarioCierre">Hora de cierre</label>
+                                            <input type="time" id="horarioCierre" name="horarioCierre" value="22:00" required>
+                                        </div>
+                                        <div class="admin-field full">
+                                            <label for="horarioEtiqueta">Etiqueta de horario (visible en el menú)</label>
+                                            <input type="text" id="horarioEtiqueta" name="horarioEtiqueta" placeholder="Ej: Lunes a Domingo: 4:00 P.M. a 10:00 P.M.">
+                                        </div>
+                                        <div class="admin-field full">
+                                            <label for="horarioMensajeCierre">Mensaje cuando está cerrado</label>
+                                            <textarea id="horarioMensajeCierre" name="horarioMensajeCierre" rows="3" class="admin-textarea" placeholder="Ej: Disculpa, en este momento estamos cerrados. Nuestro horario es de 4:00 P.M. a 10:00 P.M."></textarea>
+                                        </div>
+                                        <div id="horarioEstadoActual" class="horario-estado-badge"></div>
+                                        <button type="submit" class="admin-button">Guardar horario</button>
+                                    </form>
+                                </div>
+                            </article>
+                        </div>
+
                     </div>
                 </article>
-
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Horario de Pedidos</h2>
-                        <button type="button" class="card-collapse-btn" data-collapse-target="card-horario" aria-expanded="true">Retraer</button>
-                    </div>
-                    <div class="card-body" id="card-horario">
-                        <p class="card-desc">
-                            Define el horario en que el menú público acepta pedidos. Fuera de este rango los clientes pueden ver el menú pero no agregar al carrito.
-                        </p>
-                        <form id="horarioForm" class="admin-form">
-                            <div class="admin-field">
-                                <label for="horarioApertura">Hora de apertura</label>
-                                <input type="time" id="horarioApertura" name="horarioApertura" value="16:00" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="horarioCierre">Hora de cierre</label>
-                                <input type="time" id="horarioCierre" name="horarioCierre" value="22:00" required>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="horarioEtiqueta">Etiqueta de horario (visible en el menú)</label>
-                                <input type="text" id="horarioEtiqueta" name="horarioEtiqueta" placeholder="Ej: Lunes a Domingo: 4:00 P.M. a 10:00 P.M.">
-                            </div>
-                            <div class="admin-field full">
-                                <label for="horarioMensajeCierre">Mensaje cuando está cerrado</label>
-                                <textarea id="horarioMensajeCierre" name="horarioMensajeCierre" rows="3" class="admin-textarea" placeholder="Ej: Disculpa, en este momento estamos cerrados. Nuestro horario es de 4:00 P.M. a 10:00 P.M."></textarea>
-                            </div>
-                            <div id="horarioEstadoActual" class="horario-estado-badge"></div>
-                            <button type="submit" class="admin-button">Guardar horario</button>
-                        </form>
-                    </div>
-                </article>
-
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="clientes">
