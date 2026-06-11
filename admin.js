@@ -10149,6 +10149,20 @@ if (buttonConfigList) {
     });
 }
 
+// ── Dirty tracking: habilita el botón de guardar solo cuando hay cambios ──
+function initDirtyForm(formEl, saveBtnId) {
+    const btn = saveBtnId ? document.getElementById(saveBtnId) : formEl?.querySelector('[type="submit"]');
+    if (!formEl || !btn) return { markClean: () => {}, markDirty: () => {} };
+    function markClean() { btn.disabled = true; }
+    function markDirty() { btn.disabled = false; }
+    formEl.addEventListener('input', markDirty);
+    formEl.addEventListener('change', markDirty);
+    markClean();
+    return { markClean, markDirty };
+}
+
+const brandingDirty = initDirtyForm(brandingForm, 'brandingSaveBtn');
+
 brandingForm.addEventListener('input', () => {
     renderBrandingPreview();
 });
@@ -10191,6 +10205,7 @@ brandingForm.addEventListener('submit', async (event) => {
         await syncBrandingLinksToButtons(payload);
         brandingState = payload;
         renderBrandingForm();
+        brandingDirty.markClean();
         showNotice('Informacion del negocio guardada.', 'ok');
     } catch (error) {
         showNotice(`No se pudo guardar la configuracion: ${error.message || 'Error inesperado.'}`, 'error');
@@ -10198,6 +10213,7 @@ brandingForm.addEventListener('submit', async (event) => {
 });
 
 const horarioFormEl = document.getElementById('horarioForm');
+const horarioDirty = initDirtyForm(horarioFormEl, 'horarioSaveBtn');
 if (horarioFormEl) {
     horarioFormEl.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -10218,6 +10234,7 @@ if (horarioFormEl) {
             await firebaseDb.collection(CONFIG_COLLECTION).doc(HORARIO_DOC_ID).set(payload, { merge: true });
             horarioState = { ...horarioState, ...payload };
             renderHorarioForm();
+            horarioDirty.markClean();
             showNotice('Horario guardado correctamente.', 'ok');
         } catch (error) {
             showNotice(`No se pudo guardar el horario: ${error.message || 'Error inesperado.'}`, 'error');

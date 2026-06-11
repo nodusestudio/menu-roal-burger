@@ -357,6 +357,14 @@
             box-shadow: 0 8px 18px rgba(255, 96, 0, 0.35);
         }
 
+        .admin-button:disabled {
+            opacity: 0.38;
+            cursor: not-allowed;
+            background: linear-gradient(90deg, #666, #888);
+            transform: none;
+            box-shadow: none;
+        }
+
         .ghost-button {
             border: 1px solid rgba(255, 96, 0, 0.45);
             background: rgba(255, 96, 0, 0.12);
@@ -8527,9 +8535,6 @@
 
                         <!-- Panel: Negocio -->
                         <div class="menu-inner-panel active" data-section-panel="negocio" data-section-scope="configuracion" role="tabpanel">
-                            <div class="section-toolbar">
-                                <button type="button" class="section-save-btn" data-section-save="configuracion">Guardar info del negocio</button>
-                            </div>
                             <article class="admin-card">
                                 <div class="card-head">
                                     <h2>Informacion del Negocio</h2>
@@ -8577,7 +8582,7 @@
                                             <label for="restaurantFacebookLink">Facebook</label>
                                             <input type="text" id="restaurantFacebookLink" name="restaurantFacebookLink" placeholder="Ej: https://facebook.com/...">
                                         </div>
-                                        <button type="submit" class="admin-button">Guardar configuracion</button>
+                                        <button type="submit" class="admin-button" id="brandingSaveBtn" disabled>Guardar configuracion</button>
                                     </form>
                                     <div class="preview-box" id="brandingPreview">
                                         <div class="preview-brand">
@@ -8600,9 +8605,6 @@
 
                         <!-- Panel: Horario -->
                         <div class="menu-inner-panel" data-section-panel="horario" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
-                            <div class="section-toolbar">
-                                <button type="button" class="section-save-btn" data-section-save="horario">Guardar horario</button>
-                            </div>
                             <article class="admin-card">
                                 <div class="card-head">
                                     <h2>Horario de Pedidos</h2>
@@ -8630,7 +8632,7 @@
                                             <textarea id="horarioMensajeCierre" name="horarioMensajeCierre" rows="3" class="admin-textarea" placeholder="Ej: Disculpa, en este momento estamos cerrados. Nuestro horario es de 4:00 P.M. a 10:00 P.M."></textarea>
                                         </div>
                                         <div id="horarioEstadoActual" class="horario-estado-badge"></div>
-                                        <button type="submit" class="admin-button">Guardar horario</button>
+                                        <button type="submit" class="admin-button" id="horarioSaveBtn" disabled>Guardar horario</button>
                                     </form>
                                 </div>
                             </article>
