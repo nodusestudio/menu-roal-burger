@@ -1116,7 +1116,8 @@ function setupAccordion() {
     const panels = Array.from(document.querySelectorAll('.admin-tab-panel'));
     const groupMap = {
         menu: ['menu'],
-        diseno: ['configuracion', 'botones'],
+        diseno: ['botones'],
+        configuracion: ['configuracion'],
         pedidos: ['pedidos'],
         'resumen-ventas': ['resumen-ventas'],
         libro: ['libro'],
@@ -1263,8 +1264,9 @@ function setupSectionSaveButtons() {
             return;
         }
 
-        if (section === 'configuracion' && brandingForm) {
-            brandingForm.requestSubmit();
+        if (section === 'configuracion') {
+            if (brandingForm) brandingForm.requestSubmit();
+            if (horarioFormEl) horarioFormEl.requestSubmit();
             return;
         }
 
