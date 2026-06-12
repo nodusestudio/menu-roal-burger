@@ -11230,7 +11230,8 @@ async function loadGastosCaja() {
 
 async function saveGasto(gasto) {
     const docRef = firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(gasto.id);
-    await docRef.set(gasto);
+    // Guardar con server timestamp en Firestore; la copia local usa Date.now() numérico
+    await docRef.set({ ...gasto, registradoAt: firestoreNow() });
 }
 
 function renderGastoMethodButtons() {
@@ -11307,7 +11308,7 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             descripcion,
             monto,
             paymentMethod: _gastoSelectedMethod,
-            registradoAt: firestoreNow(),
+            registradoAt: Date.now(), // numérico para filtrado local inmediato
             cajaAperturaAt: cajaAperturaAt || 0,
         };
         await saveGasto(gasto);
@@ -11615,71 +11616,117 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
 
 function _buildCierreTicketHtml(c, dateStr, timeStr) {
     const cobradas = Number(c.transactionCount || 0) - Number(c.voidedCount || 0);
+    const ingresosMethod = c.ingresosMethod || c.methodTotals || {};
+    const gastosMethod   = c.gastosMethod   || {};
+    const gastosDetalle  = c.gastosDetalle  || [];
+    const ingresosTotal  = Number(c.ingresosTotal  ?? c.grandTotal ?? 0);
+    const gastosTotal    = Number(c.gastosTotal    || 0);
+    const grandTotal     = Number(c.grandTotal     || 0);
 
-    // Sección ENTRADAS
-    const ingresosEntries = Object.entries(c.ingresosMethod || c.methodTotals || {}).filter(([, v]) => Number(v) > 0);
-    const ingresosRows = ingresosEntries.map(([k, v]) => {
-        const m = getPaymentMethods().find((x) => x.id === k) || { icon: '', label: k };
-        return `<tr>
-            <td style="padding:3px 0;color:#c8c0b8;">${m.icon} ${escapeHtml(m.label)}</td>
-            <td style="padding:3px 0;text-align:right;color:#6ee7b7;font-weight:700;">${formatMoney(Number(v))}</td>
-        </tr>`;
-    }).join('');
-    const ingresosTotal = Number(c.ingresosTotal ?? c.grandTotal ?? 0);
+    const allMethodIds = [...new Set([
+        ...Object.keys(ingresosMethod),
+        ...Object.keys(gastosMethod),
+    ])];
 
-    // Sección SALIDAS (gastos con detalle)
-    const gastosDetalle = c.gastosDetalle || [];
-    const gastosTotal = Number(c.gastosTotal || 0);
-    const gastosRows = gastosDetalle.map((g) => {
+    const S  = (txt) => `<span style="color:#c8c0b8;">${txt}</span>`;
+    const SV = (txt, color='#f0ead8') => `<span style="color:${color};font-weight:700;">${txt}</span>`;
+    const ROW = (label, value, valColor='#f0ead8') =>
+        `<tr><td style="padding:2px 0;">${S(label)}</td><td style="text-align:right;padding:2px 0;">${SV(value, valColor)}</td></tr>`;
+    const DIV = (label, color='#ff9540') =>
+        `<div style="border-top:1px dashed #4a3a2a;margin:8px 0 5px;padding-top:6px;font-weight:700;font-size:11px;letter-spacing:1.5px;color:${color};">${label}</div>`;
+    const LINE = () => `<tr><td colspan="2" style="border-top:1px dashed #3a2e26;padding:2px 0;"></td></tr>`;
+
+    // ── INGRESOS por método
+    const ingresosRows = allMethodIds
+        .filter((k) => Number(ingresosMethod[k] || 0) > 0)
+        .map((k) => {
+            const m = getPaymentMethods().find((x) => x.id === k) || { icon: '', label: k };
+            return ROW(`  ${m.icon} ${m.label}`, formatMoney(Number(ingresosMethod[k])), '#6ee7b7');
+        }).join('');
+
+    // ── EGRESOS detalle
+    const egresosRows = gastosDetalle.map((g) => {
         const m = getPaymentMethods().find((x) => x.id === g.paymentMethod) || { icon: '', label: g.paymentMethod || '' };
-        const provLine = g.proveedor ? `<span style="color:#f0ead8;font-weight:600;">${escapeHtml(g.proveedor)}</span>` : '';
-        const descLine = g.descripcion ? `<span style="color:#c8c0b8;font-size:11px;">${escapeHtml(g.descripcion)}</span>` : '';
-        const label = [provLine, descLine].filter(Boolean).join(' · ') || `<span style="color:#c8c0b8;">Gasto</span>`;
+        const desc = [g.proveedor, g.descripcion].filter(Boolean).join(' · ') || 'Gasto';
         return `<tr>
-            <td style="padding:3px 0;">${label}<br><span style="font-size:10px;color:#a89a8a;">${m.icon} ${escapeHtml(m.label)}</span></td>
-            <td style="padding:3px 0;text-align:right;color:#fca5a5;font-weight:700;vertical-align:top;">−${formatMoney(Number(g.monto || 0))}</td>
+            <td style="padding:2px 0 0;">${S('  ' + escapeHtml(desc))}<br>
+                ${S('  ' + m.icon + ' ' + escapeHtml(m.label))}</td>
+            <td style="text-align:right;padding:2px 0 0;vertical-align:top;">${SV('−' + formatMoney(Number(g.monto || 0)), '#fca5a5')}</td>
         </tr>`;
     }).join('');
 
-    const gastosSection = gastosDetalle.length ? `
-        <div style="border-top:1px dashed #5a4a3a;margin:10px 0 6px;padding-top:8px;font-weight:700;color:#fca5a5;letter-spacing:1px;font-size:12px;">SALIDAS (GASTOS)</div>
-        <table style="width:100%;border-collapse:collapse;">
-            ${gastosRows}
-            <tr style="border-top:1px dashed #3a2e26;"><td style="color:#c8c0b8;padding-top:5px;font-size:11px;">Total gastos</td><td style="text-align:right;color:#fca5a5;padding-top:5px;font-weight:700;">−${formatMoney(gastosTotal)}</td></tr>
+    // ── ARQUEO por método (neto = ingreso − gasto)
+    const arqueoRows = allMethodIds.map((k) => {
+        const ing = Number(ingresosMethod[k] || 0);
+        const gas = Number(gastosMethod[k]   || 0);
+        const net = ing - gas;
+        if (ing === 0 && gas === 0) return '';
+        const m = getPaymentMethods().find((x) => x.id === k) || { icon: '', label: k };
+        const netColor = net >= 0 ? '#f0ead8' : '#fca5a5';
+        let detail = '';
+        if (gas > 0) {
+            detail = `<br>${S('  Ingresó: ' + formatMoney(ing) + '  Gastó: ' + formatMoney(gas))}`;
+        }
+        return `<tr>
+            <td style="padding:2px 0;">${S('  ' + m.icon + ' ' + escapeHtml(m.label))}${detail}</td>
+            <td style="text-align:right;padding:2px 0;vertical-align:top;">${SV((net < 0 ? '−' : '') + formatMoney(Math.abs(net)), netColor)}</td>
+        </tr>`;
+    }).filter(Boolean).join('');
+
+    const egresosSection = gastosDetalle.length ? `
+        ${DIV('EGRESOS / GASTOS', '#fca5a5')}
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            ${egresosRows}
+            ${LINE()}
+            ${ROW('  TOTAL EGRESOS', '−' + formatMoney(gastosTotal), '#fca5a5')}
         </table>` : '';
 
-    return `<div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.6;color:#f0ead8;background:#1a1412;padding:18px 20px;border-radius:8px;border:1px solid #3a2e26;">
-        <div style="text-align:center;margin-bottom:10px;">
-            <div style="font-weight:700;font-size:16px;letter-spacing:2px;color:#ff9540;">${escapeHtml(c.businessName || 'ROAL BURGER')}</div>
-            ${c.businessAddress ? `<div style="color:#c8c0b8;font-size:12px;">${escapeHtml(c.businessAddress)}</div>` : ''}
-            ${c.businessPhone ? `<div style="color:#c8c0b8;font-size:12px;">Tel: ${escapeHtml(c.businessPhone)}</div>` : ''}
-            ${c.businessNit ? `<div style="color:#c8c0b8;font-size:12px;">NIT/RUT: ${escapeHtml(c.businessNit)}</div>` : ''}
+    return `<div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.65;color:#f0ead8;background:#1a1412;padding:20px;border-radius:8px;border:1px solid #3a2e26;max-width:340px;">
+
+        <div style="text-align:center;margin-bottom:12px;">
+            <div style="font-weight:700;font-size:17px;letter-spacing:3px;color:#ff9540;">${escapeHtml(c.businessName || 'ROAL BURGER')}</div>
+            ${c.businessAddress ? `<div style="color:#c8c0b8;font-size:11px;margin-top:2px;">${escapeHtml(c.businessAddress)}</div>` : ''}
+            ${c.businessPhone  ? `<div style="color:#c8c0b8;font-size:11px;">Tel: ${escapeHtml(c.businessPhone)}</div>` : ''}
+            ${c.businessNit    ? `<div style="color:#c8c0b8;font-size:11px;">NIT: ${escapeHtml(c.businessNit)}</div>` : ''}
         </div>
-        <div style="border-top:1px dashed #5a4a3a;border-bottom:1px dashed #5a4a3a;text-align:center;padding:5px 0;margin-bottom:10px;font-weight:700;font-size:14px;color:#ff9540;letter-spacing:2px;">
-            CIERRE DE CAJA
+
+        <div style="border-top:2px solid #ff9540;border-bottom:2px solid #ff9540;text-align:center;padding:5px 0;margin-bottom:12px;font-weight:700;font-size:13px;color:#ff9540;letter-spacing:3px;">
+            ★  CIERRE DE CAJA  ★
         </div>
-        <table style="width:100%;border-collapse:collapse;">
-            <tr><td style="color:#c8c0b8;">Fecha</td><td style="text-align:right;color:#f0ead8;">${dateStr}</td></tr>
-            <tr><td style="color:#c8c0b8;">Hora cierre</td><td style="text-align:right;color:#f0ead8;">${timeStr}</td></tr>
-            <tr><td style="color:#c8c0b8;">Transacciones cobradas</td><td style="text-align:right;color:#f0ead8;font-weight:700;">${cobradas}</td></tr>
-            ${c.voidedCount ? `<tr><td style="color:#fca5a5;">Anulados (excluidos)</td><td style="text-align:right;color:#fca5a5;">${Number(c.voidedCount)}</td></tr>` : ''}
+
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            ${ROW('Fecha', dateStr)}
+            ${ROW('Hora cierre', timeStr)}
+            ${ROW('Transacciones', String(cobradas))}
+            ${c.voidedCount ? ROW('Anulados (excluidos)', String(Number(c.voidedCount)), '#fca5a5') : ''}
         </table>
-        <div style="border-top:1px dashed #5a4a3a;margin:10px 0 6px;padding-top:8px;font-weight:700;color:#6ee7b7;letter-spacing:1px;font-size:12px;">ENTRADAS</div>
-        <table style="width:100%;border-collapse:collapse;">
-            ${ingresosRows || '<tr><td colspan="2" style="color:#c8c0b8;text-align:center;">Sin movimientos</td></tr>'}
-            <tr><td style="color:#c8c0b8;padding-top:4px;font-size:11px;">Total entradas</td><td style="text-align:right;color:#6ee7b7;padding-top:4px;">${formatMoney(ingresosTotal)}</td></tr>
+
+        ${DIV('INGRESOS', '#6ee7b7')}
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            ${ingresosRows || `<tr><td colspan="2" style="color:#c8c0b8;font-size:11px;">Sin movimientos</td></tr>`}
+            ${LINE()}
+            ${ROW('  TOTAL INGRESOS', formatMoney(ingresosTotal), '#6ee7b7')}
         </table>
-        ${gastosSection}
+
+        ${egresosSection}
+
+        ${DIV('ARQUEO DE CAJA', '#fff')}
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            ${arqueoRows || `<tr><td colspan="2" style="color:#c8c0b8;font-size:11px;">Sin movimientos</td></tr>`}
+        </table>
+
         <div style="border-top:2px solid #ff9540;margin-top:12px;padding-top:10px;">
             <table style="width:100%;border-collapse:collapse;">
                 <tr>
-                    <td style="font-weight:700;font-size:15px;color:#ff9540;">TOTAL NETO</td>
-                    <td style="text-align:right;font-weight:700;font-size:15px;color:#ff9540;">${formatMoney(Number(c.grandTotal || 0))}</td>
+                    <td style="font-weight:700;font-size:14px;color:#ff9540;letter-spacing:1px;">SALDO NETO CAJA</td>
+                    <td style="text-align:right;font-weight:700;font-size:15px;color:${grandTotal >= 0 ? '#ff9540' : '#fca5a5'};">${grandTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandTotal))}</td>
                 </tr>
             </table>
         </div>
-        <div style="text-align:center;margin-top:14px;font-size:11px;color:#7a6a5a;border-top:1px dashed #3a2e26;padding-top:8px;">
-            *** Cierre de caja válido ***<br>Generado por sistema POS
+
+        <div style="text-align:center;margin-top:14px;font-size:10px;color:#6a5a4a;border-top:1px dashed #3a2e26;padding-top:8px;letter-spacing:0.5px;">
+            DOCUMENTO INTERNO — NO FISCAL<br>
+            Generado por Sistema POS ROAL BURGER
         </div>
     </div>`;
 }
@@ -11811,7 +11858,8 @@ async function renderLibroCierres() {
 
     const methods = getPaymentMethods();
     const methodKeys = methods.map((m) => m.id);
-    const totalCols = 2 + methodKeys.length + 2; // día + fecha + métodos + total + ver
+    // cols: día + fecha + métodos (neto) + egresos + total neto + ver
+    const totalCols = 2 + methodKeys.length + 3;
 
     tbody.innerHTML = `<tr><td colspan="${totalCols}" style="text-align:center;padding:12px;color:var(--admin-muted);">Cargando…</td></tr>`;
 
@@ -11821,6 +11869,7 @@ async function renderLibroCierres() {
             <th class="col-left">Día</th>
             <th class="col-left">Fecha cierre</th>
             ${methods.map((m) => `<th>${m.icon} ${escapeHtml(m.label)}</th>`).join('')}
+            <th style="color:#fca5a5;">💸 Egresos</th>
             <th>Total neto</th>
             <th style="text-align:center;"></th>
         </tr>`;
@@ -11836,10 +11885,11 @@ async function renderLibroCierres() {
 
         const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
-        // Acumuladores para fila de totales
+        // Acumuladores
         const sumTotals = {};
         methodKeys.forEach((k) => { sumTotals[k] = 0; });
         let grandSumTotal = 0;
+        let grandSumEgresos = 0;
 
         tbody.innerHTML = cierres.map((c) => {
             const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
@@ -11848,6 +11898,8 @@ async function renderLibroCierres() {
             const fechaStr = d
                 ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                 : c.date || '—';
+
+            // methodTotals = neto por método (ingresos − gastos)
             const methodTotals = c.methodTotals || {};
 
             const methodCells = methodKeys.map((k) => {
@@ -11858,6 +11910,12 @@ async function renderLibroCierres() {
                 return `<td style="color:${color};font-weight:600;">${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}</td>`;
             }).join('');
 
+            const egresos = Number(c.gastosTotal || 0);
+            grandSumEgresos += egresos;
+            const egresosCell = egresos > 0
+                ? `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(egresos)}</td>`
+                : `<td style="color:var(--admin-muted);">—</td>`;
+
             const gt = Number(c.grandTotal || 0);
             grandSumTotal += gt;
             const gtColor = gt >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
@@ -11866,6 +11924,7 @@ async function renderLibroCierres() {
                 <td class="col-left" style="font-weight:600;">${escapeHtml(diaStr)}</td>
                 <td class="col-left">${escapeHtml(fechaStr)}</td>
                 ${methodCells}
+                ${egresosCell}
                 <td style="color:${gtColor};font-weight:700;">${gt < 0 ? '−' : ''}${formatMoney(Math.abs(gt))}</td>
                 <td style="text-align:center;">
                     <button class="btn-ver-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:6px;cursor:pointer;font-weight:600;">👁 Ver</button>
@@ -11885,6 +11944,7 @@ async function renderLibroCierres() {
             footEl.innerHTML = `<tr>
                 <td class="col-left" colspan="2" style="font-weight:700;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;">TOTALES</td>
                 ${footMethodCells}
+                <td style="color:#fca5a5;">${grandSumEgresos > 0 ? `<strong>−${formatMoney(grandSumEgresos)}</strong>` : '—'}</td>
                 <td style="color:${gtTotalColor};"><strong>${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</strong></td>
                 <td></td>
             </tr>`;
