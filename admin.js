@@ -6224,7 +6224,7 @@ function createOrderCard(order) {
     if (isMesaOrder && !isUnreadOrder && order.status !== 'entregado') {
         // Layout mesa: [ Servido/Cobrar | 💰? | ✎ | 🗑 ]
         const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
-        const mainLabel = order.status === 'servido' ? (isPaid ? 'Pedido entregado' : 'Cobrar pedido') : 'Pedido servido';
+        const mainLabel = order.status === 'servido' ? (isPaid ? 'Entregado' : 'Cobrar') : 'Servido';
         const mainAction = order.status === 'servido' ? (isPaid ? 'entregado' : 'cobrar_mesa') : 'servido';
         const mainClass = order.status === 'servido' ? (isPaid ? 'order-action-btn-delivered' : 'order-action-btn-receive') : 'order-action-btn-delivered';
         const editBtn = isPosAdminOrder
@@ -6243,7 +6243,7 @@ function createOrderCard(order) {
     } else if (isDeliveryOrder && !isUnreadOrder && order.status !== 'entregado') {
         // Layout domicilio: [ Pedir domiciliario → Pedido entregado | 💰? | ✎ | 🗑 ]
         const canRequestCourier = order.status !== 'esperando_domiciliario' && order.status !== 'camino';
-        const mainLabel = canRequestCourier ? 'Pedir domiciliario' : 'Pedido entregado';
+        const mainLabel = canRequestCourier ? 'Pedir domiciliario' : 'Entregado';
         const mainAction = canRequestCourier ? 'esperando_domiciliario' : 'entregado';
         const mainClass = canRequestCourier ? '' : 'order-action-btn-delivered';
         const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
@@ -6263,7 +6263,7 @@ function createOrderCard(order) {
     } else if (isPickupOrder && !isUnreadOrder && order.status !== 'entregado') {
         // Layout para llevar: [ Pedido listo → Pedido entregado | ✎ | 🗑 ]
         const isReady = order.status === 'listo_recoger';
-        const mainLabel = isReady ? 'Pedido entregado' : 'Pedido listo';
+        const mainLabel = isReady ? 'Entregado' : 'Listo';
         const mainAction = isReady ? 'entregado' : 'listo_recoger';
         const mainClass = isReady ? 'order-action-btn-delivered' : 'order-action-btn-ready';
         const editBtn = isPosAdminOrder
