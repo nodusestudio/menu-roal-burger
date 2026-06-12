@@ -185,6 +185,7 @@ const SALES_SUMMARY_COLLECTION = 'resumen_ventas';
 const SALES_DAY_STATE_COLLECTION = 'admin_estado';
 const SALES_DAY_STATE_DOC_ID = 'jornada_ventas_actual';
 const CIERRES_CAJA_COLLECTION = 'cierres_caja';
+const CAJA_ESTADO_DOC_ID = 'estado_caja';
 
 const adminAuthForm = document.getElementById('adminAuthForm');
 const authUsernameInput = document.getElementById('authUsername');
@@ -1691,7 +1692,8 @@ function normalizeOrder(raw) {
         updatedAt: raw.updatedAt || raw.updated_at || null,
         paidAt: raw.paidAt || raw.receivedAt || null,
         voided: raw.voided === true,
-        voidedAt: raw.voidedAt || null
+        voidedAt: raw.voidedAt || null,
+        paymentSplit: Array.isArray(raw.paymentSplit) ? raw.paymentSplit : null,
     };
 }
 
@@ -9600,7 +9602,7 @@ document.getElementById('inboxSearch')?.addEventListener('input', () => renderMe
                 replies: [],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
-            const ref = await firebaseDb.collection('mensajes').add(newDoc);
+            const ref = await firebaseDb.collection(MESSAGES_COLLECTION).add(newDoc);
             // Esperar a que onSnapshot lo incorpore y luego abrir
             // Como respaldo, abrimos por id inmediatamente
             setTimeout(() => openInboxDetail(ref.id), 400);
@@ -10880,6 +10882,7 @@ async function initAdmin() {
 
         await seedDataIfNeeded();
         await reloadDataAndRender();
+        initCajaAperturaSync();
         ensureOrdersRealtimeTicker();
         setupLiveFirebaseSync();
         subscribePosTickets();
@@ -11949,7 +11952,7 @@ function renderCajaDiaria() {
                     ? (!isKnown ? `<td style="color:#6ee7b7;font-weight:700;" title="${escapeHtml(o.paymentMethod || '')}">${formatMoney(amt)}</td>` : '<td></td>')
                     : '';
             }
-            const splitBadge = isSplitOrder ? ' <span style="font-size:0.68rem;background:rgba(251,191,36,0.2);color:#fbbf24;padding:1px 5px;border-radius:4px;font-weight:600;">÷ SPLIT</span>' : '';
+            const splitBadge = isSplitOrder ? ' <span style="font-size:0.68rem;background:rgba(251,191,36,0.2);color:#fbbf24;padding:1px 5px;border-radius:4px;font-weight:600;">÷ DIVIDIDO</span>' : '';
             rows.push(`<tr>
                 <td class="col-left">${hora}</td>
                 <td class="col-left">${baseDesc}${splitBadge}</td>
@@ -12032,7 +12035,7 @@ function renderCajaDiaria() {
     if (footEl) {
         const mFootCells = methodKeys.map((k) => {
             const v = sumMethod[k];
-            if (v === 0) return '<td>—</td>';
+            if (v === 0) return '<td style="color:var(--admin-muted,#6b7280);">$0</td>';
             const c = v > 0 ? '#6ee7b7' : '#fca5a5';
             const s = v < 0 ? '−' : '';
             return `<td style="color:${c};"><strong>${s}${formatMoney(Math.abs(v))}</strong></td>`;
@@ -12055,15 +12058,48 @@ document.getElementById('refreshCajaDiariaBtn')?.addEventListener('click', async
     renderCajaDiaria();
 });
 
-// ── Apertura de caja: timestamp desde el último cierre ───────────────────────
+// ── Apertura de caja: sincronizada en Firestore (multi-dispositivo) ──────────
 const CAJA_APERTURA_STORAGE_KEY = 'roalburger-caja-apertura';
-const CAJA_APERTURA_RESET_FLAG  = 'roalburger-caja-reset-v2';
-// Reset de jornada solicitado: se ejecuta una sola vez al desplegar este cambio
-if (!localStorage.getItem(CAJA_APERTURA_RESET_FLAG)) {
-    localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(Date.now()));
-    localStorage.setItem(CAJA_APERTURA_RESET_FLAG, '1');
-}
+// Inicializar desde localStorage como caché rápida; Firestore es la fuente de verdad
 let cajaAperturaAt = Number(localStorage.getItem(CAJA_APERTURA_STORAGE_KEY) || 0);
+
+async function saveCajaAperturaToFirestore(ts) {
+    try {
+        await firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID)
+            .set({ aperturaAt: ts }, { merge: true });
+        try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(ts)); } catch {}
+    } catch (_) {}
+}
+
+async function loadCajaAperturaFromFirestore() {
+    try {
+        const snap = await firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).get();
+        if (snap.exists && snap.data().aperturaAt) {
+            cajaAperturaAt = Number(snap.data().aperturaAt);
+            try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(cajaAperturaAt)); } catch {}
+        } else {
+            // Primera vez en cualquier dispositivo: inicio del día actual
+            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+            cajaAperturaAt = hoy.getTime();
+            await saveCajaAperturaToFirestore(cajaAperturaAt);
+        }
+        renderCajaDiaria();
+    } catch (_) {}
+}
+
+function initCajaAperturaSync() {
+    loadCajaAperturaFromFirestore();
+    // Listener en tiempo real: todos los dispositivos se actualizan al cerrar caja
+    firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).onSnapshot((snap) => {
+        if (!snap.exists) return;
+        const remoteTs = Number(snap.data().aperturaAt || 0);
+        if (remoteTs && remoteTs !== cajaAperturaAt) {
+            cajaAperturaAt = remoteTs;
+            try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(remoteTs)); } catch {}
+            renderCajaDiaria();
+        }
+    });
+}
 
 // ── Auto-apertura Caja Diaria al primer cobro ─────────────────────────────────
 let _cajaDiariaAutoOpened = false;
@@ -12160,7 +12196,7 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         await firebaseDb.collection(CIERRES_CAJA_COLLECTION).doc(closureId).set(closureDoc);
 
         cajaAperturaAt = Date.now();
-        try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(cajaAperturaAt)); } catch {}
+        await saveCajaAperturaToFirestore(cajaAperturaAt);
 
         _pendingCierreDoc = null;
         document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
@@ -12206,7 +12242,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
 
     // ── INGRESOS por método
     const ingresosRows = allMethodIds
-        .filter((k) => Number(ingresosMethod[k] || 0) > 0)
+        .filter((k) => k !== 'split' && Number(ingresosMethod[k] || 0) > 0)
         .map((k) => {
             const m = getPaymentMethods().find((x) => x.id === k) || { icon: '', label: k };
             return ROW(`  ${m.icon} ${m.label}`, formatMoney(Number(ingresosMethod[k])), '#6ee7b7');
@@ -12224,7 +12260,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
     }).join('');
 
     // ── ARQUEO por método (neto = ingreso − gasto)
-    const arqueoRows = allMethodIds.map((k) => {
+    const arqueoRows = allMethodIds.filter((k) => k !== 'split').map((k) => {
         const ing = Number(ingresosMethod[k] || 0);
         const gas = Number(gastosMethod[k]   || 0);
         const net = ing - gas;
@@ -12328,10 +12364,19 @@ async function cerrarCaja() {
 
         paid.forEach((o) => {
             if (o.voided) { voidedCount++; return; }
-            const mk = o.paymentMethod;
             const amt = Number(o.total || o.subtotal || 0);
-            if (!ingresosMethod[mk]) ingresosMethod[mk] = 0;
-            ingresosMethod[mk] += amt;
+            // Desglosar pagos divididos por su método real
+            if (o.paymentMethod === 'split' && Array.isArray(o.paymentSplit) && o.paymentSplit.length) {
+                o.paymentSplit.forEach(({ method: m, amount: a }) => {
+                    if (!m) return;
+                    if (!ingresosMethod[m]) ingresosMethod[m] = 0;
+                    ingresosMethod[m] += Number(a);
+                });
+            } else {
+                const mk = o.paymentMethod;
+                if (!ingresosMethod[mk]) ingresosMethod[mk] = 0;
+                ingresosMethod[mk] += amt;
+            }
             ingresosTotal += amt;
         });
 
@@ -12341,6 +12386,24 @@ async function cerrarCaja() {
             if (cajaAperturaAt) return ms >= cajaAperturaAt;
             return new Date(ms).toISOString().split('T')[0] === todayStr;
         });
+
+        // Incluir gasto virtual de domicilios si aún no fue registrado como gasto real
+        const hasDomicilioGastoReal = gastosFiltered.some((g) => String(g.id || '').startsWith('gasto_domicilios_'));
+        if (!hasDomicilioGastoReal) {
+            const deliveryPaid = paid.filter((o) => !o.voided && (o.orderType === 'domicilio' || o.fulfillmentType === 'delivery'));
+            const domicilioFeeSum = deliveryPaid.reduce((s, o) => s + Number(o.deliveryFee || 0), 0);
+            if (domicilioFeeSum > 0) {
+                gastosFiltered.push({
+                    categoria: 'otros',
+                    subcategoria: 'Domicilios',
+                    proveedor: 'Domiciliario',
+                    descripcion: `Gastos de domicilios (${deliveryPaid.length} pedido${deliveryPaid.length !== 1 ? 's' : ''})`,
+                    monto: domicilioFeeSum,
+                    paymentMethod: 'efectivo',
+                });
+            }
+        }
+
         const gastosMethod = {};
         let gastosTotal = 0;
         gastosFiltered.forEach((g) => {
@@ -12360,7 +12423,7 @@ async function cerrarCaja() {
         });
         const grandTotal = ingresosTotal - gastosTotal;
 
-        const cfg = await firebaseDb.collection('configuracion').doc('negocio').get().then(s => s.exists ? s.data() : {});
+        const cfg = brandingState || {};
 
         const closedAt = firestoreNow();
         const closureId = `cierre_${todayStr}_${Date.now()}`;
@@ -12385,10 +12448,10 @@ async function cerrarCaja() {
             })),
             methodTotals: sumMethod,
             grandTotal,
-            businessName: cfg.nombre || cfg.name || 'ROAL BURGER',
-            businessAddress: cfg.direccion || cfg.address || '',
-            businessPhone: cfg.telefono || cfg.phone || '',
-            businessNit: cfg.nit || cfg.rut || '',
+            businessName: cfg.restaurantName || 'ROAL BURGER',
+            businessAddress: cfg.address || '',
+            businessPhone: cfg.whatsappNumber || '',
+            businessNit: cfg.nit || '',
         };
 
         const dateStr = today.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -12506,7 +12569,7 @@ async function renderLibroCierres() {
         if (footEl) {
             const footMethodCells = methodKeys.map((k) => {
                 const v = sumTotals[k];
-                if (v === 0) return '<td>—</td>';
+                if (v === 0) return '<td style="color:var(--admin-muted,#6b7280);">$0</td>';
                 const color = v > 0 ? '#6ee7b7' : '#fca5a5';
                 return `<td style="color:${color};"><strong>${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}</strong></td>`;
             }).join('');
@@ -12514,7 +12577,7 @@ async function renderLibroCierres() {
             footEl.innerHTML = `<tr>
                 <td class="col-left" colspan="2" style="font-weight:700;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;">TOTALES</td>
                 ${footMethodCells}
-                <td style="color:#fca5a5;">${grandSumEgresos > 0 ? `<strong>−${formatMoney(grandSumEgresos)}</strong>` : '—'}</td>
+                <td style="color:${grandSumEgresos > 0 ? '#fca5a5' : 'var(--admin-muted,#6b7280)'};">${grandSumEgresos > 0 ? `<strong>−${formatMoney(grandSumEgresos)}</strong>` : '$0'}</td>
                 <td style="color:${gtTotalColor};"><strong>${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</strong></td>
                 <td></td>
             </tr>`;
