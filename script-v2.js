@@ -412,6 +412,9 @@ function showWelcomeGreeting(profile) {
 function setActiveCustomerProfile(profile) {
     activeCustomerProfile = profile ? normalizeCustomerProfile(profile) : null;
     persistCustomerProfile(activeCustomerProfile);
+    if (activeCustomerProfile) {
+        _chatFabSeenCount = _loadChatSeenCount();
+    }
     updateCustomerSessionUI();
     syncCustomerProfileRealtimeStreams();
     renderCustomerOrdersPanel();
@@ -425,6 +428,7 @@ function setActiveCustomerProfile(profile) {
 function clearActiveCustomerProfile() {
     activeCustomerProfile = null;
     _chatFabSeenCount = 0;
+    try { localStorage.removeItem(CHAT_SEEN_STORAGE_KEY); } catch {}
     persistCustomerProfile(null);
     updateCustomerSessionUI();
     syncCustomerProfileRealtimeStreams();
@@ -593,7 +597,38 @@ function renderCustomerOrdersPanel() {
         .join('');
 }
 
+const CHAT_SEEN_STORAGE_KEY = 'roalburger-chat-seen-v1';
 let _chatFabSeenCount = 0;
+
+function _loadChatSeenCount() {
+    if (!activeCustomerProfile?.id) return 0;
+    try {
+        const stored = localStorage.getItem(CHAT_SEEN_STORAGE_KEY);
+        if (!stored) return 0;
+        const parsed = JSON.parse(stored);
+        return parsed?.profileId === activeCustomerProfile.id ? (Number(parsed.count) || 0) : 0;
+    } catch { return 0; }
+}
+
+function _saveChatSeenCount(count) {
+    if (!activeCustomerProfile?.id) return;
+    try {
+        localStorage.setItem(CHAT_SEEN_STORAGE_KEY, JSON.stringify({
+            profileId: activeCustomerProfile.id,
+            count
+        }));
+    } catch {}
+}
+
+function _markChatMessagesAsSeen() {
+    const adminMessages = customerProfileMessagesState.filter(m =>
+        String(m.type || '') === 'admin_direct_reply' ||
+        (String(m.source || '') === 'admin_panel' && String(m.type || '') !== 'customer_direct_message')
+    );
+    _chatFabSeenCount = adminMessages.length;
+    _saveChatSeenCount(_chatFabSeenCount);
+    updatePublicChatFab();
+}
 
 function updatePublicChatFab() {
     const fab = document.getElementById('publicChatFab');
@@ -625,12 +660,7 @@ function updatePublicChatFab() {
 }
 
 function openPublicChatTab() {
-    // Marcar como vistos
-    _chatFabSeenCount = customerProfileMessagesState.filter(m =>
-        String(m.type || '') === 'admin_direct_reply' ||
-        (String(m.source || '') === 'admin_panel' && String(m.type || '') !== 'customer_direct_message')
-    ).length;
-    updatePublicChatFab();
+    _markChatMessagesAsSeen();
 
     // Abrir modal de perfil si no está abierto
     const existingModal = document.getElementById('customerAuthModal');
@@ -646,7 +676,12 @@ function openPublicChatTab() {
 }
 
 function renderCustomerMessagesPanel() {
-    updatePublicChatFab();
+    // Si el tab de mensajes está activo, marcar los nuevos mensajes como vistos
+    if (customerAuthUI?.activeTab === 'mensajes') {
+        _markChatMessagesAsSeen();
+    } else {
+        updatePublicChatFab();
+    }
 
     if (!customerAuthUI?.messagesThread) {
         return;
@@ -2303,6 +2338,10 @@ function activateCustomerProfileTab(tabKey = 'info') {
     customerAuthUI.tabPanels.forEach((panel) => {
         panel.hidden = panel.dataset.profilePanel !== tabKey;
     });
+
+    if (tabKey === 'mensajes') {
+        _markChatMessagesAsSeen();
+    }
 }
 
 function openCustomerConsentDocument() {
