@@ -1697,6 +1697,8 @@ function normalizeOrder(raw) {
         paidAt: raw.paidAt || raw.receivedAt || null,
         voided: raw.voided === true,
         voidedAt: raw.voidedAt || null,
+        anulado: raw.anulado === true,
+        anuladoAt: raw.anuladoAt || null,
         paymentSplit: Array.isArray(raw.paymentSplit) ? raw.paymentSplit : null,
     };
 }
