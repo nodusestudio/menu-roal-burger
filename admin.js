@@ -11224,7 +11224,10 @@ function renderCajaDiaria() {
 
     const methods = getPaymentMethods();
     const methodKeys = methods.map((m) => m.id);
-    const totalCols = 2 + methodKeys.length + 1; // hora + desc + métodos + total
+
+    // Detectar cobros con métodos que ya no existen en la configuración actual (datos históricos)
+    const hasUnmatched = allPaid.some((o) => !methodKeys.includes(o.paymentMethod));
+    const totalCols = 2 + methodKeys.length + (hasUnmatched ? 1 : 0) + 1;
 
     if (allPaid.length === 0) {
         if (headEl) headEl.innerHTML = '';
@@ -11239,6 +11242,7 @@ function renderCajaDiaria() {
             <th class="col-left">Hora</th>
             <th class="col-left" style="min-width:200px;">Descripción</th>
             ${methods.map((m) => `<th>${m.icon} ${escapeHtml(m.label)}</th>`).join('')}
+            ${hasUnmatched ? '<th title="Métodos de pago anteriores no reconocidos">Otro</th>' : ''}
             <th>Total</th>
         </tr>`;
     }
@@ -11253,6 +11257,7 @@ function renderCajaDiaria() {
     // Acumuladores por método (positivo = entrada, negativo si hay anulados netos)
     const sumMethod = {};
     methodKeys.forEach((k) => { sumMethod[k] = 0; });
+    let sumOtro = 0;
     let grandTotal = 0;
 
     const rows = [];
@@ -11261,25 +11266,29 @@ function renderCajaDiaria() {
         const hora = formatOrderTime(ts);
         const amt  = getOrderDisplayTotal(o);
         const baseDesc = `<strong>${escapeHtml(o.code)}</strong> · ${escapeHtml(o.customerName || '—')} · ${escapeHtml(getOrderTypeLabel(o))}`;
+        const isKnown = methodKeys.includes(o.paymentMethod);
 
-        // Fila 1: ingreso original (siempre verde, para todos los cobrados)
-        if (sumMethod[o.paymentMethod] !== undefined) sumMethod[o.paymentMethod] += amt;
+        // Fila 1: ingreso original
+        if (isKnown) { sumMethod[o.paymentMethod] += amt; } else { sumOtro += amt; }
         grandTotal += amt;
         const mCellsIn = methodKeys.map((k) =>
             k === o.paymentMethod
                 ? `<td style="color:#6ee7b7;font-weight:700;">${formatMoney(amt)}</td>`
                 : '<td></td>'
         ).join('');
+        const otroCellIn = hasUnmatched
+            ? (!isKnown ? `<td style="color:#6ee7b7;font-weight:700;" title="${escapeHtml(o.paymentMethod || '')}">${formatMoney(amt)}</td>` : '<td></td>')
+            : '';
         rows.push(`<tr>
             <td class="col-left">${hora}</td>
             <td class="col-left">${baseDesc}</td>
-            ${mCellsIn}
+            ${mCellsIn}${otroCellIn}
             <td style="color:#6ee7b7;font-weight:800;">${formatMoney(amt)}</td>
         </tr>`);
 
         // Fila 2 (solo si anulado): devolución en rojo
         if (o.voided) {
-            if (sumMethod[o.paymentMethod] !== undefined) sumMethod[o.paymentMethod] -= amt;
+            if (isKnown) { sumMethod[o.paymentMethod] -= amt; } else { sumOtro -= amt; }
             grandTotal -= amt;
             const voidedTs = o.voidedAt || ts;
             const horaVoid = formatOrderTime(voidedTs);
@@ -11288,11 +11297,14 @@ function renderCajaDiaria() {
                     ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
                     : '<td></td>'
             ).join('');
+            const otroCellOut = hasUnmatched
+                ? (!isKnown ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>` : '<td></td>')
+                : '';
             const voidDesc = `<span style="color:#fca5a5;">↩ ANULADO</span> · ${escapeHtml(o.code)} · ${escapeHtml(o.customerName || '—')}`;
             rows.push(`<tr class="row-voided">
                 <td class="col-left" style="color:#fca5a5;">${horaVoid}</td>
                 <td class="col-left">${voidDesc}</td>
-                ${mCellsOut}
+                ${mCellsOut}${otroCellOut}
                 <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
             </tr>`);
         }
@@ -11308,11 +11320,14 @@ function renderCajaDiaria() {
             const s = v < 0 ? '−' : '';
             return `<td style="color:${c};"><strong>${s}${formatMoney(Math.abs(v))}</strong></td>`;
         }).join('');
+        const otroFootCell = hasUnmatched
+            ? (sumOtro === 0 ? '<td>—</td>' : `<td style="color:${sumOtro > 0 ? '#6ee7b7' : '#fca5a5'};"><strong>${sumOtro < 0 ? '−' : ''}${formatMoney(Math.abs(sumOtro))}</strong></td>`)
+            : '';
         const gtColor = grandTotal >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
         const gtSign  = grandTotal < 0 ? '−' : '';
         footEl.innerHTML = `<tr>
             <td class="col-left" colspan="2">TOTALES</td>
-            ${mFootCells}
+            ${mFootCells}${otroFootCell}
             <td class="foot-total" style="color:${gtColor};">${gtSign}${formatMoney(Math.abs(grandTotal))}</td>
         </tr>`;
     }
