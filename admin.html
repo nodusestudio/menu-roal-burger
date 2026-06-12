@@ -7918,6 +7918,40 @@
         .pts-btn-confirm:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
 
         /* ── Modal: Cobro domicilio ── */
+        /* ── Sub-tabs de Cajas ── */
+        .cajas-subtabs-nav {
+            display: flex;
+            gap: 8px;
+            padding: 0 0 14px;
+            border-bottom: 1px solid var(--admin-border);
+            margin-bottom: 16px;
+            flex-shrink: 0;
+        }
+        .cajas-subtab {
+            padding: 7px 22px;
+            border: 1px solid var(--admin-border);
+            border-radius: 10px;
+            background: transparent;
+            color: var(--admin-muted);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .cajas-subtab.active {
+            background: var(--admin-accent, #ff9540);
+            color: #111;
+            border-color: var(--admin-accent, #ff9540);
+        }
+        .cajas-subtab:not(.active):hover {
+            background: rgba(255,255,255,0.06);
+            color: var(--admin-fg, #fff);
+        }
+        .cajas-subpanel { width: 100%; }
+        .cajas-subpanel[hidden] { display: none !important; }
+        .menu-inner-panel[data-section-panel="cajas"] { flex-direction: column; }
+
         /* ── Caja Diaria & Tickets ── */
         .caja-stats-bar {
             display: flex;
@@ -9231,17 +9265,13 @@
             <div class="admin-tab-panel" data-tab-panel="informes">
                 <article class="admin-card menu-section-card">
                     <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Informes">
+                        <button class="menu-inner-tab" data-section-tab="cajas" data-section-scope="informes" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">💵</span>
+                            <span>Cajas</span>
+                        </button>
                         <button class="menu-inner-tab active" data-section-tab="resumen" data-section-scope="informes" role="tab" aria-selected="true">
                             <span class="menu-inner-tab-icon">📊</span>
                             <span>Resumen de Ventas</span>
-                        </button>
-                        <button class="menu-inner-tab" data-section-tab="libro" data-section-scope="informes" role="tab" aria-selected="false">
-                            <span class="menu-inner-tab-icon">📒</span>
-                            <span>Libro Contable</span>
-                        </button>
-                        <button class="menu-inner-tab" data-section-tab="caja-diaria" data-section-scope="informes" role="tab" aria-selected="false">
-                            <span class="menu-inner-tab-icon">💵</span>
-                            <span>Caja Diaria</span>
                         </button>
                         <button class="menu-inner-tab" data-section-tab="tickets" data-section-scope="informes" role="tab" aria-selected="false">
                             <span class="menu-inner-tab-icon">🎫</span>
@@ -9292,81 +9322,92 @@
                             </article>
                         </div>
 
-                        <!-- Panel: Libro Contable — Historial de cierres de caja -->
-                        <div class="menu-inner-panel" data-section-panel="libro" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
-                            <article class="admin-card">
-                                <div class="card-head">
-                                    <h2>Libro Contable</h2>
-                                    <button type="button" class="card-collapse-btn" id="refreshLibroCierresBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
-                                </div>
-                                <div class="card-body" style="padding:0;">
-                                    <div class="caja-ledger-wrap">
-                                        <table class="caja-ledger-table" style="min-width:600px;">
-                                            <thead>
-                                                <tr>
-                                                    <th class="col-left">Fecha cierre</th>
-                                                    <th>Transacciones</th>
-                                                    <th>Anulados</th>
-                                                    <th>💵 Efectivo</th>
-                                                    <th>💳 Tarjeta</th>
-                                                    <th>🏦 Transferencia</th>
-                                                    <th>🔗 Link de pago</th>
-                                                    <th>Total neto</th>
-                                                    <th style="text-align:center;">Acciones</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="libroCierresList">
-                                                <tr><td class="caja-empty" colspan="9">No hay cierres de caja registrados.</td></tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </article>
-                        </div>
+                        <!-- Panel: Cajas (Caja Diaria + Historial de Cajas) -->
+                        <div class="menu-inner-panel" data-section-panel="cajas" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
 
-                        <!-- Panel: Caja Diaria -->
-                        <div class="menu-inner-panel" data-section-panel="caja-diaria" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
-                            <div class="tickets-split-layout">
-                                <!-- Columna izquierda: tabla caja -->
-                                <article class="admin-card tickets-list-col">
+                            <!-- Sub-tabs de Cajas -->
+                            <nav class="cajas-subtabs-nav" role="tablist" aria-label="Secciones de Cajas">
+                                <button type="button" class="cajas-subtab active" data-cajas-tab="caja-diaria" role="tab" aria-selected="true">💵 Caja Diaria</button>
+                                <button type="button" class="cajas-subtab" data-cajas-tab="historial" role="tab" aria-selected="false">📒 Historial de Cajas</button>
+                            </nav>
+
+                            <!-- Sub-panel: Caja Diaria -->
+                            <div class="cajas-subpanel" data-cajas-panel="caja-diaria">
+                                <div class="tickets-split-layout">
+                                    <!-- Columna izquierda: tabla caja -->
+                                    <article class="admin-card tickets-list-col">
+                                        <div class="card-head">
+                                            <div style="display:flex;align-items:baseline;gap:12px;">
+                                                <h2>Caja Diaria</h2>
+                                                <span id="cajaDiariaFechaLabel" style="font-size:0.78rem;color:var(--admin-muted);font-family:'Space Grotesk',sans-serif;"></span>
+                                            </div>
+                                            <div style="display:flex;gap:8px;align-items:center;">
+                                                <button type="button" class="card-collapse-btn" id="refreshCajaDiariaBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
+                                                <button type="button" id="cerrarCajaBtn" style="font-size:0.78rem;padding:4px 14px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔒 Cerrar Caja</button>
+                                            </div>
+                                        </div>
+                                        <div class="card-body" id="card-caja-diaria" style="padding:0;">
+                                            <div class="caja-ledger-wrap">
+                                                <table class="caja-ledger-table">
+                                                    <thead id="cajaDiariaHead">
+                                                        <!-- generado por renderCajaDiaria() -->
+                                                    </thead>
+                                                    <tbody id="cajaDiariaBody">
+                                                        <tr><td class="caja-empty" colspan="10">No hay cobros registrados en esta jornada.</td></tr>
+                                                    </tbody>
+                                                    <tfoot id="cajaDiariaFoot"></tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </article>
+                                    <!-- Columna derecha: ticket de cierre -->
+                                    <aside class="tickets-preview-col" id="cierreSidePanel" hidden>
+                                        <article class="admin-card">
+                                            <div class="card-head">
+                                                <h2 id="cierreSidePanelTitle">Ticket de cierre</h2>
+                                                <button type="button" id="cierreSidePanelClose" class="card-collapse-btn" style="font-size:0.78rem;padding:4px 12px;">✕ Cerrar</button>
+                                            </div>
+                                            <div class="card-body" id="cierreSidePanelBody" style="padding:12px;"></div>
+                                            <div class="card-head" style="border-top:1px solid var(--admin-border);padding:10px 16px;justify-content:flex-end;">
+                                                <button type="button" id="cierrePrintBtn" style="font-size:0.82rem;padding:5px 18px;background:var(--admin-accent,#ff9540);color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;">🖨️ Imprimir</button>
+                                            </div>
+                                        </article>
+                                    </aside>
+                                </div>
+                            </div>
+
+                            <!-- Sub-panel: Historial de Cajas -->
+                            <div class="cajas-subpanel" data-cajas-panel="historial" hidden style="display:none;">
+                                <article class="admin-card">
                                     <div class="card-head">
-                                        <div style="display:flex;align-items:baseline;gap:12px;">
-                                            <h2>Caja Diaria</h2>
-                                            <span id="cajaDiariaFechaLabel" style="font-size:0.78rem;color:var(--admin-muted);font-family:'Space Grotesk',sans-serif;"></span>
-                                        </div>
-                                        <div style="display:flex;gap:8px;align-items:center;">
-                                            <button type="button" class="card-collapse-btn" id="refreshCajaDiariaBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
-                                            <button type="button" id="cerrarCajaBtn" style="font-size:0.78rem;padding:4px 14px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔒 Cerrar Caja</button>
-                                        </div>
+                                        <h2>Historial de Cajas</h2>
+                                        <button type="button" class="card-collapse-btn" id="refreshLibroCierresBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
                                     </div>
-                                    <div class="card-body" id="card-caja-diaria" style="padding:0;">
+                                    <div class="card-body" style="padding:0;">
                                         <div class="caja-ledger-wrap">
-                                            <table class="caja-ledger-table">
-                                                <thead id="cajaDiariaHead">
-                                                    <!-- generado por renderCajaDiaria() -->
+                                            <table class="caja-ledger-table" style="min-width:600px;">
+                                                <thead>
+                                                    <tr>
+                                                        <th class="col-left">Fecha cierre</th>
+                                                        <th>Transacciones</th>
+                                                        <th>Anulados</th>
+                                                        <th>💵 Efectivo</th>
+                                                        <th>💳 Tarjeta</th>
+                                                        <th>🏦 Transferencia</th>
+                                                        <th>🔗 Link de pago</th>
+                                                        <th>Total neto</th>
+                                                        <th style="text-align:center;">Acciones</th>
+                                                    </tr>
                                                 </thead>
-                                                <tbody id="cajaDiariaBody">
-                                                    <tr><td class="caja-empty" colspan="10">No hay cobros registrados en esta jornada.</td></tr>
+                                                <tbody id="libroCierresList">
+                                                    <tr><td class="caja-empty" colspan="9">No hay cierres de caja registrados.</td></tr>
                                                 </tbody>
-                                                <tfoot id="cajaDiariaFoot"></tfoot>
                                             </table>
                                         </div>
                                     </div>
                                 </article>
-                                <!-- Columna derecha: ticket de cierre -->
-                                <aside class="tickets-preview-col" id="cierreSidePanel" hidden>
-                                    <article class="admin-card">
-                                        <div class="card-head">
-                                            <h2 id="cierreSidePanelTitle">Ticket de cierre</h2>
-                                            <button type="button" id="cierreSidePanelClose" class="card-collapse-btn" style="font-size:0.78rem;padding:4px 12px;">✕ Cerrar</button>
-                                        </div>
-                                        <div class="card-body" id="cierreSidePanelBody" style="padding:12px;"></div>
-                                        <div class="card-head" style="border-top:1px solid var(--admin-border);padding:10px 16px;justify-content:flex-end;">
-                                            <button type="button" id="cierrePrintBtn" style="font-size:0.82rem;padding:5px 18px;background:var(--admin-accent,#ff9540);color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;">🖨️ Imprimir</button>
-                                        </div>
-                                    </article>
-                                </aside>
                             </div>
+
                         </div>
 
                         <!-- Panel: Tickets -->

@@ -9400,10 +9400,32 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
         });
         // Auto-cargar al abrir pestañas de Informes
         if (scope === 'informes') {
-            if (target === 'caja-diaria') renderCajaDiaria();
+            if (target === 'cajas') {
+                const activeSubTab = document.querySelector('[data-cajas-tab].active');
+                if (!activeSubTab || activeSubTab.dataset.cajasTab === 'caja-diaria') renderCajaDiaria();
+                else renderLibroCierres();
+            }
             if (target === 'tickets') _autoLoadTicketsTab();
-            if (target === 'libro') renderLibroCierres();
         }
+    });
+});
+
+// ── Sub-tabs de Cajas (Caja Diaria / Historial de Cajas) ─────────────────────
+document.querySelectorAll('[data-cajas-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+        const target = tab.dataset.cajasTab;
+        document.querySelectorAll('[data-cajas-tab]').forEach((t) => {
+            const isActive = t.dataset.cajasTab === target;
+            t.classList.toggle('active', isActive);
+            t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        document.querySelectorAll('[data-cajas-panel]').forEach((panel) => {
+            const isActive = panel.dataset.cajasPanel === target;
+            panel.hidden = !isActive;
+            panel.style.display = isActive ? '' : 'none';
+        });
+        if (target === 'caja-diaria') renderCajaDiaria();
+        if (target === 'historial') renderLibroCierres();
     });
 });
 
@@ -10949,9 +10971,10 @@ document.getElementById('deliveryPaymentModal')?.addEventListener('click', async
             };
             try {
                 const todayStr = new Date().toISOString().split('T')[0];
-                const paidTodayBefore = ordersState.filter((o) => {
+                const paidSinceApertura = ordersState.filter((o) => {
                     if (!o.paidAt) return false;
                     const ms = typeof o.paidAt.toMillis === 'function' ? o.paidAt.toMillis() : Number(o.paidAt);
+                    if (cajaAperturaAt) return ms >= cajaAperturaAt;
                     return new Date(ms).toISOString().split('T')[0] === todayStr;
                 }).length;
 
@@ -10970,7 +10993,7 @@ document.getElementById('deliveryPaymentModal')?.addEventListener('click', async
                     showNotice('Pago registrado correctamente.', 'ok');
                 }
 
-                if (!_cajaDiariaAutoOpened && paidTodayBefore === 0) {
+                if (!_cajaDiariaAutoOpened && paidSinceApertura === 0) {
                     _cajaDiariaAutoOpened = true;
                     _navigateToCajaDiaria();
                 }
@@ -11078,14 +11101,25 @@ function renderCajaDiaria() {
     const fechaEl = document.getElementById('cajaDiariaFechaLabel');
     if (!bodyEl) return;
 
-    // Fecha actual en el encabezado
+    // Etiqueta de apertura en el encabezado
     if (fechaEl) {
-        fechaEl.textContent = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+        if (cajaAperturaAt) {
+            const ap = new Date(cajaAperturaAt);
+            fechaEl.textContent = 'Abierta desde ' + ap.toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        } else {
+            fechaEl.textContent = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+        }
     }
 
-    const allPaid = ordersState.filter((o) =>
-        o.paymentMethod && o.paymentMethod !== 'pendiente'
-    );
+    // Filtrar cobros a partir de la apertura; si no hubo cierre previo, mostrar los del día actual
+    const allPaid = ordersState.filter((o) => {
+        if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+        const paidMs = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt || 0);
+        if (cajaAperturaAt) return paidMs >= cajaAperturaAt;
+        // Sin cierre previo: solo cobros del día actual
+        const todayStr = new Date().toISOString().split('T')[0];
+        return new Date(paidMs).toISOString().split('T')[0] === todayStr;
+    });
 
     const methodKeys = Object.keys(DPM_META);
     const totalCols = 2 + methodKeys.length + 1; // hora + desc + métodos + total
@@ -11184,6 +11218,10 @@ function renderCajaDiaria() {
 
 document.getElementById('refreshCajaDiariaBtn')?.addEventListener('click', renderCajaDiaria);
 
+// ── Apertura de caja: timestamp desde el último cierre ───────────────────────
+const CAJA_APERTURA_STORAGE_KEY = 'roalburger-caja-apertura';
+let cajaAperturaAt = Number(localStorage.getItem(CAJA_APERTURA_STORAGE_KEY) || 0);
+
 // ── Auto-apertura Caja Diaria al primer cobro ─────────────────────────────────
 let _cajaDiariaAutoOpened = false;
 
@@ -11196,8 +11234,14 @@ function _navigateToCajaDiaria() {
         }
     }
     setTimeout(() => {
-        const cajaTab = document.querySelector('[data-section-tab="caja-diaria"][data-section-scope="informes"]');
-        cajaTab?.click();
+        // Abrir el tab "Cajas" dentro de Informes
+        const cajasTab = document.querySelector('[data-section-tab="cajas"][data-section-scope="informes"]');
+        cajasTab?.click();
+        // Asegurar que el sub-tab "Caja Diaria" esté activo
+        setTimeout(() => {
+            const subTab = document.querySelector('[data-cajas-tab="caja-diaria"]');
+            if (subTab && !subTab.classList.contains('active')) subTab.click();
+        }, 100);
     }, 180);
 }
 
@@ -11336,10 +11380,21 @@ async function cerrarCaja() {
         const timeStr = today.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
         const ticketHtml = _buildCierreTicketHtml(closureDoc, dateStr, timeStr);
+
+        // Reiniciar caja: guardar timestamp de nueva apertura
+        cajaAperturaAt = Date.now();
+        try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(cajaAperturaAt)); } catch {}
+
+        // Mostrar ticket y refrescar vistas
         openCierreSidePanel(ticketHtml, `Cierre ${dateStr}`);
+        renderCajaDiaria();
 
         _cajaDiariaAutoOpened = false;
-        showNotice('Caja cerrada correctamente.', 'ok');
+        showNotice('Caja cerrada y reiniciada correctamente.', 'ok');
+
+        // Navegar a Cajas → Caja Diaria para mostrar la caja ya vacía
+        _navigateToCajaDiaria();
+
         await renderLibroCierres();
     } catch (err) {
         showNotice(`Error al cerrar caja: ${err.message || 'error inesperado.'}`, 'error');
