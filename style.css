@@ -990,40 +990,6 @@ a.is-ordering-closed {
     z-index: 1;
 }
 
-/* Borde animado naranja futurista sutil */
-.liquid-glass::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 18px;
-    pointer-events: none;
-    padding: 2px;
-    background: conic-gradient(
-        from 0deg,
-        #ff9100 0%,
-        #ffb347 20%,
-        #ff9100 40%,
-        #ff9100 60%,
-        #ffb347 80%,
-        #ff9100 100%
-    );
-    mask:
-        linear-gradient(#fff 0 0) content-box, 
-        linear-gradient(#fff 0 0);
-    -webkit-mask:
-        linear-gradient(#fff 0 0) content-box, 
-        linear-gradient(#fff 0 0);
-    mask-composite: exclude;
-    -webkit-mask-composite: xor;
-    z-index: 2;
-    opacity: 0.7;
-    animation: border-glow-rotate 4s linear infinite;
-}
-
-@keyframes border-glow-rotate {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
 
 .liquid-glass h1, .liquid-glass h2, .liquid-glass h3, .liquid-glass h4, .liquid-glass h5, .liquid-glass h6, .liquid-glass p, .liquid-glass span, .liquid-glass label, .liquid-glass small {
     color: #000000;
