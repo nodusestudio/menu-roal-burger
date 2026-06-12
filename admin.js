@@ -6249,7 +6249,7 @@ function createOrderCard(order) {
     if (isMesaOrder && !isUnreadOrder && order.status !== 'entregado') {
         // Layout mesa: [ Servido/Cobrar | 💰? | ✎ | 🗑 ]
         const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
-        const mainLabel = order.status === 'servido' ? (isPaid ? 'Entregado' : 'Cobrar') : 'Servido';
+        const mainLabel = order.status === 'servido' ? (isPaid ? 'Entregado' : '💰 Cobrar') : 'Servido';
         const mainAction = order.status === 'servido' ? (isPaid ? 'entregado' : 'cobrar_mesa') : 'servido';
         const mainClass = order.status === 'servido' ? (isPaid ? 'order-action-btn-delivered' : 'order-action-btn-receive') : 'order-action-btn-delivered';
         const editBtn = isPosAdminOrder
@@ -6273,7 +6273,7 @@ function createOrderCard(order) {
         const mainClass = canRequestCourier ? '' : 'order-action-btn-delivered';
         const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
         const cobrarBtn = !isPaid
-            ? `<button type="button" class="order-action-btn order-action-btn-receive koa-icon-btn" data-order-card-action="cobrar_domicilio" data-order-id="${order.id}" title="Cobrar pedido">&#128176;</button>`
+            ? `<button type="button" class="order-action-btn order-action-btn-receive koa-icon-btn" data-order-card-action="cobrar_domicilio" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
             : '';
         const editBtn = isPosAdminOrder
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
@@ -11116,7 +11116,7 @@ function openDeliveryPaymentModal(order, receiveOrder = true) {
     const confirmBtn = document.getElementById('dpmConfirmBtn');
     if (confirmBtn) {
         confirmBtn.disabled = true;
-        confirmBtn.textContent = receiveOrder ? 'Cobrar pedido' : 'Registrar pago';
+        confirmBtn.textContent = receiveOrder ? '💰 Cobrar pedido' : '💰 Registrar pago';
     }
 
     renderDpmMethodButtons();
