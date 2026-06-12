@@ -139,28 +139,27 @@
 
             <!-- Banner recomendado del día -->
             <section class="home-rec-banner" id="homeRecBanner" aria-label="Recomendado del dia">
-                <div class="home-rec-top-bar">
+                <!-- Imagen hero full-width con badges superpuestos -->
+                <div class="home-rec-img-wrap">
+                    <img class="home-rec-img" id="homeRecImg" src="" alt="Recomendado del dia" loading="lazy">
+                    <div class="home-rec-img-gradient"></div>
                     <span class="home-rec-kicker">⭐ Recomendado del día</span>
                     <span class="home-rec-discount-badge">-20% HOY</span>
                 </div>
-                <div class="home-rec-content">
-                    <div class="home-rec-img-wrap">
-                        <img class="home-rec-img" id="homeRecImg" src="" alt="Recomendado del dia" loading="lazy">
-                    </div>
-                    <div class="home-rec-body">
-                        <strong class="home-rec-name" id="homeRecName">...</strong>
-                        <div class="home-rec-price-row">
-                            <div class="home-rec-price-block">
-                                <span class="home-rec-price-tag">Normal</span>
-                                <span class="home-rec-price-orig" id="homeRecOrigPrice"></span>
-                            </div>
-                            <div class="home-rec-price-block home-rec-price-block--hot">
-                                <span class="home-rec-price-tag">Hoy</span>
-                                <span class="home-rec-price" id="homeRecPrice"></span>
-                            </div>
+                <!-- Contenido: nombre, precios, botón -->
+                <div class="home-rec-body">
+                    <strong class="home-rec-name" id="homeRecName">...</strong>
+                    <div class="home-rec-price-row">
+                        <div class="home-rec-price-block">
+                            <span class="home-rec-price-tag">Antes</span>
+                            <span class="home-rec-price-orig" id="homeRecOrigPrice"></span>
                         </div>
-                        <button type="button" class="home-rec-btn" id="homeRecBtn">¡Lo Quiero! 🔥</button>
+                        <div class="home-rec-price-block home-rec-price-block--hot">
+                            <span class="home-rec-price-tag">Hoy</span>
+                            <span class="home-rec-price" id="homeRecPrice"></span>
+                        </div>
                     </div>
+                    <button type="button" class="home-rec-btn" id="homeRecBtn">¡Lo Quiero! 🔥</button>
                 </div>
             </section>
 
