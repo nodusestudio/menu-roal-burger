@@ -9420,7 +9420,8 @@
                                                 <button type="button" id="cierreSidePanelClose" class="card-collapse-btn" style="font-size:0.78rem;padding:4px 12px;">✕ Cancelar</button>
                                             </div>
                                             <div class="card-body" id="cierreSidePanelBody" style="padding:12px;"></div>
-                                            <div class="card-head" style="border-top:1px solid var(--admin-border);padding:10px 16px;justify-content:flex-end;">
+                                            <div class="card-head" style="border-top:1px solid var(--admin-border);padding:10px 16px;justify-content:flex-end;gap:8px;">
+                                                <button type="button" id="cierreReprintBtn" style="display:none;font-size:0.82rem;padding:5px 18px;background:var(--admin-accent,#ff9540);color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;">🖨️ Reimprimir</button>
                                                 <button type="button" id="cierreCajaConfirmBtn" style="font-size:0.82rem;padding:5px 18px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;">🔒 Cerrar Caja</button>
                                             </div>
                                         </article>
@@ -9438,22 +9439,11 @@
                                     <div class="card-body" style="padding:0;">
                                         <div class="caja-ledger-wrap">
                                             <table class="caja-ledger-table" style="min-width:600px;">
-                                                <thead>
-                                                    <tr>
-                                                        <th class="col-left">Fecha cierre</th>
-                                                        <th>Transacciones</th>
-                                                        <th>Anulados</th>
-                                                        <th>💵 Efectivo</th>
-                                                        <th>💳 Tarjeta</th>
-                                                        <th>🏦 Transferencia</th>
-                                                        <th>🔗 Link de pago</th>
-                                                        <th>Total neto</th>
-                                                        <th style="text-align:center;">Acciones</th>
-                                                    </tr>
-                                                </thead>
+                                                <thead id="libroCierresHead"></thead>
                                                 <tbody id="libroCierresList">
-                                                    <tr><td class="caja-empty" colspan="9">No hay cierres de caja registrados.</td></tr>
+                                                    <tr><td class="caja-empty" colspan="6">No hay cierres de caja registrados.</td></tr>
                                                 </tbody>
+                                                <tfoot id="libroCierresFoot"></tfoot>
                                             </table>
                                         </div>
                                     </div>

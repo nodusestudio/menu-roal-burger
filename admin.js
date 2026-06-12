@@ -11353,12 +11353,18 @@ function _navigateToCajaDiaria() {
 let _cierrePrintHtml = '';
 let _pendingCierreDoc = null;
 
-function openCierreSidePanel(ticketHtml, title) {
+function openCierreSidePanel(ticketHtml, title, viewOnly = false) {
     const panel = document.getElementById('cierreSidePanel');
     const body  = document.getElementById('cierreSidePanelBody');
     const titleEl = document.getElementById('cierreSidePanelTitle');
+    const closeBtn = document.getElementById('cierreSidePanelClose');
+    const confirmBtn = document.getElementById('cierreCajaConfirmBtn');
+    const reprintBtn = document.getElementById('cierreReprintBtn');
     if (!panel || !body) return;
     if (titleEl) titleEl.textContent = title || 'Vista previa del cierre';
+    if (closeBtn) closeBtn.textContent = viewOnly ? '✕ Cerrar' : '✕ Cancelar';
+    if (confirmBtn) confirmBtn.style.display = viewOnly ? 'none' : '';
+    if (reprintBtn) reprintBtn.style.display = viewOnly ? '' : 'none';
     body.innerHTML = ticketHtml;
     _cierrePrintHtml = ticketHtml;
     panel.removeAttribute('hidden');
@@ -11375,6 +11381,10 @@ function _printCierreTicket(html) {
 document.getElementById('cierreSidePanelClose')?.addEventListener('click', () => {
     document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
     _pendingCierreDoc = null;
+});
+
+document.getElementById('cierreReprintBtn')?.addEventListener('click', () => {
+    if (_cierrePrintHtml) _printCierreTicket(_cierrePrintHtml);
 });
 
 document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async () => {
@@ -11538,57 +11548,111 @@ async function loadCierresCaja() {
 }
 
 async function renderLibroCierres() {
-    const tbody = document.getElementById('libroCierresList');
+    const headEl = document.getElementById('libroCierresHead');
+    const tbody  = document.getElementById('libroCierresList');
+    const footEl = document.getElementById('libroCierresFoot');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:12px;color:var(--admin-muted);">Cargando…</td></tr>';
+
+    const methods = getPaymentMethods();
+    const methodKeys = methods.map((m) => m.id);
+    const totalCols = 2 + methodKeys.length + 2; // día + fecha + métodos + total + ver
+
+    tbody.innerHTML = `<tr><td colspan="${totalCols}" style="text-align:center;padding:12px;color:var(--admin-muted);">Cargando…</td></tr>`;
+
+    // Cabecera dinámica
+    if (headEl) {
+        headEl.innerHTML = `<tr>
+            <th class="col-left">Día</th>
+            <th class="col-left">Fecha cierre</th>
+            ${methods.map((m) => `<th>${m.icon} ${escapeHtml(m.label)}</th>`).join('')}
+            <th>Total neto</th>
+            <th style="text-align:center;"></th>
+        </tr>`;
+    }
+
     try {
         const cierres = await loadCierresCaja();
         if (!cierres.length) {
-            tbody.innerHTML = '<tr><td class="caja-empty" colspan="9">No hay cierres de caja registrados.</td></tr>';
+            tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">No hay cierres de caja registrados.</td></tr>`;
+            if (footEl) footEl.innerHTML = '';
             return;
         }
+
+        const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+        // Acumuladores para fila de totales
+        const sumTotals = {};
+        methodKeys.forEach((k) => { sumTotals[k] = 0; });
+        let grandSumTotal = 0;
+
         tbody.innerHTML = cierres.map((c) => {
-            const tsMs = c.closedAt && typeof c.closedAt.toMillis === 'function' ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+            const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
             const d = tsMs ? new Date(tsMs) : null;
-            const fechaStr = d ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : c.date || '—';
-            const methods = c.methodTotals || {};
-            const methodCells = ['efectivo','tarjeta','transferencia','link'].map((k) => {
-                const v = methods[k];
-                if (!v && v !== 0) return '<td style="color:var(--admin-muted);">—</td>';
+            const diaStr = d ? DIAS[d.getDay()] : '—';
+            const fechaStr = d
+                ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : c.date || '—';
+            const methodTotals = c.methodTotals || {};
+
+            const methodCells = methodKeys.map((k) => {
+                const v = Number(methodTotals[k] || 0);
+                if (v === 0) return '<td style="color:var(--admin-muted);">—</td>';
+                sumTotals[k] += v;
                 const color = v < 0 ? '#fca5a5' : '#6ee7b7';
-                return `<td style="color:${color};font-weight:600;">${formatMoney(Math.abs(v))}</td>`;
+                return `<td style="color:${color};font-weight:600;">${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}</td>`;
             }).join('');
-            const gtColor = (c.grandTotal || 0) >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
+
+            const gt = Number(c.grandTotal || 0);
+            grandSumTotal += gt;
+            const gtColor = gt >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
+
             return `<tr>
-                <td>${escapeHtml(fechaStr)}</td>
-                <td style="text-align:center;">${Number(c.transactionCount || 0)}</td>
-                <td style="text-align:center;">${Number(c.voidedCount || 0)}</td>
+                <td class="col-left" style="font-weight:600;">${escapeHtml(diaStr)}</td>
+                <td class="col-left">${escapeHtml(fechaStr)}</td>
                 ${methodCells}
-                <td style="color:${gtColor};font-weight:700;">${formatMoney(c.grandTotal || 0)}</td>
-                <td style="text-align:center;"><button class="btn-reimprimir-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 10px;background:var(--admin-accent,#ff9540);color:#111;border:none;border-radius:6px;cursor:pointer;font-weight:600;">🖨️ Reimprimir</button></td>
+                <td style="color:${gtColor};font-weight:700;">${gt < 0 ? '−' : ''}${formatMoney(Math.abs(gt))}</td>
+                <td style="text-align:center;">
+                    <button class="btn-ver-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:6px;cursor:pointer;font-weight:600;">👁 Ver</button>
+                </td>
             </tr>`;
         }).join('');
+
+        // Fila de totales
+        if (footEl) {
+            const footMethodCells = methodKeys.map((k) => {
+                const v = sumTotals[k];
+                if (v === 0) return '<td>—</td>';
+                const color = v > 0 ? '#6ee7b7' : '#fca5a5';
+                return `<td style="color:${color};"><strong>${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}</strong></td>`;
+            }).join('');
+            const gtTotalColor = grandSumTotal >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
+            footEl.innerHTML = `<tr>
+                <td class="col-left" colspan="2" style="font-weight:700;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;">TOTALES</td>
+                ${footMethodCells}
+                <td style="color:${gtTotalColor};"><strong>${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</strong></td>
+                <td></td>
+            </tr>`;
+        }
     } catch (err) {
-        tbody.innerHTML = `<tr><td class="caja-empty" colspan="9">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
+        tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
     }
 }
 
 document.getElementById('refreshLibroCierresBtn')?.addEventListener('click', renderLibroCierres);
 
 document.getElementById('libroCierresList')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.btn-reimprimir-cierre');
+    const btn = e.target.closest('.btn-ver-cierre');
     if (!btn) return;
     const cid = btn.dataset.cierreId;
     const c = _cierresCajaState.find((x) => x.id === cid);
     if (!c) return;
-    const tsMs = c.closedAt && typeof c.closedAt.toMillis === 'function' ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+    const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
     const d = tsMs ? new Date(tsMs) : new Date();
     const dateStr = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
     const timeStr = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
-    // Navegar a Caja Diaria y mostrar en el panel lateral
     _navigateToCajaDiaria();
-    setTimeout(() => openCierreSidePanel(ticketHtml, `Cierre ${dateStr}`), 250);
+    setTimeout(() => openCierreSidePanel(ticketHtml, `Cierre · ${dateStr}`, true), 250);
 });
 
 // ── Tickets (Informes) ────────────────────────────────────────────────────────
