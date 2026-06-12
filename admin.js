@@ -11046,8 +11046,10 @@ function _dpmUpdateSplitBalance() {
 }
 
 function _dpmUpdateAutoRemainder() {
-    // Actualiza en-lugar la etiqueta "Restante" de la parte sin monto, sin re-render completo
+    // Solo hay una parte "Restante": la única sin monto cuando emptyAmountCount === 1
     const remainder = Math.max(0, _dpmSplitRemainder());
+    const emptyCount = _dpmSplitParts.filter((p) => !(Number(p.amount) > 0)).length;
+    if (emptyCount !== 1) return;
     _dpmSplitParts.forEach((part, idx) => {
         if (!(Number(part.amount) > 0)) {
             const row = document.querySelector(`.dpm-part-row[data-part-idx="${idx}"]`);
@@ -11065,8 +11067,11 @@ function _dpmRenderSplitParts() {
     const remainder = _dpmSplitRemainder();
     const canAdd = _dpmSplitParts.length < methods.length;
 
+    const emptyAmountCount = _dpmSplitParts.filter((p) => !(Number(p.amount) > 0)).length;
+
     container.innerHTML = _dpmSplitParts.map((part, idx) => {
-        const isAutoRemainder = !(Number(part.amount) > 0) && _dpmSplitParts.length >= 2;
+        // "Restante" solo cuando es la ÚNICA fila sin monto → las demás siempre muestran input
+        const isAutoRemainder = !(Number(part.amount) > 0) && emptyAmountCount === 1;
         const canRemove = _dpmSplitParts.length > 2;
         const methodInfo = part.method ? methods.find((m) => m.id === part.method) : null;
 
