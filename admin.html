@@ -8247,6 +8247,29 @@
         }
         #deliveryPaymentModal[hidden] { display: none; }
 
+        /* ── Modal de gastos ── */
+        #gastoModal {
+            position: fixed; inset: 0; z-index: 1200;
+            background: rgba(0,0,0,0.72);
+            display: flex; align-items: center; justify-content: center; padding: 16px;
+        }
+        #gastoModal[hidden] { display: none; }
+        #gastoModal .dpm-card { max-width: 400px; width: 100%; }
+        .gasto-form { display: flex; flex-direction: column; gap: 14px; padding: 4px 0; }
+        .gasto-field { display: flex; flex-direction: column; gap: 5px; }
+        .gasto-field label {
+            font-family: 'Space Grotesk', sans-serif; font-size: 0.72rem;
+            font-weight: 600; color: var(--admin-muted);
+            text-transform: uppercase; letter-spacing: 0.4px;
+        }
+        .gasto-field input {
+            background: rgba(255,255,255,0.06); border: 1.5px solid rgba(255,255,255,0.10);
+            border-radius: 8px; padding: 9px 12px; color: #fff;
+            font-family: 'Space Grotesk', sans-serif; font-size: 0.88rem; outline: none;
+            transition: border-color 0.15s;
+        }
+        .gasto-field input:focus { border-color: #fca5a5; }
+
         .dpm-card {
             width: 100%;
             max-width: 440px;
@@ -9395,6 +9418,7 @@
                                             </div>
                                             <div style="display:flex;gap:8px;align-items:center;">
                                                 <button type="button" class="card-collapse-btn" id="refreshCajaDiariaBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
+                                                <button type="button" id="gastosBtn" style="font-size:0.78rem;padding:4px 14px;background:rgba(252,165,165,0.15);color:#fca5a5;border:1px solid rgba(252,165,165,0.35);border-radius:8px;cursor:pointer;font-weight:600;">💸 Gastos</button>
                                                 <button type="button" id="cerrarCajaBtn" style="font-size:0.78rem;padding:4px 14px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔒 Cerrar Caja</button>
                                             </div>
                                         </div>
@@ -10351,6 +10375,41 @@
             <div class="dpm-footer">
                 <button type="button" class="dpm-btn-cancel" id="dpmCancelBtn">Cancelar</button>
                 <button type="button" class="dpm-btn-confirm" id="dpmConfirmBtn" disabled>Recibir pedido</button>
+            </div>
+        </article>
+    </div>
+
+    <!-- ══════════ MODAL GASTOS ══════════ -->
+    <div id="gastoModal" hidden>
+        <article class="dpm-card">
+            <div class="dpm-header">
+                <p class="dpm-title">Registrar Gasto</p>
+                <span style="font-size:1.2rem;">💸</span>
+            </div>
+            <div class="dpm-unified-body">
+                <div class="gasto-form">
+                    <div class="gasto-field">
+                        <label>Proveedor</label>
+                        <input type="text" id="gastoProveedor" placeholder="Nombre del proveedor" maxlength="60">
+                    </div>
+                    <div class="gasto-field">
+                        <label>Descripción</label>
+                        <input type="text" id="gastoDescripcion" placeholder="¿En qué se gastó?" maxlength="100">
+                    </div>
+                    <div class="gasto-field">
+                        <label>Monto</label>
+                        <div class="dpm-cash-wrap">
+                            <span class="dpm-cash-prefix">$</span>
+                            <input type="number" id="gastoMonto" class="dpm-cash-input" placeholder="0" min="0" step="1000" inputmode="numeric">
+                        </div>
+                    </div>
+                </div>
+                <div class="dpm-pay-divider"><span>MÉTODO DE PAGO</span></div>
+                <div class="dpm-methods" id="gastoMethodsGrid"></div>
+            </div>
+            <div class="dpm-footer">
+                <button type="button" class="dpm-btn-cancel" id="gastoCancelBtn">Cancelar</button>
+                <button type="button" class="dpm-btn-confirm" id="gastoRegistrarBtn" disabled style="background:linear-gradient(90deg,#ef4444,#b91c1c);">Registrar gasto</button>
             </div>
         </article>
     </div>

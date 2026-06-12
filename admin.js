@@ -11191,6 +11191,117 @@ async function _pmSaveAndRefresh(methods, successMsg) {
     }
 }
 
+// ── Gastos de Caja ────────────────────────────────────────────────────────────
+const GASTOS_CAJA_COLLECTION = 'gastos_caja';
+let _gastosCajaState = [];
+let _gastoSelectedMethod = null;
+
+async function loadGastosCaja() {
+    try {
+        const snap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
+            .orderBy('registradoAt', 'desc')
+            .limit(200)
+            .get();
+        _gastosCajaState = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (_) {
+        _gastosCajaState = [];
+    }
+}
+
+async function saveGasto(gasto) {
+    const docRef = firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(gasto.id);
+    await docRef.set(gasto);
+}
+
+function renderGastoMethodButtons() {
+    const grid = document.getElementById('gastoMethodsGrid');
+    if (!grid) return;
+    grid.innerHTML = getEnabledPaymentMethods().map((m) =>
+        `<button type="button" class="dpm-method-btn" data-gasto-method="${m.id}">
+            <span class="dpm-method-icon">${m.icon}</span>
+            <span>${m.label}</span>
+        </button>`
+    ).join('');
+}
+
+function _updateGastoConfirmState() {
+    const btn = document.getElementById('gastoRegistrarBtn');
+    if (!btn) return;
+    const monto = Number(document.getElementById('gastoMonto')?.value || 0);
+    btn.disabled = !(monto > 0 && _gastoSelectedMethod);
+}
+
+function openGastoModal() {
+    _gastoSelectedMethod = null;
+    const modal = document.getElementById('gastoModal');
+    if (!modal) return;
+    const provEl = document.getElementById('gastoProveedor');
+    const descEl = document.getElementById('gastoDescripcion');
+    const montoEl = document.getElementById('gastoMonto');
+    if (provEl) provEl.value = '';
+    if (descEl) descEl.value = '';
+    if (montoEl) montoEl.value = '';
+    renderGastoMethodButtons();
+    _updateGastoConfirmState();
+    modal.removeAttribute('hidden');
+    provEl?.focus();
+}
+
+function closeGastoModal() {
+    document.getElementById('gastoModal')?.setAttribute('hidden', '');
+    _gastoSelectedMethod = null;
+}
+
+document.getElementById('gastosBtn')?.addEventListener('click', openGastoModal);
+document.getElementById('gastoCancelBtn')?.addEventListener('click', closeGastoModal);
+document.getElementById('gastoModal')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('gastoModal')) closeGastoModal();
+});
+
+// Selección de método de pago en modal de gastos
+document.getElementById('gastoMethodsGrid')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-gasto-method]');
+    if (!btn) return;
+    document.querySelectorAll('[data-gasto-method]').forEach((b) => b.classList.remove('dpm-method-btn--active'));
+    btn.classList.add('dpm-method-btn--active');
+    _gastoSelectedMethod = btn.dataset.gastoMethod;
+    _updateGastoConfirmState();
+});
+
+document.getElementById('gastoMonto')?.addEventListener('input', _updateGastoConfirmState);
+
+document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async () => {
+    const proveedor  = document.getElementById('gastoProveedor')?.value?.trim() || '';
+    const descripcion = document.getElementById('gastoDescripcion')?.value?.trim() || '';
+    const monto = Number(document.getElementById('gastoMonto')?.value || 0);
+    if (!monto || monto <= 0 || !_gastoSelectedMethod) return;
+
+    const registrarBtn = document.getElementById('gastoRegistrarBtn');
+    if (registrarBtn) { registrarBtn.disabled = true; registrarBtn.textContent = 'Guardando...'; }
+
+    try {
+        const gastoId = `gasto_${Date.now()}`;
+        const gasto = {
+            id: gastoId,
+            proveedor,
+            descripcion,
+            monto,
+            paymentMethod: _gastoSelectedMethod,
+            registradoAt: firestoreNow(),
+            cajaAperturaAt: cajaAperturaAt || 0,
+        };
+        await saveGasto(gasto);
+        _gastosCajaState = [gasto, ..._gastosCajaState];
+        closeGastoModal();
+        renderCajaDiaria();
+        showNotice('Gasto registrado.', 'ok');
+    } catch (err) {
+        showNotice('Error al registrar gasto: ' + (err.message || 'error'), 'error');
+    } finally {
+        if (registrarBtn) { registrarBtn.disabled = false; registrarBtn.textContent = 'Registrar gasto'; }
+    }
+});
+
 // ── Caja Diaria ───────────────────────────────────────────────────────────────
 function _cajaDiariaTypeHtml(type) {
     if (type === 'mesa')      return '<span class="caja-type-badge caja-type-mesa">Mesa</span>';
@@ -11223,26 +11334,33 @@ function renderCajaDiaria() {
         }
     }
 
-    // Filtrar cobros a partir de la apertura; si no hubo cierre previo, mostrar los del día actual
+    // Filtrar cobros de la jornada actual
     const allPaid = ordersState.filter((o) => {
         if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
         const paidMs = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt || 0);
         if (cajaAperturaAt) return paidMs >= cajaAperturaAt;
-        // Sin cierre previo: solo cobros del día actual
         const todayStr = new Date().toISOString().split('T')[0];
         return new Date(paidMs).toISOString().split('T')[0] === todayStr;
+    });
+
+    // Filtrar gastos de la jornada actual
+    const allGastos = _gastosCajaState.filter((g) => {
+        const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+        if (cajaAperturaAt) return ms >= cajaAperturaAt;
+        const todayStr = new Date().toISOString().split('T')[0];
+        return new Date(ms).toISOString().split('T')[0] === todayStr;
     });
 
     const methods = getPaymentMethods();
     const methodKeys = methods.map((m) => m.id);
 
-    // Detectar cobros con métodos que ya no existen en la configuración actual (datos históricos)
+    // Detectar cobros con métodos históricos no reconocidos
     const hasUnmatched = allPaid.some((o) => !methodKeys.includes(o.paymentMethod));
     const totalCols = 2 + methodKeys.length + (hasUnmatched ? 1 : 0) + 1;
 
-    if (allPaid.length === 0) {
+    if (allPaid.length === 0 && allGastos.length === 0) {
         if (headEl) headEl.innerHTML = '';
-        bodyEl.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">No hay cobros registrados en esta jornada.</td></tr>`;
+        bodyEl.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">No hay movimientos registrados en esta jornada.</td></tr>`;
         if (footEl) footEl.innerHTML = '';
         return;
     }
@@ -11258,64 +11376,95 @@ function renderCajaDiaria() {
         </tr>`;
     }
 
-    // Ordenar por hora de cobro
-    const sorted = [...allPaid].sort((a, b) => {
-        const ta = a.paidAt?.toDate ? a.paidAt.toDate() : new Date(a.paidAt || 0);
-        const tb = b.paidAt?.toDate ? b.paidAt.toDate() : new Date(b.paidAt || 0);
-        return ta - tb;
-    });
+    // Unificar y ordenar cobros + gastos por timestamp
+    const _tsOf = (o) => o.paidAt?.toDate ? o.paidAt.toDate().getTime() : new Date(o.paidAt || 0).getTime();
+    const _tsGasto = (g) => g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
 
-    // Acumuladores por método (positivo = entrada, negativo si hay anulados netos)
+    const allEntries = [
+        ...allPaid.map((o) => ({ _type: 'order', _ms: _tsOf(o), data: o })),
+        ...allGastos.map((g) => ({ _type: 'gasto', _ms: _tsGasto(g), data: g })),
+    ].sort((a, b) => a._ms - b._ms);
+
+    // Acumuladores
     const sumMethod = {};
     methodKeys.forEach((k) => { sumMethod[k] = 0; });
     let sumOtro = 0;
     let grandTotal = 0;
 
     const rows = [];
-    sorted.forEach((o) => {
-        const ts   = o.paidAt || o.createdAt;
-        const hora = formatOrderTime(ts);
-        const amt  = getOrderDisplayTotal(o);
-        const baseDesc = `<strong>${escapeHtml(o.code)}</strong> · ${escapeHtml(o.customerName || '—')} · ${escapeHtml(getOrderTypeLabel(o))}`;
-        const isKnown = methodKeys.includes(o.paymentMethod);
+    allEntries.forEach((entry) => {
+        if (entry._type === 'order') {
+            const o = entry.data;
+            const ts   = o.paidAt || o.createdAt;
+            const hora = formatOrderTime(ts);
+            const amt  = getOrderDisplayTotal(o);
+            const baseDesc = `<strong>${escapeHtml(o.code)}</strong> · ${escapeHtml(o.customerName || '—')} · ${escapeHtml(getOrderTypeLabel(o))}`;
+            const isKnown = methodKeys.includes(o.paymentMethod);
 
-        // Fila 1: ingreso original
-        if (isKnown) { sumMethod[o.paymentMethod] += amt; } else { sumOtro += amt; }
-        grandTotal += amt;
-        const mCellsIn = methodKeys.map((k) =>
-            k === o.paymentMethod
-                ? `<td style="color:#6ee7b7;font-weight:700;">${formatMoney(amt)}</td>`
-                : '<td></td>'
-        ).join('');
-        const otroCellIn = hasUnmatched
-            ? (!isKnown ? `<td style="color:#6ee7b7;font-weight:700;" title="${escapeHtml(o.paymentMethod || '')}">${formatMoney(amt)}</td>` : '<td></td>')
-            : '';
-        rows.push(`<tr>
-            <td class="col-left">${hora}</td>
-            <td class="col-left">${baseDesc}</td>
-            ${mCellsIn}${otroCellIn}
-            <td style="color:#6ee7b7;font-weight:800;">${formatMoney(amt)}</td>
-        </tr>`);
-
-        // Fila 2 (solo si anulado): devolución en rojo
-        if (o.voided) {
-            if (isKnown) { sumMethod[o.paymentMethod] -= amt; } else { sumOtro -= amt; }
-            grandTotal -= amt;
-            const voidedTs = o.voidedAt || ts;
-            const horaVoid = formatOrderTime(voidedTs);
-            const mCellsOut = methodKeys.map((k) =>
+            if (isKnown) { sumMethod[o.paymentMethod] += amt; } else { sumOtro += amt; }
+            grandTotal += amt;
+            const mCellsIn = methodKeys.map((k) =>
                 k === o.paymentMethod
+                    ? `<td style="color:#6ee7b7;font-weight:700;">${formatMoney(amt)}</td>`
+                    : '<td></td>'
+            ).join('');
+            const otroCellIn = hasUnmatched
+                ? (!isKnown ? `<td style="color:#6ee7b7;font-weight:700;" title="${escapeHtml(o.paymentMethod || '')}">${formatMoney(amt)}</td>` : '<td></td>')
+                : '';
+            rows.push(`<tr>
+                <td class="col-left">${hora}</td>
+                <td class="col-left">${baseDesc}</td>
+                ${mCellsIn}${otroCellIn}
+                <td style="color:#6ee7b7;font-weight:800;">${formatMoney(amt)}</td>
+            </tr>`);
+
+            if (o.voided) {
+                if (isKnown) { sumMethod[o.paymentMethod] -= amt; } else { sumOtro -= amt; }
+                grandTotal -= amt;
+                const horaVoid = formatOrderTime(o.voidedAt || ts);
+                const mCellsOut = methodKeys.map((k) =>
+                    k === o.paymentMethod
+                        ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
+                        : '<td></td>'
+                ).join('');
+                const otroCellOut = hasUnmatched
+                    ? (!isKnown ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>` : '<td></td>')
+                    : '';
+                const voidDesc = `<span style="color:#fca5a5;">↩ ANULADO</span> · ${escapeHtml(o.code)} · ${escapeHtml(o.customerName || '—')}`;
+                rows.push(`<tr class="row-voided">
+                    <td class="col-left" style="color:#fca5a5;">${horaVoid}</td>
+                    <td class="col-left">${voidDesc}</td>
+                    ${mCellsOut}${otroCellOut}
+                    <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
+                </tr>`);
+            }
+        } else {
+            // Fila de gasto (roja, resta del método y del total)
+            const g = entry.data;
+            const hora = formatOrderTime(g.registradoAt);
+            const amt = Number(g.monto || 0);
+            const isKnown = methodKeys.includes(g.paymentMethod);
+
+            if (isKnown) { sumMethod[g.paymentMethod] -= amt; } else { sumOtro -= amt; }
+            grandTotal -= amt;
+
+            const mGastoCells = methodKeys.map((k) =>
+                k === g.paymentMethod
                     ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
                     : '<td></td>'
             ).join('');
-            const otroCellOut = hasUnmatched
+            const otroGastoCell = hasUnmatched
                 ? (!isKnown ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>` : '<td></td>')
                 : '';
-            const voidDesc = `<span style="color:#fca5a5;">↩ ANULADO</span> · ${escapeHtml(o.code)} · ${escapeHtml(o.customerName || '—')}`;
-            rows.push(`<tr class="row-voided">
-                <td class="col-left" style="color:#fca5a5;">${horaVoid}</td>
-                <td class="col-left">${voidDesc}</td>
-                ${mCellsOut}${otroCellOut}
+
+            const provStr = g.proveedor ? ` · ${escapeHtml(g.proveedor)}` : '';
+            const descStr = g.descripcion ? ` · ${escapeHtml(g.descripcion)}` : '';
+            const gastoDesc = `<span style="color:#fca5a5;font-weight:700;">💸 Gasto</span>${provStr}${descStr}`;
+
+            rows.push(`<tr>
+                <td class="col-left" style="color:#fca5a5;">${hora}</td>
+                <td class="col-left">${gastoDesc}</td>
+                ${mGastoCells}${otroGastoCell}
                 <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
             </tr>`);
         }
@@ -11344,7 +11493,10 @@ function renderCajaDiaria() {
     }
 }
 
-document.getElementById('refreshCajaDiariaBtn')?.addEventListener('click', renderCajaDiaria);
+document.getElementById('refreshCajaDiariaBtn')?.addEventListener('click', async () => {
+    await loadGastosCaja();
+    renderCajaDiaria();
+});
 
 // ── Apertura de caja: timestamp desde el último cierre ───────────────────────
 const CAJA_APERTURA_STORAGE_KEY = 'roalburger-caja-apertura';
@@ -11881,3 +12033,4 @@ async function _autoLoadTicketsTab() {
 
 initAdmin();
 loadPaymentMethods();
+loadGastosCaja();
