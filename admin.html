@@ -8640,6 +8640,58 @@
         }
         .pm-sub-option-toggle:has(input:checked) span { color: #fff; }
 
+        /* ── CRUD de métodos de pago ── */
+        .pm-method-header { align-items: flex-start; }
+        .pm-method-name { flex: 1; flex-wrap: wrap; gap: 6px; }
+        .pm-subs-badges { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+        .pm-sub-badge {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.68rem; font-weight: 600;
+            padding: 2px 7px; border-radius: 20px;
+            background: rgba(255,149,64,0.18);
+            border: 1px solid rgba(255,149,64,0.35);
+            color: var(--admin-accent, #ff9540);
+        }
+        .pm-method-actions {
+            display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: 10px;
+        }
+        .pm-icon-btn {
+            background: none; border: none; cursor: pointer;
+            font-size: 1rem; padding: 4px; border-radius: 6px;
+            opacity: 0.65; transition: opacity 0.15s, background 0.15s;
+        }
+        .pm-icon-btn:hover { opacity: 1; background: rgba(255,255,255,0.07); }
+        .pm-icon-btn--del:hover { background: rgba(252,165,165,0.12); }
+
+        /* Form inline para agregar/editar */
+        .pm-method-form-wrap {
+            margin: 14px 0 8px;
+            padding: 16px;
+            background: rgba(255,255,255,0.04);
+            border: 1.5px solid rgba(255,149,64,0.3);
+            border-radius: 14px;
+        }
+        .pm-method-form { display: flex; flex-direction: column; gap: 12px; }
+        .pm-form-row { display: flex; flex-direction: column; gap: 5px; }
+        .pm-form-label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.72rem; font-weight: 600;
+            color: var(--admin-muted); text-transform: uppercase; letter-spacing: 0.4px;
+        }
+        .pm-form-input {
+            background: rgba(255,255,255,0.06);
+            border: 1.5px solid rgba(255,255,255,0.1);
+            border-radius: 8px; padding: 8px 12px;
+            color: #fff; font-family: 'Space Grotesk', sans-serif; font-size: 0.88rem;
+            outline: none; transition: border-color 0.15s;
+        }
+        .pm-form-input:focus { border-color: var(--admin-accent, #ff9540); }
+        .pm-form-icon-input { max-width: 80px; text-align: center; font-size: 1.2rem; }
+        .pm-sub-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+        .pm-form-actions { display: flex; gap: 8px; margin-top: 4px; }
+        .pm-form-actions .admin-button,
+        .pm-form-actions .ghost-button { flex: 1; padding: 9px 12px; font-size: 0.8rem; }
+
         /* --- Recomendado del dia --- */
         .recomendado-mode-radios { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
         .recomendado-mode-option {
@@ -9475,7 +9527,7 @@
                         </button>
                         <button class="menu-inner-tab" data-section-tab="metodos_pago" data-section-scope="configuracion" role="tab" aria-selected="false">
                             <span class="menu-inner-tab-icon">💳</span>
-                            <span>Métodos de pago</span>
+                            <span>Tipos de Pago</span>
                         </button>
                     </nav>
                     <div class="menu-inner-panels-wrap">
@@ -9585,20 +9637,19 @@
                             </article>
                         </div>
 
-                        <!-- Panel: Métodos de pago -->
+                        <!-- Panel: Tipos de Pago -->
                         <div class="menu-inner-panel" data-section-panel="metodos_pago" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
                             <article class="admin-card">
                                 <div class="card-head">
-                                    <h2>Métodos de Pago</h2>
+                                    <h2>Tipos de Pago</h2>
                                 </div>
                                 <div class="card-body" id="card-metodos-pago">
                                     <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
-                                        Activa o desactiva cada método y configura las sub-opciones que aparecen en el modal de cobro de domicilios.
+                                        Configura los métodos de pago disponibles al cobrar. Puedes activar/desactivar, editar o eliminar cada uno, y agregar nuevos.
                                     </p>
                                     <div id="paymentConfigPanel">
                                         <!-- renderizado por JS -->
                                     </div>
-                                    <button type="button" class="admin-button" id="savePaymentConfigBtn" style="margin-top:8px;" disabled>Guardar métodos de pago</button>
                                 </div>
                             </article>
                         </div>

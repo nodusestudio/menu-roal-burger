@@ -10784,21 +10784,16 @@ async function initAdmin() {
 }
 
 // ── Modal cobro domicilio ──────────────────────────────────────────────────
-const PAYMENT_CONFIG_DOC_ID = 'payment_config';
+const PAYMENT_METHODS_DOC_ID = 'metodos_pago';
 
-const DPM_META = {
-    efectivo:      { label: 'Efectivo',      icon: '💵', sub: null },
-    tarjeta:       { label: 'Tarjeta',       icon: '💳', subLabel: '¿Por cuál plataforma?', subOptions: [['nequi','Nequi'],['bold','Bold']] },
-    transferencia: { label: 'Transferencia', icon: '🏦', subLabel: '¿Por cuál banco?',       subOptions: [['bancolombia','Bancolombia'],['nequi','Nequi']] },
-    link_pago:     { label: 'Link de pago',  icon: '🔗', subLabel: '¿Por cuál plataforma?', subOptions: [['nequi','Nequi'],['bold','Bold']] }
-};
+const DPM_DEFAULT_METHODS = [
+    { id: 'efectivo',    label: 'Efectivo',    icon: '💵', enabled: true, subs: [] },
+    { id: 'bancolombia', label: 'Bancolombia', icon: '🏦', enabled: true, subs: ['transferencia', 'tarjeta'] },
+    { id: 'nequi',       label: 'Nequi',       icon: '💜', enabled: true, subs: ['transferencia', 'tarjeta'] },
+    { id: 'bold',        label: 'Bold',        icon: '💳', enabled: true, subs: ['transferencia', 'tarjeta'] },
+];
 
-const DPM_CONFIG_DEFAULTS = {
-    methods: { efectivo: true, tarjeta: true, transferencia: true, link_pago: true },
-    sub: { tarjeta: ['nequi','bold'], transferencia: ['bancolombia','nequi'], link_pago: ['nequi','bold'] }
-};
-
-let paymentConfig = null;
+let _paymentMethods = [];
 let _dpmCurrentOrderId = null;
 let _dpmSelectedMethod = null;
 let _dpmSubMethod = null;
@@ -10806,33 +10801,40 @@ let _dpmCashTender = 0;
 let _dpmOrderTotal = 0;
 let _dpmReceiveOrder = false;
 
-function getPaymentConfig() { return paymentConfig || DPM_CONFIG_DEFAULTS; }
+function getPaymentMethods() {
+    return _paymentMethods.length ? _paymentMethods : DPM_DEFAULT_METHODS;
+}
 
-async function loadPaymentConfig() {
+function getEnabledPaymentMethods() {
+    return getPaymentMethods().filter((m) => m.enabled !== false);
+}
+
+async function loadPaymentMethods() {
     try {
-        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(PAYMENT_CONFIG_DOC_ID).get();
-        paymentConfig = doc.exists ? { ...DPM_CONFIG_DEFAULTS, ...doc.data() } : null;
-    } catch (_) { paymentConfig = null; }
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(PAYMENT_METHODS_DOC_ID).get();
+        _paymentMethods = (doc.exists && Array.isArray(doc.data()?.methods))
+            ? doc.data().methods
+            : [...DPM_DEFAULT_METHODS];
+    } catch (_) {
+        _paymentMethods = [...DPM_DEFAULT_METHODS];
+    }
     renderPaymentConfigPanel();
 }
 
-async function savePaymentConfig(config) {
-    await firebaseDb.collection(CONFIG_COLLECTION).doc(PAYMENT_CONFIG_DOC_ID).set(config, { merge: true });
-    paymentConfig = { ...DPM_CONFIG_DEFAULTS, ...config };
+async function savePaymentMethods(methods) {
+    await firebaseDb.collection(CONFIG_COLLECTION).doc(PAYMENT_METHODS_DOC_ID).set({ methods });
+    _paymentMethods = methods;
 }
 
 function renderDpmMethodButtons() {
     const grid = document.getElementById('dpmMethodsGrid');
     if (!grid) return;
-    const cfg = getPaymentConfig();
-    const activeKeys = Object.keys(DPM_META).filter((k) => cfg.methods[k] !== false);
-    grid.innerHTML = activeKeys.map((key) => {
-        const m = DPM_META[key];
-        return `<button type="button" class="dpm-method-btn" data-dpm-method="${key}">
+    grid.innerHTML = getEnabledPaymentMethods().map((m) =>
+        `<button type="button" class="dpm-method-btn" data-dpm-method="${m.id}">
             <span class="dpm-method-icon">${m.icon}</span>
             <span>${m.label}</span>
-        </button>`;
-    }).join('');
+        </button>`
+    ).join('');
 }
 
 function _dpmShowSubSection(methodKey) {
@@ -10843,6 +10845,8 @@ function _dpmShowSubSection(methodKey) {
     [panelEfectivo, panelChips].forEach((p) => p?.setAttribute('hidden', ''));
     _dpmSubMethod = null;
 
+    const method = getPaymentMethods().find((m) => m.id === methodKey);
+
     if (methodKey === 'efectivo') {
         panelEfectivo?.removeAttribute('hidden');
         subSection.removeAttribute('hidden');
@@ -10850,23 +10854,25 @@ function _dpmShowSubSection(methodKey) {
         if (cashInput) { cashInput.value = ''; cashInput.focus(); }
         document.getElementById('dpmChangeRow')?.setAttribute('hidden', '');
         _dpmCashTender = 0;
-    } else {
-        const meta = DPM_META[methodKey];
-        const cfg = getPaymentConfig();
-        const activeSub = cfg.sub?.[methodKey] || (meta.subOptions || []).map(([k]) => k);
-        const availableSubs = (meta.subOptions || []).filter(([k]) => activeSub.includes(k));
-        if (availableSubs.length === 0) { subSection.setAttribute('hidden', ''); return; }
-        const chipsLabel = document.getElementById('dpmSubChipsLabel');
-        const chipsContainer = document.getElementById('dpmSubChipsContainer');
-        if (chipsLabel) chipsLabel.textContent = meta.subLabel || '¿Por cuál plataforma?';
-        if (chipsContainer) {
-            chipsContainer.innerHTML = availableSubs.map(([k, label]) =>
-                `<button type="button" class="dpm-sub-chip" data-dpm-sub="${k}">${label}</button>`
-            ).join('');
-        }
-        panelChips?.removeAttribute('hidden');
-        subSection.removeAttribute('hidden');
+        return;
     }
+
+    if (!method || method.subs.length === 0) {
+        subSection.setAttribute('hidden', '');
+        return;
+    }
+
+    const SUB_LABELS = { transferencia: 'Transferencia', tarjeta: 'Tarjeta' };
+    const chipsLabel = document.getElementById('dpmSubChipsLabel');
+    const chipsContainer = document.getElementById('dpmSubChipsContainer');
+    if (chipsLabel) chipsLabel.textContent = `¿Cómo pagó con ${method.label}?`;
+    if (chipsContainer) {
+        chipsContainer.innerHTML = method.subs.map((k) =>
+            `<button type="button" class="dpm-sub-chip" data-dpm-sub="${k}">${SUB_LABELS[k] || k}</button>`
+        ).join('');
+    }
+    panelChips?.removeAttribute('hidden');
+    subSection.removeAttribute('hidden');
 }
 
 function _dpmUpdateConfirmState() {
@@ -10875,7 +10881,8 @@ function _dpmUpdateConfirmState() {
     if (_dpmSelectedMethod === 'efectivo') {
         btn.disabled = !(_dpmCashTender > 0);
     } else {
-        btn.disabled = !_dpmSubMethod;
+        const method = getPaymentMethods().find((m) => m.id === _dpmSelectedMethod);
+        btn.disabled = method && method.subs.length > 0 ? !_dpmSubMethod : false;
     }
 }
 
@@ -11020,64 +11027,158 @@ document.getElementById('dpmCashInput')?.addEventListener('input', (e) => {
     _dpmUpdateConfirmState();
 });
 
-// ── Configuración de métodos de pago ──────────────────────────────────────
+// ── Configuración de métodos de pago (CRUD) ────────────────────────────────
+let _pmEditingId = null;
+
+const _PM_SUB_LABELS = { transferencia: 'Transferencia', tarjeta: 'Tarjeta' };
+
 function renderPaymentConfigPanel() {
     const panel = document.getElementById('paymentConfigPanel');
     if (!panel) return;
-    const cfg = getPaymentConfig();
-    panel.innerHTML = Object.keys(DPM_META).map((key) => {
-        const meta = DPM_META[key];
-        const isActive = cfg.methods[key] !== false;
-        const activeSubs = cfg.sub?.[key] || (meta.subOptions || []).map(([k]) => k);
-        const subOptionsHTML = meta.subOptions ? `
-            <div class="pm-sub-options-label">Sub-opciones</div>
-            <div class="pm-sub-options-list">
-                ${meta.subOptions.map(([k, label]) => `
-                    <label class="pm-sub-option-toggle">
-                        <input type="checkbox" data-pm-sub-key="${key}" data-pm-sub-val="${k}" ${activeSubs.includes(k) ? 'checked' : ''}>
-                        <span>${label}</span>
-                    </label>
-                `).join('')}
-            </div>` : '';
-        return `<div class="pm-method-card" data-pm-key="${key}">
-            <div class="pm-method-header">
-                <span class="pm-method-name"><span class="pm-method-icon">${meta.icon}</span>${meta.label}</span>
-                <label class="pm-toggle">
-                    <input type="checkbox" data-pm-method="${key}" ${isActive ? 'checked' : ''}>
-                    <span class="pm-toggle-slider"></span>
-                </label>
+    const methods = getPaymentMethods();
+    panel.innerHTML = `
+        <div class="pm-list" id="pmMethodsList">
+            ${methods.map((m) => `
+                <div class="pm-method-card" data-pm-id="${m.id}">
+                    <div class="pm-method-header">
+                        <span class="pm-method-name">
+                            <span class="pm-method-icon">${escapeHtml(m.icon)}</span>${escapeHtml(m.label)}
+                            ${m.subs.length > 0 ? `<span class="pm-subs-badges">${m.subs.map((s) => `<span class="pm-sub-badge">${_PM_SUB_LABELS[s] || s}</span>`).join('')}</span>` : ''}
+                        </span>
+                        <div class="pm-method-actions">
+                            <label class="pm-toggle" title="${m.enabled !== false ? 'Activo' : 'Inactivo'}">
+                                <input type="checkbox" data-pm-toggle="${escapeHtml(m.id)}" ${m.enabled !== false ? 'checked' : ''}>
+                                <span class="pm-toggle-slider"></span>
+                            </label>
+                            <button type="button" class="pm-icon-btn" data-pm-edit="${escapeHtml(m.id)}" title="Editar">✏️</button>
+                            <button type="button" class="pm-icon-btn pm-icon-btn--del" data-pm-delete="${escapeHtml(m.id)}" title="Eliminar">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+        <div class="pm-method-form-wrap" id="pmMethodFormWrap" hidden>
+            <div class="pm-method-form">
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Nombre</label>
+                    <input type="text" id="pmFormLabel" class="pm-form-input" placeholder="ej: Daviplata" maxlength="30">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Icono (emoji)</label>
+                    <input type="text" id="pmFormIcon" class="pm-form-input pm-form-icon-input" placeholder="💳" maxlength="4">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Sub-opciones de pago</label>
+                    <div class="pm-sub-checks">
+                        <label class="pm-sub-option-toggle">
+                            <input type="checkbox" id="pmFormSubTransferencia">
+                            <span>Transferencia</span>
+                        </label>
+                        <label class="pm-sub-option-toggle">
+                            <input type="checkbox" id="pmFormSubTarjeta">
+                            <span>Tarjeta</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="pm-form-actions">
+                    <button type="button" class="admin-button" id="pmFormSaveBtn" style="grid-column:auto;">Guardar</button>
+                    <button type="button" class="ghost-button" id="pmFormCancelBtn">Cancelar</button>
+                </div>
             </div>
-            ${subOptionsHTML}
-        </div>`;
-    }).join('');
+        </div>
+        <button type="button" class="ghost-button" id="pmAddBtn" style="margin-top:14px;width:100%;">+ Agregar método</button>
+    `;
 
-    panel.addEventListener('change', () => {
-        document.getElementById('savePaymentConfigBtn').disabled = false;
+    panel.querySelectorAll('[data-pm-toggle]').forEach((cb) => {
+        cb.addEventListener('change', async () => {
+            const id = cb.dataset.pmToggle;
+            const updated = getPaymentMethods().map((m) => m.id === id ? { ...m, enabled: cb.checked } : m);
+            await _pmSaveAndRefresh(updated, `Método ${cb.checked ? 'activado' : 'desactivado'}.`);
+        });
+    });
+
+    panel.querySelectorAll('[data-pm-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => _pmOpenForm(btn.dataset.pmEdit));
+    });
+
+    panel.querySelectorAll('[data-pm-delete]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.pmDelete;
+            const method = getPaymentMethods().find((m) => m.id === id);
+            if (!method) return;
+            if (!confirm(`¿Eliminar el método "${method.label}"?`)) return;
+            const updated = getPaymentMethods().filter((m) => m.id !== id);
+            await _pmSaveAndRefresh(updated, `Método "${method.label}" eliminado.`);
+        });
+    });
+
+    panel.querySelector('#pmAddBtn')?.addEventListener('click', () => _pmOpenForm(null));
+    panel.querySelector('#pmFormSaveBtn')?.addEventListener('click', _pmFormSave);
+    panel.querySelector('#pmFormCancelBtn')?.addEventListener('click', () => {
+        document.getElementById('pmMethodFormWrap')?.setAttribute('hidden', '');
+        _pmEditingId = null;
     });
 }
 
-document.getElementById('savePaymentConfigBtn')?.addEventListener('click', async () => {
-    const btn = document.getElementById('savePaymentConfigBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
-    const methods = {};
-    const sub = {};
-    document.querySelectorAll('[data-pm-method]').forEach((cb) => {
-        methods[cb.dataset.pmMethod] = cb.checked;
-    });
-    document.querySelectorAll('[data-pm-sub-key]').forEach((cb) => {
-        const key = cb.dataset.pmSubKey;
-        if (!sub[key]) sub[key] = [];
-        if (cb.checked) sub[key].push(cb.dataset.pmSubVal);
-    });
+function _pmOpenForm(editId) {
+    _pmEditingId = editId || null;
+    const wrap = document.getElementById('pmMethodFormWrap');
+    if (!wrap) return;
+    const labelInput  = document.getElementById('pmFormLabel');
+    const iconInput   = document.getElementById('pmFormIcon');
+    const subTrans    = document.getElementById('pmFormSubTransferencia');
+    const subTarjeta  = document.getElementById('pmFormSubTarjeta');
+    if (editId) {
+        const m = getPaymentMethods().find((m) => m.id === editId);
+        if (!m) return;
+        if (labelInput) labelInput.value = m.label;
+        if (iconInput)  iconInput.value  = m.icon;
+        if (subTrans)   subTrans.checked   = m.subs.includes('transferencia');
+        if (subTarjeta) subTarjeta.checked = m.subs.includes('tarjeta');
+    } else {
+        if (labelInput) labelInput.value = '';
+        if (iconInput)  iconInput.value  = '';
+        if (subTrans)   subTrans.checked   = false;
+        if (subTarjeta) subTarjeta.checked = false;
+    }
+    wrap.removeAttribute('hidden');
+    labelInput?.focus();
+}
+
+async function _pmFormSave() {
+    const label = document.getElementById('pmFormLabel')?.value?.trim();
+    const icon  = document.getElementById('pmFormIcon')?.value?.trim() || '💳';
+    if (!label) { showNotice('El nombre del método es requerido.', 'error'); return; }
+    const subs = [];
+    if (document.getElementById('pmFormSubTransferencia')?.checked) subs.push('transferencia');
+    if (document.getElementById('pmFormSubTarjeta')?.checked) subs.push('tarjeta');
+
+    const editingId = _pmEditingId;
+    let updated;
+    if (editingId) {
+        updated = getPaymentMethods().map((m) => m.id === editingId ? { ...m, label, icon, subs } : m);
+    } else {
+        const id = label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+        if (!id) { showNotice('Nombre inválido.', 'error'); return; }
+        if (getPaymentMethods().some((m) => m.id === id)) {
+            showNotice('Ya existe un método con ese nombre.', 'error'); return;
+        }
+        updated = [...getPaymentMethods(), { id, label, icon, enabled: true, subs }];
+    }
+    document.getElementById('pmMethodFormWrap')?.setAttribute('hidden', '');
+    _pmEditingId = null;
+    await _pmSaveAndRefresh(updated, editingId ? 'Método actualizado.' : 'Método agregado.');
+}
+
+async function _pmSaveAndRefresh(methods, successMsg) {
     try {
-        await savePaymentConfig({ methods, sub });
-        showNotice('Métodos de pago actualizados.', 'ok');
+        await savePaymentMethods(methods);
+        renderPaymentConfigPanel();
+        if (successMsg) showNotice(successMsg, 'ok');
     } catch (e) {
         showNotice('Error al guardar: ' + (e.message || 'error'), 'error');
-    } finally {
-        if (btn) btn.textContent = 'Guardar métodos de pago';
     }
-});
+}
 
 // ── Caja Diaria ───────────────────────────────────────────────────────────────
 function _cajaDiariaTypeHtml(type) {
@@ -11087,11 +11188,11 @@ function _cajaDiariaTypeHtml(type) {
 }
 
 function _cajaDiariaMethodLabel(order) {
-    const meta = DPM_META[order.paymentMethod];
-    if (!meta) return order.paymentMethod || '—';
+    const method = getPaymentMethods().find((m) => m.id === order.paymentMethod);
+    if (!method) return order.paymentMethod || '—';
     const sub = order.paymentSubMethod;
-    const subLabels = { nequi: 'Nequi', bold: 'Bold', bancolombia: 'Bancolombia' };
-    return sub && subLabels[sub] ? `${meta.icon} ${meta.label} · ${subLabels[sub]}` : `${meta.icon} ${meta.label}`;
+    const subLabel = _PM_SUB_LABELS[sub];
+    return subLabel ? `${method.icon} ${method.label} · ${subLabel}` : `${method.icon} ${method.label}`;
 }
 
 function renderCajaDiaria() {
@@ -11121,7 +11222,8 @@ function renderCajaDiaria() {
         return new Date(paidMs).toISOString().split('T')[0] === todayStr;
     });
 
-    const methodKeys = Object.keys(DPM_META);
+    const methods = getPaymentMethods();
+    const methodKeys = methods.map((m) => m.id);
     const totalCols = 2 + methodKeys.length + 1; // hora + desc + métodos + total
 
     if (allPaid.length === 0) {
@@ -11136,7 +11238,7 @@ function renderCajaDiaria() {
         headEl.innerHTML = `<tr>
             <th class="col-left">Hora</th>
             <th class="col-left" style="min-width:200px;">Descripción</th>
-            ${methodKeys.map((k) => `<th>${DPM_META[k].icon} ${DPM_META[k].label}</th>`).join('')}
+            ${methods.map((m) => `<th>${m.icon} ${escapeHtml(m.label)}</th>`).join('')}
             <th>Total</th>
         </tr>`;
     }
@@ -11276,9 +11378,9 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
     const nonZeroMethods = Object.entries(methods).filter(([, v]) => Number(v) !== 0);
     const cobradas = Number(c.transactionCount || 0) - Number(c.voidedCount || 0);
     const methodRows = nonZeroMethods.map(([k, v]) => {
-        const meta = DPM_META[k] || { icon: '', label: k };
+        const m = getPaymentMethods().find((x) => x.id === k) || { icon: '', label: k };
         return `<tr>
-            <td style="padding:3px 0;color:#c8c0b8;">${meta.icon} ${meta.label}</td>
+            <td style="padding:3px 0;color:#c8c0b8;">${m.icon} ${escapeHtml(m.label)}</td>
             <td style="padding:3px 0;text-align:right;color:#f0ead8;font-weight:700;">${formatMoney(Number(v))}</td>
         </tr>`;
     }).join('');
@@ -11672,4 +11774,4 @@ async function _autoLoadTicketsTab() {
 }
 
 initAdmin();
-loadPaymentConfig();
+loadPaymentMethods();
