@@ -989,8 +989,6 @@ a.is-ordering-closed {
     overflow: visible;
     z-index: 1;
 }
-}
-}
 
 /* Borde animado naranja futurista sutil */
 .liquid-glass::after {
@@ -1025,7 +1023,6 @@ a.is-ordering-closed {
 @keyframes border-glow-rotate {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
-}
 }
 
 .liquid-glass h1, .liquid-glass h2, .liquid-glass h3, .liquid-glass h4, .liquid-glass h5, .liquid-glass h6, .liquid-glass p, .liquid-glass span, .liquid-glass label, .liquid-glass small {
@@ -1448,10 +1445,6 @@ a.is-ordering-closed {
 
 /* Contenedor de Botones */
 .links-container {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    margin-bottom: 40px;
     display: none;
 }
 
@@ -4276,10 +4269,6 @@ a.is-ordering-closed {
     padding: 0;
     display: block;
 }
-}
-
-
-}
 
 .brand-banner h2 {
     font-family: 'Oswald', sans-serif;
@@ -5137,10 +5126,6 @@ a.is-ordering-closed {
     padding: 68px 16px 140px;
     max-width: 600px;
     margin: 0 auto;
-}
-
-.home-inner {
-    padding-bottom: 130px;
 }
 
 @media (min-width: 769px) {
@@ -6099,7 +6084,6 @@ a.is-ordering-closed {
 
 .cds-product-btn {
     margin-top: auto;
-    padding-top: 8px;
     width: 100%;
     padding: 8px 0;
     border: none;
