@@ -6261,8 +6261,13 @@ function createOrderCard(order) {
             </div>
         </div>`;
     } else {
-        // Layout compacto para pedidos pendientes: [ Cobrar pedido (flex) | ✎ | 🗑 ]
-        const receiveLabel = '💰 Cobrar pedido';
+        // Layout compacto para pedidos pendientes
+        // domicilio → [ 💰 Cobrar pedido ] [ ✎ ] [ 🗑 ]
+        // mesa/retiro → [ Recibir pedido ] [ 💰 ] [ ✎ ] [ 🗑 ]
+        const receiveLabel = isDeliveryOrder ? '💰 Cobrar pedido' : 'Recibir pedido';
+        const cobrarIconBtn = !isDeliveryOrder
+            ? `<button type="button" class="order-action-btn order-action-btn-cobrar koa-icon-btn" data-order-card-action="cobrar_pendiente" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
+            : '';
         const editBtn = showEditPosAction
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
             : '';
@@ -6272,7 +6277,7 @@ function createOrderCard(order) {
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
             <button type="button" class="order-action-btn order-action-btn-receive koa-mesa-main" data-order-card-action="recibir_pedido" data-order-id="${order.id}">${receiveLabel}</button>
             <div class="koa-mesa-icons">
-                ${viewBtn}${editBtn}
+                ${viewBtn}${cobrarIconBtn}${editBtn}
                 <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
             </div>
         </div>`;
@@ -10000,7 +10005,26 @@ if (ordersActionRoot) {
             actionButton.disabled = true;
             try {
                 if (nextStatus === 'recibir_pedido') {
-                    // Todos los tipos de pedido pasan por el modal de cobro antes de procesarse
+                    const isDeliveryOrder = order.orderType === 'domicilio' || order.fulfillmentType === 'delivery';
+                    if (isDeliveryOrder) {
+                        openDeliveryPaymentModal(order, true);
+                        actionButton.disabled = false;
+                        return;
+                    }
+                    // Mesa / para llevar: recibir directamente sin cobro
+                    const copied = await copyTextToClipboard(buildReceivedOrderMessage(order));
+                    await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow() });
+                    await reloadDataAndRender();
+                    showNotice(
+                        copied ? 'Pedido recibido, movido a su columna y mensaje copiado.' : 'Pedido recibido y movido a su columna.',
+                        copied ? 'ok' : 'error'
+                    );
+                    closeUnreadTray();
+                    return;
+                }
+
+                if (nextStatus === 'cobrar_pendiente') {
+                    // Cobrar cualquier pedido pendiente (abre modal y al confirmar pasa a preparación)
                     openDeliveryPaymentModal(order, true);
                     actionButton.disabled = false;
                     return;
