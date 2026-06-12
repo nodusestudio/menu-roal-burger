@@ -6261,8 +6261,8 @@ function createOrderCard(order) {
             </div>
         </div>`;
     } else {
-        // Layout compacto para pedidos pendientes: [ Cobrar/Recibir pedido (flex) | ✎ | 🗑 ]
-        const receiveLabel = isDeliveryOrder ? 'Cobrar pedido' : 'Recibir pedido';
+        // Layout compacto para pedidos pendientes: [ Cobrar pedido (flex) | ✎ | 🗑 ]
+        const receiveLabel = '💰 Cobrar pedido';
         const editBtn = showEditPosAction
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
             : '';
@@ -10000,22 +10000,9 @@ if (ordersActionRoot) {
             actionButton.disabled = true;
             try {
                 if (nextStatus === 'recibir_pedido') {
-                    const isDeliveryOrder = order.orderType === 'domicilio' || order.fulfillmentType === 'delivery';
-                    if (isDeliveryOrder) {
-                        openDeliveryPaymentModal(order);
-                        actionButton.disabled = false;
-                        return;
-                    }
-                    const copied = await copyTextToClipboard(buildReceivedOrderMessage(order));
-                    await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow() });
-                    await reloadDataAndRender();
-                    showNotice(
-                        copied
-                            ? 'Pedido recibido, movido a su columna y mensaje copiado.'
-                            : 'Pedido recibido y movido a su columna. No se pudo copiar el mensaje automaticamente.',
-                        copied ? 'ok' : 'error'
-                    );
-                    closeUnreadTray();
+                    // Todos los tipos de pedido pasan por el modal de cobro antes de procesarse
+                    openDeliveryPaymentModal(order, true);
+                    actionButton.disabled = false;
                     return;
                 }
 
