@@ -5826,6 +5826,15 @@ function getOrderPaymentLabel(order) {
     const subLabels = { nequi: 'Nequi', bold: 'Bold', bancolombia: 'Bancolombia' };
     const subStr = subLabels[sub] || '';
 
+    if (method === 'split' && Array.isArray(order.paymentSplit) && order.paymentSplit.length) {
+        const parts = order.paymentSplit.map((s) => {
+            const pm = getPaymentMethods().find((x) => x.id === s.method);
+            const label = pm ? pm.label : s.method;
+            return `${label} ${formatMoney(Number(s.amount))}`;
+        });
+        return `Dividido | ${parts.join(' + ')}`;
+    }
+
     if (method === 'efectivo') {
         const tender = Number(order.cashTenderAmount || 0);
         const change = Number(order.cashChangeAmount || 0);
@@ -5838,6 +5847,9 @@ function getOrderPaymentLabel(order) {
     if (method === 'tarjeta')       return subStr ? `Tarjeta (${subStr})` : 'Tarjeta';
     if (method === 'transferencia') return subStr ? `Transferencia (${subStr})` : 'Transferencia';
     if (method === 'link_pago')     return subStr ? `Link de pago (${subStr})` : 'Link de pago';
+
+    const pm = getPaymentMethods().find((x) => x.id === method);
+    if (pm) return pm.label;
 
     return 'Sin medio de pago';
 }
@@ -6098,6 +6110,19 @@ function buildThermalTicketMarkup(order, options = {}) {
                         <span>Total</span>
                         <strong>${escapeHtml(totalText)}</strong>
                     </div>
+                    ${order.paymentMethod === 'split' && Array.isArray(order.paymentSplit) && order.paymentSplit.length ? `
+                    <div class="ticket-summary-line ticket-split-header">
+                        <span>Pago dividido</span>
+                    </div>
+                    ${order.paymentSplit.map((s) => {
+                        const pm = getPaymentMethods().find((x) => x.id === s.method);
+                        const lbl = pm ? pm.label : s.method;
+                        return `<div class="ticket-summary-line ticket-split-line">
+                            <span>${escapeHtml(lbl)}</span>
+                            <strong>${escapeHtml(formatMoney(Number(s.amount)))}</strong>
+                        </div>`;
+                    }).join('')}
+                    ` : ''}
                     ${changeAmount !== null ? `
                     <div class="ticket-summary-line ticket-total-row ticket-change-row">
                         <span>Cambio</span>
@@ -7427,7 +7452,14 @@ function buildESCPOSData(order) {
 
     const cashGiven = Number(order.cashTenderAmount || 0);
     const totalAmt = getOrderDisplayTotal(order);
-    if (order.paymentMethod === 'efectivo' && cashGiven > 0) {
+    if (order.paymentMethod === 'split' && Array.isArray(order.paymentSplit) && order.paymentSplit.length) {
+        sep();
+        wl('Pago dividido:');
+        for (const s of order.paymentSplit) {
+            const pm = getPaymentMethods().find((x) => x.id === s.method);
+            wc(pm ? pm.label : s.method, formatMoney(Number(s.amount)));
+        }
+    } else if (order.paymentMethod === 'efectivo' && cashGiven > 0) {
         sep();
         wc('Pago con', formatMoney(cashGiven));
         if (cashGiven > totalAmt) wc('Cambio', formatMoney(Number(order.cashChangeAmount || (cashGiven - totalAmt))));
@@ -11690,8 +11722,13 @@ function renderCajaDiaria() {
     const methods = getPaymentMethods();
     const methodKeys = methods.map((m) => m.id);
 
-    // Detectar cobros con métodos históricos no reconocidos
-    const hasUnmatched = allPaid.some((o) => !methodKeys.includes(o.paymentMethod));
+    // Detectar cobros con métodos históricos no reconocidos (split: verificar cada parte)
+    const hasUnmatched = allPaid.some((o) => {
+        if (o.paymentMethod === 'split') {
+            return Array.isArray(o.paymentSplit) && o.paymentSplit.some((s) => !methodKeys.includes(s.method));
+        }
+        return !methodKeys.includes(o.paymentMethod);
+    });
     const totalCols = 2 + methodKeys.length + (hasUnmatched ? 1 : 0) + 1;
 
     if (allPaid.length === 0 && allGastos.length === 0) {
