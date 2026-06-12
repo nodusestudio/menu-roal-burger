@@ -530,22 +530,36 @@
     <div id="promoModal" class="promo-modal" role="dialog" aria-modal="true" aria-label="Recomendado del dia">
         <div class="promo-modal-card">
             <button class="promo-modal-close" onclick="closePromoModal()" aria-label="Cerrar promoción">&times;</button>
-            <div class="promo-modal-media">
-                <img src="logo.png" alt="Recomendado del dia" class="promo-modal-img" id="promoModalImage">
-                <span class="promo-modal-badge">-20% OFF</span>
-                <div class="promo-modal-agotado-overlay" id="promoAgotadoOverlay" hidden>
-                    <span class="promo-modal-agotado-text">AGOTADO<br>POR HOY</span>
+            <!-- Top bar igual al home banner -->
+            <div class="home-rec-top-bar">
+                <span class="home-rec-kicker" id="promoModalKicker">Recomendado del día</span>
+                <span class="home-rec-discount-badge promo-modal-badge">-20% HOY</span>
+            </div>
+            <!-- Layout imagen + cuerpo idéntico al home banner -->
+            <div class="home-rec-content">
+                <div class="home-rec-img-wrap">
+                    <img class="home-rec-img" id="promoModalImage" src="logo.png" alt="Recomendado del dia">
+                    <div class="promo-modal-agotado-overlay" id="promoAgotadoOverlay" hidden>
+                        <span class="promo-modal-agotado-text">AGOTADO<br>POR HOY</span>
+                    </div>
+                </div>
+                <div class="home-rec-body">
+                    <strong class="home-rec-name" id="promoModalTitle">Producto recomendado</strong>
+                    <div class="home-rec-price-row">
+                        <div class="home-rec-price-block">
+                            <span class="home-rec-price-tag">Normal</span>
+                            <span class="home-rec-price-orig" id="promoModalOrigPrice"></span>
+                        </div>
+                        <div class="home-rec-price-block home-rec-price-block--hot">
+                            <span class="home-rec-price-tag">Hoy</span>
+                            <span class="home-rec-price" id="promoModalDiscountPrice"></span>
+                        </div>
+                    </div>
+                    <button class="home-rec-btn promo-btn-order" type="button" id="promoOrderButton" onclick="orderDailyRecommendation()">¡Lo Quiero! 🔥</button>
+                    <button type="button" class="promo-btn promo-btn-menu" onclick="closePromoModal()">Ver Menú 🍔</button>
                 </div>
             </div>
-            <div class="promo-modal-body">
-                <p class="promo-modal-kicker" id="promoModalKicker">Recomendado del dia</p>
-                <h3 class="promo-modal-title" id="promoModalTitle">Producto recomendado</h3>
-                <p class="promo-modal-text" id="promoModalText">Cada dia te mostramos un producto distinto del menu para que descubras algo nuevo.</p>
-            </div>
-            <div class="promo-modal-actions">
-                <button class="promo-btn promo-btn-order" type="button" id="promoOrderButton" onclick="orderDailyRecommendation()">Pedir recomendado</button>
-                <button class="promo-btn promo-btn-menu" onclick="closePromoModal()">Ver Menú 🍔</button>
-            </div>
+            <p id="promoModalText" hidden aria-hidden="true"></p>
         </div>
     </div>
 

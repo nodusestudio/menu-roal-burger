@@ -8846,10 +8846,11 @@ function updatePromoModalContent() {
     const image = document.getElementById('promoModalImage');
     const kicker = document.getElementById('promoModalKicker');
     const title = document.getElementById('promoModalTitle');
-    const text = document.getElementById('promoModalText');
     const orderButton = document.getElementById('promoOrderButton');
     const agotadoOverlay = document.getElementById('promoAgotadoOverlay');
     const badge = modal ? modal.querySelector('.promo-modal-badge') : null;
+    const origPriceEl = document.getElementById('promoModalOrigPrice');
+    const discountPriceEl = document.getElementById('promoModalDiscountPrice');
 
     const isSoldOut = recommendedProduct.estado === 'paused';
 
@@ -8879,18 +8880,11 @@ function updatePromoModalContent() {
         badge.style.display = isSoldOut ? 'none' : '';
     }
 
-    if (text) {
-        if (isSoldOut) {
-            text.textContent = `${recommendedProduct.nombre} es nuestro recomendado de hoy pero ya está agotado. Mañana habrá uno nuevo.`;
-        } else {
-            const discountPrice = resolveCartUnitPrice(recommendedProduct.nombre, recommendedProduct.categoria, {
-                type: 'solo',
-                imagePath: recommendedProduct.image_url,
-                recommendedDiscount: true,
-                discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
-            });
-            text.textContent = `Hoy te recomendamos ${recommendedProduct.nombre} de la categoria ${recommendedProduct.categoria}. Tiene 20% de descuento y hoy te queda en ${formatCurrency(discountPrice)}.`;
-        }
+    if (origPriceEl || discountPriceEl) {
+        const raw = resolveProductDisplayPrice(recommendedProduct);
+        const discounted = Math.round(raw * (1 - RECOMMENDED_DAY_DISCOUNT_RATE));
+        if (origPriceEl) origPriceEl.textContent = raw > discounted ? `$${raw.toLocaleString('es-CO')}` : '';
+        if (discountPriceEl) discountPriceEl.textContent = `$${discounted.toLocaleString('es-CO')}`;
     }
 
     if (orderButton) {
@@ -8900,7 +8894,7 @@ function updatePromoModalContent() {
             orderButton.style.opacity = '0.45';
             orderButton.style.cursor = 'not-allowed';
         } else {
-            orderButton.textContent = `Pedir ${recommendedProduct.nombre} con 20% OFF`;
+            orderButton.textContent = '¡Lo Quiero! 🔥';
             orderButton.disabled = false;
             orderButton.style.opacity = '';
             orderButton.style.cursor = '';
