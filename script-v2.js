@@ -3168,10 +3168,8 @@ let cartToastTimeout = null;
 
 function syncBodyScrollLock() {
     const menuModal = document.getElementById('menuModal');
-    const promoModal = document.getElementById('promoModal');
     const supportModal = supportUI?.modal || document.getElementById('supportModal');
     const isMenuOpen = Boolean(menuModal && menuModal.style.display === 'block');
-    const isPromoOpen = Boolean(promoModal && promoModal.classList.contains('is-open'));
     const isCartOpen = Boolean(cartUI && cartUI.drawer.classList.contains('is-open'));
     const isSupportOpen = Boolean(supportModal && supportModal.classList.contains('is-open'));
     const isCheckoutOpen = Boolean(checkoutInfoUI && checkoutInfoUI.modal.classList.contains('is-open'));
@@ -3182,7 +3180,7 @@ function syncBodyScrollLock() {
     const isCustomerConsentOpen = Boolean(customerConsentDocumentUI && customerConsentDocumentUI.modal.classList.contains('is-open'));
     const isCustomerDeleteOpen = Boolean(customerDeleteAccountUI && customerDeleteAccountUI.modal.classList.contains('is-open'));
     const isCustomerPasswordResetOpen = Boolean(customerPasswordResetUI && customerPasswordResetUI.modal.classList.contains('is-open'));
-    document.body.style.overflow = isMenuOpen || isPromoOpen || isCartOpen || isSupportOpen || isCheckoutOpen || isPaymentFlowOpen || isOrderSentOpen || isCustomerAuthOpen || isCustomerRegisterOpen || isCustomerConsentOpen || isCustomerDeleteOpen || isCustomerPasswordResetOpen ? 'hidden' : 'auto';
+    document.body.style.overflow = isMenuOpen || isCartOpen || isSupportOpen || isCheckoutOpen || isPaymentFlowOpen || isOrderSentOpen || isCustomerAuthOpen || isCustomerRegisterOpen || isCustomerConsentOpen || isCustomerDeleteOpen || isCustomerPasswordResetOpen ? 'hidden' : 'auto';
 }
 
 function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
@@ -8472,11 +8470,7 @@ async function renderPublicFeaturedFromAdmin() {
         updatePromoModalContent();
         if (_promoModalPendingOpen) {
             _promoModalPendingOpen = false;
-            const pendingModal = document.getElementById('promoModal');
-            if (pendingModal) {
-                pendingModal.classList.add('is-open');
-                syncBodyScrollLock();
-            }
+            openPromoScreen();
         }
         renderHomeScreen();
     });
@@ -8842,22 +8836,17 @@ function updatePromoModalContent() {
     const recommendedProduct = getRecommendedProductOfDay();
     currentRecommendedProduct = recommendedProduct;
 
-    const modal = document.getElementById('promoModal');
+    const screen = document.getElementById('promoScreen');
     const image = document.getElementById('promoModalImage');
     const kicker = document.getElementById('promoModalKicker');
     const title = document.getElementById('promoModalTitle');
     const orderButton = document.getElementById('promoOrderButton');
     const agotadoOverlay = document.getElementById('promoAgotadoOverlay');
-    const badge = modal ? modal.querySelector('.promo-modal-badge') : null;
+    const badge = screen ? screen.querySelector('.promo-modal-badge') : null;
     const origPriceEl = document.getElementById('promoModalOrigPrice');
     const discountPriceEl = document.getElementById('promoModalDiscountPrice');
 
     const isSoldOut = recommendedProduct.estado === 'paused';
-
-    if (modal) {
-        modal.setAttribute('aria-label', `${PROMO_DAY_NAME}: ${recommendedProduct.nombre}`);
-        modal.classList.toggle('is-sold-out', isSoldOut);
-    }
 
     if (image) {
         image.src = recommendedProduct.image_url || 'logo.png';
@@ -9307,12 +9296,19 @@ function renderSearchResults(query) {
     });
 }
 
-function openPromoModalDirect() {
-    const modal = document.getElementById('promoModal');
-    if (!modal) return;
+function openPromoScreen() {
+    const screen = document.getElementById('promoScreen');
+    if (!screen) return;
     if (_promoProductsReady) updatePromoModalContent();
-    modal.classList.add('is-open');
-    syncBodyScrollLock();
+    setPublicTopbarVisible(false);
+    screen.hidden = false;
+    screen.scrollTop = 0;
+}
+
+function closePromoScreen() {
+    const screen = document.getElementById('promoScreen');
+    if (screen) screen.hidden = true;
+    setPublicTopbarVisible(true);
 }
 
 function initPromoModal() {
@@ -9321,12 +9317,8 @@ function initPromoModal() {
     }
 
     setTimeout(function () {
-        var modal = document.getElementById('promoModal');
-        if (!modal) return;
         if (_promoProductsReady) {
-            updatePromoModalContent();
-            modal.classList.add('is-open');
-            syncBodyScrollLock();
+            openPromoScreen();
         } else {
             _promoModalPendingOpen = true;
         }
@@ -9384,7 +9376,7 @@ function orderDailyRecommendation() {
     }
 
     if (!activeCustomerProfile) {
-        closePromoModal();
+        closePromoScreen();
         openPromoRegistrationPrompt();
         return;
     }
@@ -9393,7 +9385,7 @@ function orderDailyRecommendation() {
     if (recommendedProduct.estado === 'paused') return;
 
     trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${recommendedProduct.nombre}`);
-    closePromoModal();
+    closePromoScreen();
     addItemToCart(recommendedProduct.nombre, recommendedProduct.categoria, {
         type: 'solo',
         imagePath: recommendedProduct.image_url,
@@ -9401,29 +9393,17 @@ function orderDailyRecommendation() {
         discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
     }, 'btn-promo-dia-order');
 }
-
-function closePromoModal() {
-    var modal = document.getElementById('promoModal');
-    if (modal) {
-        modal.classList.remove('is-open');
-        syncBodyScrollLock();
-    }
-}
 document.addEventListener('click', function(event) {
     const menuModal = document.getElementById('menuModal');
     if (event.target === menuModal) {
         closeMenuModal();
-    }
-    const promoModal = document.getElementById('promoModal');
-    if (event.target === promoModal) {
-        closePromoModal();
     }
 });
 
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         closeMenuModal();
-        closePromoModal();
+        closePromoScreen();
         closeSupportModal();
         closeCustomerAuthModal();
     }
@@ -9640,6 +9620,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.__roalHideSplash) window.__roalHideSplash();
         closeNavCategoriesScreen();
         closeSearchScreen();
+        closePromoScreen();
         closeCategoryDetail();
         showHomeScreen();
     });
@@ -9647,11 +9628,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('bnavCombos')?.addEventListener('click', () => {
         openNavCategoriesScreen('Combos', cat => normalizeCategoryKey(cat.name || '').includes('combo'));
     });
-    document.getElementById('bnavPromo')?.addEventListener('click', () => openPromoModalDirect());
+    document.getElementById('bnavPromo')?.addEventListener('click', () => openPromoScreen());
     document.getElementById('bnavBuscador')?.addEventListener('click', () => openSearchScreen());
     document.getElementById('bnavPerfil')?.addEventListener('click', () => openCustomerAuthModal());
     document.getElementById('ncsCloseBtn')?.addEventListener('click', () => closeNavCategoriesScreen());
     document.getElementById('searchCloseBtn')?.addEventListener('click', () => closeSearchScreen());
+    document.getElementById('promoCloseBtn')?.addEventListener('click', () => closePromoScreen());
     document.getElementById('searchInput')?.addEventListener('input', e => renderSearchResults(e.target.value));
 
     // Botones de la pantalla de inicio
@@ -9665,9 +9647,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('splashSignInBtn')?.addEventListener('click', () => {
         _promoModalPendingOpen = false;
-        const promoModal = document.getElementById('promoModal');
-        if (promoModal) promoModal.classList.remove('is-open');
-        syncBodyScrollLock();
+        closePromoScreen();
 
         showHomeScreen();
         if (window.__roalHideSplash) window.__roalHideSplash();
