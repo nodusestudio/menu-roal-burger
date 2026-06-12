@@ -11364,27 +11364,59 @@ function _navigateToCajaDiaria() {
 
 // ── Panel lateral cierre de caja ──────────────────────────────────────────────
 let _cierrePrintHtml = '';
+let _pendingCierreDoc = null;
 
 function openCierreSidePanel(ticketHtml, title) {
     const panel = document.getElementById('cierreSidePanel');
     const body  = document.getElementById('cierreSidePanelBody');
     const titleEl = document.getElementById('cierreSidePanelTitle');
     if (!panel || !body) return;
-    if (titleEl) titleEl.textContent = title || 'Ticket de cierre';
+    if (titleEl) titleEl.textContent = title || 'Vista previa del cierre';
     body.innerHTML = ticketHtml;
     _cierrePrintHtml = ticketHtml;
     panel.removeAttribute('hidden');
 }
 
-document.getElementById('cierreSidePanelClose')?.addEventListener('click', () => {
-    document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
-});
-
-document.getElementById('cierrePrintBtn')?.addEventListener('click', () => {
+function _printCierreTicket(html) {
     const win = window.open('', '_blank', 'width=420,height=680,scrollbars=yes');
     if (win) {
-        win.document.write(`<!DOCTYPE html><html><head><title>Cierre de Caja</title></head><body style="margin:0;background:#fff;">${_cierrePrintHtml}<div style="text-align:center;margin:16px;"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">Imprimir</button></div></body></html>`);
+        win.document.write(`<!DOCTYPE html><html><head><title>Cierre de Caja</title></head><body style="margin:0;background:#fff;">${html}<div style="text-align:center;margin:16px;"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">Imprimir</button></div></body></html>`);
         win.document.close();
+    }
+}
+
+document.getElementById('cierreSidePanelClose')?.addEventListener('click', () => {
+    document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
+    _pendingCierreDoc = null;
+});
+
+document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async () => {
+    if (!_pendingCierreDoc) return;
+    const { closureDoc, closureId, ticketHtml, dateStr } = _pendingCierreDoc;
+
+    const imprimir = confirm('¿Desea imprimir el ticket de cierre?');
+    if (imprimir) _printCierreTicket(ticketHtml);
+
+    const confirmBtn = document.getElementById('cierreCajaConfirmBtn');
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Guardando...'; }
+    try {
+        await firebaseDb.collection(CIERRES_CAJA_COLLECTION).doc(closureId).set(closureDoc);
+
+        cajaAperturaAt = Date.now();
+        try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(cajaAperturaAt)); } catch {}
+
+        _pendingCierreDoc = null;
+        document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
+
+        renderCajaDiaria();
+        _cajaDiariaAutoOpened = false;
+        showNotice('Caja cerrada y guardada en historial.', 'ok');
+        _navigateToCajaDiaria();
+        await renderLibroCierres();
+    } catch (err) {
+        showNotice(`Error al guardar cierre: ${err.message || 'error inesperado.'}`, 'error');
+    } finally {
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '🔒 Cerrar Caja'; }
     }
 });
 
@@ -11437,24 +11469,26 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
 // ── Cerrar Caja ───────────────────────────────────────────────────────────────
 async function cerrarCaja() {
     const btn = document.getElementById('cerrarCajaBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Cerrando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Preparando...'; }
 
     try {
         const today = new Date();
         const todayStr = today.toISOString().split('T')[0];
+
+        // Usar el mismo filtro que renderCajaDiaria: desde cajaAperturaAt o desde hoy
         const paid = ordersState.filter((o) => {
-            const paidAt = o.paidAt;
-            if (!paidAt) return false;
-            const ms = typeof paidAt.toMillis === 'function' ? paidAt.toMillis() : Number(paidAt);
+            if (!o.paidAt || !o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+            const ms = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt);
+            if (cajaAperturaAt) return ms >= cajaAperturaAt;
             return new Date(ms).toISOString().split('T')[0] === todayStr;
         });
 
         if (!paid.length) {
-            showNotice('No hay cobros registrados hoy para cerrar la caja.', 'error');
+            showNotice('No hay cobros en la jornada actual para cerrar la caja.', 'error');
             return;
         }
 
-        // Los anulados se cuentan pero NO afectan los totales — su neto es $0
+        // Los anulados se cuentan pero NO afectan los totales netos
         const sumMethod = {};
         let grandTotal = 0;
         let voidedCount = 0;
@@ -11469,10 +11503,6 @@ async function cerrarCaja() {
         });
 
         const cfg = await firebaseDb.collection('configuracion').doc('negocio').get().then(s => s.exists ? s.data() : {});
-        const businessName = cfg.nombre || cfg.name || 'ROAL BURGER';
-        const businessAddress = cfg.direccion || cfg.address || '';
-        const businessPhone = cfg.telefono || cfg.phone || '';
-        const businessNit = cfg.nit || cfg.rut || '';
 
         const closedAt = firestoreNow();
         const closureId = `cierre_${todayStr}_${Date.now()}`;
@@ -11485,36 +11515,22 @@ async function cerrarCaja() {
             voidedCount,
             methodTotals: sumMethod,
             grandTotal,
-            businessName,
-            businessAddress,
-            businessPhone,
-            businessNit,
+            businessName: cfg.nombre || cfg.name || 'ROAL BURGER',
+            businessAddress: cfg.direccion || cfg.address || '',
+            businessPhone: cfg.telefono || cfg.phone || '',
+            businessNit: cfg.nit || cfg.rut || '',
         };
-
-        await firebaseDb.collection(CIERRES_CAJA_COLLECTION).doc(closureId).set(closureDoc);
 
         const dateStr = today.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
         const timeStr = today.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
         const ticketHtml = _buildCierreTicketHtml(closureDoc, dateStr, timeStr);
 
-        // Reiniciar caja: guardar timestamp de nueva apertura
-        cajaAperturaAt = Date.now();
-        try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(cajaAperturaAt)); } catch {}
+        // Guardar datos pendientes y mostrar preview — el usuario confirma el cierre desde el panel
+        _pendingCierreDoc = { closureDoc, closureId, ticketHtml, dateStr };
+        openCierreSidePanel(ticketHtml, `Vista previa · ${dateStr}`);
 
-        // Mostrar ticket y refrescar vistas
-        openCierreSidePanel(ticketHtml, `Cierre ${dateStr}`);
-        renderCajaDiaria();
-
-        _cajaDiariaAutoOpened = false;
-        showNotice('Caja cerrada y reiniciada correctamente.', 'ok');
-
-        // Navegar a Cajas → Caja Diaria para mostrar la caja ya vacía
-        _navigateToCajaDiaria();
-
-        await renderLibroCierres();
     } catch (err) {
-        showNotice(`Error al cerrar caja: ${err.message || 'error inesperado.'}`, 'error');
+        showNotice(`Error al preparar cierre: ${err.message || 'error inesperado.'}`, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🔒 Cerrar Caja'; }
     }
