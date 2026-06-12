@@ -10912,7 +10912,7 @@ let _dpmCashMode = null; // 'exacto' | 'cambio'
 let _dpmOrderTotal = 0;
 let _dpmReceiveOrder = false;
 let _dpmSplitMode = false;
-let _dpmSplitAmounts = {}; // { methodId: number }
+let _dpmSplitParts = []; // [{method: string|null, amount: number|null}]
 
 function getPaymentMethods() {
     return _paymentMethods.length ? _paymentMethods : DPM_DEFAULT_METHODS;
@@ -10996,84 +10996,141 @@ function _dpmShowSubSection(methodKey) {
     subSection.removeAttribute('hidden');
 }
 
-function _dpmGetSplitTotal() {
-    return Object.values(_dpmSplitAmounts).reduce((s, v) => s + Number(v || 0), 0);
+function _dpmSplitAssignedTotal() {
+    return _dpmSplitParts.reduce((s, p) => s + (Number(p.amount) > 0 ? Number(p.amount) : 0), 0);
 }
 
-function _dpmUpdateSplitStatus() {
-    const statusEl = document.getElementById('dpmSplitStatus');
-    if (!statusEl) return;
-    const total = _dpmGetSplitTotal();
-    const diff  = total - _dpmOrderTotal;
-    const usedMethods = Object.values(_dpmSplitAmounts).filter((v) => Number(v) > 0).length;
-    if (total === 0) {
-        statusEl.textContent = `Total a dividir: ${formatMoney(_dpmOrderTotal)}`;
-        statusEl.className = 'dpm-split-status';
-    } else if (Math.abs(diff) <= 1) {
-        statusEl.textContent = `✓ ${formatMoney(total)} / ${formatMoney(_dpmOrderTotal)}`;
-        statusEl.className = 'dpm-split-status ok';
-    } else if (diff > 1) {
-        statusEl.textContent = `Excede en ${formatMoney(diff)} — Total: ${formatMoney(_dpmOrderTotal)}`;
-        statusEl.className = 'dpm-split-status over';
-    } else {
-        statusEl.textContent = `Faltan ${formatMoney(Math.abs(diff))} — Asignado: ${formatMoney(total)}`;
-        statusEl.className = 'dpm-split-status';
+function _dpmSplitRemainder() {
+    return _dpmOrderTotal - _dpmSplitAssignedTotal();
+}
+
+function _dpmSplitIsValid() {
+    if (_dpmSplitParts.length < 2) return false;
+    if (_dpmSplitParts.some((p) => !p.method)) return false;
+    const noAmount = _dpmSplitParts.filter((p) => !(Number(p.amount) > 0));
+    if (noAmount.length === 0) return Math.abs(_dpmSplitAssignedTotal() - _dpmOrderTotal) <= 1;
+    if (noAmount.length === 1) return _dpmSplitRemainder() > 0;
+    return false;
+}
+
+function _dpmGetSplitData() {
+    const remainder = _dpmSplitRemainder();
+    return _dpmSplitParts
+        .map((p) => ({ method: p.method, amount: Number(p.amount) > 0 ? Number(p.amount) : Math.max(0, remainder) }))
+        .filter((p) => p.method && p.amount > 0);
+}
+
+function _dpmUpdateSplitBalance() {
+    const balanceEl = document.getElementById('dpmSplitBalance');
+    const balanceAmt = document.getElementById('dpmSplitBalanceAmt');
+    const remainder = _dpmSplitRemainder();
+    const assigned = _dpmSplitAssignedTotal();
+    const noAmountCount = _dpmSplitParts.filter((p) => !(Number(p.amount) > 0)).length;
+    if (balanceAmt) {
+        if (assigned === 0) {
+            balanceAmt.textContent = formatMoney(_dpmOrderTotal);
+            balanceEl?.setAttribute('class', 'dpm-split-balance');
+        } else if (noAmountCount === 1 || Math.abs(remainder) <= 1) {
+            balanceAmt.textContent = `✓ ${formatMoney(_dpmOrderTotal)}`;
+            balanceEl?.setAttribute('class', 'dpm-split-balance ok');
+        } else if (remainder < -1) {
+            balanceAmt.textContent = `Excede ${formatMoney(Math.abs(remainder))} — Total: ${formatMoney(_dpmOrderTotal)}`;
+            balanceEl?.setAttribute('class', 'dpm-split-balance over');
+        } else {
+            balanceAmt.textContent = `Faltan ${formatMoney(remainder)} — Total: ${formatMoney(_dpmOrderTotal)}`;
+            balanceEl?.setAttribute('class', 'dpm-split-balance partial');
+        }
     }
-    // Actualizar estilo de inputs
-    document.querySelectorAll('.dpm-split-input').forEach((inp) => {
-        inp.classList.toggle('has-value', Number(inp.value) > 0);
+    const confirmBtn = document.getElementById('dpmConfirmBtn');
+    if (confirmBtn && _dpmSplitMode) confirmBtn.disabled = !_dpmSplitIsValid();
+}
+
+function _dpmUpdateAutoRemainder() {
+    // Actualiza en-lugar la etiqueta "Restante" de la parte sin monto, sin re-render completo
+    const remainder = Math.max(0, _dpmSplitRemainder());
+    _dpmSplitParts.forEach((part, idx) => {
+        if (!(Number(part.amount) > 0)) {
+            const row = document.querySelector(`.dpm-part-row[data-part-idx="${idx}"]`);
+            if (!row) return;
+            const tag = row.querySelector('.dpm-part-remainder-tag');
+            if (tag) tag.textContent = `Restante: ${formatMoney(remainder)}`;
+        }
     });
-    const btn = document.getElementById('dpmConfirmBtn');
-    if (btn && _dpmSplitMode) {
-        btn.disabled = !(usedMethods >= 2 && Math.abs(diff) <= 1);
-    }
 }
 
-function _dpmRenderSplitForm() {
-    const wrap = document.getElementById('dpmSplitRows');
-    if (!wrap) return;
+function _dpmRenderSplitParts() {
+    const container = document.getElementById('dpmSplitParts');
+    if (!container) return;
     const methods = getEnabledPaymentMethods();
-    wrap.innerHTML = methods.map((m) => `
-        <div class="dpm-split-row">
-            <span class="dpm-split-row-icon">${m.icon}</span>
-            <span class="dpm-split-row-label">${escapeHtml(m.label)}</span>
-            <input type="number" class="dpm-split-input" data-split-method="${m.id}"
-                placeholder="$ 0" min="0" step="1000" inputmode="numeric"
-                value="${_dpmSplitAmounts[m.id] > 0 ? _dpmSplitAmounts[m.id] : ''}">
-        </div>`).join('');
-    _dpmUpdateSplitStatus();
+    const remainder = _dpmSplitRemainder();
+    const canAdd = _dpmSplitParts.length < methods.length;
+
+    container.innerHTML = _dpmSplitParts.map((part, idx) => {
+        const isAutoRemainder = !(Number(part.amount) > 0) && _dpmSplitParts.length >= 2;
+        const canRemove = _dpmSplitParts.length > 2;
+        const methodInfo = part.method ? methods.find((m) => m.id === part.method) : null;
+
+        const amountHtml = isAutoRemainder
+            ? `<span class="dpm-part-remainder-tag">Restante: ${formatMoney(Math.max(0, remainder))}</span>`
+            : `<input type="number" class="dpm-part-amount-input${Number(part.amount) > 0 ? ' filled' : ''}"
+                data-part-amount="${idx}" placeholder="$ 0" min="0" step="1000" inputmode="numeric"
+                value="${Number(part.amount) > 0 ? part.amount : ''}">`;
+
+        const labelHtml = methodInfo
+            ? `<span class="dpm-part-method-label">${methodInfo.icon} ${escapeHtml(methodInfo.label)}</span>`
+            : `<span class="dpm-part-method-label empty">Selecciona un método ↑</span>`;
+
+        return `<div class="dpm-part-row${part.method ? ' has-method' : ''}" data-part-idx="${idx}">
+            <div class="dpm-part-top">
+                <div class="dpm-part-method-chips">
+                    ${methods.map((m) => `<button type="button" class="dpm-part-method-chip${part.method === m.id ? ' selected' : ''}"
+                        data-part-method="${m.id}" data-part-idx="${idx}" title="${escapeHtml(m.label)}">${m.icon}</button>`).join('')}
+                </div>
+                ${canRemove ? `<button type="button" class="dpm-part-remove-btn" data-part-remove="${idx}">×</button>` : ''}
+            </div>
+            <div class="dpm-part-bottom">
+                ${labelHtml}
+                ${amountHtml}
+            </div>
+        </div>`;
+    }).join('');
+
+    const addBtn = document.getElementById('dpmSplitAddBtn');
+    if (addBtn) addBtn.style.display = canAdd ? '' : 'none';
+
+    _dpmUpdateSplitBalance();
 }
 
 function _dpmEnterSplitMode() {
     _dpmSplitMode = true;
-    _dpmSplitAmounts = {};
+    _dpmSplitParts = [{ method: null, amount: null }, { method: null, amount: null }];
     _dpmSelectedMethod = null;
     _dpmSubMethod = null;
     _dpmCashMode = null;
-    // Ocultar modo normal
     document.getElementById('dpmMethodsGrid')?.setAttribute('hidden', '');
     document.getElementById('dpmSubSection')?.setAttribute('hidden', '');
-    // Mostrar formulario split
     document.getElementById('dpmSplitWrap')?.removeAttribute('hidden');
-    document.getElementById('dpmSplitToggleBtn')?.classList.add('active');
-    _dpmRenderSplitForm();
-    const btn = document.getElementById('dpmConfirmBtn');
-    if (btn) btn.disabled = true;
+    const toggleBtn = document.getElementById('dpmSplitToggleBtn');
+    if (toggleBtn) { toggleBtn.classList.add('active'); toggleBtn.textContent = '× Solo'; }
+    _dpmRenderSplitParts();
+    const confirmBtn = document.getElementById('dpmConfirmBtn');
+    if (confirmBtn) confirmBtn.disabled = true;
 }
 
 function _dpmExitSplitMode() {
     _dpmSplitMode = false;
-    _dpmSplitAmounts = {};
-    // Restaurar modo normal
+    _dpmSplitParts = [];
     document.getElementById('dpmMethodsGrid')?.removeAttribute('hidden');
     document.getElementById('dpmSplitWrap')?.setAttribute('hidden', '');
-    document.getElementById('dpmSplitToggleBtn')?.classList.remove('active');
-    const btn = document.getElementById('dpmConfirmBtn');
-    if (btn) btn.disabled = true;
+    const toggleBtn = document.getElementById('dpmSplitToggleBtn');
+    if (toggleBtn) { toggleBtn.classList.remove('active'); toggleBtn.textContent = '+ Multi'; }
+    _dpmSelectedMethod = null;
+    document.querySelectorAll('#dpmMethodsGrid .dpm-method-btn').forEach((b) => b.classList.remove('active'));
+    _dpmUpdateConfirmState();
 }
 
 function _dpmUpdateConfirmState() {
-    if (_dpmSplitMode) { _dpmUpdateSplitStatus(); return; }
+    if (_dpmSplitMode) { _dpmRenderSplitParts(); return; }
     const btn = document.getElementById('dpmConfirmBtn');
     if (!btn || !_dpmSelectedMethod) { if (btn) btn.disabled = true; return; }
     if (_dpmSelectedMethod === 'efectivo') {
@@ -11093,7 +11150,7 @@ function openDeliveryPaymentModal(order, receiveOrder = true) {
     _dpmCashMode = null;
     _dpmReceiveOrder = receiveOrder;
     _dpmSplitMode = false;
-    _dpmSplitAmounts = {};
+    _dpmSplitParts = [];
 
     const modal = document.getElementById('deliveryPaymentModal');
     if (!modal) return;
@@ -11111,7 +11168,8 @@ function openDeliveryPaymentModal(order, receiveOrder = true) {
     document.getElementById('dpmChangeRow')?.setAttribute('hidden', '');
     document.getElementById('dpmSplitWrap')?.setAttribute('hidden', '');
     document.getElementById('dpmMethodsGrid')?.removeAttribute('hidden');
-    document.getElementById('dpmSplitToggleBtn')?.classList.remove('active');
+    const toggleBtn = document.getElementById('dpmSplitToggleBtn');
+    if (toggleBtn) { toggleBtn.classList.remove('active'); toggleBtn.textContent = '+ Multi'; }
 
     const confirmBtn = document.getElementById('dpmConfirmBtn');
     if (confirmBtn) {
@@ -11137,9 +11195,36 @@ function closeDeliveryPaymentModal() {
 document.getElementById('deliveryPaymentModal')?.addEventListener('click', async (e) => {
     if (e.target.closest('#dpmCancelBtn')) { closeDeliveryPaymentModal(); return; }
 
-    // Toggle modo split
+    // Toggle modo multi
     if (e.target.closest('#dpmSplitToggleBtn')) {
         if (_dpmSplitMode) { _dpmExitSplitMode(); } else { _dpmEnterSplitMode(); }
+        return;
+    }
+
+    // Agregar parte en modo multi
+    if (e.target.closest('#dpmSplitAddBtn') && _dpmSplitMode) {
+        _dpmSplitParts.push({ method: null, amount: null });
+        _dpmRenderSplitParts();
+        return;
+    }
+
+    // Eliminar parte en modo multi
+    const removeBtn = e.target.closest('[data-part-remove]');
+    if (removeBtn && _dpmSplitMode) {
+        const idx = Number(removeBtn.dataset.partRemove);
+        _dpmSplitParts.splice(idx, 1);
+        _dpmRenderSplitParts();
+        return;
+    }
+
+    // Selección de método en una parte (modo multi)
+    const partMethodBtn = e.target.closest('[data-part-method][data-part-idx]');
+    if (partMethodBtn && _dpmSplitMode) {
+        const idx = Number(partMethodBtn.dataset.partIdx);
+        _dpmSplitParts[idx].method = partMethodBtn.dataset.partMethod;
+        _dpmRenderSplitParts();
+        const inputs = document.querySelectorAll(`[data-part-amount="${idx}"]`);
+        if (inputs.length) inputs[0].focus();
         return;
     }
 
@@ -11199,9 +11284,7 @@ document.getElementById('deliveryPaymentModal')?.addEventListener('click', async
         const orderTotal   = _dpmOrderTotal;
         const receiveOrder = _dpmReceiveOrder;
         const isSplit      = _dpmSplitMode;
-        const splitData    = Object.entries(_dpmSplitAmounts)
-            .filter(([, v]) => Number(v) > 0)
-            .map(([m, amount]) => ({ method: m, amount: Number(amount) }));
+        const splitData    = _dpmGetSplitData();
         const order = ordersState.find((o) => o.id === orderId);
         closeDeliveryPaymentModal();
 
@@ -11263,12 +11346,18 @@ document.getElementById('deliveryPaymentModal')?.addEventListener('click', async
     }
 });
 
-// Inputs del modo split
+// Inputs de monto en modo multi — solo actualiza balance, sin re-render completo
 document.getElementById('dpmSplitWrap')?.addEventListener('input', (e) => {
-    const inp = e.target.closest('[data-split-method]');
+    const inp = e.target.closest('[data-part-amount]');
     if (!inp) return;
-    _dpmSplitAmounts[inp.dataset.splitMethod] = Number(inp.value) || 0;
-    _dpmUpdateSplitStatus();
+    const idx = Number(inp.dataset.partAmount);
+    if (_dpmSplitParts[idx]) {
+        _dpmSplitParts[idx].amount = Number(inp.value) > 0 ? Number(inp.value) : null;
+        inp.classList.toggle('filled', Number(inp.value) > 0);
+    }
+    _dpmUpdateSplitBalance();
+    // Si hay una parte sin monto (último como restante), actualizar su etiqueta
+    _dpmUpdateAutoRemainder();
 });
 
 // Input de efectivo: calcular cambio en tiempo real

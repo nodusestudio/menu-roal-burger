@@ -8536,44 +8536,88 @@
             border-top: 1px dashed rgba(255,255,255,0.12);
         }
         .dpm-split-toggle {
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.18);
-            border-radius: 6px;
+            background: rgba(255,255,255,0.07);
+            border: 1.5px solid rgba(255,255,255,0.15);
+            border-radius: 20px;
             color: var(--admin-muted);
-            font-size: 1rem;
+            font-size: 0.72rem;
             font-weight: 700;
-            width: 26px; height: 22px;
+            letter-spacing: 0.04em;
+            height: 22px; padding: 0 8px;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; flex-shrink: 0; padding: 0;
+            cursor: pointer; flex-shrink: 0;
             transition: background 0.15s, color 0.15s, border-color 0.15s;
+            white-space: nowrap;
         }
-        .dpm-split-toggle:hover,
-        .dpm-split-toggle.active { background: rgba(251,191,36,0.18); border-color: rgba(251,191,36,0.5); color: #fbbf24; }
-        .dpm-split-row {
-            display: flex; align-items: center; gap: 10px;
-            padding: 7px 14px;
+        .dpm-split-toggle:hover { background: rgba(255,149,64,0.12); border-color: rgba(255,149,64,0.4); color: #ff9540; }
+        .dpm-split-toggle.active { background: rgba(255,149,64,0.18); border-color: rgba(255,149,64,0.55); color: #ff9540; }
+
+        /* ── Partes del pago multi-método ── */
+        .dpm-split-parts { display: flex; flex-direction: column; gap: 8px; padding: 0 14px; }
+        .dpm-part-row {
+            background: rgba(255,255,255,0.04);
+            border: 1.5px solid rgba(255,255,255,0.09);
+            border-radius: 10px;
+            padding: 10px 12px 10px;
+            display: flex; flex-direction: column; gap: 8px;
+            transition: border-color 0.15s;
         }
-        .dpm-split-row-icon { font-size: 1.05rem; flex-shrink: 0; }
-        .dpm-split-row-label { flex: 1; font-size: 0.82rem; color: var(--admin-text); font-weight: 500; }
-        .dpm-split-input {
+        .dpm-part-row.has-method { border-color: rgba(255,149,64,0.25); }
+        .dpm-part-top { display: flex; align-items: center; gap: 6px; }
+        .dpm-part-method-chips { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
+        .dpm-part-method-chip {
+            background: rgba(255,255,255,0.06);
+            border: 1.5px solid rgba(255,255,255,0.11);
+            border-radius: 6px; color: var(--admin-text);
+            cursor: pointer; padding: 4px 8px;
+            font-size: 0.85rem; line-height: 1;
+            transition: all 0.12s;
+        }
+        .dpm-part-method-chip:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25); }
+        .dpm-part-method-chip.selected { background: rgba(255,149,64,0.2); border-color: rgba(255,149,64,0.55); }
+        .dpm-part-remove-btn {
+            background: none; border: none; color: rgba(255,255,255,0.25);
+            font-size: 1.1rem; cursor: pointer; padding: 0 2px; line-height: 1;
+            flex-shrink: 0; border-radius: 4px; transition: color 0.12s, background 0.12s;
+        }
+        .dpm-part-remove-btn:hover { color: #fca5a5; background: rgba(252,165,165,0.1); }
+        .dpm-part-bottom { display: flex; align-items: center; gap: 8px; }
+        .dpm-part-method-label { flex: 1; font-size: 0.85rem; font-weight: 600; color: var(--admin-text); }
+        .dpm-part-method-label.empty { color: var(--admin-muted); font-weight: 400; font-style: italic; font-size: 0.78rem; }
+        .dpm-part-amount-input {
             background: rgba(255,255,255,0.07);
             border: 1.5px solid rgba(255,255,255,0.12);
             border-radius: 8px; padding: 6px 10px;
-            color: #fff; font-size: 0.88rem; text-align: right;
-            width: 110px; outline: none;
+            color: #fff; font-size: 0.9rem; text-align: right;
+            width: 130px; outline: none;
             transition: border-color 0.15s;
         }
-        .dpm-split-input:focus { border-color: #fbbf24; }
-        .dpm-split-input.has-value { border-color: rgba(251,191,36,0.5); }
-        .dpm-split-status {
-            padding: 8px 14px 4px;
-            font-size: 0.78rem;
-            color: var(--admin-muted);
-            text-align: right;
-            font-weight: 600;
+        .dpm-part-amount-input:focus { border-color: #ff9540; }
+        .dpm-part-amount-input.filled { border-color: rgba(110,231,183,0.5); }
+        .dpm-part-remainder-tag {
+            font-size: 0.82rem; color: #6ee7b7; font-weight: 700;
+            text-align: right; flex-shrink: 0;
+            background: rgba(110,231,183,0.08); border-radius: 6px; padding: 5px 10px;
+            border: 1px solid rgba(110,231,183,0.2);
         }
-        .dpm-split-status.ok { color: #6ee7b7; }
-        .dpm-split-status.over { color: #fca5a5; }
+        .dpm-split-add-btn {
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+            background: rgba(255,255,255,0.04);
+            border: 1.5px dashed rgba(255,255,255,0.14);
+            border-radius: 8px; color: var(--admin-muted);
+            cursor: pointer; padding: 8px 14px; font-size: 0.82rem;
+            transition: all 0.13s; width: calc(100% - 28px); margin: 0 14px;
+        }
+        .dpm-split-add-btn:hover { border-color: rgba(255,149,64,0.45); color: #ff9540; background: rgba(255,149,64,0.06); }
+        .dpm-split-balance {
+            padding: 8px 14px 2px;
+            font-size: 0.8rem; color: var(--admin-muted);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .dpm-split-balance .dsb-right { font-weight: 700; }
+        .dpm-split-balance.ok .dsb-right { color: #6ee7b7; }
+        .dpm-split-balance.over .dsb-right { color: #fca5a5; }
+        .dpm-split-balance.partial .dsb-right { color: #fbbf24; }
 
         .dpm-header {
             display: flex;
@@ -10881,14 +10925,18 @@
                 <!-- Separador tipo ticket -->
                 <div class="dpm-pay-divider">
                     <span>MÉTODO DE PAGO</span>
-                    <button type="button" class="dpm-split-toggle" id="dpmSplitToggleBtn" title="Dividir entre métodos">÷</button>
+                    <button type="button" class="dpm-split-toggle" id="dpmSplitToggleBtn" title="Activar pago con múltiples métodos">+ Multi</button>
                 </div>
                 <!-- Botones de método (modo normal) -->
                 <div class="dpm-methods" id="dpmMethodsGrid"></div>
-                <!-- Formulario de pago dividido -->
+                <!-- Pago multi-método -->
                 <div id="dpmSplitWrap" hidden>
-                    <div id="dpmSplitRows"></div>
-                    <div class="dpm-split-status" id="dpmSplitStatus"></div>
+                    <div class="dpm-split-parts" id="dpmSplitParts"></div>
+                    <button type="button" class="dpm-split-add-btn" id="dpmSplitAddBtn">+ Agregar método</button>
+                    <div class="dpm-split-balance" id="dpmSplitBalance">
+                        <span>Total a cobrar</span>
+                        <span class="dsb-right" id="dpmSplitBalanceAmt"></span>
+                    </div>
                 </div>
                 <!-- Sub-preguntas -->
                 <div class="dpm-sub-section" id="dpmSubSection" hidden>
