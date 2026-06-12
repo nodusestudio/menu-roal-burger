@@ -8468,6 +8468,7 @@ async function renderPublicFeaturedFromAdmin() {
         renderFeaturedCards(carousel);
         renderCategoryExplorer();
         updatePromoModalContent();
+        renderExtraPromoCards();
         if (_promoModalPendingOpen) {
             _promoModalPendingOpen = false;
             openPromoScreen();
@@ -8530,6 +8531,14 @@ async function renderPublicFeaturedFromAdmin() {
     recomendadoOverrideUnsubscribe = firebaseDb.collection('configuracion').doc('recomendado_dia').onSnapshot((doc) => {
         recomendadoOverride = doc.exists ? doc.data() : null;
         if (_promoProductsReady) updatePromoModalContent();
+    });
+
+    firebaseDb.collection('promociones').onSnapshot((snap) => {
+        _promosData = snap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((p) => p.activo !== false)
+            .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+        renderExtraPromoCards();
     });
 }
 
@@ -8700,6 +8709,7 @@ let currentRecommendedProduct = null;
 let recomendadoOverride = null;
 let _promoProductsReady = false;
 let _promoModalPendingOpen = false;
+let _promosData = [];
 
 function getCurrentBogotaDateParts(now = new Date()) {
     const parts = new Intl.DateTimeFormat('en-CA', {
@@ -8889,6 +8899,79 @@ function updatePromoModalContent() {
             orderButton.style.cursor = '';
         }
     }
+}
+
+function renderExtraPromoCards() {
+    const container = document.getElementById('extraPromoCards');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    _promosData.forEach((promo) => {
+        const product = latestProducts.find((p) => p.id === promo.producto_id);
+        if (!product) return;
+
+        const raw = resolveProductDisplayPrice(product);
+        const rate = Math.min(Math.max(Number(promo.descuento || 0), 0), 100) / 100;
+        const discounted = rate > 0 ? Math.round(raw * (1 - rate)) : raw;
+        const img = product.image_url || 'logo.png';
+        const nombre = product.nombre || promo.producto_nombre || '';
+        const kicker = promo.kicker || 'Promo Especial';
+        const badge = promo.badge || '';
+
+        const section = document.createElement('section');
+        section.className = 'home-rec-banner';
+        section.setAttribute('aria-label', nombre);
+
+        const origPriceHTML = raw > discounted
+            ? `<div class="home-rec-price-block">
+                   <span class="home-rec-price-tag">Normal</span>
+                   <span class="home-rec-price-orig">$${raw.toLocaleString('es-CO')}</span>
+               </div>`
+            : '';
+
+        section.innerHTML = `
+            <div class="home-rec-top-bar">
+                <span class="home-rec-kicker">${kicker}</span>
+                <span class="home-rec-discount-badge">${badge}</span>
+            </div>
+            <div class="home-rec-content">
+                <div class="home-rec-img-wrap">
+                    <img class="home-rec-img" src="${img}" alt="${nombre}" loading="lazy" onerror="this.src='logo.png'">
+                </div>
+                <div class="home-rec-body">
+                    <strong class="home-rec-name"></strong>
+                    <div class="home-rec-price-row">
+                        ${origPriceHTML}
+                        <div class="home-rec-price-block home-rec-price-block--hot">
+                            <span class="home-rec-price-tag">Hoy</span>
+                            <span class="home-rec-price">$${discounted.toLocaleString('es-CO')}</span>
+                        </div>
+                    </div>
+                    <button class="home-rec-btn promo-btn-order" type="button">¡Lo Quiero! 🔥</button>
+                </div>
+            </div>`;
+
+        section.querySelector('.home-rec-name').textContent = nombre;
+
+        const btn = section.querySelector('.promo-btn-order');
+        btn.addEventListener('click', () => {
+            if (!activeCustomerProfile) {
+                closePromoScreen();
+                openPromoRegistrationPrompt();
+                return;
+            }
+            closePromoScreen();
+            addItemToCart(nombre, product.categoria || '', {
+                type: 'solo',
+                imagePath: img,
+                recommendedDiscount: rate > 0,
+                discountRate: rate
+            }, `btn-promo-extra-${promo.id}`);
+        });
+
+        container.appendChild(section);
+    });
 }
 
 // ===== SEGUNDA PANTALLA: HOME SCREEN =====

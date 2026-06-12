@@ -166,6 +166,7 @@ const CONFIG_COLLECTION = 'configuracion';
 const CONFIG_DOC_ID = 'config_landing';
 const HORARIO_DOC_ID = 'config_horario';
 const RECOMENDADO_DIA_DOC_ID = 'recomendado_dia';
+const PROMOCIONES_COLLECTION = 'promociones';
 const UPGRADES_CONFIG_DOC_ID = 'acompañamientos';
 const DEFAULT_HORARIO = {
     aperturaHora: 16, aperturaMinuto: 0,
@@ -481,6 +482,9 @@ let expandedClientAddressIds = new Set();
 let productClicksState = [];
 let liveSubscriptions = [];
 let recomendadoDiaState = null;
+let promosState = [];
+let _promoEditingId = null;
+let _promoFormProductId = null;
 
 // ── Bluetooth printer state ──
 let _btPrinterDevice = null;
@@ -6204,6 +6208,7 @@ function createOrderCard(order) {
 
     if (order.status === 'entregado') {
         card.classList.add('kanban-order-card-compact');
+        if (order.anulado) card.classList.add('kanban-order-card--anulado');
         card.innerHTML = `
             <div class="koc-body">
                 <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
@@ -6211,8 +6216,9 @@ function createOrderCard(order) {
             </div>
             <div class="koc-header">
                 <strong class="koc-code">#${escapeHtml(order.code)}</strong>
-                <span class="koc-time">${escapeHtml(formatOrderTime(order.deliveredAt || order.updatedAt || order.createdAt))}</span>
+                <span class="koc-time">${escapeHtml(formatOrderTime(order.anuladoAt || order.deliveredAt || order.updatedAt || order.createdAt))}</span>
             </div>
+            ${order.anulado ? '<div class="koc-anulado-stamp">ANULADO</div>' : ''}
         `;
         return card;
     }
@@ -6424,10 +6430,11 @@ function renderOrders() {
 
 function renderSalesDayBanner() {
     const deliveredOrders = getDeliveredOrdersForCurrentDay();
-    const domicilioTotal = deliveredOrders
+    const validOrders = deliveredOrders.filter((o) => !o.anulado);
+    const domicilioTotal = validOrders
         .filter((o) => o.orderType === 'domicilio' || o.fulfillmentType === 'delivery')
         .reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
-    const grandTotal = deliveredOrders
+    const grandTotal = validOrders
         .reduce((sum, o) => sum + Number(getOrderDisplayTotal(o) || 0), 0);
 
     if (salesDayStatusLabel) {
@@ -6449,9 +6456,9 @@ function renderSalesDayBanner() {
     }
 
     if (closeSalesDayBtn) {
-        closeSalesDayBtn.disabled = deliveredOrders.length === 0;
-        closeSalesDayBtn.textContent = deliveredOrders.length
-            ? `Cierre del dia (${deliveredOrders.length})`
+        closeSalesDayBtn.disabled = validOrders.length === 0;
+        closeSalesDayBtn.textContent = validOrders.length
+            ? `Cierre del dia (${validOrders.length})`
             : 'Cierre del dia';
     }
 }
@@ -7295,6 +7302,15 @@ async function deleteOrder(orderId) {
     await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).delete();
 }
 
+async function anularOrder(orderId) {
+    await updateOrder(orderId, {
+        anulado: true,
+        anuladoAt: firestoreNow(),
+        status: 'entregado',
+        deliveredAt: firestoreNow()
+    });
+}
+
 function renderBtPrinterStatus(status, deviceName) {
     const dot = document.getElementById('ticketBtDot');
     const label = document.getElementById('ticketBtLabel');
@@ -7576,7 +7592,7 @@ function setupLiveFirebaseSync() {
     liveSubscriptions.forEach((unsubscribe) => unsubscribe());
     liveSubscriptions = [];
 
-    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION, CLIENTS_COLLECTION, MESSAGES_COLLECTION, SALES_SUMMARY_COLLECTION, SALES_DAY_STATE_COLLECTION];
+    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION, CLIENTS_COLLECTION, MESSAGES_COLLECTION, SALES_SUMMARY_COLLECTION, SALES_DAY_STATE_COLLECTION, PROMOCIONES_COLLECTION];
     collections.forEach((collectionName) => {
         const unsubscribe = firebaseDb.collection(collectionName).onSnapshot(() => {
             reloadDataAndRender();
@@ -7759,6 +7775,17 @@ async function fetchRecomendadoDiaConfig() {
     }
 }
 
+async function fetchPromos() {
+    try {
+        const snap = await firebaseDb.collection(PROMOCIONES_COLLECTION).get();
+        promosState = snap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+    } catch (_) {
+        promosState = [];
+    }
+}
+
 function renderRecomendadoDiaPanel() {
     const autoRadio = document.getElementById('recomendadoModeAuto');
     const manualRadio = document.getElementById('recomendadoModeManual');
@@ -7875,6 +7902,236 @@ async function saveRecomendadoDiaConfig() {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
     }
 }
+
+// ===== PANEL PROMOCIONES ADMIN =====
+
+function renderPromosTabPanel() {
+    const container = document.getElementById('promosTabPanel');
+    if (!container) return;
+
+    const isFormOpen = _promoEditingId !== null;
+
+    container.innerHTML = `
+        <div style="padding:16px 0;">
+            <p class="admin-hint">Las promociones adicionales aparecen en la pantalla Promociones del menú público, debajo del Recomendado del Día. Cada una es totalmente configurable.</p>
+            ${!isFormOpen ? `<button type="button" class="admin-button" id="addPromoBtn" style="margin-top:14px;">+ Agregar Promoción</button>` : _buildPromoFormHTML()}
+            <div class="promo-admin-list" id="promoAdminList" style="margin-top:18px;">
+                ${promosState.length === 0 && !isFormOpen
+                    ? '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin promociones aún. Usa el botón de arriba para crear una.</p>'
+                    : promosState.map(_buildPromoAdminCardHTML).join('')}
+            </div>
+        </div>`;
+
+    document.getElementById('addPromoBtn')?.addEventListener('click', () => {
+        _promoEditingId = 'new';
+        _promoFormProductId = null;
+        renderPromosTabPanel();
+    });
+
+    if (isFormOpen) {
+        const searchInput = document.getElementById('promoFormProductSearch');
+        searchInput?.addEventListener('input', (e) => _renderPromoFormSearchResults(e.target.value));
+        document.getElementById('promoFormSaveBtn')?.addEventListener('click', savePromo);
+        document.getElementById('promoFormCancelBtn')?.addEventListener('click', () => {
+            _promoEditingId = null;
+            _promoFormProductId = null;
+            renderPromosTabPanel();
+        });
+    }
+
+    container.querySelectorAll('[data-promo-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.promoAction;
+            const id = btn.dataset.promoId;
+            if (action === 'edit') {
+                _promoEditingId = id;
+                const promo = promosState.find((p) => p.id === id);
+                _promoFormProductId = promo?.producto_id || null;
+                renderPromosTabPanel();
+            } else if (action === 'delete') {
+                deleteAdminPromo(id);
+            } else if (action === 'toggle') {
+                const promo = promosState.find((p) => p.id === id);
+                if (promo) {
+                    await firebaseDb.collection(PROMOCIONES_COLLECTION).doc(id).update({ activo: !promo.activo, updated_at: firestoreNow() });
+                }
+            }
+        });
+    });
+}
+
+function _buildPromoAdminCardHTML(promo) {
+    const product = productsState.find((p) => p.id === promo.producto_id);
+    const img = product?.image_url || 'logo.png';
+    const nombre = promo.producto_nombre || 'Sin producto';
+    const badge = promo.badge || '';
+    const descuento = promo.descuento || 0;
+    const activo = promo.activo !== false;
+    return `
+        <div class="promo-admin-card">
+            <img class="promo-admin-card__img" src="${escapeHtml(img)}" alt="${escapeHtml(nombre)}" onerror="this.src='logo.png'">
+            <div class="promo-admin-card__info">
+                <span class="promo-admin-card__badge">${escapeHtml(badge)}</span>
+                <strong class="promo-admin-card__name">${escapeHtml(nombre)}</strong>
+                <span class="promo-admin-card__desc">${escapeHtml(promo.kicker || '')}${descuento ? ` · -${descuento}%` : ''}</span>
+            </div>
+            <div class="promo-admin-card__actions">
+                <button type="button" class="promo-toggle-btn ${activo ? 'is-active' : ''}" data-promo-action="toggle" data-promo-id="${promo.id}">${activo ? '● Activo' : '○ Inactivo'}</button>
+                <button type="button" class="ghost-button" data-promo-action="edit" data-promo-id="${promo.id}" style="padding:4px 10px;font-size:0.78rem;">Editar</button>
+                <button type="button" class="ghost-button danger" data-promo-action="delete" data-promo-id="${promo.id}" style="padding:4px 10px;font-size:0.78rem;">Eliminar</button>
+            </div>
+        </div>`;
+}
+
+function _buildPromoFormHTML() {
+    const isEditing = _promoEditingId && _promoEditingId !== 'new';
+    const promo = isEditing ? promosState.find((p) => p.id === _promoEditingId) : null;
+    const product = _promoFormProductId ? productsState.find((p) => p.id === _promoFormProductId) : null;
+    const productBoxHTML = product ? `
+        <div class="recomendado-current-box" id="promoFormCurrentBox" style="margin-top:6px;margin-bottom:4px;">
+            <img src="${escapeHtml(product.image_url || 'logo.png')}" alt="${escapeHtml(product.nombre || '')}" onerror="this.src='logo.png'">
+            <div class="recomendado-current-info">
+                <span class="recomendado-current-label">Seleccionado</span>
+                <span class="recomendado-current-name">${escapeHtml(product.nombre || '')}</span>
+                <span class="recomendado-current-cat">${escapeHtml(product.categoria || '')}</span>
+            </div>
+        </div>` : '';
+    return `
+        <div class="promo-admin-form" style="margin-top:16px;">
+            <h4 style="margin:0 0 14px;font-family:'Oswald',sans-serif;font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--admin-accent);">${isEditing ? 'Editar promoción' : 'Nueva promoción'}</h4>
+            <div class="admin-field full" style="position:relative;">
+                <label for="promoFormProductSearch">Producto</label>
+                <input type="search" id="promoFormProductSearch" class="admin-input" placeholder="Buscar producto..." autocomplete="off" value="${product ? escapeHtml(product.nombre || '') : ''}">
+                <ul id="promoFormSearchResults" class="recomendado-results" hidden></ul>
+            </div>
+            ${productBoxHTML}
+            <div class="admin-field" style="margin-top:10px;">
+                <label for="promoFormKicker">Etiqueta (kicker)</label>
+                <input type="text" id="promoFormKicker" class="admin-input" placeholder="Ej: Promo Especial" value="${escapeHtml(promo?.kicker || 'Promo Especial')}">
+            </div>
+            <div class="admin-field" style="margin-top:10px;">
+                <label for="promoFormBadge">Badge de descuento</label>
+                <input type="text" id="promoFormBadge" class="admin-input" placeholder="Ej: -15% HOY" value="${escapeHtml(promo?.badge || '')}">
+            </div>
+            <div class="admin-field" style="margin-top:10px;">
+                <label for="promoFormDescuento">Descuento (%)</label>
+                <input type="number" id="promoFormDescuento" class="admin-input" min="0" max="100" placeholder="15" value="${promo?.descuento ?? ''}">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px;">
+                <button type="button" class="admin-button" id="promoFormSaveBtn">Guardar</button>
+                <button type="button" class="ghost-button" id="promoFormCancelBtn" style="padding:8px 16px;">Cancelar</button>
+            </div>
+        </div>`;
+}
+
+function _renderPromoFormSearchResults(query) {
+    const resultsEl = document.getElementById('promoFormSearchResults');
+    if (!resultsEl) return;
+    const q = (query || '').trim().toLowerCase();
+    if (!q) { resultsEl.hidden = true; resultsEl.innerHTML = ''; return; }
+
+    const matches = productsState
+        .filter((p) => (p.nombre || '').toLowerCase().includes(q))
+        .slice(0, 8);
+
+    if (!matches.length) { resultsEl.hidden = true; return; }
+
+    resultsEl.hidden = false;
+    resultsEl.innerHTML = matches.map((p) => `
+        <li class="recomendado-result-item ${_promoFormProductId === p.id ? 'is-selected' : ''}" data-promo-product-id="${p.id}">
+            <img src="${escapeHtml(p.image_url || 'logo.png')}" alt="" width="32" height="32" style="border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.src='logo.png'">
+            <div>
+                <div style="font-size:0.88rem;font-weight:600;">${escapeHtml(p.nombre || '')}</div>
+                <div style="font-size:0.76rem;color:var(--admin-muted);">${escapeHtml(p.categoria || '')}</div>
+            </div>
+        </li>`).join('');
+
+    resultsEl.querySelectorAll('[data-promo-product-id]').forEach((li) => {
+        li.addEventListener('click', () => {
+            _promoFormProductId = li.dataset.promoProductId;
+            const selected = productsState.find((p) => p.id === _promoFormProductId);
+            const searchInput = document.getElementById('promoFormProductSearch');
+            if (searchInput && selected) searchInput.value = selected.nombre || '';
+            resultsEl.hidden = true;
+
+            // Actualiza la caja del producto seleccionado sin re-renderizar todo
+            const existingBox = document.getElementById('promoFormCurrentBox');
+            const img = selected?.image_url || 'logo.png';
+            const boxHTML = `
+                <img src="${escapeHtml(img)}" alt="${escapeHtml(selected?.nombre || '')}" onerror="this.src='logo.png'">
+                <div class="recomendado-current-info">
+                    <span class="recomendado-current-label">Seleccionado</span>
+                    <span class="recomendado-current-name">${escapeHtml(selected?.nombre || '')}</span>
+                    <span class="recomendado-current-cat">${escapeHtml(selected?.categoria || '')}</span>
+                </div>`;
+            if (existingBox) {
+                existingBox.innerHTML = boxHTML;
+                existingBox.hidden = false;
+            } else {
+                const newBox = document.createElement('div');
+                newBox.className = 'recomendado-current-box';
+                newBox.id = 'promoFormCurrentBox';
+                newBox.style.marginTop = '6px';
+                newBox.style.marginBottom = '4px';
+                newBox.innerHTML = boxHTML;
+                const fieldEl = document.getElementById('promoFormProductSearch')?.closest('.admin-field');
+                if (fieldEl) fieldEl.insertAdjacentElement('afterend', newBox);
+            }
+        });
+    });
+}
+
+async function savePromo() {
+    const kicker = (document.getElementById('promoFormKicker')?.value || '').trim();
+    const badge  = (document.getElementById('promoFormBadge')?.value || '').trim();
+    const descuento = Number(document.getElementById('promoFormDescuento')?.value || 0);
+
+    if (!_promoFormProductId) { showNotice('Selecciona un producto para la promoción.', 'error'); return; }
+    if (!badge)               { showNotice('El badge de descuento es obligatorio. Ej: -15% HOY', 'error'); return; }
+
+    const product = productsState.find((p) => p.id === _promoFormProductId);
+    const payload = {
+        kicker:              kicker || 'Promo Especial',
+        badge,
+        descuento,
+        producto_id:         _promoFormProductId,
+        producto_nombre:     product?.nombre || '',
+        producto_categoria:  product?.categoria || '',
+        activo:              true,
+        updated_at:          firestoreNow()
+    };
+
+    const saveBtn = document.getElementById('promoFormSaveBtn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+
+    try {
+        if (_promoEditingId && _promoEditingId !== 'new') {
+            await firebaseDb.collection(PROMOCIONES_COLLECTION).doc(_promoEditingId).update(payload);
+        } else {
+            const maxOrden = promosState.reduce((m, p) => Math.max(m, p.orden ?? 0), 0);
+            await firebaseDb.collection(PROMOCIONES_COLLECTION).add({ ...payload, orden: maxOrden + 1, created_at: firestoreNow() });
+        }
+        _promoEditingId = null;
+        _promoFormProductId = null;
+        showNotice('Promoción guardada.', 'ok');
+    } catch (err) {
+        showNotice('Error al guardar la promoción.', 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+    }
+}
+
+async function deleteAdminPromo(id) {
+    const promo = promosState.find((p) => p.id === id);
+    if (!window.confirm(`¿Eliminar la promoción "${promo?.badge || promo?.producto_nombre || ''}"?`)) return;
+    try {
+        await firebaseDb.collection(PROMOCIONES_COLLECTION).doc(id).delete();
+        showNotice('Promoción eliminada.', 'ok');
+    } catch (err) {
+        showNotice('Error al eliminar la promoción.', 'error');
+    }
+}
+
+// ===== FIN PANEL PROMOCIONES ADMIN =====
 
 function buildWhatsAppButtonLink(number, customLink) {
     const directLink = String(customLink || '').trim();
@@ -8153,7 +8410,8 @@ async function reloadDataAndRender() {
         fetchMessages(),
         fetchMenuUpgradesConfig(),
         fetchRecomendadoDiaConfig(),
-        fetchHorarioConfig()
+        fetchHorarioConfig(),
+        fetchPromos()
     ]);
 
     const createdSalesDay = await ensureActiveSalesDay();
@@ -8170,6 +8428,7 @@ async function reloadDataAndRender() {
     renderBrandingForm();
     renderHorarioForm();
     renderRecomendadoDiaPanel();
+    renderPromosTabPanel();
     renderOrders();
     renderSalesSummaries();
     renderLedgerBook();
@@ -10143,17 +10402,16 @@ if (ordersActionRoot) {
                 }
 
                 if (nextStatus === 'eliminar') {
-                    const confirmed = window.confirm(`Eliminar el pedido ${order.code}? Esta accion no se puede deshacer.`);
+                    const confirmed = window.confirm(`¿Anular el pedido #${order.code}?\nQuedará registrado como ANULADO en Procesados.`);
                     if (!confirmed) {
                         return;
                     }
 
-                    await deleteOrder(orderId);
-                    await reloadDataAndRender();
+                    await anularOrder(orderId);
                     if (selectedOrderId === orderId) {
                         selectedOrderId = null;
                     }
-                    showNotice('Pedido eliminado correctamente.', 'ok');
+                    showNotice('Pedido anulado. Aparece en Procesados con sello ANULADO.', 'ok');
                     closeUnreadTray();
                     return;
                 }
