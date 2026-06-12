@@ -1201,6 +1201,7 @@ function setupAccordion() {
         configuracion: ['configuracion'],
         pedidos: ['pedidos'],
         clientes: ['clientes'],
+        proveedores: ['proveedores'],
         mensajes: ['mensajes'],
         metricas: ['metricas']
     };
@@ -1223,6 +1224,10 @@ function setupAccordion() {
             markMessagesAsRead();
         } else {
             updateMessagesAttentionState();
+        }
+
+        if (target === 'proveedores') {
+            loadProveedores().then(renderProveedoresPanel);
         }
     }
 
@@ -6210,17 +6215,21 @@ function createOrderCard(order) {
     let actionsMarkup = '';
 
     if (isMesaOrder && !isUnreadOrder && order.status !== 'entregado') {
-        // Layout mesa: [ Servido/Cobrar | ✎ | 🗑 ]
+        // Layout mesa: [ Servido/Cobrar | 💰? | ✎ | 🗑 ]
         const mainLabel = order.status === 'servido' ? 'Cobrar pedido' : 'Pedido servido';
-        const mainAction = order.status === 'servido' ? 'entregado' : 'servido';
+        const mainAction = order.status === 'servido' ? 'cobrar_mesa' : 'servido';
         const mainClass = order.status === 'servido' ? 'order-action-btn-receive' : 'order-action-btn-delivered';
         const editBtn = isPosAdminOrder
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
             : '';
+        const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+        const cobrarMesaBtn = order.status !== 'servido' && !isPaid
+            ? `<button type="button" class="order-action-btn order-action-btn-cobrar koa-icon-btn" data-order-card-action="cobrar_mesa" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
+            : '';
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
             <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
             <div class="koa-mesa-icons">
-                ${editBtn}
+                ${cobrarMesaBtn}${editBtn}
                 <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
             </div>
         </div>`;
@@ -10030,6 +10039,13 @@ if (ordersActionRoot) {
                     return;
                 }
 
+                if (nextStatus === 'cobrar_mesa') {
+                    // Cobrar mesa en estado servido (abre modal y al confirmar cierra como entregado)
+                    openDeliveryPaymentModal(order, 'mesa');
+                    actionButton.disabled = false;
+                    return;
+                }
+
                 if (nextStatus === 'cobrar_domicilio') {
                     openDeliveryPaymentModal(order, false);
                     actionButton.disabled = false;
@@ -10922,7 +10938,7 @@ function openDeliveryPaymentModal(order, receiveOrder = true) {
     const confirmBtn = document.getElementById('dpmConfirmBtn');
     if (confirmBtn) {
         confirmBtn.disabled = true;
-        confirmBtn.textContent = receiveOrder ? 'Recibir pedido' : 'Registrar pago';
+        confirmBtn.textContent = receiveOrder === 'mesa' ? 'Cobrar pedido' : receiveOrder ? 'Recibir pedido' : 'Registrar pago';
     }
 
     renderDpmMethodButtons();
@@ -10996,7 +11012,11 @@ document.getElementById('deliveryPaymentModal')?.addEventListener('click', async
                     return new Date(ms).toISOString().split('T')[0] === todayStr;
                 }).length;
 
-                if (receiveOrder) {
+                if (receiveOrder === 'mesa') {
+                    await updateOrder(orderId, { status: 'entregado', deliveredAt: firestoreNow(), ...paymentUpdate });
+                    await reloadDataAndRender();
+                    showNotice('Pago registrado y pedido cerrado.', 'ok');
+                } else if (receiveOrder) {
                     const copied = await copyTextToClipboard(buildReceivedOrderMessage({ ...order, ...paymentUpdate }));
                     await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow(), ...paymentUpdate });
                     await reloadDataAndRender();
@@ -11594,16 +11614,39 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
 });
 
 function _buildCierreTicketHtml(c, dateStr, timeStr) {
-    const methods = c.methodTotals || {};
-    const nonZeroMethods = Object.entries(methods).filter(([, v]) => Number(v) !== 0);
     const cobradas = Number(c.transactionCount || 0) - Number(c.voidedCount || 0);
-    const methodRows = nonZeroMethods.map(([k, v]) => {
+
+    // Sección ENTRADAS
+    const ingresosEntries = Object.entries(c.ingresosMethod || c.methodTotals || {}).filter(([, v]) => Number(v) > 0);
+    const ingresosRows = ingresosEntries.map(([k, v]) => {
         const m = getPaymentMethods().find((x) => x.id === k) || { icon: '', label: k };
         return `<tr>
             <td style="padding:3px 0;color:#c8c0b8;">${m.icon} ${escapeHtml(m.label)}</td>
-            <td style="padding:3px 0;text-align:right;color:#f0ead8;font-weight:700;">${formatMoney(Number(v))}</td>
+            <td style="padding:3px 0;text-align:right;color:#6ee7b7;font-weight:700;">${formatMoney(Number(v))}</td>
         </tr>`;
     }).join('');
+    const ingresosTotal = Number(c.ingresosTotal ?? c.grandTotal ?? 0);
+
+    // Sección SALIDAS (gastos con detalle)
+    const gastosDetalle = c.gastosDetalle || [];
+    const gastosTotal = Number(c.gastosTotal || 0);
+    const gastosRows = gastosDetalle.map((g) => {
+        const m = getPaymentMethods().find((x) => x.id === g.paymentMethod) || { icon: '', label: g.paymentMethod || '' };
+        const provLine = g.proveedor ? `<span style="color:#f0ead8;font-weight:600;">${escapeHtml(g.proveedor)}</span>` : '';
+        const descLine = g.descripcion ? `<span style="color:#c8c0b8;font-size:11px;">${escapeHtml(g.descripcion)}</span>` : '';
+        const label = [provLine, descLine].filter(Boolean).join(' · ') || `<span style="color:#c8c0b8;">Gasto</span>`;
+        return `<tr>
+            <td style="padding:3px 0;">${label}<br><span style="font-size:10px;color:#a89a8a;">${m.icon} ${escapeHtml(m.label)}</span></td>
+            <td style="padding:3px 0;text-align:right;color:#fca5a5;font-weight:700;vertical-align:top;">−${formatMoney(Number(g.monto || 0))}</td>
+        </tr>`;
+    }).join('');
+
+    const gastosSection = gastosDetalle.length ? `
+        <div style="border-top:1px dashed #5a4a3a;margin:10px 0 6px;padding-top:8px;font-weight:700;color:#fca5a5;letter-spacing:1px;font-size:12px;">SALIDAS (GASTOS)</div>
+        <table style="width:100%;border-collapse:collapse;">
+            ${gastosRows}
+            <tr style="border-top:1px dashed #3a2e26;"><td style="color:#c8c0b8;padding-top:5px;font-size:11px;">Total gastos</td><td style="text-align:right;color:#fca5a5;padding-top:5px;font-weight:700;">−${formatMoney(gastosTotal)}</td></tr>
+        </table>` : '';
 
     return `<div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.6;color:#f0ead8;background:#1a1412;padding:18px 20px;border-radius:8px;border:1px solid #3a2e26;">
         <div style="text-align:center;margin-bottom:10px;">
@@ -11621,10 +11664,12 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
             <tr><td style="color:#c8c0b8;">Transacciones cobradas</td><td style="text-align:right;color:#f0ead8;font-weight:700;">${cobradas}</td></tr>
             ${c.voidedCount ? `<tr><td style="color:#fca5a5;">Anulados (excluidos)</td><td style="text-align:right;color:#fca5a5;">${Number(c.voidedCount)}</td></tr>` : ''}
         </table>
-        <div style="border-top:1px dashed #5a4a3a;margin:10px 0 6px;padding-top:8px;font-weight:700;color:#ff9540;letter-spacing:1px;font-size:12px;">DESGLOSE POR MÉTODO</div>
+        <div style="border-top:1px dashed #5a4a3a;margin:10px 0 6px;padding-top:8px;font-weight:700;color:#6ee7b7;letter-spacing:1px;font-size:12px;">ENTRADAS</div>
         <table style="width:100%;border-collapse:collapse;">
-            ${methodRows || '<tr><td colspan="2" style="color:#c8c0b8;text-align:center;">Sin movimientos</td></tr>'}
+            ${ingresosRows || '<tr><td colspan="2" style="color:#c8c0b8;text-align:center;">Sin movimientos</td></tr>'}
+            <tr><td style="color:#c8c0b8;padding-top:4px;font-size:11px;">Total entradas</td><td style="text-align:right;color:#6ee7b7;padding-top:4px;">${formatMoney(ingresosTotal)}</td></tr>
         </table>
+        ${gastosSection}
         <div style="border-top:2px solid #ff9540;margin-top:12px;padding-top:10px;">
             <table style="width:100%;border-collapse:collapse;">
                 <tr>
@@ -11662,18 +11707,43 @@ async function cerrarCaja() {
         }
 
         // Los anulados se cuentan pero NO afectan los totales netos
-        const sumMethod = {};
-        let grandTotal = 0;
+        const ingresosMethod = {};
+        let ingresosTotal = 0;
         let voidedCount = 0;
 
         paid.forEach((o) => {
             if (o.voided) { voidedCount++; return; }
             const mk = o.paymentMethod;
             const amt = Number(o.total || o.subtotal || 0);
-            if (!sumMethod[mk]) sumMethod[mk] = 0;
-            sumMethod[mk] += amt;
-            grandTotal += amt;
+            if (!ingresosMethod[mk]) ingresosMethod[mk] = 0;
+            ingresosMethod[mk] += amt;
+            ingresosTotal += amt;
         });
+
+        // Incluir gastos de la jornada actual
+        const gastosFiltered = _gastosCajaState.filter((g) => {
+            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            if (cajaAperturaAt) return ms >= cajaAperturaAt;
+            return new Date(ms).toISOString().split('T')[0] === todayStr;
+        });
+        const gastosMethod = {};
+        let gastosTotal = 0;
+        gastosFiltered.forEach((g) => {
+            const mk = g.paymentMethod;
+            const amt = Number(g.monto || 0);
+            if (!mk || !amt) return;
+            if (!gastosMethod[mk]) gastosMethod[mk] = 0;
+            gastosMethod[mk] += amt;
+            gastosTotal += amt;
+        });
+
+        // Totales netos por método = ingresos − gastos
+        const sumMethod = { ...ingresosMethod };
+        Object.entries(gastosMethod).forEach(([mk, amt]) => {
+            if (!sumMethod[mk]) sumMethod[mk] = 0;
+            sumMethod[mk] -= amt;
+        });
+        const grandTotal = ingresosTotal - gastosTotal;
 
         const cfg = await firebaseDb.collection('configuracion').doc('negocio').get().then(s => s.exists ? s.data() : {});
 
@@ -11686,6 +11756,16 @@ async function cerrarCaja() {
             date: todayStr,
             transactionCount: paid.length,
             voidedCount,
+            ingresosMethod,
+            ingresosTotal,
+            gastosMethod,
+            gastosTotal,
+            gastosDetalle: gastosFiltered.map((g) => ({
+                proveedor: g.proveedor || '',
+                descripcion: g.descripcion || '',
+                monto: Number(g.monto || 0),
+                paymentMethod: g.paymentMethod || '',
+            })),
             methodTotals: sumMethod,
             grandTotal,
             businessName: cfg.nombre || cfg.name || 'ROAL BURGER',
@@ -12031,6 +12111,148 @@ async function _autoLoadTicketsTab() {
     }
 }
 
+// ── Proveedores ───────────────────────────────────────────────────────────────
+const PROVEEDORES_COLLECTION = 'proveedores';
+let _proveedoresState = [];
+let _proveedorEditingId = null;
+
+async function loadProveedores() {
+    try {
+        const snap = await firebaseDb.collection(PROVEEDORES_COLLECTION).orderBy('nombre').get();
+        _proveedoresState = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch {
+        _proveedoresState = [];
+    }
+    _updateProveedorDatalist();
+    return _proveedoresState;
+}
+
+async function saveProveedor(data) {
+    const id = data.id || `prov_${Date.now()}`;
+    await firebaseDb.collection(PROVEEDORES_COLLECTION).doc(id).set({ ...data, id }, { merge: true });
+    return id;
+}
+
+async function deleteProveedor(id) {
+    await firebaseDb.collection(PROVEEDORES_COLLECTION).doc(id).delete();
+}
+
+function _updateProveedorDatalist() {
+    const dl = document.getElementById('proveedoresList');
+    if (!dl) return;
+    dl.innerHTML = _proveedoresState.map((p) =>
+        `<option value="${escapeHtml(p.nombre || '')}"></option>`
+    ).join('');
+}
+
+function renderProveedoresPanel() {
+    const wrap = document.getElementById('proveedoresPanelWrap');
+    if (!wrap) return;
+
+    const rows = _proveedoresState.map((p) => `
+        <div class="pm-method-item" data-prov-id="${escapeHtml(p.id)}">
+            <div class="pm-method-info">
+                <span class="pm-method-name">🏭 ${escapeHtml(p.nombre || '—')}</span>
+                <span class="pm-method-meta">${[p.telefono, p.direccion, p.pagina].filter(Boolean).map(escapeHtml).join(' · ') || 'Sin datos adicionales'}</span>
+            </div>
+            <div class="pm-method-actions">
+                <button type="button" class="pm-icon-btn" data-prov-edit="${escapeHtml(p.id)}" title="Editar">✎</button>
+                <button type="button" class="pm-icon-btn pm-icon-btn--del" data-prov-del="${escapeHtml(p.id)}" title="Eliminar">🗑</button>
+            </div>
+        </div>`).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay proveedores registrados.</p>`;
+
+    wrap.innerHTML = `
+        <div id="proveedoresListWrap">${rows}</div>
+        <div id="proveedorFormWrap" style="display:none;"></div>`;
+
+    wrap.querySelectorAll('[data-prov-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => _proveedorOpenForm(btn.dataset.provEdit));
+    });
+    wrap.querySelectorAll('[data-prov-del]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('¿Eliminar este proveedor?')) return;
+            await deleteProveedor(btn.dataset.provDel);
+            await loadProveedores();
+            renderProveedoresPanel();
+            showNotice('Proveedor eliminado.', 'ok');
+        });
+    });
+}
+
+function _proveedorOpenForm(editId = null) {
+    _proveedorEditingId = editId;
+    const existing = editId ? _proveedoresState.find((p) => p.id === editId) : null;
+    const wrap = document.getElementById('proveedorFormWrap');
+    const listWrap = document.getElementById('proveedoresListWrap');
+    if (!wrap) return;
+    if (listWrap) listWrap.style.display = 'none';
+
+    wrap.style.display = '';
+    wrap.innerHTML = `
+        <div class="pm-method-form-wrap">
+            <div class="pm-method-form">
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Nombre *</label>
+                    <input class="pm-form-input" id="provFormNombre" type="text" maxlength="80" placeholder="Ej: Frigorífico Central" value="${escapeHtml(existing?.nombre || '')}">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Teléfono</label>
+                    <input class="pm-form-input" id="provFormTelefono" type="tel" maxlength="20" placeholder="Ej: 3001234567" value="${escapeHtml(existing?.telefono || '')}">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Dirección</label>
+                    <input class="pm-form-input" id="provFormDireccion" type="text" maxlength="100" placeholder="Ej: Calle 10 # 5-20" value="${escapeHtml(existing?.direccion || '')}">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Página web</label>
+                    <input class="pm-form-input" id="provFormPagina" type="url" maxlength="120" placeholder="Ej: https://proveedor.com" value="${escapeHtml(existing?.pagina || '')}">
+                </div>
+                <div class="pm-form-actions">
+                    <button type="button" class="admin-button" id="provFormSaveBtn">${editId ? 'Guardar cambios' : 'Agregar proveedor'}</button>
+                    <button type="button" class="pm-icon-btn" id="provFormCancelBtn">Cancelar</button>
+                </div>
+            </div>
+        </div>`;
+
+    wrap.querySelector('#provFormSaveBtn')?.addEventListener('click', _proveedorFormSave);
+    wrap.querySelector('#provFormCancelBtn')?.addEventListener('click', () => {
+        _proveedorEditingId = null;
+        if (listWrap) listWrap.style.display = '';
+        wrap.style.display = 'none';
+    });
+}
+
+async function _proveedorFormSave() {
+    const nombre = document.getElementById('provFormNombre')?.value.trim() || '';
+    if (!nombre) { showNotice('El nombre del proveedor es requerido.', 'error'); return; }
+    const btn = document.getElementById('provFormSaveBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+    try {
+        const isEditing = Boolean(_proveedorEditingId);
+        const data = {
+            nombre,
+            telefono: document.getElementById('provFormTelefono')?.value.trim() || '',
+            direccion: document.getElementById('provFormDireccion')?.value.trim() || '',
+            pagina: document.getElementById('provFormPagina')?.value.trim() || '',
+        };
+        if (_proveedorEditingId) data.id = _proveedorEditingId;
+        await saveProveedor(data);
+        await loadProveedores();
+        _proveedorEditingId = null;
+        renderProveedoresPanel();
+        showNotice(isEditing ? 'Proveedor actualizado.' : 'Proveedor agregado.', 'ok');
+    } catch (err) {
+        showNotice(`Error al guardar: ${err.message || 'error inesperado.'}`, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+    }
+}
+
+// Botón "Agregar proveedor"
+document.getElementById('addProveedorBtn')?.addEventListener('click', () => {
+    _proveedorOpenForm(null);
+});
+
 initAdmin();
 loadPaymentMethods();
 loadGastosCaja();
+loadProveedores();

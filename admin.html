@@ -2800,7 +2800,7 @@
             margin-bottom: 10px;
             border: 1px solid rgba(220, 70, 70, 0.45);
             background: rgba(220, 70, 70, 0.15);
-            color: #ffd3d3;
+         /*  */   color: #ffd3d3;
             border-radius: 8px;
             padding: 9px 10px;
             font-size: 0.86rem;
@@ -9116,6 +9116,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="menu"><span class="nav-icon">🍔</span><span>Articulos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="informes"><span class="nav-icon">📊</span><span>Informes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="proveedores"><span class="nav-icon">🏭</span><span>Proveedores</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
@@ -9245,7 +9246,6 @@
                         Por Confirmar
                         <span class="unread-tray-badge" id="ordersCountUnread">0</span>
                     </button>
-                    <button type="button" class="section-action-btn" id="closeSalesDayBtn">Cierre del dia</button>
                     <button type="button" class="section-save-btn" data-section-save="pedidos">Actualizar pedidos</button>
                 </div>
                 <div class="unread-tray" id="unreadTray" hidden>
@@ -9340,11 +9340,11 @@
             <div class="admin-tab-panel" data-tab-panel="informes">
                 <article class="admin-card menu-section-card">
                     <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Informes">
-                        <button class="menu-inner-tab" data-section-tab="cajas" data-section-scope="informes" role="tab" aria-selected="false">
+                        <button class="menu-inner-tab active" data-section-tab="cajas" data-section-scope="informes" role="tab" aria-selected="true">
                             <span class="menu-inner-tab-icon">💵</span>
                             <span>Cajas</span>
                         </button>
-                        <button class="menu-inner-tab active" data-section-tab="resumen" data-section-scope="informes" role="tab" aria-selected="true">
+                        <button class="menu-inner-tab" data-section-tab="resumen" data-section-scope="informes" role="tab" aria-selected="false">
                             <span class="menu-inner-tab-icon">📊</span>
                             <span>Resumen de Ventas</span>
                         </button>
@@ -9356,7 +9356,7 @@
                     <div class="menu-inner-panels-wrap">
 
                         <!-- Panel: Resumen de Ventas -->
-                        <div class="menu-inner-panel active" data-section-panel="resumen" data-section-scope="informes" role="tabpanel">
+                        <div class="menu-inner-panel" data-section-panel="resumen" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
                             <div class="section-toolbar sales-summary-toolbar">
                                 <button type="button" class="section-save-btn" data-section-save="resumen-ventas">Actualizar resumen</button>
                                 <div class="sales-summary-filters">
@@ -9398,7 +9398,7 @@
                         </div>
 
                         <!-- Panel: Cajas (Caja Diaria + Historial de Cajas) -->
-                        <div class="menu-inner-panel" data-section-panel="cajas" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
+                        <div class="menu-inner-panel active" data-section-panel="cajas" data-section-scope="informes" role="tabpanel">
 
                             <!-- Sub-tabs de Cajas -->
                             <nav class="cajas-subtabs-nav" role="tablist" aria-label="Secciones de Cajas">
@@ -9726,6 +9726,26 @@
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <!-- ══════════ PROVEEDORES ══════════ -->
+            <div class="admin-tab-panel" data-tab-panel="proveedores">
+                <div class="section-toolbar">
+                    <button type="button" class="section-action-btn primary" id="addProveedorBtn">+ Agregar proveedor</button>
+                </div>
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Proveedores</h2>
+                    </div>
+                    <div class="card-body">
+                        <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
+                            Registra tus proveedores para seleccionarlos rápidamente al registrar un gasto de caja.
+                        </p>
+                        <div id="proveedoresPanelWrap">
+                            <!-- renderizado por JS -->
                         </div>
                     </div>
                 </article>
@@ -10390,7 +10410,8 @@
                 <div class="gasto-form">
                     <div class="gasto-field">
                         <label>Proveedor</label>
-                        <input type="text" id="gastoProveedor" placeholder="Nombre del proveedor" maxlength="60">
+                        <input type="text" id="gastoProveedor" placeholder="Nombre del proveedor" maxlength="60" list="proveedoresList" autocomplete="off">
+                        <datalist id="proveedoresList"></datalist>
                     </div>
                     <div class="gasto-field">
                         <label>Descripción</label>
