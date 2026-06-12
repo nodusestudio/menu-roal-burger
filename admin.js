@@ -237,6 +237,7 @@ const salesDayStatusLabel = document.getElementById('salesDayStatusLabel');
 const salesDayStatusMeta = document.getElementById('salesDayStatusMeta');
 const salesDayDeliveredCount = document.getElementById('salesDayDeliveredCount');
 const salesDayDeliveredTotal = document.getElementById('salesDayDeliveredTotal');
+const salesDayGrandTotal     = document.getElementById('salesDayGrandTotal');
 const openCreateInternalOrderBtn = document.getElementById('openCreateInternalOrderBtn');
 const internalOrderModal = document.getElementById('posView');
 const internalOrderCloseBtn = document.getElementById('posCloseBtn');
@@ -1201,7 +1202,7 @@ function setupAccordion() {
         configuracion: ['configuracion'],
         pedidos: ['pedidos'],
         clientes: ['clientes'],
-        proveedores: ['proveedores'],
+        gastos: ['gastos'],
         mensajes: ['mensajes'],
         metricas: ['metricas']
     };
@@ -1226,8 +1227,8 @@ function setupAccordion() {
             updateMessagesAttentionState();
         }
 
-        if (target === 'proveedores') {
-            loadProveedores().then(renderProveedoresPanel);
+        if (target === 'gastos') {
+            loadCategoriasGastos().then(renderCategoriasGastosPanel);
         }
     }
 
@@ -5473,7 +5474,13 @@ function getOrderDisplayTotal(order) {
 }
 
 function getDeliveredOrdersForCurrentDay() {
-    return ordersState.filter((order) => order.status === 'entregado');
+    return ordersState.filter((order) => {
+        if (order.status !== 'entregado') return false;
+        if (!cajaAperturaAt) return true;
+        const ts = order.deliveredAt || order.paidAt;
+        const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+        return ms >= cajaAperturaAt;
+    });
 }
 
 function buildSalesSummaryPayload(deliveredOrders, openedAt, closedAt) {
@@ -6216,13 +6223,13 @@ function createOrderCard(order) {
 
     if (isMesaOrder && !isUnreadOrder && order.status !== 'entregado') {
         // Layout mesa: [ Servido/Cobrar | 💰? | ✎ | 🗑 ]
-        const mainLabel = order.status === 'servido' ? 'Cobrar pedido' : 'Pedido servido';
-        const mainAction = order.status === 'servido' ? 'cobrar_mesa' : 'servido';
-        const mainClass = order.status === 'servido' ? 'order-action-btn-receive' : 'order-action-btn-delivered';
+        const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+        const mainLabel = order.status === 'servido' ? (isPaid ? 'Pedido entregado' : 'Cobrar pedido') : 'Pedido servido';
+        const mainAction = order.status === 'servido' ? (isPaid ? 'entregado' : 'cobrar_mesa') : 'servido';
+        const mainClass = order.status === 'servido' ? (isPaid ? 'order-action-btn-delivered' : 'order-action-btn-receive') : 'order-action-btn-delivered';
         const editBtn = isPosAdminOrder
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
             : '';
-        const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
         const cobrarMesaBtn = order.status !== 'servido' && !isPaid
             ? `<button type="button" class="order-action-btn order-action-btn-cobrar koa-icon-btn" data-order-card-action="cobrar_mesa" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
             : '';
@@ -6270,23 +6277,21 @@ function createOrderCard(order) {
             </div>
         </div>`;
     } else {
-        // Layout compacto para pedidos pendientes
-        // domicilio → [ 💰 Cobrar pedido ] [ ✎ ] [ 🗑 ]
-        // mesa/retiro → [ Recibir pedido ] [ 💰 ] [ ✎ ] [ 🗑 ]
-        const receiveLabel = isDeliveryOrder ? '💰 Cobrar pedido' : 'Recibir pedido';
-        const cobrarIconBtn = !isDeliveryOrder
-            ? `<button type="button" class="order-action-btn order-action-btn-cobrar koa-icon-btn" data-order-card-action="cobrar_pendiente" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
-            : '';
+        // Pedidos por confirmar: cobrar es siempre la acción principal
+        // Todos los tipos: [ 💰 Cobrar pedido ] [ ▶ Solo recibir ] [ ✎ ] [ 🗑 ]
         const editBtn = showEditPosAction
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
+            : '';
+        const soloRecibirBtn = !isDeliveryOrder
+            ? `<button type="button" class="order-action-btn order-action-btn-view koa-icon-btn" data-order-card-action="recibir_sin_cobro" data-order-id="${order.id}" title="Solo recibir sin cobrar">▶</button>`
             : '';
         const viewBtn = showViewTicketAction
             ? `<button type="button" class="order-action-btn order-action-btn-view koa-icon-btn" data-order-card-action="view_ticket" data-order-id="${order.id}" title="Ver ticket">&#128196;</button>`
             : '';
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
-            <button type="button" class="order-action-btn order-action-btn-receive koa-mesa-main" data-order-card-action="recibir_pedido" data-order-id="${order.id}">${receiveLabel}</button>
+            <button type="button" class="order-action-btn order-action-btn-receive koa-mesa-main" data-order-card-action="cobrar_pendiente" data-order-id="${order.id}">💰 Cobrar pedido</button>
             <div class="koa-mesa-icons">
-                ${viewBtn}${cobrarIconBtn}${editBtn}
+                ${viewBtn}${soloRecibirBtn}${editBtn}
                 <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
             </div>
         </div>`;
@@ -6327,7 +6332,13 @@ function renderOrders() {
 
     Object.values(columns).forEach((column) => {
         const activeOrders    = column.items.filter((o) => o.status !== 'entregado');
-        const processedOrders = column.items.filter((o) => o.status === 'entregado');
+        const processedOrders = column.items.filter((o) => {
+            if (o.status !== 'entregado') return false;
+            if (!cajaAperturaAt) return true;
+            const ts = o.deliveredAt || o.paidAt;
+            const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+            return ms >= cajaAperturaAt;
+        });
 
         if (column.count) {
             column.count.textContent = Number(activeOrders.length).toLocaleString('es-CO');
@@ -6386,7 +6397,11 @@ function renderOrders() {
 
 function renderSalesDayBanner() {
     const deliveredOrders = getDeliveredOrdersForCurrentDay();
-    const deliveredTotal = deliveredOrders.reduce((sum, order) => sum + Number(getOrderDisplayTotal(order) || 0), 0);
+    const domicilioTotal = deliveredOrders
+        .filter((o) => o.orderType === 'domicilio' || o.fulfillmentType === 'delivery')
+        .reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
+    const grandTotal = deliveredOrders
+        .reduce((sum, o) => sum + Number(getOrderDisplayTotal(o) || 0), 0);
 
     if (salesDayStatusLabel) {
         salesDayStatusLabel.textContent = salesDayState?.openedAt ? 'Jornada activa' : 'Jornada en preparacion';
@@ -6398,12 +6413,12 @@ function renderSalesDayBanner() {
             : 'Se abrira automaticamente al sincronizar.';
     }
 
-    if (salesDayDeliveredCount) {
-        salesDayDeliveredCount.textContent = `${deliveredOrders.length} entregados`;
+    if (salesDayDeliveredTotal) {
+        salesDayDeliveredTotal.textContent = `🛵 ${formatMoney(domicilioTotal)}`;
     }
 
-    if (salesDayDeliveredTotal) {
-        salesDayDeliveredTotal.textContent = formatMoney(deliveredTotal);
+    if (salesDayGrandTotal) {
+        salesDayGrandTotal.textContent = `📊 ${formatMoney(grandTotal)}`;
     }
 
     if (closeSalesDayBtn) {
@@ -7442,8 +7457,15 @@ async function _btWriteChunk(char, slice) {
 
 async function printViaBluetoothESCPOS(order) {
     if (!_btPrinterCharacteristic) return false;
+    // Verificar que el GATT sigue conectado antes de intentar imprimir
+    if (!_btPrinterDevice?.gatt?.connected) {
+        _btPrinterCharacteristic = null;
+        renderBtPrinterStatus('disconnected');
+        showNotice('Impresora Bluetooth desconectada. Reconecta en Configuración.', 'error');
+        return false;
+    }
     const data = buildESCPOSData(order);
-    const CHUNK = 20; // MTU BLE mínimo seguro (BLE default es 23 - 3 = 20 bytes de payload)
+    const CHUNK = 20;
     try {
         for (let i = 0; i < data.length; i += CHUNK) {
             await _btWriteChunk(_btPrinterCharacteristic, data.slice(i, i + CHUNK));
@@ -7451,7 +7473,7 @@ async function printViaBluetoothESCPOS(order) {
         }
         return true;
     } catch (err) {
-        showNotice(`Error al imprimir por Bluetooth: ${err.message || 'error desconocido'}`, 'error');
+        showNotice(`Error Bluetooth: ${err.message || 'desconocido'}. Imprimiendo por navegador…`, 'error');
         return false;
     }
 }
@@ -7465,11 +7487,20 @@ function openOrderPrintTicket(orderId) {
 
     if (_btPrinterCharacteristic) {
         printViaBluetoothESCPOS(order).then((ok) => {
-            if (ok) showNotice('Ticket enviado a la impresora.', 'ok');
+            if (ok) {
+                showNotice('Ticket enviado a la impresora.', 'ok');
+            } else {
+                // Fallback automático a impresión por navegador
+                _printOrderViaBrowser(order);
+            }
         });
         return;
     }
 
+    _printOrderViaBrowser(order);
+}
+
+function _printOrderViaBrowser(order) {
     const printArea = document.getElementById('thermalPrintArea');
     if (!printArea) {
         showNotice('Error interno: area de impresion no encontrada.', 'error');
@@ -9420,6 +9451,7 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
                 else renderLibroCierres();
             }
             if (target === 'tickets') _autoLoadTicketsTab();
+            if (target === 'gastos') renderGastosInformes();
         }
     });
 });
@@ -10033,14 +10065,33 @@ if (ordersActionRoot) {
                 }
 
                 if (nextStatus === 'cobrar_pendiente') {
-                    // Cobrar cualquier pedido pendiente (abre modal y al confirmar pasa a preparación)
+                    // Cobrar desde "por confirmar": siempre registra pago y mueve a preparación
                     openDeliveryPaymentModal(order, true);
                     actionButton.disabled = false;
                     return;
                 }
 
+                if (nextStatus === 'recibir_sin_cobro') {
+                    // Recibir sin cobrar: mueve a preparación sin registrar pago
+                    const copied = await copyTextToClipboard(buildReceivedOrderMessage(order));
+                    await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow() });
+                    await reloadDataAndRender();
+                    showNotice(
+                        copied ? 'Pedido recibido sin cobro y movido a preparación.' : 'Pedido recibido.',
+                        'ok'
+                    );
+                    closeUnreadTray();
+                    return;
+                }
+
                 if (nextStatus === 'cobrar_mesa') {
-                    // Cobrar mesa en estado servido (abre modal y al confirmar cierra como entregado)
+                    // Si ya fue cobrado (ej. se cobró al confirmar), cerrar directo sin volver a cobrar
+                    if (order.paymentMethod && order.paymentMethod !== 'pendiente') {
+                        await updateOrder(orderId, { status: 'entregado', deliveredAt: firestoreNow() });
+                        await reloadDataAndRender();
+                        showNotice('Pedido cerrado.', 'ok');
+                        return;
+                    }
                     openDeliveryPaymentModal(order, 'mesa');
                     actionButton.disabled = false;
                     return;
@@ -10825,8 +10876,11 @@ let _dpmCurrentOrderId = null;
 let _dpmSelectedMethod = null;
 let _dpmSubMethod = null;
 let _dpmCashTender = 0;
+let _dpmCashMode = null; // 'exacto' | 'cambio'
 let _dpmOrderTotal = 0;
 let _dpmReceiveOrder = false;
+let _dpmSplitMode = false;
+let _dpmSplitAmounts = {}; // { methodId: number }
 
 function getPaymentMethods() {
     return _paymentMethods.length ? _paymentMethods : DPM_DEFAULT_METHODS;
@@ -10839,9 +10893,14 @@ function getEnabledPaymentMethods() {
 async function loadPaymentMethods() {
     try {
         const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(PAYMENT_METHODS_DOC_ID).get();
-        _paymentMethods = (doc.exists && Array.isArray(doc.data()?.methods))
-            ? doc.data().methods
-            : [...DPM_DEFAULT_METHODS];
+        if (doc.exists && Array.isArray(doc.data()?.methods)) {
+            _paymentMethods = doc.data().methods;
+        } else {
+            // Primera vez: guardar los defaults en Firestore para que persistan
+            _paymentMethods = [...DPM_DEFAULT_METHODS];
+            await firebaseDb.collection(CONFIG_COLLECTION).doc(PAYMENT_METHODS_DOC_ID)
+                .set({ methods: _paymentMethods });
+        }
     } catch (_) {
         _paymentMethods = [...DPM_DEFAULT_METHODS];
     }
@@ -10877,10 +10936,13 @@ function _dpmShowSubSection(methodKey) {
     if (methodKey === 'efectivo') {
         panelEfectivo?.removeAttribute('hidden');
         subSection.removeAttribute('hidden');
-        const cashInput = document.getElementById('dpmCashInput');
-        if (cashInput) { cashInput.value = ''; cashInput.focus(); }
-        document.getElementById('dpmChangeRow')?.setAttribute('hidden', '');
+        _dpmCashMode = null;
         _dpmCashTender = 0;
+        document.querySelectorAll('#dpmCashModeChips .dpm-sub-chip').forEach((b) => b.classList.remove('active'));
+        document.getElementById('dpmCashWrap')?.setAttribute('hidden', '');
+        document.getElementById('dpmChangeRow')?.setAttribute('hidden', '');
+        const cashInput = document.getElementById('dpmCashInput');
+        if (cashInput) cashInput.value = '';
         return;
     }
 
@@ -10902,11 +10964,88 @@ function _dpmShowSubSection(methodKey) {
     subSection.removeAttribute('hidden');
 }
 
+function _dpmGetSplitTotal() {
+    return Object.values(_dpmSplitAmounts).reduce((s, v) => s + Number(v || 0), 0);
+}
+
+function _dpmUpdateSplitStatus() {
+    const statusEl = document.getElementById('dpmSplitStatus');
+    if (!statusEl) return;
+    const total = _dpmGetSplitTotal();
+    const diff  = total - _dpmOrderTotal;
+    const usedMethods = Object.values(_dpmSplitAmounts).filter((v) => Number(v) > 0).length;
+    if (total === 0) {
+        statusEl.textContent = `Total a dividir: ${formatMoney(_dpmOrderTotal)}`;
+        statusEl.className = 'dpm-split-status';
+    } else if (Math.abs(diff) <= 1) {
+        statusEl.textContent = `✓ ${formatMoney(total)} / ${formatMoney(_dpmOrderTotal)}`;
+        statusEl.className = 'dpm-split-status ok';
+    } else if (diff > 1) {
+        statusEl.textContent = `Excede en ${formatMoney(diff)} — Total: ${formatMoney(_dpmOrderTotal)}`;
+        statusEl.className = 'dpm-split-status over';
+    } else {
+        statusEl.textContent = `Faltan ${formatMoney(Math.abs(diff))} — Asignado: ${formatMoney(total)}`;
+        statusEl.className = 'dpm-split-status';
+    }
+    // Actualizar estilo de inputs
+    document.querySelectorAll('.dpm-split-input').forEach((inp) => {
+        inp.classList.toggle('has-value', Number(inp.value) > 0);
+    });
+    const btn = document.getElementById('dpmConfirmBtn');
+    if (btn && _dpmSplitMode) {
+        btn.disabled = !(usedMethods >= 2 && Math.abs(diff) <= 1);
+    }
+}
+
+function _dpmRenderSplitForm() {
+    const wrap = document.getElementById('dpmSplitRows');
+    if (!wrap) return;
+    const methods = getEnabledPaymentMethods();
+    wrap.innerHTML = methods.map((m) => `
+        <div class="dpm-split-row">
+            <span class="dpm-split-row-icon">${m.icon}</span>
+            <span class="dpm-split-row-label">${escapeHtml(m.label)}</span>
+            <input type="number" class="dpm-split-input" data-split-method="${m.id}"
+                placeholder="$ 0" min="0" step="1000" inputmode="numeric"
+                value="${_dpmSplitAmounts[m.id] > 0 ? _dpmSplitAmounts[m.id] : ''}">
+        </div>`).join('');
+    _dpmUpdateSplitStatus();
+}
+
+function _dpmEnterSplitMode() {
+    _dpmSplitMode = true;
+    _dpmSplitAmounts = {};
+    _dpmSelectedMethod = null;
+    _dpmSubMethod = null;
+    _dpmCashMode = null;
+    // Ocultar modo normal
+    document.getElementById('dpmMethodsGrid')?.setAttribute('hidden', '');
+    document.getElementById('dpmSubSection')?.setAttribute('hidden', '');
+    // Mostrar formulario split
+    document.getElementById('dpmSplitWrap')?.removeAttribute('hidden');
+    document.getElementById('dpmSplitToggleBtn')?.classList.add('active');
+    _dpmRenderSplitForm();
+    const btn = document.getElementById('dpmConfirmBtn');
+    if (btn) btn.disabled = true;
+}
+
+function _dpmExitSplitMode() {
+    _dpmSplitMode = false;
+    _dpmSplitAmounts = {};
+    // Restaurar modo normal
+    document.getElementById('dpmMethodsGrid')?.removeAttribute('hidden');
+    document.getElementById('dpmSplitWrap')?.setAttribute('hidden', '');
+    document.getElementById('dpmSplitToggleBtn')?.classList.remove('active');
+    const btn = document.getElementById('dpmConfirmBtn');
+    if (btn) btn.disabled = true;
+}
+
 function _dpmUpdateConfirmState() {
+    if (_dpmSplitMode) { _dpmUpdateSplitStatus(); return; }
     const btn = document.getElementById('dpmConfirmBtn');
     if (!btn || !_dpmSelectedMethod) { if (btn) btn.disabled = true; return; }
     if (_dpmSelectedMethod === 'efectivo') {
-        btn.disabled = !(_dpmCashTender > 0);
+        btn.disabled = !(_dpmCashMode === 'exacto' || (_dpmCashMode === 'cambio' && _dpmCashTender > 0));
     } else {
         const method = getPaymentMethods().find((m) => m.id === _dpmSelectedMethod);
         btn.disabled = method && method.subs.length > 0 ? !_dpmSubMethod : false;
@@ -10919,7 +11058,10 @@ function openDeliveryPaymentModal(order, receiveOrder = true) {
     _dpmSelectedMethod = null;
     _dpmSubMethod = null;
     _dpmCashTender = 0;
+    _dpmCashMode = null;
     _dpmReceiveOrder = receiveOrder;
+    _dpmSplitMode = false;
+    _dpmSplitAmounts = {};
 
     const modal = document.getElementById('deliveryPaymentModal');
     if (!modal) return;
@@ -10933,12 +11075,16 @@ function openDeliveryPaymentModal(order, receiveOrder = true) {
     document.getElementById('dpmSubSection')?.setAttribute('hidden', '');
     document.getElementById('dpmSubEfectivo')?.setAttribute('hidden', '');
     document.getElementById('dpmSubChips')?.setAttribute('hidden', '');
+    document.getElementById('dpmCashWrap')?.setAttribute('hidden', '');
     document.getElementById('dpmChangeRow')?.setAttribute('hidden', '');
+    document.getElementById('dpmSplitWrap')?.setAttribute('hidden', '');
+    document.getElementById('dpmMethodsGrid')?.removeAttribute('hidden');
+    document.getElementById('dpmSplitToggleBtn')?.classList.remove('active');
 
     const confirmBtn = document.getElementById('dpmConfirmBtn');
     if (confirmBtn) {
         confirmBtn.disabled = true;
-        confirmBtn.textContent = receiveOrder === 'mesa' ? 'Cobrar pedido' : receiveOrder ? 'Recibir pedido' : 'Registrar pago';
+        confirmBtn.textContent = receiveOrder ? 'Cobrar pedido' : 'Registrar pago';
     }
 
     renderDpmMethodButtons();
@@ -10952,20 +11098,49 @@ function closeDeliveryPaymentModal() {
     _dpmSelectedMethod = null;
     _dpmSubMethod = null;
     _dpmCashTender = 0;
+    _dpmCashMode = null;
     _dpmReceiveOrder = false;
 }
 
 document.getElementById('deliveryPaymentModal')?.addEventListener('click', async (e) => {
     if (e.target.closest('#dpmCancelBtn')) { closeDeliveryPaymentModal(); return; }
 
-    // Selección de método principal
+    // Toggle modo split
+    if (e.target.closest('#dpmSplitToggleBtn')) {
+        if (_dpmSplitMode) { _dpmExitSplitMode(); } else { _dpmEnterSplitMode(); }
+        return;
+    }
+
+    // Selección de método principal (solo en modo normal)
     const methodBtn = e.target.closest('[data-dpm-method]');
-    if (methodBtn) {
+    if (methodBtn && !_dpmSplitMode) {
         _dpmSelectedMethod = methodBtn.dataset.dpmMethod;
         document.querySelectorAll('#dpmMethodsGrid .dpm-method-btn').forEach((b) =>
             b.classList.toggle('active', b === methodBtn)
         );
         _dpmShowSubSection(_dpmSelectedMethod);
+        _dpmUpdateConfirmState();
+        return;
+    }
+
+    // Selección de modo efectivo (monto exacto / con cambio)
+    const cashModeBtn = e.target.closest('[data-dpm-cash-mode]');
+    if (cashModeBtn) {
+        _dpmCashMode = cashModeBtn.dataset.dpmCashMode;
+        document.querySelectorAll('#dpmCashModeChips .dpm-sub-chip').forEach((b) =>
+            b.classList.toggle('active', b === cashModeBtn)
+        );
+        const cashWrap = document.getElementById('dpmCashWrap');
+        if (_dpmCashMode === 'exacto') {
+            _dpmCashTender = _dpmOrderTotal;
+            cashWrap?.setAttribute('hidden', '');
+        } else {
+            _dpmCashTender = 0;
+            cashWrap?.removeAttribute('hidden');
+            const cashInput = document.getElementById('dpmCashInput');
+            if (cashInput) { cashInput.value = ''; cashInput.focus(); }
+            document.getElementById('dpmChangeRow')?.setAttribute('hidden', '');
+        }
         _dpmUpdateConfirmState();
         return;
     }
@@ -10983,26 +11158,40 @@ document.getElementById('deliveryPaymentModal')?.addEventListener('click', async
 
     // Confirmar
     const confirmBtn = e.target.closest('#dpmConfirmBtn');
-    if (confirmBtn && !confirmBtn.disabled && _dpmCurrentOrderId && _dpmSelectedMethod) {
+    if (confirmBtn && !confirmBtn.disabled && _dpmCurrentOrderId && (_dpmSelectedMethod || _dpmSplitMode)) {
         confirmBtn.disabled = true;
-        const orderId = _dpmCurrentOrderId;
-        const method = _dpmSelectedMethod;
-        const subMethod = _dpmSubMethod;
-        const cashTender = _dpmCashTender;
-        const orderTotal = _dpmOrderTotal;
+        const orderId      = _dpmCurrentOrderId;
+        const method       = _dpmSelectedMethod;
+        const subMethod    = _dpmSubMethod;
+        const cashTender   = _dpmCashTender;
+        const orderTotal   = _dpmOrderTotal;
         const receiveOrder = _dpmReceiveOrder;
+        const isSplit      = _dpmSplitMode;
+        const splitData    = Object.entries(_dpmSplitAmounts)
+            .filter(([, v]) => Number(v) > 0)
+            .map(([m, amount]) => ({ method: m, amount: Number(amount) }));
         const order = ordersState.find((o) => o.id === orderId);
         closeDeliveryPaymentModal();
 
         if (order) {
-            const paymentUpdate = {
-                paymentMethod: method,
-                paymentSubMethod: subMethod || '',
-                cashTenderAmount: method === 'efectivo' ? cashTender : null,
-                cashChangeRequired: method === 'efectivo' && cashTender > orderTotal,
-                cashChangeAmount: method === 'efectivo' && cashTender > orderTotal ? cashTender - orderTotal : null,
-                paidAt: firestoreNow(),
-            };
+            const paymentUpdate = isSplit
+                ? {
+                    paymentMethod: 'split',
+                    paymentSplit: splitData,
+                    paymentSubMethod: '',
+                    cashTenderAmount: null,
+                    cashChangeRequired: false,
+                    cashChangeAmount: null,
+                    paidAt: firestoreNow(),
+                }
+                : {
+                    paymentMethod: method,
+                    paymentSubMethod: subMethod || '',
+                    cashTenderAmount: method === 'efectivo' ? cashTender : null,
+                    cashChangeRequired: method === 'efectivo' && cashTender > orderTotal,
+                    cashChangeAmount: method === 'efectivo' && cashTender > orderTotal ? cashTender - orderTotal : null,
+                    paidAt: firestoreNow(),
+                };
             try {
                 const todayStr = new Date().toISOString().split('T')[0];
                 const paidSinceApertura = ordersState.filter((o) => {
@@ -11040,6 +11229,14 @@ document.getElementById('deliveryPaymentModal')?.addEventListener('click', async
             }
         }
     }
+});
+
+// Inputs del modo split
+document.getElementById('dpmSplitWrap')?.addEventListener('input', (e) => {
+    const inp = e.target.closest('[data-split-method]');
+    if (!inp) return;
+    _dpmSplitAmounts[inp.dataset.splitMethod] = Number(inp.value) || 0;
+    _dpmUpdateSplitStatus();
 });
 
 // Input de efectivo: calcular cambio en tiempo real
@@ -11211,10 +11408,41 @@ async function _pmSaveAndRefresh(methods, successMsg) {
     }
 }
 
+// ── Categorías de Gastos ──────────────────────────────────────────────────────
+const CATEGORIAS_GASTOS_DOC_ID = 'categorias_gastos';
+const DEFAULT_CATEGORIAS_GASTOS = [
+    { id: 'proveedor',  nombre: 'Proveedor',  icon: '🏭', subs: [] },
+    { id: 'salarios',   nombre: 'Salarios',   icon: '👷', subs: [] },
+    { id: 'impuestos',  nombre: 'Impuestos',  icon: '🏛️', subs: [] },
+    { id: 'publicidad', nombre: 'Publicidad', icon: '📢', subs: [] },
+    { id: 'mobiliario', nombre: 'Mobiliario', icon: '🪑', subs: [] },
+    { id: 'otros',      nombre: 'Otros',      icon: '📦', subs: [] },
+];
+let _categoriasGastosState = DEFAULT_CATEGORIAS_GASTOS.map((c) => ({ ...c, subs: [...(c.subs || [])] }));
+
+async function loadCategoriasGastos() {
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(CATEGORIAS_GASTOS_DOC_ID).get();
+        if (doc.exists && Array.isArray(doc.data()?.categorias) && doc.data().categorias.length) {
+            _categoriasGastosState = doc.data().categorias;
+        }
+    } catch (_) {}
+}
+
+async function saveCategoriasGastos() {
+    await firebaseDb.collection(CONFIG_COLLECTION).doc(CATEGORIAS_GASTOS_DOC_ID).set({ categorias: _categoriasGastosState });
+}
+
+function getCategoriasGastos() {
+    return _categoriasGastosState.length ? _categoriasGastosState : DEFAULT_CATEGORIAS_GASTOS;
+}
+
 // ── Gastos de Caja ────────────────────────────────────────────────────────────
 const GASTOS_CAJA_COLLECTION = 'gastos_caja';
 let _gastosCajaState = [];
 let _gastoSelectedMethod = null;
+let _gastoCategoriaId = null;
+let _gastoSubcategoria = null;
 
 async function loadGastosCaja() {
     try {
@@ -11230,7 +11458,6 @@ async function loadGastosCaja() {
 
 async function saveGasto(gasto) {
     const docRef = firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(gasto.id);
-    // Guardar con server timestamp en Firestore; la copia local usa Date.now() numérico
     await docRef.set({ ...gasto, registradoAt: firestoreNow() });
 }
 
@@ -11252,25 +11479,90 @@ function _updateGastoConfirmState() {
     btn.disabled = !(monto > 0 && _gastoSelectedMethod);
 }
 
-function openGastoModal() {
-    _gastoSelectedMethod = null;
-    const modal = document.getElementById('gastoModal');
-    if (!modal) return;
-    const provEl = document.getElementById('gastoProveedor');
-    const descEl = document.getElementById('gastoDescripcion');
-    const montoEl = document.getElementById('gastoMonto');
-    if (provEl) provEl.value = '';
-    if (descEl) descEl.value = '';
+function _gastoShowStep1() {
+    const title   = document.getElementById('gastoModalTitle');
+    const backBtn = document.getElementById('gastoBackBtn');
+    const step1   = document.getElementById('gastoStep1');
+    const step2   = document.getElementById('gastoStep2');
+    const regBtn  = document.getElementById('gastoRegistrarBtn');
+    if (title)   title.textContent = 'Tipo de gasto';
+    if (backBtn) backBtn.setAttribute('hidden', '');
+    if (step1)   step1.removeAttribute('hidden');
+    if (step2)   step2.setAttribute('hidden', '');
+    if (regBtn)  regBtn.setAttribute('hidden', '');
+
+    const grid = document.getElementById('gastoCatGrid');
+    if (grid) {
+        grid.innerHTML = getCategoriasGastos().map((cat) =>
+            `<button type="button" class="gasto-cat-btn" data-gasto-cat="${escapeHtml(cat.id)}">
+                <span class="gasto-cat-icon">${cat.icon}</span>
+                <span>${escapeHtml(cat.nombre)}</span>
+            </button>`
+        ).join('');
+    }
+}
+
+function _gastoShowStep2(catId) {
+    const cat = getCategoriasGastos().find((c) => c.id === catId);
+    if (!cat) return;
+    _gastoCategoriaId = catId;
+    _gastoSubcategoria = null;
+
+    const title   = document.getElementById('gastoModalTitle');
+    const backBtn = document.getElementById('gastoBackBtn');
+    const step1   = document.getElementById('gastoStep1');
+    const step2   = document.getElementById('gastoStep2');
+    const regBtn  = document.getElementById('gastoRegistrarBtn');
+    if (title)   title.textContent = `${cat.icon} ${cat.nombre}`;
+    if (backBtn) backBtn.removeAttribute('hidden');
+    if (step1)   step1.setAttribute('hidden', '');
+    if (step2)   step2.removeAttribute('hidden');
+    if (regBtn)  regBtn.removeAttribute('hidden');
+
+    const subSection = document.getElementById('gastoSubSection');
+    const subGrid = document.getElementById('gastoSubGrid');
+    if (subSection && subGrid) {
+        if (cat.subs && cat.subs.length > 0) {
+            subGrid.innerHTML = cat.subs.map((s) =>
+                `<button type="button" class="gasto-sub-chip" data-gasto-sub="${escapeHtml(s)}">${escapeHtml(s)}</button>`
+            ).join('');
+            subSection.removeAttribute('hidden');
+        } else {
+            subSection.setAttribute('hidden', '');
+        }
+    }
+
+    const descEl   = document.getElementById('gastoDescripcion');
+    const provEl   = document.getElementById('gastoProveedor');
+    const montoEl  = document.getElementById('gastoMonto');
+    const provWrap = document.getElementById('gastoProveedorWrap');
+    if (descEl)  descEl.value  = '';
+    if (provEl)  provEl.value  = '';
     if (montoEl) montoEl.value = '';
+    // Mostrar campo proveedor solo en la categoría "proveedor"
+    if (provWrap) provWrap.style.display = catId === 'proveedor' ? '' : 'none';
+    _gastoSelectedMethod = null;
+    document.querySelectorAll('#gastoMethodsGrid .dpm-method-btn').forEach((b) => b.classList.remove('dpm-method-btn--active'));
     renderGastoMethodButtons();
     _updateGastoConfirmState();
+    descEl?.focus();
+}
+
+function openGastoModal() {
+    _gastoSelectedMethod = null;
+    _gastoCategoriaId = null;
+    _gastoSubcategoria = null;
+    const modal = document.getElementById('gastoModal');
+    if (!modal) return;
+    _gastoShowStep1();
     modal.removeAttribute('hidden');
-    provEl?.focus();
 }
 
 function closeGastoModal() {
     document.getElementById('gastoModal')?.setAttribute('hidden', '');
     _gastoSelectedMethod = null;
+    _gastoCategoriaId = null;
+    _gastoSubcategoria = null;
 }
 
 document.getElementById('gastosBtn')?.addEventListener('click', openGastoModal);
@@ -11279,14 +11571,29 @@ document.getElementById('gastoModal')?.addEventListener('click', (e) => {
     if (e.target === document.getElementById('gastoModal')) closeGastoModal();
 });
 
-// Selección de método de pago en modal de gastos
-document.getElementById('gastoMethodsGrid')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-gasto-method]');
-    if (!btn) return;
-    document.querySelectorAll('[data-gasto-method]').forEach((b) => b.classList.remove('dpm-method-btn--active'));
-    btn.classList.add('dpm-method-btn--active');
-    _gastoSelectedMethod = btn.dataset.gastoMethod;
-    _updateGastoConfirmState();
+document.getElementById('gastoModal')?.addEventListener('click', (e) => {
+    const catBtn = e.target.closest('[data-gasto-cat]');
+    if (catBtn) { _gastoShowStep2(catBtn.dataset.gastoCat); return; }
+
+    const subBtn = e.target.closest('[data-gasto-sub]');
+    if (subBtn) {
+        document.querySelectorAll('[data-gasto-sub]').forEach((b) => b.classList.remove('active'));
+        subBtn.classList.add('active');
+        _gastoSubcategoria = subBtn.dataset.gastoSub;
+        return;
+    }
+
+    const backBtn = e.target.closest('#gastoBackBtn');
+    if (backBtn) { _gastoShowStep1(); return; }
+
+    const methodBtn = e.target.closest('[data-gasto-method]');
+    if (methodBtn) {
+        document.querySelectorAll('[data-gasto-method]').forEach((b) => b.classList.remove('dpm-method-btn--active'));
+        methodBtn.classList.add('dpm-method-btn--active');
+        _gastoSelectedMethod = methodBtn.dataset.gastoMethod;
+        _updateGastoConfirmState();
+        return;
+    }
 });
 
 document.getElementById('gastoMonto')?.addEventListener('input', _updateGastoConfirmState);
@@ -11304,11 +11611,13 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
         const gastoId = `gasto_${Date.now()}`;
         const gasto = {
             id: gastoId,
+            categoria: _gastoCategoriaId || 'otros',
+            subcategoria: _gastoSubcategoria || '',
             proveedor,
             descripcion,
             monto,
             paymentMethod: _gastoSelectedMethod,
-            registradoAt: Date.now(), // numérico para filtrado local inmediato
+            registradoAt: Date.now(),
             cajaAperturaAt: cajaAperturaAt || 0,
         };
         await saveGasto(gasto);
@@ -11331,6 +11640,12 @@ function _cajaDiariaTypeHtml(type) {
 }
 
 function _cajaDiariaMethodLabel(order) {
+    if (order.paymentMethod === 'split' && Array.isArray(order.paymentSplit)) {
+        return order.paymentSplit.map((s) => {
+            const m = getPaymentMethods().find((x) => x.id === s.method);
+            return m ? `${m.icon} ${formatMoney(s.amount)}` : formatMoney(s.amount);
+        }).join(' + ');
+    }
     const method = getPaymentMethods().find((m) => m.id === order.paymentMethod);
     if (!method) return order.paymentMethod || '—';
     const sub = order.paymentSubMethod;
@@ -11401,6 +11716,28 @@ function renderCajaDiaria() {
     const _tsOf = (o) => o.paidAt?.toDate ? o.paidAt.toDate().getTime() : new Date(o.paidAt || 0).getTime();
     const _tsGasto = (g) => g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
 
+    // Gasto virtual de domicilios: se muestra si no existe ya el gasto real del cierre
+    const hasDomicilioGastoReal = allGastos.some((g) => String(g.id || '').startsWith('gasto_domicilios_'));
+    const deliveryPaid = allPaid.filter((o) => o.orderType === 'domicilio' || o.fulfillmentType === 'delivery');
+    const domicilioFeeSum = deliveryPaid.reduce((s, o) => s + Number(o.deliveryFee || 0), 0);
+    const virtualDomicilioGasto = (!hasDomicilioGastoReal && domicilioFeeSum > 0)
+        ? [{
+            _type: 'gasto',
+            _ms: Date.now(),
+            data: {
+                id: '__virtual_domicilios__',
+                categoria: 'otros',
+                subcategoria: 'Domicilios',
+                proveedor: 'Domiciliario',
+                descripcion: `Domicilios (${deliveryPaid.length} pedido${deliveryPaid.length !== 1 ? 's' : ''})`,
+                monto: domicilioFeeSum,
+                paymentMethod: 'efectivo',
+                registradoAt: Date.now(),
+                _virtual: true,
+            },
+        }]
+        : [];
+
     const allEntries = [
         ...allPaid.map((o) => ({ _type: 'order', _ms: _tsOf(o), data: o })),
         ...allGastos.map((g) => ({ _type: 'gasto', _ms: _tsGasto(g), data: g })),
@@ -11412,6 +11749,33 @@ function renderCajaDiaria() {
     let sumOtro = 0;
     let grandTotal = 0;
 
+    // ── Fila fija de domicilios (procesada primero para acumuladores) ──────────
+    let pinnedDomicilioRow = '';
+    if (virtualDomicilioGasto.length > 0) {
+        const g = virtualDomicilioGasto[0].data;
+        const amt = Number(g.monto || 0);
+        const isKnown = methodKeys.includes(g.paymentMethod);
+        if (isKnown) { sumMethod[g.paymentMethod] -= amt; } else { sumOtro -= amt; }
+        grandTotal -= amt;
+        const mCells = methodKeys.map((k) =>
+            k === g.paymentMethod
+                ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
+                : '<td></td>'
+        ).join('');
+        const otroCell = hasUnmatched ? '<td></td>' : '';
+        const pedStr = `${deliveryPaid.length} pedido${deliveryPaid.length !== 1 ? 's' : ''}`;
+        pinnedDomicilioRow = `<tr style="background:rgba(252,165,165,0.06);border-bottom:1px solid rgba(252,165,165,0.18);">
+            <td class="col-left" style="color:#fca5a5;font-size:0.72rem;white-space:nowrap;">🛵 FIJO</td>
+            <td class="col-left">
+                <span style="color:#fca5a5;font-weight:700;">🛵 Gasto domicilios</span>
+                <span style="color:var(--admin-muted);font-size:0.78rem;"> · ${pedStr}</span>
+                <span style="font-size:0.68rem;opacity:0.55;"> · se registra al cerrar caja</span>
+            </td>
+            ${mCells}${otroCell}
+            <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
+        </tr>`;
+    }
+
     const rows = [];
     allEntries.forEach((entry) => {
         if (entry._type === 'order') {
@@ -11420,36 +11784,75 @@ function renderCajaDiaria() {
             const hora = formatOrderTime(ts);
             const amt  = getOrderDisplayTotal(o);
             const baseDesc = `<strong>${escapeHtml(o.code)}</strong> · ${escapeHtml(o.customerName || '—')} · ${escapeHtml(getOrderTypeLabel(o))}`;
-            const isKnown = methodKeys.includes(o.paymentMethod);
+            const isSplitOrder = o.paymentMethod === 'split' && Array.isArray(o.paymentSplit);
+            const isKnown = isSplitOrder ? true : methodKeys.includes(o.paymentMethod);
 
-            if (isKnown) { sumMethod[o.paymentMethod] += amt; } else { sumOtro += amt; }
+            if (isSplitOrder) {
+                o.paymentSplit.forEach(({ method: m, amount: a }) => {
+                    if (methodKeys.includes(m)) sumMethod[m] += Number(a);
+                    else sumOtro += Number(a);
+                });
+            } else if (isKnown) {
+                sumMethod[o.paymentMethod] += amt;
+            } else {
+                sumOtro += amt;
+            }
             grandTotal += amt;
-            const mCellsIn = methodKeys.map((k) =>
-                k === o.paymentMethod
-                    ? `<td style="color:#6ee7b7;font-weight:700;">${formatMoney(amt)}</td>`
-                    : '<td></td>'
-            ).join('');
-            const otroCellIn = hasUnmatched
-                ? (!isKnown ? `<td style="color:#6ee7b7;font-weight:700;" title="${escapeHtml(o.paymentMethod || '')}">${formatMoney(amt)}</td>` : '<td></td>')
-                : '';
+
+            let mCellsIn, otroCellIn;
+            if (isSplitOrder) {
+                mCellsIn = methodKeys.map((k) => {
+                    const part = o.paymentSplit.find((s) => s.method === k);
+                    return part && Number(part.amount) > 0
+                        ? `<td style="color:#6ee7b7;font-weight:700;">${formatMoney(Number(part.amount))}</td>`
+                        : '<td></td>';
+                }).join('');
+                otroCellIn = hasUnmatched ? '<td></td>' : '';
+            } else {
+                mCellsIn = methodKeys.map((k) =>
+                    k === o.paymentMethod
+                        ? `<td style="color:#6ee7b7;font-weight:700;">${formatMoney(amt)}</td>`
+                        : '<td></td>'
+                ).join('');
+                otroCellIn = hasUnmatched
+                    ? (!isKnown ? `<td style="color:#6ee7b7;font-weight:700;" title="${escapeHtml(o.paymentMethod || '')}">${formatMoney(amt)}</td>` : '<td></td>')
+                    : '';
+            }
+            const splitBadge = isSplitOrder ? ' <span style="font-size:0.68rem;background:rgba(251,191,36,0.2);color:#fbbf24;padding:1px 5px;border-radius:4px;font-weight:600;">÷ SPLIT</span>' : '';
             rows.push(`<tr>
                 <td class="col-left">${hora}</td>
-                <td class="col-left">${baseDesc}</td>
+                <td class="col-left">${baseDesc}${splitBadge}</td>
                 ${mCellsIn}${otroCellIn}
                 <td style="color:#6ee7b7;font-weight:800;">${formatMoney(amt)}</td>
             </tr>`);
 
             if (o.voided) {
-                if (isKnown) { sumMethod[o.paymentMethod] -= amt; } else { sumOtro -= amt; }
+                if (isSplitOrder) {
+                    o.paymentSplit.forEach(({ method: m, amount: a }) => {
+                        if (methodKeys.includes(m)) sumMethod[m] -= Number(a);
+                        else sumOtro -= Number(a);
+                    });
+                } else if (isKnown) {
+                    sumMethod[o.paymentMethod] -= amt;
+                } else {
+                    sumOtro -= amt;
+                }
                 grandTotal -= amt;
                 const horaVoid = formatOrderTime(o.voidedAt || ts);
-                const mCellsOut = methodKeys.map((k) =>
-                    k === o.paymentMethod
-                        ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
-                        : '<td></td>'
-                ).join('');
+                const mCellsOut = isSplitOrder
+                    ? methodKeys.map((k) => {
+                        const part = o.paymentSplit.find((s) => s.method === k);
+                        return part && Number(part.amount) > 0
+                            ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(Number(part.amount))}</td>`
+                            : '<td></td>';
+                    }).join('')
+                    : methodKeys.map((k) =>
+                        k === o.paymentMethod
+                            ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
+                            : '<td></td>'
+                    ).join('');
                 const otroCellOut = hasUnmatched
-                    ? (!isKnown ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>` : '<td></td>')
+                    ? (!isKnown && !isSplitOrder ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>` : '<td></td>')
                     : '';
                 const voidDesc = `<span style="color:#fca5a5;">↩ ANULADO</span> · ${escapeHtml(o.code)} · ${escapeHtml(o.customerName || '—')}`;
                 rows.push(`<tr class="row-voided">
@@ -11460,7 +11863,7 @@ function renderCajaDiaria() {
                 </tr>`);
             }
         } else {
-            // Fila de gasto (roja, resta del método y del total)
+            // Fila de gasto real (roja, resta del método y del total)
             const g = entry.data;
             const hora = formatOrderTime(g.registradoAt);
             const amt = Number(g.monto || 0);
@@ -11478,9 +11881,11 @@ function renderCajaDiaria() {
                 ? (!isKnown ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>` : '<td></td>')
                 : '';
 
+            const cat = getCategoriasGastos().find((c) => c.id === g.categoria);
+            const catStr = cat ? ` · ${cat.icon} ${escapeHtml(cat.nombre)}` : '';
             const provStr = g.proveedor ? ` · ${escapeHtml(g.proveedor)}` : '';
             const descStr = g.descripcion ? ` · ${escapeHtml(g.descripcion)}` : '';
-            const gastoDesc = `<span style="color:#fca5a5;font-weight:700;">💸 Gasto</span>${provStr}${descStr}`;
+            const gastoDesc = `<span style="color:#fca5a5;font-weight:700;">💸 Gasto${catStr}</span>${provStr}${descStr}`;
 
             rows.push(`<tr>
                 <td class="col-left" style="color:#fca5a5;">${hora}</td>
@@ -11490,7 +11895,7 @@ function renderCajaDiaria() {
             </tr>`);
         }
     });
-    bodyEl.innerHTML = rows.join('');
+    bodyEl.innerHTML = pinnedDomicilioRow + rows.join('');
 
     // Totales al pie
     if (footEl) {
@@ -11521,6 +11926,12 @@ document.getElementById('refreshCajaDiariaBtn')?.addEventListener('click', async
 
 // ── Apertura de caja: timestamp desde el último cierre ───────────────────────
 const CAJA_APERTURA_STORAGE_KEY = 'roalburger-caja-apertura';
+const CAJA_APERTURA_RESET_FLAG  = 'roalburger-caja-reset-v2';
+// Reset de jornada solicitado: se ejecuta una sola vez al desplegar este cambio
+if (!localStorage.getItem(CAJA_APERTURA_RESET_FLAG)) {
+    localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(Date.now()));
+    localStorage.setItem(CAJA_APERTURA_RESET_FLAG, '1');
+}
 let cajaAperturaAt = Number(localStorage.getItem(CAJA_APERTURA_STORAGE_KEY) || 0);
 
 // ── Auto-apertura Caja Diaria al primer cobro ─────────────────────────────────
@@ -11594,6 +12005,27 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
     const confirmBtn = document.getElementById('cierreCajaConfirmBtn');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Guardando...'; }
     try {
+        // Gasto automático de domicilios en efectivo
+        const domicilioFeeTotal = getDeliveredOrdersForCurrentDay()
+            .filter((o) => o.orderType === 'domicilio' || o.fulfillmentType === 'delivery')
+            .reduce((s, o) => s + Number(o.deliveryFee || 0), 0);
+        if (domicilioFeeTotal > 0) {
+            const gastoId = `gasto_domicilios_${Date.now()}`;
+            const gastoDom = {
+                id: gastoId,
+                categoria: 'otros',
+                subcategoria: 'Domicilios',
+                proveedor: 'Domiciliario',
+                descripcion: 'Gastos de domicilios',
+                monto: domicilioFeeTotal,
+                paymentMethod: 'efectivo',
+                registradoAt: Date.now(),
+                cajaAperturaAt: cajaAperturaAt || 0,
+            };
+            await saveGasto(gastoDom);
+            _gastosCajaState = [gastoDom, ..._gastosCajaState];
+        }
+
         await firebaseDb.collection(CIERRES_CAJA_COLLECTION).doc(closureId).set(closureDoc);
 
         cajaAperturaAt = Date.now();
@@ -11601,6 +12033,11 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
 
         _pendingCierreDoc = null;
         document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
+
+        // Reiniciar caja chica para la nueva jornada
+        _ccBilletes = {}; _ccMonedas = {}; _ccGuardadosBilletes = 0; _ccGuardadasMonedas = 0;
+        localStorage.removeItem(CC_STORAGE_KEY);
+        _ccRefreshTotals();
 
         renderCajaDiaria();
         _cajaDiariaAutoOpened = false;
@@ -11808,6 +12245,8 @@ async function cerrarCaja() {
             gastosMethod,
             gastosTotal,
             gastosDetalle: gastosFiltered.map((g) => ({
+                categoria: g.categoria || '',
+                subcategoria: g.subcategoria || '',
                 proveedor: g.proveedor || '',
                 descripcion: g.descripcion || '',
                 monto: Number(g.monto || 0),
@@ -12312,7 +12751,829 @@ document.getElementById('addProveedorBtn')?.addEventListener('click', () => {
     _proveedorOpenForm(null);
 });
 
+// ── Categorías Gastos — Panel CRUD ────────────────────────────────────────────
+let _catGastosPanelBound = false;
+
+function _catExpandItem(catId) {
+    const wrap = document.getElementById('categoriasGastosPanelWrap');
+    if (!wrap) return;
+    const item = wrap.querySelector(`.cat-gasto-item[data-cat-id="${catId}"]`);
+    if (!item) return;
+    const subs  = item.querySelector('.cat-gasto-subs');
+    const arrow = item.querySelector('.cat-toggle-arrow');
+    if (subs) { subs.removeAttribute('hidden'); }
+    if (arrow) { arrow.textContent = '▾'; }
+    item.querySelector('.cat-sub-input')?.focus();
+}
+
+function renderCategoriasGastosPanel() {
+    const wrap = document.getElementById('categoriasGastosPanelWrap');
+    if (!wrap) return;
+    const cats = getCategoriasGastos();
+
+    wrap.innerHTML = cats.map((cat) => {
+        const subCount = (cat.subs || []).length;
+        const subLabel = subCount > 0 ? `<span class="cat-sub-count">${subCount}</span>` : '';
+        return `
+        <div class="cat-gasto-item" data-cat-id="${escapeHtml(cat.id)}">
+            <div class="cat-gasto-header" data-cat-toggle="${escapeHtml(cat.id)}" style="cursor:pointer;">
+                <span class="cat-gasto-icon">${cat.icon}</span>
+                <span class="cat-gasto-name">${escapeHtml(cat.nombre)}</span>
+                ${subLabel}
+                <span class="cat-toggle-arrow">▸</span>
+                <div class="cat-gasto-actions" onclick="event.stopPropagation()">
+                    <button type="button" class="pm-icon-btn pm-icon-btn--del" data-cat-del="${escapeHtml(cat.id)}" title="Eliminar categoría">🗑</button>
+                </div>
+            </div>
+            <div class="cat-gasto-subs" hidden>
+                ${(cat.subs || []).map((s, i) => `
+                    <span class="cat-sub-chip">
+                        ${escapeHtml(s)}
+                        <button type="button" data-cat-del-sub="${escapeHtml(cat.id)}" data-sub-idx="${i}" title="Quitar">×</button>
+                    </span>`).join('')}
+                <div class="cat-sub-add-wrap">
+                    <input type="text" class="cat-sub-input" data-cat-sub-input="${escapeHtml(cat.id)}" placeholder="Nueva subcategoría…" maxlength="40">
+                    <button type="button" class="cat-sub-add-btn" data-cat-add-sub="${escapeHtml(cat.id)}">+ Agregar</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay categorías. Agrega una nueva.</p>`;
+
+    // Delegación de eventos — un solo listener en el contenedor
+    if (!_catGastosPanelBound) {
+        _catGastosPanelBound = true;
+
+        wrap.addEventListener('click', async (e) => {
+            // Toggle expand/collapse
+            const toggleHeader = e.target.closest('[data-cat-toggle]');
+            if (toggleHeader && !e.target.closest('[data-cat-del]')) {
+                const item  = toggleHeader.closest('.cat-gasto-item');
+                const subs  = item?.querySelector('.cat-gasto-subs');
+                const arrow = item?.querySelector('.cat-toggle-arrow');
+                if (!subs) return;
+                const open = subs.hasAttribute('hidden');
+                subs.toggleAttribute('hidden', !open);
+                if (arrow) arrow.textContent = open ? '▾' : '▸';
+                if (open) item?.querySelector('.cat-sub-input')?.focus();
+                return;
+            }
+
+            // Eliminar categoría
+            const delCat = e.target.closest('[data-cat-del]');
+            if (delCat) {
+                const catId = delCat.dataset.catDel;
+                const cat = _categoriasGastosState.find((c) => c.id === catId);
+                if (!confirm(`¿Eliminar la categoría "${cat?.nombre || catId}"?`)) return;
+                _categoriasGastosState = _categoriasGastosState.filter((c) => c.id !== catId);
+                try { await saveCategoriasGastos(); } catch (err) { showNotice('Error al guardar.', 'error'); return; }
+                renderCategoriasGastosPanel();
+                showNotice('Categoría eliminada.', 'ok');
+                return;
+            }
+
+            // Quitar subcategoría
+            const delSub = e.target.closest('[data-cat-del-sub]');
+            if (delSub) {
+                const catId = delSub.dataset.catDelSub;
+                const idx   = Number(delSub.dataset.subIdx);
+                const cat   = _categoriasGastosState.find((c) => c.id === catId);
+                if (!cat) return;
+                cat.subs = (cat.subs || []).filter((_, i) => i !== idx);
+                try { await saveCategoriasGastos(); } catch (err) { showNotice('Error al guardar.', 'error'); return; }
+                renderCategoriasGastosPanel();
+                _catExpandItem(catId);
+                return;
+            }
+
+            // Agregar subcategoría
+            const addSub = e.target.closest('[data-cat-add-sub]');
+            if (addSub) {
+                const catId   = addSub.dataset.catAddSub;
+                const item    = addSub.closest('.cat-gasto-item');
+                const inputEl = item?.querySelector('.cat-sub-input');
+                const value   = inputEl?.value?.trim() || '';
+                if (!value) { inputEl?.focus(); return; }
+                const cat = _categoriasGastosState.find((c) => c.id === catId);
+                if (!cat) return;
+                cat.subs = [...(cat.subs || []), value];
+                addSub.disabled = true;
+                try {
+                    await saveCategoriasGastos();
+                    renderCategoriasGastosPanel();
+                    _catExpandItem(catId);
+                } catch (err) {
+                    cat.subs = cat.subs.filter((s) => s !== value);
+                    showNotice('Error al guardar subcategoría.', 'error');
+                    addSub.disabled = false;
+                }
+                return;
+            }
+        });
+
+        wrap.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            const input = e.target.closest('.cat-sub-input');
+            if (!input) return;
+            e.preventDefault();
+            const item   = input.closest('.cat-gasto-item');
+            const addBtn = item?.querySelector('[data-cat-add-sub]');
+            addBtn?.click();
+        });
+    }
+}
+
+document.getElementById('addCategoriaGastoBtn')?.addEventListener('click', () => {
+    const formWrap = document.getElementById('newCatGastoFormWrap');
+    if (!formWrap) return;
+    formWrap.style.display = 'flex';
+    document.getElementById('newCatGastoNombre')?.focus();
+});
+
+document.getElementById('newCatGastoSaveBtn')?.addEventListener('click', async () => {
+    const iconEl  = document.getElementById('newCatGastoIcon');
+    const nameEl  = document.getElementById('newCatGastoNombre');
+    const nombre  = nameEl?.value?.trim() || '';
+    const icon    = iconEl?.value?.trim() || '📦';
+    if (!nombre) { showNotice('Escribe un nombre para la categoría.', 'error'); return; }
+    const id = nombre.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') + '_' + Date.now();
+    _categoriasGastosState = [..._categoriasGastosState, { id, nombre, icon, subs: [] }];
+    await saveCategoriasGastos();
+    if (iconEl) iconEl.value = '';
+    if (nameEl) nameEl.value = '';
+    const formWrap = document.getElementById('newCatGastoFormWrap');
+    if (formWrap) formWrap.style.display = 'none';
+    renderCategoriasGastosPanel();
+    showNotice('Categoría agregada.', 'ok');
+});
+
+document.getElementById('newCatGastoCancelBtn')?.addEventListener('click', () => {
+    const formWrap = document.getElementById('newCatGastoFormWrap');
+    if (formWrap) formWrap.style.display = 'none';
+});
+
+// ── Gastos — Informes ─────────────────────────────────────────────────────────
+function renderGastosInformes() {
+    const container = document.getElementById('gastosInformesBody');
+    if (!container) return;
+
+    const desdeVal = document.getElementById('gastosDesde')?.value;
+    const hastaVal = document.getElementById('gastosHasta')?.value;
+
+    let gastos = [..._gastosCajaState];
+
+    if (desdeVal) {
+        const desdeMs = new Date(desdeVal).getTime();
+        gastos = gastos.filter((g) => {
+            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            return ms >= desdeMs;
+        });
+    }
+    if (hastaVal) {
+        const hastaMs = new Date(hastaVal + 'T23:59:59').getTime();
+        gastos = gastos.filter((g) => {
+            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            return ms <= hastaMs;
+        });
+    }
+
+    const cats = getCategoriasGastos();
+    const byCategory = {};
+    cats.forEach((c) => { byCategory[c.id] = { cat: c, gastos: [], total: 0 }; });
+    byCategory['sin_cat'] = { cat: { id: 'sin_cat', nombre: 'Sin categoría', icon: '📦' }, gastos: [], total: 0 };
+
+    gastos.forEach((g) => {
+        const key = g.categoria && byCategory[g.categoria] ? g.categoria : 'sin_cat';
+        byCategory[key].gastos.push(g);
+        byCategory[key].total += Number(g.monto || 0);
+    });
+
+    const grandTotal = gastos.reduce((s, g) => s + Number(g.monto || 0), 0);
+    const grandCount = gastos.length;
+
+    const summaryCards = Object.values(byCategory)
+        .filter((b) => b.gastos.length > 0)
+        .map((b) => `
+            <div class="gi-cat-card">
+                <span class="gi-cat-icon">${b.cat.icon}</span>
+                <span class="gi-cat-name">${escapeHtml(b.cat.nombre)}</span>
+                <strong class="gi-cat-total">${formatMoney(b.total)}</strong>
+                <span class="gi-cat-count">${b.gastos.length} registro${b.gastos.length !== 1 ? 's' : ''}</span>
+            </div>`).join('');
+
+    const methods = getPaymentMethods();
+    const sortedGastos = [...gastos].sort((a, b) => {
+        const msA = a.registradoAt?.toMillis ? a.registradoAt.toMillis() : Number(a.registradoAt || 0);
+        const msB = b.registradoAt?.toMillis ? b.registradoAt.toMillis() : Number(b.registradoAt || 0);
+        return msB - msA;
+    });
+
+    const tableRows = sortedGastos.map((g) => {
+        const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+        const fecha = ms ? new Date(ms).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+        const cat = cats.find((c) => c.id === g.categoria);
+        const method = methods.find((m) => m.id === g.paymentMethod);
+        return `<tr>
+            <td>${fecha}</td>
+            <td>${cat ? `${cat.icon} ${escapeHtml(cat.nombre)}` : '—'}</td>
+            <td>${escapeHtml(g.subcategoria || '—')}</td>
+            <td>${escapeHtml(g.descripcion || '—')}</td>
+            <td>${escapeHtml(g.proveedor || '—')}</td>
+            <td><span class="caja-method-badge">${method ? `${method.icon} ${escapeHtml(method.label)}` : escapeHtml(g.paymentMethod || '—')}</span></td>
+            <td style="color:#fca5a5;font-weight:700;">${formatMoney(Number(g.monto || 0))}</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="gi-summary-grid">${summaryCards || '<span style="color:var(--admin-muted);font-size:0.82rem;">Sin registros para el período.</span>'}</div>
+        <div class="gi-totals-bar">
+            <span>${grandCount} gasto${grandCount !== 1 ? 's' : ''} · Promedio: ${grandCount ? formatMoney(grandTotal / grandCount) : '$0'}</span>
+            <strong>Total: ${formatMoney(grandTotal)}</strong>
+        </div>
+        ${gastos.length === 0 ? '<p class="caja-empty">No hay gastos registrados para el período seleccionado.</p>' : `
+        <div class="caja-ledger-wrap" style="margin-top:12px;">
+            <table class="caja-ledger-table gi-table">
+                <thead><tr>
+                    <th class="col-left">Fecha</th>
+                    <th class="col-left">Categoría</th>
+                    <th class="col-left">Subcategoría</th>
+                    <th class="col-left">Descripción</th>
+                    <th class="col-left">Proveedor</th>
+                    <th>Método</th>
+                    <th>Monto</th>
+                </tr></thead>
+                <tbody>${tableRows}</tbody>
+                <tfoot><tr>
+                    <td class="col-left" colspan="6" style="font-size:0.72rem;text-transform:uppercase;color:var(--admin-muted);">TOTAL</td>
+                    <td style="color:#fca5a5;font-weight:800;">${formatMoney(grandTotal)}</td>
+                </tr></tfoot>
+            </table>
+        </div>`}
+    `;
+}
+
+document.getElementById('gastosFilterBtn')?.addEventListener('click', renderGastosInformes);
+document.getElementById('gastosClearFilterBtn')?.addEventListener('click', () => {
+    const desdeEl = document.getElementById('gastosDesde');
+    const hastaEl = document.getElementById('gastosHasta');
+    if (desdeEl) desdeEl.value = '';
+    if (hastaEl) hastaEl.value = '';
+    renderGastosInformes();
+});
+
+// ── Caja Chica ────────────────────────────────────────────────────────────────
+const CC_BILLETES = [2000, 5000, 10000, 20000, 50000, 100000];
+const CC_MONEDAS  = [50, 100, 200, 500, 1000];
+const CC_STORAGE_KEY = 'roalburger-caja-chica';
+
+let _ccBilletes = {};
+let _ccMonedas  = {};
+let _ccGuardadosBilletes = 0;
+let _ccGuardadasMonedas  = 0;
+
+function _ccLoad() {
+    try {
+        const raw = JSON.parse(localStorage.getItem(CC_STORAGE_KEY) || '{}');
+        _ccBilletes = raw.billetes || {};
+        _ccMonedas  = raw.monedas  || {};
+        _ccGuardadosBilletes = Number(raw.guardadosBilletes || 0);
+        _ccGuardadasMonedas  = Number(raw.guardadasMonedas  || 0);
+    } catch (_) {}
+}
+
+function _ccSave() {
+    localStorage.setItem(CC_STORAGE_KEY, JSON.stringify({
+        billetes: _ccBilletes, monedas: _ccMonedas,
+        guardadosBilletes: _ccGuardadosBilletes, guardadasMonedas: _ccGuardadasMonedas,
+    }));
+}
+
+function _ccSubB() { return CC_BILLETES.reduce((s, d) => s + d * (Number(_ccBilletes[d] || 0)), 0); }
+function _ccSubM() { return CC_MONEDAS.reduce((s, d)  => s + d * (Number(_ccMonedas[d]  || 0)), 0); }
+function _ccTotal() { return _ccSubB() + _ccSubM() + _ccGuardadosBilletes + _ccGuardadasMonedas; }
+
+function _ccRenderGrid(containerId, denoms, state) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = denoms.map((d) => {
+        const count = Number(state[d] || 0);
+        const sub = d * count;
+        return `<div class="cc-denom-row">
+            <span class="cc-denom-label">${formatMoney(d)}</span>
+            <input type="number" class="cc-denom-input" data-cc-denom="${d}" value="${count > 0 ? count : ''}" placeholder="0" min="0" step="1" inputmode="numeric">
+            <span class="cc-denom-sub${sub > 0 ? ' has-value' : ''}" data-cc-sub="${d}">${sub > 0 ? formatMoney(sub) : '—'}</span>
+        </div>`;
+    }).join('');
+}
+
+function _ccRefreshTotals() {
+    const subB = _ccSubB();
+    const subM = _ccSubM();
+    const total = subB + subM + _ccGuardadosBilletes + _ccGuardadasMonedas;
+    const elSB = document.getElementById('ccSubtotalBilletes');
+    const elSM = document.getElementById('ccSubtotalMonedas');
+    const elT  = document.getElementById('ccTotalFinal');
+    if (elSB) elSB.textContent = formatMoney(subB);
+    if (elSM) elSM.textContent = formatMoney(subM);
+    if (elT)  elT.textContent  = formatMoney(total);
+    // Botón guardar sticky
+    const saveBtn = document.getElementById('ccSaveBtn');
+    if (saveBtn) saveBtn.textContent = `💾 ${formatMoney(total)}`;
+    // Botón del banner
+    const bannerBtn = document.getElementById('cajaChicaBtn');
+    if (bannerBtn) bannerBtn.textContent = total > 0 ? `💰 ${formatMoney(total)}` : '💰 Caja Chica';
+    // Resumen en Caja Diaria
+    const wrapper = document.getElementById('ccCajaDiariaSummary');
+    const amtEl   = wrapper?.querySelector('[data-cc-summary-amount]');
+    if (wrapper) wrapper.hidden = total <= 0;
+    if (amtEl)   amtEl.textContent = formatMoney(total);
+}
+
+function openCajaChicaModal() {
+    _ccLoad();
+    _ccRenderGrid('ccBilletesGrid', CC_BILLETES, _ccBilletes);
+    _ccRenderGrid('ccMonedasGrid',  CC_MONEDAS,  _ccMonedas);
+    const gbEl = document.getElementById('ccGuardadosBilletes');
+    const gmEl = document.getElementById('ccGuardadasMonedas');
+    if (gbEl) gbEl.value = _ccGuardadosBilletes > 0 ? _ccGuardadosBilletes : '';
+    if (gmEl) gmEl.value = _ccGuardadasMonedas  > 0 ? _ccGuardadasMonedas  : '';
+    _ccRefreshTotals();
+    document.getElementById('cajaChicaModal')?.removeAttribute('hidden');
+}
+
+function closeCajaChicaModal() {
+    document.getElementById('cajaChicaModal')?.setAttribute('hidden', '');
+}
+
+document.getElementById('cajaChicaModal')?.addEventListener('input', (e) => {
+    const denomInput = e.target.closest('[data-cc-denom]');
+    if (denomInput) {
+        const d = Number(denomInput.dataset.ccDenom);
+        const count = Number(denomInput.value) || 0;
+        if (CC_BILLETES.includes(d)) { _ccBilletes[d] = count; } else { _ccMonedas[d] = count; }
+        const sub = d * count;
+        const subEl = denomInput.closest('.cc-denom-row')?.querySelector(`[data-cc-sub="${d}"]`);
+        if (subEl) { subEl.textContent = sub > 0 ? formatMoney(sub) : '—'; subEl.classList.toggle('has-value', sub > 0); }
+        _ccSave(); _ccRefreshTotals(); return;
+    }
+    if (e.target.id === 'ccGuardadosBilletes') { _ccGuardadosBilletes = Number(e.target.value) || 0; _ccSave(); _ccRefreshTotals(); }
+    if (e.target.id === 'ccGuardadasMonedas')  { _ccGuardadasMonedas  = Number(e.target.value) || 0; _ccSave(); _ccRefreshTotals(); }
+});
+
+document.getElementById('ccSaveBtn')?.addEventListener('click', () => {
+    _ccSave();
+    const total = _ccTotal();
+    closeCajaChicaModal();
+    showNotice(`Caja chica guardada: ${formatMoney(total)}`, 'ok');
+});
+document.getElementById('cajaChicaCloseBtn')?.addEventListener('click', closeCajaChicaModal);
+document.getElementById('cajaChicaModal')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('cajaChicaModal')) closeCajaChicaModal();
+});
+document.getElementById('cajaChicaBtn')?.addEventListener('click', openCajaChicaModal);
+document.getElementById('ccCajaDiariaSummaryInner')?.addEventListener('click', openCajaChicaModal);
+
+// Cargar al inicio
+_ccLoad();
+_ccRefreshTotals();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── IMPORTAR CLIENTES — Lógica completa ─────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+/* ── Aliases inteligentes de columnas ──────────────────────────────────── */
+const ICM_FIELD_ALIASES = {
+    customerName:  ['nombre','name','cliente','razon social','razón social','nombres','apellidos','full name','fullname','apellido','customer','company'],
+    customerPhone: ['telefono','teléfono','phone','cel','celular','movil','móvil','tel','whatsapp','contacto','fono','phone number','numero'],
+    email:         ['email','correo','mail','e-mail','correo electronico','correo electrónico'],
+    address:       ['direccion','dirección','address','domicilio','dir','ubicacion','ubicación','calle'],
+    notes:         ['notas','notes','comentarios','observaciones','nota','memo','obs'],
+};
+const ICM_FIELD_LABELS = {
+    customerName: 'Nombre', customerPhone: 'Teléfono',
+    email: 'Email', address: 'Dirección', notes: 'Notas', _skip: '— Ignorar —',
+};
+
+let _icmParsedRows   = [];   // array de objetos {col: value}
+let _icmRawHeaders   = [];   // headers originales del archivo
+let _icmColMap       = {};   // { srcHeader -> fieldKey | '_skip' }
+let _icmTotalRows    = 0;
+
+/* ── Helpers dinámicos de librería ────────────────────────────────────── */
+function _icmLoadScript(src) {
+    return new Promise((resolve, reject) => {
+        if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+        const s = document.createElement('script');
+        s.src = src; s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+async function _icmEnsureSheetJS() {
+    if (!window.XLSX) await _icmLoadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+    return window.XLSX;
+}
+async function _icmEnsurePDFJS() {
+    if (!window.pdfjsLib) {
+        await _icmLoadScript('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    }
+    return window.pdfjsLib;
+}
+
+/* ── Parsers ───────────────────────────────────────────────────────────── */
+function _icmParseCSV(text, sep = null) {
+    // Auto-detectar separador
+    if (!sep) {
+        const line1 = text.slice(0, 2000);
+        const counts = { ',': 0, ';': 0, '\t': 0, '|': 0 };
+        for (const c of line1) if (c in counts) counts[c]++;
+        sep = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+    }
+    const rows = [];
+    let cur = '', inQ = false, cols = [], lineRow = [];
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i], next = text[i + 1];
+        if (ch === '"') {
+            if (inQ && next === '"') { cur += '"'; i++; }
+            else inQ = !inQ;
+        } else if (ch === sep && !inQ) {
+            cols.push(cur); cur = '';
+        } else if ((ch === '\n' || ch === '\r') && !inQ) {
+            cols.push(cur); cur = '';
+            if (ch === '\r' && next === '\n') i++;
+            rows.push(cols); cols = [];
+        } else {
+            cur += ch;
+        }
+    }
+    if (cur || cols.length) { cols.push(cur); rows.push(cols); }
+    // Filtrar filas vacías
+    const clean = rows.filter(r => r.some(c => c.trim()));
+    if (!clean.length) return { headers: [], rows: [] };
+    const headers = clean[0].map(h => h.trim());
+    const dataRows = clean.slice(1).map(r => {
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = (r[i] || '').trim(); });
+        return obj;
+    });
+    return { headers, rows: dataRows };
+}
+
+function _icmParseJSON(text) {
+    const data = JSON.parse(text);
+    const arr = Array.isArray(data) ? data : (data.clientes || data.clients || data.data || Object.values(data));
+    if (!arr.length) return { headers: [], rows: [] };
+    const headers = Object.keys(arr[0]);
+    const rows = arr.map(item => {
+        const obj = {};
+        headers.forEach(h => { obj[h] = String(item[h] ?? '').trim(); });
+        return obj;
+    });
+    return { headers, rows };
+}
+
+async function _icmParseXLSX(buffer) {
+    const XLSX = await _icmEnsureSheetJS();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (!raw.length) return { headers: [], rows: [] };
+    const headers = raw[0].map(h => String(h).trim());
+    const rows = raw.slice(1)
+        .filter(r => r.some(c => String(c).trim()))
+        .map(r => {
+            const obj = {};
+            headers.forEach((h, i) => { obj[h] = String(r[i] ?? '').trim(); });
+            return obj;
+        });
+    return { headers, rows };
+}
+
+async function _icmParsePDF(buffer) {
+    const pdfjsLib = await _icmEnsurePDFJS();
+    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+    let allText = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        allText += content.items.map(i => i.str).join(' ') + '\n';
+    }
+    // Intentar parsear como CSV/TSV el texto extraído
+    const { headers, rows } = _icmParseCSV(allText);
+    if (headers.length > 1) return { headers, rows };
+    // Fallback: cada línea como registro con columna única
+    const lines = allText.split('\n').map(l => l.trim()).filter(Boolean);
+    return { headers: ['texto'], rows: lines.map(l => ({ texto: l })) };
+}
+
+async function _icmReadFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext === 'json') {
+        const text = await file.text();
+        return _icmParseJSON(text);
+    }
+    if (ext === 'csv' || ext === 'tsv' || ext === 'txt') {
+        const text = await file.text();
+        return _icmParseCSV(text, ext === 'tsv' ? '\t' : null);
+    }
+    if (ext === 'xlsx' || ext === 'xls') {
+        const buf = await file.arrayBuffer();
+        return _icmParseXLSX(new Uint8Array(buf));
+    }
+    if (ext === 'pdf') {
+        const buf = await file.arrayBuffer();
+        return _icmParsePDF(new Uint8Array(buf));
+    }
+    // Intentar como texto plano
+    const text = await file.text();
+    return _icmParseCSV(text);
+}
+
+/* ── Auto-detección de columnas ───────────────────────────────────────── */
+function _icmDetectColumns(headers) {
+    const map = {};
+    const normalize = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    const used = new Set();
+    headers.forEach(h => {
+        const hn = normalize(h);
+        let matched = '_skip';
+        for (const [field, aliases] of Object.entries(ICM_FIELD_ALIASES)) {
+            if (!used.has(field) && aliases.some(a => hn === a || hn.includes(a) || a.includes(hn))) {
+                matched = field; used.add(field); break;
+            }
+        }
+        map[h] = matched;
+    });
+    return map;
+}
+
+/* ── UI helpers ────────────────────────────────────────────────────────── */
+function _icmShowPhase(n) {
+    [1,2,3,4].forEach(i => {
+        const el = document.getElementById(`icmPhase${i}`);
+        if (el) el.hidden = (i !== n);
+    });
+}
+
+function _icmRenderColMap() {
+    const grid = document.getElementById('icmColMapRows');
+    if (!grid) return;
+    const opts = Object.entries(ICM_FIELD_LABELS)
+        .map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+    grid.innerHTML = _icmRawHeaders.map(h => {
+        const cur = _icmColMap[h] || '_skip';
+        return `
+        <span class="icm-colmap-src" title="${escapeHtml(h)}">${escapeHtml(h)}</span>
+        <span class="icm-colmap-arrow">→</span>
+        <select class="icm-colmap-select" data-src-col="${escapeHtml(h)}">
+            ${opts.replace(`value="${cur}"`, `value="${cur}" selected`)}
+        </select>`;
+    }).join('');
+    grid.querySelectorAll('.icm-colmap-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            _icmColMap[sel.dataset.srcCol] = sel.value;
+        });
+    });
+}
+
+function _icmRenderPreview() {
+    const wrap = document.getElementById('icmPreviewTable');
+    if (!wrap) return;
+    const sample = _icmParsedRows.slice(0, 5);
+    if (!sample.length) { wrap.innerHTML = '<p style="color:#64748b;padding:10px">Sin datos.</p>'; return; }
+    const ths = _icmRawHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join('');
+    const trs = sample.map(row =>
+        `<tr>${_icmRawHeaders.map(h => `<td>${escapeHtml(String(row[h] ?? ''))}</td>`).join('')}</tr>`
+    ).join('');
+    wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+function _icmUpdateProgress(done, total) {
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    const fill = document.getElementById('icmProgressFill');
+    const count = document.getElementById('icmProgressCount');
+    const label = document.getElementById('icmProgressLabel');
+    if (fill) fill.style.width = `${pct}%`;
+    if (count) count.textContent = `${done.toLocaleString()} / ${total.toLocaleString()}`;
+    if (label) label.textContent = `Importando… ${pct}%`;
+}
+
+/* ── Mapeador de fila → cliente ────────────────────────────────────────── */
+function _icmMapRow(row) {
+    const get = (field) => {
+        const srcKey = Object.entries(_icmColMap).find(([, v]) => v === field)?.[0];
+        return srcKey ? String(row[srcKey] || '').trim() : '';
+    };
+    const rawPhone = get('customerPhone');
+    const phone = rawPhone.replace(/\D/g, '');
+    return {
+        customerName:       get('customerName') || '',
+        customerPhone:      rawPhone,
+        customerPhoneDigits: phone,
+        address:            get('address') || '',
+        email:              get('email') || '',
+        notes:              get('notes') || '',
+        totalOrders:        0,
+        totalSpent:         0,
+    };
+}
+
+/* ── Importador por lotes con yield ────────────────────────────────────── */
+async function _icmRunImport() {
+    const BATCH_SIZE = 200;
+    let imported = 0, skipped = 0, errors = 0;
+    const total = _icmParsedRows.length;
+    _icmUpdateProgress(0, total);
+
+    for (let i = 0; i < total; i += BATCH_SIZE) {
+        const chunk = _icmParsedRows.slice(i, i + BATCH_SIZE);
+        const batch = firebaseDb.batch();
+        let batchHasOps = false;
+
+        for (const row of chunk) {
+            try {
+                const client = _icmMapRow(row);
+                if (!client.customerName && !client.customerPhone) { skipped++; continue; }
+                const docId = buildAdminClientDocumentId(client);
+                const ref = firebaseDb.collection(CLIENTS_COLLECTION).doc(docId);
+                const data = {
+                    customerName:       client.customerName,
+                    customerPhone:      client.customerPhone,
+                    customerPhoneDigits: client.customerPhoneDigits,
+                    address:            client.address,
+                    savedAddresses:     client.address ? [client.address] : [],
+                    totalOrders:        0,
+                    totalSpent:         0,
+                    importedAt:         firestoreNow(),
+                    updatedAt:          firestoreNow(),
+                };
+                if (client.email)  data.email = client.email;
+                if (client.notes)  data.notes = client.notes;
+                // merge: true preserva totalOrders/totalSpent si ya existe
+                batch.set(ref, data, { merge: true });
+                batchHasOps = true;
+                imported++;
+            } catch (_e) {
+                errors++;
+            }
+        }
+
+        if (batchHasOps) {
+            try { await batch.commit(); }
+            catch (_e) { errors += chunk.length - (chunk.length - (batchHasOps ? 1 : 0)); }
+        }
+
+        _icmUpdateProgress(i + chunk.length, total);
+        // yield para que el navegador respire
+        await new Promise(r => setTimeout(r, 0));
+    }
+
+    return { imported, skipped, errors };
+}
+
+/* ── Modal controller ──────────────────────────────────────────────────── */
+function openImportClientsModal() {
+    _icmParsedRows = []; _icmRawHeaders = []; _icmColMap = {}; _icmTotalRows = 0;
+    const modal = document.getElementById('importClientsModal');
+    if (modal) modal.hidden = false;
+    _icmShowPhase(1);
+    const fileInput = document.getElementById('importFileInput');
+    if (fileInput) fileInput.value = '';
+}
+
+function closeImportClientsModal() {
+    const modal = document.getElementById('importClientsModal');
+    if (modal) modal.hidden = true;
+}
+
+/* ── Evento: archivo seleccionado / soltado ────────────────────────────── */
+async function _icmHandleFile(file) {
+    if (!file) return;
+    const dropzone = document.getElementById('importDropzone');
+    if (dropzone) dropzone.style.opacity = '0.5';
+
+    try {
+        const { headers, rows } = await _icmReadFile(file);
+        _icmRawHeaders   = headers;
+        _icmParsedRows   = rows;
+        _icmTotalRows    = rows.length;
+        _icmColMap       = _icmDetectColumns(headers);
+
+        // Actualizar info bar
+        const fname = document.getElementById('icmFileName');
+        const rcount = document.getElementById('icmRowCount');
+        const icount = document.getElementById('icmImportCount');
+        if (fname)  fname.textContent  = file.name;
+        if (rcount) rcount.textContent = `${rows.length.toLocaleString()} filas detectadas`;
+        if (icount) icount.textContent = rows.length.toLocaleString();
+
+        // Duplicados estimados (por teléfono)
+        const existingPhones = new Set(clientsState.map(c => c.customerPhoneDigits || c.customerPhone).filter(Boolean));
+        let dupCount = 0;
+        rows.forEach(r => {
+            const src = Object.entries(_icmColMap).find(([,v]) => v === 'customerPhone')?.[0];
+            const raw = src ? String(r[src] || '') : '';
+            const digits = raw.replace(/\D/g, '');
+            if (digits && existingPhones.has(digits)) dupCount++;
+        });
+        const dupWarn = document.getElementById('icmDupWarning');
+        if (dupWarn) {
+            dupWarn.textContent = dupCount > 0
+                ? `⚠ ${dupCount} posibles duplicados (se actualizarán sin borrar datos)`
+                : '';
+        }
+
+        _icmRenderColMap();
+        _icmRenderPreview();
+        _icmShowPhase(2);
+    } catch (err) {
+        showNotice(`Error al leer el archivo: ${err.message}`, 'error');
+    } finally {
+        if (dropzone) dropzone.style.opacity = '';
+    }
+}
+
+/* ── Wire-up de eventos del modal ──────────────────────────────────────── */
+(function _icmWireEvents() {
+    // Abrir modal
+    document.getElementById('openImportClientsBtn')?.addEventListener('click', openImportClientsModal);
+
+    // Cerrar
+    document.getElementById('importClientsCloseBtn')?.addEventListener('click', closeImportClientsModal);
+    document.getElementById('icmDoneCloseBtn')?.addEventListener('click', () => {
+        closeImportClientsModal();
+        fetchClients().then(() => renderClients());
+    });
+
+    // Backdrop click cierra
+    document.getElementById('importClientsModal')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeImportClientsModal();
+    });
+
+    // Click sobre drop zone → abrir file picker
+    const dropzone = document.getElementById('importDropzone');
+    const fileInput = document.getElementById('importFileInput');
+    dropzone?.addEventListener('click', () => fileInput?.click());
+    document.getElementById('icmDropLink')?.addEventListener('click', (e) => {
+        e.stopPropagation(); fileInput?.click();
+    });
+
+    // Selección de archivo
+    fileInput?.addEventListener('change', () => {
+        if (fileInput.files?.[0]) _icmHandleFile(fileInput.files[0]);
+    });
+
+    // Drag & Drop
+    dropzone?.addEventListener('dragover', (e) => {
+        e.preventDefault(); dropzone.classList.add('drag-over');
+    });
+    dropzone?.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+    dropzone?.addEventListener('drop', (e) => {
+        e.preventDefault(); dropzone.classList.remove('drag-over');
+        const file = e.dataTransfer?.files?.[0];
+        if (file) _icmHandleFile(file);
+    });
+
+    // Volver a fase 1
+    document.getElementById('icmBackBtn')?.addEventListener('click', () => _icmShowPhase(1));
+
+    // Iniciar importación
+    document.getElementById('icmStartImportBtn')?.addEventListener('click', async () => {
+        if (!_icmParsedRows.length) return;
+        _icmShowPhase(3);
+        try {
+            const { imported, skipped, errors } = await _icmRunImport();
+            // Mostrar resumen
+            const statsEl = document.getElementById('icmDoneStats');
+            if (statsEl) {
+                statsEl.innerHTML = `
+                    <div class="icm-done-stat">
+                        <span class="icm-done-stat-num icm-done-stat-num--ok">${imported.toLocaleString()}</span>
+                        <span class="icm-done-stat-label">Importados</span>
+                    </div>
+                    <div class="icm-done-stat">
+                        <span class="icm-done-stat-num icm-done-stat-num--skip">${skipped.toLocaleString()}</span>
+                        <span class="icm-done-stat-label">Omitidos</span>
+                    </div>
+                    <div class="icm-done-stat">
+                        <span class="icm-done-stat-num icm-done-stat-num--err">${errors.toLocaleString()}</span>
+                        <span class="icm-done-stat-label">Errores</span>
+                    </div>`;
+            }
+            const icon = document.getElementById('icmProgIcon');
+            if (icon) { icon.textContent = '✅'; icon.style.animation = 'none'; }
+            _icmShowPhase(4);
+        } catch (err) {
+            showNotice(`Error durante la importación: ${err.message}`, 'error');
+            _icmShowPhase(2);
+        }
+    });
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+
 initAdmin();
 loadPaymentMethods();
 loadGastosCaja();
+loadCategoriasGastos();
 loadProveedores();

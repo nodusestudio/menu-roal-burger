@@ -541,8 +541,8 @@
         }
 
         .sales-day-chip {
-            min-height: 36px;
-            padding: 0 14px;
+            min-height: 30px;
+            padding: 0 10px;
             border-radius: 999px;
             display: inline-flex;
             align-items: center;
@@ -550,25 +550,25 @@
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.14);
             color: #fff;
-            font-size: 0.78rem;
+            font-size: 0.72rem;
             font-weight: 700;
         }
 
         .nuevo-ticket-btn {
-            min-height: 36px;
-            padding: 0 18px;
+            min-height: 30px;
+            padding: 0 13px;
             border-radius: 999px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 5px;
             background: linear-gradient(135deg, #1db954, #17a346);
             border: 1px solid rgba(29, 185, 84, 0.45);
             color: #fff;
             font-family: 'Oswald', sans-serif;
-            font-size: 0.82rem;
+            font-size: 0.74rem;
             font-weight: 700;
-            letter-spacing: 0.9px;
+            letter-spacing: 0.7px;
             text-transform: uppercase;
             cursor: pointer;
             transition: transform 0.18s ease, box-shadow 0.18s ease;
@@ -580,20 +580,20 @@
         }
 
         .tickets-abiertos-btn {
-            min-height: 36px;
-            padding: 0 18px;
+            min-height: 30px;
+            padding: 0 13px;
             border-radius: 999px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 5px;
             background: linear-gradient(135deg, rgba(255, 123, 69, 0.28), rgba(255, 123, 69, 0.14));
             border: 1px solid rgba(255, 123, 69, 0.55);
             color: #ffb38a;
             font-family: 'Oswald', sans-serif;
-            font-size: 0.82rem;
+            font-size: 0.74rem;
             font-weight: 700;
-            letter-spacing: 0.9px;
+            letter-spacing: 0.7px;
             text-transform: uppercase;
             cursor: pointer;
             transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
@@ -8084,6 +8084,105 @@
         .caja-type-domicilio { background: rgba(59,130,246,0.18); color: #93c5fd; }
         .caja-type-retiro  { background: rgba(16,185,129,0.18); color: #6ee7b7; }
 
+        /* ── Caja Chica ──────────────────────────────── */
+        .caja-chica-btn {
+            min-height: 30px; padding: 0 13px; border-radius: 999px;
+            display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+            background: linear-gradient(135deg, rgba(255,149,64,0.22), rgba(255,149,64,0.10));
+            border: 1px solid rgba(255,149,64,0.5); color: #ffb98a;
+            font-family: 'Oswald', sans-serif; font-size: 0.74rem; font-weight: 700;
+            letter-spacing: 0.7px; text-transform: uppercase; cursor: pointer;
+            transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+        }
+        .caja-chica-btn:hover {
+            background: linear-gradient(135deg, rgba(255,149,64,0.4), rgba(255,149,64,0.2));
+            box-shadow: 0 5px 16px rgba(255,149,64,0.3); transform: translateY(-1px); color: #fff;
+        }
+        #cajaChicaModal {
+            position: fixed; inset: 0; z-index: 1100;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.65); backdrop-filter: blur(4px);
+        }
+        #cajaChicaModal[hidden] { display: none; }
+        .cc-modal-box {
+            background: var(--admin-card-bg, #1e1e2e); border: 1px solid var(--admin-border, rgba(255,255,255,0.1));
+            border-radius: 16px; width: 100%; max-width: 440px; max-height: 90vh;
+            display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.5); overflow: hidden;
+        }
+        .cc-modal-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px; border-bottom: 1px solid var(--admin-border, rgba(255,255,255,0.1));
+        }
+        .cc-modal-head h2 { margin: 0; font-size: 1rem; font-family: 'Oswald', sans-serif; letter-spacing: 1px; color: #fff; }
+        .cc-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+        .cc-section-label {
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+            color: var(--admin-muted, #888); margin: 0 0 8px;
+        }
+        .cc-denom-grid { display: flex; flex-direction: column; gap: 5px; }
+        .cc-denom-row {
+            display: grid; grid-template-columns: 88px 62px 1fr;
+            align-items: center; gap: 8px;
+        }
+        .cc-denom-label { color: #e0e0e0; font-weight: 600; font-size: 0.88rem; font-family: 'Space Grotesk', sans-serif; }
+        .cc-denom-input {
+            width: 100%; text-align: center;
+            background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+            color: #fff; border-radius: 6px; padding: 5px 6px; font-size: 0.88rem;
+        }
+        .cc-denom-input:focus { outline: none; border-color: rgba(255,149,64,0.6); background: rgba(255,149,64,0.06); }
+        .cc-denom-sub { color: var(--admin-muted, #888); font-size: 0.82rem; text-align: right; }
+        .cc-denom-sub.has-value { color: #6ee7b7; font-weight: 700; }
+        .cc-subtotal-row {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 8px; padding: 6px 0 0; border-top: 1px solid rgba(255,255,255,0.08);
+            font-size: 0.82rem; color: var(--admin-muted, #888);
+        }
+        .cc-subtotal-row strong { color: #e0e0e0; font-family: 'Space Grotesk', sans-serif; }
+        .cc-guardados-grid { display: flex; flex-direction: column; gap: 10px; }
+        .cc-guardado-row {
+            display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px;
+            font-size: 0.84rem; color: var(--admin-muted, #888);
+        }
+        .cc-guardado-input-wrap { display: flex; align-items: center; gap: 0; }
+        .cc-guardado-prefix {
+            padding: 5px 8px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+            border-right: none; border-radius: 6px 0 0 6px; color: var(--admin-muted, #888); font-size: 0.85rem;
+        }
+        .cc-guardado-input {
+            width: 110px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+            color: #fff; border-radius: 0 6px 6px 0; padding: 5px 8px; font-size: 0.88rem;
+        }
+        .cc-guardado-input:focus { outline: none; border-color: rgba(255,149,64,0.6); background: rgba(255,149,64,0.06); }
+        .cc-total-row {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 16px; padding: 12px 0 0; border-top: 2px solid rgba(255,149,64,0.3);
+            font-size: 0.8rem; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+            color: var(--admin-muted, #888);
+        }
+        .cc-total-row strong { font-size: 1.3rem; color: var(--admin-accent, #ff9540); font-family: 'Space Grotesk', sans-serif; }
+        .cc-modal-footer {
+            border-top: 1px solid var(--admin-border, rgba(255,255,255,0.1));
+            padding: 10px 20px; flex-shrink: 0;
+        }
+        .cc-save-btn {
+            width: 100%; padding: 10px 16px; border-radius: 10px; border: none; cursor: pointer;
+            background: linear-gradient(135deg, rgba(255,149,64,0.35), rgba(255,149,64,0.18));
+            border: 1px solid rgba(255,149,64,0.5); color: #ff9540;
+            font-family: 'Space Grotesk', sans-serif; font-size: 1rem; font-weight: 700;
+            letter-spacing: 0.5px; transition: background 0.15s, box-shadow 0.15s;
+        }
+        .cc-save-btn:hover { background: linear-gradient(135deg, rgba(255,149,64,0.5), rgba(255,149,64,0.3)); box-shadow: 0 4px 14px rgba(255,149,64,0.25); color: #fff; }
+        .cc-caja-summary {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 16px; margin: 8px 0 0;
+            background: rgba(255,149,64,0.07); border: 1px solid rgba(255,149,64,0.18);
+            border-radius: 8px; font-size: 0.84rem; color: var(--admin-muted, #888);
+            cursor: pointer; transition: background 0.15s;
+        }
+        .cc-caja-summary:hover { background: rgba(255,149,64,0.13); }
+        .cc-caja-summary strong { color: #ff9540; font-family: 'Space Grotesk', sans-serif; font-size: 0.95rem; }
+
         /* Layout dividido tickets (desktop) */
         .tickets-split-layout {
             display: flex;
@@ -8270,6 +8369,101 @@
         }
         .gasto-field input:focus { border-color: #fca5a5; }
 
+        /* ── Gasto — selección de categoría ── */
+        .gasto-cat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 8px 0; }
+        .gasto-cat-btn {
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            padding: 16px 10px; background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
+            color: var(--admin-text); font-size: 0.82rem; font-weight: 600; cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .gasto-cat-btn:hover { background: rgba(255,255,255,0.13); border-color: rgba(255,255,255,0.28); }
+        .gasto-cat-icon { font-size: 1.6rem; line-height: 1; }
+        .dpm-sub-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--admin-muted); margin: 0 0 6px; }
+        .gasto-sub-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+        .gasto-sub-chip {
+            padding: 5px 14px; background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15); border-radius: 20px;
+            color: var(--admin-text); font-size: 0.78rem; cursor: pointer; transition: background 0.12s;
+        }
+        .gasto-sub-chip:hover { background: rgba(255,255,255,0.16); }
+        .gasto-sub-chip.active { background: rgba(239,68,68,0.25); border-color: rgba(239,68,68,0.6); color: #fca5a5; }
+
+        /* ── Categorías Gastos — config panel ── */
+        .cat-gasto-item { border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+        .cat-gasto-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(255,255,255,0.04); user-select: none; }
+        .cat-gasto-header:hover { background: rgba(255,255,255,0.08); }
+        .cat-gasto-icon { font-size: 1.2rem; }
+        .cat-gasto-name { flex: 1; font-weight: 600; font-size: 0.88rem; }
+        .cat-toggle-arrow { font-size: 0.72rem; color: var(--admin-muted, #94a3b8); transition: transform 0.15s; flex-shrink: 0; }
+        .cat-sub-count { font-size: 0.68rem; background: rgba(255,255,255,0.12); color: var(--admin-muted, #94a3b8); border-radius: 10px; padding: 1px 7px; font-weight: 600; }
+        .cat-gasto-actions { display: flex; gap: 6px; }
+        .cat-gasto-subs {
+            padding: 10px 14px 12px; display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
+            border-top: 1px solid rgba(255,255,255,0.07); background: rgba(0,0,0,0.1);
+        }
+        .cat-gasto-subs[hidden] { display: none !important; }
+        .cat-sub-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 8px 3px 12px; background: rgba(255,255,255,0.08);
+            border-radius: 20px; font-size: 0.76rem; color: var(--admin-text);
+        }
+        .cat-sub-chip button { background: none; border: none; color: var(--admin-muted); cursor: pointer; font-size: 0.9rem; padding: 0; line-height: 1; }
+        .cat-sub-chip button:hover { color: #fca5a5; }
+        .cat-sub-add-wrap { display: flex; gap: 6px; align-items: center; }
+        .cat-sub-input {
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 20px; padding: 3px 12px; font-size: 0.76rem; color: var(--admin-text);
+            width: 120px; outline: none;
+        }
+        .cat-sub-input:focus { border-color: rgba(255,255,255,0.35); }
+        .cat-sub-add-btn {
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 20px; padding: 3px 12px; font-size: 0.74rem; color: var(--admin-text);
+            cursor: pointer; white-space: nowrap;
+        }
+        .cat-sub-add-btn:hover { background: rgba(255,255,255,0.18); }
+        .cat-new-input-icon, .cat-new-input-name {
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px; padding: 6px 12px; font-size: 0.82rem; color: var(--admin-text); outline: none;
+        }
+        .cat-new-input-icon { width: 54px; text-align: center; }
+        .cat-new-input-name { flex: 1; min-width: 120px; }
+        .cat-new-save-btn {
+            background: linear-gradient(135deg,#22c55e,#15803d); border: none; border-radius: 8px;
+            padding: 6px 16px; font-size: 0.8rem; color: #fff; cursor: pointer; font-weight: 600;
+        }
+
+        /* ── Gastos — Informes ── */
+        .gi-filter-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+        .gi-filter-bar input[type="date"] {
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px; padding: 5px 10px; color: var(--admin-text); font-size: 0.8rem; outline: none;
+        }
+        .gi-filter-bar input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(0.5); }
+        .gi-filter-btn {
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 8px; padding: 5px 14px; color: var(--admin-text); font-size: 0.8rem; cursor: pointer;
+        }
+        .gi-filter-btn:hover { background: rgba(255,255,255,0.15); }
+        .gi-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+        .gi-cat-card {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px;
+        }
+        .gi-cat-icon { font-size: 1.3rem; }
+        .gi-cat-name { font-size: 0.75rem; color: var(--admin-muted); }
+        .gi-cat-total { font-size: 1rem; font-weight: 800; color: #fca5a5; }
+        .gi-cat-count { font-size: 0.7rem; color: var(--admin-muted); }
+        .gi-totals-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 14px; background: rgba(255,255,255,0.04);
+            border-radius: 8px; font-size: 0.8rem; color: var(--admin-muted); margin-bottom: 8px;
+        }
+        .gi-totals-bar strong { color: #fca5a5; font-size: 0.92rem; font-weight: 800; }
+        .gi-table td, .gi-table th { font-size: 0.77rem; }
+
         .dpm-card {
             width: 100%;
             max-width: 440px;
@@ -8326,6 +8520,45 @@
             flex: 1;
             border-top: 1px dashed rgba(255,255,255,0.12);
         }
+        .dpm-split-toggle {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 6px;
+            color: var(--admin-muted);
+            font-size: 1rem;
+            font-weight: 700;
+            width: 26px; height: 22px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; flex-shrink: 0; padding: 0;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .dpm-split-toggle:hover,
+        .dpm-split-toggle.active { background: rgba(251,191,36,0.18); border-color: rgba(251,191,36,0.5); color: #fbbf24; }
+        .dpm-split-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 7px 14px;
+        }
+        .dpm-split-row-icon { font-size: 1.05rem; flex-shrink: 0; }
+        .dpm-split-row-label { flex: 1; font-size: 0.82rem; color: var(--admin-text); font-weight: 500; }
+        .dpm-split-input {
+            background: rgba(255,255,255,0.07);
+            border: 1.5px solid rgba(255,255,255,0.12);
+            border-radius: 8px; padding: 6px 10px;
+            color: #fff; font-size: 0.88rem; text-align: right;
+            width: 110px; outline: none;
+            transition: border-color 0.15s;
+        }
+        .dpm-split-input:focus { border-color: #fbbf24; }
+        .dpm-split-input.has-value { border-color: rgba(251,191,36,0.5); }
+        .dpm-split-status {
+            padding: 8px 14px 4px;
+            font-size: 0.78rem;
+            color: var(--admin-muted);
+            text-align: right;
+            font-weight: 600;
+        }
+        .dpm-split-status.ok { color: #6ee7b7; }
+        .dpm-split-status.over { color: #fca5a5; }
 
         .dpm-header {
             display: flex;
@@ -9116,7 +9349,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="menu"><span class="nav-icon">🍔</span><span>Articulos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="informes"><span class="nav-icon">📊</span><span>Informes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="proveedores"><span class="nav-icon">🏭</span><span>Proveedores</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="gastos"><span class="nav-icon">💸</span><span>Gastos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
@@ -9267,16 +9500,17 @@
                                 <span id="salesDayStatusMeta">Abierta ahora mismo.</span>
                             </div>
                             <div class="sales-day-banner-metrics">
-                                <span class="sales-day-chip" id="salesDayDeliveredCount">0 entregados</span>
-                                <span class="sales-day-chip" id="salesDayDeliveredTotal">$0</span>
-                                <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
-                                    Nuevo Ticket
-                                </button>
+                                <span class="sales-day-chip" id="salesDayDeliveredTotal">🛵 $0</span>
+                                <span class="sales-day-chip" id="salesDayGrandTotal">📊 $0</span>
+                                <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
                                 <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
                                     Tickets Abiertos
                                     <span id="adminTicketsCountBadge" style="display:none;background:#ff7b45;color:#fff;font-size:0.7rem;font-weight:700;min-width:18px;height:18px;border-radius:999px;padding:0 5px;line-height:18px;text-align:center;"></span>
+                                </button>
+                                <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
+                                    Nuevo Ticket
                                 </button>
                             </div>
                         </div>
@@ -9352,6 +9586,10 @@
                             <span class="menu-inner-tab-icon">🎫</span>
                             <span>Tickets</span>
                         </button>
+                        <button class="menu-inner-tab" data-section-tab="gastos" data-section-scope="informes" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">💸</span>
+                            <span>Gastos</span>
+                        </button>
                     </nav>
                     <div class="menu-inner-panels-wrap">
 
@@ -9423,6 +9661,12 @@
                                             </div>
                                         </div>
                                         <div class="card-body" id="card-caja-diaria" style="padding:0;">
+                                            <div id="ccCajaDiariaSummary" hidden style="padding:8px 12px 0;">
+                                                <div class="cc-caja-summary" id="ccCajaDiariaSummaryInner" title="Abrir Caja Chica">
+                                                    <span>💰 Caja Chica (fondo)</span>
+                                                    <strong data-cc-summary-amount>$0</strong>
+                                                </div>
+                                            </div>
                                             <div class="caja-ledger-wrap">
                                                 <table class="caja-ledger-table">
                                                     <thead id="cajaDiariaHead">
@@ -9522,6 +9766,28 @@
                                     </article>
                                 </aside>
                             </div>
+                        </div>
+
+                        <!-- Panel: Gastos -->
+                        <div class="menu-inner-panel" data-section-panel="gastos" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Gastos</h2>
+                                </div>
+                                <div class="card-body">
+                                    <div class="gi-filter-bar">
+                                        <label style="font-size:0.78rem;color:var(--admin-muted);">Desde</label>
+                                        <input type="date" id="gastosDesde" aria-label="Gastos desde">
+                                        <label style="font-size:0.78rem;color:var(--admin-muted);">Hasta</label>
+                                        <input type="date" id="gastosHasta" aria-label="Gastos hasta">
+                                        <button type="button" class="gi-filter-btn" id="gastosFilterBtn">Filtrar</button>
+                                        <button type="button" class="gi-filter-btn" id="gastosClearFilterBtn">Todo</button>
+                                    </div>
+                                    <div id="gastosInformesBody">
+                                        <!-- renderizado por JS -->
+                                    </div>
+                                </div>
+                            </article>
                         </div>
 
                     </div>
@@ -9676,6 +9942,7 @@
                 <div class="section-toolbar clients-toolbar">
                     <div class="clients-toolbar-actions">
                         <button type="button" class="section-action-btn primary" id="openCreateClientBtn">+ Agregar cliente</button>
+                        <button type="button" class="section-action-btn icm-import-btn" id="openImportClientsBtn">⬆ Importar</button>
                         <select id="clientsExportFormat" class="clients-export-select" aria-label="Formato de exportacion de clientes">
                             <option value="csv">CSV</option>
                             <option value="json">JSON</option>
@@ -9731,24 +9998,31 @@
                 </article>
             </div>
 
-            <!-- ══════════ PROVEEDORES ══════════ -->
-            <div class="admin-tab-panel" data-tab-panel="proveedores">
-                <div class="section-toolbar">
-                    <button type="button" class="section-action-btn primary" id="addProveedorBtn">+ Agregar proveedor</button>
-                </div>
+            <!-- ══════════ GASTOS CONFIG ══════════ -->
+            <div class="admin-tab-panel" data-tab-panel="gastos">
+                <!-- Categorías -->
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>Proveedores</h2>
+                        <h2>Categorías de Gastos</h2>
+                        <button type="button" class="section-action-btn primary" id="addCategoriaGastoBtn">+ Nueva categoría</button>
                     </div>
                     <div class="card-body">
                         <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
-                            Registra tus proveedores para seleccionarlos rápidamente al registrar un gasto de caja.
+                            Configura las categorías y subcategorías que aparecerán al registrar un gasto.
                         </p>
-                        <div id="proveedoresPanelWrap">
+                        <div id="newCatGastoFormWrap" style="display:none;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+                            <input type="text" id="newCatGastoIcon" class="cat-new-input-icon" placeholder="📦" maxlength="4">
+                            <input type="text" id="newCatGastoNombre" class="cat-new-input-name" placeholder="Nombre de categoría" maxlength="40">
+                            <button type="button" id="newCatGastoSaveBtn" class="cat-new-save-btn">Agregar</button>
+                            <button type="button" id="newCatGastoCancelBtn" class="pm-icon-btn">Cancelar</button>
+                        </div>
+                        <div id="categoriasGastosPanelWrap">
                             <!-- renderizado por JS -->
                         </div>
                     </div>
                 </article>
+                <!-- datalist de proveedores para el modal de gasto (oculto, mantenido por JS) -->
+                <div id="proveedoresPanelWrap" hidden></div>
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="mensajes">
@@ -10209,6 +10483,173 @@
         </div>
     </div>
 
+    <!-- ── Import Clients Modal ─────────────────────────────────────────── -->
+    <div class="icm-backdrop" id="importClientsModal" hidden>
+        <article class="icm-card">
+            <div class="icm-header">
+                <span class="icm-header-icon">📥</span>
+                <h3 class="icm-title">Importar Clientes</h3>
+                <button type="button" class="icm-close-btn" id="importClientsCloseBtn">×</button>
+            </div>
+
+            <!-- Fase 1: Drop zone -->
+            <div class="icm-phase" id="icmPhase1">
+                <div class="icm-dropzone" id="importDropzone">
+                    <div class="icm-drop-icon">📂</div>
+                    <p class="icm-drop-main">Arrastra tu archivo aquí</p>
+                    <p class="icm-drop-sub">o <span class="icm-drop-link" id="icmDropLink">haz clic para seleccionar</span></p>
+                    <p class="icm-drop-formats">CSV · XLSX · XLS · JSON · TSV · TXT · PDF</p>
+                    <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls,.json,.tsv,.txt,.pdf" hidden>
+                </div>
+                <p class="icm-drop-note">El sistema detecta automáticamente el formato y las columnas.<br>Procesa hasta <strong>10 000 clientes</strong> sin bloquear la app.</p>
+            </div>
+
+            <!-- Fase 2: Preview + mapeo -->
+            <div class="icm-phase" id="icmPhase2" hidden>
+                <div class="icm-info-bar">
+                    <span class="icm-filename" id="icmFileName"></span>
+                    <span class="icm-rowcount" id="icmRowCount"></span>
+                </div>
+                <div class="icm-colmap-wrap">
+                    <p class="icm-section-label">Mapeo de columnas <span class="icm-label-hint">(auto-detectado — editable)</span></p>
+                    <div class="icm-colmap-grid" id="icmColMapRows"></div>
+                </div>
+                <div class="icm-preview-wrap">
+                    <p class="icm-section-label">Vista previa <span class="icm-label-hint">(primeros 5 registros)</span></p>
+                    <div class="icm-preview-scroll" id="icmPreviewTable"></div>
+                </div>
+                <div class="icm-phase2-foot">
+                    <span class="icm-dup-warn" id="icmDupWarning"></span>
+                    <button type="button" class="icm-btn" id="icmBackBtn">← Volver</button>
+                    <button type="button" class="icm-btn icm-btn--primary" id="icmStartImportBtn">
+                        Importar <span id="icmImportCount">0</span> clientes
+                    </button>
+                </div>
+            </div>
+
+            <!-- Fase 3: Progreso -->
+            <div class="icm-phase icm-phase--center" id="icmPhase3" hidden>
+                <div class="icm-prog-icon" id="icmProgIcon">⚡</div>
+                <p class="icm-prog-label" id="icmProgressLabel">Procesando…</p>
+                <div class="icm-prog-track">
+                    <div class="icm-prog-fill" id="icmProgressFill" style="width:0%"></div>
+                </div>
+                <p class="icm-prog-count" id="icmProgressCount">0 / 0</p>
+                <p class="icm-prog-sub" id="icmProgressSub">No cierres esta ventana</p>
+            </div>
+
+            <!-- Fase 4: Resumen -->
+            <div class="icm-phase icm-phase--center" id="icmPhase4" hidden>
+                <div class="icm-done-icon">✅</div>
+                <h4 class="icm-done-title" id="icmDoneTitle">Importación completada</h4>
+                <div class="icm-done-stats" id="icmDoneStats"></div>
+                <button type="button" class="icm-btn icm-btn--primary" id="icmDoneCloseBtn">Cerrar</button>
+            </div>
+        </article>
+    </div>
+
+    <style>
+    /* ── Import Clients Modal ── */
+    .icm-import-btn { background: rgba(99,102,241,0.18) !important; border-color: rgba(99,102,241,0.5) !important; color: #a5b4fc !important; }
+    .icm-import-btn:hover { background: rgba(99,102,241,0.32) !important; }
+
+    .icm-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 9100;
+        display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .icm-backdrop[hidden] { display: none !important; }
+
+    .icm-card { background: #1a1f2e; border: 1px solid rgba(255,255,255,0.12); border-radius: 18px;
+        width: 100%; max-width: 680px; max-height: 90vh; display: flex; flex-direction: column;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.6); overflow: hidden; }
+
+    .icm-header { display: flex; align-items: center; gap: 10px; padding: 18px 20px 14px;
+        border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
+    .icm-header-icon { font-size: 1.4rem; }
+    .icm-title { flex: 1; font-size: 1.05rem; font-weight: 700; color: #e2e8f0; margin: 0; }
+    .icm-close-btn { background: none; border: none; color: #64748b; font-size: 1.5rem; cursor: pointer;
+        line-height: 1; padding: 2px 6px; border-radius: 6px; transition: color 0.15s; }
+    .icm-close-btn:hover { color: #e2e8f0; }
+
+    .icm-phase { padding: 20px; overflow-y: auto; flex: 1; }
+    .icm-phase--center { display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 14px; text-align: center; min-height: 280px; }
+
+    /* Drop zone */
+    .icm-dropzone { border: 2px dashed rgba(99,102,241,0.5); border-radius: 14px;
+        padding: 40px 24px; text-align: center; cursor: pointer; transition: all 0.2s;
+        background: rgba(99,102,241,0.05); }
+    .icm-dropzone:hover, .icm-dropzone.drag-over { border-color: #818cf8; background: rgba(99,102,241,0.12); }
+    .icm-drop-icon { font-size: 2.8rem; margin-bottom: 10px; }
+    .icm-drop-main { font-size: 1rem; font-weight: 600; color: #e2e8f0; margin: 0 0 4px; }
+    .icm-drop-sub { color: #64748b; font-size: 0.85rem; margin: 0 0 10px; }
+    .icm-drop-link { color: #818cf8; cursor: pointer; text-decoration: underline; }
+    .icm-drop-formats { display: inline-block; background: rgba(255,255,255,0.06); border-radius: 20px;
+        padding: 4px 14px; font-size: 0.75rem; color: #64748b; letter-spacing: 0.05em; }
+    .icm-drop-note { text-align: center; color: #475569; font-size: 0.78rem; margin: 14px 0 0; line-height: 1.5; }
+
+    /* Info bar */
+    .icm-info-bar { display: flex; align-items: center; justify-content: space-between;
+        background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 14px; margin-bottom: 14px; }
+    .icm-filename { font-size: 0.82rem; color: #94a3b8; font-weight: 500; }
+    .icm-rowcount { font-size: 0.82rem; color: #818cf8; font-weight: 700; }
+
+    /* Column mapping */
+    .icm-section-label { font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase;
+        letter-spacing: 0.08em; margin: 0 0 8px; }
+    .icm-label-hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: #475569; }
+    .icm-colmap-wrap { margin-bottom: 18px; }
+    .icm-colmap-grid { display: grid; grid-template-columns: 1fr 24px 1fr; gap: 6px 8px; align-items: center; }
+    .icm-colmap-src { font-size: 0.8rem; color: #94a3b8; background: rgba(255,255,255,0.05);
+        border-radius: 6px; padding: 5px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .icm-colmap-arrow { color: #475569; text-align: center; font-size: 0.85rem; }
+    .icm-colmap-select { background: #0f172a; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px;
+        color: #e2e8f0; font-size: 0.8rem; padding: 5px 8px; width: 100%; }
+
+    /* Preview table */
+    .icm-preview-wrap { margin-bottom: 14px; }
+    .icm-preview-scroll { overflow-x: auto; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); }
+    .icm-preview-scroll table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    .icm-preview-scroll th { background: rgba(255,255,255,0.06); color: #94a3b8; padding: 7px 10px;
+        text-align: left; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .icm-preview-scroll td { color: #cbd5e1; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);
+        max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Phase 2 footer */
+    .icm-phase2-foot { display: flex; align-items: center; gap: 10px; padding-top: 4px; }
+    .icm-dup-warn { flex: 1; font-size: 0.78rem; color: #f59e0b; }
+
+    /* Buttons */
+    .icm-btn { padding: 9px 18px; border-radius: 10px; font-size: 0.85rem; font-weight: 600;
+        cursor: pointer; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.07);
+        color: #e2e8f0; transition: all 0.15s; }
+    .icm-btn:hover { background: rgba(255,255,255,0.13); }
+    .icm-btn--primary { background: rgba(99,102,241,0.25); border-color: rgba(99,102,241,0.6);
+        color: #a5b4fc; }
+    .icm-btn--primary:hover { background: rgba(99,102,241,0.4); }
+    .icm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Progress */
+    .icm-prog-icon { font-size: 2.5rem; animation: icm-pulse 1.2s ease-in-out infinite; }
+    @keyframes icm-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
+    .icm-prog-label { font-size: 1rem; font-weight: 600; color: #e2e8f0; margin: 0; }
+    .icm-prog-track { width: 100%; max-width: 400px; height: 10px; background: rgba(255,255,255,0.08);
+        border-radius: 20px; overflow: hidden; }
+    .icm-prog-fill { height: 100%; background: linear-gradient(90deg,#6366f1,#818cf8);
+        border-radius: 20px; transition: width 0.3s ease; }
+    .icm-prog-count { font-size: 0.9rem; font-weight: 700; color: #818cf8; margin: 0; }
+    .icm-prog-sub { font-size: 0.75rem; color: #475569; margin: 0; }
+
+    /* Done */
+    .icm-done-icon { font-size: 3rem; }
+    .icm-done-title { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; margin: 0; }
+    .icm-done-stats { display: flex; gap: 24px; }
+    .icm-done-stat { text-align: center; }
+    .icm-done-stat-num { font-size: 1.6rem; font-weight: 800; display: block; }
+    .icm-done-stat-num--ok { color: #4ade80; }
+    .icm-done-stat-num--skip { color: #f59e0b; }
+    .icm-done-stat-num--err { color: #f87171; }
+    .icm-done-stat-label { font-size: 0.74rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+    </style>
+
     <div class="product-edit-modal" id="clientEditModal" aria-hidden="true">
         <div class="product-edit-card">
             <div class="product-edit-head">
@@ -10355,6 +10796,62 @@
         </div>
     </div>
 
+    <!-- Modal Caja Chica -->
+    <div id="cajaChicaModal" hidden>
+        <div class="cc-modal-box">
+            <div class="cc-modal-head">
+                <h2>💰 Caja Chica</h2>
+                <button type="button" id="cajaChicaCloseBtn" class="card-collapse-btn" style="font-size:0.78rem;padding:4px 12px;" aria-label="Cerrar">✕ Cerrar</button>
+            </div>
+            <div class="cc-modal-body">
+                <!-- Monedas primero -->
+                <p class="cc-section-label">Monedas</p>
+                <div class="cc-denom-grid" id="ccMonedasGrid"></div>
+                <div class="cc-subtotal-row">
+                    <span>Subtotal monedas</span>
+                    <strong id="ccSubtotalMonedas">$0</strong>
+                </div>
+
+                <!-- Billetes -->
+                <p class="cc-section-label" style="margin-top:16px;">Billetes</p>
+                <div class="cc-denom-grid" id="ccBilletesGrid"></div>
+                <div class="cc-subtotal-row">
+                    <span>Subtotal billetes</span>
+                    <strong id="ccSubtotalBilletes">$0</strong>
+                </div>
+
+                <!-- Guardados -->
+                <p class="cc-section-label" style="margin-top:16px;">Guardados</p>
+                <div class="cc-guardados-grid">
+                    <div class="cc-guardado-row">
+                        <span>Monedas guardadas</span>
+                        <div class="cc-guardado-input-wrap">
+                            <span class="cc-guardado-prefix">$</span>
+                            <input type="number" id="ccGuardadasMonedas" class="cc-guardado-input" placeholder="0" min="0" step="1000" inputmode="numeric">
+                        </div>
+                    </div>
+                    <div class="cc-guardado-row">
+                        <span>Billetes guardados</span>
+                        <div class="cc-guardado-input-wrap">
+                            <span class="cc-guardado-prefix">$</span>
+                            <input type="number" id="ccGuardadosBilletes" class="cc-guardado-input" placeholder="0" min="0" step="1000" inputmode="numeric">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total -->
+                <div class="cc-total-row">
+                    <span>Total caja chica</span>
+                    <strong id="ccTotalFinal">$0</strong>
+                </div>
+            </div>
+            <!-- Footer sticky con botón guardar -->
+            <div class="cc-modal-footer">
+                <button type="button" id="ccSaveBtn" class="cc-save-btn">💾 $0</button>
+            </div>
+        </div>
+    </div>
+
     <div id="deliveryPaymentModal" hidden>
         <article class="dpm-card">
             <!-- Encabezado mínimo -->
@@ -10369,20 +10866,32 @@
                 <!-- Separador tipo ticket -->
                 <div class="dpm-pay-divider">
                     <span>MÉTODO DE PAGO</span>
+                    <button type="button" class="dpm-split-toggle" id="dpmSplitToggleBtn" title="Dividir entre métodos">÷</button>
                 </div>
-                <!-- Botones de método -->
+                <!-- Botones de método (modo normal) -->
                 <div class="dpm-methods" id="dpmMethodsGrid"></div>
+                <!-- Formulario de pago dividido -->
+                <div id="dpmSplitWrap" hidden>
+                    <div id="dpmSplitRows"></div>
+                    <div class="dpm-split-status" id="dpmSplitStatus"></div>
+                </div>
                 <!-- Sub-preguntas -->
                 <div class="dpm-sub-section" id="dpmSubSection" hidden>
                     <div class="dpm-sub-panel" id="dpmSubEfectivo" hidden>
-                        <p class="dpm-sub-label">¿Con cuánto paga el cliente?</p>
-                        <div class="dpm-cash-wrap">
-                            <span class="dpm-cash-prefix">$</span>
-                            <input type="number" id="dpmCashInput" class="dpm-cash-input" placeholder="0" min="0" step="1000" inputmode="numeric">
+                        <p class="dpm-sub-label">¿Cómo paga el cliente?</p>
+                        <div class="dpm-sub-chips" id="dpmCashModeChips">
+                            <button type="button" class="dpm-sub-chip" data-dpm-cash-mode="exacto">💯 Monto exacto</button>
+                            <button type="button" class="dpm-sub-chip" data-dpm-cash-mode="cambio">💵 Con cambio</button>
                         </div>
-                        <div class="dpm-change-row" id="dpmChangeRow" hidden>
-                            <span class="dpm-change-label">Cambio a dar</span>
-                            <strong class="dpm-change-amount" id="dpmChangeAmount">$ 0</strong>
+                        <div id="dpmCashWrap" hidden>
+                            <div class="dpm-cash-wrap">
+                                <span class="dpm-cash-prefix">$</span>
+                                <input type="number" id="dpmCashInput" class="dpm-cash-input" placeholder="0" min="0" step="1000" inputmode="numeric">
+                            </div>
+                            <div class="dpm-change-row" id="dpmChangeRow" hidden>
+                                <span class="dpm-change-label">Cambio a dar</span>
+                                <strong class="dpm-change-amount" id="dpmChangeAmount">$ 0</strong>
+                            </div>
                         </div>
                     </div>
                     <div class="dpm-sub-panel" id="dpmSubChips" hidden>
@@ -10403,19 +10912,31 @@
     <div id="gastoModal" hidden>
         <article class="dpm-card">
             <div class="dpm-header">
-                <p class="dpm-title">Registrar Gasto</p>
+                <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+                    <button type="button" id="gastoBackBtn" hidden style="background:none;border:none;color:var(--admin-muted);cursor:pointer;font-size:1.1rem;padding:0 4px 0 0;line-height:1;">←</button>
+                    <p class="dpm-title" id="gastoModalTitle" style="margin:0;">Tipo de gasto</p>
+                </div>
                 <span style="font-size:1.2rem;">💸</span>
             </div>
-            <div class="dpm-unified-body">
+            <!-- Paso 1: selección de categoría -->
+            <div id="gastoStep1" class="dpm-unified-body">
+                <div class="gasto-cat-grid" id="gastoCatGrid"></div>
+            </div>
+            <!-- Paso 2: subcategoría + formulario -->
+            <div id="gastoStep2" class="dpm-unified-body" hidden>
+                <div id="gastoSubSection" hidden style="margin-bottom:14px;">
+                    <p class="dpm-sub-label">Subcategoría</p>
+                    <div class="gasto-sub-chips" id="gastoSubGrid"></div>
+                </div>
                 <div class="gasto-form">
-                    <div class="gasto-field">
-                        <label>Proveedor</label>
-                        <input type="text" id="gastoProveedor" placeholder="Nombre del proveedor" maxlength="60" list="proveedoresList" autocomplete="off">
-                        <datalist id="proveedoresList"></datalist>
-                    </div>
                     <div class="gasto-field">
                         <label>Descripción</label>
                         <input type="text" id="gastoDescripcion" placeholder="¿En qué se gastó?" maxlength="100">
+                    </div>
+                    <div class="gasto-field" id="gastoProveedorWrap">
+                        <label>Proveedor <span style="color:var(--admin-muted);font-weight:400;">(opcional)</span></label>
+                        <input type="text" id="gastoProveedor" placeholder="Nombre del proveedor" maxlength="60" list="proveedoresList" autocomplete="off">
+                        <datalist id="proveedoresList"></datalist>
                     </div>
                     <div class="gasto-field">
                         <label>Monto</label>
@@ -10430,7 +10951,7 @@
             </div>
             <div class="dpm-footer">
                 <button type="button" class="dpm-btn-cancel" id="gastoCancelBtn">Cancelar</button>
-                <button type="button" class="dpm-btn-confirm" id="gastoRegistrarBtn" disabled style="background:linear-gradient(90deg,#ef4444,#b91c1c);">Registrar gasto</button>
+                <button type="button" class="dpm-btn-confirm" id="gastoRegistrarBtn" disabled hidden style="background:linear-gradient(90deg,#ef4444,#b91c1c);">Registrar gasto</button>
             </div>
         </article>
     </div>
