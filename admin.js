@@ -6210,7 +6210,8 @@ function createOrderCard(order) {
 
     if (order.status === 'entregado') {
         card.classList.add('kanban-order-card-compact');
-        if (order.anulado) card.classList.add('kanban-order-card--anulado');
+        const isAnulado = order.anulado === true || order.voided === true;
+        if (isAnulado) card.classList.add('kanban-order-card--anulado');
         card.innerHTML = `
             <div class="koc-body">
                 <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
@@ -6218,9 +6219,9 @@ function createOrderCard(order) {
             </div>
             <div class="koc-header">
                 <strong class="koc-code">#${escapeHtml(order.code)}</strong>
-                <span class="koc-time">${escapeHtml(formatOrderTime(order.anuladoAt || order.deliveredAt || order.updatedAt || order.createdAt))}</span>
+                <span class="koc-time">${escapeHtml(formatOrderTime(order.anuladoAt || order.voidedAt || order.deliveredAt || order.updatedAt || order.createdAt))}</span>
             </div>
-            ${order.anulado ? '<div class="koc-anulado-stamp">ANULADO</div>' : ''}
+            ${isAnulado ? '<div class="koc-anulado-stamp">ANULADO</div>' : ''}
         `;
         return card;
     }
@@ -6432,7 +6433,7 @@ function renderOrders() {
 
 function renderSalesDayBanner() {
     const deliveredOrders = getDeliveredOrdersForCurrentDay();
-    const validOrders = deliveredOrders.filter((o) => !o.anulado);
+    const validOrders = deliveredOrders.filter((o) => !o.anulado && !o.voided);
     const domicilioTotal = validOrders
         .filter((o) => o.orderType === 'domicilio' || o.fulfillmentType === 'delivery')
         .reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
