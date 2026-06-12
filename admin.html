@@ -3151,7 +3151,7 @@
             flex-shrink: 0;
         }
         .pos-topbar-btn {
-            width: 40px; height: 40px;
+            width: 44px; height: 44px;
             background: transparent;
             border: none;
             color: #eef4ff;
@@ -4118,8 +4118,8 @@
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.1);
             color: #eef4ff;
-            padding: 8px 10px; border-radius: 7px;
-            font-size: 0.85rem; font-family: inherit;
+            padding: 10px 12px; border-radius: 7px;
+            font-size: 16px; font-family: inherit;
             outline: none; transition: border-color 0.15s;
         }
         .pos-field input:focus,
@@ -4162,9 +4162,9 @@
         .pos-item-qty input:focus { outline: none; }
         .pos-item-qty button {
             border: none; background: transparent;
-            color: #c6cdd8; width: 20px; height: 20px;
-            padding: 0; border-radius: 2px; cursor: pointer;
-            font-size: 0.75rem; line-height: 1;
+            color: #c6cdd8; width: 36px; height: 36px;
+            padding: 0; border-radius: 6px; cursor: pointer;
+            font-size: 1rem; line-height: 1;
         }
         .pos-item-qty button:hover { background: rgba(255,255,255,0.1); color: #ffdca7; }
         .pos-item-price {
@@ -5670,6 +5670,16 @@
         .admin-accordion-trigger .nav-icon {
             font-size: 1.08rem;
             line-height: 1;
+        }
+
+        /* ── Pantallas muy pequeñas (< 400px) ── */
+        @media (max-width: 400px) {
+            .admin-page { padding: 62px 10px 32px; }
+            .pos-product-grid-v2 { grid-template-columns: repeat(2, 1fr) !important; }
+            .kanban-order-actions { gap: 6px; }
+            .order-action-btn { font-size: 0.75rem; padding: 10px 8px; }
+            .caja-ledger-table { min-width: 420px; font-size: 0.68rem; }
+            .dpm-part-row { flex-direction: column; }
         }
 
         .admin-accordion-trigger.active {
@@ -7481,6 +7491,65 @@
             .sales-summary-breakdown {
                 grid-template-columns: 1fr;
             }
+
+            /* ── Scroll momentum iOS en contenedores principales ── */
+            .caja-table-wrap,
+            .caja-ledger-wrap,
+            .clients-table-wrap,
+            .ledger-table-wrap,
+            .ticket-body,
+            .kanban-list,
+            .admin-accordion,
+            .pos-drawer-body,
+            .pos-screen-payment {
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* ── Inputs admin: font-size 16px evita zoom automático en iOS ── */
+            .admin-field input,
+            .admin-field select,
+            .admin-field textarea,
+            .pos-pay-input,
+            .pos-client-search {
+                font-size: 16px !important;
+            }
+
+            /* ── Caja Diaria: tabla más compacta en móvil ── */
+            .caja-ledger-table thead th,
+            .caja-ledger-table tbody td {
+                padding: 8px 6px;
+                font-size: 0.72rem;
+            }
+
+            /* ── POS: grilla de productos en pantallas muy pequeñas ── */
+            .pos-product-grid-v2 {
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 8px !important;
+            }
+
+            /* ── Botones de acción kanban: tamaño touch mínimo ── */
+            .order-action-btn,
+            .koa-icon-btn {
+                min-height: 44px;
+                min-width: 44px;
+            }
+
+            /* ── Modales: ancho completo en móvil ── */
+            .dpm-box,
+            .cc-modal-box {
+                width: 100% !important;
+                max-width: 100% !important;
+                border-radius: 20px 20px 0 0;
+                margin: auto 0 0;
+            }
+
+            /* ── Tab de Informes: scroll horizontal si no caben ── */
+            .cajas-sub-tabs,
+            .informes-tabs {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                flex-wrap: nowrap;
+            }
         }
 
         /* ══════════════════════════════════════════
@@ -7991,7 +8060,7 @@
         .caja-stat-pill.total strong { color: var(--admin-accent, #ff9540); }
 
         /* Tabla genérica (tickets) */
-        .caja-table-wrap { overflow-x: auto; }
+        .caja-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .caja-table {
             width: 100%;
             border-collapse: collapse;
@@ -8022,13 +8091,13 @@
         .caja-empty { text-align: center; padding: 40px 16px; color: var(--admin-muted); font-size: 0.88rem; }
 
         /* Libro contable Caja Diaria */
-        .caja-ledger-wrap { overflow-x: auto; border-radius: 0 0 16px 16px; }
+        .caja-ledger-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 0 0 16px 16px; }
         .caja-ledger-table {
             width: 100%;
             border-collapse: collapse;
             font-family: 'Space Grotesk', sans-serif;
             font-size: 0.78rem;
-            min-width: 820px;
+            min-width: 560px;
         }
         .caja-ledger-table thead th {
             padding: 10px 10px;
