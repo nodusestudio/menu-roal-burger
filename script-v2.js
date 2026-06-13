@@ -9578,29 +9578,105 @@ function closeSearchScreen() {
     _exitScreen();
 }
 
+// ── Buscador inteligente: normalización, sinónimos y coincidencia difusa ──
+function _searchNorm(s) {
+    return String(s || '').toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+const _SEARCH_SYNS = {
+    burger:     ['hamburguesa', 'hamburger'],
+    hamburger:  ['hamburguesa', 'burger'],
+    refresco:   ['bebida', 'gaseosa', 'cola'],
+    soda:       ['bebida', 'gaseosa', 'refresco'],
+    gaseosa:    ['bebida', 'refresco', 'cola'],
+    fries:      ['papas', 'fritas'],
+    chicken:    ['pollo'],
+    cheese:     ['queso'],
+    shake:      ['malteada', 'milkshake'],
+    malteada:   ['shake', 'milkshake'],
+    juice:      ['jugo'],
+    water:      ['agua'],
+    double:     ['doble'],
+    doble:      ['double'],
+    combo:      ['especial', 'combinado'],
+};
+
+function _editDist(a, b) {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const row = [...Array(b.length + 1).keys()];
+    for (let i = 0; i < a.length; i++) {
+        let prev = row[0];
+        row[0] = i + 1;
+        for (let j = 0; j < b.length; j++) {
+            const tmp = row[j + 1];
+            row[j + 1] = a[i] === b[j] ? prev : 1 + Math.min(prev, row[j], row[j + 1]);
+            prev = tmp;
+        }
+    }
+    return row[b.length];
+}
+
+function _matchQWord(qw, tokens) {
+    for (const t of tokens) if (t === qw || t.includes(qw) || qw.includes(t)) return 3;
+    if (qw.length >= 3) for (const t of tokens) if (t.startsWith(qw) || qw.startsWith(t)) return 2;
+    if (qw.length >= 4) {
+        const maxD = qw.length >= 6 ? 2 : 1;
+        for (const t of tokens)
+            if (Math.abs(t.length - qw.length) <= maxD + 1 && _editDist(qw, t) <= maxD) return 1;
+    }
+    return 0;
+}
+
+function _scoreProduct(rawQ, p) {
+    const q = _searchNorm(rawQ);
+    if (!q) return 0;
+    const name   = _searchNorm(p.nombre);
+    const cat    = _searchNorm(p.categoria);
+    const desc   = _searchNorm(p.descripcion || p.description || '');
+    const full   = `${name} ${cat} ${desc}`;
+
+    // Coincidencia exacta de frase → máxima prioridad
+    if (name.includes(q)) return 1000;
+    if (full.includes(q)) return 900;
+
+    const tokens = full.split(' ').filter(Boolean);
+    const qWords = q.split(' ').filter(Boolean);
+
+    // Sinónimos por cada palabra de la consulta
+    const syns = new Set();
+    for (const w of qWords) for (const s of (_SEARCH_SYNS[w] || [])) syns.add(s);
+    const synWords = [...syns].filter(s => !qWords.includes(s));
+
+    let score = 0;
+    let hits  = 0;
+    for (const w of qWords) {
+        const ms = _matchQWord(w, tokens);
+        if (ms) hits++;
+        score += ms * 10;
+    }
+    for (const w of synWords) score += _matchQWord(w, tokens) * 5;
+    if (hits === qWords.length && qWords.length > 0) score += 30;
+    return score;
+}
+
 function renderSearchResults(query) {
     const grid = document.getElementById('searchResultsGrid');
     if (!grid) return;
 
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
 
     if (!q) {
         grid.innerHTML = '<p class="search-hint-msg">Escribe el nombre de un producto para buscarlo...</p>';
         return;
     }
 
-    const words = q.split(/\s+/).filter(Boolean);
-
     const scored = (latestProducts || [])
         .filter(p => String(p.estado || '').trim() !== 'paused')
-        .map(p => {
-            const nombre = String(p.nombre || '').toLowerCase();
-            const cat = String(p.categoria || '').toLowerCase();
-            const exacto = nombre.includes(q);
-            const todas = words.every(w => nombre.includes(w) || cat.includes(w));
-            const score = exacto ? 2 : todas ? 1 : 0;
-            return { p, score };
-        })
+        .map(p => ({ p, score: _scoreProduct(q, p) }))
         .filter(({ score }) => score > 0)
         .sort((a, b) => b.score - a.score ||
             String(a.p.nombre || '').localeCompare(String(b.p.nombre || ''), 'es'));
