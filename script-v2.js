@@ -102,8 +102,12 @@ let paymentFlowUI = null;
 
 // ── Historial para botón atrás de Android ──
 let _modalHistoryDepth = 0;
-let _skipNextPopstate = false;
-let _closingByBackBtn = false;
+let _skipNextPopstate  = false;
+let _closingByBackBtn  = false;
+
+// ── Gestión centralizada de pantallas secundarias ──
+const _SECONDARY_SCREENS = ['searchScreen', 'navCategoriesScreen', 'promoScreen', 'categoryDetailScreen'];
+let _screenHistoryPushed = false;
 
 function _pushModalState() {
     _modalHistoryDepth++;
@@ -9073,10 +9077,21 @@ function setPublicTopbarVisible(visible) {
 }
 
 function showHomeScreen() {
-    const screen = document.getElementById('homeScreen');
-    if (screen) {
-        screen.hidden = false;
-        renderHomeScreen();
+    _SECONDARY_SCREENS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = true;
+    });
+    document.getElementById('navCategoriesScreen')?.removeAttribute('data-hidden-by-detail');
+    const hs = document.getElementById('homeScreen');
+    if (hs) { hs.hidden = false; renderHomeScreen(); }
+    setPublicTopbarVisible(true);
+    _setNavCurrent(null);
+    if (_screenHistoryPushed && !_closingByBackBtn) {
+        _screenHistoryPushed = false;
+        _skipNextPopstate = true;
+        history.back();
+    } else {
+        _screenHistoryPushed = false;
     }
 }
 
@@ -9234,14 +9249,19 @@ function renderHomeCategoryCards() {
 }
 
 function openCategoryDetail(cat) {
-    _hideHomeScreen();
-    // Ocultar pantallas que quedarían detrás (transparentes)
-    document.getElementById('navCategoriesScreen')?.setAttribute('data-hidden-by-detail', !document.getElementById('navCategoriesScreen').hidden ? '1' : '0');
-    document.getElementById('navCategoriesScreen').hidden = true;
     const screen = document.getElementById('categoryDetailScreen');
     const title  = document.getElementById('cdsTitle');
     const grid   = document.getElementById('cdsProductsGrid');
-    if (!screen || !title || !grid) return;
+    if (!screen || !title || !grid) return; // no ocultar home si faltan elementos
+
+    // Ocultar navCategoriesScreen si estaba visible (quedaría detrás al ser transparente)
+    const navScreen = document.getElementById('navCategoriesScreen');
+    if (navScreen) {
+        navScreen.dataset.hiddenByDetail = navScreen.hidden ? '0' : '1';
+        navScreen.hidden = true;
+    }
+
+    _enterScreen('categoryDetailScreen');
 
     title.textContent = cat.name;
 
@@ -9307,35 +9327,31 @@ function openCategoryDetail(cat) {
         });
     }
 
-    setPublicTopbarVisible(false);
     screen.hidden = false;
     screen.scrollTop = 0;
-    _syncHomeScreenVisibility();
 }
 
 function closeCategoryDetail() {
     const screen = document.getElementById('categoryDetailScreen');
     if (screen) screen.hidden = true;
-    // Restaurar navCategoriesScreen si estaba abierta antes del detalle
+    // Restaurar navCategoriesScreen si estaba abierta antes de entrar al detalle
     const navScreen = document.getElementById('navCategoriesScreen');
-    if (navScreen && navScreen.getAttribute('data-hidden-by-detail') === '1') {
+    if (navScreen && navScreen.dataset.hiddenByDetail === '1') {
         navScreen.hidden = false;
         navScreen.removeAttribute('data-hidden-by-detail');
-        setPublicTopbarVisible(false);
-    } else {
-        setPublicTopbarVisible(true);
     }
-    _syncHomeScreenVisibility();
+    _exitScreen();
 }
 
 // ===== FIN HOME SCREEN =====
 
 function openNavCategoriesScreen(title, filterFn) {
-    _hideHomeScreen();
-    const screen = document.getElementById('navCategoriesScreen');
+    const screen  = document.getElementById('navCategoriesScreen');
     const titleEl = document.getElementById('ncsTitle');
-    const grid = document.getElementById('ncsCategoriesGrid');
-    if (!screen || !titleEl || !grid) return;
+    const grid    = document.getElementById('ncsCategoriesGrid');
+    if (!screen || !titleEl || !grid) return; // no ocultar home si faltan elementos
+
+    _enterScreen('navCategoriesScreen');
 
     titleEl.textContent = title;
 
@@ -9367,26 +9383,24 @@ function openNavCategoriesScreen(title, filterFn) {
         });
     }
 
-    setPublicTopbarVisible(false);
     screen.hidden = false;
     screen.scrollTop = 0;
-    _syncHomeScreenVisibility();
 }
 
 function closeNavCategoriesScreen() {
     const screen = document.getElementById('navCategoriesScreen');
     if (screen) screen.hidden = true;
-    setPublicTopbarVisible(true);
-    _syncHomeScreenVisibility();
+    _exitScreen();
 }
 
 function openSearchScreen() {
     const screen = document.getElementById('searchScreen');
-    if (!screen) return;
-    _hideHomeScreen();
-    setPublicTopbarVisible(false);
+    if (!screen || !screen.hidden) return; // no-op si ya está abierto
+
+    _enterScreen('searchScreen');
     screen.hidden = false;
     screen.scrollTop = 0;
+
     const input = document.getElementById('searchInput');
     if (input) {
         input.value = '';
@@ -9398,8 +9412,7 @@ function openSearchScreen() {
 function closeSearchScreen() {
     const screen = document.getElementById('searchScreen');
     if (screen) screen.hidden = true;
-    setPublicTopbarVisible(true);
-    _syncHomeScreenVisibility();
+    _exitScreen();
 }
 
 function renderSearchResults(query) {
@@ -9485,24 +9498,64 @@ function renderSearchResults(query) {
     });
 }
 
-function _hideHomeScreen() {
+// Oculta el home, marca el nav activo y empuja estado al historial (una sola vez por sesión de pantalla)
+function _enterScreen(screenId) {
     const hs = document.getElementById('homeScreen');
     if (hs) hs.hidden = true;
+    setPublicTopbarVisible(false);
+    _setNavCurrent(screenId);
+    if (!_screenHistoryPushed && !_closingByBackBtn) {
+        history.pushState({ roalMenuScreen: true }, '');
+        _screenHistoryPushed = true;
+    }
 }
 
-function _syncHomeScreenVisibility() {
-    const secondary = ['categoryDetailScreen', 'navCategoriesScreen', 'promoScreen', 'searchScreen'];
-    const anyOpen = secondary.some(id => { const el = document.getElementById(id); return el && !el.hidden; });
-    const hs = document.getElementById('homeScreen');
-    if (hs) hs.hidden = anyOpen;
+// Si ya no hay ninguna pantalla secundaria visible, restaura el home y el topbar
+function _exitScreen() {
+    const anyOpen = _SECONDARY_SCREENS.some(id => {
+        const el = document.getElementById(id);
+        return el && !el.hidden;
+    });
+    if (!anyOpen) {
+        const hs = document.getElementById('homeScreen');
+        if (hs) { hs.hidden = false; renderHomeScreen(); }
+        setPublicTopbarVisible(true);
+        _setNavCurrent(null);
+        if (_screenHistoryPushed && !_closingByBackBtn) {
+            _screenHistoryPushed = false;
+            _skipNextPopstate = true;
+            history.back();
+        } else {
+            _screenHistoryPushed = false;
+        }
+    } else {
+        const openId = _SECONDARY_SCREENS.find(id => {
+            const el = document.getElementById(id);
+            return el && !el.hidden;
+        });
+        _setNavCurrent(openId || null);
+    }
+}
+
+// Marca el ítem de la barra de navegación correspondiente a la pantalla activa
+function _setNavCurrent(screenId) {
+    const navMap = {
+        navCategoriesScreen: 'bnavMenu',
+        categoryDetailScreen: 'bnavMenu',
+        promoScreen: 'bnavPromo',
+        searchScreen: 'bnavBuscador',
+    };
+    document.querySelectorAll('.ban-item').forEach(btn => btn.classList.remove('is-current'));
+    const btnId = screenId ? navMap[screenId] : 'bnavInicio';
+    if (btnId) document.getElementById(btnId)?.classList.add('is-current');
 }
 
 function openPromoScreen() {
     const screen = document.getElementById('promoScreen');
     if (!screen) return;
-    _hideHomeScreen();
+
+    _enterScreen('promoScreen');
     if (_promoProductsReady) updatePromoModalContent();
-    setPublicTopbarVisible(false);
     screen.hidden = false;
     screen.scrollTop = 0;
 }
@@ -9510,8 +9563,7 @@ function openPromoScreen() {
 function closePromoScreen() {
     const screen = document.getElementById('promoScreen');
     if (screen) screen.hidden = true;
-    setPublicTopbarVisible(true);
-    _syncHomeScreenVisibility();
+    _exitScreen();
 }
 
 function initPromoModal() {
@@ -9820,12 +9872,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Barra de navegación inferior — acciones
     document.getElementById('bnavInicio')?.addEventListener('click', () => {
-        if (window.__roalHideSplash) window.__roalHideSplash();
-        closeNavCategoriesScreen();
-        closeSearchScreen();
-        closePromoScreen();
-        closeCategoryDetail();
-        showHomeScreen();
+        // __roalHideSplash envuelve hideSplash() + showHomeScreen(), que cierra todo
+        window.__roalHideSplash?.();
     });
     document.getElementById('bnavMenu')?.addEventListener('click', () => openNavCategoriesScreen('Nuestro Menu', null));
     document.getElementById('bnavCombos')?.addEventListener('click', () => {
@@ -9839,28 +9887,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('promoCloseBtn')?.addEventListener('click', () => closePromoScreen());
     document.getElementById('searchInput')?.addEventListener('input', e => renderSearchResults(e.target.value));
 
-    // Botones de la pantalla de inicio
+    // Botones de la pantalla splash
     document.getElementById('splashContinueBtn')?.addEventListener('click', () => {
         document.activeElement?.blur();
-        showHomeScreen();
-        if (window.__roalHideSplash) window.__roalHideSplash();
+        window.__roalHideSplash?.();
     });
     document.getElementById('splashGuestBtn')?.addEventListener('click', () => {
         document.activeElement?.blur();
-        showHomeScreen();
-        if (window.__roalHideSplash) window.__roalHideSplash();
+        window.__roalHideSplash?.();
     });
     document.getElementById('splashSignInBtn')?.addEventListener('click', () => {
         document.activeElement?.blur();
         _promoModalPendingOpen = false;
-        closePromoScreen();
-
-        showHomeScreen();
-        if (window.__roalHideSplash) window.__roalHideSplash();
+        window.__roalHideSplash?.();
         setTimeout(() => openCustomerAuthModal(), 350);
     });
 
-    // Botón de retroceso en pantalla detalle de categoría
+    // Botón volver en pantalla detalle de categoría
     document.getElementById('cdsBackBtn')?.addEventListener('click', () => closeCategoryDetail());
 
     initCartUI();
@@ -9907,19 +9950,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('publicUpgradeCloseBtn')?.addEventListener('click', closePublicUpgradeSheet);
 
-    // ── Botón ATRÁS de Android: cierra el modal activo en vez de salir de la app ──
+    // ── Botón ATRÁS de Android: cierra el overlay activo en vez de salir de la app ──
     window.addEventListener('popstate', () => {
         if (_skipNextPopstate) { _skipNextPopstate = false; return; }
         if (_modalHistoryDepth > 0) {
+            // Modales tienen mayor prioridad (z-index superior)
             _modalHistoryDepth--;
             _closingByBackBtn = true;
             try {
-                // Cierra de más anidado a menos anidado
                 if (paymentFlowUI) { closePaymentFlowModal(); return; }
                 const upgradeOverlay = document.getElementById('publicUpgradeOverlay');
                 if (upgradeOverlay && !upgradeOverlay.hidden) { closePublicUpgradeSheet(); return; }
                 if (supportUI?.modal?.classList.contains('is-open')) { closeSupportModal(); return; }
                 if (cartUI?.drawer.classList.contains('is-open')) { closeCartDrawer(); return; }
+            } finally {
+                _closingByBackBtn = false;
+            }
+        } else if (_screenHistoryPushed) {
+            // Pantallas de menú (búsqueda, categorías, promos, detalle)
+            _screenHistoryPushed = false;
+            _closingByBackBtn = true;
+            try {
+                // Cierra de más anidado a menos anidado
+                if (!document.getElementById('categoryDetailScreen')?.hidden) {
+                    closeCategoryDetail();
+                    // Si navCategoriesScreen fue restaurada, re-empujar estado para permitir otro «atrás»
+                    if (!document.getElementById('navCategoriesScreen')?.hidden) {
+                        history.pushState({ roalMenuScreen: true }, '');
+                        _screenHistoryPushed = true;
+                    }
+                    return;
+                }
+                if (!document.getElementById('searchScreen')?.hidden)        { closeSearchScreen();        return; }
+                if (!document.getElementById('navCategoriesScreen')?.hidden) { closeNavCategoriesScreen(); return; }
+                if (!document.getElementById('promoScreen')?.hidden)         { closePromoScreen();         return; }
+                showHomeScreen();
             } finally {
                 _closingByBackBtn = false;
             }

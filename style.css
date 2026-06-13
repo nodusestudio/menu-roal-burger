@@ -4880,6 +4880,23 @@ a.is-ordering-closed {
     transform: translateX(-100%) translateY(0) translateX(26px);
 }
 
+/* Indicador de pantalla activa en el nav — barra naranja en la parte superior */
+.ban-item.is-current {
+    color: rgba(255, 185, 110, 1);
+}
+.ban-item.is-current::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 3px;
+    border-radius: 0 0 4px 4px;
+    background: linear-gradient(90deg, #ff8c00, #ff6200);
+    box-shadow: 0 0 8px rgba(255, 140, 0, 0.6);
+}
+
 /* Nombre del tooltip */
 .ban-tooltip-name {
     display: block;
@@ -5935,8 +5952,8 @@ a.is-ordering-closed {
 }
 
 @keyframes screenFadeIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Header fijo del detalle */
