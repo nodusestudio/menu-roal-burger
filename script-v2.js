@@ -9860,11 +9860,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('has-auth-nav');
     setActiveCustomerProfile(loadStoredCustomerProfile());
 
-    // Garantía: cualquier ruta que cierre el splash también muestra el homeScreen
+    // Garantía: cualquier ruta que cierre el splash también muestra el homeScreen.
+    // IMPORTANTE: el timer de 12s en el inline script llama __roalHideSplash aunque el
+    // usuario ya esté navegando. Verificamos que el splash todavía sea visible antes de
+    // llamar showHomeScreen(), para no interrumpir la navegación en curso.
     const _origHideSplash = window.__roalHideSplash;
     window.__roalHideSplash = function () {
+        const splashEl = document.getElementById('splashScreen');
+        const splashIsVisible = Boolean(splashEl && !splashEl.dataset.hidden);
         if (_origHideSplash) _origHideSplash();
-        showHomeScreen();
+        if (splashIsVisible) showHomeScreen();
     };
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
     document.getElementById('publicChatFab')?.addEventListener('click', openPublicChatTab);
@@ -9872,8 +9877,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Barra de navegación inferior — acciones
     document.getElementById('bnavInicio')?.addEventListener('click', () => {
-        // __roalHideSplash envuelve hideSplash() + showHomeScreen(), que cierra todo
-        window.__roalHideSplash?.();
+        window.__roalHideSplash?.(); // oculta splash si todavía está visible
+        showHomeScreen();            // siempre navega al home (el wrapper no lo hace si splash ya cerró)
     });
     document.getElementById('bnavMenu')?.addEventListener('click', () => openNavCategoriesScreen('Nuestro Menu', null));
     document.getElementById('bnavCombos')?.addEventListener('click', () => {
