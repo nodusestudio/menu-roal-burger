@@ -4593,6 +4593,8 @@ function renderCategories() {
             _selectedCategoryId = null;
             if (categoryDetailPanel) categoryDetailPanel.innerHTML = '<div class="upgrades-detail-empty">← Selecciona una categoría</div>';
         }
+    } else {
+        if (categoryDetailPanel) categoryDetailPanel.innerHTML = '<div class="upgrades-detail-empty">← Selecciona una categoría</div>';
     }
 
     // Auto-initialize order in Firestore if any category lacks it
@@ -4893,13 +4895,18 @@ function _renderCategoryDetailPanel(categoryId) {
                     : '<p style="font-size:0.8rem;color:var(--admin-muted);margin:4px 0;">Sin productos aún</p>'}
             </div>
             ${_buildCatAcompHtml(category)}
-            <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">
-                <label style="font-size:0.72rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Tipo en POS</label>
-                <select id="catDetailTipoPos" class="admin-input" style="width:100%;">
-                    <option value="" ${!category.tipo_pos ? 'selected' : ''}>Normal (productos de la categoría)</option>
-                    <option value="acompanantes" ${category.tipo_pos === 'acompanantes' ? 'selected' : ''}>Acompañantes configurados</option>
-                </select>
-                <p style="font-size:0.72rem;color:var(--admin-muted);margin:5px 0 0;">Al seleccionar "Acompañantes", el POS mostrará los acompañantes activos como productos de esta categoría.</p>
+            <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;">
+                <button type="button" id="catTipoPosToggleBtn" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;cursor:pointer;color:inherit;text-align:left;gap:8px;">
+                    <span style="font-size:0.78rem;font-weight:600;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;">Tipo en POS${category.tipo_pos ? ': ' + (category.tipo_pos === 'acompanantes' ? 'Acompañantes' : 'Normal') : ''}</span>
+                    <span id="catTipoPosArrow" style="font-size:0.72rem;color:var(--admin-muted);flex-shrink:0;transition:transform 0.18s;">▼</span>
+                </button>
+                <div id="catTipoPosBody" style="display:none;margin-top:6px;">
+                    <select id="catDetailTipoPos" class="admin-input" style="width:100%;">
+                        <option value="" ${!category.tipo_pos ? 'selected' : ''}>Normal (productos de la categoría)</option>
+                        <option value="acompanantes" ${category.tipo_pos === 'acompanantes' ? 'selected' : ''}>Acompañantes configurados</option>
+                    </select>
+                    <p style="font-size:0.72rem;color:var(--admin-muted);margin:5px 0 0;">Al seleccionar "Acompañantes", el POS mostrará los acompañantes activos como productos de esta categoría.</p>
+                </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
                 <button type="button" class="section-save-btn" id="catDetailSaveBtn">Guardar</button>
@@ -4907,9 +4914,29 @@ function _renderCategoryDetailPanel(categoryId) {
         </div>
     `;
 
+    // Acordeón ACOMPAÑANTES (POS)
+    categoryDetailPanel.querySelector('#catAcompToggleBtn')?.addEventListener('click', () => {
+        const body = categoryDetailPanel.querySelector('#catAcompBody');
+        const arrow = categoryDetailPanel.querySelector('#catAcompArrow');
+        if (!body) return;
+        const open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
+    });
+
     categoryDetailPanel.querySelector('#catAcompActivo')?.addEventListener('change', (e) => {
         const list = categoryDetailPanel.querySelector('#catAcompList');
         if (list) list.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    // Acordeón TIPO EN POS
+    categoryDetailPanel.querySelector('#catTipoPosToggleBtn')?.addEventListener('click', () => {
+        const body = categoryDetailPanel.querySelector('#catTipoPosBody');
+        const arrow = categoryDetailPanel.querySelector('#catTipoPosArrow');
+        if (!body) return;
+        const open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
     });
 
     categoryDetailPanel.querySelector('#catDetailSaveBtn')?.addEventListener('click', () => _saveCategoryFromDetail(categoryId));
@@ -5100,12 +5127,17 @@ function _buildCatAcompHtml(category) {
     }).join('');
 
     return `<div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;">
-        <p style="margin:0 0 8px;font-size:0.78rem;font-weight:600;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;">Acompañantes (POS)</p>
-        <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,122,26,0.08);border:1px solid rgba(255,122,26,0.22);border-radius:10px;cursor:pointer;margin-bottom:6px;">
-            <span style="font-size:0.82rem;font-weight:600;color:#eef4ff;">Activar acompañantes para esta categoría</span>
-            <input type="checkbox" id="catAcompActivo" ${isActive ? 'checked' : ''} style="width:17px;height:17px;accent-color:#ff7a00;cursor:pointer;">
-        </label>
-        <div id="catAcompList" style="display:${isActive ? 'block' : 'none'};border:1px solid rgba(255,122,26,0.22);border-radius:10px;overflow:hidden;">${items}</div>
+        <button type="button" id="catAcompToggleBtn" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;cursor:pointer;color:inherit;text-align:left;gap:8px;">
+            <span style="font-size:0.78rem;font-weight:600;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;">Acompañantes (POS)${isActive ? ' ✓' : ''}</span>
+            <span id="catAcompArrow" style="font-size:0.72rem;color:var(--admin-muted);flex-shrink:0;transition:transform 0.18s;">▼</span>
+        </button>
+        <div id="catAcompBody" style="display:none;margin-top:6px;">
+            <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,122,26,0.08);border:1px solid rgba(255,122,26,0.22);border-radius:10px;cursor:pointer;margin-bottom:6px;">
+                <span style="font-size:0.82rem;font-weight:600;color:#eef4ff;">Activar acompañantes para esta categoría</span>
+                <input type="checkbox" id="catAcompActivo" ${isActive ? 'checked' : ''} style="width:17px;height:17px;accent-color:#ff7a00;cursor:pointer;">
+            </label>
+            <div id="catAcompList" style="display:${isActive ? 'block' : 'none'};border:1px solid rgba(255,122,26,0.22);border-radius:10px;overflow:hidden;">${items}</div>
+        </div>
     </div>`;
 }
 
