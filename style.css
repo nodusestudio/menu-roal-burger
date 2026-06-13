@@ -2037,21 +2037,23 @@ a.is-ordering-closed {
 
 .guest-register-banner {
     position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: 10px;
-    z-index: 10002;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9050;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 12px;
-    padding: 12px 14px;
-    border-radius: 18px;
-    background: linear-gradient(135deg, rgba(35, 20, 10, 0.96), rgba(68, 34, 13, 0.96));
-    border: 1px solid rgba(255, 145, 0, 0.28);
-    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.28);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
+    padding: 10px 16px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    border-radius: 0;
+    background: linear-gradient(135deg, rgba(30, 15, 5, 0.98), rgba(65, 30, 8, 0.98));
+    border: none;
+    border-bottom: 1px solid rgba(255, 145, 0, 0.3);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.32);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
 }
 
 .guest-register-banner[hidden] {
@@ -2078,18 +2080,34 @@ a.is-ordering-closed {
 }
 
 .guest-register-banner-btn {
-    min-width: 112px;
-    min-height: 42px;
-    padding: 0 16px;
+    min-width: 100px;
+    min-height: 36px;
+    padding: 0 14px;
     border: none;
     border-radius: 999px;
     background: linear-gradient(135deg, #ff9d1f, #ff6f00);
     color: #1f140d;
     font-family: 'Oswald', sans-serif;
-    font-size: 0.95rem;
+    font-size: 0.88rem;
     letter-spacing: 0.4px;
     cursor: pointer;
-    box-shadow: 0 10px 22px rgba(255, 111, 0, 0.3);
+    box-shadow: 0 6px 16px rgba(255, 111, 0, 0.35);
+    flex-shrink: 0;
+}
+
+/* Cuando el banner de registro está activo, baja el topbar y las pantallas */
+body.has-guest-register-banner .public-topbar {
+    top: calc(48px + env(safe-area-inset-top, 0px));
+}
+
+body.has-guest-register-banner #homeScreen,
+body.has-guest-register-banner #navCategoriesScreen,
+body.has-guest-register-banner #categoryDetailScreen,
+body.has-guest-register-banner #promoScreen,
+body.has-guest-register-banner #searchScreen,
+body.has-guest-register-banner #perfilScreen,
+body.has-guest-register-banner #ayudaScreen {
+    top: calc(48px + env(safe-area-inset-top, 0px));
 }
 
 .support-modal {
@@ -3812,12 +3830,9 @@ a.is-ordering-closed {
     }
 
     .guest-register-banner {
-        left: 10px;
-        right: 10px;
-        bottom: 8px;
         gap: 10px;
-        padding: 11px 12px;
-        border-radius: 16px;
+        padding: 9px 14px;
+        padding-top: calc(9px + env(safe-area-inset-top, 0px));
     }
 
     .guest-register-banner-copy strong {
@@ -3844,10 +3859,8 @@ a.is-ordering-closed {
 @media (max-width: 480px) {
     .guest-register-banner {
         grid-template-columns: 1fr auto;
-        left: 8px;
-        right: 8px;
-        bottom: 8px;
-        padding: 10px 11px;
+        padding: 8px 12px;
+        padding-top: calc(8px + env(safe-area-inset-top, 0px));
     }
 
     .guest-register-banner-copy strong {
@@ -5576,6 +5589,54 @@ a.is-ordering-closed {
     box-shadow: 0 3px 12px rgba(255, 70, 0, 0.50);
 }
 /* ===== FIN COMBOS ESPECIALES ===== */
+
+/* ===== CARRUSEL DE PROMOS ===== */
+.promo-carousel {
+    width: 100%;
+}
+
+.promo-carousel-track {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+}
+
+.promo-carousel-track::-webkit-scrollbar {
+    display: none;
+}
+
+.promo-carousel-slide {
+    flex: 0 0 100%;
+    scroll-snap-align: start;
+    min-width: 0;
+}
+
+.promo-carousel-dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 0 2px;
+}
+
+.promo-carousel-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    border: 1.5px solid rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.promo-carousel-dot.active {
+    background: #ff7200;
+    border-color: #ff7200;
+    transform: scale(1.3);
+}
+/* ===== FIN CARRUSEL DE PROMOS ===== */
 
 /* ===== PANTALLA CONFIRMACIÓN DE PEDIDO ===== */
 #orderConfirmScreen {

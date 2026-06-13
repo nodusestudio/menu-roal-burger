@@ -403,6 +403,7 @@ let _editingOrderData = null; // set when editing an existing order, cleared aft
 
 const POS_TICKETS_COLLECTION = 'pos_tickets';
 let posTicketsUnsubscribe = null;
+const _sentToReceptionIds = new Set(); // IDs de tickets enviados a recepción, pendientes de eliminar en Firestore
 
 async function savePosTicketToFirestore(ticket) {
     if (!ticket || !firebaseDb) return;
@@ -431,7 +432,13 @@ function subscribePosTickets() {
     posTicketsUnsubscribe = firebaseDb.collection(POS_TICKETS_COLLECTION)
         .orderBy('createdAt', 'asc')
         .onSnapshot((snapshot) => {
-            const firestoreTickets = snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
+            const firestoreTickets = snapshot.docs
+                .map((doc) => ({ ...doc.data(), id: doc.id }))
+                .filter((t) => !_sentToReceptionIds.has(t.id)); // Ocultar tickets ya enviados a recepción
+            // Limpiar IDs que ya no están en Firestore (eliminación completada)
+            _sentToReceptionIds.forEach((id) => {
+                if (!snapshot.docs.find((d) => d.id === id)) _sentToReceptionIds.delete(id);
+            });
             // Preservar solo el ticket local activo si aún no fue guardado en Firestore
             // (descartar tickets vacíos locales que no están activos para evitar acumulación)
             const localOnlyTickets = posTickets.filter(
@@ -3952,6 +3959,11 @@ async function saveAdminOrderQuick(config = {}) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
         return;
     }
+    const _checkTotal = internalOrderItems.reduce((s, i) => s + Number(i.subtotal || 0), 0);
+    if (_checkTotal <= 0) {
+        showNotice('El total del pedido no puede ser $0. Revisa los precios de los productos.', 'error');
+        return;
+    }
 
     const orderType = config.orderType || _editingOrderData?.orderType || 'retiro';
     if (orderType === 'domicilio') {
@@ -4038,6 +4050,7 @@ async function saveAdminOrderQuick(config = {}) {
 
         // Eliminar el ticket procesado de Firestore y cerrar POS
         const _processedTicketId = posActiveTicketId;
+        _sentToReceptionIds.add(_processedTicketId);
         deletePosTicketFromFirestore(_processedTicketId);
         posTickets = posTickets.filter((t) => t.id !== _processedTicketId);
         closeInternalOrderModal();
@@ -4116,6 +4129,7 @@ function closeInternalOrderModal(clearCurrentTicket = false) {
     if (clearCurrentTicket) {
         // Ticket procesado: eliminar de Firestore y activar el siguiente
         const processedId = posActiveTicketId;
+        _sentToReceptionIds.add(processedId);
         deletePosTicketFromFirestore(processedId);
         posTickets = posTickets.filter((t) => t.id !== processedId);
         if (posTickets.length > 0) {
@@ -6560,13 +6574,16 @@ function createOrderCard(order) {
         const isAnulado = order.anulado === true || order.voided === true;
         if (isAnulado) card.classList.add('kanban-order-card--anulado');
         card.innerHTML = `
-            <div class="koc-body">
-                <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
-                <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
-            </div>
-            <div class="koc-header">
-                <strong class="koc-code">#${escapeHtml(order.code)}</strong>
-                <span class="koc-time">${escapeHtml(formatOrderTime(order.anuladoAt || order.voidedAt || order.deliveredAt || order.updatedAt || order.createdAt))}</span>
+            <div class="koc-compact-main">
+                <div class="koc-compact-info">
+                    <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
+                    <span class="koc-code">#${escapeHtml(order.code)}</span>
+                </div>
+                <div class="koc-compact-right">
+                    <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
+                    <span class="koc-time">${escapeHtml(formatOrderTime(order.anuladoAt || order.voidedAt || order.deliveredAt || order.updatedAt || order.createdAt))}</span>
+                </div>
+                <button type="button" class="koc-compact-del" data-order-card-action="eliminar" data-order-id="${escapeHtml(order.id)}" title="Eliminar permanentemente">&#128465;</button>
             </div>
             ${isAnulado ? '<div class="koc-anulado-stamp">ANULADO</div>' : ''}
         `;
@@ -6669,9 +6686,7 @@ function createOrderCard(order) {
         const editBtn = showEditPosAction
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
             : '';
-        const soloRecibirBtn = !isDeliveryOrder
-            ? `<button type="button" class="order-action-btn order-action-btn-view koa-icon-btn" data-order-card-action="recibir_sin_cobro" data-order-id="${order.id}" title="Solo recibir sin cobrar">▶</button>`
-            : '';
+        const soloRecibirBtn = `<button type="button" class="order-action-btn order-action-btn-view koa-icon-btn" data-order-card-action="recibir_sin_cobro" data-order-id="${order.id}" title="Solo recibir sin cobrar">▶</button>`;
         const viewBtn = showViewTicketAction
             ? `<button type="button" class="order-action-btn order-action-btn-view koa-icon-btn" data-order-card-action="view_ticket" data-order-id="${order.id}" title="Ver ticket">&#128196;</button>`
             : '';
@@ -11374,7 +11389,7 @@ if (ordersActionRoot) {
                 }
 
                 if (nextStatus === 'cobrar_retiro') {
-                    openDeliveryPaymentModal(order, false);
+                    openDeliveryPaymentModal(order, 'mesa');
                     actionButton.disabled = false;
                     return;
                 }
@@ -11385,17 +11400,24 @@ if (ordersActionRoot) {
                 }
 
                 if (nextStatus === 'eliminar') {
-                    const confirmed = window.confirm(`¿Anular el pedido #${order.code}?\nQuedará registrado como ANULADO en Procesados.`);
-                    if (!confirmed) {
-                        return;
+                    if (order.status === 'entregado') {
+                        // Orden ya procesada: eliminar permanentemente del sistema
+                        const confirmed = window.confirm(`¿Eliminar definitivamente el pedido #${order.code}?\nEsta acción no se puede deshacer.`);
+                        if (!confirmed) return;
+                        await deleteOrder(orderId);
+                        if (selectedOrderId === orderId) selectedOrderId = null;
+                        await fetchOrders();
+                        renderOrders();
+                        showNotice('Pedido eliminado permanentemente.', 'ok');
+                    } else {
+                        // Orden activa: anular (queda registrada como ANULADO)
+                        const confirmed = window.confirm(`¿Anular el pedido #${order.code}?\nQuedará registrado como ANULADO en Procesados.`);
+                        if (!confirmed) return;
+                        await anularOrder(orderId);
+                        if (selectedOrderId === orderId) selectedOrderId = null;
+                        showNotice('Pedido anulado. Aparece en Procesados con sello ANULADO.', 'ok');
+                        closeUnreadTray();
                     }
-
-                    await anularOrder(orderId);
-                    if (selectedOrderId === orderId) {
-                        selectedOrderId = null;
-                    }
-                    showNotice('Pedido anulado. Aparece en Procesados con sello ANULADO.', 'ok');
-                    closeUnreadTray();
                     return;
                 }
 
@@ -11427,6 +11449,12 @@ if (ordersActionRoot) {
                     await updateOrder(orderId, { status: 'servido', servidoAt: firestoreNow() });
                     await reloadDataAndRender();
                     showNotice('Pedido marcado como servido.', 'ok');
+                    return;
+                }
+
+                if (nextStatus === 'entregado' && order.orderType === 'retiro' && (!order.paymentMethod || order.paymentMethod === 'pendiente')) {
+                    openDeliveryPaymentModal(order, 'mesa');
+                    actionButton.disabled = false;
                     return;
                 }
 
@@ -13338,6 +13366,7 @@ function initCajaAperturaSync() {
             cajaAperturaAt = remoteTs;
             try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(remoteTs)); } catch {}
             renderCajaDiaria();
+            renderOrders();
         }
     });
 }
@@ -13447,6 +13476,7 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         localStorage.removeItem(CC_STORAGE_KEY);
         _ccRefreshTotals();
 
+        renderOrders();
         renderCajaDiaria();
         _cajaDiariaAutoOpened = false;
         showNotice('Caja cerrada y guardada en historial.', 'ok');
@@ -13702,6 +13732,7 @@ async function cerrarCaja() {
         // Guardar datos pendientes y mostrar preview — el usuario confirma el cierre desde el panel
         _pendingCierreDoc = { closureDoc, closureId, ticketHtml, dateStr };
         openCierreSidePanel(ticketHtml, `Vista previa · ${dateStr}`);
+        _navigateToCajaDiaria();
 
     } catch (err) {
         showNotice(`Error al preparar cierre: ${err.message || 'error inesperado.'}`, 'error');

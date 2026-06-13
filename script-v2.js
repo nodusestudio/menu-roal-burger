@@ -8925,6 +8925,58 @@ function updatePromoModalContent() {
     }
 }
 
+function _applyPromoCarousel(container) {
+    const items = [...container.children];
+    if (items.length <= 1) return;
+
+    container.innerHTML = '';
+
+    const carousel = document.createElement('div');
+    carousel.className = 'promo-carousel';
+
+    const track = document.createElement('div');
+    track.className = 'promo-carousel-track';
+
+    items.forEach((item) => {
+        const slide = document.createElement('div');
+        slide.className = 'promo-carousel-slide';
+        slide.appendChild(item);
+        track.appendChild(slide);
+    });
+
+    const dotsEl = document.createElement('div');
+    dotsEl.className = 'promo-carousel-dots';
+    let activeIdx = 0;
+
+    const dotBtns = items.map((_, i) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'promo-carousel-dot' + (i === 0 ? ' active' : '');
+        btn.setAttribute('aria-label', `Slide ${i + 1}`);
+        btn.addEventListener('click', () => {
+            const slides = [...track.children];
+            if (slides[i]) track.scrollTo({ left: slides[i].offsetLeft, behavior: 'smooth' });
+        });
+        dotsEl.appendChild(btn);
+        return btn;
+    });
+
+    track.addEventListener('scroll', () => {
+        const w = track.clientWidth;
+        if (!w) return;
+        const idx = Math.min(Math.round(track.scrollLeft / w), items.length - 1);
+        if (idx !== activeIdx) {
+            dotBtns[activeIdx]?.classList.remove('active');
+            dotBtns[idx]?.classList.add('active');
+            activeIdx = idx;
+        }
+    }, { passive: true });
+
+    carousel.appendChild(track);
+    carousel.appendChild(dotsEl);
+    container.appendChild(carousel);
+}
+
 function renderExtraPromoCards() {
     const container = document.getElementById('extraPromoCards');
     if (!container) return;
@@ -8996,6 +9048,8 @@ function renderExtraPromoCards() {
 
         container.appendChild(section);
     });
+
+    _applyPromoCarousel(container);
 }
 
 // ===== PROMOCIONES 2x1 (MENÚ PÚBLICO) =====
@@ -9054,6 +9108,8 @@ function render2x1Cards() {
 
         container.appendChild(section);
     });
+
+    _applyPromoCarousel(container);
 }
 
 // ===== COMBOS ESPECIALES (MENÚ PÚBLICO) =====
@@ -9164,6 +9220,8 @@ function renderCombosEspeciales() {
 
         container.appendChild(section);
     });
+
+    _applyPromoCarousel(container);
 }
 
 function escapeXml(str) {
