@@ -9234,6 +9234,7 @@ function renderHomeCategoryCards() {
 }
 
 function openCategoryDetail(cat) {
+    _hideHomeScreen();
     const screen = document.getElementById('categoryDetailScreen');
     const title  = document.getElementById('cdsTitle');
     const grid   = document.getElementById('cdsProductsGrid');
@@ -9319,7 +9320,7 @@ function closeCategoryDetail() {
 // ===== FIN HOME SCREEN =====
 
 function openNavCategoriesScreen(title, filterFn) {
-    _syncHomeScreenVisibility();
+    _hideHomeScreen();
     const screen = document.getElementById('navCategoriesScreen');
     const titleEl = document.getElementById('ncsTitle');
     const grid = document.getElementById('ncsCategoriesGrid');
@@ -9371,10 +9372,10 @@ function closeNavCategoriesScreen() {
 function openSearchScreen() {
     const screen = document.getElementById('searchScreen');
     if (!screen) return;
+    _hideHomeScreen();
     setPublicTopbarVisible(false);
     screen.hidden = false;
     screen.scrollTop = 0;
-    _syncHomeScreenVisibility();
     const input = document.getElementById('searchInput');
     if (input) {
         input.value = '';
@@ -9473,6 +9474,11 @@ function renderSearchResults(query) {
     });
 }
 
+function _hideHomeScreen() {
+    const hs = document.getElementById('homeScreen');
+    if (hs) hs.hidden = true;
+}
+
 function _syncHomeScreenVisibility() {
     const secondary = ['categoryDetailScreen', 'navCategoriesScreen', 'promoScreen', 'searchScreen'];
     const anyOpen = secondary.some(id => { const el = document.getElementById(id); return el && !el.hidden; });
@@ -9483,11 +9489,11 @@ function _syncHomeScreenVisibility() {
 function openPromoScreen() {
     const screen = document.getElementById('promoScreen');
     if (!screen) return;
+    _hideHomeScreen();
     if (_promoProductsReady) updatePromoModalContent();
     setPublicTopbarVisible(false);
     screen.hidden = false;
     screen.scrollTop = 0;
-    _syncHomeScreenVisibility();
 }
 
 function closePromoScreen() {

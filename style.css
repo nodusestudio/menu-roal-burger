@@ -2541,7 +2541,8 @@ a.is-ordering-closed {
 .customer-profile-summary {
     padding: 16px;
     border-radius: 18px;
-    background: rgba(255, 255, 255, 0.36);
+    background: rgba(60, 28, 6, 0.35);
+    border: 1px solid rgba(255, 200, 130, 0.18);
     border: 1px solid rgba(255, 255, 255, 0.46);
     display: grid;
     gap: 6px;
@@ -2550,13 +2551,13 @@ a.is-ordering-closed {
 .customer-profile-summary strong {
     font-family: 'Oswald', sans-serif;
     font-size: 1.35rem;
-    color: #000;
+    color: #fff3e0;
 }
 
 .customer-profile-summary span,
 .customer-profile-summary p {
     margin: 0;
-    color: #2a1b12;
+    color: rgba(255, 210, 160, 0.7);
 }
 
 .customer-profile-modal-card {
@@ -2654,13 +2655,15 @@ a.is-ordering-closed {
 
 .customer-profile-tab {
     min-height: 42px;
-    border: 1px solid rgba(90, 58, 27, 0.12);
+    border: 1px solid rgba(255, 200, 130, 0.2);
     border-radius: 16px;
-    background: rgba(255, 251, 245, 0.82);
-    color: #7b4a1d;
+    background: rgba(60, 28, 6, 0.45);
+    color: rgba(255, 220, 170, 0.85);
     font-family: 'Oswald', sans-serif;
     font-size: 0.88rem;
     cursor: pointer;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
 }
 
 .customer-profile-tab.is-active {
@@ -2700,19 +2703,22 @@ a.is-ordering-closed {
     gap: 6px;
     padding: 16px;
     border-radius: 18px;
-    background: rgba(255, 255, 255, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.5);
+    background: rgba(60, 28, 6, 0.35);
+    border: 1px solid rgba(255, 200, 130, 0.18);
+    border-top-color: rgba(255, 220, 160, 0.3);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
 }
 
 .customer-profile-info-card span {
-    color: rgba(90, 58, 27, 0.76);
+    color: rgba(255, 210, 160, 0.65);
     font-size: 0.82rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
 }
 
 .customer-profile-info-card strong {
-    color: #1f140d;
+    color: #fff3e0;
     font-size: 1rem;
 }
 
