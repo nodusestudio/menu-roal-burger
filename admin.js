@@ -167,6 +167,7 @@ const CONFIG_DOC_ID = 'config_landing';
 const HORARIO_DOC_ID = 'config_horario';
 const RECOMENDADO_DIA_DOC_ID = 'recomendado_dia';
 const PROMOCIONES_COLLECTION = 'promociones';
+const COMBOS_ESPECIALES_COLLECTION = 'combos_especiales';
 const UPGRADES_CONFIG_DOC_ID = 'acompañamientos';
 const DEFAULT_HORARIO = {
     aperturaHora: 16, aperturaMinuto: 0,
@@ -485,6 +486,11 @@ let recomendadoDiaState = null;
 let promosState = [];
 let _promoEditingId = null;
 let _promoFormProductId = null;
+let combosEspecialesState = [];
+let _comboEditingId = null;
+let _comboFormProducts = [];  // [{id, nombre, precio, imagen}]
+let _comboDiasSeleccionados = [];
+let _comboHorarioTipo = 'siempre';
 
 // ── Bluetooth printer state ──
 let _btPrinterDevice = null;
@@ -7912,6 +7918,17 @@ async function fetchPromos() {
     }
 }
 
+async function fetchCombosEspeciales() {
+    try {
+        const snap = await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).get();
+        combosEspecialesState = snap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+    } catch (_) {
+        combosEspecialesState = [];
+    }
+}
+
 function renderRecomendadoDiaPanel() {
     const autoRadio = document.getElementById('recomendadoModeAuto');
     const manualRadio = document.getElementById('recomendadoModeManual');
@@ -8261,6 +8278,344 @@ async function deleteAdminPromo(id) {
 
 // ===== FIN PANEL PROMOCIONES ADMIN =====
 
+// ===== PANEL COMBOS ESPECIALES ADMIN =====
+
+function renderCombosTabPanel() {
+    const container = document.getElementById('combosTabPanel');
+    if (!container) return;
+
+    const isFormOpen = _comboEditingId !== null;
+
+    container.innerHTML = `
+        <div style="padding:16px 0;">
+            <p class="admin-hint">Los combos especiales aparecen en la pantalla de Promociones del menú público, debajo del Recomendado del Día. Arma paquetes con varios productos, porcentaje de descuento y horario de disponibilidad.</p>
+            ${!isFormOpen
+                ? `<button type="button" class="admin-button" id="addComboBtn" style="margin-top:14px;">+ Nuevo combo</button>`
+                : _buildComboFormHTML()
+            }
+            <div class="combo-admin-list" id="comboAdminList" style="margin-top:18px;">
+                ${combosEspecialesState.length === 0 && !isFormOpen
+                    ? '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin combos aún. Usa el botón de arriba para crear uno.</p>'
+                    : combosEspecialesState.map(_buildComboAdminCardHTML).join('')
+                }
+            </div>
+        </div>`;
+
+    document.getElementById('addComboBtn')?.addEventListener('click', () => {
+        _comboEditingId = 'new';
+        _comboFormProducts = [];
+        _comboDiasSeleccionados = [];
+        _comboHorarioTipo = 'siempre';
+        renderCombosTabPanel();
+    });
+
+    if (isFormOpen) {
+        _wireComboFormListeners();
+    }
+
+    container.querySelectorAll('[data-combo-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.comboAction;
+            const id = btn.dataset.comboId;
+            if (action === 'edit') {
+                const combo = combosEspecialesState.find((c) => c.id === id);
+                if (!combo) return;
+                _comboEditingId = id;
+                _comboFormProducts = (combo.productos || []).map((p) => ({ ...p }));
+                _comboDiasSeleccionados = (combo.horario?.dias || []).map(Number);
+                _comboHorarioTipo = combo.horario?.tipo || 'siempre';
+                renderCombosTabPanel();
+            } else if (action === 'toggle') {
+                const combo = combosEspecialesState.find((c) => c.id === id);
+                if (!combo) return;
+                await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).doc(id).update({ activo: !combo.activo });
+                await reloadDataAndRender();
+                renderCombosTabPanel();
+            } else if (action === 'delete') {
+                const combo = combosEspecialesState.find((c) => c.id === id);
+                if (!window.confirm(`¿Eliminar el combo "${combo?.titulo || ''}"?`)) return;
+                await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).doc(id).delete();
+                await reloadDataAndRender();
+                renderCombosTabPanel();
+                showNotice('Combo eliminado.', 'ok');
+            }
+        });
+    });
+}
+
+function _buildComboFormHTML() {
+    const editingCombo = _comboEditingId && _comboEditingId !== 'new'
+        ? combosEspecialesState.find((c) => c.id === _comboEditingId)
+        : null;
+
+    const titulo = editingCombo?.titulo || '';
+    const descuento = editingCombo?.descuento ?? 10;
+    const h = editingCombo?.horario || {};
+    const tipo = _comboHorarioTipo;
+    const fechaInicio = h.fecha_inicio || '';
+    const fechaFin = h.fecha_fin || '';
+    const horaInicio = h.hora_inicio || '12:00';
+    const horaFin = h.hora_fin || '22:00';
+    const dias = _comboDiasSeleccionados;
+
+    const DIAS_LABELS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+    const chipsHTML = _comboFormProducts.map((p, i) => `
+        <span class="combo-form__product-chip" data-chip-idx="${i}">
+            <img src="${escapeHtml(p.imagen || 'logo.png')}" alt="" onerror="this.src='logo.png'">
+            ${escapeHtml(p.nombre)}
+            <button type="button" class="combo-form__product-chip-remove" data-remove-idx="${i}" title="Quitar">✕</button>
+        </span>`).join('');
+
+    return `<div class="combo-form" id="comboFormWrap">
+        <h4 style="margin:0 0 14px;font-size:0.9rem;color:#eef4ff;">${_comboEditingId === 'new' ? 'Nuevo combo especial' : 'Editar combo'}</h4>
+        <div style="display:grid;gap:10px;">
+            <div class="admin-field full">
+                <label>Título del combo *</label>
+                <input type="text" id="comboFormTitulo" class="admin-input" placeholder="Ej: Combo Familiar Ranchero" value="${escapeHtml(titulo)}">
+            </div>
+            <div class="admin-field full">
+                <label>Descuento (%)</label>
+                <input type="number" id="comboFormDescuento" class="admin-input" min="0" max="80" value="${descuento}" placeholder="10">
+            </div>
+            <div class="admin-field full">
+                <label>Productos del combo (mín. 2)</label>
+                <div style="display:flex;gap:6px;margin-bottom:6px;">
+                    <input type="search" id="comboFormProductSearch" class="admin-input" placeholder="Buscar producto..." autocomplete="off" style="flex:1;">
+                </div>
+                <ul id="comboFormSearchResults" style="list-style:none;margin:0;padding:0;max-height:180px;overflow-y:auto;border-radius:8px;background:rgba(0,0,0,0.3);"></ul>
+                <div class="combo-form__product-chips" id="comboFormChips">${chipsHTML || '<span style="color:var(--admin-muted);font-size:0.78rem;">Ningún producto agregado</span>'}</div>
+            </div>
+            <div class="admin-field full">
+                <label>Disponibilidad</label>
+                <div class="combo-horario-block">
+                    <label><input type="radio" name="comboHorarioTipo" value="siempre" ${tipo === 'siempre' ? 'checked' : ''}> Siempre activo</label>
+                    <label><input type="radio" name="comboHorarioTipo" value="rango_fechas" ${tipo === 'rango_fechas' ? 'checked' : ''}> Rango de fechas</label>
+                    <label><input type="radio" name="comboHorarioTipo" value="dias_horas" ${tipo === 'dias_horas' ? 'checked' : ''}> Días y horas específicos</label>
+                    <div id="comboHorarioRangoFechas" style="display:${tipo === 'rango_fechas' ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+                        <div><label style="font-size:0.72rem;color:var(--admin-muted);">Desde</label><input type="date" id="comboFechaInicio" class="admin-input" value="${fechaInicio}"></div>
+                        <div><label style="font-size:0.72rem;color:var(--admin-muted);">Hasta</label><input type="date" id="comboFechaFin" class="admin-input" value="${fechaFin}"></div>
+                    </div>
+                    <div id="comboHorarioDiasHoras" style="display:${tipo === 'dias_horas' ? 'block' : 'none'};margin-top:8px;">
+                        <p style="font-size:0.72rem;color:var(--admin-muted);margin:0 0 6px;">Días activos:</p>
+                        <div class="combo-horario-days">
+                            ${DIAS_LABELS.map((d, i) => `<button type="button" class="combo-horario-day-btn${dias.includes(i) ? ' active' : ''}" data-day="${i}">${d}</button>`).join('')}
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+                            <div><label style="font-size:0.72rem;color:var(--admin-muted);">Hora inicio</label><input type="time" id="comboHoraInicio" class="admin-input" value="${horaInicio}"></div>
+                            <div><label style="font-size:0.72rem;color:var(--admin-muted);">Hora fin</label><input type="time" id="comboHoraFin" class="admin-input" value="${horaFin}"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+            <button type="button" class="section-save-btn" id="comboFormSaveBtn">Guardar combo</button>
+            <button type="button" class="ghost-button" id="comboFormCancelBtn" style="padding:8px 16px;">Cancelar</button>
+        </div>
+    </div>`;
+}
+
+function _wireComboFormListeners() {
+    const container = document.getElementById('combosTabPanel');
+    if (!container) return;
+
+    // Horario tipo toggle
+    container.querySelectorAll('input[name="comboHorarioTipo"]').forEach((radio) => {
+        radio.addEventListener('change', (e) => {
+            _comboHorarioTipo = e.target.value;
+            const rangoEl = document.getElementById('comboHorarioRangoFechas');
+            const diasEl = document.getElementById('comboHorarioDiasHoras');
+            if (rangoEl) rangoEl.style.display = _comboHorarioTipo === 'rango_fechas' ? 'grid' : 'none';
+            if (diasEl) diasEl.style.display = _comboHorarioTipo === 'dias_horas' ? 'block' : 'none';
+        });
+    });
+
+    // Días toggle
+    container.querySelectorAll('.combo-horario-day-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const day = Number(btn.dataset.day);
+            if (_comboDiasSeleccionados.includes(day)) {
+                _comboDiasSeleccionados = _comboDiasSeleccionados.filter((d) => d !== day);
+                btn.classList.remove('active');
+            } else {
+                _comboDiasSeleccionados.push(day);
+                btn.classList.add('active');
+            }
+        });
+    });
+
+    // Quitar producto chip
+    container.querySelectorAll('.combo-form__product-chip-remove').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const idx = Number(btn.dataset.removeIdx);
+            _comboFormProducts.splice(idx, 1);
+            _refreshComboChips();
+        });
+    });
+
+    // Búsqueda de producto
+    const searchInput = document.getElementById('comboFormProductSearch');
+    const resultsEl = document.getElementById('comboFormSearchResults');
+    if (searchInput && resultsEl) {
+        searchInput.addEventListener('input', (e) => {
+            const q = e.target.value.trim().toLowerCase();
+            if (!q) { resultsEl.innerHTML = ''; return; }
+            const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
+            const matches = catalog
+                .filter((p) => String(p.estado || 'active') === 'active' && String(p.nombre || '').toLowerCase().includes(q))
+                .slice(0, 8);
+            resultsEl.innerHTML = matches.map((p) => {
+                const alreadyAdded = _comboFormProducts.some((x) => x.id === p.id);
+                return `<li data-combo-product-id="${p.id}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:${alreadyAdded ? 'default' : 'pointer'};opacity:${alreadyAdded ? '0.4' : '1'};border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <img src="${escapeHtml(p.image_url || 'logo.png')}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;" onerror="this.src='logo.png'">
+                    <span style="flex:1;font-size:0.82rem;">${escapeHtml(p.nombre)}</span>
+                    <span style="font-size:0.75rem;color:var(--admin-accent);">${formatMoney(p.precio || 0)}</span>
+                    ${alreadyAdded ? '<span style="font-size:0.7rem;color:var(--admin-muted);">Ya agregado</span>' : ''}
+                </li>`;
+            }).join('');
+
+            resultsEl.querySelectorAll('li[data-combo-product-id]').forEach((li) => {
+                li.addEventListener('click', () => {
+                    const pid = li.dataset.comboProductId;
+                    if (_comboFormProducts.some((x) => x.id === pid)) return;
+                    const p = catalog.find((x) => x.id === pid);
+                    if (!p) return;
+                    _comboFormProducts.push({ id: p.id, nombre: p.nombre, precio: p.precio || 0, imagen: p.image_url || '' });
+                    resultsEl.innerHTML = '';
+                    searchInput.value = '';
+                    _refreshComboChips();
+                });
+            });
+        });
+    }
+
+    document.getElementById('comboFormSaveBtn')?.addEventListener('click', saveComboEspecial);
+    document.getElementById('comboFormCancelBtn')?.addEventListener('click', () => {
+        _comboEditingId = null;
+        _comboFormProducts = [];
+        renderCombosTabPanel();
+    });
+}
+
+function _refreshComboChips() {
+    const wrap = document.getElementById('comboFormChips');
+    if (!wrap) return;
+    if (!_comboFormProducts.length) {
+        wrap.innerHTML = '<span style="color:var(--admin-muted);font-size:0.78rem;">Ningún producto agregado</span>';
+        return;
+    }
+    wrap.innerHTML = _comboFormProducts.map((p, i) => `
+        <span class="combo-form__product-chip" data-chip-idx="${i}">
+            <img src="${escapeHtml(p.imagen || 'logo.png')}" alt="" onerror="this.src='logo.png'">
+            ${escapeHtml(p.nombre)}
+            <button type="button" class="combo-form__product-chip-remove" data-remove-idx="${i}" title="Quitar">✕</button>
+        </span>`).join('');
+    wrap.querySelectorAll('.combo-form__product-chip-remove').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            _comboFormProducts.splice(Number(btn.dataset.removeIdx), 1);
+            _refreshComboChips();
+        });
+    });
+}
+
+async function saveComboEspecial() {
+    const titulo = (document.getElementById('comboFormTitulo')?.value || '').trim();
+    const descuento = Number(document.getElementById('comboFormDescuento')?.value || 0);
+
+    if (!titulo) { showNotice('El título del combo es obligatorio.', 'error'); return; }
+    if (_comboFormProducts.length < 2) { showNotice('Debes agregar al menos 2 productos al combo.', 'error'); return; }
+
+    const horario = { tipo: _comboHorarioTipo, dias: _comboDiasSeleccionados };
+    if (_comboHorarioTipo === 'rango_fechas') {
+        horario.fecha_inicio = document.getElementById('comboFechaInicio')?.value || null;
+        horario.fecha_fin = document.getElementById('comboFechaFin')?.value || null;
+    } else if (_comboHorarioTipo === 'dias_horas') {
+        horario.hora_inicio = document.getElementById('comboHoraInicio')?.value || '12:00';
+        horario.hora_fin = document.getElementById('comboHoraFin')?.value || '22:00';
+    }
+
+    const precioOriginal = _comboFormProducts.reduce((s, p) => s + Number(p.precio || 0), 0);
+    const rate = Math.min(Math.max(descuento, 0), 80) / 100;
+    const precioCombo = Math.round(precioOriginal * (1 - rate));
+
+    const payload = {
+        titulo,
+        productos: _comboFormProducts,
+        descuento,
+        precio_original: precioOriginal,
+        precio_combo: precioCombo,
+        horario,
+        activo: true,
+        updated_at: firestoreNow()
+    };
+
+    const saveBtn = document.getElementById('comboFormSaveBtn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+
+    try {
+        if (_comboEditingId && _comboEditingId !== 'new') {
+            await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).doc(_comboEditingId).update(payload);
+        } else {
+            const maxOrden = combosEspecialesState.reduce((m, c) => Math.max(m, c.orden ?? 0), 0);
+            await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).add({ ...payload, orden: maxOrden + 1, created_at: firestoreNow() });
+        }
+        _comboEditingId = null;
+        _comboFormProducts = [];
+        await reloadDataAndRender();
+        renderCombosTabPanel();
+        showNotice('Combo guardado.', 'ok');
+    } catch (err) {
+        showNotice('Error al guardar el combo.', 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar combo'; }
+    }
+}
+
+function _buildComboAdminCardHTML(combo) {
+    const iconsHTML = (combo.productos || []).slice(0, 5).map((p) =>
+        `<img class="combo-admin-card__icon" src="${escapeHtml(p.imagen || 'logo.png')}" alt="${escapeHtml(p.nombre)}" onerror="this.src='logo.png'" title="${escapeHtml(p.nombre)}">`
+    ).join('');
+
+    const nombresProductos = (combo.productos || []).map((p) => p.nombre).join(' + ');
+    const isActivo = combo.activo !== false;
+    const rate = Math.min(Math.max(Number(combo.descuento || 0), 0), 80) / 100;
+    const precioOrig = formatMoney(combo.precio_original || 0);
+    const precioCombo = formatMoney(combo.precio_combo || 0);
+    const horarioLabel = _comboHorarioLabel(combo.horario);
+
+    return `<div class="combo-admin-card" style="opacity:${isActivo ? '1' : '0.55'};">
+        <div class="combo-admin-card__icons">${iconsHTML}</div>
+        <div class="combo-admin-card__info">
+            <strong class="combo-admin-card__title">${escapeHtml(combo.titulo || 'Sin título')}</strong>
+            <span class="combo-admin-card__products">${escapeHtml(nombresProductos)}</span>
+            <span class="combo-admin-card__price">${precioCombo} <span style="text-decoration:line-through;font-weight:400;font-size:0.75rem;color:var(--admin-muted);">${precioOrig}</span> · -${combo.descuento || 0}%</span>
+            <span class="combo-admin-card__schedule">🕐 ${escapeHtml(horarioLabel)}</span>
+        </div>
+        <div class="combo-admin-card__actions">
+            <button class="promo-toggle-btn${isActivo ? ' is-active' : ''}" data-combo-action="toggle" data-combo-id="${combo.id}">${isActivo ? 'Activo' : 'Inactivo'}</button>
+            <button class="mini-btn" data-combo-action="edit" data-combo-id="${combo.id}">Editar</button>
+            <button class="mini-btn remove" data-combo-action="delete" data-combo-id="${combo.id}">Eliminar</button>
+        </div>
+    </div>`;
+}
+
+function _comboHorarioLabel(horario) {
+    if (!horario || horario.tipo === 'siempre') return 'Siempre activo';
+    if (horario.tipo === 'rango_fechas') {
+        const desde = horario.fecha_inicio || '?';
+        const hasta = horario.fecha_fin || '?';
+        return `Desde ${desde} hasta ${hasta}`;
+    }
+    if (horario.tipo === 'dias_horas') {
+        const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+        const dias = (horario.dias || []).map((d) => DIAS[d] || '').filter(Boolean).join(', ') || 'Todos';
+        return `${dias} · ${horario.hora_inicio || ''} – ${horario.hora_fin || ''}`;
+    }
+    return 'Configurado';
+}
+
+// ===== FIN PANEL COMBOS ESPECIALES ADMIN =====
+
 function buildWhatsAppButtonLink(number, customLink) {
     const directLink = String(customLink || '').trim();
     if (directLink) {
@@ -8539,7 +8894,8 @@ async function reloadDataAndRender() {
         fetchMenuUpgradesConfig(),
         fetchRecomendadoDiaConfig(),
         fetchHorarioConfig(),
-        fetchPromos()
+        fetchPromos(),
+        fetchCombosEspeciales()
     ]);
 
     const createdSalesDay = await ensureActiveSalesDay();
@@ -8557,6 +8913,7 @@ async function reloadDataAndRender() {
     renderHorarioForm();
     renderRecomendadoDiaPanel();
     renderPromosTabPanel();
+    renderCombosTabPanel();
     renderOrders();
     renderSalesSummaries();
     renderLedgerBook();

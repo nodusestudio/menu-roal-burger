@@ -1259,6 +1259,55 @@
             border: 1.5px solid rgba(255,122,26,0.22);
         }
 
+        /* ── Combos Especiales admin ── */
+        .combo-admin-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+        .combo-admin-card {
+            display: flex; align-items: flex-start; gap: 12px;
+            padding: 12px 14px; border-radius: 12px;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+        }
+        .combo-admin-card__icons {
+            display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; max-width: 120px;
+        }
+        .combo-admin-card__icon {
+            width: 36px; height: 36px; border-radius: 8px; object-fit: cover;
+            border: 1.5px solid rgba(255,255,255,0.12);
+            background: rgba(0,0,0,0.3);
+        }
+        .combo-admin-card__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+        .combo-admin-card__title { font-size: 0.9rem; font-weight: 700; color: #eef4ff; }
+        .combo-admin-card__products { font-size: 0.72rem; color: var(--admin-muted); }
+        .combo-admin-card__price { font-size: 0.82rem; color: var(--admin-accent); font-weight: 700; }
+        .combo-admin-card__schedule { font-size: 0.68rem; color: var(--admin-muted); font-style: italic; }
+        .combo-admin-card__actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+        .combo-form {
+            padding: 16px; border-radius: 14px;
+            background: rgba(255,122,26,0.06); border: 1.5px solid rgba(255,122,26,0.22);
+            margin-bottom: 16px;
+        }
+        .combo-form__product-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; min-height: 32px; }
+        .combo-form__product-chip {
+            display: flex; align-items: center; gap: 6px;
+            padding: 4px 8px; border-radius: 20px;
+            background: rgba(255,122,26,0.15); border: 1px solid rgba(255,122,26,0.35);
+            font-size: 0.78rem; color: #eef4ff;
+        }
+        .combo-form__product-chip img { width: 22px; height: 22px; border-radius: 4px; object-fit: cover; }
+        .combo-form__product-chip-remove {
+            background: none; border: none; color: #ff6b6b; cursor: pointer;
+            font-size: 0.9rem; padding: 0; line-height: 1; flex-shrink: 0;
+        }
+        .combo-horario-block { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); }
+        .combo-horario-block label { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; cursor: pointer; margin-bottom: 6px; }
+        .combo-horario-days { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+        .combo-horario-day-btn {
+            padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15);
+            background: transparent; color: var(--admin-muted); font-size: 0.72rem;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .combo-horario-day-btn.active { background: rgba(255,122,26,0.25); border-color: rgba(255,122,26,0.5); color: var(--admin-accent); }
+
         .kanban-order-compact-time {
             font-size: 0.72em;
             color: var(--admin-muted);
@@ -9624,6 +9673,10 @@
                         <span class="menu-inner-tab-icon">🏷️</span>
                         <span>Promociones</span>
                     </button>
+                    <button class="menu-inner-tab" data-menu-tab="combos" role="tab" aria-selected="false">
+                        <span class="menu-inner-tab-icon">🎁</span>
+                        <span>Combos</span>
+                    </button>
                     <button class="menu-inner-tab" data-menu-tab="recomendado" role="tab" aria-selected="false">
                         <span class="menu-inner-tab-icon">⭐</span>
                         <span>Recomendado del Dia</span>
@@ -9681,6 +9734,11 @@
                     <!-- ── Panel: Promociones ── -->
                     <div class="menu-inner-panel" data-menu-panel="promociones" role="tabpanel" hidden style="display:none;">
                         <div id="promosTabPanel"></div>
+                    </div>
+
+                    <!-- ── Panel: Combos Especiales ── -->
+                    <div class="menu-inner-panel" data-menu-panel="combos" role="tabpanel" hidden style="display:none;">
+                        <div id="combosTabPanel"></div>
                     </div>
 
                     <!-- ── Panel: Recomendado del Dia ── -->

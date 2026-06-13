@@ -8529,6 +8529,14 @@ async function renderPublicFeaturedFromAdmin() {
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         renderExtraPromoCards();
     });
+
+    firebaseDb.collection('combos_especiales').onSnapshot((snap) => {
+        _combosEspecialesData = snap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((c) => c.activo !== false)
+            .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+        renderCombosEspeciales();
+    });
 }
 
 function buildDynamicWhatsAppUrl(sectionName) {
@@ -8699,6 +8707,7 @@ let recomendadoOverride = null;
 let _promoProductsReady = false;
 let _promoModalPendingOpen = false;
 let _promosData = [];
+let _combosEspecialesData = [];
 
 function getCurrentBogotaDateParts(now = new Date()) {
     const parts = new Intl.DateTimeFormat('en-CA', {
@@ -8961,6 +8970,92 @@ function renderExtraPromoCards() {
 
         container.appendChild(section);
     });
+}
+
+// ===== COMBOS ESPECIALES (MENÚ PÚBLICO) =====
+
+function _isComboActivoAhora(horario) {
+    if (!horario || horario.tipo === 'siempre') return true;
+    const now = new Date();
+    const { year, month, day } = getCurrentBogotaDateParts(now);
+    const tz = (typeof ORDERING_SCHEDULE !== 'undefined' && ORDERING_SCHEDULE.timeZone) || 'America/Bogota';
+    const timeParts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false }).formatToParts(now);
+    const hour = Number(timeParts.find((p) => p.type === 'hour')?.value || 0);
+    const minute = Number(timeParts.find((p) => p.type === 'minute')?.value || 0);
+    const weekdayStr = timeParts.find((p) => p.type === 'weekday')?.value || 'Sun';
+    const DOW_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dow = DOW_MAP[weekdayStr] ?? now.getDay();
+
+    if (horario.tipo === 'rango_fechas') {
+        const todayStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const desde = horario.fecha_inicio || '';
+        const hasta = horario.fecha_fin || '';
+        return (!desde || todayStr >= desde) && (!hasta || todayStr <= hasta);
+    }
+    if (horario.tipo === 'dias_horas') {
+        const dias = horario.dias || [];
+        if (dias.length && !dias.map(Number).includes(dow)) return false;
+        const nowMin = hour * 60 + minute;
+        const [ih, im] = (horario.hora_inicio || '00:00').split(':').map(Number);
+        const [fh, fm] = (horario.hora_fin || '23:59').split(':').map(Number);
+        return nowMin >= ih * 60 + im && nowMin <= fh * 60 + fm;
+    }
+    return true;
+}
+
+function renderCombosEspeciales() {
+    const container = document.getElementById('combosEspecialesCards');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const activos = _combosEspecialesData.filter((c) => _isComboActivoAhora(c.horario));
+    if (!activos.length) return;
+
+    activos.forEach((combo) => {
+        const productos = combo.productos || [];
+        const precioOrig = combo.precio_original || productos.reduce((s, p) => s + Number(p.precio || 0), 0);
+        const precioCombo = combo.precio_combo || precioOrig;
+        const descuento = combo.descuento || 0;
+
+        const iconsHTML = productos.slice(0, 5).map((p) => `
+            <button type="button" class="combo-public-icon-btn" data-product-id="${p.id}" title="${escapeXml(p.nombre || '')}">
+                <img src="${escapeXml(p.imagen || 'logo.png')}" alt="${escapeXml(p.nombre || '')}" onerror="this.src='logo.png'">
+                <span>${escapeXml(p.nombre || '')}</span>
+            </button>`).join('');
+
+        const nombresHTML = productos.map((p) => `<span>${escapeXml(p.nombre || '')}</span>`).join('<span class="combo-plus">+</span>');
+
+        const section = document.createElement('section');
+        section.className = 'combo-especial-banner';
+        section.setAttribute('aria-label', combo.titulo || 'Combo especial');
+
+        section.innerHTML = `
+            <div class="combo-especial-header">
+                <span class="combo-especial-badge">🎁 ${escapeXml(combo.titulo || 'Combo Especial')}</span>
+                ${descuento > 0 ? `<span class="combo-especial-pct">-${descuento}%</span>` : ''}
+            </div>
+            <div class="combo-especial-icons">${iconsHTML}</div>
+            <div class="combo-especial-names">${nombresHTML}</div>
+            <div class="combo-especial-price-row">
+                ${precioOrig > precioCombo ? `<span class="combo-especial-orig">$${precioOrig.toLocaleString('es-CO')}</span>` : ''}
+                <span class="combo-especial-price">$${precioCombo.toLocaleString('es-CO')}</span>
+            </div>`;
+
+        section.querySelectorAll('.combo-public-icon-btn').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const pid = btn.dataset.productId;
+                const prod = latestProducts.find((p) => p.id === pid);
+                if (prod) handleProductClick(prod);
+            });
+        });
+
+        container.appendChild(section);
+    });
+}
+
+function escapeXml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ===== SEGUNDA PANTALLA: HOME SCREEN =====

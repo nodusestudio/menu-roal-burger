@@ -5255,6 +5255,128 @@ a.is-ordering-closed {
 }
 /* ===== FIN BANNER RECOMENDADO ===== */
 
+/* ===== COMBOS ESPECIALES (MENÚ PÚBLICO) ===== */
+#combosEspecialesCards {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 4px 0;
+}
+
+.combo-especial-banner {
+    position: relative;
+    border-radius: 20px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
+    border: 1px solid rgba(255, 200, 80, 0.25);
+    padding: 16px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    overflow: hidden;
+}
+
+.combo-especial-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.combo-especial-badge {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #ffd560;
+    letter-spacing: 0.01em;
+    flex: 1;
+}
+
+.combo-especial-pct {
+    background: #e63946;
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 20px;
+}
+
+.combo-especial-icons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.combo-public-icon-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: background 0.18s;
+    min-width: 60px;
+    max-width: 80px;
+}
+
+.combo-public-icon-btn:hover {
+    background: rgba(255,255,255,0.14);
+}
+
+.combo-public-icon-btn img {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    object-fit: cover;
+}
+
+.combo-public-icon-btn span {
+    font-size: 0.62rem;
+    color: rgba(255,255,255,0.75);
+    text-align: center;
+    line-height: 1.2;
+    max-width: 70px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.combo-especial-names {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.55);
+    margin-bottom: 12px;
+}
+
+.combo-plus {
+    color: #ffd560;
+    font-weight: 700;
+    margin: 0 2px;
+}
+
+.combo-especial-price-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.combo-especial-orig {
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.38);
+    text-decoration: line-through;
+}
+
+.combo-especial-price {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #ffd560;
+}
+/* ===== FIN COMBOS ESPECIALES ===== */
+
 /* ===== PANTALLA CONFIRMACIÓN DE PEDIDO ===== */
 #orderConfirmScreen {
     position: fixed;
