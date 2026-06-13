@@ -5056,11 +5056,32 @@ a.is-ordering-closed {
     border-radius: 20px;
     overflow: hidden;
     margin-bottom: 28px;
-    background: linear-gradient(135deg, #fff9f2 0%, #fff3e3 100%);
-    border: 1px solid rgba(200, 120, 40, 0.18);
-    box-shadow: 0 8px 36px rgba(80, 35, 0, 0.16), 0 2px 8px rgba(200,100,30,0.08);
+    background: rgba(255, 238, 210, 0.18);
+    -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(1.08);
+    backdrop-filter: blur(28px) saturate(200%) brightness(1.08);
+    border: 1px solid rgba(255, 205, 115, 0.40);
+    border-top-color: rgba(255, 228, 165, 0.68);
+    box-shadow:
+        0 8px 36px rgba(80, 35, 0, 0.22),
+        0 2px 8px rgba(200, 100, 30, 0.12),
+        inset 0 1px 0 rgba(255, 242, 200, 0.45);
     display: flex;
     flex-direction: column;
+}
+
+/* Reflejo superior del cristal */
+.home-rec-banner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 52%;
+    background: linear-gradient(180deg, rgba(255, 248, 230, 0.24) 0%, transparent 100%);
+    border-radius: 20px 20px 0 0;
+    pointer-events: none;
+    z-index: 0;
 }
 
 /* Franja superior — kicker */
@@ -5069,8 +5090,10 @@ a.is-ordering-closed {
     align-items: center;
     gap: 6px;
     padding: 9px 16px 8px;
-    background: linear-gradient(90deg, rgba(255,122,26,0.12), rgba(255,122,26,0.04));
-    border-bottom: 1px solid rgba(200,120,40,0.10);
+    background: rgba(255, 122, 26, 0.10);
+    border-bottom: 1px solid rgba(200, 120, 40, 0.12);
+    position: relative;
+    z-index: 1;
 }
 
 .home-rec-kicker {
@@ -5103,6 +5126,8 @@ a.is-ordering-closed {
     flex-direction: row;
     align-items: stretch;
     min-height: 140px;
+    position: relative;
+    z-index: 1;
 }
 
 .home-rec-img-wrap {
@@ -5193,7 +5218,7 @@ a.is-ordering-closed {
     margin-top: 6px;
     align-self: flex-start;
     padding: 10px 22px;
-    background: linear-gradient(135deg, #ff7a00, #e84800);
+    background: linear-gradient(135deg, #ff7200, #ff3300);
     border: none;
     border-radius: 999px;
     color: #fff;
@@ -5204,26 +5229,36 @@ a.is-ordering-closed {
     text-transform: uppercase;
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 4px 16px rgba(232, 72, 0, 0.38);
+    box-shadow: 0 4px 20px rgba(255, 70, 0, 0.65), 0 1px 4px rgba(255, 50, 0, 0.35);
+    -webkit-tap-highlight-color: transparent;
 }
 
 .home-rec-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 7px 22px rgba(232, 72, 0, 0.52);
+    box-shadow: 0 7px 28px rgba(255, 70, 0, 0.78), 0 2px 6px rgba(255, 50, 0, 0.45);
+}
+
+.home-rec-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 3px 12px rgba(255, 70, 0, 0.55);
 }
 /* ===== BANNER RECOMENDADO — DESKTOP ===== */
 @media (min-width: 769px) {
     .home-rec-banner {
         border-radius: 24px;
         margin-bottom: 36px;
-        background: linear-gradient(120deg, #fff8ef 0%, #fff2e0 55%, #fde8cb 100%);
-        box-shadow: 0 12px 48px rgba(80, 35, 0, 0.18), 0 3px 12px rgba(200, 100, 30, 0.10);
-        border: 1.5px solid rgba(200, 120, 40, 0.22);
+        background: rgba(255, 238, 210, 0.18);
+        box-shadow:
+            0 12px 48px rgba(80, 35, 0, 0.24),
+            0 3px 12px rgba(200, 100, 30, 0.12),
+            inset 0 1px 0 rgba(255, 242, 200, 0.5);
+        border: 1.5px solid rgba(255, 205, 115, 0.42);
+        border-top-color: rgba(255, 228, 165, 0.70);
     }
 
     .home-rec-top-bar {
         padding: 12px 24px 11px;
-        background: linear-gradient(90deg, rgba(255,122,26,0.13), rgba(255,122,26,0.04));
+        background: rgba(255, 122, 26, 0.10);
     }
 
     .home-rec-kicker {
