@@ -1556,6 +1556,7 @@ function normalizeCategory(raw) {
         name: String(raw.name || raw.nombre || '').trim(),
         image_url: String(raw.image_url || '').trim(),
         active: raw.active !== false,
+        tipo_pos: ['acompanantes'].includes(raw.tipo_pos) ? raw.tipo_pos : null,
         order: raw.order != null ? Number(raw.order) : undefined,
         created_at: raw.created_at || null,
         updated_at: raw.updated_at || null
@@ -2323,10 +2324,11 @@ function renderPosCategoriesPanel() {
     if (!select) return;
 
     const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
-    const categoryOrder = {};
-    categoriesState.forEach((c, i) => { categoryOrder[c.name.trim()] = i; });
-    const categories = [...new Set(catalog.map((p) => String(p.categoria || 'Sin categoria').trim()))]
-        .sort((a, b) => (categoryOrder[a] ?? 999) - (categoryOrder[b] ?? 999));
+
+    // Usar categoriesState como fuente de verdad: orden correcto y respeto al campo active
+    const categories = categoriesState.length
+        ? categoriesState.filter((c) => c.active !== false).map((c) => c.name.trim())
+        : [...new Set(catalog.map((p) => String(p.categoria || 'Sin categoria').trim()))];
 
     if (select.dataset.listenerAttached !== 'true') {
         select.addEventListener('change', () => {
@@ -2359,6 +2361,13 @@ function renderPosProductsPanel() {
 
     if (!posSelectedCategory) {
         grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Selecciona una categoría</p>';
+        return;
+    }
+
+    // Verificar si la categoría tiene tipo_pos = 'acompanantes'
+    const categoryMeta = categoriesState.find((c) => c.name.trim() === posSelectedCategory);
+    if (categoryMeta && categoryMeta.tipo_pos === 'acompanantes') {
+        renderPosAcompanantesPanel(grid);
         return;
     }
 
@@ -2404,6 +2413,47 @@ function renderPosProductsPanel() {
         card.addEventListener('click', () => {
             handlePosProductAdd(String(product.id || ''), String(product.nombre || ''), Number(product.precio || 0));
         });
+        grid.appendChild(card);
+    });
+}
+
+function renderPosAcompanantesPanel(grid) {
+    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
+    const opciones = (cfg.opciones || [])
+        .filter((o) => o.activo && o.activo_pos !== false)
+        .sort((a, b) => (a.orden || 99) - (b.orden || 99));
+
+    grid.innerHTML = '';
+
+    if (!opciones.length) {
+        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Sin acompañantes activos configurados</p>';
+        return;
+    }
+
+    opciones.forEach((opt) => {
+        const card = document.createElement('div');
+        card.className = 'pos-product-card';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const nombreCompleto = opt.detalle ? `${opt.nombre} (${opt.detalle})` : opt.nombre;
+
+        if (opt.tiene_variantes && Array.isArray(opt.variantes) && opt.variantes.length) {
+            // Con variantes: abrir modal de selección
+            btn.className = 'pos-product-btn';
+            btn.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(opt.nombre)}</span><span class="pos-product-btn-price">+ variantes</span>`;
+            card.appendChild(btn);
+            card.addEventListener('click', () => openPosUpgradeSheet(
+                `acomp-${opt.id}`, opt.nombre, opt.precio,
+                [opt]
+            ));
+        } else {
+            btn.className = 'pos-product-btn';
+            btn.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(nombreCompleto)}</span><span class="pos-product-btn-price">${opt.precio > 0 ? formatMoney(opt.precio) : 'Incluido'}</span>`;
+            card.appendChild(btn);
+            card.addEventListener('click', () => addProductToPosOrder(`acomp-${opt.id}`, nombreCompleto, opt.precio));
+        }
+
         grid.appendChild(card);
     });
 }
@@ -4823,6 +4873,14 @@ function _renderCategoryDetailPanel(categoryId) {
                     : '<p style="font-size:0.8rem;color:var(--admin-muted);margin:4px 0;">Sin productos aún</p>'}
             </div>
             ${_buildCatAcompHtml(category)}
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">
+                <label style="font-size:0.72rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Tipo en POS</label>
+                <select id="catDetailTipoPos" class="admin-input" style="width:100%;">
+                    <option value="" ${!category.tipo_pos ? 'selected' : ''}>Normal (productos de la categoría)</option>
+                    <option value="acompanantes" ${category.tipo_pos === 'acompanantes' ? 'selected' : ''}>Acompañantes configurados</option>
+                </select>
+                <p style="font-size:0.72rem;color:var(--admin-muted);margin:5px 0 0;">Al seleccionar "Acompañantes", el POS mostrará los acompañantes activos como productos de esta categoría.</p>
+            </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
                 <button type="button" class="section-save-btn" id="catDetailSaveBtn">Guardar</button>
             </div>
@@ -4945,16 +5003,19 @@ function _renderCategoryDetailPanel(categoryId) {
 async function _saveCategoryFromDetail(categoryId) {
     const nameInput = document.getElementById('catDetailName');
     const activeInput = document.getElementById('catDetailActive');
+    const tipoPosInput = document.getElementById('catDetailTipoPos');
     const acompActivoInput = document.getElementById('catAcompActivo');
     const newName = nameInput ? nameInput.value.trim() : '';
     if (!newName) { showNotice('El nombre no puede estar vacío.', 'error'); return; }
     try {
         const existing = categoriesState.find((c) => c.id === categoryId);
         const oldName = existing ? existing.name : newName;
+        const tipoPos = tipoPosInput ? (tipoPosInput.value || null) : null;
         await firebaseDb.collection('categorias').doc(categoryId).update({
             name: newName,
             image_url: existing ? (existing.image_url || '') : '',
             active: activeInput ? activeInput.checked : true,
+            tipo_pos: tipoPos,
             updated_at: firestoreNow()
         });
 
