@@ -6505,12 +6505,22 @@ function buildThermalTicketMarkup(order, options = {}) {
                     <span>${escapeHtml(brandingState.address || 'ROAL BURGER')}</span>
                 </div>
             </article>
-            ${printMode ? '' : `
+            ${printMode ? '' : (() => {
+                const _isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+                const _hasType = !!order.orderType;
+                const _cobrarDisabled = (_isPaid || !_hasType) ? 'disabled' : '';
+                const _cobrarTitle = _isPaid
+                    ? 'Pedido ya cobrado'
+                    : !_hasType
+                        ? 'Asigna tipo de pedido (mesa / recoger / domicilio) primero'
+                        : 'Cobrar este pedido';
+                return `
                 <div class="ticket-print-row">
                     <button type="button" class="ticket-print-btn ticket-action-btn" data-order-ticket-action="print" data-order-id="${order.id}">Imprimir</button>
+                    <button type="button" class="ticket-cobrar-btn ticket-action-btn" data-order-ticket-action="cobrar" data-order-id="${order.id}" ${_cobrarDisabled} title="${_cobrarTitle}">💰 Cobrar</button>
                     <button type="button" class="ticket-contact-btn ticket-action-btn" data-order-ticket-action="contact" data-order-id="${order.id}">Agregar contacto</button>
-                </div>
-            `}
+                </div>`;
+            })()}
         </div>
     `;
 }
@@ -11542,6 +11552,13 @@ if (orderTicketPanel) {
             } catch (error) {
                 showNotice(`No se pudo crear el contacto: ${error.message || 'error inesperado.'}`, 'error');
             }
+            return;
+        }
+
+        if (actionButton.dataset.orderTicketAction === 'cobrar') {
+            const order = ordersState.find(o => o.id === orderId);
+            if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+            _triggerTicketCobro(order);
         }
     });
 }
@@ -14028,12 +14045,23 @@ function closeTicketSidePanel() {
 
 document.getElementById('ticketsSidePanelClose')?.addEventListener('click', closeTicketSidePanel);
 
+// ── Cobro desde ticket (panel POS y modal histórico) ─────────────────────────
+function _triggerTicketCobro(order) {
+    const ot = String(order.orderType || '').toLowerCase();
+    if (!ot) { showNotice('Asigna el tipo de pedido (mesa / recoger / domicilio) primero.', 'error'); return; }
+    if (ot === 'domicilio') openDeliveryPaymentModal(order, false);
+    else openDeliveryPaymentModal(order, 'mesa'); // mesa y retiro
+}
+
 // ── Modal vista previa de ticket ──────────────────────────────────────────────
+let _ticketPreviewCurrentOrder = null;
+
 function openTicketPreviewModal(order) {
     const modal    = document.getElementById('ticketPreviewModal');
     const content  = document.getElementById('ticketPreviewContent');
     const voidBadge = document.getElementById('ticketPreviewVoidedBadge');
     if (!modal || !content) return;
+    _ticketPreviewCurrentOrder = order;
     content.innerHTML = buildThermalTicketMarkup(order);
     if (voidBadge) {
         if (order.voided) voidBadge.removeAttribute('hidden');
@@ -14044,10 +14072,28 @@ function openTicketPreviewModal(order) {
 
 function closeTicketPreviewModal() {
     document.getElementById('ticketPreviewModal')?.setAttribute('hidden', '');
+    _ticketPreviewCurrentOrder = null;
 }
 
 document.getElementById('ticketPreviewCloseBtn')?.addEventListener('click', closeTicketPreviewModal);
 document.getElementById('ticketPreviewModal')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-order-ticket-action]');
+    if (btn) {
+        const action = btn.dataset.orderTicketAction;
+        if (action === 'print') {
+            const orderId = String(btn.dataset.orderId || '').trim();
+            if (orderId) openOrderPrintTicket(orderId);
+        } else if (action === 'cobrar' && _ticketPreviewCurrentOrder) {
+            _triggerTicketCobro(_ticketPreviewCurrentOrder);
+        } else if (action === 'contact') {
+            const orderId = String(btn.dataset.orderId || '').trim();
+            if (orderId) {
+                openOrderContactCard(orderId);
+                showNotice(isMobileContactImportContext() ? 'Abriendo el contacto del cliente.' : 'Contacto descargado en formato VCF.', 'ok');
+            }
+        }
+        return;
+    }
     if (e.target === document.getElementById('ticketPreviewModal')) closeTicketPreviewModal();
 });
 
