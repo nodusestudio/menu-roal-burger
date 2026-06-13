@@ -13711,6 +13711,7 @@ async function cerrarCaja() {
 }
 
 document.getElementById('cerrarCajaBtn')?.addEventListener('click', cerrarCaja);
+document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', cerrarCaja);
 
 // ── Libro Contable: historial de cierres de caja ──────────────────────────────
 let _cierresCajaState = [];
