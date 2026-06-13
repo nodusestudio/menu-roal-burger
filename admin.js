@@ -5066,7 +5066,7 @@ async function _saveCategoryFromDetail(categoryId) {
             await saveMenuUpgradesConfig(menuUpgradesConfig);
         }
 
-        _selectedCategoryId = categoryId;
+        _selectedCategoryId = null;
         await reloadDataAndRender();
         showNotice('Categoría guardada.', 'ok');
     } catch (e) {
@@ -8207,6 +8207,8 @@ async function savePromo() {
         }
         _promoEditingId = null;
         _promoFormProductId = null;
+        await reloadDataAndRender();
+        renderPromosTabPanel();
         showNotice('Promoción guardada.', 'ok');
     } catch (err) {
         showNotice('Error al guardar la promoción.', 'error');
