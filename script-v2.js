@@ -9841,14 +9841,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Botones de la pantalla de inicio
     document.getElementById('splashContinueBtn')?.addEventListener('click', () => {
+        document.activeElement?.blur();
         showHomeScreen();
         if (window.__roalHideSplash) window.__roalHideSplash();
     });
     document.getElementById('splashGuestBtn')?.addEventListener('click', () => {
+        document.activeElement?.blur();
         showHomeScreen();
         if (window.__roalHideSplash) window.__roalHideSplash();
     });
     document.getElementById('splashSignInBtn')?.addEventListener('click', () => {
+        document.activeElement?.blur();
         _promoModalPendingOpen = false;
         closePromoScreen();
 
@@ -9932,8 +9935,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const hiddenMs = Date.now() - _lastHiddenAt;
             const homeScreen = document.getElementById('homeScreen');
             // Si el homeScreen está oculto y la splash ya no existe, mostrarlo
+            // — pero solo si no hay ninguna pantalla secundaria abierta
             if (homeScreen && homeScreen.hidden && !document.getElementById('splashScreen')) {
-                showHomeScreen();
+                const _secondaryIds = ['categoryDetailScreen', 'navCategoriesScreen', 'promoScreen', 'searchScreen'];
+                const _anySecondaryOpen = _secondaryIds.some(id => { const el = document.getElementById(id); return el && !el.hidden; });
+                if (!_anySecondaryOpen) showHomeScreen();
                 return;
             }
             // Si estuvo oculto más de 30 segundos, forzar re-render del home

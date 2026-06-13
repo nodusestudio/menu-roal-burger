@@ -4915,6 +4915,15 @@ a.is-ordering-closed {
 
 /* ===== SEGUNDA PANTALLA — HOME SCREEN ===== */
 
+/* Garantía: hidden siempre oculta las pantallas aunque otra regla CSS fije display */
+#homeScreen[hidden],
+#categoryDetailScreen[hidden],
+#navCategoriesScreen[hidden],
+#promoScreen[hidden],
+#searchScreen[hidden] {
+    display: none !important;
+}
+
 #homeScreen {
     position: fixed;
     inset: 0;
