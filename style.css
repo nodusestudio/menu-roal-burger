@@ -5372,7 +5372,7 @@ a.is-ordering-closed {
 
 .combo-public-icon-btn span {
     font-size: 0.62rem;
-    color: rgba(255, 225, 160, 0.85);
+    color: #fff8e8;
     text-align: center;
     line-height: 1.2;
     max-width: 70px;
@@ -5380,7 +5380,8 @@ a.is-ordering-closed {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
-    font-weight: 500;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
 .combo-especial-names {
@@ -5389,13 +5390,15 @@ a.is-ordering-closed {
     align-items: center;
     gap: 4px;
     font-size: 0.75rem;
-    color: rgba(255, 215, 145, 0.6);
+    color: #f5dfa0;
     margin-bottom: 12px;
+    font-weight: 500;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 
 .combo-plus {
-    color: rgba(255, 200, 80, 0.8);
-    font-weight: 700;
+    color: #ffc84a;
+    font-weight: 800;
     margin: 0 2px;
 }
 
@@ -5407,7 +5410,7 @@ a.is-ordering-closed {
 
 .combo-especial-orig {
     font-size: 0.82rem;
-    color: rgba(255, 200, 120, 0.4);
+    color: rgba(255, 215, 150, 0.6);
     text-decoration: line-through;
 }
 
