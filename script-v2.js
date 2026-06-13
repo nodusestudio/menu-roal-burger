@@ -6740,17 +6740,6 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
         }
     }
 
-    if (normalizeCategoryKey(safeCategoryName).includes('salchipapa')) {
-        const salchipapaOptions = getSalchipapaOptions(productName);
-        if (salchipapaOptions.length) {
-            openImageOptionModal(productName, safeCategoryName, buttonId, normalizedOptions, {
-                optionItems: salchipapaOptions,
-                description: 'Selecciona el tamano que quieres agregar segun la imagen.'
-            });
-            return;
-        }
-    }
-
     if (isCombosConPapasCategory(safeCategoryName)) {
         openCombosConPapasModal(productName, safeCategoryName, buttonId, normalizedOptions);
         return;

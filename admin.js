@@ -1744,11 +1744,16 @@ function ensureOrdersRealtimeTicker() {
     }
 
     ordersRealtimeTimer = window.setInterval(() => {
-        if (!ordersState.some((order) => order.status === 'esperando_domiciliario' || order.status === 'entregado')) {
-            return;
-        }
+        const waiting = ordersState.filter((o) => o.status === 'esperando_domiciliario');
+        if (!waiting.length) return;
 
-        renderOrders();
+        // Actualizar solo los spans de timer en-lugar para evitar el parpadeo de tarjetas
+        document.querySelectorAll('.order-wait-timer[data-order-id]').forEach((el) => {
+            const order = ordersState.find((o) => o.id === el.dataset.orderId);
+            if (order) {
+                el.textContent = formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
+            }
+        });
     }, 1000);
 }
 
@@ -2421,7 +2426,8 @@ function handlePosProductAdd(productId, productName, productPrice) {
     const normCat = normalizeCategoryKey(selectedCategory);
 
     // Combos con papas y bebidas → selector de personas con precios fijos
-    if (normCat.includes('papas')) {
+    // Excluir 'salchipapas' porque también contiene "papas"
+    if (normCat.includes('papas') && !normCat.includes('salchipapa')) {
         openComboConPapasPosModal(productId, productName, selectedCategory);
         return;
     }
@@ -5470,7 +5476,7 @@ function getOrderColumnKey(order) {
 function getOrderTypeLabel(order) {
     if (order.orderType === 'domicilio') return 'Domicilio';
     if (order.orderType === 'mesa') return order.mesaNumber ? `Mesa ${order.mesaNumber}` : 'Mesa';
-    return 'Llevar';
+    return 'Recoger';
 }
 
 function getOrderDisplayTotal(order) {
@@ -6234,7 +6240,7 @@ function createOrderCard(order) {
         statusRow = `
             <div class="koc-status">
                 <span class="koc-status-badge">Esperando domiciliario</span>
-                <span class="order-wait-timer">${escapeHtml(formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt))}</span>
+                <span class="order-wait-timer" data-order-id="${order.id}">${escapeHtml(formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt))}</span>
             </div>`;
     } else if (order.status === 'listo_recoger') {
         statusRow = `
@@ -6297,18 +6303,22 @@ function createOrderCard(order) {
             </div>
         </div>`;
     } else if (isPickupOrder && !isUnreadOrder && order.status !== 'entregado') {
-        // Layout para llevar: [ Pedido listo → Pedido entregado | ✎ | 🗑 ]
+        // Layout para recoger: [ Listo → Entregado | 💰? | ✎ | 🗑 ]
         const isReady = order.status === 'listo_recoger';
         const mainLabel = isReady ? 'Entregado' : 'Listo';
         const mainAction = isReady ? 'entregado' : 'listo_recoger';
         const mainClass = isReady ? 'order-action-btn-delivered' : 'order-action-btn-ready';
+        const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+        const cobrarRetiroBtn = !isPaid
+            ? `<button type="button" class="order-action-btn order-action-btn-receive koa-icon-btn" data-order-card-action="cobrar_retiro" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
+            : '';
         const editBtn = isPosAdminOrder
             ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
             : '';
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
             <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
             <div class="koa-mesa-icons">
-                ${editBtn}
+                ${cobrarRetiroBtn}${editBtn}
                 <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
             </div>
         </div>`;
@@ -10348,7 +10358,7 @@ if (ordersActionRoot) {
                         actionButton.disabled = false;
                         return;
                     }
-                    // Mesa / para llevar: recibir directamente sin cobro
+                    // Mesa / para recoger: recibir directamente sin cobro
                     const copied = await copyTextToClipboard(buildReceivedOrderMessage(order));
                     await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow() });
                     await reloadDataAndRender();
@@ -10394,6 +10404,12 @@ if (ordersActionRoot) {
                 }
 
                 if (nextStatus === 'cobrar_domicilio') {
+                    openDeliveryPaymentModal(order, false);
+                    actionButton.disabled = false;
+                    return;
+                }
+
+                if (nextStatus === 'cobrar_retiro') {
                     openDeliveryPaymentModal(order, false);
                     actionButton.disabled = false;
                     return;
@@ -12026,7 +12042,7 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
 function _cajaDiariaTypeHtml(type) {
     if (type === 'mesa')      return '<span class="caja-type-badge caja-type-mesa">Mesa</span>';
     if (type === 'domicilio') return '<span class="caja-type-badge caja-type-domicilio">Domicilio</span>';
-    return '<span class="caja-type-badge caja-type-retiro">Para llevar</span>';
+    return '<span class="caja-type-badge caja-type-retiro">Para recoger</span>';
 }
 
 function _cajaDiariaMethodLabel(order) {
