@@ -2419,9 +2419,29 @@ function renderPosProductsPanel() {
 
 function renderPosAcompanantesPanel(grid) {
     const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    const opciones = (cfg.opciones || [])
-        .filter((o) => o.activo && o.activo_pos !== false)
-        .sort((a, b) => (a.orden || 99) - (b.orden || 99));
+
+    // Respetar los checkboxes por categoría: usar categorias_ids con búsqueda case-insensitive
+    const catIdsMap = cfg.categorias_ids || {};
+    const catNorm = (posSelectedCategory || '').trim().toUpperCase();
+    const catIdsKey = Object.keys(catIdsMap).find((k) => k.trim().toUpperCase() === catNorm);
+    const catIds = catIdsKey ? (catIdsMap[catIdsKey] || []) : [];
+
+    // Verificar si esta categoría está en categorias_aplica (tiene config de acompañantes activa)
+    const aplica = (cfg.categorias_aplica || []).map((c) => c.trim().toUpperCase());
+    const catEnAplica = aplica.includes(catNorm);
+
+    let opciones = (cfg.opciones || []).filter((o) => o.activo && o.activo_pos !== false);
+
+    if (catEnAplica) {
+        // Categoría configurada: si tiene IDs específicos filtrar a esos, si no mostrar todos
+        if (catIds.length > 0) {
+            opciones = opciones.filter((o) => catIds.includes(o.id));
+        }
+        // catIds vacío + catEnAplica = "todos seleccionados" (igual que la UI de checkboxes)
+    }
+    // catEnAplica = false → categoría sin config de acompañantes: mostrar todos activos
+
+    opciones = opciones.sort((a, b) => (a.orden || 99) - (b.orden || 99));
 
     grid.innerHTML = '';
 
