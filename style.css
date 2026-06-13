@@ -4312,7 +4312,7 @@ a.is-ordering-closed {
     position: fixed;
     inset: 0;
     z-index: 503;
-    background: #f3e9d8;
+    background: transparent;
     overflow-y: auto;
     padding-top: 0;
 }
@@ -5910,7 +5910,7 @@ a.is-ordering-closed {
     position: fixed;
     inset: 0;
     z-index: 503;
-    background: #f3e9d8;
+    background: transparent;
     overflow-y: auto;
     padding-top: 0;
 }
@@ -6079,7 +6079,7 @@ a.is-ordering-closed {
     position: fixed;
     inset: 0;
     z-index: 502;
-    background: #f3e9d8;
+    background: transparent;
     overflow-y: auto;
     padding-top: 0;
 }
@@ -6105,7 +6105,7 @@ a.is-ordering-closed {
     position: fixed;
     inset: 0;
     z-index: 504;
-    background: #f3e9d8;
+    background: transparent;
     overflow-y: auto;
     padding-top: 0;
 }
