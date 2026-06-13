@@ -9498,8 +9498,20 @@ function renderSearchResults(query) {
     });
 }
 
-// Oculta el home, marca el nav activo y empuja estado al historial (una sola vez por sesión de pantalla)
+// Oculta home y TODAS las demás pantallas secundarias, marca el nav activo y empuja historial
 function _enterScreen(screenId) {
+    // Cerrar todas las demás pantallas secundarias abiertas para evitar que se vean detrás
+    // (son transparentes, si quedan visibles sangran a través de la nueva pantalla)
+    _SECONDARY_SCREENS.forEach(id => {
+        if (id !== screenId) {
+            const el = document.getElementById(id);
+            if (el) el.hidden = true;
+        }
+    });
+    // Si no abrimos el detalle de categoría, limpiar el tracking de navCategoriesScreen
+    if (screenId !== 'categoryDetailScreen') {
+        document.getElementById('navCategoriesScreen')?.removeAttribute('data-hidden-by-detail');
+    }
     const hs = document.getElementById('homeScreen');
     if (hs) hs.hidden = true;
     setPublicTopbarVisible(false);
