@@ -14655,15 +14655,20 @@ _ccRefreshTotals();
 
 /* ── Aliases inteligentes de columnas ──────────────────────────────────── */
 const ICM_FIELD_ALIASES = {
-    customerName:  ['nombre','name','cliente','razon social','razón social','nombres','apellidos','full name','fullname','apellido','customer','company'],
-    customerPhone: ['telefono','teléfono','phone','cel','celular','movil','móvil','tel','whatsapp','contacto','fono','phone number','numero'],
+    customerName:  ['nombre','name','cliente','razon social','razón social','nombres','full name','fullname','customer','company','first name','firstname','primer nombre'],
+    lastName:      ['apellido','apellidos','last name','lastname','surname','segundo nombre'],
+    customerPhone: ['telefono','teléfono','phone','cel','celular','movil','móvil','tel','whatsapp','contacto','fono','phone number','numero','movil','celular principal'],
     email:         ['email','correo','mail','e-mail','correo electronico','correo electrónico'],
     address:       ['direccion','dirección','address','domicilio','dir','ubicacion','ubicación','calle'],
-    notes:         ['notas','notes','comentarios','observaciones','nota','memo','obs'],
+    notes:         ['notas','notes','comentarios','observaciones','nota','memo','obs','etiquetas','tags'],
+    totalOrders:   ['total de visitas','visitas','visits','numero de visitas','orders count','pedidos','pedidos totales','num pedidos','cantidad de pedidos'],
+    totalSpent:    ['gasto total','gasto','spent','total gastado','total spent','consumo','consumo total','ingresos cliente'],
 };
 const ICM_FIELD_LABELS = {
-    customerName: 'Nombre', customerPhone: 'Teléfono',
-    email: 'Email', address: 'Dirección', notes: 'Notas', _skip: '— Ignorar —',
+    customerName: 'Nombre', lastName: 'Apellido', customerPhone: 'Teléfono',
+    email: 'Email', address: 'Dirección', notes: 'Notas',
+    totalOrders: 'Total visitas', totalSpent: 'Gasto total',
+    _skip: '— Ignorar —',
 };
 
 let _icmParsedRows   = [];   // array de objetos {col: value}
@@ -14877,18 +14882,36 @@ function _icmMapRow(row) {
         const srcKey = Object.entries(_icmColMap).find(([, v]) => v === field)?.[0];
         return srcKey ? String(row[srcKey] || '').trim() : '';
     };
+    const isMapped = (field) => Object.values(_icmColMap).includes(field);
+
+    const firstName = get('customerName');
+    const lastName  = get('lastName');
+    const fullName  = [firstName, lastName].filter(Boolean).join(' ').trim();
+
     const rawPhone = get('customerPhone');
-    const phone = rawPhone.replace(/\D/g, '');
-    return {
-        customerName:       get('customerName') || '',
-        customerPhone:      rawPhone,
+    const phone    = rawPhone.replace(/\D/g, '');
+
+    const result = {
+        customerName:        fullName || '',
+        customerPhone:       rawPhone,
         customerPhoneDigits: phone,
-        address:            get('address') || '',
-        email:              get('email') || '',
-        notes:              get('notes') || '',
-        totalOrders:        0,
-        totalSpent:         0,
+        address:             get('address') || '',
+        email:               get('email') || '',
+        notes:               get('notes') || '',
     };
+
+    // Solo incluir stats si el usuario mapeó esas columnas explícitamente
+    if (isMapped('totalOrders')) {
+        const n = parseInt(get('totalOrders').replace(/\D/g, ''), 10);
+        result.totalOrders = isNaN(n) ? 0 : n;
+    }
+    if (isMapped('totalSpent')) {
+        const raw = get('totalSpent').replace(/[^\d.,]/g, '').replace(',', '.');
+        const n = parseFloat(raw);
+        result.totalSpent = isNaN(n) ? 0 : n;
+    }
+
+    return result;
 }
 
 /* ── Importador por lotes con yield ────────────────────────────────────── */
@@ -14910,18 +14933,19 @@ async function _icmRunImport() {
                 const docId = buildAdminClientDocumentId(client);
                 const ref = firebaseDb.collection(CLIENTS_COLLECTION).doc(docId);
                 const data = {
-                    customerName:       client.customerName,
-                    customerPhone:      client.customerPhone,
+                    customerName:        client.customerName,
+                    customerPhone:       client.customerPhone,
                     customerPhoneDigits: client.customerPhoneDigits,
-                    address:            client.address,
-                    savedAddresses:     client.address ? [client.address] : [],
-                    totalOrders:        0,
-                    totalSpent:         0,
-                    importedAt:         firestoreNow(),
-                    updatedAt:          firestoreNow(),
+                    address:             client.address,
+                    savedAddresses:      client.address ? [client.address] : [],
+                    importedAt:          firestoreNow(),
+                    updatedAt:           firestoreNow(),
                 };
                 if (client.email)  data.email = client.email;
                 if (client.notes)  data.notes = client.notes;
+                // Solo sobreescribir stats si el usuario los mapeó explícitamente
+                if ('totalOrders' in client) data.totalOrders = client.totalOrders;
+                if ('totalSpent'  in client) data.totalSpent  = client.totalSpent;
                 // merge: true preserva totalOrders/totalSpent si ya existe
                 batch.set(ref, data, { merge: true });
                 batchHasOps = true;
