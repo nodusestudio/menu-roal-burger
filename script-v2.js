@@ -9046,7 +9046,10 @@ function renderCombosEspeciales() {
                 e.stopPropagation();
                 const pid = btn.dataset.productId;
                 const prod = latestProducts.find((p) => p.id === pid);
-                if (prod) handleProductClick(prod);
+                if (prod) {
+                    closePromoScreen();
+                    setTimeout(() => handleProductClick(prod), 220);
+                }
             });
         });
 

@@ -5021,14 +5021,37 @@ a.is-ordering-closed {
 
 .home-rec-banner {
     position: relative;
-    border-radius: 20px;
+    border-radius: 22px;
     overflow: hidden;
     margin-bottom: 28px;
-    background: linear-gradient(135deg, #fff9f2 0%, #fff3e3 100%);
-    border: 1px solid rgba(200, 120, 40, 0.18);
-    box-shadow: 0 8px 36px rgba(80, 35, 0, 0.16), 0 2px 8px rgba(200,100,30,0.08);
+    background: rgba(100, 52, 12, 0.42);
+    -webkit-backdrop-filter: blur(22px) saturate(200%) brightness(1.08);
+    backdrop-filter: blur(22px) saturate(200%) brightness(1.08);
+    border: 1px solid rgba(255, 200, 120, 0.35);
+    border-top-color: rgba(255, 220, 160, 0.6);
+    border-left-color: rgba(255, 220, 160, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 220, 150, 0.45),
+        inset 1px 0 0 rgba(255, 210, 130, 0.25),
+        0 10px 40px rgba(80, 35, 5, 0.28),
+        0 2px 10px rgba(80, 35, 5, 0.15);
     display: flex;
     flex-direction: column;
+}
+
+/* Reflejo líquido superior */
+.home-rec-banner::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 55%;
+    border-radius: 22px 22px 60% 60% / 22px 22px 40% 40%;
+    background: linear-gradient(175deg,
+        rgba(255, 220, 150, 0.22) 0%,
+        rgba(255, 190, 100, 0.08) 50%,
+        transparent 100%);
+    pointer-events: none;
+    z-index: 0;
 }
 
 /* Franja superior — kicker */
@@ -5037,15 +5060,17 @@ a.is-ordering-closed {
     align-items: center;
     gap: 6px;
     padding: 9px 16px 8px;
-    background: linear-gradient(90deg, rgba(255,122,26,0.12), rgba(255,122,26,0.04));
-    border-bottom: 1px solid rgba(200,120,40,0.10);
+    background: rgba(255, 200, 100, 0.1);
+    border-bottom: 1px solid rgba(255, 200, 120, 0.2);
+    position: relative;
+    z-index: 1;
 }
 
 .home-rec-kicker {
     font-family: 'Roboto', sans-serif;
     font-size: 0.62rem;
     font-weight: 800;
-    color: rgba(180, 75, 18, 0.85);
+    color: #240d02;
     text-transform: uppercase;
     letter-spacing: 0.14em;
     flex: 1;
@@ -5071,6 +5096,8 @@ a.is-ordering-closed {
     flex-direction: row;
     align-items: stretch;
     min-height: 140px;
+    position: relative;
+    z-index: 1;
 }
 
 .home-rec-img-wrap {
@@ -5079,7 +5106,7 @@ a.is-ordering-closed {
     min-width: 148px;
     flex-shrink: 0;
     overflow: hidden;
-    background: rgba(180, 90, 20, 0.06);
+    background: rgba(80, 35, 5, 0.15);
 }
 
 .home-rec-img {
@@ -5104,7 +5131,7 @@ a.is-ordering-closed {
     font-family: 'Oswald', sans-serif;
     font-size: 1.25rem;
     font-weight: 700;
-    color: #1e0e02;
+    color: #240d02;
     line-height: 1.1;
     text-transform: uppercase;
     letter-spacing: 0.02em;
@@ -5133,18 +5160,18 @@ a.is-ordering-closed {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.10em;
-    color: rgba(120, 80, 40, 0.50);
+    color: rgba(36, 13, 2, 0.50);
 }
 
 .home-rec-price-block--hot .home-rec-price-tag {
-    color: rgba(180, 75, 18, 0.80);
+    color: rgba(36, 13, 2, 0.70);
 }
 
 .home-rec-price {
     font-family: 'Oswald', sans-serif;
     font-size: 1.60rem;
     font-weight: 800;
-    color: #c44f00;
+    color: #240d02;
     line-height: 1;
 }
 
@@ -5152,7 +5179,7 @@ a.is-ordering-closed {
     font-family: 'Roboto', sans-serif;
     font-size: 0.90rem;
     font-weight: 500;
-    color: rgba(120, 80, 40, 0.45);
+    color: rgba(36, 13, 2, 0.40);
     text-decoration: line-through;
     line-height: 1;
 }
@@ -5184,14 +5211,18 @@ a.is-ordering-closed {
     .home-rec-banner {
         border-radius: 24px;
         margin-bottom: 36px;
-        background: linear-gradient(120deg, #fff8ef 0%, #fff2e0 55%, #fde8cb 100%);
-        box-shadow: 0 12px 48px rgba(80, 35, 0, 0.18), 0 3px 12px rgba(200, 100, 30, 0.10);
-        border: 1.5px solid rgba(200, 120, 40, 0.22);
+        background: rgba(100, 52, 12, 0.42);
+        box-shadow:
+            inset 0 1px 0 rgba(255, 220, 150, 0.45),
+            0 12px 48px rgba(80, 35, 5, 0.30),
+            0 3px 12px rgba(80, 35, 5, 0.15);
+        border: 1.5px solid rgba(255, 200, 120, 0.35);
+        border-top-color: rgba(255, 220, 160, 0.65);
     }
 
     .home-rec-top-bar {
         padding: 12px 24px 11px;
-        background: linear-gradient(90deg, rgba(255,122,26,0.13), rgba(255,122,26,0.04));
+        background: rgba(255, 200, 100, 0.1);
     }
 
     .home-rec-kicker {
@@ -5272,13 +5303,14 @@ a.is-ordering-closed {
     border: 1px solid rgba(255, 200, 120, 0.35);
     border-top-color: rgba(255, 220, 160, 0.6);
     border-left-color: rgba(255, 220, 160, 0.5);
-    padding: 16px;
+    padding: 18px 16px 20px;
     box-shadow:
         inset 0 1px 0 rgba(255, 220, 150, 0.45),
         inset 1px 0 0 rgba(255, 210, 130, 0.25),
         0 10px 40px rgba(80, 35, 5, 0.28),
         0 2px 10px rgba(80, 35, 5, 0.15);
     overflow: hidden;
+    text-align: center;
 }
 
 /* Reflejo líquido superior */
@@ -5308,16 +5340,16 @@ a.is-ordering-closed {
 .combo-especial-header {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
 }
 
 .combo-especial-badge {
-    font-size: 0.9rem;
+    font-size: 1.1rem;
     font-weight: 800;
     color: #240d02;
     letter-spacing: 0.01em;
-    flex: 1;
     text-shadow: none;
 }
 
@@ -5335,7 +5367,8 @@ a.is-ordering-closed {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
-    margin-bottom: 10px;
+    justify-content: center;
+    margin-bottom: 12px;
 }
 
 .combo-public-icon-btn {
@@ -5389,6 +5422,7 @@ a.is-ordering-closed {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: center;
     gap: 4px;
     font-size: 0.75rem;
     color: rgba(36, 13, 2, 0.72);
@@ -5406,6 +5440,7 @@ a.is-ordering-closed {
 .combo-especial-price-row {
     display: flex;
     align-items: baseline;
+    justify-content: center;
     gap: 10px;
 }
 
