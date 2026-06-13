@@ -9235,6 +9235,9 @@ function renderHomeCategoryCards() {
 
 function openCategoryDetail(cat) {
     _hideHomeScreen();
+    // Ocultar pantallas que quedarían detrás (transparentes)
+    document.getElementById('navCategoriesScreen')?.setAttribute('data-hidden-by-detail', !document.getElementById('navCategoriesScreen').hidden ? '1' : '0');
+    document.getElementById('navCategoriesScreen').hidden = true;
     const screen = document.getElementById('categoryDetailScreen');
     const title  = document.getElementById('cdsTitle');
     const grid   = document.getElementById('cdsProductsGrid');
@@ -9313,7 +9316,15 @@ function openCategoryDetail(cat) {
 function closeCategoryDetail() {
     const screen = document.getElementById('categoryDetailScreen');
     if (screen) screen.hidden = true;
-    setPublicTopbarVisible(true);
+    // Restaurar navCategoriesScreen si estaba abierta antes del detalle
+    const navScreen = document.getElementById('navCategoriesScreen');
+    if (navScreen && navScreen.getAttribute('data-hidden-by-detail') === '1') {
+        navScreen.hidden = false;
+        navScreen.removeAttribute('data-hidden-by-detail');
+        setPublicTopbarVisible(false);
+    } else {
+        setPublicTopbarVisible(true);
+    }
     _syncHomeScreenVisibility();
 }
 
