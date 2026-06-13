@@ -106,7 +106,7 @@ let _skipNextPopstate  = false;
 let _closingByBackBtn  = false;
 
 // ── Gestión centralizada de pantallas secundarias ──
-const _SECONDARY_SCREENS = ['searchScreen', 'navCategoriesScreen', 'promoScreen', 'categoryDetailScreen'];
+const _SECONDARY_SCREENS = ['searchScreen', 'navCategoriesScreen', 'promoScreen', 'categoryDetailScreen', 'perfilScreen', 'ayudaScreen'];
 let _screenHistoryPushed = false;
 
 function _pushModalState() {
@@ -666,11 +666,8 @@ function updatePublicChatFab() {
 function openPublicChatTab() {
     _markChatMessagesAsSeen();
 
-    // Abrir modal de perfil si no está abierto
-    const existingModal = document.getElementById('customerAuthModal');
-    if (!existingModal) {
+    if (!customerAuthUI) {
         openCustomerAuthModal();
-        // Esperar a que el modal se construya y luego activar el tab de mensajes
         requestAnimationFrame(() => {
             requestAnimationFrame(() => activateCustomerProfileTab('mensajes'));
         });
@@ -1452,12 +1449,15 @@ function closeCustomerAuthModal() {
     closeCustomerDeleteAccountModal();
     closeCustomerPasswordResetModal();
 
-    if (!customerAuthUI) {
-        return;
-    }
+    if (!customerAuthUI) return;
 
-    customerAuthUI.modal.remove();
+    const screen  = document.getElementById('perfilScreen');
+    const content = document.getElementById('perfilContent');
+    if (screen)  { screen.classList.remove('is-open'); screen.hidden = true; }
+    if (content) content.innerHTML = '';
+
     customerAuthUI = null;
+    _exitScreen();
     syncBodyScrollLock();
 }
 
@@ -2581,18 +2581,26 @@ async function submitCustomerProfileForm() {
 function openCustomerAuthModal() {
     closeCustomerAuthModal();
 
+    const screen  = document.getElementById('perfilScreen');
+    const contentEl = document.getElementById('perfilContent');
+    if (!screen || !contentEl) return;
+
     const profile = activeCustomerProfile;
     const savedAddresses = getCustomerSavedAddresses(profile);
     const hasConsent = Boolean(profile?.privacyConsentAccepted) && Boolean(profile?.marketingConsentAccepted);
     const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
-    const modal = document.createElement('div');
-    modal.id = 'customerAuthModal';
-    modal.className = 'support-modal';
-    modal.classList.add('is-open');
+
+    const titleEl = document.getElementById('perfilScreenTitle');
+    if (titleEl) titleEl.textContent = profile ? (String(profile.customerName || '').trim().split(' ')[0] || 'Mi Perfil') : 'Mi Perfil';
+
+    _enterScreen('perfilScreen');
+    screen.hidden = false;
+    screen.classList.add('is-open');
+
+    const modal = contentEl;
     modal.innerHTML = profile
         ? `
             <div class="support-modal-card liquid-glass customer-profile-modal-card" role="dialog" aria-modal="true" aria-label="Tu perfil">
-                <button type="button" class="support-modal-close" aria-label="Cerrar perfil">&times;</button>
                 <p class="support-modal-kicker">Perfil</p>
                 <h3 class="support-modal-title">${escapeHtml(profile.customerName || 'Cliente ROAL BURGER')}</h3>
                 <div class="customer-profile-hero">
@@ -2674,7 +2682,6 @@ function openCustomerAuthModal() {
         `
         : `
             <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Iniciar sesion o registrarte">
-                <button type="button" class="support-modal-close" aria-label="Cerrar inicio de sesion">&times;</button>
                 <p class="support-modal-kicker">Mi cuenta</p>
                 <h3 class="support-modal-title">Inicia sesion</h3>
                 <p class="support-modal-text">Escribe tu numero de WhatsApp y tu contrasena de 6 digitos para abrir tu perfil.</p>
@@ -2697,11 +2704,9 @@ function openCustomerAuthModal() {
             </div>
         `;
 
-    document.body.appendChild(modal);
-
     customerAuthUI = {
-        modal,
-        close: modal.querySelector('.support-modal-close'),
+        modal: screen,
+        close: null,
         feedback: modal.querySelector('#customerAuthFeedback'),
         lookupPhone: modal.querySelector('#customerLookupPhone'),
         lookupPin: modal.querySelector('#customerLookupPin'),
@@ -2725,7 +2730,7 @@ function openCustomerAuthModal() {
         consentViewed: hasConsent
     };
 
-    customerAuthUI.close?.addEventListener('click', closeCustomerAuthModal);
+    // El botón de cierre es perfilCloseBtn en el cds-header, wired en el init
     customerAuthUI.lookupButton?.addEventListener('click', submitCustomerLookup);
     customerAuthUI.forgotPasswordButton?.addEventListener('click', requestCustomerPasswordReset);
     customerAuthUI.registerToggle?.addEventListener('click', () => openCustomerRegisterModal({ customerPhone: customerAuthUI.lookupPhone?.value || '' }));
@@ -2753,11 +2758,7 @@ function openCustomerAuthModal() {
     bindCustomerPinField(customerAuthUI.lookupPin);
     attachPasswordToggle(customerAuthUI.lookupPin);
 
-    modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
-            closeCustomerAuthModal();
-        }
-    });
+    // Pantalla completa — sin handler de clic-fuera
 
     syncBodyScrollLock();
     if (profile) {
@@ -3705,8 +3706,10 @@ function buildCartOrderItems() {
     return shoppingCart.map((item, index) => {
         const quantity = Number(item.quantity || 0);
         const unitPrice = getCartItemUnitPrice(item);
+        const originalUnitPrice = getCartItemOriginalUnitPrice(item);
         const optionLabel = getCartOptionLabel(item.categoryName, item.orderOptions, { includeComment: false });
         const note = String(item.orderOptions?.comment || '').trim();
+        const discountAmount = Math.max(0, (originalUnitPrice - unitPrice) * quantity);
 
         return {
             index: index + 1,
@@ -3715,7 +3718,9 @@ function buildCartOrderItems() {
             categoryName: String(item.categoryName || '').trim(),
             quantity,
             unitPrice,
+            originalUnitPrice: originalUnitPrice !== unitPrice ? originalUnitPrice : null,
             subtotal: unitPrice * quantity,
+            discountAmount: discountAmount > 0 ? discountAmount : null,
             optionLabel,
             note,
             orderOptions: normalizeOrderOptions(item.orderOptions)
@@ -4897,11 +4902,19 @@ function renderCartUI() {
             option.textContent = optionText;
         }
 
-        const price = document.createElement('p');
-        price.className = 'cart-item-price';
-        price.textContent = discountAmount > 0
-            ? `${formatCurrency(unitPrice)} | Sub: ${formatCurrency(subtotal)} | -${formatCurrency(discountAmount)}`
-            : `${formatCurrency(unitPrice)} × ${item.quantity} = ${formatCurrency(subtotal)}`;
+        const price = document.createElement('div');
+        price.className = 'cart-item-price-row';
+        if (discountAmount > 0) {
+            const origSubtotal = originalUnitPrice * Number(item.quantity || 0);
+            const discountPct = Math.round((1 - unitPrice / originalUnitPrice) * 100);
+            price.innerHTML = `
+                <s class="cart-item-orig-price">${formatCurrency(origSubtotal)}</s>
+                <span class="cart-item-discount-pill">-${discountPct}%</span>
+                <span class="cart-item-final-price">${formatCurrency(subtotal)}</span>
+                <span class="cart-item-savings">Ahorras ${formatCurrency(discountAmount)}</span>`;
+        } else {
+            price.innerHTML = `<span class="cart-item-final-price">${formatCurrency(unitPrice)} × ${item.quantity} = ${formatCurrency(subtotal)}</span>`;
+        }
 
         const existingComment = String(item.orderOptions?.comment || '').trim();
         const commentBadge = document.createElement('p');
@@ -8541,6 +8554,14 @@ async function renderPublicFeaturedFromAdmin() {
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         renderCombosEspeciales();
     });
+
+    firebaseDb.collection('promos_2x1').onSnapshot((snap) => {
+        _promos2x1Data = snap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .filter((p) => p.activo !== false)
+            .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+        render2x1Cards();
+    });
 }
 
 function buildDynamicWhatsAppUrl(sectionName) {
@@ -8712,6 +8733,7 @@ let _promoProductsReady = false;
 let _promoModalPendingOpen = false;
 let _promosData = [];
 let _combosEspecialesData = [];
+let _promos2x1Data = [];
 
 function getCurrentBogotaDateParts(now = new Date()) {
     const parts = new Intl.DateTimeFormat('en-CA', {
@@ -8976,6 +8998,64 @@ function renderExtraPromoCards() {
     });
 }
 
+// ===== PROMOCIONES 2x1 (MENÚ PÚBLICO) =====
+
+function render2x1Cards() {
+    const container = document.getElementById('promos2x1Cards');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!_promos2x1Data.length) return;
+
+    _promos2x1Data.forEach((promo) => {
+        const product = latestProducts.find((p) => p.id === promo.producto_id);
+        if (!product) return;
+
+        const img = product.image_url || 'logo.png';
+        const nombre = product.nombre || promo.producto_nombre || '';
+        const kicker = promo.kicker || '¡Oferta Especial!';
+        const descripcion = promo.descripcion || '¡Lleva 2 por el precio de 1!';
+
+        const section = document.createElement('section');
+        section.className = 'home-rec-banner home-rec-banner--2x1';
+        section.setAttribute('aria-label', nombre + ' 2x1');
+
+        section.innerHTML = `
+            <div class="home-rec-top-bar">
+                <span class="home-rec-kicker">${kicker}</span>
+                <span class="home-rec-discount-badge promo-2x1-badge">2×1</span>
+            </div>
+            <div class="home-rec-content">
+                <div class="home-rec-img-wrap">
+                    <img class="home-rec-img" src="${img}" alt="${nombre}" loading="lazy" onerror="this.src='logo.png'">
+                </div>
+                <div class="home-rec-body">
+                    <strong class="home-rec-name"></strong>
+                    <p class="promo-2x1-desc"></p>
+                    <button class="home-rec-btn promo-btn-order" type="button">¡Lo Quiero! 🔥</button>
+                </div>
+            </div>`;
+
+        section.querySelector('.home-rec-name').textContent = nombre;
+        section.querySelector('.promo-2x1-desc').textContent = descripcion;
+
+        section.querySelector('.promo-btn-order').addEventListener('click', () => {
+            if (!activeCustomerProfile) {
+                closePromoScreen();
+                openPromoRegistrationPrompt();
+                return;
+            }
+            closePromoScreen();
+            addItemToCart(nombre, product.categoria || '', {
+                type: 'solo',
+                imagePath: img
+            }, `btn-2x1-${promo.id}`);
+        });
+
+        container.appendChild(section);
+    });
+}
+
 // ===== COMBOS ESPECIALES (MENÚ PÚBLICO) =====
 
 function _isComboActivoAhora(horario) {
@@ -9033,6 +9113,8 @@ function renderCombosEspeciales() {
         section.className = 'combo-especial-banner';
         section.setAttribute('aria-label', combo.titulo || 'Combo especial');
 
+        const discountRate = precioOrig > 0 ? Math.max(0, Math.min(1, 1 - precioCombo / precioOrig)) : 0;
+
         section.innerHTML = `
             <div class="combo-especial-header">
                 <span class="combo-especial-badge">🎁 ${escapeXml(combo.titulo || 'Combo Especial')}</span>
@@ -9043,7 +9125,8 @@ function renderCombosEspeciales() {
             <div class="combo-especial-price-row">
                 ${precioOrig > precioCombo ? `<span class="combo-especial-orig">$${precioOrig.toLocaleString('es-CO')}</span>` : ''}
                 <span class="combo-especial-price">$${precioCombo.toLocaleString('es-CO')}</span>
-            </div>`;
+            </div>
+            <button type="button" class="combo-order-btn">¡Lo Quiero! 🔥</button>`;
 
         section.querySelectorAll('.combo-public-icon-btn').forEach((btn) => {
             btn.addEventListener('click', (e) => {
@@ -9054,6 +9137,28 @@ function renderCombosEspeciales() {
                     closePromoScreen();
                     setTimeout(() => handleProductClick(prod), 220);
                 }
+            });
+        });
+
+        section.querySelector('.combo-order-btn').addEventListener('click', () => {
+            if (!activeCustomerProfile) {
+                closePromoScreen();
+                openPromoRegistrationPrompt();
+                return;
+            }
+            closePromoScreen();
+            productos.forEach((p, i) => {
+                const prod = latestProducts.find((x) => x.id === p.id);
+                if (!prod) return;
+                setTimeout(() => {
+                    addItemToCart(prod.nombre, prod.categoria || '', {
+                        type: 'solo',
+                        imagePath: prod.image_url || 'logo.png',
+                        recommendedDiscount: discountRate > 0,
+                        discountRate,
+                        upgradeHandled: true
+                    }, `btn-combo-${combo.id}-${i}`);
+                }, i * 60);
             });
         });
 
@@ -9556,6 +9661,8 @@ function _setNavCurrent(screenId) {
         categoryDetailScreen: 'bnavMenu',
         promoScreen: 'bnavPromo',
         searchScreen: 'bnavBuscador',
+        perfilScreen: 'bnavPerfil',
+        ayudaScreen: 'bnavAyuda',
     };
     document.querySelectorAll('.ban-item').forEach(btn => btn.classList.remove('is-current'));
     const btnId = screenId ? navMap[screenId] : 'bnavInicio';
@@ -9899,9 +10006,26 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('bnavPromo')?.addEventListener('click', () => openPromoScreen());
     document.getElementById('bnavBuscador')?.addEventListener('click', () => openSearchScreen());
     document.getElementById('bnavPerfil')?.addEventListener('click', () => openCustomerAuthModal());
+    document.getElementById('bnavAyuda')?.addEventListener('click', () => openAyudaScreen());
     document.getElementById('ncsCloseBtn')?.addEventListener('click', () => closeNavCategoriesScreen());
     document.getElementById('searchCloseBtn')?.addEventListener('click', () => closeSearchScreen());
     document.getElementById('promoCloseBtn')?.addEventListener('click', () => closePromoScreen());
+    document.getElementById('perfilCloseBtn')?.addEventListener('click', () => closeCustomerAuthModal());
+    document.getElementById('ayudaCloseBtn')?.addEventListener('click', () => closeAyudaScreen());
+
+    // Botón enviar de la pantalla Ayuda
+    document.getElementById('ayudaWaSendBtn')?.addEventListener('click', function () {
+        const textarea = document.getElementById('ayudaWaTextarea');
+        const feedback = document.getElementById('ayudaWaFeedback');
+        const msg = (textarea?.value || '').trim();
+        if (!msg) { textarea?.focus(); if (textarea) textarea.style.borderColor = 'rgba(255,96,0,0.75)'; return; }
+        if (textarea) textarea.style.borderColor = '';
+        const waText = msg + '\n\n_(Enviado desde el menú digital de ROAL BURGER)_';
+        window.open(WHATSAPP_BASE_URL + '?text=' + encodeURIComponent(waText), '_blank', 'noopener,noreferrer');
+        this.disabled = true; this.style.opacity = '0.6';
+        if (feedback) { feedback.textContent = '¡Mensaje enviado! Será atendido a la brevedad posible.'; feedback.hidden = false; }
+        setTimeout(() => closeAyudaScreen(), 3000);
+    });
     document.getElementById('searchInput')?.addEventListener('input', e => renderSearchResults(e.target.value));
 
     // Botones de la pantalla splash
@@ -10033,4 +10157,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+/* ===== PANTALLA AYUDA / CONTACTO WHATSAPP ===== */
+function openAyudaScreen() {
+    const screen   = document.getElementById('ayudaScreen');
+    const textarea = document.getElementById('ayudaWaTextarea');
+    const feedback = document.getElementById('ayudaWaFeedback');
+    const sendBtn  = document.getElementById('ayudaWaSendBtn');
+    if (!screen) return;
+
+    _enterScreen('ayudaScreen');
+    screen.hidden = false;
+
+    if (textarea) { textarea.value = ''; textarea.style.borderColor = ''; }
+    if (feedback) feedback.hidden = true;
+    if (sendBtn)  { sendBtn.disabled = false; sendBtn.style.opacity = ''; }
+
+    requestAnimationFrame(() => textarea?.focus());
+}
+
+function closeAyudaScreen() {
+    const screen = document.getElementById('ayudaScreen');
+    if (screen) screen.hidden = true;
+    _exitScreen();
+}
+
+// Alias para compatibilidad con código existente
+function openAyudaModal() { openAyudaScreen(); }
 

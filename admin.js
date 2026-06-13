@@ -168,6 +168,7 @@ const HORARIO_DOC_ID = 'config_horario';
 const RECOMENDADO_DIA_DOC_ID = 'recomendado_dia';
 const PROMOCIONES_COLLECTION = 'promociones';
 const COMBOS_ESPECIALES_COLLECTION = 'combos_especiales';
+const PROMOS_2X1_COLLECTION = 'promos_2x1';
 const UPGRADES_CONFIG_DOC_ID = 'acompañamientos';
 const DEFAULT_HORARIO = {
     aperturaHora: 16, aperturaMinuto: 0,
@@ -488,6 +489,9 @@ let _promoEditingId = null;
 let _promoFormProductId = null;
 let combosEspecialesState = [];
 let _comboEditingId = null;
+let promos2x1State = [];
+let _promo2x1EditingId = null;
+let _promo2x1FormProductId = null;
 let _comboFormProducts = [];  // [{id, nombre, precio, imagen}]
 let _comboDiasSeleccionados = [];
 let _comboHorarioTipo = 'siempre';
@@ -2344,14 +2348,15 @@ function renderPosCategoriesPanel() {
         select.dataset.listenerAttached = 'true';
     }
 
-    select.innerHTML = categories.map((cat) => {
+    const promoOption = `<option value="__POS_PROMOCIONES__">🏷️ PROMOCIONES</option>`;
+    select.innerHTML = promoOption + categories.map((cat) => {
         const count = catalog.filter(
             (p) => String(p.categoria || '').trim() === cat && String(p.estado || 'active').trim() === 'active'
         ).length;
         return `<option value="${escapeHtml(cat)}">${escapeHtml(cat)} (${count})</option>`;
     }).join('');
 
-    if (posSelectedCategory && categories.includes(posSelectedCategory)) {
+    if (posSelectedCategory && (posSelectedCategory === '__POS_PROMOCIONES__' || categories.includes(posSelectedCategory))) {
         select.value = posSelectedCategory;
     } else if (categories.length > 0) {
         posSelectedCategory = categories[0];
@@ -2365,8 +2370,16 @@ function renderPosProductsPanel() {
     const grid = document.getElementById('posProductGridV2');
     if (!grid) return;
 
+    grid.style.display = ''; // reset override aplicado por renderPosPromocionesPanel
+
     if (!posSelectedCategory) {
         grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Selecciona una categoría</p>';
+        return;
+    }
+
+    // Panel especial de Promociones
+    if (posSelectedCategory === '__POS_PROMOCIONES__') {
+        renderPosPromocionesPanel(grid);
         return;
     }
 
@@ -2482,6 +2495,180 @@ function renderPosAcompanantesPanel(grid) {
 
         grid.appendChild(card);
     });
+}
+
+function renderPosPromocionesPanel(grid) {
+    grid.style.display = 'block';
+    grid.innerHTML = '';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'pos-promo-panel';
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function buildSection(title, btns) {
+        if (!btns.length) return null;
+        const section = document.createElement('div');
+        section.className = 'pos-promo-section';
+        const h4 = document.createElement('h4');
+        h4.className = 'pos-promo-section-title';
+        h4.textContent = title;
+        section.appendChild(h4);
+        const items = document.createElement('div');
+        items.className = 'pos-promo-section-items';
+        btns.forEach((b) => items.appendChild(b));
+        section.appendChild(items);
+        return section;
+    }
+
+    // Estructura unificada para todos los botones:
+    // [badge] [nombre] [precio]     ← fila principal (pos-promo-btn-row)
+    // [detalle opcional]            ← pos-promo-btn-detail
+    function makeBtn({ badgeText, badgeColor, nombre, precioFinal, precioOrig = null, detalle = null, onClick }) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pos-promo-btn';
+
+        const origHTML = precioOrig && precioOrig > precioFinal
+            ? `<s class="pos-promo-orig">${formatMoney(precioOrig)}</s>`
+            : '';
+
+        btn.innerHTML = `
+            <span class="pos-promo-badge" style="background:${badgeColor};">${escapeHtml(badgeText)}</span>
+            <span class="pos-promo-btn-name">${escapeHtml(nombre)}</span>
+            <span class="pos-promo-btn-price">${origHTML}${formatMoney(precioFinal)}</span>
+            ${detalle ? `<span class="pos-promo-btn-detail">${detalle}</span>` : ''}`;
+
+        btn.addEventListener('click', onClick);
+        return btn;
+    }
+
+    // ── Hash diario (mismo algoritmo que menú público) ────────────────────
+    function hashDay(key, day) {
+        let h = ((day * 2654435761) >>> 0);
+        for (let i = 0; i < key.length; i++) {
+            h = (Math.imul(h ^ key.charCodeAt(i), 2246822519) >>> 0);
+            h = ((h << 13) | (h >>> 19)) >>> 0;
+        }
+        return h;
+    }
+
+    let hasAny = false;
+
+    // ── 1. RECOMENDADO DEL DÍA ───────────────────────────────────────────────
+    let _recProd = null;
+    if (recomendadoDiaState && recomendadoDiaState.activo && recomendadoDiaState.producto_id) {
+        _recProd = productsState.find((p) => p.id === recomendadoDiaState.producto_id) || null;
+    } else {
+        const pool = productsState.filter((p) =>
+            String(p.estado || 'active').trim() === 'active' && String(p.image_url || '').trim()
+        );
+        if (pool.length) {
+            const now = new Date();
+            const daySerial = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
+            let best = pool[0];
+            let minH = hashDay(`${pool[0].nombre}::${pool[0].categoria}`, daySerial);
+            for (let i = 1; i < pool.length; i++) {
+                const h = hashDay(`${pool[i].nombre}::${pool[i].categoria}`, daySerial);
+                if (h < minH) { minH = h; best = pool[i]; }
+            }
+            _recProd = best;
+        }
+    }
+
+    const recBtns = [];
+    if (_recProd) {
+        const precioOrig = Number(_recProd.precio || 0);
+        const precioFinal = Math.round(precioOrig * 0.8);
+        recBtns.push(makeBtn({
+            badgeText: '⭐ -20%', badgeColor: '#c07000',
+            nombre: _recProd.nombre, precioFinal, precioOrig,
+            onClick: () => addProductToPosOrder(_recProd.id, _recProd.nombre, precioFinal, 'Recomendado del Día', precioOrig)
+        }));
+    }
+    const recSection = buildSection('⭐ Recomendado del Día', recBtns);
+    if (recSection) { wrap.appendChild(recSection); hasAny = true; }
+
+    // ── 2. DESCUENTOS ────────────────────────────────────────────────────────
+    const descBtns = [];
+    promosState.filter((p) => p.activo !== false && p.producto_id).forEach((promo) => {
+        const prod = productsState.find((p) => p.id === promo.producto_id);
+        if (!prod) return;
+        const desc = Number(promo.descuento || 0);
+        const precioOrig = Number(prod.precio || 0);
+        const precioFinal = desc > 0 ? Math.round(precioOrig * (1 - desc / 100)) : precioOrig;
+        descBtns.push(makeBtn({
+            badgeText: desc > 0 ? `-${desc}%` : (promo.badge || '🏷️'),
+            badgeColor: '#b52a2a',
+            nombre: prod.nombre,
+            precioFinal,
+            precioOrig: desc > 0 ? precioOrig : null,
+            onClick: () => addProductToPosOrder(prod.id, prod.nombre, precioFinal, `Desc. ${desc}%`, desc > 0 ? precioOrig : null)
+        }));
+    });
+    const descSection = buildSection('🏷️ Descuentos', descBtns);
+    if (descSection) { wrap.appendChild(descSection); hasAny = true; }
+
+    // ── 3. 2×1 ───────────────────────────────────────────────────────────────
+    const dosX1Btns = [];
+    promos2x1State.filter((p) => p.activo !== false && p.producto_id).forEach((promo) => {
+        const prod = productsState.find((p) => p.id === promo.producto_id);
+        if (!prod) return;
+        const price = Number(prod.precio || 0);
+        dosX1Btns.push(makeBtn({
+            badgeText: '2×1', badgeColor: '#1a7a42',
+            nombre: prod.nombre,
+            precioFinal: price,
+            detalle: 'Llevas 2 por el precio de 1',
+            onClick: () => {
+                addProductToPosOrder(prod.id, prod.nombre, price, '2×1');
+                addProductToPosOrder(`${prod.id}_gratis`, `${prod.nombre} (GRATIS)`, 0, '2×1', price);
+            }
+        }));
+    });
+    const dosX1Section = buildSection('2×1', dosX1Btns);
+    if (dosX1Section) { wrap.appendChild(dosX1Section); hasAny = true; }
+
+    // ── 4. COMBOS ────────────────────────────────────────────────────────────
+    const comboBtns = [];
+    combosEspecialesState.filter((c) => c.activo !== false && Array.isArray(c.productos) && c.productos.length).forEach((combo) => {
+        const rate = Math.min(Math.max(Number(combo.descuento || 0), 0), 80) / 100;
+        const precioOrig = combo.productos.reduce((sum, p) => {
+            const found = productsState.find((x) => x.id === p.id);
+            return sum + (found ? Number(found.precio || 0) * Number(p.cantidad || 1) : 0);
+        }, 0);
+        const precioCombo = precioOrig > 0 && rate > 0 ? Math.round(precioOrig * (1 - rate)) : precioOrig;
+        const itemNames = combo.productos.map((p) => escapeHtml(p.nombre || '')).join(' + ');
+        comboBtns.push(makeBtn({
+            badgeText: combo.descuento > 0 ? `-${combo.descuento}%` : '🎁',
+            badgeColor: '#7b3fa0',
+            nombre: combo.nombre || 'Combo',
+            precioFinal: precioCombo,
+            precioOrig: rate > 0 && precioOrig > precioCombo ? precioOrig : null,
+            detalle: itemNames,
+            onClick: () => {
+                combo.productos.forEach((p, i) => {
+                    const found = productsState.find((x) => x.id === p.id);
+                    if (!found) return;
+                    const qty = Number(p.cantidad || 1);
+                    const unitOrig = Number(found.precio || 0);
+                    const unitAdj = precioOrig > 0 && rate > 0 ? Math.round(unitOrig * (1 - rate)) : unitOrig;
+                    setTimeout(() => {
+                        for (let q = 0; q < qty; q++) {
+                            addProductToPosOrder(found.id, found.nombre, unitAdj, `Combo: ${combo.nombre || ''}`, rate > 0 ? unitOrig : null);
+                        }
+                    }, i * 60);
+                });
+            }
+        }));
+    });
+    const comboSection = buildSection('🎁 Combos', comboBtns);
+    if (comboSection) { wrap.appendChild(comboSection); hasAny = true; }
+
+    if (!hasAny) {
+        wrap.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">Sin promociones activas configuradas</p>';
+    }
+
+    grid.appendChild(wrap);
 }
 
 const POS_COMBOS_CON_PAPAS_PRICES = {
@@ -2865,11 +3052,12 @@ function openComboConPapasPosModal(productId, productName, categoryName) {
     document.body.appendChild(overlay);
 }
 
-function addProductToPosOrder(productId, productName, productPrice, note = '') {
+function addProductToPosOrder(productId, productName, productPrice, note = '', originalUnitPrice = null) {
     productId = String(productId || '').trim();
     productName = String(productName || 'Producto').trim();
     productPrice = Number(productPrice || 0);
     note = String(note || '').trim();
+    originalUnitPrice = originalUnitPrice !== null ? Number(originalUnitPrice) : null;
 
     if (!productId) return;
 
@@ -2891,6 +3079,7 @@ function addProductToPosOrder(productId, productName, productPrice, note = '') {
             categoryName: category,
             quantity: 1,
             unitPrice: productPrice,
+            originalUnitPrice: originalUnitPrice !== null && originalUnitPrice > productPrice ? originalUnitPrice : null,
             subtotal: productPrice,
             note,
             optionLabel: note || ''
@@ -2991,7 +3180,18 @@ function renderPosOrderItems() {
     }
 
     itemsContainer.innerHTML = internalOrderItems
-        .map((item) => `
+        .map((item) => {
+            const subtotal = Number(item.subtotal || 0);
+            const origUnit = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
+            const hasDiscount = origUnit !== null && origUnit > item.unitPrice;
+            const origSubtotal = hasDiscount ? origUnit * Number(item.quantity || 1) : null;
+            const priceHTML = hasDiscount
+                ? `<div class="pos-item-price">
+                        <s class="pos-item-orig-price">${formatMoney(origSubtotal)}</s>
+                        <span class="pos-item-final-price">${subtotal === 0 ? '<span class="pos-item-free">GRATIS</span>' : formatMoney(subtotal)}</span>
+                   </div>`
+                : `<div class="pos-item-price">${formatMoney(subtotal)}</div>`;
+            return `
             <div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
                 <div class="pos-item-name">
                     ${escapeHtml(item.productName)}
@@ -3004,11 +3204,11 @@ function renderPosOrderItems() {
                         <input type="number" class="pos-qty-input" value="${item.quantity}" data-item-key="${escapeHtml(item.itemKey)}" min="1" />
                         <button type="button" class="pos-qty-plus" data-item-key="${escapeHtml(item.itemKey)}">+</button>
                     </div>
-                    <div class="pos-item-price">${formatMoney(Number(item.subtotal || 0))}</div>
+                    ${priceHTML}
                     <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
                 </div>
-            </div>
-        `)
+            </div>`;
+        })
         .join('');
 
     if (itemsContainer.dataset.listenerAttached !== 'true') {
@@ -3859,6 +4059,7 @@ async function editAdminPosOrder(order) {
             note: String(item.note || item.optionLabel || ''),
             quantity: Number(item.quantity || 1),
             unitPrice: Number(item.unitPrice || 0),
+            originalUnitPrice: item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null,
             subtotal: Number(item.subtotal || 0)
         }));
 
@@ -6149,13 +6350,29 @@ function buildThermalTicketMarkup(order, options = {}) {
         .map((line) => `<div class="ticket-address-text">${buildTicketCopyButton('Direccion', line, {})}</div>`)
         .join('');
 
+    const ticketDiscountTotal = (order.items || []).reduce((sum, item) => {
+        const orig = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
+        if (orig !== null && orig > Number(item.unitPrice || 0)) {
+            return sum + (orig - Number(item.unitPrice || 0)) * Number(item.quantity || 1);
+        }
+        return sum;
+    }, 0);
+
     const rows = order.items.map((item) => {
+        const origUnit = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
+        const hasItemDiscount = origUnit !== null && origUnit > Number(item.unitPrice || 0);
+        const origSubtotal = hasItemDiscount ? origUnit * Number(item.quantity || 1) : null;
+        const subtotal = Number(item.subtotal || 0);
+
         const detailParts = [
             item.categoryName,
             item.optionLabel,
             item.note ? `Nota: ${item.note}` : '',
-            Number(item.unitPrice || 0) > 0 ? `Unit ${formatMoney(item.unitPrice)}` : ''
         ].filter(Boolean);
+
+        const priceCell = hasItemDiscount
+            ? `<s style="color:#aaa;font-size:0.78em;">${escapeHtml(formatMoney(origSubtotal))}</s><br><strong>${subtotal === 0 ? 'GRATIS' : escapeHtml(formatMoney(subtotal))}</strong>`
+            : escapeHtml(formatMoney(subtotal));
 
         return `
             <tr>
@@ -6163,7 +6380,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                     <strong>${escapeHtml(`${item.quantity} x ${item.productName}`)}</strong>
                     ${detailParts.map((p) => `<span class="ticket-line-meta">${escapeHtml(p)}</span>`).join('')}
                 </td>
-                <td>${escapeHtml(formatMoney(item.subtotal))}</td>
+                <td style="text-align:right;">${priceCell}</td>
             </tr>
         `;
     }).join('');
@@ -6233,6 +6450,11 @@ function buildThermalTicketMarkup(order, options = {}) {
                         <span>Subtotal</span>
                         <strong>${escapeHtml(formatMoney(order.subtotal))}</strong>
                     </div>
+                    ${ticketDiscountTotal > 0 ? `
+                    <div class="ticket-summary-line ticket-total-row ticket-discount-row">
+                        <span>🎉 Ahorro en promos</span>
+                        <strong style="color:#1a7a42;">-${escapeHtml(formatMoney(ticketDiscountTotal))}</strong>
+                    </div>` : ''}
                     ${order.orderType === 'domicilio' ? `
                     <div class="ticket-summary-line ticket-total-row">
                         <span>Domicilio</span>
@@ -7929,6 +8151,17 @@ async function fetchCombosEspeciales() {
     }
 }
 
+async function fetchPromos2x1() {
+    try {
+        const snap = await firebaseDb.collection(PROMOS_2X1_COLLECTION).get();
+        promos2x1State = snap.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+    } catch (_) {
+        promos2x1State = [];
+    }
+}
+
 function renderRecomendadoDiaPanel() {
     const autoRadio = document.getElementById('recomendadoModeAuto');
     const manualRadio = document.getElementById('recomendadoModeManual');
@@ -8183,9 +8416,9 @@ function _renderPromoFormSearchResults(query) {
     resultsEl.innerHTML = matches.map((p) => `
         <li class="recomendado-result-item ${_promoFormProductId === p.id ? 'is-selected' : ''}" data-promo-product-id="${p.id}">
             <img src="${escapeHtml(p.image_url || 'logo.png')}" alt="" width="32" height="32" style="border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.src='logo.png'">
-            <div>
-                <div style="font-size:0.88rem;font-weight:600;">${escapeHtml(p.nombre || '')}</div>
-                <div style="font-size:0.76rem;color:var(--admin-muted);">${escapeHtml(p.categoria || '')}</div>
+            <div class="recomendado-result-info">
+                <span class="recomendado-result-name">${escapeHtml(p.nombre || '')}</span>
+                <span class="recomendado-result-cat">${escapeHtml(p.categoria || '')}</span>
             </div>
         </li>`).join('');
 
@@ -8277,6 +8510,224 @@ async function deleteAdminPromo(id) {
 }
 
 // ===== FIN PANEL PROMOCIONES ADMIN =====
+
+// ===== PANEL 2x1 ADMIN =====
+
+function render2x1TabPanel() {
+    const container = document.getElementById('promos2x1TabPanel');
+    if (!container) return;
+
+    const isFormOpen = _promo2x1EditingId !== null;
+
+    container.innerHTML = `
+        <div style="padding:16px 0;">
+            <p class="admin-hint">Las ofertas 2×1 aparecen en la pantalla Promociones del menú público, debajo del Recomendado del Día. Cada oferta muestra un producto con el badge verde "2×1".</p>
+            ${!isFormOpen
+                ? `<button type="button" class="admin-button" id="add2x1Btn" style="margin-top:14px;">+ Agregar oferta 2×1</button>`
+                : _build2x1FormHTML()
+            }
+            <div class="promo-admin-list" id="promo2x1AdminList" style="margin-top:18px;">
+                ${promos2x1State.length === 0 && !isFormOpen
+                    ? '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin ofertas 2×1 aún. Usa el botón de arriba para crear una.</p>'
+                    : promos2x1State.map(_build2x1AdminCardHTML).join('')}
+            </div>
+        </div>`;
+
+    document.getElementById('add2x1Btn')?.addEventListener('click', () => {
+        _promo2x1EditingId = 'new';
+        _promo2x1FormProductId = null;
+        render2x1TabPanel();
+    });
+
+    if (isFormOpen) {
+        document.getElementById('promo2x1FormProductSearch')?.addEventListener('input', (e) => _render2x1FormSearchResults(e.target.value));
+        document.getElementById('promo2x1FormSaveBtn')?.addEventListener('click', savePromo2x1);
+        document.getElementById('promo2x1FormCancelBtn')?.addEventListener('click', () => {
+            _promo2x1EditingId = null;
+            _promo2x1FormProductId = null;
+            render2x1TabPanel();
+        });
+    }
+
+    container.querySelectorAll('[data-2x1-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset['2x1Action'];
+            const id = btn.dataset['2x1Id'];
+            if (action === 'edit') {
+                _promo2x1EditingId = id;
+                const p = promos2x1State.find((x) => x.id === id);
+                _promo2x1FormProductId = p?.producto_id || null;
+                render2x1TabPanel();
+            } else if (action === 'delete') {
+                deleteAdminPromo2x1(id);
+            } else if (action === 'toggle') {
+                const p = promos2x1State.find((x) => x.id === id);
+                if (p) await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(id).update({ activo: !p.activo, updated_at: firestoreNow() });
+            }
+        });
+    });
+}
+
+function _build2x1AdminCardHTML(promo) {
+    const product = productsState.find((p) => p.id === promo.producto_id);
+    const img = product?.image_url || 'logo.png';
+    const nombre = promo.producto_nombre || 'Sin producto';
+    const activo = promo.activo !== false;
+    return `
+        <div class="promo-admin-card">
+            <img class="promo-admin-card__img" src="${escapeHtml(img)}" alt="${escapeHtml(nombre)}" onerror="this.src='logo.png'">
+            <div class="promo-admin-card__info">
+                <span class="promo-admin-card__badge" style="background:#1a7a42;">2×1</span>
+                <strong class="promo-admin-card__name">${escapeHtml(nombre)}</strong>
+                <span class="promo-admin-card__desc">${escapeHtml(promo.kicker || '')}</span>
+            </div>
+            <div class="promo-admin-card__actions">
+                <button type="button" class="promo-toggle-btn ${activo ? 'is-active' : ''}" data-2x1-action="toggle" data-2x1-id="${promo.id}">${activo ? '● Activo' : '○ Inactivo'}</button>
+                <button type="button" class="ghost-button" data-2x1-action="edit" data-2x1-id="${promo.id}" style="padding:4px 10px;font-size:0.78rem;">Editar</button>
+                <button type="button" class="ghost-button danger" data-2x1-action="delete" data-2x1-id="${promo.id}" style="padding:4px 10px;font-size:0.78rem;">Eliminar</button>
+            </div>
+        </div>`;
+}
+
+function _build2x1FormHTML() {
+    const isEditing = _promo2x1EditingId && _promo2x1EditingId !== 'new';
+    const promo = isEditing ? promos2x1State.find((p) => p.id === _promo2x1EditingId) : null;
+    const product = _promo2x1FormProductId ? productsState.find((p) => p.id === _promo2x1FormProductId) : null;
+    const productBoxHTML = product ? `
+        <div class="recomendado-current-box" id="promo2x1FormCurrentBox" style="margin-top:6px;margin-bottom:4px;">
+            <img src="${escapeHtml(product.image_url || 'logo.png')}" alt="${escapeHtml(product.nombre || '')}" onerror="this.src='logo.png'">
+            <div class="recomendado-current-info">
+                <span class="recomendado-current-label">Seleccionado</span>
+                <span class="recomendado-current-name">${escapeHtml(product.nombre || '')}</span>
+                <span class="recomendado-current-cat">${escapeHtml(product.categoria || '')}</span>
+            </div>
+        </div>` : '';
+    return `
+        <div class="promo-admin-form" style="margin-top:16px;">
+            <h4 style="margin:0 0 14px;font-family:'Oswald',sans-serif;font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--admin-accent);">${isEditing ? 'Editar oferta 2×1' : 'Nueva oferta 2×1'}</h4>
+            <div class="admin-field full" style="position:relative;">
+                <label for="promo2x1FormProductSearch">Producto</label>
+                <input type="search" id="promo2x1FormProductSearch" class="admin-input" placeholder="Buscar producto..." autocomplete="off" value="${product ? escapeHtml(product.nombre || '') : ''}">
+                <ul id="promo2x1FormSearchResults" class="recomendado-results" hidden></ul>
+            </div>
+            ${productBoxHTML}
+            <div class="admin-field" style="margin-top:10px;">
+                <label for="promo2x1FormKicker">Etiqueta (kicker)</label>
+                <input type="text" id="promo2x1FormKicker" class="admin-input" placeholder="Ej: ¡Oferta Especial!" value="${escapeHtml(promo?.kicker || '¡Oferta Especial!')}">
+            </div>
+            <div class="admin-field" style="margin-top:10px;">
+                <label for="promo2x1FormDesc">Descripción (subtítulo)</label>
+                <input type="text" id="promo2x1FormDesc" class="admin-input" placeholder="Ej: ¡Lleva 2 por el precio de 1!" value="${escapeHtml(promo?.descripcion || '¡Lleva 2 por el precio de 1!')}">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px;">
+                <button type="button" class="admin-button" id="promo2x1FormSaveBtn">Guardar</button>
+                <button type="button" class="ghost-button" id="promo2x1FormCancelBtn" style="padding:8px 16px;">Cancelar</button>
+            </div>
+        </div>`;
+}
+
+function _render2x1FormSearchResults(query) {
+    const resultsEl = document.getElementById('promo2x1FormSearchResults');
+    if (!resultsEl) return;
+    const q = (query || '').trim().toLowerCase();
+    if (!q) { resultsEl.hidden = true; resultsEl.innerHTML = ''; return; }
+
+    const matches = productsState.filter((p) => (p.nombre || '').toLowerCase().includes(q)).slice(0, 8);
+    if (!matches.length) { resultsEl.hidden = true; return; }
+
+    resultsEl.hidden = false;
+    resultsEl.innerHTML = matches.map((p) => `
+        <li class="recomendado-result-item ${_promo2x1FormProductId === p.id ? 'is-selected' : ''}" data-2x1-product-id="${p.id}">
+            <img src="${escapeHtml(p.image_url || 'logo.png')}" alt="" width="32" height="32" style="border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.src='logo.png'">
+            <div class="recomendado-result-info">
+                <span class="recomendado-result-name">${escapeHtml(p.nombre || '')}</span>
+                <span class="recomendado-result-cat">${escapeHtml(p.categoria || '')}</span>
+            </div>
+        </li>`).join('');
+
+    resultsEl.querySelectorAll('[data-2x1-product-id]').forEach((li) => {
+        li.addEventListener('click', () => {
+            _promo2x1FormProductId = li.dataset['2x1ProductId'];
+            const selected = productsState.find((p) => p.id === _promo2x1FormProductId);
+            const searchInput = document.getElementById('promo2x1FormProductSearch');
+            if (searchInput && selected) searchInput.value = selected.nombre || '';
+            resultsEl.hidden = true;
+
+            const existingBox = document.getElementById('promo2x1FormCurrentBox');
+            const img = selected?.image_url || 'logo.png';
+            const boxHTML = `
+                <img src="${escapeHtml(img)}" alt="${escapeHtml(selected?.nombre || '')}" onerror="this.src='logo.png'">
+                <div class="recomendado-current-info">
+                    <span class="recomendado-current-label">Seleccionado</span>
+                    <span class="recomendado-current-name">${escapeHtml(selected?.nombre || '')}</span>
+                    <span class="recomendado-current-cat">${escapeHtml(selected?.categoria || '')}</span>
+                </div>`;
+            if (existingBox) {
+                existingBox.innerHTML = boxHTML;
+                existingBox.hidden = false;
+            } else {
+                const newBox = document.createElement('div');
+                newBox.className = 'recomendado-current-box';
+                newBox.id = 'promo2x1FormCurrentBox';
+                newBox.style.marginTop = '6px';
+                newBox.style.marginBottom = '4px';
+                newBox.innerHTML = boxHTML;
+                document.getElementById('promo2x1FormProductSearch')?.closest('.admin-field')?.insertAdjacentElement('afterend', newBox);
+            }
+        });
+    });
+}
+
+async function savePromo2x1() {
+    const kicker = (document.getElementById('promo2x1FormKicker')?.value || '').trim();
+    const descripcion = (document.getElementById('promo2x1FormDesc')?.value || '').trim();
+
+    if (!_promo2x1FormProductId) { showNotice('Selecciona un producto para la oferta 2×1.', 'error'); return; }
+
+    const product = productsState.find((p) => p.id === _promo2x1FormProductId);
+    const payload = {
+        kicker:             kicker || '¡Oferta Especial!',
+        descripcion:        descripcion || '¡Lleva 2 por el precio de 1!',
+        producto_id:        _promo2x1FormProductId,
+        producto_nombre:    product?.nombre || '',
+        producto_categoria: product?.categoria || '',
+        activo:             true,
+        updated_at:         firestoreNow()
+    };
+
+    const saveBtn = document.getElementById('promo2x1FormSaveBtn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+
+    try {
+        if (_promo2x1EditingId && _promo2x1EditingId !== 'new') {
+            await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(_promo2x1EditingId).update(payload);
+        } else {
+            const maxOrden = promos2x1State.reduce((m, p) => Math.max(m, p.orden ?? 0), 0);
+            await firebaseDb.collection(PROMOS_2X1_COLLECTION).add({ ...payload, orden: maxOrden + 1, created_at: firestoreNow() });
+        }
+        _promo2x1EditingId = null;
+        _promo2x1FormProductId = null;
+        await reloadDataAndRender();
+        render2x1TabPanel();
+        showNotice('Oferta 2×1 guardada.', 'ok');
+    } catch (err) {
+        showNotice('Error al guardar la oferta 2×1.', 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+    }
+}
+
+async function deleteAdminPromo2x1(id) {
+    const p = promos2x1State.find((x) => x.id === id);
+    if (!window.confirm(`¿Eliminar la oferta 2×1 "${p?.producto_nombre || ''}"?`)) return;
+    try {
+        await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(id).delete();
+        showNotice('Oferta 2×1 eliminada.', 'ok');
+    } catch (err) {
+        showNotice('Error al eliminar la oferta 2×1.', 'error');
+    }
+}
+
+// ===== FIN PANEL 2x1 ADMIN =====
 
 // ===== PANEL COMBOS ESPECIALES ADMIN =====
 
@@ -8895,7 +9346,8 @@ async function reloadDataAndRender() {
         fetchRecomendadoDiaConfig(),
         fetchHorarioConfig(),
         fetchPromos(),
-        fetchCombosEspeciales()
+        fetchCombosEspeciales(),
+        fetchPromos2x1()
     ]);
 
     const createdSalesDay = await ensureActiveSalesDay();
@@ -8914,6 +9366,7 @@ async function reloadDataAndRender() {
     renderRecomendadoDiaPanel();
     renderPromosTabPanel();
     renderCombosTabPanel();
+    render2x1TabPanel();
     renderOrders();
     renderSalesSummaries();
     renderLedgerBook();
@@ -9272,6 +9725,28 @@ document.getElementById('posCartDrawerCloseBtn')?.addEventListener('click', () =
 // Acceso rápido: Personalizar ticket desde el carrito (solo guarda config, no envía)
 document.getElementById('posCartCustomizeBtn')?.addEventListener('click', () => {
     openPosTicketSetupModal(true);
+});
+
+// Vaciar carrito
+document.getElementById('posClearCartBtn')?.addEventListener('click', () => {
+    if (!internalOrderItems.length && !posTicketConfig) return;
+    if (!confirm('¿Vaciar el pedido actual?')) return;
+    internalOrderItems = [];
+    posTicketConfig = null;
+    const currentTicket = posTickets.find((t) => t.id === posActiveTicketId);
+    if (currentTicket) {
+        currentTicket.items = [];
+        currentTicket.customerName = '';
+        currentTicket.customerPhone = '';
+        currentTicket.orderType = null;
+        currentTicket.mesaNumber = null;
+        currentTicket.deliveryAddress = '';
+        currentTicket.deliveryFee = null;
+    }
+    renderPosOrderItems();
+    renderPosCartTicketInfo();
+    renderPosTotals();
+    renderPosBottomBar();
 });
 
 // Backdrop del carrito
@@ -10187,7 +10662,7 @@ document.getElementById('saveUpgradesConfigBtn')?.addEventListener('click', asyn
     }
 });
 
-// ── Menu: pestañas internas (Categorías / Acompañantes / Carrusel / Recomendado)
+// ── Menu: pestañas internas (Categorías / Acompañantes / Carrusel / Promociones)
 document.querySelectorAll('.menu-inner-tab[data-menu-tab]').forEach((tab) => {
     tab.addEventListener('click', () => {
         const target = tab.dataset.menuTab;
@@ -10201,6 +10676,23 @@ document.querySelectorAll('.menu-inner-tab[data-menu-tab]').forEach((tab) => {
             panel.classList.toggle('active', isActive);
             panel.hidden = !isActive;
             panel.style.display = isActive ? 'flex' : 'none';
+        });
+    });
+});
+
+// ── Sub-pestañas de Promociones (Promociones / Combos / 2x1 / Recomendado)
+document.querySelectorAll('.promo-sub-tab[data-promo-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+        const target = tab.dataset.promoTab;
+        document.querySelectorAll('.promo-sub-tab[data-promo-tab]').forEach((t) => {
+            const isActive = t.dataset.promoTab === target;
+            t.classList.toggle('active', isActive);
+            t.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        document.querySelectorAll('.promo-sub-panel[data-promo-panel]').forEach((panel) => {
+            const isActive = panel.dataset.promoPanel === target;
+            panel.hidden = !isActive;
+            panel.style.display = isActive ? '' : 'none';
         });
     });
 });

@@ -1209,6 +1209,10 @@
             letter-spacing: .1em;
             text-transform: uppercase;
             color: var(--admin-accent);
+            align-self: flex-start;
+            display: inline-block;
+            padding: 2px 7px;
+            border-radius: 4px;
         }
 
         .promo-admin-card__name {
@@ -3562,7 +3566,8 @@
             line-height: 1; padding: 2px 6px; border-radius: 4px;
         }
         .pos-drawer-close:hover { color: #fff; }
-        .pos-drawer-customize-btn {
+        .pos-drawer-customize-btn,
+        .pos-drawer-clear-btn {
             background: rgba(255,255,255,0.07);
             border: 1px solid rgba(255,255,255,0.12);
             color: rgba(255,255,255,0.6);
@@ -3570,6 +3575,15 @@
             line-height: 1; padding: 3px 8px; border-radius: 6px;
             margin-left: auto; margin-right: 6px;
             transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .pos-drawer-clear-btn {
+            margin-left: 0;
+            font-size: 0.88rem;
+        }
+        .pos-drawer-clear-btn:hover {
+            background: rgba(220,50,50,0.2);
+            border-color: rgba(220,50,50,0.45);
+            color: #ff8080;
         }
         .pos-drawer-customize-btn:hover {
             background: rgba(255,122,26,0.18);
@@ -3918,6 +3932,99 @@
         }
         .pos-upgrade-comment:focus { border-color: var(--admin-accent); }
         .pos-upgrade-comment::placeholder { color: rgba(180,200,230,0.38); }
+
+        /* ── Panel Promociones POS ── */
+        .pos-promo-panel { padding: 8px 4px; }
+        .pos-promo-section { margin-bottom: 16px; }
+        .pos-promo-section-title {
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #ffdca7;
+            margin: 0 0 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .pos-promo-section-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        /* Tarjeta cuadrada unificada — misma forma para todas las secciones */
+        .pos-promo-btn {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: flex-start;
+            gap: 5px;
+            width: 148px;
+            min-height: 104px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 10px;
+            padding: 10px 11px 11px;
+            cursor: pointer;
+            color: #f0f0f0;
+            font-size: 0.82rem;
+            text-align: left;
+            transition: background 0.15s, border-color 0.15s;
+            overflow: hidden;
+        }
+        .pos-promo-btn:hover, .pos-promo-btn:focus-visible {
+            background: rgba(255,255,255,0.16);
+            border-color: rgba(255,220,167,0.5);
+        }
+        .pos-promo-badge {
+            font-size: 0.68rem;
+            font-weight: 700;
+            border-radius: 4px;
+            padding: 2px 7px;
+            color: #fff;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .pos-promo-btn-name {
+            font-weight: 600;
+            font-size: 0.83rem;
+            line-height: 1.25;
+            width: 100%;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+            color: #eef4ff;
+            margin-top: 1px;
+        }
+        .pos-promo-btn-price {
+            font-family: 'Oswald', sans-serif;
+            font-size: 1rem;
+            color: #ffdca7;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-top: auto;
+            padding-top: 4px;
+        }
+        .pos-promo-orig {
+            display: block;
+            font-size: 0.68rem;
+            font-weight: 400;
+            color: rgba(255,220,167,0.45);
+            text-decoration: line-through;
+            font-family: 'Roboto', sans-serif;
+        }
+        .pos-promo-btn-detail {
+            font-size: 0.66rem;
+            color: rgba(255,255,255,0.38);
+            line-height: 1.3;
+            width: 100%;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
 
         /* ── Tarjeta de producto POS: imagen + label externo ── */
         .pos-product-card {
@@ -4329,6 +4436,18 @@
         .pos-item-price {
             color: #ffdca7; font-weight: 700;
             min-width: 55px; text-align: right; font-size: 0.82rem;
+            display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+        }
+        .pos-item-orig-price {
+            font-size: 0.68rem; font-weight: 400;
+            color: rgba(255,220,167,0.45);
+            text-decoration: line-through;
+        }
+        .pos-item-final-price { color: #ffdca7; font-weight: 700; }
+        .pos-item-free {
+            font-size: 0.7rem; font-weight: 800;
+            background: #1a7a42; color: #fff;
+            border-radius: 4px; padding: 1px 5px;
         }
         .pos-item-remove {
             border: none; background: transparent;
@@ -5141,6 +5260,10 @@
             font-weight: 700;
             min-width: 55px;
             text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 1px;
         }
 
         .pos-item-remove {
@@ -5808,6 +5931,60 @@
         .menu-inner-panel .card-head h2 {
             font-size: 1.05rem;
             line-height: 1.15;
+        }
+
+        /* ── Sub-pestañas dentro de Promociones ── */
+        .promo-sub-tabs-nav {
+            display: flex;
+            gap: 4px;
+            padding: 0 0 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 4px;
+            flex-wrap: wrap;
+        }
+
+        .promo-sub-tab {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 9px;
+            border: 1px solid transparent;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--admin-muted);
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 600;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s, border-color 0.2s;
+            white-space: nowrap;
+        }
+
+        .promo-sub-tab-icon {
+            font-size: 0.9rem;
+            line-height: 1;
+        }
+
+        .promo-sub-tab:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.09);
+            color: #e0e8f8;
+        }
+
+        .promo-sub-tab.active {
+            background: linear-gradient(135deg, rgba(255, 123, 69, 0.28) 0%, rgba(255, 123, 69, 0.10) 100%);
+            border-color: rgba(255, 123, 69, 0.45);
+            box-shadow: 0 2px 10px rgba(255, 123, 69, 0.15);
+            color: #ffffff;
+        }
+
+        .promo-sub-panel {
+            display: block;
+        }
+
+        .promo-sub-panel[hidden] {
+            display: none !important;
         }
 
         /* Responsive: tabs stack labels on narrow screens */
@@ -9673,14 +9850,6 @@
                         <span class="menu-inner-tab-icon">🏷️</span>
                         <span>Promociones</span>
                     </button>
-                    <button class="menu-inner-tab" data-menu-tab="combos" role="tab" aria-selected="false">
-                        <span class="menu-inner-tab-icon">🎁</span>
-                        <span>Combos</span>
-                    </button>
-                    <button class="menu-inner-tab" data-menu-tab="recomendado" role="tab" aria-selected="false">
-                        <span class="menu-inner-tab-icon">⭐</span>
-                        <span>Recomendado del Dia</span>
-                    </button>
                 </nav>
 
                 <div class="menu-inner-panels-wrap">
@@ -9731,45 +9900,70 @@
                         <div id="carruselTabPanel"></div>
                     </div>
 
-                    <!-- ── Panel: Promociones ── -->
+                    <!-- ── Panel: Promociones (con sub-pestañas) ── -->
                     <div class="menu-inner-panel" data-menu-panel="promociones" role="tabpanel" hidden style="display:none;">
-                        <div id="promosTabPanel"></div>
-                    </div>
 
-                    <!-- ── Panel: Combos Especiales ── -->
-                    <div class="menu-inner-panel" data-menu-panel="combos" role="tabpanel" hidden style="display:none;">
-                        <div id="combosTabPanel"></div>
-                    </div>
+                        <nav class="promo-sub-tabs-nav" role="tablist" aria-label="Secciones de Promociones">
+                            <button class="promo-sub-tab active" data-promo-tab="promos" role="tab" aria-selected="true">
+                                <span class="promo-sub-tab-icon">🏷️</span>
+                                <span>Descuentos</span>
+                            </button>
+                            <button class="promo-sub-tab" data-promo-tab="combos" role="tab" aria-selected="false">
+                                <span class="promo-sub-tab-icon">🎁</span>
+                                <span>Combos</span>
+                            </button>
+                            <button class="promo-sub-tab" data-promo-tab="2x1" role="tab" aria-selected="false">
+                                <span class="promo-sub-tab-icon">2×1</span>
+                                <span>2x1</span>
+                            </button>
+                            <button class="promo-sub-tab" data-promo-tab="recomendado" role="tab" aria-selected="false">
+                                <span class="promo-sub-tab-icon">⭐</span>
+                                <span>Recomendado</span>
+                            </button>
+                        </nav>
 
-                    <!-- ── Panel: Recomendado del Dia ── -->
-                    <div class="menu-inner-panel" data-menu-panel="recomendado" role="tabpanel" hidden style="display:none;">
-                        <div style="padding: 16px 0;">
-                            <p class="admin-hint">El recomendado aparece en el menu publico al abrir la app. Puedes dejarlo en automatico (un producto diferente cada dia) o fijar siempre el mismo.</p>
-                            <div class="admin-field full" style="margin-top:16px;">
-                                <label>Modo de seleccion</label>
-                                <div class="recomendado-mode-radios">
-                                    <label class="recomendado-mode-option">
-                                        <input type="radio" name="recomendadoMode" id="recomendadoModeAuto" value="auto">
-                                        <span>Automatico</span>
-                                        <small>Algoritmo diario — cambia cada dia de forma determinista</small>
-                                    </label>
-                                    <label class="recomendado-mode-option">
-                                        <input type="radio" name="recomendadoMode" id="recomendadoModeManual" value="manual">
-                                        <span>Manual</span>
-                                        <small>Tu eliges cual producto aparece siempre</small>
-                                    </label>
-                                </div>
-                            </div>
-                            <div id="recomendadoManualPanel" hidden>
-                                <div class="admin-field full" style="margin-top:14px;">
-                                    <label for="recomendadoProductSearch">Buscar producto</label>
-                                    <input type="search" id="recomendadoProductSearch" class="admin-input" placeholder="Escribe el nombre del producto...">
-                                </div>
-                                <ul id="recomendadoSearchResults" class="recomendado-results" hidden></ul>
-                            </div>
-                            <div class="recomendado-current-box" id="recomendadoCurrentBox" hidden></div>
-                            <button type="button" class="admin-button" id="saveRecomendadoDiaBtn" style="margin-top:18px;" disabled>Guardar</button>
+                        <div class="promo-sub-panel active" data-promo-panel="promos">
+                            <div id="promosTabPanel"></div>
                         </div>
+
+                        <div class="promo-sub-panel" data-promo-panel="combos" hidden style="display:none;">
+                            <div id="combosTabPanel"></div>
+                        </div>
+
+                        <div class="promo-sub-panel" data-promo-panel="2x1" hidden style="display:none;">
+                            <div id="promos2x1TabPanel"></div>
+                        </div>
+
+                        <div class="promo-sub-panel" data-promo-panel="recomendado" hidden style="display:none;">
+                            <div style="padding: 16px 0;">
+                                <p class="admin-hint">El recomendado aparece en el menu publico al abrir la app. Puedes dejarlo en automatico (un producto diferente cada dia) o fijar siempre el mismo.</p>
+                                <div class="admin-field full" style="margin-top:16px;">
+                                    <label>Modo de seleccion</label>
+                                    <div class="recomendado-mode-radios">
+                                        <label class="recomendado-mode-option">
+                                            <input type="radio" name="recomendadoMode" id="recomendadoModeAuto" value="auto">
+                                            <span>Automatico</span>
+                                            <small>Algoritmo diario — cambia cada dia de forma determinista</small>
+                                        </label>
+                                        <label class="recomendado-mode-option">
+                                            <input type="radio" name="recomendadoMode" id="recomendadoModeManual" value="manual">
+                                            <span>Manual</span>
+                                            <small>Tu eliges cual producto aparece siempre</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div id="recomendadoManualPanel" hidden>
+                                    <div class="admin-field full" style="margin-top:14px;">
+                                        <label for="recomendadoProductSearch">Buscar producto</label>
+                                        <input type="search" id="recomendadoProductSearch" class="admin-input" placeholder="Escribe el nombre del producto...">
+                                    </div>
+                                    <ul id="recomendadoSearchResults" class="recomendado-results" hidden></ul>
+                                </div>
+                                <div class="recomendado-current-box" id="recomendadoCurrentBox" hidden></div>
+                                <button type="button" class="admin-button" id="saveRecomendadoDiaBtn" style="margin-top:18px;" disabled>Guardar</button>
+                            </div>
+                        </div>
+
                     </div>
 
                 </div><!-- /.menu-inner-panels-wrap -->
@@ -10486,6 +10680,7 @@
                 <div class="pos-drawer-head">
                     <span class="pos-drawer-title">Pedido actual</span>
                     <button type="button" class="pos-drawer-customize-btn" id="posCartCustomizeBtn" title="Personalizar ticket">&#9998;</button>
+                    <button type="button" class="pos-drawer-clear-btn" id="posClearCartBtn" title="Vaciar carrito">🗑</button>
                     <button type="button" class="pos-drawer-close" id="posCartDrawerCloseBtn">&#215;</button>
                 </div>
                 <div id="posCartTicketInfo" class="pos-cart-ticket-info" hidden></div>
