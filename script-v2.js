@@ -9306,17 +9306,20 @@ function openCategoryDetail(cat) {
     setPublicTopbarVisible(false);
     screen.hidden = false;
     screen.scrollTop = 0;
+    _syncHomeScreenVisibility();
 }
 
 function closeCategoryDetail() {
     const screen = document.getElementById('categoryDetailScreen');
     if (screen) screen.hidden = true;
     setPublicTopbarVisible(true);
+    _syncHomeScreenVisibility();
 }
 
 // ===== FIN HOME SCREEN =====
 
 function openNavCategoriesScreen(title, filterFn) {
+    _syncHomeScreenVisibility();
     const screen = document.getElementById('navCategoriesScreen');
     const titleEl = document.getElementById('ncsTitle');
     const grid = document.getElementById('ncsCategoriesGrid');
@@ -9355,12 +9358,14 @@ function openNavCategoriesScreen(title, filterFn) {
     setPublicTopbarVisible(false);
     screen.hidden = false;
     screen.scrollTop = 0;
+    _syncHomeScreenVisibility();
 }
 
 function closeNavCategoriesScreen() {
     const screen = document.getElementById('navCategoriesScreen');
     if (screen) screen.hidden = true;
     setPublicTopbarVisible(true);
+    _syncHomeScreenVisibility();
 }
 
 function openSearchScreen() {
@@ -9369,6 +9374,7 @@ function openSearchScreen() {
     setPublicTopbarVisible(false);
     screen.hidden = false;
     screen.scrollTop = 0;
+    _syncHomeScreenVisibility();
     const input = document.getElementById('searchInput');
     if (input) {
         input.value = '';
@@ -9381,6 +9387,7 @@ function closeSearchScreen() {
     const screen = document.getElementById('searchScreen');
     if (screen) screen.hidden = true;
     setPublicTopbarVisible(true);
+    _syncHomeScreenVisibility();
 }
 
 function renderSearchResults(query) {
@@ -9466,6 +9473,13 @@ function renderSearchResults(query) {
     });
 }
 
+function _syncHomeScreenVisibility() {
+    const secondary = ['categoryDetailScreen', 'navCategoriesScreen', 'promoScreen', 'searchScreen'];
+    const anyOpen = secondary.some(id => { const el = document.getElementById(id); return el && !el.hidden; });
+    const hs = document.getElementById('homeScreen');
+    if (hs) hs.hidden = anyOpen;
+}
+
 function openPromoScreen() {
     const screen = document.getElementById('promoScreen');
     if (!screen) return;
@@ -9473,12 +9487,14 @@ function openPromoScreen() {
     setPublicTopbarVisible(false);
     screen.hidden = false;
     screen.scrollTop = 0;
+    _syncHomeScreenVisibility();
 }
 
 function closePromoScreen() {
     const screen = document.getElementById('promoScreen');
     if (screen) screen.hidden = true;
     setPublicTopbarVisible(true);
+    _syncHomeScreenVisibility();
 }
 
 function initPromoModal() {

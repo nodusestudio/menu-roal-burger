@@ -4312,10 +4312,7 @@ a.is-ordering-closed {
     position: fixed;
     inset: 0;
     z-index: 503;
-    background-image: url('fondo vertical.png');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    background: transparent;
     overflow-y: auto;
     padding-top: 0;
 }
@@ -5913,10 +5910,7 @@ a.is-ordering-closed {
     position: fixed;
     inset: 0;
     z-index: 503;
-    background-image: url('fondo vertical.png');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    background: transparent;
     overflow-y: auto;
     padding-top: 0;
 }
@@ -6085,10 +6079,7 @@ a.is-ordering-closed {
     position: fixed;
     inset: 0;
     z-index: 502;
-    background-image: url('fondo vertical.png');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    background: transparent;
     overflow-y: auto;
     padding-top: 0;
 }
@@ -6114,10 +6105,7 @@ a.is-ordering-closed {
     position: fixed;
     inset: 0;
     z-index: 504;
-    background-image: url('fondo vertical.png');
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    background: transparent;
     overflow-y: auto;
     padding-top: 0;
 }
