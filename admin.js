@@ -951,7 +951,7 @@ function announceNewOrders(orders) {
     }
 
     if (isMobileAdminViewport()) {
-        activeMobileOrdersLane = 'unread';
+        activeMobileOrdersLane = 'pedidos';
     }
 
     newOrders
@@ -3968,7 +3968,7 @@ function openInternalOrderModal() {
     document.body.style.overflow = 'hidden';
 }
 
-async function saveAdminOrderQuick(config = {}) {
+async function saveAdminOrderQuick(config = {}, opts = {}) {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
         return;
@@ -4037,7 +4037,7 @@ async function saveAdminOrderQuick(config = {}) {
                 quantity: Number(item.quantity || 0),
                 unitPrice: Number(item.unitPrice || 0),
                 subtotal: Number(item.subtotal || 0),
-                orderOptions: item.promoLabel ? { promoLabel: item.promoLabel } : undefined
+                ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
             })),
             itemCount: internalOrderItems.length,
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -4069,11 +4069,32 @@ async function saveAdminOrderQuick(config = {}) {
         deletePosTicketFromFirestore(_processedTicketId);
         posTickets = posTickets.filter((t) => t.id !== _processedTicketId);
         closeInternalOrderModal();
-        showNotice(isEditing ? 'Pedido actualizado.' : 'Pedido enviado a recepción.', 'ok');
+        if (isEditing) {
+            const editLabel = customerName !== defaultName ? customerName : getOrderTypeLabel({ orderType, mesaNumber });
+            showNotice(`Pedido de ${editLabel} modificado.`, 'ok');
+            if ('speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function') {
+                const u = new window.SpeechSynthesisUtterance(`Pedido de ${editLabel} modificado`);
+                u.lang = 'es-CO';
+                u.rate = 0.96;
+                u.pitch = 1;
+                u.volume = 1;
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(u);
+            }
+        } else {
+            showNotice('Pedido enviado a recepción.', 'ok');
+        }
+
+        if (opts.cobrarAfter && !isEditing) {
+            const savedOrder = ordersState.find((o) => o.id === orderId);
+            if (savedOrder) {
+                setTimeout(() => _triggerTicketCobro(savedOrder), 350);
+            }
+        }
     } catch (error) {
         showNotice(`Error al guardar: ${error.message || 'error'}`, 'error');
     } finally {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'ENVIAR TICKET'; }
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'GUARDAR'; }
     }
 }
 
@@ -4088,10 +4109,11 @@ async function editAdminPosOrder(order) {
             quantity: Number(item.quantity || 1),
             unitPrice: Number(item.unitPrice || 0),
             originalUnitPrice: item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null,
-            subtotal: Number(item.subtotal || 0)
+            subtotal: Number(item.subtotal || 0),
+            promoLabel: String(item.orderOptions?.promoLabel || item.promoLabel || ''),
+            promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true
         }));
 
-        // Preserve original order data so saveAdminOrderQuick can update in-place
         _editingOrderData = {
             id: order.id,
             code: order.code,
@@ -4106,15 +4128,8 @@ async function editAdminPosOrder(order) {
             paymentMethod: order.paymentMethod || 'pendiente'
         };
 
-        // Pre-fill ticket config so save goes straight through without opening the setup modal
-        posTicketConfig = {
-            orderType: order.orderType,
-            mesaNumber: order.mesaNumber || null,
-            customerName: order.customerName || '',
-            customerPhone: order.customerPhone || '',
-            deliveryAddress: order.deliveryAddress || order.customerAddress || '',
-            deliveryFee: order.deliveryFee ?? null
-        };
+        // No pre-set posTicketConfig — setup modal will ask user to confirm/edit
+        posTicketConfig = null;
 
         if (selectedOrderId === order.id) selectedOrderId = null;
 
@@ -4125,6 +4140,13 @@ async function editAdminPosOrder(order) {
         if (currentTicket) {
             currentTicket.items = posItems;
             currentTicket.label = `Editando #${order.code}`;
+            // Store order metadata so setup modal can pre-fill all fields
+            currentTicket.orderType = order.orderType;
+            currentTicket.mesaNumber = order.mesaNumber || null;
+            currentTicket.customerName = order.customerName || '';
+            currentTicket.customerPhone = order.customerPhone || '';
+            currentTicket.deliveryAddress = order.deliveryAddress || order.customerAddress || '';
+            currentTicket.deliveryFee = order.deliveryFee ?? null;
         }
         const labelEl = document.getElementById('posActiveTicketLabel');
         if (labelEl) labelEl.textContent = `Editando #${order.code}`;
@@ -4132,7 +4154,9 @@ async function editAdminPosOrder(order) {
         renderPosOrderItems();
         renderPosTotals();
         renderPosBottomBar();
-        showNotice(`Pedido #${order.code} cargado para edición.`, 'ok');
+
+        // Open setup modal immediately so user can see/edit type and customer
+        setTimeout(() => openPosTicketSetupModal(true), 120);
     } catch (error) {
         showNotice(`Error al cargar el pedido: ${error.message || 'error'}`, 'error');
     }
@@ -4276,7 +4300,7 @@ async function submitInternalOrderForm(event) {
                 quantity: Number(item.quantity || 0),
                 unitPrice: Number(item.unitPrice || 0),
                 subtotal: Number(item.subtotal || 0),
-                orderOptions: item.promoLabel ? { promoLabel: item.promoLabel } : undefined
+                ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
             })),
             itemCount: internalOrderItems.length,
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -5812,14 +5836,7 @@ function getOrderStatusMeta(status) {
 }
 
 function getOrderColumnKey(order) {
-    if (order.status === 'pendiente') {
-        return 'unread';
-    }
-
-    if (order.orderType === 'mesa') {
-        return 'mesa';
-    }
-
+    if (order.orderType === 'mesa') return 'mesa';
     return order.orderType === 'domicilio' ? 'delivery' : 'takeaway';
 }
 
@@ -6580,6 +6597,19 @@ function renderOrderTicket(order, options = {}) {
 
     orderTicketBody.innerHTML = buildThermalTicketMarkup(order);
 
+    const ticketPaper = orderTicketBody.querySelector('.ticket-paper');
+    if (ticketPaper) {
+        ticketPaper.style.position = 'relative';
+        const isPosOrder = order.isAdminOrder || order.source === 'admin_pos';
+        const floatDiv = document.createElement('div');
+        floatDiv.className = 'ticket-float-actions';
+        if (isPosOrder) {
+            floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-edit-btn" data-order-ticket-action="editar_pos" title="Editar pedido">✎</button>`;
+        }
+        floatDiv.innerHTML += `<button type="button" class="tpv-action-btn tpv-delete-btn" data-order-ticket-action="eliminar" title="Eliminar pedido">🗑</button>`;
+        ticketPaper.appendChild(floatDiv);
+    }
+
     if (options.openMobile === true) {
         openMobileTicketPanel();
     }
@@ -6670,27 +6700,22 @@ function createOrderCard(order) {
 
     let actionsMarkup = '';
 
-    if (isMesaOrder && !isUnreadOrder && order.status !== 'entregado') {
-        // Layout mesa: [ Servido/Cobrar | 💰? | ✎ | 🗑 ]
+    if (isMesaOrder && order.status !== 'entregado') {
+        // Layout mesa: [ Servido/Cobrar | 💰? ]
         const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
-        const mainLabel = order.status === 'servido' ? (isPaid ? 'Entregado' : '💰 Cobrar') : 'Servido';
-        const mainAction = order.status === 'servido' ? (isPaid ? 'entregado' : 'cobrar_mesa') : 'servido';
-        const mainClass = order.status === 'servido' ? (isPaid ? 'order-action-btn-delivered' : 'order-action-btn-receive') : 'order-action-btn-delivered';
-        const editBtn = isPosAdminOrder
-            ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
-            : '';
-        const cobrarMesaBtn = order.status !== 'servido' && !isPaid
+        const isServido = order.status === 'servido';
+        const mainLabel = isServido ? (isPaid ? 'Entregado' : '💰 Cobrar') : (order.status === 'pendiente' ? 'Servido' : 'Servido');
+        const mainAction = isServido ? (isPaid ? 'entregado' : 'cobrar_mesa') : 'servido';
+        const mainClass = isServido ? (isPaid ? 'order-action-btn-delivered' : 'order-action-btn-receive') : 'order-action-btn-delivered';
+        const cobrarMesaBtn = !isServido && !isPaid
             ? `<button type="button" class="order-action-btn order-action-btn-cobrar koa-icon-btn" data-order-card-action="cobrar_mesa" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
             : '';
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
             <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
-            <div class="koa-mesa-icons">
-                ${cobrarMesaBtn}${editBtn}
-                <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
-            </div>
+            <div class="koa-mesa-icons">${cobrarMesaBtn}</div>
         </div>`;
-    } else if (isDeliveryOrder && !isUnreadOrder && order.status !== 'entregado') {
-        // Layout domicilio: [ Pedir domiciliario → Pedido entregado | 💰? | ✎ | 🗑 ]
+    } else if (isDeliveryOrder && order.status !== 'entregado') {
+        // Layout domicilio: [ Pedir domiciliario → Entregado | 💰? ]
         const canRequestCourier = order.status !== 'esperando_domiciliario' && order.status !== 'camino';
         const mainLabel = canRequestCourier ? 'Pedir domiciliario' : 'Entregado';
         const mainAction = canRequestCourier ? 'esperando_domiciliario' : 'entregado';
@@ -6699,18 +6724,12 @@ function createOrderCard(order) {
         const cobrarBtn = !isPaid
             ? `<button type="button" class="order-action-btn order-action-btn-receive koa-icon-btn" data-order-card-action="cobrar_domicilio" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
             : '';
-        const editBtn = isPosAdminOrder
-            ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
-            : '';
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
             <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
-            <div class="koa-mesa-icons">
-                ${cobrarBtn}${editBtn}
-                <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
-            </div>
+            <div class="koa-mesa-icons">${cobrarBtn}</div>
         </div>`;
-    } else if (isPickupOrder && !isUnreadOrder && order.status !== 'entregado') {
-        // Layout para recoger: [ Listo → Entregado | 💰? | ✎ | 🗑 ]
+    } else if (isPickupOrder && order.status !== 'entregado') {
+        // Layout para recoger: [ Listo → Entregado | 💰? ]
         const isReady = order.status === 'listo_recoger';
         const mainLabel = isReady ? 'Entregado' : 'Listo';
         const mainAction = isReady ? 'entregado' : 'listo_recoger';
@@ -6719,32 +6738,9 @@ function createOrderCard(order) {
         const cobrarRetiroBtn = !isPaid
             ? `<button type="button" class="order-action-btn order-action-btn-receive koa-icon-btn" data-order-card-action="cobrar_retiro" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
             : '';
-        const editBtn = isPosAdminOrder
-            ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
-            : '';
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
             <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
-            <div class="koa-mesa-icons">
-                ${cobrarRetiroBtn}${editBtn}
-                <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
-            </div>
-        </div>`;
-    } else {
-        // Pedidos por confirmar: cobrar es siempre la acción principal
-        // Todos los tipos: [ 💰 Cobrar pedido ] [ ▶ Solo recibir ] [ ✎ ] [ 🗑 ]
-        const editBtn = showEditPosAction
-            ? `<button type="button" class="order-action-btn order-action-btn-edit koa-icon-btn" data-order-card-action="editar_pos" data-order-id="${order.id}" title="Editar pedido">&#9998;</button>`
-            : '';
-        const soloRecibirBtn = `<button type="button" class="order-action-btn order-action-btn-view koa-icon-btn" data-order-card-action="recibir_sin_cobro" data-order-id="${order.id}" title="Solo recibir sin cobrar">▶</button>`;
-        const viewBtn = showViewTicketAction
-            ? `<button type="button" class="order-action-btn order-action-btn-view koa-icon-btn" data-order-card-action="view_ticket" data-order-id="${order.id}" title="Ver ticket">&#128196;</button>`
-            : '';
-        actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
-            <button type="button" class="order-action-btn order-action-btn-receive koa-mesa-main" data-order-card-action="cobrar_pendiente" data-order-id="${order.id}">💰 Cobrar pedido</button>
-            <div class="koa-mesa-icons">
-                ${viewBtn}${soloRecibirBtn}${editBtn}
-                <button type="button" class="order-action-btn order-action-btn-delete koa-icon-btn" data-order-card-action="eliminar" data-order-id="${order.id}" title="Eliminar pedido">&#128465;</button>
-            </div>
+            <div class="koa-mesa-icons">${cobrarRetiroBtn}</div>
         </div>`;
     }
 
@@ -6916,15 +6912,10 @@ function renderSalesDayBanner() {
         salesDayGrandTotal.textContent = `💳 ${formatMoney(digitalTotal)}`;
     }
 
-    // Chip de total general — se actualiza si existe o se crea dinámicamente
-    let totalChip = document.getElementById('salesDayTotalChip');
-    if (!totalChip) {
-        totalChip = document.createElement('span');
-        totalChip.id = 'salesDayTotalChip';
-        totalChip.className = 'sales-day-chip sales-day-chip--total';
-        salesDayGrandTotal?.insertAdjacentElement('afterend', totalChip);
+    const totalChip = document.getElementById('salesDayTotalChip');
+    if (totalChip) {
+        totalChip.textContent = `= ${formatMoney(grandTotal)}`;
     }
-    totalChip.textContent = `💰 ${formatMoney(grandTotal)}`;
 
     // El botón de cierre sigue basado en pedidos entregados (no en pagados)
     const deliveredOrders = getDeliveredOrdersForCurrentDay();
@@ -9897,6 +9888,7 @@ let _ptsSelectedClient = null; // { name, phone }
 let _ptsActiveTab = 'none';
 let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin enviar
 let _ptsSaveAndNew = false; // true = guardar ticket con nombre y abrir uno nuevo en blanco
+let _ptsCobrarAfterSave = false; // true = crear pedido y cobrar inmediatamente
 
 function renderPosCartTicketInfo() {
     const el = document.getElementById('posCartTicketInfo');
@@ -10036,6 +10028,7 @@ function openPosTicketSetupModal(configOnly = false) {
     const confirmBtn = document.getElementById('ptsConfirmBtn');
     if (confirmBtn) {
         if (_ptsSaveAndNew) confirmBtn.textContent = 'Guardar ticket';
+        else if (configOnly && _editingOrderData) confirmBtn.textContent = 'Confirmar edición';
         else if (configOnly) confirmBtn.textContent = 'Guardar configuración';
         else confirmBtn.textContent = 'Guardar pedido';
     }
@@ -10204,6 +10197,7 @@ function _ptsFillClientAddress(client) {
 // ── Listeners directos del modal (más robustos que delegación global) ──────────
 document.getElementById('ptsCancelBtn')?.addEventListener('click', () => {
     _ptsSaveAndNew = false;
+    _ptsCobrarAfterSave = false;
     closePosTicketSetupModal();
 });
 
@@ -10290,7 +10284,9 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone, deliveryAddress, deliveryFee };
     renderPosCartTicketInfo();
     if (internalOrderItems.length) {
-        saveAdminOrderQuick(posTicketConfig);
+        const cobrar = _ptsCobrarAfterSave;
+        _ptsCobrarAfterSave = false;
+        saveAdminOrderQuick(posTicketConfig, { cobrarAfter: cobrar });
         posTicketConfig = null;
         renderPosCartTicketInfo();
     }
@@ -10621,24 +10617,20 @@ document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => 
     });
 })();
 
-// Guardar ticket activo y abrir uno nuevo en blanco
+// COBRAR: crear pedido y abrir flujo de pago inmediatamente
 document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'warn');
         return;
     }
-    const current = posTickets.find((t) => t.id === posActiveTicketId);
-    if (current) current.items = internalOrderItems;
-
-    // Si el ticket ya tiene tipo de pedido configurado, guardar en Firestore y cerrar POS
-    if (current?.orderType) {
-        savePosTicketToFirestore(current);
-        closeInternalOrderModal();
+    if (posTicketConfig) {
+        saveAdminOrderQuick(posTicketConfig, { cobrarAfter: true });
+        posTicketConfig = null;
+        renderPosCartTicketInfo();
         return;
     }
-
-    _ptsSaveAndNew = true;
-    openPosTicketSetupModal(true);
+    _ptsCobrarAfterSave = true;
+    openPosTicketSetupModal();
 });
 
 // Volver desde pantalla de pago
@@ -10837,8 +10829,10 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
         if (scope === 'informes') {
             if (target === 'cajas') {
                 const activeSubTab = document.querySelector('[data-cajas-tab].active');
-                if (!activeSubTab || activeSubTab.dataset.cajasTab === 'caja-diaria') renderCajaDiaria();
-                else renderLibroCierres();
+                const subTarget = activeSubTab?.dataset?.cajasTab || 'caja-diaria';
+                if (subTarget === 'caja-diaria') renderCajaDiaria();
+                else if (subTarget === 'historial') renderLibroCierres();
+                else if (subTarget === 'libro-contable') renderLibroContable();
             }
             if (target === 'tickets') _autoLoadTicketsTab();
             if (target === 'gastos') renderGastosInformes();
@@ -10862,6 +10856,7 @@ document.querySelectorAll('[data-cajas-tab]').forEach((tab) => {
         });
         if (target === 'caja-diaria') renderCajaDiaria();
         if (target === 'historial') renderLibroCierres();
+        if (target === 'libro-contable') renderLibroContable();
     });
 });
 
@@ -11557,8 +11552,9 @@ if (ordersActionRoot) {
                     return;
                 }
 
-                if (nextStatus === 'entregado' && order.orderType === 'retiro' && (!order.paymentMethod || order.paymentMethod === 'pendiente')) {
-                    openDeliveryPaymentModal(order, 'mesa');
+                if (nextStatus === 'entregado' && (!order.paymentMethod || order.paymentMethod === 'pendiente')) {
+                    const isDomicilio = order.orderType === 'domicilio';
+                    openDeliveryPaymentModal(order, isDomicilio ? false : 'mesa');
                     actionButton.disabled = false;
                     return;
                 }
@@ -11626,6 +11622,24 @@ if (orderTicketPanel) {
             return;
         }
 
+        // Acciones que usan selectedOrderId (botones inyectados sin data-order-id)
+        if (actionButton.dataset.orderTicketAction === 'editar_pos') {
+            const order = ordersState.find(o => o.id === selectedOrderId);
+            if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+            editAdminPosOrder(order);
+            return;
+        }
+
+        if (actionButton.dataset.orderTicketAction === 'eliminar') {
+            const order = ordersState.find(o => o.id === selectedOrderId);
+            if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+            if (confirm(`¿Eliminar el pedido #${order.code}?`)) {
+                selectedOrderId = null;
+                deleteOrder(order.id);
+            }
+            return;
+        }
+
         const orderId = String(actionButton.dataset.orderId || '').trim();
         if (!orderId) {
             return;
@@ -11654,7 +11668,9 @@ if (orderTicketPanel) {
             const order = ordersState.find(o => o.id === orderId);
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
             _triggerTicketCobro(order);
+            return;
         }
+
     });
 }
 
@@ -13583,15 +13599,24 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         _pendingCierreDoc = null;
         document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
 
-        // Reiniciar caja chica para la nueva jornada
-        _ccBilletes = {}; _ccMonedas = {}; _ccGuardadosBilletes = 0; _ccGuardadasMonedas = 0;
-        localStorage.removeItem(CC_STORAGE_KEY);
-        _ccRefreshTotals();
+        // Eliminar pedidos procesados de la jornada cerrada para reiniciar la recepción
+        // (los activos/no entregados permanecen para la nueva jornada)
+        const procesadosIds = paid
+            .filter((o) => o.status === 'entregado' || o.status === 'cancelado' || o.anulado || o.voided)
+            .map((o) => o.id);
+        if (procesadosIds.length) {
+            const batch = firebaseDb.batch();
+            procesadosIds.forEach((id) => {
+                batch.delete(firebaseDb.collection(ORDERS_COLLECTION).doc(id));
+            });
+            await batch.commit();
+        }
 
+        // La caja chica se mantiene — no se resetea entre jornadas
         renderOrders();
         renderCajaDiaria();
         _cajaDiariaAutoOpened = false;
-        showNotice('Caja cerrada y guardada en historial.', 'ok');
+        showNotice('Caja cerrada. Recepción de pedidos reiniciada.', 'ok');
         _navigateToCajaDiaria();
         await renderLibroCierres();
     } catch (err) {
@@ -13974,6 +13999,194 @@ async function renderLibroCierres() {
 
 document.getElementById('refreshLibroCierresBtn')?.addEventListener('click', renderLibroCierres);
 
+// ── Libro Contable ────────────────────────────────────────────────────────────
+let _lcActivePeriod = 'diario';
+
+function renderLibroContable() {
+    const lcHead  = document.getElementById('lcHead');
+    const lcBody  = document.getElementById('lcBody');
+    const lcFoot  = document.getElementById('lcFoot');
+    const lcKpi   = document.getElementById('lcKpiGrid');
+    const yearSel = document.getElementById('lcYearFilter');
+    if (!lcBody) return;
+
+    const getMs  = (c) => c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+    const getIng = (c) => Number(c.ingresosTotal ?? 0);
+    const getEgr = (c) => Number(c.gastosTotal   ?? 0);
+    const getNet = (c) => getIng(c) - getEgr(c);
+
+    const fmtNet = (v) => v >= 0
+        ? `<span class="lc-utilidad-pos">${formatMoney(v)}</span>`
+        : `<span class="lc-utilidad-neg">−${formatMoney(Math.abs(v))}</span>`;
+
+    // Populate year selector from ALL cierres
+    const allYears = [...new Set(_cierresCajaState.map((c) => {
+        const ms = getMs(c);
+        return ms ? new Date(ms).getFullYear() : null;
+    }).filter(Boolean))].sort((a, b) => b - a);
+
+    if (yearSel && allYears.length) {
+        const prev = yearSel.value;
+        yearSel.innerHTML = allYears.map((y) => `<option value="${y}">${y}</option>`).join('');
+        if (prev && allYears.includes(Number(prev))) yearSel.value = prev;
+    }
+
+    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    const HEAD = `<tr>
+        <th class="col-left">Fecha</th>
+        <th class="col-entrada">Ingresos</th>
+        <th class="col-salida">Egresos</th>
+        <th>Total</th>
+    </tr>`;
+
+    // ── VISTA ANUAL: todos los años, sin filtro ──
+    if (_lcActivePeriod === 'anual') {
+        const byYear = {};
+        _cierresCajaState.forEach((c) => {
+            const ms = getMs(c);
+            if (!ms) return;
+            const yr = new Date(ms).getFullYear();
+            if (!byYear[yr]) byYear[yr] = { ing: 0, egr: 0 };
+            byYear[yr].ing += getIng(c);
+            byYear[yr].egr += getEgr(c);
+        });
+
+        const entries = Object.entries(byYear).sort(([a], [b]) => Number(b) - Number(a));
+        const totalIng = entries.reduce((s, [, v]) => s + v.ing, 0);
+        const totalEgr = entries.reduce((s, [, v]) => s + v.egr, 0);
+        const totalNet = totalIng - totalEgr;
+
+        if (lcKpi) lcKpi.innerHTML = _lcKpiHtml(totalIng, totalEgr, totalNet, entries.length, 'años');
+        if (lcHead) lcHead.innerHTML = HEAD;
+        lcBody.innerHTML = entries.map(([yr, v]) => {
+            const net = v.ing - v.egr;
+            return `<tr>
+                <td class="col-left" style="font-weight:800;">${yr}</td>
+                <td class="caja-cell-entrada">${formatMoney(v.ing)}</td>
+                <td>${v.egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(v.egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
+                <td>${fmtNet(net)}</td>
+            </tr>`;
+        }).join('') || `<tr><td class="caja-empty" colspan="4">Sin registros.</td></tr>`;
+        if (lcFoot) lcFoot.innerHTML = `<tr>
+            <td class="col-left foot-label">TOTAL HISTÓRICO</td>
+            <td class="foot-entrada">${formatMoney(totalIng)}</td>
+            <td class="foot-salida">${totalEgr > 0 ? `−${formatMoney(totalEgr)}` : '$0'}</td>
+            <td class="foot-total">${totalNet < 0 ? '−' : ''}${formatMoney(Math.abs(totalNet))}</td>
+        </tr>`;
+        return;
+    }
+
+    // Para vistas diaria y mensual: filtrar por año seleccionado
+    const selectedYear = yearSel?.value ? Number(yearSel.value) : (allYears[0] || new Date().getFullYear());
+    const cierres = _cierresCajaState.filter((c) => {
+        const ms = getMs(c);
+        return ms ? new Date(ms).getFullYear() === selectedYear : false;
+    });
+
+    const totalIng = cierres.reduce((s, c) => s + getIng(c), 0);
+    const totalEgr = cierres.reduce((s, c) => s + getEgr(c), 0);
+    const totalNet = totalIng - totalEgr;
+
+    if (lcKpi) lcKpi.innerHTML = _lcKpiHtml(totalIng, totalEgr, totalNet, cierres.length, 'jornadas');
+
+    if (!cierres.length) {
+        if (lcHead) lcHead.innerHTML = '';
+        lcBody.innerHTML = `<tr><td class="caja-empty" colspan="4">Sin registros para ${selectedYear}.</td></tr>`;
+        if (lcFoot) lcFoot.innerHTML = '';
+        return;
+    }
+
+    if (lcHead) lcHead.innerHTML = HEAD;
+
+    if (_lcActivePeriod === 'diario') {
+        // ── VISTA DIARIA ──
+        const sorted = [...cierres].sort((a, b) => getMs(b) - getMs(a));
+        lcBody.innerHTML = sorted.map((c) => {
+            const d   = new Date(getMs(c));
+            const fecha = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const ing = getIng(c);
+            const egr = getEgr(c);
+            const net = ing - egr;
+            return `<tr>
+                <td class="col-left" style="font-weight:600;white-space:nowrap;">${fecha}</td>
+                <td class="caja-cell-entrada">${formatMoney(ing)}</td>
+                <td>${egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
+                <td>${fmtNet(net)}</td>
+            </tr>`;
+        }).join('');
+
+    } else {
+        // ── VISTA MENSUAL ──
+        const byMonth = {};
+        cierres.forEach((c) => {
+            const mo = new Date(getMs(c)).getMonth();
+            if (!byMonth[mo]) byMonth[mo] = { ing: 0, egr: 0 };
+            byMonth[mo].ing += getIng(c);
+            byMonth[mo].egr += getEgr(c);
+        });
+
+        lcBody.innerHTML = Object.entries(byMonth)
+            .sort(([a], [b]) => Number(b) - Number(a))
+            .map(([mo, m]) => {
+                const net = m.ing - m.egr;
+                return `<tr>
+                    <td class="col-left" style="font-weight:700;">${MESES[Number(mo)]}</td>
+                    <td class="caja-cell-entrada">${formatMoney(m.ing)}</td>
+                    <td>${m.egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(m.egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
+                    <td>${fmtNet(net)}</td>
+                </tr>`;
+            }).join('') || `<tr><td class="caja-empty" colspan="4">Sin datos mensuales.</td></tr>`;
+    }
+
+    if (lcFoot) lcFoot.innerHTML = `<tr>
+        <td class="col-left foot-label">TOTAL ${selectedYear}</td>
+        <td class="foot-entrada">${formatMoney(totalIng)}</td>
+        <td class="foot-salida">${totalEgr > 0 ? `−${formatMoney(totalEgr)}` : '$0'}</td>
+        <td class="foot-total">${totalNet < 0 ? '−' : ''}${formatMoney(Math.abs(totalNet))}</td>
+    </tr>`;
+}
+
+function _lcKpiHtml(ing, egr, net, count, label) {
+    return `
+        <div class="lc-kpi">
+            <div class="lc-kpi-label">📥 Ingresos</div>
+            <div class="lc-kpi-value" style="color:#6ee7b7;">${formatMoney(ing)}</div>
+            <div class="lc-kpi-sub">${count} ${label}</div>
+        </div>
+        <div class="lc-kpi">
+            <div class="lc-kpi-label">📤 Egresos</div>
+            <div class="lc-kpi-value" style="color:#fca5a5;">${formatMoney(egr)}</div>
+            <div class="lc-kpi-sub">Gastos registrados</div>
+        </div>
+        <div class="lc-kpi">
+            <div class="lc-kpi-label">💰 Total neto</div>
+            <div class="lc-kpi-value" style="color:${net >= 0 ? '#ff9540' : '#fca5a5'};">${net < 0 ? '−' : ''}${formatMoney(Math.abs(net))}</div>
+            <div class="lc-kpi-sub">Ingresos − Egresos</div>
+        </div>
+        <div class="lc-kpi">
+            <div class="lc-kpi-label">📊 Margen</div>
+            <div class="lc-kpi-value" style="color:${net >= 0 ? '#a78bfa' : '#fca5a5'};">${ing > 0 ? ((net / ing) * 100).toFixed(1) + '%' : '—'}</div>
+            <div class="lc-kpi-sub">Rentabilidad</div>
+        </div>`;
+}
+
+// Period tab switcher
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lc-period-btn');
+    if (!btn) return;
+    _lcActivePeriod = btn.dataset.lcPeriod || 'diario';
+    document.querySelectorAll('.lc-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
+    renderLibroContable();
+});
+
+document.getElementById('refreshLibroContableBtn')?.addEventListener('click', async () => {
+    await loadCierresCaja();
+    renderLibroContable();
+});
+
+document.getElementById('lcYearFilter')?.addEventListener('change', renderLibroContable);
+
 document.getElementById('libroCierresList')?.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn-ver-cierre');
     if (!btn) return;
@@ -14155,6 +14368,8 @@ function openTicketPreviewModal(order) {
     const modal    = document.getElementById('ticketPreviewModal');
     const content  = document.getElementById('ticketPreviewContent');
     const voidBadge = document.getElementById('ticketPreviewVoidedBadge');
+    const editBtn  = document.getElementById('ticketPreviewEditBtn');
+    const delBtn   = document.getElementById('ticketPreviewDeleteBtn');
     if (!modal || !content) return;
     _ticketPreviewCurrentOrder = order;
     content.innerHTML = buildThermalTicketMarkup(order);
@@ -14162,6 +14377,9 @@ function openTicketPreviewModal(order) {
         if (order.voided) voidBadge.removeAttribute('hidden');
         else voidBadge.setAttribute('hidden', '');
     }
+    const isPosOrder = order.isAdminOrder || order.source === 'admin_pos';
+    if (editBtn) editBtn.hidden = !isPosOrder;
+    if (delBtn) delBtn.hidden = false;
     modal.removeAttribute('hidden');
 }
 
@@ -14175,16 +14393,25 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', (e) => 
     const btn = e.target.closest('button[data-order-ticket-action]');
     if (btn) {
         const action = btn.dataset.orderTicketAction;
+        const order = _ticketPreviewCurrentOrder;
         if (action === 'print') {
             const orderId = String(btn.dataset.orderId || '').trim();
             if (orderId) openOrderPrintTicket(orderId);
-        } else if (action === 'cobrar' && _ticketPreviewCurrentOrder) {
-            _triggerTicketCobro(_ticketPreviewCurrentOrder);
+        } else if (action === 'cobrar' && order) {
+            _triggerTicketCobro(order);
         } else if (action === 'contact') {
             const orderId = String(btn.dataset.orderId || '').trim();
             if (orderId) {
                 openOrderContactCard(orderId);
                 showNotice(isMobileContactImportContext() ? 'Abriendo el contacto del cliente.' : 'Contacto descargado en formato VCF.', 'ok');
+            }
+        } else if (action === 'editar_pos' && order) {
+            closeTicketPreviewModal();
+            editAdminPosOrder(order);
+        } else if (action === 'eliminar' && order) {
+            closeTicketPreviewModal();
+            if (confirm(`¿Eliminar el pedido #${order.code}?`)) {
+                deleteOrder(order.id);
             }
         }
         return;

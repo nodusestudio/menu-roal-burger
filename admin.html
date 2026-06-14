@@ -1449,6 +1449,14 @@
             padding-bottom: 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
+        .ticket-float-actions {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 6px;
+            z-index: 10;
+        }
 
         .ticket-close-btn {
             display: none;
@@ -3703,6 +3711,12 @@
             background: #19892e; color: #fff;
         }
         .pos-bottom-ticket-btn:hover { filter: brightness(1.12); }
+        .pos-bottom-cobrar-btn {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            font-size: 0.86rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
 
         /* ── Drawer de carrito ── */
         .pos-drawer { position: absolute; inset: 0; z-index: 20; }
@@ -6327,6 +6341,9 @@
             gap: 7px;
             margin-right: auto;
         }
+        .unread-tray-btn[hidden] { display: none !important; }
+        .tickets-abiertos-btn[hidden] { display: none !important; }
+        .pos-action-row[hidden] { display: none !important; }
 
         .unread-tray-badge {
             display: inline-flex;
@@ -8651,7 +8668,8 @@
             border-top: 2px solid var(--admin-border);
             background: rgba(255,255,255,0.03);
         }
-        .caja-ledger-table tfoot td.col-left { text-align: left; font-size: 0.7rem; letter-spacing: 0.5px; text-transform: uppercase; color: var(--admin-muted); }
+        .caja-ledger-table tfoot td.col-left,
+        .caja-ledger-table tfoot td.foot-label { text-align: left; font-size: 0.7rem; letter-spacing: 0.5px; text-transform: uppercase; color: var(--admin-muted); }
         .caja-ledger-table tfoot td.foot-entrada { color: #6ee7b7; }
         .caja-ledger-table tfoot td.foot-salida  { color: #fca5a5; }
         .caja-ledger-table tfoot td.foot-total   { color: var(--admin-accent, #ff9540); font-size: 0.9rem; }
@@ -8660,6 +8678,46 @@
         .caja-cell-total-pos { color: #fff; font-weight: 800; }
         .caja-cell-total-neg { color: #fca5a5; font-weight: 800; }
         .caja-cell-method   { color: rgba(255,255,255,0.55); font-weight: 600; }
+        /* ── Libro Contable ── */
+        .lc-period-nav { display: flex; gap: 6px; padding: 14px 16px 0; flex-wrap: wrap; }
+        .lc-period-btn {
+            padding: 5px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.6);
+            font-size: 0.75rem; font-weight: 600; cursor: pointer; font-family: 'Space Grotesk',sans-serif;
+            transition: background .15s, color .15s, border-color .15s;
+        }
+        .lc-period-btn.active { background: rgba(255,149,64,0.18); border-color: rgba(255,149,64,0.45); color: #ff9540; }
+        .lc-year-select {
+            padding: 5px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.8);
+            font-size: 0.75rem; font-weight: 600; cursor: pointer; outline: none;
+        }
+        .lc-kpi-grid {
+            display: grid; grid-template-columns: repeat(4,1fr); gap: 10px;
+            padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        @media (max-width:900px) { .lc-kpi-grid { grid-template-columns: repeat(2,1fr); } }
+        .lc-kpi {
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px; padding: 12px 14px;
+        }
+        .lc-kpi-label { font-size: 0.66rem; color: var(--admin-muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 4px; }
+        .lc-kpi-value { font-size: 1.2rem; font-weight: 800; font-family: 'Oswald',sans-serif; }
+        .lc-kpi-sub { font-size: 0.68rem; color: var(--admin-muted); margin-top: 2px; }
+        .lc-section-header {
+            font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1.2px;
+            color: var(--admin-muted); padding: 10px 16px 4px; font-weight: 700;
+        }
+        .lc-group-header td {
+            background: rgba(255,255,255,0.04) !important; font-weight: 800 !important;
+            color: #fff !important; font-size: 0.76rem !important;
+            border-top: 2px solid rgba(255,255,255,0.08) !important;
+            text-transform: uppercase; letter-spacing: .5px;
+        }
+        .lc-utilidad-pos { color: #6ee7b7; font-weight: 800; }
+        .lc-utilidad-neg { color: #fca5a5; font-weight: 800; }
+        .lc-margen { font-size: 0.72rem; color: var(--admin-muted); }
+
         .caja-method-badge {
             display: inline-flex;
             align-items: center;
@@ -8906,6 +8964,25 @@
             border-radius: 20px 20px 0 0;
         }
         .tpv-header h3 { font-family: 'Space Grotesk', sans-serif; font-size: 0.95rem; font-weight: 700; color: #fff; margin: 0; }
+        .tpv-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tpv-action-btn {
+            background: rgba(255,255,255,0.08);
+            border: none;
+            border-radius: 8px;
+            color: rgba(255,255,255,0.6);
+            font-size: 1rem;
+            width: 32px; height: 32px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .tpv-action-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+        .tpv-edit-btn:hover { background: rgba(96,165,250,0.2); color: #93c5fd; }
+        .tpv-delete-btn:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
         .tpv-close-btn {
             background: rgba(255,255,255,0.08);
             border: none;
@@ -10154,7 +10231,7 @@
 
             <div class="admin-tab-panel active" data-tab-panel="pedidos">
                 <div class="section-toolbar">
-                    <button type="button" class="section-action-btn unread-tray-btn" id="unreadTrayBtn" aria-expanded="false" aria-controls="unreadTray">
+                    <button type="button" class="section-action-btn unread-tray-btn" id="unreadTrayBtn" aria-expanded="false" aria-controls="unreadTray" hidden>
                         Por Confirmar
                         <span class="unread-tray-badge" id="ordersCountUnread">0</span>
                     </button>
@@ -10180,13 +10257,13 @@
                                 <span id="salesDayStatusMeta">Abierta ahora mismo.</span>
                             </div>
                             <div class="sales-day-banner-metrics">
-                                <span class="sales-day-chip" id="salesDayDeliveredTotal">🛵 $0</span>
-                                <span class="sales-day-chip" id="salesDayGrandTotal">📊 $0</span>
+                                <span class="sales-day-chip" id="salesDayDeliveredTotal">💵 $0</span>
+                                <span class="sales-day-chip" id="salesDayGrandTotal">💳 $0</span>
+                                <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= $0</span>
                                 <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
-                                <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                                <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn" hidden style="display:none!important">
                                     Tickets Abiertos
-                                    <span id="adminTicketsCountBadge" style="display:none;background:#ff7b45;color:#fff;font-size:0.7rem;font-weight:700;min-width:18px;height:18px;border-radius:999px;padding:0 5px;line-height:18px;text-align:center;"></span>
+                                    <span id="adminTicketsCountBadge"></span>
                                 </button>
                                 <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
@@ -10196,7 +10273,7 @@
                         </div>
                         <div class="orders-workspace">
                             <div class="orders-mobile-tabs" id="ordersMobileTabs" aria-label="Cambiar vista de pedidos en movil">
-                                <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="unread">Por Confirmar</button>
+                                <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="unread" hidden style="display:none!important">Por Confirmar</button>
                                 <button type="button" class="orders-mobile-tab active" data-mobile-orders-tab="pedidos">Pedidos</button>
                                 <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="mesa">Mesas</button>
                             </div>
@@ -10322,6 +10399,7 @@
                             <nav class="cajas-subtabs-nav" role="tablist" aria-label="Secciones de Cajas">
                                 <button type="button" class="cajas-subtab active" data-cajas-tab="caja-diaria" role="tab" aria-selected="true">💵 Caja Diaria</button>
                                 <button type="button" class="cajas-subtab" data-cajas-tab="historial" role="tab" aria-selected="false">📒 Historial de Cajas</button>
+                                <button type="button" class="cajas-subtab" data-cajas-tab="libro-contable" role="tab" aria-selected="false">📗 Libro Contable</button>
                             </nav>
 
                             <!-- Sub-panel: Caja Diaria -->
@@ -10375,6 +10453,35 @@
                                         </article>
                                     </aside>
                                 </div>
+                            </div>
+
+                            <!-- Sub-panel: Libro Contable -->
+                            <div class="cajas-subpanel" data-cajas-panel="libro-contable" hidden style="display:none;">
+                                <article class="admin-card">
+                                    <div class="card-head">
+                                        <h2>Libro Contable</h2>
+                                        <div style="display:flex;gap:8px;align-items:center;">
+                                            <select id="lcYearFilter" class="lc-year-select" title="Filtrar por año"></select>
+                                            <button type="button" class="card-collapse-btn" id="refreshLibroContableBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
+                                        </div>
+                                    </div>
+                                    <!-- Tabs de periodo -->
+                                    <div class="lc-period-nav">
+                                        <button type="button" class="lc-period-btn active" data-lc-period="diario">📅 Diario</button>
+                                        <button type="button" class="lc-period-btn" data-lc-period="mensual">📆 Mensual</button>
+                                        <button type="button" class="lc-period-btn" data-lc-period="anual">📊 Anual</button>
+                                    </div>
+                                    <!-- KPI cards -->
+                                    <div class="lc-kpi-grid" id="lcKpiGrid"></div>
+                                    <!-- Tabla contable -->
+                                    <div class="caja-ledger-wrap">
+                                        <table class="caja-ledger-table" style="min-width:700px;">
+                                            <thead id="lcHead"></thead>
+                                            <tbody id="lcBody"><tr><td class="caja-empty" colspan="8">Cargando libro contable…</td></tr></tbody>
+                                            <tfoot id="lcFoot"></tfoot>
+                                        </table>
+                                    </div>
+                                </article>
                             </div>
 
                             <!-- Sub-panel: Historial de Cajas -->
@@ -10824,7 +10931,7 @@
                 </div>
             </div>
 
-            <div class="pos-action-row">
+            <div class="pos-action-row" hidden style="display:none!important">
                 <button type="button" class="pos-action-btn pos-action-tickets" id="posOpenTicketsBtn" style="grid-column:1/-1;">
                     TICKETS ABIERTOS <span class="pos-tickets-count-badge" id="posTicketsCountBadge">1</span>
                 </button>
@@ -10847,8 +10954,8 @@
                     <span class="pos-bottom-chevron">&#9650; Ver carrito</span>
                 </button>
                 <div class="pos-bottom-actions">
-                    <button type="button" class="pos-bottom-act-btn pos-bottom-save-btn" id="posBottomSaveOrderBtn">ENVIAR TICKET</button>
-                    <button type="button" class="pos-bottom-act-btn pos-bottom-ticket-btn" id="posBottomGuardarTicketBtn">GUARDAR TICKET</button>
+                    <button type="button" class="pos-bottom-act-btn pos-bottom-save-btn" id="posBottomSaveOrderBtn">GUARDAR</button>
+                    <button type="button" class="pos-bottom-act-btn pos-bottom-ticket-btn pos-bottom-cobrar-btn" id="posBottomGuardarTicketBtn">COBRAR</button>
                 </div>
             </div>
         </div>
@@ -10884,10 +10991,8 @@
                 </div>
                 <div class="pos-drawer-footer">
                     <div class="pos-drawer-actions">
-                        <button type="button" class="pos-save-order-btn" id="posDrawerSaveBtn">ENVIAR TICKET</button>
-                        <button type="button" class="pos-cobrar-full-btn" id="posGuardarTicketBtn">
-                            GUARDAR TICKET
-                        </button>
+                        <button type="button" class="pos-save-order-btn" id="posDrawerSaveBtn">GUARDAR</button>
+                        <button type="button" class="pos-cobrar-full-btn" id="posGuardarTicketBtn">COBRAR</button>
                     </div>
                 </div>
             </div>
@@ -11469,7 +11574,11 @@
         <div class="tpv-card">
             <div class="tpv-header">
                 <h3>Vista previa del ticket</h3>
-                <button type="button" class="tpv-close-btn" id="ticketPreviewCloseBtn">✕</button>
+                <div class="tpv-header-actions">
+                    <button type="button" class="tpv-action-btn tpv-edit-btn" id="ticketPreviewEditBtn" data-order-ticket-action="editar_pos" title="Editar pedido">✎</button>
+                    <button type="button" class="tpv-action-btn tpv-delete-btn" id="ticketPreviewDeleteBtn" data-order-ticket-action="eliminar" title="Eliminar pedido">🗑</button>
+                    <button type="button" class="tpv-close-btn" id="ticketPreviewCloseBtn">✕</button>
+                </div>
             </div>
             <div class="tpv-body">
                 <div id="ticketPreviewVoidedBadge" class="tpv-voided-badge" hidden>🚫 TICKET ANULADO</div>
