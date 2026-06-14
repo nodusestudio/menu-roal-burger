@@ -6294,6 +6294,7 @@
         .section-toolbar {
             display: flex;
             justify-content: flex-end;
+            align-items: center;
             gap: 8px;
             flex-wrap: wrap;
             margin-bottom: 8px;
@@ -6304,6 +6305,37 @@
             border-radius: 12px;
             padding: 8px 12px;
         }
+        .admin-domicilio-searcher {
+            flex: 1 1 260px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+        .admin-domicilio-input {
+            flex: 1;
+            min-width: 0;
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.13);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 0.78rem;
+            padding: 6px 10px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .admin-domicilio-input::placeholder { color: rgba(255,255,255,0.38); }
+        .admin-domicilio-input:focus { border-color: rgba(255,165,0,0.55); }
+        .admin-domicilio-result {
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
+            color: rgba(255,255,255,0.55);
+            min-width: 90px;
+        }
+        .admin-domicilio-result.result-found { color: #4ade80; }
+        .admin-domicilio-result.result-outside { color: #f59e0b; }
+        .admin-domicilio-result.result-error { color: rgba(255,255,255,0.4); }
 
         .section-save-btn {
             border: 1px solid rgba(255, 122, 26, 0.32);
@@ -10231,6 +10263,10 @@
 
             <div class="admin-tab-panel active" data-tab-panel="pedidos">
                 <div class="section-toolbar">
+                    <div class="admin-domicilio-searcher" id="adminDomicilioSearcher">
+                        <input type="text" id="adminDomicilioInput" class="admin-domicilio-input" placeholder="🔍 Buscar precio de domicilio por dirección..." autocomplete="off">
+                        <span id="adminDomicilioResult" class="admin-domicilio-result"></span>
+                    </div>
                     <button type="button" class="section-action-btn unread-tray-btn" id="unreadTrayBtn" aria-expanded="false" aria-controls="unreadTray" hidden>
                         Por Confirmar
                         <span class="unread-tray-badge" id="ordersCountUnread">0</span>
