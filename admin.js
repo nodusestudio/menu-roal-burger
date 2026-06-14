@@ -2627,8 +2627,11 @@ function renderPosPromocionesPanel(grid) {
             precioFinal: price,
             detalle: 'Llevas 2 por el precio de 1',
             onClick: () => {
-                addProductToPosOrder(prod.id, prod.nombre, price, '2×1');
-                addProductToPosOrder(`${prod.id}_gratis`, `${prod.nombre} (GRATIS)`, 0, '2×1', price);
+                addProductToPosOrder(prod.id, prod.nombre, Math.round(price / 2), '2×1', price, {
+                    promoLabel: `PROMO 2×1 — ${promo.kicker || prod.nombre}`,
+                    promo2x1: true,
+                    initialQuantity: 2
+                });
             }
         }));
     });
@@ -3059,7 +3062,7 @@ function openComboConPapasPosModal(productId, productName, categoryName) {
     document.body.appendChild(overlay);
 }
 
-function addProductToPosOrder(productId, productName, productPrice, note = '', originalUnitPrice = null) {
+function addProductToPosOrder(productId, productName, productPrice, note = '', originalUnitPrice = null, opts = {}) {
     productId = String(productId || '').trim();
     productName = String(productName || 'Producto').trim();
     productPrice = Number(productPrice || 0);
@@ -3069,6 +3072,10 @@ function addProductToPosOrder(productId, productName, productPrice, note = '', o
     if (!productId) return;
 
     const category = posSelectedCategory || 'Sin categoria';
+    const promoLabel = String(opts.promoLabel || '').trim();
+    const promo2x1 = opts.promo2x1 === true;
+    const initialQuantity = Math.max(1, Number(opts.initialQuantity) || 1);
+    const qtyStep = promo2x1 ? 2 : 1;
 
     // itemKey determinístico por (productId + nota) → ítems con misma nota se fusionan,
     // ítems con nota diferente (ej. "Combo" vs "Solo") quedan separados automáticamente.
@@ -3076,7 +3083,7 @@ function addProductToPosOrder(productId, productName, productPrice, note = '', o
     const existing = internalOrderItems.find((item) => item.itemKey === itemKey);
 
     if (existing) {
-        existing.quantity = Number(existing.quantity || 0) + 1;
+        existing.quantity = Number(existing.quantity || 0) + qtyStep;
         existing.subtotal = Number(existing.quantity) * existing.unitPrice;
     } else {
         internalOrderItems.push({
@@ -3084,12 +3091,14 @@ function addProductToPosOrder(productId, productName, productPrice, note = '', o
             productId,
             productName,
             categoryName: category,
-            quantity: 1,
+            quantity: initialQuantity,
             unitPrice: productPrice,
             originalUnitPrice: originalUnitPrice !== null && originalUnitPrice > productPrice ? originalUnitPrice : null,
-            subtotal: productPrice,
+            subtotal: productPrice * initialQuantity,
             note,
-            optionLabel: note || ''
+            optionLabel: note || '',
+            promoLabel,
+            promo2x1
         });
     }
 
@@ -3235,8 +3244,9 @@ function renderPosOrderItems() {
             const item = internalOrderItems.find((i) => i.itemKey === itemKey);
 
             if (minusBtn && item) {
-                if (item.quantity > 1) {
-                    item.quantity--;
+                const step = item.promo2x1 ? 2 : 1;
+                if (item.quantity > step) {
+                    item.quantity -= step;
                     item.subtotal = item.quantity * item.unitPrice;
                 } else {
                     internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey);
@@ -3248,7 +3258,8 @@ function renderPosOrderItems() {
             }
 
             if (plusBtn && item) {
-                item.quantity++;
+                const step = item.promo2x1 ? 2 : 1;
+                item.quantity += step;
                 item.subtotal = item.quantity * item.unitPrice;
                 renderPosOrderItems();
                 renderPosTotals();
@@ -3268,8 +3279,11 @@ function renderPosOrderItems() {
             const input = event.target.closest('.pos-qty-input');
             if (!input) return;
             const itemKey = input.dataset.itemKey;
-            const quantity = Math.max(1, Number(input.value || 1));
             const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+            let quantity = Math.max(1, Number(input.value || 1));
+            if (item?.promo2x1) {
+                quantity = Math.max(2, quantity % 2 === 0 ? quantity : quantity + 1);
+            }
             if (item) {
                 item.quantity = quantity;
                 item.subtotal = quantity * item.unitPrice;
@@ -4022,7 +4036,8 @@ async function saveAdminOrderQuick(config = {}) {
                 note: item.note || '',
                 quantity: Number(item.quantity || 0),
                 unitPrice: Number(item.unitPrice || 0),
-                subtotal: Number(item.subtotal || 0)
+                subtotal: Number(item.subtotal || 0),
+                orderOptions: item.promoLabel ? { promoLabel: item.promoLabel } : undefined
             })),
             itemCount: internalOrderItems.length,
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -4260,7 +4275,8 @@ async function submitInternalOrderForm(event) {
                 note: item.note || '',
                 quantity: Number(item.quantity || 0),
                 unitPrice: Number(item.unitPrice || 0),
-                subtotal: Number(item.subtotal || 0)
+                subtotal: Number(item.subtotal || 0),
+                orderOptions: item.promoLabel ? { promoLabel: item.promoLabel } : undefined
             })),
             itemCount: internalOrderItems.length,
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
