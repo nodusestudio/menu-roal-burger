@@ -6352,6 +6352,87 @@ body.has-guest-register-banner #ayudaScreen {
     overflow-y: visible;
     border-radius: 18px;
 }
+/* ── Perfil rediseño: lista estilo app ── */
+.cp-wrap { display: flex; flex-direction: column; gap: 14px; }
+
+.cp-hero {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 18px;
+    border-radius: 22px;
+}
+.cp-avatar {
+    width: 68px; height: 68px; flex-shrink: 0;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    background: linear-gradient(135deg, #ff7a00, #ff4f00);
+    color: #fff;
+    font-family: 'Oswald', sans-serif;
+    font-size: 2.1rem; font-weight: 700;
+    box-shadow: 0 8px 22px rgba(255,90,0,0.28);
+}
+.cp-hero-info { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.cp-hero-name {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.35rem; font-weight: 700;
+    color: #1f140d; letter-spacing: 0.3px;
+}
+.cp-hero-phone { font-size: 0.82rem; color: rgba(90,58,27,0.6); }
+
+.cp-menu-card { border-radius: 22px; overflow: hidden; }
+
+.cp-menu-item {
+    width: 100%;
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 18px;
+    background: none; border: none; cursor: pointer;
+    text-align: left;
+    position: relative;
+    transition: background 0.14s;
+}
+.cp-menu-item:not(:last-child)::after {
+    content: '';
+    position: absolute; bottom: 0; left: 70px; right: 0;
+    height: 1px;
+    background: rgba(90,58,27,0.09);
+}
+.cp-menu-item:active { background: rgba(255,149,64,0.1); }
+
+.cp-menu-icon {
+    width: 42px; height: 42px; flex-shrink: 0;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    background: rgba(90,58,27,0.09);
+    color: #5a3a1b;
+}
+.cp-menu-icon svg { width: 20px; height: 20px; }
+
+.cp-menu-label {
+    flex: 1;
+    font-size: 0.95rem; font-weight: 600;
+    color: #1f140d;
+}
+.cp-menu-chevron { color: rgba(90,58,27,0.28); flex-shrink: 0; }
+
+.cp-menu-item--danger .cp-menu-icon { background: rgba(220,38,38,0.09); color: #dc2626; }
+.cp-menu-item--danger .cp-menu-label { color: #dc2626; }
+
+.cp-panel-back {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 0 14px;
+    background: none; border: none; cursor: pointer;
+    color: #ff7a00;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.9rem; font-weight: 700; letter-spacing: 0.3px;
+}
+.cp-delete-link {
+    display: block; width: 100%; text-align: center;
+    padding: 8px; background: none; border: none; cursor: pointer;
+    color: rgba(220,38,38,0.5);
+    font-size: 0.78rem;
+    text-decoration: underline; text-underline-offset: 3px;
+}
 /* ===== FIN PANTALLA PERFIL ===== */
 
 /* ===== PANTALLA AYUDA ===== */

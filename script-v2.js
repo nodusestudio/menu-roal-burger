@@ -2591,64 +2591,100 @@ function openCustomerAuthModal() {
     const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
 
     const titleEl = document.getElementById('perfilScreenTitle');
-    if (titleEl) titleEl.textContent = profile ? (String(profile.customerName || '').trim().split(' ')[0] || 'Mi Perfil') : 'Mi Perfil';
+    if (titleEl) titleEl.textContent = profile ? 'Cuenta' : 'Mi Perfil';
 
     _enterScreen('perfilScreen');
     screen.hidden = false;
     screen.classList.add('is-open');
 
     const modal = contentEl;
+    const _initial = escapeHtml((profile?.customerName || 'R').trim().slice(0, 1).toUpperCase());
+    const _name    = escapeHtml(profile?.customerName || 'Cliente');
+    const _phone   = escapeHtml(profile?.customerPhone || '');
+    const _chevron = `<svg class="cp-menu-chevron" viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>`;
+    const _back    = `<button type="button" class="cp-panel-back" data-profile-tab="info" aria-label="Volver a Cuenta">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        Cuenta
+    </button>`;
+
     modal.innerHTML = profile
         ? `
-            <div class="support-modal-card liquid-glass customer-profile-modal-card" role="dialog" aria-modal="true" aria-label="Tu perfil">
-                <p class="support-modal-kicker">Perfil</p>
-                <h3 class="support-modal-title">${escapeHtml(profile.customerName || 'Cliente ROAL BURGER')}</h3>
-                <div class="customer-profile-hero">
-                    <div class="customer-profile-avatar">${escapeHtml((profile.customerName || 'R').trim().slice(0, 1).toUpperCase())}</div>
-                    <div class="customer-profile-heading">
-                        <strong>${escapeHtml(profile.customerName)}</strong>
-                    </div>
-                    <button type="button" class="support-secondary-btn customer-profile-edit-chip" id="customerEditProfileButton">Editar</button>
+            <div class="cp-wrap" role="main" aria-label="Perfil de cuenta">
+
+                <!-- Tabs ocultos para mantener el sistema de activación JS -->
+                <div hidden aria-hidden="true" style="display:none!important">
+                    <button class="customer-profile-tab is-active" data-profile-tab="info" aria-selected="true">Info</button>
+                    <button class="customer-profile-tab" data-profile-tab="pedidos" aria-selected="false">Pedidos</button>
+                    <button class="customer-profile-tab" data-profile-tab="mensajes" aria-selected="false">Mensajes</button>
                 </div>
-                <div class="customer-profile-tabs" role="tablist" aria-label="Secciones del perfil">
-                    <button type="button" class="customer-profile-tab is-active" data-profile-tab="info" aria-selected="true">Informacion</button>
-                    <button type="button" class="customer-profile-tab" data-profile-tab="pedidos" aria-selected="false">Pedidos</button>
-                    <button type="button" class="customer-profile-tab" data-profile-tab="mensajes" aria-selected="false">Mensajes</button>
-                </div>
+
+                <!-- Panel principal: menú de cuenta -->
                 <div class="customer-profile-panel" data-profile-panel="info">
-                    <div class="customer-profile-info-card">
-                        <span>WhatsApp</span>
-                        <strong>${escapeHtml(profile.customerPhone || 'Sin numero')}</strong>
-                    </div>
-                    <div class="customer-profile-info-card">
-                        <span>Direccion principal</span>
-                        <strong>${escapeHtml(profile.address || 'Sin direccion principal registrada')}</strong>
-                    </div>
-                    <div class="customer-profile-info-card">
-                        <span>Direcciones guardadas</span>
-                        <strong>${savedAddresses.length} de ${MAX_CUSTOMER_SAVED_ADDRESSES}</strong>
-                        <div class="customer-saved-addresses-list">
-                            ${savedAddresses.length
-                                ? savedAddresses.map((entry, index) => `<p><strong>${index + 1}.</strong> ${escapeHtml(getCustomerSavedAddressLabel(entry))}</p>`).join('')
-                                : '<p>Aun no tienes direcciones guardadas.</p>'}
+                    <!-- Hero -->
+                    <div class="cp-hero liquid-glass">
+                        <div class="cp-avatar">${_initial}</div>
+                        <div class="cp-hero-info">
+                            <span class="cp-hero-name">${_name}</span>
+                            ${_phone ? `<span class="cp-hero-phone">${_phone}</span>` : ''}
                         </div>
                     </div>
-                    <div class="customer-profile-info-card">
-                        <span>Tratamiento de datos</span>
-                        <strong>${hasConsent ? 'Autorizado' : 'Pendiente'}</strong>
-                        <p>${consentMarkup}</p>
+
+                    <!-- Lista de opciones -->
+                    <div class="cp-menu-card liquid-glass">
+                        <button type="button" class="cp-menu-item" data-profile-tab="pedidos">
+                            <span class="cp-menu-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-5 14H7v-2h6v2zm3-4H7v-2h9v2zm0-4H7V6h9v2z"/></svg>
+                            </span>
+                            <span class="cp-menu-label">Mis pedidos</span>
+                            ${_chevron}
+                        </button>
+                        <button type="button" class="cp-menu-item" id="customerEditProfileButtonAlt">
+                            <span class="cp-menu-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                            </span>
+                            <span class="cp-menu-label">Editar perfil</span>
+                            ${_chevron}
+                        </button>
+                        <button type="button" class="cp-menu-item" id="customerReviewAddressesButton">
+                            <span class="cp-menu-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                            </span>
+                            <span class="cp-menu-label">Mis direcciones</span>
+                            ${_chevron}
+                        </button>
+                        <button type="button" class="cp-menu-item" data-profile-tab="mensajes">
+                            <span class="cp-menu-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>
+                            </span>
+                            <span class="cp-menu-label">Mensajes</span>
+                            ${_chevron}
+                        </button>
+                        <button type="button" class="cp-menu-item" id="customerReviewConsentButton">
+                            <span class="cp-menu-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+                            </span>
+                            <span class="cp-menu-label">Tratamiento de datos${!hasConsent ? ' <span style="color:#f59e0b;font-size:0.72rem;font-weight:700;">● Pendiente</span>' : ''}</span>
+                            ${_chevron}
+                        </button>
                     </div>
-                    <div class="support-consent-box">
-                        <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Ver autorizacion de tratamiento de datos</button>
-                        <p class="support-field-hint">Desde aqui puedes revisar tu autorizacion, editar tus datos o administrar tu cuenta.</p>
+
+                    <!-- Cerrar sesión -->
+                    <div class="cp-menu-card liquid-glass">
+                        <button type="button" class="cp-menu-item cp-menu-item--danger" id="customerLogoutButton">
+                            <span class="cp-menu-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+                            </span>
+                            <span class="cp-menu-label">Cerrar sesión</span>
+                        </button>
                     </div>
-                    <div class="support-actions stack">
-                        <button type="button" class="support-secondary-btn" id="customerEditProfileButtonAlt">Editar perfil</button>
-                        <button type="button" class="support-secondary-btn" id="customerLogoutButton">Cerrar sesion</button>
-                        <button type="button" class="support-danger-btn" id="customerDeleteAccountButton">Eliminar cuenta</button>
-                    </div>
+
+                    <button type="button" class="cp-delete-link" id="customerDeleteAccountButton">Eliminar cuenta</button>
+                    <p class="support-feedback" id="customerAuthFeedback"></p>
                 </div>
+
+                <!-- Panel: Mis pedidos -->
                 <div class="customer-profile-panel" data-profile-panel="pedidos" hidden>
+                    ${_back}
                     <div class="customer-profile-section-title">
                         <strong>Pedido en curso</strong>
                         <span>Seguimiento en tiempo real segun los movimientos del admin.</span>
@@ -2660,7 +2696,10 @@ function openCustomerAuthModal() {
                     </div>
                     <div class="customer-order-history-list" id="customerOrdersHistory"></div>
                 </div>
+
+                <!-- Panel: Mensajes -->
                 <div class="customer-profile-panel" data-profile-panel="mensajes" hidden>
+                    ${_back}
                     <div class="customer-chat-panel">
                         <div class="customer-chat-header">
                             <div class="customer-chat-avatar">R</div>
@@ -2677,7 +2716,7 @@ function openCustomerAuthModal() {
                         </div>
                     </div>
                 </div>
-                <p class="support-feedback" id="customerAuthFeedback"></p>
+
             </div>
         `
         : `
@@ -2716,6 +2755,7 @@ function openCustomerAuthModal() {
         reviewConsentButton: modal.querySelector('#customerReviewConsentButton'),
         editProfileButton: modal.querySelector('#customerEditProfileButton'),
         editProfileButtonAlt: modal.querySelector('#customerEditProfileButtonAlt'),
+        reviewAddressesButton: modal.querySelector('#customerReviewAddressesButton'),
         deleteAccountButton: modal.querySelector('#customerDeleteAccountButton'),
         tabButtons: Array.from(modal.querySelectorAll('[data-profile-tab]')),
         tabPanels: Array.from(modal.querySelectorAll('[data-profile-panel]')),
@@ -2746,6 +2786,7 @@ function openCustomerAuthModal() {
     };
     customerAuthUI.editProfileButton?.addEventListener('click', openEditProfile);
     customerAuthUI.editProfileButtonAlt?.addEventListener('click', openEditProfile);
+    customerAuthUI.reviewAddressesButton?.addEventListener('click', openEditProfile);
     customerAuthUI.deleteAccountButton?.addEventListener('click', openCustomerDeleteAccountModal);
     customerAuthUI.sendMessageButton?.addEventListener('click', submitCustomerDirectMessage);
     customerAuthUI.tabButtons?.forEach((button) => {
