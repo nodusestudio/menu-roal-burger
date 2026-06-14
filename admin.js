@@ -13908,6 +13908,48 @@ document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', cerrarCaj
         return '$ ' + Number(n).toLocaleString('es-CO');
     }
 
+    // Normaliza abreviaturas y errores ortográficos comunes en direcciones colombianas
+    function _adminNormalizeAddress(raw) {
+        return raw
+            .normalize('NFD').replace(/[̀-ͯ]/g, '') // quitar tildes
+            .toLowerCase()
+            .replace(/\bcra?\.?\s*/g, 'carrera ')
+            .replace(/\bcl\.?\s*/g, 'calle ')
+            .replace(/\bav\.?\s*/g, 'avenida ')
+            .replace(/\bdg\.?\s*/g, 'diagonal ')
+            .replace(/\btr\.?\s*/g, 'transversal ')
+            .replace(/\bkr\.?\s*/g, 'carrera ')
+            .replace(/\bn[oº°]\.?\s*/g, 'numero ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+    }
+
+    // Genera variantes del query para tolerar errores tipográficos
+    function _adminQueryVariants(val) {
+        const base = _adminNormalizeAddress(val);
+        const original = val.trim();
+        const variants = [original, base];
+        // variante: solo primeras palabras (por si hay número de casa extra)
+        const words = base.split(' ');
+        if (words.length > 2) variants.push(words.slice(0, 3).join(' '));
+        return [...new Set(variants)];
+    }
+
+    async function _adminGeocode(val) {
+        const variants = _adminQueryVariants(val);
+        for (const variant of variants) {
+            const q = encodeURIComponent(`${variant}, Armenia, Quindio, Colombia`);
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=3&countrycodes=co`, {
+                    headers: { 'Accept-Language': 'es', 'User-Agent': 'RoalBurgerAdmin/1.0' }
+                });
+                const data = await res.json();
+                if (Array.isArray(data) && data.length) return data[0];
+            } catch (_) { /* siguiente variante */ }
+        }
+        return null;
+    }
+
     let _adminGeoTimer = null;
     const input  = document.getElementById('adminDomicilioInput');
     const result = document.getElementById('adminDomicilioResult');
@@ -13921,19 +13963,13 @@ document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', cerrarCaj
     input.addEventListener('input', () => {
         clearTimeout(_adminGeoTimer);
         const val = input.value.trim();
-        if (!val || val.length < 6) { setResult('', ''); return; }
+        if (!val || val.length < 4) { setResult('', ''); return; }
         setResult('Buscando...', '');
         _adminGeoTimer = setTimeout(async () => {
             try {
-                const q = encodeURIComponent(`${val}, Armenia, Quindio, Colombia`);
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=1`, {
-                    headers: { 'Accept-Language': 'es', 'User-Agent': 'RoalBurgerAdmin/1.0' }
-                });
-                const data = await res.json();
-                if (!Array.isArray(data) || !data.length) {
-                    setResult('Dirección no encontrada', 'result-error'); return;
-                }
-                const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+                const hit = await _adminGeocode(val);
+                if (!hit) { setResult('Sin coincidencias', 'result-error'); return; }
+                const lat = parseFloat(hit.lat), lng = parseFloat(hit.lon);
                 const zone = _adminZoneForPoint(lat, lng);
                 if (zone) {
                     setResult(`${zone.label} · ${_adminFormatFee(zone.fee)}`, 'result-found');
@@ -13943,7 +13979,7 @@ document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', cerrarCaj
             } catch (_) {
                 setResult('Error al buscar', 'result-error');
             }
-        }, 1000);
+        }, 800);
     });
 })();
 
