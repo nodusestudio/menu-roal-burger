@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor de Zonas — ROAL BURGER</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:sans-serif; background:#111; color:#fff; display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+
+#header {
+  padding:10px 16px; background:#0a0a0a;
+  display:flex; align-items:center; gap:10px;
+  border-bottom:2px solid #ff7a00; flex-shrink:0; z-index:1000;
+}
+#header h1 { font-size:0.88rem; color:#ff9540; }
+#header .sub { color:#666; font-size:0.74rem; margin-left:auto; }
+
+#map { flex:1; }
+
+/* PANEL */
+#panel {
+  position:absolute; top:56px; right:10px; z-index:1000;
+  background:rgba(8,8,8,0.96); border-radius:16px;
+  padding:14px; border:1px solid rgba(255,255,255,0.1);
+  width:250px; display:flex; flex-direction:column; gap:11px;
+  max-height:calc(100vh - 74px); overflow-y:auto;
+}
+#panel h3 { color:#ff9540; font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; }
+
+/* Botones de zona */
+.zone-btn {
+  width:100%; padding:9px 12px; border-radius:10px;
+  border:2px solid rgba(255,255,255,0.08);
+  background:rgba(255,255,255,0.04); color:#bbb;
+  font-size:0.82rem; font-weight:600; cursor:pointer;
+  text-align:left; transition:all .15s;
+}
+.zone-btn:hover { background:rgba(255,255,255,0.09); }
+.zone-btn.active { color:#fff; }
+.zone-btn[data-zone="amarilla"].active { border-color:#f6d743; background:rgba(246,215,67,0.12); }
+.zone-btn[data-zone="azul"].active     { border-color:#4aa1ff; background:rgba(74,161,255,0.12); }
+.zone-btn[data-zone="roja"].active     { border-color:#d32f2f; background:rgba(211,47,47,0.12); }
+
+/* Modo agregar puntos */
+#addMode {
+  padding:11px 12px; border-radius:12px;
+  border:2px dashed rgba(255,255,255,0.15);
+  background:rgba(255,255,255,0.03); color:#888;
+  font-size:0.8rem; font-weight:700; cursor:pointer;
+  text-align:center; transition:all .15s; display:none;
+}
+#addMode.on {
+  border-color:#ff7a00; background:rgba(255,120,0,0.15);
+  color:#ff9540; animation:pulse 1.5s infinite;
+}
+@keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(255,120,0,.3)} 50%{box-shadow:0 0 0 6px rgba(255,120,0,0)} }
+
+.hint { color:#666; font-size:0.72rem; line-height:1.5; }
+.hint b { color:#aaa; }
+
+.divider { height:1px; background:rgba(255,255,255,0.07); }
+
+/* Test zona */
+#testResult { font-size:0.85rem; font-weight:700; min-height:18px; color:#6ee7b7; }
+#testCoord  { color:#555; font-size:0.7rem; margin-top:2px; }
+
+/* Botón copiar */
+#copyBtn {
+  padding:10px; border-radius:10px; border:none;
+  background:#ff7a00; color:#fff; font-size:0.82rem;
+  font-weight:700; cursor:pointer; width:100%; transition:background .15s;
+}
+#copyBtn:hover { background:#e06a00; }
+
+#output {
+  background:#050505; border:1px solid #2a2a2a; border-radius:8px;
+  padding:10px; font-size:0.65rem; color:#6ee7b7;
+  font-family:monospace; white-space:pre; overflow-x:auto;
+  display:none; max-height:150px; overflow-y:auto;
+}
+
+/* Leyenda */
+.legend {
+  position:absolute; bottom:24px; left:10px; z-index:999;
+  background:rgba(0,0,0,0.9); border-radius:12px;
+  padding:11px 14px; border:1px solid rgba(255,255,255,0.08);
+}
+.lt { font-size:0.66rem; color:#666; margin-bottom:7px; text-transform:uppercase; letter-spacing:1px; }
+.li { display:flex; align-items:center; gap:7px; margin-bottom:5px; font-size:0.78rem; }
+.lc { width:15px; height:15px; border-radius:3px; border:2px solid rgba(255,255,255,0.2); flex-shrink:0; }
+
+/* Cursor al agregar */
+.map-adding { cursor:crosshair !important; }
+.leaflet-container.map-adding { cursor:crosshair !important; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <span style="font-size:1.3rem">🍔</span>
+  <h1>Editor de Zonas de Domicilio — ROAL BURGER</h1>
+  <span class="sub">Arrastra ● para mover puntos · Doble clic ● para eliminar punto</span>
+</div>
+
+<div id="map"></div>
+
+<div id="panel">
+  <h3>1 · Selecciona zona a editar</h3>
+  <div style="display:flex;flex-direction:column;gap:5px;">
+    <button type="button" class="zone-btn" data-zone="amarilla" onclick="selectZone('amarilla')">🟡 Zona Amarilla — $5.000</button>
+    <button type="button" class="zone-btn" data-zone="azul"     onclick="selectZone('azul')">🔵 Zona Azul — $6.000</button>
+    <button type="button" class="zone-btn" data-zone="roja"     onclick="selectZone('roja')">🔴 Zona Roja — $7.000</button>
+  </div>
+
+  <div id="addMode" onclick="toggleAddMode()">＋ Agregar puntos (clic en mapa)</div>
+
+  <div class="hint" id="modeHint">Selecciona una zona para empezar a editar.</div>
+
+  <div class="divider"></div>
+
+  <h3>2 · Mover restaurante</h3>
+  <div class="hint"><b>Arrastra el 🍔</b> para mover el restaurante y desplazar todas las zonas juntas.</div>
+
+  <div class="divider"></div>
+
+  <h3>3 · Probar zona (clic en mapa)</h3>
+  <div id="testResult">—</div>
+  <div id="testCoord"></div>
+
+  <div class="divider"></div>
+
+  <button id="copyBtn" type="button" onclick="exportCoords()">📋 Copiar coordenadas para el código</button>
+  <pre id="output"></pre>
+</div>
+
+<div class="legend">
+  <div class="lt">Zonas y tarifas</div>
+  <div class="li"><div class="lc" style="background:#f6d743;border-color:#c9a800"></div>🟡 Amarilla — $5.000</div>
+  <div class="li"><div class="lc" style="background:#4aa1ff;border-color:#1a6fcc"></div>🔵 Azul — $6.000</div>
+  <div class="li"><div class="lc" style="background:#d32f2f;border-color:#8b0000"></div>🔴 Roja — $7.000</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+// ── Datos ─────────────────────────────────────────────────────────────────────
+let CENTER = [4.5400, -75.6800];
+
+const ZONES = [
+  { name:'amarilla', fee:5000, color:'#f6d743', label:'🟡 Zona Amarilla',
+    coords:[[4.5440,-75.6855],[4.5455,-75.6785],[4.5430,-75.6730],[4.5380,-75.6720],[4.5340,-75.6765],[4.5345,-75.6835]] },
+  { name:'azul', fee:6000, color:'#4aa1ff', label:'🔵 Zona Azul',
+    coords:[[4.5480,-75.6910],[4.5490,-75.6685],[4.5360,-75.6625],[4.5260,-75.6710],[4.5265,-75.6885],[4.5335,-75.6955]] },
+  { name:'roja', fee:7000, color:'#d32f2f', label:'🔴 Zona Roja',
+    coords:[[4.5535,-75.6965],[4.5580,-75.6610],[4.5190,-75.6520],[4.5120,-75.6760],[4.5205,-75.7055],[4.5335,-75.7140]] }
+];
+
+// ── Mapa ──────────────────────────────────────────────────────────────────────
+const map = L.map('map',{zoomControl:true}).setView(CENTER,14);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+
+// ── Estado ────────────────────────────────────────────────────────────────────
+let selectedZone = null;
+let addingMode   = false;
+const state = {};  // { zoneName: { polygon, markers, coords } }
+
+// ── Ray-casting ───────────────────────────────────────────────────────────────
+function pip([lat,lng], poly) {
+  let inside = false;
+  for (let i=0,j=poly.length-1; i<poly.length; j=i++) {
+    const [yi,xi]=poly[i],[yj,xj]=poly[j];
+    if (((yi>lat)!==(yj>lat))&&(lng<((xj-xi)*(lat-yi)/(yj-yi)+xi))) inside=!inside;
+  }
+  return inside;
+}
+function detectZone(lat,lng) {
+  return ZONES.find(z => pip([lat,lng], state[z.name].coords)) || null;
+}
+
+// ── Icono de vértice ──────────────────────────────────────────────────────────
+function vertexIcon(color) {
+  return L.divIcon({
+    html:`<div style="width:14px;height:14px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.6);cursor:grab"></div>`,
+    iconSize:[14,14], iconAnchor:[7,7], className:''
+  });
+}
+
+// ── Construir zona ────────────────────────────────────────────────────────────
+function buildZone(zoneDef) {
+  const {name,color,coords} = zoneDef;
+
+  // Limpiar anterior
+  if (state[name]) {
+    state[name].polygon.remove();
+    state[name].markers.forEach(m=>m.remove());
+  }
+
+  const coordsCopy = coords.map(c=>[...c]);
+
+  // Polígono
+  const polygon = L.polygon(coordsCopy, {
+    color, fillColor:color, fillOpacity:0.2, weight:3,
+    dashArray: name==='amarilla'?null:'7,4'
+  }).addTo(map);
+
+  polygon.bindTooltip(`${zoneDef.label} — $${zoneDef.fee.toLocaleString('es-CO')}`, {direction:'center'});
+
+  // Vértices arrastrables
+  const markers = coordsCopy.map((coord, idx) => makeVertex(name, idx, coord, color, coordsCopy, polygon));
+
+  state[name] = { polygon, markers, coords:coordsCopy };
+}
+
+function makeVertex(zoneName, idx, coord, color, coordsRef, polyRef) {
+  const marker = L.marker(coord, {
+    draggable: true,
+    icon: vertexIcon(color),
+    zIndexOffset: 1000
+  }).addTo(map);
+
+  // Arrastrar → actualizar polígono en tiempo real
+  marker.on('drag', e => {
+    const {lat,lng} = e.latlng;
+    coordsRef[idx] = [lat,lng];
+    polyRef.setLatLngs(coordsRef);
+  });
+
+  // Doble clic → eliminar vértice (mínimo 3 puntos)
+  marker.on('dblclick', e => {
+    L.DomEvent.stopPropagation(e);
+    if (coordsRef.length <= 3) return alert('Una zona necesita al menos 3 puntos.');
+    coordsRef.splice(idx, 1);
+    const z = ZONES.find(z=>z.name===zoneName);
+    z.coords = [...coordsRef];
+    buildZone(z);
+    if (selectedZone === zoneName) applySelection(zoneName);
+  });
+
+  return marker;
+}
+
+function buildAll() { ZONES.forEach(buildZone); }
+
+// ── Selección de zona ─────────────────────────────────────────────────────────
+function selectZone(name) {
+  selectedZone  = name;
+  addingMode    = false;
+  updateAddBtn();
+
+  document.querySelectorAll('.zone-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.zone === name)
+  );
+  document.getElementById('addMode').style.display = 'block';
+  applySelection(name);
+
+  const z = ZONES.find(z=>z.name===name);
+  document.getElementById('modeHint').innerHTML =
+    `<b style="color:#fff">Zona seleccionada: ${z.label}</b><br>
+     Arrastra ● para mover puntos.<br>
+     Doble clic ● para borrar un punto.<br>
+     Activa "Agregar puntos" para trazar nuevos límites.`;
+}
+
+function applySelection(name) {
+  Object.entries(state).forEach(([zn,st]) => {
+    const active = zn === name;
+    st.polygon.setStyle({ weight: active ? 4.5 : 2.5, fillOpacity: active ? 0.25 : 0.15 });
+    st.markers.forEach(m => {
+      const z = ZONES.find(z=>z.name===zn);
+      m.setIcon(vertexIcon(active ? z.color : 'rgba(255,255,255,0.4)'));
+      m.setZIndexOffset(active ? 1000 : 0);
+    });
+  });
+}
+
+// ── Modo agregar puntos ───────────────────────────────────────────────────────
+function toggleAddMode() {
+  if (!selectedZone) return;
+  addingMode = !addingMode;
+  updateAddBtn();
+}
+
+function updateAddBtn() {
+  const btn = document.getElementById('addMode');
+  if (addingMode) {
+    btn.classList.add('on');
+    btn.textContent = '🟠 Modo ACTIVO — haz clic en el mapa para agregar punto';
+    map.getContainer().classList.add('map-adding');
+  } else {
+    btn.classList.remove('on');
+    btn.textContent = '＋ Agregar puntos (clic en el mapa)';
+    map.getContainer().classList.remove('map-adding');
+  }
+}
+
+// Distancia punto-segmento (para insertar en el segmento más cercano)
+function segDist(p,a,b) {
+  const dx=b[0]-a[0], dy=b[1]-a[1];
+  if (!dx&&!dy) return Math.hypot(p[0]-a[0],p[1]-a[1]);
+  const t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy)));
+  return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);
+}
+
+// ── Clic en el mapa ───────────────────────────────────────────────────────────
+map.on('click', e => {
+  const {lat,lng} = e.latlng;
+
+  if (addingMode && selectedZone) {
+    // Insertar punto en el segmento más cercano
+    const coords = state[selectedZone].coords;
+    let bestIdx=coords.length, bestDist=Infinity;
+    for (let i=0; i<coords.length; i++) {
+      const d = segDist([lat,lng], coords[i], coords[(i+1)%coords.length]);
+      if (d<bestDist) { bestDist=d; bestIdx=i+1; }
+    }
+    coords.splice(bestIdx, 0, [lat,lng]);
+    const z = ZONES.find(z=>z.name===selectedZone);
+    z.coords = [...coords];
+    buildZone(z);
+    applySelection(selectedZone);
+    return; // No testear zona en modo agregar
+  }
+
+  // Modo normal → testear zona
+  const zone = detectZone(lat,lng);
+  const tr = document.getElementById('testResult');
+  const cr = document.getElementById('testCoord');
+  if (zone) {
+    tr.textContent = `${zone.label} — $${zone.fee.toLocaleString('es-CO')}`;
+    tr.style.color  = zone.color;
+  } else {
+    tr.textContent = '⬛ Fuera de cobertura → Cotizar';
+    tr.style.color  = '#fca5a5';
+  }
+  cr.textContent = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+});
+
+// ── Restaurante (arrastra todo) ───────────────────────────────────────────────
+const restIcon = L.divIcon({
+  html:'<div style="font-size:2rem;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.8));cursor:grab">🍔</div>',
+  iconAnchor:[16,32], className:''
+});
+
+const restMarker = L.marker(CENTER, {draggable:true, icon:restIcon, zIndexOffset:2000}).addTo(map);
+restMarker.bindTooltip('Arrastra para mover el restaurante y todas las zonas', {direction:'top'});
+
+restMarker.on('drag', e => {
+  const {lat,lng} = e.latlng;
+  const dLat = lat - CENTER[0], dLng = lng - CENTER[1];
+  CENTER = [lat,lng];
+  ZONES.forEach(z => {
+    z.coords = z.coords.map(([a,b])=>[a+dLat,b+dLng]);
+    const st = state[z.name];
+    st.coords = [...z.coords];
+    st.polygon.setLatLngs(st.coords);
+    st.markers.forEach((m,i) => m.setLatLng(st.coords[i]));
+  });
+});
+
+// ── Exportar coordenadas ──────────────────────────────────────────────────────
+function exportCoords() {
+  const fmt = arr => arr.map(([a,b])=>`            [${a.toFixed(4)}, ${b.toFixed(4)}]`).join(',\n');
+  let txt = `// ── Pega esto en script-v2.js (reemplaza las constantes existentes) ──\n\n`;
+  txt += `const DELIVERY_CENTER_COORDINATES = [${CENTER[0].toFixed(4)}, ${CENTER[1].toFixed(4)}];\n\n`;
+  txt += `const DELIVERY_GEOFENCE_ZONES = [\n`;
+  ZONES.forEach((z,i) => {
+    const coords = state[z.name].coords;
+    txt += `    {\n        name: '${z.name}',\n        fee: ${z.fee},\n        color: '${z.color}',\n        label: '${z.label}',\n        polygon: [\n${fmt(coords)}\n        ]\n    }${i<ZONES.length-1?',':''}\n`;
+  });
+  txt += `];\n`;
+
+  const out = document.getElementById('output');
+  out.style.display = 'block';
+  out.textContent = txt;
+
+  navigator.clipboard?.writeText(txt).then(() => {
+    document.getElementById('copyBtn').textContent = '✅ ¡Copiado! Pégalo en el chat';
+    setTimeout(() => { document.getElementById('copyBtn').textContent = '📋 Copiar coordenadas para el código'; }, 3500);
+  });
+}
+
+// ── Iniciar ───────────────────────────────────────────────────────────────────
+buildAll();
+</script>
+</body>
+</html>
