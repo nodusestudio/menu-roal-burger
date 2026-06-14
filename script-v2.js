@@ -3201,7 +3201,8 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         recommendedDiscount: orderOptions.recommendedDiscount === true,
         discountRate: Number.isFinite(Number(orderOptions.discountRate)) ? Math.max(0, Math.min(1, Number(orderOptions.discountRate))) : 0,
         allowClosedOrder: orderOptions.allowClosedOrder === true,
-        staticPrice: Number.isFinite(rawStatic) && rawStatic > 0 ? rawStatic : null
+        staticPrice: Number.isFinite(rawStatic) && rawStatic > 0 ? rawStatic : null,
+        promoLabel: String(orderOptions.promoLabel || '').trim()
     };
 }
 
@@ -3219,7 +3220,8 @@ function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo'
         imagePath: normalized.imagePath,
         recommendedDiscount: normalized.recommendedDiscount,
         discountRate: normalized.discountRate,
-        allowClosedOrder: normalized.allowClosedOrder
+        allowClosedOrder: normalized.allowClosedOrder,
+        promoLabel: normalized.promoLabel
     });
 }
 
@@ -3646,6 +3648,10 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
         optionLabel = `${getComboButtonCopy(categoryName).combo} | ${normalized.drink}`;
     } else if (isComboCategory(categoryName)) {
         optionLabel = getComboButtonCopy(categoryName).solo;
+    }
+
+    if (normalized.promoLabel) {
+        optionLabel = `🏷 ${normalized.promoLabel} | ${optionLabel}`;
     }
 
     if (normalized.recommendedDiscount) {
@@ -9102,7 +9108,8 @@ function render2x1Cards() {
             closePromoScreen();
             addItemToCart(nombre, product.categoria || '', {
                 type: 'solo',
-                imagePath: img
+                imagePath: img,
+                promoLabel: `PROMO 2×1 — ${promo.kicker || nombre}`
             }, `btn-2x1-${promo.id}`);
         });
 
