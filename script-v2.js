@@ -228,6 +228,10 @@ const DELIVERY_GEOFENCE_ZONES = [
         ]
     }
 ];
+// Rastrear origen del clic para evitar cierre de modales al arrastrar el mouse fuera
+let _lastMousedownTarget = null;
+document.addEventListener('mousedown', (e) => { _lastMousedownTarget = e.target; }, true);
+
 let checkoutDeliveryZone = null;
 let checkoutDeliveryFeeAmount = 0;
 let checkoutDeliveryLocation = null;
@@ -1082,7 +1086,7 @@ function showOrderSentMessage(message = ORDER_SENT_CONFIRMATION_MESSAGE) {
 
     orderSentConfirmationUI.accept.addEventListener('click', closeOrderSentMessage);
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeOrderSentMessage();
         }
     });
@@ -1881,7 +1885,7 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
     initializeCustomerSavedAddressMap();
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeCustomerRegisterModal();
         }
     });
@@ -2357,7 +2361,7 @@ function openCustomerPasswordResetModal(profile = {}) {
     attachPasswordToggle(customerPasswordResetUI.confirmPin);
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeCustomerPasswordResetModal();
         }
     });
@@ -2474,7 +2478,7 @@ function openCustomerDeleteAccountModal() {
     customerDeleteAccountUI.confirm?.addEventListener('click', submitCustomerDeleteAccountRequest);
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeCustomerDeleteAccountModal();
         }
     });
@@ -2544,7 +2548,7 @@ function openCustomerConsentDocument() {
     });
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeCustomerConsentDocument();
         }
     });
@@ -4463,7 +4467,7 @@ function openPaymentFlowModal(orderData) {
     paymentFlowUI.send.addEventListener('click', submitPaymentFlow);
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closePaymentFlowModal();
         }
     });
@@ -4958,7 +4962,7 @@ function openCheckoutInfoModal() {
     checkoutInfoUI.address?.addEventListener('input', handleCheckoutAddressInput);
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeCheckoutInfoModal();
         }
     });
@@ -5702,7 +5706,7 @@ function initSupportModal() {
     });
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeSupportModal();
         }
     });
@@ -5854,7 +5858,7 @@ function openImageOptionModal(productName, categoryName, buttonId, extraOptions 
     });
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeComboChoiceModal();
         }
     });
@@ -5965,7 +5969,7 @@ function openProductCommentModal(productName, categoryName, buttonId, extraOptio
     });
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeComboChoiceModal();
         }
     });
@@ -6210,7 +6214,7 @@ function openBebidasYAdicionalesOptionsModal(productName, categoryName, buttonId
     renderMainOptions();
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeComboChoiceModal();
         }
     });
@@ -6327,7 +6331,7 @@ function openEntradasOptionsModal(productName, categoryName, buttonId, extraOpti
     });
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeComboChoiceModal();
         }
     });
@@ -6472,7 +6476,7 @@ function openCombosMixtosModal(productName, categoryName, buttonId, extraOptions
     });
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeComboChoiceModal();
         }
     });
@@ -6749,7 +6753,7 @@ function openCombosConPapasModal(productName, categoryName, buttonId, extraOptio
     drinksWrap.appendChild(confirmButton);
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeComboChoiceModal();
         }
     });
@@ -6972,7 +6976,7 @@ function openComboChoiceModal(productName, categoryName, buttonId, extraOptions 
     comboPanel.appendChild(comboConfirm);
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             closeComboChoiceModal();
         }
     });
@@ -8599,7 +8603,7 @@ function abrirModalBebida(nombre, ruta, categoria, options = {}) {
     modal.appendChild(card);
 
     modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
+        if (event.target === modal && _lastMousedownTarget === modal) {
             modal.remove();
         }
     });
