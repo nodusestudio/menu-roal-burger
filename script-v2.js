@@ -3888,7 +3888,11 @@ function updateCartItemQuantity(itemKey, delta) {
         return;
     }
 
-    item.quantity = Number(item.quantity || 0) + delta;
+    let newQty = Number(item.quantity || 0) + delta;
+    if (item.orderOptions?.promo2x1 && newQty > 0 && newQty % 2 !== 0) {
+        newQty = delta > 0 ? newQty + 1 : newQty - 1;
+    }
+    item.quantity = newQty;
     shoppingCart = shoppingCart.filter((entry) => Number(entry.quantity || 0) > 0);
     saveCartState();
     renderCartUI();
@@ -4971,12 +4975,19 @@ function renderCartUI() {
         const qtyRow = document.createElement('div');
         qtyRow.className = 'cart-qty-row';
 
+        const is2x1 = item.orderOptions?.promo2x1 === true;
+        const qtyStep = is2x1 ? 2 : 1;
+
         const minus = document.createElement('button');
         minus.type = 'button';
         minus.className = 'cart-qty-btn';
         minus.textContent = '-';
         minus.addEventListener('click', () => {
-            updateCartItemQuantity(item.itemKey, -1);
+            if (is2x1 && Number(item.quantity || 0) <= 2) {
+                updateCartItemQuantity(item.itemKey, -Number(item.quantity || 2));
+            } else {
+                updateCartItemQuantity(item.itemKey, -qtyStep);
+            }
         });
 
         const quantitySpan = document.createElement('span');
@@ -4988,7 +4999,7 @@ function renderCartUI() {
         plus.className = 'cart-qty-btn';
         plus.textContent = '+';
         plus.addEventListener('click', () => {
-            updateCartItemQuantity(item.itemKey, 1);
+            updateCartItemQuantity(item.itemKey, qtyStep);
         });
 
         qtyRow.appendChild(minus);
