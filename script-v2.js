@@ -232,6 +232,7 @@ let checkoutDeliveryZone = null;
 let checkoutDeliveryFeeAmount = 0;
 let checkoutDeliveryLocation = null;
 let checkoutDeliveryLocationConfirmed = false;
+let checkoutDeliveryFeePending = false;
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
@@ -3908,7 +3909,13 @@ function buildCartCheckoutMessage(customerInfo = {}) {
         paymentMethod === 'efectivo' ? `Pago: Efectivo${cashChangeRequired && cashTenderAmount > 0 ? ` | Paga con: ${formatCurrency(cashTenderAmount)}` : ' | Lleva completo'}` : ''
     ].filter(Boolean);
 
-    return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nSubtotal: ${formatCurrency(getCartTotalAmount())}${discountAmount > 0 ? `\nDescuento: ${formatCurrency(discountAmount)}` : ''}\nDomicilio: ${formatCurrency(deliveryFee)}\nTotal: ${formatCurrency(orderTotal)}`;
+    const domicilioLine = fulfillmentType === 'delivery'
+        ? (customerInfo.deliveryFeePending ? '\nDomicilio: Por confirmar (asesor contactará)' : `\nDomicilio: ${formatCurrency(deliveryFee)}`)
+        : '';
+    const totalDisplay = fulfillmentType === 'delivery' && customerInfo.deliveryFeePending
+        ? `${formatCurrency(getCartTotalAmount())} + domicilio por confirmar`
+        : formatCurrency(orderTotal);
+    return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nSubtotal: ${formatCurrency(getCartTotalAmount())}${discountAmount > 0 ? `\nDescuento: ${formatCurrency(discountAmount)}` : ''}${domicilioLine}\nTotal: ${totalDisplay}`;
 }
 
 function buildCartOrderItems() {
@@ -4154,7 +4161,8 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
 
     const zone = findDeliveryZoneForLocation(checkoutDeliveryLocation);
     checkoutDeliveryZone = zone?.name || null;
-    checkoutDeliveryFeeAmount = zone ? zone.fee : DELIVERY_FEE_AMOUNT;
+    checkoutDeliveryFeeAmount = zone ? zone.fee : 0;
+    checkoutDeliveryFeePending = !zone;
     checkoutInfoUI.deliveryZone = checkoutDeliveryZone;
     checkoutInfoUI.deliveryLatitude = checkoutDeliveryLocation.latitude;
     checkoutInfoUI.deliveryLongitude = checkoutDeliveryLocation.longitude;
@@ -4178,13 +4186,13 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
     }
 
     if (checkoutInfoUI.deliveryFeeValue) {
-        checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(checkoutDeliveryFeeAmount);
+        checkoutInfoUI.deliveryFeeValue.textContent = zone ? formatCurrency(checkoutDeliveryFeeAmount) : 'Por confirmar';
     }
 
     if (checkoutInfoUI.deliveryZoneStatus) {
         checkoutInfoUI.deliveryZoneStatus.textContent = zone
             ? formatDeliveryZoneMessage(zone)
-            : 'Tu ubicación está fuera de nuestra zona de cobertura. Consulta el valor del domicilio comunicándote con nosotros.';
+            : '📋 Tu dirección está fuera de nuestra zona de cobertura. Puedes enviar el pedido y uno de nuestros asesores te confirmará el valor del domicilio.';
         checkoutInfoUI.deliveryZoneStatus.classList.toggle('is-outside-zone', !zone);
     }
 
@@ -4200,9 +4208,8 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
         checkoutInfoUI.confirmLocationButton.hidden = false;
     }
 
-    // Mostrar u ocultar botón para solicitar cotización manual si no hay zona
     if (checkoutInfoUI.requestQuoteButton) {
-        checkoutInfoUI.requestQuoteButton.style.display = zone ? 'none' : 'inline-flex';
+        checkoutInfoUI.requestQuoteButton.style.display = 'none';
     }
 
 }
@@ -4546,7 +4553,8 @@ async function submitCheckoutInfo() {
             deliveryZone: checkoutInfoUI.deliveryZone || null,
             deliveryLatitude: checkoutInfoUI.deliveryLatitude || null,
             deliveryLongitude: checkoutInfoUI.deliveryLongitude || null,
-            deliveryFee: getCheckoutDeliveryFee(fulfillmentType)
+            deliveryFee: getCheckoutDeliveryFee(fulfillmentType),
+            deliveryFeePending: fulfillmentType === 'delivery' ? checkoutDeliveryFeePending : false
         };
 
         if (profile && shouldSaveNewAddress) {
@@ -4583,7 +4591,7 @@ function geocodeAddress(addressText) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`;
 
     if (checkoutInfoUI.deliveryZoneStatus) {
-        checkoutInfoUI.deliveryZoneStatus.textContent = 'Buscando dirección en el mapa...';
+        checkoutInfoUI.deliveryZoneStatus.textContent = 'Cotizando valor de domicilio...';
     }
 
     return fetch(url, {
@@ -4601,7 +4609,7 @@ function geocodeAddress(addressText) {
     .then((data) => {
         if (!Array.isArray(data) || data.length === 0) {
             if (checkoutInfoUI.deliveryZoneStatus) {
-                checkoutInfoUI.deliveryZoneStatus.textContent = 'No se encontró la dirección. Usa el mapa para ubicar el punto de entrega.';
+                checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Por favor arrastra el punto en el mapa hasta tu ubicación y confirma.';
             }
             return null;
         }
@@ -4627,7 +4635,7 @@ function geocodeAddress(addressText) {
     })
     .catch(() => {
         if (checkoutInfoUI.deliveryZoneStatus) {
-            checkoutInfoUI.deliveryZoneStatus.textContent = 'No se pudo buscar la dirección. Usa el mapa para ubicar el punto de entrega.';
+            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Por favor arrastra el punto en el mapa hasta tu ubicación y confirma.';
         }
         return null;
     });
@@ -4649,9 +4657,8 @@ function handleCheckoutAddressInput() {
         return;
     }
 
-    // Mostrar indicador de que está buscando
     if (checkoutInfoUI.deliveryZoneStatus) {
-        checkoutInfoUI.deliveryZoneStatus.textContent = 'Buscando dirección...';
+        checkoutInfoUI.deliveryZoneStatus.textContent = 'Cotizando valor de domicilio...';
     }
 
     geocodeDebounceTimer = setTimeout(() => {
@@ -4667,12 +4674,12 @@ function updateCheckoutInfoModalState() {
     const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
     const requiresAddress = fulfillmentType === 'delivery';
     
-    // Resetear confirmación de ubicación si cambió el tipo de cumplimiento o la dirección
     if (fulfillmentType !== 'delivery') {
         checkoutDeliveryLocationConfirmed = false;
         checkoutDeliveryLocation = null;
         checkoutDeliveryZone = null;
-        checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+        checkoutDeliveryFeeAmount = 0;
+        checkoutDeliveryFeePending = false;
     }
     const savedAddresses = Array.isArray(checkoutInfoUI.savedAddresses) ? checkoutInfoUI.savedAddresses : [];
     const hasSavedAddresses = savedAddresses.length > 0;
@@ -4698,27 +4705,26 @@ function updateCheckoutInfoModalState() {
         // Dirección guardada CON coordenadas: calcular tarifa automáticamente SIN mostrar mapa
         const zone = findDeliveryZoneForLocation({ latitude: selectedSavedAddressEntry.latitude, longitude: selectedSavedAddressEntry.longitude });
         checkoutDeliveryZone = zone?.name || null;
-        checkoutDeliveryFeeAmount = zone ? zone.fee : DELIVERY_FEE_AMOUNT;
+        checkoutDeliveryFeeAmount = zone ? zone.fee : 0;
+        checkoutDeliveryFeePending = !zone;
         checkoutDeliveryLocation = { latitude: selectedSavedAddressEntry.latitude, longitude: selectedSavedAddressEntry.longitude };
-        checkoutDeliveryLocationConfirmed = true;  // Auto-confirmar ubicación guardada
+        checkoutDeliveryLocationConfirmed = true;
         checkoutInfoUI.deliveryZone = checkoutDeliveryZone;
         checkoutInfoUI.deliveryLatitude = selectedSavedAddressEntry.latitude;
         checkoutInfoUI.deliveryLongitude = selectedSavedAddressEntry.longitude;
     }
 
     if (usingSavedAddress && !addressHasLocation) {
-        // Dirección guardada SIN coordenadas: mostrar mapa y mensaje claro
+        // Dirección guardada SIN coordenadas: mostrar mapa y solicitar ubicación
         checkoutDeliveryLocation = null;
         checkoutDeliveryZone = null;
-        checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+        checkoutDeliveryFeeAmount = 0;
+        checkoutDeliveryFeePending = false;
         checkoutInfoUI.deliveryZone = null;
         checkoutInfoUI.deliveryLatitude = null;
         checkoutInfoUI.deliveryLongitude = null;
-        if (checkoutInfoUI.deliveryFeeValue) {
-            checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(checkoutDeliveryFeeAmount);
-        }
         if (checkoutInfoUI.deliveryZoneStatus) {
-            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Para calcular el costo de domicilio necesitamos tu ubicación. Usa el botón "Usar mi ubicación actual" o mueve el punto en el mapa hasta tu dirección y confirma.';
+            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Para calcular el domicilio necesitamos tu ubicación. Usa el botón "Usar mi ubicación actual" o mueve el punto en el mapa hasta tu dirección y confirma.';
         }
     }
 
@@ -4752,15 +4758,12 @@ function updateCheckoutInfoModalState() {
             : 'Ya completaste tus 5 direcciones guardadas. Esta direccion solo se usara en este pedido.';
     }
 
-    if (checkoutInfoUI.deliveryFeeValue) {
-        checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(deliveryFee);
-        if (checkoutInfoUI.requestQuoteButton) {
-            checkoutInfoUI.requestQuoteButton.style.display = 'none';
-        }
+    if (checkoutInfoUI.deliveryFeeRow) {
+        checkoutInfoUI.deliveryFeeRow.hidden = !requiresAddress || !checkoutDeliveryLocationConfirmed;
     }
 
-    if (checkoutInfoUI.deliveryFeeRow) {
-        checkoutInfoUI.deliveryFeeRow.hidden = !requiresAddress;
+    if (checkoutInfoUI.deliveryFeeValue && checkoutDeliveryLocationConfirmed) {
+        checkoutInfoUI.deliveryFeeValue.textContent = checkoutDeliveryFeePending ? 'Por confirmar' : formatCurrency(deliveryFee);
     }
 
     if (checkoutInfoUI.discountRow && checkoutInfoUI.discountValue) {
@@ -4769,7 +4772,10 @@ function updateCheckoutInfoModalState() {
     }
 
     if (checkoutInfoUI.orderTotalValue) {
-        checkoutInfoUI.orderTotalValue.textContent = formatCurrency(orderTotal);
+        const displayTotal = (requiresAddress && !checkoutDeliveryLocationConfirmed)
+            ? getCartTotalAmount()
+            : (requiresAddress && checkoutDeliveryFeePending ? getCartTotalAmount() : orderTotal);
+        checkoutInfoUI.orderTotalValue.textContent = formatCurrency(displayTotal);
     }
 }
 
@@ -4790,9 +4796,10 @@ function openCheckoutInfoModal() {
     closeCheckoutInfoModal();
 
     checkoutDeliveryZone = null;
-    checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+    checkoutDeliveryFeeAmount = 0;
     checkoutDeliveryLocation = null;
     checkoutDeliveryLocationConfirmed = false;
+    checkoutDeliveryFeePending = false;
 
     const profile = activeCustomerProfile;
     const savedAddresses = profile ? getCustomerSavedAddresses(profile) : [];
@@ -4827,9 +4834,8 @@ function openCheckoutInfoModal() {
             <label class="support-field">
                 <span>Como deseas recibir tu pedido</span>
                 <select id="checkoutFulfillmentType">
-                    <option value="" selected disabled>Escoge aca como recibir tu pedido</option>
-                    <option value="pickup">Recoger en el restaurante</option>
                     <option value="delivery">Domicilio</option>
+                    <option value="pickup">Recoger en el restaurante</option>
                 </select>
             </label>
             ${profile && savedAddresses.length ? `
@@ -4960,10 +4966,11 @@ function openCheckoutInfoModal() {
         checkoutInfoUI.address.value = profile.address || '';
     }
     if (checkoutInfoUI.fulfillmentType) {
-        checkoutInfoUI.fulfillmentType.value = 'pickup';
+        checkoutInfoUI.fulfillmentType.value = 'delivery';
     }
     updateCheckoutInfoModalState();
-    (checkoutInfoUI.fulfillmentType || checkoutInfoUI.name)?.focus();
+    initializeCheckoutDeliveryMap();
+    (checkoutInfoUI.address || checkoutInfoUI.name)?.focus();
 }
 
 function getProductToastCopy(categoryName, productName) {
