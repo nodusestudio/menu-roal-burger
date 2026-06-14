@@ -13503,6 +13503,10 @@ function initCajaAperturaSync() {
 let _cajaDiariaAutoOpened = false;
 
 function _navigateToCajaDiaria() {
+    // Cerrar POS si está abierto
+    if (internalOrderModal?.classList.contains('is-open')) {
+        closeInternalOrderModal();
+    }
     const accordionBtn = document.querySelector('.admin-accordion-trigger[data-accordion-target="informes"]');
     if (accordionBtn) {
         const panel = document.getElementById('informes');
@@ -13511,10 +13515,8 @@ function _navigateToCajaDiaria() {
         }
     }
     setTimeout(() => {
-        // Abrir el tab "Cajas" dentro de Informes
         const cajasTab = document.querySelector('[data-section-tab="cajas"][data-section-scope="informes"]');
         cajasTab?.click();
-        // Asegurar que el sub-tab "Caja Diaria" esté activo
         setTimeout(() => {
             const subTab = document.querySelector('[data-cajas-tab="caja-diaria"]');
             if (subTab && !subTab.classList.contains('active')) subTab.click();
