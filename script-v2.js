@@ -4561,8 +4561,7 @@ function updateCheckoutInfoModalState() {
             checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(checkoutDeliveryFeeAmount);
         }
         if (checkoutInfoUI.deliveryZoneStatus) {
-            const savedAddressText = getCustomerSavedAddressLabel(selectedSavedAddressEntry);
-            checkoutInfoUI.deliveryZoneStatus.textContent = `Esta dirección no tiene una ubicación GPS asociada. Debes asignarle una ubicación para calcular el costo de domicilio. Usa el mapa o el botón "📍 Usar mi ubicación actual".`;
+            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Para calcular el costo de domicilio necesitamos tu ubicación. Usa el botón "Usar mi ubicación actual" o mueve el punto en el mapa hasta tu dirección y confirma.';
         }
     }
 
@@ -4614,6 +4613,19 @@ function updateCheckoutInfoModalState() {
 
     if (checkoutInfoUI.orderTotalValue) {
         checkoutInfoUI.orderTotalValue.textContent = formatCurrency(orderTotal);
+    }
+}
+
+async function _persistSavedAddressCoords(profile, savedAddresses) {
+    try {
+        const db = getPublicFirebaseDb();
+        const phoneDigits = normalizePhoneDigits(String(profile.customerPhone || ''));
+        if (!phoneDigits || phoneDigits.length < 10) return;
+        await db.collection(CLIENTS_COLLECTION).doc(`phone_${phoneDigits}`).update({ savedAddresses });
+        // Reflejar en el perfil local también
+        setActiveCustomerProfile({ ...profile, savedAddresses });
+    } catch (_e) {
+        // Silent — coords ya quedaron en localStorage
     }
 }
 
@@ -4768,8 +4780,12 @@ function openCheckoutInfoModal() {
         initializeCheckoutDeliveryMap();
         requestCheckoutGeolocation();
     });
-    checkoutInfoUI.confirmLocationButton?.addEventListener('click', () => {
+    checkoutInfoUI.confirmLocationButton?.addEventListener('click', async () => {
         checkoutDeliveryLocationConfirmed = true;
+        // Guardar coordenadas en Firestore si la dirección guardada no las tenía
+        if (activeCustomerProfile && checkoutDeliveryLocation && Array.isArray(checkoutInfoUI.savedAddresses)) {
+            await _persistSavedAddressCoords(activeCustomerProfile, checkoutInfoUI.savedAddresses);
+        }
         updateCheckoutInfoModalState();
     });
     checkoutInfoUI.requestQuoteButton?.addEventListener('click', requestDeliveryQuote);
