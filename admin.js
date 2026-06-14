@@ -6399,6 +6399,16 @@ function buildThermalTicketMarkup(order, options = {}) {
         `;
     }).join('');
 
+    const _ticketPromoTags = _getOrderPromoTags(order);
+    const _ticketPromoBanner = _ticketPromoTags.length ? `
+        <div class="ticket-promo-banner">
+            <span class="ticket-promo-icon">🏷</span>
+            <div class="ticket-promo-info">
+                <div class="ticket-promo-title">PROMOCIÓN ACTIVA</div>
+                ${_ticketPromoTags.map(t => `<div class="ticket-promo-label">${escapeHtml(t)}</div>`).join('')}
+            </div>
+        </div>` : '';
+
     return `
         <div class="ticket-paper-wrap">
             <article class="ticket-paper" data-ticket-print-root="true">
@@ -6414,6 +6424,8 @@ function buildThermalTicketMarkup(order, options = {}) {
                         <span>${elapsed}</span>
                     </div>
                 </div>
+
+                ${_ticketPromoBanner}
 
                 <section class="ticket-section">
                     <div class="ticket-section-title">Cliente</div>
@@ -6565,6 +6577,17 @@ function renderKanbanEmptyState(container) {
     container.innerHTML = '<div class="kanban-empty">Sin pedidos</div>';
 }
 
+function _getOrderPromoTags(order) {
+    const tags = new Set();
+    (order.items || []).forEach((item) => {
+        const pl = String(item.orderOptions?.promoLabel || '').trim();
+        if (pl) { tags.add(pl); return; }
+        const m = String(item.optionLabel || '').match(/PROMO\s+2[×x]1[^|]*/i);
+        if (m) tags.add(m[0].replace(/^🏷\s*/, '').trim());
+    });
+    return [...tags];
+}
+
 function createOrderCard(order) {
     const card = document.createElement('article');
     card.className = 'kanban-order-card';
@@ -6709,16 +6732,26 @@ function createOrderCard(order) {
         </div>`;
     }
 
+    const promoTags = _getOrderPromoTags(order);
+    const promoHeaderBadge = promoTags.length
+        ? `<span class="koc-promo-2x1-badge">🏷 2×1</span>`
+        : '';
+    const promoItemsRow = promoTags.length
+        ? `<div class="koc-promo-row">${promoTags.map(t => `<span class="koc-promo-item-label">${escapeHtml(t)}</span>`).join('')}</div>`
+        : '';
+
     card.innerHTML = `
         <div class="koc-header">
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
             <span class="koc-type-badge ${typeClass}">${escapeHtml(getOrderTypeLabel(order))}</span>
+            ${promoHeaderBadge}
             <span class="koc-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
         </div>
         <div class="koc-body">
             <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
             <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
         </div>
+        ${promoItemsRow}
         ${statusRow}
         ${actionsMarkup}
     `;
