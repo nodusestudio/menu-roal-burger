@@ -15079,9 +15079,9 @@ _ccRefreshTotals();
 
 /* ── Aliases inteligentes de columnas ──────────────────────────────────── */
 const ICM_FIELD_ALIASES = {
-    customerName:  ['nombre','name','cliente','razon social','razón social','nombres','full name','fullname','customer','company','first name','firstname','primer nombre'],
+    customerName:  ['nombre del cliente','nombre cliente','name','nombre','razon social','razón social','nombres','full name','fullname','customer name','first name','firstname','primer nombre'],
     lastName:      ['apellido','apellidos','last name','lastname','surname','segundo nombre'],
-    customerPhone: ['telefono','teléfono','phone','cel','celular','movil','móvil','tel','whatsapp','contacto','fono','phone number','numero','movil','celular principal'],
+    customerPhone: ['numero de telefono','número de teléfono','telefono','teléfono','phone number','phone','cel','celular','movil','móvil','tel','whatsapp','contacto','fono','numero','celular principal'],
     email:         ['email','correo','mail','e-mail','correo electronico','correo electrónico'],
     address:       ['direccion','dirección','address','domicilio','dir','ubicacion','ubicación','calle'],
     notes:         ['notas','notes','comentarios','observaciones','nota','memo','obs','etiquetas','tags'],
