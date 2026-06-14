@@ -29,48 +29,45 @@ let ORDERING_SCHEDULE = {
 const ORDER_SENT_CONFIRMATION_MESSAGE = 'Tu pedido ha sido enviado exitosamente al restaurante. En un momento recibiras la confirmacion con tiempo aproximado de entrega.';
 const TRANSFER_PAYMENT_CONFIRMATION_MESSAGE = 'En un momento uno de nuestros asesores se comunicara contigo por WhatsApp para pasarte la informacion de la cuenta.';
 const CASH_PAYMENT_CONFIRMATION_MESSAGE = 'Tu pedido ya fue enviado al restaurante, manejamos un tiempo de entrega de 50 min aproximadamente, uno de nuestros asesores se comunicara contigo a la brevedad posible para confirmar el pedido.';
-const DELIVERY_CENTER_COORDINATES = [4.5400, -75.6800];
+const DELIVERY_CENTER_COORDINATES = [4.5415, -75.6829];
 const DELIVERY_GEOFENCE_ZONES = [
     {
         name: 'amarilla',
         fee: 5000,
         color: '#f6d743',
-        label: 'Zona amarilla',
+        label: '🟡 Zona Amarilla',
         polygon: [
-            [4.5440, -75.6855],
-            [4.5455, -75.6785],
-            [4.5430, -75.6730],
-            [4.5380, -75.6720],
-            [4.5340, -75.6765],
-            [4.5345, -75.6835]
+            [4.5463, -75.6872],
+            [4.5417, -75.6791],
+            [4.5402, -75.6809],
+            [4.5426, -75.6881]
         ]
     },
     {
         name: 'azul',
         fee: 6000,
         color: '#4aa1ff',
-        label: 'Zona azul',
+        label: '🔵 Zona Azul',
         polygon: [
-            [4.5480, -75.6910],
-            [4.5490, -75.6685],
-            [4.5360, -75.6625],
-            [4.5260, -75.6710],
-            [4.5265, -75.6885],
-            [4.5335, -75.6955]
+            [4.5434, -75.7102],
+            [4.5510, -75.6734],
+            [4.5472, -75.6579],
+            [4.5126, -75.6876],
+            [4.5184, -75.7008]
         ]
     },
     {
         name: 'roja',
         fee: 7000,
         color: '#d32f2f',
-        label: 'Zona roja',
+        label: '🔴 Zona Roja',
         polygon: [
-            [4.5535, -75.6965],
-            [4.5580, -75.6610],
-            [4.5190, -75.6520],
-            [4.5120, -75.6760],
-            [4.5205, -75.7055],
-            [4.5335, -75.7140]
+            [4.5550, -75.6994],
+            [4.5595, -75.6639],
+            [4.5205, -75.6549],
+            [4.5135, -75.6789],
+            [4.5220, -75.7084],
+            [4.5350, -75.7169]
         ]
     }
 ];
