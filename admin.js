@@ -6756,6 +6756,14 @@ function createOrderCard(order) {
         ? `<div class="koc-promo-row">${promoTags.map(t => `<span class="koc-promo-item-label">${escapeHtml(t)}</span>`).join('')}</div>`
         : '';
 
+    const isAnuladoActive = order.anulado === true || order.voided === true;
+    const anuladoStamp = isAnuladoActive ? '<div class="koc-anulado-stamp">ANULADO</div>' : '';
+
+    const deliveryAddress = String(order.deliveryAddress || order.customerAddress || '').trim();
+    const deliveryRow = isDeliveryOrder && deliveryAddress
+        ? `<div class="koc-delivery-address"><span class="koc-delivery-icon">📍</span>${escapeHtml(deliveryAddress)}</div>`
+        : '';
+
     card.innerHTML = `
         <div class="koc-header">
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
@@ -6767,9 +6775,11 @@ function createOrderCard(order) {
             <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
             <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
         </div>
+        ${deliveryRow}
         ${promoItemsRow}
         ${statusRow}
         ${actionsMarkup}
+        ${anuladoStamp}
     `;
 
     return card;
