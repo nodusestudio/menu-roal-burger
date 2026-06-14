@@ -4934,6 +4934,15 @@ function renderCartUI() {
         commentBadge.addEventListener('click', () => openCartItemEditor(item.itemKey));
 
         info.appendChild(title);
+
+        const promoLabel = String(item.orderOptions?.promoLabel || '').trim();
+        if (promoLabel) {
+            const promoBadge = document.createElement('span');
+            promoBadge.className = 'cart-item-promo-badge';
+            promoBadge.textContent = `🏷 ${promoLabel}`;
+            info.appendChild(promoBadge);
+        }
+
         if (normalizedType !== 'solo') info.appendChild(option);
         info.appendChild(price);
         info.appendChild(commentBadge);

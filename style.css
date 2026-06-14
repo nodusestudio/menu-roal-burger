@@ -3336,6 +3336,20 @@ body.has-guest-register-banner #ayudaScreen {
     line-height: 1.4;
 }
 
+.cart-item-promo-badge {
+    display: inline-block;
+    margin: 3px 0 2px;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    background: rgba(230, 160, 0, 0.14);
+    color: #b36a00;
+    border: 1px solid rgba(230, 160, 0, 0.38);
+}
+
 .cart-item-price {
     font-size: 0.82rem;
     line-height: 1.4;
