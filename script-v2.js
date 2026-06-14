@@ -3202,7 +3202,8 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         discountRate: Number.isFinite(Number(orderOptions.discountRate)) ? Math.max(0, Math.min(1, Number(orderOptions.discountRate))) : 0,
         allowClosedOrder: orderOptions.allowClosedOrder === true,
         staticPrice: Number.isFinite(rawStatic) && rawStatic > 0 ? rawStatic : null,
-        promoLabel: String(orderOptions.promoLabel || '').trim()
+        promoLabel: String(orderOptions.promoLabel || '').trim(),
+        promo2x1: orderOptions.promo2x1 === true
     };
 }
 
@@ -3546,10 +3547,12 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
 function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 'solo' }) {
     const normalizedOptions = normalizeOrderOptions(orderOptions);
     const applyDiscount = (price) => {
+        if (normalizedOptions.promo2x1) {
+            return Math.round(Number(price || 0) * 0.5);
+        }
         if (!normalizedOptions.recommendedDiscount) {
             return price;
         }
-
         const discountRate = normalizedOptions.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE;
         return Math.round(Number(price || 0) * (1 - discountRate));
     };
@@ -3607,10 +3610,15 @@ function getCartItemUnitPrice(item) {
 
 function getCartItemOriginalUnitPrice(item) {
     const normalizedOptions = normalizeOrderOptions(item?.orderOptions);
+    if (normalizedOptions.promo2x1) {
+        return resolveCartUnitPrice(item?.productName, item?.categoryName, {
+            ...normalizedOptions,
+            promo2x1: false
+        });
+    }
     if (!normalizedOptions.recommendedDiscount) {
         return getCartItemUnitPrice(item);
     }
-
     return resolveCartUnitPrice(item?.productName, item?.categoryName, {
         ...normalizedOptions,
         recommendedDiscount: false,
@@ -4793,7 +4801,7 @@ function showCartAddedToast(categoryName, productName) {
     }, 2000);
 }
 
-function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId) {
+function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId, initialQuantity = 1) {
     // Interceptar para mostrar upgrades si corresponde
     const upgradeExtra = Number(orderOptions?.upgradeExtra || 0);
     const upgradeHandled = !!(orderOptions?.upgradeHandled);
@@ -4837,8 +4845,9 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
     const itemKey = getCartItemKey(safeProductName, safeCategoryName, normalizedOptions);
     const existingItem = shoppingCart.find((item) => item.itemKey === itemKey);
 
+    const qty = Math.max(1, Number(initialQuantity) || 1);
     if (existingItem) {
-        existingItem.quantity = Number(existingItem.quantity || 0) + 1;
+        existingItem.quantity = Number(existingItem.quantity || 0) + qty;
         existingItem.unitPrice = unitPrice;
     } else {
         shoppingCart.push({
@@ -4847,7 +4856,7 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
             categoryName: safeCategoryName,
             orderOptions: normalizedOptions,
             unitPrice,
-            quantity: 1
+            quantity: qty
         });
     }
 
@@ -9118,8 +9127,9 @@ function render2x1Cards() {
             addItemToCart(nombre, product.categoria || '', {
                 type: 'solo',
                 imagePath: img,
-                promoLabel: `PROMO 2×1 — ${promo.kicker || nombre}`
-            }, `btn-2x1-${promo.id}`);
+                promoLabel: `PROMO 2×1 — ${promo.kicker || nombre}`,
+                promo2x1: true
+            }, `btn-2x1-${promo.id}`, 2);
         });
 
         container.appendChild(section);
