@@ -6746,6 +6746,7 @@ function renderOrders() {
         const activeOrders    = column.items.filter((o) => o.status !== 'entregado');
         const processedOrders = column.items.filter((o) => {
             if (o.status !== 'entregado') return false;
+            if (o.voided || o.anulado) return false; // anulados solo visibles en Informes/Tickets
             if (!cajaAperturaAt) return true;
             const ts = o.deliveredAt || o.paidAt;
             const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
@@ -6808,12 +6809,34 @@ function renderOrders() {
 }
 
 function renderSalesDayBanner() {
-    const deliveredOrders = getDeliveredOrdersForCurrentDay();
-    const validOrders = deliveredOrders.filter((o) => !o.anulado && !o.voided);
-    const domicilioTotal = validOrders
-        .filter((o) => o.orderType === 'domicilio' || o.fulfillmentType === 'delivery')
-        .reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
-    const grandTotal = validOrders
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Todos los pedidos cobrados en la jornada (pagados, sin importar si ya fueron entregados)
+    const paidOrders = ordersState.filter((o) => {
+        if (o.voided || o.anulado) return false;
+        if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+        const paidMs = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt || 0);
+        if (!paidMs) return false;
+        if (cajaAperturaAt) return paidMs >= cajaAperturaAt;
+        return new Date(paidMs).toISOString().split('T')[0] === todayStr;
+    });
+
+    // Efectivo vs digital
+    const efectivoTotal = paidOrders
+        .filter((o) => {
+            if (o.paymentMethod === 'split') return false; // split se cuenta aparte
+            return o.paymentMethod === 'efectivo';
+        })
+        .reduce((sum, o) => sum + Number(getOrderDisplayTotal(o) || 0), 0);
+
+    const digitalTotal = paidOrders
+        .filter((o) => {
+            if (o.paymentMethod === 'split') return true;
+            return o.paymentMethod && o.paymentMethod !== 'efectivo' && o.paymentMethod !== 'pendiente';
+        })
+        .reduce((sum, o) => sum + Number(getOrderDisplayTotal(o) || 0), 0);
+
+    const grandTotal = paidOrders
         .reduce((sum, o) => sum + Number(getOrderDisplayTotal(o) || 0), 0);
 
     if (salesDayStatusLabel) {
@@ -6827,17 +6850,30 @@ function renderSalesDayBanner() {
     }
 
     if (salesDayDeliveredTotal) {
-        salesDayDeliveredTotal.textContent = `🛵 ${formatMoney(domicilioTotal)}`;
+        salesDayDeliveredTotal.textContent = `💵 ${formatMoney(efectivoTotal)}`;
     }
 
     if (salesDayGrandTotal) {
-        salesDayGrandTotal.textContent = `📊 ${formatMoney(grandTotal)}`;
+        salesDayGrandTotal.textContent = `💳 ${formatMoney(digitalTotal)}`;
     }
 
+    // Chip de total general — se actualiza si existe o se crea dinámicamente
+    let totalChip = document.getElementById('salesDayTotalChip');
+    if (!totalChip) {
+        totalChip = document.createElement('span');
+        totalChip.id = 'salesDayTotalChip';
+        totalChip.className = 'sales-day-chip sales-day-chip--total';
+        salesDayGrandTotal?.insertAdjacentElement('afterend', totalChip);
+    }
+    totalChip.textContent = `💰 ${formatMoney(grandTotal)}`;
+
+    // El botón de cierre sigue basado en pedidos entregados (no en pagados)
+    const deliveredOrders = getDeliveredOrdersForCurrentDay();
+    const validDelivered  = deliveredOrders.filter((o) => !o.anulado && !o.voided);
     if (closeSalesDayBtn) {
-        closeSalesDayBtn.disabled = validOrders.length === 0;
-        closeSalesDayBtn.textContent = validOrders.length
-            ? `Cierre del dia (${validOrders.length})`
+        closeSalesDayBtn.disabled = validDelivered.length === 0;
+        closeSalesDayBtn.textContent = validDelivered.length
+            ? `Cierre del dia (${validDelivered.length})`
             : 'Cierre del dia';
     }
 }
