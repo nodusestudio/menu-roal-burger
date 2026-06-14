@@ -2753,9 +2753,11 @@ function openCustomerAuthModal() {
     screen.classList.add('is-open');
 
     const modal = contentEl;
-    const _initial = escapeHtml((profile?.customerName || 'R').trim().slice(0, 1).toUpperCase());
-    const _name    = escapeHtml(profile?.customerName || 'Cliente');
+    const _rawName  = String(profile?.customerName || '').trim();
+    const _nameIsPhone = /^\d+$/.test(_rawName);
+    const _name    = escapeHtml(_nameIsPhone || !_rawName ? 'Mi perfil' : _rawName);
     const _phone   = escapeHtml(profile?.customerPhone || '');
+    const _avatarIcon = `<svg viewBox="0 0 24 24" fill="currentColor" width="36" height="36" aria-hidden="true"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>`;
     const _chevron = `<svg class="cp-menu-chevron" viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>`;
     const _back    = `<button type="button" class="cp-panel-back" data-profile-tab="info" aria-label="Volver a Cuenta">
         <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
@@ -2777,7 +2779,7 @@ function openCustomerAuthModal() {
                 <div class="customer-profile-panel" data-profile-panel="info">
                     <!-- Hero -->
                     <div class="cp-hero liquid-glass">
-                        <div class="cp-avatar">${_initial}</div>
+                        <div class="cp-avatar">${_avatarIcon}</div>
                         <div class="cp-hero-info">
                             <span class="cp-hero-name">${_name}</span>
                             ${_phone ? `<span class="cp-hero-phone">${_phone}</span>` : ''}
