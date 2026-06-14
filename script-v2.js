@@ -3799,10 +3799,10 @@ async function createOrderFromCart(customerInfo = {}) {
     let deliveryFeeExpected = deliveryFee;
     if (fulfillmentType === 'delivery' && Number.isFinite(Number(deliveryLatitude)) && Number.isFinite(Number(deliveryLongitude))) {
         const expectedZone = findDeliveryZoneForLocation({ latitude: deliveryLatitude, longitude: deliveryLongitude });
-        deliveryFeeExpected = DELIVERY_FEE_AMOUNT;
+        deliveryFeeExpected = expectedZone ? expectedZone.fee : DELIVERY_FEE_AMOUNT;
         if (Number(deliveryFee) !== Number(deliveryFeeExpected)) {
-            // Sobre-escribir la tarifa con la esperada para evitar manipulacion cliente
-            console.warn('Delivery fee mismatch: overriding client value.', { client: deliveryFee, expected: deliveryFeeExpected });
+            // Sobre-escribir la tarifa con la esperada (calculada según zona GPS) para evitar manipulacion cliente
+            console.warn('Delivery fee mismatch: overriding client value.', { client: deliveryFee, expected: deliveryFeeExpected, zone: expectedZone?.name || 'fuera de zona' });
             deliveryFee = Number(deliveryFeeExpected);
         }
         deliveryFeeVerified = true;
@@ -3983,7 +3983,9 @@ function formatDeliveryZoneMessage(zone) {
     if (!zone) {
         return 'Sin tarifa calculada. Usa tu ubicación para definir el costo de domicilio.';
     }
-    return `${zone.label} - ${formatCurrency(zone.fee)}`;
+    const icons = { amarilla: '🟡', azul: '🔵', roja: '🔴' };
+    const icon = icons[zone.name] || '📍';
+    return `${icon} ${zone.label} — Domicilio: ${formatCurrency(zone.fee)}`;
 }
 
 function setCheckoutDeliveryLocation(latitude, longitude) {
@@ -3998,7 +4000,7 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
 
     const zone = findDeliveryZoneForLocation(checkoutDeliveryLocation);
     checkoutDeliveryZone = zone?.name || null;
-    checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+    checkoutDeliveryFeeAmount = zone ? zone.fee : DELIVERY_FEE_AMOUNT;
     checkoutInfoUI.deliveryZone = checkoutDeliveryZone;
     checkoutInfoUI.deliveryLatitude = checkoutDeliveryLocation.latitude;
     checkoutInfoUI.deliveryLongitude = checkoutDeliveryLocation.longitude;
@@ -4028,7 +4030,7 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
     if (checkoutInfoUI.deliveryZoneStatus) {
         checkoutInfoUI.deliveryZoneStatus.textContent = zone
             ? formatDeliveryZoneMessage(zone)
-            : 'No estamos en la zona de reparto automática. Puedes solicitar una cotización por WhatsApp o ubicar el punto dentro de la zona.';
+            : 'Tu ubicación está fuera de nuestra zona de cobertura. Comunícate con nosotros para darte el valor del domicilio.';
         checkoutInfoUI.deliveryZoneStatus.classList.toggle('is-outside-zone', !zone);
     }
 
@@ -4542,7 +4544,7 @@ function updateCheckoutInfoModalState() {
         // Dirección guardada CON coordenadas: calcular tarifa automáticamente SIN mostrar mapa
         const zone = findDeliveryZoneForLocation({ latitude: selectedSavedAddressEntry.latitude, longitude: selectedSavedAddressEntry.longitude });
         checkoutDeliveryZone = zone?.name || null;
-        checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
+        checkoutDeliveryFeeAmount = zone ? zone.fee : DELIVERY_FEE_AMOUNT;
         checkoutDeliveryLocation = { latitude: selectedSavedAddressEntry.latitude, longitude: selectedSavedAddressEntry.longitude };
         checkoutDeliveryLocationConfirmed = true;  // Auto-confirmar ubicación guardada
         checkoutInfoUI.deliveryZone = checkoutDeliveryZone;
