@@ -3080,6 +3080,9 @@ function openBebidaModal(bebida = null) {
         ? bebida.presentaciones.map((p) => ({ ...p, sabores: [...(p.sabores || [])] }))
         : [{ id: `p${Date.now()}`, nombre: '', precio: 0, sabores: [] }];
 
+    let _pendingImageFile = null;
+    let _resolvedImageUrl = bebida?.image_url || '';
+
     const overlay = document.createElement('div');
     overlay.className = 'combo-modal-overlay';
     overlay.style.zIndex = '8500';
@@ -3113,17 +3116,70 @@ function openBebidaModal(bebida = null) {
     body.appendChild(marcaLabel);
     body.appendChild(marcaInput);
 
+    // ── Imagen: botón de carga (opcional) ──
     const imgLabel = document.createElement('div');
     imgLabel.className = 'combo-modal-section-label';
     imgLabel.style.marginTop = '10px';
-    imgLabel.textContent = 'Imagen (URL o ruta)';
-    const imgInput = document.createElement('input');
-    imgInput.type = 'text';
-    imgInput.className = 'bebida-form-input';
-    imgInput.placeholder = 'https://... o ./imagen.png';
-    imgInput.value = bebida?.image_url || '';
+    imgLabel.textContent = 'Imagen (opcional)';
     body.appendChild(imgLabel);
-    body.appendChild(imgInput);
+
+    const imgRow = document.createElement('div');
+    imgRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:4px;';
+
+    const imgPreview = document.createElement('img');
+    imgPreview.style.cssText = 'width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,0.12);display:' + (_resolvedImageUrl ? 'block' : 'none') + ';flex-shrink:0;';
+    imgPreview.src = _resolvedImageUrl || '';
+    imgPreview.alt = 'preview';
+    imgPreview.addEventListener('error', () => { imgPreview.style.display = 'none'; });
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.style.display = 'none';
+
+    const uploadBtn = document.createElement('button');
+    uploadBtn.type = 'button';
+    uploadBtn.className = 'ghost-button';
+    uploadBtn.style.cssText = 'font-size:0.8rem;padding:6px 12px;';
+    uploadBtn.textContent = _resolvedImageUrl ? '📷 Cambiar imagen' : '📷 Cargar imagen';
+
+    const removeImgBtn = document.createElement('button');
+    removeImgBtn.type = 'button';
+    removeImgBtn.className = 'ghost-button';
+    removeImgBtn.style.cssText = 'font-size:0.78rem;padding:4px 8px;color:rgba(255,100,100,0.85);display:' + (_resolvedImageUrl ? 'inline-flex' : 'none') + ';';
+    removeImgBtn.textContent = '✕ Quitar';
+
+    fileInput.addEventListener('change', () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+        _pendingImageFile = file;
+        const reader = new FileReader();
+        reader.onload = () => {
+            imgPreview.src = String(reader.result);
+            imgPreview.style.display = 'block';
+            uploadBtn.textContent = '📷 Cambiar imagen';
+            removeImgBtn.style.display = 'inline-flex';
+        };
+        reader.readAsDataURL(file);
+    });
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+
+    removeImgBtn.addEventListener('click', () => {
+        _pendingImageFile = null;
+        _resolvedImageUrl = '';
+        imgPreview.src = '';
+        imgPreview.style.display = 'none';
+        uploadBtn.textContent = '📷 Cargar imagen';
+        removeImgBtn.style.display = 'none';
+        fileInput.value = '';
+    });
+
+    imgRow.appendChild(imgPreview);
+    imgRow.appendChild(uploadBtn);
+    imgRow.appendChild(removeImgBtn);
+    imgRow.appendChild(fileInput);
+    body.appendChild(imgRow);
 
     const visRow = document.createElement('div');
     visRow.className = 'bebida-form-vis-row';
@@ -3178,9 +3234,16 @@ function openBebidaModal(bebida = null) {
             const nInput = document.createElement('input');
             nInput.type = 'text';
             nInput.className = 'bebida-form-input bebida-pres-nombre';
-            nInput.placeholder = 'Ej: 400ml, Litro...';
+            nInput.placeholder = 'Ej: 250, 400ml, Litro...';
             nInput.value = pres.nombre;
             nInput.addEventListener('input', () => { presentaciones[idx].nombre = nInput.value.trim(); });
+            nInput.addEventListener('blur', () => {
+                const v = nInput.value.trim();
+                if (/^\d+(\.\d+)?$/.test(v)) {
+                    nInput.value = v + 'ml';
+                    presentaciones[idx].nombre = nInput.value;
+                }
+            });
 
             const pInput = document.createElement('input');
             pInput.type = 'number';
@@ -3250,9 +3313,22 @@ function openBebidaModal(bebida = null) {
         saveBtn.disabled = true;
         saveBtn.textContent = isEdit ? 'Guardando...' : 'Creando...';
 
+        let finalImageUrl = _resolvedImageUrl;
+        if (_pendingImageFile) {
+            try {
+                showModalFeedback(feedback, 'Subiendo imagen...', 'info');
+                finalImageUrl = await resolveProductImageUpload(_pendingImageFile, marca);
+            } catch (imgErr) {
+                showModalFeedback(feedback, `Error al subir imagen: ${imgErr.message || 'intenta de nuevo'}`, 'error');
+                saveBtn.disabled = false;
+                saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear bebida';
+                return;
+            }
+        }
+
         const payload = {
             marca,
-            image_url: imgInput.value.trim(),
+            image_url: finalImageUrl,
             presentaciones: validPres,
             mostrar_categoria: catCb.checked,
             mostrar_acompanante: acompCb.checked,
