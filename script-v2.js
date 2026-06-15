@@ -719,7 +719,7 @@ function renderCustomerOrdersPanel() {
                 </div>
                 <p>${escapeHtml(statusMeta.detail)}</p>
                 <div class="customer-live-order-meta">
-                    <span>${escapeHtml(currentOrder.fulfillmentType === 'pickup' ? 'Recoger en local' : 'Domicilio')}</span>
+                    <span>${escapeHtml(currentOrder.fulfillmentType === 'pickup' ? 'Recoger en local' : currentOrder.fulfillmentType === 'mesa' ? 'Comer en el local' : 'Domicilio')}</span>
                     <span>${escapeHtml(formatCurrency(Number(currentOrder.total || 0)))}</span>
                     <span>${escapeHtml(`${Number(currentOrder.totalItems || currentOrder.itemCount || 0)} productos`)}</span>
                 </div>
@@ -748,7 +748,7 @@ function renderCustomerOrdersPanel() {
                     </div>
                     <p>${escapeHtml(formatProfileDateTime(order.createdAt || order.updatedAt))}</p>
                     <div class="customer-order-history-meta">
-                        <span>${escapeHtml(order.fulfillmentType === 'pickup' ? 'Recoger en local' : 'Domicilio')}</span>
+                        <span>${escapeHtml(order.fulfillmentType === 'pickup' ? 'Recoger en local' : order.fulfillmentType === 'mesa' ? 'Comer en el local' : 'Domicilio')}</span>
                         <span>${escapeHtml(formatCurrency(Number(order.total || 0)))}</span>
                     </div>
                     <div class="customer-order-history-items">
@@ -910,12 +910,9 @@ async function submitCustomerDirectMessage() {
 
 function getCheckoutFulfillmentType(value) {
     const normalized = String(value || '').trim().toLowerCase();
-    if (normalized === 'pickup') {
-        return 'pickup';
-    }
-    if (normalized === 'delivery') {
-        return 'delivery';
-    }
+    if (normalized === 'pickup') return 'pickup';
+    if (normalized === 'delivery') return 'delivery';
+    if (normalized === 'dine_in' || normalized === 'mesa') return 'mesa';
     return '';
 }
 
@@ -1444,7 +1441,7 @@ async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
         const previous = snapshot.exists ? snapshot.data() : {};
         const previousTotalOrders = Number(previous.totalOrders || 0);
         const previousTotalSpent = Number(previous.totalSpent || 0);
-        const fallbackAddress = String(customerInfo.profileAddress || previous.address || customerInfo.deliveryAddress || (customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' : 'Sin direccion registrada')).trim();
+        const fallbackAddress = String(customerInfo.profileAddress || previous.address || customerInfo.deliveryAddress || (customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' : customerInfo.fulfillmentType === 'mesa' ? 'Come en el local' : 'Sin direccion registrada')).trim();
         const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || previous.savedAddresses || [], fallbackAddress);
         const resolvedAddress = String(savedAddresses[0]?.address || fallbackAddress).trim();
 
@@ -3908,7 +3905,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
 
     const customerDetails = [
         customerName ? `Cliente: ${customerName}` : '',
-        `Entrega: ${fulfillmentType === 'delivery' ? 'Domicilio' : 'Recoger en el restaurante'}`,
+        `Entrega: ${fulfillmentType === 'delivery' ? 'Domicilio' : fulfillmentType === 'mesa' ? 'Comer en el local' : 'Recoger en el restaurante'}`,
         deliveryAddress ? `Direccion: ${deliveryAddress}` : '',
         customerInfo.deliveryZone ? `Zona: ${customerInfo.deliveryZone}` : '',
         paymentMethod === 'transferencia' ? 'Pago: Transferencia llave / breve' : '',
@@ -4694,6 +4691,7 @@ function updateCheckoutInfoModalState() {
     }
 
     const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
+    const isDineIn = fulfillmentType === 'mesa';
     const requiresAddress = fulfillmentType === 'delivery';
     
     if (fulfillmentType !== 'delivery') {
@@ -4842,7 +4840,7 @@ function openCheckoutInfoModal() {
         : '';
     const introText = profile
         ? ''
-        : 'Selecciona si quieres recoger en el local o recibir a domicilio, luego completa tus datos de contacto.';
+        : 'Selecciona cómo deseas recibir tu pedido y completa tus datos de contacto.';
 
     const modal = document.createElement('div');
     modal.id = 'checkout-info-modal';
@@ -4863,8 +4861,9 @@ function openCheckoutInfoModal() {
             <label class="support-field">
                 <span>Como deseas recibir tu pedido</span>
                 <select id="checkoutFulfillmentType">
-                    <option value="delivery">Domicilio</option>
-                    <option value="pickup">Recoger en el restaurante</option>
+                    <option value="delivery">🛵 Domicilio</option>
+                    <option value="pickup">🥡 Recoger en el restaurante</option>
+                    <option value="dine_in">🍽️ Comer en el local</option>
                 </select>
             </label>
             ${profile && savedAddresses.length ? `

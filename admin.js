@@ -6496,7 +6496,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                 </section>
 
                 <section class="ticket-section">
-                    <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion de entrega' : order.orderType === 'mesa' ? `Mesa ${order.mesaNumber || ''}`.trim() : 'Retiro en local'}</div>
+                    <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion de entrega' : order.orderType === 'mesa' ? (order.mesaNumber ? `Mesa ${order.mesaNumber}` : '⚠️ Sin mesa asignada') : 'Retiro en local'}</div>
                     <div class="ticket-address-block">
                         ${addressLines}
                         ${whatsappLink ? `<a class="ticket-wa-btn" href="${whatsappLink}" target="_blank" rel="noopener noreferrer">💬 Abrir WhatsApp</a>` : ''}
@@ -6617,6 +6617,38 @@ function renderOrderTicket(order, options = {}) {
         floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-edit-btn" data-order-ticket-action="editar_pos" title="Editar pedido en POS">✎ Editar</button>`;
         floatDiv.innerHTML += `<button type="button" class="tpv-action-btn tpv-delete-btn" data-order-ticket-action="eliminar" title="Eliminar pedido">🗑</button>`;
         ticketPaper.appendChild(floatDiv);
+    }
+
+    // Prompt de asignación para pedidos de mesa sin número de mesa
+    if (order.orderType === 'mesa' && !order.mesaNumber) {
+        const assignPanel = document.createElement('div');
+        assignPanel.className = 'ticket-assign-mesa-panel';
+        assignPanel.innerHTML = `
+            <p class="ticket-assign-mesa-title">⚠️ ¿A qué mesa asignas este pedido?</p>
+            <div class="ticket-assign-mesa-form">
+                <input type="number" id="ticketMesaNumberInput" class="ticket-mesa-input" placeholder="Nº" min="1" max="99">
+                <button type="button" id="ticketAssignMesaBtn" class="ticket-assign-mesa-btn">Asignar mesa</button>
+            </div>
+        `;
+        orderTicketBody.insertBefore(assignPanel, orderTicketBody.firstChild);
+
+        const assignBtn = assignPanel.querySelector('#ticketAssignMesaBtn');
+        const mesaInput = assignPanel.querySelector('#ticketMesaNumberInput');
+        mesaInput.focus();
+        assignBtn.addEventListener('click', async () => {
+            const num = Number(mesaInput.value);
+            if (!num || num < 1) { mesaInput.focus(); return; }
+            assignBtn.disabled = true;
+            assignBtn.textContent = 'Guardando...';
+            try {
+                await updateOrder(order.id, { mesaNumber: num, orderType: 'mesa' });
+                showNotice(`Mesa ${num} asignada.`, 'ok');
+            } catch (_e) {
+                showNotice('No se pudo asignar la mesa.', 'error');
+                assignBtn.disabled = false;
+                assignBtn.textContent = 'Asignar mesa';
+            }
+        });
     }
 
     if (options.openMobile === true) {
@@ -6769,10 +6801,15 @@ function createOrderCard(order) {
         ? `<div class="koc-delivery-address"><span class="koc-delivery-icon">📍</span>${escapeHtml(deliveryAddress)}</div>`
         : '';
 
+    const sinMesaBadge = isMesaOrder && !order.mesaNumber
+        ? `<span class="koc-sin-mesa-badge">⚠️ Sin mesa</span>`
+        : '';
+
     card.innerHTML = `
         <div class="koc-header">
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
             <span class="koc-type-badge ${typeClass}">${escapeHtml(getOrderTypeLabel(order))}</span>
+            ${sinMesaBadge}
             ${promoHeaderBadge}
             <span class="koc-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
         </div>
