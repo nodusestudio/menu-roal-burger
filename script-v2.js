@@ -7252,6 +7252,16 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
         }
     }
 
+    // Si el producto tiene variantes configuradas en Firestore → usar modal nuevo
+    const _prodVarianteEntry = latestProducts.find((p) =>
+        normalizeCategoryKey(p.nombre || '') === normalizeCategoryKey(productName) &&
+        normalizeCategoryKey(p.categoria || '') === normalizeCategoryKey(safeCategoryName)
+    );
+    if (_prodVarianteEntry && Array.isArray(_prodVarianteEntry.variantes) && _prodVarianteEntry.variantes.length > 0) {
+        openPublicVariantesModal(productName, safeCategoryName, buttonId, _prodVarianteEntry.variantes, normalizedOptions);
+        return;
+    }
+
     if (isCombosConPapasCategory(safeCategoryName)) {
         openCombosConPapasModal(productName, safeCategoryName, buttonId, normalizedOptions);
         return;
@@ -10637,6 +10647,153 @@ window.addEventListener('beforeunload', () => {
     if (typeof brandingUnsubscribe === 'function') brandingUnsubscribe();
     unsubscribeCustomerProfileStreams();
 });
+
+// ── Modal de Variantes Público ────────────────────────────────────────────
+function openPublicVariantesModal(productName, categoryName, buttonId, variantes, baseOptions) {
+    const existing = document.getElementById('pubVarModal');
+    if (existing) existing.remove();
+
+    let selectedVariante = null;
+    let selectedSabores = [];
+
+    function _getSabores(v) {
+        if (!v.con_bebida || !v.bebida_ref_id || !v.bebida_pres_id) return [];
+        const beb = _latestBebidas.find((b) => b.id === v.bebida_ref_id);
+        const pres = beb?.presentaciones?.find((p) => p.id === v.bebida_pres_id);
+        return pres?.sabores || [];
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'pubVarModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9200;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);';
+
+    const card = document.createElement('div');
+    card.style.cssText = 'background:rgba(30,20,10,0.96);border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:22px 20px 18px;width:100%;max-width:420px;max-height:88vh;overflow-y:auto;box-shadow:0 12px 48px rgba(0,0,0,0.55);';
+
+    // Header
+    card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+            <div>
+                <div style="font-family:'Oswald',sans-serif;font-size:1.05rem;font-weight:700;color:#fff7ef;letter-spacing:.3px;">${productName}</div>
+                <div style="font-size:0.72rem;color:rgba(255,200,130,0.6);margin-top:2px;">${categoryName}</div>
+            </div>
+            <button id="pubVarClose" style="background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:28px;height:28px;color:#fff;cursor:pointer;font-size:1rem;flex-shrink:0;">×</button>
+        </div>
+        <div style="font-size:0.65rem;color:rgba(255,200,130,0.5);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">Selecciona una opción</div>
+        <div id="pubVarGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;"></div>
+        <div id="pubVarSaborSection" hidden>
+            <div style="font-size:0.65rem;color:rgba(255,200,130,0.5);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">Sabor de la bebida</div>
+            <div id="pubVarSaborGrid" style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px;"></div>
+        </div>
+        <textarea id="pubVarComment" rows="2" placeholder="Nota (opcional): sin cebolla, extra salsa..." style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#fff7ef;font-size:0.83rem;resize:none;margin-bottom:12px;"></textarea>
+        <button id="pubVarConfirm" disabled style="width:100%;padding:14px;border-radius:14px;border:none;background:rgba(200,100,20,0.35);color:rgba(255,255,255,0.4);font-family:'Oswald',sans-serif;font-size:1rem;font-weight:700;letter-spacing:.5px;cursor:not-allowed;transition:all .2s;">SELECCIONA UNA OPCIÓN</button>`;
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    const grid = card.querySelector('#pubVarGrid');
+    const saborSection = card.querySelector('#pubVarSaborSection');
+    const saborGrid = card.querySelector('#pubVarSaborGrid');
+    const confirmBtn = card.querySelector('#pubVarConfirm');
+
+    function refreshConfirm() {
+        if (!selectedVariante) return;
+        const sabores = _getSabores(selectedVariante);
+        const filled = selectedSabores.filter(Boolean).length;
+        const total = selectedSabores.length;
+        const ready = !sabores.length || filled === total;
+        confirmBtn.disabled = !ready;
+        confirmBtn.style.background = ready ? 'linear-gradient(135deg,#ff7a00,#e05000)' : 'rgba(200,100,20,0.35)';
+        confirmBtn.style.color = ready ? '#fff7ef' : 'rgba(255,255,255,0.4)';
+        confirmBtn.style.cursor = ready ? 'pointer' : 'not-allowed';
+        confirmBtn.textContent = ready
+            ? `AGREGAR — $${Number(selectedVariante.precio || 0).toLocaleString('es-CO')}`
+            : (total > 1 ? `SELECCIONA SABORES (${filled}/${total})` : 'SELECCIONA EL SABOR');
+    }
+
+    function renderSabores(v) {
+        const sabores = _getSabores(v);
+        saborSection.hidden = !sabores.length;
+        saborGrid.innerHTML = '';
+        if (!sabores.length) return;
+        const cant = Math.max(1, Number(v.cantidad_bebidas) || 1);
+        selectedSabores = new Array(cant).fill(null);
+        for (let i = 0; i < cant; i++) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:7px;';
+            if (cant > 1) {
+                const lbl = document.createElement('span');
+                lbl.style.cssText = 'font-size:0.68rem;color:rgba(255,200,130,0.4);min-width:20px;text-align:right;flex-shrink:0;';
+                lbl.textContent = `${i + 1}.`;
+                row.appendChild(lbl);
+            }
+            const chips = document.createElement('div');
+            chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;flex:1;';
+            const slotIdx = i;
+            const slotBtns = [];
+            sabores.forEach((s) => {
+                const sb = document.createElement('button');
+                sb.type = 'button';
+                sb.style.cssText = 'padding:7px 12px;border-radius:20px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:#fff7ef;cursor:pointer;font-size:0.8rem;transition:all .15s;white-space:nowrap;';
+                sb.textContent = s;
+                sb.addEventListener('click', () => {
+                    selectedSabores[slotIdx] = s;
+                    slotBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.15)'; b.style.color = '#fff7ef'; });
+                    sb.style.background = 'rgba(255,122,0,0.3)';
+                    sb.style.borderColor = '#ff7a00';
+                    sb.style.color = '#ffcc88';
+                    refreshConfirm();
+                });
+                slotBtns.push(sb);
+                chips.appendChild(sb);
+            });
+            row.appendChild(chips);
+            saborGrid.appendChild(row);
+        }
+    }
+
+    // Botones de variantes
+    const varBtns = [];
+    variantes.forEach((v) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = 'padding:13px 10px;border-radius:14px;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#fff7ef;cursor:pointer;text-align:center;line-height:1.4;transition:all .15s;';
+        const bebLine = v.con_bebida && v.bebida_nombre
+            ? `<span style="display:block;font-size:0.7rem;color:rgba(255,200,130,0.55);margin-top:3px;">🥤 ${v.bebida_nombre}${v.cantidad_bebidas > 1 ? ` ×${v.cantidad_bebidas}` : ''}</span>`
+            : '';
+        btn.innerHTML = `<strong style="display:block;font-family:'Oswald',sans-serif;font-size:0.9rem;">${v.nombre || 'Opción'}</strong><span style="color:#ff9944;font-weight:700;font-size:0.88rem;">$${Number(v.precio || 0).toLocaleString('es-CO')}</span>${bebLine}`;
+        btn.addEventListener('click', () => {
+            selectedVariante = v;
+            selectedSabores = [];
+            varBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.06)'; b.style.borderColor = 'rgba(255,255,255,0.12)'; });
+            btn.style.background = 'rgba(255,122,0,0.22)';
+            btn.style.borderColor = '#ff7a00';
+            renderSabores(v);
+            refreshConfirm();
+        });
+        varBtns.push(btn);
+        grid.appendChild(btn);
+    });
+
+    confirmBtn.addEventListener('click', () => {
+        if (!selectedVariante || confirmBtn.disabled) return;
+        const comment = card.querySelector('#pubVarComment').value.trim();
+        const saboresLabel = selectedSabores.filter(Boolean).join(', ');
+        const cant = Number(selectedVariante.cantidad_bebidas) || 0;
+        const bebInfo = selectedVariante.con_bebida && selectedVariante.bebida_nombre
+            ? ` + ${selectedVariante.bebida_nombre}${saboresLabel ? ` (${saboresLabel})` : ''}${cant > 1 ? ` ×${cant}` : ''}`
+            : '';
+        const fullComment = `${selectedVariante.nombre}${bebInfo}${comment ? ` | ${comment}` : ''}`;
+        overlay.remove();
+        addItemToCart(productName, categoryName,
+            { ...baseOptions, upgradeHandled: true, staticPrice: Number(selectedVariante.precio || 0), comment: fullComment },
+            buttonId
+        );
+    });
+
+    card.querySelector('#pubVarClose').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
 
 // ── Public Upgrade Sheet ──────────────────────────────────────────────────
 function openPublicUpgradeSheet() {
