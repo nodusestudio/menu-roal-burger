@@ -10552,7 +10552,16 @@ document.addEventListener('DOMContentLoaded', () => {
     updateDynamicWhatsAppLink(activeMenuSection);
     showTempClosureBanner();
     syncOrderingAvailabilityUI();
-    window.setInterval(syncOrderingAvailabilityUI, 60000);
+    // Pausar el interval cuando el tab está en segundo plano (ahorra batería y CPU)
+    let _syncInterval = window.setInterval(syncOrderingAvailabilityUI, 60000);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            clearInterval(_syncInterval);
+        } else {
+            syncOrderingAvailabilityUI();
+            _syncInterval = window.setInterval(syncOrderingAvailabilityUI, 60000);
+        }
+    }, { once: false });
     // Carrusel de destacados: fallback local inmediato, luego Firestore si responde
     const featuredCarousel = document.getElementById('featured-carousel-dynamic');
     // Array local con rutas en la raíz del proyecto

@@ -217,7 +217,9 @@ body::before {
     box-shadow: 
         0 10px 40px rgba(0, 0, 0, 0.4),
         inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    transition: all calc(0.4s * var(--landing-animation-speed)) cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform calc(0.3s * var(--landing-animation-speed)) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity  calc(0.3s * var(--landing-animation-speed)) cubic-bezier(0.4, 0, 0.2, 1),
+                background calc(0.3s * var(--landing-animation-speed)) ease;
     cursor: pointer;
     min-height: 70px;
     touch-action: manipulation;
@@ -637,7 +639,7 @@ a.is-ordering-closed {
     box-shadow: 
         0 8px 32px rgba(0, 0, 0, 0.3),
         inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, background 0.3s ease;
     cursor: pointer;
     min-height: 60px;
     touch-action: manipulation;
@@ -985,7 +987,7 @@ a.is-ordering-closed {
     font-size: 1.1rem;
     letter-spacing: 0.5px;
     text-shadow: 0 1px 8px rgba(255,255,255,0.08);
-    transition: box-shadow 0.3s, border-color 0.3s;
+    transition: border-color 0.25s ease;
     position: relative;
     overflow: visible;
     z-index: 1;
@@ -1116,7 +1118,7 @@ a.is-ordering-closed {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
-    transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    transition: background 0.2s ease, transform 0.2s ease;
     height: 48px;
     display: flex;
     align-items: center;
@@ -1213,7 +1215,7 @@ a.is-ordering-closed {
     -webkit-backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.25);
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.16);
-    transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .social-mini-icon svg {
@@ -1291,7 +1293,7 @@ a.is-ordering-closed {
     border-radius: 15px;
     padding: 25px 20px;
     text-align: center;
-    transition: transform 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease;
+    transition: transform 0.25s ease, border-color 0.25s ease;
     cursor: pointer;
     position: relative;
     overflow: hidden;
@@ -1317,8 +1319,12 @@ a.is-ordering-closed {
 }
 
 .menu-card:hover {
-    transform: translateY(-10px) scale(1.05);
+    transform: translateY(-8px) scale(1.04);
     box-shadow: 0 20px 40px rgba(255, 96, 0, 0.4);
+}
+.menu-card:active {
+    transform: scale(0.97);
+    transition-duration: 0.1s;
 }
 
 .menu-card.highlight {
@@ -1440,7 +1446,9 @@ a.is-ordering-closed {
     color: var(--landing-button-border-color, var(--brand-primary));
     position: relative;
     overflow: hidden;
-    transition: all calc(0.4s * var(--landing-animation-speed)) cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform calc(0.3s * var(--landing-animation-speed)) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity  calc(0.3s * var(--landing-animation-speed)) ease,
+                border-color calc(0.3s * var(--landing-animation-speed)) ease;
     cursor: pointer;
 }
 
@@ -1505,32 +1513,20 @@ a.is-ordering-closed {
     font-size: 1.4rem !important;
     padding: 28px 35px !important;
     border-width: 3px !important;
+    /* solo transform — propiedad compositor, sin repaint */
     animation: constantGlow 2s ease-in-out infinite alternate !important;
-    transform: scale(1.1);
+    box-shadow: 0 0 24px rgba(255, 96, 0, 0.55), 0 0 48px rgba(255, 96, 0, 0.25);
     margin: 20px 0 !important;
 }
 
 @keyframes constantGlow {
-    0% {
-        box-shadow: 
-            0 0 20px rgba(255, 96, 0, 0.6),
-            0 0 40px rgba(255, 96, 0, 0.4),
-            0 0 60px rgba(255, 96, 0, 0.2);
-    }
-    100% {
-        box-shadow: 
-            0 0 30px rgba(255, 96, 0, 0.8),
-            0 0 60px rgba(255, 96, 0, 0.6),
-            0 0 90px rgba(255, 96, 0, 0.4);
-    }
+    0%   { transform: scale(1.08); }
+    100% { transform: scale(1.12); }
 }
 
 .mega-button:hover {
     animation: none !important;
-    box-shadow: 
-        0 0 40px rgba(255, 96, 0, 0.8),
-        0 0 80px rgba(255, 96, 0, 0.6),
-        0 0 120px rgba(255, 96, 0, 0.4) !important;
+    transform: scale(1.13) !important;
 }
 
 /* Animación Pulse para WhatsApp */
@@ -1539,18 +1535,8 @@ a.is-ordering-closed {
 }
 
 @keyframes pulse {
-    0% {
-        box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.8);
-        transform: scale(1);
-    }
-    50% {
-        box-shadow: 0 0 0 20px rgba(37, 211, 102, 0);
-        transform: scale(1.05);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
-        transform: scale(1);
-    }
+    0%, 100% { transform: scale(1); }
+    50%       { transform: scale(1.06); }
 }
 
 /* Botón Destacado - Menú */
@@ -1789,7 +1775,7 @@ a.is-ordering-closed {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    transition: background 0.2s ease, transform 0.2s ease;
     border: 2px solid #ff6000;
 }
 
@@ -1870,10 +1856,10 @@ a.is-ordering-closed {
 
 .drawer-close {
     position: absolute;
-    top: 14px;
-    right: 14px;
-    width: 36px;
-    height: 36px;
+    top: 10px;
+    right: 10px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     border: 1px solid #ff4500;
     background: #111111;
@@ -2140,10 +2126,10 @@ body.has-guest-register-banner #ayudaScreen {
 
 .support-modal-close {
     position: absolute;
-    top: 12px;
-    right: 12px;
-    width: 40px;
-    height: 40px;
+    top: 10px;
+    right: 10px;
+    width: 44px;
+    height: 44px;
     border: none;
     border-radius: 999px;
     background: rgba(90, 58, 27, 0.14);
@@ -3037,8 +3023,8 @@ body.has-guest-register-banner #ayudaScreen {
 }
 
 .customer-chat-send-btn {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: linear-gradient(135deg, #c44f00, #7a2e00);
     border: none;
@@ -4040,7 +4026,7 @@ body.has-guest-register-banner #ayudaScreen {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
-    transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    transition: background 0.2s ease, transform 0.2s ease;
     height: 72px;
     display: flex;
     align-items: center;
@@ -6850,6 +6836,134 @@ body.has-guest-register-banner #ayudaScreen {
     .support-modal-card {
         overscroll-behavior: contain;
     }
+}
+
+/* =====================================================
+   ELIMINACIÓN DEL 300ms TAP DELAY — todos los
+   elementos interactivos responden instantáneamente
+   ===================================================== */
+button,
+a,
+[role="button"],
+[tabindex],
+.ban-item,
+.category-chip,
+.cp-menu-item,
+.menu-card,
+.cart-qty-btn,
+.support-send-btn,
+.support-secondary-btn,
+.option-btn,
+.upgrade-option-btn,
+.featured-item,
+.promo-item-card,
+.product-card,
+.cart-fab,
+.pub-chat-fab {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* =====================================================
+   FEEDBACK TÁCTIL — :active states para todos los
+   botones/cards interactivos. Crítico en touch:
+   el usuario percibe respuesta instantánea al tap.
+   ===================================================== */
+
+/* Chips de categoría */
+.category-chip:active {
+    transform: scale(0.94);
+    transition-duration: 0.08s;
+}
+
+/* Cards de menú en drawers/modales */
+.featured-item:active,
+.promo-item-card:active,
+.product-card:active {
+    transform: scale(0.97);
+    transition-duration: 0.1s;
+    opacity: 0.9;
+}
+
+/* Items del menú de perfil */
+.cp-menu-item:active {
+    opacity: 0.6;
+    transition-duration: 0.08s;
+}
+
+/* Botones secundarios del modal de soporte */
+.support-secondary-btn:active {
+    transform: scale(0.96);
+    opacity: 0.75;
+    transition-duration: 0.08s;
+}
+
+/* Botones de acción del carrito */
+.cart-qty-btn:active {
+    transform: scale(0.88);
+    transition-duration: 0.08s;
+}
+
+/* Items del nav inferior */
+.ban-item:active {
+    background: rgba(240, 90, 20, 0.22);
+    transform: scale(0.90);
+    transition-duration: 0.08s;
+}
+
+/* Botones de cierre */
+.drawer-close:active,
+.support-modal-close:active,
+.customer-chat-send-btn:active {
+    transform: scale(0.88);
+    opacity: 0.7;
+    transition-duration: 0.08s;
+}
+
+/* FABs */
+.cart-fab:active,
+.pub-chat-fab:active {
+    transform: scale(0.93);
+    transition-duration: 0.1s;
+}
+
+/* Botones de opciones de producto */
+.option-btn:active,
+.upgrade-option-btn:active {
+    transform: scale(0.96);
+    transition-duration: 0.08s;
+}
+
+/* =====================================================
+   OPTIMIZACIÓN DE SCROLL — GPU hints para contenedores
+   que hacen scroll frecuente en mobile
+   ===================================================== */
+.perfil-screen-content,
+.cart-drawer-body,
+.menu-drawer-body,
+#homeScreen,
+.customer-order-history-list,
+.customer-messages-thread {
+    scroll-behavior: smooth;
+}
+
+/* Forzar compositing layer en elementos animados críticos */
+.cart-fab,
+.pub-chat-fab,
+.bottom-auth-nav,
+.menu-drawer,
+.cart-drawer,
+.support-modal-card {
+    will-change: transform;
+}
+
+/* =====================================================
+   CONTAIN — aisla reflow/repaint dentro de cada tarjeta
+   ===================================================== */
+.cp-menu-card,
+.cp-hero,
+.customer-order-card {
+    contain: layout style;
 }
 
 /* Para dispositivos que prefieren movimiento reducido (accesibilidad + bajo consumo) */
