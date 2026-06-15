@@ -396,6 +396,7 @@ let internalOrderUseNewClient = false;
 let posSelectedCategory = null;
 let posCurrentClient = null;
 let posSelectedClientData = null;
+let _posClientEditPending = false; // true when edit modal opened from POS card
 let posTicketConfig = null; // { orderType, mesaNumber, customerName, customerPhone }
 let posTickets = [];
 let posActiveTicketId = null;
@@ -3814,6 +3815,17 @@ function initPosClientSearch() {
     if (clearBtn && !clearBtn.dataset.listenerAttached) {
         clearBtn.addEventListener('click', clearPosClient);
         clearBtn.dataset.listenerAttached = 'true';
+    }
+
+    const editBtn = document.getElementById('posClientEditBtn');
+    if (editBtn && !editBtn.dataset.listenerAttached) {
+        editBtn.addEventListener('click', () => {
+            if (posSelectedClientData) {
+                _posClientEditPending = true;
+                openEditClientModal(posSelectedClientData);
+            }
+        });
+        editBtn.dataset.listenerAttached = 'true';
     }
 
     document.addEventListener('click', (e) => {
@@ -7626,6 +7638,15 @@ function closeClientEditModal() {
     clientEditModal.classList.remove('show');
     clientEditModal.setAttribute('aria-hidden', 'true');
     clientEditForm.reset();
+
+    if (_posClientEditPending && posSelectedClientData) {
+        _posClientEditPending = false;
+        const refreshedClient = clientsState.find((c) => c.id === posSelectedClientData.id);
+        if (refreshedClient) selectPosClient(refreshedClient);
+    } else {
+        _posClientEditPending = false;
+    }
+
     activeClientEditId = null;
     hideModalFeedback(clientEditFeedback);
 

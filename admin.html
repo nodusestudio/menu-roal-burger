@@ -4791,6 +4791,13 @@
         .pos-client-info { display: flex; flex-direction: column; gap: 1px; }
         .pos-client-info strong { font-size: 0.9rem; color: #eef4ff; }
         .pos-client-info span { font-size: 0.78rem; color: var(--admin-muted); }
+        .pos-client-card-actions { display: flex; align-items: center; gap: 2px; }
+        .pos-client-edit-btn {
+            background: transparent; border: none;
+            color: rgba(255,200,80,0.7); font-size: 1rem;
+            cursor: pointer; line-height: 1; padding: 2px 6px;
+        }
+        .pos-client-edit-btn:hover { color: #ffc840; }
         .pos-client-clear-btn {
             background: transparent; border: none;
             color: rgba(255,255,255,0.5); font-size: 1.2rem;
@@ -5048,12 +5055,21 @@
         .pos-client-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
         .pos-client-info strong { font-size: 0.9rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .pos-client-info span { font-size: 0.76rem; color: rgba(220,235,255,0.65); }
+        .pos-client-card-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+        .pos-client-edit-btn {
+            background: rgba(255,200,80,0.1); border: none;
+            color: rgba(255,200,80,0.8); width: 28px; height: 28px;
+            border-radius: 50%; cursor: pointer; font-size: 0.95rem;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s, color 0.2s;
+        }
+        .pos-client-edit-btn:hover { background: rgba(255,200,80,0.2); color: #ffc840; }
         .pos-client-clear-btn {
             background: rgba(255,255,255,0.1); border: none;
             color: rgba(220,235,255,0.75); width: 28px; height: 28px;
             border-radius: 50%; cursor: pointer; font-size: 1rem;
             display: flex; align-items: center; justify-content: center;
-            flex-shrink: 0; transition: background 0.2s, color 0.2s;
+            transition: background 0.2s, color 0.2s;
         }
         .pos-client-clear-btn:hover { background: rgba(255,80,80,0.2); color: #ff8080; }
 
@@ -11077,7 +11093,10 @@
                             <strong id="posClientCardName"></strong>
                             <span id="posClientCardPhone"></span>
                         </div>
-                        <button type="button" id="posClientClearBtn" class="pos-client-clear-btn" aria-label="Quitar cliente">&#215;</button>
+                        <div class="pos-client-card-actions">
+                            <button type="button" id="posClientEditBtn" class="pos-client-edit-btn" aria-label="Editar cliente">&#9998;</button>
+                            <button type="button" id="posClientClearBtn" class="pos-client-clear-btn" aria-label="Quitar cliente">&#215;</button>
+                        </div>
                     </div>
                     <div class="pos-field" id="internalOrderClientAddressField" hidden>
                         <label for="internalOrderClientAddressSelect">Dirección guardada</label>
