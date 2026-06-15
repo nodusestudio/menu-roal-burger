@@ -5487,6 +5487,18 @@ function openCartItemEditor(itemKey) {
     const item = shoppingCart.find(e => e.itemKey === itemKey);
     if (!item) return;
 
+    // Si el producto tiene variantes → abrir selector de variantes en lugar del editor de comentario
+    const baseProductName = String(item.productName || '').trim();
+    const baseCategoryName = String(item.categoryName || '').trim();
+    const prodEntry = latestProducts.find((p) =>
+        normalizeCategoryKey(p.nombre || '') === normalizeCategoryKey(baseProductName) &&
+        normalizeCategoryKey(p.categoria || '') === normalizeCategoryKey(baseCategoryName)
+    );
+    if (prodEntry && Array.isArray(prodEntry.variantes) && prodEntry.variantes.length > 0) {
+        openPublicVariantesModal(baseProductName, baseCategoryName, null, prodEntry.variantes, normalizeOrderOptions(item.orderOptions), itemKey);
+        return;
+    }
+
     const productData = _getCartItemProductData(item.productName);
     const prodAcomp = productData && productData.acompanantes;
     const hasAcomp = prodAcomp && prodAcomp.activo && Array.isArray(prodAcomp.ids) && prodAcomp.ids.length > 0;
@@ -10649,7 +10661,7 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ── Modal de Variantes Público ────────────────────────────────────────────
-function openPublicVariantesModal(productName, categoryName, buttonId, variantes, baseOptions) {
+function openPublicVariantesModal(productName, categoryName, buttonId, variantes, baseOptions, replaceItemKey = null) {
     const existing = document.getElementById('pubVarModal');
     if (existing) existing.remove();
 
@@ -10785,6 +10797,9 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
             : '';
         const fullComment = `${selectedVariante.nombre}${bebInfo}${comment ? ` | ${comment}` : ''}`;
         overlay.remove();
+        if (replaceItemKey) {
+            shoppingCart = shoppingCart.filter((e) => e.itemKey !== replaceItemKey && e.parentKey !== replaceItemKey);
+        }
         addItemToCart(productName, categoryName,
             { ...baseOptions, upgradeHandled: true, staticPrice: Number(selectedVariante.precio || 0), comment: fullComment },
             buttonId
