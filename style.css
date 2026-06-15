@@ -3203,7 +3203,7 @@ body.has-guest-register-banner #ayudaScreen {
 .cart-fab {
     position: fixed;
     left: 20px;
-    bottom: 85px;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
     z-index: 10002;
     min-height: 54px;
     padding: 0 18px;
@@ -3788,7 +3788,7 @@ body.has-guest-register-banner #ayudaScreen {
 /* ===== FAB CHAT PÚBLICO ===== */
 .pub-chat-fab {
     position: fixed;
-    bottom: 68px;        /* alineado con .cart-fab */
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));   /* alineado con .cart-fab */
     right: 16px;
     z-index: 9050;
     width: 50px;
@@ -4880,7 +4880,9 @@ body.has-guest-register-banner #ayudaScreen {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 48px;
+    /* La barra crece para incluir el safe-area (home indicator Android/iPhone) */
+    height: calc(58px + env(safe-area-inset-bottom, 0px));
+    /* El padding empuja los iconos hacia arriba, fuera del safe-area */
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: rgba(255, 255, 255, 0.18);
     -webkit-backdrop-filter: blur(14px);
@@ -5030,7 +5032,7 @@ body.has-guest-register-banner #ayudaScreen {
 
 /* Ajustes globales — barra inferior siempre activa */
 .cart-fab {
-    bottom: 68px;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Topbar: ocultar botón de perfil y dejar solo el espacio mínimo */
@@ -6724,10 +6726,7 @@ body.has-guest-register-banner #ayudaScreen {
         padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     }
 
-    .bottom-auth-nav {
-        /* Asegura que la nav inferior no quede bajo el home indicator */
-        padding-bottom: env(safe-area-inset-bottom, 0px);
-    }
+    /* .bottom-auth-nav ya incluye safe-area-inset en su height y padding-bottom base */
 }
 
 /* ===== FIN OPTIMIZACIÓN RESPONSIVA MÓVIL ===== */
