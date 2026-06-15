@@ -2559,7 +2559,7 @@ function openPosBebidaPickerModal(bev) {
         selectedPres.sabores.forEach((sabor) => {
             const chip = document.createElement('button');
             chip.type = 'button';
-            chip.className = 'combo-sabor-chip' + (selectedSabor === sabor ? ' active' : '');
+            chip.className = 'combo-sabor-chip' + (selectedSabor === sabor ? ' selected' : '');
             chip.textContent = sabor;
             chip.addEventListener('click', () => { selectedSabor = sabor; renderSaborChips(); });
             saborChips.appendChild(chip);
@@ -2571,7 +2571,7 @@ function openPosBebidaPickerModal(bev) {
         bev.presentaciones.forEach((pres) => {
             const chip = document.createElement('button');
             chip.type = 'button';
-            chip.className = 'combo-sabor-chip' + (selectedPres?.id === pres.id ? ' active' : '');
+            chip.className = 'combo-sabor-chip' + (selectedPres?.id === pres.id ? ' selected' : '');
             chip.textContent = `${pres.nombre} — ${formatMoney(pres.precio)}`;
             chip.addEventListener('click', () => {
                 selectedPres = pres;
