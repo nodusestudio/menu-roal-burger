@@ -4269,9 +4269,19 @@ function initializeCheckoutDeliveryMap() {
     checkoutInfoUI.deliveryMap = map;
     checkoutInfoUI.deliveryMapMarker = marker;
 
+    // Si ya hay coordenadas pre-calculadas (dirección guardada), colocar el pin allí
+    if (checkoutDeliveryLocation && Number.isFinite(checkoutDeliveryLocation.latitude) && Number.isFinite(checkoutDeliveryLocation.longitude)) {
+        marker.setLatLng([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude]);
+        map.setView([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude], 16);
+        if (checkoutInfoUI.confirmLocationButton) checkoutInfoUI.confirmLocationButton.hidden = false;
+    }
+
     // Invalidar tamaño después de que el mapa se haya agregado al DOM visible
     setTimeout(() => {
         map.invalidateSize();
+        if (checkoutDeliveryLocation && Number.isFinite(checkoutDeliveryLocation.latitude)) {
+            map.setView([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude], 16);
+        }
     }, 100);
 }
 
@@ -4529,6 +4539,12 @@ async function submitCheckoutInfo() {
         return;
     }
 
+    if (fulfillmentType === 'delivery' && !checkoutDeliveryLocationConfirmed) {
+        checkoutInfoUI.feedback.textContent = 'Confirma tu ubicación en el mapa antes de enviar el pedido.';
+        checkoutInfoUI.confirmLocationButton?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+
     if (phoneDigits.length < 10) {
         checkoutInfoUI.feedback.textContent = 'Escribe un telefono valido para confirmar el pedido.';
         checkoutInfoUI.phone?.focus();
@@ -4708,16 +4724,22 @@ function updateCheckoutInfoModalState() {
     }
 
     if (usingSavedAddress && addressHasLocation) {
-        // Dirección guardada CON coordenadas: calcular tarifa automáticamente SIN mostrar mapa
-        const zone = findDeliveryZoneForLocation({ latitude: selectedSavedAddressEntry.latitude, longitude: selectedSavedAddressEntry.longitude });
+        // Dirección guardada CON coordenadas: precalcular zona para mostrar en mapa, pero requerir confirmación explícita
+        const lat = selectedSavedAddressEntry.latitude;
+        const lng = selectedSavedAddressEntry.longitude;
+        const zone = findDeliveryZoneForLocation({ latitude: lat, longitude: lng });
         checkoutDeliveryZone = zone?.name || null;
         checkoutDeliveryFeeAmount = zone ? zone.fee : 0;
         checkoutDeliveryFeePending = !zone;
-        checkoutDeliveryLocation = { latitude: selectedSavedAddressEntry.latitude, longitude: selectedSavedAddressEntry.longitude };
-        checkoutDeliveryLocationConfirmed = true;
+        checkoutDeliveryLocation = { latitude: lat, longitude: lng };
         checkoutInfoUI.deliveryZone = checkoutDeliveryZone;
-        checkoutInfoUI.deliveryLatitude = selectedSavedAddressEntry.latitude;
-        checkoutInfoUI.deliveryLongitude = selectedSavedAddressEntry.longitude;
+        checkoutInfoUI.deliveryLatitude = lat;
+        checkoutInfoUI.deliveryLongitude = lng;
+        if (checkoutInfoUI.deliveryZoneStatus) {
+            checkoutInfoUI.deliveryZoneStatus.textContent = zone
+                ? `📍 Tu pin está en ${zone.label} — ${formatCurrency(zone.fee)}. ¿Es correcta tu ubicación? Confirma o ajusta el pin.`
+                : '📋 Tu pin está fuera de nuestra zona de cobertura. Ajusta el pin si crees que hay un error y confirma.';
+        }
     }
 
     if (usingSavedAddress && !addressHasLocation) {
@@ -4738,7 +4760,8 @@ function updateCheckoutInfoModalState() {
     const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
     const orderTotal = getCheckoutOrderTotal(fulfillmentType);
 
-    const shouldShowDeliveryMap = requiresAddress && (!usingSavedAddress || !addressHasLocation);
+    // Mapa siempre visible para domicilio — el cliente siempre verifica su pin
+    const shouldShowDeliveryMap = requiresAddress;
 
     if (checkoutInfoUI.deliveryMapPanel) {
         checkoutInfoUI.deliveryMapPanel.hidden = !shouldShowDeliveryMap;
