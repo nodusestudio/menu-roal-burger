@@ -2957,6 +2957,26 @@ function handlePosProductAdd(productId, productName, productPrice) {
         return;
     }
 
+    // Combos Mixtos → pedir sabor de bebida 1L desde bebidasState
+    if (normCat.includes('combos mixtos')) {
+        let _cmBeb = null, _cmPres = null;
+        for (const b of bebidasState) {
+            if (b.estado !== 'active') continue;
+            const p = (b.presentaciones || []).find((pr) => /1\s*l(itro)?/i.test(pr.nombre) && Array.isArray(pr.sabores) && pr.sabores.length > 0);
+            if (p) { _cmBeb = b; _cmPres = p; break; }
+        }
+        if (_cmBeb && _cmPres) {
+            openPosBebidaModal(productId, productName, productPrice, {
+                activo: true,
+                bebida_ref_id: _cmBeb.id,
+                bebida_pres_id: _cmPres.id,
+                bebida_nombre: `${_cmBeb.marca} ${_cmPres.nombre}`,
+                cantidad: 1
+            });
+            return;
+        }
+    }
+
     // Burger Clásica Normal → opciones de tamaño y cantidad de carne
     if (normCat.includes('burger clasicas') && normalizeCategoryKey(productName).includes('normal')) {
         openBurgerClasicasPosModal(productId, productName);

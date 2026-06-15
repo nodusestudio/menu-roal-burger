@@ -7292,7 +7292,24 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
     }
 
     if (isCombosMixtosCategory(safeCategoryName)) {
-        openCombosMixtosModal(productName, safeCategoryName, buttonId, normalizedOptions);
+        // Buscar bebida de 1 litro en _latestBebidas para usar el selector nuevo
+        let _cmBeb = null, _cmPres = null;
+        for (const b of _latestBebidas) {
+            if (b.estado !== 'active') continue;
+            const p = (b.presentaciones || []).find((pr) => /1\s*l(itro)?/i.test(pr.nombre) && Array.isArray(pr.sabores) && pr.sabores.length > 0);
+            if (p) { _cmBeb = b; _cmPres = p; break; }
+        }
+        if (_cmBeb && _cmPres) {
+            openPublicBebidaModal(productName, safeCategoryName, buttonId, {
+                activo: true,
+                bebida_ref_id: _cmBeb.id,
+                bebida_pres_id: _cmPres.id,
+                bebida_nombre: `${_cmBeb.marca} ${_cmPres.nombre}`,
+                cantidad: 1
+            }, normalizedOptions);
+        } else {
+            openCombosMixtosModal(productName, safeCategoryName, buttonId, normalizedOptions);
+        }
         return;
     }
 
