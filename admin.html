@@ -5194,6 +5194,43 @@
             letter-spacing: 0.9px;
             padding: 4px 0 6px;
         }
+        .combo-bev-meta {
+            display: block;
+            font-size: 0.62rem;
+            color: rgba(180,200,255,0.45);
+            margin-top: 2px;
+            line-height: 1.2;
+        }
+        .combo-sabor-row { padding: 6px 0 2px; }
+        .combo-sabor-label { padding: 0 0 6px; }
+        .combo-sabor-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .combo-sabor-chip {
+            background: rgba(255,255,255,0.06);
+            border: 1.5px solid rgba(255,255,255,0.14);
+            border-radius: 20px;
+            padding: 5px 13px;
+            color: #d4e4ff;
+            font-size: 0.8rem;
+            cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .combo-sabor-chip:hover { background: rgba(255,255,255,0.1); }
+        .combo-sabor-chip.selected {
+            border-color: #ff7a1a;
+            background: rgba(255,122,26,0.18);
+            color: #fff;
+        }
+        @keyframes comboSaborShake {
+            0%,100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        .combo-sabor-shake { animation: comboSaborShake 0.3s ease; }
         .combo-modal-note-row { padding: 4px 0 0; }
         .combo-modal-note-label {
             display: block;
@@ -11324,6 +11361,19 @@
                     <label for="createProductImageUrl">Ruta/URL imagen</label>
                     <input type="text" id="createProductImageUrl" name="createProductImageUrl" placeholder="Ej: PLUS.png o https://...">
                 </div>
+                <!-- Campos exclusivos para categoría BEBIDAS -->
+                <div class="admin-field" id="createBebidaSection" style="display:none">
+                    <label for="createProductBrand">Marca de bebida</label>
+                    <input type="text" id="createProductBrand" name="createProductBrand" placeholder="Ej: Coca-Cola, Pony Malta...">
+                </div>
+                <div class="admin-field" id="createBebidaMlSection" style="display:none">
+                    <label for="createProductMl">Contenido (ml)</label>
+                    <input type="number" id="createProductMl" name="createProductMl" min="0" step="50" placeholder="Ej: 400">
+                </div>
+                <div class="admin-field full" id="createBebidaSaboresSection" style="display:none">
+                    <label for="createProductFlavors">Sabores (separados por coma)</label>
+                    <input type="text" id="createProductFlavors" name="createProductFlavors" placeholder="Ej: Clasica, Light, Zero">
+                </div>
                 <div class="admin-field full">
                     <div id="productCreateFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
                 </div>
@@ -11373,6 +11423,20 @@
                 <div class="admin-field full">
                     <label for="editProductImageUrl">Ruta/URL imagen actual</label>
                     <input type="text" id="editProductImageUrl" name="editProductImageUrl" placeholder="Ej: PLUS.png o https://...">
+                </div>
+
+                <!-- Campos exclusivos para categoría BEBIDAS -->
+                <div class="admin-field" id="editBebidaSection" style="display:none">
+                    <label for="editProductBrand">Marca de bebida</label>
+                    <input type="text" id="editProductBrand" name="editProductBrand" placeholder="Ej: Coca-Cola, Pony Malta...">
+                </div>
+                <div class="admin-field" id="editBebidaMlSection" style="display:none">
+                    <label for="editProductMl">Contenido (ml)</label>
+                    <input type="number" id="editProductMl" name="editProductMl" min="0" step="50" placeholder="Ej: 400">
+                </div>
+                <div class="admin-field full" id="editBebidaSaboresSection" style="display:none">
+                    <label for="editProductFlavors">Sabores (separados por coma)</label>
+                    <input type="text" id="editProductFlavors" name="editProductFlavors" placeholder="Ej: Clasica, Light, Zero">
                 </div>
 
                 <!-- Acompañantes por producto -->
