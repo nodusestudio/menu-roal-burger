@@ -11541,8 +11541,9 @@ if (ordersActionRoot) {
                 }
 
                 if (nextStatus === 'cobrar_mesa') {
-                    // Si ya fue cobrado (ej. se cobró al confirmar), cerrar directo sin volver a cobrar
-                    if (order.paymentMethod && order.paymentMethod !== 'pendiente') {
+                    // Si ya fue cobrado con un método principal conocido, cerrar directo sin volver a cobrar
+                    const _knownMethodIds = getPaymentMethods().map((m) => m.id);
+                    if (order.paymentMethod && order.paymentMethod !== 'pendiente' && _knownMethodIds.includes(order.paymentMethod)) {
                         await updateOrder(orderId, { status: 'entregado', deliveredAt: firestoreNow() });
                         await reloadDataAndRender();
                         showNotice('Pedido cerrado.', 'ok');
@@ -12391,6 +12392,14 @@ function getPaymentMethods() {
 
 function getEnabledPaymentMethods() {
     return getPaymentMethods().filter((m) => m.enabled !== false);
+}
+
+function _normalizePaymentMethodId(rawId) {
+    if (!rawId) return rawId;
+    const methods = getPaymentMethods();
+    if (methods.find((m) => m.id === rawId)) return rawId;
+    const parent = methods.find((m) => Array.isArray(m.subs) && m.subs.includes(rawId));
+    return parent ? parent.id : rawId;
 }
 
 async function loadPaymentMethods() {
@@ -13850,11 +13859,12 @@ async function cerrarCaja() {
             if (o.paymentMethod === 'split' && Array.isArray(o.paymentSplit) && o.paymentSplit.length) {
                 o.paymentSplit.forEach(({ method: m, amount: a }) => {
                     if (!m) return;
-                    if (!ingresosMethod[m]) ingresosMethod[m] = 0;
-                    ingresosMethod[m] += Number(a);
+                    const mk = _normalizePaymentMethodId(m);
+                    if (!ingresosMethod[mk]) ingresosMethod[mk] = 0;
+                    ingresosMethod[mk] += Number(a);
                 });
             } else {
-                const mk = o.paymentMethod;
+                const mk = _normalizePaymentMethodId(o.paymentMethod);
                 if (!ingresosMethod[mk]) ingresosMethod[mk] = 0;
                 ingresosMethod[mk] += amt;
             }

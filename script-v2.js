@@ -258,6 +258,7 @@ let orderSentConfirmationUI = null;
 let publicUpgradesConfig = null;
 let _publicUpgradePending = null;
 let paymentFlowUI = null;
+let _customerPaymentMethods = null;
 
 // ── Historial para botón atrás de Android ──
 let _modalHistoryDepth = 0;
@@ -1401,6 +1402,23 @@ async function loadHorarioConfig() {
             closedMessage: String(d.mensajeCierre || ORDERING_SCHEDULE.closedMessage)
         };
         syncOrderingAvailabilityUI();
+    } catch (_) {}
+}
+
+async function loadCustomerPaymentMethods() {
+    try {
+        const db = getPublicFirebaseDb();
+        const doc = await db.collection('configuracion').doc('metodos_pago').get();
+        if (doc.exists && Array.isArray(doc.data()?.methods)) {
+            _customerPaymentMethods = doc.data().methods.filter((m) => m.enabled !== false);
+        } else {
+            _customerPaymentMethods = [
+                { id: 'efectivo',    label: 'Efectivo',    icon: '💵' },
+                { id: 'bancolombia', label: 'Bancolombia', icon: '🏦' },
+                { id: 'nequi',       label: 'Nequi',       icon: '💜' },
+                { id: 'bold',        label: 'Bold',        icon: '💳' },
+            ];
+        }
     } catch (_) {}
 }
 
@@ -3908,8 +3926,14 @@ function buildCartCheckoutMessage(customerInfo = {}) {
         `Entrega: ${fulfillmentType === 'delivery' ? 'Domicilio' : fulfillmentType === 'mesa' ? 'Comer en el local' : 'Recoger en el restaurante'}`,
         deliveryAddress ? `Direccion: ${deliveryAddress}` : '',
         customerInfo.deliveryZone ? `Zona: ${customerInfo.deliveryZone}` : '',
-        paymentMethod === 'transferencia' ? 'Pago: Transferencia llave / breve' : '',
-        paymentMethod === 'efectivo' ? `Pago: Efectivo${cashChangeRequired && cashTenderAmount > 0 ? ` | Paga con: ${formatCurrency(cashTenderAmount)}` : ' | Lleva completo'}` : ''
+        paymentMethod && paymentMethod !== 'pendiente' ? (() => {
+            if (paymentMethod === 'efectivo') {
+                return `Pago: Efectivo${cashChangeRequired && cashTenderAmount > 0 ? ` | Paga con: ${formatCurrency(cashTenderAmount)}` : ' | Lleva completo'}`;
+            }
+            const pmDef = (_customerPaymentMethods || []).find((m) => m.id === paymentMethod);
+            const pmLabel = pmDef ? pmDef.label : paymentMethod;
+            return `Pago: ${pmLabel}`;
+        })() : ''
     ].filter(Boolean);
 
     const domicilioLine = fulfillmentType === 'delivery'
@@ -4415,6 +4439,13 @@ function openPaymentFlowModal(orderData) {
     closePaymentFlowModal();
 
     const total = Number(orderData?.total || 0);
+    const _pmList = _customerPaymentMethods?.length ? _customerPaymentMethods : [
+        { id: 'efectivo',    label: 'Efectivo',    icon: '💵' },
+        { id: 'bancolombia', label: 'Bancolombia', icon: '🏦' },
+        { id: 'nequi',       label: 'Nequi',       icon: '💜' },
+        { id: 'bold',        label: 'Bold',        icon: '💳' },
+    ];
+    const _pmOptionsHtml = _pmList.map((m) => `<option value="${m.id}">${m.icon ? m.icon + ' ' : ''}${m.label}</option>`).join('');
     const modal = document.createElement('div');
     modal.id = 'paymentFlowModal';
     modal.className = 'support-modal';
@@ -4429,8 +4460,7 @@ function openPaymentFlowModal(orderData) {
                 <span>Selecciona el medio de pago</span>
                 <select id="paymentMethodSelect">
                     <option value="" selected disabled>Escoge aca tu medio de pago</option>
-                    <option value="transferencia">Transferencia llave / breve</option>
-                    <option value="efectivo">Efectivo</option>
+                    ${_pmOptionsHtml}
                 </select>
             </label>
             <div class="support-field" id="paymentCashOptions" hidden>
@@ -10504,6 +10534,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCategoryExplorer();
     loadPublicUpgradesConfig();
     loadHorarioConfig();
+    loadCustomerPaymentMethods();
 
     // Cerrar upgrade sheet público
     document.getElementById('publicUpgradeOverlay')?.addEventListener('click', (e) => {
