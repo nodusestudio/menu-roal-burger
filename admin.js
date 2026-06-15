@@ -6612,12 +6612,9 @@ function renderOrderTicket(order, options = {}) {
     const ticketPaper = orderTicketBody.querySelector('.ticket-paper');
     if (ticketPaper) {
         ticketPaper.style.position = 'relative';
-        const isPosOrder = order.isAdminOrder || order.source === 'admin_pos';
         const floatDiv = document.createElement('div');
         floatDiv.className = 'ticket-float-actions';
-        if (isPosOrder) {
-            floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-edit-btn" data-order-ticket-action="editar_pos" title="Editar pedido">✎</button>`;
-        }
+        floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-edit-btn" data-order-ticket-action="editar_pos" title="Editar pedido en POS">✎ Editar</button>`;
         floatDiv.innerHTML += `<button type="button" class="tpv-action-btn tpv-delete-btn" data-order-ticket-action="eliminar" title="Eliminar pedido">🗑</button>`;
         ticketPaper.appendChild(floatDiv);
     }
