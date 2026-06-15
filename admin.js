@@ -335,6 +335,7 @@ const editProductAcompList = document.getElementById('editProductAcompList');
 
 let bebidasState = [];
 let acompanantesState = [];
+let catalogoVisibilidad = { bebidas_pos: true, bebidas_menu: true, acompanantes_pos: true, acompanantes_menu: true };
 
 const clientEditModal = document.getElementById('clientEditModal');
 const clientEditForm = document.getElementById('clientEditForm');
@@ -2370,10 +2371,10 @@ function renderPosCategoriesPanel() {
     }
 
     const promoOption = `<option value="__POS_PROMOCIONES__">🏷️ PROMOCIONES</option>`;
-    const bebidasCatOption = bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
+    const bebidasCatOption = catalogoVisibilidad.bebidas_pos && bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
         ? `<option value="__POS_BEBIDAS__">🥤 Bebidas (${bebidasState.filter((b) => b.estado === 'active' && b.mostrar_categoria).length})</option>`
         : '';
-    const acompCatOption = acompanantesState.some((a) => a.estado === 'active' && a.activo_pos)
+    const acompCatOption = catalogoVisibilidad.acompanantes_pos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos)
         ? `<option value="__POS_ACOMPANANTES__">🥗 Acompañantes (${acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).length})</option>`
         : '';
     select.innerHTML = promoOption + bebidasCatOption + acompCatOption + categories.map((cat) => {
@@ -3298,6 +3299,86 @@ function _renderBebidasLegacy_UNUSED() {
 // ─────────────────────────────────────────
 //  ACOMPAÑANTES — Colección propia Firestore
 // ─────────────────────────────────────────
+
+// ─── Visibilidad global catálogo ───────────────
+async function fetchCatalogoVisibilidad() {
+    try {
+        const doc = await firebaseDb.collection('configuracion').doc('visibilidad_catalogo').get();
+        if (doc.exists) {
+            const d = doc.data();
+            catalogoVisibilidad = {
+                bebidas_pos: d.bebidas_pos !== false,
+                bebidas_menu: d.bebidas_menu !== false,
+                acompanantes_pos: d.acompanantes_pos !== false,
+                acompanantes_menu: d.acompanantes_menu !== false
+            };
+        }
+    } catch (_) {}
+}
+
+async function _saveCatalogoVisibilidad() {
+    await firebaseDb.collection('configuracion').doc('visibilidad_catalogo').set(catalogoVisibilidad, { merge: true });
+}
+
+function renderCatalogoVisibilidadPanel() {
+    const container = document.getElementById('catalogoVisibilidadPanel');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const card = document.createElement('div');
+    card.className = 'catalogo-vis-card';
+
+    const title = document.createElement('div');
+    title.className = 'catalogo-vis-title';
+    title.textContent = 'Visibilidad en POS y Menú público';
+    card.appendChild(title);
+
+    const items = [
+        { icon: '🥤', name: 'Bebidas', posKey: 'bebidas_pos', menuKey: 'bebidas_menu' },
+        { icon: '🥗', name: 'Acompañantes', posKey: 'acompanantes_pos', menuKey: 'acompanantes_menu' }
+    ];
+
+    items.forEach(({ icon, name, posKey, menuKey }) => {
+        const row = document.createElement('div');
+        row.className = 'catalogo-vis-row';
+
+        const iconEl = document.createElement('div');
+        iconEl.className = 'catalogo-vis-icon';
+        iconEl.textContent = icon;
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'catalogo-vis-name';
+        nameEl.textContent = name;
+
+        const toggles = document.createElement('div');
+        toggles.className = 'catalogo-vis-toggles';
+
+        [[posKey, 'POS'], [menuKey, 'Menú']].forEach(([key, label]) => {
+            const lbl = document.createElement('label');
+            lbl.className = 'catalogo-vis-tgl';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = catalogoVisibilidad[key];
+            const span = document.createElement('span');
+            span.textContent = label;
+            lbl.appendChild(cb);
+            lbl.appendChild(span);
+            cb.addEventListener('change', async () => {
+                catalogoVisibilidad[key] = cb.checked;
+                await _saveCatalogoVisibilidad();
+                renderPosCategoriesPanel();
+            });
+            toggles.appendChild(lbl);
+        });
+
+        row.appendChild(iconEl);
+        row.appendChild(nameEl);
+        row.appendChild(toggles);
+        card.appendChild(row);
+    });
+
+    container.appendChild(card);
+}
 
 function normalizeAcompanante(raw) {
     return {
@@ -6491,50 +6572,11 @@ function _renderCategoryDetailPanel(categoryId) {
                     })() : ''}`
                     : '<p style="font-size:0.8rem;color:var(--admin-muted);margin:4px 0;">Sin productos aún</p>'}
             </div>
-            ${_buildCatAcompHtml(category)}
-            <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;">
-                <button type="button" id="catTipoPosToggleBtn" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;cursor:pointer;color:inherit;text-align:left;gap:8px;">
-                    <span style="font-size:0.78rem;font-weight:600;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;">Tipo en POS${category.tipo_pos ? ': ' + (category.tipo_pos === 'acompanantes' ? 'Acompañantes' : 'Normal') : ''}</span>
-                    <span id="catTipoPosArrow" style="font-size:0.72rem;color:var(--admin-muted);flex-shrink:0;transition:transform 0.18s;">▼</span>
-                </button>
-                <div id="catTipoPosBody" style="display:none;margin-top:6px;">
-                    <select id="catDetailTipoPos" class="admin-input" style="width:100%;">
-                        <option value="" ${!category.tipo_pos ? 'selected' : ''}>Normal (productos de la categoría)</option>
-                        <option value="acompanantes" ${category.tipo_pos === 'acompanantes' ? 'selected' : ''}>Acompañantes configurados</option>
-                    </select>
-                    <p style="font-size:0.72rem;color:var(--admin-muted);margin:5px 0 0;">Al seleccionar "Acompañantes", el POS mostrará los acompañantes activos como productos de esta categoría.</p>
-                </div>
-            </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
                 <button type="button" class="section-save-btn" id="catDetailSaveBtn">Guardar</button>
             </div>
         </div>
     `;
-
-    // Acordeón ACOMPAÑANTES (POS)
-    categoryDetailPanel.querySelector('#catAcompToggleBtn')?.addEventListener('click', () => {
-        const body = categoryDetailPanel.querySelector('#catAcompBody');
-        const arrow = categoryDetailPanel.querySelector('#catAcompArrow');
-        if (!body) return;
-        const open = body.style.display !== 'none';
-        body.style.display = open ? 'none' : 'block';
-        if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
-    });
-
-    categoryDetailPanel.querySelector('#catAcompActivo')?.addEventListener('change', (e) => {
-        const list = categoryDetailPanel.querySelector('#catAcompList');
-        if (list) list.style.display = e.target.checked ? 'block' : 'none';
-    });
-
-    // Acordeón TIPO EN POS
-    categoryDetailPanel.querySelector('#catTipoPosToggleBtn')?.addEventListener('click', () => {
-        const body = categoryDetailPanel.querySelector('#catTipoPosBody');
-        const arrow = categoryDetailPanel.querySelector('#catTipoPosArrow');
-        if (!body) return;
-        const open = body.style.display !== 'none';
-        body.style.display = open ? 'none' : 'block';
-        if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
-    });
 
     categoryDetailPanel.querySelector('#catDetailSaveBtn')?.addEventListener('click', () => _saveCategoryFromDetail(categoryId));
     categoryDetailPanel.querySelector('#catDetailAddProductBtn')?.addEventListener('click', () => openProductCreateModal(category.name));
@@ -6647,49 +6689,16 @@ function _renderCategoryDetailPanel(categoryId) {
 async function _saveCategoryFromDetail(categoryId) {
     const nameInput = document.getElementById('catDetailName');
     const activeInput = document.getElementById('catDetailActive');
-    const tipoPosInput = document.getElementById('catDetailTipoPos');
-    const acompActivoInput = document.getElementById('catAcompActivo');
     const newName = nameInput ? nameInput.value.trim() : '';
     if (!newName) { showNotice('El nombre no puede estar vacío.', 'error'); return; }
     try {
         const existing = categoriesState.find((c) => c.id === categoryId);
-        const oldName = existing ? existing.name : newName;
-        const tipoPos = tipoPosInput ? (tipoPosInput.value || null) : null;
         await firebaseDb.collection('categorias').doc(categoryId).update({
             name: newName,
             image_url: existing ? (existing.image_url || '') : '',
             active: activeInput ? activeInput.checked : true,
-            tipo_pos: tipoPos,
             updated_at: firestoreNow()
         });
-
-        // Guardar config de acompañantes para esta categoría
-        if (acompActivoInput !== null && menuUpgradesConfig) {
-            const acompActivo = acompActivoInput.checked;
-            const catAcompList = document.getElementById('catAcompList');
-            const selectedIds = catAcompList
-                ? Array.from(catAcompList.querySelectorAll('input[name="catAcompId"]:checked')).map((c) => c.value)
-                : [];
-
-            // Actualizar categorias_aplica
-            const aplica = (menuUpgradesConfig.categorias_aplica || []).filter(
-                (c) => c.toUpperCase() !== oldName.toUpperCase() && c.toUpperCase() !== newName.toUpperCase()
-            );
-            if (acompActivo) aplica.push(newName);
-            menuUpgradesConfig.categorias_aplica = aplica;
-
-            // Actualizar categorias_ids
-            if (!menuUpgradesConfig.categorias_ids) menuUpgradesConfig.categorias_ids = {};
-            if (oldName !== newName) delete menuUpgradesConfig.categorias_ids[oldName];
-            if (acompActivo) {
-                menuUpgradesConfig.categorias_ids[newName] = selectedIds;
-            } else {
-                delete menuUpgradesConfig.categorias_ids[newName];
-            }
-
-            await saveMenuUpgradesConfig(menuUpgradesConfig);
-        }
-
         _selectedCategoryId = null;
         await reloadDataAndRender();
         showNotice('Categoría guardada.', 'ok');
@@ -10841,6 +10850,7 @@ async function reloadDataAndRender() {
         fetchProducts(),
         fetchBebidas(),
         fetchAcompanantes(),
+        fetchCatalogoVisibilidad(),
         fetchButtons(),
         fetchBranding(),
         fetchOrders(),
@@ -10865,6 +10875,7 @@ async function reloadDataAndRender() {
     announceNewMessages(messagesState);
 
     renderCategories();
+    renderCatalogoVisibilidadPanel();
     renderBebidasPanel();
     renderAcompanantesPanel();
     renderPosCategoriesPanel();

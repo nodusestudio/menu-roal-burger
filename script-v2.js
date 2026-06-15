@@ -260,6 +260,7 @@ let _publicUpgradePending = null;
 let paymentFlowUI = null;
 let _customerPaymentMethods = null;
 let _latestBebidas = [];
+let _catalogoVisibilidad = { bebidas_menu: true, acompanantes_menu: true };
 
 // ── Historial para botón atrás de Android ──
 let _modalHistoryDepth = 0;
@@ -1406,6 +1407,24 @@ function _normalizeBebidaPublic(raw) {
         estado: raw.estado === 'paused' ? 'paused' : 'active',
         orden: raw.orden != null ? Number(raw.orden) : 99
     };
+}
+
+function loadCatalogoVisibilidadPublic() {
+    try {
+        const db = getPublicFirebaseDb();
+        db.collection('configuracion').doc('visibilidad_catalogo').onSnapshot((doc) => {
+            if (doc.exists) {
+                const d = doc.data();
+                _catalogoVisibilidad = {
+                    bebidas_menu: d.bebidas_menu !== false,
+                    acompanantes_menu: d.acompanantes_menu !== false
+                };
+            } else {
+                _catalogoVisibilidad = { bebidas_menu: true, acompanantes_menu: true };
+            }
+            renderCategoryExplorer();
+        }, () => {});
+    } catch (_) {}
 }
 
 function loadBebidasPublic() {
@@ -8409,8 +8428,8 @@ function getExplorerCategories() {
         return a.name.localeCompare(b.name, 'es');
     });
 
-    // Inject bebidas virtual category when any active bebida has mostrar_categoria: true
-    const hasBebidasCat = _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_categoria);
+    // Inject bebidas virtual category when enabled and any active bebida has mostrar_categoria: true
+    const hasBebidasCat = _catalogoVisibilidad.bebidas_menu && _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_categoria);
     if (hasBebidasCat && !uniqueMap.has('bebidas')) {
         sorted.push({ key: 'bebidas', name: 'Bebidas', order: undefined });
     }
@@ -10844,6 +10863,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCategoryExplorer();
     loadPublicUpgradesConfig();
     loadHorarioConfig();
+    loadCatalogoVisibilidadPublic();
     loadBebidasPublic();
     loadCustomerPaymentMethods();
 

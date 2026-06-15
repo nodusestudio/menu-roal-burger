@@ -5448,6 +5448,53 @@
             width: 110px;
         }
 
+        /* ── Visibilidad global bebidas / acompañantes ── */
+        .catalogo-vis-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.09);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 14px;
+        }
+        .catalogo-vis-title {
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: rgba(160,185,220,0.55);
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            margin-bottom: 12px;
+        }
+        .catalogo-vis-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .catalogo-vis-row:last-child { border-bottom: none; }
+        .catalogo-vis-icon { font-size: 1.2rem; flex-shrink: 0; width: 28px; text-align: center; }
+        .catalogo-vis-name { flex: 1; font-size: 0.88rem; font-weight: 600; color: #eef4ff; }
+        .catalogo-vis-toggles { display: flex; gap: 8px; }
+        .catalogo-vis-tgl {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            color: rgba(200,220,255,0.7);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 4px 10px;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .catalogo-vis-tgl:has(input:checked) {
+            background: rgba(255,122,26,0.14);
+            border-color: rgba(255,122,26,0.4);
+            color: #ffc299;
+        }
+        .catalogo-vis-tgl input[type="checkbox"] { accent-color: #ff7a1a; width: 13px; height: 13px; cursor: pointer; }
+
         /* ── Acompañantes panel ── */
         .acomp-panel-toolbar { display:flex;justify-content:flex-end;margin-bottom:12px; }
         .acomp-panel-list { display:flex;flex-direction:column;gap:8px; }
@@ -10537,6 +10584,8 @@
                             <button type="button" class="section-action-btn primary" id="openCreateCategoryBtn">+ Crear categoría</button>
                             <button type="button" class="section-action-btn" id="openCreateProductBtn">+ Crear producto</button>
                         </div>
+                        <!-- Panel visibilidad global bebidas / acompañantes -->
+                        <div id="catalogoVisibilidadPanel"></div>
                         <div class="upgrades-master-detail">
                             <div class="upgrades-master-list" id="categoryList"></div>
                             <div class="upgrades-detail-panel" id="categoryDetailPanel">
