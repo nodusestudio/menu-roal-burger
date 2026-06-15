@@ -4176,8 +4176,8 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
     const selectedSavedAddressEntry = getSelectedCheckoutSavedAddress();
     const selectedSavedAddressLabel = getCustomerSavedAddressLabel(selectedSavedAddressEntry);
     const needsSavedAddressCoords = selectedSavedAddressEntry
-        && !Number.isFinite(Number(selectedSavedAddressEntry.latitude))
-        && !Number.isFinite(Number(selectedSavedAddressEntry.longitude))
+        && (selectedSavedAddressEntry.latitude == null || !Number.isFinite(Number(selectedSavedAddressEntry.latitude)))
+        && (selectedSavedAddressEntry.longitude == null || !Number.isFinite(Number(selectedSavedAddressEntry.longitude)))
         && selectedSavedAddressLabel;
 
     if (needsSavedAddressCoords) {
@@ -4692,7 +4692,7 @@ function updateCheckoutInfoModalState() {
     const selectedAddressOption = String(checkoutInfoUI.savedAddressChoice?.value || (hasSavedAddresses ? 'saved:0' : 'new')).trim();
     const usingSavedAddress = requiresAddress && hasSavedAddresses && selectedAddressOption.startsWith('saved:');
     const selectedSavedAddressEntry = usingSavedAddress ? getSelectedCheckoutSavedAddress() : null;
-    const addressHasLocation = selectedSavedAddressEntry && Number.isFinite(Number(selectedSavedAddressEntry.latitude)) && Number.isFinite(Number(selectedSavedAddressEntry.longitude));
+    const addressHasLocation = selectedSavedAddressEntry && selectedSavedAddressEntry.latitude != null && selectedSavedAddressEntry.longitude != null && Number.isFinite(Number(selectedSavedAddressEntry.latitude)) && Number.isFinite(Number(selectedSavedAddressEntry.longitude));
     const discountAmount = getCheckoutDiscountAmount();
 
     if (checkoutInfoUI.savedAddressField) {
