@@ -2506,7 +2506,7 @@ function openPosBebidaPickerModal(bev) {
 
     const overlay = document.createElement('div');
     overlay.className = 'combo-modal-overlay';
-    overlay.style.zIndex = '8500';
+    overlay.style.zIndex = '11000';
 
     const card = document.createElement('div');
     card.className = 'combo-modal-card';
