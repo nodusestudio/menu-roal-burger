@@ -560,6 +560,12 @@
             color: #ffd280;
         }
 
+        .sales-day-chip--delivery {
+            background: rgba(96, 165, 250, 0.12);
+            border-color: rgba(96, 165, 250, 0.28);
+            color: #93c5fd;
+        }
+
         .nuevo-ticket-btn {
             min-height: 30px;
             padding: 0 13px;
@@ -10375,6 +10381,7 @@
                                 <span class="sales-day-chip" id="salesDayDeliveredTotal">💵 $0</span>
                                 <span class="sales-day-chip" id="salesDayGrandTotal">💳 $0</span>
                                 <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= $0</span>
+                                <span class="sales-day-chip sales-day-chip--delivery" id="salesDayDeliveryFeesChip" hidden>🛵 $0</span>
                                 <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
                                 <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn" hidden style="display:none!important">
                                     Tickets Abiertos

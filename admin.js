@@ -6940,6 +6940,10 @@ function renderSalesDayBanner() {
     const grandTotal = paidOrders
         .reduce((sum, o) => sum + Number(getOrderDisplayTotal(o) || 0), 0);
 
+    const deliveryFeesTotal = paidOrders
+        .filter((o) => o.orderType === 'domicilio' && Number(o.deliveryFee) > 0)
+        .reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
+
     if (salesDayStatusLabel) {
         salesDayStatusLabel.textContent = salesDayState?.openedAt ? 'Jornada activa' : 'Jornada en preparacion';
     }
@@ -6961,6 +6965,16 @@ function renderSalesDayBanner() {
     const totalChip = document.getElementById('salesDayTotalChip');
     if (totalChip) {
         totalChip.textContent = `= ${formatMoney(grandTotal)}`;
+    }
+
+    const deliveryFeesChip = document.getElementById('salesDayDeliveryFeesChip');
+    if (deliveryFeesChip) {
+        if (deliveryFeesTotal > 0) {
+            deliveryFeesChip.textContent = `🛵 ${formatMoney(deliveryFeesTotal)}`;
+            deliveryFeesChip.hidden = false;
+        } else {
+            deliveryFeesChip.hidden = true;
+        }
     }
 
     // El botón de cierre sigue basado en pedidos entregados (no en pagados)
