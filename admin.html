@@ -5838,11 +5838,13 @@
             gap: 8px;
             padding: 10px;
             font-size: 0.85em;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.15) transparent;
         }
 
         .kanban-list {
-            flex: 1;
-            overflow-y: auto;
+            flex: none;
+            overflow-y: visible;
             scrollbar-width: thin;
             scrollbar-color: rgba(255,255,255,0.15) transparent;
         }
@@ -5904,6 +5906,7 @@
         .orders-lane-header {
             padding-bottom: 9px;
             align-items: center;
+            flex-shrink: 0;
         }
 
         .kanban-count {
