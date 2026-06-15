@@ -2337,9 +2337,48 @@ body.has-guest-register-banner #ayudaScreen {
 }
 
 .support-feedback {
-    min-height: 20px;
+    min-height: 0;
     color: #a54800;
     font-size: 0.92rem;
+    transition: all 0.2s ease;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.support-feedback:not(:empty) {
+    padding: 11px 14px;
+    background: rgba(165, 72, 0, 0.10);
+    border: 1.5px solid rgba(165, 72, 0, 0.26);
+    font-weight: 600;
+}
+.support-feedback--error:not(:empty) {
+    background: rgba(200, 40, 20, 0.09);
+    border-color: rgba(200, 40, 20, 0.28);
+    color: #c02010;
+}
+.support-feedback--success:not(:empty) {
+    background: rgba(22, 163, 74, 0.10);
+    border-color: rgba(22, 163, 74, 0.28);
+    color: #16a34a;
+}
+@keyframes authShake {
+    0%, 100% { transform: translateX(0); }
+    18%, 54% { transform: translateX(-5px); }
+    36%, 72% { transform: translateX(5px); }
+}
+.support-feedback--shake {
+    animation: authShake 0.38s ease;
+}
+.support-field--error input,
+.support-field--error select,
+.support-field--error textarea {
+    border-color: rgba(200, 40, 20, 0.45) !important;
+    box-shadow: 0 0 0 3px rgba(200, 40, 20, 0.10);
+}
+.support-send-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    filter: grayscale(0.1);
+    box-shadow: none;
 }
 
 .support-field-hint {

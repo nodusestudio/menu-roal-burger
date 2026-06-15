@@ -2677,31 +2677,70 @@ async function requestCustomerPasswordReset() {
 }
 
 async function submitCustomerLookup() {
-    if (!customerAuthUI?.lookupPhone || !customerAuthUI?.lookupPin || !customerAuthUI.feedback) {
+    if (!customerAuthUI?.lookupPhone || !customerAuthUI?.lookupPin || !customerAuthUI?.feedback) {
         return;
     }
 
-    const phoneValue = String(customerAuthUI.lookupPhone.value || '').trim();
-    const pinValue = String(customerAuthUI.lookupPin.value || '').trim();
-    customerAuthUI.feedback.textContent = '';
+    const feedback   = customerAuthUI.feedback;
+    const btn        = customerAuthUI.lookupButton;
+    const phoneField = customerAuthUI.lookupPhone;
+    const pinField   = customerAuthUI.lookupPin;
+
+    const phoneValue = String(phoneField.value || '').trim();
+    const pinValue   = String(pinField.value || '').trim();
+
+    // Limpiar estado previo
+    feedback.textContent = '';
+    feedback.className = 'support-feedback';
+    phoneField.closest('.support-field')?.classList.remove('support-field--error');
+    pinField.closest('.support-field')?.classList.remove('support-field--error');
+
+    // Helper de error (definido antes de usarlo)
+    const _showError = (msg, field) => {
+        feedback.textContent = msg;
+        feedback.className = 'support-feedback support-feedback--error';
+        void feedback.offsetWidth; // forzar reflow para reiniciar la animación
+        feedback.classList.add('support-feedback--shake');
+        feedback.addEventListener('animationend', () => feedback.classList.remove('support-feedback--shake'), { once: true });
+        if (field) field.closest('.support-field')?.classList.add('support-field--error');
+        feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
+    };
+
+    // Validación local inmediata (evita round-trip al servidor)
+    const phoneDigits = phoneValue.replace(/\D/g, '');
+    if (phoneDigits.length < 10) {
+        _showError('Escribe un numero de WhatsApp valido (minimo 10 digitos).', phoneField);
+        return;
+    }
+    if (!pinValue) {
+        _showError('Escribe tu contrasena de 6 digitos.', pinField);
+        return;
+    }
+
+    // Estado de carga — botón bloqueado mientras consulta Firebase
+    if (btn) { btn.disabled = true; btn.textContent = 'Verificando…'; }
 
     try {
         const profile = await fetchClientProfileByPhone(phoneValue, pinValue);
         if (!profile) {
-            customerAuthUI.feedback.textContent = 'No encontramos un perfil con esos datos. Si no tienes cuenta, pulsa Registrarse.';
+            _showError('No encontramos una cuenta con ese numero. Si no tienes cuenta, pulsa Registrarse.', phoneField);
             return;
         }
-
         setActiveCustomerProfile(profile);
         closeCustomerAuthModal();
     } catch (error) {
         if (error?.code === 'PASSWORD_RESET_REQUIRED') {
+            if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
             openCustomerPasswordResetModal(error.profile || { customerPhone: phoneValue });
-            customerAuthUI.feedback.textContent = error.message || 'Debes crear una nueva contrasena para continuar.';
+            if (customerAuthUI?.feedback) {
+                customerAuthUI.feedback.textContent = error.message || 'Debes crear una nueva contrasena para continuar.';
+                customerAuthUI.feedback.className = 'support-feedback support-feedback--error';
+            }
             return;
         }
-
-        customerAuthUI.feedback.textContent = error.message || 'No se pudo abrir el perfil.';
+        const isWrongPin = String(error.message || '').toLowerCase().includes('contrase');
+        _showError(error.message || 'No se pudo abrir el perfil. Intentalo de nuevo.', isWrongPin ? pinField : phoneField);
     }
 }
 
@@ -2908,6 +2947,7 @@ function openCustomerAuthModal() {
                     <span>Contrasena de 6 digitos</span>
                     <input type="password" id="customerLookupPin" inputmode="numeric" maxlength="6" placeholder="Escribe tu contrasena">
                 </label>
+                <p class="support-feedback" id="customerAuthFeedback" role="alert" aria-live="polite"></p>
                 <div class="support-actions stack">
                     <button type="button" class="support-send-btn" id="customerLookupButton">Entrar</button>
                     <div class="support-actions split">
@@ -2915,7 +2955,6 @@ function openCustomerAuthModal() {
                         <button type="button" class="support-secondary-btn" id="customerRegisterToggle">Registrarse</button>
                     </div>
                 </div>
-                <p class="support-feedback" id="customerAuthFeedback"></p>
             </div>
         `;
 
@@ -2975,6 +3014,11 @@ function openCustomerAuthModal() {
     bindCustomerPinField(customerAuthUI.lookupPin);
     attachPasswordToggle(customerAuthUI.lookupPin);
 
+    // Enter en cualquiera de los dos campos dispara el login
+    const _onLoginEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); submitCustomerLookup(); } };
+    customerAuthUI.lookupPhone?.addEventListener('keydown', _onLoginEnter);
+    customerAuthUI.lookupPin?.addEventListener('keydown', _onLoginEnter);
+
     // Pantalla completa — sin handler de clic-fuera
 
     syncBodyScrollLock();
@@ -2983,7 +3027,10 @@ function openCustomerAuthModal() {
         renderCustomerOrdersPanel();
         renderCustomerMessagesPanel();
     }
-    (customerAuthUI.lookupPhone || customerAuthUI.name)?.focus();
+    // Foco inicial: campo de teléfono si no hay sesión, nada si ya hay perfil (evita teclado inesperado en mobile)
+    if (!profile) {
+        setTimeout(() => customerAuthUI?.lookupPhone?.focus(), 80);
+    }
 }
 
 function syncBusinessHoursStatus() {
