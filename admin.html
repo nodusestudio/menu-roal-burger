@@ -5233,7 +5233,6 @@
         .combo-sabor-shake { animation: comboSaborShake 0.3s ease; }
 
         /* ── Panel BEBIDAS ── */
-        .bebidas-panel-toolbar { margin-bottom: 14px; }
         .bebidas-panel-grid {
             display: flex;
             flex-direction: column;
@@ -5241,60 +5240,58 @@
         }
         .bebidas-panel-card {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 12px;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.09);
             border-radius: 10px;
             padding: 10px 12px;
-            transition: background 0.15s;
         }
-        .bebidas-panel-card.paused { opacity: 0.55; }
+        .bebidas-panel-card.paused { opacity: 0.52; }
         .bebidas-panel-img {
-            width: 52px;
-            height: 52px;
+            width: 54px;
+            height: 54px;
             object-fit: cover;
             border-radius: 8px;
             flex-shrink: 0;
             background: rgba(255,255,255,0.04);
         }
-        .bebidas-panel-info {
-            flex: 1;
-            min-width: 0;
-        }
+        .bebidas-panel-info { flex: 1; min-width: 0; }
         .bebidas-panel-nombre {
             font-size: 0.92rem;
-            font-weight: 600;
+            font-weight: 700;
             color: #eef4ff;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
-        .bebidas-panel-meta {
-            font-size: 0.75rem;
-            color: rgba(180,200,255,0.55);
-            margin-top: 2px;
-        }
-        .bebidas-panel-price {
-            font-size: 0.78rem;
-            color: #ff9a55;
-            margin-top: 3px;
-            font-weight: 600;
-        }
-        .bebidas-panel-sabores {
+        .bebidas-panel-badges {
             display: flex;
             flex-wrap: wrap;
             gap: 4px;
-            margin-top: 5px;
+            margin-top: 4px;
         }
-        .bebidas-sabor-chip {
-            font-size: 0.67rem;
-            background: rgba(255,122,26,0.12);
-            border: 1px solid rgba(255,122,26,0.3);
-            color: #ffc299;
-            border-radius: 12px;
-            padding: 2px 8px;
+        .bebidas-badge {
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 10px;
+            letter-spacing: 0.3px;
         }
+        .bebidas-badge--cat { background: rgba(80,180,255,0.15); color: #7ec8ff; border: 1px solid rgba(80,180,255,0.25); }
+        .bebidas-badge--acomp { background: rgba(255,122,26,0.12); color: #ffc299; border: 1px solid rgba(255,122,26,0.25); }
+        .bebidas-panel-pres-list {
+            margin-top: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .bebidas-panel-pres-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.78rem;
+        }
+        .bebidas-pres-nombre { color: rgba(200,220,255,0.75); font-weight: 500; }
+        .bebidas-pres-precio { color: #ff9a55; font-weight: 600; }
+        .bebidas-pres-sabores { color: rgba(180,200,255,0.45); font-size: 0.72rem; }
         .bebidas-panel-actions {
             display: flex;
             flex-direction: column;
@@ -5304,10 +5301,90 @@
         .bebidas-panel-empty {
             text-align: center;
             padding: 40px 20px;
-            color: rgba(180,200,255,0.45);
+            color: rgba(180,200,255,0.4);
         }
         .bebidas-panel-empty p:first-child { font-size: 2rem; margin: 0 0 8px; }
         .bebidas-panel-empty p:last-child { font-size: 0.85rem; margin: 0; }
+
+        /* ── Modal formulario BEBIDA ── */
+        .bebida-form-card { max-width: 500px; max-height: 88vh; display: flex; flex-direction: column; }
+        .bebida-form-body {
+            overflow-y: auto;
+            padding: 4px 0 2px;
+            flex: 1;
+        }
+        .bebida-form-input {
+            width: 100%;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            padding: 8px 11px;
+            color: #eef4ff;
+            font-size: 0.85rem;
+            box-sizing: border-box;
+            font-family: 'Space Grotesk', sans-serif;
+            margin-top: 4px;
+        }
+        .bebida-form-input:focus {
+            outline: none;
+            border-color: rgba(255,122,26,0.5);
+            background: rgba(255,255,255,0.09);
+        }
+        .bebida-form-vis-row {
+            display: flex;
+            gap: 14px;
+            margin: 12px 0 4px;
+            flex-wrap: wrap;
+        }
+        .bebida-form-tgl {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            color: rgba(200,220,255,0.8);
+        }
+        .bebida-form-tgl input[type="checkbox"] { accent-color: #ff7a1a; width: 15px; height: 15px; cursor: pointer; }
+        .bebida-form-pres-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .bebida-pres-col-head {
+            display: grid;
+            grid-template-columns: 1fr 90px 1fr 28px;
+            gap: 6px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: rgba(160,185,220,0.5);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            padding: 4px 0 2px;
+        }
+        .bebida-form-pres-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+        .bebida-pres-row {
+            display: grid;
+            grid-template-columns: 1fr 90px 1fr 28px;
+            gap: 6px;
+            align-items: center;
+        }
+        .bebida-pres-precio { text-align: right; }
+        .bebida-pres-del {
+            background: rgba(255,80,80,0.1);
+            border: 1px solid rgba(255,80,80,0.2);
+            border-radius: 6px;
+            color: #ff8080;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .bebida-pres-del:hover { background: rgba(255,80,80,0.2); }
 
         .combo-modal-note-row { padding: 4px 0 0; }
         .combo-modal-note-label {
@@ -11448,19 +11525,6 @@
                     <label for="createProductImageUrl">Ruta/URL imagen</label>
                     <input type="text" id="createProductImageUrl" name="createProductImageUrl" placeholder="Ej: PLUS.png o https://...">
                 </div>
-                <!-- Campos exclusivos para categoría BEBIDAS -->
-                <div class="admin-field" id="createBebidaSection" style="display:none">
-                    <label for="createProductBrand">Marca de bebida</label>
-                    <input type="text" id="createProductBrand" name="createProductBrand" placeholder="Ej: Coca-Cola, Pony Malta...">
-                </div>
-                <div class="admin-field" id="createBebidaMlSection" style="display:none">
-                    <label for="createProductMl">Contenido (ml)</label>
-                    <input type="number" id="createProductMl" name="createProductMl" min="0" step="50" placeholder="Ej: 400">
-                </div>
-                <div class="admin-field full" id="createBebidaSaboresSection" style="display:none">
-                    <label for="createProductFlavors">Sabores (separados por coma)</label>
-                    <input type="text" id="createProductFlavors" name="createProductFlavors" placeholder="Ej: Clasica, Light, Zero">
-                </div>
                 <div class="admin-field full">
                     <div id="productCreateFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
                 </div>
@@ -11510,20 +11574,6 @@
                 <div class="admin-field full">
                     <label for="editProductImageUrl">Ruta/URL imagen actual</label>
                     <input type="text" id="editProductImageUrl" name="editProductImageUrl" placeholder="Ej: PLUS.png o https://...">
-                </div>
-
-                <!-- Campos exclusivos para categoría BEBIDAS -->
-                <div class="admin-field" id="editBebidaSection" style="display:none">
-                    <label for="editProductBrand">Marca de bebida</label>
-                    <input type="text" id="editProductBrand" name="editProductBrand" placeholder="Ej: Coca-Cola, Pony Malta...">
-                </div>
-                <div class="admin-field" id="editBebidaMlSection" style="display:none">
-                    <label for="editProductMl">Contenido (ml)</label>
-                    <input type="number" id="editProductMl" name="editProductMl" min="0" step="50" placeholder="Ej: 400">
-                </div>
-                <div class="admin-field full" id="editBebidaSaboresSection" style="display:none">
-                    <label for="editProductFlavors">Sabores (separados por coma)</label>
-                    <input type="text" id="editProductFlavors" name="editProductFlavors" placeholder="Ej: Clasica, Light, Zero">
                 </div>
 
                 <!-- Acompañantes por producto -->

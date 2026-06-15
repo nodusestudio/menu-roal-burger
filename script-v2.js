@@ -259,6 +259,7 @@ let publicUpgradesConfig = null;
 let _publicUpgradePending = null;
 let paymentFlowUI = null;
 let _customerPaymentMethods = null;
+let _latestBebidas = [];
 
 // ── Historial para botón atrás de Android ──
 let _modalHistoryDepth = 0;
@@ -1381,6 +1382,45 @@ async function loadPublicUpgradesConfig() {
         publicUpgradesConfig = raw;
     } catch (_e) {
         publicUpgradesConfig = null;
+    }
+}
+
+function _normalizeBebidaPublic(raw) {
+    const rawPres = Array.isArray(raw.presentaciones) ? raw.presentaciones : [];
+    return {
+        id: raw.id,
+        marca: String(raw.marca || '').trim(),
+        image_url: String(raw.image_url || '').trim(),
+        presentaciones: rawPres.map((p, i) => ({
+            id: p.id || `p${i}`,
+            nombre: String(p.nombre || '').trim(),
+            precio: Number(p.precio) || 0,
+            sabores: Array.isArray(p.sabores)
+                ? p.sabores.map((s) => String(s).trim()).filter(Boolean)
+                : (typeof p.sabores === 'string'
+                    ? p.sabores.split(',').map((s) => s.trim()).filter(Boolean)
+                    : [])
+        })).filter((p) => p.nombre),
+        mostrar_categoria: raw.mostrar_categoria !== false,
+        mostrar_acompanante: raw.mostrar_acompanante !== false,
+        estado: raw.estado === 'paused' ? 'paused' : 'active',
+        orden: raw.orden != null ? Number(raw.orden) : 99
+    };
+}
+
+function loadBebidasPublic() {
+    try {
+        const db = getPublicFirebaseDb();
+        db.collection('bebidas').onSnapshot((snap) => {
+            _latestBebidas = snap.docs
+                .map((doc) => _normalizeBebidaPublic({ id: doc.id, ...doc.data() }))
+                .sort((a, b) => a.orden - b.orden || a.marca.localeCompare(b.marca, 'es'));
+            renderCategoryExplorer();
+        }, () => {
+            _latestBebidas = [];
+        });
+    } catch (_) {
+        _latestBebidas = [];
     }
 }
 
@@ -8357,7 +8397,7 @@ function getExplorerCategories() {
 
     const priorityIndex = new Map(CATEGORY_BUTTON_PRIORITY.map((item, index) => [item, index]));
 
-    return Array.from(uniqueMap.values()).sort((a, b) => {
+    const sorted = Array.from(uniqueMap.values()).sort((a, b) => {
         const aOrder = a.order ?? null;
         const bOrder = b.order ?? null;
         if (aOrder !== null && bOrder !== null) return aOrder - bOrder;
@@ -8368,6 +8408,14 @@ function getExplorerCategories() {
         if (aPriority !== bPriority) return aPriority - bPriority;
         return a.name.localeCompare(b.name, 'es');
     });
+
+    // Inject bebidas virtual category when any active bebida has mostrar_categoria: true
+    const hasBebidasCat = _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_categoria);
+    if (hasBebidasCat && !uniqueMap.has('bebidas')) {
+        sorted.push({ key: 'bebidas', name: 'Bebidas', order: undefined });
+    }
+
+    return sorted;
 }
 
 function ensureForcedExplorerCategories(categories) {
@@ -8627,6 +8675,14 @@ function renderCategoryExplorer(nextKey, options = {}) {
         panel.classList.add('focus-highlight');
     };
 
+    // Custom renderer for the bebidas collection
+    if (normalizeCategoryKey(selectedCategory.key) === 'bebidas') {
+        renderBebidasPublicPanel(panel);
+        focusProductsPanel();
+        syncOrderingAvailabilityUI();
+        return;
+    }
+
     const rendered = renderManualCategoryGallery(
         panel,
         selectedCategory.name,
@@ -8643,6 +8699,204 @@ function renderCategoryExplorer(nextKey, options = {}) {
 
     syncOrderingAvailabilityUI();
 }
+// --- BEBIDAS COLLECTION — PUBLIC MENU ---
+
+function renderBebidasPublicPanel(panel) {
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    const activeBebidas = _latestBebidas.filter((b) => b.estado === 'active' && b.mostrar_categoria);
+
+    if (!activeBebidas.length) {
+        panel.innerHTML = '<p class="category-empty">No hay bebidas disponibles por ahora.</p>';
+        return;
+    }
+
+    const gallery = document.createElement('div');
+    gallery.className = 'bebidas-gallery-grid';
+    gallery.style.display = 'grid';
+    gallery.style.gridTemplateColumns = activeBebidas.length === 1 ? '1fr' : '1fr 1fr';
+    gallery.style.gap = '15px';
+    gallery.style.padding = '20px';
+    if (activeBebidas.length === 1) {
+        gallery.style.maxWidth = '420px';
+        gallery.style.margin = '0 auto';
+    }
+
+    activeBebidas.forEach((bev) => {
+        const item = document.createElement('div');
+        item.className = 'card-pequena';
+        item.style.cursor = 'pointer';
+        item.addEventListener('click', () => openBebidaPublicPickerModal(bev));
+
+        const img = document.createElement('img');
+        img.src = bev.image_url || 'logo.png';
+        img.alt = bev.marca;
+        img.style.width = '100%';
+        img.style.borderRadius = '8px';
+        img.addEventListener('error', () => {
+            if (img.src !== window.location.origin + '/logo.png') img.src = 'logo.png';
+        });
+
+        const label = document.createElement('p');
+        label.textContent = bev.marca;
+        label.style.textAlign = 'center';
+        label.style.fontWeight = 'bold';
+        label.style.marginTop = '5px';
+        label.style.color = '#000';
+
+        item.appendChild(img);
+        item.appendChild(label);
+        gallery.appendChild(item);
+    });
+
+    panel.appendChild(gallery);
+}
+
+function openBebidaPublicPickerModal(bev) {
+    const prev = document.getElementById('bebida-pub-picker-modal');
+    if (prev) prev.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'bebida-pub-picker-modal';
+    overlay.className = 'bebidas-modal-overlay';
+
+    const card = document.createElement('div');
+    card.className = 'bebidas-modal-card liquid-glass';
+    card.style.maxWidth = '360px';
+    card.style.width = '92vw';
+
+    // Header
+    const img = document.createElement('img');
+    img.className = 'bebidas-modal-image';
+    img.src = bev.image_url || 'logo.png';
+    img.alt = bev.marca;
+    img.addEventListener('error', () => { if (img.src !== window.location.origin + '/logo.png') img.src = 'logo.png'; });
+
+    const title = document.createElement('div');
+    title.className = 'bebidas-modal-title';
+    title.textContent = bev.marca;
+
+    // Presentación label
+    const presLabel = document.createElement('p');
+    presLabel.style.cssText = 'margin:14px 0 6px;font-size:0.82rem;color:rgba(255,255,255,0.6);text-align:left;width:100%;padding:0 4px;';
+    presLabel.textContent = 'Elige tu presentación:';
+
+    // Presentación chips
+    const presChips = document.createElement('div');
+    presChips.className = 'combo-sabor-chips';
+    presChips.style.justifyContent = 'flex-start';
+
+    // Sabor section (hidden until presentación chosen)
+    const saborSection = document.createElement('div');
+    saborSection.style.cssText = 'width:100%;display:none;';
+
+    const saborLabel = document.createElement('p');
+    saborLabel.style.cssText = 'margin:14px 0 6px;font-size:0.82rem;color:rgba(255,255,255,0.6);text-align:left;padding:0 4px;';
+    saborLabel.textContent = 'Elige el sabor:';
+
+    const saborChips = document.createElement('div');
+    saborChips.className = 'combo-sabor-chips';
+    saborChips.style.justifyContent = 'flex-start';
+
+    saborSection.appendChild(saborLabel);
+    saborSection.appendChild(saborChips);
+
+    let selectedPres = null;
+    let selectedSabor = null;
+
+    const renderSaborChips = () => {
+        saborChips.innerHTML = '';
+        if (!selectedPres || !selectedPres.sabores.length) {
+            saborSection.style.display = 'none';
+            return;
+        }
+        saborSection.style.display = '';
+        selectedPres.sabores.forEach((sabor) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'combo-sabor-chip' + (selectedSabor === sabor ? ' active' : '');
+            chip.textContent = sabor;
+            chip.addEventListener('click', () => {
+                selectedSabor = sabor;
+                renderSaborChips();
+            });
+            saborChips.appendChild(chip);
+        });
+    };
+
+    const renderPresChips = () => {
+        presChips.innerHTML = '';
+        bev.presentaciones.forEach((pres) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'combo-sabor-chip' + (selectedPres?.id === pres.id ? ' active' : '');
+            const precioFmt = pres.precio ? ` — $${pres.precio.toLocaleString('es-CO')}` : '';
+            chip.textContent = `${pres.nombre}${precioFmt}`;
+            chip.addEventListener('click', () => {
+                selectedPres = pres;
+                selectedSabor = null;
+                renderPresChips();
+                renderSaborChips();
+            });
+            presChips.appendChild(chip);
+        });
+    };
+
+    renderPresChips();
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'bebidas-modal-actions';
+    actions.style.marginTop = '18px';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'bebidas-modal-btn bebidas-modal-btn-secondary';
+    closeBtn.textContent = 'Regresar';
+    closeBtn.addEventListener('click', () => overlay.remove());
+
+    const orderBtn = document.createElement('button');
+    orderBtn.type = 'button';
+    orderBtn.className = 'bebidas-modal-btn bebidas-modal-btn-primary';
+    orderBtn.textContent = 'Agregar al pedido';
+    orderBtn.addEventListener('click', () => {
+        if (!selectedPres) {
+            presChips.classList.add('combo-sabor-shake');
+            presChips.addEventListener('animationend', () => presChips.classList.remove('combo-sabor-shake'), { once: true });
+            return;
+        }
+        if (selectedPres.sabores.length && !selectedSabor) {
+            saborChips.classList.add('combo-sabor-shake');
+            saborChips.addEventListener('animationend', () => saborChips.classList.remove('combo-sabor-shake'), { once: true });
+            return;
+        }
+        overlay.remove();
+        let itemName = bev.marca;
+        if (selectedPres) itemName += ` ${selectedPres.nombre}`;
+        if (selectedSabor) itemName += ` (${selectedSabor})`;
+        const price = selectedPres ? selectedPres.precio : 0;
+        addItemToCart(itemName, 'Bebidas', { type: 'solo', staticPrice: price, upgradeHandled: true }, null);
+    });
+
+    actions.appendChild(closeBtn);
+    actions.appendChild(orderBtn);
+
+    card.appendChild(img);
+    card.appendChild(title);
+    card.appendChild(presLabel);
+    card.appendChild(presChips);
+    card.appendChild(saborSection);
+    card.appendChild(actions);
+    overlay.appendChild(card);
+
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay && _lastMousedownTarget === overlay) overlay.remove();
+    });
+
+    document.body.appendChild(overlay);
+}
+
 // --- FUNCIÓN GLOBAL MODAL BEBIDAS ---
 function abrirModalBebida(nombre, ruta, categoria, options = {}) {
     const prev = document.getElementById('bebidas-modal');
@@ -10590,6 +10844,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCategoryExplorer();
     loadPublicUpgradesConfig();
     loadHorarioConfig();
+    loadBebidasPublic();
     loadCustomerPaymentMethods();
 
     // Cerrar upgrade sheet público

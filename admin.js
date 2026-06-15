@@ -333,12 +333,7 @@ const productEditSaveBtn = document.getElementById('productEditSaveBtn');
 const editProductAcompActivo = document.getElementById('editProductAcompActivo');
 const editProductAcompList = document.getElementById('editProductAcompList');
 
-const createProductBrandInput = document.getElementById('createProductBrand');
-const createProductMlInput = document.getElementById('createProductMl');
-const createProductFlavorsInput = document.getElementById('createProductFlavors');
-const editProductBrandInput = document.getElementById('editProductBrand');
-const editProductMlInput = document.getElementById('editProductMl');
-const editProductFlavorsInput = document.getElementById('editProductFlavors');
+let bebidasState = [];
 
 const clientEditModal = document.getElementById('clientEditModal');
 const clientEditForm = document.getElementById('clientEditForm');
@@ -2773,11 +2768,48 @@ function isComboCategory(categoryName) {
     return String(categoryName || '').toLowerCase().includes('combo');
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  SISTEMA BEBIDAS — colección `bebidas` independiente de `productos`
+// ═══════════════════════════════════════════════════════════════════
+
+function normalizeBebida(raw) {
+    const rawPres = Array.isArray(raw.presentaciones) ? raw.presentaciones : [];
+    return {
+        id: raw.id,
+        marca: String(raw.marca || '').trim(),
+        image_url: String(raw.image_url || '').trim(),
+        presentaciones: rawPres.map((p, i) => ({
+            id: p.id || `p${i}`,
+            nombre: String(p.nombre || '').trim(),
+            precio: Number(p.precio) || 0,
+            sabores: Array.isArray(p.sabores)
+                ? p.sabores.map((s) => String(s).trim()).filter(Boolean)
+                : (typeof p.sabores === 'string'
+                    ? p.sabores.split(',').map((s) => s.trim()).filter(Boolean)
+                    : [])
+        })).filter((p) => p.nombre),
+        mostrar_categoria: raw.mostrar_categoria !== false,
+        mostrar_acompanante: raw.mostrar_acompanante !== false,
+        estado: raw.estado === 'paused' ? 'paused' : 'active',
+        orden: raw.orden != null ? Number(raw.orden) : 99,
+        created_at: raw.created_at,
+        updated_at: raw.updated_at
+    };
+}
+
+async function fetchBebidas() {
+    try {
+        const snap = await firebaseDb.collection('bebidas').get();
+        bebidasState = snap.docs
+            .map((doc) => normalizeBebida({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => a.orden - b.orden || a.marca.localeCompare(b.marca, 'es'));
+    } catch (_) {
+        bebidasState = [];
+    }
+}
+
 function getBeverageOptions() {
-    const source = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
-    return source
-        .filter((item) => String(item.categoria || '').trim().toLowerCase().includes('bebidas'))
-        .filter((item) => String(item.estado || 'active').trim() === 'active');
+    return bebidasState.filter((b) => b.estado === 'active' && b.mostrar_acompanante);
 }
 
 function _isBebidaCategory(catName) {
@@ -2787,7 +2819,134 @@ function _isBebidaCategory(catName) {
 function renderBebidasPanel() {
     const container = document.getElementById('bebidasTabPanel');
     if (!container) return;
+    container.innerHTML = '';
 
+    const toolbar = document.createElement('div');
+    toolbar.className = 'section-toolbar';
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'section-action-btn primary';
+    addBtn.textContent = '+ Crear bebida';
+    addBtn.addEventListener('click', () => openBebidaModal());
+    toolbar.appendChild(addBtn);
+    container.appendChild(toolbar);
+
+    if (!bebidasState.length) {
+        const empty = document.createElement('div');
+        empty.className = 'bebidas-panel-empty';
+        empty.innerHTML = '<p>🥤</p><p>No hay bebidas configuradas. Crea la primera.</p>';
+        container.appendChild(empty);
+        return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'bebidas-panel-grid';
+
+    bebidasState.forEach((bev) => {
+        const card = document.createElement('div');
+        card.className = `bebidas-panel-card${bev.estado === 'paused' ? ' paused' : ''}`;
+
+        const img = document.createElement('img');
+        img.className = 'bebidas-panel-img';
+        img.src = bev.image_url || 'logo.png';
+        img.alt = bev.marca;
+        img.loading = 'lazy';
+        img.addEventListener('error', () => { img.src = 'logo.png'; });
+
+        const info = document.createElement('div');
+        info.className = 'bebidas-panel-info';
+
+        const nomEl = document.createElement('div');
+        nomEl.className = 'bebidas-panel-nombre';
+        nomEl.textContent = bev.marca;
+        info.appendChild(nomEl);
+
+        const badges = document.createElement('div');
+        badges.className = 'bebidas-panel-badges';
+        if (bev.mostrar_categoria) {
+            const b1 = document.createElement('span');
+            b1.className = 'bebidas-badge bebidas-badge--cat';
+            b1.textContent = 'Categoría';
+            badges.appendChild(b1);
+        }
+        if (bev.mostrar_acompanante) {
+            const b2 = document.createElement('span');
+            b2.className = 'bebidas-badge bebidas-badge--acomp';
+            b2.textContent = 'Acompañante';
+            badges.appendChild(b2);
+        }
+        if (badges.firstChild) info.appendChild(badges);
+
+        const presList = document.createElement('div');
+        presList.className = 'bebidas-panel-pres-list';
+        bev.presentaciones.forEach((p) => {
+            const row = document.createElement('div');
+            row.className = 'bebidas-panel-pres-item';
+            const n = document.createElement('span');
+            n.className = 'bebidas-pres-nombre';
+            n.textContent = p.nombre;
+            const price = document.createElement('span');
+            price.className = 'bebidas-pres-precio';
+            price.textContent = formatMoney(p.precio);
+            row.appendChild(n);
+            row.appendChild(price);
+            if (p.sabores.length) {
+                const sab = document.createElement('span');
+                sab.className = 'bebidas-pres-sabores';
+                sab.textContent = p.sabores.join(', ');
+                row.appendChild(sab);
+            }
+            presList.appendChild(row);
+        });
+        if (bev.presentaciones.length) info.appendChild(presList);
+
+        const actions = document.createElement('div');
+        actions.className = 'bebidas-panel-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'mini-btn';
+        editBtn.textContent = 'Editar';
+        editBtn.addEventListener('click', () => openBebidaModal(bev));
+
+        const pauseBtn = document.createElement('button');
+        pauseBtn.type = 'button';
+        pauseBtn.className = 'mini-btn';
+        pauseBtn.textContent = bev.estado === 'paused' ? 'Reanudar' : 'Pausar';
+        pauseBtn.addEventListener('click', async () => {
+            const nuevoEstado = bev.estado === 'paused' ? 'active' : 'paused';
+            try {
+                await firebaseDb.collection('bebidas').doc(bev.id).update({ estado: nuevoEstado, updated_at: firestoreNow() });
+                await reloadDataAndRender();
+            } catch (e) { showNotice(`Error: ${e.message}`, 'error'); }
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'mini-btn remove';
+        delBtn.textContent = 'Eliminar';
+        delBtn.addEventListener('click', async () => {
+            if (!window.confirm(`¿Eliminar "${bev.marca}"?`)) return;
+            try {
+                await firebaseDb.collection('bebidas').doc(bev.id).delete();
+                await reloadDataAndRender();
+                showNotice('Bebida eliminada.', 'ok');
+            } catch (e) { showNotice(`Error: ${e.message}`, 'error'); }
+        });
+
+        actions.appendChild(editBtn);
+        actions.appendChild(pauseBtn);
+        actions.appendChild(delBtn);
+        card.appendChild(img);
+        card.appendChild(info);
+        card.appendChild(actions);
+        list.appendChild(card);
+    });
+
+    container.appendChild(list);
+}
+
+function _renderBebidasLegacy_UNUSED() {
     const bebidas = productsState
         .filter((p) => _isBebidaCategory(p.categoria))
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
@@ -2915,30 +3074,232 @@ function renderBebidasPanel() {
     container.appendChild(grid);
 }
 
-function _toggleBebidaFields(formType) {
-    const select = formType === 'create' ? createProductCategorySelect : editProductCategorySelect;
-    const show = _isBebidaCategory(select?.value);
-    const ids = formType === 'create'
-        ? ['createBebidaSection', 'createBebidaMlSection', 'createBebidaSaboresSection']
-        : ['editBebidaSection', 'editBebidaMlSection', 'editBebidaSaboresSection'];
-    ids.forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = show ? '' : 'none';
+function openBebidaModal(bebida = null) {
+    const isEdit = !!bebida;
+    let presentaciones = isEdit
+        ? bebida.presentaciones.map((p) => ({ ...p, sabores: [...(p.sabores || [])] }))
+        : [{ id: `p${Date.now()}`, nombre: '', precio: 0, sabores: [] }];
+
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+    overlay.style.zIndex = '8500';
+
+    const card = document.createElement('div');
+    card.className = 'combo-modal-card bebida-form-card';
+
+    const header = document.createElement('div');
+    header.className = 'combo-modal-header';
+    const htitle = document.createElement('div');
+    htitle.innerHTML = `<h4>${isEdit ? 'Editar bebida' : 'Nueva bebida'}</h4>`;
+    const closeX = document.createElement('button');
+    closeX.type = 'button';
+    closeX.className = 'combo-modal-close-x';
+    closeX.textContent = '×';
+    closeX.addEventListener('click', () => overlay.remove());
+    header.appendChild(htitle);
+    header.appendChild(closeX);
+
+    const body = document.createElement('div');
+    body.className = 'bebida-form-body';
+
+    const marcaLabel = document.createElement('div');
+    marcaLabel.className = 'combo-modal-section-label';
+    marcaLabel.textContent = 'Marca de bebida';
+    const marcaInput = document.createElement('input');
+    marcaInput.type = 'text';
+    marcaInput.className = 'bebida-form-input';
+    marcaInput.placeholder = 'Ej: Coca-Cola, Pony Malta...';
+    marcaInput.value = bebida?.marca || '';
+    body.appendChild(marcaLabel);
+    body.appendChild(marcaInput);
+
+    const imgLabel = document.createElement('div');
+    imgLabel.className = 'combo-modal-section-label';
+    imgLabel.style.marginTop = '10px';
+    imgLabel.textContent = 'Imagen (URL o ruta)';
+    const imgInput = document.createElement('input');
+    imgInput.type = 'text';
+    imgInput.className = 'bebida-form-input';
+    imgInput.placeholder = 'https://... o ./imagen.png';
+    imgInput.value = bebida?.image_url || '';
+    body.appendChild(imgLabel);
+    body.appendChild(imgInput);
+
+    const visRow = document.createElement('div');
+    visRow.className = 'bebida-form-vis-row';
+    const makeTgl = (label, checked) => {
+        const wrap = document.createElement('label');
+        wrap.className = 'bebida-form-tgl';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = checked;
+        const txt = document.createElement('span');
+        txt.textContent = label;
+        wrap.appendChild(cb);
+        wrap.appendChild(txt);
+        return { wrap, cb };
+    };
+    const { wrap: catWrap, cb: catCb } = makeTgl('Mostrar como categoría', bebida ? bebida.mostrar_categoria : true);
+    const { wrap: acompWrap, cb: acompCb } = makeTgl('Mostrar como acompañante', bebida ? bebida.mostrar_acompanante : true);
+    visRow.appendChild(catWrap);
+    visRow.appendChild(acompWrap);
+    body.appendChild(visRow);
+
+    const presSecHeader = document.createElement('div');
+    presSecHeader.className = 'bebida-form-pres-header';
+    const presSecLabel = document.createElement('div');
+    presSecLabel.className = 'combo-modal-section-label';
+    presSecLabel.style.marginTop = '12px';
+    presSecLabel.textContent = 'Presentaciones';
+    const addPresBtn = document.createElement('button');
+    addPresBtn.type = 'button';
+    addPresBtn.className = 'ghost-button';
+    addPresBtn.style.cssText = 'font-size:0.78rem;padding:4px 10px;margin-top:12px;';
+    addPresBtn.textContent = '+ Presentación';
+    presSecHeader.appendChild(presSecLabel);
+    presSecHeader.appendChild(addPresBtn);
+    body.appendChild(presSecHeader);
+
+    const presColHead = document.createElement('div');
+    presColHead.className = 'bebida-pres-col-head';
+    presColHead.innerHTML = '<span>Presentación</span><span>Precio</span><span>Sabores (separados por coma)</span><span></span>';
+    body.appendChild(presColHead);
+
+    const presList = document.createElement('div');
+    presList.className = 'bebida-form-pres-list';
+    body.appendChild(presList);
+
+    const renderPresRows = () => {
+        presList.innerHTML = '';
+        presentaciones.forEach((pres, idx) => {
+            const row = document.createElement('div');
+            row.className = 'bebida-pres-row';
+
+            const nInput = document.createElement('input');
+            nInput.type = 'text';
+            nInput.className = 'bebida-form-input bebida-pres-nombre';
+            nInput.placeholder = 'Ej: 400ml, Litro...';
+            nInput.value = pres.nombre;
+            nInput.addEventListener('input', () => { presentaciones[idx].nombre = nInput.value.trim(); });
+
+            const pInput = document.createElement('input');
+            pInput.type = 'number';
+            pInput.className = 'bebida-form-input bebida-pres-precio';
+            pInput.placeholder = 'Precio';
+            pInput.min = '0';
+            pInput.step = '100';
+            pInput.value = pres.precio || '';
+            pInput.addEventListener('input', () => { presentaciones[idx].precio = Number(pInput.value) || 0; });
+
+            const sInput = document.createElement('input');
+            sInput.type = 'text';
+            sInput.className = 'bebida-form-input bebida-pres-sabores';
+            sInput.placeholder = 'Clásica, Light, Zero...';
+            sInput.value = Array.isArray(pres.sabores) ? pres.sabores.join(', ') : '';
+            sInput.addEventListener('input', () => {
+                presentaciones[idx].sabores = sInput.value.split(',').map((s) => s.trim()).filter(Boolean);
+            });
+
+            const delBtn2 = document.createElement('button');
+            delBtn2.type = 'button';
+            delBtn2.className = 'bebida-pres-del';
+            delBtn2.textContent = '×';
+            delBtn2.addEventListener('click', () => {
+                if (presentaciones.length === 1) return;
+                presentaciones.splice(idx, 1);
+                renderPresRows();
+            });
+
+            row.appendChild(nInput);
+            row.appendChild(pInput);
+            row.appendChild(sInput);
+            row.appendChild(delBtn2);
+            presList.appendChild(row);
+        });
+    };
+    renderPresRows();
+
+    addPresBtn.addEventListener('click', () => {
+        presentaciones.push({ id: `p${Date.now()}`, nombre: '', precio: 0, sabores: [] });
+        renderPresRows();
     });
+
+    const feedback = document.createElement('div');
+    feedback.className = 'modal-feedback';
+    feedback.style.marginTop = '8px';
+    body.appendChild(feedback);
+
+    const footer = document.createElement('div');
+    footer.className = 'combo-modal-footer';
+    const cancelBtn2 = document.createElement('button');
+    cancelBtn2.type = 'button';
+    cancelBtn2.className = 'combo-modal-cancel-btn';
+    cancelBtn2.textContent = 'Cancelar';
+    cancelBtn2.addEventListener('click', () => overlay.remove());
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'combo-modal-confirm-btn';
+    saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear bebida';
+    saveBtn.addEventListener('click', async () => {
+        const marca = marcaInput.value.trim();
+        if (!marca) { showModalFeedback(feedback, 'Escribe la marca de la bebida.', 'error'); return; }
+        const validPres = presentaciones.filter((p) => p.nombre);
+        if (!validPres.length) { showModalFeedback(feedback, 'Agrega al menos una presentación con nombre.', 'error'); return; }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = isEdit ? 'Guardando...' : 'Creando...';
+
+        const payload = {
+            marca,
+            image_url: imgInput.value.trim(),
+            presentaciones: validPres,
+            mostrar_categoria: catCb.checked,
+            mostrar_acompanante: acompCb.checked,
+            estado: bebida?.estado || 'active',
+            updated_at: firestoreNow()
+        };
+        try {
+            if (isEdit) {
+                await firebaseDb.collection('bebidas').doc(bebida.id).update(payload);
+            } else {
+                payload.orden = bebidasState.length;
+                payload.created_at = firestoreNow();
+                await firebaseDb.collection('bebidas').add(payload);
+            }
+            await reloadDataAndRender();
+            overlay.remove();
+            showNotice(isEdit ? 'Bebida actualizada.' : 'Bebida creada.', 'ok');
+        } catch (e) {
+            showModalFeedback(feedback, `Error: ${e.message || 'No se pudo guardar.'}`, 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear bebida';
+        }
+    });
+
+    footer.appendChild(cancelBtn2);
+    footer.appendChild(saveBtn);
+    card.appendChild(header);
+    card.appendChild(body);
+    card.appendChild(footer);
+    overlay.appendChild(card);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    setTimeout(() => marcaInput.focus(), 80);
 }
 
+// Modal POS: Marca → Presentación → Sabor
 function openComboBeverageModal(productId, productName, productPrice, categoryName) {
     const beverageOptions = getBeverageOptions();
-    let selectedBeverage = null;
+    let selectedBebida = null;
+    let selectedPres = null;
     let selectedSabor = null;
 
     const overlay = document.createElement('div');
     overlay.className = 'combo-modal-overlay';
-
     const card = document.createElement('div');
     card.className = 'combo-modal-card';
 
-    // Header
     const header = document.createElement('div');
     header.className = 'combo-modal-header';
     const headerText = document.createElement('div');
@@ -2952,16 +3313,26 @@ function openComboBeverageModal(productId, productName, productPrice, categoryNa
     header.appendChild(headerText);
     header.appendChild(closeX);
 
-    // Beverages label
     const secLabel = document.createElement('div');
     secLabel.className = 'combo-modal-section-label';
     secLabel.textContent = 'Bebida incluida';
 
-    // Beverage grid
     const bevGrid = document.createElement('div');
     bevGrid.className = 'combo-bev-grid';
 
-    // Sabor picker (hidden until a bebida with sabores is selected)
+    // Paso 2: presentaciones (aparece al seleccionar marca)
+    const presRow = document.createElement('div');
+    presRow.className = 'combo-sabor-row';
+    presRow.style.display = 'none';
+    const presLabel = document.createElement('div');
+    presLabel.className = 'combo-modal-section-label combo-sabor-label';
+    presLabel.textContent = 'Presentación';
+    const presChips = document.createElement('div');
+    presChips.className = 'combo-sabor-chips';
+    presRow.appendChild(presLabel);
+    presRow.appendChild(presChips);
+
+    // Paso 3: sabores (aparece al seleccionar presentación con sabores)
     const saborRow = document.createElement('div');
     saborRow.className = 'combo-sabor-row';
     saborRow.style.display = 'none';
@@ -2973,13 +3344,10 @@ function openComboBeverageModal(productId, productName, productPrice, categoryNa
     saborRow.appendChild(saborLabel);
     saborRow.appendChild(saborChips);
 
-    const showSaborPicker = (sabores) => {
+    const showSaborRow = (sabores) => {
         selectedSabor = null;
         saborChips.innerHTML = '';
-        if (!sabores || !sabores.length) {
-            saborRow.style.display = 'none';
-            return;
-        }
+        if (!sabores || !sabores.length) { saborRow.style.display = 'none'; return; }
         sabores.forEach((sabor) => {
             const chip = document.createElement('button');
             chip.type = 'button';
@@ -2996,45 +3364,59 @@ function openComboBeverageModal(productId, productName, productPrice, categoryNa
         saborRow.style.display = '';
     };
 
-    const makeBevCard = (option) => {
+    const showPresRow = (bebida) => {
+        selectedPres = null;
+        selectedSabor = null;
+        presChips.innerHTML = '';
+        saborRow.style.display = 'none';
+        if (!bebida || !bebida.presentaciones.length) { presRow.style.display = 'none'; return; }
+        bebida.presentaciones.forEach((pres) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'combo-sabor-chip';
+            chip.textContent = `${pres.nombre} — ${formatMoney(pres.precio)}`;
+            chip.addEventListener('click', () => {
+                presChips.querySelectorAll('.combo-sabor-chip').forEach((c) => c.classList.remove('selected'));
+                chip.classList.add('selected');
+                selectedPres = pres;
+                presLabel.style.color = '';
+                showSaborRow(pres.sabores);
+            });
+            presChips.appendChild(chip);
+        });
+        presRow.style.display = '';
+    };
+
+    const makeBevCard = (bebida) => {
         const bevCard = document.createElement('div');
         bevCard.className = 'combo-bev-card';
-
-        if (!option) {
+        if (!bebida) {
             const noImg = document.createElement('div');
             noImg.className = 'combo-bev-no-img';
             noImg.textContent = '—';
-            const label = document.createElement('span');
-            label.textContent = 'Sin bebida';
+            const lbl = document.createElement('span');
+            lbl.textContent = 'Sin bebida';
             bevCard.appendChild(noImg);
-            bevCard.appendChild(label);
+            bevCard.appendChild(lbl);
             bevCard.classList.add('selected');
         } else {
             const img = document.createElement('img');
-            img.src = option.image_url || 'logo.png';
-            img.alt = option.nombre;
+            img.src = bebida.image_url || 'logo.png';
+            img.alt = bebida.marca;
             img.loading = 'lazy';
             img.addEventListener('error', () => { img.src = 'logo.png'; });
-            const label = document.createElement('span');
-            label.textContent = option.nombre;
+            const lbl = document.createElement('span');
+            lbl.textContent = bebida.marca;
             bevCard.appendChild(img);
-            bevCard.appendChild(label);
-            if (option.marca || option.ml) {
-                const meta = document.createElement('small');
-                meta.className = 'combo-bev-meta';
-                const parts = [];
-                if (option.marca) parts.push(option.marca);
-                if (option.ml) parts.push(`${option.ml}ml`);
-                meta.textContent = parts.join(' · ');
-                bevCard.appendChild(meta);
-            }
+            bevCard.appendChild(lbl);
         }
-
         bevCard.addEventListener('click', () => {
             bevGrid.querySelectorAll('.combo-bev-card').forEach((c) => c.classList.remove('selected'));
             bevCard.classList.add('selected');
-            selectedBeverage = option;
-            showSaborPicker(option?.sabores || []);
+            selectedBebida = bebida;
+            selectedPres = null;
+            selectedSabor = null;
+            showPresRow(bebida);
         });
         return bevCard;
     };
@@ -3042,20 +3424,18 @@ function openComboBeverageModal(productId, productName, productPrice, categoryNa
     bevGrid.appendChild(makeBevCard(null));
     beverageOptions.forEach((bev) => bevGrid.appendChild(makeBevCard(bev)));
 
-    // Note field
     const noteRow = document.createElement('div');
     noteRow.className = 'combo-modal-note-row';
-    const noteLabel = document.createElement('label');
-    noteLabel.className = 'combo-modal-note-label';
-    noteLabel.textContent = 'Nota (opcional)';
+    const noteLbl = document.createElement('label');
+    noteLbl.className = 'combo-modal-note-label';
+    noteLbl.textContent = 'Nota (opcional)';
     const noteInput = document.createElement('input');
     noteInput.type = 'text';
     noteInput.className = 'combo-modal-note-input';
     noteInput.placeholder = 'Ej: sin hielo, con limón...';
-    noteRow.appendChild(noteLabel);
+    noteRow.appendChild(noteLbl);
     noteRow.appendChild(noteInput);
 
-    // Footer: cancel + confirm
     const footer = document.createElement('div');
     footer.className = 'combo-modal-footer';
     const cancelBtn = document.createElement('button');
@@ -3069,38 +3449,39 @@ function openComboBeverageModal(productId, productName, productPrice, categoryNa
     confirmBtn.className = 'combo-modal-confirm-btn';
     confirmBtn.textContent = 'Agregar al pedido';
     confirmBtn.addEventListener('click', () => {
-        const sabores = selectedBeverage?.sabores || [];
-        if (sabores.length > 0 && !selectedSabor) {
+        if (selectedBebida && !selectedPres) {
+            presLabel.style.color = '#ff6b6b';
+            presChips.classList.add('combo-sabor-shake');
+            presChips.addEventListener('animationend', () => presChips.classList.remove('combo-sabor-shake'), { once: true });
+            return;
+        }
+        if (selectedPres && selectedPres.sabores.length > 0 && !selectedSabor) {
             saborLabel.style.color = '#ff6b6b';
             saborChips.classList.add('combo-sabor-shake');
             saborChips.addEventListener('animationend', () => saborChips.classList.remove('combo-sabor-shake'), { once: true });
             return;
         }
         const note = noteInput.value.trim();
-        const beverageId = selectedBeverage ? String(selectedBeverage.id || selectedBeverage.nombre || '').trim() : 'none';
-        const beverageName = selectedBeverage ? selectedBeverage.nombre : null;
-        let orderName = beverageName ? `${productName} + ${beverageName}` : productName;
+        const bevId = selectedBebida ? String(selectedBebida.id || '').trim() : 'none';
+        let orderName = selectedBebida ? `${productName} + ${selectedBebida.marca}` : productName;
+        if (selectedPres) orderName += ` ${selectedPres.nombre}`;
         if (selectedSabor) orderName += ` (${selectedSabor})`;
-        const itemKey = `${String(productId).trim()}::${beverageId}`;
+        const itemKey = `${String(productId).trim()}::${bevId}`;
         addProductToPosOrder(itemKey, orderName, productPrice, note);
         overlay.remove();
     });
 
     footer.appendChild(cancelBtn);
     footer.appendChild(confirmBtn);
-
     card.appendChild(header);
     card.appendChild(secLabel);
     card.appendChild(bevGrid);
+    card.appendChild(presRow);
     card.appendChild(saborRow);
     card.appendChild(noteRow);
     card.appendChild(footer);
     overlay.appendChild(card);
-
-    overlay.addEventListener('click', (event) => {
-        if (event.target === overlay) overlay.remove();
-    });
-
+    overlay.addEventListener('click', (event) => { if (event.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
 }
 
@@ -4795,8 +5176,6 @@ function openProductCreateModal(preselectedCategoryName = '') {
     if (createProductFeaturedSelect) {
         createProductFeaturedSelect.value = 'false';
     }
-    _toggleBebidaFields('create');
-
     productCreateModal.classList.add('show');
     productCreateModal.setAttribute('aria-hidden', 'false');
     if (createProductNameInput) {
@@ -4917,13 +5296,6 @@ function openProductEditModal(product, categoryId) {
     editProductStateSelect.value = product.estado === 'paused' ? 'paused' : 'active';
     editProductFeaturedSelect.value = product.es_destacado ? 'true' : 'false';
     editProductImageUrlInput.value = product.image_url || '';
-
-    if (editProductBrandInput) editProductBrandInput.value = product.marca || '';
-    if (editProductMlInput) editProductMlInput.value = product.ml != null ? String(product.ml) : '';
-    if (editProductFlavorsInput) {
-        editProductFlavorsInput.value = Array.isArray(product.sabores) ? product.sabores.join(', ') : '';
-    }
-    _toggleBebidaFields('edit');
 
     renderProductAcompList(product.acompanantes || null);
 
@@ -9743,6 +10115,7 @@ async function reloadDataAndRender() {
     await Promise.all([
         fetchCategories(),
         fetchProducts(),
+        fetchBebidas(),
         fetchButtons(),
         fetchBranding(),
         fetchOrders(),
@@ -12094,15 +12467,6 @@ if (productCreateForm) {
                 created_at: firestoreNow(),
                 updated_at: firestoreNow()
             };
-            if (_isBebidaCategory(categoria)) {
-                const marcaVal = String(createProductBrandInput?.value || '').trim();
-                const mlVal = createProductMlInput?.value ? Number(createProductMlInput.value) : null;
-                const saboresRaw = String(createProductFlavorsInput?.value || '').trim();
-                const saboresVal = saboresRaw ? saboresRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
-                if (marcaVal) productPayload.marca = marcaVal;
-                if (mlVal) productPayload.ml = mlVal;
-                if (saboresVal.length) productPayload.sabores = saboresVal;
-            }
             await firebaseDb.collection('productos').doc(productId).set(productPayload);
 
             await reloadDataAndRender();
@@ -12180,7 +12544,7 @@ if (productEditForm) {
                 finalImageUrl = await resolveProductImageUpload(imageFile, nombre);
             }
 
-            const editPayload = {
+            await firebaseDb.collection('productos').doc(productId).update({
                 nombre,
                 precio,
                 categoria,
@@ -12189,21 +12553,7 @@ if (productEditForm) {
                 image_url: finalImageUrl,
                 acompanantes,
                 updated_at: firestoreNow()
-            };
-            if (_isBebidaCategory(categoria)) {
-                const marcaVal = String(editProductBrandInput?.value || '').trim();
-                const mlVal = editProductMlInput?.value ? Number(editProductMlInput.value) : null;
-                const saboresRaw = String(editProductFlavorsInput?.value || '').trim();
-                const saboresVal = saboresRaw ? saboresRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
-                editPayload.marca = marcaVal || '';
-                editPayload.ml = mlVal || null;
-                editPayload.sabores = saboresVal;
-            } else {
-                editPayload.marca = '';
-                editPayload.ml = null;
-                editPayload.sabores = [];
-            }
-            await firebaseDb.collection('productos').doc(productId).update(editPayload);
+            });
 
             await reloadDataAndRender();
 
@@ -12217,14 +12567,6 @@ if (productEditForm) {
             }
         }
     });
-}
-
-if (createProductCategorySelect) {
-    createProductCategorySelect.addEventListener('change', () => _toggleBebidaFields('create'));
-}
-
-if (editProductCategorySelect) {
-    editProductCategorySelect.addEventListener('change', () => _toggleBebidaFields('edit'));
 }
 
 if (buttonConfigForm) {
