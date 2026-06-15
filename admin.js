@@ -3218,7 +3218,7 @@ function openBebidaModal(bebida = null) {
 
     const presColHead = document.createElement('div');
     presColHead.className = 'bebida-pres-col-head';
-    presColHead.innerHTML = '<span>Presentación</span><span>Precio</span><span>Sabores (separados por coma)</span><span></span>';
+    presColHead.innerHTML = '<span>Presentación</span><span>Precio</span><span></span>';
     body.appendChild(presColHead);
 
     const presList = document.createElement('div');
@@ -3230,6 +3230,10 @@ function openBebidaModal(bebida = null) {
         presentaciones.forEach((pres, idx) => {
             const row = document.createElement('div');
             row.className = 'bebida-pres-row';
+
+            // ── top: nombre | precio | delete ──
+            const rowTop = document.createElement('div');
+            rowTop.className = 'bebida-pres-row-top';
 
             const nInput = document.createElement('input');
             nInput.type = 'text';
@@ -3254,15 +3258,6 @@ function openBebidaModal(bebida = null) {
             pInput.value = pres.precio || '';
             pInput.addEventListener('input', () => { presentaciones[idx].precio = Number(pInput.value) || 0; });
 
-            const sInput = document.createElement('input');
-            sInput.type = 'text';
-            sInput.className = 'bebida-form-input bebida-pres-sabores';
-            sInput.placeholder = 'Clásica, Light, Zero...';
-            sInput.value = Array.isArray(pres.sabores) ? pres.sabores.join(', ') : '';
-            sInput.addEventListener('input', () => {
-                presentaciones[idx].sabores = sInput.value.split(',').map((s) => s.trim()).filter(Boolean);
-            });
-
             const delBtn2 = document.createElement('button');
             delBtn2.type = 'button';
             delBtn2.className = 'bebida-pres-del';
@@ -3273,10 +3268,66 @@ function openBebidaModal(bebida = null) {
                 renderPresRows();
             });
 
-            row.appendChild(nInput);
-            row.appendChild(pInput);
-            row.appendChild(sInput);
-            row.appendChild(delBtn2);
+            rowTop.appendChild(nInput);
+            rowTop.appendChild(pInput);
+            rowTop.appendChild(delBtn2);
+
+            // ── sabores: chips individuales + add ──
+            const saboresArea = document.createElement('div');
+            saboresArea.className = 'bebida-sabores-area';
+
+            const renderSabores = () => {
+                saboresArea.innerHTML = '';
+                (presentaciones[idx].sabores || []).forEach((sabor, si) => {
+                    const chip = document.createElement('span');
+                    chip.className = 'bebida-sabor-chip';
+                    const chipText = document.createTextNode(sabor);
+                    const chipDel = document.createElement('button');
+                    chipDel.type = 'button';
+                    chipDel.className = 'bebida-sabor-chip-del';
+                    chipDel.textContent = '×';
+                    chipDel.title = 'Quitar sabor';
+                    chipDel.addEventListener('click', () => {
+                        presentaciones[idx].sabores.splice(si, 1);
+                        renderSabores();
+                    });
+                    chip.appendChild(chipText);
+                    chip.appendChild(chipDel);
+                    saboresArea.appendChild(chip);
+                });
+
+                const addBtn = document.createElement('button');
+                addBtn.type = 'button';
+                addBtn.className = 'bebida-add-sabor-btn';
+                addBtn.textContent = '+ Sabor';
+                addBtn.addEventListener('click', () => {
+                    addBtn.style.display = 'none';
+                    const inp = document.createElement('input');
+                    inp.type = 'text';
+                    inp.className = 'bebida-sabor-new-input';
+                    inp.placeholder = 'Nombre del sabor';
+                    saboresArea.appendChild(inp);
+                    inp.focus();
+                    const commit = () => {
+                        const val = inp.value.trim();
+                        if (val) {
+                            if (!Array.isArray(presentaciones[idx].sabores)) presentaciones[idx].sabores = [];
+                            presentaciones[idx].sabores.push(val);
+                        }
+                        renderSabores();
+                    };
+                    inp.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+                        if (e.key === 'Escape') renderSabores();
+                    });
+                    inp.addEventListener('blur', commit);
+                });
+                saboresArea.appendChild(addBtn);
+            };
+            renderSabores();
+
+            row.appendChild(rowTop);
+            row.appendChild(saboresArea);
             presList.appendChild(row);
         });
     };

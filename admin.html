@@ -5352,7 +5352,7 @@
         }
         .bebida-pres-col-head {
             display: grid;
-            grid-template-columns: 1fr 90px 1fr 28px;
+            grid-template-columns: 1fr 90px 28px;
             gap: 6px;
             font-size: 0.65rem;
             font-weight: 700;
@@ -5361,10 +5361,19 @@
             letter-spacing: 0.6px;
             padding: 4px 0 2px;
         }
-        .bebida-form-pres-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+        .bebida-form-pres-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
         .bebida-pres-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 9px;
+            padding: 8px 9px;
+        }
+        .bebida-pres-row-top {
             display: grid;
-            grid-template-columns: 1fr 90px 1fr 28px;
+            grid-template-columns: 1fr 90px 28px;
             gap: 6px;
             align-items: center;
         }
@@ -5385,6 +5394,59 @@
             flex-shrink: 0;
         }
         .bebida-pres-del:hover { background: rgba(255,80,80,0.2); }
+        .bebida-sabores-area {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            align-items: center;
+            min-height: 28px;
+            padding: 2px 0;
+        }
+        .bebida-sabor-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(255,160,60,0.12);
+            border: 1px solid rgba(255,160,60,0.25);
+            border-radius: 20px;
+            padding: 3px 8px 3px 10px;
+            font-size: 0.75rem;
+            color: #ffc299;
+            white-space: nowrap;
+        }
+        .bebida-sabor-chip-del {
+            background: none;
+            border: none;
+            color: rgba(255,140,60,0.6);
+            cursor: pointer;
+            font-size: 0.85rem;
+            line-height: 1;
+            padding: 0;
+            display: flex;
+            align-items: center;
+        }
+        .bebida-sabor-chip-del:hover { color: #ff8080; }
+        .bebida-add-sabor-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px dashed rgba(255,255,255,0.2);
+            border-radius: 20px;
+            color: rgba(255,255,255,0.45);
+            cursor: pointer;
+            font-size: 0.72rem;
+            padding: 3px 10px;
+            white-space: nowrap;
+        }
+        .bebida-add-sabor-btn:hover { background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.7); }
+        .bebida-sabor-new-input {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,160,60,0.35);
+            border-radius: 20px;
+            color: #fff;
+            font-size: 0.75rem;
+            outline: none;
+            padding: 3px 10px;
+            width: 110px;
+        }
 
         .combo-modal-note-row { padding: 4px 0 0; }
         .combo-modal-note-label {
