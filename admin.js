@@ -4657,7 +4657,7 @@ function openBurgerClasicasPosModal(productId, productName) {
 
 function openProductVariantesModal(productId, productName, categoryName, variantes) {
     let selectedVariante = null;
-    let selectedSabor = null;
+    let selectedSabores = []; // array de largo cantidad_bebidas, cada slot es null o string
 
     const overlay = document.createElement('div');
     overlay.className = 'combo-modal-overlay';
@@ -4725,17 +4725,14 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         if (!selectedVariante) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.45'; return; }
         const sabores = _getVarianteSabores(selectedVariante);
         const needsSabor = sabores.length > 0;
-        const ready = !needsSabor || !!selectedSabor;
+        const filled = selectedSabores.filter((s) => s !== null).length;
+        const total = selectedSabores.length;
+        const ready = !needsSabor || (total > 0 && filled === total);
         confirmBtn.disabled = !ready;
         confirmBtn.style.opacity = ready ? '1' : '0.45';
-        if (ready) {
-            const bebInfo = selectedVariante.con_bebida && selectedVariante.bebida_nombre
-                ? ` + ${selectedVariante.bebida_nombre}${selectedSabor ? ` (${selectedSabor})` : ''}${selectedVariante.cantidad_bebidas > 1 ? ` ×${selectedVariante.cantidad_bebidas}` : ''}`
-                : '';
-            confirmBtn.textContent = `Agregar — $${Number(selectedVariante.precio || 0).toLocaleString('es-CO')}`;
-        } else {
-            confirmBtn.textContent = 'Selecciona el sabor';
-        }
+        confirmBtn.textContent = ready
+            ? `Agregar — $${Number(selectedVariante.precio || 0).toLocaleString('es-CO')}`
+            : (total > 1 ? `Selecciona sabores (${filled}/${total})` : 'Selecciona el sabor');
     }
 
     // Helper: obtener sabores de la bebida de una variante
@@ -4746,28 +4743,42 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         return pres?.sabores || [];
     }
 
-    // Helper: mostrar/ocultar y poblar sección de sabores
+    // Helper: mostrar/ocultar y poblar sección de sabores (una fila por bebida)
     function renderSaborSection(v) {
         const sabores = _getVarianteSabores(v);
-        if (!sabores.length) { saborSection.hidden = true; return; }
-        saborSection.hidden = false;
+        saborSection.hidden = !sabores.length;
         saborGrid.innerHTML = '';
-        let saborBtns = [];
-        sabores.forEach((s) => {
-            const sb = document.createElement('button');
-            sb.type = 'button';
-            sb.style.cssText = 'padding:10px 6px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;text-align:center;font-size:0.84rem;transition:background 0.15s;';
-            sb.textContent = s;
-            sb.addEventListener('click', () => {
-                selectedSabor = s;
-                saborBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.15)'; });
-                sb.style.background = 'rgba(231,111,0,0.25)';
-                sb.style.borderColor = 'var(--admin-accent,#e76f00)';
-                refreshConfirm();
+        if (!sabores.length) return;
+        const cant = Math.max(1, Number(v.cantidad_bebidas) || 1);
+        selectedSabores = new Array(cant).fill(null);
+        for (let i = 0; i < cant; i++) {
+            if (cant > 1) {
+                const slotLabel = document.createElement('div');
+                slotLabel.style.cssText = 'font-size:0.72rem;color:rgba(200,200,220,0.5);margin:8px 0 4px;text-transform:uppercase;letter-spacing:.3px;';
+                slotLabel.textContent = `Bebida ${i + 1}`;
+                saborGrid.appendChild(slotLabel);
+            }
+            const slotRow = document.createElement('div');
+            slotRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+            const slotIdx = i;
+            const slotBtns = [];
+            sabores.forEach((s) => {
+                const sb = document.createElement('button');
+                sb.type = 'button';
+                sb.style.cssText = 'padding:9px 12px;border-radius:9px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;font-size:0.83rem;transition:background 0.15s;';
+                sb.textContent = s;
+                sb.addEventListener('click', () => {
+                    selectedSabores[slotIdx] = s;
+                    slotBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.15)'; });
+                    sb.style.background = 'rgba(231,111,0,0.25)';
+                    sb.style.borderColor = 'var(--admin-accent,#e76f00)';
+                    refreshConfirm();
+                });
+                slotBtns.push(sb);
+                slotRow.appendChild(sb);
             });
-            saborBtns.push(sb);
-            saborGrid.appendChild(sb);
-        });
+            saborGrid.appendChild(slotRow);
+        }
     }
 
     // Construir botones de variantes
@@ -4782,7 +4793,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         btn.innerHTML = `<strong style="display:block;">${escapeHtml(v.nombre || 'Opción')}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${Number(v.precio || 0).toLocaleString('es-CO')}</span>${bebidaLine}`;
         btn.addEventListener('click', () => {
             selectedVariante = v;
-            selectedSabor = null;
+            selectedSabores = [];
             varBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.15)'; });
             btn.style.background = 'rgba(231,111,0,0.25)';
             btn.style.borderColor = 'var(--admin-accent,#e76f00)';
@@ -4805,10 +4816,14 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     confirmBtn.addEventListener('click', () => {
         if (!selectedVariante) return;
         const note = noteInput.value.trim();
-        const sabores = _getVarianteSabores(selectedVariante);
-        if (sabores.length > 0 && !selectedSabor) return;
+        const saboresDisp = _getVarianteSabores(selectedVariante);
+        if (saboresDisp.length > 0 && selectedSabores.some((s) => !s)) return;
+        const saboresLabel = selectedSabores.filter(Boolean).length
+            ? selectedSabores.filter(Boolean).join(', ')
+            : '';
+        const cant = Number(selectedVariante.cantidad_bebidas) || 0;
         const bebInfo = selectedVariante.con_bebida && selectedVariante.bebida_nombre
-            ? ` + ${selectedVariante.bebida_nombre}${selectedSabor ? ` (${selectedSabor})` : ''}${selectedVariante.cantidad_bebidas > 1 ? ` ×${selectedVariante.cantidad_bebidas}` : ''}`
+            ? ` + ${selectedVariante.bebida_nombre}${saboresLabel ? ` (${saboresLabel})` : ''}${cant > 1 ? ` ×${cant}` : ''}`
             : '';
         const optLabel = `${selectedVariante.nombre}${bebInfo}${note ? ` | ${note}` : ''}`;
         addProductToPosOrder(
