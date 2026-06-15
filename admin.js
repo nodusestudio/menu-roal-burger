@@ -335,6 +335,7 @@ const editProductAcompList = document.getElementById('editProductAcompList');
 
 let bebidasState = [];
 let acompanantesState = [];
+let combosPackState = [];
 let catalogoVisibilidad = { bebidas_pos: true, bebidas_menu: true, acompanantes_pos: true, acompanantes_menu: true };
 
 const clientEditModal = document.getElementById('clientEditModal');
@@ -1590,6 +1591,12 @@ function normalizeCategory(raw) {
         active: raw.active !== false,
         tipo_pos: ['acompanantes'].includes(raw.tipo_pos) ? raw.tipo_pos : null,
         order: raw.order != null ? Number(raw.order) : undefined,
+        bebidas_pos: raw.bebidas_pos !== false,
+        bebidas_menu: raw.bebidas_menu !== false,
+        acompanantes_pos: raw.acompanantes_pos !== false,
+        acompanantes_menu: raw.acompanantes_menu !== false,
+        combos_pos: raw.combos_pos !== false,
+        combos_menu: raw.combos_menu !== false,
         created_at: raw.created_at || null,
         updated_at: raw.updated_at || null
     };
@@ -2952,35 +2959,17 @@ function handlePosProductAdd(productId, productName, productPrice) {
         return;
     }
 
-    // Verificar acompañantes: primero a nivel de producto, luego por categoría
-    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    {
-        const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
-        const productData = catalog.find((p) => p.id === productId);
-        const prodAcomp = productData && productData.acompanantes;
+    // Verificar acompañantes/bebidas por categoría (nuevo sistema)
+    const catData = categoriesState.find((c) => c.name.trim().toUpperCase() === selectedCategory.toUpperCase());
+    const catAcompPos = catData ? catData.acompanantes_pos !== false : false;
+    const catBebPos   = catData ? catData.bebidas_pos   !== false : false;
 
-        if (prodAcomp && prodAcomp.activo && Array.isArray(prodAcomp.ids) && prodAcomp.ids.length > 0) {
-            // Nivel producto: filtrar sólo los acompañantes activados para este producto
-            const filteredOpts = (cfg.opciones || []).filter((o) => o.activo && prodAcomp.ids.includes(o.id));
-            if (filteredOpts.length > 0) {
-                openPosUpgradeSheet(productId, productName, productPrice, filteredOpts);
-                return;
-            }
-        } else {
-            // Nivel categoría: usar IDs específicos de la categoría si están configurados
-            const appliesTo = (cfg.categorias_aplica || []).map((c) => c.toUpperCase());
-            if (appliesTo.includes(selectedCategory.toUpperCase())) {
-                const catIdsMap = cfg.categorias_ids || {};
-                const catIds = catIdsMap[selectedCategory] || catIdsMap[selectedCategory.toUpperCase()] || [];
-                const filteredOpts = (cfg.opciones || []).filter(
-                    (o) => o.activo && (catIds.length === 0 || catIds.includes(o.id))
-                );
-                if (filteredOpts.length > 0) {
-                    openPosUpgradeSheet(productId, productName, productPrice, filteredOpts);
-                    return;
-                }
-            }
-        }
+    const hayAcomp  = catAcompPos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
+    const hayBebida = catBebPos   && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+
+    if (hayAcomp || hayBebida) {
+        openPosUpgradeSheet(productId, productName, productPrice);
+        return;
     }
 
     addProductToPosOrder(productId, productName, productPrice);
@@ -3320,65 +3309,6 @@ async function _saveCatalogoVisibilidad() {
     await firebaseDb.collection('configuracion').doc('visibilidad_catalogo').set(catalogoVisibilidad, { merge: true });
 }
 
-function renderCatalogoVisibilidadPanel() {
-    const container = document.getElementById('catalogoVisibilidadPanel');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const card = document.createElement('div');
-    card.className = 'catalogo-vis-card';
-
-    const title = document.createElement('div');
-    title.className = 'catalogo-vis-title';
-    title.textContent = 'Visibilidad en POS y Menú público';
-    card.appendChild(title);
-
-    const items = [
-        { icon: '🥤', name: 'Bebidas', posKey: 'bebidas_pos', menuKey: 'bebidas_menu' },
-        { icon: '🥗', name: 'Acompañantes', posKey: 'acompanantes_pos', menuKey: 'acompanantes_menu' }
-    ];
-
-    items.forEach(({ icon, name, posKey, menuKey }) => {
-        const row = document.createElement('div');
-        row.className = 'catalogo-vis-row';
-
-        const iconEl = document.createElement('div');
-        iconEl.className = 'catalogo-vis-icon';
-        iconEl.textContent = icon;
-
-        const nameEl = document.createElement('div');
-        nameEl.className = 'catalogo-vis-name';
-        nameEl.textContent = name;
-
-        const toggles = document.createElement('div');
-        toggles.className = 'catalogo-vis-toggles';
-
-        [[posKey, 'POS'], [menuKey, 'Menú']].forEach(([key, label]) => {
-            const lbl = document.createElement('label');
-            lbl.className = 'catalogo-vis-tgl';
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = catalogoVisibilidad[key];
-            const span = document.createElement('span');
-            span.textContent = label;
-            lbl.appendChild(cb);
-            lbl.appendChild(span);
-            cb.addEventListener('change', async () => {
-                catalogoVisibilidad[key] = cb.checked;
-                await _saveCatalogoVisibilidad();
-                renderPosCategoriesPanel();
-            });
-            toggles.appendChild(lbl);
-        });
-
-        row.appendChild(iconEl);
-        row.appendChild(nameEl);
-        row.appendChild(toggles);
-        card.appendChild(row);
-    });
-
-    container.appendChild(card);
-}
 
 function normalizeAcompanante(raw) {
     return {
@@ -3669,8 +3599,8 @@ function openAcompananteModal(acomp = null) {
         wrap.appendChild(span);
         return { wrap, cb };
     };
-    const { wrap: posWrap, cb: posCb } = makeTgl('Activar en POS', acomp ? acomp.activo_pos : true);
-    const { wrap: menuWrap, cb: menuCb } = makeTgl('Activar en menú público', acomp ? acomp.activo_menu : true);
+    const { wrap: posWrap, cb: posCb } = makeTgl('Activar como acompañante en categorías', acomp ? acomp.activo_pos : true);
+    const { wrap: menuWrap, cb: menuCb } = makeTgl('Activar como categoría en el menú', acomp ? acomp.activo_menu : true);
     visRow.appendChild(posWrap);
     visRow.appendChild(menuWrap);
     body.appendChild(visRow);
@@ -3738,6 +3668,378 @@ function openAcompananteModal(acomp = null) {
             showModalFeedback(feedback, `Error: ${e.message || 'No se pudo guardar.'}`, 'error');
             saveBtn.disabled = false;
             saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear acompañante';
+        }
+    });
+
+    footer.appendChild(cancelBtn);
+    footer.appendChild(saveBtn);
+    card.appendChild(header);
+    card.appendChild(body);
+    card.appendChild(footer);
+    overlay.appendChild(card);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    setTimeout(() => nombreInput.focus(), 80);
+}
+
+// ── Combos (papas + bebida) ─────────────────────────────────────────────────
+
+function normalizeCombosPack(raw) {
+    return {
+        id: raw.id,
+        nombre: String(raw.nombre || '').trim(),
+        papas: String(raw.papas || '').trim(),
+        bebida_ref_id: String(raw.bebida_ref_id || '').trim(),
+        bebida_pres_id: String(raw.bebida_pres_id || '').trim(),
+        bebida_nombre: String(raw.bebida_nombre || '').trim(),
+        bebida_sabores: Array.isArray(raw.bebida_sabores)
+            ? raw.bebida_sabores.map((s) => String(s).trim()).filter(Boolean)
+            : (typeof raw.bebida_sabores === 'string'
+                ? raw.bebida_sabores.split(',').map((s) => s.trim()).filter(Boolean)
+                : []),
+        valor: Number(raw.valor) || 0,
+        activo_pos: raw.activo_pos !== false,
+        activo_menu: raw.activo_menu !== false,
+        estado: raw.estado === 'paused' ? 'paused' : 'active',
+        orden: raw.orden != null ? Number(raw.orden) : 99
+    };
+}
+
+async function fetchCombosPack() {
+    try {
+        const snap = await firebaseDb.collection('combospacks').get();
+        combosPackState = snap.docs
+            .map((doc) => normalizeCombosPack({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'));
+    } catch (_) {
+        combosPackState = [];
+    }
+}
+
+function renderCombosPackPanel() {
+    const container = document.getElementById('combosPacksTabPanel');
+    if (!container) return;
+
+    container.innerHTML = '';
+    const wrapper = document.createElement('article');
+    wrapper.className = 'admin-card';
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'acomp-panel-toolbar';
+    const createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.className = 'ghost-button';
+    createBtn.style.cssText = 'font-size:0.82rem;padding:6px 14px;';
+    createBtn.textContent = '+ Crear combo';
+    createBtn.addEventListener('click', () => openComboPackModal());
+    toolbar.appendChild(createBtn);
+
+    const list = document.createElement('div');
+    list.className = 'acomp-panel-list';
+
+    if (!combosPackState.length) {
+        const empty = document.createElement('p');
+        empty.style.cssText = 'color:rgba(255,255,255,0.35);text-align:center;padding:28px 0;';
+        empty.textContent = 'No hay combos. Crea el primero.';
+        list.appendChild(empty);
+    } else {
+        combosPackState.forEach((combo) => {
+            const card = document.createElement('div');
+            card.className = 'acomp-panel-card' + (combo.estado === 'paused' ? ' paused' : '');
+
+            const ph = document.createElement('div');
+            ph.className = 'acomp-panel-img-placeholder';
+            ph.textContent = '🍔';
+            card.appendChild(ph);
+
+            const info = document.createElement('div');
+            info.className = 'acomp-panel-info';
+
+            const nombre = document.createElement('div');
+            nombre.className = 'acomp-panel-nombre';
+            nombre.textContent = combo.nombre;
+
+            const meta = document.createElement('div');
+            meta.className = 'acomp-panel-meta';
+            const parts = [];
+            if (combo.papas) parts.push(`🍟 ${combo.papas}`);
+            if (combo.bebida_nombre) parts.push(`🥤 ${combo.bebida_nombre}`);
+            if (combo.bebida_sabores.length) parts.push(combo.bebida_sabores.slice(0, 3).join(' · '));
+            meta.textContent = parts.join('  ·  ') || '—';
+
+            const precio = document.createElement('div');
+            precio.className = 'acomp-panel-precio';
+            precio.textContent = formatMoney(combo.valor);
+
+            const badges = document.createElement('div');
+            badges.className = 'acomp-panel-badges';
+            if (combo.activo_pos)  badges.innerHTML += '<span class="acomp-badge acomp-badge--pos">POS</span>';
+            if (combo.activo_menu) badges.innerHTML += '<span class="acomp-badge acomp-badge--menu">Menú</span>';
+
+            info.appendChild(nombre);
+            info.appendChild(meta);
+            info.appendChild(precio);
+            info.appendChild(badges);
+
+            const actions = document.createElement('div');
+            actions.className = 'acomp-panel-actions';
+
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'acomp-action-btn';
+            editBtn.textContent = 'Editar';
+            editBtn.addEventListener('click', () => openComboPackModal(combo));
+
+            const pauseBtn = document.createElement('button');
+            pauseBtn.type = 'button';
+            pauseBtn.className = 'acomp-action-btn';
+            pauseBtn.textContent = combo.estado === 'paused' ? 'Reanudar' : 'Pausar';
+            pauseBtn.addEventListener('click', async () => {
+                const newEstado = combo.estado === 'paused' ? 'active' : 'paused';
+                await firebaseDb.collection('combospacks').doc(combo.id).update({ estado: newEstado, updated_at: firestoreNow() });
+                await reloadDataAndRender();
+            });
+
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'acomp-action-btn danger';
+            delBtn.textContent = 'Eliminar';
+            delBtn.addEventListener('click', async () => {
+                if (!confirm(`¿Eliminar "${combo.nombre}"?`)) return;
+                await firebaseDb.collection('combospacks').doc(combo.id).delete();
+                await reloadDataAndRender();
+            });
+
+            actions.appendChild(editBtn);
+            actions.appendChild(pauseBtn);
+            actions.appendChild(delBtn);
+
+            card.appendChild(info);
+            card.appendChild(actions);
+            list.appendChild(card);
+        });
+    }
+
+    wrapper.appendChild(toolbar);
+    wrapper.appendChild(list);
+    container.appendChild(wrapper);
+}
+
+function openComboPackModal(combo = null) {
+    const isEdit = !!combo;
+    let sabores = combo ? [...(combo.bebida_sabores || [])] : [];
+
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+    overlay.style.zIndex = '8500';
+
+    const card = document.createElement('div');
+    card.className = 'combo-modal-card acomp-form-card';
+
+    const header = document.createElement('div');
+    header.className = 'combo-modal-header';
+    const htitle = document.createElement('div');
+    htitle.innerHTML = `<h4>${isEdit ? 'Editar combo' : 'Nuevo combo'}</h4>`;
+    const closeX = document.createElement('button');
+    closeX.type = 'button';
+    closeX.className = 'combo-modal-close-x';
+    closeX.textContent = '×';
+    closeX.addEventListener('click', () => overlay.remove());
+    header.appendChild(htitle);
+    header.appendChild(closeX);
+
+    const body = document.createElement('div');
+    body.className = 'acomp-form-body';
+
+    // ── Nombre ──
+    const lblNombre = document.createElement('div');
+    lblNombre.className = 'combo-modal-section-label';
+    lblNombre.textContent = 'Nombre del combo';
+    const nombreInput = document.createElement('input');
+    nombreInput.type = 'text';
+    nombreInput.className = 'acomp-form-input';
+    nombreInput.placeholder = 'Ej: Combo Clásico, Combo Familiar...';
+    nombreInput.value = combo?.nombre || '';
+    body.appendChild(lblNombre);
+    body.appendChild(nombreInput);
+
+    // ── Papas ──
+    const lblPapas = document.createElement('div');
+    lblPapas.className = 'combo-modal-section-label';
+    lblPapas.style.marginTop = '10px';
+    lblPapas.textContent = 'Papas — gramaje';
+    const papasInput = document.createElement('input');
+    papasInput.type = 'text';
+    papasInput.className = 'acomp-form-input';
+    papasInput.placeholder = 'Ej: 150g, Porción grande, 300g...';
+    papasInput.value = combo?.papas || '';
+    body.appendChild(lblPapas);
+    body.appendChild(papasInput);
+
+    // ── Bebida desde bebidasState ──
+    const lblBebida = document.createElement('div');
+    lblBebida.className = 'combo-modal-section-label';
+    lblBebida.style.marginTop = '10px';
+    lblBebida.textContent = 'Bebida — presentación';
+    body.appendChild(lblBebida);
+
+    const bebidaSelect = document.createElement('select');
+    bebidaSelect.className = 'acomp-form-input';
+    bebidaSelect.style.cursor = 'pointer';
+
+    const optBlank = document.createElement('option');
+    optBlank.value = '';
+    optBlank.textContent = '— Selecciona una bebida —';
+    bebidaSelect.appendChild(optBlank);
+
+    const activeBebidas = bebidasState.filter((b) => b.estado === 'active');
+    activeBebidas.forEach((b) => {
+        b.presentaciones.forEach((p) => {
+            const opt = document.createElement('option');
+            opt.value = `${b.id}::${p.id}`;
+            opt.textContent = `${b.marca} · ${p.nombre}  (+$${Number(p.precio || 0).toLocaleString('es-CO')})`;
+            opt.dataset.sabores = JSON.stringify(p.sabores || []);
+            if (combo?.bebida_ref_id === b.id && combo?.bebida_pres_id === p.id) opt.selected = true;
+            bebidaSelect.appendChild(opt);
+        });
+    });
+    body.appendChild(bebidaSelect);
+
+    // ── Sabores (auto desde la presentación seleccionada) ──
+    const lblSabores = document.createElement('div');
+    lblSabores.className = 'combo-modal-section-label';
+    lblSabores.style.marginTop = '8px';
+    lblSabores.textContent = 'Sabores disponibles';
+    body.appendChild(lblSabores);
+
+    const saboresPreview = document.createElement('div');
+    saboresPreview.className = 'bebida-sabores-area';
+    saboresPreview.style.minHeight = '28px';
+    body.appendChild(saboresPreview);
+
+    const renderSaboresPreview = () => {
+        saboresPreview.innerHTML = '';
+        const sel = bebidaSelect.options[bebidaSelect.selectedIndex];
+        const saboresList = sel?.dataset?.sabores ? JSON.parse(sel.dataset.sabores) : [];
+        sabores = saboresList;
+        if (!saboresList.length) {
+            const empty = document.createElement('span');
+            empty.style.cssText = 'font-size:0.75rem;color:rgba(180,200,230,0.4);';
+            empty.textContent = 'Sin sabores registrados';
+            saboresPreview.appendChild(empty);
+            return;
+        }
+        saboresList.forEach((s) => {
+            const chip = document.createElement('span');
+            chip.className = 'bebida-sabor-chip';
+            chip.style.cursor = 'default';
+            chip.textContent = s;
+            saboresPreview.appendChild(chip);
+        });
+    };
+    renderSaboresPreview();
+    bebidaSelect.addEventListener('change', renderSaboresPreview);
+
+    // ── Valor ──
+    const lblValor = document.createElement('div');
+    lblValor.className = 'combo-modal-section-label';
+    lblValor.style.marginTop = '10px';
+    lblValor.textContent = 'Valor del combo';
+    const valorInput = document.createElement('input');
+    valorInput.type = 'number';
+    valorInput.className = 'acomp-form-input';
+    valorInput.placeholder = 'Precio';
+    valorInput.min = '0';
+    valorInput.step = '100';
+    valorInput.value = combo?.valor || '';
+    valorInput.style.textAlign = 'right';
+    body.appendChild(lblValor);
+    body.appendChild(valorInput);
+
+    // ── Visibilidad ──
+    const lblVis = document.createElement('div');
+    lblVis.className = 'combo-modal-section-label';
+    lblVis.style.marginTop = '10px';
+    lblVis.textContent = 'Visibilidad';
+    body.appendChild(lblVis);
+
+    const visRow = document.createElement('div');
+    visRow.className = 'acomp-form-vis-row';
+    const makeTgl = (text, checked) => {
+        const wrap = document.createElement('label');
+        wrap.className = 'acomp-form-tgl';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = checked;
+        const span = document.createElement('span');
+        span.textContent = text;
+        wrap.appendChild(cb);
+        wrap.appendChild(span);
+        return { wrap, cb };
+    };
+    const { wrap: posWrap, cb: posCb } = makeTgl('Activar en POS', combo ? combo.activo_pos : true);
+    const { wrap: menuWrap, cb: menuCb } = makeTgl('Activar en Menú', combo ? combo.activo_menu : true);
+    visRow.appendChild(posWrap);
+    visRow.appendChild(menuWrap);
+    body.appendChild(visRow);
+
+    const feedback = document.createElement('div');
+    feedback.className = 'modal-feedback';
+    body.appendChild(feedback);
+
+    // ── Footer ──
+    const footer = document.createElement('div');
+    footer.className = 'combo-modal-footer';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'combo-modal-cancel-btn';
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.addEventListener('click', () => overlay.remove());
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'combo-modal-confirm-btn';
+    saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear combo';
+    saveBtn.addEventListener('click', async () => {
+        const nombre = nombreInput.value.trim();
+        if (!nombre) { showModalFeedback(feedback, 'Escribe el nombre del combo.', 'error'); return; }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = isEdit ? 'Guardando...' : 'Creando...';
+
+        const selOpt = bebidaSelect.options[bebidaSelect.selectedIndex];
+        const [bebRefId = '', bebPresId = ''] = (bebidaSelect.value || '').split('::');
+        const bebidaNombre = selOpt?.value ? selOpt.textContent.split('  ')[0].trim() : '';
+        const payload = {
+            nombre,
+            papas: papasInput.value.trim(),
+            bebida_ref_id: bebRefId,
+            bebida_pres_id: bebPresId,
+            bebida_nombre: bebidaNombre,
+            bebida_sabores: sabores,
+            valor: Number(valorInput.value) || 0,
+            activo_pos: posCb.checked,
+            activo_menu: menuCb.checked,
+            estado: combo?.estado || 'active',
+            updated_at: firestoreNow()
+        };
+
+        try {
+            if (isEdit) {
+                await firebaseDb.collection('combospacks').doc(combo.id).update(payload);
+            } else {
+                payload.orden = combosPackState.length;
+                payload.created_at = firestoreNow();
+                await firebaseDb.collection('combospacks').add(payload);
+            }
+            await reloadDataAndRender();
+            overlay.remove();
+            showNotice(isEdit ? 'Combo actualizado.' : 'Combo creado.', 'ok');
+        } catch (e) {
+            showModalFeedback(feedback, `Error: ${e.message || 'No se pudo guardar.'}`, 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear combo';
         }
     });
 
@@ -3873,8 +4175,8 @@ function openBebidaModal(bebida = null) {
         wrap.appendChild(txt);
         return { wrap, cb };
     };
-    const { wrap: catWrap, cb: catCb } = makeTgl('Mostrar como categoría', bebida ? bebida.mostrar_categoria : true);
-    const { wrap: acompWrap, cb: acompCb } = makeTgl('Mostrar como acompañante', bebida ? bebida.mostrar_acompanante : true);
+    const { wrap: catWrap, cb: catCb } = makeTgl('Activar como categoría en el menú', bebida ? bebida.mostrar_categoria : true);
+    const { wrap: acompWrap, cb: acompCb } = makeTgl('Activar como acompañante en categorías', bebida ? bebida.mostrar_acompanante : true);
     visRow.appendChild(catWrap);
     visRow.appendChild(acompWrap);
     body.appendChild(visRow);
@@ -4505,7 +4807,8 @@ function addProductToPosOrder(productId, productName, productPrice, note = '', o
             note,
             optionLabel: note || '',
             promoLabel,
-            promo2x1
+            promo2x1,
+            parentKey: opts.parentKey || null
         });
     }
 
@@ -4602,37 +4905,49 @@ function renderPosOrderItems() {
         return;
     }
 
-    itemsContainer.innerHTML = internalOrderItems
-        .map((item) => {
-            const subtotal = Number(item.subtotal || 0);
-            const origUnit = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
-            const hasDiscount = origUnit !== null && origUnit > item.unitPrice;
-            const origSubtotal = hasDiscount ? origUnit * Number(item.quantity || 1) : null;
-            const priceHTML = hasDiscount
-                ? `<div class="pos-item-price">
-                        <s class="pos-item-orig-price">${formatMoney(origSubtotal)}</s>
-                        <span class="pos-item-final-price">${subtotal === 0 ? '<span class="pos-item-free">GRATIS</span>' : formatMoney(subtotal)}</span>
-                   </div>`
-                : `<div class="pos-item-price">${formatMoney(subtotal)}</div>`;
-            return `
-            <div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
-                <div class="pos-item-name">
-                    ${escapeHtml(item.productName)}
-                    ${item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : ''}
+    const topItems = internalOrderItems.filter((i) => !i.parentKey);
+    const subItemsOf = (key) => internalOrderItems.filter((i) => i.parentKey === key);
+
+    const renderTopItem = (item) => {
+        const subtotal = Number(item.subtotal || 0);
+        const origUnit = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
+        const hasDiscount = origUnit !== null && origUnit > item.unitPrice;
+        const origSubtotal = hasDiscount ? origUnit * Number(item.quantity || 1) : null;
+        const priceHTML = hasDiscount
+            ? `<div class="pos-item-price"><s class="pos-item-orig-price">${formatMoney(origSubtotal)}</s><span class="pos-item-final-price">${subtotal === 0 ? '<span class="pos-item-free">GRATIS</span>' : formatMoney(subtotal)}</span></div>`
+            : `<div class="pos-item-price">${formatMoney(subtotal)}</div>`;
+        return `<div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
+            <div class="pos-item-name">
+                ${escapeHtml(item.productName)}
+                ${item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : ''}
+            </div>
+            <div class="pos-item-qty-price">
+                <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
+                <div class="pos-item-qty">
+                    <button type="button" class="pos-qty-minus" data-item-key="${escapeHtml(item.itemKey)}">−</button>
+                    <input type="number" class="pos-qty-input" value="${item.quantity}" data-item-key="${escapeHtml(item.itemKey)}" min="1" />
+                    <button type="button" class="pos-qty-plus" data-item-key="${escapeHtml(item.itemKey)}">+</button>
                 </div>
-                <div class="pos-item-qty-price">
-                    <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
-                    <div class="pos-item-qty">
-                        <button type="button" class="pos-qty-minus" data-item-key="${escapeHtml(item.itemKey)}">−</button>
-                        <input type="number" class="pos-qty-input" value="${item.quantity}" data-item-key="${escapeHtml(item.itemKey)}" min="1" />
-                        <button type="button" class="pos-qty-plus" data-item-key="${escapeHtml(item.itemKey)}">+</button>
-                    </div>
-                    ${priceHTML}
-                    <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
-                </div>
-            </div>`;
-        })
-        .join('');
+                ${priceHTML}
+                <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
+            </div>
+        </div>`;
+    };
+
+    const renderSubItem = (item) => `
+        <div class="pos-item-row pos-item-extra" data-item-key="${escapeHtml(item.itemKey)}">
+            <div class="pos-item-name">
+                <span class="pos-item-extra-arrow">↳</span>${escapeHtml(item.productName)}
+            </div>
+            <div class="pos-item-qty-price">
+                <span class="pos-item-extra-price">${item.unitPrice > 0 ? '+' + formatMoney(item.unitPrice) : 'incluido'}</span>
+                <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
+            </div>
+        </div>`;
+
+    itemsContainer.innerHTML = topItems.map((item) =>
+        renderTopItem(item) + subItemsOf(item.itemKey).map(renderSubItem).join('')
+    ).join('');
 
     if (itemsContainer.dataset.listenerAttached !== 'true') {
         itemsContainer.addEventListener('click', (event) => {
@@ -4675,7 +4990,8 @@ function renderPosOrderItems() {
             }
 
             if (removeBtn && itemKey) {
-                internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey);
+                // Borrar el ítem y sus hijos si es un padre
+                internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey && i.parentKey !== itemKey);
                 renderPosOrderItems();
                 renderPosTotals();
                 renderPosBottomBar();
@@ -4731,20 +5047,28 @@ function renderPosTotals() {
 
 /* ─── POS v2: Upgrade sheet (acompañamientos) ─── */
 
-function _posAddWithComment(productId, productName, price, note) {
-    const comment = String(document.getElementById('posUpgradeComment')?.value || '').trim();
-    const fullNote = [note, comment].filter(Boolean).join(' — ');
-    addProductToPosOrder(productId, productName, price, fullNote || undefined);
-}
-
-function openPosUpgradeSheet(productId, productName, productPrice, filteredOpts = null) {
-    _posUpgradePending = { productId, productName, productPrice, filteredOpts };
+function openPosUpgradeSheet(productId, productName, productPrice) {
+    _posUpgradePending = { productId, productName, productPrice, extras: [] };
     const overlay = document.getElementById('posUpgradeOverlay');
     if (!overlay) return;
     const commentInput = document.getElementById('posUpgradeComment');
     if (commentInput) commentInput.value = '';
     overlay.hidden = false;
     overlay.style.display = 'flex';
+
+    // Botón AGREGAR AL CARRITO
+    const addBtn = document.getElementById('posUpgradeAddBtn');
+    if (addBtn) {
+        addBtn.onclick = () => {
+            const { productId: pid, productName: pname, productPrice: pprice, extras } = _posUpgradePending;
+            const comment = String(document.getElementById('posUpgradeComment')?.value || '').trim();
+            const mainKey = comment ? `${pid}::${comment}` : pid;
+            addProductToPosOrder(pid, pname, pprice, comment || '');
+            extras.forEach((e) => addProductToPosOrder(e.id, e.name, e.price, '', null, { parentKey: mainKey }));
+            closePosUpgradeSheet();
+        };
+    }
+
     renderPosUpgradeStep1();
 }
 
@@ -4763,154 +5087,171 @@ function renderPosUpgradeStep1() {
     if (titleEl) titleEl.textContent = '¿Cómo lo quieres?';
     if (nameEl) nameEl.textContent = _posUpgradePending.productName;
 
-    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    const activeOpts = (_posUpgradePending && _posUpgradePending.filteredOpts
-        ? _posUpgradePending.filteredOpts.filter((o) => o.activo_pos !== false)
-        : (cfg.opciones || []).filter((o) => o.activo && o.activo_pos !== false)
-    ).sort((a, b) => (a.orden || 99) - (b.orden || 99));
+    const selectedCategory = String(posSelectedCategory || '').trim();
+    const catData = categoriesState.find((c) => c.name.trim().toUpperCase() === selectedCategory.toUpperCase());
+    const hayAcomp  = catData && catData.acompanantes_pos !== false && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
+    const hayBebida = catData && catData.bebidas_pos !== false && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
 
-    const priceLabel = (opt) => {
-        if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
-            const min = Math.min(...opt.variantes.map((v) => Number(v.precio_extra || 0)));
-            return `desde +${formatMoney(min)}`;
-        }
-        return `+${formatMoney(Number(opt.precio || 0))}`;
-    };
+    const extras = _posUpgradePending.extras || [];
+    const extrasHtml = extras.length ? `
+        <div class="pus-section-label">Agregado</div>
+        <div class="pus-extras-list">
+            ${extras.map((e, i) => `
+            <div class="pus-extra-row">
+                <span class="pus-extra-name">${escapeHtml(e.name)}</span>
+                <span class="pus-extra-price">${e.price > 0 ? '+' + formatMoney(e.price) : 'incluido'}</span>
+                <button type="button" class="pus-extra-del" data-extra-idx="${i}">×</button>
+            </div>`).join('')}
+        </div>` : '';
 
     body.innerHTML = `
-        <div class="pos-upgrade-label">Elige cómo acompañar tu pedido</div>
-        <div class="pos-upgrade-options">
-            <button type="button" class="pos-upgrade-opt no-upgrade" id="posUpgradeSolo">
-                <div>
-                    <div class="pos-upgrade-opt-name">Solo el producto</div>
-                    <div class="pos-upgrade-opt-detail">Sin acompañamiento</div>
-                </div>
-                <span class="pos-upgrade-opt-price" style="color:var(--admin-muted);font-weight:400;">incluido</span>
-            </button>
-            ${activeOpts.map((opt) => `
-            <button type="button" class="pos-upgrade-opt" data-opt-id="${escapeHtml(opt.id)}">
-                <div>
-                    <div class="pos-upgrade-opt-name">${escapeHtml(opt.nombre)}</div>
-                    ${opt.detalle ? `<div class="pos-upgrade-opt-detail">${escapeHtml(opt.detalle)}</div>` : ''}
-                </div>
-                <span class="pos-upgrade-opt-price">${priceLabel(opt)}</span>
-            </button>`).join('')}
-        </div>`;
+        <div class="pus-home-btns">
+            ${hayAcomp  ? `<button type="button" class="pus-cat-btn adicional" id="pusGoAdicional">🥗 Adicional</button>` : ''}
+            ${hayBebida ? `<button type="button" class="pus-cat-btn bebida"   id="pusGoBebida">🥤 Bebida</button>` : ''}
+        </div>
+        <button type="button" class="pus-solo-btn" id="posUpgradeSolo">Sin acompañamiento — solo el producto</button>
+        ${extrasHtml}`;
 
     body.querySelector('#posUpgradeSolo')?.addEventListener('click', () => {
-        const { productId, productName, productPrice } = _posUpgradePending;
-        _posAddWithComment(productId, productName, productPrice);
-        closePosUpgradeSheet();
+        _posUpgradePending.extras = [];
+        document.getElementById('posUpgradeAddBtn')?.click();
     });
 
-    body.querySelectorAll('.pos-upgrade-opt[data-opt-id]').forEach((btn) => {
+    body.querySelector('#pusGoAdicional')?.addEventListener('click', () => _renderPosUpgradeAdicionales());
+    body.querySelector('#pusGoBebida')?.addEventListener('click', () => _renderPosUpgradeBebidas());
+
+    body.querySelectorAll('.pus-extra-del').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const opt = (cfg.opciones || []).find((o) => o.id === btn.dataset.optId);
-            if (!opt) return;
-            if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
-                renderPosUpgradeStep2(opt);
-            } else if (opt.incluye_bebida && (cfg.sabores_bebida || []).length > 0) {
-                // compatibilidad con datos legados
-                _renderPosLegacyFlavors(opt, cfg.sabores_bebida);
-            } else {
-                const { productId, productName, productPrice } = _posUpgradePending;
-                _posAddWithComment(productId, productName, productPrice + Number(opt.precio || 0), opt.nombre);
-                closePosUpgradeSheet();
-            }
+            _posUpgradePending.extras.splice(Number(btn.dataset.extraIdx), 1);
+            renderPosUpgradeStep1();
         });
     });
 }
 
-function renderPosUpgradeStep2(selectedOpt) {
+function _renderPosUpgradeAdicionales() {
     const body = document.getElementById('posUpgradeBody');
     const titleEl = document.getElementById('posUpgradeTitle');
     if (!body) return;
-    if (titleEl) titleEl.textContent = `${escapeHtml(selectedOpt.nombre)} — ¿Qué tamaño?`;
+    if (titleEl) titleEl.textContent = 'Adicionales';
 
-    const variantes = (selectedOpt.variantes || []);
+    const activos = acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).sort((a, b) => a.orden - b.orden);
+
     body.innerHTML = `
-        <div class="pos-upgrade-label">${escapeHtml(selectedOpt.nombre)}: elige la variante</div>
         <div class="pos-upgrade-options">
-            ${variantes.map((v) => `
-            <button type="button" class="pos-upgrade-opt" data-v-id="${escapeHtml(v.id)}">
+            ${activos.map((a) => `
+            <button type="button" class="pos-upgrade-opt" data-acomp-id="${escapeHtml(a.id)}">
                 <div>
-                    <div class="pos-upgrade-opt-name">${escapeHtml(v.nombre)}</div>
+                    <div class="pos-upgrade-opt-name">${escapeHtml(a.nombre)}</div>
+                    ${a.cantidad ? `<div class="pos-upgrade-opt-detail">${escapeHtml(a.cantidad)}</div>` : ''}
                 </div>
-                <span class="pos-upgrade-opt-price">+${formatMoney(Number(v.precio_extra || 0))}</span>
+                <span class="pos-upgrade-opt-price">${a.precio > 0 ? '+' + formatMoney(a.precio) : 'incluido'}</span>
             </button>`).join('')}
         </div>
         <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
 
-    body.querySelectorAll('.pos-upgrade-opt[data-v-id]').forEach((btn) => {
+    body.querySelectorAll('.pos-upgrade-opt[data-acomp-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const variant = variantes.find((v) => v.id === btn.dataset.vId);
-            if (!variant) return;
-            if ((variant.sub_variantes || []).length > 0) {
-                renderPosUpgradeStep3(selectedOpt, variant);
+            const acomp = acompanantesState.find((a) => a.id === btn.dataset.acompId);
+            if (!acomp) return;
+            _posUpgradePending.extras.push({ id: `acomp-${acomp.id}`, name: acomp.nombre, price: acomp.precio });
+            renderPosUpgradeStep1();
+        });
+    });
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
+}
+
+function _renderPosUpgradeBebidas() {
+    const body = document.getElementById('posUpgradeBody');
+    const titleEl = document.getElementById('posUpgradeTitle');
+    if (!body) return;
+    if (titleEl) titleEl.textContent = 'Bebidas';
+
+    const activas = bebidasState.filter((b) => b.estado === 'active' && b.mostrar_acompanante).sort((a, b) => a.orden - b.orden);
+
+    body.innerHTML = `
+        <div class="pos-upgrade-options">
+            ${activas.map((b) => {
+                const min = b.presentaciones.length > 0 ? Math.min(...b.presentaciones.map((p) => p.precio)) : 0;
+                const det = b.presentaciones.length > 1 ? `${b.presentaciones.length} presentaciones` : (b.presentaciones[0]?.nombre || '');
+                return `<button type="button" class="pos-upgrade-opt" data-bebida-id="${escapeHtml(b.id)}">
+                    <div>
+                        <div class="pos-upgrade-opt-name">${escapeHtml(b.marca)}</div>
+                        ${det ? `<div class="pos-upgrade-opt-detail">${escapeHtml(det)}</div>` : ''}
+                    </div>
+                    <span class="pos-upgrade-opt-price">${b.presentaciones.length > 0 ? 'desde +' + formatMoney(min) : ''}</span>
+                </button>`;
+            }).join('')}
+        </div>
+        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
+
+    body.querySelectorAll('.pos-upgrade-opt[data-bebida-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const bev = bebidasState.find((b) => b.id === btn.dataset.bebidaId);
+            if (!bev) return;
+            if (bev.presentaciones.length === 1 && bev.presentaciones[0].sabores.length === 0) {
+                const pres = bev.presentaciones[0];
+                _posUpgradePending.extras.push({ id: `bev-${bev.id}-${pres.id}`, name: `${bev.marca} ${pres.nombre}`, price: pres.precio });
+                renderPosUpgradeStep1();
             } else {
-                const { productId, productName, productPrice } = _posUpgradePending;
-                const extra = Number(selectedOpt.precio || 0) + Number(variant.precio_extra || 0);
-                const note = `${selectedOpt.nombre} – ${variant.nombre}`;
-                _posAddWithComment(productId, productName, productPrice + extra, note);
-                closePosUpgradeSheet();
+                _renderPosUpgradeBebidaPresentaciones(bev);
             }
         });
     });
     body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
 }
 
-function renderPosUpgradeStep3(selectedOpt, selectedVariant) {
+function _renderPosUpgradeBebidaPresentaciones(bebida) {
     const body = document.getElementById('posUpgradeBody');
     const titleEl = document.getElementById('posUpgradeTitle');
     if (!body) return;
-    if (titleEl) titleEl.textContent = `${escapeHtml(selectedVariant.nombre)} — ¿Qué sabor?`;
+    if (titleEl) titleEl.textContent = escapeHtml(bebida.marca);
 
-    const subs = selectedVariant.sub_variantes || [];
     body.innerHTML = `
-        <div class="pos-upgrade-label">${escapeHtml(selectedOpt.nombre)} · ${escapeHtml(selectedVariant.nombre)}: elige el sabor</div>
-        <div class="pos-flavors-grid">
-            ${subs.map((s) => `
-            <button type="button" class="pos-flavor-btn" data-sub="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
+        <div class="pos-upgrade-options">
+            ${bebida.presentaciones.map((p) => `
+            <button type="button" class="pos-upgrade-opt" data-pres-id="${escapeHtml(p.id)}">
+                <div><div class="pos-upgrade-opt-name">${escapeHtml(p.nombre)}</div></div>
+                <span class="pos-upgrade-opt-price">+${formatMoney(p.precio)}</span>
+            </button>`).join('')}
         </div>
         <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
 
-    body.querySelectorAll('.pos-flavor-btn').forEach((btn) => {
+    body.querySelectorAll('.pos-upgrade-opt[data-pres-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const { productId, productName, productPrice } = _posUpgradePending;
-            const sub = btn.dataset.sub;
-            const extra = Number(selectedOpt.precio || 0) + Number(selectedVariant.precio_extra || 0);
-            const note = sub === 'Sin bebida'
-                ? `${selectedOpt.nombre} – ${selectedVariant.nombre}`
-                : `${selectedOpt.nombre} – ${selectedVariant.nombre} (${sub})`;
-            _posAddWithComment(productId, productName, productPrice + extra, note);
-            closePosUpgradeSheet();
+            const pres = bebida.presentaciones.find((p) => p.id === btn.dataset.presId);
+            if (!pres) return;
+            if (pres.sabores.length > 0) {
+                _renderPosUpgradeBebidaSabores(bebida, pres);
+            } else {
+                _posUpgradePending.extras.push({ id: `bev-${bebida.id}-${pres.id}`, name: `${bebida.marca} ${pres.nombre}`, price: pres.precio });
+                renderPosUpgradeStep1();
+            }
         });
     });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => renderPosUpgradeStep2(selectedOpt));
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => _renderPosUpgradeBebidas());
 }
 
-function _renderPosLegacyFlavors(selectedOpt, sabores) {
+function _renderPosUpgradeBebidaSabores(bebida, presentacion) {
     const body = document.getElementById('posUpgradeBody');
     const titleEl = document.getElementById('posUpgradeTitle');
     if (!body) return;
-    if (titleEl) titleEl.textContent = '¿Qué bebida quieres?';
+    if (titleEl) titleEl.textContent = `${escapeHtml(bebida.marca)} — sabor`;
+
     body.innerHTML = `
-        <div class="pos-upgrade-label">${escapeHtml(selectedOpt.nombre)}: elige tu bebida</div>
         <div class="pos-flavors-grid">
-            ${sabores.map((s) => `
-            <button type="button" class="pos-flavor-btn" data-flavor="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
+            ${presentacion.sabores.map((s) => `
+            <button type="button" class="pos-flavor-btn" data-sabor="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
         </div>
         <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
+
     body.querySelectorAll('.pos-flavor-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const { productId, productName, productPrice } = _posUpgradePending;
-            const f = btn.dataset.flavor;
-            const note = f === 'Sin bebida' ? selectedOpt.nombre : `${selectedOpt.nombre} (${f})`;
-            _posAddWithComment(productId, productName, productPrice + Number(selectedOpt.precio || 0), note);
-            closePosUpgradeSheet();
+            const name = `${bebida.marca} ${presentacion.nombre} (${btn.dataset.sabor})`;
+            _posUpgradePending.extras.push({ id: `bev-${bebida.id}-${presentacion.id}`, name, price: presentacion.precio });
+            renderPosUpgradeStep1();
         });
     });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => _renderPosUpgradeBebidaPresentaciones(bebida));
 }
 
 /* ─── POS v2: Gestión de tickets múltiples ─── */
@@ -6490,6 +6831,12 @@ function _renderCategoryDetailPanel(categoryId) {
     }
     const isActive = category.active !== false;
     const imageUrl = category.image_url || '';
+    const catBebPOS    = category.bebidas_pos       !== false;
+    const catBebMenu   = category.bebidas_menu      !== false;
+    const catAcoPOS    = category.acompanantes_pos  !== false;
+    const catAcoMenu   = category.acompanantes_menu !== false;
+    const catComboPOS  = category.combos_pos        !== false;
+    const catComboMenu = category.combos_menu       !== false;
 
     categoryDetailPanel.innerHTML = `
         <div class="upgrades-detail-topbar">
@@ -6506,6 +6853,30 @@ function _renderCategoryDetailPanel(categoryId) {
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
                 <input type="text" class="admin-input" id="catDetailName" value="${category.name}" placeholder="Nombre categoría" style="flex:1;min-width:0;">
                 <button type="button" class="section-action-btn primary" id="catDetailAddProductBtn" style="flex-shrink:0;white-space:nowrap;">+ Agregar</button>
+            </div>
+            <div class="cat-vis-panel">
+                <div class="cat-vis-panel-label">Activar en esta categoría</div>
+                <div class="cat-vis-panel-row">
+                    <span class="cat-vis-panel-name">🥤 Bebidas</span>
+                    <div style="display:flex;gap:5px;">
+                        <button type="button" class="cat-vis-btn${catBebPOS ? ' on' : ''}" data-cat-vis="bebidas_pos">POS</button>
+                        <button type="button" class="cat-vis-btn${catBebMenu ? ' on' : ''}" data-cat-vis="bebidas_menu">Menú</button>
+                    </div>
+                </div>
+                <div class="cat-vis-panel-row">
+                    <span class="cat-vis-panel-name">🥗 Acompañantes</span>
+                    <div style="display:flex;gap:5px;">
+                        <button type="button" class="cat-vis-btn${catAcoPOS ? ' on' : ''}" data-cat-vis="acompanantes_pos">POS</button>
+                        <button type="button" class="cat-vis-btn${catAcoMenu ? ' on' : ''}" data-cat-vis="acompanantes_menu">Menú</button>
+                    </div>
+                </div>
+                <div class="cat-vis-panel-row">
+                    <span class="cat-vis-panel-name">🍔 Combos</span>
+                    <div style="display:flex;gap:5px;">
+                        <button type="button" class="cat-vis-btn${catComboPOS ? ' on' : ''}" data-cat-vis="combos_pos">POS</button>
+                        <button type="button" class="cat-vis-btn${catComboMenu ? ' on' : ''}" data-cat-vis="combos_menu">Menú</button>
+                    </div>
+                </div>
             </div>
             <div class="upgrades-section" style="margin-top:10px;">
                 <h4 style="margin:0 0 8px;font-size:0.78rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;">Productos (${products.length})</h4>
@@ -6563,7 +6934,6 @@ function _renderCategoryDetailPanel(categoryId) {
                                     <input type="checkbox" id="cpefActivePos" ${ep.visible_pos !== false ? 'checked' : ''}> Activo en POS
                                 </label>
                             </div>
-                            ${_buildCpefAcompHtml(ep)}
                             <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
                                 <button type="button" class="section-save-btn" id="cpefSaveBtn">Guardar</button>
                                 <button type="button" class="ghost-button" id="cpefCancelBtn">Cancelar</button>
@@ -6676,14 +7046,24 @@ function _renderCategoryDetailPanel(categoryId) {
         _renderCategoryDetailPanel(categoryId);
     });
 
-    // Toggle show/hide lista de acompañantes
-    const acompToggle = categoryDetailPanel.querySelector('#cpefAcompActivo');
-    const acompList = categoryDetailPanel.querySelector('#cpefAcompList');
-    if (acompToggle && acompList) {
-        acompToggle.addEventListener('change', () => {
-            acompList.style.display = acompToggle.checked ? 'block' : 'none';
+    // Toggles bebidas/acompañantes por categoría
+    categoryDetailPanel.querySelectorAll('[data-cat-vis]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const key = btn.dataset.catVis;
+            const current = category[key] !== false;
+            const next = !current;
+            btn.classList.toggle('on', next);
+            try {
+                await firebaseDb.collection('categorias').doc(categoryId).update({ [key]: next });
+                const cat = categoriesState.find((c) => c.id === categoryId);
+                if (cat) cat[key] = next;
+                renderPosCategoriesPanel();
+            } catch (e) {
+                btn.classList.toggle('on', current);
+                showNotice('Error al guardar visibilidad.', 'error');
+            }
         });
-    }
+    });
 }
 
 async function _saveCategoryFromDetail(categoryId) {
@@ -6747,39 +7127,6 @@ function _buildCatAcompHtml(category) {
     </div>`;
 }
 
-function _buildCpefAcompHtml(ep) {
-    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    const opciones = (cfg.opciones || []).filter((o) => o.id && o.nombre);
-    if (opciones.length === 0) return '';
-
-    const savedAcomp = ep.acompanantes || {};
-    const acompActivo = savedAcomp.activo === true;
-    const savedIds = Array.isArray(savedAcomp.ids) ? savedAcomp.ids : [];
-
-    const listStyle = `display:${acompActivo ? 'block' : 'none'};margin-top:8px;border:1px solid rgba(255,122,26,0.22);border-radius:10px;overflow:hidden;`;
-
-    const items = opciones.map((opt) => {
-        const checked = savedIds.includes(opt.id) ? 'checked' : '';
-        const precioLabel = opt.precio > 0 ? `+$${Number(opt.precio).toLocaleString('es-CO')}` : 'Incluido';
-        const detalle = opt.detalle ? `<span style="font-size:0.72rem;color:rgba(200,210,230,0.5);margin-top:1px;display:block;">${opt.detalle}</span>` : '';
-        return `<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer;background:rgba(255,255,255,0.02);">
-            <input type="checkbox" name="cpefAcompId" value="${opt.id}" ${checked} style="width:16px;height:16px;accent-color:#ff7a00;flex-shrink:0;cursor:pointer;">
-            <div style="flex:1;min-width:0;">
-                <span style="font-size:0.85rem;font-weight:600;color:#eef4ff;">${opt.nombre}</span>
-                ${detalle}
-            </div>
-            <span style="font-size:0.80rem;font-weight:700;color:#ff7a00;white-space:nowrap;">${precioLabel}</span>
-        </label>`;
-    }).join('');
-
-    return `<div style="margin-top:12px;">
-        <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,122,26,0.08);border:1px solid rgba(255,122,26,0.22);border-radius:10px;cursor:pointer;">
-            <span style="font-size:0.82rem;font-weight:600;color:#eef4ff;">Activar acompañantes</span>
-            <input type="checkbox" id="cpefAcompActivo" ${acompActivo ? 'checked' : ''} style="width:17px;height:17px;accent-color:#ff7a00;cursor:pointer;">
-        </label>
-        <div id="cpefAcompList" style="${listStyle}">${items}</div>
-    </div>`;
-}
 
 async function _saveProductInline(productId, categoryId) {
     const nameInput = document.getElementById('cpefName');
@@ -6788,9 +7135,6 @@ async function _saveProductInline(productId, categoryId) {
     const activeMenuInput = document.getElementById('cpefActiveMenu');
     const activePosInput = document.getElementById('cpefActivePos');
     const fileInput = document.getElementById('cpefFileInput');
-    const acompActivoInput = document.getElementById('cpefAcompActivo');
-    const acompListEl = document.getElementById('cpefAcompList');
-
     const name = nameInput ? nameInput.value.trim() : '';
     if (!name) { showNotice('El nombre es obligatorio.', 'error'); return; }
 
@@ -6811,12 +7155,6 @@ async function _saveProductInline(productId, categoryId) {
         const precio = priceInput ? Number(priceInput.value) || 0 : 0;
         const descripcion = descInput ? descInput.value.trim() : '';
 
-        const acompActivo = acompActivoInput ? acompActivoInput.checked : false;
-        const acompIds = acompListEl
-            ? Array.from(acompListEl.querySelectorAll('input[name="cpefAcompId"]:checked')).map((cb) => cb.value)
-            : [];
-        const acompanantes = { activo: acompActivo, ids: acompIds };
-
         await firebaseDb.collection('productos').doc(productId).update({
             nombre: name,
             precio,
@@ -6824,7 +7162,6 @@ async function _saveProductInline(productId, categoryId) {
             estado,
             visible_pos: visiblePos,
             image_url: imageUrl,
-            acompanantes,
             updated_at: firestoreNow()
         });
 
@@ -10850,6 +11187,7 @@ async function reloadDataAndRender() {
         fetchProducts(),
         fetchBebidas(),
         fetchAcompanantes(),
+        fetchCombosPack(),
         fetchCatalogoVisibilidad(),
         fetchButtons(),
         fetchBranding(),
@@ -10875,9 +11213,9 @@ async function reloadDataAndRender() {
     announceNewMessages(messagesState);
 
     renderCategories();
-    renderCatalogoVisibilidadPanel();
     renderBebidasPanel();
     renderAcompanantesPanel();
+    renderCombosPackPanel();
     renderPosCategoriesPanel();
     renderMenuUpgradesAdmin();
     renderButtonsList();

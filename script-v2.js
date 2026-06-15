@@ -260,6 +260,7 @@ let _publicUpgradePending = null;
 let paymentFlowUI = null;
 let _customerPaymentMethods = null;
 let _latestBebidas = [];
+let _latestAcompanantes = [];
 let _catalogoVisibilidad = { bebidas_menu: true, acompanantes_menu: true };
 
 // ── Historial para botón atrás de Android ──
@@ -1443,6 +1444,26 @@ function loadBebidasPublic() {
     }
 }
 
+function loadAcompanantesPublic() {
+    try {
+        const db = getPublicFirebaseDb();
+        db.collection('acompanantes').onSnapshot((snap) => {
+            _latestAcompanantes = snap.docs
+                .map((doc) => ({ id: doc.id, ...doc.data() }))
+                .map((raw) => ({
+                    id: raw.id,
+                    nombre: String(raw.nombre || '').trim(),
+                    cantidad: String(raw.cantidad || '').trim(),
+                    precio: Number(raw.precio) || 0,
+                    activo_menu: raw.activo_menu !== false,
+                    estado: raw.estado === 'paused' ? 'paused' : 'active',
+                    orden: raw.orden != null ? Number(raw.orden) : 99
+                }))
+                .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'));
+        }, () => { _latestAcompanantes = []; });
+    } catch (_) { _latestAcompanantes = []; }
+}
+
 async function loadHorarioConfig() {
     try {
         const db = getPublicFirebaseDb();
@@ -1481,13 +1502,19 @@ async function loadCustomerPaymentMethods() {
     } catch (_) {}
 }
 
+function _getPublicCategoryData(categoryName) {
+    const key = normalizeCategoryKey(String(categoryName || '').trim());
+    return (Array.isArray(activeCategoryMeta) ? activeCategoryMeta : [])
+        .find((c) => c.key === key) || null;
+}
+
 function _shouldShowPublicUpgrade(categoryName) {
-    if (!publicUpgradesConfig?.activo) return false;
-    const cat = String(categoryName || '').trim().toUpperCase();
-    const eligible = (publicUpgradesConfig.categorias_aplica || []).map((c) => c.toUpperCase());
-    const activeMenuOpts = (publicUpgradesConfig.opciones || [])
-        .filter((o) => o.activo && o.activo_menu !== false);
-    return eligible.includes(cat) && activeMenuOpts.length > 0;
+    const catData = _getPublicCategoryData(categoryName);
+    const catAcompMenu = catData ? catData.acompanantes_menu !== false : false;
+    const catBebMenu   = catData ? catData.bebidas_menu   !== false : false;
+    const hayAcomp  = catAcompMenu && _latestAcompanantes.some((a) => a.estado === 'active' && a.activo_menu);
+    const hayBebida = catBebMenu   && _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+    return hayAcomp || hayBebida;
 }
 
 function getPublicServerTimestamp() {
@@ -4228,6 +4255,7 @@ function updateCartItemQuantity(itemKey, delta) {
         newQty = delta > 0 ? newQty + 1 : newQty - 1;
     }
     item.quantity = newQty;
+    if (newQty <= 0) shoppingCart = shoppingCart.filter((entry) => entry.parentKey !== itemKey);
     shoppingCart = shoppingCart.filter((entry) => Number(entry.quantity || 0) > 0);
     saveCartState();
     renderCartUI();
@@ -5189,28 +5217,13 @@ function showCartAddedToast(categoryName, productName) {
     }, 2000);
 }
 
-function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId, initialQuantity = 1) {
+function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId, initialQuantity = 1, parentKey = null) {
     // Interceptar para mostrar upgrades si corresponde
     const upgradeExtra = Number(orderOptions?.upgradeExtra || 0);
     const upgradeHandled = !!(orderOptions?.upgradeHandled);
     if (!upgradeHandled) {
-        const cfg = publicUpgradesConfig;
-        // 1. Nivel producto: acompañantes configurados específicamente para este producto
-        const productData = _getCartItemProductData(productName);
-        const prodAcomp = productData?.acompanantes;
-        if (prodAcomp?.activo && Array.isArray(prodAcomp.ids) && prodAcomp.ids.length > 0 && cfg) {
-            const filteredOpts = (cfg.opciones || [])
-                .filter((o) => o.activo && o.activo_menu !== false && prodAcomp.ids.includes(o.id))
-                .sort((a, b) => (a.orden || 99) - (b.orden || 99));
-            if (filteredOpts.length > 0) {
-                _publicUpgradePending = { productName, categoryName, orderOptions, buttonId, filteredOpts };
-                openPublicUpgradeSheet();
-                return;
-            }
-        }
-        // 2. Nivel categoría: todas las opciones activas si la categoría está habilitada
         if (_shouldShowPublicUpgrade(categoryName)) {
-            _publicUpgradePending = { productName, categoryName, orderOptions, buttonId };
+            _publicUpgradePending = { productName, categoryName, orderOptions, buttonId, extras: [] };
             openPublicUpgradeSheet();
             return;
         }
@@ -5244,7 +5257,8 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
             categoryName: safeCategoryName,
             orderOptions: normalizedOptions,
             unitPrice,
-            quantity: qty
+            quantity: qty,
+            parentKey: parentKey || null
         });
     }
 
@@ -5280,7 +5294,35 @@ function renderCartUI() {
         return;
     }
 
-    shoppingCart.forEach((item) => {
+    const topItems = shoppingCart.filter((i) => !i.parentKey);
+    const subItemsOf = (key) => shoppingCart.filter((i) => i.parentKey === key);
+
+    const renderCartSubItem = (item) => {
+        const row = document.createElement('div');
+        row.className = 'cart-item cart-item-extra';
+        const arrow = document.createElement('span');
+        arrow.className = 'cart-item-extra-arrow';
+        arrow.textContent = '↳';
+        const name = document.createElement('span');
+        name.className = 'cart-item-extra-name';
+        name.textContent = item.productName;
+        const price = document.createElement('span');
+        price.className = 'cart-item-extra-price';
+        price.textContent = item.unitPrice > 0 ? `+${formatCurrency(item.unitPrice)}` : 'incluido';
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'cart-remove-btn cart-item-extra-del';
+        del.setAttribute('aria-label', 'Quitar extra');
+        del.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
+        del.addEventListener('click', () => updateCartItemQuantity(item.itemKey, -Number(item.quantity || 1)));
+        row.appendChild(arrow);
+        row.appendChild(name);
+        row.appendChild(price);
+        row.appendChild(del);
+        return row;
+    };
+
+    topItems.forEach((item) => {
         const unitPrice = getCartItemUnitPrice(item);
         const originalUnitPrice = getCartItemOriginalUnitPrice(item);
         const subtotal = unitPrice * Number(item.quantity || 0);
@@ -5396,10 +5438,12 @@ function renderCartUI() {
         row.appendChild(info);
         row.appendChild(controls);
         cartUI.list.appendChild(row);
+        subItemsOf(item.itemKey).forEach((sub) => cartUI.list.appendChild(renderCartSubItem(sub)));
     });
 
     const cartDiscountTotal = getCartDiscountTotalAmount();
-    cartUI.summary.textContent = `${shoppingCart.length} referencia${shoppingCart.length === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'}${cartDiscountTotal > 0 ? ` | Descuento ${formatCurrency(cartDiscountTotal)}` : ''} | Total ${formatCurrency(getCartTotalAmount())}`;
+    const refCount = topItems.length;
+    cartUI.summary.textContent = `${refCount} referencia${refCount === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'}${cartDiscountTotal > 0 ? ` | Descuento ${formatCurrency(cartDiscountTotal)}` : ''} | Total ${formatCurrency(getCartTotalAmount())}`;
     cartUI.checkout.disabled = !shoppingCart.length;
     cartUI.clear.disabled = false;
     syncOrderingAvailabilityUI();
@@ -5636,6 +5680,13 @@ function initCartUI() {
     cartUI.clear.addEventListener('click', clearCart);
 
     renderCartUI();
+    _updateFabVisibility();
+}
+
+function _updateFabVisibility() {
+    if (!cartUI?.fab) return;
+    const isHome = document.getElementById('homeScreen')?.hidden === false;
+    cartUI.fab.style.display = isHome ? '' : 'none';
 }
 
 function getSupportSocialEntries() {
@@ -7196,12 +7247,7 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
         return;
     }
 
-    if (!isComboCategory(safeCategoryName)) {
-        openProductCommentModal(productName, safeCategoryName, buttonId, normalizedOptions);
-        return;
-    }
-
-    openComboChoiceModal(productName, safeCategoryName, buttonId, normalizedOptions);
+    addItemToCart(productName, safeCategoryName, normalizedOptions, buttonId);
 }
 let featuredCarouselAnimationFrame = null;
 let featuredCarouselLastTimestamp = 0;
@@ -9142,7 +9188,9 @@ async function renderPublicFeaturedFromAdmin() {
                 name: category.name,
                 key: normalizeCategoryKey(category.name),
                 image_url: String(category.image_url || '').trim(),
-                order: category.order != null ? Number(category.order) : undefined
+                order: category.order != null ? Number(category.order) : undefined,
+                bebidas_menu: category.bebidas_menu !== false,
+                acompanantes_menu: category.acompanantes_menu !== false
             }))
             .sort(catSort);
 
@@ -9883,6 +9931,7 @@ function showHomeScreen() {
     document.getElementById('navCategoriesScreen')?.removeAttribute('data-hidden-by-detail');
     const hs = document.getElementById('homeScreen');
     if (hs) { hs.hidden = false; renderHomeScreen(); }
+    _updateFabVisibility();
     setPublicTopbarVisible(true);
     _setNavCurrent(null);
     if (_screenHistoryPushed && !_closingByBackBtn) {
@@ -10389,6 +10438,7 @@ function _enterScreen(screenId) {
     }
     const hs = document.getElementById('homeScreen');
     if (hs) hs.hidden = true;
+    _updateFabVisibility();
     setPublicTopbarVisible(false);
     _setNavCurrent(screenId);
     if (!_screenHistoryPushed && !_closingByBackBtn) {
@@ -10406,6 +10456,7 @@ function _exitScreen() {
     if (!anyOpen) {
         const hs = document.getElementById('homeScreen');
         if (hs) { hs.hidden = false; renderHomeScreen(); }
+        _updateFabVisibility();
         setPublicTopbarVisible(true);
         _setNavCurrent(null);
         if (_screenHistoryPushed && !_closingByBackBtn) {
@@ -10568,7 +10619,28 @@ function openPublicUpgradeSheet() {
     overlay.hidden = false;
     overlay.style.display = 'flex';
     _pushModalState();
+    const nameEl = document.getElementById('publicUpgradeProductName');
+    if (nameEl) nameEl.textContent = _publicUpgradePending.productName;
+    const commentEl = document.getElementById('publicUpgradeComment');
+    if (commentEl) commentEl.value = String(_publicUpgradePending.orderOptions?.comment || '').trim();
+    const addBtn = document.getElementById('publicUpgradeAddBtn');
+    if (addBtn) {
+        addBtn.onclick = () => {
+            if (!_publicUpgradePending) return;
+            const { productName, categoryName, orderOptions, buttonId, extras } = _publicUpgradePending;
+            const comment = String(document.getElementById('publicUpgradeComment')?.value || '').trim();
+            const safeCategory = String(categoryName || '').trim() || 'NUESTROS PRODUCTOS';
+            const mainOpts = normalizeOrderOptions({ ...orderOptions, comment });
+            const mainKey = getCartItemKey(productName, safeCategory, mainOpts);
+            addItemToCart(productName, categoryName, { ...orderOptions, upgradeHandled: true, comment }, buttonId);
+            (extras || []).forEach((e) => {
+                addItemToCart(e.name, 'ADICIONALES', { type: 'solo', upgradeHandled: true, staticPrice: e.price }, null, 1, mainKey);
+            });
+            closePublicUpgradeSheet();
+        };
+    }
     renderPublicUpgradeStep1();
+    _pubUpgUpdateAddBtn();
 }
 
 function closePublicUpgradeSheet() {
@@ -10581,118 +10653,158 @@ function closePublicUpgradeSheet() {
 function _pubUpgBody() { return document.getElementById('publicUpgradeBody'); }
 function _pubUpgTitle() { return document.getElementById('publicUpgradeTitle'); }
 
-function renderPublicUpgradeStep1() {
-    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
-    if (!body || !_publicUpgradePending) return;
-    if (titleEl) titleEl.textContent = '¿Quieres acompañarlo?';
-    const cfg = publicUpgradesConfig;
-    // Usar opciones filtradas por producto si existen, o todas las activas de menú
-    const activeOpts = _publicUpgradePending.filteredOpts ||
-        (cfg?.opciones || [])
-            .filter((o) => o.activo && o.activo_menu !== false)
-            .sort((a, b) => (a.orden || 99) - (b.orden || 99));
+function _pubUpgUpdateAddBtn() {
+    const btn = document.getElementById('publicUpgradeAddBtn');
+    if (!btn) return;
+    const hasExtras = (_publicUpgradePending?.extras || []).length > 0;
+    btn.textContent = hasExtras ? 'AGREGAR AL PEDIDO' : 'AGREGAR SOLO';
+}
 
-    const priceLabel = (opt) => {
-        if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
-            const min = Math.min(...opt.variantes.map((v) => Number(v.precio_extra || 0)));
-            return `desde +$${min.toLocaleString('es-CO')}`;
-        }
-        return Number(opt.precio || 0) > 0 ? `+$${Number(opt.precio).toLocaleString('es-CO')}` : 'incluido';
-    };
+function _pubUpgRenderExtrasList() {
+    const extras = _publicUpgradePending?.extras || [];
+    if (!extras.length) return '';
+    return `<div class="pub-extras-list">
+        ${extras.map((e, i) => `
+        <div class="pub-extra-row">
+            <span class="pub-extra-name">${e.name}</span>
+            <span class="pub-extra-price">+$${Number(e.price || 0).toLocaleString('es-CO')}</span>
+            <button type="button" class="pub-extra-del" data-idx="${i}">✕</button>
+        </div>`).join('')}
+    </div>`;
+}
 
-    body.innerHTML = `
-        <div class="pub-upgrade-product">${_publicUpgradePending.productName}</div>
-        <div class="pub-upgrade-opts">
-            <button type="button" class="pub-upgrade-opt pub-upgrade-solo" id="pubUpgradeSolo">
-                <span class="pub-upgrade-opt-name">Solo el producto</span>
-                <span class="pub-upgrade-opt-price muted">sin añadir</span>
-            </button>
-            ${activeOpts.map((opt) => `
-            <button type="button" class="pub-upgrade-opt" data-opt-id="${opt.id}">
-                <div>
-                    <span class="pub-upgrade-opt-name">${opt.nombre}</span>
-                    ${opt.detalle ? `<span class="pub-upgrade-opt-detail">${opt.detalle}</span>` : ''}
-                </div>
-                <span class="pub-upgrade-opt-price">${priceLabel(opt)}</span>
-            </button>`).join('')}
-        </div>`;
-
-    body.querySelector('#pubUpgradeSolo')?.addEventListener('click', () => {
-        const { productName, categoryName, orderOptions, buttonId } = _publicUpgradePending;
-        _publicUpgradePending = null;
-        addItemToCart(productName, categoryName, { ...orderOptions, upgradeHandled: true }, buttonId);
-        closePublicUpgradeSheet();
-    });
-    body.querySelectorAll('.pub-upgrade-opt[data-opt-id]').forEach((btn) => {
+function _pubUpgBindExtrasDel(onUpdate) {
+    _pubUpgBody()?.querySelectorAll('.pub-extra-del').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const opt = (cfg?.opciones || []).find((o) => o.id === btn.dataset.optId);
-            if (!opt) return;
-            if (opt.tiene_variantes && (opt.variantes || []).length > 0) {
-                renderPublicUpgradeStep2(opt);
-            } else {
-                _applyPublicUpgrade(opt.nombre, Number(opt.precio || 0));
-            }
+            const idx = Number(btn.dataset.idx);
+            if (_publicUpgradePending) _publicUpgradePending.extras.splice(idx, 1);
+            onUpdate();
         });
     });
 }
 
-function renderPublicUpgradeStep2(opt) {
+function renderPublicUpgradeStep1() {
     const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
-    if (!body) return;
-    if (titleEl) titleEl.textContent = `${opt.nombre} — ¿Qué tamaño?`;
+    if (!body || !_publicUpgradePending) return;
+    if (titleEl) titleEl.textContent = '¿Quieres acompañarlo?';
+
+    const catData = _getPublicCategoryData(_publicUpgradePending.categoryName);
+    const hayAcomp  = (catData?.acompanantes_menu !== false) && _latestAcompanantes.some((a) => a.estado === 'active' && a.activo_menu);
+    const hayBebida = (catData?.bebidas_menu !== false) && _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+
+    body.innerHTML = `
+        <div class="pub-home-btns">
+            ${hayAcomp  ? `<button type="button" class="pub-cat-btn" id="pubBtnAcomp">🥗 Adicional</button>` : ''}
+            ${hayBebida ? `<button type="button" class="pub-cat-btn" id="pubBtnBebida">🥤 Bebida</button>` : ''}
+        </div>
+        ${_pubUpgRenderExtrasList()}`;
+
+    body.querySelector('#pubBtnAcomp')?.addEventListener('click', _renderPublicUpgradeAdicionales);
+    body.querySelector('#pubBtnBebida')?.addEventListener('click', _renderPublicUpgradeBebidas);
+    _pubUpgBindExtrasDel(renderPublicUpgradeStep1);
+    _pubUpgUpdateAddBtn();
+}
+
+function _renderPublicUpgradeAdicionales() {
+    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
+    if (!body || !_publicUpgradePending) return;
+    if (titleEl) titleEl.textContent = 'Elige un adicional';
+    const items = _latestAcompanantes.filter((a) => a.estado === 'active' && a.activo_menu);
     body.innerHTML = `
         <div class="pub-upgrade-opts">
-            ${(opt.variantes || []).map((v) => `
-            <button type="button" class="pub-upgrade-opt" data-v-id="${v.id}">
-                <span class="pub-upgrade-opt-name">${v.nombre}</span>
-                <span class="pub-upgrade-opt-price">+$${Number(v.precio_extra || 0).toLocaleString('es-CO')}</span>
+            ${items.map((a) => `
+            <button type="button" class="pub-upgrade-opt" data-acomp-id="${a.id}">
+                <span class="pub-upgrade-opt-name">${a.nombre}${a.cantidad ? ` (${a.cantidad})` : ''}</span>
+                <span class="pub-upgrade-opt-price">+$${Number(a.precio || 0).toLocaleString('es-CO')}</span>
             </button>`).join('')}
         </div>
         <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
-    body.querySelectorAll('.pub-upgrade-opt[data-v-id]').forEach((btn) => {
+    body.querySelectorAll('[data-acomp-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const variant = (opt.variantes || []).find((v) => v.id === btn.dataset.vId);
-            if (!variant) return;
-            if ((variant.sub_variantes || []).length > 0) {
-                renderPublicUpgradeStep3(opt, variant);
+            const a = items.find((x) => x.id === btn.dataset.acompId);
+            if (a && _publicUpgradePending) {
+                _publicUpgradePending.extras.push({ id: a.id, name: a.nombre, price: a.precio });
+            }
+            renderPublicUpgradeStep1();
+        });
+    });
+    body.querySelector('#pubUpgradeBack')?.addEventListener('click', renderPublicUpgradeStep1);
+}
+
+function _renderPublicUpgradeBebidas() {
+    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
+    if (!body || !_publicUpgradePending) return;
+    if (titleEl) titleEl.textContent = 'Elige una bebida';
+    const items = _latestBebidas.filter((b) => b.estado === 'active' && b.mostrar_acompanante);
+    body.innerHTML = `
+        <div class="pub-upgrade-opts">
+            ${items.map((b) => `
+            <button type="button" class="pub-upgrade-opt" data-beb-id="${b.id}">
+                <span class="pub-upgrade-opt-name">${b.marca}</span>
+                <span class="pub-upgrade-opt-price">${b.presentaciones.length === 1 ? `+$${b.presentaciones[0].precio.toLocaleString('es-CO')}` : 'Ver opciones'}</span>
+            </button>`).join('')}
+        </div>
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
+    body.querySelectorAll('[data-beb-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const b = items.find((x) => x.id === btn.dataset.bebId);
+            if (!b) return;
+            if (b.presentaciones.length === 1 && !b.presentaciones[0].sabores.length) {
+                const p = b.presentaciones[0];
+                if (_publicUpgradePending) _publicUpgradePending.extras.push({ id: b.id + '_' + p.id, name: `${b.marca} ${p.nombre}`, price: p.precio });
+                renderPublicUpgradeStep1();
             } else {
-                _applyPublicUpgrade(`${opt.nombre} – ${variant.nombre}`,
-                    Number(opt.precio || 0) + Number(variant.precio_extra || 0));
+                _renderPublicUpgradeBebidaPresentaciones(b);
             }
         });
     });
     body.querySelector('#pubUpgradeBack')?.addEventListener('click', renderPublicUpgradeStep1);
 }
 
-function renderPublicUpgradeStep3(opt, variant) {
+function _renderPublicUpgradeBebidaPresentaciones(bebida) {
     const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
     if (!body) return;
-    if (titleEl) titleEl.textContent = `${variant.nombre} — ¿Qué sabor?`;
+    if (titleEl) titleEl.textContent = `${bebida.marca} — presentación`;
+    body.innerHTML = `
+        <div class="pub-upgrade-opts">
+            ${bebida.presentaciones.map((p) => `
+            <button type="button" class="pub-upgrade-opt" data-pres-id="${p.id}">
+                <span class="pub-upgrade-opt-name">${p.nombre}</span>
+                <span class="pub-upgrade-opt-price">+$${Number(p.precio || 0).toLocaleString('es-CO')}</span>
+            </button>`).join('')}
+        </div>
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
+    bebida.presentaciones.forEach((p) => {
+        body.querySelector(`[data-pres-id="${p.id}"]`)?.addEventListener('click', () => {
+            if (p.sabores.length > 0) {
+                _renderPublicUpgradeBebidaSabores(bebida, p);
+            } else {
+                if (_publicUpgradePending) _publicUpgradePending.extras.push({ id: bebida.id + '_' + p.id, name: `${bebida.marca} ${p.nombre}`, price: p.precio });
+                renderPublicUpgradeStep1();
+            }
+        });
+    });
+    body.querySelector('#pubUpgradeBack')?.addEventListener('click', _renderPublicUpgradeBebidas);
+}
+
+function _renderPublicUpgradeBebidaSabores(bebida, presentacion) {
+    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
+    if (!body) return;
+    if (titleEl) titleEl.textContent = `${presentacion.nombre} — sabor`;
     body.innerHTML = `
         <div class="pub-flavors-grid">
-            ${(variant.sub_variantes || []).map((s) => `
-            <button type="button" class="pub-flavor-btn" data-sub="${s}">${s}</button>`).join('')}
+            ${presentacion.sabores.map((s) => `
+            <button type="button" class="pub-flavor-btn" data-sabor="${s}">${s}</button>`).join('')}
         </div>
         <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
     body.querySelectorAll('.pub-flavor-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const sub = btn.dataset.sub;
-            const note = sub === 'Sin bebida'
-                ? `${opt.nombre} – ${variant.nombre}`
-                : `${opt.nombre} – ${variant.nombre} (${sub})`;
-            _applyPublicUpgrade(note, Number(opt.precio || 0) + Number(variant.precio_extra || 0));
+            const s = btn.dataset.sabor;
+            if (_publicUpgradePending) _publicUpgradePending.extras.push({ id: `${bebida.id}_${presentacion.id}_${s}`, name: `${bebida.marca} ${presentacion.nombre} (${s})`, price: presentacion.precio });
+            renderPublicUpgradeStep1();
         });
     });
-    body.querySelector('#pubUpgradeBack')?.addEventListener('click', () => renderPublicUpgradeStep2(opt));
-}
-
-function _applyPublicUpgrade(upgradeNote, upgradeExtra) {
-    if (!_publicUpgradePending) return;
-    const { productName, categoryName, orderOptions, buttonId } = _publicUpgradePending;
-    const finalName = `${productName} + ${upgradeNote}`;
-    _publicUpgradePending = null;
-    closePublicUpgradeSheet();
-    addItemToCart(finalName, categoryName, { ...orderOptions, upgradeHandled: true, upgradeExtra }, buttonId);
+    body.querySelector('#pubUpgradeBack')?.addEventListener('click', () => _renderPublicUpgradeBebidaPresentaciones(bebida));
 }
 
 function showTempClosureBanner() {
@@ -10865,6 +10977,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadHorarioConfig();
     loadCatalogoVisibilidadPublic();
     loadBebidasPublic();
+    loadAcompanantesPublic();
     loadCustomerPaymentMethods();
 
     // Cerrar upgrade sheet público

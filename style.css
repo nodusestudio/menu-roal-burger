@@ -3347,6 +3347,39 @@ body.has-guest-register-banner #ayudaScreen {
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
+.cart-item-extra {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px 6px 24px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.45);
+    border: 1px dashed rgba(196,81,10,0.2);
+    margin-top: -6px;
+}
+.cart-item-extra-arrow {
+    color: rgba(196,81,10,0.5);
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+.cart-item-extra-name {
+    flex: 1;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #3d1f0a;
+}
+.cart-item-extra-price {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #c4510a;
+    flex-shrink: 0;
+}
+.cart-item-extra-del {
+    flex-shrink: 0;
+    padding: 2px 4px;
+    opacity: 0.55;
+}
+
 .cart-item-info strong {
     display: block;
     margin-bottom: 4px;
