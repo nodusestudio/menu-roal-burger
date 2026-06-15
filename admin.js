@@ -10411,70 +10411,69 @@ document.getElementById('ptsSearchInput')?.addEventListener('input', (e) => {
     _ptsRenderSearchResults(e.target.value);
 });
 
-// ── Sugerencia de precio de domicilio basada en pedidos anteriores ──────────
-const _PTS_FEE_STOPWORDS = new Set(['con','del','los','las','una','por','mas','sin','que','muy','bien','este','ese','esa','esos']);
-
-function _ptsSuggestDeliveryFee(addressText) {
-    const addr = String(addressText || '').trim().toLowerCase();
-    if (addr.length < 4) { _ptsHideFeeSuggestion(); return; }
-
-    // Tokenizar: palabras de 3+ chars sin stopwords
-    const tokens = addr
-        .split(/[\s,#\-\/\.]+/)
-        .filter((t) => t.length >= 3 && !_PTS_FEE_STOPWORDS.has(t));
-
-    if (!tokens.length) { _ptsHideFeeSuggestion(); return; }
-
-    // Buscar en pedidos de domicilio con deliveryFee > 0
-    const candidates = (ordersState || []).filter((o) =>
-        o.orderType === 'domicilio' &&
-        o.deliveryFee !== null && o.deliveryFee > 0 &&
-        o.deliveryAddress
-    );
-    if (!candidates.length) { _ptsHideFeeSuggestion(); return; }
-
-    // Puntuar cada candidato
-    let best = null;
-    let bestScore = 0;
-    candidates.forEach((o) => {
-        const oAddr = o.deliveryAddress.toLowerCase();
-        let score = 0;
-        tokens.forEach((t) => { if (oAddr.includes(t)) score++; });
-        const ts = o.createdAt && typeof o.createdAt.toMillis === 'function' ? o.createdAt.toMillis() : 0;
-        const bestTs = best?.createdAt && typeof best.createdAt.toMillis === 'function' ? best.createdAt.toMillis() : 0;
-        if (score > bestScore || (score === bestScore && score > 0 && ts > bestTs)) {
-            bestScore = score;
-            best = o;
-        }
-    });
-
-    if (!best || bestScore === 0) { _ptsHideFeeSuggestion(); return; }
-
-    _ptsShowFeeSuggestion(best.deliveryFee);
-}
-
-// Muestra/oculta el campo de domicilio según si hay dirección escrita
+// ── Detección automática de zona de domicilio en POS (geocodificación) ──────
 function _ptsToggleFeeWrap(hasAddress) {
     const wrap = document.getElementById('ptsDeliveryFeeWrap');
     if (!wrap) return;
     if (hasAddress) wrap.removeAttribute('hidden');
-    else { wrap.setAttribute('hidden', ''); document.getElementById('ptsDeliveryFee').value = ''; }
-}
-
-// Rellena el campo de fee solo si está vacío (no sobreescribe lo que ya escribió el usuario)
-function _ptsApplyFeeSuggestion(fee) {
-    const feeInput = document.getElementById('ptsDeliveryFee');
-    if (!feeInput) return;
-    if (!feeInput.value || Number(feeInput.value) === 0) {
-        feeInput.value = fee;
+    else {
+        wrap.setAttribute('hidden', '');
+        const feeInput = document.getElementById('ptsDeliveryFee');
+        if (feeInput) feeInput.value = '';
+        _ptsClearZoneBadge();
     }
 }
 
-function _ptsShowFeeSuggestion(fee) {
-    _ptsApplyFeeSuggestion(fee);
+function _ptsClearZoneBadge() {
+    const badge = document.getElementById('ptsFeeZoneBadge');
+    if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
 }
 
-function _ptsHideFeeSuggestion() { /* no-op: el campo se mantiene editable */ }
+function _ptsSetZoneBadge(text, color) {
+    const badge = document.getElementById('ptsFeeZoneBadge');
+    if (!badge) return;
+    badge.textContent = text;
+    badge.style.color = color || '#aaa';
+    badge.style.display = 'block';
+}
+
+async function _ptsSuggestDeliveryFee(addressText) {
+    const val = String(addressText || '').trim();
+    if (val.length < 4) { _ptsClearZoneBadge(); return; }
+
+    _ptsSetZoneBadge('🔍 Calculando tarifa...', '#aaa');
+
+    try {
+        const variants = _adminQueryVariants(val);
+        let result = null;
+        for (const q of variants) {
+            result = await _adminGeocode(q);
+            if (result) break;
+        }
+
+        if (!result) {
+            _ptsSetZoneBadge('❓ Dirección no encontrada — ingresa el valor manualmente', '#ff9a50');
+            return;
+        }
+
+        const zone = _adminDetectZone(result.lat, result.lon);
+        const feeInput = document.getElementById('ptsDeliveryFee');
+
+        if (zone) {
+            if (feeInput && (!feeInput.value || Number(feeInput.value) === 0)) {
+                feeInput.value = zone.fee;
+            }
+            const colors = { amarilla: '#f6d743', azul: '#4aa1ff', roja: '#d32f2f', negra: '#aaa' };
+            _ptsSetZoneBadge(`✓ ${zone.label} — $${zone.fee.toLocaleString('es-CO')} (auto-detectado)`, colors[zone.name] || '#6ee7b7');
+        } else {
+            _ptsSetZoneBadge('⚠️ Fuera de cobertura — ingresa el valor manualmente', '#fca5a5');
+        }
+    } catch (_e) {
+        _ptsClearZoneBadge();
+    }
+}
+
+function _ptsHideFeeSuggestion() { _ptsClearZoneBadge(); }
 
 // Listener con debounce en el campo de dirección
 let _ptsFeeSearchTimer = null;
@@ -10483,7 +10482,10 @@ document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => 
     _ptsToggleFeeWrap(val.length > 0);
     if (val.length > 0) {
         clearTimeout(_ptsFeeSearchTimer);
-        _ptsFeeSearchTimer = setTimeout(() => _ptsSuggestDeliveryFee(val), 380);
+        _ptsFeeSearchTimer = setTimeout(() => _ptsSuggestDeliveryFee(val), 600);
+    } else {
+        clearTimeout(_ptsFeeSearchTimer);
+        _ptsClearZoneBadge();
     }
 });
 
@@ -14002,6 +14004,11 @@ document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', cerrarCaj
             }
         }, 800);
     });
+
+    // Exponer funciones para uso desde el POS
+    window._adminDetectZone = _adminZoneForPoint;
+    window._adminGeocode = _adminGeocode;
+    window._adminQueryVariants = _adminQueryVariants;
 })();
 
 // ── Libro Contable: historial de cierres de caja ──────────────────────────────
