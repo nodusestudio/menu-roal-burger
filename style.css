@@ -791,6 +791,7 @@ a.is-ordering-closed {
 }
 
 .topbar-help-btn {
+    touch-action: manipulation;
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -1115,7 +1116,7 @@ a.is-ordering-closed {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
-    transition: all 0.3s ease;
+    transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
     height: 48px;
     display: flex;
     align-items: center;
@@ -1290,7 +1291,7 @@ a.is-ordering-closed {
     border-radius: 15px;
     padding: 25px 20px;
     text-align: center;
-    transition: all 0.4s ease;
+    transition: transform 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease;
     cursor: pointer;
     position: relative;
     overflow: hidden;
@@ -1788,7 +1789,7 @@ a.is-ordering-closed {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.3s ease;
+    transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
     border: 2px solid #ff6000;
 }
 
@@ -1814,7 +1815,8 @@ a.is-ordering-closed {
     align-items: center;
     gap: 5px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    touch-action: manipulation;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .drawer-toggle span {
@@ -1836,7 +1838,7 @@ a.is-ordering-closed {
     background: rgba(0, 0, 0, 0.45);
     opacity: 0;
     visibility: hidden;
-    transition: 0.3s ease;
+    transition: opacity 0.28s ease, visibility 0.28s ease;
 }
 
 .menu-drawer {
@@ -1852,8 +1854,9 @@ a.is-ordering-closed {
     border-right: 1px solid rgba(255, 69, 0, 0.45);
     padding: 70px 16px 20px;
     transform: translateX(-100%);
-    transition: 0.3s ease;
+    transition: transform 0.28s ease;
     overflow-y: auto;
+    will-change: transform;
 }
 
 .menu-drawer.open {
@@ -1878,7 +1881,8 @@ a.is-ordering-closed {
     font-size: 24px;
     line-height: 1;
     cursor: pointer;
-    transition: 0.3s ease;
+    touch-action: manipulation;
+    transition: background 0.2s ease;
 }
 
 .drawer-close:hover {
@@ -1900,7 +1904,7 @@ a.is-ordering-closed {
     color: #ffffff;
     padding: 12px 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-    transition: 0.3s ease;
+    transition: color 0.2s ease, background 0.2s ease;
 }
 
 .menu-nav-link:hover,
@@ -1978,14 +1982,8 @@ a.is-ordering-closed {
 
 /* Animación de fade in */
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        backdrop-filter: blur(0px);
-    }
-    to {
-        opacity: 1;
-        backdrop-filter: blur(5px);
-    }
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 /* Estilos responsive para móviles */
@@ -3255,6 +3253,7 @@ body.has-guest-register-banner #ayudaScreen {
     transform: translateX(100%);
     transition: transform 0.24s ease;
     overflow: hidden;
+    will-change: transform;
 }
 
 .cart-drawer.is-open {
@@ -3604,6 +3603,7 @@ body.has-guest-register-banner #ayudaScreen {
     max-height: 90dvh;
     display: flex;
     flex-direction: column;
+    will-change: transform;
 }
 .cie-overlay.is-open .cie-sheet {
     transform: translateY(0);
@@ -3968,7 +3968,7 @@ body.has-guest-register-banner #ayudaScreen {
     overflow: hidden;
     box-shadow: 0 8px 25px rgba(255, 96, 0, 0.3);
     border: 2px solid rgba(255, 96, 0, 0.2);
-    transition: all 0.3s ease;
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
     transform: translateZ(0);
 }
 
@@ -4001,7 +4001,7 @@ body.has-guest-register-banner #ayudaScreen {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
-    transition: all 0.3s ease;
+    transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
     height: 72px;
     display: flex;
     align-items: center;
@@ -6692,3 +6692,135 @@ body.has-guest-register-banner #ayudaScreen {
 }
 
 /* ===== FIN OPTIMIZACIÓN RESPONSIVA MÓVIL ===== */
+
+/* =====================================================
+   OPTIMIZACIONES DE PERFORMANCE MÓVIL
+   ===================================================== */
+
+@media (max-width: 768px) {
+    /* 1. background-attachment:fixed no puede acelerarse por GPU en iOS/Android
+          — causa repaint en cada frame de scroll (el mayor culpable de jank) */
+    body::after {
+        background-attachment: scroll;
+        will-change: auto;
+    }
+    #bg-layer {
+        background-attachment: scroll;
+    }
+
+    /* 2. Reducir blur de backdrop-filter: cada capa cuesta GPU.
+          En desktop 14-18px se ve bien; en móvil con 6px es indistinguible
+          y hasta 4× más rápido en GPU mid-range */
+    .liquid-glass {
+        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(6px);
+    }
+    .glass-strong {
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+    }
+
+    /* 3. Promover capas animadas al compositor de GPU antes de que animen
+          — evita el "flash of unpromotion" y layout shifts al abrir */
+    .menu-drawer,
+    .drawer-overlay,
+    .support-modal,
+    .cart-drawer,
+    .product-detail-drawer {
+        will-change: transform;
+    }
+
+    /* 4. Acortar transiciones: 0.3-0.4 s se siente lento en táctil;
+          0.18-0.22 s es más snappy sin perder la sensación de fluidez */
+    .menu-drawer,
+    .drawer-overlay {
+        transition-duration: 0.22s;
+    }
+    .close-button,
+    .drawer-toggle,
+    .drawer-close,
+    .drawer-overlay,
+    .menu-nav-link,
+    .menu-card,
+    .card-image-wrapper,
+    .mobile-order-btn,
+    .category-hero-order-btn,
+    .skip-button,
+    .hero-cta-btn,
+    .topbar-help-btn {
+        transition-duration: 0.15s;
+    }
+
+    /* 5. touch-action:manipulation elimina el retraso de 300ms del doble-tap
+          en todos los elementos interactivos */
+    button,
+    a,
+    [role="button"],
+    .menu-card,
+    .product-card-mobile,
+    .category-hero-order-btn,
+    .mobile-order-btn,
+    .neon-button,
+    .drawer-toggle,
+    .drawer-close,
+    .close-button {
+        touch-action: manipulation;
+    }
+
+    /* 6. contain:layout paint en secciones del menú: el navegador no necesita
+          recalcular layout fuera de cada sección al hacer scroll */
+    .menu-section {
+        contain: layout paint;
+    }
+    .category-section,
+    .featured-section {
+        contain: layout;
+    }
+
+    /* 7. Deshabilitar hover effects en táctil (no hay hover real y
+          pueden quedarse "pegados" después del toque) */
+    .menu-image:hover {
+        transform: none;
+        box-shadow: 0 10px 30px rgba(255, 96, 0, 0.3);
+    }
+    .card-image-wrapper:hover {
+        box-shadow: 0 8px 25px rgba(255, 96, 0, 0.3);
+        border-color: rgba(255, 96, 0, 0.2);
+    }
+    .card-image-wrapper:hover .product-image-mobile {
+        transform: none;
+    }
+    .mobile-order-btn:hover {
+        transform: none;
+        box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
+        background: #ff6600;
+    }
+    .category-hero-order-btn:hover {
+        transform: none;
+    }
+    .hero-cta-btn:hover,
+    .neon-button:hover {
+        transform: none;
+    }
+
+    /* 8. overscroll-behavior en contenedores de scroll:
+          evita que el scroll "rebote" al padre y cause repaint del fondo */
+    .mobile-carousel,
+    .menu-carousel,
+    .menu-drawer,
+    .cart-drawer,
+    .support-modal-card {
+        overscroll-behavior: contain;
+    }
+}
+
+/* Para dispositivos que prefieren movimiento reducido (accesibilidad + bajo consumo) */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

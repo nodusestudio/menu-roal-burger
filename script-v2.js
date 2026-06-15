@@ -7925,14 +7925,15 @@ function startFeaturedCarouselAutoplay(carousel) {
             featuredCarouselLastTimestamp = timestamp;
         }
 
-        const deltaSeconds = Math.max(0, (timestamp - featuredCarouselLastTimestamp) / 1000);
+        const deltaSeconds = Math.max(0, Math.min((timestamp - featuredCarouselLastTimestamp) / 1000, 0.1));
         featuredCarouselLastTimestamp = timestamp;
 
-        const next = carousel.scrollLeft + (speedPxPerSecond * deltaSeconds);
-        if (next >= segmentWidth * 2) {
-            carousel.scrollLeft = next - segmentWidth;
-        } else {
-            carousel.scrollLeft = next;
+        // Solo escribir scrollLeft si el desplazamiento es perceptible (≥0.5px)
+        // — evita forzar layout en frames donde el delta es mínimo
+        const delta = speedPxPerSecond * deltaSeconds;
+        if (delta >= 0.5) {
+            const next = carousel.scrollLeft + delta;
+            carousel.scrollLeft = next >= segmentWidth * 2 ? next - segmentWidth : next;
         }
 
         featuredCarouselAnimationFrame = requestAnimationFrame(animate);
