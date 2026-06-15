@@ -4695,7 +4695,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     saborLabel.className = 'combo-modal-section-label';
     saborLabel.textContent = 'Sabor de la bebida';
     const saborGrid = document.createElement('div');
-    saborGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;';
+    saborGrid.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
     saborSection.appendChild(saborLabel);
     saborSection.appendChild(saborGrid);
 
@@ -4743,7 +4743,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         return pres?.sabores || [];
     }
 
-    // Helper: mostrar/ocultar y poblar sección de sabores (una fila por bebida)
+    // Helper: mostrar/ocultar y poblar sección de sabores (una fila horizontal por bebida)
     function renderSaborSection(v) {
         const sabores = _getVarianteSabores(v);
         saborSection.hidden = !sabores.length;
@@ -4751,33 +4751,37 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         if (!sabores.length) return;
         const cant = Math.max(1, Number(v.cantidad_bebidas) || 1);
         selectedSabores = new Array(cant).fill(null);
+        saborGrid.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
         for (let i = 0; i < cant; i++) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:7px;';
             if (cant > 1) {
-                const slotLabel = document.createElement('div');
-                slotLabel.style.cssText = 'font-size:0.72rem;color:rgba(200,200,220,0.5);margin:8px 0 4px;text-transform:uppercase;letter-spacing:.3px;';
-                slotLabel.textContent = `Bebida ${i + 1}`;
-                saborGrid.appendChild(slotLabel);
+                const lbl = document.createElement('span');
+                lbl.style.cssText = 'font-size:0.68rem;color:rgba(200,200,220,0.45);min-width:20px;text-align:right;flex-shrink:0;';
+                lbl.textContent = `${i + 1}.`;
+                row.appendChild(lbl);
             }
-            const slotRow = document.createElement('div');
-            slotRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+            const chips = document.createElement('div');
+            chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;flex:1;';
             const slotIdx = i;
             const slotBtns = [];
             sabores.forEach((s) => {
                 const sb = document.createElement('button');
                 sb.type = 'button';
-                sb.style.cssText = 'padding:9px 12px;border-radius:9px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;font-size:0.83rem;transition:background 0.15s;';
+                sb.style.cssText = 'padding:7px 11px;border-radius:8px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;font-size:0.81rem;transition:background 0.15s;white-space:nowrap;';
                 sb.textContent = s;
                 sb.addEventListener('click', () => {
                     selectedSabores[slotIdx] = s;
-                    slotBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.15)'; });
+                    slotBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.14)'; });
                     sb.style.background = 'rgba(231,111,0,0.25)';
                     sb.style.borderColor = 'var(--admin-accent,#e76f00)';
                     refreshConfirm();
                 });
                 slotBtns.push(sb);
-                slotRow.appendChild(sb);
+                chips.appendChild(sb);
             });
-            saborGrid.appendChild(slotRow);
+            row.appendChild(chips);
+            saborGrid.appendChild(row);
         }
     }
 
