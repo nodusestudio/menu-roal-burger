@@ -2942,6 +2942,13 @@ function handlePosProductAdd(productId, productName, productPrice) {
     const selectedCategory = String(posSelectedCategory || '').trim();
     const normCat = normalizeCategoryKey(selectedCategory);
 
+    // Si el producto tiene variantes configuradas, usar el nuevo modal de variantes
+    const prodEntry = productsState.find((p) => p.id === productId);
+    if (prodEntry && Array.isArray(prodEntry.variantes) && prodEntry.variantes.length > 0) {
+        openProductVariantesModal(productId, productName, selectedCategory, prodEntry.variantes);
+        return;
+    }
+
     // Combos con papas y bebidas → selector de personas con precios fijos
     // Excluir 'salchipapas' porque también contiene "papas"
     if (normCat.includes('papas') && !normCat.includes('salchipapa')) {
@@ -4655,6 +4662,118 @@ function openBurgerClasicasPosModal(productId, productName) {
     card.appendChild(secLabel);
     card.appendChild(optGrid);
     card.appendChild(noteRow);
+    overlay.appendChild(card);
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+}
+
+function openProductVariantesModal(productId, productName, categoryName, variantes) {
+    let selectedVariante = null;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+
+    const card = document.createElement('div');
+    card.className = 'combo-modal-card';
+
+    const header = document.createElement('div');
+    header.className = 'combo-modal-header';
+    const headerText = document.createElement('div');
+    headerText.innerHTML = `<h4>${escapeHtml(productName)}</h4><p class="combo-modal-subtitle">${escapeHtml(categoryName)}</p>`;
+    const closeX = document.createElement('button');
+    closeX.type = 'button';
+    closeX.className = 'combo-modal-close-x';
+    closeX.setAttribute('aria-label', 'Cerrar');
+    closeX.textContent = '×';
+    closeX.addEventListener('click', () => overlay.remove());
+    header.appendChild(headerText);
+    header.appendChild(closeX);
+
+    const secLabel = document.createElement('div');
+    secLabel.className = 'combo-modal-section-label';
+    secLabel.textContent = 'Selecciona una opción';
+
+    const grid = document.createElement('div');
+    const cols = variantes.length <= 2 ? '1fr 1fr' : '1fr 1fr';
+    grid.style.cssText = `display:grid;grid-template-columns:${cols};gap:10px;margin-bottom:4px;`;
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'combo-modal-confirm-btn';
+    confirmBtn.textContent = 'Selecciona una opción';
+    confirmBtn.disabled = true;
+    confirmBtn.style.opacity = '0.45';
+
+    const varBtns = [];
+    variantes.forEach((v) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = 'padding:12px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;text-align:center;font-size:0.87rem;line-height:1.45;transition:background 0.15s;';
+        const bebidaLine = v.con_bebida && v.bebida_nombre
+            ? `<span style="display:block;font-size:0.72rem;color:rgba(200,200,220,0.65);margin-top:2px;">🥤 ${escapeHtml(v.bebida_nombre)}${v.cantidad_bebidas > 1 ? ` ×${v.cantidad_bebidas}` : ''}</span>`
+            : '';
+        btn.innerHTML = `<strong style="display:block;">${escapeHtml(v.nombre || 'Opción')}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${Number(v.precio || 0).toLocaleString('es-CO')}</span>${bebidaLine}`;
+        btn.addEventListener('click', () => {
+            selectedVariante = v;
+            varBtns.forEach((b) => {
+                b.style.background = 'rgba(255,255,255,0.07)';
+                b.style.borderColor = 'rgba(255,255,255,0.15)';
+            });
+            btn.style.background = 'rgba(231,111,0,0.25)';
+            btn.style.borderColor = 'var(--admin-accent,#e76f00)';
+            confirmBtn.disabled = false;
+            confirmBtn.style.opacity = '1';
+            confirmBtn.textContent = `Agregar — $${Number(v.precio || 0).toLocaleString('es-CO')}`;
+        });
+        varBtns.push(btn);
+        grid.appendChild(btn);
+    });
+
+    const noteRow = document.createElement('div');
+    noteRow.className = 'combo-modal-note-row';
+    const noteLabel = document.createElement('label');
+    noteLabel.className = 'combo-modal-note-label';
+    noteLabel.textContent = 'Nota (opcional)';
+    const noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.className = 'combo-modal-note-input';
+    noteInput.placeholder = 'Ej: sin cebolla, extra salsa...';
+    noteRow.appendChild(noteLabel);
+    noteRow.appendChild(noteInput);
+
+    const footer = document.createElement('div');
+    footer.className = 'combo-modal-footer';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'combo-modal-cancel-btn';
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.addEventListener('click', () => overlay.remove());
+
+    confirmBtn.addEventListener('click', () => {
+        if (!selectedVariante) return;
+        const note = noteInput.value.trim();
+        const bebInfo = selectedVariante.con_bebida && selectedVariante.bebida_nombre
+            ? ` + ${selectedVariante.bebida_nombre}${selectedVariante.cantidad_bebidas > 1 ? ` ×${selectedVariante.cantidad_bebidas}` : ''}`
+            : '';
+        const optLabel = `${selectedVariante.nombre}${bebInfo}${note ? ` | ${note}` : ''}`;
+        addProductToPosOrder(
+            `${String(productId).trim()}::${selectedVariante.id}`,
+            productName,
+            Number(selectedVariante.precio || 0),
+            optLabel
+        );
+        overlay.remove();
+    });
+
+    footer.appendChild(cancelBtn);
+    footer.appendChild(confirmBtn);
+
+    card.appendChild(header);
+    card.appendChild(secLabel);
+    card.appendChild(grid);
+    card.appendChild(noteRow);
+    card.appendChild(footer);
     overlay.appendChild(card);
 
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
