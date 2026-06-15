@@ -10443,6 +10443,7 @@ async function reloadDataAndRender() {
 
     renderCategories();
     renderBebidasPanel();
+    renderPosCategoriesPanel();
     renderMenuUpgradesAdmin();
     renderButtonsList();
     renderBrandingForm();
