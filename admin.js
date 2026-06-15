@@ -334,6 +334,7 @@ const editProductAcompActivo = document.getElementById('editProductAcompActivo')
 const editProductAcompList = document.getElementById('editProductAcompList');
 
 let bebidasState = [];
+let acompanantesState = [];
 
 const clientEditModal = document.getElementById('clientEditModal');
 const clientEditForm = document.getElementById('clientEditForm');
@@ -2372,14 +2373,17 @@ function renderPosCategoriesPanel() {
     const bebidasCatOption = bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
         ? `<option value="__POS_BEBIDAS__">🥤 Bebidas (${bebidasState.filter((b) => b.estado === 'active' && b.mostrar_categoria).length})</option>`
         : '';
-    select.innerHTML = promoOption + bebidasCatOption + categories.map((cat) => {
+    const acompCatOption = acompanantesState.some((a) => a.estado === 'active' && a.activo_pos)
+        ? `<option value="__POS_ACOMPANANTES__">🥗 Acompañantes (${acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).length})</option>`
+        : '';
+    select.innerHTML = promoOption + bebidasCatOption + acompCatOption + categories.map((cat) => {
         const count = catalog.filter(
             (p) => String(p.categoria || '').trim() === cat && String(p.estado || 'active').trim() === 'active'
         ).length;
         return `<option value="${escapeHtml(cat)}">${escapeHtml(cat)} (${count})</option>`;
     }).join('');
 
-    if (posSelectedCategory && (posSelectedCategory === '__POS_PROMOCIONES__' || posSelectedCategory === '__POS_BEBIDAS__' || categories.includes(posSelectedCategory))) {
+    if (posSelectedCategory && (posSelectedCategory === '__POS_PROMOCIONES__' || posSelectedCategory === '__POS_BEBIDAS__' || posSelectedCategory === '__POS_ACOMPANANTES__' || categories.includes(posSelectedCategory))) {
         select.value = posSelectedCategory;
     } else if (categories.length > 0) {
         posSelectedCategory = categories[0];
@@ -2409,6 +2413,12 @@ function renderPosProductsPanel() {
     // Panel especial de Bebidas (colección propia)
     if (posSelectedCategory === '__POS_BEBIDAS__') {
         renderPosBebidasPanel(grid);
+        return;
+    }
+
+    // Panel especial de Acompañantes (colección propia)
+    if (posSelectedCategory === '__POS_ACOMPANANTES__') {
+        renderPosAcompanantesNewPanel(grid);
         return;
     }
 
@@ -2460,6 +2470,42 @@ function renderPosProductsPanel() {
 
         card.addEventListener('click', () => {
             handlePosProductAdd(String(product.id || ''), String(product.nombre || ''), Number(product.precio || 0));
+        });
+        grid.appendChild(card);
+    });
+}
+
+function renderPosAcompanantesNewPanel(grid) {
+    grid.innerHTML = '';
+    const activos = acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos);
+    if (!activos.length) {
+        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Sin acompañantes disponibles</p>';
+        return;
+    }
+    activos.forEach((acomp) => {
+        const card = document.createElement('div');
+        card.className = 'pos-product-card';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        if (acomp.imagen_url) {
+            btn.className = 'pos-product-btn has-image';
+            btn.innerHTML = `<img class="pos-product-btn-img" src="${escapeHtml(acomp.imagen_url)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
+            const label = document.createElement('div');
+            label.className = 'pos-product-label';
+            label.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(acomp.nombre)}</span><span class="pos-product-btn-price">${formatMoney(acomp.precio)}</span>`;
+            card.appendChild(btn);
+            card.appendChild(label);
+        } else {
+            btn.className = 'pos-product-btn';
+            btn.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(acomp.nombre)}</span><span class="pos-product-btn-price">${formatMoney(acomp.precio)}</span>`;
+            card.appendChild(btn);
+        }
+
+        card.addEventListener('click', () => {
+            const itemId = `acomp::${acomp.id}`;
+            const itemName = acomp.cantidad ? `${acomp.nombre} (${acomp.cantidad})` : acomp.nombre;
+            addProductToPosOrder(itemId, itemName, acomp.precio);
         });
         grid.appendChild(card);
     });
@@ -3247,6 +3293,382 @@ function _renderBebidasLegacy_UNUSED() {
     });
 
     container.appendChild(grid);
+}
+
+// ─────────────────────────────────────────
+//  ACOMPAÑANTES — Colección propia Firestore
+// ─────────────────────────────────────────
+
+function normalizeAcompanante(raw) {
+    return {
+        id: raw.id,
+        nombre: String(raw.nombre || '').trim(),
+        cantidad: String(raw.cantidad || '').trim(),
+        precio: Number(raw.precio) || 0,
+        imagen_url: String(raw.imagen_url || '').trim(),
+        activo_pos: raw.activo_pos !== false,
+        activo_menu: raw.activo_menu !== false,
+        estado: raw.estado === 'paused' ? 'paused' : 'active',
+        orden: raw.orden != null ? Number(raw.orden) : 99,
+        created_at: raw.created_at,
+        updated_at: raw.updated_at
+    };
+}
+
+async function fetchAcompanantes() {
+    try {
+        const snap = await firebaseDb.collection('acompanantes').get();
+        acompanantesState = snap.docs
+            .map((doc) => normalizeAcompanante({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'));
+    } catch (_) {
+        acompanantesState = [];
+    }
+}
+
+function renderAcompanantesPanel() {
+    const container = document.getElementById('acompanantesTabPanel');
+    if (!container) return;
+
+    container.innerHTML = '';
+    const wrapper = document.createElement('article');
+    wrapper.className = 'admin-card';
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'acomp-panel-toolbar';
+    const createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.className = 'ghost-button';
+    createBtn.style.cssText = 'font-size:0.82rem;padding:6px 14px;';
+    createBtn.textContent = '+ Crear acompañante';
+    createBtn.addEventListener('click', () => openAcompananteModal());
+    toolbar.appendChild(createBtn);
+
+    const list = document.createElement('div');
+    list.className = 'acomp-panel-list';
+
+    if (!acompanantesState.length) {
+        const empty = document.createElement('p');
+        empty.style.cssText = 'color:rgba(255,255,255,0.35);text-align:center;padding:28px 0;';
+        empty.textContent = 'No hay acompañantes. Crea el primero.';
+        list.appendChild(empty);
+    } else {
+        acompanantesState.forEach((acomp) => {
+            const card = document.createElement('div');
+            card.className = 'acomp-panel-card' + (acomp.estado === 'paused' ? ' paused' : '');
+
+            if (acomp.imagen_url) {
+                const img = document.createElement('img');
+                img.className = 'acomp-panel-img';
+                img.src = acomp.imagen_url;
+                img.alt = acomp.nombre;
+                img.addEventListener('error', () => { img.style.display = 'none'; });
+                card.appendChild(img);
+            } else {
+                const ph = document.createElement('div');
+                ph.className = 'acomp-panel-img-placeholder';
+                ph.textContent = '🥗';
+                card.appendChild(ph);
+            }
+
+            const info = document.createElement('div');
+            info.className = 'acomp-panel-info';
+
+            const nombre = document.createElement('div');
+            nombre.className = 'acomp-panel-nombre';
+            nombre.textContent = acomp.nombre;
+
+            const meta = document.createElement('div');
+            meta.className = 'acomp-panel-meta';
+            meta.textContent = acomp.cantidad || '—';
+
+            const precio = document.createElement('div');
+            precio.className = 'acomp-panel-precio';
+            precio.textContent = formatMoney(acomp.precio);
+
+            const badges = document.createElement('div');
+            badges.className = 'acomp-panel-badges';
+            if (acomp.activo_pos)  badges.innerHTML += '<span class="acomp-badge acomp-badge--pos">POS</span>';
+            if (acomp.activo_menu) badges.innerHTML += '<span class="acomp-badge acomp-badge--menu">Menú</span>';
+
+            info.appendChild(nombre);
+            info.appendChild(meta);
+            info.appendChild(precio);
+            info.appendChild(badges);
+
+            const actions = document.createElement('div');
+            actions.className = 'acomp-panel-actions';
+
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'acomp-action-btn';
+            editBtn.textContent = 'Editar';
+            editBtn.addEventListener('click', () => openAcompananteModal(acomp));
+
+            const pauseBtn = document.createElement('button');
+            pauseBtn.type = 'button';
+            pauseBtn.className = 'acomp-action-btn';
+            pauseBtn.textContent = acomp.estado === 'paused' ? 'Reanudar' : 'Pausar';
+            pauseBtn.addEventListener('click', async () => {
+                const newEstado = acomp.estado === 'paused' ? 'active' : 'paused';
+                await firebaseDb.collection('acompanantes').doc(acomp.id).update({ estado: newEstado, updated_at: firestoreNow() });
+                await reloadDataAndRender();
+            });
+
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'acomp-action-btn danger';
+            delBtn.textContent = 'Eliminar';
+            delBtn.addEventListener('click', async () => {
+                if (!confirm(`¿Eliminar "${acomp.nombre}"?`)) return;
+                await firebaseDb.collection('acompanantes').doc(acomp.id).delete();
+                await reloadDataAndRender();
+            });
+
+            actions.appendChild(editBtn);
+            actions.appendChild(pauseBtn);
+            actions.appendChild(delBtn);
+
+            card.appendChild(info);
+            card.appendChild(actions);
+            list.appendChild(card);
+        });
+    }
+
+    wrapper.appendChild(toolbar);
+    wrapper.appendChild(list);
+    container.appendChild(wrapper);
+}
+
+function openAcompananteModal(acomp = null) {
+    const isEdit = !!acomp;
+    let _pendingImageFile = null;
+    let _resolvedImageUrl = acomp?.imagen_url || '';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+    overlay.style.zIndex = '8500';
+
+    const card = document.createElement('div');
+    card.className = 'combo-modal-card acomp-form-card';
+
+    const header = document.createElement('div');
+    header.className = 'combo-modal-header';
+    const htitle = document.createElement('div');
+    htitle.innerHTML = `<h4>${isEdit ? 'Editar acompañante' : 'Nuevo acompañante'}</h4>`;
+    const closeX = document.createElement('button');
+    closeX.type = 'button';
+    closeX.className = 'combo-modal-close-x';
+    closeX.textContent = '×';
+    closeX.addEventListener('click', () => overlay.remove());
+    header.appendChild(htitle);
+    header.appendChild(closeX);
+
+    const body = document.createElement('div');
+    body.className = 'acomp-form-body';
+
+    // Nombre
+    const nombreLabel = document.createElement('div');
+    nombreLabel.className = 'combo-modal-section-label';
+    nombreLabel.textContent = 'Nombre del acompañante';
+    const nombreInput = document.createElement('input');
+    nombreInput.type = 'text';
+    nombreInput.className = 'acomp-form-input';
+    nombreInput.placeholder = 'Ej: Papas Fritas, Ensalada...';
+    nombreInput.value = acomp?.nombre || '';
+    body.appendChild(nombreLabel);
+    body.appendChild(nombreInput);
+
+    // Cantidad + Precio en la misma fila
+    const rowLabel = document.createElement('div');
+    rowLabel.style.cssText = 'display:grid;grid-template-columns:1fr 100px;gap:8px;font-size:0.65rem;font-weight:700;color:rgba(160,185,220,0.5);text-transform:uppercase;letter-spacing:0.6px;';
+    rowLabel.innerHTML = '<span>Cantidad / Medida</span><span>Precio</span>';
+    const row = document.createElement('div');
+    row.className = 'acomp-form-row';
+
+    const cantidadInput = document.createElement('input');
+    cantidadInput.type = 'text';
+    cantidadInput.className = 'acomp-form-input';
+    cantidadInput.placeholder = 'Ej: Porción, 250ml, Unidad...';
+    cantidadInput.value = acomp?.cantidad || '';
+
+    const precioInput = document.createElement('input');
+    precioInput.type = 'number';
+    precioInput.className = 'acomp-form-input';
+    precioInput.placeholder = 'Precio';
+    precioInput.min = '0';
+    precioInput.step = '100';
+    precioInput.value = acomp?.precio || '';
+    precioInput.style.textAlign = 'right';
+
+    row.appendChild(cantidadInput);
+    row.appendChild(precioInput);
+    body.appendChild(rowLabel);
+    body.appendChild(row);
+
+    // Imagen (opcional)
+    const imgLabel = document.createElement('div');
+    imgLabel.className = 'combo-modal-section-label';
+    imgLabel.textContent = 'Imagen (opcional)';
+    body.appendChild(imgLabel);
+
+    const imgRow = document.createElement('div');
+    imgRow.style.cssText = 'display:flex;align-items:center;gap:10px;';
+
+    const imgPreview = document.createElement('img');
+    imgPreview.style.cssText = 'width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid rgba(255,255,255,0.12);display:' + (_resolvedImageUrl ? 'block' : 'none') + ';flex-shrink:0;';
+    imgPreview.src = _resolvedImageUrl || '';
+    imgPreview.alt = 'preview';
+    imgPreview.addEventListener('error', () => { imgPreview.style.display = 'none'; });
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.style.display = 'none';
+
+    const uploadBtn = document.createElement('button');
+    uploadBtn.type = 'button';
+    uploadBtn.className = 'ghost-button';
+    uploadBtn.style.cssText = 'font-size:0.8rem;padding:6px 12px;';
+    uploadBtn.textContent = _resolvedImageUrl ? '📷 Cambiar imagen' : '📷 Cargar imagen';
+
+    const removeImgBtn = document.createElement('button');
+    removeImgBtn.type = 'button';
+    removeImgBtn.className = 'ghost-button';
+    removeImgBtn.style.cssText = 'font-size:0.78rem;padding:4px 8px;color:rgba(255,100,100,0.85);display:' + (_resolvedImageUrl ? 'inline-flex' : 'none') + ';';
+    removeImgBtn.textContent = '✕ Quitar';
+
+    fileInput.addEventListener('change', () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+        _pendingImageFile = file;
+        const reader = new FileReader();
+        reader.onload = () => {
+            imgPreview.src = String(reader.result);
+            imgPreview.style.display = 'block';
+            uploadBtn.textContent = '📷 Cambiar imagen';
+            removeImgBtn.style.display = 'inline-flex';
+        };
+        reader.readAsDataURL(file);
+    });
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    removeImgBtn.addEventListener('click', () => {
+        _pendingImageFile = null;
+        _resolvedImageUrl = '';
+        imgPreview.src = '';
+        imgPreview.style.display = 'none';
+        uploadBtn.textContent = '📷 Cargar imagen';
+        removeImgBtn.style.display = 'none';
+        fileInput.value = '';
+    });
+
+    imgRow.appendChild(imgPreview);
+    imgRow.appendChild(uploadBtn);
+    imgRow.appendChild(removeImgBtn);
+    imgRow.appendChild(fileInput);
+    body.appendChild(imgRow);
+
+    // Toggles visibilidad
+    const visLabel = document.createElement('div');
+    visLabel.className = 'combo-modal-section-label';
+    visLabel.textContent = 'Visibilidad';
+    body.appendChild(visLabel);
+
+    const visRow = document.createElement('div');
+    visRow.className = 'acomp-form-vis-row';
+    const makeTgl = (text, checked) => {
+        const wrap = document.createElement('label');
+        wrap.className = 'acomp-form-tgl';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = checked;
+        const span = document.createElement('span');
+        span.textContent = text;
+        wrap.appendChild(cb);
+        wrap.appendChild(span);
+        return { wrap, cb };
+    };
+    const { wrap: posWrap, cb: posCb } = makeTgl('Activar en POS', acomp ? acomp.activo_pos : true);
+    const { wrap: menuWrap, cb: menuCb } = makeTgl('Activar en menú público', acomp ? acomp.activo_menu : true);
+    visRow.appendChild(posWrap);
+    visRow.appendChild(menuWrap);
+    body.appendChild(visRow);
+
+    const feedback = document.createElement('div');
+    feedback.className = 'modal-feedback';
+    body.appendChild(feedback);
+
+    const footer = document.createElement('div');
+    footer.className = 'combo-modal-footer';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'combo-modal-cancel-btn';
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.addEventListener('click', () => overlay.remove());
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'combo-modal-confirm-btn';
+    saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear acompañante';
+    saveBtn.addEventListener('click', async () => {
+        const nombre = nombreInput.value.trim();
+        if (!nombre) { showModalFeedback(feedback, 'Escribe el nombre del acompañante.', 'error'); return; }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = isEdit ? 'Guardando...' : 'Creando...';
+
+        let finalImageUrl = _resolvedImageUrl;
+        if (_pendingImageFile) {
+            try {
+                showModalFeedback(feedback, 'Subiendo imagen...', 'info');
+                finalImageUrl = await resolveProductImageUpload(_pendingImageFile, nombre);
+            } catch (imgErr) {
+                showModalFeedback(feedback, `Error al subir imagen: ${imgErr.message || 'intenta de nuevo'}`, 'error');
+                saveBtn.disabled = false;
+                saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear acompañante';
+                return;
+            }
+        }
+
+        const payload = {
+            nombre,
+            cantidad: cantidadInput.value.trim(),
+            precio: Number(precioInput.value) || 0,
+            imagen_url: finalImageUrl,
+            activo_pos: posCb.checked,
+            activo_menu: menuCb.checked,
+            estado: acomp?.estado || 'active',
+            updated_at: firestoreNow()
+        };
+
+        try {
+            if (isEdit) {
+                await firebaseDb.collection('acompanantes').doc(acomp.id).update(payload);
+            } else {
+                payload.orden = acompanantesState.length;
+                payload.created_at = firestoreNow();
+                await firebaseDb.collection('acompanantes').add(payload);
+            }
+            await reloadDataAndRender();
+            overlay.remove();
+            showNotice(isEdit ? 'Acompañante actualizado.' : 'Acompañante creado.', 'ok');
+        } catch (e) {
+            showModalFeedback(feedback, `Error: ${e.message || 'No se pudo guardar.'}`, 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear acompañante';
+        }
+    });
+
+    footer.appendChild(cancelBtn);
+    footer.appendChild(saveBtn);
+    card.appendChild(header);
+    card.appendChild(body);
+    card.appendChild(footer);
+    overlay.appendChild(card);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    setTimeout(() => nombreInput.focus(), 80);
 }
 
 function openBebidaModal(bebida = null) {
@@ -10418,6 +10840,7 @@ async function reloadDataAndRender() {
         fetchCategories(),
         fetchProducts(),
         fetchBebidas(),
+        fetchAcompanantes(),
         fetchButtons(),
         fetchBranding(),
         fetchOrders(),
@@ -10443,6 +10866,7 @@ async function reloadDataAndRender() {
 
     renderCategories();
     renderBebidasPanel();
+    renderAcompanantesPanel();
     renderPosCategoriesPanel();
     renderMenuUpgradesAdmin();
     renderButtonsList();
