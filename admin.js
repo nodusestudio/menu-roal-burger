@@ -2949,22 +2949,9 @@ function handlePosProductAdd(productId, productName, productPrice) {
         return;
     }
 
-    // Combos con papas y bebidas → selector de personas con precios fijos
-    // Excluir 'salchipapas' porque también contiene "papas"
-    if (normCat.includes('papas') && !normCat.includes('salchipapa')) {
-        openComboConPapasPosModal(productId, productName, selectedCategory);
-        return;
-    }
-
     // Burger Clásica Normal → opciones de tamaño y cantidad de carne
     if (normCat.includes('burger clasicas') && normalizeCategoryKey(productName).includes('normal')) {
         openBurgerClasicasPosModal(productId, productName);
-        return;
-    }
-
-    // Otros combos siguen con su modal propio (Combos Mixtos usa acompañantes del sistema)
-    if (isComboCategory(selectedCategory) && !normCat.includes('mixtos')) {
-        openComboBeverageModal(productId, productName, productPrice, selectedCategory);
         return;
     }
 
@@ -4670,6 +4657,7 @@ function openBurgerClasicasPosModal(productId, productName) {
 
 function openProductVariantesModal(productId, productName, categoryName, variantes) {
     let selectedVariante = null;
+    let selectedSabor = null;
 
     const overlay = document.createElement('div');
     overlay.className = 'combo-modal-overlay';
@@ -4677,6 +4665,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     const card = document.createElement('div');
     card.className = 'combo-modal-card';
 
+    // Header
     const header = document.createElement('div');
     header.className = 'combo-modal-header';
     const headerText = document.createElement('div');
@@ -4690,14 +4679,40 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     header.appendChild(headerText);
     header.appendChild(closeX);
 
+    // Etiqueta variantes
     const secLabel = document.createElement('div');
     secLabel.className = 'combo-modal-section-label';
     secLabel.textContent = 'Selecciona una opción';
 
+    // Grid de variantes
     const grid = document.createElement('div');
-    const cols = variantes.length <= 2 ? '1fr 1fr' : '1fr 1fr';
-    grid.style.cssText = `display:grid;grid-template-columns:${cols};gap:10px;margin-bottom:4px;`;
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px;';
 
+    // Sección sabor (oculta hasta que se elija variante con bebida y sabores)
+    const saborSection = document.createElement('div');
+    saborSection.hidden = true;
+    const saborLabel = document.createElement('div');
+    saborLabel.className = 'combo-modal-section-label';
+    saborLabel.textContent = 'Sabor de la bebida';
+    const saborGrid = document.createElement('div');
+    saborGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;';
+    saborSection.appendChild(saborLabel);
+    saborSection.appendChild(saborGrid);
+
+    // Nota
+    const noteRow = document.createElement('div');
+    noteRow.className = 'combo-modal-note-row';
+    const noteLabel = document.createElement('label');
+    noteLabel.className = 'combo-modal-note-label';
+    noteLabel.textContent = 'Nota (opcional)';
+    const noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.className = 'combo-modal-note-input';
+    noteInput.placeholder = 'Ej: sin papas extras, sin hielo...';
+    noteRow.appendChild(noteLabel);
+    noteRow.appendChild(noteInput);
+
+    // Botón confirmar
     const confirmBtn = document.createElement('button');
     confirmBtn.type = 'button';
     confirmBtn.className = 'combo-modal-confirm-btn';
@@ -4705,6 +4720,57 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     confirmBtn.disabled = true;
     confirmBtn.style.opacity = '0.45';
 
+    // Helper: actualizar estado del botón confirmar
+    function refreshConfirm() {
+        if (!selectedVariante) { confirmBtn.disabled = true; confirmBtn.style.opacity = '0.45'; return; }
+        const sabores = _getVarianteSabores(selectedVariante);
+        const needsSabor = sabores.length > 0;
+        const ready = !needsSabor || !!selectedSabor;
+        confirmBtn.disabled = !ready;
+        confirmBtn.style.opacity = ready ? '1' : '0.45';
+        if (ready) {
+            const bebInfo = selectedVariante.con_bebida && selectedVariante.bebida_nombre
+                ? ` + ${selectedVariante.bebida_nombre}${selectedSabor ? ` (${selectedSabor})` : ''}${selectedVariante.cantidad_bebidas > 1 ? ` ×${selectedVariante.cantidad_bebidas}` : ''}`
+                : '';
+            confirmBtn.textContent = `Agregar — $${Number(selectedVariante.precio || 0).toLocaleString('es-CO')}`;
+        } else {
+            confirmBtn.textContent = 'Selecciona el sabor';
+        }
+    }
+
+    // Helper: obtener sabores de la bebida de una variante
+    function _getVarianteSabores(v) {
+        if (!v.con_bebida || !v.bebida_ref_id || !v.bebida_pres_id) return [];
+        const beb = bebidasState.find((b) => b.id === v.bebida_ref_id);
+        const pres = beb?.presentaciones?.find((p) => p.id === v.bebida_pres_id);
+        return pres?.sabores || [];
+    }
+
+    // Helper: mostrar/ocultar y poblar sección de sabores
+    function renderSaborSection(v) {
+        const sabores = _getVarianteSabores(v);
+        if (!sabores.length) { saborSection.hidden = true; return; }
+        saborSection.hidden = false;
+        saborGrid.innerHTML = '';
+        let saborBtns = [];
+        sabores.forEach((s) => {
+            const sb = document.createElement('button');
+            sb.type = 'button';
+            sb.style.cssText = 'padding:10px 6px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;text-align:center;font-size:0.84rem;transition:background 0.15s;';
+            sb.textContent = s;
+            sb.addEventListener('click', () => {
+                selectedSabor = s;
+                saborBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.15)'; });
+                sb.style.background = 'rgba(231,111,0,0.25)';
+                sb.style.borderColor = 'var(--admin-accent,#e76f00)';
+                refreshConfirm();
+            });
+            saborBtns.push(sb);
+            saborGrid.appendChild(sb);
+        });
+    }
+
+    // Construir botones de variantes
     const varBtns = [];
     variantes.forEach((v) => {
         const btn = document.createElement('button');
@@ -4716,32 +4782,18 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         btn.innerHTML = `<strong style="display:block;">${escapeHtml(v.nombre || 'Opción')}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${Number(v.precio || 0).toLocaleString('es-CO')}</span>${bebidaLine}`;
         btn.addEventListener('click', () => {
             selectedVariante = v;
-            varBtns.forEach((b) => {
-                b.style.background = 'rgba(255,255,255,0.07)';
-                b.style.borderColor = 'rgba(255,255,255,0.15)';
-            });
+            selectedSabor = null;
+            varBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.15)'; });
             btn.style.background = 'rgba(231,111,0,0.25)';
             btn.style.borderColor = 'var(--admin-accent,#e76f00)';
-            confirmBtn.disabled = false;
-            confirmBtn.style.opacity = '1';
-            confirmBtn.textContent = `Agregar — $${Number(v.precio || 0).toLocaleString('es-CO')}`;
+            renderSaborSection(v);
+            refreshConfirm();
         });
         varBtns.push(btn);
         grid.appendChild(btn);
     });
 
-    const noteRow = document.createElement('div');
-    noteRow.className = 'combo-modal-note-row';
-    const noteLabel = document.createElement('label');
-    noteLabel.className = 'combo-modal-note-label';
-    noteLabel.textContent = 'Nota (opcional)';
-    const noteInput = document.createElement('input');
-    noteInput.type = 'text';
-    noteInput.className = 'combo-modal-note-input';
-    noteInput.placeholder = 'Ej: sin cebolla, extra salsa...';
-    noteRow.appendChild(noteLabel);
-    noteRow.appendChild(noteInput);
-
+    // Footer
     const footer = document.createElement('div');
     footer.className = 'combo-modal-footer';
     const cancelBtn = document.createElement('button');
@@ -4753,8 +4805,10 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     confirmBtn.addEventListener('click', () => {
         if (!selectedVariante) return;
         const note = noteInput.value.trim();
+        const sabores = _getVarianteSabores(selectedVariante);
+        if (sabores.length > 0 && !selectedSabor) return;
         const bebInfo = selectedVariante.con_bebida && selectedVariante.bebida_nombre
-            ? ` + ${selectedVariante.bebida_nombre}${selectedVariante.cantidad_bebidas > 1 ? ` ×${selectedVariante.cantidad_bebidas}` : ''}`
+            ? ` + ${selectedVariante.bebida_nombre}${selectedSabor ? ` (${selectedSabor})` : ''}${selectedVariante.cantidad_bebidas > 1 ? ` ×${selectedVariante.cantidad_bebidas}` : ''}`
             : '';
         const optLabel = `${selectedVariante.nombre}${bebInfo}${note ? ` | ${note}` : ''}`;
         addProductToPosOrder(
@@ -4772,6 +4826,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     card.appendChild(header);
     card.appendChild(secLabel);
     card.appendChild(grid);
+    card.appendChild(saborSection);
     card.appendChild(noteRow);
     card.appendChild(footer);
     overlay.appendChild(card);
