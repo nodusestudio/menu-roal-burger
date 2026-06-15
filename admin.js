@@ -2712,8 +2712,8 @@ function handlePosProductAdd(productId, productName, productPrice) {
         return;
     }
 
-    // Otros combos siguen con su modal propio
-    if (isComboCategory(selectedCategory)) {
+    // Otros combos siguen con su modal propio (Combos Mixtos usa acompañantes del sistema)
+    if (isComboCategory(selectedCategory) && !normCat.includes('mixtos')) {
         openComboBeverageModal(productId, productName, productPrice, selectedCategory);
         return;
     }
