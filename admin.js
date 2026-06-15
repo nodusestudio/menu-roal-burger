@@ -209,6 +209,7 @@ const openCreateCategoryBtn = document.getElementById('openCreateCategoryBtn');
 const openCreateProductBtn = document.getElementById('openCreateProductBtn');
 let _selectedCategoryId = null;
 let _editingProductId = null;
+let _cpefVariantes = [];
 const notice = document.getElementById('adminNotice');
 const openCreateClientBtn = document.getElementById('openCreateClientBtn');
 const exportClientsBtn = document.getElementById('exportClientsBtn');
@@ -1578,6 +1579,7 @@ function normalizeProduct(raw) {
         marca: raw.marca ? String(raw.marca).trim() : '',
         ml: raw.ml ? Number(raw.ml) : null,
         sabores,
+        variantes: Array.isArray(raw.variantes) ? raw.variantes : [],
         created_at: raw.created_at,
         updated_at: raw.updated_at
     };
@@ -6805,6 +6807,90 @@ function _renderCarouselPanel() {
     });
 }
 
+function _cpefRenderVariantesList() {
+    const list = categoryDetailPanel?.querySelector('#cpefVariantesList');
+    if (!list) return;
+    list.innerHTML = '';
+
+    if (_cpefVariantes.length === 0) {
+        list.innerHTML = '<p style="font-size:0.75rem;color:var(--admin-muted);margin:4px 0 0;">Sin variantes. Usa &quot;+ Agregar&quot;.</p>';
+        return;
+    }
+
+    _cpefVariantes.forEach((v, idx) => {
+        const card = document.createElement('div');
+        card.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px;margin-bottom:7px;';
+
+        const bebOpts = bebidasState
+            .filter((b) => b.estado === 'active')
+            .flatMap((b) => (b.presentaciones || []).map((p) => ({
+                value: `${b.id}::${p.id}`,
+                label: `${b.marca} · ${p.nombre} (+$${Number(p.precio || 0).toLocaleString('es-CO')})`,
+                selected: v.bebida_ref_id === b.id && v.bebida_pres_id === p.id
+            })));
+
+        const bebSelectOpts = [`<option value="">Selecciona bebida...</option>`,
+            ...bebOpts.map((o) => `<option value="${escapeHtml(o.value)}"${o.selected ? ' selected' : ''}>${escapeHtml(o.label)}</option>`)
+        ].join('');
+
+        card.innerHTML = `
+            <div style="display:flex;gap:7px;align-items:center;margin-bottom:${v.con_bebida ? '8px' : '0'};">
+                <input type="text" class="admin-input cpef-var-nombre" value="${escapeHtml(v.nombre || '')}" placeholder="Ej: Para 1 persona" style="flex:1;min-width:0;font-size:0.78rem;padding:6px 10px;">
+                <input type="number" class="admin-input cpef-var-precio" value="${v.precio || ''}" min="0" step="1000" placeholder="Precio" style="width:90px;font-size:0.78rem;padding:6px 8px;">
+                <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#eef4ff;white-space:nowrap;cursor:pointer;flex-shrink:0;">
+                    <input type="checkbox" class="cpef-var-con-bebida"${v.con_bebida ? ' checked' : ''}> 🥤
+                </label>
+                <button type="button" class="cpef-var-del" style="background:rgba(180,30,30,0.55);border:none;border-radius:6px;color:#fff;width:24px;height:24px;cursor:pointer;font-size:0.7rem;flex-shrink:0;">✕</button>
+            </div>
+            ${v.con_bebida ? `
+            <div style="display:flex;gap:7px;align-items:center;">
+                <select class="admin-input cpef-var-bebida-sel" style="flex:1;min-width:0;font-size:0.78rem;padding:6px 10px;">${bebSelectOpts}</select>
+                <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#eef4ff;white-space:nowrap;flex-shrink:0;">
+                    Cant.
+                    <input type="number" class="admin-input cpef-var-cant-beb" value="${v.cantidad_bebidas || 1}" min="1" max="20" style="width:52px;font-size:0.78rem;padding:6px 8px;">
+                </label>
+            </div>` : ''}`;
+
+        card.querySelector('.cpef-var-nombre').addEventListener('input', (e) => {
+            _cpefVariantes[idx].nombre = e.target.value;
+        });
+        card.querySelector('.cpef-var-precio').addEventListener('input', (e) => {
+            _cpefVariantes[idx].precio = Number(e.target.value) || 0;
+        });
+        card.querySelector('.cpef-var-con-bebida').addEventListener('change', (e) => {
+            _cpefVariantes[idx].con_bebida = e.target.checked;
+            if (!e.target.checked) {
+                _cpefVariantes[idx].bebida_ref_id = null;
+                _cpefVariantes[idx].bebida_pres_id = null;
+                _cpefVariantes[idx].bebida_nombre = '';
+                _cpefVariantes[idx].cantidad_bebidas = 0;
+            } else {
+                _cpefVariantes[idx].cantidad_bebidas = _cpefVariantes[idx].cantidad_bebidas || 1;
+            }
+            _cpefRenderVariantesList();
+        });
+        if (v.con_bebida) {
+            card.querySelector('.cpef-var-bebida-sel')?.addEventListener('change', (e) => {
+                const [refId, presId] = e.target.value.split('::');
+                _cpefVariantes[idx].bebida_ref_id = refId || null;
+                _cpefVariantes[idx].bebida_pres_id = presId || null;
+                const beb = bebidasState.find((b) => b.id === refId);
+                const pres = beb?.presentaciones?.find((p) => p.id === presId);
+                _cpefVariantes[idx].bebida_nombre = beb && pres ? `${beb.marca} ${pres.nombre}` : '';
+            });
+            card.querySelector('.cpef-var-cant-beb')?.addEventListener('input', (e) => {
+                _cpefVariantes[idx].cantidad_bebidas = Number(e.target.value) || 1;
+            });
+        }
+        card.querySelector('.cpef-var-del').addEventListener('click', () => {
+            _cpefVariantes.splice(idx, 1);
+            _cpefRenderVariantesList();
+        });
+
+        list.appendChild(card);
+    });
+}
+
 function _renderCategoryDetailPanel(categoryId) {
     if (!categoryDetailPanel) return;
     const category = categoriesState.find((c) => c.id === categoryId);
@@ -6926,6 +7012,13 @@ function _renderCategoryDetailPanel(categoryId) {
                                     <textarea id="cpefDesc" class="admin-input" rows="2" placeholder="Descripción opcional..." style="width:100%;box-sizing:border-box;resize:vertical;">${ep.descripcion || ''}</textarea>
                                 </div>
                             </div>
+                            <div style="margin-top:10px;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                                    <label style="font-size:0.7rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.4px;">Variantes de precio</label>
+                                    <button type="button" id="cpefAddVarianteBtn" style="font-size:0.7rem;padding:3px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.07);color:#eef4ff;cursor:pointer;">+ Agregar</button>
+                                </div>
+                                <div id="cpefVariantesList"></div>
+                            </div>
                             <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;">
                                 <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;color:#eef4ff;cursor:pointer;">
                                     <input type="checkbox" id="cpefActiveMenu" ${ep.estado !== 'paused' ? 'checked' : ''}> Activo en menú
@@ -7046,6 +7139,28 @@ function _renderCategoryDetailPanel(categoryId) {
         _renderCategoryDetailPanel(categoryId);
     });
 
+    // Variantes de producto
+    if (_editingProductId) {
+        const epV = products.find((p) => p.id === _editingProductId);
+        if (epV) {
+            _cpefVariantes = (epV.variantes || []).map((v) => ({ ...v }));
+            _cpefRenderVariantesList();
+            categoryDetailPanel.querySelector('#cpefAddVarianteBtn')?.addEventListener('click', () => {
+                _cpefVariantes.push({
+                    id: 'v-' + Date.now(),
+                    nombre: '',
+                    precio: 0,
+                    con_bebida: false,
+                    bebida_ref_id: null,
+                    bebida_pres_id: null,
+                    bebida_nombre: '',
+                    cantidad_bebidas: 1
+                });
+                _cpefRenderVariantesList();
+            });
+        }
+    }
+
     // Toggles bebidas/acompañantes por categoría
     categoryDetailPanel.querySelectorAll('[data-cat-vis]').forEach((btn) => {
         btn.addEventListener('click', async () => {
@@ -7162,6 +7277,16 @@ async function _saveProductInline(productId, categoryId) {
             estado,
             visible_pos: visiblePos,
             image_url: imageUrl,
+            variantes: _cpefVariantes.map((v) => ({
+                id: v.id || ('v-' + Date.now()),
+                nombre: String(v.nombre || '').trim(),
+                precio: Number(v.precio) || 0,
+                con_bebida: v.con_bebida === true,
+                bebida_ref_id: v.bebida_ref_id || null,
+                bebida_pres_id: v.bebida_pres_id || null,
+                bebida_nombre: String(v.bebida_nombre || '').trim(),
+                cantidad_bebidas: Number(v.cantidad_bebidas) || 0
+            })),
             updated_at: firestoreNow()
         });
 
