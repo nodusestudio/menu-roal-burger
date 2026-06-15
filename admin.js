@@ -4655,7 +4655,7 @@ function openBurgerClasicasPosModal(productId, productName) {
     document.body.appendChild(overlay);
 }
 
-function openProductVariantesModal(productId, productName, categoryName, variantes) {
+function openProductVariantesModal(productId, productName, categoryName, variantes, replaceItemKey = null) {
     let selectedVariante = null;
     let selectedSabores = []; // array de largo cantidad_bebidas, cada slot es null o string
 
@@ -4830,6 +4830,9 @@ function openProductVariantesModal(productId, productName, categoryName, variant
             ? ` + ${selectedVariante.bebida_nombre}${saboresLabel ? ` (${saboresLabel})` : ''}${cant > 1 ? ` ×${cant}` : ''}`
             : '';
         const optLabel = `${selectedVariante.nombre}${bebInfo}${note ? ` | ${note}` : ''}`;
+        if (replaceItemKey) {
+            internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== replaceItemKey);
+        }
         addProductToPosOrder(
             `${String(productId).trim()}::${selectedVariante.id}`,
             productName,
@@ -5150,7 +5153,15 @@ function renderPosOrderItems() {
             if (commentBtn) {
                 const key = commentBtn.dataset.itemKey;
                 const item = internalOrderItems.find((i) => i.itemKey === key);
-                if (item) _openPosNoteModal(item, key, itemsContainer);
+                if (item) {
+                    const baseProductId = String(item.productId || '').split('::')[0];
+                    const prod = productsState.find((p) => p.id === baseProductId);
+                    if (prod && Array.isArray(prod.variantes) && prod.variantes.length > 0) {
+                        openProductVariantesModal(baseProductId, item.productName, item.categoryName, prod.variantes, key);
+                    } else {
+                        _openPosNoteModal(item, key, itemsContainer);
+                    }
+                }
                 return;
             }
 
