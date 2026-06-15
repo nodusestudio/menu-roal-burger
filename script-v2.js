@@ -1242,8 +1242,8 @@ function showOrderConfirmScreen(orderData = {}) {
     // Dirección
     const ocAddrRow = document.getElementById('ocAddressRow');
     const ocAddr = document.getElementById('ocAddress');
-    const isPickup = String(orderData.fulfillmentType || '').toLowerCase().includes('pickup') ||
-                     String(orderData.fulfillmentType || '').toLowerCase().includes('local');
+    const ft = String(orderData.fulfillmentType || '').toLowerCase();
+    const isPickup = ft.includes('pickup') || ft.includes('local') || ft === 'mesa';
     if (ocAddrRow) ocAddrRow.style.display = isPickup ? 'none' : '';
     if (ocAddr) ocAddr.textContent = String(orderData.address || '—');
 
