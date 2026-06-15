@@ -261,6 +261,7 @@ let paymentFlowUI = null;
 let _customerPaymentMethods = null;
 let _latestBebidas = [];
 let _latestAcompanantes = [];
+let _latestCombosPacks = [];
 let _catalogoVisibilidad = { bebidas_menu: true, acompanantes_menu: true };
 
 // ── Historial para botón atrás de Android ──
@@ -1464,6 +1465,28 @@ function loadAcompanantesPublic() {
     } catch (_) { _latestAcompanantes = []; }
 }
 
+function loadCombosPackPublic() {
+    try {
+        const db = getPublicFirebaseDb();
+        db.collection('combospacks').onSnapshot((snap) => {
+            _latestCombosPacks = snap.docs
+                .map((doc) => ({ id: doc.id, ...doc.data() }))
+                .map((raw) => ({
+                    id: raw.id,
+                    nombre: String(raw.nombre || '').trim(),
+                    papas: String(raw.papas || '').trim(),
+                    bebida_nombre: String(raw.bebida_nombre || '').trim(),
+                    bebida_sabores: Array.isArray(raw.bebida_sabores) ? raw.bebida_sabores : [],
+                    valor: Number(raw.valor) || 0,
+                    activo_menu: raw.activo_menu !== false,
+                    estado: raw.estado === 'paused' ? 'paused' : 'active',
+                    orden: raw.orden != null ? Number(raw.orden) : 99
+                }))
+                .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'));
+        }, () => { _latestCombosPacks = []; });
+    } catch (_) { _latestCombosPacks = []; }
+}
+
 async function loadHorarioConfig() {
     try {
         const db = getPublicFirebaseDb();
@@ -1510,11 +1533,13 @@ function _getPublicCategoryData(categoryName) {
 
 function _shouldShowPublicUpgrade(categoryName) {
     const catData = _getPublicCategoryData(categoryName);
-    const catAcompMenu = catData ? catData.acompanantes_menu !== false : false;
-    const catBebMenu   = catData ? catData.bebidas_menu   !== false : false;
-    const hayAcomp  = catAcompMenu && _latestAcompanantes.some((a) => a.estado === 'active' && a.activo_menu);
-    const hayBebida = catBebMenu   && _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_acompanante);
-    return hayAcomp || hayBebida;
+    const catAcompMenu  = catData ? catData.acompanantes_menu !== false : false;
+    const catBebMenu    = catData ? catData.bebidas_menu      !== false : false;
+    const catCombosMenu = catData ? catData.combos_menu       !== false : false;
+    const hayAcomp   = catAcompMenu  && _latestAcompanantes.some((a) => a.estado === 'active' && a.activo_menu);
+    const hayBebida  = catBebMenu    && _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+    const hayCombos  = catCombosMenu && _latestCombosPacks.some((c) => c.estado === 'active' && c.activo_menu);
+    return hayAcomp || hayBebida || hayCombos;
 }
 
 function getPublicServerTimestamp() {
@@ -9190,7 +9215,8 @@ async function renderPublicFeaturedFromAdmin() {
                 image_url: String(category.image_url || '').trim(),
                 order: category.order != null ? Number(category.order) : undefined,
                 bebidas_menu: category.bebidas_menu !== false,
-                acompanantes_menu: category.acompanantes_menu !== false
+                acompanantes_menu: category.acompanantes_menu !== false,
+                combos_menu: category.combos_menu !== false
             }))
             .sort(catSort);
 
@@ -10691,18 +10717,56 @@ function renderPublicUpgradeStep1() {
     const catData = _getPublicCategoryData(_publicUpgradePending.categoryName);
     const hayAcomp  = (catData?.acompanantes_menu !== false) && _latestAcompanantes.some((a) => a.estado === 'active' && a.activo_menu);
     const hayBebida = (catData?.bebidas_menu !== false) && _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+    const hayCombos = (catData?.combos_menu !== false) && _latestCombosPacks.some((c) => c.estado === 'active' && c.activo_menu);
 
     body.innerHTML = `
         <div class="pub-home-btns">
+            ${hayCombos ? `<button type="button" class="pub-cat-btn" id="pubBtnCombo">🍔 Combo</button>` : ''}
             ${hayAcomp  ? `<button type="button" class="pub-cat-btn" id="pubBtnAcomp">🥗 Adicional</button>` : ''}
             ${hayBebida ? `<button type="button" class="pub-cat-btn" id="pubBtnBebida">🥤 Bebida</button>` : ''}
         </div>
         ${_pubUpgRenderExtrasList()}`;
 
+    body.querySelector('#pubBtnCombo')?.addEventListener('click', _renderPublicUpgradeCombos);
     body.querySelector('#pubBtnAcomp')?.addEventListener('click', _renderPublicUpgradeAdicionales);
     body.querySelector('#pubBtnBebida')?.addEventListener('click', _renderPublicUpgradeBebidas);
     _pubUpgBindExtrasDel(renderPublicUpgradeStep1);
     _pubUpgUpdateAddBtn();
+}
+
+function _renderPublicUpgradeCombos() {
+    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
+    if (!body || !_publicUpgradePending) return;
+    if (titleEl) titleEl.textContent = 'Elige un combo';
+    const items = _latestCombosPacks.filter((c) => c.estado === 'active' && c.activo_menu);
+
+    body.innerHTML = `
+        <div class="pub-upgrade-opts">
+            ${items.map((c) => {
+                const saboresLabel = c.bebida_sabores.length ? ` · ${c.bebida_sabores.join(' / ')}` : '';
+                const meta = [c.papas ? `🍟 ${c.papas}` : '', c.bebida_nombre ? `🥤 ${c.bebida_nombre}${saboresLabel}` : ''].filter(Boolean).join(' · ');
+                return `
+                <button type="button" class="pub-upgrade-opt pub-upgrade-opt--combo" data-combo-id="${c.id}">
+                    <span class="pub-upgrade-opt-left">
+                        <span class="pub-upgrade-opt-name">${c.nombre}</span>
+                        ${meta ? `<span class="pub-upgrade-opt-meta">${meta}</span>` : ''}
+                    </span>
+                    <span class="pub-upgrade-opt-price">+$${Number(c.valor || 0).toLocaleString('es-CO')}</span>
+                </button>`;
+            }).join('')}
+        </div>
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
+
+    body.querySelectorAll('[data-combo-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const c = items.find((x) => x.id === btn.dataset.comboId);
+            if (c && _publicUpgradePending) {
+                _publicUpgradePending.extras.push({ id: 'combo_' + c.id, name: `Combo: ${c.nombre}`, price: c.valor });
+            }
+            renderPublicUpgradeStep1();
+        });
+    });
+    body.querySelector('#pubUpgradeBack')?.addEventListener('click', renderPublicUpgradeStep1);
 }
 
 function _renderPublicUpgradeAdicionales() {
@@ -10978,6 +11042,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCatalogoVisibilidadPublic();
     loadBebidasPublic();
     loadAcompanantesPublic();
+    loadCombosPackPublic();
     loadCustomerPaymentMethods();
 
     // Cerrar upgrade sheet público

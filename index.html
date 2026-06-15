@@ -710,7 +710,7 @@
             letter-spacing: 0.5px; cursor: pointer; font-family: 'Oswald', sans-serif;
         }
         /* Home buttons */
-        .pub-home-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 10px; }
+        .pub-home-btns { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 9px; margin-bottom: 10px; }
         .pub-cat-btn {
             padding: 14px 8px; border-radius: 14px; border: 1.5px solid rgba(180,120,60,0.25);
             background: rgba(255,255,255,0.65); color: #2a1b12; font-size: 0.9rem;
@@ -759,6 +759,9 @@
         .pub-upgrade-opt-detail { font-size: 0.76rem; color: rgba(90, 58, 27, 0.58); display: block; margin-top: 2px; }
         .pub-upgrade-opt-price { font-weight: 700; font-size: 0.87rem; color: #c4510a; flex-shrink: 0; }
         .pub-upgrade-opt-price.muted { color: rgba(90, 58, 27, 0.42); font-weight: 400; }
+        .pub-upgrade-opt--combo { align-items: flex-start; }
+        .pub-upgrade-opt-left { display: flex; flex-direction: column; flex: 1; }
+        .pub-upgrade-opt-meta { font-size: 0.72rem; color: rgba(90, 58, 27, 0.52); margin-top: 3px; display: block; line-height: 1.4; }
         .pub-flavors-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 9px; }
         .pub-flavor-btn {
             padding: 14px 8px;
