@@ -6446,6 +6446,153 @@ function openEntradasOptionsModal(productName, categoryName, buttonId, extraOpti
     document.body.appendChild(modal);
 }
 
+function openCombosMixtosModal(productName, categoryName, buttonId, extraOptions = {}) {
+    closeComboChoiceModal();
+
+    const modal = document.createElement('div');
+    modal.id = 'combo-choice-modal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '100001';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.padding = '20px';
+    modal.style.background = 'rgba(31, 18, 10, 0.76)';
+    modal.style.backdropFilter = 'blur(8px)';
+    modal.style.webkitBackdropFilter = 'blur(8px)';
+
+    const card = document.createElement('div');
+    card.style.width = 'min(92vw, 430px)';
+    card.style.position = 'relative';
+    card.style.padding = '22px';
+    card.style.borderRadius = '20px';
+    card.style.background = 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(245,221,188,0.92))';
+    card.style.boxShadow = '0 20px 48px rgba(67, 37, 23, 0.28)';
+    card.style.border = '1px solid rgba(255, 180, 108, 0.55)';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '14px';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Cerrar seleccion de bebida');
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.width = '38px';
+    closeButton.style.height = '38px';
+    closeButton.style.border = 'none';
+    closeButton.style.borderRadius = '999px';
+    closeButton.style.background = 'rgba(90, 58, 27, 0.14)';
+    closeButton.style.color = '#5a3a1b';
+    closeButton.style.fontSize = '1.7rem';
+    closeButton.style.cursor = 'pointer';
+    closeButton.addEventListener('click', closeComboChoiceModal);
+
+    const title = document.createElement('h3');
+    title.textContent = productName;
+    title.style.margin = '0';
+    title.style.textAlign = 'center';
+    title.style.fontFamily = 'Oswald, sans-serif';
+    title.style.fontSize = '1.85rem';
+    title.style.lineHeight = '1';
+    title.style.textTransform = 'uppercase';
+    title.style.color = '#5a3a1b';
+
+    const category = document.createElement('p');
+    category.textContent = categoryName;
+    category.style.margin = '-4px 0 0';
+    category.style.textAlign = 'center';
+    category.style.fontFamily = 'Oswald, sans-serif';
+    category.style.fontSize = '0.95rem';
+    category.style.letterSpacing = '0.08em';
+    category.style.textTransform = 'uppercase';
+    category.style.color = '#8b5527';
+
+    const description = document.createElement('p');
+    description.textContent = 'Selecciona el sabor de la bebida de 1 litro que quieres para este combo.';
+    description.style.margin = '0';
+    description.style.textAlign = 'center';
+    description.style.lineHeight = '1.45';
+    description.style.color = '#4f311d';
+
+    const drinkSelect = document.createElement('select');
+    drinkSelect.style.minHeight = '48px';
+    drinkSelect.style.padding = '0 14px';
+    drinkSelect.style.borderRadius = '12px';
+    drinkSelect.style.border = '1px solid rgba(140, 90, 44, 0.24)';
+    drinkSelect.style.background = '#fffdfa';
+    drinkSelect.style.color = '#4f311d';
+    drinkSelect.style.fontSize = '0.98rem';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Elige sabor de 1 litro';
+    drinkSelect.appendChild(placeholder);
+
+    COMBO_MEAL_LARGE_DRINK_OPTIONS.forEach((drinkName) => {
+        const option = document.createElement('option');
+        option.value = drinkName;
+        option.textContent = drinkName;
+        drinkSelect.appendChild(option);
+    });
+
+    const commentField = createOrderCommentField();
+
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.textContent = 'Enviar a mi carrito';
+    confirmButton.disabled = true;
+    confirmButton.style.minHeight = '52px';
+    confirmButton.style.borderRadius = '14px';
+    confirmButton.style.border = 'none';
+    confirmButton.style.background = 'linear-gradient(135deg, #ff7a00, #ff5a00)';
+    confirmButton.style.color = '#fff7ef';
+    confirmButton.style.fontFamily = 'Oswald, sans-serif';
+    confirmButton.style.fontSize = '1.02rem';
+    confirmButton.style.cursor = 'pointer';
+    confirmButton.style.opacity = '0.5';
+
+    drinkSelect.addEventListener('change', () => {
+        const enabled = Boolean(drinkSelect.value);
+        confirmButton.disabled = !enabled;
+        confirmButton.style.opacity = enabled ? '1' : '0.5';
+    });
+
+    confirmButton.addEventListener('click', () => {
+        if (!drinkSelect.value) {
+            return;
+        }
+        closeComboChoiceModal();
+        addItemToCart(productName, categoryName, {
+            ...extraOptions,
+            type: 'combo-mixed',
+            drink: drinkSelect.value,
+            comment: commentField.textarea.value
+        }, buttonId);
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal && _lastMousedownTarget === modal) {
+            closeComboChoiceModal();
+        }
+    });
+
+    card.appendChild(closeButton);
+    card.appendChild(title);
+    card.appendChild(category);
+    card.appendChild(description);
+    card.appendChild(drinkSelect);
+    card.appendChild(commentField.wrap);
+    card.appendChild(confirmButton);
+    modal.appendChild(card);
+
+    document.body.style.overflow = 'hidden';
+    document.body.appendChild(modal);
+}
+
 function openCombosConPapasModal(productName, categoryName, buttonId, extraOptions = {}) {
     closeComboChoiceModal();
     const normalizedProductName = normalizeCategoryKey(productName);
@@ -6972,6 +7119,11 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
 
     if (isCombosConPapasCategory(safeCategoryName)) {
         openCombosConPapasModal(productName, safeCategoryName, buttonId, normalizedOptions);
+        return;
+    }
+
+    if (isCombosMixtosCategory(safeCategoryName)) {
+        openCombosMixtosModal(productName, safeCategoryName, buttonId, normalizedOptions);
         return;
     }
 
