@@ -5498,6 +5498,11 @@ function openCartItemEditor(itemKey) {
         openPublicVariantesModal(baseProductName, baseCategoryName, null, prodEntry.variantes, normalizeOrderOptions(item.orderOptions), itemKey);
         return;
     }
+    const _biEdit = prodEntry?.bebida_incluida;
+    if (_biEdit?.activo && _biEdit?.bebida_ref_id) {
+        openPublicBebidaModal(baseProductName, baseCategoryName, null, _biEdit, normalizeOrderOptions(item.orderOptions), itemKey);
+        return;
+    }
 
     const productData = _getCartItemProductData(item.productName);
     const prodAcomp = productData && productData.acompanantes;
@@ -7271,6 +7276,13 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
     );
     if (_prodVarianteEntry && Array.isArray(_prodVarianteEntry.variantes) && _prodVarianteEntry.variantes.length > 0) {
         openPublicVariantesModal(productName, safeCategoryName, buttonId, _prodVarianteEntry.variantes, normalizedOptions);
+        return;
+    }
+
+    // Bebida incluida → pedir sabor directo
+    const _bi = _prodVarianteEntry?.bebida_incluida;
+    if (_bi?.activo && _bi?.bebida_ref_id) {
+        openPublicBebidaModal(productName, safeCategoryName, buttonId, _bi, normalizedOptions);
         return;
     }
 
@@ -10808,6 +10820,106 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
 
     card.querySelector('#pubVarClose').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig, baseOptions, replaceItemKey = null) {
+    const beb = _latestBebidas.find((b) => b.id === bebidaConfig.bebida_ref_id);
+    const pres = beb?.presentaciones?.find((p) => p.id === bebidaConfig.bebida_pres_id);
+    const saboresDisp = pres?.sabores || [];
+    const cant = Math.max(1, Number(bebidaConfig.cantidad) || 1);
+
+    if (!saboresDisp.length) {
+        const opts = Object.assign({}, baseOptions || {}, { upgradeHandled: true, comment: bebidaConfig.bebida_nombre ? `🥤 ${bebidaConfig.bebida_nombre}` : '' });
+        if (replaceItemKey) shoppingCart = shoppingCart.filter((i) => i.itemKey !== replaceItemKey);
+        addItemToCart(productName, categoryName, buttonId, opts);
+        return;
+    }
+
+    let selectedSabores = new Array(cant).fill(null);
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9800;display:flex;align-items:center;justify-content:center;background:rgba(30,20,10,0.96);padding:16px;';
+
+    const card = document.createElement('div');
+    card.style.cssText = 'background:rgba(28,18,10,0.98);border:1.5px solid rgba(255,255,255,0.13);border-radius:20px;padding:20px 16px 16px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:14px;';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:8px;';
+    header.innerHTML = `<div><div style="font-weight:700;font-size:1rem;color:#fff;">${escapeHtml(productName)}</div>
+        <div style="font-size:0.78rem;color:rgba(200,180,150,0.7);margin-top:2px;">🥤 ${escapeHtml(bebidaConfig.bebida_nombre || 'Bebida incluida')}</div></div>
+        <button id="pubBebClose" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;line-height:1;padding:0 4px;">×</button>`;
+
+    const saborLabel = document.createElement('div');
+    saborLabel.style.cssText = 'font-size:0.72rem;color:rgba(200,180,150,0.55);text-transform:uppercase;letter-spacing:.5px;';
+    saborLabel.textContent = cant > 1 ? `Elige ${cant} sabores` : 'Sabor de la bebida';
+
+    const saborGrid = document.createElement('div');
+    saborGrid.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.style.cssText = 'width:100%;padding:13px;border-radius:12px;border:none;background:var(--accent,#e76f00);color:#fff;font-weight:700;font-size:0.95rem;cursor:pointer;transition:opacity .15s;';
+    confirmBtn.disabled = true;
+    confirmBtn.style.opacity = '0.45';
+    confirmBtn.textContent = cant > 1 ? `Selecciona sabores (0/${cant})` : 'Selecciona el sabor';
+
+    function refreshConfirm() {
+        const filled = selectedSabores.filter((s) => s !== null).length;
+        const ready = filled === cant;
+        confirmBtn.disabled = !ready;
+        confirmBtn.style.opacity = ready ? '1' : '0.45';
+        confirmBtn.textContent = ready ? 'Confirmar' : (cant > 1 ? `Selecciona sabores (${filled}/${cant})` : 'Selecciona el sabor');
+    }
+
+    for (let i = 0; i < cant; i++) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:7px;';
+        if (cant > 1) {
+            const lbl = document.createElement('span');
+            lbl.style.cssText = 'font-size:0.68rem;color:rgba(200,200,220,0.4);min-width:18px;text-align:right;flex-shrink:0;';
+            lbl.textContent = `${i + 1}.`;
+            row.appendChild(lbl);
+        }
+        const chips = document.createElement('div');
+        chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;flex:1;';
+        const slotIdx = i;
+        const slotBtns = [];
+        saboresDisp.forEach((s) => {
+            const sb = document.createElement('button');
+            sb.type = 'button';
+            sb.style.cssText = 'padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.07);color:#eef4ff;cursor:pointer;font-size:0.8rem;transition:background .15s;white-space:nowrap;';
+            sb.textContent = s;
+            sb.addEventListener('click', () => {
+                selectedSabores[slotIdx] = s;
+                slotBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.14)'; });
+                sb.style.background = 'rgba(231,111,0,0.28)';
+                sb.style.borderColor = 'var(--accent,#e76f00)';
+                refreshConfirm();
+            });
+            slotBtns.push(sb);
+            chips.appendChild(sb);
+        });
+        row.appendChild(chips);
+        saborGrid.appendChild(row);
+    }
+
+    confirmBtn.addEventListener('click', () => {
+        const saborNote = selectedSabores.filter(Boolean).join(', ');
+        const comment = `🥤 ${bebidaConfig.bebida_nombre}${saborNote ? ' — ' + saborNote : ''}`;
+        const opts = Object.assign({}, baseOptions || {}, { upgradeHandled: true, comment });
+        overlay.remove();
+        if (replaceItemKey) shoppingCart = shoppingCart.filter((i) => i.itemKey !== replaceItemKey);
+        addItemToCart(productName, categoryName, buttonId, opts);
+    });
+
+    card.appendChild(header);
+    card.appendChild(saborLabel);
+    card.appendChild(saborGrid);
+    card.appendChild(confirmBtn);
+    overlay.appendChild(card);
+    card.querySelector('#pubBebClose').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
 }
 
 // ── Public Upgrade Sheet ──────────────────────────────────────────────────

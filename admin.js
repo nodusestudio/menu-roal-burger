@@ -210,6 +210,7 @@ const openCreateProductBtn = document.getElementById('openCreateProductBtn');
 let _selectedCategoryId = null;
 let _editingProductId = null;
 let _cpefVariantes = [];
+let _cpefBebidaIncluida = {};
 const notice = document.getElementById('adminNotice');
 const openCreateClientBtn = document.getElementById('openCreateClientBtn');
 const exportClientsBtn = document.getElementById('exportClientsBtn');
@@ -1580,6 +1581,7 @@ function normalizeProduct(raw) {
         ml: raw.ml ? Number(raw.ml) : null,
         sabores,
         variantes: Array.isArray(raw.variantes) ? raw.variantes : [],
+        bebida_incluida: raw.bebida_incluida ? { ...raw.bebida_incluida } : { activo: false, bebida_ref_id: null, bebida_pres_id: null, bebida_nombre: '', cantidad: 1 },
         created_at: raw.created_at,
         updated_at: raw.updated_at
     };
@@ -2946,6 +2948,12 @@ function handlePosProductAdd(productId, productName, productPrice) {
     const prodEntry = productsState.find((p) => p.id === productId);
     if (prodEntry && Array.isArray(prodEntry.variantes) && prodEntry.variantes.length > 0) {
         openProductVariantesModal(productId, productName, selectedCategory, prodEntry.variantes);
+        return;
+    }
+
+    // Bebida incluida → pedir sabor directo
+    if (prodEntry?.bebida_incluida?.activo && prodEntry.bebida_incluida.bebida_ref_id) {
+        openPosBebidaModal(productId, productName, productPrice, prodEntry.bebida_incluida);
         return;
     }
 
@@ -4969,6 +4977,112 @@ function openComboConPapasPosModal(productId, productName, categoryName) {
     document.body.appendChild(overlay);
 }
 
+function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, replaceItemKey = null) {
+    const beb = bebidasState.find((b) => b.id === bebidaConfig.bebida_ref_id);
+    const pres = beb?.presentaciones?.find((p) => p.id === bebidaConfig.bebida_pres_id);
+    const saboresDisp = pres?.sabores || [];
+    const cant = Math.max(1, Number(bebidaConfig.cantidad) || 1);
+
+    if (!saboresDisp.length) {
+        const note = bebidaConfig.bebida_nombre ? `🥤 ${bebidaConfig.bebida_nombre}` : '';
+        if (replaceItemKey) internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== replaceItemKey);
+        addProductToPosOrder(productId, productName, productPrice, note);
+        return;
+    }
+
+    let selectedSabores = new Array(cant).fill(null);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+    const card = document.createElement('div');
+    card.className = 'combo-modal-card';
+
+    const header = document.createElement('div');
+    header.className = 'combo-modal-header';
+    const headerText = document.createElement('div');
+    headerText.innerHTML = `<h4>${escapeHtml(productName)}</h4><p class="combo-modal-subtitle">🥤 ${escapeHtml(bebidaConfig.bebida_nombre || 'Bebida incluida')}</p>`;
+    const closeX = document.createElement('button');
+    closeX.type = 'button';
+    closeX.className = 'combo-modal-close-x';
+    closeX.setAttribute('aria-label', 'Cerrar');
+    closeX.textContent = '×';
+    closeX.addEventListener('click', () => overlay.remove());
+    header.appendChild(headerText);
+    header.appendChild(closeX);
+
+    const saborLabel = document.createElement('div');
+    saborLabel.className = 'combo-modal-section-label';
+    saborLabel.textContent = cant > 1 ? `Elige ${cant} sabores` : 'Sabor de la bebida';
+
+    const saborGrid = document.createElement('div');
+    saborGrid.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'combo-modal-confirm-btn';
+    confirmBtn.disabled = true;
+    confirmBtn.style.opacity = '0.45';
+    confirmBtn.textContent = cant > 1 ? `Selecciona sabores (0/${cant})` : 'Selecciona el sabor';
+
+    function refreshConfirm() {
+        const filled = selectedSabores.filter((s) => s !== null).length;
+        const ready = filled === cant;
+        confirmBtn.disabled = !ready;
+        confirmBtn.style.opacity = ready ? '1' : '0.45';
+        confirmBtn.textContent = ready
+            ? `Agregar — $${Number(productPrice).toLocaleString('es-CO')}`
+            : (cant > 1 ? `Selecciona sabores (${filled}/${cant})` : 'Selecciona el sabor');
+    }
+
+    for (let i = 0; i < cant; i++) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:7px;';
+        if (cant > 1) {
+            const lbl = document.createElement('span');
+            lbl.style.cssText = 'font-size:0.68rem;color:rgba(200,200,220,0.45);min-width:20px;text-align:right;flex-shrink:0;';
+            lbl.textContent = `${i + 1}.`;
+            row.appendChild(lbl);
+        }
+        const chips = document.createElement('div');
+        chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;flex:1;';
+        const slotIdx = i;
+        const slotBtns = [];
+        saboresDisp.forEach((s) => {
+            const sb = document.createElement('button');
+            sb.type = 'button';
+            sb.style.cssText = 'padding:7px 11px;border-radius:8px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;font-size:0.81rem;transition:background 0.15s;white-space:nowrap;';
+            sb.textContent = s;
+            sb.addEventListener('click', () => {
+                selectedSabores[slotIdx] = s;
+                slotBtns.forEach((b) => { b.style.background = 'rgba(255,255,255,0.07)'; b.style.borderColor = 'rgba(255,255,255,0.14)'; });
+                sb.style.background = 'rgba(231,111,0,0.25)';
+                sb.style.borderColor = 'var(--admin-accent,#e76f00)';
+                refreshConfirm();
+            });
+            slotBtns.push(sb);
+            chips.appendChild(sb);
+        });
+        row.appendChild(chips);
+        saborGrid.appendChild(row);
+    }
+
+    confirmBtn.addEventListener('click', () => {
+        const saborNote = selectedSabores.filter(Boolean).join(', ');
+        const note = `🥤 ${bebidaConfig.bebida_nombre}${saborNote ? ' — ' + saborNote : ''}`;
+        overlay.remove();
+        if (replaceItemKey) internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== replaceItemKey);
+        addProductToPosOrder(productId, productName, productPrice, note);
+    });
+
+    card.appendChild(header);
+    card.appendChild(saborLabel);
+    card.appendChild(saborGrid);
+    card.appendChild(confirmBtn);
+    overlay.appendChild(card);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+}
+
 function addProductToPosOrder(productId, productName, productPrice, note = '', originalUnitPrice = null, opts = {}) {
     productId = String(productId || '').trim();
     productName = String(productName || 'Producto').trim();
@@ -5158,6 +5272,8 @@ function renderPosOrderItems() {
                     const prod = productsState.find((p) => p.id === baseProductId);
                     if (prod && Array.isArray(prod.variantes) && prod.variantes.length > 0) {
                         openProductVariantesModal(baseProductId, item.productName, item.categoryName, prod.variantes, key);
+                    } else if (prod?.bebida_incluida?.activo && prod.bebida_incluida.bebida_ref_id) {
+                        openPosBebidaModal(baseProductId, item.productName, item.unitPrice, prod.bebida_incluida, key);
                     } else {
                         _openPosNoteModal(item, key, itemsContainer);
                     }
@@ -7011,6 +7127,35 @@ function _renderCarouselPanel() {
     });
 }
 
+function _cpefRenderBebidaConfig() {
+    const container = categoryDetailPanel?.querySelector('#cpefBebidaConfig');
+    if (!container) return;
+    if (!_cpefBebidaIncluida.activo) { container.innerHTML = ''; return; }
+    const bebOpts = bebidasState.flatMap((b) =>
+        (b.presentaciones || []).map((p) => `<option value="${b.id}::${p.id}" ${_cpefBebidaIncluida.bebida_ref_id === b.id && _cpefBebidaIncluida.bebida_pres_id === p.id ? 'selected' : ''}>${escapeHtml(b.marca)} — ${escapeHtml(p.nombre)}</option>`)
+    ).join('');
+    container.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+        <select id="cpefBebidaSel" style="flex:1;min-width:150px;background:rgba(0,0,0,0.35);color:#eef4ff;border:1px solid rgba(255,255,255,0.15);border-radius:7px;padding:5px 8px;font-size:0.78rem;">
+            <option value="">— Selecciona bebida —</option>${bebOpts}
+        </select>
+        <label style="font-size:0.75rem;color:rgba(200,200,220,0.6);flex-shrink:0;display:flex;align-items:center;gap:4px;">Cant.
+            <input type="number" id="cpefBebidaCant" value="${_cpefBebidaIncluida.cantidad || 1}" min="1" max="8"
+                style="width:48px;background:rgba(0,0,0,0.35);color:#eef4ff;border:1px solid rgba(255,255,255,0.15);border-radius:7px;padding:4px 6px;font-size:0.78rem;">
+        </label>
+    </div>`;
+    container.querySelector('#cpefBebidaSel').addEventListener('change', (e) => {
+        const [refId, presId] = (e.target.value || '').split('::');
+        _cpefBebidaIncluida.bebida_ref_id = refId || null;
+        _cpefBebidaIncluida.bebida_pres_id = presId || null;
+        const beb = bebidasState.find((b) => b.id === refId);
+        const pres = beb?.presentaciones?.find((p) => p.id === presId);
+        _cpefBebidaIncluida.bebida_nombre = beb && pres ? `${beb.marca} ${pres.nombre}` : '';
+    });
+    container.querySelector('#cpefBebidaCant').addEventListener('input', (e) => {
+        _cpefBebidaIncluida.cantidad = Math.max(1, Number(e.target.value) || 1);
+    });
+}
+
 function _cpefRenderVariantesList() {
     const list = categoryDetailPanel?.querySelector('#cpefVariantesList');
     if (!list) return;
@@ -7223,6 +7368,15 @@ function _renderCategoryDetailPanel(categoryId) {
                                 </div>
                                 <div id="cpefVariantesList"></div>
                             </div>
+                            <div style="margin-top:10px;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                    <label style="font-size:0.7rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.4px;">Bebida incluida</label>
+                                    <label style="display:flex;align-items:center;gap:5px;font-size:0.75rem;color:#eef4ff;cursor:pointer;">
+                                        <input type="checkbox" id="cpefBebidaActiva" ${ep.bebida_incluida?.activo ? 'checked' : ''}> Incluye bebida
+                                    </label>
+                                </div>
+                                <div id="cpefBebidaConfig"></div>
+                            </div>
                             <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;">
                                 <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;color:#eef4ff;cursor:pointer;">
                                     <input type="checkbox" id="cpefActiveMenu" ${ep.estado !== 'paused' ? 'checked' : ''}> Activo en menú
@@ -7362,6 +7516,14 @@ function _renderCategoryDetailPanel(categoryId) {
                 });
                 _cpefRenderVariantesList();
             });
+
+            // Bebida incluida
+            _cpefBebidaIncluida = epV.bebida_incluida ? { ...epV.bebida_incluida } : { activo: false, bebida_ref_id: null, bebida_pres_id: null, bebida_nombre: '', cantidad: 1 };
+            _cpefRenderBebidaConfig();
+            categoryDetailPanel.querySelector('#cpefBebidaActiva')?.addEventListener('change', (e) => {
+                _cpefBebidaIncluida.activo = e.target.checked;
+                _cpefRenderBebidaConfig();
+            });
         }
     }
 
@@ -7491,6 +7653,13 @@ async function _saveProductInline(productId, categoryId) {
                 bebida_nombre: String(v.bebida_nombre || '').trim(),
                 cantidad_bebidas: Number(v.cantidad_bebidas) || 0
             })),
+            bebida_incluida: {
+                activo: _cpefBebidaIncluida.activo === true,
+                bebida_ref_id: _cpefBebidaIncluida.bebida_ref_id || null,
+                bebida_pres_id: _cpefBebidaIncluida.bebida_pres_id || null,
+                bebida_nombre: String(_cpefBebidaIncluida.bebida_nombre || '').trim(),
+                cantidad: Number(_cpefBebidaIncluida.cantidad) || 1
+            },
             updated_at: firestoreNow()
         });
 
