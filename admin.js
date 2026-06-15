@@ -2784,6 +2784,137 @@ function _isBebidaCategory(catName) {
     return String(catName || '').toLowerCase().trim() === 'bebidas';
 }
 
+function renderBebidasPanel() {
+    const container = document.getElementById('bebidasTabPanel');
+    if (!container) return;
+
+    const bebidas = productsState
+        .filter((p) => _isBebidaCategory(p.categoria))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+
+    container.innerHTML = '';
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'section-toolbar bebidas-panel-toolbar';
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'section-action-btn primary';
+    addBtn.textContent = '+ Crear bebida';
+    addBtn.addEventListener('click', () => openProductCreateModal('BEBIDAS'));
+    toolbar.appendChild(addBtn);
+    container.appendChild(toolbar);
+
+    if (!bebidas.length) {
+        const empty = document.createElement('div');
+        empty.className = 'bebidas-panel-empty';
+        empty.innerHTML = '<p>🥤</p><p>Todavía no hay bebidas. Crea la primera.</p>';
+        container.appendChild(empty);
+        return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'bebidas-panel-grid';
+
+    bebidas.forEach((bev) => {
+        const card = document.createElement('div');
+        card.className = `bebidas-panel-card${bev.estado === 'paused' ? ' paused' : ''}`;
+
+        const img = document.createElement('img');
+        img.className = 'bebidas-panel-img';
+        img.src = bev.image_url || 'logo.png';
+        img.alt = bev.nombre;
+        img.loading = 'lazy';
+        img.addEventListener('error', () => { img.src = 'logo.png'; });
+
+        const info = document.createElement('div');
+        info.className = 'bebidas-panel-info';
+
+        const nombre = document.createElement('div');
+        nombre.className = 'bebidas-panel-nombre';
+        nombre.textContent = bev.nombre;
+        info.appendChild(nombre);
+
+        const metaParts = [];
+        if (bev.marca) metaParts.push(bev.marca);
+        if (bev.ml) metaParts.push(`${bev.ml}ml`);
+        if (metaParts.length) {
+            const meta = document.createElement('div');
+            meta.className = 'bebidas-panel-meta';
+            meta.textContent = metaParts.join(' · ');
+            info.appendChild(meta);
+        }
+
+        const price = document.createElement('div');
+        price.className = 'bebidas-panel-price';
+        price.textContent = formatMoney(bev.precio);
+        info.appendChild(price);
+
+        if (bev.sabores && bev.sabores.length) {
+            const saboresWrap = document.createElement('div');
+            saboresWrap.className = 'bebidas-panel-sabores';
+            bev.sabores.forEach((s) => {
+                const chip = document.createElement('span');
+                chip.className = 'bebidas-sabor-chip';
+                chip.textContent = s;
+                saboresWrap.appendChild(chip);
+            });
+            info.appendChild(saboresWrap);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'bebidas-panel-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'mini-btn';
+        editBtn.textContent = 'Editar';
+        editBtn.addEventListener('click', () => {
+            const cat = categoriesState.find((c) => _isBebidaCategory(c.name));
+            openProductEditModal(bev, cat?.id || '');
+        });
+
+        const pauseBtn = document.createElement('button');
+        pauseBtn.type = 'button';
+        pauseBtn.className = 'mini-btn';
+        pauseBtn.textContent = bev.estado === 'paused' ? 'Reanudar' : 'Pausar';
+        pauseBtn.addEventListener('click', async () => {
+            const newEstado = bev.estado === 'paused' ? 'active' : 'paused';
+            try {
+                await firebaseDb.collection('productos').doc(bev.id).update({ estado: newEstado, updated_at: firestoreNow() });
+                await reloadDataAndRender();
+            } catch (e) {
+                showNotice(`No se pudo cambiar estado: ${e.message}`, 'error');
+            }
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'mini-btn remove';
+        delBtn.textContent = 'Eliminar';
+        delBtn.addEventListener('click', async () => {
+            if (!window.confirm(`¿Eliminar "${bev.nombre}"?`)) return;
+            try {
+                await firebaseDb.collection('productos').doc(bev.id).delete();
+                await reloadDataAndRender();
+                showNotice('Bebida eliminada.', 'ok');
+            } catch (e) {
+                showNotice(`No se pudo eliminar: ${e.message}`, 'error');
+            }
+        });
+
+        actions.appendChild(editBtn);
+        actions.appendChild(pauseBtn);
+        actions.appendChild(delBtn);
+
+        card.appendChild(img);
+        card.appendChild(info);
+        card.appendChild(actions);
+        grid.appendChild(card);
+    });
+
+    container.appendChild(grid);
+}
+
 function _toggleBebidaFields(formType) {
     const select = formType === 'create' ? createProductCategorySelect : editProductCategorySelect;
     const show = _isBebidaCategory(select?.value);
@@ -9636,6 +9767,7 @@ async function reloadDataAndRender() {
     announceNewMessages(messagesState);
 
     renderCategories();
+    renderBebidasPanel();
     renderMenuUpgradesAdmin();
     renderButtonsList();
     renderBrandingForm();
