@@ -966,6 +966,14 @@ function announceNewOrders(orders) {
         activeMobileOrdersLane = 'domicilios';
     }
 
+    // Desktop: auto-seleccionar el último pedido entrante en el panel de ticket
+    if (!isMobileAdminViewport() && newOrders.length) {
+        const latest = newOrders.reduce((a, b) =>
+            (b.createdAt?.toMillis?.() || 0) > (a.createdAt?.toMillis?.() || 0) ? b : a
+        );
+        selectedOrderId = latest.id;
+    }
+
     // Vibración — funciona aunque la pantalla esté apagada en Android
     if (newOrders.length && navigator.vibrate) {
         navigator.vibrate([400, 150, 400, 150, 400]);
@@ -9257,15 +9265,25 @@ function renderEmptyOrderTicket() {
     `;
 }
 
+let _ticketRenderKey = null;
+
 function renderOrderTicket(order, options = {}) {
     if (!orderTicketBody) {
         return;
     }
 
     if (!order) {
+        _ticketRenderKey = null;
         renderEmptyOrderTicket();
         return;
     }
+
+    // Evitar reconstrucción si es el mismo pedido sin cambios (llamada desde renderOrders)
+    const renderKey = `${order.id}|${order.updatedAt?.toMillis?.() ?? order.createdAt?.toMillis?.() ?? 0}|${order.status}`;
+    if (!options.openMobile && !options.force && renderKey === _ticketRenderKey) {
+        return;
+    }
+    _ticketRenderKey = renderKey;
 
     orderTicketBody.innerHTML = buildThermalTicketMarkup(order);
 
@@ -9481,6 +9499,35 @@ function createOrderCard(order) {
         }
     }
 
+    // Chip de liquidación: cuánto cobrar o pagar al domiciliario
+    let paymentChip = '';
+    const payMethod = String(order.paymentMethod || 'pendiente').toLowerCase();
+    if (isDeliveryOrder && !isAnuladoActive && order.status !== 'entregado' && payMethod !== 'pendiente') {
+        const dFee = Number(order.deliveryFee || 0);
+        const orderTotal = getOrderDisplayTotal(order);
+
+        // cashPaid = efectivo que el cliente paga al domiciliario directamente
+        let cashPaid = 0;
+        if (payMethod === 'efectivo') {
+            cashPaid = orderTotal;
+        } else if (payMethod === 'split' && Array.isArray(order.paymentSplit)) {
+            cashPaid = order.paymentSplit
+                .filter((s) => String(s.method || '').toLowerCase() === 'efectivo')
+                .reduce((acc, s) => acc + Number(s.amount || 0), 0);
+        }
+        // transferencia / tarjeta / link_pago: cashPaid = 0
+
+        const balance = dFee - cashPaid;
+
+        if (balance < 0) {
+            paymentChip = `<div class="koc-payment-chip koc-pay-collect">💰 Cobra <strong>${escapeHtml(formatMoney(Math.abs(balance)))}</strong></div>`;
+        } else if (balance > 0) {
+            paymentChip = `<div class="koc-payment-chip koc-pay-give">✅ Paga <strong>${escapeHtml(formatMoney(balance))}</strong></div>`;
+        } else {
+            paymentChip = `<div class="koc-payment-chip koc-pay-settled">✅ Saldado</div>`;
+        }
+    }
+
     card.innerHTML = `
         <div class="koc-header">
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
@@ -9490,6 +9537,7 @@ function createOrderCard(order) {
             <span class="koc-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
         </div>
         ${courierChip}
+        ${paymentChip}
         <div class="koc-body">
             <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
             <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
@@ -14395,6 +14443,11 @@ if (ordersActionRoot) {
                 }
 
                 if (nextStatus === 'esperando_domiciliario') {
+                    const pm = String(order.paymentMethod || 'pendiente').toLowerCase();
+                    if (pm === 'pendiente') {
+                        showNotice('Procesa el pago antes de pedir domiciliario.', 'error');
+                        return;
+                    }
                     const copied = await copyTextToClipboard(buildCourierRequestMessage(order));
                     await updateOrder(orderId, { status: nextStatus, courierRequestedAt: firestoreNow() });
                     showNotice(
