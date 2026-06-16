@@ -1270,6 +1270,9 @@ function setupAccordion() {
         // Cerrar el menu hamburguesa en mobile al seleccionar panel
         if (window.innerWidth < 1024) closeMobileNav();
 
+        // Ajustar padding-top de la página según altura real de las barras fijas
+        if (window.innerWidth <= 768) _adjustPagePadding();
+
         if (target === 'mensajes') {
             markMessagesAsRead();
         } else {
@@ -1280,6 +1283,21 @@ function setupAccordion() {
             loadCategoriasGastos().then(renderCategoriasGastosPanel);
         }
     }
+
+    // Ajusta padding-top del admin-page según altura real de barras fijas en mobile
+    function _adjustPagePadding() {
+        if (window.innerWidth > 768) return;
+        const page = document.querySelector('.admin-page');
+        if (!page) return;
+        const topbar = document.querySelector('.admin-sidebar');
+        const toolbar = document.querySelector('[data-tab-panel="pedidos"] .section-toolbar');
+        const topbarH = topbar ? topbar.getBoundingClientRect().height : 48;
+        const toolbarH = (toolbar && getComputedStyle(toolbar).position === 'fixed')
+            ? toolbar.getBoundingClientRect().height : 0;
+        page.style.paddingTop = (topbarH + toolbarH) + 'px';
+    }
+    _adjustPagePadding();
+    window.addEventListener('resize', _adjustPagePadding);
 
     buttons.forEach((button) => {
         button.addEventListener('click', () => activateAccordion(button.dataset.accordionTarget));
