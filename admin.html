@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ROAL BURGER | Admin</title>
     <meta name="description" content="Panel Admin de ROAL BURGER para gestionar categorias, metricas e informacion del negocio.">
+    <link rel="icon" type="image/png" href="isotipo.png">
+    <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3266,6 +3268,29 @@
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
             margin-top: 12px;
+        }
+
+        /* ── Grupos de sección en formularios de configuración ── */
+        .config-group-header {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-top: 10px;
+        }
+        .config-group-header span {
+            font-size: 0.66rem;
+            font-weight: 700;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            color: var(--admin-accent, #ff7b45);
+            white-space: nowrap;
+        }
+        .config-group-header::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255,255,255,0.1);
         }
 
         .preview-box {
@@ -7604,6 +7629,52 @@
         }
         .admin-chat-fab-badge[hidden] { display: none; }
 
+        /* ══════════════════════════════════════════
+           MOBILE POS — Barra de acciones fija inferior
+        ══════════════════════════════════════════ */
+        .mob-pos-bottombar {
+            display: none;           /* visible solo en mobile vía media query */
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            z-index: 9990;
+            background: rgba(9, 13, 22, 0.99);
+            border-top: 1px solid rgba(255,255,255,0.09);
+            -webkit-backdrop-filter: blur(18px);
+            backdrop-filter: blur(18px);
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        .mob-pos-bottombar button {
+            border: none;
+            cursor: pointer;
+            font-family: 'Oswald', sans-serif;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            min-height: 58px;
+            -webkit-tap-highlight-color: transparent;
+            transition: filter 0.15s;
+        }
+        .mob-pos-bb-caja {
+            flex: 1;
+            background: rgba(255,215,0,0.08);
+            border-right: 1px solid rgba(255,255,255,0.08) !important;
+            color: #ffd700;
+            font-size: 0.82rem;
+        }
+        .mob-pos-bb-caja:hover { filter: brightness(1.22); }
+        .mob-pos-bb-nuevo {
+            flex: 2;
+            background: linear-gradient(135deg, #1db954, #15803d) !important;
+            color: #fff !important;
+            font-size: 1rem;
+            font-weight: 700;
+        }
+        .mob-pos-bb-nuevo:hover { filter: brightness(1.10); }
+        body.pos-is-open .mob-pos-bottombar { display: none !important; }
+
         .client-name-cell {
             display: grid;
             gap: 3px;
@@ -8626,10 +8697,57 @@
                 font-size: 0.72rem;
             }
 
-            /* ── POS: grilla de productos en pantallas muy pequeñas ── */
+            /* ── POS: espacio para que el scroll no quede tapado por la barra inferior ── */
+            .pos-products-scroll {
+                padding-bottom: 108px !important; /* 50px bottom-inner + 48px actions + 10px extra */
+            }
+
+            /* ── POS: grilla de productos — 3 columnas en mobile ── */
             .pos-product-grid-v2 {
-                grid-template-columns: repeat(2, 1fr) !important;
-                gap: 8px !important;
+                grid-template-columns: repeat(3, 1fr) !important;
+                gap: 6px !important;
+            }
+            .pos-product-btn-info {
+                padding: 12px 4px 5px !important;
+            }
+            .pos-product-btn-name {
+                font-size: 0.65rem !important;
+                line-height: 1.15 !important;
+            }
+            .pos-product-btn-price {
+                font-size: 0.6rem !important;
+            }
+
+            /* ── POS: tarjetas de promociones — 3 columnas en mobile ── */
+            .pos-promo-section-items {
+                display: grid !important;
+                grid-template-columns: repeat(3, 1fr) !important;
+                gap: 6px !important;
+            }
+            .pos-promo-btn {
+                width: 100% !important;
+                min-height: 76px !important;
+                padding: 7px 8px 8px !important;
+                gap: 3px !important;
+            }
+            .pos-promo-btn-name {
+                font-size: 0.7rem !important;
+                -webkit-line-clamp: 2;
+                line-clamp: 2;
+            }
+            .pos-promo-btn-price {
+                font-size: 0.82rem !important;
+                padding-top: 2px !important;
+            }
+            .pos-promo-orig {
+                font-size: 0.6rem !important;
+            }
+            .pos-promo-badge {
+                font-size: 0.58rem !important;
+                padding: 1px 5px !important;
+            }
+            .pos-promo-btn-detail {
+                font-size: 0.58rem !important;
             }
 
             /* ── Botones de acción kanban: tamaño touch mínimo ── */
@@ -8655,6 +8773,344 @@
                 -webkit-overflow-scrolling: touch;
                 flex-wrap: nowrap;
             }
+
+            /* ═══════════════════════════════════════════════════════
+               MOBILE POS-STYLE — Recepción de Pedidos optimizada
+            ═══════════════════════════════════════════════════════ */
+
+            /* 1. Toolbar — 2 filas: buscador arriba, botones abajo */
+            [data-tab-panel="pedidos"] .section-toolbar {
+                flex-wrap: wrap !important;
+                row-gap: 6px;
+                column-gap: 8px;
+                padding: 8px 10px;
+                margin-bottom: 8px;
+                align-items: center;
+                overflow: hidden;
+            }
+            /* Override width:100% global — buscador ocupa fila completa */
+            [data-tab-panel="pedidos"] .section-toolbar .admin-domicilio-searcher {
+                flex: 1 1 100% !important;
+                width: 100% !important;
+                min-width: 0 !important;
+                order: 0;
+            }
+            /* Botones: auto width, se alinean en fila 2 a la derecha */
+            [data-tab-panel="pedidos"] .section-toolbar > *:not(.admin-domicilio-searcher) {
+                width: auto !important;
+                flex-shrink: 0;
+                margin-left: auto;
+            }
+            [data-tab-panel="pedidos"] .section-toolbar > *:not(.admin-domicilio-searcher) + *:not(.admin-domicilio-searcher) {
+                margin-left: 0;
+            }
+            [data-tab-panel="pedidos"] .admin-domicilio-input {
+                font-size: 0.8rem;
+                padding: 8px 10px;
+            }
+            /* Actualizar pedidos: icono ↺ */
+            [data-tab-panel="pedidos"] [data-section-save="pedidos"] {
+                padding: 8px 14px !important;
+                font-size: 0 !important;
+                white-space: nowrap;
+                min-width: 38px;
+                text-align: center;
+                border-radius: 8px;
+                order: 1;
+            }
+            [data-tab-panel="pedidos"] [data-section-save="pedidos"]::before {
+                content: '↺ Actualizar';
+                font-size: 0.72rem;
+                font-weight: 700;
+                display: inline-block;
+                letter-spacing: 0.3px;
+            }
+            /* Cerrar Caja: compacto, solo en fila 2 */
+            #cerrarCajaBtnPos {
+                padding: 7px 12px !important;
+                font-size: 0.72rem !important;
+                letter-spacing: 0 !important;
+                white-space: nowrap;
+                flex-shrink: 0 !important;
+                border-radius: 8px !important;
+                order: 2;
+            }
+
+            /* 2. Banner jornada: compacto, una fila */
+            .sales-day-banner {
+                padding: 10px 14px !important;
+                flex-wrap: nowrap !important;
+                gap: 8px !important;
+                align-items: center !important;
+                margin-bottom: 0 !important;
+                border-radius: 12px !important;
+            }
+            .sales-day-banner-copy { gap: 1px !important; flex-shrink: 1; min-width: 0; }
+            .sales-day-banner-copy strong { font-size: 0.78rem !important; white-space: nowrap; }
+            .sales-day-banner-copy span  { font-size: 0.64rem !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+            .sales-day-banner-metrics { gap: 6px !important; flex-wrap: nowrap !important; flex-shrink: 0; align-items: center; }
+            /* Ocultar chips individuales; solo total */
+            #salesDayDeliveredTotal, #salesDayGrandTotal, #salesDayDeliveryFeesChip { display: none !important; }
+            #salesDayTotalChip { font-size: 0.92rem !important; font-weight: 700 !important; min-height: 34px !important; padding: 0 12px !important; border-radius: 10px !important; }
+            /* Mover Caja Chica + Nuevo Ticket a barra fija inferior */
+            #cajaChicaBtn, #openAdminTicketsViewBtn, #openCreateInternalOrderBtn { display: none !important; }
+
+            /* 3. Ocultar card-head "Recepcion de Pedidos" — no agrega valor en mobile */
+            [data-tab-panel="pedidos"] .admin-card > .card-head { display: none !important; }
+            [data-tab-panel="pedidos"] .admin-card > .card-body {
+                max-height: none !important;
+                opacity: 1 !important;
+                pointer-events: auto !important;
+            }
+            [data-tab-panel="pedidos"] .admin-card {
+                padding: 10px 10px 0 !important;
+                border-radius: 14px !important;
+                margin-bottom: 4px !important;
+            }
+
+            /* 4. Tabs: sticky justo bajo topbar (no al top:8px que queda bajo ella) */
+            .orders-mobile-tabs {
+                top: 54px !important;
+                z-index: 20 !important;
+                background: rgba(9, 13, 24, 0.98) !important;
+                -webkit-backdrop-filter: blur(14px) !important;
+                backdrop-filter: blur(14px) !important;
+                margin: 0 -10px 0 !important;
+                padding: 7px 10px !important;
+                border-bottom: 1px solid rgba(255,255,255,0.08);
+                grid-template-columns: 1fr 1fr !important;
+                gap: 8px !important;
+            }
+            .orders-mobile-tab {
+                min-height: 48px !important;
+                border-radius: 12px !important;
+                font-size: 0.84rem !important;
+                font-weight: 700 !important;
+                letter-spacing: 0.8px !important;
+            }
+            .orders-mobile-tab.active { box-shadow: 0 4px 14px rgba(255,123,69,0.3) !important; }
+            .orders-lanes { margin-top: 10px; min-height: 52vh; }
+
+            /* 5. Kanban cards más touch-friendly */
+            .kanban-order-card {
+                padding: 14px !important;
+                border-radius: 14px !important;
+                gap: 10px !important;
+            }
+            .koc-name, .kanban-order-name { font-size: 1.05rem !important; font-weight: 700 !important; }
+            .koc-total, .kanban-order-total { font-size: 0.98rem !important; font-weight: 700 !important; }
+
+            /* 6. Espacio para barra inferior fija; sin scroll horizontal; ocultar chat FAB */
+            .admin-page { padding-bottom: 76px !important; overflow-x: hidden; }
+            .admin-shell { overflow-x: hidden; }
+            .admin-chat-fab { display: none !important; }
+
+            /* 7. Mostrar barra fija inferior */
+            .mob-pos-bottombar { display: flex; }
+
+            /* ═══════════════════════════════════════════════
+               MOBILE: Secciones admin — formato unificado
+            ═══════════════════════════════════════════════ */
+
+            /* ── Sub-tabs de secciones: scroll horizontal ── */
+            .menu-inner-tabs-nav {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch;
+                flex-wrap: nowrap !important;
+                padding: 8px 10px 4px !important;
+                gap: 5px !important;
+                /* Ocultar scrollbar pero mantener funcional */
+                scrollbar-width: none;
+            }
+            .menu-inner-tabs-nav::-webkit-scrollbar { display: none; }
+            .menu-inner-tab {
+                flex: 0 0 auto !important;
+                min-height: 38px !important;
+                padding: 7px 11px !important;
+                font-size: 0.74rem !important;
+                gap: 4px !important;
+                letter-spacing: 0.5px !important;
+            }
+            .menu-inner-tab-icon { font-size: 0.88rem !important; }
+            .menu-inner-panel { padding: 12px 12px 16px !important; gap: 10px !important; }
+
+            /* ── Cards acompañantes: imagen+info arriba, botones abajo ── */
+            .acomp-panel-card {
+                flex-wrap: wrap !important;
+                align-items: flex-start !important;
+                gap: 6px 10px !important;
+                padding: 10px !important;
+            }
+            .acomp-panel-info { flex: 1 1 0 !important; min-width: 0 !important; }
+            .acomp-panel-nombre { font-size: 0.85rem !important; }
+            .acomp-panel-actions {
+                flex-basis: 100% !important;
+                flex-shrink: 0 !important;
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: wrap !important;
+                gap: 5px !important;
+                padding-left: 62px !important; /* alinea con el texto (52px img + 10px gap) */
+            }
+            .acomp-action-btn {
+                min-height: 30px !important;
+                padding: 4px 10px !important;
+                font-size: 0.7rem !important;
+            }
+
+            /* ── Cards bebidas: bloque + imagen absoluta (layout robusto) ── */
+            .bebidas-panel-card {
+                display: block !important;
+                position: relative !important;
+                padding: 10px 10px 12px 72px !important; /* 10px + 52px img + 10px gap */
+                min-height: 74px !important;
+            }
+            .bebidas-panel-img {
+                position: absolute !important;
+                top: 10px !important;
+                left: 10px !important;
+                width: 52px !important;
+                height: 52px !important;
+            }
+            .bebidas-panel-info {
+                display: block !important;
+                min-width: 0 !important;
+            }
+            .bebidas-panel-nombre { font-size: 0.88rem !important; font-weight: 700 !important; }
+
+            /* Presentaciones: chips 2 columnas — ancho garantizado por display:block */
+            .bebidas-panel-pres-list {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: wrap !important;
+                gap: 4px !important;
+                margin-top: 6px !important;
+            }
+            .bebidas-panel-pres-item {
+                flex: 0 0 calc(50% - 2px) !important;
+                box-sizing: border-box !important;
+                min-width: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 1px !important;
+                padding: 5px 7px !important;
+                background: rgba(255,255,255,0.05) !important;
+                border: 1px solid rgba(255,255,255,0.09) !important;
+                border-radius: 8px !important;
+                font-size: 0 !important;
+            }
+            .bebidas-pres-nombre {
+                font-size: 0.7rem !important;
+                font-weight: 700 !important;
+                color: rgba(200,220,255,0.85) !important;
+            }
+            .bebidas-pres-precio {
+                font-size: 0.82rem !important;
+                font-weight: 700 !important;
+                color: #ff9a55 !important;
+            }
+            .bebidas-pres-sabores {
+                font-size: 0.58rem !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                color: rgba(180,200,255,0.42) !important;
+                max-width: 100% !important;
+            }
+
+            /* Botones bebidas: fila bajo las chips */
+            .bebidas-panel-actions {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: wrap !important;
+                gap: 5px !important;
+                margin-top: 8px !important;
+                padding-left: 0 !important;
+            }
+            .bebidas-panel-actions .mini-btn { min-height: 30px !important; width: auto !important; }
+
+            /* ── Configuración: 1 columna en móvil, ocultar preview ── */
+            #brandingForm { grid-template-columns: 1fr !important; }
+            .preview-box { display: none !important; }
+            .config-group-header { padding-top: 6px !important; }
+
+            /* ══ REGLA GLOBAL: todo contenido SIEMPRE dentro de las tarjetas ══ */
+            .bebidas-panel-card,
+            .acomp-panel-card,
+            .promo-admin-card,
+            .combo-admin-card {
+                overflow: hidden !important;
+                background: rgba(255,255,255,0.07) !important;
+                border: 1px solid rgba(255,255,255,0.18) !important;
+            }
+
+            /* ── list-item genérico: botones en fila con wrap ── */
+            .list-item {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 8px !important;
+                padding: 10px !important;
+            }
+            .list-item .product-main { width: 100%; }
+            .list-item .mini-btn {
+                width: auto !important;
+                flex: 1 1 auto !important;
+                min-height: 32px !important;
+            }
+
+            /* Ajustar admin-card padding en secciones de artículos */
+            .menu-section-card { padding: 0 !important; }
+            .menu-section-card .card-head { padding: 14px 14px 0 !important; }
+
+            /* ── Cards 2×1: info arriba, botones abajo ── */
+            .promo-admin-card {
+                flex-wrap: wrap !important;
+                align-items: flex-start !important;
+                padding: 10px !important;
+                gap: 6px 10px !important;
+            }
+            .promo-admin-card__info { flex: 1 1 0 !important; min-width: 0 !important; }
+            .promo-admin-card__name { white-space: normal !important; }
+            .promo-admin-card__actions {
+                flex-basis: 100% !important;
+                flex-shrink: 0 !important;
+                justify-content: flex-start !important;
+                gap: 6px !important;
+                padding-left: 62px !important; /* 52px img + 10px gap */
+            }
+            .promo-toggle-btn { font-size: 0.7rem !important; padding: 3px 8px !important; }
+
+            /* ── Cards Combos especiales: íconos pequeños + info, botones abajo ── */
+            .combo-admin-card {
+                flex-wrap: wrap !important;
+                padding: 10px !important;
+                gap: 6px 10px !important;
+                align-items: flex-start !important;
+            }
+            .combo-admin-card__icons {
+                max-width: 90px !important;
+                flex-shrink: 0 !important;
+            }
+            .combo-admin-card__icon { width: 26px !important; height: 26px !important; }
+            .combo-admin-card__info { flex: 1 1 0 !important; min-width: 0 !important; }
+            .combo-admin-card__title { font-size: 0.84rem !important; }
+            .combo-admin-card__products {
+                font-size: 0.7rem !important;
+                display: -webkit-box;
+                -webkit-line-clamp: 3;
+                line-clamp: 3;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+            }
+            .combo-admin-card__actions {
+                flex-basis: 100% !important;
+                flex-shrink: 0 !important;
+                justify-content: flex-start !important;
+                flex-direction: row !important;
+                gap: 6px !important;
+                padding-left: 100px !important; /* ~90px icons + 10px gap */
+            }
+            .combo-admin-card__actions .mini-btn { min-height: 30px !important; width: auto !important; }
         }
 
         /* ══════════════════════════════════════════
@@ -11271,6 +11727,8 @@
                                 </div>
                                 <div class="card-body" id="card-branding">
                                     <form id="brandingForm" class="admin-form">
+
+                                        <div class="config-group-header"><span>Identidad</span></div>
                                         <div class="admin-field">
                                             <label for="restaurantName">Nombre del restaurante</label>
                                             <input type="text" id="restaurantName" name="restaurantName" placeholder="Ej: ROAL BURGER" required>
@@ -11279,39 +11737,48 @@
                                             <label for="restaurantSlogan">Eslogan</label>
                                             <input type="text" id="restaurantSlogan" name="restaurantSlogan" placeholder="Ej: Sabor real en cada mordida" required>
                                         </div>
+
+                                        <div class="config-group-header"><span>Contacto</span></div>
                                         <div class="admin-field">
-                                            <label for="restaurantWhatsappNumber">Numero de WhatsApp</label>
-                                            <input type="text" id="restaurantWhatsappNumber" name="restaurantWhatsappNumber" placeholder="Ej: 573144689509" required>
+                                            <label for="restaurantWhatsappNumber">Número de WhatsApp</label>
+                                            <input type="tel" id="restaurantWhatsappNumber" name="restaurantWhatsappNumber" placeholder="573144689509" required>
                                         </div>
                                         <div class="admin-field full">
                                             <label for="restaurantWhatsappLink">Link de WhatsApp</label>
-                                            <input type="text" id="restaurantWhatsappLink" name="restaurantWhatsappLink" placeholder="Ej: https://wa.me/..." required>
+                                            <input type="text" id="restaurantWhatsappLink" name="restaurantWhatsappLink" placeholder="https://wa.me/573..." required>
                                         </div>
+
+                                        <div class="config-group-header"><span>Ubicación y Horario</span></div>
                                         <div class="admin-field full">
-                                            <label for="restaurantBusinessHours">Horario</label>
+                                            <label for="restaurantBusinessHours">Horario de atención</label>
                                             <input type="text" id="restaurantBusinessHours" name="restaurantBusinessHours" placeholder="Ej: Lunes a Domingo: 4:00 P.M. a 10:00 P.M." required>
                                         </div>
                                         <div class="admin-field full">
-                                            <label for="restaurantAddress">Direccion</label>
+                                            <label for="restaurantAddress">Dirección</label>
                                             <input type="text" id="restaurantAddress" name="restaurantAddress" placeholder="Ej: Cl. 22 #29-59, Armenia, Quindio" required>
                                         </div>
                                         <div class="admin-field full">
-                                            <label for="restaurantLocationLink">Ubicacion</label>
-                                            <input type="text" id="restaurantLocationLink" name="restaurantLocationLink" placeholder="Ej: https://maps.google.com/..." required>
+                                            <label for="restaurantLocationLink">Link de Google Maps</label>
+                                            <input type="text" id="restaurantLocationLink" name="restaurantLocationLink" placeholder="https://maps.google.com/...">
                                         </div>
+
+                                        <div class="config-group-header"><span>Redes Sociales</span></div>
                                         <div class="admin-field">
                                             <label for="restaurantInstagramLink">Instagram</label>
-                                            <input type="text" id="restaurantInstagramLink" name="restaurantInstagramLink" placeholder="Ej: https://instagram.com/...">
+                                            <input type="text" id="restaurantInstagramLink" name="restaurantInstagramLink" placeholder="https://instagram.com/...">
                                         </div>
                                         <div class="admin-field">
                                             <label for="restaurantTiktokLink">TikTok</label>
-                                            <input type="text" id="restaurantTiktokLink" name="restaurantTiktokLink" placeholder="Ej: https://tiktok.com/@...">
+                                            <input type="text" id="restaurantTiktokLink" name="restaurantTiktokLink" placeholder="https://tiktok.com/@...">
                                         </div>
                                         <div class="admin-field">
                                             <label for="restaurantFacebookLink">Facebook</label>
-                                            <input type="text" id="restaurantFacebookLink" name="restaurantFacebookLink" placeholder="Ej: https://facebook.com/...">
+                                            <input type="text" id="restaurantFacebookLink" name="restaurantFacebookLink" placeholder="https://facebook.com/...">
                                         </div>
-                                        <button type="submit" class="admin-button" id="brandingSaveBtn" disabled>Guardar configuracion</button>
+
+                                        <div class="admin-field full">
+                                            <button type="submit" class="admin-button" id="brandingSaveBtn" disabled>Guardar configuración</button>
+                                        </div>
                                     </form>
                                     <div class="preview-box" id="brandingPreview">
                                         <div class="preview-brand">
@@ -12449,6 +12916,17 @@
         </article>
     </div>
 
+    <!-- ══ Mobile: barra de acciones rápidas (visible solo en móvil) ══ -->
+    <div id="mobPosBottomBar" class="mob-pos-bottombar" role="toolbar" aria-label="Acciones POS">
+        <button type="button" class="mob-pos-bb-caja" onclick="document.getElementById('cajaChicaBtn')?.click()" aria-label="Caja Chica">
+            💰 <span>Caja Chica</span>
+        </button>
+        <button type="button" class="mob-pos-bb-nuevo" onclick="document.getElementById('openCreateInternalOrderBtn')?.click()" aria-label="Nuevo Ticket">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
+            <span>Nuevo Ticket</span>
+        </button>
+    </div>
+
     <!-- ══════════ CHAT FAB ══════════ -->
     <button type="button" id="adminChatFab" class="admin-chat-fab" title="Mensajes">
         <span class="admin-chat-fab-icon">💬</span>
@@ -12462,7 +12940,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616n"></script>
+    <script src="admin.js?v=20260617b"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>

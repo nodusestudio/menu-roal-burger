@@ -1259,6 +1259,10 @@ function setupAccordion() {
             panel.classList.toggle('active', visiblePanels.includes(panel.dataset.tabPanel));
         });
 
+        // Barra inferior mobile: visible solo en pestaña pedidos
+        const mobBar = document.getElementById('mobPosBottomBar');
+        if (mobBar) mobBar.style.display = target === 'pedidos' ? '' : 'none';
+
         // Cerrar el menu hamburguesa en mobile al seleccionar panel
         if (window.innerWidth < 1024) closeMobileNav();
 
@@ -2883,10 +2887,10 @@ function renderPosPromocionesPanel(grid) {
             precioFinal: price,
             detalle: 'Llevas 2 por el precio de 1',
             onClick: () => {
-                addProductToPosOrder(prod.id, prod.nombre, Math.round(price / 2), '2×1', price, {
-                    promoLabel: `PROMO 2×1 — ${promo.kicker || prod.nombre}`,
+                addProductToPosOrder(prod.id, prod.nombre, price, '2×1', null, {
+                    promoLabel: `PROMO 2×1 — ${promo.kicker || prod.nombre} (incluye 2)`,
                     promo2x1: true,
-                    initialQuantity: 2
+                    initialQuantity: 1
                 });
             }
         }));
@@ -5147,7 +5151,7 @@ function addProductToPosOrder(productId, productName, productPrice, note = '', o
     const promoLabel = String(opts.promoLabel || '').trim();
     const promo2x1 = opts.promo2x1 === true;
     const initialQuantity = Math.max(1, Number(opts.initialQuantity) || 1);
-    const qtyStep = promo2x1 ? 2 : 1;
+    const qtyStep = 1;
 
     // itemKey determinístico por (productId + nota) → ítems con misma nota se fusionan,
     // ítems con nota diferente (ej. "Combo" vs "Solo") quedan separados automáticamente.
@@ -5339,9 +5343,8 @@ function renderPosOrderItems() {
             const item = internalOrderItems.find((i) => i.itemKey === itemKey);
 
             if (minusBtn && item) {
-                const step = item.promo2x1 ? 2 : 1;
-                if (item.quantity > step) {
-                    item.quantity -= step;
+                if (item.quantity > 1) {
+                    item.quantity -= 1;
                     item.subtotal = item.quantity * item.unitPrice;
                 } else {
                     internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey);
@@ -5353,8 +5356,7 @@ function renderPosOrderItems() {
             }
 
             if (plusBtn && item) {
-                const step = item.promo2x1 ? 2 : 1;
-                item.quantity += step;
+                item.quantity += 1;
                 item.subtotal = item.quantity * item.unitPrice;
                 renderPosOrderItems();
                 renderPosTotals();
@@ -5377,9 +5379,6 @@ function renderPosOrderItems() {
             const itemKey = input.dataset.itemKey;
             const item = internalOrderItems.find((i) => i.itemKey === itemKey);
             let quantity = Math.max(1, Number(input.value || 1));
-            if (item?.promo2x1) {
-                quantity = Math.max(2, quantity % 2 === 0 ? quantity : quantity + 1);
-            }
             if (item) {
                 item.quantity = quantity;
                 item.subtotal = quantity * item.unitPrice;
@@ -6894,6 +6893,10 @@ function renderCategoryOptions(selectElement, selectedCategoryName) {
 function closeCategoryCreateModal() {
     if (!categoryCreateModal || !categoryCreateForm) {
         return;
+    }
+
+    if (categoryCreateModal.contains(document.activeElement)) {
+        document.activeElement.blur();
     }
 
     categoryCreateModal.classList.remove('show');
@@ -16949,53 +16952,65 @@ async function renderLibroCierres() {
         let grandSumTotal = 0;
         let grandSumEgresos = 0;
 
-        // Filas de gastos externos
-        const gastosExternosRows = gastosExternos.map((g) => {
-            const tsMs = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
-            const d = tsMs ? new Date(tsMs) : null;
-            const diaStr = d ? DIAS[d.getDay()] : '—';
-            const fechaStr = d
-                ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                : '—';
-            const amt = Number(g.monto || 0);
-            grandSumEgresos += amt;
-            grandSumTotal -= amt;
-            const method = g.paymentMethod || '';
-            const methodCells = methodKeys.map((k) => {
-                if (k === method) {
-                    sumTotals[k] -= amt;
-                    return `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(amt)}</td>`;
-                }
-                return '<td style="color:var(--admin-muted);">—</td>';
-            }).join('');
-            const catObj  = getCategoriasGastos().find((c) => c.id === g.categoria);
-            const catIcon = catObj ? catObj.icon : '💸';
-            const catNombre = catObj ? catObj.nombre : (g.categoria || 'Gasto externo');
-            const tipoStr = g.subcategoria ? `${catNombre} · ${g.subcategoria}` : catNombre;
-            return `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.35);">
-                <td class="col-left" style="font-weight:600;white-space:nowrap;">${escapeHtml(diaStr)}</td>
-                <td class="col-left" style="line-height:1.35;">
-                    <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(fechaStr)}</span><br>
-                    <span style="font-size:0.73rem;color:#fca5a5;font-weight:600;">${catIcon} ${escapeHtml(tipoStr)}</span>
-                </td>
-                ${methodCells}
-                <td style="color:#fca5a5;font-weight:600;">−${formatMoney(amt)}</td>
-                <td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>
-                <td></td>
-            </tr>`;
-        }).join('');
+        // Mezclar cierres y gastos externos ordenados por fecha desc
+        const _tsEntry = (e) => {
+            if (e._tipo === 'gasto') {
+                const ms = e.registradoAt?.toMillis ? e.registradoAt.toMillis() : Number(e.registradoAt || 0);
+                return ms;
+            }
+            return e.closedAt?.toMillis ? e.closedAt.toMillis() : Number(e.closedAt || 0);
+        };
+        const allEntries = [
+            ...cierres.map((c) => ({ ...c, _tipo: 'cierre' })),
+            ...gastosExternos.map((g) => ({ ...g, _tipo: 'gasto' })),
+        ].sort((a, b) => _tsEntry(b) - _tsEntry(a));
 
-        tbody.innerHTML = cierres.map((c) => {
+        tbody.innerHTML = allEntries.map((entry) => {
+            if (entry._tipo === 'gasto') {
+                const g = entry;
+                const tsMs = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+                const d = tsMs ? new Date(tsMs) : null;
+                const diaStr = d ? DIAS[d.getDay()] : '—';
+                const fechaStr = d
+                    ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : '—';
+                const amt = Number(g.monto || 0);
+                grandSumEgresos += amt;
+                grandSumTotal -= amt;
+                const method = g.paymentMethod || '';
+                const methodCells = methodKeys.map((k) => {
+                    if (k === method) {
+                        sumTotals[k] -= amt;
+                        return `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(amt)}</td>`;
+                    }
+                    return '<td style="color:var(--admin-muted);">—</td>';
+                }).join('');
+                const catObj    = getCategoriasGastos().find((c) => c.id === g.categoria);
+                const catIcon   = catObj ? catObj.icon : '💸';
+                const catNombre = catObj ? catObj.nombre : (g.categoria || 'Gasto externo');
+                const tipoStr   = g.subcategoria ? `${catNombre} · ${g.subcategoria}` : catNombre;
+                return `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.35);">
+                    <td class="col-left" style="font-weight:600;white-space:nowrap;">${escapeHtml(diaStr)}</td>
+                    <td class="col-left" style="line-height:1.35;">
+                        <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(fechaStr)}</span><br>
+                        <span style="font-size:0.73rem;color:#fca5a5;font-weight:600;">${catIcon} ${escapeHtml(tipoStr)}</span>
+                    </td>
+                    ${methodCells}
+                    <td style="color:#fca5a5;font-weight:600;">−${formatMoney(amt)}</td>
+                    <td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>
+                    <td></td>
+                </tr>`;
+            }
+
+            // Cierre normal
+            const c = entry;
             const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
             const d = tsMs ? new Date(tsMs) : null;
             const diaStr = d ? DIAS[d.getDay()] : '—';
             const fechaStr = d
                 ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                 : c.date || '—';
-
-            // methodTotals = neto por método (ingresos − gastos)
             const methodTotals = c.methodTotals || {};
-
             const methodCells = methodKeys.map((k) => {
                 const v = Number(methodTotals[k] || 0);
                 if (v === 0) return '<td style="color:var(--admin-muted);">—</td>';
@@ -17003,17 +17018,14 @@ async function renderLibroCierres() {
                 const color = v < 0 ? '#fca5a5' : '#6ee7b7';
                 return `<td style="color:${color};font-weight:600;">${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}</td>`;
             }).join('');
-
             const egresos = Number(c.gastosTotal || 0);
             grandSumEgresos += egresos;
             const egresosCell = egresos > 0
                 ? `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(egresos)}</td>`
                 : `<td style="color:var(--admin-muted);">—</td>`;
-
             const gt = Number(c.grandTotal || 0);
             grandSumTotal += gt;
             const gtColor = gt >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
-
             return `<tr>
                 <td class="col-left" style="font-weight:600;">${escapeHtml(diaStr)}</td>
                 <td class="col-left">${escapeHtml(fechaStr)}</td>
@@ -17024,7 +17036,7 @@ async function renderLibroCierres() {
                     <button class="btn-ver-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:6px;cursor:pointer;font-weight:600;">👁 Ver</button>
                 </td>
             </tr>`;
-        }).join('') + gastosExternosRows;
+        }).join('');
 
         // Fila de totales
         if (footEl) {
