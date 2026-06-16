@@ -17646,7 +17646,7 @@ function closeTicketPreviewModal() {
 }
 
 document.getElementById('ticketPreviewCloseBtn')?.addEventListener('click', closeTicketPreviewModal);
-document.getElementById('ticketPreviewModal')?.addEventListener('click', (e) => {
+document.getElementById('ticketPreviewModal')?.addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-order-ticket-action]');
     if (btn) {
         const action = btn.dataset.orderTicketAction;
