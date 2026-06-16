@@ -11417,6 +11417,27 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCombosPackPublic();
     loadCustomerPaymentMethods();
 
+    // ── Detector de conexión offline / online ─────────────────────────────
+    (function _setupOfflineBanner() {
+        const banner = document.getElementById('offlineBanner');
+        if (!banner) return;
+
+        function _showOffline() {
+            banner.hidden = false;
+            document.body.classList.add('is-offline');
+        }
+        function _hideOffline() {
+            banner.hidden = true;
+            document.body.classList.remove('is-offline');
+        }
+
+        window.addEventListener('offline', _showOffline);
+        window.addEventListener('online', _hideOffline);
+
+        // Si arranca sin conexión, mostrar inmediatamente
+        if (!navigator.onLine) _showOffline();
+    })();
+
     // Cerrar upgrade sheet público
     document.getElementById('publicUpgradeOverlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closePublicUpgradeSheet();

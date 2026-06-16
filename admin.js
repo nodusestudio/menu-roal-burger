@@ -968,6 +968,11 @@ function announceNewOrders(orders) {
         activeMobileOrdersLane = 'pedidos';
     }
 
+    // Vibración — funciona aunque la pantalla esté apagada en Android
+    if (newOrders.length && navigator.vibrate) {
+        navigator.vibrate([400, 150, 400, 150, 400]);
+    }
+
     newOrders
         .slice()
         .reverse()
@@ -18050,6 +18055,44 @@ async function _icmHandleFile(file) {
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ── Keep-alive del AudioContext + re-alerta al volver a primer plano ──────
+(function _setupAdminAudioResilience() {
+    let _keepAliveTimer = null;
+
+    function _silentPing() {
+        const ctx = getOrderBellAudioContext();
+        if (!ctx || ctx.state === 'closed') return;
+        if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); return; }
+        // Buffer de 1 muestra silencioso para mantener el contexto activo
+        try {
+            const buf = ctx.createBuffer(1, 1, 22050);
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            src.connect(ctx.destination);
+            src.start();
+        } catch (_) {}
+    }
+
+    function _startKeepAlive() {
+        if (_keepAliveTimer) return;
+        _keepAliveTimer = setInterval(_silentPing, 20000);
+    }
+
+    // Iniciar keep-alive tras primera interacción del usuario (requisito del browser)
+    document.addEventListener('click', _startKeepAlive, { once: true });
+    document.addEventListener('keydown', _startKeepAlive, { once: true });
+
+    // Cuando el admin vuelve a primer plano, re-alertar si hay pedidos pendientes
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        const unread = getUnreadOrders();
+        if (!unread.length) return;
+        if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+        playOrderBell().catch(() => {});
+        updateAdminDocumentTitle(unread.length);
+    });
+})();
 
 initAdmin();
 loadPaymentMethods();
