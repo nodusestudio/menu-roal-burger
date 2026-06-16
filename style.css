@@ -2444,6 +2444,77 @@ body.has-guest-register-banner #ayudaScreen {
     min-height: 180px;
 }
 
+/* ── Checkout: acciones del mapa de domicilio ─────────────────────────────── */
+.checkout-map-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 4px 0 6px;
+}
+
+.checkout-zone-status {
+    font-size: 0.82rem;
+    color: rgba(200, 180, 140, 0.72);
+    text-align: center;
+    line-height: 1.4;
+}
+
+/* Botón "Usar mi ubicación" — naranja para diferenciarlo del botón de WhatsApp */
+#checkoutUseLocationButton {
+    background: linear-gradient(135deg, #ff8c00, #e76f00) !important;
+    box-shadow: 0 4px 16px rgba(231, 111, 0, 0.35);
+    font-size: 1.02rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    transition: box-shadow 0.2s, transform 0.15s;
+}
+#checkoutUseLocationButton:hover {
+    box-shadow: 0 6px 22px rgba(231, 111, 0, 0.5);
+    transform: translateY(-1px);
+}
+
+/* Botón "Confirmar ubicación" — naranja + pulso constante para que sea imposible ignorar */
+#checkoutConfirmLocationButton {
+    background: linear-gradient(135deg, #ff8c00, #e76f00) !important;
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 20px rgba(231, 111, 0, 0.45);
+    animation: confirm-pulse 1.6s ease-in-out infinite;
+    will-change: transform;
+    position: relative;
+}
+#checkoutConfirmLocationButton::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 18px;
+    border: 2.5px solid rgba(255, 140, 0, 0.55);
+    animation: confirm-ring 1.6s ease-in-out infinite;
+    will-change: transform, opacity;
+    pointer-events: none;
+}
+
+@keyframes confirm-pulse {
+    0%, 100% { transform: scale(1); }
+    50%       { transform: scale(1.025); }
+}
+@keyframes confirm-ring {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50%       { opacity: 0;   transform: scale(1.08); }
+}
+
+/* Estado "atención" cuando el usuario intenta enviar sin confirmar */
+#checkoutConfirmLocationButton.location-needs-confirm {
+    animation: confirm-shake 0.45s ease-in-out, confirm-pulse 1.6s ease-in-out 0.45s infinite !important;
+    background: linear-gradient(135deg, #ff3b00, #e60000) !important;
+}
+@keyframes confirm-shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60%  { transform: translateX(-7px); }
+    40%, 80%  { transform: translateX(7px); }
+}
+
 #customerSavedAddressMapPanel {
     padding: 0;
 }

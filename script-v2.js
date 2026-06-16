@@ -4740,8 +4740,13 @@ async function submitCheckoutInfo() {
     }
 
     if (fulfillmentType === 'delivery' && !checkoutDeliveryLocationConfirmed) {
-        checkoutInfoUI.feedback.textContent = 'Confirma tu ubicación en el mapa antes de enviar el pedido.';
-        checkoutInfoUI.confirmLocationButton?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        checkoutInfoUI.feedback.textContent = '📍 Confirma tu ubicación en el mapa antes de enviar el pedido.';
+        const confirmBtn = checkoutInfoUI.confirmLocationButton;
+        if (confirmBtn) {
+            confirmBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            confirmBtn.classList.add('location-needs-confirm');
+            setTimeout(() => confirmBtn.classList.remove('location-needs-confirm'), 2000);
+        }
         return;
     }
 
