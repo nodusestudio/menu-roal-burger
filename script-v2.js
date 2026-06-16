@@ -4798,15 +4798,18 @@ async function submitCheckoutInfo() {
             });
         }
 
-        closeCheckoutInfoModal();
+        // Abrir el modal de pago PRIMERO; si falla, el catch puede rehabilitar el botón de checkout.
         openPaymentFlowModal({
             ...orderData,
             total: getCheckoutOrderTotal(fulfillmentType)
         });
+        closeCheckoutInfoModal();
     } catch (error) {
-        checkoutInfoUI.feedback.textContent = `No se pudo enviar el pedido: ${error.message || 'error inesperado.'}`;
-        checkoutInfoUI.send.disabled = false;
-        checkoutInfoUI.send.textContent = 'Enviar pedido';
+        if (checkoutInfoUI) {
+            checkoutInfoUI.feedback.textContent = `No se pudo enviar el pedido: ${error.message || 'error inesperado.'}`;
+            checkoutInfoUI.send.disabled = false;
+            checkoutInfoUI.send.textContent = 'Enviar pedido';
+        }
     }
 }
 
@@ -8801,10 +8804,19 @@ function renderManualCategoryGallery(panel, categoryName, _cards, visibleProduct
     return true;
 }
 
+let _renderCatExplorerTimer = null;
 function renderCategoryExplorer(nextKey, options = {}) {
     const grid = document.getElementById('categoryGrid');
     const panel = document.getElementById('categoryProductsPanel');
     if (!grid || !panel) {
+        return;
+    }
+
+    // Debounce automático para evitar render storms cuando múltiples listeners disparan simultáneamente.
+    // Las interacciones del usuario y las llamadas directas (fromUserClick / immediate) pasan sin espera.
+    if (!options.fromUserClick && !options.immediate) {
+        clearTimeout(_renderCatExplorerTimer);
+        _renderCatExplorerTimer = setTimeout(() => renderCategoryExplorer(nextKey, { ...options, immediate: true }), 60);
         return;
     }
 
@@ -9276,7 +9288,7 @@ async function renderPublicFeaturedFromAdmin() {
             openPromoScreen();
         }
         renderHomeScreen();
-    });
+    }, (err) => { console.warn('[ROAL] productos listener error:', err.code || err.message); });
 
     categoriesUnsubscribe = firebaseDb.collection('categorias').onSnapshot((snapshot) => {
         const catSort = (a, b) => {
@@ -9319,7 +9331,7 @@ async function renderPublicFeaturedFromAdmin() {
         renderCategoryExplorer();
         updatePromoModalContent();
         renderHomeScreen();
-    });
+    }, (err) => { console.warn('[ROAL] categorias listener error:', err.code || err.message); });
 
     buttonsUnsubscribe = firebaseDb.collection('botones').onSnapshot((snapshot) => {
         buttonConfigsMap = new Map();
@@ -9327,16 +9339,16 @@ async function renderPublicFeaturedFromAdmin() {
             buttonConfigsMap.set(doc.id, normalizeButtonConfig(doc.data(), doc.id));
         });
         renderConfiguredButtons();
-    });
+    }, (err) => { console.warn('[ROAL] botones listener error:', err.code || err.message); });
 
     brandingUnsubscribe = firebaseDb.collection('configuracion').doc('config_landing').onSnapshot((doc) => {
         applyBrandingConfig(doc.exists ? doc.data() : DEFAULT_BRANDING);
-    });
+    }, (err) => { console.warn('[ROAL] config_landing listener error:', err.code || err.message); });
 
     recomendadoOverrideUnsubscribe = firebaseDb.collection('configuracion').doc('recomendado_dia').onSnapshot((doc) => {
         recomendadoOverride = doc.exists ? doc.data() : null;
         if (_promoProductsReady) updatePromoModalContent();
-    });
+    }, (err) => { console.warn('[ROAL] recomendado_dia listener error:', err.code || err.message); });
 
     firebaseDb.collection('promociones').onSnapshot((snap) => {
         _promosData = snap.docs
@@ -9344,7 +9356,7 @@ async function renderPublicFeaturedFromAdmin() {
             .filter((p) => p.activo !== false)
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         renderExtraPromoCards();
-    });
+    }, (err) => { console.warn('[ROAL] promociones listener error:', err.code || err.message); });
 
     firebaseDb.collection('combos_especiales').onSnapshot((snap) => {
         _combosEspecialesData = snap.docs
@@ -9352,7 +9364,7 @@ async function renderPublicFeaturedFromAdmin() {
             .filter((c) => c.activo !== false)
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         renderCombosEspeciales();
-    });
+    }, (err) => { console.warn('[ROAL] combos_especiales listener error:', err.code || err.message); });
 
     firebaseDb.collection('promos_2x1').onSnapshot((snap) => {
         _promos2x1Data = snap.docs
@@ -9360,7 +9372,7 @@ async function renderPublicFeaturedFromAdmin() {
             .filter((p) => p.activo !== false)
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         render2x1Cards();
-    });
+    }, (err) => { console.warn('[ROAL] promos_2x1 listener error:', err.code || err.message); });
 }
 
 function buildDynamicWhatsAppUrl(sectionName) {
@@ -10880,6 +10892,7 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
 }
 
 function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig, baseOptions, replaceItemKey = null) {
+    document.getElementById('pubBebModal')?.remove();
     const beb = _latestBebidas.find((b) => b.id === bebidaConfig.bebida_ref_id);
     const pres = beb?.presentaciones?.find((p) => p.id === bebidaConfig.bebida_pres_id);
     const saboresDisp = pres?.sabores || [];
@@ -10895,6 +10908,7 @@ function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig
     let selectedSabores = new Array(cant).fill(null);
 
     const overlay = document.createElement('div');
+    overlay.id = 'pubBebModal';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9800;display:flex;align-items:center;justify-content:center;background:rgba(30,20,10,0.96);padding:16px;';
 
     const card = document.createElement('div');
