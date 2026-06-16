@@ -535,7 +535,7 @@ let ordersRealtimeTimer = null;
 let _liveReloadTimer = null;
 let _posTicketsRenderTimer = null;
 let clipboardToastTimer = null;
-let activeMobileOrdersLane = 'pedidos';
+let activeMobileOrdersLane = '';
 let adminTitleBlinkTimer = null;
 let adminTitleBlinkState = false;
 const adminBaseTitle = document.title || 'ROAL BURGER | Admin';
@@ -654,9 +654,8 @@ function isMobileAdminViewport() {
 }
 
 function applyMobileOrdersLane() {
-    const nextLane = ['unread', 'pedidos', 'mesa'].includes(activeMobileOrdersLane)
-        ? activeMobileOrdersLane
-        : 'pedidos';
+    const validLanes = ['unread', 'mesa', 'domicilios', 'recoger'];
+    const nextLane = validLanes.includes(activeMobileOrdersLane) ? activeMobileOrdersLane : '';
 
     document.querySelectorAll('.orders-lane[data-mobile-lane]').forEach((lane) => {
         const laneKey = String(lane.getAttribute('data-mobile-lane') || '').trim();
@@ -664,13 +663,12 @@ function applyMobileOrdersLane() {
             lane.classList.remove('is-mobile-active');
             return;
         }
-
-        lane.classList.toggle('is-mobile-active', laneKey === nextLane);
+        lane.classList.toggle('is-mobile-active', nextLane !== '' && laneKey === nextLane);
     });
 
     document.querySelectorAll('[data-mobile-orders-tab]').forEach((tab) => {
         const tabKey = String(tab.getAttribute('data-mobile-orders-tab') || '').trim();
-        const isActive = tabKey === nextLane;
+        const isActive = nextLane !== '' && tabKey === nextLane;
         tab.classList.toggle('active', isActive);
         tab.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
@@ -965,7 +963,7 @@ function announceNewOrders(orders) {
     }
 
     if (isMobileAdminViewport()) {
-        activeMobileOrdersLane = 'pedidos';
+        activeMobileOrdersLane = 'domicilios';
     }
 
     // Vibración — funciona aunque la pantalla esté apagada en Android
@@ -13920,7 +13918,8 @@ if (ordersMobileTabs) {
             return;
         }
 
-        activeMobileOrdersLane = String(tab.dataset.mobileOrdersTab || 'pedidos').trim() || 'pedidos';
+        const tapped = String(tab.dataset.mobileOrdersTab || '').trim();
+        activeMobileOrdersLane = activeMobileOrdersLane === tapped ? '' : tapped;
         applyMobileOrdersLane();
     });
 }

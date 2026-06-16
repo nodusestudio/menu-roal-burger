@@ -6294,7 +6294,7 @@
         }
 
         .orders-workspace {
-            grid-template-columns: 1fr 1fr 2fr;
+            grid-template-columns: 1fr 1fr 1fr 2fr;
             gap: 12px;
             align-items: start;
         }
@@ -9055,20 +9055,26 @@
                 -webkit-backdrop-filter: blur(14px) !important;
                 backdrop-filter: blur(14px) !important;
                 margin: 0 -10px 0 !important;
-                padding: 7px 10px !important;
+                padding: 5px 8px !important;
                 border-bottom: 1px solid rgba(255,255,255,0.08);
-                grid-template-columns: 1fr 1fr !important;
-                gap: 8px !important;
+                grid-template-columns: repeat(3, 1fr) !important;
+                gap: 5px !important;
             }
             .orders-mobile-tab {
-                min-height: 48px !important;
-                border-radius: 12px !important;
-                font-size: 0.84rem !important;
+                min-height: 32px !important;
+                border-radius: 8px !important;
+                font-size: 0.7rem !important;
                 font-weight: 700 !important;
-                letter-spacing: 0.8px !important;
+                letter-spacing: 0.6px !important;
+                padding: 0 4px !important;
             }
-            .orders-mobile-tab.active { box-shadow: 0 4px 14px rgba(255,123,69,0.3) !important; }
-            .orders-lanes { margin-top: 10px; min-height: 52vh; }
+            .orders-mobile-tab.active {
+                background: rgba(255,123,69,0.18) !important;
+                border-color: rgba(255,123,69,0.5) !important;
+                color: #ff7b45 !important;
+                box-shadow: 0 2px 8px rgba(255,123,69,0.2) !important;
+            }
+            .orders-lanes { margin-top: 6px; min-height: 52vh; }
 
             /* 5. Kanban cards más touch-friendly */
             .kanban-order-card {
@@ -11565,27 +11571,25 @@
                         <div class="orders-workspace">
                             <div class="orders-mobile-tabs" id="ordersMobileTabs" aria-label="Cambiar vista de pedidos en movil">
                                 <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="unread" hidden style="display:none!important">Por Confirmar</button>
-                                <button type="button" class="orders-mobile-tab active" data-mobile-orders-tab="pedidos">Pedidos</button>
-                                <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="mesa">Mesas</button>
+                                <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="mesa">Mesa</button>
+                                <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="domicilios">Domicilios</button>
+                                <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="recoger">Recoger</button>
                             </div>
                             <div class="orders-lanes" id="ordersBoard">
                                 <!-- columna POR CONFIRMAR reemplazada por #unreadTray en toolbar -->
-                                <section class="orders-lane orders-lane--split is-mobile-active" data-mobile-lane="pedidos">
-                                    <div class="orders-sublane">
-                                        <div class="orders-lane-header">
-                                            <strong class="orders-lane-title">Domicilios</strong>
-                                            <span class="kanban-count" id="ordersCountDelivery">0</span>
-                                        </div>
-                                        <div class="kanban-list" id="ordersColumnDelivery"></div>
+                                <section class="orders-lane" data-mobile-lane="domicilios">
+                                    <div class="orders-lane-header">
+                                        <strong class="orders-lane-title">Domicilios</strong>
+                                        <span class="kanban-count" id="ordersCountDelivery">0</span>
                                     </div>
-                                    <div class="orders-sublane-divider"></div>
-                                    <div class="orders-sublane">
-                                        <div class="orders-lane-header">
-                                            <strong class="orders-lane-title">Para recoger</strong>
-                                            <span class="kanban-count" id="ordersCountTakeaway">0</span>
-                                        </div>
-                                        <div class="kanban-list" id="ordersColumnTakeaway"></div>
+                                    <div class="kanban-list" id="ordersColumnDelivery"></div>
+                                </section>
+                                <section class="orders-lane" data-mobile-lane="recoger">
+                                    <div class="orders-lane-header">
+                                        <strong class="orders-lane-title">Para recoger</strong>
+                                        <span class="kanban-count" id="ordersCountTakeaway">0</span>
                                     </div>
+                                    <div class="kanban-list" id="ordersColumnTakeaway"></div>
                                 </section>
                                 <section class="orders-lane" data-mobile-lane="mesa">
                                     <div class="orders-lane-header">
@@ -13121,7 +13125,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616q"></script>
+    <script src="admin.js?v=20260616r"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
