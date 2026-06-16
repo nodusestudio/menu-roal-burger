@@ -475,19 +475,22 @@ function subscribePosTickets() {
                     posTicketConfig = null;
                 }
             }
-            renderPosTicketsBadge();
-            _ptsMarkOccupiedMesas();
-            const ticketsScreen = document.getElementById('posScreenTickets');
-            if (ticketsScreen && !ticketsScreen.hidden) renderPosTicketsList();
-            const modal = document.getElementById('internalOrderModal');
-            if (modal?.classList.contains('is-open')) {
-                const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
-                const labelEl = document.getElementById('posActiveTicketLabel');
-                if (labelEl && activeTicket) labelEl.textContent = activeTicket.label;
-                renderPosOrderItems();
-                renderPosTotals();
-                renderPosBottomBar();
-            }
+            clearTimeout(_posTicketsRenderTimer);
+            _posTicketsRenderTimer = setTimeout(() => {
+                renderPosTicketsBadge();
+                _ptsMarkOccupiedMesas();
+                const ticketsScreen = document.getElementById('posScreenTickets');
+                if (ticketsScreen && !ticketsScreen.hidden) renderPosTicketsList();
+                const modal = document.getElementById('internalOrderModal');
+                if (modal?.classList.contains('is-open')) {
+                    const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
+                    const labelEl = document.getElementById('posActiveTicketLabel');
+                    if (labelEl && activeTicket) labelEl.textContent = activeTicket.label;
+                    renderPosOrderItems();
+                    renderPosTotals();
+                    renderPosBottomBar();
+                }
+            }, 80);
         }, (err) => {
             console.error('[POS] Error en listener pos_tickets:', err);
         });
@@ -529,6 +532,8 @@ let _recomendadoSelectedProductId = null;
 const _processedAccordionExpanded = new Set();
 let previewRefreshTimer = null;
 let ordersRealtimeTimer = null;
+let _liveReloadTimer = null;
+let _posTicketsRenderTimer = null;
 let clipboardToastTimer = null;
 let activeMobileOrdersLane = 'pedidos';
 let adminTitleBlinkTimer = null;
@@ -5668,46 +5673,16 @@ function _refreshTicketActionBar() {
     if (changeTypeBtn) changeTypeBtn.disabled = n !== 1;
 }
 
-function renderPosTicketsList() {
-    const list = document.getElementById('posTicketsList');
-    if (!list) return;
-    // Solo mostrar tickets con items — los tickets vacíos (en edición) no aparecen en la lista
-    const visibleTickets = posTickets.filter((t) => t.items?.length > 0);
-    if (!visibleTickets.length) {
-        list.innerHTML = '<p style="text-align:center;color:#b8c8e8;padding:32px 16px;font-size:0.95rem;">Sin tickets guardados por el momento</p>';
-        _posSelectedTicketIds.clear();
-        _refreshTicketActionBar();
-        return;
-    }
-    list.innerHTML = visibleTickets.map((ticket) => {
-        const subtotal = ticket.items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-        const itemCount = ticket.items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
-        const isActive = ticket.id === posActiveTicketId;
-        const isSelected = _posSelectedTicketIds.has(ticket.id);
-        const typeLabels = { mesa: '&#9632; Mesa', retiro: '&#8599; Recoger', domicilio: '&#8962; Domicilio' };
-        const typeBadge = ticket.orderType ? `<span class="pos-ticket-type-badge">${typeLabels[ticket.orderType] || ticket.orderType}</span>` : '';
-        const classes = ['pos-ticket-item', isActive ? 'active-ticket' : '', isSelected ? 'selected-ticket' : ''].filter(Boolean).join(' ');
-        return `<div class="${classes}" data-ticket-id="${escapeHtml(ticket.id)}">
-            <div class="pos-ticket-check" data-check-id="${escapeHtml(ticket.id)}">&#10003;</div>
-            <div class="pos-ticket-info">
-                <div class="pos-ticket-name">${escapeHtml(ticket.label)}${typeBadge}</div>
-                <div class="pos-ticket-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'}</div>
-            </div>
-            <div class="pos-ticket-total">${formatMoney(subtotal)}</div>
-            <button type="button" class="pos-ticket-edit-inline" data-edit-ticket-id="${escapeHtml(ticket.id)}" title="Editar tipo de pedido">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-            </button>
-            <button type="button" class="pos-ticket-send-inline" data-send-ticket-id="${escapeHtml(ticket.id)}" title="Enviar a recepción">Enviar</button>
-            <button type="button" class="pos-ticket-del-inline" data-del-ticket-id="${escapeHtml(ticket.id)}" title="Eliminar ticket">🗑</button>
-        </div>`;
-    }).join('');
+function _initPosTicketsListDelegation(list) {
+    if (list.dataset.delegationReady) return;
+    list.dataset.delegationReady = '1';
+    list.addEventListener('click', (e) => {
+        const item = e.target.closest('.pos-ticket-item[data-ticket-id]');
+        if (!item) return;
+        const id = item.dataset.ticketId;
 
-    list.querySelectorAll('.pos-ticket-item').forEach((item) => {
-        // Click en el check → seleccionar/deseleccionar
-        const checkEl = item.querySelector('.pos-ticket-check');
-        checkEl?.addEventListener('click', (e) => {
+        if (e.target.closest('.pos-ticket-check')) {
             e.stopPropagation();
-            const id = checkEl.dataset.checkId;
             if (_posSelectedTicketIds.has(id)) {
                 _posSelectedTicketIds.delete(id);
                 item.classList.remove('selected-ticket');
@@ -5716,85 +5691,148 @@ function renderPosTicketsList() {
                 item.classList.add('selected-ticket');
             }
             _refreshTicketActionBar();
-        });
-        // Botón editar inline → cambiar tipo/mesa del ticket
-        const editBtn = item.querySelector('.pos-ticket-edit-inline');
-        editBtn?.addEventListener('click', (e) => {
+            return;
+        }
+        if (e.target.closest('.pos-ticket-edit-inline')) {
             e.stopPropagation();
-            const id = editBtn.dataset.editTicketId;
             switchPosTicket(id);
             openPosTicketSetupModal(true);
-        });
-
-        // Botón enviar inline → pasar directamente a recepción de pedidos
-        const sendBtn = item.querySelector('.pos-ticket-send-inline');
-        sendBtn?.addEventListener('click', async (e) => {
+            return;
+        }
+        if (e.target.closest('.pos-ticket-send-inline')) {
             e.stopPropagation();
-            const id = sendBtn.dataset.sendTicketId;
-            const ticket = posTickets.find((t) => t.id === id);
-            if (!ticket) return;
-            // Guardar items del ticket activo actual antes de cambiar
-            const current = posTickets.find((t) => t.id === posActiveTicketId);
-            if (current) current.items = [...internalOrderItems];
-            // Activar el ticket a enviar
-            posActiveTicketId = id;
-            internalOrderItems = [...(ticket.items || [])];
-            posTicketConfig = ticket.orderType ? {
-                orderType: ticket.orderType,
-                mesaNumber: ticket.mesaNumber || null,
-                customerName: ticket.customerName || '',
-                customerPhone: ticket.customerPhone || '',
-                deliveryAddress: ticket.deliveryAddress || '',
-                deliveryFee: ticket.deliveryFee !== undefined ? ticket.deliveryFee : null
-            } : null;
-            await saveAdminOrderQuick(posTicketConfig || {});
-        });
-
-        // Botón eliminar inline → confirmar y borrar sin necesidad de seleccionar
-        const delBtn = item.querySelector('.pos-ticket-del-inline');
-        delBtn?.addEventListener('click', (e) => {
+            _posTicketSendInline(id);
+            return;
+        }
+        if (e.target.closest('.pos-ticket-del-inline')) {
             e.stopPropagation();
-            const id = delBtn.dataset.delTicketId;
-            if (!confirm('¿Eliminar este ticket?')) return;
-            deletePosTicketFromFirestore(id);
-            posTickets = posTickets.filter((t) => t.id !== id);
-            _posSelectedTicketIds.delete(id);
-            if (!posTickets.find((t) => t.id === posActiveTicketId)) {
-                if (posTickets.length) {
-                    posActiveTicketId = posTickets[0].id;
-                    internalOrderItems = posTickets[0].items;
-                    posTicketConfig = null;
-                } else {
-                    createNewPosTicket();
-                }
+            _posTicketDeleteInline(id);
+            return;
+        }
+        if (_posSelectedTicketIds.size > 0) {
+            if (_posSelectedTicketIds.has(id)) {
+                _posSelectedTicketIds.delete(id);
+                item.classList.remove('selected-ticket');
+            } else {
+                _posSelectedTicketIds.add(id);
+                item.classList.add('selected-ticket');
             }
-            renderPosTicketsList();
-            renderPosTicketsBadge();
-            renderPosCartTicketInfo();
-            renderPosOrderItems();
-            renderPosTotals();
-            renderPosBottomBar();
-        });
-
-        // Click en la tarjeta → abrir ticket (solo si no hay selección activa)
-        item.addEventListener('click', (e) => {
-            if (e.target.closest('.pos-ticket-check') || e.target.closest('.pos-ticket-del-inline') || e.target.closest('.pos-ticket-edit-inline') || e.target.closest('.pos-ticket-send-inline')) return;
-            if (_posSelectedTicketIds.size > 0) {
-                // En modo selección, el click en la tarjeta también selecciona/deselecciona
-                const id = item.dataset.ticketId;
-                if (_posSelectedTicketIds.has(id)) {
-                    _posSelectedTicketIds.delete(id);
-                    item.classList.remove('selected-ticket');
-                } else {
-                    _posSelectedTicketIds.add(id);
-                    item.classList.add('selected-ticket');
-                }
-                _refreshTicketActionBar();
-                return;
-            }
-            switchPosTicket(item.dataset.ticketId);
-        });
+            _refreshTicketActionBar();
+            return;
+        }
+        switchPosTicket(id);
     });
+}
+
+async function _posTicketSendInline(id) {
+    const ticket = posTickets.find((t) => t.id === id);
+    if (!ticket) return;
+    const current = posTickets.find((t) => t.id === posActiveTicketId);
+    if (current) current.items = [...internalOrderItems];
+    posActiveTicketId = id;
+    internalOrderItems = [...(ticket.items || [])];
+    posTicketConfig = ticket.orderType ? {
+        orderType: ticket.orderType,
+        mesaNumber: ticket.mesaNumber || null,
+        customerName: ticket.customerName || '',
+        customerPhone: ticket.customerPhone || '',
+        deliveryAddress: ticket.deliveryAddress || '',
+        deliveryFee: ticket.deliveryFee !== undefined ? ticket.deliveryFee : null
+    } : null;
+    await saveAdminOrderQuick(posTicketConfig || {});
+}
+
+function _posTicketDeleteInline(id) {
+    if (!confirm('¿Eliminar este ticket?')) return;
+    deletePosTicketFromFirestore(id);
+    posTickets = posTickets.filter((t) => t.id !== id);
+    _posSelectedTicketIds.delete(id);
+    if (!posTickets.find((t) => t.id === posActiveTicketId)) {
+        if (posTickets.length) {
+            posActiveTicketId = posTickets[0].id;
+            internalOrderItems = posTickets[0].items;
+            posTicketConfig = null;
+        } else {
+            createNewPosTicket();
+        }
+    }
+    renderPosTicketsList();
+    renderPosTicketsBadge();
+    renderPosCartTicketInfo();
+    renderPosOrderItems();
+    renderPosTotals();
+    renderPosBottomBar();
+}
+
+function renderPosTicketsList() {
+    const list = document.getElementById('posTicketsList');
+    if (!list) return;
+
+    _initPosTicketsListDelegation(list);
+
+    const visibleTickets = posTickets.filter((t) => t.items?.length > 0);
+    if (!visibleTickets.length) {
+        list.innerHTML = '<p style="text-align:center;color:#b8c8e8;padding:32px 16px;font-size:0.95rem;">Sin tickets guardados por el momento</p>';
+        _posSelectedTicketIds.clear();
+        _refreshTicketActionBar();
+        return;
+    }
+
+    const typeLabels = { mesa: '&#9632; Mesa', retiro: '&#8599; Recoger', domicilio: '&#8962; Domicilio' };
+    const presentIds = new Set(visibleTickets.map((t) => t.id));
+
+    // Eliminar elementos que ya no existen
+    Array.from(list.children).forEach((el) => {
+        if (el.dataset.ticketId && !presentIds.has(el.dataset.ticketId)) el.remove();
+    });
+
+    // Actualizar o crear cada ticket en su posición correcta
+    visibleTickets.forEach((ticket, idx) => {
+        const subtotal = ticket.items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+        const itemCount = ticket.items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
+        const isActive = ticket.id === posActiveTicketId;
+        const isSelected = _posSelectedTicketIds.has(ticket.id);
+        const typeBadge = ticket.orderType ? `<span class="pos-ticket-type-badge">${typeLabels[ticket.orderType] || ticket.orderType}</span>` : '';
+        const classes = ['pos-ticket-item', isActive ? 'active-ticket' : '', isSelected ? 'selected-ticket' : ''].filter(Boolean).join(' ');
+
+        let el = null;
+        for (const child of list.children) {
+            if (child.dataset?.ticketId === ticket.id) { el = child; break; }
+        }
+
+        if (!el) {
+            el = document.createElement('div');
+            el.dataset.ticketId = ticket.id;
+            el.innerHTML = `<div class="pos-ticket-check" data-check-id="${escapeHtml(ticket.id)}">&#10003;</div>
+                <div class="pos-ticket-info">
+                    <div class="pos-ticket-name">${escapeHtml(ticket.label)}${typeBadge}</div>
+                    <div class="pos-ticket-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'}</div>
+                </div>
+                <div class="pos-ticket-total">${formatMoney(subtotal)}</div>
+                <button type="button" class="pos-ticket-edit-inline" data-edit-ticket-id="${escapeHtml(ticket.id)}" title="Editar tipo de pedido">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                </button>
+                <button type="button" class="pos-ticket-send-inline" data-send-ticket-id="${escapeHtml(ticket.id)}" title="Enviar a recepción">Enviar</button>
+                <button type="button" class="pos-ticket-del-inline" data-del-ticket-id="${escapeHtml(ticket.id)}" title="Eliminar ticket">🗑</button>`;
+            el.className = classes;
+            const sibling = list.children[idx];
+            if (sibling) list.insertBefore(el, sibling);
+            else list.appendChild(el);
+        } else {
+            // Solo actualizar lo que cambió
+            if (el.className !== classes) el.className = classes;
+            const nameEl = el.querySelector('.pos-ticket-name');
+            if (nameEl) nameEl.innerHTML = escapeHtml(ticket.label) + typeBadge;
+            const metaEl = el.querySelector('.pos-ticket-meta');
+            if (metaEl) metaEl.textContent = `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
+            const totalEl = el.querySelector('.pos-ticket-total');
+            if (totalEl) totalEl.textContent = formatMoney(subtotal);
+            // Corregir posición en el DOM si el orden cambió
+            const expectedSibling = list.children[idx];
+            if (expectedSibling && expectedSibling !== el) list.insertBefore(el, expectedSibling);
+        }
+    });
+
     _refreshTicketActionBar();
 }
 
@@ -10313,6 +10351,14 @@ function queueLivePreviewRefresh() {
     }, 450);
 }
 
+function _scheduleLiveReload() {
+    clearTimeout(_liveReloadTimer);
+    _liveReloadTimer = setTimeout(async () => {
+        await reloadDataAndRender();
+        queueLivePreviewRefresh();
+    }, 250);
+}
+
 function setupLiveFirebaseSync() {
     if (!firebaseDb) {
         return;
@@ -10323,17 +10369,17 @@ function setupLiveFirebaseSync() {
 
     const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION, CLIENTS_COLLECTION, MESSAGES_COLLECTION, SALES_SUMMARY_COLLECTION, SALES_DAY_STATE_COLLECTION, PROMOCIONES_COLLECTION];
     collections.forEach((collectionName) => {
-        const unsubscribe = firebaseDb.collection(collectionName).onSnapshot(() => {
-            reloadDataAndRender();
-            queueLivePreviewRefresh();
-        });
+        const unsubscribe = firebaseDb.collection(collectionName).onSnapshot(
+            _scheduleLiveReload,
+            (err) => console.warn(`[ADMIN] ${collectionName} listener error:`, err.code || err.message)
+        );
         liveSubscriptions.push(unsubscribe);
     });
 
-    const configUnsubscribe = firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).onSnapshot(() => {
-        reloadDataAndRender();
-        queueLivePreviewRefresh();
-    });
+    const configUnsubscribe = firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).onSnapshot(
+        _scheduleLiveReload,
+        (err) => console.warn('[ADMIN] config listener error:', err.code || err.message)
+    );
     liveSubscriptions.push(configUnsubscribe);
 }
 
