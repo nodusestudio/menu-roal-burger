@@ -5452,6 +5452,9 @@ function renderPosUpgradeStep1() {
     const hayBebida = catData && catData.bebidas_pos !== false && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
 
     const extras = _posUpgradePending.extras || [];
+    const yaHayCombo  = extras.some((e) => e.id.startsWith('combo-pack-'));
+    const yaHayBebida = extras.some((e) => e.id.startsWith('bev-'));
+
     const extrasHtml = extras.length ? `
         <div class="pus-section-label">Agregado</div>
         <div class="pus-extras-list">
@@ -5464,21 +5467,17 @@ function renderPosUpgradeStep1() {
         </div>` : '';
 
     const combosDisponibles = combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false);
-    const hayComboMenu = combosDisponibles.length > 0;
+    const hayComboMenu = !yaHayCombo && combosDisponibles.length > 0;
+    const mostrarBebida = !yaHayBebida && hayBebida;
 
     body.innerHTML = `
         <div class="pus-home-btns">
-            ${hayComboMenu ? `<button type="button" class="pus-cat-btn combo"    id="pusGoCombo">🍔 Agregar Combo</button>` : ''}
-            ${hayAcomp    ? `<button type="button" class="pus-cat-btn adicional" id="pusGoAdicional">🥗 Adicionales</button>` : ''}
-            ${hayBebida   ? `<button type="button" class="pus-cat-btn bebida"    id="pusGoBebida">🥤 Solo Bebida</button>` : ''}
+            ${hayComboMenu    ? `<button type="button" class="pus-cat-btn combo"    id="pusGoCombo">🍔 Agregar Combo</button>` : ''}
+            ${hayAcomp        ? `<button type="button" class="pus-cat-btn adicional" id="pusGoAdicional">🥗 Adicionales</button>` : ''}
+            ${mostrarBebida   ? `<button type="button" class="pus-cat-btn bebida"    id="pusGoBebida">🥤 Solo Bebida</button>` : ''}
         </div>
-        <button type="button" class="pus-solo-btn" id="posUpgradeSolo">Sin acompañamiento — solo el producto</button>
         ${extrasHtml}`;
 
-    body.querySelector('#posUpgradeSolo')?.addEventListener('click', () => {
-        _posUpgradePending.extras = [];
-        document.getElementById('posUpgradeAddBtn')?.click();
-    });
     body.querySelector('#pusGoCombo')?.addEventListener('click', () => _renderPosUpgradeCombosPack(combosDisponibles));
     body.querySelector('#pusGoAdicional')?.addEventListener('click', () => _renderPosUpgradeAdicionales());
     body.querySelector('#pusGoBebida')?.addEventListener('click', () => _renderPosUpgradeBebidas());
