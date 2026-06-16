@@ -5463,7 +5463,7 @@ function renderPosUpgradeStep1() {
             </div>`).join('')}
         </div>` : '';
 
-    const combosDisponibles = combosEspecialesState.filter((c) => c.activo !== false && c.combos_pos !== false);
+    const combosDisponibles = combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false);
     const hayComboMenu = combosDisponibles.length > 0;
 
     body.innerHTML = `
@@ -5479,7 +5479,7 @@ function renderPosUpgradeStep1() {
         _posUpgradePending.extras = [];
         document.getElementById('posUpgradeAddBtn')?.click();
     });
-    body.querySelector('#pusGoCombo')?.addEventListener('click', () => _renderPosUpgradeCombosEspeciales(combosDisponibles));
+    body.querySelector('#pusGoCombo')?.addEventListener('click', () => _renderPosUpgradeCombosPack(combosDisponibles));
     body.querySelector('#pusGoAdicional')?.addEventListener('click', () => _renderPosUpgradeAdicionales());
     body.querySelector('#pusGoBebida')?.addEventListener('click', () => _renderPosUpgradeBebidas());
 
@@ -5491,12 +5491,12 @@ function renderPosUpgradeStep1() {
     });
 }
 
-// Combos desde combosEspecialesState (Artículos > Combos)
-function _renderPosUpgradeCombosEspeciales(combos) {
+// Combos de papas+bebida desde combosPackState (Artículos > COMBOS tab)
+function _renderPosUpgradeCombosPack(combos) {
     const body = document.getElementById('posUpgradeBody');
     const titleEl = document.getElementById('posUpgradeTitle');
     if (!body) return;
-    if (titleEl) titleEl.textContent = 'Combos';
+    if (titleEl) titleEl.textContent = 'Agregar Combo';
 
     if (!combos.length) {
         body.innerHTML = `<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">Sin combos activos configurados</p>
@@ -5505,16 +5505,23 @@ function _renderPosUpgradeCombosEspeciales(combos) {
         return;
     }
 
+    const detalle = (c) => {
+        const parts = [];
+        if (c.papas)         parts.push(c.papas);
+        if (c.bebida_nombre) parts.push(c.bebida_nombre);
+        return parts.join(' + ');
+    };
+
     body.innerHTML = `
         <div class="pos-upgrade-options">
             ${combos.map((c) => {
-                const precio = Number(c.precio_combo || 0);
-                const titulo = String(c.titulo || c.nombre || 'Combo');
-                const prods  = (c.productos || []).map((p) => p.nombre).join(' + ');
-                return `<button type="button" class="pos-upgrade-opt" data-combo-id="${escapeHtml(c.id)}">
+                const precio  = Number(c.valor || 0);
+                const nombre  = String(c.nombre || 'Combo');
+                const desc    = detalle(c);
+                return `<button type="button" class="pos-upgrade-opt" data-pack-id="${c.id}">
                     <div>
-                        <div class="pos-upgrade-opt-name">${escapeHtml(titulo)}</div>
-                        ${prods ? `<div class="pos-upgrade-opt-detail">${escapeHtml(prods)}</div>` : ''}
+                        <div class="pos-upgrade-opt-name">${nombre}</div>
+                        ${desc ? `<div class="pos-upgrade-opt-detail">${desc}</div>` : ''}
                     </div>
                     <span class="pos-upgrade-opt-price">${precio > 0 ? '+' + formatMoney(precio) : 'incluido'}</span>
                 </button>`;
@@ -5522,17 +5529,51 @@ function _renderPosUpgradeCombosEspeciales(combos) {
         </div>
         <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
 
-    body.querySelectorAll('.pos-upgrade-opt[data-combo-id]').forEach((btn) => {
+    body.querySelectorAll('.pos-upgrade-opt[data-pack-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
-            const c = combos.find((x) => x.id === btn.dataset.comboId);
+            const c = combos.find((x) => x.id === btn.dataset.packId);
             if (!c) return;
-            const titulo = String(c.titulo || c.nombre || 'Combo');
-            const precio = Number(c.precio_combo || 0);
-            _posUpgradePending.extras.push({ id: `combo-esp-${c.id}`, name: titulo, price: precio });
-            renderPosUpgradeStep1();
+            const sabores = Array.isArray(c.bebida_sabores) ? c.bebida_sabores.filter(Boolean) : [];
+            if (sabores.length > 1) {
+                _renderPosUpgradePackSabor(c, sabores);
+            } else {
+                const nombre = String(c.nombre || 'Combo');
+                const precio = Number(c.valor || 0);
+                _posUpgradePending.extras.push({ id: `combo-pack-${c.id}`, name: nombre, price: precio });
+                renderPosUpgradeStep1();
+            }
         });
     });
     body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
+}
+
+function _renderPosUpgradePackSabor(combo, sabores) {
+    const body = document.getElementById('posUpgradeBody');
+    const titleEl = document.getElementById('posUpgradeTitle');
+    if (!body) return;
+    if (titleEl) titleEl.textContent = 'Elige sabor de bebida';
+
+    body.innerHTML = `
+        <div class="pos-upgrade-options">
+            ${sabores.map((s) => `
+            <button type="button" class="pos-upgrade-opt" data-sabor="${s}">
+                <div><div class="pos-upgrade-opt-name">${s}</div></div>
+            </button>`).join('')}
+        </div>
+        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
+
+    body.querySelectorAll('.pos-upgrade-opt[data-sabor]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const nombre = `${combo.nombre} (${btn.dataset.sabor})`;
+            const precio = Number(combo.valor || 0);
+            _posUpgradePending.extras.push({ id: `combo-pack-${combo.id}-${btn.dataset.sabor}`, name: nombre, price: precio });
+            renderPosUpgradeStep1();
+        });
+    });
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => {
+        const activos = combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false);
+        _renderPosUpgradeCombosPack(activos);
+    });
 }
 
 // Flujo Combo legacy (ya no usado, se mantiene por compatibilidad)
