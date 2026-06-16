@@ -11538,8 +11538,8 @@ function render2x1TabPanel() {
 
     container.querySelectorAll('[data-2x1-action]').forEach((btn) => {
         btn.addEventListener('click', async () => {
-            const action = btn.dataset['2x1Action'];
-            const id = btn.dataset['2x1Id'];
+            const action = btn.getAttribute('data-2x1-action');
+            const id = btn.getAttribute('data-2x1-id');
             if (action === 'edit') {
                 _promo2x1EditingId = id;
                 const p = promos2x1State.find((x) => x.id === id);
@@ -11550,14 +11550,15 @@ function render2x1TabPanel() {
             } else if (action === 'toggle') {
                 const p = promos2x1State.find((x) => x.id === id);
                 if (p) {
-                    const newActivo = !p.activo;
+                    const currentActivo = p.activo !== false; // undefined/true → activo
+                    const newActivo = !currentActivo;
                     btn.disabled = true;
                     try {
                         await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(id).update({ activo: newActivo, updated_at: firestoreNow() });
                         p.activo = newActivo;
                         render2x1TabPanel();
-                        showNotice(newActivo ? 'Promo 2×1 activada.' : 'Promo 2×1 pausada.', 'ok');
-                    } catch (_) {
+                        showNotice(newActivo ? '✅ Promo 2×1 activada.' : '⏸ Promo 2×1 pausada.', 'ok');
+                    } catch (err) {
                         showNotice('No se pudo actualizar la promo.', 'error');
                         btn.disabled = false;
                     }
