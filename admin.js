@@ -962,7 +962,7 @@ function announceNewOrders(orders) {
         return;
     }
 
-    if (isMobileAdminViewport()) {
+    if (isMobileAdminViewport() && !activeMobileOrdersLane) {
         activeMobileOrdersLane = 'domicilios';
     }
 
