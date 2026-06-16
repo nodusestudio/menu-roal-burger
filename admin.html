@@ -1533,6 +1533,14 @@
             color: var(--admin-accent);
         }
 
+        .promo-admin-card.is-paused {
+            opacity: 0.5;
+            filter: grayscale(0.6);
+        }
+        .promo-admin-card.is-paused .promo-admin-card__badge {
+            background: #555 !important;
+        }
+
         .promo-admin-form {
             padding: 16px;
             border-radius: 14px;
@@ -13233,7 +13241,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616j"></script>
+    <script src="admin.js?v=20260616k"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>

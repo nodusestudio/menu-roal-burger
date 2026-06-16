@@ -11549,7 +11549,19 @@ function render2x1TabPanel() {
                 deleteAdminPromo2x1(id);
             } else if (action === 'toggle') {
                 const p = promos2x1State.find((x) => x.id === id);
-                if (p) await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(id).update({ activo: !p.activo, updated_at: firestoreNow() });
+                if (p) {
+                    const newActivo = !p.activo;
+                    btn.disabled = true;
+                    try {
+                        await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(id).update({ activo: newActivo, updated_at: firestoreNow() });
+                        p.activo = newActivo;
+                        render2x1TabPanel();
+                        showNotice(newActivo ? 'Promo 2×1 activada.' : 'Promo 2×1 pausada.', 'ok');
+                    } catch (_) {
+                        showNotice('No se pudo actualizar la promo.', 'error');
+                        btn.disabled = false;
+                    }
+                }
             }
         });
     });
@@ -11561,7 +11573,7 @@ function _build2x1AdminCardHTML(promo) {
     const nombre = promo.producto_nombre || 'Sin producto';
     const activo = promo.activo !== false;
     return `
-        <div class="promo-admin-card">
+        <div class="promo-admin-card${activo ? '' : ' is-paused'}">
             <img class="promo-admin-card__img" src="${escapeHtml(img)}" alt="${escapeHtml(nombre)}" onerror="this.src='logo.png'">
             <div class="promo-admin-card__info">
                 <span class="promo-admin-card__badge" style="background:#1a7a42;">2×1</span>
