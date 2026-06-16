@@ -8377,9 +8377,9 @@
                 font-size: 1.1rem;
             }
 
-            /* Contenido: bajar para no quedar bajo la topbar */
+            /* Contenido: mínimo margen sobre la topbar */
             .admin-page {
-                padding: 60px 14px 80px;
+                padding: 50px 10px 80px;
             }
 
             .admin-form,
@@ -8876,62 +8876,72 @@
                MOBILE POS-STYLE — Recepción de Pedidos optimizada
             ═══════════════════════════════════════════════════════ */
 
-            /* 1. Toolbar — 2 filas: buscador arriba, botones abajo */
+            /* 1. Toolbar — una sola fila compacta pegada a la topbar */
             [data-tab-panel="pedidos"] .section-toolbar {
-                flex-wrap: wrap !important;
-                row-gap: 6px;
-                column-gap: 8px;
-                padding: 8px 10px;
-                margin-bottom: 8px;
-                align-items: center;
-                overflow: hidden;
+                display: flex !important;
+                flex-wrap: nowrap !important;
+                gap: 5px !important;
+                padding: 5px 8px !important;
+                margin-bottom: 4px !important;
+                align-items: center !important;
+                background: rgba(8,11,22,0.6) !important;
+                border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+                position: sticky !important;
+                top: 48px !important;
+                z-index: 10 !important;
+                -webkit-backdrop-filter: blur(12px);
+                backdrop-filter: blur(12px);
             }
-            /* Override width:100% global — buscador ocupa fila completa */
+            /* Buscador: ocupa el espacio restante */
             [data-tab-panel="pedidos"] .section-toolbar .admin-domicilio-searcher {
-                flex: 1 1 100% !important;
-                width: 100% !important;
-                min-width: 0 !important;
-                order: 0;
-            }
-            /* Botones: auto width, se alinean en fila 2 a la derecha */
-            [data-tab-panel="pedidos"] .section-toolbar > *:not(.admin-domicilio-searcher) {
+                flex: 1 1 auto !important;
                 width: auto !important;
-                flex-shrink: 0;
-                margin-left: auto;
-            }
-            [data-tab-panel="pedidos"] .section-toolbar > *:not(.admin-domicilio-searcher) + *:not(.admin-domicilio-searcher) {
-                margin-left: 0;
+                min-width: 0 !important;
             }
             [data-tab-panel="pedidos"] .admin-domicilio-input {
-                font-size: 0.8rem;
-                padding: 8px 10px;
+                font-size: 0.75rem !important;
+                padding: 5px 8px !important;
+                height: 32px !important;
+                border-radius: 7px !important;
             }
-            /* Actualizar pedidos: icono ↺ */
+            /* Botones: auto, no se expanden */
+            [data-tab-panel="pedidos"] .section-toolbar > *:not(.admin-domicilio-searcher) {
+                width: auto !important;
+                flex-shrink: 0 !important;
+                margin-left: 0 !important;
+            }
+            /* Actualizar: solo ícono ↺ */
             [data-tab-panel="pedidos"] [data-section-save="pedidos"] {
-                padding: 8px 14px !important;
+                padding: 0 !important;
+                width: 32px !important;
+                height: 32px !important;
                 font-size: 0 !important;
-                white-space: nowrap;
-                min-width: 38px;
-                text-align: center;
-                border-radius: 8px;
-                order: 1;
+                border-radius: 7px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
             }
             [data-tab-panel="pedidos"] [data-section-save="pedidos"]::before {
-                content: '↺ Actualizar';
-                font-size: 0.72rem;
-                font-weight: 700;
-                display: inline-block;
-                letter-spacing: 0.3px;
+                content: '↺';
+                font-size: 1.1rem !important;
+                font-weight: 900;
+                display: block;
             }
-            /* Cerrar Caja: compacto, solo en fila 2 */
+            /* Cerrar Caja: compacto, solo ícono */
             #cerrarCajaBtnPos {
-                padding: 7px 12px !important;
-                font-size: 0.72rem !important;
-                letter-spacing: 0 !important;
-                white-space: nowrap;
-                flex-shrink: 0 !important;
-                border-radius: 8px !important;
-                order: 2;
+                padding: 0 !important;
+                width: 32px !important;
+                height: 32px !important;
+                font-size: 0 !important;
+                border-radius: 7px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+            #cerrarCajaBtnPos::before {
+                content: '🔒';
+                font-size: 0.95rem;
+                display: block;
             }
 
             /* 2. Banner jornada: compacto, una fila */
@@ -13040,7 +13050,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616f"></script>
+    <script src="admin.js?v=20260616g"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
