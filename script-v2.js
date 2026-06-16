@@ -11233,13 +11233,42 @@ function _renderPublicUpgradeCombos() {
     body.querySelectorAll('[data-combo-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const c = items.find((x) => x.id === btn.dataset.comboId);
-            if (c && _publicUpgradePending) {
+            if (!c || !_publicUpgradePending) return;
+            const sabores = Array.isArray(c.bebida_sabores) ? c.bebida_sabores.filter(Boolean) : [];
+            if (sabores.length > 1) {
+                _renderPublicUpgradeComboSabor(c, sabores);
+            } else {
                 _publicUpgradePending.extras.push({ id: 'combo_' + c.id, name: `Combo: ${c.nombre}`, price: c.valor });
+                renderPublicUpgradeStep1();
             }
-            renderPublicUpgradeStep1();
         });
     });
     body.querySelector('#pubUpgradeBack')?.addEventListener('click', renderPublicUpgradeStep1);
+}
+
+function _renderPublicUpgradeComboSabor(combo, sabores) {
+    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
+    if (!body || !_publicUpgradePending) return;
+    if (titleEl) titleEl.textContent = 'Elige el sabor de la bebida';
+
+    body.innerHTML = `
+        <div class="pub-upgrade-opts">
+            ${sabores.map((s) => `
+            <button type="button" class="pub-upgrade-opt pub-upgrade-opt--combo" data-sabor="${s}">
+                <span class="pub-upgrade-opt-name">${s}</span>
+            </button>`).join('')}
+        </div>
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
+
+    body.querySelectorAll('[data-sabor]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (!_publicUpgradePending) return;
+            const nombre = `Combo: ${combo.nombre} (${btn.dataset.sabor})`;
+            _publicUpgradePending.extras.push({ id: `combo_${combo.id}_${btn.dataset.sabor}`, name: nombre, price: combo.valor });
+            renderPublicUpgradeStep1();
+        });
+    });
+    body.querySelector('#pubUpgradeBack')?.addEventListener('click', _renderPublicUpgradeCombos);
 }
 
 function _renderPublicUpgradeAdicionales() {
