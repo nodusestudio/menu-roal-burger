@@ -15812,6 +15812,7 @@ let _gastosCajaState = [];
 let _gastoSelectedMethod = null;
 let _gastoCategoriaId = null;
 let _gastoSubcategoria = null;
+let _gastoFromHistorial = false;
 
 async function loadGastosCaja() {
     try {
@@ -15932,6 +15933,7 @@ function closeGastoModal() {
     _gastoSelectedMethod = null;
     _gastoCategoriaId = null;
     _gastoSubcategoria = null;
+    _gastoFromHistorial = false;
 }
 
 document.getElementById('gastosBtn')?.addEventListener('click', openGastoModal);
@@ -15991,8 +15993,13 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
         };
         await saveGasto(gasto);
         _gastosCajaState = [gasto, ..._gastosCajaState];
+        const fromHistorial = _gastoFromHistorial;
         closeGastoModal();
-        renderCajaDiaria();
+        if (fromHistorial) {
+            await renderLibroCierres();
+        } else {
+            renderCajaDiaria();
+        }
         showNotice('Gasto registrado.', 'ok');
     } catch (err) {
         showNotice('Error al registrar gasto: ' + (err.message || 'error'), 'error');
@@ -16944,9 +16951,8 @@ async function renderLibroCierres() {
                 ${methodCells}
                 ${egresosCell}
                 <td style="color:${gtColor};font-weight:700;">${gt < 0 ? '−' : ''}${formatMoney(Math.abs(gt))}</td>
-                <td style="text-align:center;white-space:nowrap;display:flex;gap:5px;justify-content:center;align-items:center;">
+                <td style="text-align:center;white-space:nowrap;">
                     <button class="btn-ver-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:6px;cursor:pointer;font-weight:600;">👁 Ver</button>
-                    <button class="btn-gasto-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(252,165,165,0.12);color:#fca5a5;border:1px solid rgba(252,165,165,0.3);border-radius:6px;cursor:pointer;font-weight:600;">💸 Gastos</button>
                 </td>
             </tr>`;
         }).join('');
@@ -16976,6 +16982,10 @@ async function renderLibroCierres() {
 document.getElementById('refreshLibroCierresBtn')?.addEventListener('click', renderLibroCierres);
 document.getElementById('cierresDateFrom')?.addEventListener('change', renderLibroCierres);
 document.getElementById('cierresDateTo')?.addEventListener('change', renderLibroCierres);
+document.getElementById('gastosHistorialBtn')?.addEventListener('click', () => {
+    _gastoFromHistorial = true;
+    openGastoModal();
+});
 document.getElementById('cierresFilterClearBtn')?.addEventListener('click', () => {
     const from = document.getElementById('cierresDateFrom');
     const to   = document.getElementById('cierresDateTo');
