@@ -1714,6 +1714,20 @@ function normalizeOrderItem(raw, index = 0) {
     };
 }
 
+function extractAddressString(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'object') {
+        // Campos comunes en objetos de dirección del menú público
+        const str = value.address || value.street || value.direccion || value.text
+            || value.formatted || value.fullAddress || value.label || value.description || '';
+        if (str) return String(str).trim();
+        // Último recurso: unir todos los valores string del objeto
+        return Object.values(value).filter(v => typeof v === 'string' && v.trim()).join(', ').trim();
+    }
+    return String(value).trim();
+}
+
 function normalizeOrder(raw) {
     const items = Array.isArray(raw.items) ? raw.items.map((item, index) => normalizeOrderItem(item, index)) : [];
     const subtotal = Number(raw.subtotal ?? 0);
@@ -1740,7 +1754,7 @@ function normalizeOrder(raw) {
     }
 
     const rawOrderType = String(raw.orderType || raw.tipo || raw.fulfillmentType || '').trim().toLowerCase();
-    const address = String(raw.deliveryAddress || '').trim();
+    const address = extractAddressString(raw.deliveryAddress || raw.customerAddress || '');
     const isMesa = rawOrderType === 'mesa';
     const isTakeaway = !isMesa && ['retiro', 'llevar', 'local', 'recoger', 'pickup', 'takeaway'].some((value) => rawOrderType.includes(value));
     const isDelivery = !isMesa && ['domicilio', 'delivery', 'entrega', 'casa', 'home'].some((value) => rawOrderType.includes(value));
@@ -1754,8 +1768,8 @@ function normalizeOrder(raw) {
         customerName: String(raw.customerName || '').trim(),
         customerPhone: String(raw.customerPhone || '').trim(),
         customerPhoneDigits: String(raw.customerPhoneDigits || '').trim(),
-        customerAddress: String(raw.customerAddress || '').trim(),
-        profileAddress: String(raw.profileAddress || '').trim(),
+        customerAddress: extractAddressString(raw.customerAddress || ''),
+        profileAddress: extractAddressString(raw.profileAddress || ''),
         paymentMethod: String(raw.paymentMethod || '').trim().toLowerCase(),
         paymentSubMethod: String(raw.paymentSubMethod || '').trim().toLowerCase(),
         cashChangeRequired: raw.cashChangeRequired === true,
