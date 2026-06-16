@@ -15988,6 +15988,7 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
 
     try {
         const gastoId = `gasto_${Date.now()}`;
+        const fromHistorial = _gastoFromHistorial;
         const gasto = {
             id: gastoId,
             categoria: _gastoCategoriaId || 'otros',
@@ -15997,11 +15998,11 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             monto,
             paymentMethod: _gastoSelectedMethod,
             registradoAt: Date.now(),
-            cajaAperturaAt: cajaAperturaAt || 0,
+            cajaAperturaAt: fromHistorial ? null : (cajaAperturaAt || 0),
+            tipo: fromHistorial ? 'externo' : 'caja',
         };
         await saveGasto(gasto);
         _gastosCajaState = [gasto, ..._gastosCajaState];
-        const fromHistorial = _gastoFromHistorial;
         closeGastoModal();
         if (fromHistorial) {
             await renderLibroCierres();
@@ -16895,6 +16896,17 @@ async function renderLibroCierres() {
     try {
         let cierres = await loadCierresCaja();
 
+        // Cargar gastos externos (registrados desde el historial)
+        let gastosExternos = [];
+        try {
+            const gSnap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
+                .where('tipo', '==', 'externo')
+                .orderBy('registradoAt', 'desc')
+                .limit(200)
+                .get();
+            gastosExternos = gSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        } catch (_) { gastosExternos = []; }
+
         // Filtrar por rango de fechas si hay alguno activo
         const { from, to } = _getCierresFilterRange();
         if (from || to) {
@@ -16906,10 +16918,18 @@ async function renderLibroCierres() {
                 if (to   && d > to)   return false;
                 return true;
             });
+            gastosExternos = gastosExternos.filter((g) => {
+                const tsMs = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+                if (!tsMs) return false;
+                const d = new Date(tsMs);
+                if (from && d < from) return false;
+                if (to   && d > to)   return false;
+                return true;
+            });
         }
-        if (!cierres.length) {
+        if (!cierres.length && !gastosExternos.length) {
             const emptyMsg = (from || to)
-                ? 'Sin cierres en el rango de fechas seleccionado.'
+                ? 'Sin movimientos en el rango de fechas seleccionado.'
                 : 'No hay cierres de caja registrados.';
             tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">${emptyMsg}</td></tr>`;
             if (footEl) footEl.innerHTML = '';
@@ -16923,6 +16943,36 @@ async function renderLibroCierres() {
         methodKeys.forEach((k) => { sumTotals[k] = 0; });
         let grandSumTotal = 0;
         let grandSumEgresos = 0;
+
+        // Filas de gastos externos
+        const gastosExternosRows = gastosExternos.map((g) => {
+            const tsMs = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            const d = tsMs ? new Date(tsMs) : null;
+            const diaStr = d ? DIAS[d.getDay()] : '—';
+            const fechaStr = d
+                ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : '—';
+            const amt = Number(g.monto || 0);
+            grandSumEgresos += amt;
+            grandSumTotal -= amt;
+            const method = g.paymentMethod || '';
+            const methodCells = methodKeys.map((k) => {
+                if (k === method) {
+                    sumTotals[k] -= amt;
+                    return `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(amt)}</td>`;
+                }
+                return '<td style="color:var(--admin-muted);">—</td>';
+            }).join('');
+            const desc = [g.subcategoria, g.descripcion].filter(Boolean).join(' · ') || g.categoria || 'Gasto externo';
+            return `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.4);">
+                <td class="col-left" style="font-weight:600;">${escapeHtml(diaStr)}</td>
+                <td class="col-left" style="color:#fca5a5;font-size:0.82rem;">💸 ${escapeHtml(fechaStr)}<br><span style="color:var(--admin-muted);font-size:0.72rem;">${escapeHtml(desc)}</span></td>
+                ${methodCells}
+                <td style="color:#fca5a5;font-weight:600;">−${formatMoney(amt)}</td>
+                <td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>
+                <td></td>
+            </tr>`;
+        }).join('');
 
         tbody.innerHTML = cierres.map((c) => {
             const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
@@ -16963,7 +17013,7 @@ async function renderLibroCierres() {
                     <button class="btn-ver-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:6px;cursor:pointer;font-weight:600;">👁 Ver</button>
                 </td>
             </tr>`;
-        }).join('');
+        }).join('') + gastosExternosRows;
 
         // Fila de totales
         if (footEl) {
