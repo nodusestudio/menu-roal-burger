@@ -8951,22 +8951,69 @@
                 display: block;
             }
 
-            /* 2. Banner jornada: compacto, una fila */
+            /* 2. Banner jornada: 2 filas compactas */
             .sales-day-banner {
-                padding: 10px 14px !important;
-                flex-wrap: nowrap !important;
-                gap: 8px !important;
-                align-items: center !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                padding: 8px 12px !important;
+                gap: 6px !important;
                 margin-bottom: 0 !important;
                 border-radius: 12px !important;
             }
-            .sales-day-banner-copy { gap: 1px !important; flex-shrink: 1; min-width: 0; }
-            .sales-day-banner-copy strong { font-size: 0.78rem !important; white-space: nowrap; }
-            .sales-day-banner-copy span  { font-size: 0.64rem !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
-            .sales-day-banner-metrics { gap: 6px !important; flex-wrap: nowrap !important; flex-shrink: 0; align-items: center; }
-            /* Ocultar chips individuales; solo total */
-            #salesDayDeliveredTotal, #salesDayGrandTotal, #salesDayDeliveryFeesChip { display: none !important; }
-            #salesDayTotalChip { font-size: 0.92rem !important; font-weight: 700 !important; min-height: 34px !important; padding: 0 12px !important; border-radius: 10px !important; }
+            /* Fila 1: título + fecha en una sola línea */
+            .sales-day-banner-copy {
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: 5px !important;
+                flex-wrap: nowrap !important;
+                min-width: 0 !important;
+            }
+            .sales-day-banner-copy strong {
+                font-size: 0.74rem !important;
+                white-space: nowrap !important;
+                flex-shrink: 0 !important;
+            }
+            .sales-day-banner-copy strong::after { content: ' ·'; color: rgba(255,255,255,0.3); }
+            .sales-day-banner-copy span {
+                font-size: 0.68rem !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                color: rgba(255,255,255,0.5) !important;
+                min-width: 0 !important;
+            }
+            /* Fila 2: chips de totales */
+            .sales-day-banner-metrics {
+                display: flex !important;
+                flex-direction: row !important;
+                gap: 6px !important;
+                flex-wrap: nowrap !important;
+                align-items: center !important;
+            }
+            /* Mostrar total vendido + domicilios; ocultar los demás */
+            #salesDayDeliveredTotal, #salesDayGrandTotal { display: none !important; }
+            #salesDayTotalChip {
+                display: flex !important;
+                align-items: center !important;
+                flex: 1 !important;
+                justify-content: center !important;
+                font-size: 0.82rem !important;
+                font-weight: 700 !important;
+                min-height: 30px !important;
+                padding: 0 10px !important;
+                border-radius: 8px !important;
+            }
+            #salesDayDeliveryFeesChip {
+                display: flex !important;
+                align-items: center !important;
+                flex: 1 !important;
+                justify-content: center !important;
+                font-size: 0.82rem !important;
+                font-weight: 600 !important;
+                min-height: 30px !important;
+                padding: 0 10px !important;
+                border-radius: 8px !important;
+            }
             /* Mover Caja Chica + Nuevo Ticket a barra fija inferior */
             #cajaChicaBtn, #openAdminTicketsViewBtn, #openCreateInternalOrderBtn { display: none !important; }
 
@@ -13057,7 +13104,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616j"></script>
+    <script src="admin.js?v=20260616k"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
