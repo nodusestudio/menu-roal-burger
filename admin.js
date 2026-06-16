@@ -16968,10 +16968,16 @@ async function renderLibroCierres() {
                 }
                 return '<td style="color:var(--admin-muted);">—</td>';
             }).join('');
-            const desc = [g.subcategoria, g.descripcion].filter(Boolean).join(' · ') || g.categoria || 'Gasto externo';
-            return `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.4);">
-                <td class="col-left" style="font-weight:600;">${escapeHtml(diaStr)}</td>
-                <td class="col-left" style="color:#fca5a5;font-size:0.82rem;">💸 ${escapeHtml(fechaStr)}<br><span style="color:var(--admin-muted);font-size:0.72rem;">${escapeHtml(desc)}</span></td>
+            const catObj  = getCategoriasGastos().find((c) => c.id === g.categoria);
+            const catIcon = catObj ? catObj.icon : '💸';
+            const catNombre = catObj ? catObj.nombre : (g.categoria || 'Gasto externo');
+            const tipoStr = g.subcategoria ? `${catNombre} · ${g.subcategoria}` : catNombre;
+            return `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.35);">
+                <td class="col-left" style="font-weight:600;white-space:nowrap;">${escapeHtml(diaStr)}</td>
+                <td class="col-left" style="line-height:1.35;">
+                    <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(fechaStr)}</span><br>
+                    <span style="font-size:0.73rem;color:#fca5a5;font-weight:600;">${catIcon} ${escapeHtml(tipoStr)}</span>
+                </td>
                 ${methodCells}
                 <td style="color:#fca5a5;font-weight:600;">−${formatMoney(amt)}</td>
                 <td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>
