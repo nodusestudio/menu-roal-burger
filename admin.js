@@ -1765,7 +1765,6 @@ function normalizeOrder(raw) {
         orderType,
         fulfillmentType: String(raw.fulfillmentType || '').trim().toLowerCase(),
         mesaNumber: raw.mesaNumber ? Number(raw.mesaNumber) : null,
-        mesaTemp: raw.mesaTemp === true,
         status,
         summaryMessage: String(raw.summaryMessage || '').trim(),
         courierRequestedAt: raw.courierRequestedAt || raw.courier_requested_at || null,
@@ -6398,17 +6397,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
     const editData = _editingOrderData;
 
     const saveBtn = document.getElementById('posDrawerSaveBtn');
-    let mesaNumber = config.mesaNumber || editData?.mesaNumber || null;
-    let isTempMesa = false;
-    if (orderType === 'mesa' && !mesaNumber && !isEditing) {
-        const usedTempNums = (ordersState || [])
-            .filter((o) => o.mesaTemp && !['entregado', 'cancelado'].includes(o.status))
-            .map((o) => Number(o.mesaNumber));
-        let tempNum = 9;
-        while (usedTempNums.includes(tempNum)) tempNum++;
-        mesaNumber = tempNum;
-        isTempMesa = true;
-    }
+    const mesaNumber = config.mesaNumber || editData?.mesaNumber || null;
     const defaultName = orderType === 'mesa' && mesaNumber ? `Mesa ${mesaNumber}` : 'Pedido Admin';
     const customerName = String(config.customerName || editData?.customerName || '').trim() || defaultName;
     const customerPhone = String(config.customerPhone || editData?.customerPhone || '').trim();
@@ -6469,9 +6458,6 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
 
         if (mesaNumber) {
             orderDoc.mesaNumber = mesaNumber;
-        }
-        if (isTempMesa) {
-            orderDoc.mesaTemp = true;
         }
 
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
@@ -9292,15 +9278,14 @@ function renderOrderTicket(order, options = {}) {
         ticketPaper.appendChild(floatDiv);
     }
 
-    // Prompt de asignación para mesas sin número o temporales
-    if (order.orderType === 'mesa' && (!order.mesaNumber || order.mesaTemp)) {
-        const isTemp = order.mesaTemp === true;
+    // Prompt de asignación para pedidos de mesa sin número de mesa
+    if (order.orderType === 'mesa' && !order.mesaNumber) {
         const assignPanel = document.createElement('div');
         assignPanel.className = 'ticket-assign-mesa-panel';
         assignPanel.innerHTML = `
-            <p class="ticket-assign-mesa-title">${isTemp ? `⏳ Mesa temporal M-${order.mesaNumber}. ¿Asignar mesa real?` : '⚠️ ¿A qué mesa asignas este pedido?'}</p>
+            <p class="ticket-assign-mesa-title">⚠️ ¿A qué mesa asignas este pedido?</p>
             <div class="ticket-assign-mesa-form">
-                <input type="number" id="ticketMesaNumberInput" class="ticket-mesa-input" placeholder="Nº real" min="1" max="99">
+                <input type="number" id="ticketMesaNumberInput" class="ticket-mesa-input" placeholder="Nº" min="1" max="99">
                 <button type="button" id="ticketAssignMesaBtn" class="ticket-assign-mesa-btn">Asignar mesa</button>
             </div>
         `;
@@ -9315,7 +9300,7 @@ function renderOrderTicket(order, options = {}) {
             assignBtn.disabled = true;
             assignBtn.textContent = 'Guardando...';
             try {
-                await updateOrder(order.id, { mesaNumber: num, orderType: 'mesa', mesaTemp: false });
+                await updateOrder(order.id, { mesaNumber: num, orderType: 'mesa' });
                 showNotice(`Mesa ${num} asignada.`, 'ok');
             } catch (_e) {
                 showNotice('No se pudo asignar la mesa.', 'error');
@@ -9475,9 +9460,9 @@ function createOrderCard(order) {
         ? `<div class="koc-delivery-address"><span class="koc-delivery-icon">📍</span>${escapeHtml(deliveryAddress)}</div>`
         : '';
 
-    const sinMesaBadge = isMesaOrder && order.mesaTemp
-        ? `<span class="koc-sin-mesa-badge koc-sin-mesa-temp">⏳ M-${order.mesaNumber} temp</span>`
-        : (isMesaOrder && !order.mesaNumber ? `<span class="koc-sin-mesa-badge">⚠️ Sin mesa</span>` : '');
+    const sinMesaBadge = isMesaOrder && !order.mesaNumber
+        ? `<span class="koc-sin-mesa-badge">⚠️ Sin mesa</span>`
+        : '';
 
     card.innerHTML = `
         <div class="koc-header">
@@ -12788,7 +12773,6 @@ function _ptsMarkOccupiedMesas() {
     const allOccupied = [...new Set([...occupiedFromTickets, ...occupiedFromOrders])];
     document.querySelectorAll('.pts-mesa-btn').forEach((btn) => {
         const num = Number(btn.dataset.ptsMesa);
-        if (!num) return; // mesa 0 = "por asignar", siempre habilitada
         const occupied = allOccupied.includes(num);
         btn.classList.toggle('occupied', occupied);
         btn.disabled = occupied;
@@ -13063,7 +13047,7 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     const activeTypeBtn = document.querySelector('#posTicketSetupModal .pts-type-btn.active');
     const activeMesaBtn = document.querySelector('#posTicketSetupModal .pts-mesa-btn.active');
     const resolvedType = (activeTypeBtn?.dataset?.ptsType) || _ptsSelectedType;
-    const resolvedMesa = activeMesaBtn ? (Number(activeMesaBtn.dataset.ptsMesa) || null) : _ptsSelectedMesa;
+    const resolvedMesa = activeMesaBtn ? Number(activeMesaBtn.dataset.ptsMesa) : _ptsSelectedMesa;
 
     if (!resolvedType) return;
 
