@@ -1,6 +1,6 @@
 /* Service Worker — ROAL BURGER */
 
-const CACHE_VERSION = 'roal-v3';
+const CACHE_VERSION = 'roal-v4';
 const CACHE_STATIC  = `${CACHE_VERSION}-static`;
 const CACHE_IMAGES  = `${CACHE_VERSION}-images`;
 const ALL_CACHES    = [CACHE_STATIC, CACHE_IMAGES];
