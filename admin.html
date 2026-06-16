@@ -8270,19 +8270,24 @@
                 gap: 0 !important;
             }
 
-            /* Logo: texto pequeño, ocupa el centro */
+            /* Logo: pegado al lado derecho de la hamburguesa */
             .admin-sidebar .admin-title-wrap {
-                flex: 1;
-                min-width: 0;
+                position: fixed !important;
+                top: 0 !important;
+                left: 49px !important;
+                height: 48px !important;
+                display: flex !important;
+                align-items: center !important;
+                padding: 0 12px !important;
+                z-index: 201 !important;
+                pointer-events: none;
             }
             .admin-sidebar .admin-title-wrap h1 {
-                font-size: 0.82rem;
-                letter-spacing: 2px;
-                margin-bottom: 0;
-                color: rgba(255,255,255,0.55);
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                font-size: 0.84rem !important;
+                letter-spacing: 2px !important;
+                margin: 0 !important;
+                color: rgba(255,255,255,0.75) !important;
+                white-space: nowrap !important;
             }
 
             /* Nombre de sección activa (lado derecho de topbar) */
@@ -13035,7 +13040,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616e"></script>
+    <script src="admin.js?v=20260616f"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
