@@ -8241,10 +8241,9 @@
                 gap: 10px;
             }
 
-            /* Hamburguesa: pegada a la esquina superior izquierda */
+            /* Hamburguesa: pegada a la esquina superior izquierda (primer hijo en DOM) */
             .admin-hamburger-btn {
                 display: inline-flex;
-                order: -1;
                 width: 48px;
                 height: 48px;
                 font-size: 1.15rem;
@@ -8254,6 +8253,7 @@
                 background: transparent;
                 flex-shrink: 0;
                 margin: 0;
+                padding: 0;
             }
             .admin-hamburger-btn[aria-expanded="true"] {
                 background: rgba(255,123,69,0.15);
@@ -11251,11 +11251,11 @@
     <div class="admin-shell">
     <aside class="admin-sidebar">
         <header class="admin-header">
+            <button type="button" class="admin-hamburger-btn" id="adminNavToggleBtn" aria-label="Abrir navegacion" aria-expanded="false">&#9776;</button>
             <div class="admin-title-wrap">
                 <h1>Admin ROAL</h1>
             </div>
             <span class="admin-topbar-section" id="adminTopbarSection">POS</span>
-            <button type="button" class="admin-hamburger-btn" id="adminNavToggleBtn" aria-label="Abrir navegacion" aria-expanded="false">&#9776;</button>
         </header>
 
         <div class="sidebar-section-label">Paneles</div>
@@ -13025,7 +13025,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616b"></script>
+    <script src="admin.js?v=20260616c"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
