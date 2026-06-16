@@ -11323,7 +11323,7 @@
             <p>Ingresa tus credenciales para abrir Admin.</p>
             <div id="authError" class="auth-error" role="alert"></div>
             <div class="auth-warning">Acceso legado: esta proteccion vive en el frontend y no reemplaza una autenticacion real de produccion.</div>
-            <form id="adminAuthForm" class="admin-form admin-form-single" method="post">
+            <form id="adminAuthForm" class="admin-form admin-form-single" method="dialog" onsubmit="return false">
                 <div class="admin-field">
                     <label for="authUsername">Correo</label>
                     <input type="email" id="authUsername" name="username" autocomplete="username" placeholder="admin@tu-negocio.com" required>
