@@ -8377,9 +8377,14 @@
                 font-size: 1.1rem;
             }
 
-            /* Contenido: topbar (48px) + toolbar fija (42px) = 90px */
+            /* Contenido: sin padding lateral — todos los bloques van de borde a borde */
             .admin-page {
-                padding: 90px 10px 80px;
+                padding: 90px 0 80px;
+            }
+            /* Cards del panel pedidos: esquinas cuadradas, borde a borde */
+            [data-tab-panel="pedidos"] .admin-card {
+                border-radius: 0 !important;
+                margin: 0 !important;
             }
 
             .admin-form,
@@ -8960,13 +8965,14 @@
                 margin-bottom: 0 !important;
                 border-radius: 12px !important;
             }
-            /* Fila 1: título + fecha en una sola línea */
+            /* Fila 1: título + fecha — una sola línea, no se rompe */
             .sales-day-banner-copy {
                 flex-direction: row !important;
                 align-items: center !important;
-                gap: 5px !important;
+                gap: 4px !important;
                 flex-wrap: nowrap !important;
                 min-width: 0 !important;
+                overflow: hidden !important;
             }
             .sales-day-banner-copy strong {
                 font-size: 0.74rem !important;
@@ -8981,6 +8987,7 @@
                 text-overflow: ellipsis !important;
                 color: rgba(255,255,255,0.5) !important;
                 min-width: 0 !important;
+                flex: 1 !important;
             }
             /* Fila 2: chips de totales */
             .sales-day-banner-metrics {
@@ -13104,7 +13111,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616k"></script>
+    <script src="admin.js?v=20260616l"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
