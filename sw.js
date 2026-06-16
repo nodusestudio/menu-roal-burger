@@ -47,6 +47,9 @@ self.addEventListener('fetch', (event) => {
 
     const path = url.pathname.toLowerCase();
 
+    // El panel admin se sirve siempre desde red — clientes nunca cachean código de admin
+    if (path.startsWith('/admin')) return;
+
     // Imágenes → Cache First (una vez cacheadas, no se vuelven a descargar)
     if (/\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/.test(path)) {
         event.respondWith(cacheFirst(CACHE_IMAGES, request));
