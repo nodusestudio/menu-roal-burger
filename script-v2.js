@@ -3648,6 +3648,16 @@ function loadCartState() {
     try {
         const raw = window.localStorage.getItem(CART_STORAGE_KEY);
         shoppingCart = raw ? JSON.parse(raw) : [];
+        // Sanear 2×1 almacenados con cantidad inválida (< 2 o impar)
+        shoppingCart = shoppingCart.map((item) => {
+            if (item.orderOptions?.promo2x1) {
+                const q = Number(item.quantity || 0);
+                if (q < 2 || q % 2 !== 0) {
+                    return { ...item, quantity: Math.max(2, q % 2 === 0 ? q : q + 1) };
+                }
+            }
+            return item;
+        });
     } catch (error) {
         shoppingCart = [];
     }
@@ -4276,8 +4286,12 @@ function updateCartItemQuantity(itemKey, delta) {
     }
 
     let newQty = Number(item.quantity || 0) + delta;
-    if (item.orderOptions?.promo2x1 && newQty > 0 && newQty % 2 !== 0) {
-        newQty = delta > 0 ? newQty + 1 : newQty - 1;
+    if (item.orderOptions?.promo2x1) {
+        if (newQty > 0 && newQty % 2 !== 0) {
+            newQty = delta > 0 ? newQty + 1 : newQty - 1;
+        }
+        // Nunca dejar un 2×1 en cantidad 1 — eliminar en lugar de bajar a 1
+        if (newQty > 0 && newQty < 2) newQty = 0;
     }
     item.quantity = newQty;
     if (newQty <= 0) shoppingCart = shoppingCart.filter((entry) => entry.parentKey !== itemKey);
@@ -4734,6 +4748,13 @@ async function submitCheckoutInfo() {
     if (phoneDigits.length < 10) {
         checkoutInfoUI.feedback.textContent = 'Escribe un telefono valido para confirmar el pedido.';
         checkoutInfoUI.phone?.focus();
+        return;
+    }
+
+    // Los 2×1 solo son válidos de 2 en 2 — bloquear pedido si la cantidad es inválida
+    const invalid2x1 = shoppingCart.find((item) => item.orderOptions?.promo2x1 && (Number(item.quantity || 0) < 2 || Number(item.quantity || 0) % 2 !== 0));
+    if (invalid2x1) {
+        checkoutInfoUI.feedback.textContent = `"${invalid2x1.productName}" es un 2×1 y debe ir en pares (mínimo 2 unidades). Ajusta la cantidad en tu carrito.`;
         return;
     }
 
@@ -5271,9 +5292,16 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
     const itemKey = getCartItemKey(safeProductName, safeCategoryName, normalizedOptions);
     const existingItem = shoppingCart.find((item) => item.itemKey === itemKey);
 
-    const qty = Math.max(1, Number(initialQuantity) || 1);
+    let qty = Math.max(1, Number(initialQuantity) || 1);
+    // Los 2×1 solo son válidos de 2 en 2 — nunca cantidad impar ni menor a 2
+    if (normalizedOptions.promo2x1) {
+        qty = Math.max(2, qty % 2 === 0 ? qty : qty + 1);
+    }
     if (existingItem) {
-        existingItem.quantity = Number(existingItem.quantity || 0) + qty;
+        const newQty = Number(existingItem.quantity || 0) + qty;
+        existingItem.quantity = normalizedOptions.promo2x1
+            ? Math.max(2, newQty % 2 === 0 ? newQty : newQty + 1)
+            : newQty;
         existingItem.unitPrice = unitPrice;
     } else {
         shoppingCart.push({
