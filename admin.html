@@ -8377,9 +8377,9 @@
                 font-size: 1.1rem;
             }
 
-            /* Contenido: mínimo margen sobre la topbar */
+            /* Contenido: topbar (48px) + toolbar fija (42px) = 90px */
             .admin-page {
-                padding: 50px 10px 80px;
+                padding: 90px 10px 80px;
             }
 
             .admin-form,
@@ -8876,21 +8876,23 @@
                MOBILE POS-STYLE — Recepción de Pedidos optimizada
             ═══════════════════════════════════════════════════════ */
 
-            /* 1. Toolbar — una sola fila compacta pegada a la topbar */
+            /* 1. Toolbar — fija justo debajo de la topbar */
             [data-tab-panel="pedidos"] .section-toolbar {
                 display: flex !important;
                 flex-wrap: nowrap !important;
                 gap: 5px !important;
                 padding: 5px 8px !important;
-                margin-bottom: 4px !important;
+                margin: 0 !important;
                 align-items: center !important;
-                background: rgba(8,11,22,0.6) !important;
-                border-bottom: 1px solid rgba(255,255,255,0.06) !important;
-                position: sticky !important;
+                background: rgba(8,11,22,0.97) !important;
+                border-bottom: 1px solid rgba(255,255,255,0.07) !important;
+                position: fixed !important;
                 top: 48px !important;
-                z-index: 10 !important;
-                -webkit-backdrop-filter: blur(12px);
-                backdrop-filter: blur(12px);
+                left: 0 !important;
+                right: 0 !important;
+                z-index: 150 !important;
+                -webkit-backdrop-filter: blur(16px);
+                backdrop-filter: blur(16px);
             }
             /* Buscador: ocupa el espacio restante */
             [data-tab-panel="pedidos"] .section-toolbar .admin-domicilio-searcher {
@@ -13050,7 +13052,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616g"></script>
+    <script src="admin.js?v=20260616h"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
