@@ -7320,12 +7320,19 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
     }
 
     if (isCombosMixtosCategory(safeCategoryName)) {
-        // Buscar bebida de 1 litro en _latestBebidas para usar el selector nuevo
+        // Buscar bebida en _latestBebidas: preferir 1L, fallback a cualquiera con sabores
         let _cmBeb = null, _cmPres = null;
         for (const b of _latestBebidas) {
             if (b.estado !== 'active') continue;
-            const p = (b.presentaciones || []).find((pr) => /1\s*l(itro)?/i.test(pr.nombre) && Array.isArray(pr.sabores) && pr.sabores.length > 0);
-            if (p) { _cmBeb = b; _cmPres = p; break; }
+            const p1L = (b.presentaciones || []).find((pr) => /1\s*l(itro)?/i.test(pr.nombre) && Array.isArray(pr.sabores) && pr.sabores.length > 0);
+            if (p1L) { _cmBeb = b; _cmPres = p1L; break; }
+        }
+        if (!_cmBeb) {
+            for (const b of _latestBebidas) {
+                if (b.estado !== 'active') continue;
+                const pAny = (b.presentaciones || []).find((pr) => Array.isArray(pr.sabores) && pr.sabores.length > 0);
+                if (pAny) { _cmBeb = b; _cmPres = pAny; break; }
+            }
         }
         if (_cmBeb && _cmPres) {
             openPublicBebidaModal(productName, safeCategoryName, buttonId, {

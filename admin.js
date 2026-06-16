@@ -2957,13 +2957,20 @@ function handlePosProductAdd(productId, productName, productPrice) {
         return;
     }
 
-    // Combos Mixtos → pedir sabor de bebida 1L desde bebidasState
+    // Combos Mixtos → pedir sabor de bebida desde bebidasState (1L preferido, cualquiera con sabores como fallback)
     if (normCat.includes('combos mixtos')) {
         let _cmBeb = null, _cmPres = null;
         for (const b of bebidasState) {
             if (b.estado !== 'active') continue;
-            const p = (b.presentaciones || []).find((pr) => /1\s*l(itro)?/i.test(pr.nombre) && Array.isArray(pr.sabores) && pr.sabores.length > 0);
-            if (p) { _cmBeb = b; _cmPres = p; break; }
+            const p1L = (b.presentaciones || []).find((pr) => /1\s*l(itro)?/i.test(pr.nombre) && Array.isArray(pr.sabores) && pr.sabores.length > 0);
+            if (p1L) { _cmBeb = b; _cmPres = p1L; break; }
+        }
+        if (!_cmBeb) {
+            for (const b of bebidasState) {
+                if (b.estado !== 'active') continue;
+                const pAny = (b.presentaciones || []).find((pr) => Array.isArray(pr.sabores) && pr.sabores.length > 0);
+                if (pAny) { _cmBeb = b; _cmPres = pAny; break; }
+            }
         }
         if (_cmBeb && _cmPres) {
             openPosBebidaModal(productId, productName, productPrice, {
@@ -11699,6 +11706,33 @@ async function syncStats() {
 }
 
 
+async function _migrateCategoryFlags() {
+    try {
+        const snap = await firebaseDb.collection('categorias').get();
+        const batch = firebaseDb.batch();
+        let changes = 0;
+        snap.docs.forEach((doc) => {
+            const d = doc.data();
+            const name = normalizeCategoryKey(String(d.name || d.nombre || ''));
+            const updates = {};
+            // Burgers → combos_menu ON
+            if (name.includes('burger') || name.includes('clasica') || name.includes('pepito') || name.includes('premium')) {
+                if (d.combos_menu === false) { updates.combos_menu = true; }
+            }
+            // Combos mixtos → bebidas ON (POS + menú)
+            if (name.includes('combos mixtos') || name.includes('combo mixto')) {
+                if (d.bebidas_menu === false) { updates.bebidas_menu = true; }
+                if (d.bebidas_pos === false)   { updates.bebidas_pos  = true; }
+            }
+            if (Object.keys(updates).length > 0) {
+                batch.update(doc.ref, updates);
+                changes++;
+            }
+        });
+        if (changes > 0) await batch.commit();
+    } catch (_) {}
+}
+
 async function reloadDataAndRender() {
     await Promise.all([
         fetchCategories(),
@@ -11752,6 +11786,7 @@ async function reloadDataAndRender() {
     updateMessagesAttentionState();
     renderMetricsUsers();
     await syncStats();
+    _migrateCategoryFlags();
 
     if (activeCategoryModalId) {
         const activeCategory = categoriesState.find((category) => category.id === activeCategoryModalId);
