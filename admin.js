@@ -16354,8 +16354,9 @@ async function renderLibroCierres() {
                 ${methodCells}
                 ${egresosCell}
                 <td style="color:${gtColor};font-weight:700;">${gt < 0 ? '−' : ''}${formatMoney(Math.abs(gt))}</td>
-                <td style="text-align:center;">
+                <td style="text-align:center;white-space:nowrap;display:flex;gap:5px;justify-content:center;align-items:center;">
                     <button class="btn-ver-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:6px;cursor:pointer;font-weight:600;">👁 Ver</button>
+                    <button class="btn-gasto-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(252,165,165,0.12);color:#fca5a5;border:1px solid rgba(252,165,165,0.3);border-radius:6px;cursor:pointer;font-weight:600;">💸 Gastos</button>
                 </td>
             </tr>`;
         }).join('');
@@ -16573,19 +16574,172 @@ document.getElementById('refreshLibroContableBtn')?.addEventListener('click', as
 document.getElementById('lcYearFilter')?.addEventListener('change', renderLibroContable);
 
 document.getElementById('libroCierresList')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.btn-ver-cierre');
-    if (!btn) return;
-    const cid = btn.dataset.cierreId;
-    const c = _cierresCajaState.find((x) => x.id === cid);
-    if (!c) return;
-    const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
-    const d = tsMs ? new Date(tsMs) : new Date();
-    const dateStr = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
-    const timeStr = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
-    _navigateToCajaDiaria();
-    setTimeout(() => openCierreSidePanel(ticketHtml, `Cierre · ${dateStr}`, true), 250);
+    const verBtn = e.target.closest('.btn-ver-cierre');
+    if (verBtn) {
+        const cid = verBtn.dataset.cierreId;
+        const c = _cierresCajaState.find((x) => x.id === cid);
+        if (!c) return;
+        const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+        const d = tsMs ? new Date(tsMs) : new Date();
+        const dateStr = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+        const timeStr = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
+        _navigateToCajaDiaria();
+        setTimeout(() => openCierreSidePanel(ticketHtml, `Cierre · ${dateStr}`, true), 250);
+        return;
+    }
+    const gastoBtn = e.target.closest('.btn-gasto-cierre');
+    if (gastoBtn) {
+        const cid = gastoBtn.dataset.cierreId;
+        const c = _cierresCajaState.find((x) => x.id === cid);
+        if (c) openCierreGastoModal(c);
+    }
 });
+
+function openCierreGastoModal(cierre) {
+    const existing = document.getElementById('cierreGastoModal');
+    if (existing) existing.remove();
+
+    const methods = getEnabledPaymentMethods();
+    const tsMs = cierre.closedAt?.toMillis ? cierre.closedAt.toMillis() : Number(cierre.closedAt || 0);
+    const fechaStr = tsMs ? new Date(tsMs).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) : cierre.date || '';
+
+    // Saldos disponibles por método (ingresos netos ya descontados gastos anteriores)
+    const methodTotals = cierre.methodTotals || {};
+    const saldosHtml = methods
+        .map((m) => {
+            const v = Number(methodTotals[m.id] || 0);
+            if (v <= 0) return '';
+            return `<div style="display:flex;justify-content:space-between;font-size:0.82rem;padding:3px 0;">
+                <span style="color:rgba(200,200,220,0.7);">${m.icon} ${escapeHtml(m.label)}</span>
+                <span style="color:#6ee7b7;font-weight:700;">${formatMoney(v)}</span>
+            </div>`;
+        }).filter(Boolean).join('') || `<div style="font-size:0.8rem;color:rgba(200,200,220,0.5);">Sin saldo disponible</div>`;
+
+    const methodOptions = methods.map((m) =>
+        `<option value="${escapeHtml(m.id)}">${m.icon} ${escapeHtml(m.label)}</option>`
+    ).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cierreGastoModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;background:rgba(10,6,3,0.88);padding:16px;';
+
+    overlay.innerHTML = `
+        <div style="background:#1c1410;border:1.5px solid rgba(255,255,255,0.12);border-radius:18px;padding:22px 20px 18px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="font-weight:700;font-size:1rem;color:#fff;">💸 Registrar Gasto</div>
+                    <div style="font-size:0.75rem;color:rgba(200,180,150,0.6);margin-top:2px;">Cierre · ${escapeHtml(fechaStr)}</div>
+                </div>
+                <button id="cgmClose" style="background:none;border:none;color:rgba(255,255,255,0.4);font-size:1.6rem;cursor:pointer;line-height:1;padding:0 4px;">×</button>
+            </div>
+
+            <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px;">
+                <div style="font-size:0.68rem;color:rgba(200,200,220,0.45);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Saldos disponibles</div>
+                ${saldosHtml}
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <div>
+                    <label style="font-size:0.72rem;color:rgba(200,200,220,0.55);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px;">Descripción</label>
+                    <input id="cgmDesc" type="text" placeholder="Ej: Mercado, nómina, servicios..." maxlength="120"
+                        style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.35);color:#eef4ff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 10px;font-size:0.85rem;">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div>
+                        <label style="font-size:0.72rem;color:rgba(200,200,220,0.55);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px;">Monto</label>
+                        <input id="cgmMonto" type="number" min="0" placeholder="0"
+                            style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.35);color:#eef4ff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 10px;font-size:0.85rem;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.72rem;color:rgba(200,200,220,0.55);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px;">Método</label>
+                        <select id="cgmMethod"
+                            style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.35);color:#eef4ff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 10px;font-size:0.85rem;">
+                            <option value="">— Método —</option>
+                            ${methodOptions}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <button id="cgmSave" style="width:100%;padding:12px;border-radius:10px;border:none;background:#e76f00;color:#fff;font-weight:700;font-size:0.95rem;cursor:pointer;transition:opacity .15s;">Registrar gasto</button>
+        </div>`;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#cgmClose').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    overlay.querySelector('#cgmSave').addEventListener('click', async () => {
+        const desc   = overlay.querySelector('#cgmDesc').value.trim();
+        const monto  = Number(overlay.querySelector('#cgmMonto').value) || 0;
+        const method = overlay.querySelector('#cgmMethod').value;
+
+        if (!desc)   { showNotice('Ingresa una descripción.', 'error'); return; }
+        if (monto <= 0) { showNotice('El monto debe ser mayor a 0.', 'error'); return; }
+        if (!method) { showNotice('Selecciona un método de pago.', 'error'); return; }
+
+        const saveBtn = overlay.querySelector('#cgmSave');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Guardando…';
+
+        try {
+            // Crear gasto en gastos_caja
+            const gastoId = `gasto_cierre_${Date.now()}`;
+            const gastoDoc = {
+                id: gastoId,
+                categoria: 'otros',
+                subcategoria: 'Gasto de caja',
+                proveedor: '',
+                descripcion: desc,
+                monto,
+                paymentMethod: method,
+                registradoAt: firestoreNow(),
+                cierreId: cierre.id,
+                cajaAperturaAt: cierre.cajaAperturaAt || 0
+            };
+            await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(gastoId).set(gastoDoc);
+
+            // Actualizar cierre en Firestore
+            const nuevosGastosDetalle = [...(cierre.gastosDetalle || []), {
+                descripcion: desc,
+                monto,
+                paymentMethod: method,
+                registradoAt: Date.now()
+            }];
+            const nuevoGastosMethod = { ...(cierre.gastosMethod || {}) };
+            nuevoGastosMethod[method] = (nuevoGastosMethod[method] || 0) + monto;
+            const nuevoGastosTotal = (Number(cierre.gastosTotal) || 0) + monto;
+
+            const nuevoMethodTotals = { ...(cierre.methodTotals || {}) };
+            nuevoMethodTotals[method] = (nuevoMethodTotals[method] || 0) - monto;
+            const nuevoGrandTotal = (Number(cierre.grandTotal) || 0) - monto;
+
+            await firebaseDb.collection(CIERRES_CAJA_COLLECTION).doc(cierre.id).update({
+                gastosDetalle: nuevosGastosDetalle,
+                gastosMethod: nuevoGastosMethod,
+                gastosTotal: nuevoGastosTotal,
+                methodTotals: nuevoMethodTotals,
+                grandTotal: nuevoGrandTotal
+            });
+
+            // Actualizar estado local
+            cierre.gastosDetalle = nuevosGastosDetalle;
+            cierre.gastosMethod  = nuevoGastosMethod;
+            cierre.gastosTotal   = nuevoGastosTotal;
+            cierre.methodTotals  = nuevoMethodTotals;
+            cierre.grandTotal    = nuevoGrandTotal;
+
+            overlay.remove();
+            showNotice('Gasto registrado y saldo actualizado.', 'ok');
+            renderLibroCierres();
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'No se pudo guardar.'}`, 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Registrar gasto';
+        }
+    });
+}
 
 // ── Tickets (Informes) ────────────────────────────────────────────────────────
 let _ticketsData = [];
