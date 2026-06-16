@@ -8011,6 +8011,8 @@ function renderDynamicCategorySections() {
                     card.style.background = 'rgba(0,0,0,0.22)';
 
                     const img = document.createElement('img');
+                    img.loading = 'lazy';
+                    img.decoding = 'async';
                     img.src = normalizeImageAssetPath(rutaImagen);
                     img.alt = product.nombre;
                     img.style.width = '68px';
@@ -8147,6 +8149,8 @@ function renderFeaturedCards(carousel, items) {
             const image = document.createElement('img');
             image.className = 'product-image-mobile';
             image.alt = safeName;
+            image.loading = 'lazy';
+            image.decoding = 'async';
             image.src = item.src;
             imageWrap.addEventListener('click', () => {
                 abrirModalBebida(safeName, item.src, featuredCategoryName, { orderImagePath: item.orderImageSrc });
@@ -8778,6 +8782,8 @@ function renderManualCategoryGallery(panel, categoryName, _cards, visibleProduct
         });
 
         const image = document.createElement('img');
+        image.loading = 'lazy';
+        image.decoding = 'async';
         image.src = card.image;
         image.alt = card.name;
         image.style.width = '100%';
@@ -8923,6 +8929,8 @@ function renderBebidasPublicPanel(panel) {
         item.addEventListener('click', () => openBebidaPublicPickerModal(bev));
 
         const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.decoding = 'async';
         img.src = bev.image_url || 'logo.png';
         img.alt = bev.marca;
         img.style.width = '100%';
@@ -11347,6 +11355,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Botón volver en pantalla detalle de categoría
     document.getElementById('cdsBackBtn')?.addEventListener('click', () => closeCategoryDetail());
+
+    // Diferir carga de fondos pesados (fondo.png 3.9 MB + fondo vertical.png 3 MB)
+    // hasta que la página sea interactiva — ahorra ancho de banda en carga inicial.
+    const _triggerBgLoad = () => document.body.classList.add('bg-loaded');
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(_triggerBgLoad, { timeout: 1200 });
+    } else {
+        setTimeout(_triggerBgLoad, 100);
+    }
 
     initCartUI();
     initSupportModal();

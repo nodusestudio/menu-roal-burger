@@ -38,13 +38,21 @@ html {
     position: fixed;
     inset: 0;
     z-index: 0;
-    background: url('fondo vertical.png') center top / cover no-repeat;
-    opacity: 0.60;
+    background-color: transparent;
+    background-size: cover;
+    background-position: center top;
+    background-repeat: no-repeat;
+    opacity: 0;
     filter: brightness(0.60);
     pointer-events: none;
+    transition: opacity 0.4s ease;
+}
+body.bg-loaded #bg-layer {
+    background-image: url('fondo vertical.png');
+    opacity: 0.60;
 }
 
-/* Fondo fijo con la imagen real - siempre visible, los temas JS no lo tocan */
+/* Fondo fijo con la imagen real - diferido hasta que la página sea interactiva */
 body::after {
     content: '';
     position: fixed;
@@ -52,20 +60,25 @@ body::after {
     left: 0;
     width: 100%;
     height: 100%;
-    background-image: url('fondo.png');
+    background-image: none;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
     background-attachment: fixed;
     filter: saturate(0.7);
-    opacity: 0.5;
+    opacity: 0;
     z-index: -2;
     pointer-events: none;
+    transition: opacity 0.4s ease;
+}
+body.bg-loaded::after {
+    background-image: url('fondo.png');
+    opacity: 0.5;
 }
 
 /* Modo vertical (portrait) — usa la imagen vertical */
 @media (orientation: portrait) {
-    body::after {
+    body.bg-loaded::after {
         background-image: url('fondo vertical.png');
     }
 }
