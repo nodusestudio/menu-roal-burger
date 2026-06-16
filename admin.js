@@ -2400,7 +2400,7 @@ function renderPosCategoriesPanel() {
         : '';
     select.innerHTML = promoOption + bebidasCatOption + acompCatOption + categories.map((cat) => {
         const count = catalog.filter(
-            (p) => String(p.categoria || '').trim() === cat && String(p.estado || 'active').trim() === 'active'
+            (p) => String(p.categoria || '').trim() === cat && p.visible_pos !== false
         ).length;
         return `<option value="${escapeHtml(cat)}">${escapeHtml(cat)} (${count})</option>`;
     }).join('');
@@ -2453,7 +2453,7 @@ function renderPosProductsPanel() {
 
     const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
     const categoryProducts = catalog
-        .filter((p) => String(p.categoria || '').trim() === posSelectedCategory && String(p.estado || 'active').trim() === 'active')
+        .filter((p) => String(p.categoria || '').trim() === posSelectedCategory && p.visible_pos !== false)
         .sort((a, b) => {
             const oa = a.order ?? 9999;
             const ob = b.order ?? 9999;
