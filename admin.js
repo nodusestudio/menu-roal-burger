@@ -15820,7 +15820,10 @@ async function loadGastosCaja() {
             .orderBy('registradoAt', 'desc')
             .limit(200)
             .get();
-        _gastosCajaState = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // Excluir gastos externos (tipo:'externo') — esos pertenecen al historial
+        _gastosCajaState = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((g) => g.tipo !== 'externo');
     } catch (_) {
         _gastosCajaState = [];
     }
@@ -16002,7 +16005,7 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             tipo: fromHistorial ? 'externo' : 'caja',
         };
         await saveGasto(gasto);
-        _gastosCajaState = [gasto, ..._gastosCajaState];
+        if (!fromHistorial) _gastosCajaState = [gasto, ..._gastosCajaState];
         closeGastoModal();
         if (fromHistorial) {
             await renderLibroCierres();
@@ -16064,8 +16067,9 @@ function renderCajaDiaria() {
         return new Date(paidMs).toISOString().split('T')[0] === todayStr;
     });
 
-    // Filtrar gastos de la jornada actual
+    // Filtrar gastos de la jornada actual (excluir gastos externos del historial)
     const allGastos = _gastosCajaState.filter((g) => {
+        if (g.tipo === 'externo') return false;
         const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
         if (cajaAperturaAt) return ms >= cajaAperturaAt;
         const todayStr = new Date().toISOString().split('T')[0];
