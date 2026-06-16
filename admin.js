@@ -6474,6 +6474,12 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         deletePosTicketFromFirestore(_processedTicketId);
         posTickets = posTickets.filter((t) => t.id !== _processedTicketId);
         closeInternalOrderModal();
+        if (isMobileAdminViewport()) {
+            const _laneMap = { mesa: 'mesa', domicilio: 'domicilios', retiro: 'recoger' };
+            activeMobileOrdersLane = _laneMap[orderType] || 'domicilios';
+            applyMobileOrdersLane();
+            closeMobileTicketPanel({ clearSelection: true });
+        }
         if (isEditing) {
             const editLabel = customerName !== defaultName ? customerName : getOrderTypeLabel({ orderType, mesaNumber });
             showNotice(`Pedido de ${editLabel} modificado.`, 'ok');
