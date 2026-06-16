@@ -1844,18 +1844,22 @@ function ensureOrdersRealtimeTicker() {
     }
 
     ordersRealtimeTimer = window.setInterval(() => {
-        document.querySelectorAll('.order-wait-timer[data-order-id]').forEach((el) => {
-            const order = ordersState.find((o) => o.id === el.dataset.orderId);
-            if (order) el.textContent = formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
-        });
-        document.querySelectorAll('.koc-courier-time[data-order-id]').forEach((el) => {
-            const order = ordersState.find((o) => o.id === el.dataset.orderId);
+        const els = document.querySelectorAll('.order-wait-timer[data-order-id], .koc-courier-time[data-order-id]');
+        if (!els.length) return;
+        // Map O(1) lookup en vez de .find() O(n) por cada elemento
+        const orderMap = new Map(ordersState.map((o) => [o.id, o]));
+        els.forEach((el) => {
+            const order = orderMap.get(el.dataset.orderId);
             if (!order) return;
-            el.textContent = el.dataset.courierRef === 'created'
-                ? formatElapsedTime(order.createdAt)
-                : formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
+            if (el.classList.contains('koc-courier-time')) {
+                el.textContent = el.dataset.courierRef === 'created'
+                    ? formatElapsedTime(order.createdAt)
+                    : formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
+            } else {
+                el.textContent = formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
+            }
         });
-    }, 1000);
+    }, 2000);
 }
 
 function isOrderSequenceMeta(raw) {
@@ -10922,31 +10926,101 @@ function _scheduleLiveReload() {
     _liveReloadTimer = setTimeout(async () => {
         await reloadDataAndRender();
         queueLivePreviewRefresh();
-    }, 250);
+    }, 1500);
+}
+
+function _makeDebouncedHandler(fn, delay) {
+    let t = null;
+    return () => { clearTimeout(t); t = setTimeout(fn, delay); };
 }
 
 function setupLiveFirebaseSync() {
-    if (!firebaseDb) {
-        return;
-    }
+    if (!firebaseDb) return;
 
-    liveSubscriptions.forEach((unsubscribe) => unsubscribe());
+    liveSubscriptions.forEach((u) => u());
     liveSubscriptions = [];
 
-    const collections = ['productos', 'categorias', 'botones', ORDERS_COLLECTION, CLIENTS_COLLECTION, MESSAGES_COLLECTION, SALES_SUMMARY_COLLECTION, SALES_DAY_STATE_COLLECTION, PROMOCIONES_COLLECTION];
-    collections.forEach((collectionName) => {
-        const unsubscribe = firebaseDb.collection(collectionName).onSnapshot(
-            _scheduleLiveReload,
-            (err) => console.warn(`[ADMIN] ${collectionName} listener error:`, err.code || err.message)
-        );
-        liveSubscriptions.push(unsubscribe);
-    });
+    const onErr = (name) => (err) => console.warn(`[ADMIN] ${name} listener error:`, err.code || err.message);
 
-    const configUnsubscribe = firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).onSnapshot(
-        _scheduleLiveReload,
-        (err) => console.warn('[ADMIN] config listener error:', err.code || err.message)
+    // Pedidos: solo recarga pedidos y re-renderiza el board
+    liveSubscriptions.push(
+        firebaseDb.collection(ORDERS_COLLECTION).onSnapshot(
+            _makeDebouncedHandler(async () => {
+                await fetchOrders();
+                announceNewOrders(ordersState);
+                renderOrders();
+            }, 600),
+            onErr('pedidos')
+        )
     );
-    liveSubscriptions.push(configUnsubscribe);
+
+    // Mensajes: solo recarga mensajes
+    liveSubscriptions.push(
+        firebaseDb.collection(MESSAGES_COLLECTION).onSnapshot(
+            _makeDebouncedHandler(async () => {
+                await fetchMessages();
+                renderMessages();
+                updateMessagesAttentionState();
+            }, 700),
+            onErr('mensajes')
+        )
+    );
+
+    // Clientes: solo recarga clientes
+    liveSubscriptions.push(
+        firebaseDb.collection(CLIENTS_COLLECTION).onSnapshot(
+            _makeDebouncedHandler(async () => {
+                await fetchClients();
+                renderClients();
+            }, 800),
+            onErr('clientes')
+        )
+    );
+
+    // Ventas/resumen: solo recarga resúmenes
+    const salesHandler = _makeDebouncedHandler(async () => {
+        await Promise.all([fetchSalesSummaries(), fetchSalesDayState()]);
+        renderSalesSummaries();
+        renderCajaDiaria();
+        renderSalesDayBanner();
+    }, 800);
+    liveSubscriptions.push(
+        firebaseDb.collection(SALES_SUMMARY_COLLECTION).onSnapshot(salesHandler, onErr('ventas'))
+    );
+    liveSubscriptions.push(
+        firebaseDb.collection(SALES_DAY_STATE_COLLECTION).onSnapshot(salesHandler, onErr('caja-dia'))
+    );
+
+    // Productos/categorías/botones: recarga catálogo (compartido, debounce largo)
+    const catalogHandler = _makeDebouncedHandler(async () => {
+        await Promise.all([fetchProducts(), fetchCategories(), fetchButtons()]);
+        renderProductsList?.();
+        renderCategoriesList?.();
+        renderButtonsList?.();
+        queueLivePreviewRefresh?.();
+    }, 1200);
+    liveSubscriptions.push(firebaseDb.collection('productos').onSnapshot(catalogHandler, onErr('productos')));
+    liveSubscriptions.push(firebaseDb.collection('categorias').onSnapshot(catalogHandler, onErr('categorias')));
+    liveSubscriptions.push(firebaseDb.collection('botones').onSnapshot(catalogHandler, onErr('botones')));
+
+    // Promociones: recarga promos
+    liveSubscriptions.push(
+        firebaseDb.collection(PROMOCIONES_COLLECTION).onSnapshot(
+            _makeDebouncedHandler(async () => {
+                await Promise.all([fetchPromos(), fetchCombosEspeciales(), fetchPromos2x1()]);
+                queueLivePreviewRefresh?.();
+            }, 1000),
+            onErr('promociones')
+        )
+    );
+
+    // Config general: recarga completa (afecta todo el UI)
+    liveSubscriptions.push(
+        firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).onSnapshot(
+            _scheduleLiveReload,
+            onErr('config')
+        )
+    );
 }
 
 function renderButtonsList() {
