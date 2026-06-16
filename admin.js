@@ -1225,7 +1225,7 @@ function setupAccordion() {
                 if (!overlay) {
                     overlay = document.createElement('div');
                     overlay.id = '_navMobileOverlay';
-                    overlay.style.cssText = 'position:fixed;inset:54px 0 0 0;z-index:198;background:rgba(0,0,0,0.45);';
+                    overlay.style.cssText = 'position:fixed;inset:0;z-index:198;background:rgba(0,0,0,0.52);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);';
                     document.body.appendChild(overlay);
                     overlay.addEventListener('click', closeMobileNav);
                 }
@@ -1248,12 +1248,16 @@ function setupAccordion() {
         metricas: ['metricas']
     };
 
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', gastos:'Gastos', mensajes:'Mensajes', metricas:'Métricas' };
+
     function activateAccordion(target) {
         activeAccordionSection = target;
         const visiblePanels = groupMap[target] || [];
         buttons.forEach((button) => {
             button.classList.toggle('active', button.dataset.accordionTarget === target);
         });
+        const topbarLabel = document.getElementById('adminTopbarSection');
+        if (topbarLabel) topbarLabel.textContent = _sectionLabels[target] || target;
 
         panels.forEach((panel) => {
             panel.classList.toggle('active', visiblePanels.includes(panel.dataset.tabPanel));

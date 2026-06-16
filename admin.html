@@ -60,6 +60,9 @@
             padding: 20px 24px 40px;
         }
 
+        /* Etiqueta sección activa en topbar — solo visible en mobile */
+        .admin-topbar-section { display: none; }
+
         /* Botón hamburguesa — definido globalmente, se muestra/oculta por media query */
         .admin-hamburger-btn {
             display: none;
@@ -7633,46 +7636,52 @@
            MOBILE POS — Barra de acciones fija inferior
         ══════════════════════════════════════════ */
         .mob-pos-bottombar {
-            display: none;           /* visible solo en mobile vía media query */
+            display: none;
             position: fixed;
             bottom: 0; left: 0; right: 0;
             z-index: 9990;
-            background: rgba(9, 13, 22, 0.99);
-            border-top: 1px solid rgba(255,255,255,0.09);
-            -webkit-backdrop-filter: blur(18px);
-            backdrop-filter: blur(18px);
+            background: rgba(7, 10, 20, 0.99);
+            border-top: 1px solid rgba(255,255,255,0.07);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
             padding-bottom: env(safe-area-inset-bottom, 0px);
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
         }
         .mob-pos-bottombar button {
             border: none;
             cursor: pointer;
             font-family: 'Oswald', sans-serif;
-            letter-spacing: 0.8px;
+            letter-spacing: 0.9px;
             text-transform: uppercase;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 7px;
-            min-height: 58px;
+            gap: 3px;
+            min-height: 56px;
+            padding: 8px 12px;
             -webkit-tap-highlight-color: transparent;
-            transition: filter 0.15s;
+            transition: filter 0.12s, background 0.12s;
         }
         .mob-pos-bb-caja {
-            flex: 1;
-            background: rgba(255,215,0,0.08);
-            border-right: 1px solid rgba(255,255,255,0.08) !important;
+            flex: 0 0 80px;
+            background: rgba(255, 215, 0, 0.06);
+            border-right: 1px solid rgba(255,255,255,0.07) !important;
             color: #ffd700;
-            font-size: 0.82rem;
+            font-size: 0.62rem;
         }
-        .mob-pos-bb-caja:hover { filter: brightness(1.22); }
+        .mob-pos-bb-caja .bb-icon { font-size: 1.3rem; line-height: 1; }
+        .mob-pos-bb-caja:active { background: rgba(255,215,0,0.14); }
         .mob-pos-bb-nuevo {
-            flex: 2;
-            background: linear-gradient(135deg, #1db954, #15803d) !important;
+            flex: 1;
+            background: linear-gradient(135deg, #16a34a, #15803d) !important;
             color: #fff !important;
-            font-size: 1rem;
+            font-size: 0.88rem;
             font-weight: 700;
+            letter-spacing: 1.5px;
         }
-        .mob-pos-bb-nuevo:hover { filter: brightness(1.10); }
+        .mob-pos-bb-nuevo .bb-icon { font-size: 1.5rem; line-height: 1; }
+        .mob-pos-bb-nuevo:active { filter: brightness(0.9); }
         body.pos-is-open .mob-pos-bottombar { display: none !important; }
 
         .client-name-cell {
@@ -8200,88 +8209,154 @@
                 top: 0;
                 left: 0;
                 right: 0;
-                height: 54px;
+                height: 48px;
                 width: 100%;
                 z-index: 200;
                 overflow: visible;
                 padding: 0;
                 display: flex;
                 align-items: center;
-                background: rgba(10, 13, 24, 0.97);
+                background: rgba(8, 11, 22, 0.98);
                 -webkit-backdrop-filter: blur(20px);
                 backdrop-filter: blur(20px);
                 border-right: 0;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.09);
-                box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                box-shadow: 0 1px 12px rgba(0, 0, 0, 0.55);
             }
 
-            /* Header dentro del topbar: compacto horizontal */
+            /* Topbar: hamburguesa izquierda → logo → sección */
             .admin-sidebar .admin-header {
                 flex: 1;
                 flex-direction: row;
                 align-items: center;
-                justify-content: space-between;
+                justify-content: flex-start;
                 margin-bottom: 0;
-                padding: 0 14px;
+                padding: 0 10px 0 10px;
                 border: 0;
                 border-radius: 0;
                 background: transparent;
                 -webkit-backdrop-filter: none;
                 backdrop-filter: none;
                 box-shadow: none;
-                gap: 8px;
+                gap: 10px;
             }
 
+            /* Hamburguesa: a la izquierda, compacta */
+            .admin-hamburger-btn {
+                display: inline-flex;
+                order: -1;
+                width: 34px;
+                height: 34px;
+                font-size: 1.1rem;
+                border-radius: 8px;
+                flex-shrink: 0;
+            }
+
+            /* Logo: texto pequeño, ocupa el centro */
+            .admin-sidebar .admin-title-wrap {
+                flex: 1;
+                min-width: 0;
+            }
             .admin-sidebar .admin-title-wrap h1 {
-                font-size: 1rem;
-                letter-spacing: 1.5px;
+                font-size: 0.82rem;
+                letter-spacing: 2px;
                 margin-bottom: 0;
+                color: rgba(255,255,255,0.55);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
-            /* Mostrar hamburguesa, ocultar otros links */
-            .admin-hamburger-btn { display: inline-flex; }
+            /* Nombre de sección activa (lado derecho de topbar) */
+            .admin-topbar-section {
+                font-family: 'Oswald', sans-serif;
+                font-size: 0.92rem;
+                font-weight: 700;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+                color: #ff7b45;
+                white-space: nowrap;
+                flex-shrink: 0;
+                padding-right: 4px;
+            }
+
             .sidebar-section-label { display: none; }
             .admin-sidebar #adminNotice { display: none; }
             .sidebar-footer { display: none; }
 
-            /* Accordion: oculto por defecto, dropdown al abrir */
+            /* ── Drawer lateral desde la izquierda ── */
             .admin-accordion {
-                display: none;
+                display: flex;
                 flex-direction: column;
                 flex-wrap: nowrap;
-                gap: 4px;
+                gap: 3px;
                 position: fixed;
-                top: 54px;
+                top: 0;
                 left: 0;
-                right: 0;
+                width: 240px;
+                height: 100vh;
+                height: 100dvh;
                 z-index: 199;
-                background: rgba(9, 13, 24, 0.98);
-                -webkit-backdrop-filter: blur(20px);
-                backdrop-filter: blur(20px);
-                padding: 8px 12px 14px;
-                max-height: 75vh;
+                background: rgba(8, 11, 22, 0.99);
+                -webkit-backdrop-filter: blur(24px);
+                backdrop-filter: blur(24px);
+                padding: 56px 10px 24px;
                 overflow-y: auto;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+                border-right: 1px solid rgba(255, 255, 255, 0.09);
+                box-shadow: none;
                 margin-bottom: 0;
+                max-height: none;
+                /* Animación de entrada */
+                transform: translateX(-100%);
+                visibility: hidden;
+                transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+                            visibility 0.22s,
+                            box-shadow 0.22s;
             }
 
             .admin-sidebar.nav-open .admin-accordion {
-                display: flex;
+                transform: translateX(0);
+                visibility: visible;
+                box-shadow: 6px 0 32px rgba(0, 0, 0, 0.65);
             }
 
+            /* Drawer: separador entre logo y nav items */
+            .admin-accordion::before {
+                content: 'ROAL BURGER';
+                display: block;
+                font-family: 'Oswald', sans-serif;
+                font-size: 0.72rem;
+                font-weight: 700;
+                letter-spacing: 3px;
+                color: rgba(255,255,255,0.2);
+                padding: 0 4px 10px;
+                border-bottom: 1px solid rgba(255,255,255,0.07);
+                margin-bottom: 8px;
+                flex-shrink: 0;
+            }
+
+            /* Drawer: ítems de navegación — touch targets generosos */
             .admin-accordion-trigger {
                 width: 100%;
                 min-width: 0;
                 text-align: left;
-                padding: 12px 14px;
+                padding: 13px 14px;
                 border-radius: 10px;
-                font-size: 0.85rem;
+                font-size: 0.86rem;
+                letter-spacing: 0.6px;
+                gap: 10px;
+            }
+            .admin-accordion-trigger.active {
+                background: linear-gradient(135deg, rgba(255,123,69,0.22), rgba(255,183,96,0.12)) !important;
+                border-color: rgba(255,123,69,0.4) !important;
+            }
+            .admin-accordion-trigger .nav-icon {
+                font-size: 1.1rem;
             }
 
             /* Contenido: bajar para no quedar bajo la topbar */
             .admin-page {
-                padding: 70px 16px 40px;
+                padding: 60px 14px 80px;
             }
 
             .admin-form,
@@ -8868,9 +8943,9 @@
                 margin-bottom: 4px !important;
             }
 
-            /* 4. Tabs: sticky justo bajo topbar (no al top:8px que queda bajo ella) */
+            /* 4. Tabs: sticky justo bajo topbar (48px) */
             .orders-mobile-tabs {
-                top: 54px !important;
+                top: 48px !important;
                 z-index: 20 !important;
                 background: rgba(9, 13, 24, 0.98) !important;
                 -webkit-backdrop-filter: blur(14px) !important;
@@ -11171,6 +11246,7 @@
             <div class="admin-title-wrap">
                 <h1>Admin ROAL</h1>
             </div>
+            <span class="admin-topbar-section" id="adminTopbarSection">POS</span>
             <button type="button" class="admin-hamburger-btn" id="adminNavToggleBtn" aria-label="Abrir navegacion" aria-expanded="false">&#9776;</button>
         </header>
 
@@ -12919,10 +12995,11 @@
     <!-- ══ Mobile: barra de acciones rápidas (visible solo en móvil) ══ -->
     <div id="mobPosBottomBar" class="mob-pos-bottombar" role="toolbar" aria-label="Acciones POS">
         <button type="button" class="mob-pos-bb-caja" onclick="document.getElementById('cajaChicaBtn')?.click()" aria-label="Caja Chica">
-            💰 <span>Caja Chica</span>
+            <span class="bb-icon">💰</span>
+            <span>Caja</span>
         </button>
         <button type="button" class="mob-pos-bb-nuevo" onclick="document.getElementById('openCreateInternalOrderBtn')?.click()" aria-label="Nuevo Ticket">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
+            <span class="bb-icon">＋</span>
             <span>Nuevo Ticket</span>
         </button>
     </div>
@@ -12940,7 +13017,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260617b"></script>
+    <script src="admin.js?v=20260616a"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
