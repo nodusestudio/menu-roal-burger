@@ -4684,11 +4684,12 @@ function openBurgerClasicasPosModal(productId, productName) {
 
             const selCat  = String(posSelectedCategory || '').trim();
             const catData = categoriesState.find((c) => c.name.trim().toUpperCase() === selCat.toUpperCase());
-            const catAcompPos = catData ? catData.acompanantes_pos !== false : false;
-            const catBebPos   = catData ? catData.bebidas_pos !== false : false;
-            const hayAcomp  = catAcompPos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
-            const hayBebida = catBebPos   && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
-            const hayCombos = combosPackState.some((c) => c.estado !== 'paused' && c.activo_pos !== false);
+            const catAcompPos  = catData ? catData.acompanantes_pos !== false : false;
+            const catBebPos    = catData ? catData.bebidas_pos !== false : false;
+            const catCombosPos = catData ? catData.combos_pos !== false : false;
+            const hayAcomp  = catAcompPos  && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
+            const hayBebida = catBebPos    && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+            const hayCombos = catCombosPos && combosPackState.some((c) => c.estado !== 'paused' && c.activo_pos !== false);
 
             overlay.remove();
 
@@ -5479,7 +5480,8 @@ function renderPosUpgradeStep1() {
             </div>`).join('')}
         </div>` : '';
 
-    const combosDisponibles = combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false);
+    const catCombosPos = catData ? catData.combos_pos !== false : false;
+    const combosDisponibles = catCombosPos ? combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false) : [];
     const hayComboMenu = !yaHayCombo && combosDisponibles.length > 0;
     const mostrarBebida = !yaHayBebida && hayBebida;
 
