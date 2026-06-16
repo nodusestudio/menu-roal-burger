@@ -8912,21 +8912,27 @@
                 flex-shrink: 0 !important;
                 margin-left: 0 !important;
             }
-            /* Actualizar: solo ícono ↺ centrado */
+            /* Actualizar: mismas medidas que Cerrar Caja */
             [data-tab-panel="pedidos"] [data-section-save="pedidos"] {
                 padding: 0 !important;
                 width: 32px !important;
                 height: 32px !important;
-                font-size: 1.1rem !important;
+                min-width: 32px !important;
+                min-height: 32px !important;
+                font-size: 0 !important;
                 line-height: 1 !important;
                 border-radius: 7px !important;
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
                 letter-spacing: 0 !important;
+                flex-shrink: 0 !important;
             }
             [data-tab-panel="pedidos"] [data-section-save="pedidos"]::before {
-                content: none !important;
+                content: '↺' !important;
+                font-size: 1rem !important;
+                display: block !important;
+                line-height: 1 !important;
             }
             /* Cerrar Caja: compacto, solo ícono */
             #cerrarCajaBtnPos {
@@ -11455,7 +11461,7 @@
                         Por Confirmar
                         <span class="unread-tray-badge" id="ordersCountUnread">0</span>
                     </button>
-                    <button type="button" class="section-save-btn" data-section-save="pedidos" title="Actualizar pedidos">↺</button>
+                    <button type="button" class="section-save-btn" data-section-save="pedidos" title="Actualizar pedidos"></button>
                     <button type="button" id="cerrarCajaBtnPos" style="background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">🔒 Cerrar Caja</button>
                 </div>
                 <div class="unread-tray" id="unreadTray" hidden>
@@ -13051,7 +13057,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616i"></script>
+    <script src="admin.js?v=20260616j"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>

@@ -16843,7 +16843,7 @@ document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', cerrarCaj
                 const lat = parseFloat(hit.lat), lng = parseFloat(hit.lon);
                 const zone = _adminZoneForPoint(lat, lng);
                 if (zone) {
-                    setResult(`$ ${_adminFormatFee(zone.fee)}`, 'result-found');
+                    setResult(_adminFormatFee(zone.fee), 'result-found');
                 } else {
                     setResult('Fuera de zona · Consultar', 'result-outside');
                 }
