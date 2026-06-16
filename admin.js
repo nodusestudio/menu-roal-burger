@@ -12773,6 +12773,7 @@ function _ptsMarkOccupiedMesas() {
     const allOccupied = [...new Set([...occupiedFromTickets, ...occupiedFromOrders])];
     document.querySelectorAll('.pts-mesa-btn').forEach((btn) => {
         const num = Number(btn.dataset.ptsMesa);
+        if (!num) return; // mesa 0 = "por asignar", siempre habilitada
         const occupied = allOccupied.includes(num);
         btn.classList.toggle('occupied', occupied);
         btn.disabled = occupied;
@@ -13047,7 +13048,7 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     const activeTypeBtn = document.querySelector('#posTicketSetupModal .pts-type-btn.active');
     const activeMesaBtn = document.querySelector('#posTicketSetupModal .pts-mesa-btn.active');
     const resolvedType = (activeTypeBtn?.dataset?.ptsType) || _ptsSelectedType;
-    const resolvedMesa = activeMesaBtn ? Number(activeMesaBtn.dataset.ptsMesa) : _ptsSelectedMesa;
+    const resolvedMesa = activeMesaBtn ? (Number(activeMesaBtn.dataset.ptsMesa) || null) : _ptsSelectedMesa;
 
     if (!resolvedType) return;
 
