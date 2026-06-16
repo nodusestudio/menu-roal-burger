@@ -8381,10 +8381,18 @@
             .admin-page {
                 padding: 90px 0 80px;
             }
-            /* Cards del panel pedidos: esquinas cuadradas, borde a borde */
+            /* Grid: gap mínimo entre bloques */
+            .admin-grid.admin-dashboard {
+                gap: 6px !important;
+            }
+            /* Cards del panel pedidos: esquinas cuadradas, borde a borde, sin margen extra */
             [data-tab-panel="pedidos"] .admin-card {
                 border-radius: 0 !important;
                 margin: 0 !important;
+            }
+            [data-tab-panel="pedidos"] {
+                margin-top: 0 !important;
+                padding-top: 0 !important;
             }
 
             .admin-form,
@@ -13112,7 +13120,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616m"></script>
+    <script src="admin.js?v=20260616n"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
