@@ -10387,13 +10387,91 @@ function closeNavCategoriesScreen() {
     _exitScreen();
 }
 
+// Estado de filtros de búsqueda
+let _searchActiveCat = null;
+let _searchPricePreset = 'all'; // 'all' | '15000' | '30000' | '99999'
+
+function _getSearchPriceBounds() {
+    switch (_searchPricePreset) {
+        case '15000': return { min: 0,     max: 15000 };
+        case '30000': return { min: 15000, max: 30000 };
+        case '99999': return { min: 30000, max: Infinity };
+        default:      return { min: 0,     max: Infinity };
+    }
+}
+
+function _populateSearchCategoryChips() {
+    const container = document.getElementById('searchFilterCats');
+    if (!container) return;
+
+    const cats = [...new Set((latestProducts || [])
+        .filter(p => String(p.estado || '').trim() !== 'paused')
+        .map(p => String(p.categoria || '').trim())
+        .filter(Boolean)
+    )].sort((a, b) => a.localeCompare(b, 'es'));
+
+    container.innerHTML = '';
+
+    const allChip = document.createElement('button');
+    allChip.type = 'button';
+    allChip.className = 'search-cat-chip' + (_searchActiveCat === null ? ' active' : '');
+    allChip.textContent = 'Todas';
+    allChip.addEventListener('click', () => {
+        _searchActiveCat = null;
+        _applySearchFilters();
+    });
+    container.appendChild(allChip);
+
+    cats.forEach(cat => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'search-cat-chip' + (_searchActiveCat === cat ? ' active' : '');
+        chip.textContent = cat;
+        chip.addEventListener('click', () => {
+            _searchActiveCat = _searchActiveCat === cat ? null : cat;
+            _applySearchFilters();
+        });
+        container.appendChild(chip);
+    });
+}
+
+function _applySearchFilters() {
+    // Actualiza estado visual de chips de categoría
+    document.querySelectorAll('#searchFilterCats .search-cat-chip').forEach(chip => {
+        const isAll = chip.textContent === 'Todas';
+        chip.classList.toggle('active', isAll ? _searchActiveCat === null : chip.textContent === _searchActiveCat);
+    });
+    // Actualiza estado visual de botones de precio
+    document.querySelectorAll('#searchFilterPrices .search-price-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.price === _searchPricePreset);
+    });
+    const q = document.getElementById('searchInput')?.value || '';
+    renderSearchResults(q);
+}
+
 function openSearchScreen() {
     const screen = document.getElementById('searchScreen');
     if (!screen || !screen.hidden) return; // no-op si ya está abierto
 
+    _searchActiveCat = null;
+    _searchPricePreset = 'all';
     _enterScreen('searchScreen');
     screen.hidden = false;
     screen.scrollTop = 0;
+
+    _populateSearchCategoryChips();
+
+    // Listeners de precio (una sola vez por apertura usando delegación)
+    const pricesEl = document.getElementById('searchFilterPrices');
+    if (pricesEl && !pricesEl._roalBound) {
+        pricesEl._roalBound = true;
+        pricesEl.addEventListener('click', e => {
+            const btn = e.target.closest('.search-price-btn');
+            if (!btn) return;
+            _searchPricePreset = btn.dataset.price;
+            _applySearchFilters();
+        });
+    }
 
     const input = document.getElementById('searchInput');
     if (input) {
@@ -10499,22 +10577,45 @@ function renderSearchResults(query) {
     if (!grid) return;
 
     const q = query.trim();
+    const hasFilters = _searchActiveCat !== null || _searchPricePreset !== 'all';
+    const { min: priceMin, max: priceMax } = _getSearchPriceBounds();
 
-    if (!q) {
-        grid.innerHTML = '<p class="search-hint-msg">Escribe el nombre de un producto para buscarlo...</p>';
+    if (!q && !hasFilters) {
+        grid.innerHTML = '<p class="search-hint-msg">Escribe el nombre de un producto o usa los filtros para explorar el menú.</p>';
         return;
     }
 
-    const scored = (latestProducts || [])
-        .filter(p => String(p.estado || '').trim() !== 'paused')
-        .map(p => ({ p, score: _scoreProduct(q, p) }))
-        .filter(({ score }) => score > 0)
-        .sort((a, b) => b.score - a.score ||
-            String(a.p.nombre || '').localeCompare(String(b.p.nombre || ''), 'es'));
+    // Filtrar por categoría y precio
+    let pool = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
+    if (_searchActiveCat !== null) {
+        pool = pool.filter(p => String(p.categoria || '').trim() === _searchActiveCat);
+    }
+    if (priceMin > 0 || priceMax < Infinity) {
+        pool = pool.filter(p => {
+            const price = resolveProductDisplayPrice(p);
+            return price >= priceMin && price <= priceMax;
+        });
+    }
+
+    let scored;
+    if (q) {
+        scored = pool
+            .map(p => ({ p, score: _scoreProduct(q, p) }))
+            .filter(({ score }) => score > 0)
+            .sort((a, b) => b.score - a.score ||
+                String(a.p.nombre || '').localeCompare(String(b.p.nombre || ''), 'es'));
+    } else {
+        // Solo filtros, sin texto: mostrar todos los del pool ordenados por nombre
+        scored = pool
+            .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'))
+            .map(p => ({ p, score: 1 }));
+    }
 
     if (scored.length === 0) {
-        grid.innerHTML = '<p class="search-hint-msg">No encontramos &ldquo;<strong>' +
-            query.trim().replace(/</g, '&lt;') + '</strong>&rdquo; en nuestro menú.</p>';
+        const msg = q
+            ? `No encontramos &ldquo;<strong>${q.replace(/</g, '&lt;')}</strong>&rdquo;${_searchActiveCat ? ` en <strong>${_searchActiveCat}</strong>` : ''} en nuestro menú.`
+            : `Sin productos${_searchActiveCat ? ` en <strong>${_searchActiveCat}</strong>` : ''} para el precio seleccionado.`;
+        grid.innerHTML = `<p class="search-hint-msg">${msg}</p>`;
         return;
     }
 

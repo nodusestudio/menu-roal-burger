@@ -2921,6 +2921,63 @@
         .metrics-panel { display: none; }
         .metrics-panel.active { display: grid; gap: 16px; }
 
+        /* ── Filtro de período (pestaña Productos) ── */
+        .prod-period-bar {
+            display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+        }
+        .prod-period-btn {
+            padding: 5px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.55);
+            font-family: 'Space Grotesk', sans-serif; font-size: 0.76rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.6px; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .prod-period-btn.active, .prod-period-btn:hover {
+            background: rgba(255,122,26,0.18); border-color: rgba(255,122,26,0.4);
+            color: #ffb07a;
+        }
+        /* ── Ranking de productos ── */
+        .prod-rank-list { display: grid; gap: 10px; }
+        .prod-rank-item {
+            display: flex; align-items: flex-start; gap: 12px;
+        }
+        .prod-rank-pos {
+            min-width: 24px; font-size: 0.78rem; font-weight: 700;
+            color: rgba(255,255,255,0.35); padding-top: 2px; text-align: right;
+        }
+        .prod-rank-pos.top3 { color: #ffb07a; }
+        .prod-rank-body { flex: 1; min-width: 0; }
+        .prod-rank-name-row {
+            display: flex; align-items: center; gap: 8px;
+            margin-bottom: 5px; flex-wrap: wrap;
+        }
+        .prod-rank-name {
+            flex: 1; min-width: 0; font-size: 0.84rem; font-weight: 600;
+            color: rgba(255,255,255,0.88); white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .prod-rank-qty {
+            font-size: 0.75rem; font-weight: 700; color: #ffb07a;
+            white-space: nowrap;
+        }
+        .prod-rank-rev {
+            font-size: 0.72rem; color: rgba(255,255,255,0.4);
+            white-space: nowrap;
+        }
+        .prod-rank-bar-wrap {
+            height: 5px; border-radius: 3px;
+            background: rgba(255,255,255,0.07); overflow: hidden;
+        }
+        .prod-rank-bar {
+            height: 100%; border-radius: 3px;
+            background: linear-gradient(90deg, #e87b20, #ffb07a);
+            transition: width 0.4s ease;
+        }
+        .prod-rank-empty {
+            color: rgba(255,255,255,0.35); font-size: 0.84rem;
+            text-align: center; padding: 24px 0;
+        }
+
         /* ── KPI strip ── */
         .metrics-summary-strip {
             display: grid;
@@ -3047,6 +3104,50 @@
         .metrics-detail-row strong {
             color: #fff; font-family: 'Space Grotesk', sans-serif; font-weight: 700;
         }
+        /* Historial de pedidos del cliente */
+        .metrics-orders-section {
+            margin-top: 14px;
+        }
+        .metrics-orders-title {
+            font-size: 0.62rem; font-weight: 700;
+            font-family: 'Space Grotesk', sans-serif;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            color: rgba(255,255,255,0.35); margin-bottom: 8px;
+        }
+        .metrics-order-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px;
+            margin-bottom: 6px;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .metrics-order-meta { flex: 1; min-width: 0; }
+        .metrics-order-date {
+            font-size: 0.72rem; color: rgba(255,255,255,0.45); margin-bottom: 2px;
+        }
+        .metrics-order-products {
+            font-size: 0.78rem; color: rgba(255,255,255,0.75);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .metrics-order-total {
+            font-size: 0.85rem; font-weight: 700; color: var(--admin-accent, #ff9540);
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .metrics-order-repeat-btn {
+            background: rgba(255,122,26,0.14);
+            border: 1px solid rgba(255,122,26,0.35);
+            border-radius: 8px;
+            color: #ff9540;
+            font-size: 0.72rem; font-weight: 700;
+            padding: 4px 10px;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        .metrics-order-repeat-btn:hover { background: rgba(255,122,26,0.28); }
 
         /* Boton hamburguesa — oculto por defecto, visible en mobile via media query */
         .admin-hamburger-btn { display: none; }
@@ -9096,6 +9197,38 @@
         .caja-table th:last-child { text-align: right; }
         .caja-empty { text-align: center; padding: 40px 16px; color: var(--admin-muted); font-size: 0.88rem; }
 
+        /* Filtro de fechas — Historial de Cajas */
+        .cierres-filter-bar {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        }
+        .cierres-filter-label {
+            font-size: 0.72rem; color: var(--admin-muted); white-space: nowrap;
+        }
+        .cierres-date-input {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.16);
+            border-radius: 8px;
+            color: #fff;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.78rem;
+            padding: 4px 8px;
+            cursor: pointer;
+            color-scheme: dark;
+        }
+        .cierres-date-input:focus { outline: none; border-color: rgba(255,122,26,0.5); }
+        .cierres-clear-btn {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.16);
+            border-radius: 8px;
+            color: var(--admin-muted);
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            cursor: pointer;
+            line-height: 1;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .cierres-clear-btn:hover { color: #fca5a5; border-color: rgba(252,165,165,0.4); }
+
         /* Libro contable Caja Diaria */
         .caja-ledger-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 0 0 16px 16px; }
         .caja-ledger-table {
@@ -11011,8 +11144,15 @@
                             <!-- Sub-panel: Historial de Cajas -->
                             <div class="cajas-subpanel" data-cajas-panel="historial" hidden style="display:none;">
                                 <article class="admin-card">
-                                    <div class="card-head">
+                                    <div class="card-head" style="flex-wrap:wrap;gap:8px;">
                                         <h2>Historial de Cajas</h2>
+                                        <div class="cierres-filter-bar">
+                                            <label class="cierres-filter-label">Desde</label>
+                                            <input type="date" id="cierresDateFrom" class="cierres-date-input" aria-label="Desde">
+                                            <label class="cierres-filter-label">Hasta</label>
+                                            <input type="date" id="cierresDateTo" class="cierres-date-input" aria-label="Hasta">
+                                            <button type="button" id="cierresFilterClearBtn" class="cierres-clear-btn" title="Limpiar filtro">✕</button>
+                                        </div>
                                         <button type="button" class="card-collapse-btn" id="refreshLibroCierresBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
                                     </div>
                                     <div class="card-body" style="padding:0;">
@@ -11388,6 +11528,7 @@
                 <div class="section-toolbar">
                     <nav class="metrics-tabs-nav" role="tablist">
                         <button type="button" class="metrics-tab-btn active" data-metrics-tab="usuarios" role="tab">Usuarios</button>
+                        <button type="button" class="metrics-tab-btn" data-metrics-tab="productos" role="tab">Productos</button>
                     </nav>
                     <button type="button" class="section-save-btn" data-section-save="metricas">Actualizar</button>
                 </div>
@@ -11421,6 +11562,35 @@
                             <span class="metrics-users-count" id="metricsUsersCountLabel"></span>
                         </div>
                         <div id="metricsUsersList" class="metrics-users-list"></div>
+                    </article>
+                </div>
+
+                <!-- PESTAÑA: PRODUCTOS MÁS VENDIDOS -->
+                <div class="metrics-panel" id="metricsPanelProductos">
+                    <article class="admin-card">
+                        <div class="metrics-summary-strip">
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="prodMetricUnits">—</span>
+                                <span class="metrics-kpi-label">Unidades vendidas</span>
+                            </div>
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="prodMetricRevenue">—</span>
+                                <span class="metrics-kpi-label">Ingresos (productos)</span>
+                            </div>
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="prodMetricDistinct">—</span>
+                                <span class="metrics-kpi-label">Productos distintos</span>
+                            </div>
+                        </div>
+                    </article>
+                    <article class="admin-card">
+                        <div class="prod-period-bar">
+                            <button class="prod-period-btn active" data-prod-period="all">Todo</button>
+                            <button class="prod-period-btn" data-prod-period="month">Este mes</button>
+                            <button class="prod-period-btn" data-prod-period="week">Esta semana</button>
+                            <button class="prod-period-btn" data-prod-period="today">Hoy</button>
+                        </div>
+                        <div id="prodMetricsRanking"></div>
                     </article>
                 </div>
             </div>

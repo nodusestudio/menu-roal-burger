@@ -401,6 +401,15 @@
                 <input type="search" id="searchInput" class="search-input" placeholder="¿Qué buscas hoy?" autocomplete="off" autocorrect="off" spellcheck="false">
             </div>
         </div>
+        <div class="search-filter-bar">
+            <div class="search-filter-cats" id="searchFilterCats" role="listbox" aria-label="Filtrar por categoría"></div>
+            <div class="search-filter-prices" id="searchFilterPrices" role="listbox" aria-label="Filtrar por precio">
+                <button type="button" class="search-price-btn active" data-price="all">Todo</button>
+                <button type="button" class="search-price-btn" data-price="15000">-$15k</button>
+                <button type="button" class="search-price-btn" data-price="30000">$15k–$30k</button>
+                <button type="button" class="search-price-btn" data-price="99999">+$30k</button>
+            </div>
+        </div>
         <div id="searchResultsGrid" class="cds-products-grid"></div>
     </div>
 

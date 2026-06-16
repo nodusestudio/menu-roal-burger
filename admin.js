@@ -7768,6 +7768,89 @@ function createFeaturedRow(product) {
 
 let _metricsUsersFiltered = [];
 
+let _prodMetricsPeriod = 'all';
+
+function renderMetricasProductos(period) {
+    if (period !== undefined) _prodMetricsPeriod = period;
+    const ranking = document.getElementById('prodMetricsRanking');
+    if (!ranking) return;
+
+    // Límite temporal según período
+    const now = new Date();
+    const startOf = (unit) => {
+        const d = new Date(now);
+        if (unit === 'today') { d.setHours(0, 0, 0, 0); }
+        else if (unit === 'week') { d.setDate(d.getDate() - d.getDay()); d.setHours(0, 0, 0, 0); }
+        else if (unit === 'month') { d.setDate(1); d.setHours(0, 0, 0, 0); }
+        return d;
+    };
+    const cutoff = _prodMetricsPeriod !== 'all' ? startOf(_prodMetricsPeriod) : null;
+
+    // Agregar por producto
+    const map = new Map();
+    for (const order of ordersState) {
+        const ts = order.createdAt
+            ? (typeof order.createdAt.toDate === 'function' ? order.createdAt.toDate() : new Date(order.createdAt))
+            : null;
+        if (cutoff && ts && ts < cutoff) continue;
+
+        for (const item of (order.items || [])) {
+            const name = String(item.productName || '').trim();
+            if (!name) continue;
+            const qty = Number(item.quantity || 0);
+            const rev = Number(item.subtotal || 0);
+            if (!map.has(name)) map.set(name, { qty: 0, revenue: 0 });
+            const e = map.get(name);
+            e.qty += qty;
+            e.revenue += rev;
+        }
+    }
+
+    const sorted = [...map.entries()]
+        .map(([name, d]) => ({ name, ...d }))
+        .filter((p) => p.qty > 0)
+        .sort((a, b) => b.qty - a.qty)
+        .slice(0, 20);
+
+    // KPIs
+    const totalUnits = sorted.reduce((s, p) => s + p.qty, 0);
+    const totalRev   = sorted.reduce((s, p) => s + p.revenue, 0);
+    const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setKpi('prodMetricUnits',    totalUnits.toLocaleString('es-CO'));
+    setKpi('prodMetricRevenue',  formatMoney(totalRev));
+    setKpi('prodMetricDistinct', map.size.toLocaleString('es-CO'));
+
+    if (!sorted.length) {
+        ranking.innerHTML = '<p class="prod-rank-empty">Sin pedidos en este período.</p>';
+        return;
+    }
+
+    const maxQty = sorted[0].qty;
+    const listEl = document.createElement('div');
+    listEl.className = 'prod-rank-list';
+    sorted.forEach((p, i) => {
+        const item = document.createElement('div');
+        item.className = 'prod-rank-item';
+        const barPct = Math.round((p.qty / maxQty) * 100);
+        item.innerHTML = `
+            <span class="prod-rank-pos${i < 3 ? ' top3' : ''}">${i + 1}</span>
+            <div class="prod-rank-body">
+                <div class="prod-rank-name-row">
+                    <span class="prod-rank-name"></span>
+                    <span class="prod-rank-qty">${p.qty.toLocaleString('es-CO')} uds</span>
+                    <span class="prod-rank-rev">${formatMoney(p.revenue)}</span>
+                </div>
+                <div class="prod-rank-bar-wrap">
+                    <div class="prod-rank-bar" style="width:${barPct}%"></div>
+                </div>
+            </div>`;
+        item.querySelector('.prod-rank-name').textContent = p.name;
+        listEl.appendChild(item);
+    });
+    ranking.innerHTML = '';
+    ranking.appendChild(listEl);
+}
+
 function renderMetricsUsers() {
     const list = document.getElementById('metricsUsersList');
     if (!list) return;
@@ -7939,7 +8022,80 @@ function _renderMetricsUserDetail(container, orders, phone) {
         ${topItems.length ? makeCard('Productos favoritos', topItems.map(([n, q]) => [n, `×${q}`])) : ''}
         ${topHours.length ? makeCard('Horario de compra', topHours.map(({ h, c }) => [h, `${c} pedido${c !== 1 ? 's' : ''}`])) : ''}
         ${payRows.length ? makeCard('Métodos de pago', payRows.map(([m, c]) => [m, `${c}×`])) : ''}
+    </div>
+    <div class="metrics-orders-section">
+        <div class="metrics-orders-title">Pedidos recientes</div>
+        ${orders.slice(0, 10).map((o) => {
+            const ts = o.createdAt?.seconds ? o.createdAt.seconds * 1000 : Number(o.createdAt || 0);
+            const dateStr = ts ? new Date(ts).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+            const productsSummary = (o.items || []).map((i) => {
+                const n = String(i.productName || i.nombre || '');
+                const q = Number(i.quantity || i.cantidad || 1);
+                return q > 1 ? `${q}× ${n}` : n;
+            }).join(', ') || '—';
+            const total = formatMoney(o.total || 0);
+            const itemsJson = escapeHtml(JSON.stringify(o.items || []));
+            return `<div class="metrics-order-item">
+                <div class="metrics-order-meta">
+                    <div class="metrics-order-date">${escapeHtml(dateStr)}</div>
+                    <div class="metrics-order-products" title="${escapeHtml(productsSummary)}">${escapeHtml(productsSummary)}</div>
+                </div>
+                <span class="metrics-order-total">${total}</span>
+                <button class="metrics-order-repeat-btn" data-repeat-items="${itemsJson}" title="Cargar en POS">↺ Repetir</button>
+            </div>`;
+        }).join('')}
     </div>`;
+
+    // Listeners de "Repetir en POS"
+    container.querySelectorAll('.metrics-order-repeat-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            try {
+                const items = JSON.parse(btn.dataset.repeatItems || '[]');
+                _repeatOrderInPos(items);
+            } catch { /* noop */ }
+        });
+    });
+}
+
+function _repeatOrderInPos(pastItems) {
+    if (!pastItems || !pastItems.length) {
+        showNotice('Este pedido no tiene productos para cargar.', 'error');
+        return;
+    }
+
+    const ticket = createNewPosTicket();
+
+    pastItems.forEach((item, idx) => {
+        const name     = String(item.productName || item.nombre || '').trim();
+        if (!name) return;
+        const qty      = Number(item.quantity || item.cantidad || 1);
+        const unit     = Number(item.unitPrice || item.price || 0) || (qty ? Math.round(Number(item.subtotal || 0) / qty) : 0);
+        const subtotal = unit * qty;
+        const note     = String(item.note || item.optionLabel || item.nota || '');
+        const key      = `repeat_${ticket.id}_${idx}`;
+
+        internalOrderItems.push({
+            itemKey: key,
+            productId: item.productId || null,
+            productName: name,
+            categoryName: item.categoryName || '',
+            quantity: qty,
+            unitPrice: unit,
+            originalUnitPrice: null,
+            subtotal,
+            note,
+            optionLabel: note,
+            promoLabel: null,
+            promo2x1: false,
+            parentKey: null
+        });
+    });
+
+    ticket.items = internalOrderItems;
+
+    openInternalOrderModal();
+    showNotice(`${pastItems.length} producto${pastItems.length !== 1 ? 's' : ''} cargado${pastItems.length !== 1 ? 's' : ''} en POS.`, 'success');
 }
 
 function formatMoney(value) {
@@ -11897,6 +12053,7 @@ async function reloadDataAndRender() {
     renderMessages();
     updateMessagesAttentionState();
     renderMetricsUsers();
+    renderMetricasProductos();
     await syncStats();
     _migrateCategoryFlags();
 
@@ -13063,6 +13220,24 @@ document.getElementById('metricsUserSearch')?.addEventListener('input', (e) => {
         return name.includes(q) || phone.includes(q);
     });
     _renderMetricsUserRows(filtered);
+});
+
+// Tabs de métricas (Usuarios / Productos)
+document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const tab = btn.dataset.metricsTab;
+        document.querySelectorAll('.metrics-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('.metrics-panel').forEach((p) => p.classList.toggle('active', p.id === `metricsPanel${tab.charAt(0).toUpperCase()}${tab.slice(1)}`));
+        if (tab === 'productos') renderMetricasProductos();
+    });
+});
+
+// Filtro de período en métricas de productos
+document.querySelectorAll('.prod-period-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.prod-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
+        renderMetricasProductos(btn.dataset.prodPeriod);
+    });
 });
 
 // Cerrar lista de tickets
@@ -16434,6 +16609,14 @@ async function loadCierresCaja() {
     return _cierresCajaState;
 }
 
+function _getCierresFilterRange() {
+    const fromVal = document.getElementById('cierresDateFrom')?.value || '';
+    const toVal   = document.getElementById('cierresDateTo')?.value   || '';
+    const from = fromVal ? new Date(`${fromVal}T00:00:00`) : null;
+    const to   = toVal   ? new Date(`${toVal}T23:59:59`)  : null;
+    return { from, to };
+}
+
 async function renderLibroCierres() {
     const headEl = document.getElementById('libroCierresHead');
     const tbody  = document.getElementById('libroCierresList');
@@ -16460,9 +16643,25 @@ async function renderLibroCierres() {
     }
 
     try {
-        const cierres = await loadCierresCaja();
+        let cierres = await loadCierresCaja();
+
+        // Filtrar por rango de fechas si hay alguno activo
+        const { from, to } = _getCierresFilterRange();
+        if (from || to) {
+            cierres = cierres.filter((c) => {
+                const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+                if (!tsMs) return false;
+                const d = new Date(tsMs);
+                if (from && d < from) return false;
+                if (to   && d > to)   return false;
+                return true;
+            });
+        }
         if (!cierres.length) {
-            tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">No hay cierres de caja registrados.</td></tr>`;
+            const emptyMsg = (from || to)
+                ? 'Sin cierres en el rango de fechas seleccionado.'
+                : 'No hay cierres de caja registrados.';
+            tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">${emptyMsg}</td></tr>`;
             if (footEl) footEl.innerHTML = '';
             return;
         }
@@ -16540,6 +16739,15 @@ async function renderLibroCierres() {
 }
 
 document.getElementById('refreshLibroCierresBtn')?.addEventListener('click', renderLibroCierres);
+document.getElementById('cierresDateFrom')?.addEventListener('change', renderLibroCierres);
+document.getElementById('cierresDateTo')?.addEventListener('change', renderLibroCierres);
+document.getElementById('cierresFilterClearBtn')?.addEventListener('click', () => {
+    const from = document.getElementById('cierresDateFrom');
+    const to   = document.getElementById('cierresDateTo');
+    if (from) from.value = '';
+    if (to)   to.value   = '';
+    renderLibroCierres();
+});
 
 // ── Libro Contable ────────────────────────────────────────────────────────────
 let _lcActivePeriod = 'diario';
