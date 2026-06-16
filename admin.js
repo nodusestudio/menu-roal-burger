@@ -14490,7 +14490,8 @@ if (orderTicketPanel) {
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
             if (confirm(`¿Eliminar el pedido #${order.code}?`)) {
                 selectedOrderId = null;
-                deleteOrder(order.id);
+                await deleteOrder(order.id);
+                showNotice(`Pedido #${order.code} eliminado.`, 'ok');
             }
             return;
         }
@@ -17670,7 +17671,8 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', (e) => 
         } else if (action === 'eliminar' && order) {
             closeTicketPreviewModal();
             if (confirm(`¿Eliminar el pedido #${order.code}?`)) {
-                deleteOrder(order.id);
+                await deleteOrder(order.id);
+                showNotice(`Pedido #${order.code} eliminado.`, 'ok');
             }
         }
         return;
