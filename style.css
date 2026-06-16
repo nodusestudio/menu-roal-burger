@@ -7125,6 +7125,36 @@ a,
     will-change: transform;
 }
 
+/* ── Skeleton loading ─────────────────────────────────────────────────────── */
+/* opacity → Composite puro: cero Paint, cero Layout por frame */
+@keyframes skel-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.38; }
+}
+.skel-card {
+    background: rgba(200, 150, 80, 0.13);
+    border-radius: 12px;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: none;
+    animation: skel-pulse 1.5s ease-in-out infinite;
+    will-change: opacity;
+}
+/* Tarjeta de categoría (coincide con .home-cat-card: height 58px, border-radius 12px) */
+.skel-cat-card {
+    height: 58px;
+    border: 1px solid rgba(200, 150, 80, 0.14);
+}
+/* Imagen del recomendado mientras espera datos */
+.home-rec-img-wrap.skel-loading {
+    background: rgba(200, 150, 80, 0.13);
+    animation: skel-pulse 1.5s ease-in-out infinite;
+    will-change: opacity;
+}
+.home-rec-img-wrap.skel-loading .home-rec-img {
+    opacity: 0;
+}
+
 /* =====================================================
    CONTAIN — aisla reflow/repaint dentro de cada tarjeta
    ===================================================== */

@@ -10100,13 +10100,16 @@ function renderHomeRecBanner() {
     const btn    = document.getElementById('homeRecBtn');
     if (!img) return;
 
+    const imgWrap = img.closest('.home-rec-img-wrap');
+
     const product = getRecommendedProductOfDay();
-    // Si no hay datos aún pero el banner ya tiene contenido, no lo borrar
     if (!product) {
         if (name && name.textContent && name.textContent !== '...') return;
+        if (imgWrap) imgWrap.classList.add('skel-loading');
         return;
     }
 
+    if (imgWrap) imgWrap.classList.remove('skel-loading');
     img.src = String(product.image_url || product.imageUrl || '');
     img.alt = String(product.nombre || product.name || 'Recomendado del dia');
     if (name)  name.textContent  = String(product.nombre || product.name || 'Recomendado del dia');
@@ -10209,9 +10212,8 @@ function renderHomeCategoryCards() {
 
     const categories = activeCategoryMeta;
     if (!categories || categories.length === 0) {
-        // Solo mostrar "Cargando" si todavía no hay cards renderizadas
-        if (!grid.querySelector('.home-cat-card')) {
-            grid.innerHTML = '<p class="home-loading-msg">Cargando categorias...</p>';
+        if (!grid.querySelector('.home-cat-card') && !grid.querySelector('.skel-cat-card')) {
+            grid.innerHTML = Array(6).fill('<div class="skel-card skel-cat-card" aria-hidden="true"></div>').join('');
         }
         return;
     }
