@@ -4229,7 +4229,7 @@
         .pos-upgrade-body { flex: 1; overflow-y: auto; padding: 10px 12px; -webkit-overflow-scrolling: touch; }
 
         /* Pantalla home del sheet */
-        .pus-home-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+        .pus-home-btns { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 10px; }
         .pus-cat-btn {
             padding: 12px 8px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,0.12);
             background: rgba(255,255,255,0.06); color: #eef4ff; font-size: 0.85rem;
@@ -4239,6 +4239,7 @@
         .pus-cat-btn:active { background: rgba(255,255,255,0.13); }
         .pus-cat-btn.bebida { border-color: rgba(80,160,255,0.3); }
         .pus-cat-btn.adicional { border-color: rgba(255,170,50,0.3); }
+        .pus-cat-btn.combo { border-color: rgba(110,231,183,0.4); color: #6ee7b7; }
         .pus-solo-btn {
             width: 100%; padding: 9px 12px; border-radius: 10px;
             border: 1px dashed rgba(255,255,255,0.15); background: rgba(255,255,255,0.03);

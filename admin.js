@@ -5463,10 +5463,13 @@ function renderPosUpgradeStep1() {
             </div>`).join('')}
         </div>` : '';
 
+    const hayCombo = hayAcomp && hayBebida;
+
     body.innerHTML = `
         <div class="pus-home-btns">
-            ${hayAcomp  ? `<button type="button" class="pus-cat-btn adicional" id="pusGoAdicional">🥗 Adicional</button>` : ''}
-            ${hayBebida ? `<button type="button" class="pus-cat-btn bebida"   id="pusGoBebida">🥤 Bebida</button>` : ''}
+            ${hayCombo   ? `<button type="button" class="pus-cat-btn combo"    id="pusGoCombo">🍔 Combo</button>` : ''}
+            ${hayAcomp   ? `<button type="button" class="pus-cat-btn adicional" id="pusGoAdicional">🥗 Adicional</button>` : ''}
+            ${hayBebida  ? `<button type="button" class="pus-cat-btn bebida"   id="pusGoBebida">🥤 Bebida</button>` : ''}
         </div>
         <button type="button" class="pus-solo-btn" id="posUpgradeSolo">Sin acompañamiento — solo el producto</button>
         ${extrasHtml}`;
@@ -5476,6 +5479,7 @@ function renderPosUpgradeStep1() {
         document.getElementById('posUpgradeAddBtn')?.click();
     });
 
+    body.querySelector('#pusGoCombo')?.addEventListener('click', () => _renderPosUpgradeCombo());
     body.querySelector('#pusGoAdicional')?.addEventListener('click', () => _renderPosUpgradeAdicionales());
     body.querySelector('#pusGoBebida')?.addEventListener('click', () => _renderPosUpgradeBebidas());
 
@@ -5485,6 +5489,138 @@ function renderPosUpgradeStep1() {
             renderPosUpgradeStep1();
         });
     });
+}
+
+// Flujo Combo: primero elige acompañante, luego bebida, luego vuelve al step1
+function _renderPosUpgradeCombo() {
+    const body = document.getElementById('posUpgradeBody');
+    const titleEl = document.getElementById('posUpgradeTitle');
+    if (!body) return;
+    if (titleEl) titleEl.textContent = 'Combo — Elige adicional';
+
+    const activos = acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).sort((a, b) => a.orden - b.orden);
+
+    body.innerHTML = `
+        <div class="pos-upgrade-options">
+            ${activos.map((a) => `
+            <button type="button" class="pos-upgrade-opt" data-acomp-id="${escapeHtml(a.id)}">
+                <div>
+                    <div class="pos-upgrade-opt-name">${escapeHtml(a.nombre)}</div>
+                    ${a.cantidad ? `<div class="pos-upgrade-opt-detail">${escapeHtml(a.cantidad)}</div>` : ''}
+                </div>
+                <span class="pos-upgrade-opt-price">${a.precio > 0 ? '+' + formatMoney(a.precio) : 'incluido'}</span>
+            </button>`).join('')}
+        </div>
+        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
+
+    body.querySelectorAll('.pos-upgrade-opt[data-acomp-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const acomp = acompanantesState.find((a) => a.id === btn.dataset.acompId);
+            if (!acomp) return;
+            _posUpgradePending.extras.push({ id: `acomp-${acomp.id}`, name: acomp.nombre, price: acomp.precio });
+            // Continuar al paso de bebida
+            _renderPosUpgradeCombo_Bebida();
+        });
+    });
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
+}
+
+function _renderPosUpgradeCombo_Bebida() {
+    const body = document.getElementById('posUpgradeBody');
+    const titleEl = document.getElementById('posUpgradeTitle');
+    if (!body) return;
+    if (titleEl) titleEl.textContent = 'Combo — Elige bebida';
+
+    const activas = bebidasState.filter((b) => b.estado === 'active' && b.mostrar_acompanante).sort((a, b) => a.orden - b.orden);
+
+    body.innerHTML = `
+        <div class="pos-upgrade-options">
+            ${activas.map((b) => {
+                const min = b.presentaciones.length > 0 ? Math.min(...b.presentaciones.map((p) => p.precio)) : 0;
+                const det = b.presentaciones.length > 1 ? `${b.presentaciones.length} presentaciones` : (b.presentaciones[0]?.nombre || '');
+                return `<button type="button" class="pos-upgrade-opt" data-bebida-id="${escapeHtml(b.id)}">
+                    <div>
+                        <div class="pos-upgrade-opt-name">${escapeHtml(b.marca)}</div>
+                        ${det ? `<div class="pos-upgrade-opt-detail">${escapeHtml(det)}</div>` : ''}
+                    </div>
+                    <span class="pos-upgrade-opt-price">${b.presentaciones.length > 0 ? 'desde +' + formatMoney(min) : ''}</span>
+                </button>`;
+            }).join('')}
+        </div>
+        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Cambiar adicional</button>`;
+
+    body.querySelectorAll('.pos-upgrade-opt[data-bebida-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const bev = bebidasState.find((b) => b.id === btn.dataset.bebidaId);
+            if (!bev) return;
+            if (bev.presentaciones.length === 1 && bev.presentaciones[0].sabores.length === 0) {
+                const pres = bev.presentaciones[0];
+                _posUpgradePending.extras.push({ id: `bev-${bev.id}-${pres.id}`, name: `${bev.marca} ${pres.nombre}`, price: pres.precio });
+                renderPosUpgradeStep1();
+            } else {
+                _renderPosUpgradeCombo_BebidaPres(bev);
+            }
+        });
+    });
+    // Volver = deshacer el acompañante recién agregado y volver al paso 1 del combo
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => {
+        _posUpgradePending.extras.pop();
+        _renderPosUpgradeCombo();
+    });
+}
+
+function _renderPosUpgradeCombo_BebidaPres(bebida) {
+    const body = document.getElementById('posUpgradeBody');
+    const titleEl = document.getElementById('posUpgradeTitle');
+    if (!body) return;
+    if (titleEl) titleEl.textContent = `Combo — ${escapeHtml(bebida.marca)}`;
+
+    body.innerHTML = `
+        <div class="pos-upgrade-options">
+            ${bebida.presentaciones.map((p) => `
+            <button type="button" class="pos-upgrade-opt" data-pres-id="${escapeHtml(p.id)}">
+                <div><div class="pos-upgrade-opt-name">${escapeHtml(p.nombre)}</div></div>
+                <span class="pos-upgrade-opt-price">+${formatMoney(p.precio)}</span>
+            </button>`).join('')}
+        </div>
+        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
+
+    body.querySelectorAll('.pos-upgrade-opt[data-pres-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const pres = bebida.presentaciones.find((p) => p.id === btn.dataset.presId);
+            if (!pres) return;
+            if (pres.sabores.length > 0) {
+                _renderPosUpgradeCombo_Sabores(bebida, pres);
+            } else {
+                _posUpgradePending.extras.push({ id: `bev-${bebida.id}-${pres.id}`, name: `${bebida.marca} ${pres.nombre}`, price: pres.precio });
+                renderPosUpgradeStep1();
+            }
+        });
+    });
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => _renderPosUpgradeCombo_Bebida());
+}
+
+function _renderPosUpgradeCombo_Sabores(bebida, presentacion) {
+    const body = document.getElementById('posUpgradeBody');
+    const titleEl = document.getElementById('posUpgradeTitle');
+    if (!body) return;
+    if (titleEl) titleEl.textContent = `Combo — ${escapeHtml(bebida.marca)} sabor`;
+
+    body.innerHTML = `
+        <div class="pos-flavors-grid">
+            ${presentacion.sabores.map((s) => `
+            <button type="button" class="pos-flavor-btn" data-sabor="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
+        </div>
+        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
+
+    body.querySelectorAll('.pos-flavor-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const name = `${bebida.marca} ${presentacion.nombre} (${btn.dataset.sabor})`;
+            _posUpgradePending.extras.push({ id: `bev-${bebida.id}-${presentacion.id}`, name, price: presentacion.precio });
+            renderPosUpgradeStep1();
+        });
+    });
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => _renderPosUpgradeCombo_BebidaPres(bebida));
 }
 
 function _renderPosUpgradeAdicionales() {
