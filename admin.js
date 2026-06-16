@@ -1822,15 +1822,16 @@ function ensureOrdersRealtimeTicker() {
     }
 
     ordersRealtimeTimer = window.setInterval(() => {
-        const waiting = ordersState.filter((o) => o.status === 'esperando_domiciliario');
-        if (!waiting.length) return;
-
-        // Actualizar solo los spans de timer en-lugar para evitar el parpadeo de tarjetas
         document.querySelectorAll('.order-wait-timer[data-order-id]').forEach((el) => {
             const order = ordersState.find((o) => o.id === el.dataset.orderId);
-            if (order) {
-                el.textContent = formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
-            }
+            if (order) el.textContent = formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
+        });
+        document.querySelectorAll('.koc-courier-time[data-order-id]').forEach((el) => {
+            const order = ordersState.find((o) => o.id === el.dataset.orderId);
+            if (!order) return;
+            el.textContent = el.dataset.courierRef === 'created'
+                ? formatElapsedTime(order.createdAt)
+                : formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
         });
     }, 1000);
 }
@@ -9464,6 +9465,22 @@ function createOrderCard(order) {
         ? `<span class="koc-sin-mesa-badge">⚠️ Sin mesa</span>`
         : '';
 
+    let courierChip = '';
+    if (isDeliveryOrder && order.status !== 'entregado' && !isAnuladoActive) {
+        const courierCalled = !!order.courierRequestedAt;
+        const isTransit = order.status === 'en_camino';
+        if (!courierCalled) {
+            card.classList.add('koc-delivery-pending');
+            courierChip = `<div class="koc-courier-chip koc-courier-pending">⚠️ Sin domiciliario · <span class="koc-courier-time" data-order-id="${escapeHtml(order.id)}" data-courier-ref="created">${escapeHtml(formatElapsedTime(order.createdAt))}</span></div>`;
+        } else if (isTransit) {
+            card.classList.add('koc-delivery-transit');
+            courierChip = `<div class="koc-courier-chip koc-courier-transit">🛵 En camino · <span class="koc-courier-time" data-order-id="${escapeHtml(order.id)}" data-courier-ref="requested">${escapeHtml(formatLiveDuration(order.courierRequestedAt))}</span></div>`;
+        } else {
+            card.classList.add('koc-delivery-waiting');
+            courierChip = `<div class="koc-courier-chip koc-courier-waiting">📞 Dom. llamado · <span class="koc-courier-time" data-order-id="${escapeHtml(order.id)}" data-courier-ref="requested">${escapeHtml(formatLiveDuration(order.courierRequestedAt))}</span></div>`;
+        }
+    }
+
     card.innerHTML = `
         <div class="koc-header">
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
@@ -9472,6 +9489,7 @@ function createOrderCard(order) {
             ${promoHeaderBadge}
             <span class="koc-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
         </div>
+        ${courierChip}
         <div class="koc-body">
             <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
             <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
