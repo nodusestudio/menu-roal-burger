@@ -8812,6 +8812,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                 return `
                 <div class="ticket-print-row">
                     <button type="button" class="ticket-print-btn ticket-action-btn" data-order-ticket-action="print" data-order-id="${order.id}">Imprimir</button>
+                    <button type="button" class="ticket-kitchen-btn ticket-action-btn" data-order-ticket-action="kitchen" data-order-id="${order.id}">🍳 Cocina</button>
                     <button type="button" class="ticket-cobrar-btn ticket-action-btn" data-order-ticket-action="cobrar" data-order-id="${order.id}" ${_cobrarDisabled} title="${_cobrarTitle}">💰 Cobrar</button>
                     <button type="button" class="ticket-contact-btn ticket-action-btn" data-order-ticket-action="contact" data-order-id="${order.id}">Agregar contacto</button>
                 </div>`;
@@ -10334,6 +10335,66 @@ function _printOrderViaBrowser(order) {
     printArea.innerHTML = '';
 }
 
+function buildKitchenTicketHtml(order) {
+    const restaurantName = escapeHtml(brandingState.restaurantName || 'ROAL BURGER');
+    const orderCode      = escapeHtml(order.code || '');
+    const orderHour      = escapeHtml(formatOrderTime(order.createdAt));
+
+    const orderTypeLabel = order.orderType === 'mesa'
+        ? `MESA ${order.mesaNumber || '?'}`
+        : order.orderType === 'domicilio' ? 'DOMICILIO' : 'RECOGER';
+
+    const addressLine = (order.orderType === 'domicilio' && order.deliveryAddress)
+        ? `<div class="k-address">${escapeHtml(order.deliveryAddress)}</div>`
+        : '';
+
+    const products = (order.items || []).map((item) => {
+        const details = [item.categoryName, item.optionLabel]
+            .filter(Boolean)
+            .map((p) => `<div class="k-detail">${escapeHtml(p)}</div>`)
+            .join('');
+        const note = item.note ? `<div class="k-note">⚠ ${escapeHtml(item.note)}</div>` : '';
+        return `<div class="k-product">
+            <div class="k-qty-name">${escapeHtml(String(item.quantity))}x ${escapeHtml(item.productName)}</div>
+            ${details}${note}
+        </div>`;
+    }).join('');
+
+    return `
+        <div class="ticket-paper-wrap">
+            <article class="ticket-paper k-paper">
+                <div class="k-header">
+                    <div class="k-brand">${restaurantName}</div>
+                    <div class="k-order-code">#${orderCode}</div>
+                    <div class="k-time">${orderHour}</div>
+                </div>
+                <div class="k-type-badge">${escapeHtml(orderTypeLabel)}</div>
+                ${addressLine}
+                <div class="k-products">${products}</div>
+                <div class="k-footer">— Ticket de Cocina —</div>
+            </article>
+        </div>`;
+}
+
+function openKitchenPrintTicket(orderId) {
+    const order = ordersState.find((e) => e.id === orderId);
+    if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+
+    const printArea = document.getElementById('thermalPrintArea');
+    if (!printArea) { showNotice('Error interno: área de impresión no encontrada.', 'error'); return; }
+
+    // Sobrescribir @page a 80mm solo durante esta impresión
+    const pageStyle = document.createElement('style');
+    pageStyle.textContent = '@media print { @page { size: 80mm auto; margin: 3mm 5mm; } }';
+    document.head.appendChild(pageStyle);
+
+    printArea.innerHTML = buildKitchenTicketHtml(order);
+    printArea.classList.add('kitchen-mode');
+    window.print();
+    printArea.innerHTML = '';
+    printArea.classList.remove('kitchen-mode');
+    pageStyle.remove();
+}
 
 function refreshLivePreview() {
     if (!liveMenuPreview) {
@@ -14008,6 +14069,15 @@ if (orderTicketPanel) {
             return;
         }
 
+        if (actionButton.dataset.orderTicketAction === 'kitchen') {
+            try {
+                openKitchenPrintTicket(orderId);
+            } catch (error) {
+                showNotice(`No se pudo imprimir ticket de cocina: ${error.message || 'error inesperado.'}`, 'error');
+            }
+            return;
+        }
+
         if (actionButton.dataset.orderTicketAction === 'contact') {
             try {
                 openOrderContactCard(orderId);
@@ -17022,6 +17092,9 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', (e) => 
         if (action === 'print') {
             const orderId = String(btn.dataset.orderId || '').trim();
             if (orderId) openOrderPrintTicket(orderId);
+        } else if (action === 'kitchen') {
+            const orderId = String(btn.dataset.orderId || '').trim();
+            if (orderId) openKitchenPrintTicket(orderId);
         } else if (action === 'cobrar' && order) {
             _triggerTicketCobro(order);
         } else if (action === 'contact') {
