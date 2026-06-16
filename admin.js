@@ -16904,11 +16904,12 @@ async function renderLibroCierres() {
         let gastosExternos = [];
         try {
             const gSnap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
-                .where('tipo', '==', 'externo')
                 .orderBy('registradoAt', 'desc')
-                .limit(200)
+                .limit(500)
                 .get();
-            gastosExternos = gSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            gastosExternos = gSnap.docs
+                .map((d) => ({ id: d.id, ...d.data() }))
+                .filter((g) => g.tipo === 'externo');
         } catch (_) { gastosExternos = []; }
 
         // Filtrar por rango de fechas si hay alguno activo
