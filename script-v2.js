@@ -3252,25 +3252,32 @@ const COMBOS_CON_PAPAS_IMAGE_PRICES = {
     './combosconpapasybebidas/comboperronormal.png': { 1: 17000, 2: 25000, 3: 38000, 4: 49000 }
 };
 
+const _supportsWebP = (() => {
+    try {
+        const c = document.createElement('canvas');
+        return c.toDataURL('image/webp').startsWith('data:image/webp');
+    } catch { return false; }
+})();
+
 function normalizeImageAssetPath(value) {
     const normalized = String(value || '').trim().replace(/\\/g, '/');
-    if (!normalized) {
-        return '';
-    }
+    if (!normalized) return '';
 
+    // URLs externas, data URIs y blobs — no tocar
     if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
         return normalized;
     }
 
-    if (normalized.startsWith('/')) {
-        return normalized;
-    }
+    let local;
+    if (normalized.startsWith('/'))  local = normalized;
+    else if (normalized.startsWith('./')) local = normalized;
+    else local = `./${normalized.replace(/^\.?\//, '')}`;
 
-    if (normalized.startsWith('./')) {
-        return normalized;
+    // Si el browser soporta WebP, servir la versión .webp de imágenes locales
+    if (_supportsWebP && /\.(png|jpg|jpeg)$/i.test(local)) {
+        return local.replace(/\.(png|jpg|jpeg)$/i, '.webp');
     }
-
-    return `./${normalized.replace(/^\.?\//, '')}`;
+    return local;
 }
 
 function buildParentRelativeImagePath(value) {

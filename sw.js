@@ -1,6 +1,6 @@
 /* Service Worker — ROAL BURGER */
 
-const CACHE_VERSION = 'roal-v2';
+const CACHE_VERSION = 'roal-v3';
 const CACHE_STATIC  = `${CACHE_VERSION}-static`;
 const CACHE_IMAGES  = `${CACHE_VERSION}-images`;
 const ALL_CACHES    = [CACHE_STATIC, CACHE_IMAGES];
@@ -9,9 +9,9 @@ const ALL_CACHES    = [CACHE_STATIC, CACHE_IMAGES];
 const PRECACHE_URLS = [
     '/',
     '/index.html',
-    '/isotipo.png',
-    '/logo.png',
-    '/portada.png',
+    '/isotipo.webp',
+    '/logo.webp',
+    '/portada.webp',
 ];
 
 // ── Install: pre-cachear assets críticos ─────────────────────────────────
