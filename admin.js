@@ -15845,7 +15845,7 @@ function renderGastoMethodButtons() {
 function _updateGastoConfirmState() {
     const btn = document.getElementById('gastoRegistrarBtn');
     if (!btn) return;
-    const monto = Number(document.getElementById('gastoMonto')?.value || 0);
+    const monto = Number((document.getElementById('gastoMonto')?.value || '').replace(/\./g, '') || 0);
     btn.disabled = !(monto > 0 && _gastoSelectedMethod);
 }
 
@@ -15967,12 +15967,20 @@ document.getElementById('gastoModal')?.addEventListener('click', (e) => {
     }
 });
 
-document.getElementById('gastoMonto')?.addEventListener('input', _updateGastoConfirmState);
+document.getElementById('gastoMonto')?.addEventListener('input', (e) => {
+    const input = e.target;
+    const raw = input.value.replace(/\D/g, '');
+    if (raw === '') { input.value = ''; } else {
+        const num = parseInt(raw, 10);
+        input.value = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+    _updateGastoConfirmState();
+});
 
 document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async () => {
     const proveedor  = document.getElementById('gastoProveedor')?.value?.trim() || '';
     const descripcion = document.getElementById('gastoDescripcion')?.value?.trim() || '';
-    const monto = Number(document.getElementById('gastoMonto')?.value || 0);
+    const monto = Number((document.getElementById('gastoMonto')?.value || '').replace(/\./g, '') || 0);
     if (!monto || monto <= 0 || !_gastoSelectedMethod) return;
 
     const registrarBtn = document.getElementById('gastoRegistrarBtn');
