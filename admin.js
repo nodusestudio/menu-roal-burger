@@ -4679,13 +4679,26 @@ function openBurgerClasicasPosModal(productId, productName) {
         btn.innerHTML = `<strong style="display:block;font-size:0.9rem;">${escapeHtml(opt.label)}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${opt.price.toLocaleString('es-CO')}</span>`;
         btn.addEventListener('click', () => {
             const note = noteInput.value.trim();
-            addProductToPosOrder(
-                `${String(productId).trim()}::${opt.label.replace(/\s+/g, '_')}`,
-                `${productName} - ${opt.label}`,
-                opt.price,
-                note
-            );
+            const finalId   = `${String(productId).trim()}::${opt.label.replace(/\s+/g, '_')}`;
+            const finalName = `${productName} - ${opt.label}`;
+
+            const selCat  = String(posSelectedCategory || '').trim();
+            const catData = categoriesState.find((c) => c.name.trim().toUpperCase() === selCat.toUpperCase());
+            const catAcompPos = catData ? catData.acompanantes_pos !== false : false;
+            const catBebPos   = catData ? catData.bebidas_pos !== false : false;
+            const hayAcomp  = catAcompPos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
+            const hayBebida = catBebPos   && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+            const hayCombos = combosPackState.some((c) => c.estado !== 'paused' && c.activo_pos !== false);
+
             overlay.remove();
+
+            if (hayAcomp || hayBebida || hayCombos) {
+                openPosUpgradeSheet(finalId, finalName, opt.price);
+                const commentInput = document.getElementById('posUpgradeComment');
+                if (commentInput && note) commentInput.value = note;
+            } else {
+                addProductToPosOrder(finalId, finalName, opt.price, note);
+            }
         });
         optGrid.appendChild(btn);
     });
