@@ -1083,6 +1083,12 @@ function notifyNewOrder(order) {
         return;
     }
 
+    // Solo mostrar notificación del sistema cuando la pestaña está en segundo plano.
+    // Si el admin ya está viendo el panel, el banner showNotice es suficiente.
+    if (!document.hidden) {
+        return;
+    }
+
     const notification = new Notification('Nuevo pedido en ROAL BURGER', {
         body: `${order.customerName || 'Cliente'} | ${getOrderTypeLabel(order)} | ${formatMoney(getOrderDisplayTotal(order))}`,
         icon: 'isotipo.png',
