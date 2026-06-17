@@ -1924,15 +1924,30 @@ function _ordersCutoff() {
     return d;
 }
 
+const _ACTIVE_STATUSES = ['pendiente', 'en_preparacion', 'listo', 'listo_recoger', 'esperando_domiciliario', 'en_camino'];
+
 async function fetchOrders() {
-    const snapshot = await firebaseDb.collection(ORDERS_COLLECTION)
-        .where('createdAt', '>=', _ordersCutoff())
-        .orderBy('createdAt', 'desc')
-        .get();
-    ordersState = snapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((raw) => !isOrderSequenceMeta(raw))
-        .map((raw) => normalizeOrder(raw))
+    // Consulta principal: últimos 30 días con createdAt Timestamp correcto
+    // Consulta secundaria: pedidos activos sin filtro de fecha (rescata orders con createdAt mal formado)
+    const [recentSnap, activeSnap] = await Promise.all([
+        firebaseDb.collection(ORDERS_COLLECTION)
+            .where('createdAt', '>=', _ordersCutoff())
+            .orderBy('createdAt', 'desc')
+            .get(),
+        firebaseDb.collection(ORDERS_COLLECTION)
+            .where('status', 'in', _ACTIVE_STATUSES)
+            .get()
+    ]);
+    const seen = new Set();
+    const raw = [];
+    for (const snap of [recentSnap, activeSnap]) {
+        for (const doc of snap.docs) {
+            if (!seen.has(doc.id)) { seen.add(doc.id); raw.push({ id: doc.id, ...doc.data() }); }
+        }
+    }
+    ordersState = raw
+        .filter((r) => !isOrderSequenceMeta(r))
+        .map((r) => normalizeOrder(r))
         .sort((a, b) => {
             const aTs = a.createdAt && typeof a.createdAt.toMillis === 'function' ? a.createdAt.toMillis() : 0;
             const bTs = b.createdAt && typeof b.createdAt.toMillis === 'function' ? b.createdAt.toMillis() : 0;
