@@ -2514,21 +2514,23 @@ function renderPosCategoriesPanel() {
         select.dataset.listenerAttached = 'true';
     }
 
-    const promoOption = `<option value="__POS_PROMOCIONES__">🏷️ PROMOCIONES</option>`;
-    const bebidasCatOption = catalogoVisibilidad.bebidas_pos && bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
+    const promoOption       = `<option value="__POS_PROMOCIONES__">🏷️ PROMOCIONES</option>`;
+    const cobroExtraOption  = `<option value="__POS_COBRO_EXTRA__">➕ COBRO EXTRA</option>`;
+    const bebidasCatOption  = catalogoVisibilidad.bebidas_pos && bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
         ? `<option value="__POS_BEBIDAS__">🥤 Bebidas (${bebidasState.filter((b) => b.estado === 'active' && b.mostrar_categoria).length})</option>`
         : '';
-    const acompCatOption = catalogoVisibilidad.acompanantes_pos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos)
+    const acompCatOption    = catalogoVisibilidad.acompanantes_pos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos)
         ? `<option value="__POS_ACOMPANANTES__">🥗 Acompañantes (${acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).length})</option>`
         : '';
-    select.innerHTML = promoOption + bebidasCatOption + acompCatOption + categories.map((cat) => {
+    select.innerHTML = promoOption + cobroExtraOption + bebidasCatOption + acompCatOption + categories.map((cat) => {
         const count = catalog.filter(
             (p) => String(p.categoria || '').trim() === cat && p.visible_pos !== false
         ).length;
         return `<option value="${escapeHtml(cat)}">${escapeHtml(cat)} (${count})</option>`;
     }).join('');
 
-    if (posSelectedCategory && (posSelectedCategory === '__POS_PROMOCIONES__' || posSelectedCategory === '__POS_BEBIDAS__' || posSelectedCategory === '__POS_ACOMPANANTES__' || categories.includes(posSelectedCategory))) {
+    const specialKeys = ['__POS_PROMOCIONES__', '__POS_COBRO_EXTRA__', '__POS_BEBIDAS__', '__POS_ACOMPANANTES__'];
+    if (posSelectedCategory && (specialKeys.includes(posSelectedCategory) || categories.includes(posSelectedCategory))) {
         select.value = posSelectedCategory;
     } else if (categories.length > 0) {
         posSelectedCategory = categories[0];
@@ -2552,6 +2554,12 @@ function renderPosProductsPanel() {
     // Panel especial de Promociones
     if (posSelectedCategory === '__POS_PROMOCIONES__') {
         renderPosPromocionesPanel(grid);
+        return;
+    }
+
+    // Panel especial de Cobro Extra
+    if (posSelectedCategory === '__POS_COBRO_EXTRA__') {
+        renderPosCobroExtraPanel(grid);
         return;
     }
 
@@ -2881,6 +2889,73 @@ function renderPosAcompanantesPanel(grid) {
 
         grid.appendChild(card);
     });
+}
+
+function renderPosCobroExtraPanel(grid) {
+    grid.style.display = 'block';
+    grid.innerHTML = '';
+
+    const PRESETS = [1000, 2000, 3000, 5000, 8000, 10000];
+
+    const wrap = document.createElement('div');
+    wrap.className = 'pos-cobro-extra-panel';
+    wrap.innerHTML = `
+        <div class="pos-cobro-extra-header">
+            <span class="pos-cobro-extra-icon">➕</span>
+            <span>Cobro extra al ticket</span>
+        </div>
+        <div class="pos-cobro-extra-fields">
+            <div class="pos-cobro-extra-field">
+                <label for="cobroExtraConcepto">Concepto</label>
+                <input id="cobroExtraConcepto" type="text" placeholder="Ej: Domicilio, Empaque, Servicio..." maxlength="60" autocomplete="off">
+            </div>
+            <div class="pos-cobro-extra-field">
+                <label for="cobroExtraMonto">Monto $</label>
+                <input id="cobroExtraMonto" type="number" placeholder="0" min="0" step="100" inputmode="numeric">
+            </div>
+        </div>
+        <div class="pos-cobro-extra-presets">
+            ${PRESETS.map((v) => `<button type="button" class="pos-cobro-preset-btn" data-value="${v}">${formatMoney(v)}</button>`).join('')}
+        </div>
+        <button type="button" id="cobroExtraAddBtn" class="pos-cobro-extra-add-btn">➕ Agregar al ticket</button>
+    `;
+
+    // Presets rellenan el monto
+    wrap.querySelectorAll('.pos-cobro-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const input = wrap.querySelector('#cobroExtraMonto');
+            if (input) { input.value = btn.dataset.value; input.focus(); }
+        });
+    });
+
+    // Agregar al ticket
+    wrap.querySelector('#cobroExtraAddBtn').addEventListener('click', () => {
+        const conceptoInput = wrap.querySelector('#cobroExtraConcepto');
+        const montoInput    = wrap.querySelector('#cobroExtraMonto');
+        const concepto = String(conceptoInput?.value || '').trim() || 'Cobro extra';
+        const monto    = Number(montoInput?.value || 0);
+
+        if (!monto || monto <= 0) {
+            montoInput?.focus();
+            showNotice('Ingresa un monto mayor a $0.', 'error');
+            return;
+        }
+
+        addProductToPosOrder(`cobro-extra::${concepto}`, concepto, monto, '', null);
+        showNotice(`${concepto} — ${formatMoney(monto)} agregado al ticket.`, 'ok');
+
+        // Limpiar campos tras agregar
+        if (conceptoInput) conceptoInput.value = '';
+        if (montoInput)    montoInput.value    = '';
+        conceptoInput?.focus();
+    });
+
+    // Enter en monto dispara el botón de agregar
+    wrap.querySelector('#cobroExtraMonto').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') wrap.querySelector('#cobroExtraAddBtn')?.click();
+    });
+
+    grid.appendChild(wrap);
 }
 
 function renderPosPromocionesPanel(grid) {

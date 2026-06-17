@@ -4445,6 +4445,34 @@
         .pos-upgrade-add-btn:active { opacity: 0.85; }
 
         /* ── Panel Promociones POS ── */
+        /* ── Cobro Extra POS ── */
+        .pos-cobro-extra-panel { padding: 16px 12px; display: flex; flex-direction: column; gap: 14px; }
+        .pos-cobro-extra-header { display: flex; align-items: center; gap: 8px; font-family: 'Oswald', sans-serif; font-size: 1rem; letter-spacing: .04em; color: #fff; opacity: .85; }
+        .pos-cobro-extra-icon { font-size: 1.3rem; }
+        .pos-cobro-extra-fields { display: flex; flex-direction: column; gap: 10px; }
+        .pos-cobro-extra-field { display: flex; flex-direction: column; gap: 4px; }
+        .pos-cobro-extra-field label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .06em; color: rgba(255,255,255,.5); }
+        .pos-cobro-extra-field input {
+            background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14);
+            border-radius: 8px; color: #fff; font-size: 1rem; padding: 9px 12px;
+            outline: none; transition: border-color .15s;
+        }
+        .pos-cobro-extra-field input:focus { border-color: rgba(255,165,0,.6); }
+        .pos-cobro-extra-presets { display: flex; flex-wrap: wrap; gap: 7px; }
+        .pos-cobro-preset-btn {
+            background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+            border-radius: 20px; color: rgba(255,255,255,.8); font-size: 0.78rem;
+            padding: 5px 13px; cursor: pointer; transition: background .15s, border-color .15s;
+        }
+        .pos-cobro-preset-btn:hover { background: rgba(255,165,0,.2); border-color: rgba(255,165,0,.5); color: #fff; }
+        .pos-cobro-extra-add-btn {
+            background: linear-gradient(135deg, #e07b00, #f5a623);
+            border: none; border-radius: 10px; color: #fff; font-size: 0.95rem;
+            font-weight: 700; padding: 13px; cursor: pointer; letter-spacing: .02em;
+            transition: opacity .15s; text-align: center;
+        }
+        .pos-cobro-extra-add-btn:hover { opacity: .88; }
+
         .pos-promo-panel { padding: 8px 4px; }
         .pos-promo-section { margin-bottom: 16px; }
         .pos-promo-section-title {
@@ -13248,7 +13276,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260616t"></script>
+    <script src="admin.js?v=20260616u"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
