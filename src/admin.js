@@ -391,6 +391,7 @@ let salesDayState = null;
 let selectedOrderId = null;
 let knownOrderIds = new Set();
 let hasLoadedOrdersOnce = false;
+let viewedOrderIds = new Set(); // pedidos abiertos en el ticket — dejan de tintiliar aunque sigan pendiente
 let knownMessageIds = new Set();
 let hasLoadedMessagesOnce = false;
 let activeAccordionSection = 'categorias';
@@ -956,6 +957,11 @@ function announceNewOrders(orders) {
 
     const newOrders = orders.filter((order) => !knownOrderIds.has(order.id));
     knownOrderIds = currentOrderIds;
+
+    // Limpiar IDs vistos que ya no son pendiente (procesados, entregados, etc.)
+    const pendienteIds = new Set(orders.filter((o) => o.status === 'pendiente').map((o) => o.id));
+    for (const id of viewedOrderIds) { if (!pendienteIds.has(id)) viewedOrderIds.delete(id); }
+
     updateOrdersAttentionState();
 
     if (!newOrders.length) {
@@ -990,7 +996,7 @@ function announceNewOrders(orders) {
 }
 
 function getUnreadOrders() {
-    return ordersState.filter((order) => order.status === 'pendiente');
+    return ordersState.filter((order) => order.status === 'pendiente' && !viewedOrderIds.has(order.id));
 }
 
 function updateAdminDocumentTitle(unreadCount = getUnreadOrders().length) {
@@ -9335,6 +9341,12 @@ function renderOrderTicket(order, options = {}) {
         return;
     }
     _ticketRenderKey = renderKey;
+
+    // Marcar como leído: deja de tintiliar el botón POS aunque siga pendiente
+    if (order.status === 'pendiente' && !viewedOrderIds.has(order.id)) {
+        viewedOrderIds.add(order.id);
+        updateOrdersAttentionState();
+    }
 
     orderTicketBody.innerHTML = buildThermalTicketMarkup(order);
 
