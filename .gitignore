@@ -1,3 +1,9 @@
 .vercel
 .env*.local
 node_modules/
+
+# Archivos generados por `npm run build` — no editar, editar en src/
+/admin.js
+/script-v2.js
+/tracking.js
+/style.css
