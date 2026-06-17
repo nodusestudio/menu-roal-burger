@@ -3074,14 +3074,22 @@ function renderPosPromocionesPanel(grid) {
         return btn;
     }
 
-    // ── Hash diario (mismo algoritmo que menú público) ────────────────────
+    // ── Hash diario — algoritmo IDÉNTICO al menú público (_hashProductDay) ──
     function hashDay(key, day) {
         let h = ((day * 2654435761) >>> 0);
         for (let i = 0; i < key.length; i++) {
             h = (Math.imul(h ^ key.charCodeAt(i), 2246822519) >>> 0);
-            h = ((h << 13) | (h >>> 19)) >>> 0;
+            h = (Math.imul(h ^ (h >>> 13), 3266489917) >>> 0);
         }
-        return h;
+        return h >>> 0;
+    }
+
+    // Categorías excluidas del recomendado — igual que menú público
+    const _REC_EXCL = ['bebidas y adicionales', 'adicionales', 'bebidas', 'nuestras salsas', 'entradas'];
+    function _recCatExcluida(cat) {
+        const k = String(cat || '').toLowerCase().trim();
+        if (k.includes('combo')) return true;
+        return _REC_EXCL.some((p) => k.includes(p));
     }
 
     let hasAny = false;
@@ -3091,19 +3099,37 @@ function renderPosPromocionesPanel(grid) {
     if (recomendadoDiaState && recomendadoDiaState.activo && recomendadoDiaState.producto_id) {
         _recProd = productsState.find((p) => p.id === recomendadoDiaState.producto_id) || null;
     } else {
-        const pool = productsState.filter((p) =>
-            String(p.estado || 'active').trim() === 'active' && String(p.image_url || '').trim()
+        // Pool incluye pausados (igual que menú) para que el hash sea estable sin importar estado
+        const rawPool = productsState.filter((p) =>
+            String(p.image_url || '').trim() && !_recCatExcluida(p.categoria)
         );
+        // Deduplicar por nombre+categoría (igual que menú)
+        const _recSeen = new Set();
+        const pool = [];
+        rawPool.forEach((p) => {
+            const sig = `${String(p.categoria || '').toLowerCase().trim()}::${String(p.nombre || '').toLowerCase().trim()}`;
+            if (sig && !_recSeen.has(sig)) { _recSeen.add(sig); pool.push(p); }
+        });
+
         if (pool.length) {
+            // daySerial en hora Bogotá (idéntico al menú público)
             const now = new Date();
-            const daySerial = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
+            const _bp = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit'
+            }).formatToParts(now);
+            const _by = Number(_bp.find((x) => x.type === 'year')?.value  || 0);
+            const _bm = Number(_bp.find((x) => x.type === 'month')?.value || 1);
+            const _bd = Number(_bp.find((x) => x.type === 'day')?.value   || 1);
+            const daySerial = Math.floor(Date.UTC(_by, _bm - 1, _bd) / 86400000);
+
             let best = pool[0];
-            let minH = hashDay(`${pool[0].nombre}::${pool[0].categoria}`, daySerial);
+            let minH = hashDay(`${best.nombre}::${best.categoria}`, daySerial);
             for (let i = 1; i < pool.length; i++) {
                 const h = hashDay(`${pool[i].nombre}::${pool[i].categoria}`, daySerial);
                 if (h < minH) { minH = h; best = pool[i]; }
             }
-            _recProd = best;
+            // Solo mostrar en POS si el producto está activo
+            if (String(best.estado || 'active').trim() === 'active') _recProd = best;
         }
     }
 
