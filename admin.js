@@ -1918,8 +1918,17 @@ async function fetchHorarioConfig() {
     }
 }
 
+function _ordersCutoff() {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d;
+}
+
 async function fetchOrders() {
-    const snapshot = await firebaseDb.collection(ORDERS_COLLECTION).get();
+    const snapshot = await firebaseDb.collection(ORDERS_COLLECTION)
+        .where('createdAt', '>=', _ordersCutoff())
+        .orderBy('createdAt', 'desc')
+        .get();
     ordersState = snapshot.docs
         .map((doc) => ({ id: doc.id, ...doc.data() }))
         .filter((raw) => !isOrderSequenceMeta(raw))
@@ -1947,7 +1956,10 @@ async function fetchSalesDayState() {
 }
 
 async function fetchClients() {
-    const snapshot = await firebaseDb.collection(CLIENTS_COLLECTION).get();
+    const snapshot = await firebaseDb.collection(CLIENTS_COLLECTION)
+        .orderBy('lastOrderAt', 'desc')
+        .limit(300)
+        .get();
     clientsState = snapshot.docs
         .map((doc) => ({
             id: doc.id,
@@ -10942,16 +10954,19 @@ function setupLiveFirebaseSync() {
 
     const onErr = (name) => (err) => console.warn(`[ADMIN] ${name} listener error:`, err.code || err.message);
 
-    // Pedidos: solo recarga pedidos y re-renderiza el board
+    // Pedidos: solo últimos 30 días para reducir lecturas Firestore
     liveSubscriptions.push(
-        firebaseDb.collection(ORDERS_COLLECTION).onSnapshot(
-            _makeDebouncedHandler(async () => {
-                await fetchOrders();
-                announceNewOrders(ordersState);
-                renderOrders();
-            }, 600),
-            onErr('pedidos')
-        )
+        firebaseDb.collection(ORDERS_COLLECTION)
+            .where('createdAt', '>=', _ordersCutoff())
+            .orderBy('createdAt', 'desc')
+            .onSnapshot(
+                _makeDebouncedHandler(async () => {
+                    await fetchOrders();
+                    announceNewOrders(ordersState);
+                    renderOrders();
+                }, 600),
+                onErr('pedidos')
+            )
     );
 
     // Mensajes: solo recarga mensajes
@@ -10963,17 +10978,6 @@ function setupLiveFirebaseSync() {
                 updateMessagesAttentionState();
             }, 700),
             onErr('mensajes')
-        )
-    );
-
-    // Clientes: solo recarga clientes
-    liveSubscriptions.push(
-        firebaseDb.collection(CLIENTS_COLLECTION).onSnapshot(
-            _makeDebouncedHandler(async () => {
-                await fetchClients();
-                renderClients();
-            }, 800),
-            onErr('clientes')
         )
     );
 
@@ -10991,30 +10995,9 @@ function setupLiveFirebaseSync() {
         firebaseDb.collection(SALES_DAY_STATE_COLLECTION).onSnapshot(salesHandler, onErr('caja-dia'))
     );
 
-    // Productos/categorías/botones: recarga catálogo (compartido, debounce largo)
-    const catalogHandler = _makeDebouncedHandler(async () => {
-        await Promise.all([fetchProducts(), fetchCategories(), fetchButtons()]);
-        renderProductsList?.();
-        renderCategoriesList?.();
-        renderButtonsList?.();
-        queueLivePreviewRefresh?.();
-    }, 1200);
-    liveSubscriptions.push(firebaseDb.collection('productos').onSnapshot(catalogHandler, onErr('productos')));
-    liveSubscriptions.push(firebaseDb.collection('categorias').onSnapshot(catalogHandler, onErr('categorias')));
-    liveSubscriptions.push(firebaseDb.collection('botones').onSnapshot(catalogHandler, onErr('botones')));
-
-    // Promociones: recarga promos
-    liveSubscriptions.push(
-        firebaseDb.collection(PROMOCIONES_COLLECTION).onSnapshot(
-            _makeDebouncedHandler(async () => {
-                await Promise.all([fetchPromos(), fetchCombosEspeciales(), fetchPromos2x1()]);
-                queueLivePreviewRefresh?.();
-            }, 1000),
-            onErr('promociones')
-        )
-    );
-
     // Config general: recarga completa (afecta todo el UI)
+    // Catálogo (productos/categorías/botones/promos) NO tiene listener en tiempo real —
+    // se recarga automáticamente después de cada acción de guardado del admin.
     liveSubscriptions.push(
         firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).onSnapshot(
             _scheduleLiveReload,
