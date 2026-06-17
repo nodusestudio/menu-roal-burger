@@ -16465,10 +16465,12 @@ function renderCajaDiaria() {
         }
     }
 
-    // Filtrar cobros de la jornada actual
+    // Filtrar cobros de la jornada actual; usa deliveredAt como fallback de timestamp
     const allPaid = ordersState.filter((o) => {
         if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
-        const paidMs = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt || 0);
+        const ts = o.paidAt || o.deliveredAt || o.createdAt;
+        const paidMs = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+        if (!paidMs) return false;
         if (cajaAperturaAt) return paidMs >= cajaAperturaAt;
         const todayStr = new Date().toISOString().split('T')[0];
         return new Date(paidMs).toISOString().split('T')[0] === todayStr;
@@ -17024,10 +17026,12 @@ async function cerrarCaja() {
         const today = new Date();
         const todayStr = today.toISOString().split('T')[0];
 
-        // Usar el mismo filtro que renderCajaDiaria: desde cajaAperturaAt o desde hoy
+        // Mismo filtro que renderCajaDiaria; usa deliveredAt como fallback de timestamp
         const paid = ordersState.filter((o) => {
-            if (!o.paidAt || !o.paymentMethod || o.paymentMethod === 'pendiente') return false;
-            const ms = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt);
+            if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+            const ts = o.paidAt || o.deliveredAt || o.createdAt;
+            const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+            if (!ms) return false;
             if (cajaAperturaAt) return ms >= cajaAperturaAt;
             return new Date(ms).toISOString().split('T')[0] === todayStr;
         });
