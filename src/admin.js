@@ -2516,20 +2516,21 @@ function renderPosCategoriesPanel() {
 
     const promoOption       = `<option value="__POS_PROMOCIONES__">🏷️ PROMOCIONES</option>`;
     const cobroExtraOption  = `<option value="__POS_COBRO_EXTRA__">➕ COBRO EXTRA</option>`;
+    const descuentoOption   = `<option value="__POS_DESCUENTO__">🏷 DESCUENTO</option>`;
     const bebidasCatOption  = catalogoVisibilidad.bebidas_pos && bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
         ? `<option value="__POS_BEBIDAS__">🥤 Bebidas (${bebidasState.filter((b) => b.estado === 'active' && b.mostrar_categoria).length})</option>`
         : '';
     const acompCatOption    = catalogoVisibilidad.acompanantes_pos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos)
         ? `<option value="__POS_ACOMPANANTES__">🥗 Acompañantes (${acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).length})</option>`
         : '';
-    select.innerHTML = promoOption + cobroExtraOption + bebidasCatOption + acompCatOption + categories.map((cat) => {
+    select.innerHTML = promoOption + cobroExtraOption + descuentoOption + bebidasCatOption + acompCatOption + categories.map((cat) => {
         const count = catalog.filter(
             (p) => String(p.categoria || '').trim() === cat && p.visible_pos !== false
         ).length;
         return `<option value="${escapeHtml(cat)}">${escapeHtml(cat)} (${count})</option>`;
     }).join('');
 
-    const specialKeys = ['__POS_PROMOCIONES__', '__POS_COBRO_EXTRA__', '__POS_BEBIDAS__', '__POS_ACOMPANANTES__'];
+    const specialKeys = ['__POS_PROMOCIONES__', '__POS_COBRO_EXTRA__', '__POS_DESCUENTO__', '__POS_BEBIDAS__', '__POS_ACOMPANANTES__'];
     if (posSelectedCategory && (specialKeys.includes(posSelectedCategory) || categories.includes(posSelectedCategory))) {
         select.value = posSelectedCategory;
     } else if (categories.length > 0) {
@@ -2560,6 +2561,12 @@ function renderPosProductsPanel() {
     // Panel especial de Cobro Extra
     if (posSelectedCategory === '__POS_COBRO_EXTRA__') {
         renderPosCobroExtraPanel(grid);
+        return;
+    }
+
+    // Panel especial de Descuento por monto
+    if (posSelectedCategory === '__POS_DESCUENTO__') {
+        renderPosDescuentoPanel(grid);
         return;
     }
 
@@ -2953,6 +2960,70 @@ function renderPosCobroExtraPanel(grid) {
     // Enter en monto dispara el botón de agregar
     wrap.querySelector('#cobroExtraMonto').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') wrap.querySelector('#cobroExtraAddBtn')?.click();
+    });
+
+    grid.appendChild(wrap);
+}
+
+function renderPosDescuentoPanel(grid) {
+    grid.style.display = 'block';
+    grid.innerHTML = '';
+
+    const PRESETS = [1000, 2000, 3000, 5000, 8000, 10000];
+
+    const wrap = document.createElement('div');
+    wrap.className = 'pos-cobro-extra-panel';
+    wrap.innerHTML = `
+        <div class="pos-cobro-extra-header" style="color:#f87171;">
+            <span class="pos-cobro-extra-icon">🏷</span>
+            <span>Descuento al ticket</span>
+        </div>
+        <div class="pos-cobro-extra-fields">
+            <div class="pos-cobro-extra-field">
+                <label for="descuentoConcepto">Concepto</label>
+                <input id="descuentoConcepto" type="text" placeholder="Ej: Descuento cliente, Cortesía..." maxlength="60" autocomplete="off">
+            </div>
+            <div class="pos-cobro-extra-field">
+                <label for="descuentoMonto">Monto a descontar $</label>
+                <input id="descuentoMonto" type="number" placeholder="0" min="0" step="100" inputmode="numeric">
+            </div>
+        </div>
+        <div class="pos-cobro-extra-presets">
+            ${PRESETS.map((v) => `<button type="button" class="pos-cobro-preset-btn pos-desc-preset-btn" data-value="${v}">${formatMoney(v)}</button>`).join('')}
+        </div>
+        <button type="button" id="descuentoAddBtn" class="pos-cobro-extra-add-btn" style="background:linear-gradient(135deg,#c0392b,#e74c3c);">🏷 Aplicar descuento</button>
+    `;
+
+    wrap.querySelectorAll('.pos-cobro-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const input = wrap.querySelector('#descuentoMonto');
+            if (input) { input.value = btn.dataset.value; input.focus(); }
+        });
+    });
+
+    wrap.querySelector('#descuentoAddBtn').addEventListener('click', () => {
+        const conceptoInput = wrap.querySelector('#descuentoConcepto');
+        const montoInput    = wrap.querySelector('#descuentoMonto');
+        const concepto = String(conceptoInput?.value || '').trim() || 'Descuento';
+        const monto    = Number(montoInput?.value || 0);
+
+        if (!monto || monto <= 0) {
+            montoInput?.focus();
+            showNotice('Ingresa un monto mayor a $0.', 'error');
+            return;
+        }
+
+        // Precio negativo = descuento
+        addProductToPosOrder(`descuento::${concepto}`, concepto, -monto, '', null);
+        showNotice(`${concepto} — -${formatMoney(monto)} aplicado al ticket.`, 'ok');
+
+        if (conceptoInput) conceptoInput.value = '';
+        if (montoInput)    montoInput.value    = '';
+        conceptoInput?.focus();
+    });
+
+    wrap.querySelector('#descuentoMonto').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') wrap.querySelector('#descuentoAddBtn')?.click();
     });
 
     grid.appendChild(wrap);
