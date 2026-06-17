@@ -6815,7 +6815,10 @@ async function submitInternalOrderForm(event) {
 }
 
 async function fetchMessages() {
-    const snapshot = await firebaseDb.collection(MESSAGES_COLLECTION).get();
+    const snapshot = await firebaseDb.collection(MESSAGES_COLLECTION)
+        .orderBy('createdAt', 'desc')
+        .limit(200)
+        .get();
     messagesState = snapshot.docs
         .map((doc) => ({ id: doc.id, ...doc.data() }))
         .map((raw) => ({
@@ -10987,16 +10990,19 @@ function setupLiveFirebaseSync() {
             )
     );
 
-    // Mensajes: solo recarga mensajes
+    // Mensajes: últimos 200, ordenados por fecha
     liveSubscriptions.push(
-        firebaseDb.collection(MESSAGES_COLLECTION).onSnapshot(
-            _makeDebouncedHandler(async () => {
-                await fetchMessages();
-                renderMessages();
-                updateMessagesAttentionState();
-            }, 700),
-            onErr('mensajes')
-        )
+        firebaseDb.collection(MESSAGES_COLLECTION)
+            .orderBy('createdAt', 'desc')
+            .limit(200)
+            .onSnapshot(
+                _makeDebouncedHandler(async () => {
+                    await fetchMessages();
+                    renderMessages();
+                    updateMessagesAttentionState();
+                }, 700),
+                onErr('mensajes')
+            )
     );
 
     // Ventas/resumen: solo recarga resúmenes
