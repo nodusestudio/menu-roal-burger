@@ -1941,7 +1941,10 @@ async function fetchOrders() {
 }
 
 async function fetchSalesSummaries() {
-    const snapshot = await firebaseDb.collection(SALES_SUMMARY_COLLECTION).get();
+    const snapshot = await firebaseDb.collection(SALES_SUMMARY_COLLECTION)
+        .orderBy('closedAt', 'desc')
+        .limit(180)
+        .get();
     salesSummariesState = snapshot.docs
         .map((doc) => normalizeSalesSummary({ id: doc.id, ...doc.data() }))
         .sort((a, b) => {
@@ -10989,7 +10992,10 @@ function setupLiveFirebaseSync() {
         renderSalesDayBanner();
     }, 800);
     liveSubscriptions.push(
-        firebaseDb.collection(SALES_SUMMARY_COLLECTION).onSnapshot(salesHandler, onErr('ventas'))
+        firebaseDb.collection(SALES_SUMMARY_COLLECTION)
+            .orderBy('closedAt', 'desc')
+            .limit(180)
+            .onSnapshot(salesHandler, onErr('ventas'))
     );
     liveSubscriptions.push(
         firebaseDb.collection(SALES_DAY_STATE_COLLECTION).onSnapshot(salesHandler, onErr('caja-dia'))
