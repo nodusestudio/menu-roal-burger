@@ -1175,12 +1175,42 @@ function announceNewMessages(messages) {
         });
 }
 
-function requestAdminNotificationPermission() {
-    if (typeof Notification === 'undefined' || Notification.permission !== 'default') {
-        return;
-    }
+// Clave pública VAPID — obtenerla en Firebase Console → Project Settings →
+// Cloud Messaging → Web Push certificates → Generate key pair
+const FCM_VAPID_KEY = 'REEMPLAZAR_CON_TU_CLAVE_VAPID';
+const FCM_TOKENS_COLLECTION = 'admin_fcm_tokens';
 
-    Notification.requestPermission().catch(() => undefined);
+async function requestAdminNotificationPermission() {
+    if (typeof Notification === 'undefined') return;
+
+    let permission = Notification.permission;
+    if (permission === 'default') {
+        permission = await Notification.requestPermission().catch(() => 'denied');
+    }
+    if (permission !== 'granted') return;
+
+    // Registrar token FCM para push cuando el celular esté bloqueado
+    _registerFCMToken().catch(() => undefined);
+}
+
+async function _registerFCMToken() {
+    if (FCM_VAPID_KEY === 'REEMPLAZAR_CON_TU_CLAVE_VAPID') return; // pendiente configurar
+    if (!firebase?.messaging || !firebaseAuth?.currentUser) return;
+
+    try {
+        const messaging = firebase.messaging();
+        const token = await messaging.getToken({ vapidKey: FCM_VAPID_KEY });
+        if (!token) return;
+
+        const uid = firebaseAuth.currentUser.uid;
+        await firebaseDb.collection(FCM_TOKENS_COLLECTION).doc(uid).set({
+            token,
+            uid,
+            updatedAt: firestoreNow()
+        }, { merge: true });
+    } catch {
+        // Falla silenciosamente si FCM no está configurado aún
+    }
 }
 
 function markMessagesAsRead() {
