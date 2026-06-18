@@ -595,12 +595,28 @@ function parseClientSavedAddressesInput(rawValue = '', primaryAddress = '') {
     return normalizeClientSavedAddresses(lines, primaryAddress);
 }
 
+let _mobToastTimer = null;
 function showNotice(text, type = 'ok') {
     if (!notice) {
         return;
     }
     notice.textContent = text;
     notice.className = `notice show ${type}`;
+
+    if (isMobileAdminViewport()) {
+        let toast = document.getElementById('adminMobileToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'adminMobileToast';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = text;
+        toast.className = `mob-toast--${type} mob-toast--visible`;
+        if (_mobToastTimer) clearTimeout(_mobToastTimer);
+        _mobToastTimer = setTimeout(() => {
+            toast.classList.remove('mob-toast--visible');
+        }, 3000);
+    }
 }
 
 function hideNotice() {
