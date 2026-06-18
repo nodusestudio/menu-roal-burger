@@ -9093,9 +9093,13 @@ async function copyTextToClipboard(text) {
     }
 
     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        await navigator.clipboard.writeText(normalizedText);
-        showClipboardToast('Copiado');
-        return true;
+        try {
+            await navigator.clipboard.writeText(normalizedText);
+            showClipboardToast('Copiado');
+            return true;
+        } catch (_) {
+            // Clipboard API falló (sin permiso en móvil) — cae al fallback execCommand
+        }
     }
 
     const textarea = document.createElement('textarea');
@@ -14781,13 +14785,15 @@ if (ordersActionRoot) {
                         showNotice('Procesa el pago antes de pedir domiciliario.', 'error');
                         return;
                     }
-                    const copied = await copyTextToClipboard(buildCourierRequestMessage(order));
+                    // Actualizar estado primero para que falle del portapapeles no bloquee la operación
+                    const courierMsg = buildCourierRequestMessage(order);
                     await updateOrder(orderId, { status: nextStatus, courierRequestedAt: firestoreNow() });
+                    const copied = await copyTextToClipboard(courierMsg);
                     showNotice(
                         copied
                             ? 'Mensaje para domiciliario copiado y pedido en espera.'
-                            : 'Pedido en espera de domiciliario. No se pudo copiar el mensaje automaticamente.',
-                        copied ? 'ok' : 'error'
+                            : 'Pedido en espera de domiciliario.',
+                        'ok'
                     );
                     return;
                 }
