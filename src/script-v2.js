@@ -645,6 +645,8 @@ function getPublicOrderStatusMeta(status = '', fulfillmentType = '') {
             return { label: 'Pedido listo', detail: 'Tu pedido ya esta listo para recoger.', className: 'ready' };
         case 'entregado':
             return { label: 'Entregado', detail: fulfillmentType === 'pickup' ? 'Tu pedido fue entregado en el local.' : 'Tu pedido ya fue entregado.', className: 'delivered' };
+        case 'cancelado':
+            return { label: 'Cancelado', detail: 'Este pedido fue cancelado. Contáctanos si tienes dudas.', className: 'cancelled' };
         default:
             return { label: 'En proceso', detail: 'Estamos revisando tu pedido.', className: 'pending' };
     }
@@ -671,14 +673,35 @@ function syncCustomerProfileRealtimeStreams() {
     const db = getPublicFirebaseDb();
     const phoneDigits = activeCustomerProfile.customerPhoneDigits;
 
-    customerOrdersUnsubscribe = db.collection(ORDERS_COLLECTION)
+    const rawPhone = String(activeCustomerProfile.customerPhone || '').trim();
+    // Buscar pedidos tanto por dígitos normalizados como por teléfono crudo (mayor compatibilidad)
+    const _mergeOrderSnapshots = () => {
+        const seen = new Set();
+        const merged = [];
+        for (const doc of (_ordersSnapshotByDigits || []).concat(_ordersSnapshotByPhone || [])) {
+            if (!seen.has(doc.id)) { seen.add(doc.id); merged.push(doc); }
+        }
+        customerProfileOrdersState = merged.sort((a, b) => getTimestampMillis(b.createdAt || b.updatedAt) - getTimestampMillis(a.createdAt || a.updatedAt));
+        renderCustomerOrdersPanel();
+    };
+    let _ordersSnapshotByDigits = [];
+    let _ordersSnapshotByPhone  = [];
+
+    const unsubDigits = db.collection(ORDERS_COLLECTION)
         .where('customerPhoneDigits', '==', phoneDigits)
-        .onSnapshot((snapshot) => {
-            customerProfileOrdersState = snapshot.docs
-                .map((doc) => ({ id: doc.id, ...doc.data() }))
-                .sort((a, b) => getTimestampMillis(b.createdAt || b.updatedAt) - getTimestampMillis(a.createdAt || a.updatedAt));
-            renderCustomerOrdersPanel();
+        .onSnapshot((snap) => {
+            _ordersSnapshotByDigits = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            _mergeOrderSnapshots();
         }, () => undefined);
+
+    const unsubPhone = rawPhone ? db.collection(ORDERS_COLLECTION)
+        .where('customerPhone', '==', rawPhone)
+        .onSnapshot((snap) => {
+            _ordersSnapshotByPhone = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            _mergeOrderSnapshots();
+        }, () => undefined) : null;
+
+    customerOrdersUnsubscribe = () => { unsubDigits(); if (unsubPhone) unsubPhone(); };
 
     customerMessagesUnsubscribe = db.collection(MESSAGES_COLLECTION)
         .where('customerPhoneDigits', '==', phoneDigits)
@@ -699,7 +722,8 @@ function renderCustomerOrdersPanel() {
         return;
     }
 
-    const currentOrder = customerProfileOrdersState.find((order) => String(order.status || '').trim().toLowerCase() !== 'entregado');
+    const _doneStatuses = ['entregado', 'cancelado'];
+    const currentOrder = customerProfileOrdersState.find((order) => !_doneStatuses.includes(String(order.status || '').trim().toLowerCase()));
     if (!currentOrder) {
         customerAuthUI.ordersCurrent.innerHTML = `
             <div class="customer-profile-empty-card">

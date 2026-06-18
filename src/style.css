@@ -2981,6 +2981,10 @@ body.has-guest-register-banner #ayudaScreen {
 .customer-live-order-status.delivered {
     background: rgba(155, 224, 167, 0.72);
 }
+.customer-live-order-status.cancelled {
+    background: rgba(239, 68, 68, 0.18);
+    color: #fca5a5;
+}
 
 .customer-order-history-list,
 /* ===== CHAT PÚBLICO — Burbujas estilo DM ===== */
