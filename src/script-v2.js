@@ -253,7 +253,8 @@ let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
 let orderingStatusToastTimer = null;
 let orderSentToastTimer = null;
-let publicFirebaseDbInstance = null;
+let publicFirebaseDbInstance  = null;
+let publicFirebaseFnInstance  = null;
 let orderSentConfirmationUI = null;
 let publicUpgradesConfig = null;
 let _publicUpgradePending = null;
@@ -400,17 +401,12 @@ function getSelectedCheckoutSavedAddress() {
         return null;
     }
 
-    const selectedOption = String(checkoutInfoUI.savedAddressChoice?.value || '').trim();
-    if (!selectedOption.startsWith('saved:')) {
+    const idx = Number(checkoutInfoUI.selectedAddressIndex ?? -1);
+    if (!Number.isFinite(idx) || idx < 0 || idx >= checkoutInfoUI.savedAddresses.length) {
         return null;
     }
 
-    const selectedIndex = Number(selectedOption.split(':')[1]);
-    if (!Number.isFinite(selectedIndex) || selectedIndex < 0 || selectedIndex >= checkoutInfoUI.savedAddresses.length) {
-        return null;
-    }
-
-    return checkoutInfoUI.savedAddresses[selectedIndex] || null;
+    return checkoutInfoUI.savedAddresses[idx] || null;
 }
 
 function isValidCustomerPin(value) {
@@ -1369,6 +1365,33 @@ function getPublicFirebaseDb() {
     return publicFirebaseDbInstance;
 }
 
+function getPublicFirebaseFunctions() {
+    if (publicFirebaseFnInstance) {
+        return publicFirebaseFnInstance;
+    }
+    if (typeof initFirebaseServices !== 'function') {
+        return null;
+    }
+    publicFirebaseFnInstance = initFirebaseServices().functions || null;
+    return publicFirebaseFnInstance;
+}
+
+async function callSendWhatsAppOtp(phoneDigits) {
+    const fn = getPublicFirebaseFunctions();
+    if (!fn) throw new Error('Servicio de verificacion no disponible.');
+    const callable = fn.httpsCallable('sendWhatsAppOtp');
+    const result   = await callable({ phone: phoneDigits });
+    return result.data;
+}
+
+async function callVerifyWhatsAppOtp(phoneDigits, code) {
+    const fn = getPublicFirebaseFunctions();
+    if (!fn) throw new Error('Servicio de verificacion no disponible.');
+    const callable = fn.httpsCallable('verifyWhatsAppOtp');
+    const result   = await callable({ phone: phoneDigits, code });
+    return result.data;
+}
+
 async function loadPublicUpgradesConfig() {
     try {
         const db = getPublicFirebaseDb();
@@ -1667,10 +1690,6 @@ async function saveCustomerProfile(profileInput = {}) {
     const savedAddresses = normalizeCustomerSavedAddresses(profileInput.savedAddresses || previous.savedAddresses || [], String(profileInput.address || '').trim());
     const address = String(savedAddresses[0]?.address || '').trim();
 
-    if (!address) {
-        throw new Error('Escribe la direccion principal de tu perfil.');
-    }
-
     let passwordHash = String(previous.passwordHash || '').trim();
     const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
 
@@ -1895,64 +1914,112 @@ function applyCustomerConsentState(isAuthorized = false) {
     }
 }
 
-function buildCustomerRegisterFormMarkup(profile = {}, saveLabel = 'Crear perfil') {
+function _buildRegStepDots(current) {
+    // current: 1 | 2 | 3
+    return `
+        <div class="reg-steps" aria-hidden="true">
+            <span class="reg-step-dot ${current > 1 ? 'is-done' : 'is-active'}"></span>
+            <span class="reg-step-divider"></span>
+            <span class="reg-step-dot ${current > 2 ? 'is-done' : current === 2 ? 'is-active' : ''}"></span>
+            <span class="reg-step-divider"></span>
+            <span class="reg-step-dot ${current === 3 ? 'is-active' : ''}"></span>
+        </div>`;
+}
+
+function _buildRegPhoneStepHTML(prefillPhone = '') {
+    return `
+        <p class="support-modal-kicker">Crear cuenta</p>
+        <h3 class="support-modal-title">¿Cuál es tu WhatsApp?</h3>
+        <p class="support-modal-text">Te enviaremos un código para verificar que el número te pertenece.</p>
+        ${_buildRegStepDots(1)}
+        <label class="support-field" id="regPhoneField">
+            <span>Número de WhatsApp</span>
+            <input type="tel" id="regPhoneInput" placeholder="+57 300 000 0000" inputmode="tel" autocomplete="tel" value="${escapeHtml(prefillPhone)}">
+        </label>
+        <div class="support-actions">
+            <button type="button" class="support-send-btn" id="regPhoneNext">Continuar</button>
+        </div>`;
+}
+
+function _buildRegOtpStepHTML(phone) {
+    const display = escapeHtml(String(phone || '').replace(/(\d{2})(\d{3})(\d{3})(\d{4})/, '+$1 $2 $3 $4') || phone);
+    return `
+        <p class="support-modal-kicker">Verificación</p>
+        <h3 class="support-modal-title">Revisa tu WhatsApp</h3>
+        <p class="support-modal-text">Enviamos un código de 6 dígitos a <strong>${display}</strong>. Puede tardar unos segundos.</p>
+        ${_buildRegStepDots(2)}
+        <label class="support-field" id="regOtpField">
+            <span>Código de verificación</span>
+            <input type="text" id="regOtpInput" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:0.25em; font-size:1.4rem; text-align:center;">
+        </label>
+        <div class="support-actions stack">
+            <button type="button" class="support-send-btn" id="regOtpVerify">Verificar código</button>
+            <button type="button" class="support-secondary-btn" id="regOtpResend">¿No llegó? Reenviar código</button>
+            <button type="button" class="support-secondary-btn" id="regOtpBack">← Cambiar número</button>
+        </div>`;
+}
+
+function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEditMode = false) {
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
     const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
-
+    const pinLabel = isEditMode ? 'Contraseña de 6 dígitos' : 'Crea tu contraseña de 6 dígitos';
+    const pinPlaceholder = isEditMode ? 'Deja en blanco para no cambiarla' : 'Solo números';
     return `
+        <p class="support-modal-kicker">${isEditMode ? 'Mi cuenta' : 'Crear cuenta'}</p>
+        <h3 class="support-modal-title">${isEditMode ? 'Editar perfil' : '¿Cómo te llamamos?'}</h3>
+        ${!isEditMode ? _buildRegStepDots(3) : ''}
         <label class="support-field">
             <span>Nombre</span>
-            <input type="text" id="customerRegisterName" value="${escapeHtml(profile.customerName || '')}" placeholder="Escribe tu nombre">
+            <input type="text" id="customerRegisterName" value="${escapeHtml(profile.customerName || '')}" placeholder="Escribe tu nombre" autocomplete="name">
+        </label>
+        ${isEditMode ? `
+        <label class="support-field">
+            <span>Número de WhatsApp</span>
+            <input type="tel" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}" placeholder="Número de WhatsApp">
+        </label>` : `
+        <input type="hidden" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}">
+        `}
+        <label class="support-field">
+            <span>${pinLabel}</span>
+            <input type="password" id="customerRegisterPin" inputmode="numeric" maxlength="6" placeholder="${pinPlaceholder}">
+            <p class="support-field-hint">La usaras junto con tu WhatsApp para entrar a tu cuenta.</p>
+        </label>
+        <label class="support-field">
+            <span>Confirmar contraseña</span>
+            <input type="password" id="customerConfirmPin" inputmode="numeric" maxlength="6" placeholder="Repite la contraseña">
         </label>
         <div class="support-field">
-            <span>Direcciones guardadas</span>
+            <span>Direcciones guardadas <small style="font-weight:400;opacity:0.7">(opcional)</small></span>
             <div id="customerRegisterSavedAddressesList" class="support-address-list"></div>
-            <button type="button" class="support-secondary-btn" id="customerRegisterAddAddress">Agregar direccion</button>
-            <p class="support-field-hint">Toca el icono del globo para abrir el mapa y anclar tu ubicación actual a esa dirección.</p>
+            <button type="button" class="support-secondary-btn" id="customerRegisterAddAddress">+ Agregar dirección</button>
+            <p class="support-field-hint">Toca el icono 🌍 para anclar tu GPS a esa dirección.</p>
         </div>
-        <label class="support-field">
-            <span>Numero de WhatsApp</span>
-            <input type="tel" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}" placeholder="Escribe tu numero de WhatsApp">
-        </label>
-        <label class="support-field">
-            <span>${saveLabel === 'Guardar perfil' ? 'Contrasena de 6 digitos' : 'Crear contrasena de 6 digitos'}</span>
-            <input type="password" id="customerRegisterPin" inputmode="numeric" maxlength="6" placeholder="${saveLabel === 'Guardar perfil' ? 'Crea o actualiza tu contrasena' : 'Crea una contrasena numerica'}">
-            <p class="support-field-hint">La usaras junto con tu WhatsApp para abrir tu perfil.</p>
-        </label>
-        <label class="support-field">
-            <span>Confirmar contrasena</span>
-            <input type="password" id="customerConfirmPin" inputmode="numeric" maxlength="6" placeholder="Confirma la contrasena">
-        </label>
         <div class="support-consent-box">
-            <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Leer autorizacion de tratamiento de datos</button>
-            <p class="support-field-hint" id="customerConsentStatus">Debes abrir el documento antes de autorizar el manejo de tus datos.</p>
+            <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Leer autorización de tratamiento de datos</button>
+            <p class="support-field-hint" id="customerConsentStatus">Debes abrir el documento antes de autorizar.</p>
         </div>
         <label class="support-check" for="customerDataConsent">
             <input type="checkbox" id="customerDataConsent" ${hasConsent ? 'checked' : ''} disabled>
             <span>${consentMarkup}</span>
         </label>
-        <button type="button" class="support-send-btn" id="customerRegisterSave">${saveLabel}</button>
-    `;
+        <button type="button" class="support-send-btn" id="customerRegisterSave">${saveLabel}</button>`;
 }
 
 function openCustomerRegisterModal(profile = {}, options = {}) {
     closeCustomerRegisterModal();
 
-    const title = String(options.title || 'Crear cuenta').trim();
-    const description = String(options.description || 'Completa tus datos para crear tu perfil y guardar tus proximos pedidos mas rapido.').trim();
-    const saveLabel = String(options.saveLabel || 'Crear perfil').trim();
+    const saveLabel  = String(options.saveLabel || 'Crear cuenta').trim();
+    // isEditMode = edición de perfil existente (no el flujo de nuevo registro)
+    const isEditMode = Boolean(options.isEditMode || profile?.customerPhoneDigits);
+    const initialStep = isEditMode ? 'profile' : 'phone';
 
     const modal = document.createElement('div');
-    modal.id = 'customerRegisterModal';
-    modal.className = 'support-modal';
-    modal.classList.add('is-open');
+    modal.id        = 'customerRegisterModal';
+    modal.className = 'support-modal is-open';
     modal.innerHTML = `
-        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Crear cuenta">
             <button type="button" class="support-modal-close" aria-label="Cerrar registro">&times;</button>
-            <p class="support-modal-kicker">Mi cuenta</p>
-            <h3 class="support-modal-title">${escapeHtml(title)}</h3>
-            <p class="support-modal-text">${escapeHtml(description)}</p>
-            ${buildCustomerRegisterFormMarkup(profile, saveLabel)}
+            <div id="regStepContent"></div>
             <p class="support-feedback" id="customerAuthFeedback"></p>
         </div>
     `;
@@ -1960,64 +2027,207 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
     document.body.appendChild(modal);
 
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
+
     customerRegisterUI = {
         modal,
-        close: modal.querySelector('.support-modal-close'),
-        feedback: modal.querySelector('#customerAuthFeedback'),
-        name: modal.querySelector('#customerRegisterName'),
-        savedAddressesList: modal.querySelector('#customerRegisterSavedAddressesList'),
-        addAddressButton: modal.querySelector('#customerRegisterAddAddress'),
-        registerPhone: modal.querySelector('#customerRegisterPhone'),
-        registerPin: modal.querySelector('#customerRegisterPin'),
-        confirmPin: modal.querySelector('#customerConfirmPin'),
-        reviewConsentButton: modal.querySelector('#customerReviewConsentButton'),
-        consentStatus: modal.querySelector('#customerConsentStatus'),
-        consent: modal.querySelector('#customerDataConsent'),
-        save: modal.querySelector('#customerRegisterSave'),
+        close:        modal.querySelector('.support-modal-close'),
+        feedback:     modal.querySelector('#customerAuthFeedback'),
+        stepContent:  modal.querySelector('#regStepContent'),
+        step:         initialStep,
+        isEditMode,
+        baseProfile:  profile,
+        saveLabel,
+        options,
+        pendingPhone: String(profile.customerPhone || '').trim(),
         hasPreviousConsent: hasConsent,
-        consentViewed: hasConsent,
+        consentViewed:      hasConsent,
         savedAddressesData: getCustomerSavedAddresses(profile),
         selectedSavedAddressIndex: 0,
         savedAddressMapModal: null,
-        savedAddressMapUI: null
+        savedAddressMapUI:   null,
+        // form fields — poblados en _mountRegProfileStep
+        name: null, registerPhone: null, registerPin: null,
+        confirmPin: null, reviewConsentButton: null,
+        consentStatus: null, consent: null, save: null,
+        savedAddressesList: null, addAddressButton: null
     };
 
-    customerRegisterUI.close?.addEventListener('click', closeCustomerRegisterModal);
+    customerRegisterUI.close.addEventListener('click', closeCustomerRegisterModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal && _lastMousedownTarget === modal) closeCustomerRegisterModal();
+    });
+
+    _renderRegStep();
+    syncBodyScrollLock();
+}
+
+function _renderRegStep() {
+    if (!customerRegisterUI) return;
+    const { step, stepContent, feedback } = customerRegisterUI;
+    feedback.textContent = '';
+    feedback.className   = 'support-feedback';
+
+    if (step === 'phone') {
+        const prefill = String(customerRegisterUI.baseProfile?.customerPhone || '').trim();
+        stepContent.innerHTML = _buildRegPhoneStepHTML(prefill);
+        const input = stepContent.querySelector('#regPhoneInput');
+        const next  = stepContent.querySelector('#regPhoneNext');
+        input?.focus();
+        const _go = () => _handleRegPhoneNext();
+        next?.addEventListener('click', _go);
+        input?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); _go(); } });
+
+    } else if (step === 'otp') {
+        stepContent.innerHTML = _buildRegOtpStepHTML(customerRegisterUI.pendingPhone);
+        const otpInput = stepContent.querySelector('#regOtpInput');
+        otpInput?.focus();
+        stepContent.querySelector('#regOtpVerify')?.addEventListener('click', _handleRegOtpVerify);
+        stepContent.querySelector('#regOtpResend')?.addEventListener('click', _handleRegOtpResend);
+        stepContent.querySelector('#regOtpBack')?.addEventListener('click', () => {
+            customerRegisterUI.step = 'phone';
+            _renderRegStep();
+        });
+        otpInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); _handleRegOtpVerify(); } });
+
+    } else if (step === 'profile') {
+        _mountRegProfileStep();
+    }
+}
+
+function _mountRegProfileStep() {
+    if (!customerRegisterUI) return;
+    const { stepContent, baseProfile, saveLabel, isEditMode } = customerRegisterUI;
+    // Incorporar teléfono verificado al perfil base para el formulario
+    const profileForForm = {
+        ...baseProfile,
+        customerPhone: customerRegisterUI.pendingPhone || baseProfile.customerPhone || ''
+    };
+    stepContent.innerHTML = _buildRegProfileStepHTML(profileForForm, saveLabel, isEditMode);
+
+    // Poblar referencias de campos
+    customerRegisterUI.name               = stepContent.querySelector('#customerRegisterName');
+    customerRegisterUI.registerPhone      = stepContent.querySelector('#customerRegisterPhone');
+    customerRegisterUI.registerPin        = stepContent.querySelector('#customerRegisterPin');
+    customerRegisterUI.confirmPin         = stepContent.querySelector('#customerConfirmPin');
+    customerRegisterUI.reviewConsentButton = stepContent.querySelector('#customerReviewConsentButton');
+    customerRegisterUI.consentStatus      = stepContent.querySelector('#customerConsentStatus');
+    customerRegisterUI.consent            = stepContent.querySelector('#customerDataConsent');
+    customerRegisterUI.save               = stepContent.querySelector('#customerRegisterSave');
+    customerRegisterUI.savedAddressesList = stepContent.querySelector('#customerRegisterSavedAddressesList');
+    customerRegisterUI.addAddressButton   = stepContent.querySelector('#customerRegisterAddAddress');
+
+    const { hasPreviousConsent } = customerRegisterUI;
+
     customerRegisterUI.reviewConsentButton?.addEventListener('click', openCustomerConsentDocument);
     customerRegisterUI.save?.addEventListener('click', submitCustomerProfileForm);
     customerRegisterUI.addAddressButton?.addEventListener('click', () => {
-        if (!customerRegisterUI) {
-            return;
-        }
+        if (!customerRegisterUI) return;
         if (customerRegisterUI.savedAddressesData.length >= MAX_CUSTOMER_SAVED_ADDRESSES) {
-            customerRegisterUI.feedback.textContent = `Ya puedes guardar hasta ${MAX_CUSTOMER_SAVED_ADDRESSES} direcciones.`;
+            customerRegisterUI.feedback.textContent = `Puedes guardar hasta ${MAX_CUSTOMER_SAVED_ADDRESSES} direcciones.`;
             return;
         }
         customerRegisterUI.savedAddressesData.push({ address: '', latitude: null, longitude: null, primary: false });
         customerRegisterUI.selectedSavedAddressIndex = customerRegisterUI.savedAddressesData.length - 1;
         renderCustomerRegisterSavedAddresses();
     });
-    customerRegisterUI.savedAddressUseLocationButton?.addEventListener('click', requestCustomerSavedAddressGeolocation);
-    customerRegisterUI.savedAddressesList?.addEventListener('input', handleSavedAddressEditorInput);
-    customerRegisterUI.savedAddressesList?.addEventListener('click', handleSavedAddressEditorAction);
+    customerRegisterUI.savedAddressesList?.addEventListener('input',  handleSavedAddressEditorInput);
+    customerRegisterUI.savedAddressesList?.addEventListener('click',  handleSavedAddressEditorAction);
     customerRegisterUI.savedAddressesList?.addEventListener('change', handleSavedAddressEditorChange);
 
     bindCustomerPinField(customerRegisterUI.registerPin);
     bindCustomerPinField(customerRegisterUI.confirmPin);
     attachPasswordToggle(customerRegisterUI.registerPin);
     attachPasswordToggle(customerRegisterUI.confirmPin);
-    applyCustomerConsentState(hasConsent);
+    applyCustomerConsentState(hasPreviousConsent);
     renderCustomerRegisterSavedAddresses();
     initializeCustomerSavedAddressMap();
-
-    modal.addEventListener('click', (event) => {
-        if (event.target === modal && _lastMousedownTarget === modal) {
-            closeCustomerRegisterModal();
-        }
-    });
-
-    syncBodyScrollLock();
     customerRegisterUI.name?.focus();
+}
+
+async function _handleRegPhoneNext() {
+    if (!customerRegisterUI) return;
+    const { feedback } = customerRegisterUI;
+    const input  = customerRegisterUI.stepContent.querySelector('#regPhoneInput');
+    const phone  = String(input?.value || '').trim();
+    const digits = phone.replace(/\D/g, '');
+
+    if (digits.length < 10) {
+        feedback.textContent = 'Escribe tu número de WhatsApp (mínimo 10 dígitos).';
+        feedback.className   = 'support-feedback support-feedback--error';
+        input?.focus();
+        return;
+    }
+
+    const btn = customerRegisterUI.stepContent.querySelector('#regPhoneNext');
+    if (btn) { btn.disabled = true; btn.textContent = 'Enviando código…'; }
+    feedback.textContent = '';
+
+    try {
+        await callSendWhatsAppOtp(digits);
+        customerRegisterUI.pendingPhone = phone;
+        customerRegisterUI.step         = 'otp';
+        _renderRegStep();
+    } catch (err) {
+        // Si el servicio OTP no está configurado, avanzar sin verificación
+        const errCode = err?.code || '';
+        if (errCode === 'functions/failed-precondition' || errCode === 'functions/not-found') {
+            customerRegisterUI.pendingPhone = phone;
+            customerRegisterUI.step         = 'profile';
+            _renderRegStep();
+        } else {
+            feedback.textContent = err?.message || 'No se pudo enviar el código. Revisa el número e intenta de nuevo.';
+            feedback.className   = 'support-feedback support-feedback--error';
+            if (btn) { btn.disabled = false; btn.textContent = 'Continuar'; }
+        }
+    }
+}
+
+async function _handleRegOtpVerify() {
+    if (!customerRegisterUI) return;
+    const { feedback } = customerRegisterUI;
+    const input  = customerRegisterUI.stepContent.querySelector('#regOtpInput');
+    const code   = String(input?.value || '').replace(/\D/g, '');
+    const digits = (customerRegisterUI.pendingPhone || '').replace(/\D/g, '');
+
+    if (code.length !== 6) {
+        feedback.textContent = 'El código debe tener 6 dígitos.';
+        feedback.className   = 'support-feedback support-feedback--error';
+        input?.focus();
+        return;
+    }
+
+    const btn = customerRegisterUI.stepContent.querySelector('#regOtpVerify');
+    if (btn) { btn.disabled = true; btn.textContent = 'Verificando…'; }
+    feedback.textContent = '';
+
+    try {
+        await callVerifyWhatsAppOtp(digits, code);
+        customerRegisterUI.step = 'profile';
+        _renderRegStep();
+    } catch (err) {
+        feedback.textContent = err?.message || 'Código incorrecto. Intenta de nuevo.';
+        feedback.className   = 'support-feedback support-feedback--error';
+        if (btn) { btn.disabled = false; btn.textContent = 'Verificar código'; }
+        input?.select();
+    }
+}
+
+async function _handleRegOtpResend() {
+    if (!customerRegisterUI) return;
+    const { feedback } = customerRegisterUI;
+    const digits = (customerRegisterUI.pendingPhone || '').replace(/\D/g, '');
+    const btn    = customerRegisterUI.stepContent.querySelector('#regOtpResend');
+    if (btn) { btn.disabled = true; btn.textContent = 'Reenviando…'; }
+    feedback.textContent = '';
+    try {
+        await callSendWhatsAppOtp(digits);
+        feedback.textContent = 'Código reenviado. Revisa tu WhatsApp.';
+        feedback.className   = 'support-feedback';
+    } catch (err) {
+        feedback.textContent = err?.message || 'No se pudo reenviar. Intenta de nuevo.';
+        feedback.className   = 'support-feedback support-feedback--error';
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '¿No llegó? Reenviar código'; }
 }
 
 function renderCustomerRegisterSavedAddresses() {
@@ -2878,11 +3088,6 @@ async function submitCustomerProfileForm() {
 
     formUI.feedback.textContent = '';
 
-    if (!addressValue) {
-        formUI.feedback.textContent = 'Debes registrar al menos una direccion principal en tu perfil.';
-        return;
-    }
-
     try {
         const profile = await saveCustomerProfile({
             customerName: nameValue,
@@ -3105,9 +3310,8 @@ function openCustomerAuthModal() {
         const currentProfile = activeCustomerProfile ? { ...activeCustomerProfile } : {};
         closeCustomerAuthModal();
         openCustomerRegisterModal(currentProfile, {
-            title: 'Editar perfil',
-            description: 'Actualiza tu nombre, direccion, WhatsApp y contrasena desde esta pantalla.',
-            saveLabel: 'Guardar perfil'
+            saveLabel: 'Guardar perfil',
+            isEditMode: true
         });
     };
     customerAuthUI.editProfileButton?.addEventListener('click', openEditProfile);
@@ -4683,8 +4887,7 @@ async function submitCheckoutInfo() {
     const customerName = profile ? String(profile.customerName || '').trim() : String(checkoutInfoUI.name?.value || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
     const savedAddresses = profile ? getCustomerSavedAddresses(profile) : [];
-    const selectedAddressOption = String(checkoutInfoUI.savedAddressChoice?.value || (savedAddresses.length ? 'saved:0' : 'new')).trim();
-    const selectedAddressIndex = selectedAddressOption.startsWith('saved:') ? Number(selectedAddressOption.split(':')[1]) : -1;
+    const selectedAddressIndex = Number(checkoutInfoUI.selectedAddressIndex ?? -1);
     const selectedSavedAddressEntry = selectedAddressIndex >= 0 ? savedAddresses[selectedAddressIndex] || null : null;
     const savedAddressValue = selectedSavedAddressEntry ? getCustomerSavedAddressLabel(selectedSavedAddressEntry) : '';
     const typedDeliveryAddress = String(checkoutInfoUI.address.value || '').trim();
@@ -4715,8 +4918,8 @@ async function submitCheckoutInfo() {
     }
 
     if (fulfillmentType === 'delivery' && !deliveryAddress) {
-        checkoutInfoUI.feedback.textContent = 'Escoge una direccion guardada o escribe una nueva para el domicilio.';
-        (checkoutInfoUI.savedAddressChoice || checkoutInfoUI.address)?.focus();
+        checkoutInfoUI.feedback.textContent = 'Escoge una dirección guardada o escribe una nueva para el domicilio.';
+        checkoutInfoUI.address?.focus();
         return;
     }
 
@@ -4744,10 +4947,12 @@ async function submitCheckoutInfo() {
 
     try {
         trackButtonClick('btn-cart-checkout', 'Checkout carrito');
+        const makeNewPrimary = Boolean(checkoutInfoUI.setPrimaryToggle?.checked);
         const newSavedAddressEntry = {
             address: typedDeliveryAddress,
             latitude: Number.isFinite(Number(checkoutInfoUI.deliveryLatitude)) ? Number(checkoutInfoUI.deliveryLatitude) : null,
-            longitude: Number.isFinite(Number(checkoutInfoUI.deliveryLongitude)) ? Number(checkoutInfoUI.deliveryLongitude) : null
+            longitude: Number.isFinite(Number(checkoutInfoUI.deliveryLongitude)) ? Number(checkoutInfoUI.deliveryLongitude) : null,
+            primary: makeNewPrimary
         };
 
         const orderData = {
@@ -4896,22 +5101,28 @@ function updateCheckoutInfoModalState() {
     }
     const savedAddresses = Array.isArray(checkoutInfoUI.savedAddresses) ? checkoutInfoUI.savedAddresses : [];
     const hasSavedAddresses = savedAddresses.length > 0;
-    const selectedAddressOption = String(checkoutInfoUI.savedAddressChoice?.value || (hasSavedAddresses ? 'saved:0' : 'new')).trim();
-    const usingSavedAddress = requiresAddress && hasSavedAddresses && selectedAddressOption.startsWith('saved:');
+    const selectedAddressIdx = Number(checkoutInfoUI.selectedAddressIndex ?? -1);
+    const usingSavedAddress = requiresAddress && hasSavedAddresses && selectedAddressIdx >= 0;
     const selectedSavedAddressEntry = usingSavedAddress ? getSelectedCheckoutSavedAddress() : null;
     const addressHasLocation = selectedSavedAddressEntry && selectedSavedAddressEntry.latitude != null && selectedSavedAddressEntry.longitude != null && Number.isFinite(Number(selectedSavedAddressEntry.latitude)) && Number.isFinite(Number(selectedSavedAddressEntry.longitude));
     const discountAmount = getCheckoutDiscountAmount();
 
+    // Panel de tarjetas de dirección guardada
     if (checkoutInfoUI.savedAddressField) {
         checkoutInfoUI.savedAddressField.hidden = !requiresAddress || !hasSavedAddresses;
+        if (requiresAddress && hasSavedAddresses) renderCheckoutAddressCards();
     }
-
-    checkoutInfoUI.addressField.hidden = !requiresAddress || usingSavedAddress;
-    checkoutInfoUI.address.required = requiresAddress && !usingSavedAddress;
-    checkoutInfoUI.address.disabled = !requiresAddress || usingSavedAddress;
-
-    if (usingSavedAddress) {
-        checkoutInfoUI.address.value = '';
+    // Panel de nueva dirección
+    if (checkoutInfoUI.newAddrPanel) {
+        checkoutInfoUI.newAddrPanel.hidden = requiresAddress && usingSavedAddress;
+    }
+    if (checkoutInfoUI.addressField) {
+        checkoutInfoUI.addressField.hidden = !requiresAddress || usingSavedAddress;
+    }
+    if (checkoutInfoUI.address) {
+        checkoutInfoUI.address.required  = requiresAddress && !usingSavedAddress;
+        checkoutInfoUI.address.disabled  = !requiresAddress || usingSavedAddress;
+        if (usingSavedAddress) checkoutInfoUI.address.value = '';
     }
 
     if (usingSavedAddress && addressHasLocation) {
@@ -4965,17 +5176,13 @@ function updateCheckoutInfoModalState() {
         checkoutInfoUI.confirmLocationButton.hidden = !shouldShowDeliveryMap || !checkoutDeliveryLocation;
     }
 
-    if (checkoutInfoUI.saveAddressField && checkoutInfoUI.saveAddressToggle && checkoutInfoUI.addressBookHint) {
+    if (checkoutInfoUI.saveAddressField && checkoutInfoUI.saveAddressToggle) {
         const canSaveMoreAddresses = savedAddresses.length < MAX_CUSTOMER_SAVED_ADDRESSES;
-        const selectedNewAddress = requiresAddress && (!hasSavedAddresses || selectedAddressOption === 'new');
-        const showSaveOption = selectedNewAddress && Boolean(activeCustomerProfile) && canSaveMoreAddresses;
+        const usingNewAddr = requiresAddress && !usingSavedAddress;
+        const showSaveOption = usingNewAddr && Boolean(activeCustomerProfile) && canSaveMoreAddresses;
         checkoutInfoUI.saveAddressField.hidden = !showSaveOption;
-        checkoutInfoUI.saveAddressToggle.checked = showSaveOption ? checkoutInfoUI.saveAddressToggle.checked : false;
+        if (!showSaveOption) checkoutInfoUI.saveAddressToggle.checked = false;
         checkoutInfoUI.saveAddressToggle.disabled = !showSaveOption;
-        checkoutInfoUI.addressBookHint.hidden = !selectedNewAddress;
-        checkoutInfoUI.addressBookHint.textContent = canSaveMoreAddresses
-            ? `Puedes guardar esta direccion en tu perfil. Te quedan ${MAX_CUSTOMER_SAVED_ADDRESSES - savedAddresses.length} espacio(s).`
-            : 'Ya completaste tus 5 direcciones guardadas. Esta direccion solo se usara en este pedido.';
     }
 
     if (checkoutInfoUI.deliveryFeeRow) {
@@ -4997,6 +5204,37 @@ function updateCheckoutInfoModalState() {
             : (requiresAddress && checkoutDeliveryFeePending ? getCartTotalAmount() : orderTotal);
         checkoutInfoUI.orderTotalValue.textContent = formatCurrency(displayTotal);
     }
+}
+
+function renderCheckoutAddressCards() {
+    if (!checkoutInfoUI?.addrCards) return;
+
+    const addresses = checkoutInfoUI.savedAddresses || [];
+    const selected  = Number(checkoutInfoUI.selectedAddressIndex ?? 0);
+
+    checkoutInfoUI.addrCards.innerHTML = addresses.map((entry, idx) => {
+        const label    = escapeHtml(getCustomerSavedAddressLabel(entry));
+        const isPrimary = Boolean(entry.primary);
+        const isSelected = idx === selected;
+        return `
+            <button type="button"
+                class="checkout-addr-card${isSelected ? ' is-selected' : ''}"
+                data-addr-idx="${idx}"
+                aria-pressed="${isSelected}">
+                <span class="checkout-addr-card-icon">${isPrimary ? '⭐' : '📍'}</span>
+                <span class="checkout-addr-card-text">${label}</span>
+                ${isSelected ? '<span class="checkout-addr-card-check">✓</span>' : ''}
+            </button>`;
+    }).join('');
+
+    checkoutInfoUI.addrCards.querySelectorAll('.checkout-addr-card').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const idx = Number(btn.dataset.addrIdx);
+            checkoutInfoUI.selectedAddressIndex = idx;
+            checkoutDeliveryLocationConfirmed = false;
+            updateCheckoutInfoModalState();
+        });
+    });
 }
 
 async function _persistSavedAddressCoords(profile, savedAddresses) {
@@ -5060,18 +5298,28 @@ function openCheckoutInfoModal() {
                 </select>
             </label>
             ${profile && savedAddresses.length ? `
-            <label class="support-field" id="checkoutSavedAddressField" hidden>
-                <span>Elegir dirección</span>
-                <select id="checkoutSavedAddressChoice">
-                    ${savedAddresses.map((entry, index) => `<option value="saved:${index}">Direccion ${index + 1}: ${escapeHtml(getCustomerSavedAddressLabel(entry))}</option>`).join('')}
-                    <option value="new">Agregar direccion nueva</option>
-                </select>
-                <p class="support-field-hint">Puedes usar una direccion guardada o escribir una nueva solo para este pedido.</p>
-            </label>` : ''}
-            <label class="support-field" id="checkoutDeliveryAddressField" hidden>
-                <span>${profile ? 'Direccion de entrega' : 'Direccion de entrega'}</span>
-                <textarea id="checkoutDeliveryAddress" rows="4" placeholder="Escribe la direccion completa"></textarea>
-            </label>
+            <div id="checkoutSavedAddressField" class="checkout-addr-section" hidden>
+                <p class="support-modal-kicker" style="margin:0 0 0.6rem">¿A dónde te enviamos?</p>
+                <div id="checkoutAddrCards" class="checkout-addr-cards"></div>
+                <button type="button" class="checkout-addr-add-btn" id="checkoutAddNewAddrBtn">+ Usar otra dirección</button>
+            </div>` : ''}
+            <div id="checkoutNewAddrPanel" ${profile && savedAddresses.length ? 'hidden' : ''}>
+                ${profile && savedAddresses.length ? `
+                <button type="button" class="checkout-addr-back-btn" id="checkoutAddrBackBtn">← Volver a mis direcciones</button>` : ''}
+                <label class="support-field" id="checkoutDeliveryAddressField">
+                    <span>Dirección de entrega</span>
+                    <textarea id="checkoutDeliveryAddress" rows="3" placeholder="Calle, carrera, número, barrio, referencia..."></textarea>
+                </label>
+                ${profile ? `
+                <label class="support-check" id="checkoutSaveAddressField">
+                    <input type="checkbox" id="checkoutSaveAddressToggle">
+                    <span>Guardar en mi perfil para futuros pedidos</span>
+                </label>
+                <label class="support-check" id="checkoutSetPrimaryField" style="display:none">
+                    <input type="checkbox" id="checkoutSetPrimaryToggle">
+                    <span>Establecer como dirección principal</span>
+                </label>` : ''}
+            </div>
             <div class="checkout-map-panel" id="checkoutDeliveryMapPanel" hidden>
                 <div class="checkout-map-actions">
                     <button type="button" id="checkoutUseLocationButton" class="support-send-btn checkout-map-button">📍 Usar mi ubicación actual</button>
@@ -5081,12 +5329,6 @@ function openCheckoutInfoModal() {
                 </div>
                 <div id="deliveryMap" class="checkout-map-area"></div>
             </div>
-            ${profile ? `
-            <label class="support-check" id="checkoutSaveAddressField" hidden>
-                <input type="checkbox" id="checkoutSaveAddressToggle">
-                <span>Guardar esta direccion en mi perfil para usarla mas adelante.</span>
-            </label>
-            <p class="support-field-hint" id="checkoutAddressBookHint" hidden></p>` : ''}
             ${profile ? '' : `
             <label class="support-field">
                 <span>Telefono</span>
@@ -5121,11 +5363,16 @@ function openCheckoutInfoModal() {
         name: modal.querySelector('#checkoutCustomerName'),
         fulfillmentType: modal.querySelector('#checkoutFulfillmentType'),
         savedAddressField: modal.querySelector('#checkoutSavedAddressField'),
-        savedAddressChoice: modal.querySelector('#checkoutSavedAddressChoice'),
+        addrCards: modal.querySelector('#checkoutAddrCards'),
+        addNewAddrBtn: modal.querySelector('#checkoutAddNewAddrBtn'),
+        newAddrPanel: modal.querySelector('#checkoutNewAddrPanel'),
+        addrBackBtn: modal.querySelector('#checkoutAddrBackBtn'),
         addressField: modal.querySelector('#checkoutDeliveryAddressField'),
         address: modal.querySelector('#checkoutDeliveryAddress'),
         saveAddressField: modal.querySelector('#checkoutSaveAddressField'),
         saveAddressToggle: modal.querySelector('#checkoutSaveAddressToggle'),
+        setPrimaryField: modal.querySelector('#checkoutSetPrimaryField'),
+        setPrimaryToggle: modal.querySelector('#checkoutSetPrimaryToggle'),
         addressBookHint: modal.querySelector('#checkoutAddressBookHint'),
         phone: modal.querySelector('#checkoutCustomerPhone'),
         deliveryMapPanel: modal.querySelector('#checkoutDeliveryMapPanel'),
@@ -5141,6 +5388,8 @@ function openCheckoutInfoModal() {
         feedback: modal.querySelector('#checkoutInfoFeedback'),
         send: modal.querySelector('#checkoutSubmitButton'),
         savedAddresses,
+        // -1 = nueva dirección, 0..n = índice en savedAddresses
+        selectedAddressIndex: savedAddresses.length ? 0 : -1,
         deliveryMap: null,
         deliveryMapMarker: null,
         deliveryZone: null,
@@ -5156,7 +5405,14 @@ function openCheckoutInfoModal() {
             initializeCheckoutDeliveryMap();
         }
     });
-    checkoutInfoUI.savedAddressChoice?.addEventListener('change', () => {
+    checkoutInfoUI.addNewAddrBtn?.addEventListener('click', () => {
+        checkoutInfoUI.selectedAddressIndex = -1;
+        checkoutDeliveryLocationConfirmed = false;
+        updateCheckoutInfoModalState();
+        checkoutInfoUI.address?.focus();
+    });
+    checkoutInfoUI.addrBackBtn?.addEventListener('click', () => {
+        checkoutInfoUI.selectedAddressIndex = 0;
         checkoutDeliveryLocationConfirmed = false;
         updateCheckoutInfoModalState();
     });
@@ -5166,15 +5422,21 @@ function openCheckoutInfoModal() {
     });
     checkoutInfoUI.confirmLocationButton?.addEventListener('click', async () => {
         checkoutDeliveryLocationConfirmed = true;
-        // Guardar coordenadas en Firestore si la dirección guardada no las tenía
         if (activeCustomerProfile && checkoutDeliveryLocation && Array.isArray(checkoutInfoUI.savedAddresses)) {
             await _persistSavedAddressCoords(activeCustomerProfile, checkoutInfoUI.savedAddresses);
         }
         updateCheckoutInfoModalState();
     });
     checkoutInfoUI.requestQuoteButton?.addEventListener('click', requestDeliveryQuote);
-    // Geocodificación automática al escribir la dirección
     checkoutInfoUI.address?.addEventListener('input', handleCheckoutAddressInput);
+    checkoutInfoUI.saveAddressToggle?.addEventListener('change', () => {
+        // Mostrar "Establecer como principal" solo si ya tiene 2+ direcciones guardadas
+        const canShowPrimary = (checkoutInfoUI.savedAddresses?.length || 0) >= 2;
+        if (checkoutInfoUI.setPrimaryField) {
+            checkoutInfoUI.setPrimaryField.style.display =
+                checkoutInfoUI.saveAddressToggle.checked && canShowPrimary ? '' : 'none';
+        }
+    });
 
     modal.addEventListener('click', (event) => {
         if (event.target === modal && _lastMousedownTarget === modal) {

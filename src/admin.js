@@ -11101,8 +11101,10 @@ function buildKitchenTicketHtml(order) {
         ? `MESA ${order.mesaNumber || '?'}`
         : order.orderType === 'domicilio' ? 'DOMICILIO' : 'RECOGER';
 
-    const addressLine = (order.orderType === 'domicilio' && order.deliveryAddress)
-        ? `<div class="k-address">${escapeHtml(order.deliveryAddress)}</div>`
+    const _rawAddr    = String(order.deliveryAddress || '').trim();
+    const _shortAddr  = _rawAddr.length > 55 ? _rawAddr.slice(0, 52) + '…' : _rawAddr;
+    const addressLine = (order.orderType === 'domicilio' && _rawAddr)
+        ? `<div class="k-address" title="${escapeHtml(_rawAddr)}">${escapeHtml(_shortAddr)}</div>`
         : '';
 
     const products = (order.items || []).map((item) => {
