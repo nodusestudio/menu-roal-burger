@@ -2,8 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── Catálogo público (solo lectura sin auth) ───────────────────────────
-    // El menú digital lee estas colecciones sin autenticación.
+    // ─── Catálogo público (lectura libre, escritura solo admin) ────────────
     match /configuracion/{doc} {
       allow read: if true;
       allow write: if request.auth != null;
@@ -40,34 +39,62 @@ service cloud.firestore {
       allow read: if true;
       allow write: if request.auth != null;
     }
+    // combospacks estaba sin regla — el menú público lo usa para leer combos
+    match /combospacks/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
 
     // ─── Pedidos ────────────────────────────────────────────────────────────
-    // Clientes pueden crear y leer sus pedidos (tracking público).
-    // Solo el admin puede actualizar o eliminar.
+    // Clientes crean pedidos sin auth. El total debe ser > 0 y los items
+    // no vacíos para evitar spam/pedidos corruptos.
+    // Lectura libre para que el cliente haga seguimiento de su pedido.
+    // Solo admin puede actualizar o eliminar.
     match /pedidos/{doc} {
       allow read: if true;
-      allow create: if true;
+      allow create: if true
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.total is number
+        && request.resource.data.total > 0
+        && request.resource.data.customerName is string
+        && request.resource.data.customerName.size() > 0
+        && request.resource.data.customerName.size() <= 120;
       allow update, delete: if request.auth != null;
     }
 
     // ─── Mensajes de contacto ───────────────────────────────────────────────
-    // Clientes pueden enviar mensajes. Admin los lee y gestiona.
+    // Clientes envían mensajes sin auth. Admin los gestiona.
     match /mensajes/{doc} {
       allow create: if true;
       allow read, update, delete: if request.auth != null;
     }
 
     // ─── Clientes ───────────────────────────────────────────────────────────
-    // El menú puede crear y actualizar el perfil del cliente (direcciones).
-    // Solo admin puede eliminar.
-    match /clientes/{doc} {
-      allow create, update: if true;
-      allow read, delete: if request.auth != null;
+    // Sin auth: crear perfil y actualizar datos propios (dirección, PIN, nombre).
+    // El teléfono es obligatorio para poder crear el perfil.
+    // Delete: el menú permite que el cliente elimine su propia cuenta.
+    // Solo admin puede leer el listado completo de clientes.
+    match /clientes/{clientId} {
+      allow create: if true
+        && request.resource.data.customerPhone is string
+        && request.resource.data.customerPhone.size() > 0;
+      allow update: if true
+        && request.resource.data.customerPhone is string;
+      allow delete: if true;
+      allow read: if request.auth != null;
     }
 
-    // ─── Tokens FCM — solo el admin autenticado puede leer/escribir ─────────
+    // ─── Tokens FCM (push) — solo admin autenticado ──────────────────────────
     match /admin_fcm_tokens/{doc} {
       allow read, write: if request.auth != null;
+    }
+
+    // ─── OTP / Verificaciones de teléfono ────────────────────────────────────
+    // Acceso exclusivo via Firebase Admin SDK (Cloud Functions).
+    // Los clientes nunca acceden directamente a esta colección.
+    match /phone_verifications/{doc} {
+      allow read, write: if false;
     }
 
     // ─── Solo admin ─────────────────────────────────────────────────────────
@@ -87,6 +114,9 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
     match /proveedores/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /estadisticas/{doc} {
       allow read, write: if request.auth != null;
     }
   }
