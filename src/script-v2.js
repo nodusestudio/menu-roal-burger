@@ -1236,7 +1236,7 @@ function showOrderConfirmScreen(orderData = {}) {
     const ocPay = document.getElementById('ocPaymentMethod');
     if (ocPay) {
         const pm = String(orderData.paymentMethod || '').toLowerCase();
-        const labels = { efectivo: 'Efectivo', nequi: 'Nequi', bancolombia: 'Bancolombia', daviplata: 'Daviplata', tarjeta: 'Tarjeta' };
+        const labels = { efectivo: 'Efectivo', transferencia: 'Transferencia', nequi: 'Nequi', bancolombia: 'Bancolombia', daviplata: 'Daviplata', tarjeta: 'Tarjeta' };
         ocPay.textContent = labels[pm] || String(orderData.paymentMethod || '—');
     }
 
@@ -1539,10 +1539,8 @@ async function loadCustomerPaymentMethods() {
             _customerPaymentMethods = doc.data().methods.filter((m) => m.enabled !== false);
         } else {
             _customerPaymentMethods = [
-                { id: 'efectivo',    label: 'Efectivo',    icon: '💵' },
-                { id: 'bancolombia', label: 'Bancolombia', icon: '🏦' },
-                { id: 'nequi',       label: 'Nequi',       icon: '💜' },
-                { id: 'bold',        label: 'Bold',        icon: '💳' },
+                { id: 'efectivo',       label: 'Efectivo',       icon: '💵' },
+                { id: 'transferencia',  label: 'Transferencia',  icon: '🏦' },
             ];
         }
     } catch (_) {}
@@ -4788,10 +4786,8 @@ function openPaymentFlowModal(orderData) {
 
     const total = Number(orderData?.total || 0);
     const _pmList = _customerPaymentMethods?.length ? _customerPaymentMethods : [
-        { id: 'efectivo',    label: 'Efectivo',    icon: '💵' },
-        { id: 'bancolombia', label: 'Bancolombia', icon: '🏦' },
-        { id: 'nequi',       label: 'Nequi',       icon: '💜' },
-        { id: 'bold',        label: 'Bold',        icon: '💳' },
+        { id: 'efectivo',      label: 'Efectivo',      icon: '💵' },
+        { id: 'transferencia', label: 'Transferencia', icon: '🏦' },
     ];
     const _pmOptionsHtml = _pmList.map((m) => `<option value="${m.id}">${m.icon ? m.icon + ' ' : ''}${m.label}</option>`).join('');
     const modal = document.createElement('div');
@@ -4820,8 +4816,8 @@ function openPaymentFlowModal(orderData) {
                 </select>
             </div>
             <label class="support-field" id="paymentTenderField" hidden>
-                <span>Con cuanto vas a pagar</span>
-                <input type="text" id="paymentTenderAmount" inputmode="numeric" placeholder="Escribe el valor con el que pagas">
+                <span>Con cuánto vas a pagar</span>
+                <input type="text" id="paymentTenderAmount" inputmode="numeric" placeholder="Ej: 50.000">
             </label>
             <p class="support-feedback" id="paymentFlowFeedback"></p>
             <div class="support-actions">
@@ -4849,6 +4845,12 @@ function openPaymentFlowModal(orderData) {
     paymentFlowUI.close.addEventListener('click', closePaymentFlowModal);
     paymentFlowUI.method.addEventListener('change', updatePaymentFlowState);
     paymentFlowUI.cashChoice.addEventListener('change', updatePaymentFlowState);
+    paymentFlowUI.tenderAmount.addEventListener('input', () => {
+        const el = paymentFlowUI.tenderAmount;
+        const raw = el.value.replace(/\D/g, '');
+        if (raw === '') { el.value = ''; return; }
+        el.value = Number(raw).toLocaleString('es-CO');
+    });
     paymentFlowUI.send.addEventListener('click', submitPaymentFlow);
 
     modal.addEventListener('click', (event) => {
