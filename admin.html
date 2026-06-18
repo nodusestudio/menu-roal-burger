@@ -11627,9 +11627,32 @@
                 padding-top: 4px;
             }
         }
+        /* ── Auth loading state: hide everything until Firebase resolves ── */
+        body.admin-loading .admin-auth-overlay,
+        body.admin-loading .admin-page { display: none !important; }
+        body.admin-loading::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(circle at 20% 8%, #1a1f2b 0%, #0f1116 46%, #0c0e13 100%);
+            z-index: 9998;
+        }
+        body.admin-loading::after {
+            content: '';
+            position: fixed;
+            top: 50%; left: 50%;
+            width: 44px; height: 44px;
+            margin: -22px 0 0 -22px;
+            border: 3px solid rgba(255,255,255,0.08);
+            border-top-color: #f3c56a;
+            border-radius: 50%;
+            animation: adminSpinLoad 0.75s linear infinite;
+            z-index: 9999;
+        }
+        @keyframes adminSpinLoad { to { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="admin-locked">
+<body class="admin-loading">
     <section class="admin-auth-overlay" id="adminAuthOverlay" aria-label="Acceso administrador">
         <div class="admin-auth-card">
             <h2>Acceso Administrador</h2>
@@ -13432,7 +13455,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260618c"></script>
+    <script src="admin.js?v=20260618d"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>

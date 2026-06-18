@@ -1525,19 +1525,29 @@ async function ensureAdminAuth() {
         throw new Error('Firebase Auth no esta disponible en este panel.');
     }
 
-    document.body.classList.add('admin-locked');
-    document.body.classList.remove('admin-unlocked');
-
     if (authError) {
         authError.classList.remove('show');
         authError.textContent = '';
     }
 
-    if (firebaseAuth.currentUser) {
+    // Wait for Firebase to resolve the persisted session BEFORE showing any UI.
+    // currentUser is null synchronously on page load even with a saved session;
+    // onAuthStateChanged is the authoritative first-resolution event.
+    const _initialUser = await new Promise((resolve) => {
+        const _unsub = firebaseAuth.onAuthStateChanged((u) => { _unsub(); resolve(u); });
+    });
+
+    if (_initialUser) {
+        document.body.classList.remove('admin-loading');
         document.body.classList.remove('admin-locked');
         document.body.classList.add('admin-unlocked');
-        return firebaseAuth.currentUser;
+        return _initialUser;
     }
+
+    // No persisted session — now reveal the login form.
+    document.body.classList.remove('admin-loading');
+    document.body.classList.add('admin-locked');
+    document.body.classList.remove('admin-unlocked');
 
     if (authUsernameInput) {
         authUsernameInput.focus();
