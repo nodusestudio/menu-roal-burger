@@ -16965,11 +16965,13 @@ document.getElementById('refreshCajaDiariaBtn')?.addEventListener('click', async
 const CAJA_APERTURA_STORAGE_KEY = 'roalburger-caja-apertura';
 // Inicializar desde localStorage como caché rápida; Firestore es la fuente de verdad
 let cajaAperturaAt = Number(localStorage.getItem(CAJA_APERTURA_STORAGE_KEY) || 0);
+let _cajaAperturaBy = '';
+let _cajaFondoInicial = 0;
 
-async function saveCajaAperturaToFirestore(ts) {
+async function saveCajaAperturaToFirestore(ts, extra = {}) {
     try {
         await firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID)
-            .set({ aperturaAt: ts }, { merge: true });
+            .set({ aperturaAt: ts, ...extra }, { merge: true });
         try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(ts)); } catch {}
     } catch (_) {}
 }
@@ -16978,7 +16980,10 @@ async function loadCajaAperturaFromFirestore() {
     try {
         const snap = await firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).get();
         if (snap.exists && snap.data().aperturaAt) {
-            cajaAperturaAt = Number(snap.data().aperturaAt);
+            const d = snap.data();
+            cajaAperturaAt = Number(d.aperturaAt);
+            _cajaAperturaBy = d.aperturaBy || '';
+            _cajaFondoInicial = Number(d.fondoInicial || 0);
             try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(cajaAperturaAt)); } catch {}
         } else {
             // Primera vez en cualquier dispositivo: inicio del día actual
@@ -16995,9 +17000,12 @@ function initCajaAperturaSync() {
     // Listener en tiempo real: todos los dispositivos se actualizan al cerrar caja
     firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).onSnapshot((snap) => {
         if (!snap.exists) return;
-        const remoteTs = Number(snap.data().aperturaAt || 0);
+        const data = snap.data();
+        const remoteTs = Number(data.aperturaAt || 0);
         if (remoteTs && remoteTs !== cajaAperturaAt) {
             cajaAperturaAt = remoteTs;
+            _cajaAperturaBy = data.aperturaBy || '';
+            _cajaFondoInicial = Number(data.fondoInicial || 0);
             try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(remoteTs)); } catch {}
             renderCajaDiaria();
             renderOrders();
@@ -17104,7 +17112,9 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         // Guardar apertura original antes de resetearla, para poder filtrar pedidos de esta jornada
         const _aperturaAnterior = cajaAperturaAt;
         cajaAperturaAt = Date.now();
-        await saveCajaAperturaToFirestore(cajaAperturaAt);
+        _cajaAperturaBy = '';
+        _cajaFondoInicial = 0;
+        await saveCajaAperturaToFirestore(cajaAperturaAt, { aperturaBy: '', fondoInicial: 0 });
 
         _pendingCierreDoc = null;
         document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
@@ -17140,6 +17150,7 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         showNotice('Caja cerrada. Recepción de pedidos reiniciada.', 'ok');
         _navigateToCajaDiaria();
         await renderLibroCierres();
+        setTimeout(() => _showAbrirCajaModal(), 700);
     } catch (err) {
         showNotice(`Error al guardar cierre: ${err.message || 'error inesperado.'}`, 'error');
     } finally {
@@ -17229,6 +17240,9 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
 
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
             ${ROW('Fecha', dateStr)}
+            ${c.aperturaAt ? ROW('Hora apertura', new Date(Number(c.aperturaAt)).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })) : ''}
+            ${c.aperturaBy ? ROW('Abierta por', escapeHtml(String(c.aperturaBy))) : ''}
+            ${Number(c.fondoInicial) > 0 ? ROW('Fondo inicial', formatMoney(Number(c.fondoInicial)), '#f3c56a') : ''}
             ${ROW('Hora cierre', timeStr)}
             ${ROW('Transacciones', String(cobradas))}
             ${c.voidedCount ? ROW('Anulados (excluidos)', String(Number(c.voidedCount)), '#fca5a5') : ''}
@@ -17364,6 +17378,9 @@ async function cerrarCaja() {
             id: closureId,
             closedAt,
             date: todayStr,
+            aperturaAt: cajaAperturaAt || null,
+            aperturaBy: _cajaAperturaBy || '',
+            fondoInicial: _cajaFondoInicial || 0,
             transactionCount: paid.length,
             voidedCount,
             ingresosMethod,
@@ -17449,6 +17466,175 @@ document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', () => {
         _navigateToCajaDiaria();
         cerrarCaja();
     });
+});
+
+// ── Apertura de Caja ──────────────────────────────────────────────────────────
+function _showAbrirCajaModal() {
+    document.getElementById('_abrirCajaOverlay')?.remove();
+    _ccLoad();
+    const savedTotal = _ccTotal();
+
+    const now = new Date();
+    const fechaStr = now.toLocaleString('es-CO', {
+        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    });
+
+    const overlay = document.createElement('div');
+    overlay.id = '_abrirCajaOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+
+    overlay.innerHTML = `
+        <div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.75rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);max-height:90vh;overflow-y:auto;">
+
+            <div id="_acHeader" style="text-align:center;margin-bottom:1.25rem;">
+                <div style="font-size:2rem;margin-bottom:0.3rem;">📂</div>
+                <h3 style="margin:0;color:#fff;font-size:1.1rem;font-weight:700;">Apertura de Caja</h3>
+                <p style="margin:4px 0 0;color:rgba(255,255,255,0.4);font-size:0.76rem;">${fechaStr}</p>
+            </div>
+
+            <label style="display:block;color:rgba(255,255,255,0.65);font-size:0.82rem;margin-bottom:5px;">👤 ¿Quién abre la caja?</label>
+            <input id="_acNombreInput" type="text" placeholder="Nombre del responsable" autocomplete="off"
+                style="width:100%;box-sizing:border-box;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.18);border-radius:10px;color:#fff;padding:10px 12px;font-size:0.9rem;margin-bottom:1.1rem;outline:none;">
+
+            <div id="_acStep1">
+                <div style="background:rgba(243,197,106,0.08);border:1px solid rgba(243,197,106,0.25);border-radius:12px;padding:0.9rem 1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
+                    <span style="color:rgba(255,255,255,0.6);font-size:0.83rem;">💰 Caja chica guardada</span>
+                    <span style="color:#f3c56a;font-weight:700;font-size:1.1rem;">${formatMoney(savedTotal)}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                    <button id="_acUsarGuardadoBtn" type="button"
+                        style="padding:0.8rem;border-radius:12px;border:none;background:linear-gradient(135deg,#f3c56a,#c8962a);color:#000;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;">
+                        ✓ Iniciar con caja chica guardada
+                    </button>
+                    <button id="_acRecontarBtn" type="button"
+                        style="padding:0.75rem;border-radius:12px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.85rem;cursor:pointer;">
+                        🔄 Volver a contar
+                    </button>
+                </div>
+            </div>
+
+            <div id="_acStep2" hidden>
+                <button id="_acBackBtn" type="button"
+                    style="background:none;border:none;color:rgba(255,255,255,0.55);font-size:0.82rem;cursor:pointer;padding:0;margin-bottom:0.75rem;display:flex;align-items:center;gap:4px;">
+                    ‹ Volver
+                </button>
+                <div style="color:#f3c56a;font-size:0.75rem;font-weight:700;letter-spacing:1.2px;margin-bottom:6px;">BILLETES</div>
+                <div id="_acBilletesGrid" style="margin-bottom:10px;"></div>
+                <div style="color:#f3c56a;font-size:0.75rem;font-weight:700;letter-spacing:1.2px;margin-bottom:6px;">MONEDAS</div>
+                <div id="_acMonedasGrid" style="margin-bottom:12px;"></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 0;border-top:1px dashed rgba(255,255,255,0.14);">
+                    <span style="color:rgba(255,255,255,0.6);font-size:0.85rem;">Total contado:</span>
+                    <span id="_acCountedTotal" style="color:#f3c56a;font-weight:700;font-size:1.05rem;">${formatMoney(0)}</span>
+                </div>
+                <button id="_acConfirmCountBtn" type="button"
+                    style="width:100%;padding:0.8rem;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;font-size:0.88rem;font-weight:700;cursor:pointer;margin-top:2px;">
+                    ✓ Permanecer con este conteo y abrir caja
+                </button>
+            </div>
+
+        </div>`;
+
+    document.body.appendChild(overlay);
+
+    const countedBilletes = { ..._ccBilletes };
+    const countedMonedas  = { ..._ccMonedas };
+
+    function _acSubB2() { return CC_BILLETES.reduce((s, d) => s + d * (Number(countedBilletes[d] || 0)), 0); }
+    function _acSubM2() { return CC_MONEDAS.reduce((s, d)  => s + d * (Number(countedMonedas[d]  || 0)), 0); }
+    function _acTotal2() { return _acSubB2() + _acSubM2(); }
+
+    function _acRenderGrid2(containerId, denoms, state) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        el.innerHTML = denoms.map((d) => {
+            const count = Number(state[d] || 0);
+            const sub = d * count;
+            return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
+                <span style="color:#888;min-width:75px;font-size:0.82rem;">${formatMoney(d)}</span>
+                <input type="number" data-ac-denom="${d}" value="${count || ''}" placeholder="0" min="0" step="1" inputmode="numeric"
+                    style="width:62px;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:5px 6px;font-size:0.85rem;text-align:center;">
+                <span data-ac-sub="${d}" style="color:#f3c56a;font-size:0.82rem;min-width:72px;text-align:right;font-weight:${sub > 0 ? 700 : 400};">${sub > 0 ? formatMoney(sub) : '—'}</span>
+            </div>`;
+        }).join('');
+    }
+
+    function _acRefreshCountedTotal2() {
+        const el = document.getElementById('_acCountedTotal');
+        if (el) el.textContent = formatMoney(_acTotal2());
+    }
+
+    function _acValidateNombre() {
+        const inp = document.getElementById('_acNombreInput');
+        const nombre = (inp?.value || '').trim();
+        if (!nombre) {
+            if (inp) { inp.style.borderColor = '#ef4444'; inp.focus(); }
+            document.getElementById('_acStep1').hidden = false;
+            document.getElementById('_acStep2').hidden = true;
+            return '';
+        }
+        if (inp) inp.style.borderColor = 'rgba(255,255,255,0.18)';
+        return nombre;
+    }
+
+    function _acConfirm2(fondoUsado, recounted) {
+        const nombre = _acValidateNombre();
+        if (!nombre) return;
+        _cajaAperturaBy = nombre;
+        _cajaFondoInicial = fondoUsado;
+        if (recounted) {
+            _ccBilletes = { ...countedBilletes };
+            _ccMonedas  = { ...countedMonedas };
+            _ccSave();
+            _ccRefreshTotals();
+        }
+        saveCajaAperturaToFirestore(cajaAperturaAt, { aperturaBy: nombre, fondoInicial: fondoUsado });
+        overlay.remove();
+        showNotice(`Caja abierta por ${nombre} · Fondo: ${formatMoney(fondoUsado)}`, 'ok');
+    }
+
+    document.getElementById('_acUsarGuardadoBtn')?.addEventListener('click', () => {
+        _acConfirm2(savedTotal, false);
+    });
+
+    document.getElementById('_acRecontarBtn')?.addEventListener('click', () => {
+        document.getElementById('_acStep1').hidden = true;
+        document.getElementById('_acStep2').hidden = false;
+        _acRenderGrid2('_acBilletesGrid', CC_BILLETES, countedBilletes);
+        _acRenderGrid2('_acMonedasGrid', CC_MONEDAS, countedMonedas);
+        _acRefreshCountedTotal2();
+    });
+
+    document.getElementById('_acBackBtn')?.addEventListener('click', () => {
+        document.getElementById('_acStep1').hidden = false;
+        document.getElementById('_acStep2').hidden = true;
+    });
+
+    document.getElementById('_acStep2')?.addEventListener('input', (e) => {
+        const inp = e.target.closest('[data-ac-denom]');
+        if (!inp) return;
+        const d = Number(inp.dataset.acDenom);
+        const count = Number(inp.value) || 0;
+        if (CC_BILLETES.includes(d)) countedBilletes[d] = count;
+        else countedMonedas[d] = count;
+        const sub = d * count;
+        const subEl = inp.closest('div')?.querySelector(`[data-ac-sub="${d}"]`);
+        if (subEl) {
+            subEl.textContent = sub > 0 ? formatMoney(sub) : '—';
+            subEl.style.fontWeight = sub > 0 ? '700' : '400';
+        }
+        _acRefreshCountedTotal2();
+    });
+
+    document.getElementById('_acConfirmCountBtn')?.addEventListener('click', () => {
+        _acConfirm2(_acTotal2(), true);
+    });
+
+    setTimeout(() => document.getElementById('_acNombreInput')?.focus(), 120);
+}
+
+document.getElementById('abrirCajaBtnPos')?.addEventListener('click', () => {
+    _showAbrirCajaModal();
 });
 
 // ── Buscador de precio de domicilio (admin toolbar) ───────────────────────────

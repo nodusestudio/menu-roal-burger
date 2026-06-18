@@ -9123,8 +9123,8 @@
                 display: block !important;
                 line-height: 1 !important;
             }
-            /* Cerrar Caja: compacto, solo ícono */
-            #cerrarCajaBtnPos {
+            /* Abrir / Cerrar Caja: compactos, solo ícono */
+            #abrirCajaBtnPos, #cerrarCajaBtnPos {
                 padding: 0 !important;
                 width: 32px !important;
                 height: 32px !important;
@@ -9133,6 +9133,11 @@
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
+            }
+            #abrirCajaBtnPos::before {
+                content: '📂';
+                font-size: 0.95rem;
+                display: block;
             }
             #cerrarCajaBtnPos::before {
                 content: '🔒';
@@ -11867,6 +11872,7 @@
                         <span class="unread-tray-badge" id="ordersCountUnread">0</span>
                     </button>
                     <button type="button" class="section-save-btn" data-section-save="pedidos" title="Actualizar pedidos"></button>
+                    <button type="button" id="abrirCajaBtnPos" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">📂 Abrir Caja</button>
                     <button type="button" id="cerrarCajaBtnPos" style="background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">🔒 Cerrar Caja</button>
                 </div>
                 <div class="unread-tray" id="unreadTray" hidden>
@@ -13455,7 +13461,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260618d"></script>
+    <script src="admin.js?v=20260618e"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
