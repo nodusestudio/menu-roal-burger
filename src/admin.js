@@ -17196,10 +17196,53 @@ async function cerrarCaja() {
     }
 }
 
-document.getElementById('cerrarCajaBtn')?.addEventListener('click', cerrarCaja);
+function _showCerrarCajaConfirm(onAccept) {
+    const now = new Date();
+    const fechaHora = now.toLocaleString('es-CO', {
+        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
+    const existing = document.getElementById('_cerrarCajaConfirmOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = '_cerrarCajaConfirmOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:1rem;';
+
+    overlay.innerHTML = `
+        <div style="background:#1e1e2e;border:1.5px solid rgba(255,255,255,0.12);border-radius:18px;padding:2rem 1.75rem;max-width:380px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,0.55);text-align:center;">
+            <div style="font-size:2rem;margin-bottom:0.75rem;">🔒</div>
+            <h3 style="margin:0 0 0.5rem;color:#fff;font-size:1.1rem;font-weight:700;">Cerrar Caja</h3>
+            <p style="margin:0 0 1.25rem;color:rgba(255,255,255,0.65);font-size:0.88rem;line-height:1.5;">
+                ¿Seguro que desea cerrar la caja del día?<br>
+                <strong style="color:rgba(255,255,255,0.9);font-size:0.83rem;">${fechaHora}</strong>
+            </p>
+            <div style="display:flex;gap:0.75rem;">
+                <button id="_cerrarCajaCancelBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">Cancelar</button>
+                <button id="_cerrarCajaAcceptBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:none;background:#e53935;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;">Cerrar Caja</button>
+            </div>
+        </div>`;
+
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.getElementById('_cerrarCajaCancelBtn').addEventListener('click', close);
+    document.getElementById('_cerrarCajaAcceptBtn').addEventListener('click', () => {
+        close();
+        onAccept();
+    });
+}
+
+document.getElementById('cerrarCajaBtn')?.addEventListener('click', () => {
+    _showCerrarCajaConfirm(() => cerrarCaja());
+});
 document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', () => {
-    _navigateToCajaDiaria();
-    cerrarCaja();
+    _showCerrarCajaConfirm(() => {
+        _navigateToCajaDiaria();
+        cerrarCaja();
+    });
 });
 
 // ── Buscador de precio de domicilio (admin toolbar) ───────────────────────────
