@@ -13,6 +13,14 @@ const PHONE_VERIFICATIONS_COLLECTION = 'phone_verifications';
 const OTP_EXPIRY_MS                 = 10 * 60 * 1000; // 10 minutos
 const OTP_MAX_ATTEMPTS              = 5;
 
+// Orígenes permitidos para llamadas a las Cloud Functions desde el navegador.
+// Solo estos dominios pueden invocar las funciones onCall desde un browser.
+const ALLOWED_ORIGINS = [
+    'https://roalburger.com',
+    'https://www.roalburger.com',
+    'https://menu-roal-burger-main.vercel.app',
+];
+
 // Secrets: configurar con `firebase functions:secrets:set ULTRAMSG_INSTANCE`
 const ULTRAMSG_INSTANCE = defineSecret('ULTRAMSG_INSTANCE');
 const ULTRAMSG_TOKEN    = defineSecret('ULTRAMSG_TOKEN');
@@ -85,7 +93,7 @@ exports.notifyNewOrder = onDocumentCreated(
 //             firebase functions:secrets:set ULTRAMSG_TOKEN
 // ─────────────────────────────────────────────────────────────
 exports.sendWhatsAppOtp = onCall(
-    { region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
+    { region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN], cors: ALLOWED_ORIGINS },
     async (request) => {
         const phone = String(request.data?.phone || '').replace(/\D/g, '');
 
@@ -145,7 +153,7 @@ exports.sendWhatsAppOtp = onCall(
 // Verificar el OTP ingresado por el cliente
 // ─────────────────────────────────────────────────────────────
 exports.verifyWhatsAppOtp = onCall(
-    { region: 'us-central1' },
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
         const phone = String(request.data?.phone || '').replace(/\D/g, '');
         const code  = String(request.data?.code  || '').replace(/\D/g, '');
