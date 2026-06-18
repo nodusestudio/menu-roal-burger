@@ -15851,7 +15851,39 @@ let _pfReceiveOrder = false;
 let _pfSelectedMethod = null;
 let _pfOrderTotal = 0;
 
+function _pfParseCash(val) {
+    return parseInt(String(val || '').replace(/\D/g, ''), 10) || 0;
+}
+
+function _pfFormatCash(num) {
+    return num > 0 ? num.toLocaleString('es-CO') : '';
+}
+
+function _pfHandleViewport() {
+    const vv = window.visualViewport;
+    const overlay = document.getElementById('pfOverlay');
+    if (!overlay || overlay.hasAttribute('hidden')) return;
+    if (vv) {
+        overlay.style.top    = `${vv.offsetTop}px`;
+        overlay.style.left   = `${vv.offsetLeft}px`;
+        overlay.style.width  = `${vv.width}px`;
+        overlay.style.height = `${vv.height}px`;
+    }
+}
+
+function _pfResetViewport() {
+    const overlay = document.getElementById('pfOverlay');
+    if (!overlay) return;
+    overlay.style.top = '';
+    overlay.style.left = '';
+    overlay.style.width = '';
+    overlay.style.height = '';
+}
+
 function _pfClose() {
+    window.visualViewport?.removeEventListener('resize', _pfHandleViewport);
+    window.visualViewport?.removeEventListener('scroll', _pfHandleViewport);
+    _pfResetViewport();
     document.getElementById('pfOverlay')?.setAttribute('hidden', '');
     _pfOrder = null;
     _pfReceiveOrder = false;
@@ -15939,6 +15971,9 @@ function openDeliveryPaymentModal(order, receiveOrder = true) {
 
     _pfShowStep('pfStep1');
     document.getElementById('pfOverlay')?.removeAttribute('hidden');
+    window.visualViewport?.addEventListener('resize', _pfHandleViewport);
+    window.visualViewport?.addEventListener('scroll', _pfHandleViewport);
+    _pfHandleViewport();
 }
 
 function closeDeliveryPaymentModal() {
@@ -16155,7 +16190,7 @@ document.getElementById('pfOverlay')?.addEventListener('click', async (e) => {
             const totalEl = document.getElementById('pfCashOrderTotal');
             if (totalEl) totalEl.textContent = formatMoney(_pfOrderTotal);
             const cashInput = document.getElementById('pfCashInput');
-            if (cashInput) cashInput.value = '';
+            if (cashInput) { cashInput.value = ''; cashInput.removeAttribute('readonly'); }
             const changeLine = document.getElementById('pfChangeLine');
             if (changeLine) changeLine.hidden = true;
             const confirmBtn = document.getElementById('pfCashConfirmBtn');
@@ -16187,30 +16222,30 @@ document.getElementById('pfOverlay')?.addEventListener('click', async (e) => {
 
     const confirmBtn = e.target.closest('#pfCashConfirmBtn');
     if (confirmBtn && !confirmBtn.disabled) {
-        const raw = parseFloat(document.getElementById('pfCashInput')?.value || '0') || 0;
-        const cashTender = raw * 1000;
+        const cashTender = _pfParseCash(document.getElementById('pfCashInput')?.value || '');
         await _pfProcessPayment('efectivo', '', cashTender);
         return;
     }
 });
 
-document.getElementById('pfCashInput')?.addEventListener('input', () => {
-    const raw = parseFloat(document.getElementById('pfCashInput').value || '0') || 0;
-    const cashTender = raw * 1000;
+document.getElementById('pfCashInput')?.addEventListener('input', (e) => {
+    const rawNum = _pfParseCash(e.target.value);
+    const formatted = _pfFormatCash(rawNum);
+    if (e.target.value !== formatted) e.target.value = formatted;
+
     const total = _pfOrderTotal;
     const changeLine = document.getElementById('pfChangeLine');
     const changeVal = document.getElementById('pfChangeVal');
     const confirmBtn = document.getElementById('pfCashConfirmBtn');
 
-    if (raw <= 0) {
+    if (rawNum <= 0) {
         if (changeLine) changeLine.hidden = true;
         if (confirmBtn) confirmBtn.disabled = true;
         return;
     }
 
-    const change = cashTender - total;
+    const change = rawNum - total;
     if (changeLine) changeLine.hidden = false;
-
     if (change >= 0) {
         if (changeVal) { changeVal.textContent = formatMoney(change); changeVal.className = ''; }
         if (confirmBtn) confirmBtn.disabled = false;

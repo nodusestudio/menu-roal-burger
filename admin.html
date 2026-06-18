@@ -11196,7 +11196,8 @@
 
         /* ── Payment Flow Modal ── */
         #pfOverlay {
-            position: fixed; inset: 0; z-index: 10350;
+            position: fixed; z-index: 10350;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,0,0,0.72); display: flex;
             align-items: flex-end; justify-content: center;
             backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
@@ -11287,15 +11288,9 @@
         }
         #pfCashInput {
             flex: 1; background: none; border: none; color: #fff;
-            font-size: 1.6rem; font-weight: 700; padding: 12px 8px;
+            font-size: 1.6rem; font-weight: 700; padding: 12px 14px 12px 8px;
             outline: none; width: 100%; min-width: 0;
             font-family: 'Space Grotesk', sans-serif;
-        }
-        #pfCashInput::-webkit-outer-spin-button,
-        #pfCashInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        .pf-cash-mil-suffix {
-            padding: 0 14px; color: rgba(255,255,255,0.35);
-            font-size: 0.9rem; font-family: 'Space Grotesk', sans-serif; flex-shrink: 0;
         }
         #pfChangeLine {
             margin: 12px 0 0; font-size: 0.95rem;
@@ -13337,8 +13332,7 @@
                 <label class="pf-cash-input-label" for="pfCashInput">Con cuánto paga el cliente</label>
                 <div class="pf-cash-input-wrap">
                     <span class="pf-cash-prefix-sign">$</span>
-                    <input type="number" id="pfCashInput" inputmode="numeric" placeholder="0" min="0" step="1" autocomplete="off">
-                    <span class="pf-cash-mil-suffix">.000</span>
+                    <input type="text" id="pfCashInput" inputmode="numeric" placeholder="0" autocomplete="off" pattern="[0-9.]*">
                 </div>
                 <p id="pfChangeLine" hidden>Cambio: <strong id="pfChangeVal"></strong></p>
                 <div class="pf-cash-footer">
@@ -13438,7 +13432,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260618b"></script>
+    <script src="admin.js?v=20260618c"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
