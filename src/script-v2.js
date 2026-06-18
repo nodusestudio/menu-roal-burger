@@ -11544,7 +11544,7 @@ function _renderPublicUpgradeCombos() {
             const c = items.find((x) => x.id === btn.dataset.comboId);
             if (!c || !_publicUpgradePending) return;
             const sabores = Array.isArray(c.bebida_sabores) ? c.bebida_sabores.filter(Boolean) : [];
-            if (sabores.length > 1) {
+            if (sabores.length > 0) {
                 _renderPublicUpgradeComboSabor(c, sabores);
             } else {
                 _publicUpgradePending.extras.push({ id: 'combo_' + c.id, name: `Combo: ${c.nombre}`, price: c.valor });
