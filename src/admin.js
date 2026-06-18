@@ -15845,55 +15845,104 @@ function _dpmUpdateConfirmState() {
     }
 }
 
-function openDeliveryPaymentModal(order, receiveOrder = true) {
-    _dpmCurrentOrderId = order.id;
-    _dpmOrderTotal = getOrderDisplayTotal(order);
-    _dpmSelectedMethod = null;
-    _dpmSubMethod = null;
-    _dpmCashTender = 0;
-    _dpmCashMode = null;
-    _dpmReceiveOrder = receiveOrder;
-    _dpmSplitMode = false;
-    _dpmSplitParts = [];
+// ── Payment Flow (flujo de cobro simplificado en 2 pasos) ─────────────────
+let _pfOrder = null;
+let _pfReceiveOrder = false;
+let _pfSelectedMethod = null;
+let _pfOrderTotal = 0;
 
-    const modal = document.getElementById('deliveryPaymentModal');
-    if (!modal) return;
+function _pfClose() {
+    document.getElementById('pfOverlay')?.setAttribute('hidden', '');
+    _pfOrder = null;
+    _pfReceiveOrder = false;
+    _pfSelectedMethod = null;
+    _pfOrderTotal = 0;
+}
 
-    const _codeEl = document.getElementById('dpmCode');
-    if (_codeEl) _codeEl.textContent = `#${order.code || '---'}`;
+function _pfShowStep(stepId) {
+    ['pfStep1', 'pfStep2Cash', 'pfStep2Digital'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = id !== stepId;
+    });
+    const backBtn = document.getElementById('pfBackBtn');
+    if (backBtn) backBtn.hidden = stepId === 'pfStep1';
+}
 
-    const summaryEl = document.getElementById('dpmTicketSummary');
-    if (summaryEl) summaryEl.innerHTML = buildThermalTicketMarkup(order, { printMode: true });
+async function _pfProcessPayment(method, subMethod, cashTender) {
+    const order = _pfOrder;
+    const receiveOrder = _pfReceiveOrder;
+    const total = _pfOrderTotal;
+    if (!order) return;
+    _pfClose();
 
-    document.getElementById('dpmSubSection')?.setAttribute('hidden', '');
-    document.getElementById('dpmSubEfectivo')?.setAttribute('hidden', '');
-    document.getElementById('dpmSubChips')?.setAttribute('hidden', '');
-    document.getElementById('dpmCashWrap')?.setAttribute('hidden', '');
-    document.getElementById('dpmChangeRow')?.setAttribute('hidden', '');
-    document.getElementById('dpmSplitWrap')?.setAttribute('hidden', '');
-    document.getElementById('dpmMethodsGrid')?.removeAttribute('hidden');
-    const toggleBtn = document.getElementById('dpmSplitToggleBtn');
-    if (toggleBtn) { toggleBtn.classList.remove('active'); toggleBtn.textContent = '+ Multi'; }
+    const paymentUpdate = {
+        paymentMethod: method,
+        paymentSubMethod: subMethod || '',
+        cashTenderAmount: method === 'efectivo' ? cashTender : null,
+        cashChangeRequired: method === 'efectivo' && cashTender > total,
+        cashChangeAmount: method === 'efectivo' && cashTender > total ? cashTender - total : null,
+        paidAt: firestoreNow(),
+    };
 
-    const confirmBtn = document.getElementById('dpmConfirmBtn');
-    if (confirmBtn) {
-        confirmBtn.disabled = true;
-        confirmBtn.textContent = receiveOrder ? '💰 Cobrar pedido' : '💰 Registrar pago';
+    try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const paidSinceApertura = ordersState.filter((o) => {
+            if (!o.paidAt) return false;
+            const ms = typeof o.paidAt.toMillis === 'function' ? o.paidAt.toMillis() : Number(o.paidAt);
+            if (cajaAperturaAt) return ms >= cajaAperturaAt;
+            return new Date(ms).toISOString().split('T')[0] === todayStr;
+        }).length;
+
+        if (receiveOrder === 'mesa') {
+            await updateOrder(order.id, { status: 'entregado', deliveredAt: firestoreNow(), ...paymentUpdate });
+            await reloadDataAndRender();
+            if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
+            showNotice('Pago registrado y pedido cerrado.', 'ok');
+        } else if (receiveOrder) {
+            const copied = await copyTextToClipboard(buildReceivedOrderMessage({ ...order, ...paymentUpdate }));
+            await updateOrder(order.id, { status: 'preparacion', receivedAt: firestoreNow(), ...paymentUpdate });
+            await reloadDataAndRender();
+            if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
+            showNotice(
+                copied ? 'Pedido recibido, movido a preparación y mensaje copiado.' : 'Pedido recibido y movido a preparación.',
+                copied ? 'ok' : 'error'
+            );
+            closeUnreadTray();
+        } else {
+            await updateOrder(order.id, paymentUpdate);
+            await reloadDataAndRender();
+            if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
+            showNotice('Pago registrado correctamente.', 'ok');
+        }
+
+        if (!_cajaDiariaAutoOpened && paidSinceApertura === 0) {
+            _cajaDiariaAutoOpened = true;
+            _navigateToCajaDiaria();
+        }
+    } catch (err) {
+        showNotice(`No se pudo procesar el pedido: ${err.message || 'error inesperado.'}`, 'error');
     }
+}
 
-    renderDpmMethodButtons();
-    modal.querySelectorAll('.dpm-method-btn').forEach((b) => b.classList.remove('active'));
-    modal.removeAttribute('hidden');
+function openDeliveryPaymentModal(order, receiveOrder = true) {
+    _pfOrder = order;
+    _pfReceiveOrder = receiveOrder;
+    _pfSelectedMethod = null;
+    _pfOrderTotal = getOrderDisplayTotal(order);
+
+    const nameEl = document.getElementById('pfCustomerName');
+    const totalEl = document.getElementById('pfTotalDisplay');
+    const titleEl = document.getElementById('pfTitle');
+    if (nameEl) nameEl.textContent = order.customerName || '';
+    if (totalEl) totalEl.textContent = formatMoney(_pfOrderTotal);
+    if (titleEl) titleEl.textContent = receiveOrder ? 'Cobrar pedido' : 'Registrar pago';
+
+    _pfShowStep('pfStep1');
+    document.getElementById('pfOverlay')?.removeAttribute('hidden');
 }
 
 function closeDeliveryPaymentModal() {
-    document.getElementById('deliveryPaymentModal')?.setAttribute('hidden', '');
-    _dpmCurrentOrderId = null;
-    _dpmSelectedMethod = null;
-    _dpmSubMethod = null;
-    _dpmCashTender = 0;
-    _dpmCashMode = null;
-    _dpmReceiveOrder = false;
+    _pfClose();
 }
 
 document.getElementById('deliveryPaymentModal')?.addEventListener('click', async (e) => {
@@ -16081,6 +16130,94 @@ document.getElementById('dpmCashInput')?.addEventListener('input', (e) => {
         changeRow?.setAttribute('hidden', '');
     }
     _dpmUpdateConfirmState();
+});
+
+// ── Payment Flow — event handlers ─────────────────────────────────────────
+document.getElementById('pfOverlay')?.addEventListener('click', async (e) => {
+    if (e.target === document.getElementById('pfOverlay')) { _pfClose(); return; }
+    if (e.target.closest('#pfCloseBtn')) { _pfClose(); return; }
+
+    if (e.target.closest('#pfBackBtn')) {
+        const titleEl = document.getElementById('pfTitle');
+        if (titleEl) titleEl.textContent = _pfReceiveOrder ? 'Cobrar pedido' : 'Registrar pago';
+        _pfShowStep('pfStep1');
+        return;
+    }
+
+    const methodBtn = e.target.closest('[data-pf-method]');
+    if (methodBtn) {
+        const method = methodBtn.dataset.pfMethod;
+        _pfSelectedMethod = method;
+
+        if (method === 'efectivo') {
+            const titleEl = document.getElementById('pfTitle');
+            if (titleEl) titleEl.textContent = 'Pago en efectivo';
+            const totalEl = document.getElementById('pfCashOrderTotal');
+            if (totalEl) totalEl.textContent = formatMoney(_pfOrderTotal);
+            const cashInput = document.getElementById('pfCashInput');
+            if (cashInput) cashInput.value = '';
+            const changeLine = document.getElementById('pfChangeLine');
+            if (changeLine) changeLine.hidden = true;
+            const confirmBtn = document.getElementById('pfCashConfirmBtn');
+            if (confirmBtn) confirmBtn.disabled = true;
+            _pfShowStep('pfStep2Cash');
+            setTimeout(() => document.getElementById('pfCashInput')?.focus(), 120);
+        } else {
+            const names = { bancolombia: 'Bancolombia', nequi: 'Nequi', bold: 'Bold' };
+            const label = names[method] || method;
+            const titleEl = document.getElementById('pfTitle');
+            if (titleEl) titleEl.textContent = label;
+            const labelEl = document.getElementById('pfDigitalLabel');
+            if (labelEl) labelEl.textContent = `¿Cómo pagó con ${label}?`;
+            _pfShowStep('pfStep2Digital');
+        }
+        return;
+    }
+
+    const submethodBtn = e.target.closest('[data-pf-submethod]');
+    if (submethodBtn) {
+        await _pfProcessPayment(_pfSelectedMethod, submethodBtn.dataset.pfSubmethod, null);
+        return;
+    }
+
+    if (e.target.closest('#pfSinCambioBtn')) {
+        await _pfProcessPayment('efectivo', '', _pfOrderTotal);
+        return;
+    }
+
+    const confirmBtn = e.target.closest('#pfCashConfirmBtn');
+    if (confirmBtn && !confirmBtn.disabled) {
+        const raw = parseFloat(document.getElementById('pfCashInput')?.value || '0') || 0;
+        const cashTender = raw * 1000;
+        await _pfProcessPayment('efectivo', '', cashTender);
+        return;
+    }
+});
+
+document.getElementById('pfCashInput')?.addEventListener('input', () => {
+    const raw = parseFloat(document.getElementById('pfCashInput').value || '0') || 0;
+    const cashTender = raw * 1000;
+    const total = _pfOrderTotal;
+    const changeLine = document.getElementById('pfChangeLine');
+    const changeVal = document.getElementById('pfChangeVal');
+    const confirmBtn = document.getElementById('pfCashConfirmBtn');
+
+    if (raw <= 0) {
+        if (changeLine) changeLine.hidden = true;
+        if (confirmBtn) confirmBtn.disabled = true;
+        return;
+    }
+
+    const change = cashTender - total;
+    if (changeLine) changeLine.hidden = false;
+
+    if (change >= 0) {
+        if (changeVal) { changeVal.textContent = formatMoney(change); changeVal.className = ''; }
+        if (confirmBtn) confirmBtn.disabled = false;
+    } else {
+        if (changeVal) { changeVal.textContent = `Faltan ${formatMoney(Math.abs(change))}`; changeVal.className = 'insufficient'; }
+        if (confirmBtn) confirmBtn.disabled = true;
+    }
 });
 
 // ── Configuración de métodos de pago (CRUD) ────────────────────────────────

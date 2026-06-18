@@ -11194,6 +11194,149 @@
             color: #ffb07a;
         }
 
+        /* ── Payment Flow Modal ── */
+        #pfOverlay {
+            position: fixed; inset: 0; z-index: 10350;
+            background: rgba(0,0,0,0.72); display: flex;
+            align-items: flex-end; justify-content: center;
+            backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+        }
+        #pfOverlay[hidden] { display: none; }
+        #pfBox {
+            background: #16192a; border-radius: 20px 20px 0 0;
+            width: 100%; max-width: 500px; max-height: 90vh;
+            display: flex; flex-direction: column;
+            box-shadow: 0 -8px 40px rgba(0,0,0,0.55);
+            animation: pfSlideUp 0.22s ease;
+        }
+        @keyframes pfSlideUp {
+            from { transform: translateY(40px); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
+        }
+        #pfHeader {
+            display: flex; align-items: center; gap: 8px;
+            padding: 14px 16px 12px; flex-shrink: 0;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        #pfBackBtn {
+            background: none; border: none; color: rgba(255,255,255,0.55);
+            cursor: pointer; font-size: 1.6rem; padding: 0 6px 0 0;
+            line-height: 1; flex-shrink: 0; transition: color 0.12s;
+        }
+        #pfBackBtn:hover { color: #fff; }
+        #pfTitle {
+            flex: 1; font-weight: 700; color: #fff;
+            font-size: 1rem; font-family: 'Space Grotesk', sans-serif;
+        }
+        #pfCloseBtn {
+            background: none; border: none; color: rgba(255,255,255,0.4);
+            cursor: pointer; font-size: 1.3rem; line-height: 1;
+            padding: 2px 0 2px 8px; flex-shrink: 0; transition: color 0.12s;
+        }
+        #pfCloseBtn:hover { color: #fff; }
+        #pfSummaryRow {
+            padding: 10px 16px; background: rgba(255,255,255,0.04);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex; justify-content: space-between;
+            align-items: center; flex-shrink: 0;
+        }
+        #pfCustomerName { color: rgba(255,255,255,0.7); font-size: 0.9rem; }
+        #pfTotalDisplay {
+            color: #f0d080; font-weight: 800; font-size: 1.15rem;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .pf-step { padding: 18px 16px 22px; flex: 1; overflow-y: auto; }
+        .pf-methods-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .pf-method-btn {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 8px; padding: 20px 10px;
+            border-radius: 14px; border: 1.5px solid rgba(255,255,255,0.10);
+            background: rgba(255,255,255,0.05); color: #fff; font-size: 1.7rem;
+            cursor: pointer; transition: background 0.14s, border-color 0.14s;
+            min-height: 84px;
+        }
+        .pf-method-btn:hover, .pf-method-btn:active {
+            background: rgba(255,149,64,0.1); border-color: rgba(255,149,64,0.4);
+        }
+        .pf-method-btn span {
+            font-size: 0.82rem; font-weight: 600; color: rgba(255,255,255,0.85);
+            font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.02em;
+        }
+        .pf-cash-total-label {
+            margin: 0 0 4px; color: rgba(255,255,255,0.45); font-size: 0.72rem;
+            text-transform: uppercase; letter-spacing: 0.07em;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .pf-cash-order-total {
+            margin: 0 0 16px; color: #f0d080; font-weight: 800;
+            font-size: 1.7rem; font-family: 'Space Grotesk', sans-serif; line-height: 1;
+        }
+        .pf-cash-input-label {
+            display: block; margin-bottom: 8px; color: rgba(255,255,255,0.65);
+            font-size: 0.82rem; font-family: 'Space Grotesk', sans-serif;
+        }
+        .pf-cash-input-wrap {
+            display: flex; align-items: center; overflow: hidden;
+            border: 1.5px solid rgba(255,255,255,0.16); border-radius: 12px;
+            background: rgba(255,255,255,0.06); transition: border-color 0.15s;
+        }
+        .pf-cash-input-wrap:focus-within { border-color: rgba(255,149,64,0.55); }
+        .pf-cash-prefix-sign {
+            padding: 0 12px; color: rgba(255,255,255,0.4); font-size: 1.1rem;
+            border-right: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;
+        }
+        #pfCashInput {
+            flex: 1; background: none; border: none; color: #fff;
+            font-size: 1.6rem; font-weight: 700; padding: 12px 8px;
+            outline: none; width: 100%; min-width: 0;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        #pfCashInput::-webkit-outer-spin-button,
+        #pfCashInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .pf-cash-mil-suffix {
+            padding: 0 14px; color: rgba(255,255,255,0.35);
+            font-size: 0.9rem; font-family: 'Space Grotesk', sans-serif; flex-shrink: 0;
+        }
+        #pfChangeLine {
+            margin: 12px 0 0; font-size: 0.95rem;
+            color: rgba(255,255,255,0.75); font-family: 'Space Grotesk', sans-serif;
+        }
+        #pfChangeVal { color: #4ade80; }
+        #pfChangeVal.insufficient { color: #f87171; }
+        .pf-cash-footer { display: flex; gap: 10px; margin-top: 18px; }
+        #pfSinCambioBtn {
+            flex: 1; padding: 13px; border-radius: 10px;
+            border: 1.5px solid rgba(255,255,255,0.18); background: transparent;
+            color: rgba(255,255,255,0.75); font-size: 0.88rem; cursor: pointer;
+            font-weight: 600; font-family: 'Space Grotesk', sans-serif;
+            transition: background 0.14s, border-color 0.14s;
+        }
+        #pfSinCambioBtn:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.3); }
+        #pfCashConfirmBtn {
+            flex: 2; padding: 13px; border-radius: 10px; border: none;
+            background: linear-gradient(135deg,#22c55e,#15803d); color: #fff;
+            font-size: 0.95rem; font-weight: 700; cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif; transition: opacity 0.15s;
+        }
+        #pfCashConfirmBtn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .pf-submethods-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;
+        }
+        .pf-submethod-btn {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 9px; padding: 24px 12px;
+            border-radius: 14px; border: 1.5px solid rgba(255,255,255,0.10);
+            background: rgba(255,255,255,0.05); color: #fff; font-size: 1.6rem;
+            cursor: pointer; transition: background 0.14s, border-color 0.14s; min-height: 96px;
+        }
+        .pf-submethod-btn:hover, .pf-submethod-btn:active {
+            background: rgba(255,149,64,0.1); border-color: rgba(255,149,64,0.4);
+        }
+        .pf-submethod-btn span {
+            font-size: 0.85rem; font-weight: 600; color: rgba(255,255,255,0.85);
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
     </style>
     <style>
         .sortable-ghost { opacity: 0.3; border: 2px dashed #ff7a1a !important; }
@@ -13166,64 +13309,52 @@
         </div>
     </div>
 
-    <div id="deliveryPaymentModal" hidden>
-        <article class="dpm-card">
-            <!-- Encabezado mínimo -->
-            <div class="dpm-header">
-                <p class="dpm-title">Cobrar pedido</p>
-                <span class="dpm-code" id="dpmCode">#---</span>
+    <!-- ── Payment Flow Modal ── -->
+    <div id="pfOverlay" hidden>
+        <div id="pfBox">
+            <div id="pfHeader">
+                <button type="button" id="pfBackBtn" hidden>‹</button>
+                <span id="pfTitle">Método de pago</span>
+                <button type="button" id="pfCloseBtn" aria-label="Cancelar">✕</button>
             </div>
-            <!-- Ticket + métodos en un solo bloque scrollable -->
-            <div class="dpm-unified-body" id="dpmUnifiedBody">
-                <!-- Ticket completo -->
-                <div id="dpmTicketSummary"></div>
-                <!-- Separador tipo ticket -->
-                <div class="dpm-pay-divider">
-                    <span>MÉTODO DE PAGO</span>
-                    <button type="button" class="dpm-split-toggle" id="dpmSplitToggleBtn" title="Activar pago con múltiples métodos">+ Multi</button>
-                </div>
-                <!-- Botones de método (modo normal) -->
-                <div class="dpm-methods" id="dpmMethodsGrid"></div>
-                <!-- Pago multi-método -->
-                <div id="dpmSplitWrap" hidden>
-                    <div class="dpm-split-parts" id="dpmSplitParts"></div>
-                    <button type="button" class="dpm-split-add-btn" id="dpmSplitAddBtn">+ Agregar método</button>
-                    <div class="dpm-split-balance" id="dpmSplitBalance">
-                        <span>Total a cobrar</span>
-                        <span class="dsb-right" id="dpmSplitBalanceAmt"></span>
-                    </div>
-                </div>
-                <!-- Sub-preguntas -->
-                <div class="dpm-sub-section" id="dpmSubSection" hidden>
-                    <div class="dpm-sub-panel" id="dpmSubEfectivo" hidden>
-                        <p class="dpm-sub-label">¿Cómo paga el cliente?</p>
-                        <div class="dpm-sub-chips" id="dpmCashModeChips">
-                            <button type="button" class="dpm-sub-chip" data-dpm-cash-mode="exacto">💯 Monto exacto</button>
-                            <button type="button" class="dpm-sub-chip" data-dpm-cash-mode="cambio">💵 Con cambio</button>
-                        </div>
-                        <div id="dpmCashWrap" hidden>
-                            <div class="dpm-cash-wrap">
-                                <span class="dpm-cash-prefix">$</span>
-                                <input type="number" id="dpmCashInput" class="dpm-cash-input" placeholder="0" min="0" step="1000" inputmode="numeric">
-                            </div>
-                            <div class="dpm-change-row" id="dpmChangeRow" hidden>
-                                <span class="dpm-change-label">Cambio a dar</span>
-                                <strong class="dpm-change-amount" id="dpmChangeAmount">$ 0</strong>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="dpm-sub-panel" id="dpmSubChips" hidden>
-                        <p class="dpm-sub-label" id="dpmSubChipsLabel">¿Por cuál plataforma?</p>
-                        <div class="dpm-sub-chips" id="dpmSubChipsContainer"></div>
-                    </div>
+            <div id="pfSummaryRow">
+                <span id="pfCustomerName"></span>
+                <span id="pfTotalDisplay"></span>
+            </div>
+            <!-- Paso 1: Método de pago -->
+            <div id="pfStep1" class="pf-step">
+                <div class="pf-methods-grid">
+                    <button type="button" class="pf-method-btn" data-pf-method="efectivo">💵<span>Efectivo</span></button>
+                    <button type="button" class="pf-method-btn" data-pf-method="bancolombia">🏦<span>Bancolombia</span></button>
+                    <button type="button" class="pf-method-btn" data-pf-method="nequi">💜<span>Nequi</span></button>
+                    <button type="button" class="pf-method-btn" data-pf-method="bold">⚡<span>Bold</span></button>
                 </div>
             </div>
-            <!-- Footer fijo abajo -->
-            <div class="dpm-footer">
-                <button type="button" class="dpm-btn-cancel" id="dpmCancelBtn">Cancelar</button>
-                <button type="button" class="dpm-btn-confirm" id="dpmConfirmBtn" disabled>Recibir pedido</button>
+            <!-- Paso 2a: Efectivo -->
+            <div id="pfStep2Cash" class="pf-step" hidden>
+                <p class="pf-cash-total-label">Total a cobrar</p>
+                <p id="pfCashOrderTotal" class="pf-cash-order-total"></p>
+                <label class="pf-cash-input-label" for="pfCashInput">Con cuánto paga el cliente</label>
+                <div class="pf-cash-input-wrap">
+                    <span class="pf-cash-prefix-sign">$</span>
+                    <input type="number" id="pfCashInput" inputmode="numeric" placeholder="0" min="0" step="1" autocomplete="off">
+                    <span class="pf-cash-mil-suffix">.000</span>
+                </div>
+                <p id="pfChangeLine" hidden>Cambio: <strong id="pfChangeVal"></strong></p>
+                <div class="pf-cash-footer">
+                    <button type="button" id="pfSinCambioBtn">Sin cambio</button>
+                    <button type="button" id="pfCashConfirmBtn" disabled>✓ Aceptar</button>
+                </div>
             </div>
-        </article>
+            <!-- Paso 2b: Sub-método digital -->
+            <div id="pfStep2Digital" class="pf-step" hidden>
+                <p id="pfDigitalLabel" class="pf-cash-input-label"></p>
+                <div class="pf-submethods-grid">
+                    <button type="button" class="pf-submethod-btn" data-pf-submethod="transferencia">🔄<span>Transferencia</span></button>
+                    <button type="button" class="pf-submethod-btn" data-pf-submethod="tarjeta">💳<span>Tarjeta</span></button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ══════════ MODAL GASTOS ══════════ -->
@@ -13307,7 +13438,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260618"></script>
+    <script src="admin.js?v=20260618b"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
 </body>
 </html>
