@@ -5116,7 +5116,7 @@ function updateCheckoutInfoModalState() {
     }
 
     if (usingSavedAddress && addressHasLocation) {
-        // Dirección guardada CON coordenadas: precalcular zona para mostrar en mapa, pero requerir confirmación explícita
+        // Dirección guardada CON coordenadas: calcular zona y marcar como confirmada automáticamente
         const lat = selectedSavedAddressEntry.latitude;
         const lng = selectedSavedAddressEntry.longitude;
         const zone = findDeliveryZoneForLocation({ latitude: lat, longitude: lng });
@@ -5124,27 +5124,29 @@ function updateCheckoutInfoModalState() {
         checkoutDeliveryFeeAmount = zone ? zone.fee : 0;
         checkoutDeliveryFeePending = !zone;
         checkoutDeliveryLocation = { latitude: lat, longitude: lng };
+        checkoutDeliveryLocationConfirmed = true;
         checkoutInfoUI.deliveryZone = checkoutDeliveryZone;
         checkoutInfoUI.deliveryLatitude = lat;
         checkoutInfoUI.deliveryLongitude = lng;
         if (checkoutInfoUI.deliveryZoneStatus) {
             checkoutInfoUI.deliveryZoneStatus.textContent = zone
-                ? `📍 Tu pin está en ${zone.label} — ${formatCurrency(zone.fee)}. ¿Es correcta tu ubicación? Confirma o ajusta el pin.`
-                : '📋 Tu pin está fuera de nuestra zona de cobertura. Ajusta el pin si crees que hay un error y confirma.';
+                ? `📍 Tu pin está en ${zone.label} — ${formatCurrency(zone.fee)}. Abre el mapa para ajustar si es necesario.`
+                : '📋 Tu pin está fuera de la zona de cobertura. Abre el mapa para ajustar el pin y confirma.';
         }
     }
 
     if (usingSavedAddress && !addressHasLocation) {
-        // Dirección guardada SIN coordenadas: mostrar mapa y solicitar ubicación
+        // Dirección guardada SIN coordenadas: pedir que asigne ubicación
         checkoutDeliveryLocation = null;
         checkoutDeliveryZone = null;
         checkoutDeliveryFeeAmount = 0;
         checkoutDeliveryFeePending = false;
+        checkoutDeliveryLocationConfirmed = false;
         checkoutInfoUI.deliveryZone = null;
         checkoutInfoUI.deliveryLatitude = null;
         checkoutInfoUI.deliveryLongitude = null;
         if (checkoutInfoUI.deliveryZoneStatus) {
-            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Para calcular el domicilio necesitamos tu ubicación. Usa el botón "Usar mi ubicación actual" o mueve el punto en el mapa hasta tu dirección y confirma.';
+            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Usa el botón "Usar mi ubicación actual" o toca el mapa para colocar el pin en tu dirección y confirma.';
         }
     }
 
@@ -5152,8 +5154,21 @@ function updateCheckoutInfoModalState() {
     const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
     const orderTotal = getCheckoutOrderTotal(fulfillmentType);
 
-    // Mapa siempre visible para domicilio — el cliente siempre verifica su pin
-    const shouldShowDeliveryMap = requiresAddress;
+    // El mapa solo se muestra cuando el usuario lo abre explícitamente
+    const mapPanelOpen = Boolean(checkoutInfoUI.mapPanelOpen);
+    const shouldShowDeliveryMap = requiresAddress && mapPanelOpen;
+
+    if (checkoutInfoUI.mapTriggerArea) {
+        checkoutInfoUI.mapTriggerArea.hidden = !requiresAddress || usingSavedAddress;
+    }
+    if (checkoutInfoUI.locationConfirmedBadge) {
+        checkoutInfoUI.locationConfirmedBadge.hidden = !checkoutDeliveryLocationConfirmed;
+    }
+    if (checkoutInfoUI.openMapButton) {
+        checkoutInfoUI.openMapButton.textContent = checkoutDeliveryLocationConfirmed
+            ? '📍 Cambiar ubicación'
+            : '📍 Asignar ubicación en el mapa';
+    }
 
     if (checkoutInfoUI.deliveryMapPanel) {
         checkoutInfoUI.deliveryMapPanel.hidden = !shouldShowDeliveryMap;
@@ -5300,6 +5315,10 @@ function openCheckoutInfoModal() {
                     <span>Dirección de entrega</span>
                     <textarea id="checkoutDeliveryAddress" rows="3" placeholder="Calle, carrera, número, barrio, referencia..."></textarea>
                 </label>
+                <div id="checkoutMapTriggerArea" hidden>
+                    <button type="button" id="checkoutOpenMapButton" class="checkout-map-trigger-btn">📍 Asignar ubicación en el mapa</button>
+                    <span id="checkoutLocationConfirmedBadge" class="checkout-location-badge" hidden>✓ Ubicación confirmada</span>
+                </div>
                 ${profile ? `
                 <label class="support-check" id="checkoutSaveAddressField">
                     <input type="checkbox" id="checkoutSaveAddressToggle">
@@ -5313,7 +5332,7 @@ function openCheckoutInfoModal() {
             <div class="checkout-map-panel" id="checkoutDeliveryMapPanel" hidden>
                 <div class="checkout-map-actions">
                     <button type="button" id="checkoutUseLocationButton" class="support-send-btn checkout-map-button">📍 Usar mi ubicación actual</button>
-                    <span id="checkoutDeliveryZoneStatus" class="checkout-zone-status">Activa tu ubicación para calcular la tarifa de domicilio.</span>
+                    <span id="checkoutDeliveryZoneStatus" class="checkout-zone-status">Usa el botón de arriba para detectar tu ubicación o toca el mapa para ajustar el pin.</span>
                     <button type="button" id="checkoutRequestQuoteButton" class="checkout-map-button" style="display:none;">📩 Solicitar cotización</button>
                     <button type="button" id="checkoutConfirmLocationButton" class="support-send-btn checkout-map-button" hidden>✓ Confirmar ubicación</button>
                 </div>
@@ -5365,6 +5384,9 @@ function openCheckoutInfoModal() {
         setPrimaryToggle: modal.querySelector('#checkoutSetPrimaryToggle'),
         addressBookHint: modal.querySelector('#checkoutAddressBookHint'),
         phone: modal.querySelector('#checkoutCustomerPhone'),
+        mapTriggerArea: modal.querySelector('#checkoutMapTriggerArea'),
+        openMapButton: modal.querySelector('#checkoutOpenMapButton'),
+        locationConfirmedBadge: modal.querySelector('#checkoutLocationConfirmedBadge'),
         deliveryMapPanel: modal.querySelector('#checkoutDeliveryMapPanel'),
         useLocationButton: modal.querySelector('#checkoutUseLocationButton'),
         confirmLocationButton: modal.querySelector('#checkoutConfirmLocationButton'),
@@ -5389,11 +5411,9 @@ function openCheckoutInfoModal() {
 
     checkoutInfoUI.close.addEventListener('click', closeCheckoutInfoModal);
     checkoutInfoUI.send.addEventListener('click', submitCheckoutInfo);
-    checkoutInfoUI.fulfillmentType.addEventListener('change', (event) => {
+    checkoutInfoUI.fulfillmentType.addEventListener('change', () => {
+        checkoutInfoUI.mapPanelOpen = false;
         updateCheckoutInfoModalState();
-        if (getCheckoutFulfillmentType(event.target.value) === 'delivery') {
-            initializeCheckoutDeliveryMap();
-        }
     });
     checkoutInfoUI.addNewAddrBtn?.addEventListener('click', () => {
         checkoutInfoUI.selectedAddressIndex = -1;
@@ -5406,16 +5426,28 @@ function openCheckoutInfoModal() {
         checkoutDeliveryLocationConfirmed = false;
         updateCheckoutInfoModalState();
     });
+    checkoutInfoUI.openMapButton?.addEventListener('click', () => {
+        checkoutInfoUI.mapPanelOpen = true;
+        checkoutDeliveryLocationConfirmed = false;
+        updateCheckoutInfoModalState();
+        window.setTimeout(() => {
+            checkoutInfoUI.deliveryMapPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 80);
+    });
     checkoutInfoUI.useLocationButton?.addEventListener('click', () => {
         initializeCheckoutDeliveryMap();
         requestCheckoutGeolocation();
     });
     checkoutInfoUI.confirmLocationButton?.addEventListener('click', async () => {
         checkoutDeliveryLocationConfirmed = true;
+        checkoutInfoUI.mapPanelOpen = false;
         if (activeCustomerProfile && checkoutDeliveryLocation && Array.isArray(checkoutInfoUI.savedAddresses)) {
             await _persistSavedAddressCoords(activeCustomerProfile, checkoutInfoUI.savedAddresses);
         }
         updateCheckoutInfoModalState();
+        window.setTimeout(() => {
+            checkoutInfoUI.mapTriggerArea?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 80);
     });
     checkoutInfoUI.requestQuoteButton?.addEventListener('click', requestDeliveryQuote);
     checkoutInfoUI.address?.addEventListener('input', handleCheckoutAddressInput);
@@ -5442,7 +5474,6 @@ function openCheckoutInfoModal() {
         checkoutInfoUI.fulfillmentType.value = 'delivery';
     }
     updateCheckoutInfoModalState();
-    initializeCheckoutDeliveryMap();
     (checkoutInfoUI.address || checkoutInfoUI.name)?.focus();
 }
 
