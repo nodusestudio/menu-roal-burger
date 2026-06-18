@@ -7350,17 +7350,18 @@ a,
     flex-shrink: 0;
 }
 .checkout-addr-add-btn {
-    width: 100%;
-    padding: 0.7rem 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.75rem;
     background: transparent;
-    border: 1.5px dashed rgba(255,255,255,0.25);
-    border-radius: 12px;
-    color: rgba(255,255,255,0.7);
-    font-size: 0.88rem;
+    border: 1px dashed rgba(255,255,255,0.28);
+    border-radius: 8px;
+    color: rgba(255,255,255,0.6);
+    font-size: 0.8rem;
     cursor: pointer;
-    text-align: center;
     transition: border-color 0.15s, color 0.15s;
-    margin-top: 0.1rem;
+    margin-top: 0.2rem;
 }
 .checkout-addr-add-btn:hover {
     border-color: rgba(249,115,22,0.5);

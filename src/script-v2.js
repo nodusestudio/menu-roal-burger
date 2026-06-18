@@ -3801,7 +3801,9 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         allowClosedOrder: orderOptions.allowClosedOrder === true,
         staticPrice: Number.isFinite(rawStatic) && rawStatic > 0 ? rawStatic : null,
         promoLabel: String(orderOptions.promoLabel || '').trim(),
-        promo2x1: orderOptions.promo2x1 === true
+        promo2x1: orderOptions.promo2x1 === true,
+        comboGroupId: String(orderOptions.comboGroupId || '').trim(),
+        isComboChild: orderOptions.isComboChild === true
     };
 }
 
@@ -3820,7 +3822,9 @@ function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo'
         recommendedDiscount: normalized.recommendedDiscount,
         discountRate: normalized.discountRate,
         allowClosedOrder: normalized.allowClosedOrder,
-        promoLabel: normalized.promoLabel
+        promoLabel: normalized.promoLabel,
+        comboGroupId: normalized.comboGroupId,
+        isComboChild: normalized.isComboChild
     });
 }
 
@@ -5217,11 +5221,17 @@ function updateCheckoutInfoModalState() {
     }
 
     if (checkoutInfoUI.deliveryFeeRow) {
-        checkoutInfoUI.deliveryFeeRow.hidden = !requiresAddress || !checkoutDeliveryLocationConfirmed;
+        checkoutInfoUI.deliveryFeeRow.hidden = !requiresAddress;
     }
 
-    if (checkoutInfoUI.deliveryFeeValue && checkoutDeliveryLocationConfirmed) {
-        checkoutInfoUI.deliveryFeeValue.textContent = checkoutDeliveryFeePending ? 'Por confirmar' : formatCurrency(deliveryFee);
+    if (checkoutInfoUI.deliveryFeeValue && requiresAddress) {
+        if (checkoutDeliveryLocationConfirmed && !checkoutDeliveryFeePending) {
+            checkoutInfoUI.deliveryFeeValue.textContent = formatCurrency(deliveryFee);
+        } else if (checkoutDeliveryFeePending) {
+            checkoutInfoUI.deliveryFeeValue.textContent = 'Por confirmar';
+        } else {
+            checkoutInfoUI.deliveryFeeValue.textContent = `${formatCurrency(DELIVERY_FEE_AMOUNT)} (est.)`;
+        }
     }
 
     if (checkoutInfoUI.discountRow && checkoutInfoUI.discountValue) {
@@ -5230,9 +5240,15 @@ function updateCheckoutInfoModalState() {
     }
 
     if (checkoutInfoUI.orderTotalValue) {
-        const displayTotal = (requiresAddress && !checkoutDeliveryLocationConfirmed)
-            ? getCartTotalAmount()
-            : (requiresAddress && checkoutDeliveryFeePending ? getCartTotalAmount() : orderTotal);
+        let displayTotal;
+        if (!requiresAddress) {
+            displayTotal = getCartTotalAmount();
+        } else if (checkoutDeliveryFeePending) {
+            displayTotal = getCartTotalAmount();
+        } else {
+            const feeForDisplay = checkoutDeliveryLocationConfirmed ? deliveryFee : DELIVERY_FEE_AMOUNT;
+            displayTotal = getCartTotalAmount() + feeForDisplay;
+        }
         checkoutInfoUI.orderTotalValue.textContent = formatCurrency(displayTotal);
     }
 }
@@ -5639,6 +5655,7 @@ function renderCartUI() {
     const renderCartSubItem = (item) => {
         const row = document.createElement('div');
         row.className = 'cart-item cart-item-extra';
+        const isComboChild = Boolean(normalizeOrderOptions(item.orderOptions).isComboChild);
         const arrow = document.createElement('span');
         arrow.className = 'cart-item-extra-arrow';
         arrow.textContent = '↳';
@@ -5647,13 +5664,25 @@ function renderCartUI() {
         name.textContent = item.productName;
         const price = document.createElement('span');
         price.className = 'cart-item-extra-price';
-        price.textContent = item.unitPrice > 0 ? `+${formatCurrency(item.unitPrice)}` : 'incluido';
+        if (isComboChild) {
+            const unitPrice = getCartItemUnitPrice(item);
+            price.textContent = unitPrice > 0 ? formatCurrency(unitPrice) : 'incluido';
+        } else {
+            price.textContent = item.unitPrice > 0 ? `+${formatCurrency(item.unitPrice)}` : 'incluido';
+        }
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'cart-remove-btn cart-item-extra-del';
-        del.setAttribute('aria-label', 'Quitar extra');
+        del.setAttribute('aria-label', isComboChild ? 'Quitar combo completo' : 'Quitar extra');
         del.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
-        del.addEventListener('click', () => updateCartItemQuantity(item.itemKey, -Number(item.quantity || 1)));
+        if (isComboChild) {
+            del.addEventListener('click', () => {
+                const parentItem = shoppingCart.find((i) => i.itemKey === item.parentKey);
+                if (parentItem) updateCartItemQuantity(item.parentKey, -Number(parentItem.quantity || 1));
+            });
+        } else {
+            del.addEventListener('click', () => updateCartItemQuantity(item.itemKey, -Number(item.quantity || 1)));
+        }
         row.appendChild(arrow);
         row.appendChild(name);
         row.appendChild(price);
@@ -10301,18 +10330,28 @@ function renderCombosEspeciales() {
                 return;
             }
             closePromoScreen();
-            productos.forEach((p, i) => {
-                const prod = latestProducts.find((x) => x.id === p.id);
-                if (!prod) return;
+            const activeProds = productos.map((p) => latestProducts.find((x) => x.id === p.id)).filter(Boolean);
+            if (!activeProds.length) return;
+            const comboGroupId = `cgid-${combo.id}-${Date.now()}`;
+            const comboLabel = combo.titulo || 'Combo Especial';
+            const mkOpts = (isChild) => ({
+                type: 'solo',
+                recommendedDiscount: discountRate > 0,
+                discountRate,
+                upgradeHandled: true,
+                promoLabel: comboLabel,
+                comboGroupId,
+                isComboChild: isChild
+            });
+            const firstProd = activeProds[0];
+            const parentOpts = { ...mkOpts(false), imagePath: firstProd.image_url || 'logo.png' };
+            const parentKey = getCartItemKey(firstProd.nombre, firstProd.categoria || '', parentOpts);
+            addItemToCart(firstProd.nombre, firstProd.categoria || '', parentOpts, `btn-combo-${combo.id}-0`);
+            activeProds.slice(1).forEach((prod, i) => {
+                const childOpts = { ...mkOpts(true), imagePath: prod.image_url || 'logo.png' };
                 setTimeout(() => {
-                    addItemToCart(prod.nombre, prod.categoria || '', {
-                        type: 'solo',
-                        imagePath: prod.image_url || 'logo.png',
-                        recommendedDiscount: discountRate > 0,
-                        discountRate,
-                        upgradeHandled: true
-                    }, `btn-combo-${combo.id}-${i}`);
-                }, i * 60);
+                    addItemToCart(prod.nombre, prod.categoria || '', childOpts, `btn-combo-${combo.id}-${i + 1}`, 1, parentKey);
+                }, (i + 1) * 60);
             });
         });
 
