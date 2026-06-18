@@ -1877,6 +1877,7 @@ function closeCustomerConsentDocument() {
 
     customerConsentDocumentUI.modal.remove();
     customerConsentDocumentUI = null;
+    document.body.classList.remove('has-consent-doc-open');
     syncBodyScrollLock();
 }
 
@@ -2868,6 +2869,7 @@ function openCustomerConsentDocument() {
     `;
 
     document.body.appendChild(modal);
+    document.body.classList.add('has-consent-doc-open');
 
     customerConsentDocumentUI = {
         modal,

@@ -3213,6 +3213,16 @@ body.has-guest-register-banner #ayudaScreen {
     gap: 8px;
 }
 
+/* Overlay del documento de consentimiento: opaco para no mostrar el app detrás */
+#customerConsentDocumentModal {
+    background: rgba(5, 2, 1, 0.97);
+}
+
+/* Ocultar el banner de registro mientras el documento de consentimiento está abierto */
+body.has-consent-doc-open .guest-register-banner {
+    visibility: hidden;
+}
+
 .support-consent-modal-card {
     width: min(94vw, 760px);
 }
