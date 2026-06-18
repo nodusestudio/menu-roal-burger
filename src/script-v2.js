@@ -9868,7 +9868,8 @@ function getRecommendedFallbackProduct() {
 }
 
 function getEligibleRecommendedProducts() {
-    // Incluye productos pausados — el pool debe ser estable independiente del estado
+    // El pool NO filtra por isCategoryAllowed para que sea idéntico para todos los usuarios
+    // sin importar el momento de carga (evita race condition con activeCategories).
     const eligibleProducts = latestProducts
         .map((product) => {
             const nombre = String(product.nombre || product.name || '').trim();
@@ -9886,7 +9887,6 @@ function getEligibleRecommendedProducts() {
             if (!product.nombre || !product.categoria) return false;
             if (shouldHideProductByName(product.nombre)) return false;
             if (isExcludedRecommendedCategory(product.categoria)) return false;
-            if (!isCategoryAllowed(product.categoria)) return false;
             return Boolean(product.image_url);
         });
 
