@@ -2163,24 +2163,12 @@ async function _handleRegPhoneNext() {
     if (btn) { btn.disabled = true; btn.textContent = 'Enviando código…'; }
     feedback.textContent = '';
 
-    try {
-        await callSendWhatsAppOtp(digits);
-        customerRegisterUI.pendingPhone = phone;
-        customerRegisterUI.step         = 'otp';
-        _renderRegStep();
-    } catch (err) {
-        // Si el servicio OTP no está configurado, avanzar sin verificación
-        const errCode = err?.code || '';
-        if (errCode === 'functions/failed-precondition' || errCode === 'functions/not-found') {
-            customerRegisterUI.pendingPhone = phone;
-            customerRegisterUI.step         = 'profile';
-            _renderRegStep();
-        } else {
-            feedback.textContent = err?.message || 'No se pudo enviar el código. Revisa el número e intenta de nuevo.';
-            feedback.className   = 'support-feedback support-feedback--error';
-            if (btn) { btn.disabled = false; btn.textContent = 'Continuar'; }
-        }
-    }
+    // Intentar enviar OTP; si falla por cualquier razón, avanzar directo al perfil
+    let otpSent = false;
+    try { await callSendWhatsAppOtp(digits); otpSent = true; } catch (_) {}
+    customerRegisterUI.pendingPhone = phone;
+    customerRegisterUI.step = otpSent ? 'otp' : 'profile';
+    _renderRegStep();
 }
 
 async function _handleRegOtpVerify() {
