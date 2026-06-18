@@ -16895,11 +16895,24 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
 
         await firebaseDb.collection(CIERRES_CAJA_COLLECTION).doc(closureId).set(closureDoc);
 
+        // Guardar apertura original antes de resetearla, para poder filtrar pedidos de esta jornada
+        const _aperturaAnterior = cajaAperturaAt;
         cajaAperturaAt = Date.now();
         await saveCajaAperturaToFirestore(cajaAperturaAt);
 
         _pendingCierreDoc = null;
         document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
+
+        // Re-derivar pedidos pagados de la jornada cerrada para eliminar los procesados
+        const _todayStr2 = new Date().toISOString().split('T')[0];
+        const paid = ordersState.filter((o) => {
+            if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+            const ts = o.paidAt || o.deliveredAt || o.createdAt;
+            const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+            if (!ms) return false;
+            if (_aperturaAnterior) return ms >= _aperturaAnterior;
+            return new Date(ms).toISOString().split('T')[0] === _todayStr2;
+        });
 
         // Eliminar pedidos procesados de la jornada cerrada para reiniciar la recepción
         // (los activos/no entregados permanecen para la nueva jornada)
@@ -17184,7 +17197,10 @@ async function cerrarCaja() {
 }
 
 document.getElementById('cerrarCajaBtn')?.addEventListener('click', cerrarCaja);
-document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', cerrarCaja);
+document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', () => {
+    _navigateToCajaDiaria();
+    cerrarCaja();
+});
 
 // ── Buscador de precio de domicilio (admin toolbar) ───────────────────────────
 (function () {
