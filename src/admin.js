@@ -9510,7 +9510,6 @@ function buildThermalTicketMarkup(order, options = {}) {
                 return `
                 <div class="ticket-print-row">
                     <button type="button" class="ticket-print-btn ticket-action-btn" data-order-ticket-action="print" data-order-id="${order.id}">Imprimir</button>
-                    <button type="button" class="ticket-kitchen-btn ticket-action-btn" data-order-ticket-action="kitchen" data-order-id="${order.id}">🍳 Cocina</button>
                     <button type="button" class="ticket-cobrar-btn ticket-action-btn" data-order-ticket-action="cobrar" data-order-id="${order.id}" ${_cobrarDisabled} title="${_cobrarTitle}">💰 Cobrar</button>
                     <button type="button" class="ticket-contact-btn ticket-action-btn" data-order-ticket-action="contact" data-order-id="${order.id}">Agregar contacto</button>
                 </div>`;
@@ -16008,11 +16007,13 @@ document.getElementById('deliveryPaymentModal')?.addEventListener('click', async
                 if (receiveOrder === 'mesa') {
                     await updateOrder(orderId, { status: 'entregado', deliveredAt: firestoreNow(), ...paymentUpdate });
                     await reloadDataAndRender();
+                    if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
                     showNotice('Pago registrado y pedido cerrado.', 'ok');
                 } else if (receiveOrder) {
                     const copied = await copyTextToClipboard(buildReceivedOrderMessage({ ...order, ...paymentUpdate }));
                     await updateOrder(orderId, { status: 'preparacion', receivedAt: firestoreNow(), ...paymentUpdate });
                     await reloadDataAndRender();
+                    if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
                     showNotice(
                         copied ? 'Pedido recibido, movido a preparación y mensaje copiado.' : 'Pedido recibido y movido a preparación.',
                         copied ? 'ok' : 'error'
@@ -16021,6 +16022,7 @@ document.getElementById('deliveryPaymentModal')?.addEventListener('click', async
                 } else {
                     await updateOrder(orderId, paymentUpdate);
                     await reloadDataAndRender();
+                    if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
                     showNotice('Pago registrado correctamente.', 'ok');
                 }
 
@@ -18127,9 +18129,6 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', async (
         if (action === 'print') {
             const orderId = String(btn.dataset.orderId || '').trim();
             if (orderId) openOrderPrintTicket(orderId);
-        } else if (action === 'kitchen') {
-            const orderId = String(btn.dataset.orderId || '').trim();
-            if (orderId) openKitchenPrintTicket(orderId);
         } else if (action === 'cobrar' && order) {
             _triggerTicketCobro(order);
         } else if (action === 'contact') {
