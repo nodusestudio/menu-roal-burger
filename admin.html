@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FODEXA | Admin</title>
     <meta name="description" content="Panel Admin de FODEXA para gestionar categorias, metricas e informacion del negocio.">
-    <meta property="og:title" content="FODEXA | Admin">
+    <meta property="og:title" content="FODEXA">
     <meta property="og:description" content="Panel de administracion FODEXA.">
-    <meta property="og:image" content="https://menu-roal-burger-main.vercel.app/isotipo-fodexa.png?v=4">
+    <meta property="og:image" content="https://admin-roal.vercel.app/isotipo-fodexa.png?v=4">
     <meta property="og:image:width" content="512">
     <meta property="og:image:height" content="512">
-    <meta property="og:url" content="https://menu-roal-burger-main.vercel.app/admin.html">
+    <meta property="og:url" content="https://admin-roal.vercel.app/admin.html">
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:image" content="https://menu-roal-burger-main.vercel.app/isotipo-fodexa.png?v=4">
+    <meta name="twitter:image" content="https://admin-roal.vercel.app/isotipo-fodexa.png?v=4">
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
@@ -144,12 +144,25 @@
             backdrop-filter: blur(8px);
         }
 
+        .admin-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .admin-sidebar-logo {
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
         .admin-title-wrap h1 {
             font-family: 'Space Grotesk', sans-serif;
             font-size: clamp(1.8rem, 3vw, 2.6rem);
             letter-spacing: 2px;
-            margin-bottom: 6px;
+            margin-bottom: 0;
             text-transform: uppercase;
+            color: #ffffff;
         }
 
         .admin-title-wrap p {
@@ -11722,6 +11735,7 @@
         <header class="admin-header">
             <button type="button" class="admin-hamburger-btn" id="adminNavToggleBtn" aria-label="Abrir navegacion" aria-expanded="false">&#9776;</button>
             <div class="admin-title-wrap">
+                <img src="isotipo-fodexa.png" alt="FODEXA" class="admin-sidebar-logo">
                 <h1>FODEXA</h1>
             </div>
             <span class="admin-topbar-section" id="adminTopbarSection">POS</span>
