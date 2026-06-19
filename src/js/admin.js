@@ -17710,6 +17710,21 @@ function _showAbrirCajaModal() {
                 <div id="_acBilletesGrid" style="margin-bottom:10px;"></div>
                 <div style="color:#f3c56a;font-size:0.75rem;font-weight:700;letter-spacing:1.2px;margin-bottom:6px;">MONEDAS</div>
                 <div id="_acMonedasGrid" style="margin-bottom:12px;"></div>
+                <div style="color:#94a3b8;font-size:0.75rem;font-weight:700;letter-spacing:1.2px;margin-bottom:6px;">GUARDADOS (caja fuerte / sobre)</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+                    <div>
+                        <label style="display:block;color:rgba(255,255,255,0.45);font-size:0.72rem;margin-bottom:3px;">Billetes guardados</label>
+                        <input id="_acGuardadosBilletes" type="number" min="0" step="1000" inputmode="numeric" placeholder="0"
+                            value="${_ccGuardadosBilletes > 0 ? _ccGuardadosBilletes : ''}"
+                            style="width:100%;box-sizing:border-box;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.14);border-radius:8px;color:#f3c56a;padding:7px 9px;font-size:0.88rem;font-weight:700;outline:none;">
+                    </div>
+                    <div>
+                        <label style="display:block;color:rgba(255,255,255,0.45);font-size:0.72rem;margin-bottom:3px;">Monedas guardadas</label>
+                        <input id="_acGuardadasMonedas" type="number" min="0" step="100" inputmode="numeric" placeholder="0"
+                            value="${_ccGuardadasMonedas > 0 ? _ccGuardadasMonedas : ''}"
+                            style="width:100%;box-sizing:border-box;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.14);border-radius:8px;color:#f3c56a;padding:7px 9px;font-size:0.88rem;font-weight:700;outline:none;">
+                    </div>
+                </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 0;border-top:1px dashed rgba(255,255,255,0.14);">
                     <span style="color:rgba(255,255,255,0.6);font-size:0.85rem;">Total contado:</span>
                     <span id="_acCountedTotal" style="color:#f3c56a;font-weight:700;font-size:1.05rem;">${formatMoney(0)}</span>
@@ -17726,10 +17741,12 @@ function _showAbrirCajaModal() {
 
     const countedBilletes = { ..._ccBilletes };
     const countedMonedas  = { ..._ccMonedas };
+    let countedGuardadosBilletes = _ccGuardadosBilletes;
+    let countedGuardadasMonedas  = _ccGuardadasMonedas;
 
     function _acSubB2() { return CC_BILLETES.reduce((s, d) => s + d * (Number(countedBilletes[d] || 0)), 0); }
     function _acSubM2() { return CC_MONEDAS.reduce((s, d)  => s + d * (Number(countedMonedas[d]  || 0)), 0); }
-    function _acTotal2() { return _acSubB2() + _acSubM2(); }
+    function _acTotal2() { return _acSubB2() + _acSubM2() + countedGuardadosBilletes + countedGuardadasMonedas; }
 
     function _acRenderGrid2(containerId, denoms, state) {
         const el = document.getElementById(containerId);
@@ -17767,15 +17784,20 @@ function _showAbrirCajaModal() {
     function _acConfirm2(fondoUsado, recounted) {
         const nombre = _acValidateNombre();
         if (!nombre) return;
+        const ts = Date.now();
+        cajaAperturaAt = ts;
         _cajaAperturaBy = nombre;
         _cajaFondoInicial = fondoUsado;
+        try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(ts)); } catch {}
         if (recounted) {
             _ccBilletes = { ...countedBilletes };
             _ccMonedas  = { ...countedMonedas };
+            _ccGuardadosBilletes = countedGuardadosBilletes;
+            _ccGuardadasMonedas  = countedGuardadasMonedas;
             _ccSave();
             _ccRefreshTotals();
         }
-        saveCajaAperturaToFirestore(cajaAperturaAt, { aperturaBy: nombre, fondoInicial: fondoUsado, cerrada: false });
+        saveCajaAperturaToFirestore(ts, { aperturaBy: nombre, fondoInicial: fondoUsado, cerrada: false });
         overlay.remove();
         renderCajaDiaria();
         _updateCajaEstadoUI();
@@ -17800,6 +17822,16 @@ function _showAbrirCajaModal() {
     });
 
     document.getElementById('_acStep2')?.addEventListener('input', (e) => {
+        if (e.target.id === '_acGuardadosBilletes') {
+            countedGuardadosBilletes = Number(e.target.value) || 0;
+            _acRefreshCountedTotal2();
+            return;
+        }
+        if (e.target.id === '_acGuardadasMonedas') {
+            countedGuardadasMonedas = Number(e.target.value) || 0;
+            _acRefreshCountedTotal2();
+            return;
+        }
         const inp = e.target.closest('[data-ac-denom]');
         if (!inp) return;
         const d = Number(inp.dataset.acDenom);
