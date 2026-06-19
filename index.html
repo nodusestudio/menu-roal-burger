@@ -834,8 +834,8 @@
                         Actualizar
                     </button>`;
                 Object.assign(t.style, {
-                    position:'fixed', bottom:'24px', left:'50%',
-                    transform:'translateX(-50%)', zIndex:'99999',
+                    position:'fixed', bottom:'max(24px, env(safe-area-inset-bottom, 24px))',
+                    left:'50%', transform:'translateX(-50%)', zIndex:'99999',
                     background:'rgba(255,255,255,0.88)',
                     backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)',
                     border:'1.5px solid rgba(255,200,120,0.5)',
