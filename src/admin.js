@@ -17855,54 +17855,108 @@ async function renderLibroCierres() {
         let grandSumTotal = 0;
         let grandSumEgresos = 0;
 
-        // Mezclar cierres y gastos externos ordenados por fecha desc
-        const _tsEntry = (e) => {
-            if (e._tipo === 'gasto') {
-                const ms = e.registradoAt?.toMillis ? e.registradoAt.toMillis() : Number(e.registradoAt || 0);
-                return ms;
-            }
-            return e.closedAt?.toMillis ? e.closedAt.toMillis() : Number(e.closedAt || 0);
-        };
+        // Agrupar gastos externos por día de calendario
+        const _gasByDay = {};
+        gastosExternos.forEach((g) => {
+            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            const dayKey = ms ? new Date(ms).toISOString().split('T')[0] : '_nd';
+            if (!_gasByDay[dayKey]) _gasByDay[dayKey] = [];
+            _gasByDay[dayKey].push({ ...g, _ts: ms });
+        });
+        const _gastoGroups = Object.values(_gasByDay).map((items) => {
+            const latestTs = Math.max(...items.map((i) => i._ts));
+            const totByMethod = {};
+            let totalAmt = 0;
+            items.forEach((g) => {
+                const mk = g.paymentMethod || '';
+                const amt = Number(g.monto || 0);
+                if (mk && amt) { totByMethod[mk] = (totByMethod[mk] || 0) + amt; totalAmt += amt; }
+            });
+            const dObj = new Date(latestTs);
+            return { _tipo: 'gastos_dia', _ts: latestTs, _items: items, _totByMethod: totByMethod, _totalAmt: totalAmt, _d: dObj, _diaStr: DIAS[dObj.getDay()] };
+        });
+
         const allEntries = [
             ...cierres.map((c) => ({ ...c, _tipo: 'cierre' })),
-            ...gastosExternos.map((g) => ({ ...g, _tipo: 'gasto' })),
-        ].sort((a, b) => _tsEntry(b) - _tsEntry(a));
+            ..._gastoGroups,
+        ].sort((a, b) => {
+            const tsA = a._tipo === 'cierre' ? (a.closedAt?.toMillis ? a.closedAt.toMillis() : Number(a.closedAt || 0)) : a._ts;
+            const tsB = b._tipo === 'cierre' ? (b.closedAt?.toMillis ? b.closedAt.toMillis() : Number(b.closedAt || 0)) : b._ts;
+            return tsB - tsA;
+        });
 
         tbody.innerHTML = allEntries.map((entry) => {
-            if (entry._tipo === 'gasto') {
+            if (entry._tipo === 'gastos_dia') {
                 const g = entry;
-                const tsMs = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
-                const d = tsMs ? new Date(tsMs) : null;
-                const diaStr = d ? DIAS[d.getDay()] : '—';
-                const fechaStr = d
-                    ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                    : '—';
-                const amt = Number(g.monto || 0);
-                grandSumEgresos += amt;
-                grandSumTotal -= amt;
-                const method = g.paymentMethod || '';
-                const methodCells = methodKeys.map((k) => {
-                    if (k === method) {
-                        sumTotals[k] -= amt;
-                        return `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(amt)}</td>`;
-                    }
-                    return '<td style="color:var(--admin-muted);">—</td>';
+                // Acumular footer
+                Object.entries(g._totByMethod).forEach(([k, amt]) => { sumTotals[k] = (sumTotals[k] || 0) - amt; });
+                grandSumEgresos += g._totalAmt;
+                grandSumTotal   -= g._totalAmt;
+
+                const methodSumCells = methodKeys.map((k) => {
+                    const v = Number(g._totByMethod[k] || 0);
+                    return v === 0 ? '<td style="color:var(--admin-muted);">—</td>'
+                        : `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(v)}</td>`;
                 }).join('');
-                const catObj    = getCategoriasGastos().find((c) => c.id === g.categoria);
-                const catIcon   = catObj ? catObj.icon : '💸';
-                const catNombre = catObj ? catObj.nombre : (g.categoria || 'Gasto externo');
-                const tipoStr   = g.subcategoria ? `${catNombre} · ${g.subcategoria}` : catNombre;
+
+                if (g._items.length === 1) {
+                    const item = g._items[0];
+                    const iD = item._ts ? new Date(item._ts) : null;
+                    const fechaStr = iD ? iD.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+                    const catObj = getCategoriasGastos().find((c) => c.id === item.categoria);
+                    const catIcon = catObj ? catObj.icon : '💸';
+                    const catLabel = (catObj ? catObj.nombre : (item.categoria || 'Gasto')) + (item.subcategoria ? ' · ' + item.subcategoria : '');
+                    return `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.35);">
+                        <td class="col-left" style="font-weight:600;white-space:nowrap;">${escapeHtml(g._diaStr)}</td>
+                        <td class="col-left" style="line-height:1.35;">
+                            <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(fechaStr)}</span><br>
+                            <span style="font-size:0.73rem;color:#fca5a5;font-weight:600;">${catIcon} ${escapeHtml(catLabel)}</span>
+                        </td>
+                        ${methodSumCells}
+                        <td style="color:#fca5a5;font-weight:600;">−${formatMoney(g._totalAmt)}</td>
+                        <td style="color:#fca5a5;font-weight:700;">−${formatMoney(g._totalAmt)}</td>
+                        <td></td>
+                    </tr>`;
+                }
+
+                // Múltiples gastos: fila resumen colapsable + filas detalle ocultas
+                const groupId = `gd_${g._d.toISOString().split('T')[0].replace(/-/g, '')}`;
+                const dateLabel = g._d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const detailRows = [...g._items].sort((a, b) => b._ts - a._ts).map((item) => {
+                    const iD = item._ts ? new Date(item._ts) : null;
+                    const iTime = iD ? iD.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—';
+                    const catObj = getCategoriasGastos().find((c) => c.id === item.categoria);
+                    const catIcon = catObj ? catObj.icon : '💸';
+                    const catLabel = (catObj ? catObj.nombre : (item.categoria || 'Gasto')) + (item.subcategoria ? ' · ' + item.subcategoria : '');
+                    const amt = Number(item.monto || 0);
+                    const itemCells = methodKeys.map((k) => {
+                        const mk = item.paymentMethod || '';
+                        return k === mk && amt
+                            ? `<td style="color:#fca5a5;font-size:0.78rem;">−${formatMoney(amt)}</td>`
+                            : '<td style="color:var(--admin-muted);font-size:0.78rem;">—</td>';
+                    }).join('');
+                    return `<tr class="gastos-detail-row" data-gastos-parent="${groupId}" style="display:none;background:rgba(252,165,165,0.03);">
+                        <td class="col-left" style="font-size:0.75rem;color:rgba(255,255,255,0.4);padding-left:18px;">↳ ${escapeHtml(iTime)}</td>
+                        <td class="col-left" style="font-size:0.75rem;color:#fca5a5;">${catIcon} ${escapeHtml(catLabel)}</td>
+                        ${itemCells}
+                        <td style="font-size:0.78rem;color:#fca5a5;">−${formatMoney(amt)}</td>
+                        <td style="font-size:0.78rem;color:#fca5a5;">−${formatMoney(amt)}</td>
+                        <td></td>
+                    </tr>`;
+                }).join('');
                 return `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.35);">
-                    <td class="col-left" style="font-weight:600;white-space:nowrap;">${escapeHtml(diaStr)}</td>
+                    <td class="col-left" style="font-weight:600;white-space:nowrap;">${escapeHtml(g._diaStr)}</td>
                     <td class="col-left" style="line-height:1.35;">
-                        <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(fechaStr)}</span><br>
-                        <span style="font-size:0.73rem;color:#fca5a5;font-weight:600;">${catIcon} ${escapeHtml(tipoStr)}</span>
+                        <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(dateLabel)}</span><br>
+                        <span style="font-size:0.73rem;color:#fca5a5;font-weight:600;">💸 ${g._items.length} gastos</span>
                     </td>
-                    ${methodCells}
-                    <td style="color:#fca5a5;font-weight:600;">−${formatMoney(amt)}</td>
-                    <td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>
-                    <td></td>
-                </tr>`;
+                    ${methodSumCells}
+                    <td style="color:#fca5a5;font-weight:600;">−${formatMoney(g._totalAmt)}</td>
+                    <td style="color:#fca5a5;font-weight:700;">−${formatMoney(g._totalAmt)}</td>
+                    <td style="text-align:center;">
+                        <button class="toggle-gastos-detail" data-group="${groupId}" title="Ver detalle" style="background:none;border:1px solid rgba(252,165,165,0.35);color:#fca5a5;cursor:pointer;font-size:0.8rem;padding:2px 8px;border-radius:4px;line-height:1;">▶</button>
+                    </td>
+                </tr>${detailRows}`;
             }
 
             // Cierre normal — 2 filas: ingresos (arriba) + egresos (abajo)
@@ -17959,6 +18013,22 @@ async function renderLibroCierres() {
                 <td style="color:${gtColor};font-weight:700;">${gt < 0 ? '−' : ''}${formatMoney(Math.abs(gt))}</td>
             </tr>` : ''}`;
         }).join('');
+
+        // Toggle detalle de gastos agrupados
+        if (!tbody.dataset.gastoToggle) {
+            tbody.dataset.gastoToggle = '1';
+            tbody.addEventListener('click', (e) => {
+                const btn = e.target.closest('.toggle-gastos-detail');
+                if (!btn) return;
+                const groupId = btn.dataset.group;
+                const rows = tbody.querySelectorAll(`[data-gastos-parent="${groupId}"]`);
+                const isOpen = btn.dataset.open === '1';
+                rows.forEach((r) => { r.style.display = isOpen ? 'none' : ''; });
+                btn.dataset.open = isOpen ? '0' : '1';
+                btn.textContent = isOpen ? '▶' : '▼';
+                btn.title = isOpen ? 'Ver detalle' : 'Ocultar detalle';
+            });
+        }
 
         // Fila de totales
         if (footEl) {
