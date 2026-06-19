@@ -3321,15 +3321,17 @@ function handlePosProductAdd(productId, productName, productPrice) {
         return;
     }
 
-    // Verificar acompañantes/bebidas por categoría (nuevo sistema)
+    // Verificar acompañantes/bebidas/combos por categoría
     const catData = categoriesState.find((c) => c.name.trim().toUpperCase() === selectedCategory.toUpperCase());
-    const catAcompPos = catData ? catData.acompanantes_pos !== false : false;
-    const catBebPos   = catData ? catData.bebidas_pos   !== false : false;
+    const catAcompPos  = catData ? catData.acompanantes_pos !== false : false;
+    const catBebPos    = catData ? catData.bebidas_pos      !== false : false;
+    const catCombosPos = catData ? catData.combos_pos       !== false : false;
 
-    const hayAcomp  = catAcompPos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
-    const hayBebida = catBebPos   && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+    const hayAcomp  = catAcompPos  && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
+    const hayBebida = catBebPos    && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+    const hayCombos = catCombosPos && combosPackState.some((c) => c.estado !== 'paused' && c.activo_pos !== false);
 
-    if (hayAcomp || hayBebida) {
+    if (hayAcomp || hayBebida || hayCombos) {
         openPosUpgradeSheet(productId, productName, productPrice);
         return;
     }
