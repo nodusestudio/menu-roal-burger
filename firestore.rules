@@ -63,6 +63,14 @@ service cloud.firestore {
       allow update, delete: if request.auth != null;
     }
 
+    // Contador de secuencia de pedidos — necesita update sin auth dentro de transacción.
+    // Ruta más específica tiene precedencia sobre /pedidos/{doc}.
+    match /pedidos/_meta_order_sequence {
+      allow read: if true;
+      allow write: if request.resource.data.metaType == 'order_sequence'
+        && request.resource.data.current is int;
+    }
+
     // ─── Mensajes de contacto ───────────────────────────────────────────────
     // Clientes envían mensajes sin auth. Admin los gestiona.
     match /mensajes/{doc} {
