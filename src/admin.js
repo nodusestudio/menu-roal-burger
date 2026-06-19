@@ -16596,7 +16596,65 @@ function closeGastoModal() {
     _gastoFromHistorial = false;
 }
 
+function openTrasladoModal() {
+    const existing = document.getElementById('trasladoMetodoModal');
+    if (existing) existing.remove();
+
+    const methods = getPaymentMethods();
+    const optHtml = methods.map((m) =>
+        `<option value="${escapeHtml(m.id)}">${m.icon} ${escapeHtml(m.label)}</option>`
+    ).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'trasladoMetodoModal';
+    overlay.className = 'modal-overlay active';
+    overlay.innerHTML = `<div class="modal-panel" style="max-width:360px;padding:26px;position:relative;">
+        <button type="button" id="trasladoCloseBtn" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;" aria-label="Cerrar">×</button>
+        <h3 style="margin:0 0 20px;font-size:1rem;font-weight:700;">🔄 Traslado entre cuentas</h3>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+            <label style="font-size:0.78rem;color:var(--admin-muted);">Desde (origen)</label>
+            <select id="trasladoFrom" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
+            <label style="font-size:0.78rem;color:var(--admin-muted);">Monto a trasladar</label>
+            <input id="trasladoMonto" type="number" min="1000" step="1000" placeholder="500000"
+                style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">
+            <label style="font-size:0.78rem;color:var(--admin-muted);">Hacia (destino)</label>
+            <select id="trasladoTo" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
+            <button type="button" id="trasladoConfirmBtn"
+                style="margin-top:8px;padding:10px;background:rgba(99,102,241,0.22);color:#a5b4fc;border:1px solid rgba(99,102,241,0.45);border-radius:10px;font-size:0.88rem;font-weight:700;cursor:pointer;">
+                Confirmar traslado
+            </button>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+
+    // Pre-seleccionar el segundo método en "Hacia" para evitar from === to
+    const toSel = document.getElementById('trasladoTo');
+    if (toSel && toSel.options.length > 1) toSel.selectedIndex = 1;
+
+    document.getElementById('trasladoCloseBtn')?.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    document.getElementById('trasladoConfirmBtn')?.addEventListener('click', async () => {
+        const from = document.getElementById('trasladoFrom')?.value;
+        const to   = document.getElementById('trasladoTo')?.value;
+        const monto = Number(document.getElementById('trasladoMonto')?.value || 0);
+        if (!from || !to || from === to) { showNotice('Seleccione métodos distintos.', 'error'); return; }
+        if (monto <= 0) { showNotice('Ingrese un monto válido.', 'error'); return; }
+        try {
+            const id = `traslado_${Date.now()}`;
+            await saveGasto({ id, tipo: 'traslado', methodFrom: from, methodTo: to, monto, paymentMethod: from, descripcion: '', categoria: '' });
+            await loadGastosCaja();
+            renderCajaDiaria();
+            overlay.remove();
+            showNotice('Traslado registrado.', 'ok');
+        } catch (err) {
+            showNotice('Error al guardar traslado.', 'error');
+        }
+    });
+}
+
 document.getElementById('gastosBtn')?.addEventListener('click', openGastoModal);
+document.getElementById('trasladoBtn')?.addEventListener('click', openTrasladoModal);
 document.getElementById('gastoCancelBtn')?.addEventListener('click', closeGastoModal);
 document.getElementById('gastoModal')?.addEventListener('click', (e) => {
     if (e.target === document.getElementById('gastoModal')) closeGastoModal();
@@ -16727,13 +16785,15 @@ function renderCajaDiaria() {
     });
 
     // Filtrar gastos de la jornada actual (excluir gastos externos del historial)
-    const allGastos = _gastosCajaState.filter((g) => {
+    const _allGastosJornada = _gastosCajaState.filter((g) => {
         if (g.tipo === 'externo') return false;
         const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
         if (cajaAperturaAt) return ms >= cajaAperturaAt;
         const todayStr = new Date().toISOString().split('T')[0];
         return new Date(ms).toISOString().split('T')[0] === todayStr;
     });
+    const allGastos    = _allGastosJornada.filter((g) => g.tipo !== 'traslado');
+    const allTraslados = _allGastosJornada.filter((g) => g.tipo === 'traslado');
 
     const methods = getPaymentMethods();
     const methodKeys = methods.map((m) => m.id);
@@ -16747,7 +16807,7 @@ function renderCajaDiaria() {
     });
     const totalCols = 2 + methodKeys.length + (hasUnmatched ? 1 : 0) + 1;
 
-    if (allPaid.length === 0 && allGastos.length === 0) {
+    if (allPaid.length === 0 && allGastos.length === 0 && allTraslados.length === 0) {
         if (headEl) headEl.innerHTML = '';
         bodyEl.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">No hay movimientos registrados en esta jornada.</td></tr>`;
         if (footEl) footEl.innerHTML = '';
@@ -16794,6 +16854,7 @@ function renderCajaDiaria() {
     const allEntries = [
         ...allPaid.map((o) => ({ _type: 'order', _ms: _tsOf(o), data: o })),
         ...allGastos.map((g) => ({ _type: 'gasto', _ms: _tsGasto(g), data: g })),
+        ...allTraslados.map((t) => ({ _type: 'traslado', _ms: _tsGasto(t), data: t })),
     ].sort((a, b) => a._ms - b._ms);
 
     // Acumuladores
@@ -16915,7 +16976,7 @@ function renderCajaDiaria() {
                     <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
                 </tr>`);
             }
-        } else {
+        } else if (entry._type === 'gasto') {
             // Fila de gasto real (roja, resta del método y del total)
             const g = entry.data;
             const hora = formatOrderTime(g.registradoAt);
@@ -16945,6 +17006,33 @@ function renderCajaDiaria() {
                 <td class="col-left">${gastoDesc}</td>
                 ${mGastoCells}${otroGastoCell}
                 <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
+            </tr>`);
+        } else {
+            // Traslado entre métodos (índigo; mueve saldo sin afectar el total neto)
+            const t = entry.data;
+            const hora = formatOrderTime(t.registradoAt);
+            const amt = Number(t.monto || 0);
+            const fromM = methods.find((m) => m.id === t.methodFrom);
+            const toM   = methods.find((m) => m.id === t.methodTo);
+            const fromLabel = fromM ? `${fromM.icon} ${fromM.label}` : (t.methodFrom || '?');
+            const toLabel   = toM   ? `${toM.icon} ${toM.label}`     : (t.methodTo   || '?');
+
+            if (methodKeys.includes(t.methodFrom)) sumMethod[t.methodFrom] -= amt;
+            if (methodKeys.includes(t.methodTo))   sumMethod[t.methodTo]   += amt;
+            // grandTotal no cambia (traslado interno)
+
+            const mTrasladoCells = methodKeys.map((k) => {
+                if (k === t.methodFrom) return `<td style="color:#a5b4fc;font-weight:700;">−${formatMoney(amt)}</td>`;
+                if (k === t.methodTo)   return `<td style="color:#a5b4fc;font-weight:700;">+${formatMoney(amt)}</td>`;
+                return '<td></td>';
+            }).join('');
+            const otroTrasladoCell = hasUnmatched ? '<td></td>' : '';
+
+            rows.push(`<tr style="background:rgba(99,102,241,0.06);border-left:3px solid rgba(99,102,241,0.3);">
+                <td class="col-left" style="color:#a5b4fc;">${hora}</td>
+                <td class="col-left"><span style="color:#a5b4fc;font-weight:700;">🔄 Traslado</span> · ${fromLabel} → ${toLabel}</td>
+                ${mTrasladoCells}${otroTrasladoCell}
+                <td style="color:rgba(165,180,252,0.45);font-size:0.8rem;">$0</td>
             </tr>`);
         }
     });
@@ -17342,12 +17430,14 @@ async function cerrarCaja() {
             ingresosTotal += amt;
         });
 
-        // Incluir gastos de la jornada actual
-        const gastosFiltered = _gastosCajaState.filter((g) => {
+        // Incluir gastos de la jornada actual (excluir traslados internos del cálculo de egresos)
+        const _allJornadaGastos = _gastosCajaState.filter((g) => {
             const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
             if (cajaAperturaAt) return ms >= cajaAperturaAt;
             return new Date(ms).toISOString().split('T')[0] === todayStr;
         });
+        const gastosFiltered   = _allJornadaGastos.filter((g) => g.tipo !== 'traslado');
+        const trasladosInternos = _allJornadaGastos.filter((g) => g.tipo === 'traslado');
 
         // Incluir gasto virtual de domicilios si aún no fue registrado como gasto real
         const hasDomicilioGastoReal = gastosFiltered.some((g) => String(g.id || '').startsWith('gasto_domicilios_'));
@@ -17382,6 +17472,16 @@ async function cerrarCaja() {
         Object.entries(gastosMethod).forEach(([mk, amt]) => {
             if (!sumMethod[mk]) sumMethod[mk] = 0;
             sumMethod[mk] -= amt;
+        });
+        // Traslados internos: reubican saldo entre métodos sin afectar el total neto
+        trasladosInternos.forEach((t) => {
+            const from = t.methodFrom; const to = t.methodTo;
+            const amt = Number(t.monto || 0);
+            if (!from || !to || !amt) return;
+            if (!sumMethod[from]) sumMethod[from] = 0;
+            if (!sumMethod[to])   sumMethod[to]   = 0;
+            sumMethod[from] -= amt;
+            sumMethod[to]   += amt;
         });
         const grandTotal = ingresosTotal - gastosTotal;
 
@@ -17844,6 +17944,8 @@ async function renderLibroCierres() {
                 : 'No hay cierres de caja registrados.';
             tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">${emptyMsg}</td></tr>`;
             if (footEl) footEl.innerHTML = '';
+            const _kpi = document.getElementById('cierresKpiGrid');
+            if (_kpi) _kpi.innerHTML = '';
             return;
         }
 
@@ -18046,6 +18148,36 @@ async function renderLibroCierres() {
                 <td style="color:${gtTotalColor};"><strong>${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</strong></td>
                 <td></td>
             </tr>`;
+        }
+
+        // KPI resumen en la cabecera del historial
+        const kpiEl = document.getElementById('cierresKpiGrid');
+        if (kpiEl) {
+            const grandSumIngresos = grandSumTotal + grandSumEgresos;
+            const nCierres = cierres.length;
+            const neto = grandSumTotal;
+            const margenPct = grandSumIngresos > 0 ? ((neto / grandSumIngresos) * 100).toFixed(1) + '%' : '—';
+            kpiEl.innerHTML = `
+                <div class="lc-kpi">
+                    <div class="lc-kpi-label">📥 Ingresos</div>
+                    <div class="lc-kpi-value" style="color:#6ee7b7;">${formatMoney(grandSumIngresos)}</div>
+                    <div class="lc-kpi-sub">${nCierres} cierre${nCierres !== 1 ? 's' : ''}</div>
+                </div>
+                <div class="lc-kpi">
+                    <div class="lc-kpi-label">📤 Egresos</div>
+                    <div class="lc-kpi-value" style="color:#fca5a5;">${formatMoney(grandSumEgresos)}</div>
+                    <div class="lc-kpi-sub">Gastos registrados</div>
+                </div>
+                <div class="lc-kpi">
+                    <div class="lc-kpi-label">💰 Total neto</div>
+                    <div class="lc-kpi-value" style="color:${neto >= 0 ? '#ff9540' : '#fca5a5'};">${neto < 0 ? '−' : ''}${formatMoney(Math.abs(neto))}</div>
+                    <div class="lc-kpi-sub">Ingresos − Egresos</div>
+                </div>
+                <div class="lc-kpi">
+                    <div class="lc-kpi-label">📊 Margen</div>
+                    <div class="lc-kpi-value" style="color:${neto >= 0 ? '#a78bfa' : '#fca5a5'};">${margenPct}</div>
+                    <div class="lc-kpi-sub">Rentabilidad</div>
+                </div>`;
         }
     } catch (err) {
         tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
