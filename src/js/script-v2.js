@@ -4926,14 +4926,20 @@ async function submitCheckoutInfo() {
     }
 
     if (fulfillmentType === 'delivery' && !checkoutDeliveryLocationConfirmed) {
-        checkoutInfoUI.feedback.textContent = 'ðŸ“ Confirma tu ubicaciÃ³n en el mapa antes de enviar el pedido.';
-        const confirmBtn = checkoutInfoUI.confirmLocationButton;
-        if (confirmBtn) {
-            confirmBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            confirmBtn.classList.add('location-needs-confirm');
-            setTimeout(() => confirmBtn.classList.remove('location-needs-confirm'), 2000);
+        const mapPanel = checkoutInfoUI.deliveryMapPanel;
+        const mapOpen = mapPanel && !mapPanel.hidden;
+        if (mapOpen) {
+            checkoutInfoUI.feedback.textContent = 'ðŸ“ Confirma tu ubicaciÃ³n en el mapa antes de enviar el pedido.';
+            const confirmBtn = checkoutInfoUI.confirmLocationButton;
+            if (confirmBtn) {
+                confirmBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                confirmBtn.classList.add('location-needs-confirm');
+                setTimeout(() => confirmBtn.classList.remove('location-needs-confirm'), 2000);
+            }
+            return;
         }
-        return;
+        checkoutDeliveryFeePending = true;
+        checkoutDeliveryLocationConfirmed = true;
     }
 
     if (phoneDigits.length < 10) {
