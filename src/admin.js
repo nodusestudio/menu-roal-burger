@@ -5647,7 +5647,23 @@ function renderPosOrderItems() {
                     } else if (prod?.bebida_incluida?.activo && prod.bebida_incluida.bebida_ref_id) {
                         openPosBebidaModal(baseProductId, item.productName, item.unitPrice, prod.bebida_incluida, key);
                     } else {
-                        _openPosNoteModal(item, key, itemsContainer);
+                        const _editCat = String(item.categoryName || '').trim();
+                        const _catD = categoriesState.find((c) => c.name.trim().toUpperCase() === _editCat.toUpperCase());
+                        const _hayA = _catD && _catD.acompanantes_pos !== false && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
+                        const _hayB = _catD && _catD.bebidas_pos !== false && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+                        const _hayC = _catD && _catD.combos_pos !== false && combosPackState.some((c) => c.estado !== 'paused' && c.activo_pos !== false);
+                        if (_hayA || _hayB || _hayC) {
+                            const _prevNote = item.note || '';
+                            internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== key && i.parentKey !== key);
+                            renderPosOrderItems();
+                            renderPosTotals();
+                            posSelectedCategory = _editCat;
+                            openPosUpgradeSheet(item.productId, item.productName, item.unitPrice);
+                            const _ci = document.getElementById('posUpgradeComment');
+                            if (_ci && _prevNote) _ci.value = _prevNote;
+                        } else {
+                            _openPosNoteModal(item, key, itemsContainer);
+                        }
                     }
                 }
                 return;
