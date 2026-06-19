@@ -17784,14 +17784,41 @@ function _updateCajaEstadoUI() {
     const abrirBtn   = document.getElementById('abrirCajaBtnPos');
     const cerrarBtn  = document.getElementById('cerrarCajaBtnPos');
     const newTickBtn = document.getElementById('posNewTicketBtn');
+    const posCard    = document.getElementById('posOrdersCard');
 
-    if (abrirBtn)   { abrirBtn.style.display  = abierta ? 'none'  : ''; }
-    if (cerrarBtn)  { cerrarBtn.style.display  = abierta ? ''      : 'none'; }
+    // "Abrir Caja": solo visible cuando está cerrada
+    if (abrirBtn) abrirBtn.style.display = abierta ? 'none' : '';
+
+    // "Cerrar Caja": siempre visible, opaco e inactivo cuando está cerrada
+    if (cerrarBtn) {
+        cerrarBtn.disabled       = !abierta;
+        cerrarBtn.style.opacity  = abierta ? '' : '0.35';
+        cerrarBtn.style.cursor   = abierta ? '' : 'not-allowed';
+        cerrarBtn.style.filter   = abierta ? '' : 'grayscale(0.5)';
+    }
+
+    // Botón "+" nuevo ticket: deshabilitado cuando está cerrada
     if (newTickBtn) {
-        newTickBtn.disabled = !abierta;
-        newTickBtn.title    = abierta ? 'Nuevo ticket' : 'Abre la caja primero';
+        newTickBtn.disabled      = !abierta;
         newTickBtn.style.opacity = abierta ? '' : '0.35';
         newTickBtn.style.cursor  = abierta ? '' : 'not-allowed';
+    }
+
+    // Bloqueador visual sobre el panel de recepción de pedidos
+    let blocker = document.getElementById('_posCajaBlocker');
+    if (!abierta) {
+        if (!blocker && posCard) {
+            blocker = document.createElement('div');
+            blocker.id = '_posCajaBlocker';
+            blocker.style.cssText = 'position:absolute;inset:0;z-index:20;background:rgba(8,10,22,0.78);border-radius:inherit;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;backdrop-filter:blur(3px);pointer-events:all;';
+            blocker.innerHTML = `
+                <div style="font-size:2.8rem;line-height:1;">🔒</div>
+                <p style="color:#fff;font-size:1.05rem;font-weight:700;margin:0;">Caja cerrada</p>
+                <p style="color:rgba(255,255,255,0.45);font-size:0.82rem;margin:0;text-align:center;max-width:260px;">Presiona <strong style="color:#86efac;">Abrir Caja</strong> en la barra superior para comenzar la jornada</p>`;
+            posCard.appendChild(blocker);
+        }
+    } else {
+        if (blocker) blocker.remove();
     }
 }
 
