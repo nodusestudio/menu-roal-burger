@@ -13418,18 +13418,30 @@ function _ptsHideSelectedClientChip() {
     if (chip) chip.classList.remove('is-visible');
 }
 
-// Auto-rellena la sección de dirección según las direcciones guardadas del cliente
+// Auto-rellena la sección de dirección según las direcciones guardadas del cliente.
+// savedAddresses puede ser string[] (formato viejo) u objetos {address, latitude, longitude, primary}.
 function _ptsFillClientAddress(client) {
     const activeTypeBtn = document.querySelector('#posTicketSetupModal .pts-type-btn.active');
     const resolvedType  = activeTypeBtn?.dataset?.ptsType || _ptsSelectedType;
     if (resolvedType !== 'domicilio') return;
 
-    const addresses = Array.isArray(client.savedAddresses)
-        ? client.savedAddresses.filter((a) => String(a || '').trim())
-        : [];
+    // Normalizar cada entrada a { text, lat, lon }
+    const rawList = Array.isArray(client.savedAddresses) ? client.savedAddresses : [];
+    const addresses = rawList.map((a) => {
+        if (!a) return null;
+        const text = typeof a === 'string'
+            ? a.trim()
+            : String(a.address || a.value || a.label || '').trim();
+        if (!text) return null;
+        return {
+            text,
+            lat: Number.isFinite(Number(a.latitude))  ? Number(a.latitude)  : null,
+            lon: Number.isFinite(Number(a.longitude)) ? Number(a.longitude) : null,
+        };
+    }).filter(Boolean);
 
-    const addrInput   = document.getElementById('ptsDeliveryAddress');
-    const addrPicker  = document.getElementById('ptsAddressPicker');
+    const addrInput  = document.getElementById('ptsDeliveryAddress');
+    const addrPicker = document.getElementById('ptsAddressPicker');
     if (!addrInput || !addrPicker) return;
 
     if (addresses.length === 0) {
@@ -13439,40 +13451,67 @@ function _ptsFillClientAddress(client) {
         return;
     }
 
+    // Aplica una entrada: rellena el input y sugiere/detecta tarifa
+    function _applyEntry(entry) {
+        addrInput.value = entry.text;
+        _ptsToggleFeeWrap(true);
+        // Si tenemos coordenadas exactas, detectar zona sin geocodificar
+        if (entry.lat !== null && entry.lon !== null) {
+            const zone = _adminDetectZone(entry.lat, entry.lon);
+            const feeInput = document.getElementById('ptsDeliveryFee');
+            if (zone) {
+                if (feeInput && (!feeInput.value || Number(feeInput.value) === 0)) {
+                    feeInput.value = zone.fee;
+                }
+                const colors = { amarilla: '#f6d743', azul: '#4aa1ff', roja: '#d32f2f', negra: '#aaa' };
+                _ptsSetZoneBadge(
+                    `✓ ${zone.label} — $${zone.fee.toLocaleString('es-CO')} (auto-detectado)`,
+                    colors[zone.name] || '#6ee7b7'
+                );
+            } else {
+                _ptsSuggestDeliveryFee(entry.text);
+            }
+        } else {
+            _ptsSuggestDeliveryFee(entry.text);
+        }
+    }
+
     if (addresses.length === 1) {
         addrPicker.setAttribute('hidden', '');
         addrInput.removeAttribute('hidden');
-        addrInput.value = addresses[0];
-        _ptsToggleFeeWrap(true);
-        _ptsSuggestDeliveryFee(addresses[0]);
+        _applyEntry(addresses[0]);
         return;
     }
 
-    // Múltiples direcciones → mostrar picker, ocultar input de texto libre
+    // Múltiples direcciones → picker de chips, ocultar input libre
     addrInput.setAttribute('hidden', '');
-    addrInput.value = addresses[0];
+    addrInput.value = addresses[0].text;
     addrPicker.removeAttribute('hidden');
     addrPicker.innerHTML = `
         <p class="pts-addr-picker-label">Selecciona dirección guardada</p>
-        ${addresses.map((addr, i) => `
-            <div class="pts-addr-chip${i === 0 ? ' active' : ''}" data-addr="${escapeHtml(addr)}">
-                ${escapeHtml(addr)}
+        ${addresses.map((entry, i) => `
+            <div class="pts-addr-chip${i === 0 ? ' active' : ''}"
+                data-addr="${escapeHtml(entry.text)}"
+                data-lat="${entry.lat ?? ''}"
+                data-lon="${entry.lon ?? ''}">
+                ${escapeHtml(entry.text)}
             </div>
         `).join('')}
     `;
 
-    // Pre-sugerir para la primera dirección y mostrar fee wrap
     _ptsToggleFeeWrap(true);
-    _ptsSuggestDeliveryFee(addresses[0]);
+    _applyEntry(addresses[0]);
 
     addrPicker.querySelectorAll('.pts-addr-chip').forEach((chip) => {
         chip.addEventListener('click', () => {
             addrPicker.querySelectorAll('.pts-addr-chip').forEach((c) => c.classList.remove('active'));
             chip.classList.add('active');
-            addrInput.value = chip.dataset.addr || '';
             document.getElementById('ptsDeliveryFee').value = '';
-            _ptsToggleFeeWrap(true);
-            _ptsSuggestDeliveryFee(chip.dataset.addr || '');
+            _applyEntry({
+                text: chip.dataset.addr || '',
+                lat: chip.dataset.lat !== '' ? Number(chip.dataset.lat) : null,
+                lon: chip.dataset.lon !== '' ? Number(chip.dataset.lon) : null,
+            });
         });
     });
 }
