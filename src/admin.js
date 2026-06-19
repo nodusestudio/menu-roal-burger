@@ -17602,8 +17602,8 @@ function _showAbrirCajaModal() {
     overlay.innerHTML = `
         <div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.75rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);max-height:90vh;overflow-y:auto;position:relative;">
 
-            <button type="button" id="_acCloseBtn" style="position:absolute;top:12px;right:16px;background:none;border:none;color:rgba(255,255,255,0.45);font-size:1.5rem;cursor:pointer;line-height:1;" aria-label="Cerrar">×</button>
-            <div id="_acHeader" style="text-align:center;margin-bottom:1.25rem;">
+            <div id="_acHeader" style="text-align:center;margin-bottom:1.25rem;position:relative;">
+                <button type="button" id="_acCloseBtn" style="position:absolute;top:-4px;right:-4px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:50%;color:#fff;font-size:1.1rem;cursor:pointer;line-height:1;width:28px;height:28px;display:flex;align-items:center;justify-content:center;" aria-label="Cerrar">×</button>
                 <div style="font-size:2rem;margin-bottom:0.3rem;">📂</div>
                 <h3 style="margin:0;color:#fff;font-size:1.1rem;font-weight:700;">Apertura de Caja</h3>
                 <p style="margin:4px 0 0;color:rgba(255,255,255,0.4);font-size:0.76rem;">${fechaStr}</p>
