@@ -16643,10 +16643,9 @@ function openTrasladoModal() {
         try {
             const id = `traslado_${Date.now()}`;
             await saveGasto({ id, tipo: 'traslado', methodFrom: from, methodTo: to, monto, paymentMethod: from, descripcion: '', categoria: '' });
-            await loadGastosCaja();
-            renderCajaDiaria();
             overlay.remove();
             showNotice('Traslado registrado.', 'ok');
+            await renderLibroCierres();
         } catch (err) {
             showNotice('Error al guardar traslado.', 'error');
         }
@@ -16654,7 +16653,7 @@ function openTrasladoModal() {
 }
 
 document.getElementById('gastosBtn')?.addEventListener('click', openGastoModal);
-document.getElementById('trasladoBtn')?.addEventListener('click', openTrasladoModal);
+document.getElementById('trasladoHistorialBtn')?.addEventListener('click', openTrasladoModal);
 document.getElementById('gastoCancelBtn')?.addEventListener('click', closeGastoModal);
 document.getElementById('gastoModal')?.addEventListener('click', (e) => {
     if (e.target === document.getElementById('gastoModal')) closeGastoModal();
@@ -17906,39 +17905,34 @@ async function renderLibroCierres() {
     try {
         let cierres = await loadCierresCaja();
 
-        // Cargar gastos externos (registrados desde el historial)
+        // Cargar gastos externos y traslados (registrados desde el historial)
         let gastosExternos = [];
+        let trasladosHistorial = [];
         try {
             const gSnap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
                 .orderBy('registradoAt', 'desc')
                 .limit(500)
                 .get();
-            gastosExternos = gSnap.docs
-                .map((d) => ({ id: d.id, ...d.data() }))
-                .filter((g) => g.tipo === 'externo');
-        } catch (_) { gastosExternos = []; }
+            const _gDocs = gSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            gastosExternos     = _gDocs.filter((g) => g.tipo === 'externo');
+            trasladosHistorial = _gDocs.filter((g) => g.tipo === 'traslado');
+        } catch (_) { gastosExternos = []; trasladosHistorial = []; }
 
         // Filtrar por rango de fechas si hay alguno activo
         const { from, to } = _getCierresFilterRange();
+        const _inRange = (ms) => {
+            if (!ms) return false;
+            const d = new Date(ms);
+            if (from && d < from) return false;
+            if (to   && d > to)   return false;
+            return true;
+        };
         if (from || to) {
-            cierres = cierres.filter((c) => {
-                const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
-                if (!tsMs) return false;
-                const d = new Date(tsMs);
-                if (from && d < from) return false;
-                if (to   && d > to)   return false;
-                return true;
-            });
-            gastosExternos = gastosExternos.filter((g) => {
-                const tsMs = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
-                if (!tsMs) return false;
-                const d = new Date(tsMs);
-                if (from && d < from) return false;
-                if (to   && d > to)   return false;
-                return true;
-            });
+            cierres = cierres.filter((c) => _inRange(c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0)));
+            gastosExternos = gastosExternos.filter((g) => _inRange(g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0)));
+            trasladosHistorial = trasladosHistorial.filter((t) => _inRange(t.registradoAt?.toMillis ? t.registradoAt.toMillis() : Number(t.registradoAt || 0)));
         }
-        if (!cierres.length && !gastosExternos.length) {
+        if (!cierres.length && !gastosExternos.length && !trasladosHistorial.length) {
             const emptyMsg = (from || to)
                 ? 'Sin movimientos en el rango de fechas seleccionado.'
                 : 'No hay cierres de caja registrados.';
@@ -17981,12 +17975,26 @@ async function renderLibroCierres() {
         const allEntries = [
             ...cierres.map((c) => ({ ...c, _tipo: 'cierre' })),
             ..._gastoGroups,
+            ...trasladosHistorial.map((t) => {
+                const ms = t.registradoAt?.toMillis ? t.registradoAt.toMillis() : Number(t.registradoAt || 0);
+                return { _tipo: 'traslado', _ts: ms, _data: t };
+            }),
         ].sort((a, b) => {
             const tsA = a._tipo === 'cierre' ? (a.closedAt?.toMillis ? a.closedAt.toMillis() : Number(a.closedAt || 0)) : a._ts;
             const tsB = b._tipo === 'cierre' ? (b.closedAt?.toMillis ? b.closedAt.toMillis() : Number(b.closedAt || 0)) : b._ts;
             return tsB - tsA;
         });
 
+        let _prevDayKey = null;
+        const _dayOf = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+        const _daySep = (ms) => {
+            if (!ms) return '';
+            const dk = _dayOf(ms);
+            if (dk === _prevDayKey) return '';
+            _prevDayKey = dk;
+            const dl = new Date(ms).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            return `<tr style="background:rgba(255,255,255,0.022);border-top:2px solid rgba(255,255,255,0.1);"><td colspan="${totalCols}" style="padding:5px 14px 4px;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.32);font-weight:700;">${dl}</td></tr>`;
+        };
         tbody.innerHTML = allEntries.map((entry) => {
             if (entry._tipo === 'gastos_dia') {
                 const g = entry;
@@ -18008,7 +18016,7 @@ async function renderLibroCierres() {
                     const catObj = getCategoriasGastos().find((c) => c.id === item.categoria);
                     const catIcon = catObj ? catObj.icon : '💸';
                     const catLabel = (catObj ? catObj.nombre : (item.categoria || 'Gasto')) + (item.subcategoria ? ' · ' + item.subcategoria : '');
-                    return `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.35);">
+                    return _daySep(g._ts) + `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.35);">
                         <td class="col-left" style="font-weight:600;white-space:nowrap;">${escapeHtml(g._diaStr)}</td>
                         <td class="col-left" style="line-height:1.35;">
                             <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(fechaStr)}</span><br>
@@ -18046,7 +18054,7 @@ async function renderLibroCierres() {
                         <td></td>
                     </tr>`;
                 }).join('');
-                return `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.35);">
+                return _daySep(g._ts) + `<tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.35);">
                     <td class="col-left" style="font-weight:600;white-space:nowrap;">${escapeHtml(g._diaStr)}</td>
                     <td class="col-left" style="line-height:1.35;">
                         <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(dateLabel)}</span><br>
@@ -18059,6 +18067,35 @@ async function renderLibroCierres() {
                         <button class="toggle-gastos-detail" data-group="${groupId}" title="Ver detalle" style="background:none;border:1px solid rgba(252,165,165,0.35);color:#fca5a5;cursor:pointer;font-size:0.8rem;padding:2px 8px;border-radius:4px;line-height:1;">▶</button>
                     </td>
                 </tr>${detailRows}`;
+            }
+
+            if (entry._tipo === 'traslado') {
+                const t = entry._data;
+                const _tMs = entry._ts;
+                const _tD = _tMs ? new Date(_tMs) : new Date();
+                const _tDiaStr = DIAS[_tD.getDay()];
+                const _tFechaStr = _tD.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                const _fM = methods.find((m) => m.id === t.methodFrom);
+                const _tM = methods.find((m) => m.id === t.methodTo);
+                const _amt = Number(t.monto || 0);
+                const _fromLbl = _fM ? `${_fM.icon} ${escapeHtml(_fM.label)}` : escapeHtml(t.methodFrom || '?');
+                const _toLbl   = _tM ? `${_tM.icon} ${escapeHtml(_tM.label)}` : escapeHtml(t.methodTo   || '?');
+                const _mCells = methodKeys.map((k) => {
+                    if (k === t.methodFrom) return `<td style="color:#a5b4fc;font-weight:600;">−${formatMoney(_amt)}</td>`;
+                    if (k === t.methodTo)   return `<td style="color:#a5b4fc;font-weight:600;">+${formatMoney(_amt)}</td>`;
+                    return '<td style="color:var(--admin-muted);">—</td>';
+                }).join('');
+                return _daySep(_tMs) + `<tr style="background:rgba(99,102,241,0.05);border-left:3px solid rgba(99,102,241,0.28);">
+                    <td class="col-left" style="font-weight:600;">${escapeHtml(_tDiaStr)}</td>
+                    <td class="col-left" style="line-height:1.35;">
+                        <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(_tFechaStr)}</span><br>
+                        <span style="font-size:0.73rem;color:#a5b4fc;font-weight:600;">🔄 ${_fromLbl} → ${_toLbl}</span>
+                    </td>
+                    ${_mCells}
+                    <td style="color:rgba(165,180,252,0.4);font-size:0.8rem;">$0</td>
+                    <td style="color:rgba(165,180,252,0.4);font-size:0.8rem;">$0</td>
+                    <td></td>
+                </tr>`;
             }
 
             // Cierre normal — 2 filas: ingresos (arriba) + egresos (abajo)
@@ -18099,7 +18136,7 @@ async function renderLibroCierres() {
 
             const gtColor = gt >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
 
-            return `<tr>
+            return _daySep(tsMs) + `<tr>
                 <td class="col-left" style="font-weight:600;" ${rs}>${escapeHtml(diaStr)}</td>
                 <td class="col-left" ${rs}>${escapeHtml(fechaStr)}</td>
                 ${ingresosCells}
