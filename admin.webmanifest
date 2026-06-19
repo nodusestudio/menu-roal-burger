@@ -1,6 +1,6 @@
 {
-  "name": "Admin FODEXA",
-  "short_name": "Admin",
+  "name": "FODEXA",
+  "short_name": "FODEXA",
   "description": "Panel de administracion FODEXA.",
   "start_url": "./admin.html",
   "scope": "./",
