@@ -18226,7 +18226,7 @@ async function renderLibroCierres() {
                 </tr>`;
             }
 
-            // Cierre normal — 2 filas: ingresos (arriba) + egresos (abajo)
+            // Cierre normal — siempre 2 filas: ingresos (verde) + egresos (rojo)
             const c = entry;
             const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
             const d = tsMs ? new Date(tsMs) : null;
@@ -18240,7 +18240,6 @@ async function renderLibroCierres() {
             const _ingT  = Number(c.ingresosTotal  ?? c.grandTotal ?? 0);
             const _gasT  = Number(c.gastosTotal    || 0);
             const gt     = Number(c.grandTotal     || 0);
-            const hasEgr = _gasT > 0;
 
             // Acumuladores footer (netos)
             const _netM = c.methodTotals || {};
@@ -18248,37 +18247,44 @@ async function renderLibroCierres() {
             grandSumEgresos += _gasT;
             grandSumTotal   += gt;
 
-            const rs = hasEgr ? 'rowspan="2"' : '';
-
             const ingresosCells = methodKeys.map((k) => {
                 const v = Number(_ingM[k] || 0);
-                if (v === 0) return '<td style="color:var(--admin-muted);">—</td>';
-                return `<td style="color:#6ee7b7;font-weight:600;">${formatMoney(v)}</td>`;
+                return v === 0
+                    ? '<td style="color:var(--admin-muted);">—</td>'
+                    : `<td style="color:#6ee7b7;font-weight:600;">+${formatMoney(v)}</td>`;
             }).join('');
 
             const gastosCells = methodKeys.map((k) => {
                 const v = Number(_gasM[k] || 0);
-                if (v === 0) return '<td style="color:var(--admin-muted);">—</td>';
-                return `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(v)}</td>`;
+                return v === 0
+                    ? '<td style="color:var(--admin-muted);">—</td>'
+                    : `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(v)}</td>`;
             }).join('');
 
             const gtColor = gt >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
+            const cid = escapeHtml(c.id);
 
-            return _daySep(tsMs) + `<tr>
-                <td class="col-left" style="font-weight:600;" ${rs}>${escapeHtml(diaStr)}</td>
-                <td class="col-left" ${rs}>${escapeHtml(fechaStr)}</td>
+            return _daySep(tsMs) + `
+            <tr style="border-top:1px solid rgba(255,255,255,0.06);">
+                <td class="col-left" style="font-weight:700;vertical-align:middle;" rowspan="2">${escapeHtml(diaStr)}</td>
+                <td class="col-left" style="vertical-align:middle;" rowspan="2">
+                    <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(fechaStr)}</span>
+                </td>
                 ${ingresosCells}
                 <td style="color:var(--admin-muted);">—</td>
-                <td style="color:#6ee7b7;font-weight:700;">${formatMoney(_ingT)}</td>
-                <td style="text-align:center;white-space:nowrap;" ${rs}>
-                    <button class="btn-ver-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:6px;cursor:pointer;font-weight:600;">👁 Ver</button>
+                <td style="color:#6ee7b7;font-weight:700;">+${formatMoney(_ingT)}</td>
+                <td style="text-align:center;vertical-align:middle;" rowspan="2">
+                    <button class="btn-ver-cierre" data-cierre-id="${cid}"
+                        style="font-size:0.75rem;padding:4px 12px;background:rgba(255,255,255,0.07);color:#e2d9f3;border:1px solid rgba(255,255,255,0.15);border-radius:6px;cursor:pointer;font-weight:600;white-space:nowrap;">
+                        👁 Ver
+                    </button>
                 </td>
-            </tr>${hasEgr ? `
-            <tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.25);">
+            </tr>
+            <tr style="background:rgba(252,165,165,0.04);border-bottom:1px solid rgba(255,255,255,0.06);">
                 ${gastosCells}
-                <td style="color:#fca5a5;font-weight:600;">−${formatMoney(_gasT)}</td>
+                <td style="color:${_gasT > 0 ? '#fca5a5' : 'var(--admin-muted)'};font-weight:${_gasT > 0 ? '600' : '400'};">${_gasT > 0 ? '−' + formatMoney(_gasT) : '—'}</td>
                 <td style="color:${gtColor};font-weight:700;">${gt < 0 ? '−' : ''}${formatMoney(Math.abs(gt))}</td>
-            </tr>` : ''}`;
+            </tr>`;
         }).join('');
 
         // Toggle detalle de gastos agrupados
@@ -18583,14 +18589,7 @@ document.getElementById('libroCierresList')?.addEventListener('click', (e) => {
     if (verBtn) {
         const cid = verBtn.dataset.cierreId;
         const c = _cierresCajaState.find((x) => x.id === cid);
-        if (!c) return;
-        const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
-        const d = tsMs ? new Date(tsMs) : new Date();
-        const dateStr = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
-        const timeStr = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
-        _navigateToCajaDiaria();
-        setTimeout(() => openCierreSidePanel(ticketHtml, `Cierre · ${dateStr}`, true), 250);
+        if (c) _openCierreDetalleModal(c);
         return;
     }
     const gastoBtn = e.target.closest('.btn-gasto-cierre');
@@ -18600,6 +18599,134 @@ document.getElementById('libroCierresList')?.addEventListener('click', (e) => {
         if (c) openCierreGastoModal(c);
     }
 });
+
+function _openCierreDetalleModal(c) {
+    const existing = document.getElementById('cierreDetalleModal');
+    if (existing) existing.remove();
+
+    const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+    const d = tsMs ? new Date(tsMs) : new Date();
+    const fechaLarga = d.toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const horaApertura = c.aperturaAt ? new Date(Number(c.aperturaAt)).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : null;
+    const horaCierre  = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+    const methods       = getPaymentMethods();
+    const ingresosMethod = c.ingresosMethod || c.methodTotals || {};
+    const gastosMethod   = c.gastosMethod   || {};
+    const gastosDetalle  = c.gastosDetalle  || [];
+    const ingresosTotal  = Number(c.ingresosTotal  ?? c.grandTotal ?? 0);
+    const gastosTotal    = Number(c.gastosTotal    || 0);
+    const grandTotal     = Number(c.grandTotal     || 0);
+    const cobradas       = Number(c.transactionCount || 0) - Number(c.voidedCount || 0);
+
+    // Sección INGRESOS
+    const ingRows = methods
+        .filter((m) => Number(ingresosMethod[m.id] || 0) > 0)
+        .map((m) => {
+            const v = Number(ingresosMethod[m.id]);
+            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(110,231,183,0.06);border-radius:8px;margin-bottom:4px;">
+                <span style="font-size:0.85rem;color:rgba(255,255,255,0.7);">${m.icon ? m.icon + ' ' : ''}${escapeHtml(m.label)}</span>
+                <span style="font-size:0.9rem;font-weight:700;color:#6ee7b7;">+${formatMoney(v)}</span>
+            </div>`;
+        }).join('') || `<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:6px 0;">Sin movimientos</div>`;
+
+    const ingTotalRow = `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(110,231,183,0.1);border-radius:8px;border:1px solid rgba(110,231,183,0.2);margin-top:6px;">
+        <span style="font-size:0.85rem;font-weight:700;color:rgba(255,255,255,0.85);">TOTAL INGRESOS</span>
+        <span style="font-size:1rem;font-weight:700;color:#6ee7b7;">+${formatMoney(ingresosTotal)}</span>
+    </div>`;
+
+    // Sección EGRESOS
+    const gasRows = gastosDetalle.length
+        ? gastosDetalle.map((g) => {
+            const mG = methods.find((m) => m.id === g.paymentMethod) || { icon: '', label: g.paymentMethod || '' };
+            const catObj = getCategoriasGastos().find((cat) => cat.id === g.categoria);
+            const catIcon = catObj ? catObj.icon : '💸';
+            const catLabel = (catObj ? catObj.nombre : (g.categoria || 'Gasto')) + (g.subcategoria ? ' · ' + g.subcategoria : '');
+            const desc = [g.proveedor, g.descripcion].filter(Boolean).join(' · ');
+            return `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 12px;background:rgba(252,165,165,0.06);border-radius:8px;margin-bottom:4px;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.82rem;font-weight:600;color:#fca5a5;">${catIcon} ${escapeHtml(catLabel)}</div>
+                    ${desc ? `<div style="font-size:0.75rem;color:rgba(255,255,255,0.45);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(desc)}</div>` : ''}
+                    <div style="font-size:0.72rem;color:rgba(255,255,255,0.3);margin-top:1px;">${mG.icon ? mG.icon + ' ' : ''}${escapeHtml(mG.label)}</div>
+                </div>
+                <span style="font-size:0.9rem;font-weight:700;color:#fca5a5;white-space:nowrap;">−${formatMoney(Number(g.monto || 0))}</span>
+            </div>`;
+        }).join('')
+        : `<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:6px 0;">Sin egresos</div>`;
+
+    const gasTotalRow = gastosTotal > 0 ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(252,165,165,0.1);border-radius:8px;border:1px solid rgba(252,165,165,0.2);margin-top:6px;">
+        <span style="font-size:0.85rem;font-weight:700;color:rgba(255,255,255,0.85);">TOTAL EGRESOS</span>
+        <span style="font-size:1rem;font-weight:700;color:#fca5a5;">−${formatMoney(gastosTotal)}</span>
+    </div>` : '';
+
+    // Sección ARQUEO
+    const allMethodIds = [...new Set([...Object.keys(ingresosMethod), ...Object.keys(gastosMethod)])].filter((k) => k !== 'split');
+    const arqueoRows = allMethodIds.map((k) => {
+        const ing = Number(ingresosMethod[k] || 0);
+        const gas = Number(gastosMethod[k]   || 0);
+        const net = ing - gas;
+        if (ing === 0 && gas === 0) return '';
+        const m = methods.find((x) => x.id === k) || { icon: '', label: k };
+        const netColor = net > 0 ? '#6ee7b7' : net < 0 ? '#fca5a5' : 'rgba(255,255,255,0.4)';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-radius:8px;margin-bottom:3px;background:rgba(255,255,255,0.03);">
+            <span style="font-size:0.82rem;color:rgba(255,255,255,0.6);">${m.icon ? m.icon + ' ' : ''}${escapeHtml(m.label)}</span>
+            <span style="font-size:0.85rem;font-weight:700;color:${netColor};">${net < 0 ? '−' : ''}${net === 0 ? '$0' : formatMoney(Math.abs(net))}</span>
+        </div>`;
+    }).filter(Boolean).join('');
+
+    const netColor = grandTotal >= 0 ? '#ff9540' : '#fca5a5';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'cierreDetalleModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:15000;background:rgba(0,0,0,0.78);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.innerHTML = `
+    <div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.1);border-radius:20px;width:100%;max-width:480px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.7);overflow:hidden;">
+        <!-- Header -->
+        <div style="padding:18px 20px 14px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0;">
+            <div>
+                <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,0.35);margin-bottom:3px;">Cierre de Caja</div>
+                <div style="font-size:1rem;font-weight:700;color:#fff;text-transform:capitalize;">${escapeHtml(fechaLarga)}</div>
+                <div style="display:flex;gap:16px;margin-top:6px;flex-wrap:wrap;">
+                    ${horaApertura ? `<span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Apertura: <strong style="color:rgba(255,255,255,0.6);">${horaApertura}</strong></span>` : ''}
+                    <span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Cierre: <strong style="color:rgba(255,255,255,0.6);">${horaCierre}</strong></span>
+                    <span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Transacciones: <strong style="color:rgba(255,255,255,0.6);">${cobradas}</strong></span>
+                    ${Number(c.fondoInicial) > 0 ? `<span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Fondo inicial: <strong style="color:#f3c56a;">${formatMoney(Number(c.fondoInicial))}</strong></span>` : ''}
+                    ${c.aperturaBy ? `<span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Cajero: <strong style="color:rgba(255,255,255,0.6);">${escapeHtml(String(c.aperturaBy))}</strong></span>` : ''}
+                </div>
+            </div>
+            <button id="_cierreDetalleCerrar" style="background:none;border:none;color:rgba(255,255,255,0.4);font-size:1.5rem;cursor:pointer;line-height:1;padding:0 0 0 8px;" aria-label="Cerrar">×</button>
+        </div>
+        <!-- Scrollable body -->
+        <div style="overflow-y:auto;flex:1;padding:16px 20px 20px;display:flex;flex-direction:column;gap:16px;">
+            <!-- Ingresos -->
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:#6ee7b7;font-weight:700;margin-bottom:8px;">📥 Ingresos por método</div>
+                ${ingRows}
+                ${ingTotalRow}
+            </div>
+            <!-- Egresos -->
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:#fca5a5;font-weight:700;margin-bottom:8px;">📤 Egresos / Gastos</div>
+                ${gasRows}
+                ${gasTotalRow}
+            </div>
+            <!-- Arqueo -->
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.5);font-weight:700;margin-bottom:8px;">🗂 Arqueo de caja (neto por método)</div>
+                ${arqueoRows || `<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:6px 0;">Sin movimientos</div>`}
+            </div>
+        </div>
+        <!-- Footer total neto -->
+        <div style="padding:14px 20px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:rgba(255,149,64,0.05);">
+            <span style="font-size:0.9rem;font-weight:700;color:rgba(255,255,255,0.8);text-transform:uppercase;letter-spacing:0.5px;">💰 Saldo Neto Caja</span>
+            <span style="font-size:1.25rem;font-weight:800;color:${netColor};">${grandTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandTotal))}</span>
+        </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+    document.getElementById('_cierreDetalleCerrar')?.addEventListener('click', () => overlay.remove());
+    _bindOverlayClose(overlay, () => overlay.remove());
+}
 
 function openCierreGastoModal(cierre) {
     const existing = document.getElementById('cierreGastoModal');
