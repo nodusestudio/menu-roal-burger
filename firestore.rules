@@ -82,7 +82,8 @@ service cloud.firestore {
       allow update: if true
         && request.resource.data.customerPhone is string;
       allow delete: if true;
-      allow read: if request.auth != null;
+      // Admin lee todo; un cliente puede leer su propio doc (ID = phone_XXXXXXXXXX)
+      allow read: if request.auth != null || clientId.matches('phone_[0-9]+');
     }
 
     // ─── Tokens FCM (push) — solo admin autenticado ──────────────────────────

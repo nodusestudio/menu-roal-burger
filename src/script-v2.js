@@ -3072,8 +3072,13 @@ async function submitCustomerLookup() {
             }
             return;
         }
-        const isWrongPin = String(error.message || '').toLowerCase().includes('contrase');
-        _showError(error.message || 'No se pudo abrir el perfil. Intentalo de nuevo.', isWrongPin ? pinField : phoneField);
+        const errMsg = String(error.message || '');
+        const isWrongPin = errMsg.toLowerCase().includes('contrase');
+        const isPermission = errMsg.toLowerCase().includes('permission') || error?.code === 'permission-denied';
+        const displayMsg = isPermission
+            ? 'No se pudo verificar tu cuenta. Intentalo de nuevo.'
+            : (errMsg || 'No se pudo abrir el perfil. Intentalo de nuevo.');
+        _showError(displayMsg, isWrongPin ? pinField : phoneField);
     }
 }
 
