@@ -18283,7 +18283,7 @@ async function renderLibroCierres() {
                 <span style="font-size:1rem;font-weight:700;color:${ntColor};">${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</span>
             </div>`;
 
-            kpiEl.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 2px 12px;">${chipMethod}${chipEgr}${chipNet}</div>`;
+            kpiEl.innerHTML = `<div style="grid-column:1/-1;display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;padding:10px 2px 12px;">${chipMethod}${chipEgr}${chipNet}</div>`;
         }
     } catch (err) {
         tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
