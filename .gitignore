@@ -1,6 +1,7 @@
 .vercel
 .env*.local
 node_modules/
+.venv/
 
 # Archivos generados por `npm run build` — no editar, editar en src/
 /admin.js
