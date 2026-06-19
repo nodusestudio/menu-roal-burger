@@ -16602,7 +16602,7 @@ function openTrasladoModal() {
 
     const methods = getPaymentMethods();
     const optHtml = methods.map((m) =>
-        `<option value="${escapeHtml(m.id)}">${m.icon} ${escapeHtml(m.label)}</option>`
+        `<option value="${escapeHtml(m.id)}" style="background:#14172a;color:#fff;">${m.icon} ${escapeHtml(m.label)}</option>`
     ).join('');
 
     const overlay = document.createElement('div');
@@ -16613,12 +16613,12 @@ function openTrasladoModal() {
         <h3 style="margin:0 0 20px;font-size:1rem;font-weight:700;color:#fff;">🔄 Traslado entre cuentas</h3>
         <div style="display:flex;flex-direction:column;gap:10px;">
             <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Desde (origen)</label>
-            <select id="trasladoFrom" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
+            <select id="trasladoFrom" style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
             <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Monto a trasladar</label>
             <input id="trasladoMonto" type="number" min="1000" step="1000" placeholder="500000"
-                style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">
+                style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">
             <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Hacia (destino)</label>
-            <select id="trasladoTo" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
+            <select id="trasladoTo" style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
             <button type="button" id="trasladoConfirmBtn"
                 style="margin-top:8px;padding:10px;background:rgba(99,102,241,0.22);color:#a5b4fc;border:1px solid rgba(99,102,241,0.45);border-radius:10px;font-size:0.88rem;font-weight:700;cursor:pointer;">
                 Confirmar traslado
