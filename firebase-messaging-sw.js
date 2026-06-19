@@ -19,7 +19,7 @@ messaging.onBackgroundMessage((payload) => {
     const tag  = payload.data?.tag  || 'roal-new-order';
     const url  = payload.data?.url  || '/admin.html';
 
-    self.registration.showNotification(title || '🔔 ROAL BURGER — Nuevo pedido', {
+    self.registration.showNotification(title || '🔔 FODEXA — Nuevo pedido', {
         body:             body || 'Toca para ver el pedido.',
         icon:             '/isotipo.webp',
         badge:            '/isotipo.webp',

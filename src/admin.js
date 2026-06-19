@@ -139,7 +139,7 @@ const BRAND_TEMPLATES = {
 };
 
 const defaultBranding = {
-    restaurantName: 'ROAL BURGER',
+    restaurantName: 'FODEXA',
     slogan: 'Comida rapida con acento venezolano',
     logoUrl: 'logo.png',
     whatsappNumber: '573144689509',
@@ -539,7 +539,7 @@ let clipboardToastTimer = null;
 let activeMobileOrdersLane = '';
 let adminTitleBlinkTimer = null;
 let adminTitleBlinkState = false;
-const adminBaseTitle = document.title || 'ROAL BURGER | Admin';
+const adminBaseTitle = document.title || 'FODEXA | Admin';
 let metricsEventsState = {
     total: 0,
     whatsapp: 0,
@@ -1111,7 +1111,7 @@ function notifyNewOrder(order) {
         return;
     }
 
-    const notification = new Notification('Nuevo pedido en ROAL BURGER', {
+    const notification = new Notification('Nuevo pedido en FODEXA', {
         body: `${order.customerName || 'Cliente'} | ${getOrderTypeLabel(order)} | ${formatMoney(getOrderDisplayTotal(order))}`,
         icon: 'isotipo.png',
         badge: 'isotipo.png',
@@ -1155,7 +1155,7 @@ function notifyNewMessage(message) {
         return;
     }
 
-    const notification = new Notification('Nuevo mensaje en ROAL BURGER Admin', {
+    const notification = new Notification('Nuevo mensaje en FODEXA Admin', {
         body: `${message.customerName}: ${message.subject}`,
         tag: `roal-message-${message.id}`,
         renotify: true
@@ -9130,7 +9130,7 @@ function buildOrderWhatsAppLink(order) {
         return '';
     }
 
-    const message = encodeURIComponent(`Hola ${order.customerName || ''}, te escribimos desde ROAL BURGER por tu pedido ${order.code}.`);
+    const message = encodeURIComponent(`Hola ${order.customerName || ''}, te escribimos desde FODEXA por tu pedido ${order.code}.`);
     return `https://wa.me/${digits}?text=${message}`;
 }
 
@@ -9269,7 +9269,7 @@ https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr
 Facebook:
 https://www.facebook.com/share/1B9MGGXh6h/?mibextid=wwXIfr
 
-ROAL Burger
+FODEXA
 Comida rápida con acento venezolano 🇻🇪🔥`;
 }
 
@@ -9280,7 +9280,7 @@ function buildPickupReadyMessage(order) {
 
 function buildTicketAddressLines(order) {
     if (order.orderType !== 'domicilio') {
-        return ['Retira en el local ROAL BURGER'];
+        return ['Retira en el local FODEXA'];
     }
 
     return String(order.deliveryAddress || 'Sin direccion registrada')
@@ -9316,14 +9316,14 @@ function getOrderContactAddress(order) {
 }
 
 function buildOrderContactVCard(order) {
-    const customerName = String(order.customerName || 'Cliente ROAL BURGER').trim() || 'Cliente ROAL BURGER';
+    const customerName = String(order.customerName || 'Cliente FODEXA').trim() || 'Cliente FODEXA';
     const phoneDigits = normalizePhoneDigits(order.customerPhoneDigits || order.customerPhone || '');
     const displayPhone = phoneDigits ? `+${phoneDigits.startsWith('57') ? phoneDigits : `57${phoneDigits}`}` : String(order.customerPhone || '').trim();
     const address = getOrderContactAddress(order);
     const orderCode = String(order.code || '').trim();
     const paymentLabel = getOrderPaymentLabel(order);
     const noteParts = [
-        'Cliente ROAL BURGER',
+        'Cliente FODEXA',
         orderCode ? `Pedido ${orderCode}` : '',
         paymentLabel || '',
         displayPhone ? `Telefono ${displayPhone}` : '',
@@ -9335,7 +9335,7 @@ function buildOrderContactVCard(order) {
         'VERSION:3.0',
         `FN:${escapeVCardValue(customerName)}`,
         `N:${escapeVCardValue(customerName)};;;;`,
-        `ORG:${escapeVCardValue('ROAL BURGER')}`,
+        `ORG:${escapeVCardValue('FODEXA')}`,
         displayPhone ? `TEL;TYPE=CELL:${escapeVCardValue(displayPhone)}` : '',
         address ? `ADR;TYPE=HOME:;;${escapeVCardValue(address)};;;;` : '',
         `NOTE:${escapeVCardValue(noteParts.join(' | '))}`,
@@ -9380,7 +9380,7 @@ function buildThermalTicketMarkup(order, options = {}) {
     const totalAmount = getOrderDisplayTotal(order);
     const deliveryText = formatMoney(order.deliveryFee != null ? order.deliveryFee : 0);
     const totalText = formatMoney(totalAmount);
-    const restaurantName = escapeHtml(brandingState.restaurantName || 'ROAL BURGER');
+    const restaurantName = escapeHtml(brandingState.restaurantName || 'FODEXA');
     const orderDate = escapeHtml(formatOrderDate(order.createdAt));
     const orderHour = escapeHtml(formatOrderTime(order.createdAt));
     const elapsed = escapeHtml(formatElapsedTime(order.createdAt));
@@ -9543,7 +9543,7 @@ function buildThermalTicketMarkup(order, options = {}) {
 
                 <div class="ticket-footer-copy">
                     <span>Gracias por elegir ${restaurantName}</span>
-                    <span>${escapeHtml(brandingState.address || 'ROAL BURGER')}</span>
+                    <span>${escapeHtml(brandingState.address || 'FODEXA')}</span>
                 </div>
             </article>
             ${printMode ? '' : (() => {
@@ -10524,7 +10524,7 @@ function buildCustomerContactWhatsAppUrl(name, phoneDigits, messageText) {
         return '';
     }
 
-    const greeting = String(messageText || `Hola ${name || 'cliente'}, te escribimos desde ROAL BURGER sobre tu solicitud.`).trim();
+    const greeting = String(messageText || `Hola ${name || 'cliente'}, te escribimos desde FODEXA sobre tu solicitud.`).trim();
     return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(greeting)}`;
 }
 
@@ -10829,7 +10829,7 @@ function buildCustomerPasswordResetClipboardMessage(message = {}) {
     const customerName = String(message.customerName || 'cliente').trim();
     const customerPhone = String(message.customerPhone || message.customerPhoneDigits || '').trim();
     return [
-        `Hola ${customerName}, tu contrasena de ROAL BURGER ya fue restablecida.`,
+        `Hola ${customerName}, tu contrasena de FODEXA ya fue restablecida.`,
         `Vuelve a pulsar "Olvido contrasena" e ingresa nuevamente tu numero de WhatsApp ${customerPhone}.`,
         'La app te mostrara la pantalla para crear tu nueva contrasena.'
     ].join('\n');
@@ -10845,7 +10845,7 @@ async function createAdminDirectReply(message = {}, body = '') {
     await firebaseDb.collection(MESSAGES_COLLECTION).add({
         type: 'admin_direct_reply',
         status: 'resolved',
-        subject: `Respuesta de ROAL BURGER para ${String(message.customerName || 'cliente').trim() || 'cliente'}`,
+        subject: `Respuesta de FODEXA para ${String(message.customerName || 'cliente').trim() || 'cliente'}`,
         body: replyBody,
         customerName: String(message.customerName || '').trim() || 'Cliente',
         customerPhone: String(message.customerPhone || message.customerPhoneDigits || '').trim(),
@@ -11014,7 +11014,7 @@ function buildESCPOSData(order) {
     pb(ESC, 0x40);
     // Brand — center, bold, double size
     pb(ESC, 0x61, 0x01, ESC, 0x45, 0x01, ESC, 0x21, 0x30);
-    wl(brandingState.restaurantName || 'ROAL BURGER');
+    wl(brandingState.restaurantName || 'FODEXA');
     pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
     wl('Ticket de recepcion');
     pb(ESC, 0x61, 0x00);
@@ -11144,7 +11144,7 @@ function _printOrderViaBrowser(order) {
 }
 
 function buildKitchenTicketHtml(order) {
-    const restaurantName = escapeHtml(brandingState.restaurantName || 'ROAL BURGER');
+    const restaurantName = escapeHtml(brandingState.restaurantName || 'FODEXA');
     const orderCode      = escapeHtml(order.code || '');
     const orderHour      = escapeHtml(formatOrderTime(order.createdAt));
 
@@ -12435,7 +12435,7 @@ function buildWhatsAppButtonLink(number, customLink) {
         return '';
     }
 
-    return `https://wa.me/${normalizedNumber}?text=${encodeURIComponent('Hola ROAL BURGER! Quisiera realizar un pedido por favor')}`;
+    return `https://wa.me/${normalizedNumber}?text=${encodeURIComponent('Hola FODEXA! Quisiera realizar un pedido por favor')}`;
 }
 
 async function syncBrandingLinksToButtons(brandingConfig) {
@@ -14522,8 +14522,8 @@ document.addEventListener('click', async (event) => {
 
     if (action === 'whatsapp') {
         const whatsappMessage = message.type === 'customer_direct_message'
-            ? `Hola ${message.customerName}, vimos tu mensaje en ROAL BURGER y queremos ayudarte.`
-            : `Hola ${message.customerName}, te escribimos desde ROAL BURGER sobre tu solicitud de reinicio de contrasena.`;
+            ? `Hola ${message.customerName}, vimos tu mensaje en FODEXA y queremos ayudarte.`
+            : `Hola ${message.customerName}, te escribimos desde FODEXA sobre tu solicitud de reinicio de contrasena.`;
         const whatsappUrl = buildCustomerContactWhatsAppUrl(
             message.customerName,
             message.customerPhoneDigits,
@@ -17402,7 +17402,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
     return `<div style="font-family:'Courier New',monospace;font-size:13px;line-height:1.65;color:#f0ead8;background:#1a1412;padding:20px;border-radius:8px;border:1px solid #3a2e26;max-width:340px;">
 
         <div style="text-align:center;margin-bottom:12px;">
-            <div style="font-weight:700;font-size:17px;letter-spacing:3px;color:#ff9540;">${escapeHtml(c.businessName || 'ROAL BURGER')}</div>
+            <div style="font-weight:700;font-size:17px;letter-spacing:3px;color:#ff9540;">${escapeHtml(c.businessName || 'FODEXA')}</div>
             ${c.businessAddress ? `<div style="color:#c8c0b8;font-size:11px;margin-top:2px;">${escapeHtml(c.businessAddress)}</div>` : ''}
             ${c.businessPhone  ? `<div style="color:#c8c0b8;font-size:11px;">Tel: ${escapeHtml(c.businessPhone)}</div>` : ''}
             ${c.businessNit    ? `<div style="color:#c8c0b8;font-size:11px;">NIT: ${escapeHtml(c.businessNit)}</div>` : ''}
@@ -17447,7 +17447,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
 
         <div style="text-align:center;margin-top:14px;font-size:10px;color:#6a5a4a;border-top:1px dashed #3a2e26;padding-top:8px;letter-spacing:0.5px;">
             DOCUMENTO INTERNO — NO FISCAL<br>
-            Generado por Sistema POS ROAL BURGER
+            Generado por Sistema POS FODEXA
         </div>
     </div>`;
 }
@@ -17583,7 +17583,7 @@ async function cerrarCaja() {
             })),
             methodTotals: sumMethod,
             grandTotal,
-            businessName: cfg.restaurantName || 'ROAL BURGER',
+            businessName: cfg.restaurantName || 'FODEXA',
             businessAddress: cfg.address || '',
             businessPhone: cfg.whatsappNumber || '',
             businessNit: cfg.nit || '',

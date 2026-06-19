@@ -1,7 +1,7 @@
 {
-  "name": "ROAL BURGER",
-  "short_name": "ROAL BURGER",
-  "description": "Menu digital y acceso rapido oficial de ROAL BURGER.",
+  "name": "FODEXA",
+  "short_name": "FODEXA",
+  "description": "Menu digital y acceso rapido oficial de FODEXA.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

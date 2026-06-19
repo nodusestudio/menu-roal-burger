@@ -1,4 +1,4 @@
-/* Service Worker — ROAL BURGER */
+/* Service Worker — FODEXA */
 
 const CACHE_VERSION = 'roal-v5';
 const CACHE_STATIC  = `${CACHE_VERSION}-static`;

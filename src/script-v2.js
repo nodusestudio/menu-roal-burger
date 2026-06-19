@@ -4,7 +4,7 @@ const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
 const CUSTOMER_CONSENT_VERSION = '2026-06-05';
-const CUSTOMER_CONSENT_COPY = 'He leido y acepto que ROAL BURGER use mis datos para gestionar mi cuenta, atender pedidos, contactarme por canales oficiales y enviarme promociones, novedades y publicidad propia.';
+const CUSTOMER_CONSENT_COPY = 'He leido y acepto que FODEXA use mis datos para gestionar mi cuenta, atender pedidos, contactarme por canales oficiales y enviarme promociones, novedades y publicidad propia.';
 const CUSTOMER_CONSENT_POLICY_URL = 'politica-datos.html';
 const MESSAGES_COLLECTION = 'mensajes';
 const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
@@ -557,7 +557,7 @@ function showWelcomeGreeting(profile) {
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
     `;
-    toast.innerHTML = `${randomEmoji} ${greeting}, <strong>${firstName}</strong>! Bienvenido a ROAL BURGER ${randomEmoji}`;
+    toast.innerHTML = `${randomEmoji} ${greeting}, <strong>${firstName}</strong>! Bienvenido a FODEXA ${randomEmoji}`;
 
     document.body.appendChild(toast);
 
@@ -885,7 +885,7 @@ function renderCustomerMessagesPanel() {
     customerAuthUI.messagesThread.innerHTML = customerProfileMessagesState
         .map((message) => {
             const isAdminReply = String(message.type || '').trim() === 'admin_direct_reply' || String(message.source || '').trim() === 'admin_panel';
-            const authorLabel = isAdminReply ? 'ROAL BURGER' : 'Tú';
+            const authorLabel = isAdminReply ? 'FODEXA' : 'Tú';
             return `
                 <article class="customer-message-bubble ${isAdminReply ? 'is-admin' : 'is-customer'}">
                     <strong>${escapeHtml(authorLabel)}</strong>
@@ -1141,7 +1141,7 @@ function sendBrowserNotification(status, orderCode) {
     const info = ORDER_STATUS_MESSAGES[status];
     if (!info) return;
 
-    const title = `${info.icon} ROAL BURGER — Pedido #${orderCode}`;
+    const title = `${info.icon} FODEXA — Pedido #${orderCode}`;
     const body  = info.text;
     const icon  = 'isotipo.png';
 
@@ -1349,7 +1349,7 @@ function buildWhatsAppOrderConfirmationText(orderData = {}) {
     const customerName = String(orderData.customerName || '').trim() || 'Cliente';
     const total = formatCurrency(Number(orderData.total || 0));
 
-    return `¡Hola ROAL BURGER! Acabo de registrar mi pedido a través de la aplicación web. El número de mi pedido es [${orderCode}] a nombre de [${customerName}] por un total de [${total}]. Quedo atento a la confirmación. ¡Muchas gracias!`;
+    return `¡Hola FODEXA! Acabo de registrar mi pedido a través de la aplicación web. El número de mi pedido es [${orderCode}] a nombre de [${customerName}] por un total de [${total}]. Quedo atento a la confirmación. ¡Muchas gracias!`;
 }
 
 function openOrderConfirmationWhatsApp(orderData = {}) {
@@ -1370,7 +1370,7 @@ function requestDeliveryQuote() {
     const address = String(checkoutInfoUI.address?.value || '').trim();
     const coordsPart = (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) ? `Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}` : '';
     const addressPart = address ? `Direccion: ${address}` : '';
-    const text = `Hola ROAL BURGER, solicito cotizacion de domicilio. ${addressPart} ${coordsPart}`.trim();
+    const text = `Hola FODEXA, solicito cotizacion de domicilio. ${addressPart} ${coordsPart}`.trim();
     const url = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(text)}`;
     const w = window.open(url, '_blank', 'noopener,noreferrer');
     if (!w) window.location.href = url;
@@ -1716,7 +1716,7 @@ async function saveCustomerProfile(profileInput = {}) {
     const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
 
     if (!acceptedDataPolicy && !hasPreviousConsent) {
-        throw new Error('Debes aceptar el uso de tus datos y el envio de promociones de ROAL BURGER para crear tu perfil.');
+        throw new Error('Debes aceptar el uso de tus datos y el envio de promociones de FODEXA para crear tu perfil.');
     }
 
     if (pinValue || confirmPinValue || !passwordHash) {
@@ -2768,7 +2768,7 @@ async function submitCustomerDeleteAccountRequest() {
         clearActiveCustomerProfile();
         closeCustomerDeleteAccountModal();
         closeCustomerAuthModal();
-        window.alert('Tu cuenta fue eliminada y la solicitud quedo registrada en ROAL BURGER.');
+        window.alert('Tu cuenta fue eliminada y la solicitud quedo registrada en FODEXA.');
     } catch (error) {
         customerDeleteAccountUI.feedback.textContent = error.message || 'No se pudo eliminar la cuenta.';
     }
@@ -2866,7 +2866,7 @@ function openCustomerConsentDocument() {
             <button type="button" class="support-modal-close" aria-label="Cerrar autorizacion">&times;</button>
             <p class="support-modal-kicker">Autorizacion de datos</p>
             <h3 class="support-modal-title">Lee este documento antes de continuar</h3>
-            <p class="support-modal-text">Para crear tu perfil debes conocer y autorizar expresamente el tratamiento de tus datos personales por parte de ROAL BURGER.</p>
+            <p class="support-modal-text">Para crear tu perfil debes conocer y autorizar expresamente el tratamiento de tus datos personales por parte de FODEXA.</p>
             <div class="support-consent-document-frame-wrap">
                 <iframe src="${CUSTOMER_CONSENT_POLICY_URL}" title="Politica de tratamiento de datos personales" class="support-consent-document-frame"></iframe>
             </div>
@@ -2917,7 +2917,7 @@ async function requestPublicNotificationPermission() {
     if (Notification.permission === 'granted') {
         if (installHint) {
             installHint.hidden = false;
-            installHint.textContent = 'Notificaciones activadas para novedades y promociones de ROAL BURGER.';
+            installHint.textContent = 'Notificaciones activadas para novedades y promociones de FODEXA.';
         }
         return 'granted';
     }
@@ -2935,7 +2935,7 @@ async function requestPublicNotificationPermission() {
         if (installHint) {
             installHint.hidden = false;
             installHint.textContent = permission === 'granted'
-                ? 'Notificaciones activadas para novedades y promociones de ROAL BURGER.'
+                ? 'Notificaciones activadas para novedades y promociones de FODEXA.'
                 : 'Puedes seguir usando la app sin notificaciones. Si cambias de opinion, podras activarlas mas adelante.';
         }
         return permission;
@@ -2951,7 +2951,7 @@ async function requestPublicNotificationPermission() {
 function buildCustomerPasswordResetMessage(phoneValue = '') {
     const phoneDigits = normalizePhoneDigits(phoneValue);
     return [
-        'Hola ROAL BURGER, olvide la contrasena de mi perfil web.',
+        'Hola FODEXA, olvide la contrasena de mi perfil web.',
         phoneDigits ? `Mi numero de WhatsApp es: ${phoneDigits}` : 'Necesito ayuda para recuperar el acceso a mi cuenta.',
         'Por favor ayudame a restablecer mi contrasena.'
     ].join('\n');
@@ -3247,7 +3247,7 @@ function openCustomerAuthModal() {
                         <div class="customer-chat-header">
                             <div class="customer-chat-avatar">R</div>
                             <div class="customer-chat-header-info">
-                                <div class="customer-chat-header-name">ROAL BURGER</div>
+                                <div class="customer-chat-header-name">FODEXA</div>
                                 <div class="customer-chat-header-status">Respondemos por aquí y por WhatsApp</div>
                             </div>
                         </div>
@@ -3598,7 +3598,7 @@ function downloadDesktopShortcut() {
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;
-    link.download = 'ROAL BURGER.url';
+    link.download = 'FODEXA.url';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -3628,8 +3628,8 @@ async function handleShortcutInstall() {
     if (navigator.share) {
         try {
             await navigator.share({
-                title: 'ROAL BURGER',
-                text: 'Guarda el enlace oficial de ROAL BURGER.',
+                title: 'FODEXA',
+                text: 'Guarda el enlace oficial de FODEXA.',
                 url
             });
             return;
@@ -6092,7 +6092,7 @@ function buildSupportWhatsAppMessage(name, details, topicKey) {
     };
     const topicLabel = topicLabelMap[topicKey] || 'Ayuda general';
     return [
-        'Hola ROAL BURGER! Necesito ayuda o informacion.',
+        'Hola FODEXA! Necesito ayuda o informacion.',
         `Nombre: ${safeName}`,
         `Tema: ${topicLabel}`,
         `Consulta: ${safeDetails || `Quiero informacion sobre ${topicLabel.toLowerCase()}.`}`
@@ -7774,7 +7774,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
 };
 
 const DEFAULT_BRANDING = {
-    restaurantName: 'ROAL BURGER',
+    restaurantName: 'FODEXA',
     slogan: 'Comida rapida con acento venezolano',
     logoUrl: 'logo.png',
     primaryColor: '#2f6fdd',
@@ -9690,7 +9690,7 @@ async function renderPublicFeaturedFromAdmin() {
 }
 
 function buildDynamicWhatsAppUrl(sectionName) {
-    const message = `Hola ROAL BURGER, estoy interesado en uno de los productos de la seccion ${sectionName}`;
+    const message = `Hola FODEXA, estoy interesado en uno de los productos de la seccion ${sectionName}`;
     return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`;
 }
 
@@ -11088,7 +11088,7 @@ function openPromoRegistrationPrompt() {
             <button type="button" class="support-modal-close" id="promoRegClose" aria-label="Cerrar">&times;</button>
             <p class="support-modal-kicker">Promos exclusivas</p>
             <h3 class="support-modal-title">Esta oferta es solo para miembros</h3>
-            <p class="support-modal-text">Para disfrutar de <strong>esta y todas nuestras promos exclusivas</strong> necesitas tener cuenta en la app de ROAL BURGER. ¡Tambien puedes descargarla directo en tu dispositivo!</p>
+            <p class="support-modal-text">Para disfrutar de <strong>esta y todas nuestras promos exclusivas</strong> necesitas tener cuenta en la app de FODEXA. ¡Tambien puedes descargarla directo en tu dispositivo!</p>
             <div class="promo-reg-actions">
                 <button type="button" class="promo-reg-btn promo-reg-btn--download" id="promoRegDownload">
                     <span class="promo-reg-btn-icon">&#8659;</span> Descargar app
@@ -11777,7 +11777,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const msg = (textarea?.value || '').trim();
         if (!msg) { textarea?.focus(); if (textarea) textarea.style.borderColor = 'rgba(255,96,0,0.75)'; return; }
         if (textarea) textarea.style.borderColor = '';
-        const waText = msg + '\n\n_(Enviado desde el menú digital de ROAL BURGER)_';
+        const waText = msg + '\n\n_(Enviado desde el menú digital de FODEXA)_';
         window.open(WHATSAPP_BASE_URL + '?text=' + encodeURIComponent(waText), '_blank', 'noopener,noreferrer');
         this.disabled = true; this.style.opacity = '0.6';
         if (feedback) { feedback.textContent = '¡Mensaje enviado! Será atendido a la brevedad posible.'; feedback.hidden = false; }
