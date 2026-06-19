@@ -6776,8 +6776,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
         _editingOrderData = null;
 
-        // Recarga solo pedidos (no todas las colecciones) para no saturar Firestore
-        await fetchOrders();
+        // onSnapshot actualiza ordersState y re-renderiza en ~600 ms
         renderOrders();
         renderSalesSummaries();
 
@@ -6810,10 +6809,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         }
 
         if (opts.cobrarAfter && !isEditing) {
-            const savedOrder = ordersState.find((o) => o.id === orderId);
-            if (savedOrder) {
-                setTimeout(() => _triggerTicketCobro(savedOrder), 350);
-            }
+            setTimeout(() => _triggerTicketCobro(orderDoc), 350);
         }
     } catch (error) {
         showNotice(`Error al guardar: ${error.message || 'error'}`, 'error');
@@ -6998,68 +6994,70 @@ async function submitInternalOrderForm(event) {
         const cashChangeRequired = cashGiven > 0 && cashGiven > total;
         const cashTenderAmount = cashGiven > 0 ? cashGiven : null;
 
-        await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set({
-            id: orderId,
-            code: orderCode,
-            customerName,
-            customerPhone,
-            customerPhoneDigits,
-            customerAddress,
-            deliveryAddress,
-            profileAddress: customerAddress,
-            paymentMethod,
-            cashChangeRequired,
-            cashTenderAmount,
-            orderType,
-            source: 'admin_panel',
-            status: 'pendiente',
-            items: internalOrderItems.map((item, index) => ({
-                index: index + 1,
-                itemKey: item.itemKey,
-                productId: item.productId,
-                productName: item.productName,
-                categoryName: item.categoryName,
-                optionLabel: item.note || '',
-                note: item.note || '',
-                quantity: Number(item.quantity || 0),
-                unitPrice: Number(item.unitPrice || 0),
-                subtotal: Number(item.subtotal || 0),
-                ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
-            })),
-            itemCount: internalOrderItems.length,
-            totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
-            subtotal,
-            discount,
-            deliveryFee,
-            total,
-            currency: 'COP',
-            summaryMessage: String(internalOrderNotesInput?.value || '').trim(),
-            createdAt: firestoreNow(),
-            updatedAt: firestoreNow(),
-            paidAt: firestoreNow()
-        });
+        await Promise.all([
+            firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set({
+                id: orderId,
+                code: orderCode,
+                customerName,
+                customerPhone,
+                customerPhoneDigits,
+                customerAddress,
+                deliveryAddress,
+                profileAddress: customerAddress,
+                paymentMethod,
+                cashChangeRequired,
+                cashTenderAmount,
+                orderType,
+                source: 'admin_panel',
+                status: 'pendiente',
+                items: internalOrderItems.map((item, index) => ({
+                    index: index + 1,
+                    itemKey: item.itemKey,
+                    productId: item.productId,
+                    productName: item.productName,
+                    categoryName: item.categoryName,
+                    optionLabel: item.note || '',
+                    note: item.note || '',
+                    quantity: Number(item.quantity || 0),
+                    unitPrice: Number(item.unitPrice || 0),
+                    subtotal: Number(item.subtotal || 0),
+                    ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
+                })),
+                itemCount: internalOrderItems.length,
+                totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+                subtotal,
+                discount,
+                deliveryFee,
+                total,
+                currency: 'COP',
+                summaryMessage: String(internalOrderNotesInput?.value || '').trim(),
+                createdAt: firestoreNow(),
+                updatedAt: firestoreNow(),
+                paidAt: firestoreNow()
+            }),
+            firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
+                customerName,
+                customerPhone,
+                customerPhoneDigits,
+                address: customerAddress,
+                savedAddresses: [customerAddress],
+                totalOrders: clientTotalOrders,
+                totalSpent: clientTotalSpent,
+                lastOrderCode: orderCode,
+                lastOrderId: orderId,
+                lastOrderTotal: total,
+                firstOrderAt: currentClient?.firstOrderAt || firestoreNow(),
+                lastOrderAt: firestoreNow(),
+                source: currentClient?.source || 'admin_panel',
+                createdAt: currentClient?.createdAt || firestoreNow(),
+                updatedAt: firestoreNow()
+            }, { merge: true })
+        ]);
 
-        await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
-            customerName,
-            customerPhone,
-            customerPhoneDigits,
-            address: customerAddress,
-            savedAddresses: [customerAddress],
-            totalOrders: clientTotalOrders,
-            totalSpent: clientTotalSpent,
-            lastOrderCode: orderCode,
-            lastOrderId: orderId,
-            lastOrderTotal: total,
-            firstOrderAt: currentClient?.firstOrderAt || firestoreNow(),
-            lastOrderAt: firestoreNow(),
-            source: currentClient?.source || 'admin_panel',
-            createdAt: currentClient?.createdAt || firestoreNow(),
-            updatedAt: firestoreNow()
-        }, { merge: true });
-
-        await reloadDataAndRender();
         closeInternalOrderModal(true);
         showNotice('Pedido creado correctamente.', 'ok');
+        // Actualiza clientes en segundo plano; los pedidos los maneja onSnapshot
+        fetchClients().then(() => renderClients()).catch(() => {});
     } catch (error) {
         showModalFeedback(internalOrderFeedback, `Error: ${error.message || 'error'}`, 'error');
     } finally {
