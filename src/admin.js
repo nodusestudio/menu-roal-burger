@@ -16607,17 +16607,17 @@ function openTrasladoModal() {
 
     const overlay = document.createElement('div');
     overlay.id = 'trasladoMetodoModal';
-    overlay.className = 'modal-overlay active';
-    overlay.innerHTML = `<div class="modal-panel" style="max-width:360px;padding:26px;position:relative;">
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.innerHTML = `<div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.75rem;max-width:360px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);position:relative;">
         <button type="button" id="trasladoCloseBtn" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;" aria-label="Cerrar">×</button>
-        <h3 style="margin:0 0 20px;font-size:1rem;font-weight:700;">🔄 Traslado entre cuentas</h3>
+        <h3 style="margin:0 0 20px;font-size:1rem;font-weight:700;color:#fff;">🔄 Traslado entre cuentas</h3>
         <div style="display:flex;flex-direction:column;gap:10px;">
-            <label style="font-size:0.78rem;color:var(--admin-muted);">Desde (origen)</label>
+            <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Desde (origen)</label>
             <select id="trasladoFrom" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
-            <label style="font-size:0.78rem;color:var(--admin-muted);">Monto a trasladar</label>
+            <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Monto a trasladar</label>
             <input id="trasladoMonto" type="number" min="1000" step="1000" placeholder="500000"
                 style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">
-            <label style="font-size:0.78rem;color:var(--admin-muted);">Hacia (destino)</label>
+            <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Hacia (destino)</label>
             <select id="trasladoTo" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
             <button type="button" id="trasladoConfirmBtn"
                 style="margin-top:8px;padding:10px;background:rgba(99,102,241,0.22);color:#a5b4fc;border:1px solid rgba(99,102,241,0.45);border-radius:10px;font-size:0.88rem;font-weight:700;cursor:pointer;">
@@ -17600,8 +17600,9 @@ function _showAbrirCajaModal() {
     overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
 
     overlay.innerHTML = `
-        <div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.75rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);max-height:90vh;overflow-y:auto;">
+        <div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.75rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);max-height:90vh;overflow-y:auto;position:relative;">
 
+            <button type="button" id="_acCloseBtn" style="position:absolute;top:12px;right:16px;background:none;border:none;color:rgba(255,255,255,0.45);font-size:1.5rem;cursor:pointer;line-height:1;" aria-label="Cerrar">×</button>
             <div id="_acHeader" style="text-align:center;margin-bottom:1.25rem;">
                 <div style="font-size:2rem;margin-bottom:0.3rem;">📂</div>
                 <h3 style="margin:0;color:#fff;font-size:1.1rem;font-weight:700;">Apertura de Caja</h3>
@@ -17744,6 +17745,8 @@ function _showAbrirCajaModal() {
     document.getElementById('_acConfirmCountBtn')?.addEventListener('click', () => {
         _acConfirm2(_acTotal2(), true);
     });
+
+    document.getElementById('_acCloseBtn')?.addEventListener('click', () => overlay.remove());
 
     setTimeout(() => document.getElementById('_acNombreInput')?.focus(), 120);
 }
