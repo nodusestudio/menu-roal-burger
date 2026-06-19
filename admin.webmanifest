@@ -9,16 +9,10 @@
   "theme_color": "#14172a",
   "icons": [
     {
-      "src": "./isotipo-f.png",
+      "src": "./isotipo-fodexa.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "./isotipo-f.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
     }
   ]
 }
