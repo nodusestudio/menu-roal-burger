@@ -3,6 +3,11 @@
 node_modules/
 .venv/
 
+# Credenciales — NUNCA subir a git
+*serviceAccountKey*.json
+*service_account*.json
+*.key.json
+
 # Archivos generados por `npm run build` — no editar, editar en src/
 /admin.js
 /script-v2.js
