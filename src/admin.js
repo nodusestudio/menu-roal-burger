@@ -18257,35 +18257,8 @@ async function renderLibroCierres() {
             </tr>`;
         }
 
-        // KPI resumen en la cabecera del historial
         const kpiEl = document.getElementById('cierresKpiGrid');
-        if (kpiEl) {
-            const grandSumIngresos = grandSumTotal + grandSumEgresos;
-            const nCierres = cierres.length;
-            const neto = grandSumTotal;
-            const margenPct = grandSumIngresos > 0 ? ((neto / grandSumIngresos) * 100).toFixed(1) + '%' : '—';
-            kpiEl.innerHTML = `
-                <div class="lc-kpi">
-                    <div class="lc-kpi-label">📥 Ingresos</div>
-                    <div class="lc-kpi-value" style="color:#6ee7b7;">${formatMoney(grandSumIngresos)}</div>
-                    <div class="lc-kpi-sub">${nCierres} cierre${nCierres !== 1 ? 's' : ''}</div>
-                </div>
-                <div class="lc-kpi">
-                    <div class="lc-kpi-label">📤 Egresos</div>
-                    <div class="lc-kpi-value" style="color:#fca5a5;">${formatMoney(grandSumEgresos)}</div>
-                    <div class="lc-kpi-sub">Gastos registrados</div>
-                </div>
-                <div class="lc-kpi">
-                    <div class="lc-kpi-label">💰 Total neto</div>
-                    <div class="lc-kpi-value" style="color:${neto >= 0 ? '#ff9540' : '#fca5a5'};">${neto < 0 ? '−' : ''}${formatMoney(Math.abs(neto))}</div>
-                    <div class="lc-kpi-sub">Ingresos − Egresos</div>
-                </div>
-                <div class="lc-kpi">
-                    <div class="lc-kpi-label">📊 Margen</div>
-                    <div class="lc-kpi-value" style="color:${neto >= 0 ? '#a78bfa' : '#fca5a5'};">${margenPct}</div>
-                    <div class="lc-kpi-sub">Rentabilidad</div>
-                </div>`;
-        }
+        if (kpiEl) kpiEl.innerHTML = '';
     } catch (err) {
         tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
     }
