@@ -596,6 +596,12 @@ function parseClientSavedAddressesInput(rawValue = '', primaryAddress = '') {
 }
 
 let _mobToastTimer = null;
+function _bindOverlayClose(overlay, closeFn) {
+    let _downOnOverlay = false;
+    overlay.addEventListener('mousedown', (e) => { _downOnOverlay = e.target === overlay; });
+    overlay.addEventListener('click', (e) => { if (_downOnOverlay && e.target === overlay) closeFn(); });
+}
+
 function showNotice(text, type = 'ok') {
     if (!notice) {
         return;
@@ -2858,7 +2864,7 @@ function openPosBebidaPickerModal(bev) {
     card.appendChild(body);
     card.appendChild(footer);
     overlay.appendChild(card);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
     overlay.id = 'pos-bebida-picker-modal';
 }
@@ -4041,7 +4047,7 @@ function openAcompananteModal(acomp = null) {
     card.appendChild(body);
     card.appendChild(footer);
     overlay.appendChild(card);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
     setTimeout(() => nombreInput.focus(), 80);
 }
@@ -4413,7 +4419,7 @@ function openComboPackModal(combo = null) {
     card.appendChild(body);
     card.appendChild(footer);
     overlay.appendChild(card);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
     setTimeout(() => nombreInput.focus(), 80);
 }
@@ -4754,7 +4760,7 @@ function openBebidaModal(bebida = null) {
     card.appendChild(body);
     card.appendChild(footer);
     overlay.appendChild(card);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
     setTimeout(() => marcaInput.focus(), 80);
 }
@@ -4952,7 +4958,7 @@ function openComboBeverageModal(productId, productName, productPrice, categoryNa
     card.appendChild(noteRow);
     card.appendChild(footer);
     overlay.appendChild(card);
-    overlay.addEventListener('click', (event) => { if (event.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
 }
 
@@ -5033,7 +5039,7 @@ function openBurgerClasicasPosModal(productId, productName) {
     card.appendChild(noteRow);
     overlay.appendChild(card);
 
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
 }
 
@@ -5235,7 +5241,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     card.appendChild(footer);
     overlay.appendChild(card);
 
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
 }
 
@@ -5347,7 +5353,7 @@ function openComboConPapasPosModal(productId, productName, categoryName) {
     card.appendChild(footer);
     overlay.appendChild(card);
 
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
 }
 
@@ -5453,7 +5459,7 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
     card.appendChild(saborGrid);
     card.appendChild(confirmBtn);
     overlay.appendChild(card);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
 }
 
@@ -16617,7 +16623,7 @@ function openTrasladoModal(existingData = null, existingId = null) {
             <select id="trasladoFrom" style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
             <div id="trasladoFromBalance" style="font-size:0.74rem;color:rgba(255,255,255,0.4);margin-top:-6px;padding-left:2px;"></div>
             <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Monto a trasladar</label>
-            <input id="trasladoMonto" type="number" min="1000" step="1000" placeholder="500000"
+            <input id="trasladoMonto" type="text" inputmode="numeric" placeholder="500.000"
                 style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">
             <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Hacia (destino)</label>
             <select id="trasladoTo" style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
@@ -16637,14 +16643,14 @@ function openTrasladoModal(existingData = null, existingId = null) {
     if (isEdit && existingData) {
         if (fromSel) fromSel.value = existingData.methodFrom || '';
         if (toSel)   toSel.value   = existingData.methodTo   || '';
-        if (montoEl) montoEl.value = existingData.monto       || '';
+        if (montoEl) { const v = Number(existingData.monto || 0); montoEl.value = v > 0 ? v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''; }
         if (confirmBtn) confirmBtn.textContent = 'Guardar cambios';
     } else {
         if (toSel && toSel.options.length > 1) toSel.selectedIndex = 1;
     }
 
     document.getElementById('trasladoCloseBtn')?.addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
 
     const balanceEl = document.getElementById('trasladoFromBalance');
     const _updateBalanceHint = () => {
@@ -16659,10 +16665,15 @@ function openTrasladoModal(existingData = null, existingId = null) {
     fromSel?.addEventListener('change', _updateBalanceHint);
     _updateBalanceHint();
 
+    montoEl?.addEventListener('input', () => {
+        const raw = (montoEl.value || '').replace(/\D/g, '');
+        montoEl.value = raw === '' ? '' : parseInt(raw, 10).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    });
+
     confirmBtn?.addEventListener('click', async () => {
         const from  = fromSel?.value;
         const to    = toSel?.value;
-        const monto = Number(montoEl?.value || 0);
+        const monto = Number((montoEl?.value || '').replace(/\./g, '') || 0);
         if (!from || !to || from === to) { showNotice('Seleccione métodos distintos.', 'error'); return; }
         if (monto <= 0) { showNotice('Ingrese un monto válido.', 'error'); return; }
         const available = _cierresSumTotals[from] || 0;
@@ -17625,7 +17636,7 @@ function _showCerrarCajaConfirm(onAccept) {
     document.body.appendChild(overlay);
 
     const close = () => overlay.remove();
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    _bindOverlayClose(overlay, close);
     document.getElementById('_cerrarCajaCancelBtn').addEventListener('click', close);
     document.getElementById('_cerrarCajaAcceptBtn').addEventListener('click', () => {
         close();
@@ -18662,7 +18673,7 @@ function openCierreGastoModal(cierre) {
     document.body.appendChild(overlay);
 
     overlay.querySelector('#cgmClose').addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    _bindOverlayClose(overlay, () => overlay.remove());
 
     overlay.querySelector('#cgmSave').addEventListener('click', async () => {
         const desc   = overlay.querySelector('#cgmDesc').value.trim();
