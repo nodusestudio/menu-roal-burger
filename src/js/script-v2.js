@@ -10307,14 +10307,14 @@ function renderHomeComboCarousel() {
     _homeComboLastTs = 0;
 
     const ITEMS = [
-        { nombre: 'Combo Burger Normal', image_url: 'losmaspedidos/comboburgernormal.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo Burger Papuda', image_url: 'losmaspedidos/comboburgerpapuda.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo Burger Super',  image_url: 'losmaspedidos/comboburgersuper.png',  categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo Perro Normal',  image_url: 'losmaspedidos/comboperronormal.png',  categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'De La Casa',          image_url: 'losmaspedidos/combodelacasa.png',      categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Emparejados',         image_url: 'losmaspedidos/comboemparejados.png',   categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Familiar 3',          image_url: 'losmaspedidos/combofamiliar3.png',     categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Familiar 4',          image_url: 'losmaspedidos/combofamiliar4.png',     categoria: 'COMBOS MIXTOS' }
+        { nombre: 'Combo Burger Normal', image_url: 'losmaspedidos/comboburgernormal.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'Combo Burger Papuda', image_url: 'losmaspedidos/comboburgerpapuda.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'Combo Burger Super',  image_url: 'losmaspedidos/comboburgersuper.webp',  categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'Combo Perro Normal',  image_url: 'losmaspedidos/comboperronormal.webp',  categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'De La Casa',          image_url: 'losmaspedidos/combodelacasa.webp',      categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Emparejados',         image_url: 'losmaspedidos/comboemparejados.webp',   categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Familiar 3',          image_url: 'losmaspedidos/combofamiliar3.webp',     categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Familiar 4',          image_url: 'losmaspedidos/combofamiliar4.webp',     categoria: 'COMBOS MIXTOS' }
     ];
 
     const makeCard = (item) => {
@@ -11684,14 +11684,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const featuredCarousel = document.getElementById('featured-carousel-dynamic');
     // Array local con rutas en la raÃ­z del proyecto
     const localFeatured = [
-        { nombre: 'Combo Burger Normal', image_url: 'losmaspedidos/comboburgernormal.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo Burger Papuda', image_url: 'losmaspedidos/comboburgerpapuda.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo Burger Super', image_url: 'losmaspedidos/comboburgersuper.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo Perro Normal', image_url: 'losmaspedidos/comboperronormal.png', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'De La Casa', image_url: 'losmaspedidos/combodelacasa.png', categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Emparejados', image_url: 'losmaspedidos/comboemparejados.png', categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Familiar 3', image_url: 'losmaspedidos/combofamiliar3.png', categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Familiar 4', image_url: 'losmaspedidos/combofamiliar4.png', categoria: 'COMBOS MIXTOS' }
+        { nombre: 'Combo Burger Normal', image_url: 'losmaspedidos/comboburgernormal.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'Combo Burger Papuda', image_url: 'losmaspedidos/comboburgerpapuda.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'Combo Burger Super', image_url: 'losmaspedidos/comboburgersuper.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'Combo Perro Normal', image_url: 'losmaspedidos/comboperronormal.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
+        { nombre: 'De La Casa', image_url: 'losmaspedidos/combodelacasa.webp', categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Emparejados', image_url: 'losmaspedidos/comboemparejados.webp', categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Familiar 3', image_url: 'losmaspedidos/combofamiliar3.webp', categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Familiar 4', image_url: 'losmaspedidos/combofamiliar4.webp', categoria: 'COMBOS MIXTOS' }
     ];
     if (featuredCarousel) {
         renderFeaturedCards(featuredCarousel, localFeatured);
