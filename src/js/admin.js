@@ -13289,6 +13289,10 @@ function openPosTicketSetupModal(configOnly = false) {
     const addrInput = document.getElementById('ptsDeliveryAddress');
     const addrPicker = document.getElementById('ptsAddressPicker');
     if (addrPicker) addrPicker.setAttribute('hidden', '');
+    document.getElementById('ptsAddrActions')?.setAttribute('hidden', '');
+    document.getElementById('ptsSaveAddrConfirm')?.setAttribute('hidden', '');
+    _ptsUnlockAddrInput();
+    _ptsPendingConfirmFn = null;
     _ptsHideFeeSuggestion();
     const feeWrap = document.getElementById('ptsDeliveryFeeWrap');
     if (feeWrap) feeWrap.setAttribute('hidden', '');
@@ -13351,11 +13355,11 @@ function _ptsRefreshDomicilioSection() {
             if (addrInput) addrInput.removeAttribute('hidden');
             _ptsToggleFeeWrap(true);
         }
-        _ptsRefreshSaveAddrBtn(document.getElementById('ptsDeliveryAddress')?.value || '');
     } else {
         section.setAttribute('hidden', '');
-        document.getElementById('ptsSaveAddrBtn')?.setAttribute('hidden', '');
-        document.getElementById('ptsSaveAddrOk')?.setAttribute('hidden', '');
+        document.getElementById('ptsAddrActions')?.setAttribute('hidden', '');
+        document.getElementById('ptsSaveAddrConfirm')?.setAttribute('hidden', '');
+        _ptsUnlockAddrInput();
         const addrPicker = document.getElementById('ptsAddressPicker');
         if (addrPicker) { addrPicker.setAttribute('hidden', ''); addrPicker.innerHTML = ''; }
         const addrInput = document.getElementById('ptsDeliveryAddress');
@@ -13454,9 +13458,9 @@ function _ptsFillClientAddress(client) {
         return;
     }
 
-    // Aplica una entrada: rellena el input y sugiere/detecta tarifa
+    // Aplica una entrada: rellena el input bloqueado y sugiere/detecta tarifa
     function _applyEntry(entry) {
-        addrInput.value = entry.text;
+        _ptsLockAddrInput(entry.text);
         _ptsToggleFeeWrap(true);
         // Si tenemos coordenadas exactas, detectar zona sin geocodificar
         if (entry.lat !== null && entry.lon !== null) {
@@ -13535,6 +13539,9 @@ function _ptsShowFeedback(msg) {
 }
 
 document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
+    // Si el panel de confirmación de dirección está visible, ignorar (esperando respuesta)
+    if (!document.getElementById('ptsSaveAddrConfirm')?.hasAttribute('hidden')) return;
+
     // Leer estado desde DOM como fuente de verdad (evita problemas de caché/closure)
     const activeTypeBtn = document.querySelector('#posTicketSetupModal .pts-type-btn.active');
     const activeMesaBtn = document.querySelector('#posTicketSetupModal .pts-mesa-btn.active');
@@ -13550,6 +13557,20 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
             _ptsShowFeedback('Debes asignar un valor de domicilio.');
             document.getElementById('ptsDeliveryFee')?.focus();
             return;
+        }
+    }
+
+    // Verificar si la dirección es nueva para ofrecer guardarla en el perfil
+    if (resolvedType === 'domicilio' && _ptsActiveTab === 'search' && _ptsSelectedClient?.id) {
+        const addrVal = String(document.getElementById('ptsDeliveryAddress')?.value || '').trim();
+        if (addrVal && _ptsIsAddrNew(addrVal)) {
+            const panel = document.getElementById('ptsSaveAddrConfirm');
+            if (panel) {
+                panel.removeAttribute('hidden');
+                // Guardar la función de continuación para cuando el usuario responda
+                _ptsPendingConfirmFn = () => document.getElementById('ptsConfirmBtn')?.click();
+                return;
+            }
         }
     }
 
@@ -13785,7 +13806,6 @@ let _ptsFeeSearchTimer = null;
 document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => {
     const val = e.target.value.trim();
     _ptsToggleFeeWrap(val.length > 0);
-    _ptsRefreshSaveAddrBtn(val);
     if (val.length > 0) {
         clearTimeout(_ptsFeeSearchTimer);
         _ptsFeeSearchTimer = setTimeout(() => _ptsSuggestDeliveryFee(val), 600);
@@ -13793,65 +13813,79 @@ document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => 
         clearTimeout(_ptsFeeSearchTimer);
         _ptsClearZoneBadge();
     }
+    // Ocultar el panel de confirmación si el usuario edita la dirección
+    document.getElementById('ptsSaveAddrConfirm')?.setAttribute('hidden', '');
 });
 
-// Muestra u oculta el botón "Guardar dirección al cliente"
-function _ptsRefreshSaveAddrBtn(addrText) {
-    const btn = document.getElementById('ptsSaveAddrBtn');
-    const ok  = document.getElementById('ptsSaveAddrOk');
-    if (!btn) return;
-    // Solo visible cuando hay cliente identificado (id de Firestore) y hay texto
-    const hasClient = _ptsSelectedClient?.id && _ptsActiveTab === 'search';
-    const hasAddr   = String(addrText || '').trim().length > 2;
-    if (hasClient && hasAddr) {
-        btn.removeAttribute('hidden');
-    } else {
-        btn.setAttribute('hidden', '');
-        if (ok) ok.setAttribute('hidden', '');
-    }
+// ── Lógica de bloqueo/desbloqueo del input de dirección ──────────────────────
+function _ptsLockAddrInput(text) {
+    const input = document.getElementById('ptsDeliveryAddress');
+    if (input) { input.value = text; input.readOnly = true; input.style.opacity = '0.75'; }
+    document.getElementById('ptsAddrActions')?.removeAttribute('hidden');
+}
+function _ptsUnlockAddrInput() {
+    const input = document.getElementById('ptsDeliveryAddress');
+    if (input) { input.readOnly = false; input.style.opacity = ''; input.focus(); }
+    document.getElementById('ptsAddrActions')?.setAttribute('hidden', '');
+    document.getElementById('ptsSaveAddrConfirm')?.setAttribute('hidden', '');
 }
 
-// Guardar la dirección digitada al perfil del cliente en Firestore
-document.getElementById('ptsSaveAddrBtn')?.addEventListener('click', async () => {
-    const btn      = document.getElementById('ptsSaveAddrBtn');
-    const ok       = document.getElementById('ptsSaveAddrOk');
-    const addrInput = document.getElementById('ptsDeliveryAddress');
-    const newAddr  = String(addrInput?.value || '').trim();
-    if (!newAddr || !_ptsSelectedClient?.id) return;
+// Botón ✏️ Editar — desbloquea el input para corregir la dirección
+document.getElementById('ptsEditAddrBtn')?.addEventListener('click', () => {
+    _ptsUnlockAddrInput();
+});
 
-    // Evitar duplicados exactos
-    const existing = Array.isArray(_ptsSelectedClient.savedAddresses) ? _ptsSelectedClient.savedAddresses : [];
-    const alreadySaved = existing.some((a) => {
+// Botón + Nueva dirección — borra el input y desbloquea para escribir una dirección adicional
+document.getElementById('ptsAddNewAddrBtn')?.addEventListener('click', () => {
+    const input = document.getElementById('ptsDeliveryAddress');
+    if (input) { input.value = ''; }
+    _ptsUnlockAddrInput();
+    _ptsToggleFeeWrap(false);
+    _ptsClearZoneBadge();
+    // También mostrar el input si estaba oculto por el chip picker
+    document.getElementById('ptsAddressPicker')?.setAttribute('hidden', '');
+    input?.removeAttribute('hidden');
+});
+
+// ── Dato pendiente mientras se espera respuesta del panel de confirmación ─────
+let _ptsPendingConfirmFn = null;
+
+function _ptsIsAddrNew(text) {
+    if (!text || !_ptsSelectedClient?.id) return false;
+    const list = Array.isArray(_ptsSelectedClient.savedAddresses) ? _ptsSelectedClient.savedAddresses : [];
+    return !list.some((a) => {
         const t = typeof a === 'string' ? a : String(a?.address || '');
-        return t.trim().toLowerCase() === newAddr.toLowerCase();
+        return t.trim().toLowerCase() === text.trim().toLowerCase();
     });
-    if (alreadySaved) {
-        if (ok) { ok.textContent = '✓ Ya estaba guardada'; ok.removeAttribute('hidden'); }
-        return;
-    }
+}
 
-    btn.disabled = true;
-    btn.textContent = 'Guardando...';
+async function _ptsSaveAddrToProfile(text) {
+    if (!text || !_ptsSelectedClient?.id) return;
+    const existing = Array.isArray(_ptsSelectedClient.savedAddresses) ? _ptsSelectedClient.savedAddresses : [];
+    const newEntry = { address: text, latitude: null, longitude: null, primary: existing.length === 0 };
+    const updatedList = [...existing, newEntry];
     try {
-        const newEntry = { address: newAddr, latitude: null, longitude: null, primary: existing.length === 0 };
-        const updatedList = [...existing, newEntry];
         await firebaseDb.collection(CLIENTS_COLLECTION).doc(_ptsSelectedClient.id).update({
             savedAddresses: updatedList,
             updatedAt: firestoreNow()
         });
-        // Actualizar estado en memoria
         _ptsSelectedClient.savedAddresses = updatedList;
         const stateClient = clientsState.find((c) => c.id === _ptsSelectedClient.id);
         if (stateClient) stateClient.savedAddresses = updatedList;
+    } catch (_) { /* silencioso — no bloquear el pedido por esto */ }
+}
 
-        btn.setAttribute('hidden', '');
-        if (ok) { ok.textContent = '✓ Dirección guardada'; ok.removeAttribute('hidden'); }
-        setTimeout(() => { if (ok) ok.setAttribute('hidden', ''); }, 3000);
-    } catch (err) {
-        btn.disabled = false;
-        btn.textContent = '💾 Guardar dirección al cliente';
-        if (ok) { ok.textContent = '✗ Error al guardar'; ok.style.color = '#ff7b7b'; ok.removeAttribute('hidden'); }
-    }
+// Botones del panel de confirmación
+document.getElementById('ptsSaveAddrYes')?.addEventListener('click', async () => {
+    document.getElementById('ptsSaveAddrConfirm')?.setAttribute('hidden', '');
+    const addrText = String(document.getElementById('ptsDeliveryAddress')?.value || '').trim();
+    await _ptsSaveAddrToProfile(addrText);
+    if (typeof _ptsPendingConfirmFn === 'function') { _ptsPendingConfirmFn(); _ptsPendingConfirmFn = null; }
+});
+
+document.getElementById('ptsSaveAddrNo')?.addEventListener('click', () => {
+    document.getElementById('ptsSaveAddrConfirm')?.setAttribute('hidden', '');
+    if (typeof _ptsPendingConfirmFn === 'function') { _ptsPendingConfirmFn(); _ptsPendingConfirmFn = null; }
 });
 
 // ── Crear nuevo cliente desde el modal POS ──────────────────────────────────

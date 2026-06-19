@@ -9892,32 +9892,60 @@
         .pts-addr-chip:hover { background: rgba(196,79,0,0.14); border-color: rgba(196,79,0,0.35); color: #ff9a50; }
         .pts-addr-chip.active { background: rgba(196,79,0,0.20); border-color: rgba(196,79,0,0.50); color: #ff9a50; }
 
-        /* Botón guardar dirección al cliente */
-        .pts-save-addr-btn {
+        /* Botones de acción sobre la dirección (editar / nueva) */
+        .pts-addr-actions {
             display: flex;
-            align-items: center;
-            gap: 5px;
+            gap: 6px;
             margin-top: 5px;
-            padding: 5px 11px;
-            background: rgba(100,200,120,0.10);
-            border: 1px solid rgba(100,200,120,0.25);
+        }
+        .pts-addr-actions[hidden] { display: none; }
+        .pts-addr-act-btn {
+            flex: 1;
+            padding: 5px 10px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.13);
             border-radius: 8px;
             font-size: 0.74rem;
             font-weight: 600;
-            color: #7ee89a;
+            color: #d4c4a0;
             cursor: pointer;
-            transition: background 0.15s, border-color 0.15s;
-            letter-spacing: 0.02em;
+            transition: background 0.14s, border-color 0.14s;
         }
-        .pts-save-addr-btn:hover { background: rgba(100,200,120,0.20); border-color: rgba(100,200,120,0.45); }
-        .pts-save-addr-btn[hidden] { display: none; }
-        .pts-save-addr-ok {
-            font-size: 0.72rem;
-            color: #7ee89a;
+        .pts-addr-act-btn:hover { background: rgba(255,255,255,0.11); border-color: rgba(255,255,255,0.22); }
+        .pts-addr-act-add { color: #ff9a50; border-color: rgba(196,79,0,0.25); }
+        .pts-addr-act-add:hover { background: rgba(196,79,0,0.12); border-color: rgba(196,79,0,0.45); }
+
+        /* Panel de confirmación: ¿guardar en perfil o solo este pedido? */
+        .pts-save-addr-confirm {
+            margin-top: 7px;
+            padding: 10px 12px;
+            background: rgba(255,200,80,0.08);
+            border: 1px solid rgba(255,200,80,0.22);
+            border-radius: 10px;
+        }
+        .pts-save-addr-confirm[hidden] { display: none; }
+        .pts-save-addr-question {
+            font-size: 0.76rem;
             font-weight: 600;
-            margin-top: 3px;
+            color: #f6d743;
+            margin: 0 0 8px;
+            text-align: center;
         }
-        .pts-save-addr-ok[hidden] { display: none; }
+        .pts-save-addr-choices { display: flex; gap: 7px; }
+        .pts-sac-yes, .pts-sac-no {
+            flex: 1;
+            padding: 6px 8px;
+            border-radius: 8px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: opacity 0.14s;
+        }
+        .pts-sac-yes { background: rgba(100,200,120,0.22); color: #7ee89a; }
+        .pts-sac-yes:hover { opacity: 0.85; }
+        .pts-sac-no { background: rgba(255,255,255,0.08); color: #aaa; }
+        .pts-sac-no:hover { opacity: 0.85; }
 
         /* Input de valor domicilio */
         .pts-fee-input-wrap {
@@ -13309,11 +13337,21 @@
             <div class="pts-section" id="ptsDomicilioSection" hidden>
                 <!-- Picker de múltiples direcciones guardadas -->
                 <div class="pts-addr-picker" id="ptsAddressPicker" hidden></div>
+                <!-- Input de dirección -->
                 <input type="text" class="pts-input" id="ptsDeliveryAddress" placeholder="📍 Dirección de entrega..." autocomplete="off" maxlength="120">
-                <button type="button" class="pts-save-addr-btn" id="ptsSaveAddrBtn" hidden>
-                    💾 Guardar dirección al cliente
-                </button>
-                <p class="pts-save-addr-ok" id="ptsSaveAddrOk" hidden>✓ Dirección guardada</p>
+                <!-- Acciones sobre dirección guardada (solo con cliente BUSCAR) -->
+                <div class="pts-addr-actions" id="ptsAddrActions" hidden>
+                    <button type="button" class="pts-addr-act-btn" id="ptsEditAddrBtn">✏️ Editar</button>
+                    <button type="button" class="pts-addr-act-btn pts-addr-act-add" id="ptsAddNewAddrBtn">+ Nueva dirección</button>
+                </div>
+                <!-- Confirmación guardar dirección (aparece al Guardar configuración con dirección nueva) -->
+                <div class="pts-save-addr-confirm" id="ptsSaveAddrConfirm" hidden>
+                    <p class="pts-save-addr-question">¿Guardar esta dirección en el perfil del cliente?</p>
+                    <div class="pts-save-addr-choices">
+                        <button type="button" class="pts-sac-yes" id="ptsSaveAddrYes">💾 Guardar en perfil</button>
+                        <button type="button" class="pts-sac-no" id="ptsSaveAddrNo">Solo este pedido</button>
+                    </div>
+                </div>
                 <!-- Valor domicilio — aparece solo cuando hay dirección -->
                 <div class="pts-fee-input-wrap" id="ptsDeliveryFeeWrap" hidden>
                     <span class="pts-fee-currency">$</span>
@@ -13536,7 +13574,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260619g"></script>
+    <script src="admin.js?v=20260619h"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         function _showUpdateToast() {
