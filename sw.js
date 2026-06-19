@@ -9,6 +9,7 @@ const ALL_CACHES    = [CACHE_STATIC, CACHE_IMAGES];
 const PRECACHE_URLS = [
     '/',
     '/index.html',
+    '/admin.webmanifest',
     '/isotipo.webp',
     '/logo.webp',
     '/portada.webp',
