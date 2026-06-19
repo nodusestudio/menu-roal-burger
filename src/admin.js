@@ -16615,6 +16615,7 @@ function openTrasladoModal(existingData = null, existingId = null) {
         <div style="display:flex;flex-direction:column;gap:10px;">
             <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Desde (origen)</label>
             <select id="trasladoFrom" style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
+            <div id="trasladoFromBalance" style="font-size:0.74rem;color:rgba(255,255,255,0.4);margin-top:-6px;padding-left:2px;"></div>
             <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Monto a trasladar</label>
             <input id="trasladoMonto" type="number" min="1000" step="1000" placeholder="500000"
                 style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">
@@ -16645,12 +16646,32 @@ function openTrasladoModal(existingData = null, existingId = null) {
     document.getElementById('trasladoCloseBtn')?.addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
+    const balanceEl = document.getElementById('trasladoFromBalance');
+    const _updateBalanceHint = () => {
+        if (!balanceEl || !fromSel) return;
+        const fromId = fromSel.value;
+        const bal = _cierresSumTotals[fromId] || 0;
+        const m = methods.find((x) => x.id === fromId);
+        const label = m ? `${m.icon ? m.icon + ' ' : ''}${m.label}` : fromId;
+        const color = bal > 0 ? '#6ee7b7' : bal < 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
+        balanceEl.innerHTML = `Disponible en ${label}: <span style="color:${color};font-weight:700;">${bal < 0 ? '−' : ''}${bal === 0 ? '$0' : formatMoney(Math.abs(bal))}</span>`;
+    };
+    fromSel?.addEventListener('change', _updateBalanceHint);
+    _updateBalanceHint();
+
     confirmBtn?.addEventListener('click', async () => {
         const from  = fromSel?.value;
         const to    = toSel?.value;
         const monto = Number(montoEl?.value || 0);
         if (!from || !to || from === to) { showNotice('Seleccione métodos distintos.', 'error'); return; }
         if (monto <= 0) { showNotice('Ingrese un monto válido.', 'error'); return; }
+        const available = _cierresSumTotals[from] || 0;
+        if (monto > available) {
+            const m = methods.find((x) => x.id === from);
+            const lbl = m ? `${m.icon ? m.icon + ' ' : ''}${m.label}` : from;
+            showNotice(`Saldo insuficiente en ${lbl}: disponible ${formatMoney(Math.max(0, available))}`, 'error');
+            return;
+        }
         try {
             if (isEdit) {
                 await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(existingId)
@@ -17947,6 +17968,7 @@ function _updateCajaEstadoUI() {
 
 // ── Libro Contable: historial de cierres de caja ──────────────────────────────
 let _cierresCajaState = [];
+let _cierresSumTotals = {};
 
 async function loadCierresCaja() {
     const snap = await firebaseDb.collection(CIERRES_CAJA_COLLECTION)
@@ -18307,19 +18329,21 @@ async function renderLibroCierres() {
             </tr>`;
         }
 
+        // Publicar sumTotals al scope de módulo para validación de traslados
+        _cierresSumTotals = { ...sumTotals };
+
         // Resumen de totales por columna en la cabecera
         const kpiEl = document.getElementById('cierresKpiGrid');
         if (kpiEl) {
             const chipMethod = methodKeys.map((k) => {
                 const m = methods.find((x) => x.id === k) || { label: k, icon: '' };
                 const v = sumTotals[k] || 0;
-                if (v === 0) return '';
-                const color = v > 0 ? '#6ee7b7' : '#fca5a5';
+                const color = v > 0 ? '#6ee7b7' : v < 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
                 return `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;min-width:110px;">
                     <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">${m.icon ? m.icon + ' ' : ''}${m.label}</span>
-                    <span style="font-size:1rem;font-weight:700;color:${color};">${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}</span>
+                    <span style="font-size:1rem;font-weight:700;color:${color};">${v < 0 ? '−' : ''}${v === 0 ? '$0' : formatMoney(Math.abs(v))}</span>
                 </div>`;
-            }).filter(Boolean).join('');
+            }).join('');
 
             const egColor = grandSumEgresos > 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
             const chipEgr = grandSumEgresos > 0 ? `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(252,165,165,0.06);border:1px solid rgba(252,165,165,0.18);border-radius:10px;min-width:110px;">
