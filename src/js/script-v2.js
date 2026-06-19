@@ -310,6 +310,28 @@ function normalizePhoneDigits(value) {
     return String(value || '').replace(/\D+/g, '');
 }
 
+let _leafletPromise = null;
+function _ensureLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (_leafletPromise) return _leafletPromise;
+    _leafletPromise = new Promise((resolve, reject) => {
+        if (!document.querySelector('link[href*="leaflet"]')) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            link.crossOrigin = '';
+            document.head.appendChild(link);
+        }
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.crossOrigin = '';
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Leaflet no pudo cargar'));
+        document.head.appendChild(script);
+    });
+    return _leafletPromise;
+}
+
 function normalizeCustomerPin(value) {
     return String(value || '').replace(/\D+/g, '').slice(0, 6);
 }
@@ -2453,10 +2475,11 @@ function handleSavedAddressEditorChange(event) {
     }
 }
 
-function initializeCustomerSavedAddressMap() {
+async function initializeCustomerSavedAddressMap() {
     if (!customerRegisterUI || !customerRegisterUI.savedAddressMapUI || !customerRegisterUI.savedAddressMapUI.mapContainer) {
         return;
     }
+    try { await _ensureLeaflet(); } catch (e) { return; }
 
     const mapContainer = customerRegisterUI.savedAddressMapUI.mapContainer;
     const map = L.map(mapContainer).setView([0, 0], 2);
@@ -4574,10 +4597,8 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
 
 }
 
-function initializeCheckoutDeliveryMap() {
-    if (!checkoutInfoUI || !window.L) {
-        return;
-    }
+async function initializeCheckoutDeliveryMap() {
+    if (!checkoutInfoUI) return;
 
     if (checkoutInfoUI.deliveryMap) {
         // Si el mapa ya existe, invalidar tamaÃ±o para que Leaflet recalcule las dimensiones del contenedor
@@ -4586,6 +4607,8 @@ function initializeCheckoutDeliveryMap() {
         }, 50);
         return;
     }
+
+    try { await _ensureLeaflet(); } catch (e) { return; }
 
     const map = L.map('deliveryMap', {
         zoomControl: false,
