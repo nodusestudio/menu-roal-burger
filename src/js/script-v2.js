@@ -10648,7 +10648,7 @@ function closeSearchScreen() {
 // â”€â”€ Buscador inteligente: normalizaciÃ³n, sinÃ³nimos y coincidencia difusa â”€â”€
 function _searchNorm(s) {
     return String(s || '').toLowerCase()
-        .normalize('NFD').replace(/[Ì€-Í¯]/g, '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
