@@ -9892,6 +9892,33 @@
         .pts-addr-chip:hover { background: rgba(196,79,0,0.14); border-color: rgba(196,79,0,0.35); color: #ff9a50; }
         .pts-addr-chip.active { background: rgba(196,79,0,0.20); border-color: rgba(196,79,0,0.50); color: #ff9a50; }
 
+        /* Botón guardar dirección al cliente */
+        .pts-save-addr-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 5px;
+            padding: 5px 11px;
+            background: rgba(100,200,120,0.10);
+            border: 1px solid rgba(100,200,120,0.25);
+            border-radius: 8px;
+            font-size: 0.74rem;
+            font-weight: 600;
+            color: #7ee89a;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+            letter-spacing: 0.02em;
+        }
+        .pts-save-addr-btn:hover { background: rgba(100,200,120,0.20); border-color: rgba(100,200,120,0.45); }
+        .pts-save-addr-btn[hidden] { display: none; }
+        .pts-save-addr-ok {
+            font-size: 0.72rem;
+            color: #7ee89a;
+            font-weight: 600;
+            margin-top: 3px;
+        }
+        .pts-save-addr-ok[hidden] { display: none; }
+
         /* Input de valor domicilio */
         .pts-fee-input-wrap {
             margin-top: 7px;
@@ -13283,6 +13310,10 @@
                 <!-- Picker de múltiples direcciones guardadas -->
                 <div class="pts-addr-picker" id="ptsAddressPicker" hidden></div>
                 <input type="text" class="pts-input" id="ptsDeliveryAddress" placeholder="📍 Dirección de entrega..." autocomplete="off" maxlength="120">
+                <button type="button" class="pts-save-addr-btn" id="ptsSaveAddrBtn" hidden>
+                    💾 Guardar dirección al cliente
+                </button>
+                <p class="pts-save-addr-ok" id="ptsSaveAddrOk" hidden>✓ Dirección guardada</p>
                 <!-- Valor domicilio — aparece solo cuando hay dirección -->
                 <div class="pts-fee-input-wrap" id="ptsDeliveryFeeWrap" hidden>
                     <span class="pts-fee-currency">$</span>
@@ -13505,7 +13536,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260619f"></script>
+    <script src="admin.js?v=20260619g"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         function _showUpdateToast() {

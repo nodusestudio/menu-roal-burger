@@ -13351,8 +13351,11 @@ function _ptsRefreshDomicilioSection() {
             if (addrInput) addrInput.removeAttribute('hidden');
             _ptsToggleFeeWrap(true);
         }
+        _ptsRefreshSaveAddrBtn(document.getElementById('ptsDeliveryAddress')?.value || '');
     } else {
         section.setAttribute('hidden', '');
+        document.getElementById('ptsSaveAddrBtn')?.setAttribute('hidden', '');
+        document.getElementById('ptsSaveAddrOk')?.setAttribute('hidden', '');
         const addrPicker = document.getElementById('ptsAddressPicker');
         if (addrPicker) { addrPicker.setAttribute('hidden', ''); addrPicker.innerHTML = ''; }
         const addrInput = document.getElementById('ptsDeliveryAddress');
@@ -13687,6 +13690,7 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
         const clientId = resultItem.dataset.ptsClientId || '';
         const fullClient = clientsState.find((c) => c.id === clientId) || null;
         _ptsSelectedClient = {
+            id: clientId,
             name: resultItem.dataset.ptsClientName || '',
             phone: resultItem.dataset.ptsClientPhone || '',
             savedAddresses: fullClient?.savedAddresses || []
@@ -13781,12 +13785,72 @@ let _ptsFeeSearchTimer = null;
 document.getElementById('ptsDeliveryAddress')?.addEventListener('input', (e) => {
     const val = e.target.value.trim();
     _ptsToggleFeeWrap(val.length > 0);
+    _ptsRefreshSaveAddrBtn(val);
     if (val.length > 0) {
         clearTimeout(_ptsFeeSearchTimer);
         _ptsFeeSearchTimer = setTimeout(() => _ptsSuggestDeliveryFee(val), 600);
     } else {
         clearTimeout(_ptsFeeSearchTimer);
         _ptsClearZoneBadge();
+    }
+});
+
+// Muestra u oculta el botón "Guardar dirección al cliente"
+function _ptsRefreshSaveAddrBtn(addrText) {
+    const btn = document.getElementById('ptsSaveAddrBtn');
+    const ok  = document.getElementById('ptsSaveAddrOk');
+    if (!btn) return;
+    // Solo visible cuando hay cliente identificado (id de Firestore) y hay texto
+    const hasClient = _ptsSelectedClient?.id && _ptsActiveTab === 'search';
+    const hasAddr   = String(addrText || '').trim().length > 2;
+    if (hasClient && hasAddr) {
+        btn.removeAttribute('hidden');
+    } else {
+        btn.setAttribute('hidden', '');
+        if (ok) ok.setAttribute('hidden', '');
+    }
+}
+
+// Guardar la dirección digitada al perfil del cliente en Firestore
+document.getElementById('ptsSaveAddrBtn')?.addEventListener('click', async () => {
+    const btn      = document.getElementById('ptsSaveAddrBtn');
+    const ok       = document.getElementById('ptsSaveAddrOk');
+    const addrInput = document.getElementById('ptsDeliveryAddress');
+    const newAddr  = String(addrInput?.value || '').trim();
+    if (!newAddr || !_ptsSelectedClient?.id) return;
+
+    // Evitar duplicados exactos
+    const existing = Array.isArray(_ptsSelectedClient.savedAddresses) ? _ptsSelectedClient.savedAddresses : [];
+    const alreadySaved = existing.some((a) => {
+        const t = typeof a === 'string' ? a : String(a?.address || '');
+        return t.trim().toLowerCase() === newAddr.toLowerCase();
+    });
+    if (alreadySaved) {
+        if (ok) { ok.textContent = '✓ Ya estaba guardada'; ok.removeAttribute('hidden'); }
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+    try {
+        const newEntry = { address: newAddr, latitude: null, longitude: null, primary: existing.length === 0 };
+        const updatedList = [...existing, newEntry];
+        await firebaseDb.collection(CLIENTS_COLLECTION).doc(_ptsSelectedClient.id).update({
+            savedAddresses: updatedList,
+            updatedAt: firestoreNow()
+        });
+        // Actualizar estado en memoria
+        _ptsSelectedClient.savedAddresses = updatedList;
+        const stateClient = clientsState.find((c) => c.id === _ptsSelectedClient.id);
+        if (stateClient) stateClient.savedAddresses = updatedList;
+
+        btn.setAttribute('hidden', '');
+        if (ok) { ok.textContent = '✓ Dirección guardada'; ok.removeAttribute('hidden'); }
+        setTimeout(() => { if (ok) ok.setAttribute('hidden', ''); }, 3000);
+    } catch (err) {
+        btn.disabled = false;
+        btn.textContent = '💾 Guardar dirección al cliente';
+        if (ok) { ok.textContent = '✗ Error al guardar'; ok.style.color = '#ff7b7b'; ok.removeAttribute('hidden'); }
     }
 });
 
