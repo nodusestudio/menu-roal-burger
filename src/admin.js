@@ -18348,11 +18348,6 @@ async function renderLibroCierres() {
             });
         }
 
-        if (!tbody.dataset.gastoToggle) { tbody.dataset.gastoToggle = '1';
-        tbody.addEventListener('click', (e) => {
-            if (entry._tipo === 'gastos_dia') {
-                const g = entry;
-                // Acumular footer
         // Toggle detalle de gastos agrupados (sub-filas dentro del detalle del día)
         if (!tbody.dataset.gastoToggle) {
             tbody.dataset.gastoToggle = '1';
