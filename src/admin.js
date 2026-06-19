@@ -17092,7 +17092,7 @@ async function loadCajaAperturaFromFirestore() {
     try {
         const snap = await firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).get();
         const d = snap.exists ? snap.data() : null;
-        if (d && d.aperturaAt && !d.cerrada) {
+        if (d && d.aperturaAt && d.cerrada === false) {
             cajaAperturaAt = Number(d.aperturaAt);
             _cajaAperturaBy = d.aperturaBy || '';
             _cajaFondoInicial = Number(d.fondoInicial || 0);
@@ -17112,7 +17112,7 @@ function initCajaAperturaSync() {
         if (!snap.exists) return;
         const data = snap.data();
         const remoteTs = Number(data.aperturaAt || 0);
-        const remoteCerrada = Boolean(data.cerrada);
+        const remoteCerrada = data.cerrada !== false;
         if (remoteCerrada) {
             if (cajaAperturaAt !== 0) {
                 cajaAperturaAt = 0;
