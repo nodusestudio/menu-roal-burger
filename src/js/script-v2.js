@@ -15,7 +15,7 @@ const MAX_CUSTOMER_SAVED_ADDRESSES = 5;
 const CUSTOMER_PROFILE_STORAGE_KEY = 'roalburger-customer-profile-v1';
 const ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS = false;
 const TEMP_CLOSURE_ACTIVE = false;
-const TEMP_CLOSURE_MESSAGE = 'Estamos cerrados momentÃ¡neamente por adecuaciones en el local. Â¡Pronto volvemos con todo!';
+const TEMP_CLOSURE_MESSAGE = 'Estamos cerrados momentáneamente por adecuaciones en el local. ¡Pronto volvemos con todo!';
 const PAGE_URL_PARAMS = new URLSearchParams(window.location.search);
 const IS_ADMIN_PREVIEW = PAGE_URL_PARAMS.get('adminPreview') === '1';
 let ORDERING_SCHEDULE = {
@@ -35,7 +35,7 @@ const DELIVERY_GEOFENCE_ZONES = [
         name: 'amarilla',
         fee: 5000,
         color: '#f6d743',
-        label: 'ðŸŸ¡ Zona Amarilla',
+        label: '🟡 Zona Amarilla',
         polygon: [
             [4.5443, -75.6838],
             [4.5435, -75.6821],
@@ -61,7 +61,7 @@ const DELIVERY_GEOFENCE_ZONES = [
         name: 'azul',
         fee: 6000,
         color: '#4aa1ff',
-        label: 'ðŸ”µ Zona Azul',
+        label: '🔵 Zona Azul',
         polygon: [
             [4.5544, -75.6831],
             [4.5538, -75.6716],
@@ -107,7 +107,7 @@ const DELIVERY_GEOFENCE_ZONES = [
         name: 'roja',
         fee: 7000,
         color: '#d32f2f',
-        label: 'ðŸ”´ Zona Roja',
+        label: '🔴 Zona Roja',
         polygon: [
             [4.5568, -75.6839],
             [4.5558, -75.6741],
@@ -195,7 +195,7 @@ const DELIVERY_GEOFENCE_ZONES = [
         name: 'negra',
         fee: 8000,
         color: '#bbbbbb',
-        label: 'â¬› Zona Negra',
+        label: '⬛ Zona Negra',
         polygon: [
             [4.5638, -75.6656],
             [4.5739, -75.6533],
@@ -265,12 +265,12 @@ let _latestAcompanantes = [];
 let _latestCombosPacks = [];
 let _catalogoVisibilidad = { bebidas_menu: true, acompanantes_menu: true };
 
-// â”€â”€ Historial para botÃ³n atrÃ¡s de Android â”€â”€
+// ── Historial para botón atrás de Android ──
 let _modalHistoryDepth = 0;
 let _skipNextPopstate  = false;
 let _closingByBackBtn  = false;
 
-// â”€â”€ GestiÃ³n centralizada de pantallas secundarias â”€â”€
+// ── Gestión centralizada de pantallas secundarias ──
 const _SECONDARY_SCREENS = ['searchScreen', 'navCategoriesScreen', 'promoScreen', 'categoryDetailScreen', 'perfilScreen', 'ayudaScreen'];
 let _screenHistoryPushed = false;
 
@@ -539,9 +539,9 @@ function updateCustomerSessionUI() {
 
 function getDynamicGreeting() {
     const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) return 'Â¡Buenos dÃ­as';
-    if (hour >= 12 && hour < 18) return 'Â¡Buenas tardes';
-    return 'Â¡Buenas noches';
+    if (hour >= 5 && hour < 12) return '¡Buenos días';
+    if (hour >= 12 && hour < 18) return '¡Buenas tardes';
+    return '¡Buenas noches';
 }
 
 function showWelcomeGreeting(profile) {
@@ -551,7 +551,7 @@ function showWelcomeGreeting(profile) {
     if (!firstName) return;
 
     const greeting = getDynamicGreeting();
-    const emojis = ['ðŸŽ‰', 'ðŸ”¥', 'ðŸ‘‹', 'âœ¨', 'ðŸŽŠ'];
+    const emojis = ['🎉', '🔥', '👋', '✨', '🎊'];
     const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
 
     const toast = document.createElement('div');
@@ -579,7 +579,7 @@ function showWelcomeGreeting(profile) {
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
     `;
-    toast.innerHTML = `${randomEmoji} ${greeting}, <strong>${firstName}</strong>! Bienvenido a FODEXA ${randomEmoji}`;
+    toast.innerHTML = `${randomEmoji} ${greeting}, <strong>${firstName}</strong>! Bienvenido a ROAL BURGER ${randomEmoji}`;
 
     document.body.appendChild(toast);
 
@@ -668,7 +668,7 @@ function getPublicOrderStatusMeta(status = '', fulfillmentType = '') {
         case 'entregado':
             return { label: 'Entregado', detail: fulfillmentType === 'pickup' ? 'Tu pedido fue entregado en el local.' : 'Tu pedido ya fue entregado.', className: 'delivered' };
         case 'cancelado':
-            return { label: 'Cancelado', detail: 'Este pedido fue cancelado. ContÃ¡ctanos si tienes dudas.', className: 'cancelled' };
+            return { label: 'Cancelado', detail: 'Este pedido fue cancelado. Contáctanos si tienes dudas.', className: 'cancelled' };
         default:
             return { label: 'En proceso', detail: 'Estamos revisando tu pedido.', className: 'pending' };
     }
@@ -696,7 +696,7 @@ function syncCustomerProfileRealtimeStreams() {
     const phoneDigits = activeCustomerProfile.customerPhoneDigits;
 
     const rawPhone = String(activeCustomerProfile.customerPhone || '').trim();
-    // Buscar pedidos tanto por dÃ­gitos normalizados como por telÃ©fono crudo (mayor compatibilidad)
+    // Buscar pedidos tanto por dígitos normalizados como por teléfono crudo (mayor compatibilidad)
     const _mergeOrderSnapshots = () => {
         const seen = new Set();
         const merged = [];
@@ -852,7 +852,7 @@ function updatePublicChatFab() {
 
     fab.hidden = false;
 
-    // Contar mensajes del restaurante que llegaron despuÃ©s del Ãºltimo "visto"
+    // Contar mensajes del restaurante que llegaron después del último "visto"
     const adminMessages = customerProfileMessagesState.filter(m =>
         String(m.type || '') === 'admin_direct_reply' ||
         (String(m.source || '') === 'admin_panel' && String(m.type || '') !== 'customer_direct_message')
@@ -883,7 +883,7 @@ function openPublicChatTab() {
 }
 
 function renderCustomerMessagesPanel() {
-    // Si el tab de mensajes estÃ¡ activo, marcar los nuevos mensajes como vistos
+    // Si el tab de mensajes está activo, marcar los nuevos mensajes como vistos
     if (customerAuthUI?.activeTab === 'mensajes') {
         _markChatMessagesAsSeen();
     } else {
@@ -897,8 +897,8 @@ function renderCustomerMessagesPanel() {
     if (!customerProfileMessagesState.length) {
         customerAuthUI.messagesThread.innerHTML = `
             <div class="customer-messages-empty">
-                <span>ðŸ’¬</span>
-                <p>AÃºn no hay mensajes.<br>EscrÃ­benos y te responderemos aquÃ­.</p>
+                <span>💬</span>
+                <p>Aún no hay mensajes.<br>Escríbenos y te responderemos aquí.</p>
             </div>
         `;
         return;
@@ -907,7 +907,7 @@ function renderCustomerMessagesPanel() {
     customerAuthUI.messagesThread.innerHTML = customerProfileMessagesState
         .map((message) => {
             const isAdminReply = String(message.type || '').trim() === 'admin_direct_reply' || String(message.source || '').trim() === 'admin_panel';
-            const authorLabel = isAdminReply ? 'FODEXA' : 'TÃº';
+            const authorLabel = isAdminReply ? 'FODEXA' : 'Tú';
             return `
                 <article class="customer-message-bubble ${isAdminReply ? 'is-admin' : 'is-customer'}">
                     <strong>${escapeHtml(authorLabel)}</strong>
@@ -1029,7 +1029,7 @@ async function reserveNextOrderCode(db, orderRef, payload) {
         await Promise.race([txPromise, timeout]);
         if (!reservedCode) reservedCode = fallbackCode();
     } catch (_e) {
-        // Fallback: guardar el pedido con cÃ³digo por timestamp si Firestore falla (cuota/red)
+        // Fallback: guardar el pedido con código por timestamp si Firestore falla (cuota/red)
         reservedCode = fallbackCode();
         await orderRef.set({ ...payload, code: reservedCode });
     }
@@ -1142,13 +1142,13 @@ let _activeOrderUnsubscribe = null;
 let _lastKnownOrderStatus = null;
 
 const ORDER_STATUS_MESSAGES = {
-    pendiente:              { icon: 'â³', text: 'Recibimos tu pedido, lo estamos revisando.' },
-    preparacion:            { icon: 'ðŸ‘¨â€ðŸ³', text: 'Â¡Confirmado! Tu pedido estÃ¡ en cocina.' },
-    esperando_domiciliario: { icon: 'âœ…', text: 'Â¡Listo! Buscando domiciliario para tu pedido.' },
-    listo_recoger:          { icon: 'âœ…', text: 'Â¡Tu pedido estÃ¡ listo! Puedes venir a recogerlo.' },
-    camino:                 { icon: 'ðŸ›µ', text: 'Â¡Tu pedido estÃ¡ en camino! Ya casi llega.' },
-    entregado:              { icon: 'ðŸŽ‰', text: 'Â¡Pedido entregado! Buen provecho ðŸ”' },
-    cancelado:              { icon: 'âŒ', text: 'Tu pedido fue cancelado. ContÃ¡ctanos por WhatsApp.' },
+    pendiente:              { icon: '⏳', text: 'Recibimos tu pedido, lo estamos revisando.' },
+    preparacion:            { icon: '👨‍🍳', text: '¡Confirmado! Tu pedido está en cocina.' },
+    esperando_domiciliario: { icon: '✅', text: '¡Listo! Buscando domiciliario para tu pedido.' },
+    listo_recoger:          { icon: '✅', text: '¡Tu pedido está listo! Puedes venir a recogerlo.' },
+    camino:                 { icon: '🛵', text: '¡Tu pedido está en camino! Ya casi llega.' },
+    entregado:              { icon: '🎉', text: '¡Pedido entregado! Buen provecho 🍔' },
+    cancelado:              { icon: '❌', text: 'Tu pedido fue cancelado. Contáctanos por WhatsApp.' },
 };
 
 async function requestOrderNotificationPermission() {
@@ -1163,7 +1163,7 @@ function sendBrowserNotification(status, orderCode) {
     const info = ORDER_STATUS_MESSAGES[status];
     if (!info) return;
 
-    const title = `${info.icon} FODEXA â€” Pedido #${orderCode}`;
+    const title = `${info.icon} FODEXA — Pedido #${orderCode}`;
     const body  = info.text;
     const icon  = 'isotipo.png';
 
@@ -1201,7 +1201,7 @@ function showOrderStatusToast(status, orderCode) {
             <span class="ost-code">Pedido #${orderCode}</span>
             <span class="ost-msg">${info.text}</span>
         </div>
-        <button class="ost-close" aria-label="Cerrar">âœ•</button>
+        <button class="ost-close" aria-label="Cerrar">✕</button>
     `;
 
     document.body.appendChild(toast);
@@ -1222,7 +1222,7 @@ function showOrderStatusToast(status, orderCode) {
         }, 7000);
     }
 
-    // NotificaciÃ³n del sistema (funciona con app en segundo plano)
+    // Notificación del sistema (funciona con app en segundo plano)
     sendBrowserNotification(status, orderCode);
 }
 
@@ -1270,29 +1270,29 @@ function showOrderConfirmScreen(orderData = {}) {
 
     const fmt = (n) => typeof window.formatCurrency === 'function' ? window.formatCurrency(n) : `$${Number(n).toLocaleString('es-CO')}`;
 
-    // CÃ³digo
+    // Código
     const ocCode = document.getElementById('ocOrderCode');
-    if (ocCode) ocCode.textContent = String(orderData.code || orderData.id || 'â€”');
+    if (ocCode) ocCode.textContent = String(orderData.code || orderData.id || '—');
 
     // Cliente
     const ocName = document.getElementById('ocCustomerName');
-    if (ocName) ocName.textContent = String(orderData.customerName || 'â€”');
+    if (ocName) ocName.textContent = String(orderData.customerName || '—');
 
     // Pago
     const ocPay = document.getElementById('ocPaymentMethod');
     if (ocPay) {
         const pm = String(orderData.paymentMethod || '').toLowerCase();
         const labels = { efectivo: 'Efectivo', transferencia: 'Transferencia', nequi: 'Nequi', bancolombia: 'Bancolombia', daviplata: 'Daviplata', tarjeta: 'Tarjeta' };
-        ocPay.textContent = labels[pm] || String(orderData.paymentMethod || 'â€”');
+        ocPay.textContent = labels[pm] || String(orderData.paymentMethod || '—');
     }
 
-    // DirecciÃ³n
+    // Dirección
     const ocAddrRow = document.getElementById('ocAddressRow');
     const ocAddr = document.getElementById('ocAddress');
     const ft = String(orderData.fulfillmentType || '').toLowerCase();
     const isPickup = ft.includes('pickup') || ft.includes('local') || ft === 'mesa';
     if (ocAddrRow) ocAddrRow.style.display = isPickup ? 'none' : '';
-    if (ocAddr) ocAddr.textContent = String(orderData.address || 'â€”');
+    if (ocAddr) ocAddr.textContent = String(orderData.address || '—');
 
     // Items
     const ocList = document.getElementById('ocItemsList');
@@ -1301,7 +1301,7 @@ function showOrderConfirmScreen(orderData = {}) {
         if (items.length === 0) {
             ocList.innerHTML = '<p style="color:rgba(255,235,210,0.40);font-size:0.82rem;margin:0;">Sin detalle de productos.</p>';
         } else {
-            const burgerEmojis = ['ðŸ”', 'ðŸ¥©', 'ðŸŸ', 'ðŸŒ­', 'ðŸ¥—', 'ðŸ¥¤', 'ðŸ¦'];
+            const burgerEmojis = ['🍔', '🥩', '🍟', '🌭', '🥗', '🥤', '🍦'];
             ocList.innerHTML = items.map((item, i) => {
                 const emoji = burgerEmojis[i % burgerEmojis.length];
                 const optLabel = item.optionLabel ? `<span class="oc-item-sub">${item.optionLabel}</span>` : '';
@@ -1309,11 +1309,11 @@ function showOrderConfirmScreen(orderData = {}) {
                     <div class="oc-item-left">
                         <span class="oc-item-emoji">${emoji}</span>
                         <div class="oc-item-info">
-                            <span class="oc-item-name">${item.productName || 'â€”'}</span>
+                            <span class="oc-item-name">${item.productName || '—'}</span>
                             ${optLabel}
                         </div>
                     </div>
-                    <span class="oc-item-price">x${item.quantity} Â· ${fmt(item.subtotal || 0)}</span>
+                    <span class="oc-item-price">x${item.quantity} · ${fmt(item.subtotal || 0)}</span>
                 </div>`;
             }).join('');
         }
@@ -1335,7 +1335,7 @@ function showOrderConfirmScreen(orderData = {}) {
     const ocTotal = document.getElementById('ocTotal');
     if (ocTotal) ocTotal.textContent = fmt(total);
 
-    // BotÃ³n principal â€” confirma y abre WhatsApp
+    // Botón principal — confirma y abre WhatsApp
     const ocWaBtn = document.getElementById('ocWhatsAppBtn');
     if (ocWaBtn) {
         ocWaBtn.onclick = () => {
@@ -1343,7 +1343,7 @@ function showOrderConfirmScreen(orderData = {}) {
         };
     }
 
-    // BotÃ³n volver al menÃº
+    // Botón volver al menú
     const ocClose = document.getElementById('ocCloseBtn');
     if (ocClose) {
         ocClose.onclick = () => {
@@ -1371,7 +1371,7 @@ function buildWhatsAppOrderConfirmationText(orderData = {}) {
     const customerName = String(orderData.customerName || '').trim() || 'Cliente';
     const total = formatCurrency(Number(orderData.total || 0));
 
-    return `Â¡Hola FODEXA! Acabo de registrar mi pedido a travÃ©s de la aplicaciÃ³n web. El nÃºmero de mi pedido es [${orderCode}] a nombre de [${customerName}] por un total de [${total}]. Quedo atento a la confirmaciÃ³n. Â¡Muchas gracias!`;
+    return `¡Hola FODEXA! Acabo de registrar mi pedido a través de la aplicación web. El número de mi pedido es [${orderCode}] a nombre de [${customerName}] por un total de [${total}]. Quedo atento a la confirmación. ¡Muchas gracias!`;
 }
 
 function openOrderConfirmationWhatsApp(orderData = {}) {
@@ -1441,7 +1441,7 @@ async function callVerifyWhatsAppOtp(phoneDigits, code) {
 async function loadPublicUpgradesConfig() {
     try {
         const db = getPublicFirebaseDb();
-        const doc = await db.collection('configuracion').doc('acompaÃ±amientos').get();
+        const doc = await db.collection('configuracion').doc('acompañamientos').get();
         const DEFAULT = {
             activo: true,
             categorias_aplica: ['BURGER CLASICAS', 'BURGER PREMIUM', 'PEPITOS VENEZOLANOS', 'PERROS CALIENTES', 'SALCHIPAPAS'],
@@ -1585,8 +1585,8 @@ async function loadCustomerPaymentMethods() {
             _customerPaymentMethods = doc.data().methods.filter((m) => m.enabled !== false);
         } else {
             _customerPaymentMethods = [
-                { id: 'efectivo',       label: 'Efectivo',       icon: 'ðŸ’µ' },
-                { id: 'transferencia',  label: 'Transferencia',  icon: 'ðŸ¦' },
+                { id: 'efectivo',       label: 'Efectivo',       icon: '💵' },
+                { id: 'transferencia',  label: 'Transferencia',  icon: '🏦' },
             ];
         }
     } catch (_) {}
@@ -1974,11 +1974,11 @@ function _buildRegStepDots(current) {
 function _buildRegPhoneStepHTML(prefillPhone = '') {
     return `
         <p class="support-modal-kicker">Crear cuenta</p>
-        <h3 class="support-modal-title">Â¿CuÃ¡l es tu WhatsApp?</h3>
-        <p class="support-modal-text">Te enviaremos un cÃ³digo para verificar que el nÃºmero te pertenece.</p>
+        <h3 class="support-modal-title">¿Cuál es tu WhatsApp?</h3>
+        <p class="support-modal-text">Te enviaremos un código para verificar que el número te pertenece.</p>
         ${_buildRegStepDots(1)}
         <label class="support-field" id="regPhoneField">
-            <span>NÃºmero de WhatsApp</span>
+            <span>Número de WhatsApp</span>
             <input type="tel" id="regPhoneInput" placeholder="+57 300 000 0000" inputmode="tel" autocomplete="tel" value="${escapeHtml(prefillPhone)}">
         </label>
         <div class="support-actions">
@@ -1989,29 +1989,29 @@ function _buildRegPhoneStepHTML(prefillPhone = '') {
 function _buildRegOtpStepHTML(phone) {
     const display = escapeHtml(String(phone || '').replace(/(\d{2})(\d{3})(\d{3})(\d{4})/, '+$1 $2 $3 $4') || phone);
     return `
-        <p class="support-modal-kicker">VerificaciÃ³n</p>
+        <p class="support-modal-kicker">Verificación</p>
         <h3 class="support-modal-title">Revisa tu WhatsApp</h3>
-        <p class="support-modal-text">Enviamos un cÃ³digo de 6 dÃ­gitos a <strong>${display}</strong>. Puede tardar unos segundos.</p>
+        <p class="support-modal-text">Enviamos un código de 6 dígitos a <strong>${display}</strong>. Puede tardar unos segundos.</p>
         ${_buildRegStepDots(2)}
         <label class="support-field" id="regOtpField">
-            <span>CÃ³digo de verificaciÃ³n</span>
+            <span>Código de verificación</span>
             <input type="text" id="regOtpInput" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" style="letter-spacing:0.25em; font-size:1.4rem; text-align:center;">
         </label>
         <div class="support-actions stack">
-            <button type="button" class="support-send-btn" id="regOtpVerify">Verificar cÃ³digo</button>
-            <button type="button" class="support-secondary-btn" id="regOtpResend">Â¿No llegÃ³? Reenviar cÃ³digo</button>
-            <button type="button" class="support-secondary-btn" id="regOtpBack">â† Cambiar nÃºmero</button>
+            <button type="button" class="support-send-btn" id="regOtpVerify">Verificar código</button>
+            <button type="button" class="support-secondary-btn" id="regOtpResend">¿No llegó? Reenviar código</button>
+            <button type="button" class="support-secondary-btn" id="regOtpBack">← Cambiar número</button>
         </div>`;
 }
 
 function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEditMode = false) {
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
     const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
-    const pinLabel = isEditMode ? 'ContraseÃ±a de 6 dÃ­gitos' : 'Crea tu contraseÃ±a de 6 dÃ­gitos';
-    const pinPlaceholder = isEditMode ? 'Deja en blanco para no cambiarla' : 'Solo nÃºmeros';
+    const pinLabel = isEditMode ? 'Contraseña de 6 dígitos' : 'Crea tu contraseña de 6 dígitos';
+    const pinPlaceholder = isEditMode ? 'Deja en blanco para no cambiarla' : 'Solo números';
     return `
         <p class="support-modal-kicker">${isEditMode ? 'Mi cuenta' : 'Crear cuenta'}</p>
-        <h3 class="support-modal-title">${isEditMode ? 'Editar perfil' : 'Â¿CÃ³mo te llamamos?'}</h3>
+        <h3 class="support-modal-title">${isEditMode ? 'Editar perfil' : '¿Cómo te llamamos?'}</h3>
         ${!isEditMode ? _buildRegStepDots(3) : ''}
         <label class="support-field">
             <span>Nombre</span>
@@ -2019,8 +2019,8 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
         </label>
         ${isEditMode ? `
         <label class="support-field">
-            <span>NÃºmero de WhatsApp</span>
-            <input type="tel" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}" placeholder="NÃºmero de WhatsApp">
+            <span>Número de WhatsApp</span>
+            <input type="tel" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}" placeholder="Número de WhatsApp">
         </label>` : `
         <input type="hidden" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}">
         `}
@@ -2030,17 +2030,17 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
             <p class="support-field-hint">La usaras junto con tu WhatsApp para entrar a tu cuenta.</p>
         </label>
         <label class="support-field">
-            <span>Confirmar contraseÃ±a</span>
-            <input type="password" id="customerConfirmPin" inputmode="numeric" maxlength="6" placeholder="Repite la contraseÃ±a">
+            <span>Confirmar contraseña</span>
+            <input type="password" id="customerConfirmPin" inputmode="numeric" maxlength="6" placeholder="Repite la contraseña">
         </label>
         <div class="support-field">
             <span>Direcciones guardadas <small style="font-weight:400;opacity:0.7">(opcional)</small></span>
             <div id="customerRegisterSavedAddressesList" class="support-address-list"></div>
-            <button type="button" class="support-secondary-btn" id="customerRegisterAddAddress">+ Agregar direcciÃ³n</button>
-            <p class="support-field-hint">Toca el icono ðŸŒ para anclar tu GPS a esa direcciÃ³n.</p>
+            <button type="button" class="support-secondary-btn" id="customerRegisterAddAddress">+ Agregar dirección</button>
+            <p class="support-field-hint">Toca el icono 🌍 para anclar tu GPS a esa dirección.</p>
         </div>
         <div class="support-consent-box">
-            <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Leer autorizaciÃ³n de tratamiento de datos</button>
+            <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Leer autorización de tratamiento de datos</button>
             <p class="support-field-hint" id="customerConsentStatus">Debes abrir el documento antes de autorizar.</p>
         </div>
         <label class="support-check" for="customerDataConsent">
@@ -2054,7 +2054,7 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
     closeCustomerRegisterModal();
 
     const saveLabel  = String(options.saveLabel || 'Crear cuenta').trim();
-    // isEditMode = ediciÃ³n de perfil existente (no el flujo de nuevo registro)
+    // isEditMode = edición de perfil existente (no el flujo de nuevo registro)
     const isEditMode = Boolean(options.isEditMode || profile?.customerPhoneDigits);
     const initialStep = isEditMode ? 'profile' : 'phone';
 
@@ -2090,7 +2090,7 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
         selectedSavedAddressIndex: 0,
         savedAddressMapModal: null,
         savedAddressMapUI:   null,
-        // form fields â€” poblados en _mountRegProfileStep
+        // form fields — poblados en _mountRegProfileStep
         name: null, registerPhone: null, registerPin: null,
         confirmPin: null, reviewConsentButton: null,
         consentStatus: null, consent: null, save: null,
@@ -2142,7 +2142,7 @@ function _renderRegStep() {
 function _mountRegProfileStep() {
     if (!customerRegisterUI) return;
     const { stepContent, baseProfile, saveLabel, isEditMode } = customerRegisterUI;
-    // Incorporar telÃ©fono verificado al perfil base para el formulario
+    // Incorporar teléfono verificado al perfil base para el formulario
     const profileForForm = {
         ...baseProfile,
         customerPhone: customerRegisterUI.pendingPhone || baseProfile.customerPhone || ''
@@ -2197,17 +2197,17 @@ async function _handleRegPhoneNext() {
     const digits = phone.replace(/\D/g, '');
 
     if (digits.length < 10) {
-        feedback.textContent = 'Escribe tu nÃºmero de WhatsApp (mÃ­nimo 10 dÃ­gitos).';
+        feedback.textContent = 'Escribe tu número de WhatsApp (mínimo 10 dígitos).';
         feedback.className   = 'support-feedback support-feedback--error';
         input?.focus();
         return;
     }
 
     const btn = customerRegisterUI.stepContent.querySelector('#regPhoneNext');
-    if (btn) { btn.disabled = true; btn.textContent = 'Enviando cÃ³digoâ€¦'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Enviando código…'; }
     feedback.textContent = '';
 
-    // Intentar enviar OTP; si falla por cualquier razÃ³n, avanzar directo al perfil
+    // Intentar enviar OTP; si falla por cualquier razón, avanzar directo al perfil
     let otpSent = false;
     try { await callSendWhatsAppOtp(digits); otpSent = true; } catch (_) {}
     customerRegisterUI.pendingPhone = phone;
@@ -2223,14 +2223,14 @@ async function _handleRegOtpVerify() {
     const digits = (customerRegisterUI.pendingPhone || '').replace(/\D/g, '');
 
     if (code.length !== 6) {
-        feedback.textContent = 'El cÃ³digo debe tener 6 dÃ­gitos.';
+        feedback.textContent = 'El código debe tener 6 dígitos.';
         feedback.className   = 'support-feedback support-feedback--error';
         input?.focus();
         return;
     }
 
     const btn = customerRegisterUI.stepContent.querySelector('#regOtpVerify');
-    if (btn) { btn.disabled = true; btn.textContent = 'Verificandoâ€¦'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Verificando…'; }
     feedback.textContent = '';
 
     try {
@@ -2238,9 +2238,9 @@ async function _handleRegOtpVerify() {
         customerRegisterUI.step = 'profile';
         _renderRegStep();
     } catch (err) {
-        feedback.textContent = err?.message || 'CÃ³digo incorrecto. Intenta de nuevo.';
+        feedback.textContent = err?.message || 'Código incorrecto. Intenta de nuevo.';
         feedback.className   = 'support-feedback support-feedback--error';
-        if (btn) { btn.disabled = false; btn.textContent = 'Verificar cÃ³digo'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Verificar código'; }
         input?.select();
     }
 }
@@ -2250,17 +2250,17 @@ async function _handleRegOtpResend() {
     const { feedback } = customerRegisterUI;
     const digits = (customerRegisterUI.pendingPhone || '').replace(/\D/g, '');
     const btn    = customerRegisterUI.stepContent.querySelector('#regOtpResend');
-    if (btn) { btn.disabled = true; btn.textContent = 'Reenviandoâ€¦'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Reenviando…'; }
     feedback.textContent = '';
     try {
         await callSendWhatsAppOtp(digits);
-        feedback.textContent = 'CÃ³digo reenviado. Revisa tu WhatsApp.';
+        feedback.textContent = 'Código reenviado. Revisa tu WhatsApp.';
         feedback.className   = 'support-feedback';
     } catch (err) {
         feedback.textContent = err?.message || 'No se pudo reenviar. Intenta de nuevo.';
         feedback.className   = 'support-feedback support-feedback--error';
     }
-    if (btn) { btn.disabled = false; btn.textContent = 'Â¿No llegÃ³? Reenviar cÃ³digo'; }
+    if (btn) { btn.disabled = false; btn.textContent = '¿No llegó? Reenviar código'; }
 }
 
 function renderCustomerRegisterSavedAddresses() {
@@ -2291,8 +2291,8 @@ function renderCustomerRegisterSavedAddresses() {
                 </label>
                 <input type="text" class="customerSavedAddressInput" data-address-index="${index}" value="${escapeHtml(entry.address || '')}" placeholder="Direccion completa">
                 <div class="support-field-actions">
-                    <button type="button" class="support-secondary-btn customerSavedAddressSelectButton customer-address-icon-btn" aria-label="Agrega tu ubicaciÃ³n actual a esta direcciÃ³n" title="Agrega tu ubicaciÃ³n actual a esta direcciÃ³n" data-address-index="${index}">ðŸŒ</button>
-                    <button type="button" class="support-secondary-btn customerSavedAddressRemoveButton customer-address-icon-btn" aria-label="Eliminar direccion" title="Eliminar direccion" data-address-index="${index}">âœ•</button>
+                    <button type="button" class="support-secondary-btn customerSavedAddressSelectButton customer-address-icon-btn" aria-label="Agrega tu ubicación actual a esta dirección" title="Agrega tu ubicación actual a esta dirección" data-address-index="${index}">🌍</button>
+                    <button type="button" class="support-secondary-btn customerSavedAddressRemoveButton customer-address-icon-btn" aria-label="Eliminar direccion" title="Eliminar direccion" data-address-index="${index}">✕</button>
                 </div>
                 <p class="support-field-hint">Lat: ${entry.latitude !== null ? entry.latitude : '---'} | Lng: ${entry.longitude !== null ? entry.longitude : '---'}</p>
             </div>
@@ -2344,17 +2344,17 @@ function createCustomerSavedAddressMapModal() {
     const mapModal = document.createElement('div');
     mapModal.className = 'support-modal is-open';
     mapModal.innerHTML = `
-        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="UbicaciÃ³n del pedido">
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Ubicación del pedido">
             <button type="button" class="support-modal-close" aria-label="Cerrar mapa">&times;</button>
-            <p class="support-modal-kicker">UbicaciÃ³n</p>
-            <h3 class="support-modal-title">Ancla tu ubicaciÃ³n actual</h3>
-            <p class="support-modal-text" id="customerMapStatusText">Usa el botÃ³n de abajo para capturar tu ubicaciÃ³n GPS.</p>
+            <p class="support-modal-kicker">Ubicación</p>
+            <h3 class="support-modal-title">Ancla tu ubicación actual</h3>
+            <p class="support-modal-text" id="customerMapStatusText">Usa el botón de abajo para capturar tu ubicación GPS.</p>
             <div id="customerSavedAddressMapContainer" class="checkout-map-area" style="min-height:350px; margin:1rem 0;"></div>
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                 <button type="button" class="support-secondary-btn" id="customerSavedAddressUseLocation">Capturar ubicacion GPS</button>
                 <button type="button" class="support-send-btn" id="customerSavedAddressConfirmLocation" style="display: none;">Confirmar y guardar</button>
             </div>
-            <p class="support-field-hint">Verifica que el marcador estÃ© en la ubicaciÃ³n correcta antes de guardar.</p>
+            <p class="support-field-hint">Verifica que el marcador esté en la ubicación correcta antes de guardar.</p>
         </div>
     `;
 
@@ -2569,11 +2569,11 @@ function handleSavedAddressUseLocation() {
         
         updateCustomerSavedAddressMap(lat, lng);
         
-        customerRegisterUI.savedAddressMapUI.statusText.textContent = `âœ“ UbicaciÃ³n capturada. Verifica que el marcador sea correcto y toca "Confirmar y guardar".`;
+        customerRegisterUI.savedAddressMapUI.statusText.textContent = `✓ Ubicación capturada. Verifica que el marcador sea correcto y toca "Confirmar y guardar".`;
         customerRegisterUI.savedAddressMapUI.useLocationButton.style.display = 'none';
         customerRegisterUI.savedAddressMapUI.confirmButton.style.display = 'block';
     }, (error) => {
-        customerRegisterUI.savedAddressMapUI.statusText.textContent = 'âŒ No se pudo obtener tu ubicaciÃ³n. AsegÃºrate de permitir el acceso al GPS.';
+        customerRegisterUI.savedAddressMapUI.statusText.textContent = '❌ No se pudo obtener tu ubicación. Asegúrate de permitir el acceso al GPS.';
     }, {
         enableHighAccuracy: true,
         timeout: 10000,
@@ -2748,7 +2748,7 @@ async function createCustomerDeleteAccountRequest(reasonValue = '', profile = ac
 
     const reason = String(reasonValue || '').trim();
     if (reason.length < 10) {
-        throw new Error('CuÃ©ntanos brevemente por que deseas eliminar la cuenta.');
+        throw new Error('Cuéntanos brevemente por que deseas eliminar la cuenta.');
     }
 
     const db = getPublicFirebaseDb();
@@ -2814,7 +2814,7 @@ function openCustomerDeleteAccountModal() {
             <button type="button" class="support-modal-close" aria-label="Cerrar eliminacion de cuenta">&times;</button>
             <p class="support-modal-kicker">Eliminar cuenta</p>
             <h3 class="support-modal-title">Antes de eliminar tu cuenta</h3>
-            <p class="support-modal-text">CuÃ©ntanos por que deseas eliminarla. Esta informacion llegara al centro de mensajes del admin.</p>
+            <p class="support-modal-text">Cuéntanos por que deseas eliminarla. Esta informacion llegara al centro de mensajes del admin.</p>
             <div class="customer-profile-summary">
                 <strong>${escapeHtml(profile.customerName)}</strong>
                 <span>WhatsApp: ${escapeHtml(profile.customerPhone)}</span>
@@ -2822,7 +2822,7 @@ function openCustomerDeleteAccountModal() {
             </div>
             <label class="support-field">
                 <span>Motivo de eliminacion</span>
-                <textarea id="customerDeleteReason" rows="5" placeholder="CuÃ©ntanos por que deseas eliminar tu cuenta"></textarea>
+                <textarea id="customerDeleteReason" rows="5" placeholder="Cuéntanos por que deseas eliminar tu cuenta"></textarea>
             </label>
             <p class="support-feedback" id="customerDeleteFeedback"></p>
             <div class="support-actions split">
@@ -2893,7 +2893,7 @@ function openCustomerConsentDocument() {
             <div class="support-consent-document-frame-wrap">
                 <iframe src="${CUSTOMER_CONSENT_POLICY_URL}" title="Politica de tratamiento de datos personales" class="support-consent-document-frame"></iframe>
             </div>
-            <p class="support-field-hint">Si prefieres abrirlo aparte, <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">puedes verlo en una pestaÃ±a nueva</a>.</p>
+            <p class="support-field-hint">Si prefieres abrirlo aparte, <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">puedes verlo en una pestaña nueva</a>.</p>
             <div class="support-actions split">
                 <button type="button" class="support-secondary-btn" id="customerConsentCloseButton">Cerrar</button>
                 <button type="button" class="support-send-btn" id="customerConsentAcceptButton">He leido y autorizo</button>
@@ -3055,7 +3055,7 @@ async function submitCustomerLookup() {
     const _showError = (msg, field) => {
         feedback.textContent = msg;
         feedback.className = 'support-feedback support-feedback--error';
-        void feedback.offsetWidth; // forzar reflow para reiniciar la animaciÃ³n
+        void feedback.offsetWidth; // forzar reflow para reiniciar la animación
         feedback.classList.add('support-feedback--shake');
         feedback.addEventListener('animationend', () => feedback.classList.remove('support-feedback--shake'), { once: true });
         if (field) field.closest('.support-field')?.classList.add('support-field--error');
@@ -3063,7 +3063,7 @@ async function submitCustomerLookup() {
         if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
     };
 
-    // ValidaciÃ³n local inmediata (evita round-trip al servidor)
+    // Validación local inmediata (evita round-trip al servidor)
     const phoneDigits = phoneValue.replace(/\D/g, '');
     if (phoneDigits.length < 10) {
         _showError('Escribe un numero de WhatsApp valido (minimo 10 digitos).', phoneField);
@@ -3074,8 +3074,8 @@ async function submitCustomerLookup() {
         return;
     }
 
-    // Estado de carga â€” botÃ³n bloqueado mientras consulta Firebase
-    if (btn) { btn.disabled = true; btn.textContent = 'Verificandoâ€¦'; }
+    // Estado de carga — botón bloqueado mientras consulta Firebase
+    if (btn) { btn.disabled = true; btn.textContent = 'Verificando…'; }
 
     try {
         const profile = await fetchClientProfileByPhone(phoneValue, pinValue);
@@ -3182,14 +3182,14 @@ function openCustomerAuthModal() {
         ? `
             <div class="cp-wrap" role="main" aria-label="Perfil de cuenta">
 
-                <!-- Tabs ocultos para mantener el sistema de activaciÃ³n JS -->
+                <!-- Tabs ocultos para mantener el sistema de activación JS -->
                 <div hidden aria-hidden="true" style="display:none!important">
                     <button class="customer-profile-tab is-active" data-profile-tab="info" aria-selected="true">Info</button>
                     <button class="customer-profile-tab" data-profile-tab="pedidos" aria-selected="false">Pedidos</button>
                     <button class="customer-profile-tab" data-profile-tab="mensajes" aria-selected="false">Mensajes</button>
                 </div>
 
-                <!-- Panel principal: menÃº de cuenta -->
+                <!-- Panel principal: menú de cuenta -->
                 <div class="customer-profile-panel" data-profile-panel="info">
                     <!-- Hero -->
                     <div class="cp-hero liquid-glass">
@@ -3234,18 +3234,18 @@ function openCustomerAuthModal() {
                             <span class="cp-menu-icon" aria-hidden="true">
                                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
                             </span>
-                            <span class="cp-menu-label">Tratamiento de datos${!hasConsent ? ' <span style="color:#f59e0b;font-size:0.72rem;font-weight:700;">â— Pendiente</span>' : ''}</span>
+                            <span class="cp-menu-label">Tratamiento de datos${!hasConsent ? ' <span style="color:#f59e0b;font-size:0.72rem;font-weight:700;">● Pendiente</span>' : ''}</span>
                             ${_chevron}
                         </button>
                     </div>
 
-                    <!-- Cerrar sesiÃ³n -->
+                    <!-- Cerrar sesión -->
                     <div class="cp-menu-card liquid-glass">
                         <button type="button" class="cp-menu-item cp-menu-item--danger" id="customerLogoutButton">
                             <span class="cp-menu-icon" aria-hidden="true">
                                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
                             </span>
-                            <span class="cp-menu-label">Cerrar sesiÃ³n</span>
+                            <span class="cp-menu-label">Cerrar sesión</span>
                         </button>
                     </div>
 
@@ -3276,14 +3276,14 @@ function openCustomerAuthModal() {
                             <div class="customer-chat-avatar">R</div>
                             <div class="customer-chat-header-info">
                                 <div class="customer-chat-header-name">FODEXA</div>
-                                <div class="customer-chat-header-status">Respondemos por aquÃ­ y por WhatsApp</div>
+                                <div class="customer-chat-header-status">Respondemos por aquí y por WhatsApp</div>
                             </div>
                         </div>
                         <div class="customer-messages-thread" id="customerMessagesThread"></div>
                         <p class="customer-chat-feedback" id="customerMessageFeedback"></p>
                         <div class="customer-chat-reply-bar">
-                            <textarea class="customer-chat-input" id="customerMessageInput" rows="1" placeholder="Escribe un mensajeâ€¦" maxlength="500"></textarea>
-                            <button type="button" class="customer-chat-send-btn" id="customerSendMessageButton" title="Enviar">âž¤</button>
+                            <textarea class="customer-chat-input" id="customerMessageInput" rows="1" placeholder="Escribe un mensaje…" maxlength="500"></textarea>
+                            <button type="button" class="customer-chat-send-btn" id="customerSendMessageButton" title="Enviar">➤</button>
                         </div>
                     </div>
                 </div>
@@ -3341,7 +3341,7 @@ function openCustomerAuthModal() {
         consentViewed: hasConsent
     };
 
-    // El botÃ³n de cierre es perfilCloseBtn en el cds-header, wired en el init
+    // El botón de cierre es perfilCloseBtn en el cds-header, wired en el init
     customerAuthUI.lookupButton?.addEventListener('click', submitCustomerLookup);
     customerAuthUI.forgotPasswordButton?.addEventListener('click', requestCustomerPasswordReset);
     customerAuthUI.registerToggle?.addEventListener('click', () => openCustomerRegisterModal({ customerPhone: customerAuthUI.lookupPhone?.value || '' }));
@@ -3374,7 +3374,7 @@ function openCustomerAuthModal() {
     customerAuthUI.lookupPhone?.addEventListener('keydown', _onLoginEnter);
     customerAuthUI.lookupPin?.addEventListener('keydown', _onLoginEnter);
 
-    // Pantalla completa â€” sin handler de clic-fuera
+    // Pantalla completa — sin handler de clic-fuera
 
     syncBodyScrollLock();
     if (profile) {
@@ -3382,7 +3382,7 @@ function openCustomerAuthModal() {
         renderCustomerOrdersPanel();
         renderCustomerMessagesPanel();
     }
-    // Foco inicial: campo de telÃ©fono si no hay sesiÃ³n, nada si ya hay perfil (evita teclado inesperado en mobile)
+    // Foco inicial: campo de teléfono si no hay sesión, nada si ya hay perfil (evita teclado inesperado en mobile)
     if (!profile) {
         setTimeout(() => customerAuthUI?.lookupPhone?.focus(), 80);
     }
@@ -3484,7 +3484,7 @@ function normalizeImageAssetPath(value) {
     const normalized = String(value || '').trim().replace(/\\/g, '/');
     if (!normalized) return '';
 
-    // URLs externas, data URIs y blobs â€” no tocar
+    // URLs externas, data URIs y blobs — no tocar
     if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith('data:') || normalized.startsWith('blob:')) {
         return normalized;
     }
@@ -3494,7 +3494,7 @@ function normalizeImageAssetPath(value) {
     else if (normalized.startsWith('./')) local = normalized;
     else local = `./${normalized.replace(/^\.?\//, '')}`;
 
-    // Si el browser soporta WebP, servir la versiÃ³n .webp de imÃ¡genes locales
+    // Si el browser soporta WebP, servir la versión .webp de imágenes locales
     if (_supportsWebP && /\.(png|jpg|jpeg)$/i.test(local)) {
         return local.replace(/\.(png|jpg|jpeg)$/i, '.webp');
     }
@@ -3898,7 +3898,7 @@ function checkAndPurgeStaleRecommendedCartItems() {
             if (shoppingCart.length < before) {
                 saveCartState();
                 setTimeout(() => {
-                    showCartAddedToast('Carrito actualizado', 'El recomendado del dÃ­a anterior fue removido');
+                    showCartAddedToast('Carrito actualizado', 'El recomendado del día anterior fue removido');
                 }, 2500);
             }
         }
@@ -4066,7 +4066,7 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
         return null;
     }
 
-    // Firebase Storage URLs (https://firebasestorage.googleapis.com/â€¦/o/path%2Ffile.png?â€¦)
+    // Firebase Storage URLs (https://firebasestorage.googleapis.com/…/o/path%2Ffile.png?…)
     // must be resolved to their local-relative path so map lookups work.
     if (/^https?:\/\//i.test(imagePath)) {
         try {
@@ -4235,7 +4235,7 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
     }
 
     if (normalized.promoLabel) {
-        optionLabel = `ðŸ· ${normalized.promoLabel} | ${optionLabel}`;
+        optionLabel = `🏷 ${normalized.promoLabel} | ${optionLabel}`;
     }
 
     if (normalized.recommendedDiscount) {
@@ -4296,7 +4296,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     ].filter(Boolean);
 
     const domicilioLine = fulfillmentType === 'delivery'
-        ? (customerInfo.deliveryFeePending ? '\nDomicilio: Por confirmar (asesor contactarÃ¡)' : `\nDomicilio: ${formatCurrency(deliveryFee)}`)
+        ? (customerInfo.deliveryFeePending ? '\nDomicilio: Por confirmar (asesor contactará)' : `\nDomicilio: ${formatCurrency(deliveryFee)}`)
         : '';
     const totalDisplay = fulfillmentType === 'delivery' && customerInfo.deliveryFeePending
         ? `${formatCurrency(getCartTotalAmount())} + domicilio por confirmar`
@@ -4339,7 +4339,7 @@ async function createOrderFromCart(customerInfo = {}) {
     const customerName = String(customerInfo.name || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(customerInfo.fulfillmentType);
     let deliveryFee = Number.isFinite(Number(customerInfo.deliveryFee)) ? Number(customerInfo.deliveryFee) : getCheckoutDeliveryFee(fulfillmentType);
-    // Recalcular y verificar tarifa (simulaciÃ³n server-side): si hay coordenadas, determinamos la zona esperada
+    // Recalcular y verificar tarifa (simulación server-side): si hay coordenadas, determinamos la zona esperada
     const deliveryLatitude = Number.isFinite(Number(customerInfo.deliveryLatitude)) ? Number(customerInfo.deliveryLatitude) : null;
     const deliveryLongitude = Number.isFinite(Number(customerInfo.deliveryLongitude)) ? Number(customerInfo.deliveryLongitude) : null;
     let deliveryFeeVerified = false;
@@ -4348,7 +4348,7 @@ async function createOrderFromCart(customerInfo = {}) {
         const expectedZone = findDeliveryZoneForLocation({ latitude: deliveryLatitude, longitude: deliveryLongitude });
         deliveryFeeExpected = expectedZone ? expectedZone.fee : DELIVERY_FEE_AMOUNT;
         if (Number(deliveryFee) !== Number(deliveryFeeExpected)) {
-            // Sobre-escribir la tarifa con la esperada (calculada segÃºn zona GPS) para evitar manipulacion cliente
+            // Sobre-escribir la tarifa con la esperada (calculada según zona GPS) para evitar manipulacion cliente
             deliveryFee = Number(deliveryFeeExpected);
         }
         deliveryFeeVerified = true;
@@ -4419,7 +4419,7 @@ async function createOrderFromCart(customerInfo = {}) {
             total
         });
     } catch (_profileErr) {
-        // Silently ignore â€” order was already saved successfully
+        // Silently ignore — order was already saved successfully
     }
 
     if (activeCustomerProfile && activeCustomerProfile.customerPhoneDigits === customerPhoneDigits) {
@@ -4525,11 +4525,11 @@ function closePaymentFlowModal() {
 
 function formatDeliveryZoneMessage(zone) {
     if (!zone) {
-        return 'Sin tarifa calculada. Usa tu ubicaciÃ³n para definir el costo de domicilio.';
+        return 'Sin tarifa calculada. Usa tu ubicación para definir el costo de domicilio.';
     }
-    const icons = { amarilla: 'ðŸŸ¡', azul: 'ðŸ”µ', roja: 'ðŸ”´', negra: 'â¬›' };
-    const icon = icons[zone.name] || 'ðŸ“';
-    return `${icon} ${zone.label} â€” Domicilio: ${formatCurrency(zone.fee)}`;
+    const icons = { amarilla: '🟡', azul: '🔵', roja: '🔴', negra: '⬛' };
+    const icon = icons[zone.name] || '📍';
+    return `${icon} ${zone.label} — Domicilio: ${formatCurrency(zone.fee)}`;
 }
 
 function setCheckoutDeliveryLocation(latitude, longitude) {
@@ -4575,7 +4575,7 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
     if (checkoutInfoUI.deliveryZoneStatus) {
         checkoutInfoUI.deliveryZoneStatus.textContent = zone
             ? formatDeliveryZoneMessage(zone)
-            : 'ðŸ“‹ Tu direcciÃ³n estÃ¡ fuera de nuestra zona de cobertura. Puedes enviar el pedido y uno de nuestros asesores te confirmarÃ¡ el valor del domicilio.';
+            : '📋 Tu dirección está fuera de nuestra zona de cobertura. Puedes enviar el pedido y uno de nuestros asesores te confirmará el valor del domicilio.';
         checkoutInfoUI.deliveryZoneStatus.classList.toggle('is-outside-zone', !zone);
     }
 
@@ -4601,7 +4601,7 @@ async function initializeCheckoutDeliveryMap() {
     if (!checkoutInfoUI) return;
 
     if (checkoutInfoUI.deliveryMap) {
-        // Si el mapa ya existe, invalidar tamaÃ±o para que Leaflet recalcule las dimensiones del contenedor
+        // Si el mapa ya existe, invalidar tamaño para que Leaflet recalcule las dimensiones del contenedor
         setTimeout(() => {
             checkoutInfoUI.deliveryMap.invalidateSize();
         }, 50);
@@ -4646,14 +4646,14 @@ async function initializeCheckoutDeliveryMap() {
     checkoutInfoUI.deliveryMap = map;
     checkoutInfoUI.deliveryMapMarker = marker;
 
-    // Si ya hay coordenadas pre-calculadas (direcciÃ³n guardada), colocar el pin allÃ­
+    // Si ya hay coordenadas pre-calculadas (dirección guardada), colocar el pin allí
     if (checkoutDeliveryLocation && Number.isFinite(checkoutDeliveryLocation.latitude) && Number.isFinite(checkoutDeliveryLocation.longitude)) {
         marker.setLatLng([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude]);
         map.setView([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude], 16);
         if (checkoutInfoUI.confirmLocationButton) checkoutInfoUI.confirmLocationButton.hidden = false;
     }
 
-    // Invalidar tamaÃ±o despuÃ©s de que el mapa se haya agregado al DOM visible
+    // Invalidar tamaño después de que el mapa se haya agregado al DOM visible
     setTimeout(() => {
         map.invalidateSize();
         if (checkoutDeliveryLocation && Number.isFinite(checkoutDeliveryLocation.latitude)) {
@@ -4784,7 +4784,7 @@ async function submitPaymentFlow() {
     } catch (error) {
         const isNetworkOrQuota = /quota|network|offline|failed to fetch|unavailable/i.test(error.message || '');
         paymentFlowUI.feedback.textContent = isNetworkOrQuota
-            ? 'No se pudo conectar al servidor. Verifica tu conexiÃ³n e intenta de nuevo.'
+            ? 'No se pudo conectar al servidor. Verifica tu conexión e intenta de nuevo.'
             : `No se pudo enviar el pedido: ${error.message || 'error inesperado.'}`;
         paymentFlowUI.send.disabled = false;
         paymentFlowUI.send.textContent = 'Confirmar pedido';
@@ -4796,8 +4796,8 @@ function openPaymentFlowModal(orderData) {
 
     const total = Number(orderData?.total || 0);
     const _pmList = _customerPaymentMethods?.length ? _customerPaymentMethods : [
-        { id: 'efectivo',      label: 'Efectivo',      icon: 'ðŸ’µ' },
-        { id: 'transferencia', label: 'Transferencia', icon: 'ðŸ¦' },
+        { id: 'efectivo',      label: 'Efectivo',      icon: '💵' },
+        { id: 'transferencia', label: 'Transferencia', icon: '🏦' },
     ];
     const _pmOptionsHtml = _pmList.map((m) => `<option value="${m.id}">${m.icon ? m.icon + ' ' : ''}${m.label}</option>`).join('');
     const modal = document.createElement('div');
@@ -4826,7 +4826,7 @@ function openPaymentFlowModal(orderData) {
                 </select>
             </div>
             <label class="support-field" id="paymentTenderField" hidden>
-                <span>Con cuÃ¡nto vas a pagar</span>
+                <span>Con cuánto vas a pagar</span>
                 <input type="text" id="paymentTenderAmount" inputmode="numeric" placeholder="Ej: 50.000">
             </label>
             <p class="support-feedback" id="paymentFlowFeedback"></p>
@@ -4920,7 +4920,7 @@ async function submitCheckoutInfo() {
     }
 
     if (fulfillmentType === 'delivery' && !deliveryAddress) {
-        checkoutInfoUI.feedback.textContent = 'Escoge una direcciÃ³n guardada o escribe una nueva para el domicilio.';
+        checkoutInfoUI.feedback.textContent = 'Escoge una dirección guardada o escribe una nueva para el domicilio.';
         checkoutInfoUI.address?.focus();
         return;
     }
@@ -4929,7 +4929,7 @@ async function submitCheckoutInfo() {
         const mapPanel = checkoutInfoUI.deliveryMapPanel;
         const mapOpen = mapPanel && !mapPanel.hidden;
         if (mapOpen) {
-            checkoutInfoUI.feedback.textContent = 'ðŸ“ Confirma tu ubicaciÃ³n en el mapa antes de enviar el pedido.';
+            checkoutInfoUI.feedback.textContent = '📍 Confirma tu ubicación en el mapa antes de enviar el pedido.';
             const confirmBtn = checkoutInfoUI.confirmLocationButton;
             if (confirmBtn) {
                 confirmBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -4986,7 +4986,7 @@ async function submitCheckoutInfo() {
             });
         }
 
-        // Abrir el modal de pago PRIMERO; si falla, el catch puede rehabilitar el botÃ³n de checkout.
+        // Abrir el modal de pago PRIMERO; si falla, el catch puede rehabilitar el botón de checkout.
         openPaymentFlowModal({
             ...orderData,
             total: getCheckoutOrderTotal(fulfillmentType)
@@ -5034,7 +5034,7 @@ function geocodeAddress(addressText) {
     .then((data) => {
         if (!Array.isArray(data) || data.length === 0) {
             if (checkoutInfoUI.deliveryZoneStatus) {
-                checkoutInfoUI.deliveryZoneStatus.textContent = 'ðŸ“ No reconocimos la direcciÃ³n. Por favor arrastra el punto en el mapa hasta tu ubicaciÃ³n y confirma.';
+                checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Por favor arrastra el punto en el mapa hasta tu ubicación y confirma.';
             }
             return null;
         }
@@ -5047,10 +5047,10 @@ function geocodeAddress(addressText) {
             return null;
         }
 
-        // Una vez tenemos coordenadas, actualizar ubicaciÃ³n y zona
+        // Una vez tenemos coordenadas, actualizar ubicación y zona
         setCheckoutDeliveryLocation(latitude, longitude);
 
-        // Marcar como confirmada automÃ¡ticamente
+        // Marcar como confirmada automáticamente
         checkoutDeliveryLocationConfirmed = true;
 
         // Actualizar todo el estado del modal (total, mapa, botones, etc.)
@@ -5060,7 +5060,7 @@ function geocodeAddress(addressText) {
     })
     .catch(() => {
         if (checkoutInfoUI.deliveryZoneStatus) {
-            checkoutInfoUI.deliveryZoneStatus.textContent = 'ðŸ“ No reconocimos la direcciÃ³n. Por favor arrastra el punto en el mapa hasta tu ubicaciÃ³n y confirma.';
+            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Por favor arrastra el punto en el mapa hasta tu ubicación y confirma.';
         }
         return null;
     });
@@ -5115,12 +5115,12 @@ function updateCheckoutInfoModalState() {
     const addressHasLocation = selectedSavedAddressEntry && selectedSavedAddressEntry.latitude != null && selectedSavedAddressEntry.longitude != null && Number.isFinite(Number(selectedSavedAddressEntry.latitude)) && Number.isFinite(Number(selectedSavedAddressEntry.longitude));
     const discountAmount = getCheckoutDiscountAmount();
 
-    // Panel de tarjetas de direcciÃ³n guardada
+    // Panel de tarjetas de dirección guardada
     if (checkoutInfoUI.savedAddressField) {
         checkoutInfoUI.savedAddressField.hidden = !requiresAddress || !hasSavedAddresses;
         if (requiresAddress && hasSavedAddresses) renderCheckoutAddressCards();
     }
-    // Panel de nueva direcciÃ³n
+    // Panel de nueva dirección
     if (checkoutInfoUI.newAddrPanel) {
         checkoutInfoUI.newAddrPanel.hidden = requiresAddress && usingSavedAddress;
     }
@@ -5134,7 +5134,7 @@ function updateCheckoutInfoModalState() {
     }
 
     if (usingSavedAddress && addressHasLocation) {
-        // DirecciÃ³n guardada CON coordenadas: calcular zona y marcar como confirmada automÃ¡ticamente
+        // Dirección guardada CON coordenadas: calcular zona y marcar como confirmada automáticamente
         const lat = selectedSavedAddressEntry.latitude;
         const lng = selectedSavedAddressEntry.longitude;
         const zone = findDeliveryZoneForLocation({ latitude: lat, longitude: lng });
@@ -5148,13 +5148,13 @@ function updateCheckoutInfoModalState() {
         checkoutInfoUI.deliveryLongitude = lng;
         if (checkoutInfoUI.deliveryZoneStatus) {
             checkoutInfoUI.deliveryZoneStatus.textContent = zone
-                ? `ðŸ“ Tu pin estÃ¡ en ${zone.label} â€” ${formatCurrency(zone.fee)}. Abre el mapa para ajustar si es necesario.`
-                : 'ðŸ“‹ Tu pin estÃ¡ fuera de la zona de cobertura. Abre el mapa para ajustar el pin y confirma.';
+                ? `📍 Tu pin está en ${zone.label} — ${formatCurrency(zone.fee)}. Abre el mapa para ajustar si es necesario.`
+                : '📋 Tu pin está fuera de la zona de cobertura. Abre el mapa para ajustar el pin y confirma.';
         }
     }
 
     if (usingSavedAddress && !addressHasLocation) {
-        // DirecciÃ³n guardada SIN coordenadas: pedir que asigne ubicaciÃ³n
+        // Dirección guardada SIN coordenadas: pedir que asigne ubicación
         checkoutDeliveryLocation = null;
         checkoutDeliveryZone = null;
         checkoutDeliveryFeeAmount = 0;
@@ -5164,15 +5164,15 @@ function updateCheckoutInfoModalState() {
         checkoutInfoUI.deliveryLatitude = null;
         checkoutInfoUI.deliveryLongitude = null;
         if (checkoutInfoUI.deliveryZoneStatus) {
-            checkoutInfoUI.deliveryZoneStatus.textContent = 'ðŸ“ Usa el botÃ³n "Usar mi ubicaciÃ³n actual" o toca el mapa para colocar el pin en tu direcciÃ³n y confirma.';
+            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Usa el botón "Usar mi ubicación actual" o toca el mapa para colocar el pin en tu dirección y confirma.';
         }
     }
 
-    // Recalcular deliveryFee y orderTotal despuÃ©s de actualizar checkoutDeliveryFeeAmount
+    // Recalcular deliveryFee y orderTotal después de actualizar checkoutDeliveryFeeAmount
     const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
     const orderTotal = getCheckoutOrderTotal(fulfillmentType);
 
-    // El mapa solo se muestra cuando el usuario lo abre explÃ­citamente
+    // El mapa solo se muestra cuando el usuario lo abre explícitamente
     const mapPanelOpen = Boolean(checkoutInfoUI.mapPanelOpen);
     const shouldShowDeliveryMap = requiresAddress && mapPanelOpen;
 
@@ -5184,8 +5184,8 @@ function updateCheckoutInfoModalState() {
     }
     if (checkoutInfoUI.openMapButton) {
         checkoutInfoUI.openMapButton.textContent = checkoutDeliveryLocationConfirmed
-            ? 'ðŸ“ Cambiar ubicaciÃ³n'
-            : 'ðŸ“ Asignar ubicaciÃ³n en el mapa';
+            ? '📍 Cambiar ubicación'
+            : '📍 Asignar ubicación en el mapa';
     }
 
     if (checkoutInfoUI.deliveryMapPanel) {
@@ -5256,9 +5256,9 @@ function renderCheckoutAddressCards() {
                 class="checkout-addr-card${isSelected ? ' is-selected' : ''}"
                 data-addr-idx="${idx}"
                 aria-pressed="${isSelected}">
-                <span class="checkout-addr-card-icon">${isPrimary ? 'â­' : 'ðŸ“'}</span>
+                <span class="checkout-addr-card-icon">${isPrimary ? '⭐' : '📍'}</span>
                 <span class="checkout-addr-card-text">${label}</span>
-                ${isSelected ? '<span class="checkout-addr-card-check">âœ“</span>' : ''}
+                ${isSelected ? '<span class="checkout-addr-card-check">✓</span>' : ''}
             </button>`;
     }).join('');
 
@@ -5278,10 +5278,10 @@ async function _persistSavedAddressCoords(profile, savedAddresses) {
         const phoneDigits = normalizePhoneDigits(String(profile.customerPhone || ''));
         if (!phoneDigits || phoneDigits.length < 10) return;
         await db.collection(CLIENTS_COLLECTION).doc(`phone_${phoneDigits}`).update({ savedAddresses });
-        // Reflejar en el perfil local tambiÃ©n
+        // Reflejar en el perfil local también
         setActiveCustomerProfile({ ...profile, savedAddresses });
     } catch (_e) {
-        // Silent â€” coords ya quedaron en localStorage
+        // Silent — coords ya quedaron en localStorage
     }
 }
 
@@ -5306,7 +5306,7 @@ function openCheckoutInfoModal() {
         : '';
     const introText = profile
         ? ''
-        : 'Selecciona cÃ³mo deseas recibir tu pedido y completa tus datos de contacto.';
+        : 'Selecciona cómo deseas recibir tu pedido y completa tus datos de contacto.';
 
     const modal = document.createElement('div');
     modal.id = 'checkout-info-modal';
@@ -5314,7 +5314,7 @@ function openCheckoutInfoModal() {
     modal.classList.add('is-open');
     modal.innerHTML = `
         <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Confirmar pedido">
-            <button type="button" class="support-modal-close" aria-label="Cerrar confirmaciÃ³n de pedido">&times;</button>
+            <button type="button" class="support-modal-close" aria-label="Cerrar confirmación de pedido">&times;</button>
             <p class="support-modal-kicker">Confirma tu pedido</p>
             <h3 class="support-modal-title">Finaliza tu pedido</h3>
             ${introText ? `<p class="support-modal-text">${introText}</p>` : ''}
@@ -5327,27 +5327,27 @@ function openCheckoutInfoModal() {
             <label class="support-field">
                 <span>Como deseas recibir tu pedido</span>
                 <select id="checkoutFulfillmentType">
-                    <option value="delivery">ðŸ›µ Domicilio</option>
-                    <option value="pickup">ðŸ¥¡ Recoger en el restaurante</option>
-                    <option value="dine_in">ðŸ½ï¸ Comer en el local</option>
+                    <option value="delivery">🛵 Domicilio</option>
+                    <option value="pickup">🥡 Recoger en el restaurante</option>
+                    <option value="dine_in">🍽️ Comer en el local</option>
                 </select>
             </label>
             ${profile && savedAddresses.length ? `
             <div id="checkoutSavedAddressField" class="checkout-addr-section" hidden>
-                <p class="support-modal-kicker" style="margin:0 0 0.6rem">Â¿A dÃ³nde te enviamos?</p>
+                <p class="support-modal-kicker" style="margin:0 0 0.6rem">¿A dónde te enviamos?</p>
                 <div id="checkoutAddrCards" class="checkout-addr-cards"></div>
-                <button type="button" class="checkout-addr-add-btn" id="checkoutAddNewAddrBtn">+ Usar otra direcciÃ³n</button>
+                <button type="button" class="checkout-addr-add-btn" id="checkoutAddNewAddrBtn">+ Usar otra dirección</button>
             </div>` : ''}
             <div id="checkoutNewAddrPanel" ${profile && savedAddresses.length ? 'hidden' : ''}>
                 ${profile && savedAddresses.length ? `
-                <button type="button" class="checkout-addr-back-btn" id="checkoutAddrBackBtn">â† Volver a mis direcciones</button>` : ''}
+                <button type="button" class="checkout-addr-back-btn" id="checkoutAddrBackBtn">← Volver a mis direcciones</button>` : ''}
                 <label class="support-field" id="checkoutDeliveryAddressField">
-                    <span>DirecciÃ³n de entrega</span>
-                    <textarea id="checkoutDeliveryAddress" rows="3" placeholder="Calle, carrera, nÃºmero, barrio, referencia..."></textarea>
+                    <span>Dirección de entrega</span>
+                    <textarea id="checkoutDeliveryAddress" rows="3" placeholder="Calle, carrera, número, barrio, referencia..."></textarea>
                 </label>
                 <div id="checkoutMapTriggerArea" hidden>
-                    <button type="button" id="checkoutOpenMapButton" class="checkout-map-trigger-btn">ðŸ“ Asignar ubicaciÃ³n en el mapa</button>
-                    <span id="checkoutLocationConfirmedBadge" class="checkout-location-badge" hidden>âœ“ UbicaciÃ³n confirmada</span>
+                    <button type="button" id="checkoutOpenMapButton" class="checkout-map-trigger-btn">📍 Asignar ubicación en el mapa</button>
+                    <span id="checkoutLocationConfirmedBadge" class="checkout-location-badge" hidden>✓ Ubicación confirmada</span>
                 </div>
                 ${profile ? `
                 <label class="support-check" id="checkoutSaveAddressField">
@@ -5356,15 +5356,15 @@ function openCheckoutInfoModal() {
                 </label>
                 <label class="support-check" id="checkoutSetPrimaryField" style="display:none">
                     <input type="checkbox" id="checkoutSetPrimaryToggle">
-                    <span>Establecer como direcciÃ³n principal</span>
+                    <span>Establecer como dirección principal</span>
                 </label>` : ''}
             </div>
             <div class="checkout-map-panel" id="checkoutDeliveryMapPanel" hidden>
                 <div class="checkout-map-actions">
-                    <button type="button" id="checkoutUseLocationButton" class="support-send-btn checkout-map-button">ðŸ“ Usar mi ubicaciÃ³n actual</button>
-                    <span id="checkoutDeliveryZoneStatus" class="checkout-zone-status">Usa el botÃ³n de arriba para detectar tu ubicaciÃ³n o toca el mapa para ajustar el pin.</span>
-                    <button type="button" id="checkoutRequestQuoteButton" class="checkout-map-button" style="display:none;">ðŸ“© Solicitar cotizaciÃ³n</button>
-                    <button type="button" id="checkoutConfirmLocationButton" class="support-send-btn checkout-map-button" hidden>âœ“ Confirmar ubicaciÃ³n</button>
+                    <button type="button" id="checkoutUseLocationButton" class="support-send-btn checkout-map-button">📍 Usar mi ubicación actual</button>
+                    <span id="checkoutDeliveryZoneStatus" class="checkout-zone-status">Usa el botón de arriba para detectar tu ubicación o toca el mapa para ajustar el pin.</span>
+                    <button type="button" id="checkoutRequestQuoteButton" class="checkout-map-button" style="display:none;">📩 Solicitar cotización</button>
+                    <button type="button" id="checkoutConfirmLocationButton" class="support-send-btn checkout-map-button" hidden>✓ Confirmar ubicación</button>
                 </div>
                 <div id="deliveryMap" class="checkout-map-area"></div>
             </div>
@@ -5375,7 +5375,7 @@ function openCheckoutInfoModal() {
             </label>`}
             <div class="customer-profile-summary customer-profile-summary-grid checkout-summary-grid">
                 <div id="checkoutDeliveryFeeRow" hidden>
-                    <span>Costo de envÃ­o</span>
+                    <span>Costo de envío</span>
                     <strong id="checkoutDeliveryFeeValue">${formatCurrency(checkoutDeliveryFeeAmount)}</strong>
                 </div>
                 <div id="checkoutDiscountRow" hidden>
@@ -5430,7 +5430,7 @@ function openCheckoutInfoModal() {
         feedback: modal.querySelector('#checkoutInfoFeedback'),
         send: modal.querySelector('#checkoutSubmitButton'),
         savedAddresses,
-        // -1 = nueva direcciÃ³n, 0..n = Ã­ndice en savedAddresses
+        // -1 = nueva dirección, 0..n = índice en savedAddresses
         selectedAddressIndex: savedAddresses.length ? 0 : -1,
         deliveryMap: null,
         deliveryMapMarker: null,
@@ -5646,7 +5646,7 @@ function renderCartUI() {
         const isComboChild = Boolean(normalizeOrderOptions(item.orderOptions).isComboChild);
         const arrow = document.createElement('span');
         arrow.className = 'cart-item-extra-arrow';
-        arrow.textContent = 'â†³';
+        arrow.textContent = '↳';
         const name = document.createElement('span');
         name.className = 'cart-item-extra-name';
         name.textContent = item.productName;
@@ -5714,16 +5714,16 @@ function renderCartUI() {
                 <span class="cart-item-final-price">${formatCurrency(subtotal)}</span>
                 <span class="cart-item-savings">Ahorras ${formatCurrency(discountAmount)}</span>`;
         } else {
-            price.innerHTML = `<span class="cart-item-final-price">${formatCurrency(unitPrice)} Ã— ${item.quantity} = ${formatCurrency(subtotal)}</span>`;
+            price.innerHTML = `<span class="cart-item-final-price">${formatCurrency(unitPrice)} × ${item.quantity} = ${formatCurrency(subtotal)}</span>`;
         }
 
         const existingComment = String(item.orderOptions?.comment || '').trim();
         const commentBadge = document.createElement('p');
         commentBadge.className = 'cart-item-comment-badge';
         if (existingComment) {
-            commentBadge.textContent = `ðŸ’¬ ${existingComment}`;
+            commentBadge.textContent = `💬 ${existingComment}`;
         } else {
-            commentBadge.textContent = 'âœï¸ Agregar notaâ€¦';
+            commentBadge.textContent = '✏️ Agregar nota…';
             commentBadge.classList.add('cart-item-comment-empty');
         }
         commentBadge.addEventListener('click', () => openCartItemEditor(item.itemKey));
@@ -5734,7 +5734,7 @@ function renderCartUI() {
         if (promoLabel) {
             const promoBadge = document.createElement('span');
             promoBadge.className = 'cart-item-promo-badge';
-            promoBadge.textContent = `ðŸ· ${promoLabel}`;
+            promoBadge.textContent = `🏷 ${promoLabel}`;
             info.appendChild(promoBadge);
         }
 
@@ -5817,7 +5817,7 @@ function openCartItemEditor(itemKey) {
     const item = shoppingCart.find(e => e.itemKey === itemKey);
     if (!item) return;
 
-    // Si el producto tiene variantes â†’ abrir selector de variantes en lugar del editor de comentario
+    // Si el producto tiene variantes → abrir selector de variantes en lugar del editor de comentario
     const baseProductName = String(item.productName || '').trim();
     const baseCategoryName = String(item.categoryName || '').trim();
     const prodEntry = latestProducts.find((p) =>
@@ -5838,7 +5838,7 @@ function openCartItemEditor(itemKey) {
     const prodAcomp = productData && productData.acompanantes;
     const hasAcomp = prodAcomp && prodAcomp.activo && Array.isArray(prodAcomp.ids) && prodAcomp.ids.length > 0;
 
-    // Obtener opciones de acompaÃ±antes disponibles para este producto
+    // Obtener opciones de acompañantes disponibles para este producto
     let acompOptions = [];
     if (hasAcomp) {
         const cfg = publicUpgradesConfig || null;
@@ -5853,7 +5853,7 @@ function openCartItemEditor(itemKey) {
 
     const currentComment = String(item.orderOptions?.comment || '').trim();
 
-    // Detectar acompaÃ±ante actualmente seleccionado (si el nombre contiene "+")
+    // Detectar acompañante actualmente seleccionado (si el nombre contiene "+")
     const currentUpgradeNote = item.productName.includes('+')
         ? item.productName.split('+').slice(1).join('+').trim()
         : '';
@@ -5865,17 +5865,17 @@ function openCartItemEditor(itemKey) {
         <div class="cie-sheet">
             <div class="cie-header">
                 <span class="cie-product-name">${String(item.productName || '').split('+')[0].trim()}</span>
-                <button type="button" class="cie-close-btn" id="cieCloseBtn">âœ•</button>
+                <button type="button" class="cie-close-btn" id="cieCloseBtn">✕</button>
             </div>
             <div class="cie-body">
                 ${acompOptions.length > 0 ? `
                 <div class="cie-section">
-                    <p class="cie-section-label">AcompaÃ±ante</p>
+                    <p class="cie-section-label">Acompañante</p>
                     <div class="cie-acomp-list" id="cieAcompList">
                         <label class="cie-acomp-item ${!currentUpgradeNote ? 'is-selected' : ''}">
                             <input type="radio" name="cieAcomp" value="" ${!currentUpgradeNote ? 'checked' : ''}>
-                            <span class="cie-acomp-name">Sin acompaÃ±ante</span>
-                            <span class="cie-acomp-price">â€”</span>
+                            <span class="cie-acomp-name">Sin acompañante</span>
+                            <span class="cie-acomp-price">—</span>
                         </label>
                         ${acompOptions.map(o => {
                             const sel = currentUpgradeNote && currentUpgradeNote.toLowerCase().includes(String(o.nombre || '').toLowerCase());
@@ -5889,7 +5889,7 @@ function openCartItemEditor(itemKey) {
                 </div>` : ''}
                 <div class="cie-section">
                     <p class="cie-section-label">Nota para cocina <span style="font-weight:400;opacity:0.6;">(opcional)</span></p>
-                    <textarea id="cieCommentTA" class="cie-comment-ta" maxlength="120" placeholder="Ej: sin cebolla, extra picante, bien cocidoâ€¦">${currentComment}</textarea>
+                    <textarea id="cieCommentTA" class="cie-comment-ta" maxlength="120" placeholder="Ej: sin cebolla, extra picante, bien cocido…">${currentComment}</textarea>
                     <p class="cie-char-count" id="cieCharCount">${currentComment.length}/120</p>
                 </div>
             </div>
@@ -5944,7 +5944,7 @@ function _saveCartItemEdit(itemKey, newComment, newAcompId, newAcompNombre, newA
     const item = shoppingCart[idx];
     const savedQty = Number(item.quantity || 1);
 
-    // Reconstruir nombre base (sin acompaÃ±ante previo)
+    // Reconstruir nombre base (sin acompañante previo)
     const baseName = String(item.productName || '').split('+')[0].trim();
     const newProductName = newAcompId && newAcompNombre
         ? `${baseName} + ${newAcompNombre}`
@@ -5993,7 +5993,7 @@ function initCartUI() {
     const fab = document.createElement('button');
     fab.type = 'button';
     fab.className = 'cart-fab';
-    fab.innerHTML = '<span class="cart-fab-icon">ðŸ›’</span><span class="cart-fab-label">Carrito</span><span class="cart-fab-badge" hidden>0</span>';
+    fab.innerHTML = '<span class="cart-fab-icon">🛒</span><span class="cart-fab-label">Carrito</span><span class="cart-fab-badge" hidden>0</span>';
 
     const overlay = document.createElement('div');
     overlay.className = 'cart-overlay';
@@ -6013,7 +6013,7 @@ function initCartUI() {
             <div class="cart-action-bar">
                 <button type="button" class="cart-continue-btn" id="cartContinueBtn">
                     <svg class="cbtn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                    <span class="cbtn-lbl">MenÃº</span>
+                    <span class="cbtn-lbl">Menú</span>
                 </button>
                 <button type="button" class="cart-checkout-btn" id="cartCheckoutBtn">
                     <svg class="cbtn-ico" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.115.549 4.1 1.51 5.833L0 24l6.334-1.494A11.927 11.927 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/></svg>
@@ -6373,7 +6373,7 @@ function openImageOptionModal(productName, categoryName, buttonId, extraOptions 
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.textContent = 'Ã—';
+    closeButton.textContent = '×';
     closeButton.setAttribute('aria-label', 'Cerrar seleccion de opcion');
     closeButton.style.position = 'absolute';
     closeButton.style.top = '10px';
@@ -6485,7 +6485,7 @@ function openProductCommentModal(productName, categoryName, buttonId, extraOptio
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.textContent = 'Ã—';
+    closeButton.textContent = '×';
     closeButton.setAttribute('aria-label', 'Cerrar comentario del pedido');
     closeButton.style.position = 'absolute';
     closeButton.style.top = '10px';
@@ -6690,7 +6690,7 @@ function openBebidasYAdicionalesOptionsModal(productName, categoryName, buttonId
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.textContent = 'Ã—';
+    closeButton.textContent = '×';
     closeButton.setAttribute('aria-label', 'Cerrar seleccion de opcion');
     closeButton.style.position = 'absolute';
     closeButton.style.top = '10px';
@@ -6847,7 +6847,7 @@ function openEntradasOptionsModal(productName, categoryName, buttonId, extraOpti
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.textContent = 'Ã—';
+    closeButton.textContent = '×';
     closeButton.setAttribute('aria-label', 'Cerrar seleccion de entrada');
     closeButton.style.position = 'absolute';
     closeButton.style.top = '10px';
@@ -6958,7 +6958,7 @@ function openCombosMixtosModal(productName, categoryName, buttonId, extraOptions
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.textContent = 'Ã—';
+    closeButton.textContent = '×';
     closeButton.setAttribute('aria-label', 'Cerrar seleccion de bebida');
     closeButton.style.position = 'absolute';
     closeButton.style.top = '10px';
@@ -7109,7 +7109,7 @@ function openCombosConPapasModal(productName, categoryName, buttonId, extraOptio
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.textContent = 'Ã—';
+    closeButton.textContent = '×';
     closeButton.setAttribute('aria-label', 'Cerrar seleccion de combo');
     closeButton.style.position = 'absolute';
     closeButton.style.top = '10px';
@@ -7383,7 +7383,7 @@ function openComboChoiceModal(productName, categoryName, buttonId, extraOptions 
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
-    closeButton.textContent = 'Ã—';
+    closeButton.textContent = '×';
     closeButton.setAttribute('aria-label', 'Cerrar seleccion de combo');
     closeButton.style.position = 'absolute';
     closeButton.style.top = '10px';
@@ -7599,7 +7599,7 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
         }
     }
 
-    // Si el producto tiene variantes configuradas en Firestore â†’ usar modal nuevo
+    // Si el producto tiene variantes configuradas en Firestore → usar modal nuevo
     const _prodVarianteEntry = latestProducts.find((p) =>
         normalizeCategoryKey(p.nombre || '') === normalizeCategoryKey(productName) &&
         normalizeCategoryKey(p.categoria || '') === normalizeCategoryKey(safeCategoryName)
@@ -7609,7 +7609,7 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
         return;
     }
 
-    // Bebida incluida â†’ pedir sabor directo
+    // Bebida incluida → pedir sabor directo
     const _bi = _prodVarianteEntry?.bebida_incluida;
     if (_bi?.activo && _bi?.bebida_ref_id) {
         openPublicBebidaModal(productName, safeCategoryName, buttonId, _bi, normalizedOptions);
@@ -7687,7 +7687,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
     'btn-menu': {
         id: 'btn-menu',
         label: 'VER NUESTRO MENU DIGITAL',
-        icon: 'ðŸ“±',
+        icon: '📱',
         actionType: 'menu-modal',
         link: '',
         buttonType: 'neon',
@@ -7702,7 +7702,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
     'btn-whatsapp-main': {
         id: 'btn-whatsapp-main',
         label: 'PIDE TU DOMICILIO AQUI',
-        icon: 'ðŸ“±',
+        icon: '📱',
         actionType: 'external',
         link: 'https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
         buttonType: 'solid',
@@ -7717,7 +7717,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
     'btn-instagram': {
         id: 'btn-instagram',
         label: 'MOMENTOS ROAL EN INSTAGRAM',
-        icon: 'ðŸ“·',
+        icon: '📷',
         actionType: 'external',
         link: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
         buttonType: 'glass',
@@ -7732,7 +7732,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
     'btn-tiktok': {
         id: 'btn-tiktok',
         label: 'SABOR REAL EN TIKTOK',
-        icon: 'ðŸŽµ',
+        icon: '🎵',
         actionType: 'external',
         link: 'https://www.tiktok.com/@roalburger',
         buttonType: 'glass',
@@ -7747,7 +7747,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
     'btn-facebook': {
         id: 'btn-facebook',
         label: 'COMUNIDAD ROAL EN FACEBOOK',
-        icon: 'ðŸ‘¥',
+        icon: '👥',
         actionType: 'external',
         link: 'https://www.facebook.com/share/17ukpFaQz3/?mibextid=wwXIfr',
         buttonType: 'minimal',
@@ -7918,7 +7918,7 @@ function normalizeButtonConfig(raw, id) {
     return {
         id: String(id || raw.id || '').trim(),
         label: String(raw.label || 'Boton').trim(),
-        icon: String(raw.icon || 'ðŸ”—').trim(),
+        icon: String(raw.icon || '🔗').trim(),
         actionType: raw.actionType === 'menu-modal' ? 'menu-modal' : 'external',
         link: String(raw.link || '').trim(),
         buttonType: ['neon', 'solid', 'glass', 'minimal'].includes(raw.buttonType) ? raw.buttonType : 'neon',
@@ -8090,10 +8090,10 @@ function renderDynamicCategorySections() {
 
             // --- PERROS CALIENTES ---
             else if ((catNormalizada.includes("PERROS") || catNormalizada.includes("PERRO")) && !catNormalizada.includes("SALCHIPAPA")) {
-                // AquÃ­ va el renderizado de perros calientes, si existe
+                // Aquí va el renderizado de perros calientes, si existe
                 // ...
             }
-            // Modal para galerÃ­a de bebidas/adicionales
+            // Modal para galería de bebidas/adicionales
             function openBebidasModal(imgSrc, title) {
                 // Eliminar modal previo si existe
                 const prev = document.getElementById('bebidas-modal');
@@ -8151,7 +8151,7 @@ function renderDynamicCategorySections() {
                 btnsRow.style.gap = '18px';
                 btnsRow.style.marginTop = '8px';
 
-                // BotÃ³n Regresar
+                // Botón Regresar
                 const closeBtn = document.createElement('button');
                 closeBtn.textContent = 'Regresar';
                 closeBtn.style.background = '#222';
@@ -8167,7 +8167,7 @@ function renderDynamicCategorySections() {
                     modalBg.remove();
                 };
 
-                // BotÃ³n Pedir este producto
+                // Botón Pedir este producto
                 const pedirBtn = document.createElement('button');
                 const buttonId = `btn-gallery-${normalizeAssetLookup(title)}`;
                 pedirBtn.type = 'button';
@@ -8196,7 +8196,7 @@ function renderDynamicCategorySections() {
 
                 document.body.appendChild(modalBg);
             }
-            // ...resto de categorÃ­as normales...
+            // ...resto de categorías normales...
             if (!visibleProducts.length) {
                 const empty = document.createElement('p');
                 empty.textContent = 'No hay productos cargados en esta categoria.';
@@ -8304,7 +8304,7 @@ function renderFeaturedCards(carousel, items) {
             button.className = 'mobile-order-btn';
             button.id = buttonId;
             button.type = 'button';
-            button.textContent = 'Â¡Lo Quiero!';
+            button.textContent = '¡Lo Quiero!';
             button.addEventListener('click', (event) => {
                 event.preventDefault();
                 startProductOrderFlow(safeName, featuredCategoryName, buttonId, { imagePath: item.orderImageSrc });
@@ -8378,8 +8378,8 @@ function startFeaturedCarouselAutoplay(carousel) {
         const deltaSeconds = Math.max(0, Math.min((timestamp - featuredCarouselLastTimestamp) / 1000, 0.1));
         featuredCarouselLastTimestamp = timestamp;
 
-        // Solo escribir scrollLeft si el desplazamiento es perceptible (â‰¥0.5px)
-        // â€” evita forzar layout en frames donde el delta es mÃ­nimo
+        // Solo escribir scrollLeft si el desplazamiento es perceptible (≥0.5px)
+        // — evita forzar layout en frames donde el delta es mínimo
         const delta = speedPxPerSecond * deltaSeconds;
         if (delta >= 0.5) {
             const next = carousel.scrollLeft + delta;
@@ -8539,7 +8539,7 @@ function applyButtonStyles(button, cfg) {
     const textEl = button.querySelector('.button-text');
 
     if (iconEl) {
-        iconEl.textContent = cfg.icon || 'ðŸ”—';
+        iconEl.textContent = cfg.icon || '🔗';
     }
 
     if (textEl) {
@@ -8707,7 +8707,7 @@ function getExplorerCategories() {
         uniqueMap.set(key, { key, name, order: firestoreOrderMap.get(key) });
     });
 
-    // Merge entries that share matchKeys (e.g. 'perros calientes' + 'perros y salchipapas' â†’ one entry)
+    // Merge entries that share matchKeys (e.g. 'perros calientes' + 'perros y salchipapas' → one entry)
     // Also attach matchKeys so getCategoryProducts can find products by any alias
     PINNED_CATEGORY_BUTTONS.forEach((pinned) => {
         const canonicalKey = normalizeCategoryKey(pinned.key);
@@ -8963,7 +8963,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
         return;
     }
 
-    // Debounce automÃ¡tico para evitar render storms cuando mÃºltiples listeners disparan simultÃ¡neamente.
+    // Debounce automático para evitar render storms cuando múltiples listeners disparan simultáneamente.
     // Las interacciones del usuario y las llamadas directas (fromUserClick / immediate) pasan sin espera.
     if (!options.fromUserClick && !options.immediate) {
         clearTimeout(_renderCatExplorerTimer);
@@ -9043,7 +9043,7 @@ function renderCategoryExplorer(nextKey, options = {}) {
 
     syncOrderingAvailabilityUI();
 }
-// --- BEBIDAS COLLECTION â€” PUBLIC MENU ---
+// --- BEBIDAS COLLECTION — PUBLIC MENU ---
 
 function renderBebidasPublicPanel(panel) {
     if (!panel) return;
@@ -9123,17 +9123,17 @@ function openBebidaPublicPickerModal(bev) {
     title.className = 'bebidas-modal-title';
     title.textContent = bev.marca;
 
-    // PresentaciÃ³n label
+    // Presentación label
     const presLabel = document.createElement('p');
     presLabel.style.cssText = 'margin:14px 0 6px;font-size:0.82rem;color:rgba(255,255,255,0.6);text-align:left;width:100%;padding:0 4px;';
-    presLabel.textContent = 'Elige tu presentaciÃ³n:';
+    presLabel.textContent = 'Elige tu presentación:';
 
-    // PresentaciÃ³n chips
+    // Presentación chips
     const presChips = document.createElement('div');
     presChips.className = 'combo-sabor-chips';
     presChips.style.justifyContent = 'flex-start';
 
-    // Sabor section (hidden until presentaciÃ³n chosen)
+    // Sabor section (hidden until presentación chosen)
     const saborSection = document.createElement('div');
     saborSection.style.cssText = 'width:100%;display:none;';
 
@@ -9177,7 +9177,7 @@ function openBebidaPublicPickerModal(bev) {
             const chip = document.createElement('button');
             chip.type = 'button';
             chip.className = 'combo-sabor-chip' + (selectedPres?.id === pres.id ? ' active' : '');
-            const precioFmt = pres.precio ? ` â€” $${pres.precio.toLocaleString('es-CO')}` : '';
+            const precioFmt = pres.precio ? ` — $${pres.precio.toLocaleString('es-CO')}` : '';
             chip.textContent = `${pres.nombre}${precioFmt}`;
             chip.addEventListener('click', () => {
                 selectedPres = pres;
@@ -9243,7 +9243,7 @@ function openBebidaPublicPickerModal(bev) {
     document.body.appendChild(overlay);
 }
 
-// --- FUNCIÃ“N GLOBAL MODAL BEBIDAS ---
+// --- FUNCIÓN GLOBAL MODAL BEBIDAS ---
 function abrirModalBebida(nombre, ruta, categoria, options = {}) {
     const prev = document.getElementById('bebidas-modal');
     if (prev) prev.remove();
@@ -9327,7 +9327,7 @@ function focusMenuSection(targetSection, targetId) {
 }
 
 function ensureBrandBanner() {
-    // Eliminado: No generar banner dinÃ¡mico, solo usar el estÃ¡tico en el HTML
+    // Eliminado: No generar banner dinámico, solo usar el estático en el HTML
     return null;
 }
 
@@ -9746,7 +9746,7 @@ function getRecommendedFallbackProduct() {
 }
 
 function getEligibleRecommendedProducts() {
-    // El pool NO filtra por isCategoryAllowed para que sea idÃ©ntico para todos los usuarios
+    // El pool NO filtra por isCategoryAllowed para que sea idéntico para todos los usuarios
     // sin importar el momento de carga (evita race condition con activeCategories).
     const eligibleProducts = latestProducts
         .map((product) => {
@@ -9798,7 +9798,7 @@ function createSeededRandom(seed) {
 }
 
 function _hashProductDay(key, daySerial) {
-    // Hash determinÃ­stico: resultado estable sin importar cuÃ¡ntos productos haya en el pool
+    // Hash determinístico: resultado estable sin importar cuántos productos haya en el pool
     let h = ((daySerial * 2654435761) >>> 0);
     for (let i = 0; i < key.length; i++) {
         h = (Math.imul(h ^ key.charCodeAt(i), 2246822519) >>> 0);
@@ -9827,7 +9827,7 @@ function getRecommendedProductOfDay(now = new Date()) {
     const { year, month, day } = getCurrentBogotaDateParts(now);
     const daySerial = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
 
-    // El producto con menor hash gana hoy â€” estable aunque cambien otros productos del catÃ¡logo
+    // El producto con menor hash gana hoy — estable aunque cambien otros productos del catálogo
     let selected = pool[0];
     let minHash = _hashProductDay(`${pool[0].nombre}::${pool[0].categoria}`, daySerial);
     for (let i = 1; i < pool.length; i++) {
@@ -9891,7 +9891,7 @@ function updatePromoModalContent() {
             orderButton.style.opacity = '0.45';
             orderButton.style.cursor = 'not-allowed';
         } else {
-            orderButton.textContent = 'Â¡Lo Quiero! ðŸ”¥';
+            orderButton.textContent = '¡Lo Quiero! 🔥';
             orderButton.disabled = false;
             orderButton.style.opacity = '';
             orderButton.style.cursor = '';
@@ -9998,7 +9998,7 @@ function renderExtraPromoCards() {
                             <span class="home-rec-price">$${discounted.toLocaleString('es-CO')}</span>
                         </div>
                     </div>
-                    <button class="home-rec-btn promo-btn-order" type="button">Â¡Lo Quiero! ðŸ”¥</button>
+                    <button class="home-rec-btn promo-btn-order" type="button">¡Lo Quiero! 🔥</button>
                 </div>
             </div>`;
 
@@ -10026,7 +10026,7 @@ function renderExtraPromoCards() {
     _applyPromoCarousel(container);
 }
 
-// ===== PROMOCIONES 2x1 (MENÃš PÃšBLICO) =====
+// ===== PROMOCIONES 2x1 (MENÚ PÚBLICO) =====
 
 function render2x1Cards() {
     const container = document.getElementById('promos2x1Cards');
@@ -10041,8 +10041,8 @@ function render2x1Cards() {
 
         const img = product.image_url || 'logo.png';
         const nombre = product.nombre || promo.producto_nombre || '';
-        const kicker = promo.kicker || 'Â¡Oferta Especial!';
-        const descripcion = promo.descripcion || 'Â¡Lleva 2 por el precio de 1!';
+        const kicker = promo.kicker || '¡Oferta Especial!';
+        const descripcion = promo.descripcion || '¡Lleva 2 por el precio de 1!';
 
         const section = document.createElement('section');
         section.className = 'home-rec-banner home-rec-banner--2x1';
@@ -10051,7 +10051,7 @@ function render2x1Cards() {
         section.innerHTML = `
             <div class="home-rec-top-bar">
                 <span class="home-rec-kicker">${kicker}</span>
-                <span class="home-rec-discount-badge promo-2x1-badge">2Ã—1</span>
+                <span class="home-rec-discount-badge promo-2x1-badge">2×1</span>
             </div>
             <div class="home-rec-content">
                 <div class="home-rec-img-wrap">
@@ -10060,7 +10060,7 @@ function render2x1Cards() {
                 <div class="home-rec-body">
                     <strong class="home-rec-name"></strong>
                     <p class="promo-2x1-desc"></p>
-                    <button class="home-rec-btn promo-btn-order" type="button">Â¡Lo Quiero! ðŸ”¥</button>
+                    <button class="home-rec-btn promo-btn-order" type="button">¡Lo Quiero! 🔥</button>
                 </div>
             </div>`;
 
@@ -10077,7 +10077,7 @@ function render2x1Cards() {
             addItemToCart(nombre, product.categoria || '', {
                 type: 'solo',
                 imagePath: img,
-                promoLabel: `PROMO 2Ã—1 â€” ${promo.kicker || nombre} (incluye 2)`,
+                promoLabel: `PROMO 2×1 — ${promo.kicker || nombre} (incluye 2)`,
                 promo2x1: true
             }, `btn-2x1-${promo.id}`, 1);
         });
@@ -10088,7 +10088,7 @@ function render2x1Cards() {
     _applyPromoCarousel(container);
 }
 
-// ===== COMBOS ESPECIALES (MENÃš PÃšBLICO) =====
+// ===== COMBOS ESPECIALES (MENÚ PÚBLICO) =====
 
 function _isComboActivoAhora(horario) {
     if (!horario || horario.tipo === 'siempre') return true;
@@ -10149,7 +10149,7 @@ function renderCombosEspeciales() {
 
         section.innerHTML = `
             <div class="combo-especial-header">
-                <span class="combo-especial-badge">ðŸŽ ${escapeXml(combo.titulo || 'Combo Especial')}</span>
+                <span class="combo-especial-badge">🎁 ${escapeXml(combo.titulo || 'Combo Especial')}</span>
                 ${descuento > 0 ? `<span class="combo-especial-pct">-${descuento}%</span>` : ''}
             </div>
             <div class="combo-especial-icons">${iconsHTML}</div>
@@ -10158,7 +10158,7 @@ function renderCombosEspeciales() {
                 ${precioOrig > precioCombo ? `<span class="combo-especial-orig">$${precioOrig.toLocaleString('es-CO')}</span>` : ''}
                 <span class="combo-especial-price">$${precioCombo.toLocaleString('es-CO')}</span>
             </div>
-            <button type="button" class="combo-order-btn">Â¡Lo Quiero! ðŸ”¥</button>`;
+            <button type="button" class="combo-order-btn">¡Lo Quiero! 🔥</button>`;
 
         section.querySelectorAll('.combo-public-icon-btn').forEach((btn) => {
             btn.addEventListener('click', (e) => {
@@ -10331,7 +10331,7 @@ function renderHomeComboCarousel() {
         const btn = document.createElement('button');
         btn.className = 'mobile-order-btn';
         btn.type = 'button';
-        btn.textContent = 'Â¡Lo Quiero!';
+        btn.textContent = '¡Lo Quiero!';
         btn.addEventListener('click', () => startProductOrderFlow(item.nombre, item.categoria, 'home-combo-btn'));
         card.appendChild(wrap);
         card.appendChild(btn);
@@ -10406,7 +10406,7 @@ function openCategoryDetail(cat) {
     const grid   = document.getElementById('cdsProductsGrid');
     if (!screen || !title || !grid) return; // no ocultar home si faltan elementos
 
-    // Ocultar navCategoriesScreen si estaba visible (quedarÃ­a detrÃ¡s al ser transparente)
+    // Ocultar navCategoriesScreen si estaba visible (quedaría detrás al ser transparente)
     const navScreen = document.getElementById('navCategoriesScreen');
     if (navScreen) {
         navScreen.dataset.hiddenByDetail = navScreen.hidden ? '0' : '1';
@@ -10469,7 +10469,7 @@ function openCategoryDetail(cat) {
             orderBtn.type = 'button';
             orderBtn.id = btnId;
             orderBtn.className = 'cds-product-btn';
-            orderBtn.textContent = 'Â¡Lo Quiero!';
+            orderBtn.textContent = '¡Lo Quiero!';
             orderBtn.addEventListener('click', () => startProductOrderFlow(nombre, cat.name, btnId));
             info.appendChild(orderBtn);
 
@@ -10545,7 +10545,7 @@ function closeNavCategoriesScreen() {
     _exitScreen();
 }
 
-// Estado de filtros de bÃºsqueda
+// Estado de filtros de búsqueda
 let _searchActiveCat = null;
 let _searchPricePreset = 'all'; // 'all' | '15000' | '30000' | '99999'
 
@@ -10594,7 +10594,7 @@ function _populateSearchCategoryChips() {
 }
 
 function _applySearchFilters() {
-    // Actualiza estado visual de chips de categorÃ­a
+    // Actualiza estado visual de chips de categoría
     document.querySelectorAll('#searchFilterCats .search-cat-chip').forEach(chip => {
         const isAll = chip.textContent === 'Todas';
         chip.classList.toggle('active', isAll ? _searchActiveCat === null : chip.textContent === _searchActiveCat);
@@ -10609,7 +10609,7 @@ function _applySearchFilters() {
 
 function openSearchScreen() {
     const screen = document.getElementById('searchScreen');
-    if (!screen || !screen.hidden) return; // no-op si ya estÃ¡ abierto
+    if (!screen || !screen.hidden) return; // no-op si ya está abierto
 
     _searchActiveCat = null;
     _searchPricePreset = 'all';
@@ -10619,7 +10619,7 @@ function openSearchScreen() {
 
     _populateSearchCategoryChips();
 
-    // Listeners de precio (una sola vez por apertura usando delegaciÃ³n)
+    // Listeners de precio (una sola vez por apertura usando delegación)
     const pricesEl = document.getElementById('searchFilterPrices');
     if (pricesEl && !pricesEl._roalBound) {
         pricesEl._roalBound = true;
@@ -10645,7 +10645,7 @@ function closeSearchScreen() {
     _exitScreen();
 }
 
-// â”€â”€ Buscador inteligente: normalizaciÃ³n, sinÃ³nimos y coincidencia difusa â”€â”€
+// ── Buscador inteligente: normalización, sinónimos y coincidencia difusa ──
 function _searchNorm(s) {
     return String(s || '').toLowerCase()
         .normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -10706,14 +10706,14 @@ function _scoreProduct(rawQ, p) {
     const desc   = _searchNorm(p.descripcion || p.description || '');
     const full   = `${name} ${cat} ${desc}`;
 
-    // Coincidencia exacta de frase â†’ mÃ¡xima prioridad
+    // Coincidencia exacta de frase → máxima prioridad
     if (name.includes(q)) return 1000;
     if (full.includes(q)) return 900;
 
     const tokens = full.split(' ').filter(Boolean);
     const qWords = q.split(' ').filter(Boolean);
 
-    // SinÃ³nimos por cada palabra de la consulta
+    // Sinónimos por cada palabra de la consulta
     const syns = new Set();
     for (const w of qWords) for (const s of (_SEARCH_SYNS[w] || [])) syns.add(s);
     const synWords = [...syns].filter(s => !qWords.includes(s));
@@ -10739,11 +10739,11 @@ function renderSearchResults(query) {
     const { min: priceMin, max: priceMax } = _getSearchPriceBounds();
 
     if (!q && !hasFilters) {
-        grid.innerHTML = '<p class="search-hint-msg">Escribe el nombre de un producto o usa los filtros para explorar el menÃº.</p>';
+        grid.innerHTML = '<p class="search-hint-msg">Escribe el nombre de un producto o usa los filtros para explorar el menú.</p>';
         return;
     }
 
-    // Filtrar por categorÃ­a y precio
+    // Filtrar por categoría y precio
     let pool = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
     if (_searchActiveCat !== null) {
         pool = pool.filter(p => String(p.categoria || '').trim() === _searchActiveCat);
@@ -10771,7 +10771,7 @@ function renderSearchResults(query) {
 
     if (scored.length === 0) {
         const msg = q
-            ? `No encontramos &ldquo;<strong>${q.replace(/</g, '&lt;')}</strong>&rdquo;${_searchActiveCat ? ` en <strong>${_searchActiveCat}</strong>` : ''} en nuestro menÃº.`
+            ? `No encontramos &ldquo;<strong>${q.replace(/</g, '&lt;')}</strong>&rdquo;${_searchActiveCat ? ` en <strong>${_searchActiveCat}</strong>` : ''} en nuestro menú.`
             : `Sin productos${_searchActiveCat ? ` en <strong>${_searchActiveCat}</strong>` : ''} para el precio seleccionado.`;
         grid.innerHTML = `<p class="search-hint-msg">${msg}</p>`;
         return;
@@ -10827,17 +10827,17 @@ function renderSearchResults(query) {
     });
 }
 
-// Oculta home y TODAS las demÃ¡s pantallas secundarias, marca el nav activo y empuja historial
+// Oculta home y TODAS las demás pantallas secundarias, marca el nav activo y empuja historial
 function _enterScreen(screenId) {
-    // Cerrar todas las demÃ¡s pantallas secundarias abiertas para evitar que se vean detrÃ¡s
-    // (son transparentes, si quedan visibles sangran a travÃ©s de la nueva pantalla)
+    // Cerrar todas las demás pantallas secundarias abiertas para evitar que se vean detrás
+    // (son transparentes, si quedan visibles sangran a través de la nueva pantalla)
     _SECONDARY_SCREENS.forEach(id => {
         if (id !== screenId) {
             const el = document.getElementById(id);
             if (el) el.hidden = true;
         }
     });
-    // Si no abrimos el detalle de categorÃ­a, limpiar el tracking de navCategoriesScreen
+    // Si no abrimos el detalle de categoría, limpiar el tracking de navCategoriesScreen
     if (screenId !== 'categoryDetailScreen') {
         document.getElementById('navCategoriesScreen')?.removeAttribute('data-hidden-by-detail');
     }
@@ -10880,7 +10880,7 @@ function _exitScreen() {
     }
 }
 
-// Marca el Ã­tem de la barra de navegaciÃ³n correspondiente a la pantalla activa
+// Marca el ítem de la barra de navegación correspondiente a la pantalla activa
 function _setNavCurrent(screenId) {
     const navMap = {
         navCategoriesScreen: 'bnavMenu',
@@ -10937,7 +10937,7 @@ function openPromoRegistrationPrompt() {
             <button type="button" class="support-modal-close" id="promoRegClose" aria-label="Cerrar">&times;</button>
             <p class="support-modal-kicker">Promos exclusivas</p>
             <h3 class="support-modal-title">Esta oferta es solo para miembros</h3>
-            <p class="support-modal-text">Para disfrutar de <strong>esta y todas nuestras promos exclusivas</strong> necesitas tener cuenta en la app de FODEXA. Â¡Tambien puedes descargarla directo en tu dispositivo!</p>
+            <p class="support-modal-text">Para disfrutar de <strong>esta y todas nuestras promos exclusivas</strong> necesitas tener cuenta en la app de FODEXA. ¡Tambien puedes descargarla directo en tu dispositivo!</p>
             <div class="promo-reg-actions">
                 <button type="button" class="promo-reg-btn promo-reg-btn--download" id="promoRegDownload">
                     <span class="promo-reg-btn-icon">&#8659;</span> Descargar app
@@ -11017,7 +11017,7 @@ window.addEventListener('beforeunload', () => {
     unsubscribeCustomerProfileStreams();
 });
 
-// â”€â”€ Modal de Variantes PÃºblico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Modal de Variantes Público ────────────────────────────────────────────
 function openPublicVariantesModal(productName, categoryName, buttonId, variantes, baseOptions, replaceItemKey = null) {
     const existing = document.getElementById('pubVarModal');
     if (existing) existing.remove();
@@ -11046,16 +11046,16 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
                 <div style="font-family:'Oswald',sans-serif;font-size:1.05rem;font-weight:700;color:#fff7ef;letter-spacing:.3px;">${productName}</div>
                 <div style="font-size:0.72rem;color:rgba(255,200,130,0.6);margin-top:2px;">${categoryName}</div>
             </div>
-            <button id="pubVarClose" style="background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:28px;height:28px;color:#fff;cursor:pointer;font-size:1rem;flex-shrink:0;">Ã—</button>
+            <button id="pubVarClose" style="background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:28px;height:28px;color:#fff;cursor:pointer;font-size:1rem;flex-shrink:0;">×</button>
         </div>
-        <div style="font-size:0.65rem;color:rgba(255,200,130,0.5);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">Selecciona una opciÃ³n</div>
+        <div style="font-size:0.65rem;color:rgba(255,200,130,0.5);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">Selecciona una opción</div>
         <div id="pubVarGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px;"></div>
         <div id="pubVarSaborSection" hidden>
             <div style="font-size:0.65rem;color:rgba(255,200,130,0.5);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">Sabor de la bebida</div>
             <div id="pubVarSaborGrid" style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px;"></div>
         </div>
         <textarea id="pubVarComment" rows="2" placeholder="Nota (opcional): sin cebolla, extra salsa..." style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#fff7ef;font-size:0.83rem;resize:none;margin-bottom:12px;"></textarea>
-        <button id="pubVarConfirm" disabled style="width:100%;padding:14px;border-radius:14px;border:none;background:rgba(200,100,20,0.35);color:rgba(255,255,255,0.4);font-family:'Oswald',sans-serif;font-size:1rem;font-weight:700;letter-spacing:.5px;cursor:not-allowed;transition:all .2s;">SELECCIONA UNA OPCIÃ“N</button>`;
+        <button id="pubVarConfirm" disabled style="width:100%;padding:14px;border-radius:14px;border:none;background:rgba(200,100,20,0.35);color:rgba(255,255,255,0.4);font-family:'Oswald',sans-serif;font-size:1rem;font-weight:700;letter-spacing:.5px;cursor:not-allowed;transition:all .2s;">SELECCIONA UNA OPCIÓN</button>`;
 
     overlay.appendChild(card);
     document.body.appendChild(overlay);
@@ -11076,7 +11076,7 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
         confirmBtn.style.color = ready ? '#fff7ef' : 'rgba(255,255,255,0.4)';
         confirmBtn.style.cursor = ready ? 'pointer' : 'not-allowed';
         confirmBtn.textContent = ready
-            ? `AGREGAR â€” $${Number(selectedVariante.precio || 0).toLocaleString('es-CO')}`
+            ? `AGREGAR — $${Number(selectedVariante.precio || 0).toLocaleString('es-CO')}`
             : (total > 1 ? `SELECCIONA SABORES (${filled}/${total})` : 'SELECCIONA EL SABOR');
     }
 
@@ -11128,9 +11128,9 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
         btn.type = 'button';
         btn.style.cssText = 'padding:13px 10px;border-radius:14px;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#fff7ef;cursor:pointer;text-align:center;line-height:1.4;transition:all .15s;';
         const bebLine = v.con_bebida && v.bebida_nombre
-            ? `<span style="display:block;font-size:0.7rem;color:rgba(255,200,130,0.55);margin-top:3px;">ðŸ¥¤ ${v.bebida_nombre}${v.cantidad_bebidas > 1 ? ` Ã—${v.cantidad_bebidas}` : ''}</span>`
+            ? `<span style="display:block;font-size:0.7rem;color:rgba(255,200,130,0.55);margin-top:3px;">🥤 ${v.bebida_nombre}${v.cantidad_bebidas > 1 ? ` ×${v.cantidad_bebidas}` : ''}</span>`
             : '';
-        btn.innerHTML = `<strong style="display:block;font-family:'Oswald',sans-serif;font-size:0.9rem;">${v.nombre || 'OpciÃ³n'}</strong><span style="color:#ff9944;font-weight:700;font-size:0.88rem;">$${Number(v.precio || 0).toLocaleString('es-CO')}</span>${bebLine}`;
+        btn.innerHTML = `<strong style="display:block;font-family:'Oswald',sans-serif;font-size:0.9rem;">${v.nombre || 'Opción'}</strong><span style="color:#ff9944;font-weight:700;font-size:0.88rem;">$${Number(v.precio || 0).toLocaleString('es-CO')}</span>${bebLine}`;
         btn.addEventListener('click', () => {
             selectedVariante = v;
             selectedSabores = [];
@@ -11150,7 +11150,7 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
         const saboresLabel = selectedSabores.filter(Boolean).join(', ');
         const cant = Number(selectedVariante.cantidad_bebidas) || 0;
         const bebInfo = selectedVariante.con_bebida && selectedVariante.bebida_nombre
-            ? ` + ${selectedVariante.bebida_nombre}${saboresLabel ? ` (${saboresLabel})` : ''}${cant > 1 ? ` Ã—${cant}` : ''}`
+            ? ` + ${selectedVariante.bebida_nombre}${saboresLabel ? ` (${saboresLabel})` : ''}${cant > 1 ? ` ×${cant}` : ''}`
             : '';
         const fullComment = `${selectedVariante.nombre}${bebInfo}${comment ? ` | ${comment}` : ''}`;
         overlay.remove();
@@ -11175,7 +11175,7 @@ function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig
     const cant = Math.max(1, Number(bebidaConfig.cantidad) || 1);
 
     if (!saboresDisp.length) {
-        const opts = Object.assign({}, baseOptions || {}, { upgradeHandled: true, comment: bebidaConfig.bebida_nombre ? `ðŸ¥¤ ${bebidaConfig.bebida_nombre}` : '' });
+        const opts = Object.assign({}, baseOptions || {}, { upgradeHandled: true, comment: bebidaConfig.bebida_nombre ? `🥤 ${bebidaConfig.bebida_nombre}` : '' });
         if (replaceItemKey) shoppingCart = shoppingCart.filter((i) => i.itemKey !== replaceItemKey);
         addItemToCart(productName, categoryName, buttonId, opts);
         return;
@@ -11193,8 +11193,8 @@ function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig
     const header = document.createElement('div');
     header.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:8px;';
     header.innerHTML = `<div><div style="font-weight:700;font-size:1rem;color:#fff;">${escapeHtml(productName)}</div>
-        <div style="font-size:0.78rem;color:rgba(200,180,150,0.7);margin-top:2px;">ðŸ¥¤ ${escapeHtml(bebidaConfig.bebida_nombre || 'Bebida incluida')}</div></div>
-        <button id="pubBebClose" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;line-height:1;padding:0 4px;">Ã—</button>`;
+        <div style="font-size:0.78rem;color:rgba(200,180,150,0.7);margin-top:2px;">🥤 ${escapeHtml(bebidaConfig.bebida_nombre || 'Bebida incluida')}</div></div>
+        <button id="pubBebClose" style="background:none;border:none;color:rgba(255,255,255,0.5);font-size:1.5rem;cursor:pointer;line-height:1;padding:0 4px;">×</button>`;
 
     const saborLabel = document.createElement('div');
     saborLabel.style.cssText = 'font-size:0.72rem;color:rgba(200,180,150,0.55);text-transform:uppercase;letter-spacing:.5px;';
@@ -11252,7 +11252,7 @@ function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig
 
     confirmBtn.addEventListener('click', () => {
         const saborNote = selectedSabores.filter(Boolean).join(', ');
-        const comment = `ðŸ¥¤ ${bebidaConfig.bebida_nombre}${saborNote ? ' â€” ' + saborNote : ''}`;
+        const comment = `🥤 ${bebidaConfig.bebida_nombre}${saborNote ? ' — ' + saborNote : ''}`;
         const opts = Object.assign({}, baseOptions || {}, { upgradeHandled: true, comment });
         overlay.remove();
         if (replaceItemKey) shoppingCart = shoppingCart.filter((i) => i.itemKey !== replaceItemKey);
@@ -11269,7 +11269,7 @@ function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig
     document.body.appendChild(overlay);
 }
 
-// â”€â”€ Public Upgrade Sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Public Upgrade Sheet ──────────────────────────────────────────────────
 function openPublicUpgradeSheet() {
     const overlay = document.getElementById('publicUpgradeOverlay');
     if (!overlay || !_publicUpgradePending) return;
@@ -11325,7 +11325,7 @@ function _pubUpgRenderExtrasList() {
         <div class="pub-extra-row">
             <span class="pub-extra-name">${e.name}</span>
             <span class="pub-extra-price">+$${Number(e.price || 0).toLocaleString('es-CO')}</span>
-            <button type="button" class="pub-extra-del" data-idx="${i}">âœ•</button>
+            <button type="button" class="pub-extra-del" data-idx="${i}">✕</button>
         </div>`).join('')}
     </div>`;
 }
@@ -11343,7 +11343,7 @@ function _pubUpgBindExtrasDel(onUpdate) {
 function renderPublicUpgradeStep1() {
     const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
     if (!body || !_publicUpgradePending) return;
-    if (titleEl) titleEl.textContent = 'Â¿Quieres acompaÃ±arlo?';
+    if (titleEl) titleEl.textContent = '¿Quieres acompañarlo?';
 
     const catData = _getPublicCategoryData(_publicUpgradePending.categoryName);
     const hayAcomp  = (catData?.acompanantes_menu !== false) && _latestAcompanantes.some((a) => a.estado === 'active' && a.activo_menu);
@@ -11352,9 +11352,9 @@ function renderPublicUpgradeStep1() {
 
     body.innerHTML = `
         <div class="pub-home-btns">
-            ${hayCombos ? `<button type="button" class="pub-cat-btn" id="pubBtnCombo">ðŸ” Combo</button>` : ''}
-            ${hayAcomp  ? `<button type="button" class="pub-cat-btn" id="pubBtnAcomp">ðŸ¥— Adicional</button>` : ''}
-            ${hayBebida ? `<button type="button" class="pub-cat-btn" id="pubBtnBebida">ðŸ¥¤ Bebida</button>` : ''}
+            ${hayCombos ? `<button type="button" class="pub-cat-btn" id="pubBtnCombo">🍔 Combo</button>` : ''}
+            ${hayAcomp  ? `<button type="button" class="pub-cat-btn" id="pubBtnAcomp">🥗 Adicional</button>` : ''}
+            ${hayBebida ? `<button type="button" class="pub-cat-btn" id="pubBtnBebida">🥤 Bebida</button>` : ''}
         </div>
         ${_pubUpgRenderExtrasList()}`;
 
@@ -11374,8 +11374,8 @@ function _renderPublicUpgradeCombos() {
     body.innerHTML = `
         <div class="pub-upgrade-opts">
             ${items.map((c) => {
-                const saboresLabel = c.bebida_sabores.length ? ` Â· ${c.bebida_sabores.join(' / ')}` : '';
-                const meta = [c.papas ? `ðŸŸ ${c.papas}` : '', c.bebida_nombre ? `ðŸ¥¤ ${c.bebida_nombre}${saboresLabel}` : ''].filter(Boolean).join(' Â· ');
+                const saboresLabel = c.bebida_sabores.length ? ` · ${c.bebida_sabores.join(' / ')}` : '';
+                const meta = [c.papas ? `🍟 ${c.papas}` : '', c.bebida_nombre ? `🥤 ${c.bebida_nombre}${saboresLabel}` : ''].filter(Boolean).join(' · ');
                 return `
                 <button type="button" class="pub-upgrade-opt pub-upgrade-opt--combo" data-combo-id="${c.id}">
                     <span class="pub-upgrade-opt-left">
@@ -11386,7 +11386,7 @@ function _renderPublicUpgradeCombos() {
                 </button>`;
             }).join('')}
         </div>
-        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">â† Volver</button>`;
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
 
     body.querySelectorAll('[data-combo-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -11416,7 +11416,7 @@ function _renderPublicUpgradeComboSabor(combo, sabores) {
                 <span class="pub-upgrade-opt-name">${s}</span>
             </button>`).join('')}
         </div>
-        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">â† Volver</button>`;
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
 
     body.querySelectorAll('[data-sabor]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -11442,7 +11442,7 @@ function _renderPublicUpgradeAdicionales() {
                 <span class="pub-upgrade-opt-price">+$${Number(a.precio || 0).toLocaleString('es-CO')}</span>
             </button>`).join('')}
         </div>
-        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">â† Volver</button>`;
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
     body.querySelectorAll('[data-acomp-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const a = items.find((x) => x.id === btn.dataset.acompId);
@@ -11468,7 +11468,7 @@ function _renderPublicUpgradeBebidas() {
                 <span class="pub-upgrade-opt-price">${b.presentaciones.length === 1 ? `+$${b.presentaciones[0].precio.toLocaleString('es-CO')}` : 'Ver opciones'}</span>
             </button>`).join('')}
         </div>
-        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">â† Volver</button>`;
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
     body.querySelectorAll('[data-beb-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const b = items.find((x) => x.id === btn.dataset.bebId);
@@ -11488,7 +11488,7 @@ function _renderPublicUpgradeBebidas() {
 function _renderPublicUpgradeBebidaPresentaciones(bebida) {
     const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
     if (!body) return;
-    if (titleEl) titleEl.textContent = `${bebida.marca} â€” presentaciÃ³n`;
+    if (titleEl) titleEl.textContent = `${bebida.marca} — presentación`;
     body.innerHTML = `
         <div class="pub-upgrade-opts">
             ${bebida.presentaciones.map((p) => `
@@ -11497,7 +11497,7 @@ function _renderPublicUpgradeBebidaPresentaciones(bebida) {
                 <span class="pub-upgrade-opt-price">+$${Number(p.precio || 0).toLocaleString('es-CO')}</span>
             </button>`).join('')}
         </div>
-        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">â† Volver</button>`;
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
     bebida.presentaciones.forEach((p) => {
         body.querySelector(`[data-pres-id="${p.id}"]`)?.addEventListener('click', () => {
             if (p.sabores.length > 0) {
@@ -11514,13 +11514,13 @@ function _renderPublicUpgradeBebidaPresentaciones(bebida) {
 function _renderPublicUpgradeBebidaSabores(bebida, presentacion) {
     const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
     if (!body) return;
-    if (titleEl) titleEl.textContent = `${presentacion.nombre} â€” sabor`;
+    if (titleEl) titleEl.textContent = `${presentacion.nombre} — sabor`;
     body.innerHTML = `
         <div class="pub-flavors-grid">
             ${presentacion.sabores.map((s) => `
             <button type="button" class="pub-flavor-btn" data-sabor="${s}">${s}</button>`).join('')}
         </div>
-        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">â† Volver</button>`;
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
     body.querySelectorAll('.pub-flavor-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
             const s = btn.dataset.sabor;
@@ -11570,8 +11570,8 @@ function showTempClosureBanner() {
     banner.id = 'temp-closure-banner';
     banner.setAttribute('role', 'alert');
     banner.innerHTML = `
-        <span class="tcb-title">Cerrado momentÃ¡neamente</span>
-        <span class="tcb-sub">Adecuaciones en el local &mdash; Â¡Pronto volvemos con todo!</span>
+        <span class="tcb-title">Cerrado momentáneamente</span>
+        <span class="tcb-sub">Adecuaciones en el local &mdash; ¡Pronto volvemos con todo!</span>
     `;
     document.body.insertBefore(banner, document.body.firstChild);
 
@@ -11585,10 +11585,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('has-auth-nav');
     setActiveCustomerProfile(loadStoredCustomerProfile());
 
-    // GarantÃ­a: cualquier ruta que cierre el splash tambiÃ©n muestra el homeScreen.
+    // Garantía: cualquier ruta que cierre el splash también muestra el homeScreen.
     // IMPORTANTE: el timer de 12s en el inline script llama __roalHideSplash aunque el
-    // usuario ya estÃ© navegando. Verificamos que el splash todavÃ­a sea visible antes de
-    // llamar showHomeScreen(), para no interrumpir la navegaciÃ³n en curso.
+    // usuario ya esté navegando. Verificamos que el splash todavía sea visible antes de
+    // llamar showHomeScreen(), para no interrumpir la navegación en curso.
     const _origHideSplash = window.__roalHideSplash;
     window.__roalHideSplash = function () {
         const splashEl = document.getElementById('splashScreen');
@@ -11600,10 +11600,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('publicChatFab')?.addEventListener('click', openPublicChatTab);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
 
-    // Barra de navegaciÃ³n inferior â€” acciones
+    // Barra de navegación inferior — acciones
     document.getElementById('bnavInicio')?.addEventListener('click', () => {
-        window.__roalHideSplash?.(); // oculta splash si todavÃ­a estÃ¡ visible
-        showHomeScreen();            // siempre navega al home (el wrapper no lo hace si splash ya cerrÃ³)
+        window.__roalHideSplash?.(); // oculta splash si todavía está visible
+        showHomeScreen();            // siempre navega al home (el wrapper no lo hace si splash ya cerró)
     });
     document.getElementById('bnavMenu')?.addEventListener('click', () => openNavCategoriesScreen('Nuestro Menu', null));
     document.getElementById('bnavCombos')?.addEventListener('click', () => {
@@ -11619,17 +11619,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('perfilCloseBtn')?.addEventListener('click', () => closeCustomerAuthModal());
     document.getElementById('ayudaCloseBtn')?.addEventListener('click', () => closeAyudaScreen());
 
-    // BotÃ³n enviar de la pantalla Ayuda
+    // Botón enviar de la pantalla Ayuda
     document.getElementById('ayudaWaSendBtn')?.addEventListener('click', function () {
         const textarea = document.getElementById('ayudaWaTextarea');
         const feedback = document.getElementById('ayudaWaFeedback');
         const msg = (textarea?.value || '').trim();
         if (!msg) { textarea?.focus(); if (textarea) textarea.style.borderColor = 'rgba(255,96,0,0.75)'; return; }
         if (textarea) textarea.style.borderColor = '';
-        const waText = msg + '\n\n_(Enviado desde el menÃº digital de FODEXA)_';
+        const waText = msg + '\n\n_(Enviado desde el menú digital de FODEXA)_';
         window.open(WHATSAPP_BASE_URL + '?text=' + encodeURIComponent(waText), '_blank', 'noopener,noreferrer');
         this.disabled = true; this.style.opacity = '0.6';
-        if (feedback) { feedback.textContent = 'Â¡Mensaje enviado! SerÃ¡ atendido a la brevedad posible.'; feedback.hidden = false; }
+        if (feedback) { feedback.textContent = '¡Mensaje enviado! Será atendido a la brevedad posible.'; feedback.hidden = false; }
         setTimeout(() => closeAyudaScreen(), 3000);
     });
     document.getElementById('searchInput')?.addEventListener('input', e => renderSearchResults(e.target.value));
@@ -11650,11 +11650,11 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => openCustomerAuthModal(), 350);
     });
 
-    // BotÃ³n volver en pantalla detalle de categorÃ­a
+    // Botón volver en pantalla detalle de categoría
     document.getElementById('cdsBackBtn')?.addEventListener('click', () => closeCategoryDetail());
 
     // Diferir carga de fondos pesados (fondo.png 3.9 MB + fondo-vertical.png 3 MB)
-    // hasta que la pÃ¡gina sea interactiva â€” ahorra ancho de banda en carga inicial.
+    // hasta que la página sea interactiva — ahorra ancho de banda en carga inicial.
     const _triggerBgLoad = () => document.body.classList.add('bg-loaded');
     if ('requestIdleCallback' in window) {
         requestIdleCallback(_triggerBgLoad, { timeout: 1200 });
@@ -11664,13 +11664,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initCartUI();
     initSupportModal();
-    // initPromoModal(); â€” desactivado: el recomendado se muestra fijo en el banner del home screen
+    // initPromoModal(); — desactivado: el recomendado se muestra fijo en el banner del home screen
     initShortcutInstallUI();
     setupMenuNavigation();
     updateDynamicWhatsAppLink(activeMenuSection);
     showTempClosureBanner();
     syncOrderingAvailabilityUI();
-    // Pausar el interval cuando el tab estÃ¡ en segundo plano (ahorra baterÃ­a y CPU)
+    // Pausar el interval cuando el tab está en segundo plano (ahorra batería y CPU)
     let _syncInterval = window.setInterval(syncOrderingAvailabilityUI, 60000);
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
@@ -11682,7 +11682,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { once: false });
     // Carrusel de destacados: fallback local inmediato, luego Firestore si responde
     const featuredCarousel = document.getElementById('featured-carousel-dynamic');
-    // Array local con rutas en la raÃ­z del proyecto
+    // Array local con rutas en la raíz del proyecto
     const localFeatured = [
         { nombre: 'Combo Burger Normal', image_url: 'losmaspedidos/comboburgernormal.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
         { nombre: 'Combo Burger Papuda', image_url: 'losmaspedidos/comboburgerpapuda.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
@@ -11714,7 +11714,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCombosPackPublic();
     loadCustomerPaymentMethods();
 
-    // â”€â”€ Detector de conexiÃ³n offline / online â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Detector de conexión offline / online ─────────────────────────────
     (function _setupOfflineBanner() {
         const banner = document.getElementById('offlineBanner');
         if (!banner) return;
@@ -11731,17 +11731,17 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('offline', _showOffline);
         window.addEventListener('online', _hideOffline);
 
-        // Si arranca sin conexiÃ³n, mostrar inmediatamente
+        // Si arranca sin conexión, mostrar inmediatamente
         if (!navigator.onLine) _showOffline();
     })();
 
-    // Cerrar upgrade sheet pÃºblico
+    // Cerrar upgrade sheet público
     document.getElementById('publicUpgradeOverlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closePublicUpgradeSheet();
     });
     document.getElementById('publicUpgradeCloseBtn')?.addEventListener('click', closePublicUpgradeSheet);
 
-    // â”€â”€ BotÃ³n ATRÃS de Android: cierra el overlay activo en vez de salir de la app â”€â”€
+    // ── Botón ATRÁS de Android: cierra el overlay activo en vez de salir de la app ──
     window.addEventListener('popstate', () => {
         if (_skipNextPopstate) { _skipNextPopstate = false; return; }
         if (_modalHistoryDepth > 0) {
@@ -11758,14 +11758,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 _closingByBackBtn = false;
             }
         } else if (_screenHistoryPushed) {
-            // Pantallas de menÃº (bÃºsqueda, categorÃ­as, promos, detalle)
+            // Pantallas de menú (búsqueda, categorías, promos, detalle)
             _screenHistoryPushed = false;
             _closingByBackBtn = true;
             try {
-                // Cierra de mÃ¡s anidado a menos anidado
+                // Cierra de más anidado a menos anidado
                 if (!document.getElementById('categoryDetailScreen')?.hidden) {
                     closeCategoryDetail();
-                    // Si navCategoriesScreen fue restaurada, re-empujar estado para permitir otro Â«atrÃ¡sÂ»
+                    // Si navCategoriesScreen fue restaurada, re-empujar estado para permitir otro «atrás»
                     if (!document.getElementById('navCategoriesScreen')?.hidden) {
                         history.pushState({ roalMenuScreen: true }, '');
                         _screenHistoryPushed = true;
@@ -11790,15 +11790,15 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (document.visibilityState === 'visible') {
             const hiddenMs = Date.now() - _lastHiddenAt;
             const homeScreen = document.getElementById('homeScreen');
-            // Si el homeScreen estÃ¡ oculto y la splash ya no existe, mostrarlo
-            // â€” pero solo si no hay ninguna pantalla secundaria abierta
+            // Si el homeScreen está oculto y la splash ya no existe, mostrarlo
+            // — pero solo si no hay ninguna pantalla secundaria abierta
             if (homeScreen && homeScreen.hidden && !document.getElementById('splashScreen')) {
                 const _secondaryIds = ['categoryDetailScreen', 'navCategoriesScreen', 'promoScreen', 'searchScreen'];
                 const _anySecondaryOpen = _secondaryIds.some(id => { const el = document.getElementById(id); return el && !el.hidden; });
                 if (!_anySecondaryOpen) showHomeScreen();
                 return;
             }
-            // Si estuvo oculto mÃ¡s de 30 segundos, forzar re-render del home
+            // Si estuvo oculto más de 30 segundos, forzar re-render del home
             if (_lastHiddenAt > 0 && hiddenMs > 30000) {
                 if (homeScreen && !homeScreen.hidden && homeScreen.style.display !== 'none') {
                     renderHomeScreen();
@@ -11832,6 +11832,6 @@ function closeAyudaScreen() {
     _exitScreen();
 }
 
-// Alias para compatibilidad con cÃ³digo existente
+// Alias para compatibilidad con código existente
 function openAyudaModal() { openAyudaScreen(); }
 
