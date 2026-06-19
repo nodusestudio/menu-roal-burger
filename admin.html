@@ -11735,7 +11735,7 @@
 
         <div class="sidebar-footer">
             <a class="admin-link" id="adminPublicLink" href="/" target="_blank" rel="noopener noreferrer">Ir a Publico</a>
-            <button type="button" class="preview-refresh-btn" id="adminInstallBtn" style="display:none;">📲 Instalar FODEXA</button>
+            <button type="button" class="preview-refresh-btn" id="adminInstallBtn" style="display:none;">📲 Descargar App</button>
             <button type="button" class="preview-refresh-btn" id="adminSignOutBtn">Cerrar sesion</button>
         </div>
     </aside>
@@ -13491,6 +13491,14 @@
         }
         let _adminInstallPrompt = null;
         const _adminInstallBtn = document.getElementById('adminInstallBtn');
+
+        const _isStandalone = window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true;
+
+        if (!_isStandalone && _adminInstallBtn) {
+            _adminInstallBtn.style.display = '';
+        }
+
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             _adminInstallPrompt = e;
@@ -13501,11 +13509,16 @@
             if (_adminInstallBtn) _adminInstallBtn.style.display = 'none';
         });
         _adminInstallBtn?.addEventListener('click', async () => {
-            if (!_adminInstallPrompt) return;
-            _adminInstallPrompt.prompt();
-            const { outcome } = await _adminInstallPrompt.userChoice;
-            if (outcome === 'accepted') _adminInstallPrompt = null;
-            if (_adminInstallBtn) _adminInstallBtn.style.display = _adminInstallPrompt ? '' : 'none';
+            if (_adminInstallPrompt) {
+                _adminInstallPrompt.prompt();
+                const { outcome } = await _adminInstallPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    _adminInstallPrompt = null;
+                    if (_adminInstallBtn) _adminInstallBtn.style.display = 'none';
+                }
+            } else {
+                alert('Para instalar FODEXA:\n\nBrave/Chrome → Menú (⋮) → "Instalar FODEXA"\nSafari → Compartir → "Agregar a inicio"');
+            }
         });
     </script>
 </body>
