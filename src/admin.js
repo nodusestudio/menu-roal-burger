@@ -18257,8 +18257,34 @@ async function renderLibroCierres() {
             </tr>`;
         }
 
+        // Resumen de totales por columna en la cabecera
         const kpiEl = document.getElementById('cierresKpiGrid');
-        if (kpiEl) kpiEl.innerHTML = '';
+        if (kpiEl) {
+            const chipMethod = methodKeys.map((k) => {
+                const m = methods.find((x) => x.id === k) || { label: k, icon: '' };
+                const v = sumTotals[k] || 0;
+                if (v === 0) return '';
+                const color = v > 0 ? '#6ee7b7' : '#fca5a5';
+                return `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;min-width:110px;">
+                    <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">${m.icon ? m.icon + ' ' : ''}${m.label}</span>
+                    <span style="font-size:1rem;font-weight:700;color:${color};">${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}</span>
+                </div>`;
+            }).filter(Boolean).join('');
+
+            const egColor = grandSumEgresos > 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
+            const chipEgr = grandSumEgresos > 0 ? `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(252,165,165,0.06);border:1px solid rgba(252,165,165,0.18);border-radius:10px;min-width:110px;">
+                <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">📤 Egresos</span>
+                <span style="font-size:1rem;font-weight:700;color:${egColor};">−${formatMoney(grandSumEgresos)}</span>
+            </div>` : '';
+
+            const ntColor = grandSumTotal >= 0 ? '#ff9540' : '#fca5a5';
+            const chipNet = `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,149,64,0.07);border:1px solid rgba(255,149,64,0.22);border-radius:10px;min-width:110px;">
+                <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">💰 Total Neto</span>
+                <span style="font-size:1rem;font-weight:700;color:${ntColor};">${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</span>
+            </div>`;
+
+            kpiEl.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 2px 12px;">${chipMethod}${chipEgr}${chipNet}</div>`;
+        }
     } catch (err) {
         tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
     }
