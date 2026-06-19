@@ -1,6 +1,6 @@
 /* Service Worker — FODEXA */
 
-const CACHE_VERSION = 'roal-v5';
+const CACHE_VERSION = 'fodexa-v1';
 const CACHE_STATIC  = `${CACHE_VERSION}-static`;
 const CACHE_IMAGES  = `${CACHE_VERSION}-images`;
 const ALL_CACHES    = [CACHE_STATIC, CACHE_IMAGES];
