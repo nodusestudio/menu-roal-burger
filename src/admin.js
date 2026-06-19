@@ -18755,7 +18755,10 @@ function _openCierreDetalleModal(c) {
                     ${c.aperturaBy ? `<span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Cajero: <strong style="color:rgba(255,255,255,0.6);">${escapeHtml(String(c.aperturaBy))}</strong></span>` : ''}
                 </div>
             </div>
-            <button id="_cierreDetalleCerrar" style="background:none;border:none;color:rgba(255,255,255,0.4);font-size:1.5rem;cursor:pointer;line-height:1;padding:0 0 0 8px;" aria-label="Cerrar">×</button>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+                <button id="_cierreDetalleCerrar" style="background:none;border:none;color:rgba(255,255,255,0.4);font-size:1.5rem;cursor:pointer;line-height:1;" aria-label="Cerrar">×</button>
+                <button id="_cierreDetallePrint" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:rgba(255,255,255,0.65);font-size:0.72rem;font-weight:600;cursor:pointer;padding:4px 10px;white-space:nowrap;">🖨️ Imprimir</button>
+            </div>
         </div>
         <!-- Scrollable body -->
         <div style="overflow-y:auto;flex:1;padding:16px 20px 20px;display:flex;flex-direction:column;gap:16px;">
@@ -18787,6 +18790,18 @@ function _openCierreDetalleModal(c) {
     document.body.appendChild(overlay);
     document.getElementById('_cierreDetalleCerrar')?.addEventListener('click', () => overlay.remove());
     _bindOverlayClose(overlay, () => overlay.remove());
+
+    document.getElementById('_cierreDetallePrint')?.addEventListener('click', () => {
+        const dateStr  = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+        const timeStr  = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
+        const win = window.open('', '_blank', 'width=400,height=700');
+        if (!win) return;
+        win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cierre de Caja · ${escapeHtml(dateStr)}</title>
+        <style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#1a1412;display:flex;justify-content:center;padding:20px;}@media print{body{background:#fff;padding:0;}}</style>
+        </head><body>${ticketHtml}<script>window.onload=()=>{window.print();}<\/script></body></html>`);
+        win.document.close();
+    });
 }
 
 function openCierreGastoModal(cierre) {
