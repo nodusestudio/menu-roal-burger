@@ -1,7 +1,7 @@
 {
-  "name": "FODEXA",
-  "short_name": "FODEXA",
-  "description": "Menu digital y acceso rapido oficial de FODEXA.",
+  "name": "ROAL BURGER",
+  "short_name": "ROAL",
+  "description": "Menu digital y acceso rapido oficial de ROAL BURGER.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,7 +9,7 @@
   "theme_color": "#f9e9d0",
   "icons": [
     {
-      "src": "./isotipo-fodexa.png",
+      "src": "./isotipo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
