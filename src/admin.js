@@ -17905,7 +17905,7 @@ async function renderLibroCierres() {
                 </tr>`;
             }
 
-            // Cierre normal
+            // Cierre normal — 2 filas: ingresos (arriba) + egresos (abajo)
             const c = entry;
             const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
             const d = tsMs ? new Date(tsMs) : null;
@@ -17913,32 +17913,51 @@ async function renderLibroCierres() {
             const fechaStr = d
                 ? d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                 : c.date || '—';
-            const methodTotals = c.methodTotals || {};
-            const methodCells = methodKeys.map((k) => {
-                const v = Number(methodTotals[k] || 0);
+
+            const _ingM  = c.ingresosMethod || c.methodTotals || {};
+            const _gasM  = c.gastosMethod   || {};
+            const _ingT  = Number(c.ingresosTotal  ?? c.grandTotal ?? 0);
+            const _gasT  = Number(c.gastosTotal    || 0);
+            const gt     = Number(c.grandTotal     || 0);
+            const hasEgr = _gasT > 0;
+
+            // Acumuladores footer (netos)
+            const _netM = c.methodTotals || {};
+            methodKeys.forEach((k) => { sumTotals[k] += Number(_netM[k] || 0); });
+            grandSumEgresos += _gasT;
+            grandSumTotal   += gt;
+
+            const rs = hasEgr ? 'rowspan="2"' : '';
+
+            const ingresosCells = methodKeys.map((k) => {
+                const v = Number(_ingM[k] || 0);
                 if (v === 0) return '<td style="color:var(--admin-muted);">—</td>';
-                sumTotals[k] += v;
-                const color = v < 0 ? '#fca5a5' : '#6ee7b7';
-                return `<td style="color:${color};font-weight:600;">${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}</td>`;
+                return `<td style="color:#6ee7b7;font-weight:600;">${formatMoney(v)}</td>`;
             }).join('');
-            const egresos = Number(c.gastosTotal || 0);
-            grandSumEgresos += egresos;
-            const egresosCell = egresos > 0
-                ? `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(egresos)}</td>`
-                : `<td style="color:var(--admin-muted);">—</td>`;
-            const gt = Number(c.grandTotal || 0);
-            grandSumTotal += gt;
+
+            const gastosCells = methodKeys.map((k) => {
+                const v = Number(_gasM[k] || 0);
+                if (v === 0) return '<td style="color:var(--admin-muted);">—</td>';
+                return `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(v)}</td>`;
+            }).join('');
+
             const gtColor = gt >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
+
             return `<tr>
-                <td class="col-left" style="font-weight:600;">${escapeHtml(diaStr)}</td>
-                <td class="col-left">${escapeHtml(fechaStr)}</td>
-                ${methodCells}
-                ${egresosCell}
-                <td style="color:${gtColor};font-weight:700;">${gt < 0 ? '−' : ''}${formatMoney(Math.abs(gt))}</td>
-                <td style="text-align:center;white-space:nowrap;">
+                <td class="col-left" style="font-weight:600;" ${rs}>${escapeHtml(diaStr)}</td>
+                <td class="col-left" ${rs}>${escapeHtml(fechaStr)}</td>
+                ${ingresosCells}
+                <td style="color:var(--admin-muted);">—</td>
+                <td style="color:#6ee7b7;font-weight:700;">${formatMoney(_ingT)}</td>
+                <td style="text-align:center;white-space:nowrap;" ${rs}>
                     <button class="btn-ver-cierre" data-cierre-id="${escapeHtml(c.id)}" style="font-size:0.75rem;padding:3px 12px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.18);border-radius:6px;cursor:pointer;font-weight:600;">👁 Ver</button>
                 </td>
-            </tr>`;
+            </tr>${hasEgr ? `
+            <tr style="background:rgba(252,165,165,0.05);border-left:3px solid rgba(252,165,165,0.25);">
+                ${gastosCells}
+                <td style="color:#fca5a5;font-weight:600;">−${formatMoney(_gasT)}</td>
+                <td style="color:${gtColor};font-weight:700;">${gt < 0 ? '−' : ''}${formatMoney(Math.abs(gt))}</td>
+            </tr>` : ''}`;
         }).join('');
 
         // Fila de totales
