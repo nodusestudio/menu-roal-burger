@@ -16596,10 +16596,11 @@ function closeGastoModal() {
     _gastoFromHistorial = false;
 }
 
-function openTrasladoModal() {
+function openTrasladoModal(existingData = null, existingId = null) {
     const existing = document.getElementById('trasladoMetodoModal');
     if (existing) existing.remove();
 
+    const isEdit = Boolean(existingData && existingId);
     const methods = getPaymentMethods();
     const optHtml = methods.map((m) =>
         `<option value="${escapeHtml(m.id)}" style="background:#14172a;color:#fff;">${m.icon} ${escapeHtml(m.label)}</option>`
@@ -16610,7 +16611,7 @@ function openTrasladoModal() {
     overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
     overlay.innerHTML = `<div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.75rem;max-width:360px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);position:relative;">
         <button type="button" id="trasladoCloseBtn" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;" aria-label="Cerrar">×</button>
-        <h3 style="margin:0 0 20px;font-size:1rem;font-weight:700;color:#fff;">🔄 Traslado entre cuentas</h3>
+        <h3 style="margin:0 0 20px;font-size:1rem;font-weight:700;color:#fff;">🔄 ${isEdit ? 'Editar traslado' : 'Traslado entre cuentas'}</h3>
         <div style="display:flex;flex-direction:column;gap:10px;">
             <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Desde (origen)</label>
             <select id="trasladoFrom" style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
@@ -16627,26 +16628,43 @@ function openTrasladoModal() {
     </div>`;
     document.body.appendChild(overlay);
 
-    // Pre-seleccionar el segundo método en "Hacia" para evitar from === to
-    const toSel = document.getElementById('trasladoTo');
-    if (toSel && toSel.options.length > 1) toSel.selectedIndex = 1;
+    // Pre-llenar si es edición; si no, seleccionar segundo método por defecto
+    const fromSel = document.getElementById('trasladoFrom');
+    const toSel   = document.getElementById('trasladoTo');
+    const montoEl = document.getElementById('trasladoMonto');
+    const confirmBtn = document.getElementById('trasladoConfirmBtn');
+    if (isEdit && existingData) {
+        if (fromSel) fromSel.value = existingData.methodFrom || '';
+        if (toSel)   toSel.value   = existingData.methodTo   || '';
+        if (montoEl) montoEl.value = existingData.monto       || '';
+        if (confirmBtn) confirmBtn.textContent = 'Guardar cambios';
+    } else {
+        if (toSel && toSel.options.length > 1) toSel.selectedIndex = 1;
+    }
 
     document.getElementById('trasladoCloseBtn')?.addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
-    document.getElementById('trasladoConfirmBtn')?.addEventListener('click', async () => {
-        const from = document.getElementById('trasladoFrom')?.value;
-        const to   = document.getElementById('trasladoTo')?.value;
-        const monto = Number(document.getElementById('trasladoMonto')?.value || 0);
+    confirmBtn?.addEventListener('click', async () => {
+        const from  = fromSel?.value;
+        const to    = toSel?.value;
+        const monto = Number(montoEl?.value || 0);
         if (!from || !to || from === to) { showNotice('Seleccione métodos distintos.', 'error'); return; }
         if (monto <= 0) { showNotice('Ingrese un monto válido.', 'error'); return; }
         try {
-            const id = `traslado_${Date.now()}`;
-            await saveGasto({ id, tipo: 'traslado', methodFrom: from, methodTo: to, monto, paymentMethod: from, descripcion: '', categoria: '' });
-            overlay.remove();
-            showNotice('Traslado registrado.', 'ok');
+            if (isEdit) {
+                await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(existingId)
+                    .update({ methodFrom: from, methodTo: to, monto, paymentMethod: from });
+                overlay.remove();
+                showNotice('Traslado actualizado.', 'ok');
+            } else {
+                const id = `traslado_${Date.now()}`;
+                await saveGasto({ id, tipo: 'traslado', methodFrom: from, methodTo: to, monto, paymentMethod: from, descripcion: '', categoria: '' });
+                overlay.remove();
+                showNotice('Traslado registrado.', 'ok');
+            }
             await renderLibroCierres();
-        } catch (err) {
+        } catch (_) {
             showNotice('Error al guardar traslado.', 'error');
         }
     });
@@ -18150,21 +18168,28 @@ async function renderLibroCierres() {
                 const _amt = Number(t.monto || 0);
                 const _fromLbl = _fM ? `${_fM.icon} ${escapeHtml(_fM.label)}` : escapeHtml(t.methodFrom || '?');
                 const _toLbl   = _tM ? `${_tM.icon} ${escapeHtml(_tM.label)}` : escapeHtml(t.methodTo   || '?');
+                // Afecta sumTotals: origen resta, destino suma (el neto global no cambia)
+                if (methodKeys.includes(t.methodFrom)) sumTotals[t.methodFrom] = (sumTotals[t.methodFrom] || 0) - _amt;
+                if (methodKeys.includes(t.methodTo))   sumTotals[t.methodTo]   = (sumTotals[t.methodTo]   || 0) + _amt;
                 const _mCells = methodKeys.map((k) => {
                     if (k === t.methodFrom) return `<td style="color:#a5b4fc;font-weight:600;">−${formatMoney(_amt)}</td>`;
                     if (k === t.methodTo)   return `<td style="color:#a5b4fc;font-weight:600;">+${formatMoney(_amt)}</td>`;
                     return '<td style="color:var(--admin-muted);">—</td>';
                 }).join('');
+                const _tid = escapeHtml(t.id || '');
                 return _daySep(_tMs) + `<tr style="background:rgba(99,102,241,0.05);border-left:3px solid rgba(99,102,241,0.28);">
                     <td class="col-left" style="font-weight:600;">${escapeHtml(_tDiaStr)}</td>
-                    <td class="col-left" style="line-height:1.35;">
-                        <span style="font-size:0.8rem;color:rgba(255,255,255,0.75);">${escapeHtml(_tFechaStr)}</span><br>
-                        <span style="font-size:0.73rem;color:#a5b4fc;font-weight:600;">🔄 ${_fromLbl} → ${_toLbl}</span>
+                    <td class="col-left" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">
+                        <span style="font-size:0.78rem;color:rgba(255,255,255,0.6);">${escapeHtml(_tFechaStr)}</span>
+                        <span style="color:#a5b4fc;font-size:0.75rem;font-weight:600;margin-left:6px;">🔄 ${_fromLbl} → ${_toLbl}</span>
                     </td>
                     ${_mCells}
-                    <td style="color:rgba(165,180,252,0.4);font-size:0.8rem;">$0</td>
-                    <td style="color:rgba(165,180,252,0.4);font-size:0.8rem;">$0</td>
-                    <td></td>
+                    <td style="color:rgba(165,180,252,0.4);font-size:0.8rem;">—</td>
+                    <td style="color:rgba(165,180,252,0.4);font-size:0.8rem;">—</td>
+                    <td style="text-align:center;white-space:nowrap;">
+                        <button type="button" class="mini-btn" data-traslado-edit="${_tid}" style="font-size:0.7rem;padding:2px 8px;margin-right:4px;">✏️</button>
+                        <button type="button" class="mini-btn remove" data-traslado-del="${_tid}" style="font-size:0.7rem;padding:2px 8px;">🗑️</button>
+                    </td>
                 </tr>`;
             }
 
@@ -18236,6 +18261,31 @@ async function renderLibroCierres() {
                 btn.dataset.open = isOpen ? '0' : '1';
                 btn.textContent = isOpen ? '▶' : '▼';
                 btn.title = isOpen ? 'Ver detalle' : 'Ocultar detalle';
+            });
+        }
+
+        // Listeners delegados para editar/eliminar traslados
+        if (!tbody.dataset.trasladoListener) {
+            tbody.dataset.trasladoListener = '1';
+            tbody.addEventListener('click', async (e) => {
+                const delBtn = e.target.closest('[data-traslado-del]');
+                if (delBtn) {
+                    if (!confirm('¿Eliminar este traslado?')) return;
+                    try {
+                        await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(delBtn.dataset.trasladoDel).delete();
+                        showNotice('Traslado eliminado.', 'ok');
+                        await renderLibroCierres();
+                    } catch (_) { showNotice('Error al eliminar traslado.', 'error'); }
+                    return;
+                }
+                const editBtn = e.target.closest('[data-traslado-edit]');
+                if (editBtn) {
+                    const tid = editBtn.dataset.trasladoEdit;
+                    try {
+                        const snap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(tid).get();
+                        if (snap.exists) openTrasladoModal(snap.data(), tid);
+                    } catch (_) { showNotice('Error al cargar traslado.', 'error'); }
+                }
             });
         }
 
