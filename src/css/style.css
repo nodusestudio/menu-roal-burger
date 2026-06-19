@@ -1009,6 +1009,39 @@ body.is-offline #menuScreen {
     gap: 10px;
 }
 
+/* Tarjeta pequeña de galería — liquid-glass sobre fondo crema */
+.card-pequena {
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1.5px solid rgba(255, 255, 255, 0.28);
+    border-radius: 14px;
+    padding: 8px;
+    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    overflow: hidden;
+}
+
+.card-pequena:active {
+    transform: scale(0.97);
+}
+
+.card-pequena img {
+    width: 100%;
+    border-radius: 8px;
+    display: block;
+    object-fit: cover;
+}
+
+.card-pequena p {
+    text-align: center;
+    font-weight: bold;
+    margin-top: 6px;
+    color: #3b2000 !important;
+    font-size: 0.82rem;
+}
+
 /* ---- GLASS EFFECT (ESTILO APPLE) ---- */
 .category-chip {
     border: 1px solid rgba(255, 255, 255, 0.25);
