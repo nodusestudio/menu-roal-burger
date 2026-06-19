@@ -16767,9 +16767,18 @@ function renderCajaDiaria() {
         if (cajaAperturaAt) {
             const ap = new Date(cajaAperturaAt);
             fechaEl.textContent = 'Abierta desde ' + ap.toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            fechaEl.style.color = '';
         } else {
-            fechaEl.textContent = new Intl.DateTimeFormat('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+            fechaEl.textContent = '🔒 Caja cerrada — presiona "Abrir Caja" para comenzar la jornada';
+            fechaEl.style.color = 'rgba(252,165,165,0.85)';
         }
+    }
+
+    if (!cajaAperturaAt) {
+        if (headEl) headEl.innerHTML = '';
+        bodyEl.innerHTML = `<tr><td class="caja-empty" colspan="6" style="padding:2rem;color:rgba(252,165,165,0.7);">La caja está cerrada. Abre la caja para registrar movimientos.</td></tr>`;
+        if (footEl) footEl.innerHTML = '';
+        return;
     }
 
     // Filtrar cobros de la jornada actual; usa deliveredAt como fallback de timestamp
@@ -17082,36 +17091,46 @@ async function saveCajaAperturaToFirestore(ts, extra = {}) {
 async function loadCajaAperturaFromFirestore() {
     try {
         const snap = await firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).get();
-        if (snap.exists && snap.data().aperturaAt) {
-            const d = snap.data();
+        const d = snap.exists ? snap.data() : null;
+        if (d && d.aperturaAt && !d.cerrada) {
             cajaAperturaAt = Number(d.aperturaAt);
             _cajaAperturaBy = d.aperturaBy || '';
             _cajaFondoInicial = Number(d.fondoInicial || 0);
             try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(cajaAperturaAt)); } catch {}
         } else {
-            // Primera vez en cualquier dispositivo: inicio del día actual
-            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-            cajaAperturaAt = hoy.getTime();
-            await saveCajaAperturaToFirestore(cajaAperturaAt);
+            cajaAperturaAt = 0;
+            try { localStorage.removeItem(CAJA_APERTURA_STORAGE_KEY); } catch {}
         }
         renderCajaDiaria();
+        _updateCajaEstadoUI();
     } catch (_) {}
 }
 
 function initCajaAperturaSync() {
     loadCajaAperturaFromFirestore();
-    // Listener en tiempo real: todos los dispositivos se actualizan al cerrar caja
     firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).onSnapshot((snap) => {
         if (!snap.exists) return;
         const data = snap.data();
         const remoteTs = Number(data.aperturaAt || 0);
-        if (remoteTs && remoteTs !== cajaAperturaAt) {
+        const remoteCerrada = Boolean(data.cerrada);
+        if (remoteCerrada) {
+            if (cajaAperturaAt !== 0) {
+                cajaAperturaAt = 0;
+                _cajaAperturaBy = '';
+                _cajaFondoInicial = 0;
+                try { localStorage.removeItem(CAJA_APERTURA_STORAGE_KEY); } catch {}
+                renderCajaDiaria();
+                renderOrders();
+                _updateCajaEstadoUI();
+            }
+        } else if (remoteTs && remoteTs !== cajaAperturaAt) {
             cajaAperturaAt = remoteTs;
             _cajaAperturaBy = data.aperturaBy || '';
             _cajaFondoInicial = Number(data.fondoInicial || 0);
             try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(remoteTs)); } catch {}
             renderCajaDiaria();
             renderOrders();
+            _updateCajaEstadoUI();
         }
     });
 }
@@ -17214,10 +17233,12 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
 
         // Guardar apertura original antes de resetearla, para poder filtrar pedidos de esta jornada
         const _aperturaAnterior = cajaAperturaAt;
-        cajaAperturaAt = Date.now();
+        cajaAperturaAt = 0;
         _cajaAperturaBy = '';
         _cajaFondoInicial = 0;
-        await saveCajaAperturaToFirestore(cajaAperturaAt, { aperturaBy: '', fondoInicial: 0 });
+        await saveCajaAperturaToFirestore(0, { aperturaBy: '', fondoInicial: 0, cerrada: true });
+        renderCajaDiaria();
+        _updateCajaEstadoUI();
 
         _pendingCierreDoc = null;
         document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
@@ -17704,8 +17725,10 @@ function _showAbrirCajaModal() {
             _ccSave();
             _ccRefreshTotals();
         }
-        saveCajaAperturaToFirestore(cajaAperturaAt, { aperturaBy: nombre, fondoInicial: fondoUsado });
+        saveCajaAperturaToFirestore(cajaAperturaAt, { aperturaBy: nombre, fondoInicial: fondoUsado, cerrada: false });
         overlay.remove();
+        renderCajaDiaria();
+        _updateCajaEstadoUI();
         showNotice(`Caja abierta por ${nombre} · Fondo: ${formatMoney(fondoUsado)}`, 'ok');
     }
 
@@ -17754,6 +17777,23 @@ function _showAbrirCajaModal() {
 document.getElementById('abrirCajaBtnPos')?.addEventListener('click', () => {
     _showAbrirCajaModal();
 });
+
+// ── Estado visual de la caja (abierta / cerrada) ─────────────────────────────
+function _updateCajaEstadoUI() {
+    const abierta = cajaAperturaAt > 0;
+    const abrirBtn   = document.getElementById('abrirCajaBtnPos');
+    const cerrarBtn  = document.getElementById('cerrarCajaBtnPos');
+    const newTickBtn = document.getElementById('posNewTicketBtn');
+
+    if (abrirBtn)   { abrirBtn.style.display  = abierta ? 'none'  : ''; }
+    if (cerrarBtn)  { cerrarBtn.style.display  = abierta ? ''      : 'none'; }
+    if (newTickBtn) {
+        newTickBtn.disabled = !abierta;
+        newTickBtn.title    = abierta ? 'Nuevo ticket' : 'Abre la caja primero';
+        newTickBtn.style.opacity = abierta ? '' : '0.35';
+        newTickBtn.style.cursor  = abierta ? '' : 'not-allowed';
+    }
+}
 
 // ── Buscador de precio de domicilio (admin toolbar) ───────────────────────────
 (function () {
