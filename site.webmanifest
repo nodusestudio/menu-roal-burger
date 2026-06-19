@@ -9,10 +9,16 @@
   "theme_color": "#f9e9d0",
   "icons": [
     {
-      "src": "./isotipo.png",
+      "src": "./isotipo-f.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "./isotipo-f.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }
