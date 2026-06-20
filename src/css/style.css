@@ -7668,3 +7668,11 @@ a,
 #closedHoursBanner.is-visible {
     display: block;
 }
+
+/* ─ Badge offline: permanentemente oculto ─ */
+#offlineBanner { display: none !important; }
+
+/* ─ Desktop: fondo con parallax suave ─ */
+@media (min-width: 1024px) {
+    #bg-layer { background-attachment: fixed !important; }
+}

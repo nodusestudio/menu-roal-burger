@@ -11863,23 +11863,13 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCustomerPaymentMethods();
 
     // ── Detector de conexión offline / online ─────────────────────────────
+    // El banner de estado de conexión no se muestra al usuario final;
+    // el caché de Firebase ya maneja el menú offline de forma transparente.
     (function _setupOfflineBanner() {
-        const banner = document.getElementById('offlineBanner');
-        if (!banner) return;
-
-        function _showOffline() {
-            banner.hidden = false;
-            document.body.classList.add('is-offline');
-        }
-        function _hideOffline() {
-            banner.hidden = true;
-            document.body.classList.remove('is-offline');
-        }
-
+        function _showOffline() { document.body.classList.add('is-offline'); }
+        function _hideOffline() { document.body.classList.remove('is-offline'); }
         window.addEventListener('offline', _showOffline);
         window.addEventListener('online', _hideOffline);
-
-        // Si arranca sin conexión, mostrar inmediatamente
         if (!navigator.onLine) _showOffline();
     })();
 
