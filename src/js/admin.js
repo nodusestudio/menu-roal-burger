@@ -11025,7 +11025,10 @@ function _escNormalize(str) {
         .replace(/[óòôõ]/g, 'o').replace(/[ÓÒÔÕ]/g, 'O')
         .replace(/[úùûü]/g, 'u').replace(/[ÚÙÛÜ]/g, 'U')
         .replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
-        .replace(/[¿¡]/g, '');
+        .replace(/[¿¡]/g, '')
+        .replace(/[—–]/g, '-')   // guion largo/corto → hyphen seguro
+        .replace(/×/g, 'x')      // signo multiplicacion → x
+        .replace(/[^\x20-\x7E]/g, ''); // elimina emojis y cualquier char fuera de ASCII imprimible
 }
 
 function buildESCPOSData(order) {
@@ -11117,7 +11120,14 @@ function buildESCPOSData(order) {
     for (const item of (order.items || [])) {
         wc(`${item.quantity}x ${item.productName}`, formatMoney(item.subtotal));
         if (item.optionLabel) ww(item.optionLabel, '  ');
-        if (item.note && item.note !== item.optionLabel) ww('Nota: ' + item.note, '  ');
+        if (item.note && item.note !== item.optionLabel) {
+            // Las notas de bebida incluida comienzan con emoji 🥤 que se elimina al normalizar;
+            // etiquetamos como "Beb:" para que quede claro en el ticket.
+            const isBebNota = /^\s*[\uD800-\uDFFF\u{1F300}-\u{1FFFF}]/u.test(item.note);
+            const notaLabel = isBebNota ? 'Beb: ' : 'Nota: ';
+            const notaText = item.note.replace(/^[\s\uD800-\uDFFF\u{1F300}-\u{1FFFF}]+/u, '').trim();
+            ww(notaLabel + notaText, '  ');
+        }
     }
 
     sep();
