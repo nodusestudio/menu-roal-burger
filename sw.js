@@ -1,121 +1,151 @@
-/* Service Worker — FODEXA */
+// Service Worker — ROAL BURGER
+// Bump CACHE_VER en cada deploy para invalidar caches viejos
+const CACHE_VER    = 'rb-20260619';
+const STATIC_CACHE = `${CACHE_VER}-static`;
+const IMG_CACHE    = `${CACHE_VER}-img`;
 
-const CACHE_VERSION = 'roal-v1';
-const CACHE_STATIC  = `${CACHE_VERSION}-static`;
-const CACHE_IMAGES  = `${CACHE_VERSION}-images`;
-const ALL_CACHES    = [CACHE_STATIC, CACHE_IMAGES];
-
-// Assets críticos disponibles desde el primer render
-const PRECACHE_URLS = [
+// Assets propios que se pre-cachean en la instalacion
+const PRECACHE_OWN = [
     '/',
     '/index.html',
-    '/admin.webmanifest',
-    '/isotipo.webp',
-    '/logo.webp',
+    '/style.css',
+    '/script-v2.js',
+    '/firebase-config.js',
+    '/tracking.js',
+    '/site.webmanifest',
+    '/isotipo.png',
+    '/logo.png',
     '/portada.webp',
+    '/portada.png',
 ];
 
-// ── Install: pre-cachear assets críticos ─────────────────────────────────
+// SDKs de Firebase — version fija en URL, ideal para cache-first
+const PRECACHE_SDK = [
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js',
+];
+
+// ── Install ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE_STATIC)
-            .then((cache) => cache.addAll(PRECACHE_URLS))
-            .then(() => self.skipWaiting())
+        Promise.all([
+            caches.open(STATIC_CACHE).then((cache) =>
+                // addAll aborta si alguno falla — usar allSettled como fallback
+                cache.addAll(PRECACHE_OWN).catch(() =>
+                    Promise.allSettled(PRECACHE_OWN.map((u) => cache.add(u).catch(() => {})))
+                )
+            ),
+            caches.open(STATIC_CACHE).then((cache) =>
+                Promise.allSettled(PRECACHE_SDK.map((u) => cache.add(u).catch(() => {})))
+            ),
+        ]).then(() => self.skipWaiting())
     );
 });
 
-// ── Activate: limpiar caches de versiones anteriores ─────────────────────
+// ── Activate: borrar caches viejos ──────────────────────────────────────────
 self.addEventListener('activate', (event) => {
+    const keep = [STATIC_CACHE, IMG_CACHE];
     event.waitUntil(
         caches.keys()
-            .then((keys) => Promise.all(
-                keys
-                    .filter((key) => !ALL_CACHES.includes(key))
-                    .map((key) => caches.delete(key))
-            ))
+            .then((keys) => Promise.all(keys.filter((k) => !keep.includes(k)).map((k) => caches.delete(k))))
             .then(() => self.clients.claim())
     );
 });
 
-// ── Fetch: estrategia por tipo de recurso ────────────────────────────────
+// ── Fetch ────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
-    const { request } = event;
-    const url = new URL(request.url);
+    const req = event.request;
+    if (req.method !== 'GET') return;
 
-    // Solo interceptar requests al mismo origen y GET
-    if (url.origin !== location.origin) return;
-    if (request.method !== 'GET') return;
+    const url = new URL(req.url);
+
+    // Omitir: APIs de Firebase/Google (red real, Firebase SDK las gestiona)
+    const BYPASS = [
+        'firestore.googleapis.com',
+        'identitytoolkit.googleapis.com',
+        'securetoken.googleapis.com',
+        'cloudfunctions.net',
+        'firebasestorage.googleapis.com',
+        'www.googletagmanager.com',
+        'fonts.googleapis.com',
+        'fonts.gstatic.com',
+    ];
+    if (BYPASS.some((h) => url.hostname.includes(h))) return;
+
+    // Firebase SDK desde gstatic — cache-first (URL incluye version)
+    if (url.hostname === 'www.gstatic.com') {
+        event.respondWith(cacheFirst(STATIC_CACHE, req));
+        return;
+    }
+
+    // Solo procesar mismo origen a partir de aqui
+    if (url.origin !== self.location.origin) return;
+
+    // Admin — siempre red (codigo sensible, no se cachea en cliente)
+    if (url.pathname.startsWith('/admin')) return;
 
     const path = url.pathname.toLowerCase();
 
-    // El panel admin se sirve siempre desde red — clientes nunca cachean código de admin
-    if (path.startsWith('/admin')) return;
-
-    // Imágenes → Cache First (una vez cacheadas, no se vuelven a descargar)
-    if (/\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/.test(path)) {
-        event.respondWith(cacheFirst(CACHE_IMAGES, request));
+    // Imagenes — cache-first (cambian poco)
+    if (/\.(png|jpe?g|gif|webp|avif|svg|ico)(\?.*)?$/.test(path)) {
+        event.respondWith(cacheFirst(IMG_CACHE, req));
         return;
     }
 
-    // HTML → Network First con fallback a cache (siempre sirve contenido fresco)
-    if (request.mode === 'navigate' || path === '/' || path.endsWith('.html')) {
-        event.respondWith(networkFirstWithCache(CACHE_STATIC, request));
+    // HTML — network-first, fallback a cache (siempre contenido fresco si hay red)
+    if (req.mode === 'navigate' || path === '/' || path.endsWith('.html')) {
+        event.respondWith(networkFirst(STATIC_CACHE, req));
         return;
     }
 
-    // JS / CSS → Stale-While-Revalidate (respuesta inmediata + actualiza en background)
-    if (/\.(js|css)$/.test(path)) {
-        event.respondWith(staleWhileRevalidate(CACHE_STATIC, request));
-        return;
-    }
-
-    // Fuentes, manifests → Cache First
-    if (/\.(woff2?|ttf|otf|eot|webmanifest)$/.test(path)) {
-        event.respondWith(cacheFirst(CACHE_STATIC, request));
+    // JS, CSS, manifests — stale-while-revalidate
+    // Responde al instante desde cache, actualiza en segundo plano
+    if (/\.(js|css|webmanifest|woff2?)(\?.*)?$/.test(path)) {
+        event.respondWith(staleWhileRevalidate(STATIC_CACHE, req));
         return;
     }
 });
 
-// ── Estrategias de caché ─────────────────────────────────────────────────
+// ── Estrategias ──────────────────────────────────────────────────────────────
 
-async function cacheFirst(cacheName, request) {
-    const cache = await caches.open(cacheName);
-    const cached = await cache.match(request);
+async function cacheFirst(cacheName, req) {
+    const cache  = await caches.open(cacheName);
+    const cached = await cache.match(req);
     if (cached) return cached;
     try {
-        const response = await fetch(request);
-        if (response.ok) cache.put(request, response.clone());
-        return response;
+        const res = await fetch(req);
+        if (res.ok) cache.put(req, res.clone());
+        return res;
     } catch {
-        return new Response('Sin conexión', { status: 503, statusText: 'Offline' });
+        return new Response('Sin conexion', { status: 503 });
     }
 }
 
-async function networkFirstWithCache(cacheName, request) {
+async function networkFirst(cacheName, req) {
     const cache = await caches.open(cacheName);
     try {
-        const response = await fetch(request);
-        if (response.ok) cache.put(request, response.clone());
-        return response;
+        const res = await fetch(req);
+        if (res.ok) cache.put(req, res.clone());
+        return res;
     } catch {
-        const cached = await cache.match(request);
-        return cached || new Response('Sin conexión', { status: 503, statusText: 'Offline' });
+        const cached = await cache.match(req);
+        return cached || new Response('Sin conexion', { status: 503 });
     }
 }
 
-async function staleWhileRevalidate(cacheName, request) {
-    const cache = await caches.open(cacheName);
-    const cached = await cache.match(request);
-    const networkFetch = fetch(request)
-        .then((response) => {
-            if (response.ok) cache.put(request, response.clone());
-            return response;
-        })
-        .catch(() => null);
-    return cached || networkFetch;
+async function staleWhileRevalidate(cacheName, req) {
+    const cache  = await caches.open(cacheName);
+    const cached = await cache.match(req);
+    const update = fetch(req).then((res) => {
+        if (res.ok) cache.put(req, res.clone());
+        return res;
+    }).catch(() => null);
+    return cached || update;
 }
 
-// ── Notificaciones push (comportamiento existente) ────────────────────────
+// ── Notificaciones push ──────────────────────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     event.waitUntil(

@@ -25,8 +25,17 @@ function initFirebaseServices() {
         firebase.initializeApp(window.FIREBASE_CONFIG);
     }
 
+    const db = firebase.firestore();
+
+    // Persistencia offline: datos se sirven desde IndexedDB al instante en
+    // visitas siguientes, sin esperar round-trip a Firebase.
+    if (!window._firestorePersistenceEnabled) {
+        window._firestorePersistenceEnabled = true;
+        db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    }
+
     return {
-        db: firebase.firestore(),
+        db,
         storage: firebase.storage(),
         auth: typeof firebase.auth === 'function' ? firebase.auth() : null,
         functions: typeof firebase.functions === 'function' ? firebase.functions() : null
