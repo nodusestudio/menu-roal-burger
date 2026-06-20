@@ -53,7 +53,7 @@ function trackMenuModal() {
         gtag('event', 'view_item_list', {
             event_category: 'engagement',
             event_label: 'Menu Digital',
-            item_list_name: 'Menu FODEXA'
+            item_list_name: 'Menu Roal Burger'
         });
     }
 

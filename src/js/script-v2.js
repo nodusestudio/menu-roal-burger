@@ -4,7 +4,7 @@ const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
 const CUSTOMER_CONSENT_VERSION = '2026-06-05';
-const CUSTOMER_CONSENT_COPY = 'He leido y acepto que FODEXA use mis datos para gestionar mi cuenta, atender pedidos, contactarme por canales oficiales y enviarme promociones, novedades y publicidad propia.';
+function getCustomerConsentCopy() { return `He leido y acepto que ${_getRestaurantName()} use mis datos para gestionar mi cuenta, atender pedidos, contactarme por canales oficiales y enviarme promociones, novedades y publicidad propia.`; }
 const CUSTOMER_CONSENT_POLICY_URL = 'politica-datos.html';
 const MESSAGES_COLLECTION = 'mensajes';
 const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
@@ -908,7 +908,7 @@ function renderCustomerMessagesPanel() {
     customerAuthUI.messagesThread.innerHTML = customerProfileMessagesState
         .map((message) => {
             const isAdminReply = String(message.type || '').trim() === 'admin_direct_reply' || String(message.source || '').trim() === 'admin_panel';
-            const authorLabel = isAdminReply ? 'FODEXA' : 'Tú';
+            const authorLabel = isAdminReply ? _getRestaurantName() : 'Tú';
             return `
                 <article class="customer-message-bubble ${isAdminReply ? 'is-admin' : 'is-customer'}">
                     <strong>${escapeHtml(authorLabel)}</strong>
@@ -1164,7 +1164,7 @@ function sendBrowserNotification(status, orderCode) {
     const info = ORDER_STATUS_MESSAGES[status];
     if (!info) return;
 
-    const title = `${info.icon} FODEXA — Pedido #${orderCode}`;
+    const title = `${info.icon} ${_getRestaurantName()} — Pedido #${orderCode}`;
     const body  = info.text;
     const icon  = 'isotipo.png';
 
@@ -1740,7 +1740,7 @@ async function saveCustomerProfile(profileInput = {}) {
     const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
 
     if (!acceptedDataPolicy && !hasPreviousConsent) {
-        throw new Error('Debes aceptar el uso de tus datos y el envio de promociones de FODEXA para crear tu perfil.');
+        throw new Error(`Debes aceptar el uso de tus datos y el envio de promociones de ${_getRestaurantName()} para crear tu perfil.`);
     }
 
     if (pinValue || confirmPinValue || !passwordHash) {
@@ -2008,7 +2008,7 @@ function _buildRegOtpStepHTML(phone) {
 
 function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEditMode = false) {
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
-    const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
+    const consentMarkup = `${escapeHtml(getCustomerConsentCopy())} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
     const pinLabel = isEditMode ? 'Contraseña de 6 dígitos' : 'Crea tu contraseña de 6 dígitos';
     const pinPlaceholder = isEditMode ? 'Deja en blanco para no cambiarla' : 'Solo números';
     return `
@@ -2793,7 +2793,7 @@ async function submitCustomerDeleteAccountRequest() {
         clearActiveCustomerProfile();
         closeCustomerDeleteAccountModal();
         closeCustomerAuthModal();
-        window.alert('Tu cuenta fue eliminada y la solicitud quedo registrada en FODEXA.');
+        window.alert(`Tu cuenta fue eliminada y la solicitud quedo registrada en ${_getRestaurantName()}.`);
     } catch (error) {
         customerDeleteAccountUI.feedback.textContent = error.message || 'No se pudo eliminar la cuenta.';
     }
@@ -2891,7 +2891,7 @@ function openCustomerConsentDocument() {
             <button type="button" class="support-modal-close" aria-label="Cerrar autorizacion">&times;</button>
             <p class="support-modal-kicker">Autorizacion de datos</p>
             <h3 class="support-modal-title">Lee este documento antes de continuar</h3>
-            <p class="support-modal-text">Para crear tu perfil debes conocer y autorizar expresamente el tratamiento de tus datos personales por parte de FODEXA.</p>
+            <p class="support-modal-text">Para crear tu perfil debes conocer y autorizar expresamente el tratamiento de tus datos personales por parte de ${escapeHtml(_getRestaurantName())}.</p>
             <div class="support-consent-document-frame-wrap">
                 <iframe src="${CUSTOMER_CONSENT_POLICY_URL}" title="Politica de tratamiento de datos personales" class="support-consent-document-frame"></iframe>
             </div>
@@ -2942,7 +2942,7 @@ async function requestPublicNotificationPermission() {
     if (Notification.permission === 'granted') {
         if (installHint) {
             installHint.hidden = false;
-            installHint.textContent = 'Notificaciones activadas para novedades y promociones de FODEXA.';
+            installHint.textContent = `Notificaciones activadas para novedades y promociones de ${_getRestaurantName()}.`;
         }
         return 'granted';
     }
@@ -2960,7 +2960,7 @@ async function requestPublicNotificationPermission() {
         if (installHint) {
             installHint.hidden = false;
             installHint.textContent = permission === 'granted'
-                ? 'Notificaciones activadas para novedades y promociones de FODEXA.'
+                ? `Notificaciones activadas para novedades y promociones de ${_getRestaurantName()}.`
                 : 'Puedes seguir usando la app sin notificaciones. Si cambias de opinion, podras activarlas mas adelante.';
         }
         return permission;
@@ -3160,7 +3160,7 @@ function openCustomerAuthModal() {
     const profile = activeCustomerProfile;
     const savedAddresses = getCustomerSavedAddresses(profile);
     const hasConsent = Boolean(profile?.privacyConsentAccepted) && Boolean(profile?.marketingConsentAccepted);
-    const consentMarkup = `${escapeHtml(CUSTOMER_CONSENT_COPY)} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
+    const consentMarkup = `${escapeHtml(getCustomerConsentCopy())} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
 
     const titleEl = document.getElementById('perfilScreenTitle');
     if (titleEl) titleEl.textContent = profile ? 'Cuenta' : 'Mi Perfil';
@@ -3278,7 +3278,7 @@ function openCustomerAuthModal() {
                         <div class="customer-chat-header">
                             <div class="customer-chat-avatar">R</div>
                             <div class="customer-chat-header-info">
-                                <div class="customer-chat-header-name">FODEXA</div>
+                                <div class="customer-chat-header-name">${escapeHtml(_getRestaurantName())}</div>
                                 <div class="customer-chat-header-status">Respondemos por aquí y por WhatsApp</div>
                             </div>
                         </div>
@@ -3606,7 +3606,7 @@ function downloadDesktopShortcut() {
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = objectUrl;
-    link.download = 'FODEXA.url';
+    link.download = `${_getRestaurantName()}.url`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -3636,8 +3636,8 @@ async function handleShortcutInstall() {
     if (navigator.share) {
         try {
             await navigator.share({
-                title: 'FODEXA',
-                text: 'Guarda el enlace oficial de FODEXA.',
+                title: _getRestaurantName(),
+                text: `Guarda el enlace oficial de ${_getRestaurantName()}.`,
                 url
             });
             return;
@@ -7783,7 +7783,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
 };
 
 const DEFAULT_BRANDING = {
-    restaurantName: 'FODEXA',
+    restaurantName: 'Roal Burger',
     slogan: 'Comida rapida con acento venezolano',
     logoUrl: 'logo.png',
     primaryColor: '#2f6fdd',
@@ -10964,7 +10964,7 @@ function openPromoRegistrationPrompt() {
             <button type="button" class="support-modal-close" id="promoRegClose" aria-label="Cerrar">&times;</button>
             <p class="support-modal-kicker">Promos exclusivas</p>
             <h3 class="support-modal-title">Esta oferta es solo para miembros</h3>
-            <p class="support-modal-text">Para disfrutar de <strong>esta y todas nuestras promos exclusivas</strong> necesitas tener cuenta en la app de FODEXA. ¡Tambien puedes descargarla directo en tu dispositivo!</p>
+            <p class="support-modal-text">Para disfrutar de <strong>esta y todas nuestras promos exclusivas</strong> necesitas tener cuenta en la app de ${escapeHtml(_getRestaurantName())}. ¡Tambien puedes descargarla directo en tu dispositivo!</p>
             <div class="promo-reg-actions">
                 <button type="button" class="promo-reg-btn promo-reg-btn--download" id="promoRegDownload">
                     <span class="promo-reg-btn-icon">&#8659;</span> Descargar app
@@ -11653,7 +11653,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const msg = (textarea?.value || '').trim();
         if (!msg) { textarea?.focus(); if (textarea) textarea.style.borderColor = 'rgba(255,96,0,0.75)'; return; }
         if (textarea) textarea.style.borderColor = '';
-        const waText = msg + '\n\n_(Enviado desde el menú digital de FODEXA)_';
+        const waText = msg + `\n\n_(Enviado desde el menú digital de ${_getRestaurantName()})_`;
         window.open(WHATSAPP_BASE_URL + '?text=' + encodeURIComponent(waText), '_blank', 'noopener,noreferrer');
         this.disabled = true; this.style.opacity = '0.6';
         if (feedback) { feedback.textContent = '¡Mensaje enviado! Será atendido a la brevedad posible.'; feedback.hidden = false; }
