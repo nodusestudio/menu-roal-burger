@@ -11134,92 +11134,96 @@ function buildESCPOSData(order) {
             _emit(' '.repeat(pad) + r);
         }
     }
-    function sep() { wl('-'.repeat(COLS)); }
+    function sep()  { _emit('-'.repeat(COLS)); }
+    function sep2() { _emit('='.repeat(COLS)); }
 
-    // Init
+    // ── ENCABEZADO ──────────────────────────────────────────────────────────
     pb(ESC, 0x40);
-    // Brand — center, bold, double size
-    pb(ESC, 0x61, 0x01, ESC, 0x45, 0x01, ESC, 0x21, 0x30);
+    pb(ESC, 0x61, 0x01);                        // centrar
+    pb(ESC, 0x45, 0x01, ESC, 0x21, 0x30);       // negrita + doble tamaño
     wl(brandingState.restaurantName || 'ROAL BURGER');
-    pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
-    wl('Ticket de recepcion');
-    pb(ESC, 0x61, 0x00);
+    pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);       // normal
+    wl('Ticket de Recepcion');
+    pb(ESC, 0x61, 0x00);                        // alinear izquierda
+    sep2();
 
-    sep();
-    wl('Pedido : ' + (order.code || ''));
+    // ── DATOS DEL PEDIDO ────────────────────────────────────────────────────
+    wl('Pedido : ' + (order.code || 'N/A'));
     wl('Fecha  : ' + formatOrderDate(order.createdAt));
     wl('Hora   : ' + formatOrderTime(order.createdAt));
-
     sep();
-    wl('Cliente: ' + (order.customerName || 'N/A'));
-    wl('Tel    : ' + (order.customerPhone || 'N/A'));
-    wl('Tipo   : ' + getOrderTypeLabel(order));
+
+    // ── CLIENTE ─────────────────────────────────────────────────────────────
+    pb(ESC, 0x45, 0x01); wl('CLIENTE'); pb(ESC, 0x45, 0x00);
+    wl('  Nombre : ' + (order.customerName || 'N/A'));
+    if (order.customerPhone) wl('  Tel    : ' + order.customerPhone);
+    wl('  Tipo   : ' + getOrderTypeLabel(order));
     if (order.orderType === 'domicilio' && order.deliveryAddress) {
-        ww(order.deliveryAddress, 'Dir: ');
+        ww(order.deliveryAddress, '  Dir    : ');
     }
+    sep2();
 
-    sep();
-    pb(ESC, 0x45, 0x01); wc('Producto', 'Total'); pb(ESC, 0x45, 0x00);
+    // ── PRODUCTOS ───────────────────────────────────────────────────────────
+    pb(ESC, 0x45, 0x01);
+    wc('  CANT  DESCRIPCION', 'TOTAL');
+    pb(ESC, 0x45, 0x00);
     sep();
     for (const item of (order.items || [])) {
-        wc(`${item.quantity}x ${item.productName}`, formatMoney(item.subtotal));
-        if (item.optionLabel) ww(item.optionLabel, '  ');
+        const qty = String(item.quantity).padStart(2);
+        wc(`  ${qty}   ${item.productName}`, formatMoney(item.subtotal));
+        if (item.optionLabel) ww('> ' + item.optionLabel, '       ');
         if (item.note && item.note !== item.optionLabel) {
-            // Las notas de bebida incluida comienzan con emoji 🥤 que se elimina al normalizar;
-            // etiquetamos como "Beb:" para que quede claro en el ticket.
             const isBebNota = /^\s*[\uD800-\uDFFF\u{1F300}-\u{1FFFF}]/u.test(item.note);
-            const notaLabel = isBebNota ? 'Beb: ' : 'Nota: ';
             const notaText = item.note.replace(/^[\s\uD800-\uDFFF\u{1F300}-\u{1FFFF}]+/u, '').trim();
-            ww(notaLabel + notaText, '  ');
+            ww((isBebNota ? 'Beb: ' : 'Nota: ') + notaText, '       ');
         }
     }
+    sep2();
 
+    // ── TOTALES ─────────────────────────────────────────────────────────────
+    wc('  Subtotal', formatMoney(order.subtotal || 0));
+    if (order.orderType === 'domicilio') wc('  Domicilio', formatMoney(order.deliveryFee || 0));
     sep();
-    wc('Subtotal', formatMoney(order.subtotal || 0));
-    if (order.orderType === 'domicilio') wc('Domicilio', formatMoney(order.deliveryFee || 0));
-    sep();
-    pb(ESC, 0x45, 0x01, ESC, 0x21, 0x10);
-    wc('TOTAL', formatMoney(getOrderDisplayTotal(order)));
+    pb(ESC, 0x45, 0x01, ESC, 0x21, 0x10);       // negrita + doble alto
+    wc('  TOTAL', formatMoney(getOrderDisplayTotal(order)));
     pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
+    sep2();
 
-    // Sección de pago — siempre visible para todos los métodos
-    const _escCashGiven = Number(order.cashTenderAmount || 0);
-    const _escTotalAmt = getOrderDisplayTotal(order);
-    const _escChangeAmt = order.cashChangeRequired
-        ? (order.cashChangeAmount != null ? Number(order.cashChangeAmount) : (_escCashGiven > _escTotalAmt ? _escCashGiven - _escTotalAmt : 0))
+    // ── PAGO ────────────────────────────────────────────────────────────────
+    const _cashGiven  = Number(order.cashTenderAmount || 0);
+    const _totalAmt   = getOrderDisplayTotal(order);
+    const _changeAmt  = order.cashChangeRequired
+        ? (order.cashChangeAmount != null ? Number(order.cashChangeAmount) : (_cashGiven > _totalAmt ? _cashGiven - _totalAmt : 0))
         : 0;
-    const _escPayLabel = getOrderPaymentLabel(order);
-    const [_escPayMethod] = _escPayLabel.split(' | ');
+    const _payLabel   = getOrderPaymentLabel(order);
+    const [_payMethod] = _payLabel.split(' | ');
 
-    sep();
+    pb(ESC, 0x45, 0x01); wl('PAGO'); pb(ESC, 0x45, 0x00);
     if (order.paymentMethod === 'split' && Array.isArray(order.paymentSplit) && order.paymentSplit.length) {
-        wl('Pago dividido:');
+        wl('  Pago dividido:');
         for (const s of order.paymentSplit) {
             const pm = getPaymentMethods().find((x) => x.id === s.method);
-            wc('  ' + (pm ? pm.label : s.method), formatMoney(Number(s.amount)));
+            wc('    ' + (pm ? pm.label : s.method), formatMoney(Number(s.amount)));
         }
     } else if (order.paymentMethod === 'efectivo') {
-        wl('Pago: Efectivo');
-        if (_escCashGiven > 0) {
-            wc('  Recibe', formatMoney(_escCashGiven));
-            if (_escChangeAmt > 0) {
-                wc('  Cambio', formatMoney(_escChangeAmt));
-            } else {
-                wl('  Monto exacto');
-            }
+        wl('  Metodo  : Efectivo');
+        if (_cashGiven > 0) {
+            wc('  Recibe', formatMoney(_cashGiven));
+            wc('  Cambio', _changeAmt > 0 ? formatMoney(_changeAmt) : 'Exacto');
         }
     } else {
-        ww('Pago: ' + _escPayMethod, '');
+        wl('  Metodo  : ' + _payMethod);
         if (order.paymentMethod && order.paymentMethod !== 'pendiente') {
-            wl('  * PAGADO');
+            pb(ESC, 0x45, 0x01); wl('  ** PAGADO **'); pb(ESC, 0x45, 0x00);
         }
     }
+    sep2();
 
-    pb(ESC, 0x61, 0x01, LF);
-    wl('Gracias por elegirnos!');
-    if (brandingState.address) ww(brandingState.address, '');
+    // ── PIE DE PAGINA ───────────────────────────────────────────────────────
+    pb(ESC, 0x61, 0x01);
+    pb(ESC, 0x45, 0x01); wl('Gracias por elegirnos!'); pb(ESC, 0x45, 0x00);
+    if (brandingState.address) wl(brandingState.address);
     pb(LF, LF, LF);
-    // Corte completo
     pb(GS, 0x56, 0x00);
 
     return new Uint8Array(bytes);
