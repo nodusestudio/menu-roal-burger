@@ -18178,14 +18178,14 @@ function _showCerrarCajaConfirm(onAccept) {
     overlay.innerHTML = `
         <div style="background:#1e1e2e;border:1.5px solid rgba(255,255,255,0.12);border-radius:18px;padding:2rem 1.75rem;max-width:380px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,0.55);text-align:center;">
             <div style="font-size:2rem;margin-bottom:0.75rem;">🔒</div>
-            <h3 style="margin:0 0 0.5rem;color:#fff;font-size:1.1rem;font-weight:700;">Cerrar Caja</h3>
-            <p style="margin:0 0 1.25rem;color:rgba(255,255,255,0.65);font-size:0.88rem;line-height:1.5;">
-                ¿Seguro que desea cerrar la caja del día?<br>
-                <strong style="color:rgba(255,255,255,0.9);font-size:0.83rem;">${fechaHora}</strong>
+            <h3 style="margin:0 0 0.5rem;color:#fff;font-size:1.1rem;font-weight:700;">¿Cerrar la caja?</h3>
+            <p style="margin:0 0 0.5rem;color:rgba(255,255,255,0.65);font-size:0.88rem;line-height:1.5;">
+                Esta acción cierra la jornada actual y no se puede deshacer.
             </p>
+            <p style="margin:0 0 1.25rem;color:rgba(255,255,255,0.4);font-size:0.78rem;">${fechaHora}</p>
             <div style="display:flex;gap:0.75rem;">
                 <button id="_cerrarCajaCancelBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">Cancelar</button>
-                <button id="_cerrarCajaAcceptBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:none;background:#e53935;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;">Cerrar Caja</button>
+                <button id="_cerrarCajaAcceptBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:none;background:#e53935;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;">Sí, cerrar caja</button>
             </div>
         </div>`;
 
