@@ -9412,7 +9412,7 @@ function buildThermalTicketMarkup(order, options = {}) {
         const detailParts = [
             item.categoryName,
             item.optionLabel,
-            item.note ? `Nota: ${item.note}` : '',
+            item.note && item.note !== item.optionLabel ? `Nota: ${item.note}` : '',
         ].filter(Boolean);
 
         const priceCell = hasItemDiscount

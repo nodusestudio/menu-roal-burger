@@ -11485,6 +11485,9 @@
                 display: block !important;
                 background: #ffffff !important;
                 color: #000000 !important;
+                overflow: visible !important;
+                height: auto !important;
+                max-height: none !important;
             }
 
             @page {
@@ -11506,6 +11509,11 @@
                 line-height: 1.35 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+                overflow: visible !important;
+                max-height: none !important;
+                height: auto !important;
+                break-inside: avoid;
+                page-break-inside: avoid;
             }
 
             /* ── Contenedores internos ── */
@@ -11606,9 +11614,9 @@
             .ticket-table td:last-child { text-align: right; white-space: nowrap; }
             .ticket-line-meta {
                 display: block !important;
-                font-size: 7pt !important;
-                color: #666 !important;
-                margin-top: 1px;
+                font-size: 8pt !important;
+                color: #111 !important;
+                margin-top: 2px;
             }
 
             /* ── Totales ── */
@@ -13588,7 +13596,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260619i"></script>
+    <script src="admin.js?v=20260619j"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         function _showUpdateToast() {
