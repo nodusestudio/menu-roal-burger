@@ -7611,9 +7611,26 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
 
     // Bebida incluida → pedir sabor directo
     const _bi = _prodVarianteEntry?.bebida_incluida;
-    if (_bi?.activo && _bi?.bebida_ref_id) {
-        openPublicBebidaModal(productName, safeCategoryName, buttonId, _bi, normalizedOptions);
-        return;
+    if (_bi?.activo) {
+        // Si tiene referencia a bebida específica → usar esa
+        if (_bi.bebida_ref_id) {
+            openPublicBebidaModal(productName, safeCategoryName, buttonId, _bi, normalizedOptions);
+            return;
+        }
+        // Activo pero sin referencia → auto-seleccionar primera bebida activa con sabores
+        const _biFallback = _latestBebidas.find((b) => b.estado === 'active' && (b.presentaciones || []).some((p) => (p.sabores || []).length > 0));
+        if (_biFallback) {
+            const _biPres = _biFallback.presentaciones.find((p) => (p.sabores || []).length > 0);
+            openPublicBebidaModal(productName, safeCategoryName, buttonId, {
+                activo: true,
+                bebida_ref_id: _biFallback.id,
+                bebida_pres_id: _biPres?.id || null,
+                bebida_nombre: `${_biFallback.marca} ${_biPres?.nombre || ''}`.trim(),
+                cantidad: _bi.cantidad || 1
+            }, normalizedOptions);
+            return;
+        }
+        // Sin bebidas activas → caer al modal de combo con papas si aplica
     }
 
     if (isCombosConPapasCategory(safeCategoryName)) {
