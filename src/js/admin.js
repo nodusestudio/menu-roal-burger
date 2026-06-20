@@ -11034,10 +11034,28 @@ function buildESCPOSData(order) {
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
 
+    // Imprime una línea truncando a COLS (solo para líneas cortas)
     function wl(str) {
         const s = _escNormalize(str).substring(0, COLS);
         for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
         pb(LF);
+    }
+    // Imprime texto largo envolviéndolo en varias líneas con sangría en continuaciones
+    function ww(str, prefix) {
+        const pfx = _escNormalize(prefix || '');
+        const s = _escNormalize(str);
+        const contPfx = ' '.repeat(pfx.length);
+        let pos = 0;
+        while (pos < s.length) {
+            const lp = pos === 0 ? pfx : contPfx;
+            const w = COLS - lp.length;
+            const chunk = s.substring(pos, pos + w);
+            const line = lp + chunk;
+            for (let i = 0; i < line.length; i++) pb(line.charCodeAt(i) & 0xFF);
+            pb(LF);
+            pos += chunk.length;
+            if (!chunk.length) break;
+        }
     }
     function wc(left, right) {
         const l = _escNormalize(left); const r = _escNormalize(right);
@@ -11050,7 +11068,7 @@ function buildESCPOSData(order) {
     pb(ESC, 0x40);
     // Brand — center, bold, double size
     pb(ESC, 0x61, 0x01, ESC, 0x45, 0x01, ESC, 0x21, 0x30);
-    wl(brandingState.restaurantName || 'FODEXA');
+    wl(brandingState.restaurantName || 'ROAL BURGER');
     pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
     wl('Ticket de recepcion');
     pb(ESC, 0x61, 0x00);
@@ -11065,7 +11083,7 @@ function buildESCPOSData(order) {
     wl('Tel    : ' + (order.customerPhone || 'N/A'));
     wl('Tipo   : ' + getOrderTypeLabel(order));
     if (order.orderType === 'domicilio' && order.deliveryAddress) {
-        wl('Dir: ' + order.deliveryAddress);
+        ww(order.deliveryAddress, 'Dir: ');
     }
 
     sep();
@@ -11073,8 +11091,8 @@ function buildESCPOSData(order) {
     sep();
     for (const item of (order.items || [])) {
         wc(`${item.quantity}x ${item.productName}`, formatMoney(item.subtotal));
-        if (item.optionLabel) wl('  ' + item.optionLabel);
-        if (item.note) wl('  Nota: ' + item.note);
+        if (item.optionLabel) ww(item.optionLabel, '  ');
+        if (item.note && item.note !== item.optionLabel) ww('Nota: ' + item.note, '  ');
     }
 
     sep();
@@ -11085,28 +11103,42 @@ function buildESCPOSData(order) {
     wc('TOTAL', formatMoney(getOrderDisplayTotal(order)));
     pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
 
-    const cashGiven = Number(order.cashTenderAmount || 0);
-    const totalAmt = getOrderDisplayTotal(order);
+    // Sección de pago — siempre visible para todos los métodos
+    const _escCashGiven = Number(order.cashTenderAmount || 0);
+    const _escTotalAmt = getOrderDisplayTotal(order);
+    const _escChangeAmt = order.cashChangeRequired
+        ? (order.cashChangeAmount != null ? Number(order.cashChangeAmount) : (_escCashGiven > _escTotalAmt ? _escCashGiven - _escTotalAmt : 0))
+        : 0;
+    const _escPayLabel = getOrderPaymentLabel(order);
+    const [_escPayMethod] = _escPayLabel.split(' | ');
+
+    sep();
     if (order.paymentMethod === 'split' && Array.isArray(order.paymentSplit) && order.paymentSplit.length) {
-        sep();
         wl('Pago dividido:');
         for (const s of order.paymentSplit) {
             const pm = getPaymentMethods().find((x) => x.id === s.method);
-            wc(pm ? pm.label : s.method, formatMoney(Number(s.amount)));
+            wc('  ' + (pm ? pm.label : s.method), formatMoney(Number(s.amount)));
         }
-    } else if (order.paymentMethod === 'efectivo' && cashGiven > 0) {
-        sep();
-        wc('Pago con', formatMoney(cashGiven));
-        if (cashGiven > totalAmt) wc('Cambio', formatMoney(Number(order.cashChangeAmount || (cashGiven - totalAmt))));
-    } else if (order.cashChangeRequired && cashGiven > totalAmt) {
-        sep();
-        wc('Pago con', formatMoney(cashGiven));
-        wc('Cambio', formatMoney(cashGiven - totalAmt));
+    } else if (order.paymentMethod === 'efectivo') {
+        wl('Pago: Efectivo');
+        if (_escCashGiven > 0) {
+            wc('  Recibe', formatMoney(_escCashGiven));
+            if (_escChangeAmt > 0) {
+                wc('  Cambio', formatMoney(_escChangeAmt));
+            } else {
+                wl('  Monto exacto');
+            }
+        }
+    } else {
+        ww('Pago: ' + _escPayMethod, '');
+        if (order.paymentMethod && order.paymentMethod !== 'pendiente') {
+            wl('  * PAGADO');
+        }
     }
 
     pb(ESC, 0x61, 0x01, LF);
     wl('Gracias por elegirnos!');
-    if (brandingState.address) wl(brandingState.address);
+    if (brandingState.address) ww(brandingState.address, '');
     pb(LF, LF, LF);
     // Corte completo
     pb(GS, 0x56, 0x00);
