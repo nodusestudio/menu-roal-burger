@@ -17453,6 +17453,150 @@ function _navigateToCajaDiaria() {
 // ── Panel lateral cierre de caja ──────────────────────────────────────────────
 let _cierrePrintHtml = '';
 let _pendingCierreDoc = null;
+let _cierrePrintData = null; // {c, dateStr, timeStr} para reimpresión BT
+
+function buildCierreESCPOSData(c, dateStr, timeStr) {
+    const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
+    const COLS = 32;
+    const bytes = [];
+    const pb = (...a) => bytes.push(...a);
+
+    function wl(str) {
+        const s = _escNormalize(str).substring(0, COLS);
+        for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
+        pb(LF);
+    }
+    function wc(left, right) {
+        const l = _escNormalize(left); const r = _escNormalize(right);
+        const pad = Math.max(1, COLS - l.substring(0, COLS - r.length - 1).length - r.length);
+        wl(l.substring(0, COLS - r.length - 1) + ' '.repeat(pad) + r);
+    }
+    function sep()  { wl('-'.repeat(COLS)); }
+    function sep2() { wl('='.repeat(COLS)); }
+
+    const ingresosMethod = c.ingresosMethod || c.methodTotals || {};
+    const gastosMethod   = c.gastosMethod   || {};
+    const gastosDetalle  = c.gastosDetalle  || [];
+    const ingresosTotal  = Number(c.ingresosTotal  ?? c.grandTotal ?? 0);
+    const gastosTotal    = Number(c.gastosTotal    || 0);
+    const grandTotal     = Number(c.grandTotal     || 0);
+    const cobradas       = Number(c.transactionCount || 0) - Number(c.voidedCount || 0);
+
+    const allMethodIds = [...new Set([
+        ...Object.keys(ingresosMethod),
+        ...Object.keys(gastosMethod),
+    ])].filter((k) => k !== 'split');
+
+    // Init + encabezado
+    pb(ESC, 0x40);
+    pb(ESC, 0x61, 0x01, ESC, 0x45, 0x01, ESC, 0x21, 0x10);
+    wl(brandingState.restaurantName || 'ROAL BURGER');
+    pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
+    pb(ESC, 0x61, 0x00);
+
+    sep2();
+    pb(ESC, 0x61, 0x01); wl('CIERRE DE CAJA'); pb(ESC, 0x61, 0x00);
+    sep2();
+
+    wc('Fecha', dateStr);
+    if (c.aperturaAt) {
+        const aperturaTime = new Date(Number(c.aperturaAt)).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+        wc('Apertura', aperturaTime);
+    }
+    if (c.aperturaBy) wc('Abierta por', String(c.aperturaBy));
+    if (Number(c.fondoInicial) > 0) wc('Fondo inicial', formatMoney(Number(c.fondoInicial)));
+    wc('Cierre', timeStr);
+    wc('Transacciones', String(cobradas));
+    if (c.voidedCount) wc('Anulados (excl.)', String(Number(c.voidedCount)));
+
+    // Ingresos
+    sep();
+    pb(ESC, 0x45, 0x01); wl('INGRESOS'); pb(ESC, 0x45, 0x00);
+    sep();
+    const ingFiltered = allMethodIds.filter((k) => Number(ingresosMethod[k] || 0) > 0);
+    if (ingFiltered.length) {
+        ingFiltered.forEach((k) => {
+            const m = getPaymentMethods().find((x) => x.id === k);
+            wc('  ' + (m ? m.label : k), formatMoney(Number(ingresosMethod[k])));
+        });
+    } else {
+        wl('  Sin movimientos');
+    }
+    sep();
+    pb(ESC, 0x45, 0x01); wc('TOTAL INGRESOS', formatMoney(ingresosTotal)); pb(ESC, 0x45, 0x00);
+
+    // Gastos (si los hay)
+    if (gastosDetalle.length) {
+        sep();
+        pb(ESC, 0x45, 0x01); wl('GASTOS'); pb(ESC, 0x45, 0x00);
+        sep();
+        gastosDetalle.forEach((g) => {
+            const m = getPaymentMethods().find((x) => x.id === g.paymentMethod);
+            const desc = [g.proveedor, g.descripcion].filter(Boolean).join(' ');
+            wc('  ' + _escNormalize(desc || 'Gasto'), '-' + formatMoney(Number(g.monto || 0)));
+            if (m) wl('    ' + m.label);
+        });
+        sep();
+        pb(ESC, 0x45, 0x01); wc('TOTAL GASTOS', '-' + formatMoney(gastosTotal)); pb(ESC, 0x45, 0x00);
+    }
+
+    // Arqueo por método
+    const arqueoLines = allMethodIds.map((k) => {
+        const ing = Number(ingresosMethod[k] || 0);
+        const gas = Number(gastosMethod[k]   || 0);
+        const net = ing - gas;
+        if (ing === 0 && gas === 0) return null;
+        const m = getPaymentMethods().find((x) => x.id === k);
+        return { label: m ? m.label : k, net, ing, gas };
+    }).filter(Boolean);
+
+    if (arqueoLines.length) {
+        sep();
+        pb(ESC, 0x45, 0x01); wl('ARQUEO POR METODO'); pb(ESC, 0x45, 0x00);
+        sep();
+        arqueoLines.forEach(({ label, net, ing, gas }) => {
+            wc('  ' + label, (net < 0 ? '-' : '') + formatMoney(Math.abs(net)));
+            if (gas > 0) wl('  Ing: ' + formatMoney(ing) + ' Gas: ' + formatMoney(gas));
+        });
+    }
+
+    // Saldo neto
+    sep2();
+    pb(ESC, 0x45, 0x01, ESC, 0x21, 0x10);
+    wc('SALDO NETO CAJA', (grandTotal < 0 ? '-' : '') + formatMoney(Math.abs(grandTotal)));
+    pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
+    sep2();
+
+    pb(ESC, 0x61, 0x01, LF);
+    wl('DOCUMENTO INTERNO - NO FISCAL');
+    if (brandingState.address) wl(brandingState.address);
+    pb(LF, LF, LF);
+    pb(GS, 0x56, 0x00);
+
+    return new Uint8Array(bytes);
+}
+
+async function printCierreViaBluetooth(c, dateStr, timeStr) {
+    if (!_btPrinterCharacteristic) return false;
+    if (!_btPrinterDevice?.gatt?.connected) {
+        _btPrinterCharacteristic = null;
+        renderBtPrinterStatus('disconnected');
+        showNotice('Impresora Bluetooth desconectada. Reconecta en Configuracion.', 'error');
+        return false;
+    }
+    const data = buildCierreESCPOSData(c, dateStr, timeStr);
+    const CHUNK = 20;
+    try {
+        for (let i = 0; i < data.length; i += CHUNK) {
+            await _btWriteChunk(_btPrinterCharacteristic, data.slice(i, i + CHUNK));
+            await new Promise((r) => setTimeout(r, 80));
+        }
+        return true;
+    } catch (err) {
+        showNotice(`Error Bluetooth: ${err.message || 'desconocido'}. Imprimiendo por navegador...`, 'error');
+        return false;
+    }
+}
 
 function openCierreSidePanel(ticketHtml, title, viewOnly = false) {
     const panel = document.getElementById('cierreSidePanel');
@@ -17471,12 +17615,21 @@ function openCierreSidePanel(ticketHtml, title, viewOnly = false) {
     panel.removeAttribute('hidden');
 }
 
-function _printCierreTicket(html) {
+function _printCierreBrowser(html) {
     const win = window.open('', '_blank', 'width=420,height=680,scrollbars=yes');
     if (win) {
         win.document.write(`<!DOCTYPE html><html><head><title>Cierre de Caja</title></head><body style="margin:0;background:#fff;">${html}<div style="text-align:center;margin:16px;"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">Imprimir</button></div></body></html>`);
         win.document.close();
     }
+}
+
+async function _printCierreTicket(html) {
+    if (_btPrinterCharacteristic && _cierrePrintData) {
+        const { c, dateStr, timeStr } = _cierrePrintData;
+        const ok = await printCierreViaBluetooth(c, dateStr, timeStr);
+        if (ok) { showNotice('Cierre enviado a la impresora Bluetooth.', 'ok'); return; }
+    }
+    _printCierreBrowser(html);
 }
 
 document.getElementById('cierreSidePanelClose')?.addEventListener('click', () => {
@@ -17485,15 +17638,18 @@ document.getElementById('cierreSidePanelClose')?.addEventListener('click', () =>
 });
 
 document.getElementById('cierreReprintBtn')?.addEventListener('click', () => {
-    if (_cierrePrintHtml) _printCierreTicket(_cierrePrintHtml);
+    if (_cierrePrintHtml) _printCierreTicket(_cierrePrintHtml);  // _cierrePrintData ya está seteado
 });
 
 document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async () => {
     if (!_pendingCierreDoc) return;
-    const { closureDoc, closureId, ticketHtml, dateStr } = _pendingCierreDoc;
+    const { closureDoc, closureId, ticketHtml, dateStr, timeStr } = _pendingCierreDoc;
 
     const imprimir = confirm('¿Desea imprimir el ticket de cierre?');
-    if (imprimir) _printCierreTicket(ticketHtml);
+    if (imprimir) {
+        _cierrePrintData = { c: closureDoc, dateStr, timeStr };
+        _printCierreTicket(ticketHtml);
+    }
 
     const confirmBtn = document.getElementById('cierreCajaConfirmBtn');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Guardando...'; }
@@ -17834,7 +17990,7 @@ async function cerrarCaja() {
         const ticketHtml = _buildCierreTicketHtml(closureDoc, dateStr, timeStr);
 
         // Guardar datos pendientes y mostrar preview — el usuario confirma el cierre desde el panel
-        _pendingCierreDoc = { closureDoc, closureId, ticketHtml, dateStr };
+        _pendingCierreDoc = { closureDoc, closureId, ticketHtml, dateStr, timeStr };
         openCierreSidePanel(ticketHtml, `Vista previa · ${dateStr}`);
         _navigateToCajaDiaria();
 
@@ -19067,12 +19223,15 @@ function _openCierreDetalleModal(c) {
         const dateStr  = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
         const timeStr  = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
-        const win = window.open('', '_blank', 'width=400,height=700');
-        if (!win) return;
-        win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cierre de Caja · ${escapeHtml(dateStr)}</title>
-        <style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#1a1412;display:flex;justify-content:center;padding:20px;}@media print{body{background:#fff;padding:0;}}</style>
-        </head><body>${ticketHtml}<script>window.onload=()=>{window.print();}<\/script></body></html>`);
-        win.document.close();
+        _cierrePrintData = { c, dateStr, timeStr };
+        if (_btPrinterCharacteristic) {
+            printCierreViaBluetooth(c, dateStr, timeStr).then((ok) => {
+                if (ok) { showNotice('Cierre enviado a la impresora Bluetooth.', 'ok'); return; }
+                _printCierreBrowser(ticketHtml);
+            });
+        } else {
+            _printCierreBrowser(ticketHtml);
+        }
     });
 }
 
