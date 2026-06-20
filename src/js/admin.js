@@ -209,7 +209,7 @@ const AUTH_LOCK_MS      = 30_000; // 30 segundos de bloqueo
 // reCAPTCHA v3 invisible — para activarlo:
 // 1. Registra tu dominio en https://www.google.com/recaptcha/admin (tipo: v3)
 // 2. Pega aquí la Site Key pública (la privada va en tu Cloud Function de verificación)
-const RECAPTCHA_SITE_KEY = '';
+const RECAPTCHA_SITE_KEY = '6LdVXSotAAAAADkwGbDpxT8P8b24MEv62xTcAlu0';
 
 let _loginAttempts    = 0;
 let _loginLockedUntil = 0;
@@ -1683,14 +1683,20 @@ async function ensureAdminAuth() {
 
             if (authSubmitBtn) { authSubmitBtn.disabled = true; authSubmitBtn.textContent = 'Verificando...'; }
 
-            // reCAPTCHA v3 invisible — obtiene token antes de autenticar
+            // reCAPTCHA v3 invisible — verifica score en servidor antes de autenticar
             if (RECAPTCHA_SITE_KEY && window.grecaptcha) {
                 try {
                     await new Promise((res) => window.grecaptcha.ready(res));
-                    // Token listo; para proteccion real, envíalo a una Cloud Function
-                    // para verificar el score antes de permitir el login.
-                    await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'admin_login' });
-                } catch (_) { /* falla silenciosa: continuar sin reCAPTCHA */ }
+                    const rcToken  = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'admin_login' });
+                    const verifyFn = firebase.functions().httpsCallable('verifyRecaptcha');
+                    await verifyFn({ token: rcToken });
+                } catch (err) {
+                    if (authSubmitBtn) { authSubmitBtn.disabled = false; authSubmitBtn.textContent = 'Ingresar'; }
+                    showAuthFailure(err?.code === 'functions/failed-precondition'
+                        ? 'Verificacion de seguridad fallida. Intenta de nuevo.'
+                        : 'No se pudo completar la verificacion. Revisa tu conexion.');
+                    return;
+                }
             }
 
             try {

@@ -24,6 +24,46 @@ const ALLOWED_ORIGINS = [
 // Secrets: configurar con `firebase functions:secrets:set ULTRAMSG_INSTANCE`
 const ULTRAMSG_INSTANCE = defineSecret('ULTRAMSG_INSTANCE');
 const ULTRAMSG_TOKEN    = defineSecret('ULTRAMSG_TOKEN');
+// reCAPTCHA secret: firebase functions:secrets:set RECAPTCHA_SECRET
+const RECAPTCHA_SECRET  = defineSecret('RECAPTCHA_SECRET');
+
+// ─────────────────────────────────────────────────────────────
+// Verificación reCAPTCHA v3 — valida el score antes del login admin
+// Configurar secret: firebase functions:secrets:set RECAPTCHA_SECRET
+// (ingresar la Secret Key privada cuando se solicite)
+// ─────────────────────────────────────────────────────────────
+exports.verifyRecaptcha = onCall(
+    { region: 'us-central1', secrets: [RECAPTCHA_SECRET], cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const token = String(request.data?.token || '');
+        if (!token) {
+            throw new HttpsError('invalid-argument', 'Token de reCAPTCHA requerido.');
+        }
+
+        const secret = RECAPTCHA_SECRET.value();
+        if (!secret) {
+            throw new HttpsError('failed-precondition', 'Servicio de verificacion no configurado.');
+        }
+
+        const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:    `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`
+        });
+
+        if (!resp.ok) {
+            throw new HttpsError('internal', 'No se pudo contactar el servicio de verificacion.');
+        }
+
+        const data = await resp.json();
+
+        if (!data.success || data.score < 0.5) {
+            throw new HttpsError('failed-precondition', 'Verificacion de seguridad fallida.');
+        }
+
+        return { success: true };
+    }
+);
 
 // ─────────────────────────────────────────────────────────────
 // Notificación push (FCM) cuando llega un pedido nuevo
