@@ -17706,22 +17706,25 @@ document.getElementById('cierreSidePanelClose')?.addEventListener('click', () =>
     _pendingCierreDoc = null;
 });
 
-document.getElementById('cierreReprintBtn')?.addEventListener('click', () => {
-    if (_cierrePrintHtml) _printCierreTicket(_cierrePrintHtml);  // _cierrePrintData ya está seteado
+document.getElementById('cierreReprintBtn')?.addEventListener('click', async () => {
+    if (_cierrePrintHtml) await _printCierreTicket(_cierrePrintHtml);  // _cierrePrintData ya está seteado
 });
 
 document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async () => {
     if (!_pendingCierreDoc) return;
     const { closureDoc, closureId, ticketHtml, dateStr, timeStr } = _pendingCierreDoc;
 
+    // Deshabilitar primero para evitar doble clic mientras se abre selector BT o se imprime
+    const confirmBtn = document.getElementById('cierreCajaConfirmBtn');
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Imprimiendo...'; }
+
     const imprimir = confirm('¿Desea imprimir el ticket de cierre?');
     if (imprimir) {
         _cierrePrintData = { c: closureDoc, dateStr, timeStr };
-        _printCierreTicket(ticketHtml);
+        await _printCierreTicket(ticketHtml);
     }
 
-    const confirmBtn = document.getElementById('cierreCajaConfirmBtn');
-    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Guardando...'; }
+    if (confirmBtn) confirmBtn.textContent = 'Guardando...';
     try {
         // Gasto automático de domicilios en efectivo
         const domicilioFeeTotal = getDeliveredOrdersForCurrentDay()
