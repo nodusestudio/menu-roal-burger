@@ -11133,8 +11133,16 @@ function buildESCPOSData(order) {
     }
     function wc(left, right) {
         const l = _escNormalize(left); const r = _escNormalize(right);
-        const pad = Math.max(1, COLS - l.substring(0, COLS - r.length - 1).length - r.length);
-        wl(l.substring(0, COLS - r.length - 1) + ' '.repeat(pad) + r);
+        const maxLeft = COLS - r.length - 1;
+        if (l.length <= maxLeft) {
+            const pad = Math.max(1, COLS - l.length - r.length);
+            wl(l + ' '.repeat(pad) + r);
+        } else {
+            // Nombre largo: envolverlo y poner el precio en su propia linea alineado a la derecha
+            ww(l, '');
+            const pad = Math.max(0, COLS - r.length);
+            wl(' '.repeat(pad) + r);
+        }
     }
     function sep() { wl('-'.repeat(COLS)); }
 
@@ -17505,10 +17513,39 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
         for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
         pb(LF);
     }
+    function ww(str, prefix) {
+        const pfx = _escNormalize(prefix || '');
+        const s = _escNormalize(str);
+        const contPfx = ' '.repeat(pfx.length);
+        let firstLine = true;
+        function emit(line) { for (let i = 0; i < line.length; i++) pb(line.charCodeAt(i) & 0xFF); pb(LF); firstLine = false; }
+        const words = s.split(/\s+/).filter(Boolean);
+        if (!words.length) return;
+        let current = '';
+        for (const word of words) {
+            const lp = firstLine ? pfx : contPfx;
+            const avail = COLS - lp.length;
+            if (!current) {
+                if (word.length > avail) { let rem = word; while (rem.length) { const lp2 = firstLine ? pfx : contPfx; const a2 = COLS - lp2.length; emit(lp2 + rem.substring(0, a2)); rem = rem.substring(a2); } }
+                else { current = word; }
+            } else {
+                const test = current + ' ' + word;
+                if (test.length <= avail) { current = test; } else { emit(lp + current); current = word; }
+            }
+        }
+        if (current) emit((firstLine ? pfx : contPfx) + current);
+    }
     function wc(left, right) {
         const l = _escNormalize(left); const r = _escNormalize(right);
-        const pad = Math.max(1, COLS - l.substring(0, COLS - r.length - 1).length - r.length);
-        wl(l.substring(0, COLS - r.length - 1) + ' '.repeat(pad) + r);
+        const maxLeft = COLS - r.length - 1;
+        if (l.length <= maxLeft) {
+            const pad = Math.max(1, COLS - l.length - r.length);
+            wl(l + ' '.repeat(pad) + r);
+            return;
+        }
+        ww(l, '');
+        const pad = Math.max(0, COLS - r.length);
+        wl(' '.repeat(pad) + r);
     }
     function sep()  { wl('-'.repeat(COLS)); }
     function sep2() { wl('='.repeat(COLS)); }
