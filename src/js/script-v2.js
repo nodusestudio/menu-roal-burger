@@ -3525,20 +3525,28 @@ function buildParentRelativeImagePath(value) {
     return `../${normalized}`;
 }
 
+const _IMG_FINAL_FALLBACK = '/isotipo.png';
+
 function applyImageFallback(imageElement) {
-    if (!(imageElement instanceof HTMLImageElement)) {
-        return;
-    }
+    if (!(imageElement instanceof HTMLImageElement)) return;
+    if (imageElement.dataset.roalFallbackApplied === '2') return;
 
     const currentSource = imageElement.getAttribute('src') || '';
-    const fallbackSource = buildParentRelativeImagePath(currentSource);
 
-    if (!fallbackSource || fallbackSource === currentSource || imageElement.dataset.roalFallbackApplied === '1') {
-        return;
+    if (imageElement.dataset.roalFallbackApplied !== '1') {
+        const fallbackSource = buildParentRelativeImagePath(currentSource);
+        if (fallbackSource && fallbackSource !== currentSource) {
+            imageElement.dataset.roalFallbackApplied = '1';
+            imageElement.src = fallbackSource;
+            return;
+        }
     }
 
-    imageElement.dataset.roalFallbackApplied = '1';
-    imageElement.src = fallbackSource;
+    // Fallback final: isotipo de la marca
+    if (currentSource !== _IMG_FINAL_FALLBACK) {
+        imageElement.dataset.roalFallbackApplied = '2';
+        imageElement.src = _IMG_FINAL_FALLBACK;
+    }
 }
 
 function installImageFallbackHandler() {
@@ -7785,7 +7793,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
 const DEFAULT_BRANDING = {
     restaurantName: 'Roal Burger',
     slogan: 'Comida rapida con acento venezolano',
-    logoUrl: 'logo.png',
+    logoUrl: '/isotipo.png',
     primaryColor: '#2f6fdd',
     secondaryColor: '#5f95ea',
     accentColor: '#43c09c',
@@ -7897,7 +7905,7 @@ function shouldHideCategoryList(category) {
 
 function resolveProductImage(product) {
     const remote = String(product?.image_url || '').trim();
-    return remote || 'logo.png';
+    return remote || _IMG_FINAL_FALLBACK;
 }
 
 function resolveCategoryImage(categoryName) {
@@ -7905,7 +7913,7 @@ function resolveCategoryImage(categoryName) {
         .concat(Array.isArray(allCategoryMeta) ? allCategoryMeta : [])
         .find((category) => normalizeCategoryKey(category?.name) === normalizeCategoryKey(categoryName));
     const remoteImage = String(remoteCategory?.image_url || '').trim();
-    return remoteImage || 'logo.png';
+    return remoteImage || _IMG_FINAL_FALLBACK;
 }
 
 function isCategoryAllowed(categoryName) {
@@ -8078,9 +8086,9 @@ function renderDynamicCategorySections() {
                 if (contenedorMenu && salchiProds.length) {
                     let galeriaHTML = '<div class="bebidas-gallery-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:15px;padding:20px;">';
                     salchiProds.forEach(p => {
-                        const img = p.image_url || 'logo.png';
+                        const img = p.image_url || _IMG_FINAL_FALLBACK;
                         const nombre = p.nombre || '';
-                        galeriaHTML += `<div class="card-pequena" style="cursor:pointer;" onclick="abrirModalBebida('${nombre}','${img}')"><img src="${img}" style="width:100%;border-radius:8px;" alt="${nombre}"><p style="text-align:center;font-weight:bold;margin-top:5px;color:#000;">${nombre}</p></div>`;
+                        galeriaHTML += `<div class="card-pequena" style="cursor:pointer;" onclick="abrirModalBebida('${nombre}','${img}')"><img src="${img}" loading="lazy" onerror="this.src='${_IMG_FINAL_FALLBACK}'" style="width:100%;border-radius:8px;" alt="${nombre}"><p style="text-align:center;font-weight:bold;margin-top:5px;color:#000;">${nombre}</p></div>`;
                     });
                     galeriaHTML += '</div>';
                     contenedorMenu.insertAdjacentHTML('beforeend', galeriaHTML);
@@ -8099,9 +8107,9 @@ function renderDynamicCategorySections() {
                 if (contenedorMenu && bebidaProds.length) {
                     let galeriaHTML = '<div class="bebidas-gallery-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:15px;padding:20px;">';
                     bebidaProds.forEach(p => {
-                        const img = p.image_url || 'logo.png';
+                        const img = p.image_url || _IMG_FINAL_FALLBACK;
                         const nombre = p.nombre || '';
-                        galeriaHTML += `<div class="card-pequena" style="cursor:pointer;" onclick="abrirModalBebida('${nombre}','${img}')"><img src="${img}" style="width:100%;border-radius:8px;" alt="${nombre}"><p style="text-align:center;font-weight:bold;margin-top:5px;color:#000;">${nombre}</p></div>`;
+                        galeriaHTML += `<div class="card-pequena" style="cursor:pointer;" onclick="abrirModalBebida('${nombre}','${img}')"><img src="${img}" loading="lazy" onerror="this.src='${_IMG_FINAL_FALLBACK}'" style="width:100%;border-radius:8px;" alt="${nombre}"><p style="text-align:center;font-weight:bold;margin-top:5px;color:#000;">${nombre}</p></div>`;
                     });
                     galeriaHTML += '</div>';
                     contenedorMenu.insertAdjacentHTML('beforeend', galeriaHTML);
@@ -8242,8 +8250,9 @@ function renderDynamicCategorySections() {
                     const img = document.createElement('img');
                     img.loading = 'lazy';
                     img.decoding = 'async';
-                    img.src = normalizeImageAssetPath(rutaImagen);
+                    img.src = normalizeImageAssetPath(rutaImagen) || _IMG_FINAL_FALLBACK;
                     img.alt = product.nombre;
+                    img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
                     img.style.width = '68px';
                     img.style.height = '68px';
                     img.style.objectFit = 'cover';
@@ -8916,9 +8925,9 @@ function renderManualCategoryGallery(panel, categoryName, _cards, visibleProduct
     // Renderizar directamente desde los productos de Firestore (fuente de verdad: el admin)
     const finalCards = (visibleProducts || []).map((product) => ({
         name: product.nombre,
-        image: product.image_url || 'logo.png',
-        orderImagePath: product.image_url || 'logo.png',
-        fallbackImage: 'logo.png'
+        image: product.image_url || _IMG_FINAL_FALLBACK,
+        orderImagePath: product.image_url || _IMG_FINAL_FALLBACK,
+        fallbackImage: _IMG_FINAL_FALLBACK
     }));
 
     if (!finalCards.length) {
@@ -8955,8 +8964,8 @@ function renderManualCategoryGallery(panel, categoryName, _cards, visibleProduct
         image.style.width = '100%';
         image.style.borderRadius = '8px';
         image.addEventListener('error', () => {
-            if (image.src !== window.location.origin + '/logo.png') {
-                image.src = 'logo.png';
+            if (image.src !== window.location.origin + _IMG_FINAL_FALLBACK) {
+                image.src = _IMG_FINAL_FALLBACK;
             }
         });
 
@@ -9097,12 +9106,12 @@ function renderBebidasPublicPanel(panel) {
         const img = document.createElement('img');
         img.loading = 'lazy';
         img.decoding = 'async';
-        img.src = bev.image_url || 'logo.png';
+        img.src = bev.image_url || _IMG_FINAL_FALLBACK;
         img.alt = bev.marca;
         img.style.width = '100%';
         img.style.borderRadius = '8px';
         img.addEventListener('error', () => {
-            if (img.src !== window.location.origin + '/logo.png') img.src = 'logo.png';
+            if (img.src !== window.location.origin + _IMG_FINAL_FALLBACK) img.src = _IMG_FINAL_FALLBACK;
         });
 
         const label = document.createElement('p');
@@ -9136,9 +9145,9 @@ function openBebidaPublicPickerModal(bev) {
     // Header
     const img = document.createElement('img');
     img.className = 'bebidas-modal-image';
-    img.src = bev.image_url || 'logo.png';
+    img.src = bev.image_url || _IMG_FINAL_FALLBACK;
     img.alt = bev.marca;
-    img.addEventListener('error', () => { if (img.src !== window.location.origin + '/logo.png') img.src = 'logo.png'; });
+    img.addEventListener('error', () => { if (img.src !== window.location.origin + _IMG_FINAL_FALLBACK) img.src = _IMG_FINAL_FALLBACK; });
 
     const title = document.createElement('div');
     title.className = 'bebidas-modal-title';
@@ -9394,7 +9403,7 @@ function applyBrandingConfig(configRaw) {
         const slogan = document.getElementById('brandBannerSlogan');
 
         if (logo) {
-            logo.src = config.logoUrl || 'logo.png';
+            logo.src = config.logoUrl || _IMG_FINAL_FALLBACK;
             logo.alt = `Logo ${config.restaurantName}`;
         }
 
@@ -9884,7 +9893,7 @@ function updatePromoModalContent() {
     const isSoldOut = recommendedProduct.estado === 'paused';
 
     if (image) {
-        image.src = recommendedProduct.image_url || 'logo.png';
+        image.src = recommendedProduct.image_url || _IMG_FINAL_FALLBACK;
         image.alt = `Recomendado del dia: ${recommendedProduct.nombre}`;
     }
 
@@ -9999,7 +10008,7 @@ function renderExtraPromoCards() {
         const raw = resolveProductDisplayPrice(product);
         const rate = Math.min(Math.max(Number(promo.descuento || 0), 0), 100) / 100;
         const discounted = rate > 0 ? Math.round(raw * (1 - rate)) : raw;
-        const img = product.image_url || 'logo.png';
+        const img = product.image_url || _IMG_FINAL_FALLBACK;
         const nombre = product.nombre || promo.producto_nombre || '';
         const kicker = promo.kicker || 'Promo Especial';
         const badge = promo.badge || '';
@@ -10022,7 +10031,7 @@ function renderExtraPromoCards() {
             </div>
             <div class="home-rec-content">
                 <div class="home-rec-img-wrap">
-                    <img class="home-rec-img" src="${img}" alt="${nombre}" loading="lazy" onerror="this.src='logo.png'">
+                    <img class="home-rec-img" src="${img}" alt="${nombre}" loading="lazy" onerror="this.src='/isotipo.png'">
                 </div>
                 <div class="home-rec-body">
                     <strong class="home-rec-name"></strong>
@@ -10078,7 +10087,7 @@ function render2x1Cards() {
         const product = productMap2x1.get(promo.producto_id);
         if (!product) return;
 
-        const img = product.image_url || 'logo.png';
+        const img = product.image_url || _IMG_FINAL_FALLBACK;
         const nombre = product.nombre || promo.producto_nombre || '';
         const kicker = promo.kicker || '¡Oferta Especial!';
         const descripcion = promo.descripcion || '¡Lleva 2 por el precio de 1!';
@@ -10094,7 +10103,7 @@ function render2x1Cards() {
             </div>
             <div class="home-rec-content">
                 <div class="home-rec-img-wrap">
-                    <img class="home-rec-img" src="${img}" alt="${nombre}" loading="lazy" onerror="this.src='logo.png'">
+                    <img class="home-rec-img" src="${img}" alt="${nombre}" loading="lazy" onerror="this.src='/isotipo.png'">
                 </div>
                 <div class="home-rec-body">
                     <strong class="home-rec-name"></strong>
@@ -10175,7 +10184,7 @@ function renderCombosEspeciales() {
 
         const iconsHTML = productos.slice(0, 5).map((p) => `
             <button type="button" class="combo-public-icon-btn" data-product-id="${p.id}" title="${escapeXml(p.nombre || '')}">
-                <img src="${escapeXml(p.imagen || 'logo.png')}" alt="${escapeXml(p.nombre || '')}" onerror="this.src='logo.png'">
+                <img src="${escapeXml(p.imagen || p.image_url || '/isotipo.png')}" alt="${escapeXml(p.nombre || '')}" loading="lazy" onerror="this.src='/isotipo.png'">
                 <span>${escapeXml(p.nombre || '')}</span>
             </button>`).join('');
 
@@ -10233,11 +10242,11 @@ function renderCombosEspeciales() {
                 isComboChild: isChild
             });
             const firstProd = activeProds[0];
-            const parentOpts = { ...mkOpts(false), imagePath: firstProd.image_url || 'logo.png' };
+            const parentOpts = { ...mkOpts(false), imagePath: firstProd.image_url || _IMG_FINAL_FALLBACK };
             const parentKey = getCartItemKey(firstProd.nombre, firstProd.categoria || '', parentOpts);
             addItemToCart(firstProd.nombre, firstProd.categoria || '', parentOpts, `btn-combo-${combo.id}-0`);
             activeProds.slice(1).forEach((prod, i) => {
-                const childOpts = { ...mkOpts(true), imagePath: prod.image_url || 'logo.png' };
+                const childOpts = { ...mkOpts(true), imagePath: prod.image_url || _IMG_FINAL_FALLBACK };
                 setTimeout(() => {
                     addItemToCart(prod.nombre, prod.categoria || '', childOpts, `btn-combo-${combo.id}-${i + 1}`, 1, parentKey);
                 }, (i + 1) * 60);
@@ -10475,7 +10484,7 @@ function openCategoryDetail(cat) {
         products.forEach((product, idx) => {
             const nombre = String(product.nombre || product.name || 'Producto').trim();
             const precio = resolveProductDisplayPrice(product);
-            const imgSrc = String(product.image_url || product.imageUrl || '');
+            const imgSrc = String(product.image_url || product.imageUrl || '') || _IMG_FINAL_FALLBACK;
             const btnId  = `btn-cds-${idx}`;
 
             const card = document.createElement('div');
@@ -10488,7 +10497,7 @@ function openCategoryDetail(cat) {
             imgEl.src = imgSrc;
             imgEl.alt = nombre;
             imgEl.loading = 'lazy';
-            imgEl.onerror = () => { imgEl.style.display = 'none'; };
+            imgEl.onerror = () => { imgEl.src = _IMG_FINAL_FALLBACK; };
             imgEl.addEventListener('click', () => startProductOrderFlow(nombre, cat.name, btnId));
             imgWrap.appendChild(imgEl);
 
@@ -10561,10 +10570,10 @@ function openNavCategoriesScreen(title, filterFn) {
             card.className = 'home-cat-card';
             const imgEl = document.createElement('img');
             imgEl.className = 'home-cat-img';
-            imgEl.src = cat.image_url || '';
+            imgEl.src = cat.image_url || _IMG_FINAL_FALLBACK;
             imgEl.alt = cat.name;
             imgEl.loading = 'lazy';
-            imgEl.onerror = () => { imgEl.style.display = 'none'; };
+            imgEl.onerror = () => { imgEl.src = _IMG_FINAL_FALLBACK; };
             const labelEl = document.createElement('span');
             labelEl.className = 'home-cat-label';
             labelEl.textContent = cat.name;
