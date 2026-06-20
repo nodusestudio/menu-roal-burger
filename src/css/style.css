@@ -7593,3 +7593,78 @@ a,
     cursor: pointer; padding: 10px 0; margin-top: 12px;
 }
 .pub-upgrade-back:hover { color: #3d1f0a; }
+
+/* ─────────────────────────────────────────────────────────────
+   UX IMPROVEMENTS — Botones táctiles, filtros de precio, banner horario
+   ───────────────────────────────────────────────────────────── */
+
+/* 1. Touch targets: mínimo 48px en botones de acción principales (solo móvil) */
+@media (max-width: 1023px) {
+    .home-rec-btn,
+    .combo-order-btn,
+    .pub-upgrade-add-btn {
+        min-height: 48px;
+    }
+    /* Botón "¡Lo Quiero!" en tarjetas de categoría */
+    .cds-product-btn {
+        min-height: 44px;
+        padding: 10px 0;
+    }
+}
+
+/* 2. Filtros de precio como pills grandes en móvil */
+@media (max-width: 1023px) {
+    .search-filter-prices {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 2px 0 8px;
+        scroll-snap-type: x mandatory;
+    }
+    .search-filter-prices::-webkit-scrollbar { display: none; }
+
+    .search-price-btn {
+        padding: 8px 18px;
+        border-radius: 20px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        min-height: 38px;
+        scroll-snap-align: start;
+        flex-shrink: 0;
+    }
+
+    .search-price-btn.active {
+        background: #fb4b08;
+        border-color: #fb4b08;
+        color: #fff;
+        box-shadow: 0 2px 10px rgba(251, 75, 8, 0.40);
+    }
+}
+
+/* 3. Banner horario cerrado */
+#closedHoursBanner {
+    display: none;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 11px 18px;
+    background: rgba(255, 145, 0, 0.14);
+    border-bottom: 1px solid rgba(255, 140, 0, 0.30);
+    text-align: center;
+    color: #6b3300;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.84rem;
+    font-weight: 400;
+    line-height: 1.45;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+#closedHoursBanner strong {
+    font-weight: 700;
+    color: #8a3f00;
+}
+#closedHoursBanner.is-visible {
+    display: block;
+}

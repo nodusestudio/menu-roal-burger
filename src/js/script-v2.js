@@ -10295,9 +10295,47 @@ function showHomeScreen() {
 }
 
 function renderHomeScreen() {
+    _updateClosedHoursBanner();
     renderHomeRecBanner();
     renderHomeComboCarousel();
     renderHomeCategoryCards();
+}
+
+let _closedBannerPollId = null;
+
+function _updateClosedHoursBanner() {
+    const banner = document.getElementById('closedHoursBanner');
+    if (!banner) return;
+
+    if (_closedBannerPollId) {
+        clearInterval(_closedBannerPollId);
+        _closedBannerPollId = null;
+    }
+
+    function _refresh() {
+        const availability = getOrderingAvailability();
+        if (availability.isOpen) {
+            banner.classList.remove('is-visible');
+            if (_closedBannerPollId) { clearInterval(_closedBannerPollId); _closedBannerPollId = null; }
+            return;
+        }
+
+        const openMinutes = ORDERING_SCHEDULE.startMinutes;
+        const h = Math.floor(openMinutes / 60);
+        const m = openMinutes % 60;
+        const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const timeStr = `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+
+        banner.innerHTML = `<strong>Estamos cerrados.</strong> Abrimos hoy a las ${timeStr} — puedes explorar el menú.`;
+        banner.classList.add('is-visible');
+    }
+
+    _refresh();
+
+    if (banner.classList.contains('is-visible')) {
+        _closedBannerPollId = setInterval(_refresh, 60_000);
+    }
 }
 
 function renderHomeRecBanner() {
