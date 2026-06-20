@@ -39,7 +39,7 @@ self.addEventListener('install', (event) => {
             caches.open(STATIC_CACHE).then((cache) =>
                 Promise.allSettled(PRECACHE_SDK.map((u) => cache.add(u).catch(() => {})))
             ),
-        ]).then(() => self.skipWaiting())
+        ])
     );
 });
 
