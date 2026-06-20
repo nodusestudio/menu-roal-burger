@@ -13143,6 +13143,11 @@
                     <p class="icm-section-label">Vista previa <span class="icm-label-hint">(primeros 5 registros)</span></p>
                     <div class="icm-preview-scroll" id="icmPreviewTable"></div>
                 </div>
+                <!-- Validación: filas con errores -->
+                <div class="icm-validation-wrap" id="icmValidationWrap" hidden>
+                    <p class="icm-section-label icm-section-label--warn">⚠ Registros con errores <span class="icm-label-hint" id="icmValidationSummary"></span></p>
+                    <div class="icm-validation-list" id="icmValidationList"></div>
+                </div>
                 <div class="icm-phase2-foot">
                     <span class="icm-dup-warn" id="icmDupWarning"></span>
                     <button type="button" class="icm-btn" id="icmBackBtn">← Volver</button>
@@ -13274,6 +13279,18 @@
     .icm-done-stat-num--skip { color: #f59e0b; }
     .icm-done-stat-num--err { color: #f87171; }
     .icm-done-stat-label { font-size: 0.74rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    /* ── Validación de filas ── */
+    .icm-section-label--warn { color: #f59e0b !important; }
+    .icm-validation-wrap { margin-top: 14px; }
+    .icm-validation-list { max-height: 160px; overflow-y: auto; border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; background: rgba(245,158,11,0.05); }
+    .icm-val-row { display: grid; grid-template-columns: 60px 80px 1fr auto; gap: 8px; padding: 6px 10px; font-size: 0.74rem; border-bottom: 1px solid rgba(255,255,255,0.04); align-items: center; }
+    .icm-val-row:last-of-type { border-bottom: none; }
+    .icm-val-rownum { color: #64748b; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .icm-val-field { color: #f59e0b; font-weight: 600; }
+    .icm-val-problem { color: #cbd5e1; }
+    .icm-val-value { color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; font-family: monospace; font-size: 0.7rem; }
+    .icm-val-more { padding: 7px 10px; font-size: 0.72rem; color: #475569; text-align: center; font-style: italic; }
     </style>
 
     <div class="product-edit-modal" id="clientEditModal" aria-hidden="true">

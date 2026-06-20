@@ -20419,6 +20419,8 @@ let _icmParsedRows   = [];   // array de objetos {col: value}
 let _icmRawHeaders   = [];   // headers originales del archivo
 let _icmColMap       = {};   // { srcHeader -> fieldKey | '_skip' }
 let _icmTotalRows    = 0;
+let _icmValidRows    = [];   // filas que pasan validación
+let _icmInvalidRows  = [];   // [{ rowNum, errors: [{field, problem, value}] }]
 
 /* ── Helpers dinámicos de librería ────────────────────────────────────── */
 function _icmLoadScript(src) {
@@ -20594,6 +20596,7 @@ function _icmRenderColMap() {
     grid.querySelectorAll('.icm-colmap-select').forEach(sel => {
         sel.addEventListener('change', () => {
             _icmColMap[sel.dataset.srcCol] = sel.value;
+            _icmRunValidation();
         });
     });
 }
@@ -20608,6 +20611,92 @@ function _icmRenderPreview() {
         `<tr>${_icmRawHeaders.map(h => `<td>${escapeHtml(String(row[h] ?? ''))}</td>`).join('')}</tr>`
     ).join('');
     wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+/* ── Validación de filas ───────────────────────────────────────────────── */
+function _icmValidate() {
+    const nameIsMapped  = Object.values(_icmColMap).includes('customerName');
+    const phoneIsMapped = Object.values(_icmColMap).includes('customerPhone');
+    _icmValidRows   = [];
+    _icmInvalidRows = [];
+
+    _icmParsedRows.forEach((row, idx) => {
+        const client = _icmMapRow(row);
+        const hasData = Boolean(client.customerName) || Boolean(client.customerPhoneDigits)
+                     || Boolean(client.email)         || Boolean(client.address);
+        if (!hasData) return; // fila vacía → ignorar silenciosamente
+
+        const errs = [];
+
+        if (nameIsMapped && !client.customerName.trim()) {
+            const srcKey = Object.entries(_icmColMap).find(([, v]) => v === 'customerName')?.[0];
+            const raw    = srcKey ? String(row[srcKey] || '') : '';
+            errs.push({ field: 'Nombre', problem: 'vacío', value: raw || '(vacío)' });
+        }
+
+        if (phoneIsMapped) {
+            const digits = client.customerPhoneDigits;
+            if (!digits) {
+                const srcKey = Object.entries(_icmColMap).find(([, v]) => v === 'customerPhone')?.[0];
+                const raw    = srcKey ? String(row[srcKey] || '') : '';
+                errs.push({ field: 'Teléfono', problem: 'vacío', value: raw || '(vacío)' });
+            } else if (digits.length !== 10) {
+                errs.push({
+                    field:   'Teléfono',
+                    problem: `${digits.length} dígito${digits.length !== 1 ? 's' : ''} (se esperan 10)`,
+                    value:   client.customerPhone,
+                });
+            }
+        }
+
+        if (errs.length) {
+            _icmInvalidRows.push({ rowNum: idx + 2, errors: errs });
+        } else {
+            _icmValidRows.push(row);
+        }
+    });
+}
+
+function _icmRenderValidation() {
+    const wrapEl    = document.getElementById('icmValidationWrap');
+    const listEl    = document.getElementById('icmValidationList');
+    const summaryEl = document.getElementById('icmValidationSummary');
+    const countEl   = document.getElementById('icmImportCount');
+    const btn       = document.getElementById('icmStartImportBtn');
+
+    if (countEl) countEl.textContent = _icmValidRows.length.toLocaleString();
+    if (btn) btn.disabled = _icmValidRows.length === 0;
+
+    if (!wrapEl) return;
+    if (!_icmInvalidRows.length) { wrapEl.hidden = true; return; }
+
+    wrapEl.hidden = false;
+    if (summaryEl) {
+        const n = _icmInvalidRows.length;
+        summaryEl.textContent = `— ${n.toLocaleString()} registro${n !== 1 ? 's' : ''} con errores · no se importarán`;
+    }
+
+    if (!listEl) return;
+    const MAX_SHOWN = 100;
+    listEl.innerHTML = _icmInvalidRows.slice(0, MAX_SHOWN).map(({ rowNum, errors }) =>
+        errors.map(e =>
+            `<div class="icm-val-row">` +
+            `<span class="icm-val-rownum">Fila ${rowNum}</span>` +
+            `<span class="icm-val-field">${escapeHtml(e.field)}</span>` +
+            `<span class="icm-val-problem">${escapeHtml(e.problem)}</span>` +
+            `<span class="icm-val-value" title="${escapeHtml(e.value)}">${escapeHtml(e.value.length > 36 ? e.value.slice(0, 36) + '…' : e.value)}</span>` +
+            `</div>`
+        ).join('')
+    ).join('');
+
+    if (_icmInvalidRows.length > MAX_SHOWN) {
+        listEl.innerHTML += `<div class="icm-val-more">... y ${(_icmInvalidRows.length - MAX_SHOWN).toLocaleString()} registros más con errores</div>`;
+    }
+}
+
+function _icmRunValidation() {
+    _icmValidate();
+    _icmRenderValidation();
 }
 
 function _icmUpdateProgress(done, total) {
@@ -20659,14 +20748,14 @@ function _icmMapRow(row) {
 }
 
 /* ── Importador por lotes con yield ────────────────────────────────────── */
-async function _icmRunImport() {
+async function _icmRunImport(rows) {
     const BATCH_SIZE = 200;
     let imported = 0, skipped = 0, errors = 0;
-    const total = _icmParsedRows.length;
+    const total = rows.length;
     _icmUpdateProgress(0, total);
 
     for (let i = 0; i < total; i += BATCH_SIZE) {
-        const chunk = _icmParsedRows.slice(i, i + BATCH_SIZE);
+        const chunk = rows.slice(i, i + BATCH_SIZE);
         const batch = firebaseDb.batch();
         let batchHasOps = false;
 
@@ -20715,6 +20804,7 @@ async function _icmRunImport() {
 /* ── Modal controller ──────────────────────────────────────────────────── */
 function openImportClientsModal() {
     _icmParsedRows = []; _icmRawHeaders = []; _icmColMap = {}; _icmTotalRows = 0;
+    _icmValidRows = []; _icmInvalidRows = [];
     const modal = document.getElementById('importClientsModal');
     if (modal) modal.hidden = false;
     _icmShowPhase(1);
@@ -20767,6 +20857,7 @@ async function _icmHandleFile(file) {
         _icmRenderColMap();
         _icmRenderPreview();
         _icmShowPhase(2);
+        _icmRunValidation();
     } catch (err) {
         showNotice(`Error al leer el archivo: ${err.message}`, 'error');
     } finally {
@@ -20820,18 +20911,24 @@ async function _icmHandleFile(file) {
 
     // Iniciar importación
     document.getElementById('icmStartImportBtn')?.addEventListener('click', async () => {
-        if (!_icmParsedRows.length) return;
+        const rowsToImport = _icmValidRows.length ? _icmValidRows : _icmParsedRows;
+        if (!rowsToImport.length) return;
         _icmShowPhase(3);
         try {
-            const { imported, skipped, errors } = await _icmRunImport();
+            const { imported, skipped, errors } = await _icmRunImport(rowsToImport);
             // Mostrar resumen
-            const statsEl = document.getElementById('icmDoneStats');
+            const statsEl    = document.getElementById('icmDoneStats');
+            const invalidCnt = _icmInvalidRows.length;
             if (statsEl) {
                 statsEl.innerHTML = `
                     <div class="icm-done-stat">
                         <span class="icm-done-stat-num icm-done-stat-num--ok">${imported.toLocaleString()}</span>
                         <span class="icm-done-stat-label">Importados</span>
                     </div>
+                    ${invalidCnt ? `<div class="icm-done-stat">
+                        <span class="icm-done-stat-num icm-done-stat-num--skip">${invalidCnt.toLocaleString()}</span>
+                        <span class="icm-done-stat-label">Inválidos</span>
+                    </div>` : ''}
                     <div class="icm-done-stat">
                         <span class="icm-done-stat-num icm-done-stat-num--skip">${skipped.toLocaleString()}</span>
                         <span class="icm-done-stat-label">Omitidos</span>
