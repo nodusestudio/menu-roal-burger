@@ -11635,9 +11635,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setActiveCustomerProfile(loadStoredCustomerProfile());
 
     // Garantía: cualquier ruta que cierre el splash también muestra el homeScreen.
-    // IMPORTANTE: el timer de 12s en el inline script llama __roalHideSplash aunque el
-    // usuario ya esté navegando. Verificamos que el splash todavía sea visible antes de
-    // llamar showHomeScreen(), para no interrumpir la navegación en curso.
+    // El failsafe de 4s en el inline script re-lee window.__roalHideSplash, que ya es
+    // este wrapper, así que también llama showHomeScreen() en ese caso.
     const _origHideSplash = window.__roalHideSplash;
     window.__roalHideSplash = function () {
         const splashEl = document.getElementById('splashScreen');
@@ -11645,6 +11644,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (_origHideSplash) _origHideSplash();
         if (splashIsVisible) showHomeScreen();
     };
+
+    // Auto-dismiss del splash: el menú se muestra directamente sin requerir interacción.
+    // 1 500 ms de animación de marca antes de entrar al menú.
+    setTimeout(() => window.__roalHideSplash?.(), 1500);
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
     document.getElementById('publicChatFab')?.addEventListener('click', openPublicChatTab);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
@@ -11683,7 +11686,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('searchInput')?.addEventListener('input', e => renderSearchResults(e.target.value));
 
-    // Botones de la pantalla splash
+    // Botones de la pantalla splash (fallback manual si el auto-dismiss es lento)
     document.getElementById('splashContinueBtn')?.addEventListener('click', () => {
         document.activeElement?.blur();
         window.__roalHideSplash?.();
@@ -11691,12 +11694,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('splashGuestBtn')?.addEventListener('click', () => {
         document.activeElement?.blur();
         window.__roalHideSplash?.();
-    });
-    document.getElementById('splashSignInBtn')?.addEventListener('click', () => {
-        document.activeElement?.blur();
-        _promoModalPendingOpen = false;
-        window.__roalHideSplash?.();
-        setTimeout(() => openCustomerAuthModal(), 350);
     });
 
     // Botón volver en pantalla detalle de categoría

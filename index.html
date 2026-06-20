@@ -64,8 +64,7 @@
         <span class="splash-brand">ROAL BURGER</span>
         <span class="splash-tagline">Comida Rápida con Acento Venezolano</span>
         <div class="splash-actions" id="splashActions">
-            <button type="button" class="splash-btn splash-btn--primary" id="splashSignInBtn">Iniciar sesión</button>
-            <button type="button" class="splash-btn splash-btn--guest" id="splashGuestBtn">Ingresar como visitante</button>
+            <button type="button" class="splash-btn splash-btn--guest" id="splashGuestBtn">Ver el menú</button>
         </div>
     </div>
     <script>
@@ -78,13 +77,13 @@
                 setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 700);
             }
             window.__roalHideSplash = hideSplash;
-            // Failsafe: si en 12s el usuario no interactuó, cerrar splash Y mostrar home
+            // Failsafe reducido: si en 4s el auto-dismiss no actuó, forzar cierre
             setTimeout(function () {
                 if (window.__roalHideSplash) window.__roalHideSplash();
                 else hideSplash();
-            }, 12000);
+            }, 4000);
 
-            // Si ya hay sesión activa, reemplazar los dos botones por uno solo de continuar
+            // Si ya hay sesión activa, mostrar saludo personalizado (se auto-cierra igual)
             try {
                 var raw = localStorage.getItem('roalburger-customer-profile-v1');
                 if (raw) {
@@ -94,8 +93,8 @@
                         if (actions) {
                             var firstName = (profile.customerName || '').trim().split(/\s+/)[0];
                             var greeting = firstName
-                                ? '¡Hola, ' + firstName + '! Ya tienes una sesión activa.'
-                                : 'Ya tienes una sesión activa.';
+                                ? '¡Hola de nuevo, ' + firstName + '!'
+                                : 'Bienvenido de nuevo';
                             actions.innerHTML =
                                 '<span class="splash-session-greeting">' + greeting + '</span>' +
                                 '<button type="button" class="splash-btn splash-btn--primary" id="splashContinueBtn">Continuar</button>';
