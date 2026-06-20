@@ -242,6 +242,7 @@ let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
 let buttonsUnsubscribe = null;
 let brandingUnsubscribe = null;
+let _publicBrandingConfig = { restaurantName: 'Roal Burger' };
 let recomendadoOverrideUnsubscribe = null;
 let latestProducts = [];
 let activeCategories = null;
@@ -1370,8 +1371,9 @@ function buildWhatsAppOrderConfirmationText(orderData = {}) {
     const orderCode = String(orderData.code || orderData.id || '').trim();
     const customerName = String(orderData.customerName || '').trim() || 'Cliente';
     const total = formatCurrency(Number(orderData.total || 0));
+    const restaurantName = _getRestaurantName();
 
-    return `¡Hola FODEXA! Acabo de registrar mi pedido a través de la aplicación web. El número de mi pedido es [${orderCode}] a nombre de [${customerName}] por un total de [${total}]. Quedo atento a la confirmación. ¡Muchas gracias!`;
+    return `¡Hola, ${restaurantName}! 🍔\n\nAcabo de hacer mi pedido desde la app. Aquí los detalles:\n\n📦 Pedido: ${orderCode}\n👤 Nombre: ${customerName}\n💰 Total: ${total}\n\nQuedo pendiente de la confirmación. ¡Muchas gracias!`;
 }
 
 function openOrderConfirmationWhatsApp(orderData = {}) {
@@ -1392,7 +1394,7 @@ function requestDeliveryQuote() {
     const address = String(checkoutInfoUI.address?.value || '').trim();
     const coordsPart = (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) ? `Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}` : '';
     const addressPart = address ? `Direccion: ${address}` : '';
-    const text = `Hola FODEXA, solicito cotizacion de domicilio. ${addressPart} ${coordsPart}`.trim();
+    const text = `Hola, ${_getRestaurantName()}! Quisiera saber el costo de domicilio. ${addressPart} ${coordsPart}`.trim();
     const url = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(text)}`;
     const w = window.open(url, '_blank', 'noopener,noreferrer');
     if (!w) window.location.href = url;
@@ -2973,10 +2975,11 @@ async function requestPublicNotificationPermission() {
 
 function buildCustomerPasswordResetMessage(phoneValue = '') {
     const phoneDigits = normalizePhoneDigits(phoneValue);
+    const restaurantName = _getRestaurantName();
     return [
-        'Hola FODEXA, olvide la contrasena de mi perfil web.',
-        phoneDigits ? `Mi numero de WhatsApp es: ${phoneDigits}` : 'Necesito ayuda para recuperar el acceso a mi cuenta.',
-        'Por favor ayudame a restablecer mi contrasena.'
+        `Hola, ${restaurantName}. Olvide la contrasena de mi perfil en la app.`,
+        phoneDigits ? `Mi numero de WhatsApp registrado es: ${phoneDigits}` : 'Necesito ayuda para recuperar el acceso a mi cuenta.',
+        'Por favor ayudame a restablecer el acceso. Gracias.'
     ].join('\n');
 }
 
@@ -6079,8 +6082,9 @@ function buildSupportWhatsAppMessage(name, details, topicKey) {
         reclamos: 'Quejas o reclamos'
     };
     const topicLabel = topicLabelMap[topicKey] || 'Ayuda general';
+    const restaurantName = _getRestaurantName();
     return [
-        'Hola FODEXA! Necesito ayuda o informacion.',
+        `Hola, ${restaurantName}! Necesito ayuda o informacion.`,
         `Nombre: ${safeName}`,
         `Tema: ${topicLabel}`,
         `Consulta: ${safeDetails || `Quiero informacion sobre ${topicLabel.toLowerCase()}.`}`
@@ -9348,8 +9352,13 @@ function ensureBrandBanner() {
     return null;
 }
 
+function _getRestaurantName() {
+    return _publicBrandingConfig.restaurantName || 'Roal Burger';
+}
+
 function applyBrandingConfig(configRaw) {
     const config = normalizeBranding(configRaw || {});
+    _publicBrandingConfig = config;
 
     const root = document.documentElement;
     root.style.setProperty('--brand-primary', config.primaryColor);
@@ -9546,7 +9555,8 @@ async function renderPublicFeaturedFromAdmin() {
 }
 
 function buildDynamicWhatsAppUrl(sectionName) {
-    const message = `Hola FODEXA, estoy interesado en uno de los productos de la seccion ${sectionName}`;
+    const restaurantName = _getRestaurantName();
+    const message = `Hola, ${restaurantName}! Me interesa un producto de la seccion: ${sectionName}`;
     return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`;
 }
 
