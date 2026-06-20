@@ -11261,9 +11261,10 @@ async function openOrderPrintTicket(orderId) {
         return;
     }
 
-    // Si no hay impresora BT, intentar conectar ahora (abre el selector BT)
-    if (!_btPrinterDevice && navigator.bluetooth) {
-        await connectBluetoothPrinter();
+    // Asegurar conexión BT: auto-reconecta si es posible, o abre picker si no
+    if (navigator.bluetooth) {
+        const char = await _btEnsureConnected();
+        if (!char) await connectBluetoothPrinter();
     }
 
     if (_btPrinterDevice) {
@@ -17689,9 +17690,10 @@ function _printCierreBrowser(html) {
 }
 
 async function _printCierreTicket(html) {
-    // Si no hay impresora BT, intentar conectar ahora (abre el selector BT)
-    if (!_btPrinterDevice && navigator.bluetooth) {
-        await connectBluetoothPrinter();
+    // Asegurar conexión BT: auto-reconecta si es posible, o abre picker si no
+    if (navigator.bluetooth) {
+        const char = await _btEnsureConnected();
+        if (!char) await connectBluetoothPrinter();
     }
     if (_btPrinterDevice && _cierrePrintData) {
         const { c, dateStr, timeStr } = _cierrePrintData;
@@ -19292,18 +19294,11 @@ function _openCierreDetalleModal(c) {
     _bindOverlayClose(overlay, () => overlay.remove());
 
     document.getElementById('_cierreDetallePrint')?.addEventListener('click', async () => {
-        const dateStr  = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
-        const timeStr  = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const dateStr    = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+        const timeStr    = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
         _cierrePrintData = { c, dateStr, timeStr };
-        if (!_btPrinterDevice && navigator.bluetooth) {
-            await connectBluetoothPrinter();
-        }
-        if (_btPrinterDevice) {
-            const ok = await printCierreViaBluetooth(c, dateStr, timeStr);
-            if (ok) { showNotice('Cierre enviado a la impresora Bluetooth.', 'ok'); return; }
-        }
-        _printCierreBrowser(ticketHtml);
+        await _printCierreTicket(ticketHtml);
     });
 }
 
