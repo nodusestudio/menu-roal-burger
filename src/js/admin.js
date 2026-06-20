@@ -973,11 +973,21 @@ function announceNewOrders(orders) {
     if (!hasLoadedOrdersOnce) {
         knownOrderIds = currentOrderIds;
         hasLoadedOrdersOnce = true;
+        // Al cargar la app, marcar todos los pedidos pendientes existentes como "vistos"
+        // para que no disparen parpadeos ni badges — solo los que lleguen después son nuevos.
+        orders.filter((o) => o.status === 'pendiente').forEach((o) => viewedOrderIds.add(o.id));
         updateOrdersAttentionState();
         return;
     }
 
-    const newOrders = orders.filter((order) => !knownOrderIds.has(order.id));
+    // Solo son "nuevos" los pedidos que no existían antes Y que llegaron en los últimos 10 min.
+    // El filtro de tiempo evita re-anunciar pedidos viejos si knownOrderIds quedó desincronizado.
+    const DIEZ_MIN = 10 * 60 * 1000;
+    const newOrders = orders.filter((order) => {
+        if (knownOrderIds.has(order.id)) return false;
+        const createdMs = order.createdAt?.toMillis?.() || Number(order.createdAt || 0);
+        return createdMs > 0 && (Date.now() - createdMs) < DIEZ_MIN;
+    });
     knownOrderIds = currentOrderIds;
 
     // Limpiar IDs vistos que ya no son pendiente (procesados, entregados, etc.)
