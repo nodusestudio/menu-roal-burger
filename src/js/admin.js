@@ -19063,13 +19063,18 @@ function renderLibroContable() {
         // ── VISTA DIARIA ──
         const sorted = [...cierres].sort((a, b) => getMs(b) - getMs(a));
         lcBody.innerHTML = sorted.map((c) => {
-            const d   = new Date(getMs(c));
+            const d     = new Date(getMs(c));
+            const dia   = d.toLocaleDateString('es-CO', { weekday: 'long' });
             const fecha = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const diaLabel = dia.charAt(0).toUpperCase() + dia.slice(1);
             const ing = getIng(c);
             const egr = getEgr(c);
             const net = ing - egr;
             return `<tr>
-                <td class="col-left" style="font-weight:600;white-space:nowrap;">${fecha}</td>
+                <td class="col-left" style="font-weight:600;white-space:nowrap;">
+                    <span style="display:block;font-size:0.75rem;font-weight:400;color:var(--admin-muted);letter-spacing:0.04em;text-transform:uppercase;">${diaLabel}</span>
+                    ${fecha}
+                </td>
                 <td class="caja-cell-entrada">${formatMoney(ing)}</td>
                 <td>${egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
                 <td>${fmtNet(net)}</td>
