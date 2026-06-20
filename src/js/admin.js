@@ -10994,10 +10994,14 @@ async function connectBluetoothPrinter() {
         _btPrinterDevice = device;
         _btPrinterCharacteristic = char;
         device.addEventListener('gattserverdisconnected', () => {
-            _btPrinterDevice = null;
             _btPrinterCharacteristic = null;
-            renderBtPrinterStatus('disconnected');
-            showNotice('Impresora Bluetooth desconectada.', 'error');
+            renderBtPrinterStatus('connecting');
+            setTimeout(() => {
+                _btAutoReconnect().then((ok) => {
+                    if (ok) { showNotice('Impresora Bluetooth reconectada.', 'ok'); }
+                    else { renderBtPrinterStatus('disconnected'); showNotice('No se pudo reconectar la impresora BT.', 'error'); }
+                });
+            }, 2000);
         });
         renderBtPrinterStatus('connected', device.name || '');
         showNotice(`Impresora "${device.name || 'BT'}" conectada. Ya puedes imprimir.`, 'ok');
@@ -11015,6 +11019,48 @@ function disconnectBluetoothPrinter() {
     _btPrinterCharacteristic = null;
     renderBtPrinterStatus('disconnected');
     showNotice('Impresora Bluetooth desconectada.', 'ok');
+}
+
+async function _btAutoReconnect() {
+    if (!_btPrinterDevice) return false;
+    try {
+        const server = await _btPrinterDevice.gatt.connect();
+        let char = null;
+        for (const svcUuid of _BT_SERVICES) {
+            if (char) break;
+            try {
+                const svc = await server.getPrimaryService(svcUuid);
+                let chars = [];
+                try { chars = await svc.getCharacteristics(); } catch (_) { /* ignorar */ }
+                for (const charUuid of _BT_TX_CHARS) {
+                    try {
+                        const c = await svc.getCharacteristic(charUuid);
+                        if (c.properties.write || c.properties.writeWithoutResponse) { char = c; break; }
+                    } catch (_) { /* siguiente */ }
+                }
+                if (!char) {
+                    for (const c of chars) {
+                        if (c.properties.write || c.properties.writeWithoutResponse) { char = c; break; }
+                    }
+                }
+            } catch (_) { /* servicio no disponible */ }
+        }
+        if (char) {
+            _btPrinterCharacteristic = char;
+            renderBtPrinterStatus('connected', _btPrinterDevice.name || '');
+            return true;
+        }
+    } catch (_) { /* reconexion fallida */ }
+    return false;
+}
+
+async function _btEnsureConnected() {
+    if (_btPrinterDevice?.gatt?.connected && _btPrinterCharacteristic) return _btPrinterCharacteristic;
+    if (_btPrinterDevice) {
+        const ok = await _btAutoReconnect();
+        if (ok) return _btPrinterCharacteristic;
+    }
+    return null;
 }
 
 function _escNormalize(str) {
@@ -11190,19 +11236,13 @@ async function _btWriteChunk(char, slice) {
 }
 
 async function printViaBluetoothESCPOS(order) {
-    if (!_btPrinterCharacteristic) return false;
-    // Verificar que el GATT sigue conectado antes de intentar imprimir
-    if (!_btPrinterDevice?.gatt?.connected) {
-        _btPrinterCharacteristic = null;
-        renderBtPrinterStatus('disconnected');
-        showNotice('Impresora Bluetooth desconectada. Reconecta en Configuración.', 'error');
-        return false;
-    }
+    const char = await _btEnsureConnected();
+    if (!char) return false;
     const data = buildESCPOSData(order);
     const CHUNK = 20;
     try {
         for (let i = 0; i < data.length; i += CHUNK) {
-            await _btWriteChunk(_btPrinterCharacteristic, data.slice(i, i + CHUNK));
+            await _btWriteChunk(char, data.slice(i, i + CHUNK));
             await new Promise((r) => setTimeout(r, 80));
         }
         return true;
@@ -11219,12 +11259,11 @@ function openOrderPrintTicket(orderId) {
         return;
     }
 
-    if (_btPrinterCharacteristic) {
+    if (_btPrinterDevice) {
         printViaBluetoothESCPOS(order).then((ok) => {
             if (ok) {
                 showNotice('Ticket enviado a la impresora.', 'ok');
             } else {
-                // Fallback automático a impresión por navegador
                 _printOrderViaBrowser(order);
             }
         });
@@ -17577,18 +17616,13 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
 }
 
 async function printCierreViaBluetooth(c, dateStr, timeStr) {
-    if (!_btPrinterCharacteristic) return false;
-    if (!_btPrinterDevice?.gatt?.connected) {
-        _btPrinterCharacteristic = null;
-        renderBtPrinterStatus('disconnected');
-        showNotice('Impresora Bluetooth desconectada. Reconecta en Configuracion.', 'error');
-        return false;
-    }
+    const char = await _btEnsureConnected();
+    if (!char) return false;
     const data = buildCierreESCPOSData(c, dateStr, timeStr);
     const CHUNK = 20;
     try {
         for (let i = 0; i < data.length; i += CHUNK) {
-            await _btWriteChunk(_btPrinterCharacteristic, data.slice(i, i + CHUNK));
+            await _btWriteChunk(char, data.slice(i, i + CHUNK));
             await new Promise((r) => setTimeout(r, 80));
         }
         return true;
@@ -17624,7 +17658,7 @@ function _printCierreBrowser(html) {
 }
 
 async function _printCierreTicket(html) {
-    if (_btPrinterCharacteristic && _cierrePrintData) {
+    if (_btPrinterDevice && _cierrePrintData) {
         const { c, dateStr, timeStr } = _cierrePrintData;
         const ok = await printCierreViaBluetooth(c, dateStr, timeStr);
         if (ok) { showNotice('Cierre enviado a la impresora Bluetooth.', 'ok'); return; }
@@ -19224,7 +19258,7 @@ function _openCierreDetalleModal(c) {
         const timeStr  = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
         _cierrePrintData = { c, dateStr, timeStr };
-        if (_btPrinterCharacteristic) {
+        if (_btPrinterDevice) {
             printCierreViaBluetooth(c, dateStr, timeStr).then((ok) => {
                 if (ok) { showNotice('Cierre enviado a la impresora Bluetooth.', 'ok'); return; }
                 _printCierreBrowser(ticketHtml);
