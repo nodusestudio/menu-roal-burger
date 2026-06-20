@@ -1,6 +1,6 @@
 // Service Worker — ROAL BURGER
 // Bump CACHE_VER en cada deploy para invalidar caches viejos
-const CACHE_VER    = 'rb-20260619';
+const CACHE_VER    = 'rb-20260620';
 const STATIC_CACHE = `${CACHE_VER}-static`;
 const IMG_CACHE    = `${CACHE_VER}-img`;
 
@@ -14,17 +14,16 @@ const PRECACHE_OWN = [
     '/tracking.js',
     '/site.webmanifest',
     '/isotipo.png',
-    '/logo.png',
     '/portada.webp',
     '/portada.png',
 ];
 
 // SDKs de Firebase — version fija en URL, ideal para cache-first
 const PRECACHE_SDK = [
-    'https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js',
-    'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js',
-    'https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js',
-    'https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js',
 ];
 
 // ── Install ──────────────────────────────────────────────────────────────────
