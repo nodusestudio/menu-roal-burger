@@ -11662,6 +11662,20 @@
                 cursor: default;
                 display: inline !important;
             }
+            /* Dirección: bloque completo para que el texto envuelva correctamente */
+            .ticket-address-text {
+                white-space: normal;
+                word-break: break-word;
+                overflow-wrap: break-word;
+            }
+            .ticket-address-text .ticket-copy-btn {
+                display: block !important;
+                white-space: normal;
+                word-break: break-word;
+                overflow-wrap: break-word;
+                width: 100%;
+                text-align: left;
+            }
 
             /* ── Elementos NO imprimibles ── */
             .ticket-print-row,
@@ -13574,7 +13588,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260619h"></script>
+    <script src="admin.js?v=20260619i"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         function _showUpdateToast() {

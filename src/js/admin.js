@@ -9387,7 +9387,9 @@ function buildThermalTicketMarkup(order, options = {}) {
     const paymentLabel = getOrderPaymentLabel(order);
     const [paymentMethod, paymentDetail] = paymentLabel.split(' | ');
     const cashGiven = Number(order.cashTenderAmount || 0);
-    const changeAmount = order.cashChangeRequired && cashGiven > totalAmount ? cashGiven - totalAmount : null;
+    const changeAmount = order.cashChangeRequired
+        ? (order.cashChangeAmount != null ? Number(order.cashChangeAmount) : (cashGiven > totalAmount ? cashGiven - totalAmount : null))
+        : null;
 
     const addressLines = buildTicketAddressLines(order)
         .map((line) => `<div class="ticket-address-text">${buildTicketCopyButton('Direccion', line, {})}</div>`)
@@ -9427,6 +9429,45 @@ function buildThermalTicketMarkup(order, options = {}) {
             </tr>
         `;
     }).join('');
+
+    // Build payment rows for totals section
+    const _ticketPaymentMethod = String(order.paymentMethod || '').toLowerCase();
+    let _ticketPaymentRows = '';
+    if (_ticketPaymentMethod === 'efectivo') {
+        if (cashGiven > 0) {
+            _ticketPaymentRows += `
+                    <div class="ticket-summary-line ticket-total-row">
+                        <span>Recibe</span>
+                        <strong>${escapeHtml(formatMoney(cashGiven))}</strong>
+                    </div>`;
+        }
+        if (changeAmount !== null && changeAmount > 0) {
+            _ticketPaymentRows += `
+                    <div class="ticket-summary-line ticket-total-row ticket-change-row">
+                        <span>Cambio</span>
+                        <strong>${escapeHtml(formatMoney(changeAmount))}</strong>
+                    </div>`;
+        } else if (cashGiven > 0) {
+            _ticketPaymentRows += `
+                    <div class="ticket-summary-line ticket-total-row">
+                        <span></span><span style="font-style:italic;font-size:0.85em;">Monto exacto</span>
+                    </div>`;
+        }
+    } else if (_ticketPaymentMethod && _ticketPaymentMethod !== 'pendiente' && _ticketPaymentMethod !== 'split') {
+        _ticketPaymentRows = `
+                    <div class="ticket-summary-line ticket-total-row ticket-paid-row">
+                        <span>✓ Pagado</span>
+                        <strong>${escapeHtml(paymentMethod)}</strong>
+                    </div>`;
+    }
+
+    // Pago row in client card
+    let _ticketPagoRowDetail = '';
+    if (_ticketPaymentMethod === 'split' && paymentDetail) {
+        _ticketPagoRowDetail = `<span class="ticket-line-meta">${escapeHtml(paymentDetail)}</span>`;
+    } else if (_ticketPaymentMethod && _ticketPaymentMethod !== 'pendiente' && _ticketPaymentMethod !== 'efectivo') {
+        _ticketPagoRowDetail = `<span class="ticket-line-meta">✓ Pagado</span>`;
+    }
 
     const _ticketPromoTags = _getOrderPromoTags(order);
     const _ticketPromoBanner = _ticketPromoTags.length ? `
@@ -9474,7 +9515,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                         </div>
                         <div class="ticket-customer-row">
                             <span>Pago</span>
-                            <span>${escapeHtml(paymentMethod)}${paymentDetail ? `<span class="ticket-line-meta">${escapeHtml(paymentDetail)}</span>` : ''}</span>
+                            <span>${escapeHtml(paymentMethod)}${_ticketPagoRowDetail}</span>
                         </div>
                     </div>
                 </section>
@@ -9533,12 +9574,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                         </div>`;
                     }).join('')}
                     ` : ''}
-                    ${changeAmount !== null ? `
-                    <div class="ticket-summary-line ticket-total-row ticket-change-row">
-                        <span>Cambio</span>
-                        <strong>${escapeHtml(formatMoney(changeAmount))}</strong>
-                    </div>
-                    ` : ''}
+                    ${_ticketPaymentRows}
                 </section>
 
                 <div class="ticket-footer-copy">
