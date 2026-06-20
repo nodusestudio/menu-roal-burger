@@ -17817,7 +17817,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
     const S  = (txt) => `<span style="color:#c8c0b8;">${txt}</span>`;
     const SV = (txt, color='#f0ead8') => `<span style="color:${color};font-weight:700;">${txt}</span>`;
     const ROW = (label, value, valColor='#f0ead8') =>
-        `<tr><td style="padding:2px 0;">${S(label)}</td><td style="text-align:right;padding:2px 0;">${SV(value, valColor)}</td></tr>`;
+        `<tr><td style="padding:2px 0;word-break:break-word;">${S(label)}</td><td style="text-align:right;padding:2px 0 2px 8px;white-space:nowrap;">${SV(value, valColor)}</td></tr>`;
     const DIV = (label, color='#ff9540') =>
         `<div style="border-top:1px dashed #4a3a2a;margin:8px 0 5px;padding-top:6px;font-weight:700;font-size:11px;letter-spacing:1.5px;color:${color};">${label}</div>`;
     const LINE = () => `<tr><td colspan="2" style="border-top:1px dashed #3a2e26;padding:2px 0;"></td></tr>`;
@@ -17837,7 +17837,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
         return `<tr>
             <td style="padding:2px 0 0;">${S('  ' + escapeHtml(desc))}<br>
                 ${S('  ' + m.icon + ' ' + escapeHtml(m.label))}</td>
-            <td style="text-align:right;padding:2px 0 0;vertical-align:top;">${SV('−' + formatMoney(Number(g.monto || 0)), '#fca5a5')}</td>
+            <td style="text-align:right;padding:2px 0 0 8px;vertical-align:top;white-space:nowrap;">${SV('−' + formatMoney(Number(g.monto || 0)), '#fca5a5')}</td>
         </tr>`;
     }).join('');
 
@@ -17855,7 +17855,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
         }
         return `<tr>
             <td style="padding:2px 0;">${S('  ' + m.icon + ' ' + escapeHtml(m.label))}${detail}</td>
-            <td style="text-align:right;padding:2px 0;vertical-align:top;">${SV((net < 0 ? '−' : '') + formatMoney(Math.abs(net)), netColor)}</td>
+            <td style="text-align:right;padding:2px 0 2px 8px;vertical-align:top;white-space:nowrap;">${SV((net < 0 ? '−' : '') + formatMoney(Math.abs(net)), netColor)}</td>
         </tr>`;
     }).filter(Boolean).join('');
 
