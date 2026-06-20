@@ -144,6 +144,11 @@ async function staleWhileRevalidate(cacheName, req) {
     return cached || update;
 }
 
+// ── Mensaje desde la página: forzar activación inmediata ────────────────────
+self.addEventListener('message', (event) => {
+    if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
 // ── Notificaciones push ──────────────────────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
