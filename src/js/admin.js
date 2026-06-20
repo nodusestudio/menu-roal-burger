@@ -196,10 +196,31 @@ const authUsernameInput = document.getElementById('authUsername');
 const authPasswordInput = document.getElementById('authPassword');
 const authRememberDeviceInput = document.getElementById('authRememberDevice');
 const authError = document.getElementById('authError');
+const authSubmitBtn = document.getElementById('authSubmitBtn');
 const authForgotBtn = document.getElementById('authForgotBtn');
 const authRegisterBtn = document.getElementById('authRegisterBtn');
 const authPasswordToggle = document.getElementById('authPasswordToggle');
 const adminSignOutBtn = document.getElementById('adminSignOutBtn');
+
+// ─── Login rate-limiter ────────────────────────────────────────────────────────
+const AUTH_MAX_ATTEMPTS = 5;
+const AUTH_LOCK_MS      = 30_000; // 30 segundos de bloqueo
+
+// reCAPTCHA v3 invisible — para activarlo:
+// 1. Registra tu dominio en https://www.google.com/recaptcha/admin (tipo: v3)
+// 2. Pega aquí la Site Key pública (la privada va en tu Cloud Function de verificación)
+const RECAPTCHA_SITE_KEY = '';
+
+let _loginAttempts    = 0;
+let _loginLockedUntil = 0;
+let _loginLockTimer   = null;
+
+if (RECAPTCHA_SITE_KEY) {
+    const _rcScript    = document.createElement('script');
+    _rcScript.src      = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+    _rcScript.async    = true;
+    document.head.appendChild(_rcScript);
+}
 
 const categoryForm = document.getElementById('categoryForm');
 const categoryList = document.getElementById('categoryList');
@@ -1580,20 +1601,19 @@ async function ensureAdminAuth() {
         const mapAuthError = (error) => {
             switch (error?.code) {
                 case 'auth/invalid-email':
-                    return 'El correo no tiene un formato valido.';
                 case 'auth/invalid-credential':
                 case 'auth/wrong-password':
                 case 'auth/user-not-found':
-                    return 'Credenciales incorrectas o cuenta no registrada en Firebase Auth.';
+                    return 'Credenciales incorrectas.';
                 case 'auth/too-many-requests':
-                    return 'Demasiados intentos. Espera un momento antes de reintentar.';
+                    return 'Acceso bloqueado por el servidor. Intenta mas tarde.';
                 case 'auth/network-request-failed':
-                    return 'No se pudo conectar con Firebase. Revisa tu conexion.';
+                    return 'Sin conexion. Revisa tu internet e intenta de nuevo.';
                 case 'auth/configuration-not-found':
                 case 'auth/operation-not-allowed':
-                    return 'Firebase Auth no tiene habilitado el acceso por correo y contrasena para este proyecto.';
+                    return 'El metodo de acceso no esta habilitado para este proyecto.';
                 default:
-                    return error?.message || 'No se pudo iniciar sesion en Firebase Auth.';
+                    return 'No se pudo iniciar sesion. Intenta de nuevo.';
             }
         };
 
@@ -1650,12 +1670,27 @@ async function ensureAdminAuth() {
         const onSubmit = async (event) => {
             event.preventDefault();
 
+            // Bloqueo activo: ignorar submit durante el cooldown
+            if (Date.now() < _loginLockedUntil) return;
+
             const username = String(authUsernameInput?.value || '').trim();
             const password = String(authPasswordInput?.value || '');
 
             if (!username || !password) {
-                showAuthFailure('Ingresa el correo y la contrasena de tu cuenta admin en Firebase Auth.');
+                showAuthFailure('Ingresa tu correo y contrasena para continuar.');
                 return;
+            }
+
+            if (authSubmitBtn) { authSubmitBtn.disabled = true; authSubmitBtn.textContent = 'Verificando...'; }
+
+            // reCAPTCHA v3 invisible — obtiene token antes de autenticar
+            if (RECAPTCHA_SITE_KEY && window.grecaptcha) {
+                try {
+                    await new Promise((res) => window.grecaptcha.ready(res));
+                    // Token listo; para proteccion real, envíalo a una Cloud Function
+                    // para verificar el score antes de permitir el login.
+                    await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'admin_login' });
+                } catch (_) { /* falla silenciosa: continuar sin reCAPTCHA */ }
             }
 
             try {
@@ -1665,8 +1700,43 @@ async function ensureAdminAuth() {
 
                 await firebaseAuth.setPersistence(persistence);
                 await firebaseAuth.signInWithEmailAndPassword(username, password);
+                // finishUnlock() se activa desde onAuthStateChanged
             } catch (error) {
-                showAuthFailure(mapAuthError(error));
+                if (authSubmitBtn) { authSubmitBtn.disabled = false; authSubmitBtn.textContent = 'Ingresar'; }
+
+                _loginAttempts++;
+
+                if (_loginAttempts >= AUTH_MAX_ATTEMPTS) {
+                    // Activar bloqueo de 30 segundos con countdown visible
+                    _loginLockedUntil = Date.now() + AUTH_LOCK_MS;
+                    _loginAttempts    = 0;
+                    if (_loginLockTimer) clearInterval(_loginLockTimer);
+
+                    const tick = () => {
+                        const rem = Math.ceil((_loginLockedUntil - Date.now()) / 1000);
+                        if (rem <= 0) {
+                            clearInterval(_loginLockTimer);
+                            _loginLockTimer = null;
+                            if (authSubmitBtn) { authSubmitBtn.disabled = false; authSubmitBtn.textContent = 'Ingresar'; }
+                            if (authError) { authError.classList.remove('show'); authError.textContent = ''; }
+                            return;
+                        }
+                        if (authSubmitBtn) {
+                            authSubmitBtn.disabled    = true;
+                            authSubmitBtn.textContent = `Bloqueado (${rem}s)`;
+                        }
+                        if (authError) {
+                            authError.textContent = `Demasiados intentos fallidos. Espera ${rem} segundo${rem !== 1 ? 's' : ''} para reintentar.`;
+                            authError.classList.add('show');
+                        }
+                    };
+                    tick();
+                    _loginLockTimer = setInterval(tick, 1000);
+                } else {
+                    const rem  = AUTH_MAX_ATTEMPTS - _loginAttempts;
+                    const nota = rem === 1 ? '1 intento restante.' : `${rem} intentos restantes.`;
+                    showAuthFailure(`${mapAuthError(error)} ${nota}`);
+                }
             }
         };
 
