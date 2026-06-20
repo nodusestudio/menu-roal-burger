@@ -11250,22 +11250,21 @@ async function printViaBluetoothESCPOS(order) {
     }
 }
 
-function openOrderPrintTicket(orderId) {
+async function openOrderPrintTicket(orderId) {
     const order = ordersState.find((entry) => entry.id === orderId);
     if (!order) {
         showNotice('No se encontro el pedido para imprimir.', 'error');
         return;
     }
 
+    // Si no hay impresora BT, intentar conectar ahora (abre el selector BT)
+    if (!_btPrinterDevice && navigator.bluetooth) {
+        await connectBluetoothPrinter();
+    }
+
     if (_btPrinterDevice) {
-        printViaBluetoothESCPOS(order).then((ok) => {
-            if (ok) {
-                showNotice('Ticket enviado a la impresora.', 'ok');
-            } else {
-                _printOrderViaBrowser(order);
-            }
-        });
-        return;
+        const ok = await printViaBluetoothESCPOS(order);
+        if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); return; }
     }
 
     _printOrderViaBrowser(order);
@@ -17686,6 +17685,10 @@ function _printCierreBrowser(html) {
 }
 
 async function _printCierreTicket(html) {
+    // Si no hay impresora BT, intentar conectar ahora (abre el selector BT)
+    if (!_btPrinterDevice && navigator.bluetooth) {
+        await connectBluetoothPrinter();
+    }
     if (_btPrinterDevice && _cierrePrintData) {
         const { c, dateStr, timeStr } = _cierrePrintData;
         const ok = await printCierreViaBluetooth(c, dateStr, timeStr);
@@ -19281,19 +19284,19 @@ function _openCierreDetalleModal(c) {
     document.getElementById('_cierreDetalleCerrar')?.addEventListener('click', () => overlay.remove());
     _bindOverlayClose(overlay, () => overlay.remove());
 
-    document.getElementById('_cierreDetallePrint')?.addEventListener('click', () => {
+    document.getElementById('_cierreDetallePrint')?.addEventListener('click', async () => {
         const dateStr  = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
         const timeStr  = d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         const ticketHtml = _buildCierreTicketHtml(c, dateStr, timeStr);
         _cierrePrintData = { c, dateStr, timeStr };
-        if (_btPrinterDevice) {
-            printCierreViaBluetooth(c, dateStr, timeStr).then((ok) => {
-                if (ok) { showNotice('Cierre enviado a la impresora Bluetooth.', 'ok'); return; }
-                _printCierreBrowser(ticketHtml);
-            });
-        } else {
-            _printCierreBrowser(ticketHtml);
+        if (!_btPrinterDevice && navigator.bluetooth) {
+            await connectBluetoothPrinter();
         }
+        if (_btPrinterDevice) {
+            const ok = await printCierreViaBluetooth(c, dateStr, timeStr);
+            if (ok) { showNotice('Cierre enviado a la impresora Bluetooth.', 'ok'); return; }
+        }
+        _printCierreBrowser(ticketHtml);
     });
 }
 
