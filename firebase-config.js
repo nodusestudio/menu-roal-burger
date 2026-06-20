@@ -27,11 +27,13 @@ function initFirebaseServices() {
 
     const db = firebase.firestore();
 
-    // Persistencia offline: datos se sirven desde IndexedDB al instante en
-    // visitas siguientes, sin esperar round-trip a Firebase.
-    if (!window._firestorePersistenceEnabled) {
+    // Persistencia offline solo en el menu publico (no en admin).
+    // En admin siempre se necesitan datos frescos y la persistencia
+    // puede generar conflictos de lock entre pestañas.
+    const isAdmin = window.location.pathname.toLowerCase().includes('admin');
+    if (!isAdmin && !window._firestorePersistenceEnabled) {
         window._firestorePersistenceEnabled = true;
-        db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+        db.enablePersistence().catch(() => {});
     }
 
     return {
