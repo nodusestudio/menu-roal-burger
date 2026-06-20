@@ -10447,6 +10447,50 @@ function renderHomeCategoryCards() {
         card.addEventListener('click', () => openCategoryDetail(cat));
         grid.appendChild(card);
     });
+
+    _renderDtCatSidebar();
+}
+
+function _renderDtCatSidebar() {
+    const nav = document.getElementById('dtCatNav');
+    if (!nav) return;
+    const categories = activeCategoryMeta;
+    if (!categories || !categories.length) return;
+
+    // Solo re-renderizar si cambiaron las categorías
+    const currentKeys = [...nav.querySelectorAll('[data-cat-key]')].map(b => b.dataset.catKey).join(',');
+    const newKeys = categories.map(c => c.key || normalizeCategoryKey(c.name || '')).join(',');
+    if (currentKeys === newKeys) return;
+
+    nav.innerHTML = '';
+    categories.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'dt-cat-btn';
+        btn.dataset.catKey = cat.key || normalizeCategoryKey(cat.name || '');
+
+        if (cat.image_url) {
+            const img = document.createElement('img');
+            img.className = 'dt-cat-img';
+            img.src = cat.image_url;
+            img.alt = '';
+            img.loading = 'lazy';
+            img.onerror = () => { img.style.display = 'none'; };
+            btn.appendChild(img);
+        }
+
+        const label = document.createElement('span');
+        label.textContent = cat.name;
+        btn.appendChild(label);
+
+        btn.addEventListener('click', () => {
+            nav.querySelectorAll('.dt-cat-btn').forEach(b => b.classList.remove('dt-cat-active'));
+            btn.classList.add('dt-cat-active');
+            openCategoryDetail(cat);
+        });
+
+        nav.appendChild(btn);
+    });
 }
 
 function openCategoryDetail(cat) {
@@ -10464,9 +10508,16 @@ function openCategoryDetail(cat) {
 
     _enterScreen('categoryDetailScreen');
 
-    title.textContent = cat.name;
-
+    // Resaltar categoría activa en el sidebar desktop
     const catKey = cat.key || normalizeCategoryKey(cat.name);
+    const dtNav = document.getElementById('dtCatNav');
+    if (dtNav) {
+        dtNav.querySelectorAll('.dt-cat-btn').forEach(b => {
+            b.classList.toggle('dt-cat-active', b.dataset.catKey === catKey);
+        });
+    }
+
+    title.textContent = cat.name;
     const products = latestProducts
         .filter(p => normalizeCategoryKey(String(p.categoria || p.category || '')) === catKey
                   && String(p.estado || '').trim() !== 'paused')
@@ -11651,6 +11702,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
     document.getElementById('publicChatFab')?.addEventListener('click', openPublicChatTab);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
+
+    // Desktop topbar — acciones
+    document.getElementById('dtBrandBtn')?.addEventListener('click', () => showHomeScreen());
+    document.getElementById('dtSessionBtn')?.addEventListener('click', () => openCustomerAuthModal());
+    document.querySelectorAll('[data-dt-nav]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const nav = btn.dataset.dtNav;
+            if      (nav === 'menu')   openNavCategoriesScreen('Nuestro Menu', null);
+            else if (nav === 'combos') openNavCategoriesScreen('Combos', cat => normalizeCategoryKey(cat.name || '').includes('combo'));
+            else if (nav === 'promos') openPromoScreen();
+            else if (nav === 'buscar') openSearchScreen();
+        });
+    });
 
     // Barra de navegación inferior — acciones
     document.getElementById('bnavInicio')?.addEventListener('click', () => {

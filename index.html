@@ -46,6 +46,234 @@
     </script>
     
     <!-- ===== FIN CONFIGURACIÓN DE ANALYTICS ===== -->
+
+    <!-- ===== DESKTOP LAYOUT STYLES ===== -->
+    <style>
+        /* Ocultar elementos desktop-only en móvil */
+        #dtTopbar, #dtSidebar { display: none; }
+
+        @media (min-width: 1024px) {
+            /* ─ Ocultar nav móvil ─ */
+            #bottomAuthNav { display: none !important; }
+            #mainTopbar    { display: none !important; }
+
+            /* ─ Desktop Topbar ─ */
+            #dtTopbar {
+                display: flex;
+                position: fixed;
+                top: 0; left: 0; right: 0;
+                height: 64px;
+                z-index: 600;
+                background: linear-gradient(90deg, #1a0800 0%, #2d1200 100%);
+                border-bottom: 1px solid rgba(255, 122, 26, 0.28);
+                box-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
+                align-items: center;
+            }
+            .dt-topbar-inner {
+                display: flex;
+                align-items: center;
+                gap: 20px;
+                padding: 0 24px;
+                width: 100%;
+            }
+            .dt-brand {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                text-decoration: none;
+                flex-shrink: 0;
+                cursor: pointer;
+                background: none;
+                border: none;
+                padding: 0;
+            }
+            .dt-brand-logo {
+                width: 38px;
+                height: 38px;
+                border-radius: 50%;
+                object-fit: cover;
+                border: 1.5px solid rgba(255, 122, 26, 0.45);
+            }
+            .dt-brand-name {
+                font-family: 'Oswald', sans-serif;
+                font-size: 1.05rem;
+                font-weight: 700;
+                color: #ff7a1a;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                white-space: nowrap;
+            }
+            .dt-topbar-nav {
+                display: flex;
+                gap: 2px;
+                flex: 1;
+            }
+            .dt-nav-btn {
+                background: none;
+                border: none;
+                color: rgba(255, 255, 255, 0.72);
+                font-family: 'Roboto', sans-serif;
+                font-size: 0.875rem;
+                font-weight: 500;
+                padding: 7px 14px;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: background 0.15s, color 0.15s;
+                letter-spacing: 0.01em;
+            }
+            .dt-nav-btn:hover {
+                background: rgba(255, 122, 26, 0.18);
+                color: #ffb070;
+            }
+            .dt-topbar-actions {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-shrink: 0;
+            }
+            .dt-wa-btn {
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                padding: 7px 16px;
+                background: #25D366;
+                color: #fff;
+                border-radius: 20px;
+                font-family: 'Roboto', sans-serif;
+                font-size: 0.84rem;
+                font-weight: 600;
+                text-decoration: none;
+                white-space: nowrap;
+                transition: background 0.15s;
+            }
+            .dt-wa-btn:hover { background: #1db955; }
+            .dt-session-btn {
+                background: rgba(255, 122, 26, 0.16);
+                border: 1px solid rgba(255, 122, 26, 0.38);
+                color: #ffb070;
+                font-family: 'Roboto', sans-serif;
+                font-size: 0.84rem;
+                font-weight: 500;
+                padding: 7px 16px;
+                border-radius: 20px;
+                cursor: pointer;
+                white-space: nowrap;
+                transition: background 0.15s, border-color 0.15s;
+            }
+            .dt-session-btn:hover {
+                background: rgba(255, 122, 26, 0.28);
+                border-color: rgba(255, 122, 26, 0.55);
+            }
+
+            /* ─ Desktop Sidebar ─ */
+            #dtSidebar {
+                display: flex;
+                position: fixed;
+                top: 64px;
+                left: 0;
+                bottom: 0;
+                width: 280px;
+                z-index: 580;
+                background: linear-gradient(180deg, #160900 0%, #0f0500 100%);
+                border-right: 1px solid rgba(255, 122, 26, 0.18);
+                flex-direction: column;
+                overflow-y: auto;
+                overflow-x: hidden;
+                scrollbar-width: thin;
+                scrollbar-color: rgba(255,122,26,0.25) transparent;
+            }
+            #dtSidebar::-webkit-scrollbar { width: 4px; }
+            #dtSidebar::-webkit-scrollbar-track { background: transparent; }
+            #dtSidebar::-webkit-scrollbar-thumb { background: rgba(255,122,26,0.25); border-radius: 2px; }
+            .dt-sidebar-inner {
+                padding: 18px 0 28px;
+                display: flex;
+                flex-direction: column;
+            }
+            .dt-sidebar-title {
+                font-family: 'Oswald', sans-serif;
+                font-size: 0.68rem;
+                font-weight: 600;
+                color: rgba(255, 122, 26, 0.65);
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                padding: 0 18px;
+                margin: 0 0 10px;
+            }
+            .dt-cat-btn {
+                display: flex;
+                align-items: center;
+                gap: 11px;
+                width: 100%;
+                padding: 10px 18px;
+                background: none;
+                border: none;
+                border-left: 3px solid transparent;
+                color: rgba(255, 255, 255, 0.68);
+                font-family: 'Roboto', sans-serif;
+                font-size: 0.875rem;
+                font-weight: 400;
+                text-align: left;
+                cursor: pointer;
+                transition: background 0.15s, color 0.15s, border-color 0.15s;
+                letter-spacing: 0.01em;
+            }
+            .dt-cat-btn:hover {
+                background: rgba(255, 122, 26, 0.1);
+                color: rgba(255, 255, 255, 0.92);
+                border-left-color: rgba(255, 122, 26, 0.45);
+            }
+            .dt-cat-btn.dt-cat-active {
+                background: linear-gradient(90deg, rgba(255, 122, 26, 0.22) 0%, rgba(255, 122, 26, 0.04) 100%);
+                color: #ffb070;
+                font-weight: 600;
+                border-left-color: rgba(255, 122, 26, 0.9);
+            }
+            .dt-cat-img {
+                width: 34px;
+                height: 34px;
+                border-radius: 8px;
+                object-fit: cover;
+                flex-shrink: 0;
+                background: rgba(255,122,26,0.1);
+            }
+
+            /* ─ Offset de pantallas al área derecha ─ */
+            #homeScreen,
+            #categoryDetailScreen,
+            #navCategoriesScreen,
+            #searchScreen,
+            #promoScreen,
+            #perfilScreen,
+            #ayudaScreen {
+                left: 280px !important;
+                top: 64px !important;
+            }
+
+            /* ─ Contenido home: max-width centrado ─ */
+            #homeScreen .home-inner {
+                max-width: 860px;
+                margin: 0 auto;
+                padding-bottom: 32px;
+            }
+
+            /* ─ Ajustes de overlays y FAB ─ */
+            #offlineBanner {
+                left: 280px;
+                top: 64px;
+            }
+            #publicUpgradeOverlay {
+                left: 280px;
+            }
+            #publicChatFab {
+                bottom: 24px;
+                right: 24px;
+            }
+
+            /* ─ Splash no necesita ajuste (se elimina antes de mostrar layout) ─ */
+        }
+    </style>
+    <!-- ===== FIN DESKTOP LAYOUT STYLES ===== -->
 </head>
 <body>
     <!-- Capa de fondo ilustrado — siempre fija detrás de todo -->
@@ -57,6 +285,41 @@
         <span class="offline-text">Sin conexión — mostrando menú guardado</span>
         <span class="offline-dot"></span>
     </div>
+
+    <!-- ===== DESKTOP TOPBAR (oculto en móvil) ===== -->
+    <header id="dtTopbar" aria-label="Barra de navegación principal">
+        <div class="dt-topbar-inner">
+            <button type="button" class="dt-brand" id="dtBrandBtn" aria-label="ROAL BURGER — volver al inicio">
+                <img src="isotipo.png" alt="" class="dt-brand-logo" width="38" height="38" aria-hidden="true" decoding="async">
+                <span class="dt-brand-name">ROAL BURGER</span>
+            </button>
+            <nav class="dt-topbar-nav" aria-label="Secciones principales">
+                <button type="button" class="dt-nav-btn" data-dt-nav="menu">Menú</button>
+                <button type="button" class="dt-nav-btn" data-dt-nav="combos">Combos</button>
+                <button type="button" class="dt-nav-btn" data-dt-nav="promos">Promos</button>
+                <button type="button" class="dt-nav-btn" data-dt-nav="buscar">Buscar</button>
+            </nav>
+            <div class="dt-topbar-actions">
+                <a href="https://wa.me/573144689509" class="dt-wa-btn" target="_blank" rel="noopener noreferrer" aria-label="Pedir por WhatsApp">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.852L.057 23.269a.75.75 0 0 0 .921.921l5.444-1.484A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.694 9.694 0 0 1-4.964-1.362l-.355-.214-3.679 1.002 1.004-3.647-.233-.374A9.718 9.718 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/></svg>
+                    WhatsApp
+                </a>
+                <button type="button" class="dt-session-btn" id="dtSessionBtn">Mi cuenta</button>
+            </div>
+        </div>
+    </header>
+    <!-- ===== FIN DESKTOP TOPBAR ===== -->
+
+    <!-- ===== DESKTOP SIDEBAR (oculto en móvil) ===== -->
+    <aside id="dtSidebar" aria-label="Categorías del menú">
+        <div class="dt-sidebar-inner">
+            <p class="dt-sidebar-title">Categorías</p>
+            <nav id="dtCatNav" aria-label="Lista de categorías">
+                <!-- Poblado por JS desde activeCategoryMeta -->
+            </nav>
+        </div>
+    </aside>
+    <!-- ===== FIN DESKTOP SIDEBAR ===== -->
 
     <!-- ===== PANTALLA DE INICIO ===== -->
     <div id="splashScreen">
@@ -614,7 +877,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script src="tracking.js"></script>
     <script src="firebase-config.js"></script>
-    <script src="script-v2.js?v=20260619c"></script>
+    <script src="script-v2.js?v=20260620a"></script>
 
     <!-- ── Public Upgrade Sheet ── -->
     <div id="publicUpgradeOverlay" class="pub-upgrade-overlay" hidden style="display:none;">
