@@ -3057,6 +3057,21 @@
             100% { background-position: -200% 0; }
         }
 
+        /* ── Inline skeleton loaders para valores en carga ── */
+        @keyframes admin-skel-pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.32; }
+        }
+        .admin-skel {
+            display: inline-block;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.14);
+            animation: admin-skel-pulse 1.4s ease-in-out infinite;
+            vertical-align: middle;
+            pointer-events: none;
+            user-select: none;
+        }
+
         /* ── Métricas: pestañas ── */
         .metrics-tabs-nav { display: flex; gap: 6px; align-items: center; }
         .metrics-tab-btn {
@@ -12013,9 +12028,9 @@
                                 <span id="salesDayStatusMeta">Abierta ahora mismo.</span>
                             </div>
                             <div class="sales-day-banner-metrics">
-                                <span class="sales-day-chip" id="salesDayDeliveredTotal">💵 $0</span>
-                                <span class="sales-day-chip" id="salesDayGrandTotal">💳 $0</span>
-                                <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= $0</span>
+                                <span class="sales-day-chip" id="salesDayDeliveredTotal">💵 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
+                                <span class="sales-day-chip" id="salesDayGrandTotal">💳 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
+                                <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
                                 <span class="sales-day-chip sales-day-chip--delivery" id="salesDayDeliveryFeesChip" hidden>🛵 $0</span>
                                 <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
                                 <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn" hidden style="display:none!important">
@@ -12131,15 +12146,15 @@
                                     <div class="sales-summary-overview" id="salesSummaryOverview">
                                         <div class="sales-summary-stat">
                                             <span>Total cerrado</span>
-                                            <strong id="salesSummaryTotalAmount">$0</strong>
+                                            <strong id="salesSummaryTotalAmount"><span class="admin-skel" style="width:90px;height:1.25em;"></span></strong>
                                         </div>
                                         <div class="sales-summary-stat">
                                             <span>Pedidos cerrados</span>
-                                            <strong id="salesSummaryTotalOrders">0</strong>
+                                            <strong id="salesSummaryTotalOrders"><span class="admin-skel" style="width:44px;height:1.25em;"></span></strong>
                                         </div>
                                         <div class="sales-summary-stat">
                                             <span>Jornadas</span>
-                                            <strong id="salesSummaryTotalDays">0</strong>
+                                            <strong id="salesSummaryTotalDays"><span class="admin-skel" style="width:32px;height:1.25em;"></span></strong>
                                         </div>
                                     </div>
                                     <div class="sales-summary-list" id="salesSummaryList"></div>
@@ -12186,7 +12201,11 @@
                                                         <!-- generado por renderCajaDiaria() -->
                                                     </thead>
                                                     <tbody id="cajaDiariaBody">
-                                                        <tr><td class="caja-empty" colspan="10">No hay cobros registrados en esta jornada.</td></tr>
+                                                        <tr><td colspan="10" style="padding:14px 12px 8px;border:none;">
+                                                            <span class="admin-skel" style="display:block;width:100%;height:13px;border-radius:5px;margin-bottom:9px;"></span>
+                                                            <span class="admin-skel" style="display:block;width:82%;height:13px;border-radius:5px;margin-bottom:9px;"></span>
+                                                            <span class="admin-skel" style="display:block;width:91%;height:13px;border-radius:5px;"></span>
+                                                        </td></tr>
                                                     </tbody>
                                                     <tfoot id="cajaDiariaFoot"></tfoot>
                                                 </table>
