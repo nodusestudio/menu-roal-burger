@@ -351,8 +351,12 @@ const editProductCategorySelect = document.getElementById('editProductCategory')
 const editProductStateSelect = document.getElementById('editProductState');
 const editProductFeaturedSelect = document.getElementById('editProductFeatured');
 const editProductImageFileInput = document.getElementById('editProductImageFile');
-const editProductImageUrlInput = document.getElementById('editProductImageUrl');
 const productEditSaveBtn = document.getElementById('productEditSaveBtn');
+
+// Estado de imagen para formularios de producto
+let _createProductImgUrl    = ''; // URL subida en crear (vacío = sin imagen nueva)
+let _editProductImgUrl      = ''; // URL subida en editar (vacío = sin imagen nueva)
+let _editProductExistingUrl = ''; // URL de imagen existente al abrir editar
 const editProductAcompActivo = document.getElementById('editProductAcompActivo');
 const editProductAcompList = document.getElementById('editProductAcompList');
 
@@ -7505,7 +7509,19 @@ function openProductEditModal(product, categoryId) {
     renderEditProductCategorySelect(product.categoria);
     editProductStateSelect.value = product.estado === 'paused' ? 'paused' : 'active';
     editProductFeaturedSelect.value = product.es_destacado ? 'true' : 'false';
-    editProductImageUrlInput.value = product.image_url || '';
+
+    // Resetear estado de imagen y mostrar la actual
+    _editProductImgUrl      = '';
+    _editProductExistingUrl = product.image_url || '';
+    if (editProductImageFileInput) editProductImageFileInput.value = '';
+    const _epImgEl = document.getElementById('editProductImgPreview');
+    if (_epImgEl) {
+        _epImgEl.src          = _editProductExistingUrl;
+        _epImgEl.style.display = _editProductExistingUrl ? 'block' : 'none';
+        _epImgEl.onerror      = () => { _epImgEl.style.display = 'none'; };
+    }
+    const _epStatusEl = document.getElementById('editProductImgStatus');
+    if (_epStatusEl) _epStatusEl.textContent = '';
 
     renderProductAcompList(product.acompanantes || null);
 
@@ -12899,6 +12915,15 @@ async function resolveProductImageUpload(file, productName) {
     }
 }
 
+async function _uploadProductImageToStorage(file, productName) {
+    const ext      = (file.name.split('.').pop() || 'jpg').toLowerCase().replace('jpeg', 'jpg');
+    const safeName = slugify(productName?.trim() || 'producto') || `prod-${Date.now()}`;
+    const path     = `productos/${safeName}.${ext}`;
+    const ref      = firebaseStorage.ref().child(path);
+    await withTimeout(ref.put(file), 20_000, 'La subida tardo demasiado. Revisa tu conexion.');
+    return withTimeout(ref.getDownloadURL(), 7_000, 'No se pudo obtener la URL de descarga.');
+}
+
 async function getStatDocument(metric) {
     const byId = await firebaseDb.collection('estadisticas').doc(metric).get();
     if (byId.exists) {
@@ -15410,10 +15435,7 @@ if (productCreateForm) {
         const categoria = String(createProductCategorySelect?.value || '').trim();
         const estado = createProductStateSelect?.value === 'paused' ? 'paused' : 'active';
         const esDestacado = createProductFeaturedSelect?.value === 'true';
-        const imageUrlInput = String(createProductImageUrlInput?.value || '').trim();
-        const imageFile = createProductImageFileInput && createProductImageFileInput.files
-            ? createProductImageFileInput.files[0]
-            : null;
+        const hasImageFile = (createProductImageFileInput?.files?.length ?? 0) > 0;
 
         if (!categoriesState.length) {
             showNotice('Primero crea o sincroniza al menos una categoria.', 'error');
@@ -15440,12 +15462,6 @@ if (productCreateForm) {
             return;
         }
 
-        if (imageFile && imageFile.size > 20 * 1024 * 1024) {
-            showNotice('La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
-            showModalFeedback(productCreateFeedback, 'La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
-            return;
-        }
-
         const duplicatedProduct = productsState.some((product) => {
             return normalizeCategoryKey(product.nombre) === normalizeCategoryKey(nombre)
                 && normalizeCategoryKey(product.categoria) === normalizeCategoryKey(categoria);
@@ -15463,10 +15479,12 @@ if (productCreateForm) {
         }
 
         try {
-            let finalImageUrl = imageUrlInput || buildDefaultProductImage(nombre, categoria);
-            if (imageFile) {
-                finalImageUrl = await resolveProductImageUpload(imageFile, nombre);
+            if (hasImageFile && !_createProductImgUrl) {
+                showModalFeedback(productCreateFeedback, 'La imagen no se pudo subir. Seleccionala de nuevo.', 'error');
+                if (productCreateSaveBtn) { productCreateSaveBtn.disabled = false; productCreateSaveBtn.textContent = 'Crear producto'; }
+                return;
             }
+            const finalImageUrl = _createProductImgUrl || buildDefaultProductImage(nombre, categoria);
 
             const safeSlug = slugify(nombre) || `producto-${Date.now()}`;
             const productId = `${safeSlug}-${Date.now()}`;
@@ -15517,10 +15535,7 @@ if (productEditForm) {
         const categoria = String(editProductCategorySelect?.value || '').trim();
         const estado = editProductStateSelect?.value === 'paused' ? 'paused' : 'active';
         const esDestacado = editProductFeaturedSelect?.value === 'true';
-        const imageUrlInput = String(editProductImageUrlInput?.value || '').trim();
-        const imageFile = editProductImageFileInput && editProductImageFileInput.files
-            ? editProductImageFileInput.files[0]
-            : null;
+        const hasImageFile = (editProductImageFileInput?.files?.length ?? 0) > 0;
 
         const acompActivo = editProductAcompActivo ? editProductAcompActivo.checked : false;
         const acompIds = editProductAcompList
@@ -15538,26 +15553,18 @@ if (productEditForm) {
             return;
         }
 
-        if (!imageFile && !imageUrlInput) {
-            showNotice('Debes mantener imagen actual o cargar una nueva.', 'error');
-            return;
-        }
-
-        if (imageFile && imageFile.size > 20 * 1024 * 1024) {
-            showNotice('La imagen supera 20 MB. Reduce el tamano para continuar.', 'error');
-            return;
-        }
-
         if (productEditSaveBtn) {
             productEditSaveBtn.disabled = true;
             productEditSaveBtn.textContent = 'Guardando...';
         }
 
         try {
-            let finalImageUrl = imageUrlInput;
-            if (imageFile) {
-                finalImageUrl = await resolveProductImageUpload(imageFile, nombre);
+            if (hasImageFile && !_editProductImgUrl) {
+                showNotice('La imagen no se pudo subir. Seleccionala de nuevo.', 'error');
+                if (productEditSaveBtn) { productEditSaveBtn.disabled = false; productEditSaveBtn.textContent = 'Guardar cambios'; }
+                return;
             }
+            const finalImageUrl = hasImageFile ? _editProductImgUrl : _editProductExistingUrl;
 
             await firebaseDb.collection('productos').doc(productId).update({
                 nombre,
@@ -15580,6 +15587,84 @@ if (productEditForm) {
                 productEditSaveBtn.disabled = false;
                 productEditSaveBtn.textContent = 'Guardar cambios';
             }
+        }
+    });
+}
+
+// ── Vista previa y subida anticipada de imagen (crear / editar producto) ───────
+if (createProductImageFileInput) {
+    createProductImageFileInput.addEventListener('change', async () => {
+        const file       = createProductImageFileInput.files[0];
+        const previewImg = document.getElementById('createProductImgPreview');
+        const previewWrap = document.getElementById('createProductImgPreviewWrap');
+        const statusEl   = document.getElementById('createProductImgStatus');
+        _createProductImgUrl = '';
+
+        if (!file) {
+            if (previewWrap) previewWrap.style.display = 'none';
+            return;
+        }
+
+        // Preview local inmediata
+        const objUrl = URL.createObjectURL(file);
+        if (previewImg)  { previewImg.src = objUrl; previewImg.onload = () => URL.revokeObjectURL(objUrl); }
+        if (previewWrap) previewWrap.style.display = '';
+
+        // Subida a Storage (desactiva guardar mientras dura)
+        if (productCreateSaveBtn) productCreateSaveBtn.disabled = true;
+        if (statusEl) statusEl.textContent = 'Subiendo imagen...';
+
+        try {
+            const nombre = createProductNameInput?.value?.trim()
+                || file.name.replace(/\.[^.]+$/, '');
+            _createProductImgUrl = await _uploadProductImageToStorage(file, nombre);
+            if (statusEl) statusEl.textContent = '✓ Imagen lista.';
+        } catch (err) {
+            _createProductImgUrl = '';
+            if (statusEl) statusEl.textContent = `Error al subir: ${err.message || 'intenta de nuevo'}`;
+        } finally {
+            if (productCreateSaveBtn) productCreateSaveBtn.disabled = false;
+        }
+    });
+}
+
+if (editProductImageFileInput) {
+    editProductImageFileInput.addEventListener('change', async () => {
+        const file      = editProductImageFileInput.files[0];
+        const previewImg = document.getElementById('editProductImgPreview');
+        const statusEl  = document.getElementById('editProductImgStatus');
+        _editProductImgUrl = '';
+
+        if (!file) {
+            if (previewImg) {
+                previewImg.src          = _editProductExistingUrl;
+                previewImg.style.display = _editProductExistingUrl ? 'block' : 'none';
+            }
+            return;
+        }
+
+        // Preview local inmediata
+        const objUrl = URL.createObjectURL(file);
+        if (previewImg) {
+            previewImg.src          = objUrl;
+            previewImg.style.display = 'block';
+            previewImg.onload       = () => URL.revokeObjectURL(objUrl);
+        }
+
+        // Subida a Storage
+        if (productEditSaveBtn) productEditSaveBtn.disabled = true;
+        if (statusEl) statusEl.textContent = 'Subiendo imagen...';
+
+        try {
+            const nombre = editProductNameInput?.value?.trim()
+                || file.name.replace(/\.[^.]+$/, '');
+            _editProductImgUrl = await _uploadProductImageToStorage(file, nombre);
+            if (statusEl) statusEl.textContent = '✓ Imagen lista.';
+        } catch (err) {
+            _editProductImgUrl = '';
+            if (statusEl) statusEl.textContent = `Error al subir: ${err.message || 'intenta de nuevo'}`;
+        } finally {
+            if (productEditSaveBtn) productEditSaveBtn.disabled = false;
         }
     });
 }

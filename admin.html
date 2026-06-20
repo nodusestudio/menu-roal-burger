@@ -13001,13 +13001,13 @@
                         <option value="true">Si</option>
                     </select>
                 </div>
-                <div class="admin-field">
-                    <label for="createProductImageFile">Imagen</label>
-                    <input type="file" id="createProductImageFile" name="createProductImageFile" accept="image/*">
-                </div>
                 <div class="admin-field full">
-                    <label for="createProductImageUrl">Ruta/URL imagen</label>
-                    <input type="text" id="createProductImageUrl" name="createProductImageUrl" placeholder="Ej: PLUS.png o https://...">
+                    <label for="createProductImageFile">Imagen del producto</label>
+                    <input type="file" id="createProductImageFile" name="createProductImageFile" accept=".jpg,.jpeg,.png,.webp">
+                    <div id="createProductImgPreviewWrap" style="display:none;margin-top:10px;">
+                        <img id="createProductImgPreview" src="" alt="Vista previa" style="max-height:140px;max-width:100%;border-radius:10px;object-fit:cover;border:1.5px solid rgba(255,255,255,0.15);">
+                        <p id="createProductImgStatus" style="margin:5px 0 0;font-size:0.78rem;color:var(--admin-muted);"></p>
+                    </div>
                 </div>
                 <div class="admin-field full">
                     <div id="productCreateFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
@@ -13051,13 +13051,13 @@
                         <option value="true">Si</option>
                     </select>
                 </div>
-                <div class="admin-field">
-                    <label for="editProductImageFile">Nueva imagen (opcional)</label>
-                    <input type="file" id="editProductImageFile" name="editProductImageFile" accept="image/*">
-                </div>
                 <div class="admin-field full">
-                    <label for="editProductImageUrl">Ruta/URL imagen actual</label>
-                    <input type="text" id="editProductImageUrl" name="editProductImageUrl" placeholder="Ej: PLUS.png o https://...">
+                    <label for="editProductImageFile">Imagen del producto</label>
+                    <div id="editProductImgPreviewWrap" style="margin-bottom:8px;">
+                        <img id="editProductImgPreview" src="" alt="Imagen actual" style="display:none;max-height:140px;max-width:100%;border-radius:10px;object-fit:cover;border:1.5px solid rgba(255,255,255,0.15);">
+                    </div>
+                    <input type="file" id="editProductImageFile" name="editProductImageFile" accept=".jpg,.jpeg,.png,.webp">
+                    <p id="editProductImgStatus" style="margin:5px 0 0;font-size:0.78rem;color:var(--admin-muted);"></p>
                 </div>
 
                 <!-- Acompañantes por producto -->
