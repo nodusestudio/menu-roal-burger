@@ -11083,23 +11083,19 @@ function buildESCPOSData(order) {
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
 
-    // Imprime una línea truncando a COLS (solo para líneas cortas)
-    function wl(str) {
-        const s = _escNormalize(str).substring(0, COLS);
+    // Emite una sola línea ya ajustada (uso interno de ww/wc)
+    function _emit(line) {
+        const s = _escNormalize(line);
         for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
         pb(LF);
     }
-    // Imprime texto largo envolviéndolo por palabras (no corta en mitad de palabra)
+    // Imprime texto envolviéndolo por palabras — nunca corta
     function ww(str, prefix) {
         const pfx = _escNormalize(prefix || '');
         const s = _escNormalize(str);
         const contPfx = ' '.repeat(pfx.length);
         let firstLine = true;
-        function emit(line) {
-            for (let i = 0; i < line.length; i++) pb(line.charCodeAt(i) & 0xFF);
-            pb(LF);
-            firstLine = false;
-        }
+        function emit(line) { _emit(line); firstLine = false; }
         const words = s.split(/\s+/).filter(Boolean);
         if (!words.length) return;
         let current = '';
@@ -11108,7 +11104,6 @@ function buildESCPOSData(order) {
             const avail = COLS - lp.length;
             if (!current) {
                 if (word.length > avail) {
-                    // Palabra más larga que el ancho: corte duro como último recurso
                     let rem = word;
                     while (rem.length) {
                         const lp2 = firstLine ? pfx : contPfx;
@@ -11116,32 +11111,27 @@ function buildESCPOSData(order) {
                         emit(lp2 + rem.substring(0, a2));
                         rem = rem.substring(a2);
                     }
-                } else {
-                    current = word;
-                }
+                } else { current = word; }
             } else {
                 const test = current + ' ' + word;
-                if (test.length <= avail) {
-                    current = test;
-                } else {
-                    emit(lp + current);
-                    current = word;
-                }
+                if (test.length <= avail) { current = test; }
+                else { emit(lp + current); current = word; }
             }
         }
         if (current) emit((firstLine ? pfx : contPfx) + current);
     }
+    // wl: envuelve si el texto supera COLS, nunca trunca
+    function wl(str) { ww(str, ''); }
     function wc(left, right) {
         const l = _escNormalize(left); const r = _escNormalize(right);
         const maxLeft = COLS - r.length - 1;
         if (l.length <= maxLeft) {
             const pad = Math.max(1, COLS - l.length - r.length);
-            wl(l + ' '.repeat(pad) + r);
+            _emit(l + ' '.repeat(pad) + r);
         } else {
-            // Nombre largo: envolverlo y poner el precio en su propia linea alineado a la derecha
             ww(l, '');
             const pad = Math.max(0, COLS - r.length);
-            wl(' '.repeat(pad) + r);
+            _emit(' '.repeat(pad) + r);
         }
     }
     function sep() { wl('-'.repeat(COLS)); }
@@ -17508,8 +17498,8 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
 
-    function wl(str) {
-        const s = _escNormalize(str).substring(0, COLS);
+    function _emit(line) {
+        const s = _escNormalize(line);
         for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
         pb(LF);
     }
@@ -17518,7 +17508,7 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
         const s = _escNormalize(str);
         const contPfx = ' '.repeat(pfx.length);
         let firstLine = true;
-        function emit(line) { for (let i = 0; i < line.length; i++) pb(line.charCodeAt(i) & 0xFF); pb(LF); firstLine = false; }
+        function emit(line) { _emit(line); firstLine = false; }
         const words = s.split(/\s+/).filter(Boolean);
         if (!words.length) return;
         let current = '';
@@ -17535,20 +17525,21 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
         }
         if (current) emit((firstLine ? pfx : contPfx) + current);
     }
+    function wl(str) { ww(str, ''); }
     function wc(left, right) {
         const l = _escNormalize(left); const r = _escNormalize(right);
         const maxLeft = COLS - r.length - 1;
         if (l.length <= maxLeft) {
             const pad = Math.max(1, COLS - l.length - r.length);
-            wl(l + ' '.repeat(pad) + r);
+            _emit(l + ' '.repeat(pad) + r);
             return;
         }
         ww(l, '');
         const pad = Math.max(0, COLS - r.length);
-        wl(' '.repeat(pad) + r);
+        _emit(' '.repeat(pad) + r);
     }
-    function sep()  { wl('-'.repeat(COLS)); }
-    function sep2() { wl('='.repeat(COLS)); }
+    function sep()  { _emit('-'.repeat(COLS)); }
+    function sep2() { _emit('='.repeat(COLS)); }
 
     const ingresosMethod = c.ingresosMethod || c.methodTotals || {};
     const gastosMethod   = c.gastosMethod   || {};
