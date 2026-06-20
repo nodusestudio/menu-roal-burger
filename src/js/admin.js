@@ -11040,22 +11040,47 @@ function buildESCPOSData(order) {
         for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
         pb(LF);
     }
-    // Imprime texto largo envolviéndolo en varias líneas con sangría en continuaciones
+    // Imprime texto largo envolviéndolo por palabras (no corta en mitad de palabra)
     function ww(str, prefix) {
         const pfx = _escNormalize(prefix || '');
         const s = _escNormalize(str);
         const contPfx = ' '.repeat(pfx.length);
-        let pos = 0;
-        while (pos < s.length) {
-            const lp = pos === 0 ? pfx : contPfx;
-            const w = COLS - lp.length;
-            const chunk = s.substring(pos, pos + w);
-            const line = lp + chunk;
+        let firstLine = true;
+        function emit(line) {
             for (let i = 0; i < line.length; i++) pb(line.charCodeAt(i) & 0xFF);
             pb(LF);
-            pos += chunk.length;
-            if (!chunk.length) break;
+            firstLine = false;
         }
+        const words = s.split(/\s+/).filter(Boolean);
+        if (!words.length) return;
+        let current = '';
+        for (const word of words) {
+            const lp = firstLine ? pfx : contPfx;
+            const avail = COLS - lp.length;
+            if (!current) {
+                if (word.length > avail) {
+                    // Palabra más larga que el ancho: corte duro como último recurso
+                    let rem = word;
+                    while (rem.length) {
+                        const lp2 = firstLine ? pfx : contPfx;
+                        const a2 = COLS - lp2.length;
+                        emit(lp2 + rem.substring(0, a2));
+                        rem = rem.substring(a2);
+                    }
+                } else {
+                    current = word;
+                }
+            } else {
+                const test = current + ' ' + word;
+                if (test.length <= avail) {
+                    current = test;
+                } else {
+                    emit(lp + current);
+                    current = word;
+                }
+            }
+        }
+        if (current) emit((firstLine ? pfx : contPfx) + current);
     }
     function wc(left, right) {
         const l = _escNormalize(left); const r = _escNormalize(right);
