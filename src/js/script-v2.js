@@ -9962,15 +9962,20 @@ function _applyPromoCarousel(container) {
         return btn;
     });
 
+    let _scrollRaf = 0;
     track.addEventListener('scroll', () => {
-        const w = track.clientWidth;
-        if (!w) return;
-        const idx = Math.min(Math.round(track.scrollLeft / w), items.length - 1);
-        if (idx !== activeIdx) {
-            dotBtns[activeIdx]?.classList.remove('active');
-            dotBtns[idx]?.classList.add('active');
-            activeIdx = idx;
-        }
+        if (_scrollRaf) return;
+        _scrollRaf = requestAnimationFrame(() => {
+            _scrollRaf = 0;
+            const w = track.clientWidth;
+            if (!w) return;
+            const idx = Math.min(Math.round(track.scrollLeft / w), items.length - 1);
+            if (idx !== activeIdx) {
+                dotBtns[activeIdx]?.classList.remove('active');
+                dotBtns[idx]?.classList.add('active');
+                activeIdx = idx;
+            }
+        });
     }, { passive: true });
 
     carousel.appendChild(track);
@@ -9984,8 +9989,11 @@ function renderExtraPromoCards() {
 
     container.innerHTML = '';
 
+    const productMap = new Map(latestProducts.map((p) => [p.id, p]));
+    const frag = document.createDocumentFragment();
+
     _promosData.forEach((promo) => {
-        const product = latestProducts.find((p) => p.id === promo.producto_id);
+        const product = productMap.get(promo.producto_id);
         if (!product) return;
 
         const raw = resolveProductDisplayPrice(product);
@@ -10047,9 +10055,10 @@ function renderExtraPromoCards() {
             }, `btn-promo-extra-${promo.id}`);
         });
 
-        container.appendChild(section);
+        frag.appendChild(section);
     });
 
+    container.appendChild(frag);
     _applyPromoCarousel(container);
 }
 
@@ -10062,8 +10071,11 @@ function render2x1Cards() {
 
     if (!_promos2x1Data.length) return;
 
+    const productMap2x1 = new Map(latestProducts.map((p) => [p.id, p]));
+    const frag2x1 = document.createDocumentFragment();
+
     _promos2x1Data.forEach((promo) => {
-        const product = latestProducts.find((p) => p.id === promo.producto_id);
+        const product = productMap2x1.get(promo.producto_id);
         if (!product) return;
 
         const img = product.image_url || 'logo.png';
@@ -10109,9 +10121,10 @@ function render2x1Cards() {
             }, `btn-2x1-${promo.id}`, 1);
         });
 
-        container.appendChild(section);
+        frag2x1.appendChild(section);
     });
 
+    container.appendChild(frag2x1);
     _applyPromoCarousel(container);
 }
 
