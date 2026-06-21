@@ -646,66 +646,7 @@
 
     <script>
         if ('serviceWorker' in navigator) {
-            function _showUpdateToast(reg) {
-                if (document.getElementById('_swToast')) return;
-                const t = document.createElement('div');
-                t.id = '_swToast';
-                t.innerHTML = `
-                    <span style="font-size:1.05rem;color:#3d2b1f;font-weight:600;">
-                        ✨ Hay una nueva versión
-                    </span>
-                    <button id="_swToastBtn" style="
-                        background:#f97316;color:#fff;border:none;border-radius:10px;
-                        padding:9px 18px;font-size:0.95rem;font-weight:700;cursor:pointer;
-                        white-space:nowrap;flex-shrink:0;">
-                        Actualizar
-                    </button>`;
-                Object.assign(t.style, {
-                    position:'fixed', bottom:'max(24px, env(safe-area-inset-bottom, 24px))',
-                    left:'50%', transform:'translateX(-50%)', zIndex:'99999',
-                    background:'rgba(255,255,255,0.88)',
-                    backdropFilter:'blur(14px)', WebkitBackdropFilter:'blur(14px)',
-                    border:'1.5px solid rgba(255,200,120,0.5)',
-                    borderRadius:'16px', padding:'14px 20px',
-                    display:'flex', alignItems:'center', gap:'14px',
-                    boxShadow:'0 8px 32px rgba(0,0,0,0.18)',
-                    minWidth:'280px', maxWidth:'90vw',
-                    animation:'_toastIn 0.35s ease'
-                });
-                const style = document.createElement('style');
-                style.textContent = '@keyframes _toastIn{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
-                document.head.appendChild(style);
-                document.body.appendChild(t);
-
-                document.getElementById('_swToastBtn').addEventListener('click', () => {
-                    // 1. Ocultar inmediatamente
-                    t.remove();
-
-                    // 2. Enviar SKIP_WAITING al SW nuevo para que tome control
-                    const sw = reg?.waiting || reg?.installing;
-                    if (sw) sw.postMessage({ type: 'SKIP_WAITING' });
-
-                    // 3. Recargar cuando el nuevo SW tome control
-                    let _reloaded = false;
-                    const _doReload = () => { if (!_reloaded) { _reloaded = true; window.location.reload(); } };
-                    navigator.serviceWorker.addEventListener('controllerchange', _doReload, { once: true });
-
-                    // 4. Fallback: si controllerchange no llega en 2s, recargar igual
-                    setTimeout(_doReload, 2000);
-                });
-            }
-
-            navigator.serviceWorker.register('./sw.js').then((reg) => {
-                reg.addEventListener('updatefound', () => {
-                    // Solo mostrar si ya hay un SW activo (no es la primera instalación)
-                    if (!navigator.serviceWorker.controller) return;
-                    const newWorker = reg.installing;
-                    if (!newWorker) return;
-                    newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed') _showUpdateToast(reg);
-                    });
-                });
-            }).catch(() => {});
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
         }
     </script>
 </body>
