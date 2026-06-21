@@ -525,6 +525,8 @@ let _posSelectedTicketIds = new Set();
 let menuUpgradesConfig = null;
 let _posUpgradePending = null;
 let clientsSearchTerm = '';
+let _clientsPage = 0;
+const CLIENTS_PAGE_SIZE = 50;
 let expandedClientAddressIds = new Set();
 let productClicksState = [];
 let liveSubscriptions = [];
@@ -2138,11 +2140,20 @@ async function fetchSalesDayState() {
 }
 
 async function fetchClients() {
-    const snapshot = await firebaseDb.collection(CLIENTS_COLLECTION)
-        .orderBy('lastOrderAt', 'desc')
-        .limit(300)
-        .get();
-    clientsState = snapshot.docs
+    const BATCH_SIZE = 500;
+    const allDocs = [];
+    let lastVisible = null;
+    do {
+        let q = firebaseDb.collection(CLIENTS_COLLECTION).limit(BATCH_SIZE);
+        if (lastVisible) q = q.startAfter(lastVisible);
+        const snapshot = await q.get();
+        allDocs.push(...snapshot.docs);
+        lastVisible = snapshot.docs.length === BATCH_SIZE
+            ? snapshot.docs[snapshot.docs.length - 1]
+            : null;
+    } while (lastVisible);
+
+    clientsState = allDocs
         .map((doc) => ({
             id: doc.id,
             ...doc.data()
@@ -10406,20 +10417,28 @@ function renderClients() {
         return;
     }
 
+    const filteredClients = getFilteredClients();
+    const totalPages = Math.max(1, Math.ceil(filteredClients.length / CLIENTS_PAGE_SIZE));
+    if (_clientsPage >= totalPages) _clientsPage = totalPages - 1;
+
     if (clientsCount) {
         clientsCount.textContent = Number(clientsState.length).toLocaleString('es-CO');
     }
-
-    const filteredClients = getFilteredClients();
 
     clientsList.innerHTML = '';
 
     if (!filteredClients.length) {
         clientsList.innerHTML = '<tr><td class="client-empty-row" colspan="9">No hay clientes que coincidan con la busqueda actual.</td></tr>';
+        _renderClientsPagination(0, 1);
         return;
     }
 
-    filteredClients.forEach((client) => {
+    const pageClients = filteredClients.slice(
+        _clientsPage * CLIENTS_PAGE_SIZE,
+        (_clientsPage + 1) * CLIENTS_PAGE_SIZE
+    );
+
+    pageClients.forEach((client) => {
         const row = document.createElement('tr');
         row.className = 'client-row';
         const extraAddresses = client.savedAddresses.slice(1);
@@ -10478,6 +10497,28 @@ function renderClients() {
             `;
             clientsList.appendChild(detailRow);
         }
+    });
+
+    _renderClientsPagination(_clientsPage, totalPages, filteredClients.length);
+}
+
+function _renderClientsPagination(page, totalPages, total) {
+    const el = document.getElementById('clientsPagination');
+    if (!el) return;
+    if (totalPages <= 1) { el.hidden = true; return; }
+    el.hidden = false;
+    const from = page * CLIENTS_PAGE_SIZE + 1;
+    const to   = Math.min((page + 1) * CLIENTS_PAGE_SIZE, total);
+    el.innerHTML = `
+        <button class="clients-page-btn" id="clientsPagePrev" ${page === 0 ? 'disabled' : ''}>&#8592; Anterior</button>
+        <span class="clients-page-info">${from}–${to} de ${total.toLocaleString('es-CO')}</span>
+        <button class="clients-page-btn" id="clientsPageNext" ${page >= totalPages - 1 ? 'disabled' : ''}>Siguiente &#8594;</button>
+    `;
+    el.querySelector('#clientsPagePrev')?.addEventListener('click', () => {
+        if (_clientsPage > 0) { _clientsPage--; renderClients(); }
+    });
+    el.querySelector('#clientsPageNext')?.addEventListener('click', () => {
+        if (_clientsPage < totalPages - 1) { _clientsPage++; renderClients(); }
     });
 }
 
@@ -14558,6 +14599,7 @@ document.querySelectorAll('[data-cajas-tab]').forEach((tab) => {
 if (clientsSearchInput) {
     clientsSearchInput.addEventListener('input', () => {
         clientsSearchTerm = normalizeCategoryKey(clientsSearchInput.value || '');
+        _clientsPage = 0;
         renderClients();
     });
 }

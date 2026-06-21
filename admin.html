@@ -8050,6 +8050,43 @@
             padding: 24px 16px !important;
         }
 
+        .clients-pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 14px 0 4px;
+        }
+
+        .clients-page-btn {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.14);
+            color: #fff;
+            border-radius: 10px;
+            padding: 7px 16px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            letter-spacing: 0.3px;
+            transition: background 0.15s;
+        }
+
+        .clients-page-btn:hover:not(:disabled) {
+            background: rgba(255,160,74,0.16);
+            border-color: rgba(255,160,74,0.4);
+        }
+
+        .clients-page-btn:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+
+        .clients-page-info {
+            font-size: 0.8rem;
+            color: var(--admin-muted, #9ca3b0);
+            min-width: 120px;
+            text-align: center;
+        }
+
         .card-head h2,
         .admin-card h2 {
             font-family: 'Space Grotesk', sans-serif;
@@ -12585,6 +12622,7 @@
                                     </tr>
                                 </tbody>
                             </table>
+                            <div id="clientsPagination" class="clients-pagination" hidden></div>
                         </div>
                     </div>
                 </article>
