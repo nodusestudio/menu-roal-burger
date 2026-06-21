@@ -729,6 +729,46 @@
             margin-top: 4px;
         }
 
+        button.orders-lane-quick-btn {
+            background: none;
+            border: none;
+            padding: 4px 8px 4px 0;
+            cursor: pointer;
+            font-weight: 700;
+            border-radius: 8px;
+            transition: color 0.15s, background 0.15s;
+            gap: 8px;
+        }
+
+        button.orders-lane-quick-btn:hover {
+            color: #ffa44a;
+            background: rgba(255, 164, 74, 0.1);
+        }
+
+        button.orders-lane-quick-btn:active {
+            background: rgba(255, 164, 74, 0.18);
+        }
+
+        .lane-quick-plus {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.12);
+            font-size: 0.85rem;
+            font-weight: 700;
+            line-height: 1;
+            transition: background 0.15s;
+            flex-shrink: 0;
+            text-transform: none;
+        }
+
+        button.orders-lane-quick-btn:hover .lane-quick-plus {
+            background: rgba(255, 164, 74, 0.28);
+        }
+
         .orders-lane-icon {
             width: 44px;
             height: 44px;
@@ -12101,21 +12141,21 @@
                                 <!-- columna POR CONFIRMAR reemplazada por #unreadTray en toolbar -->
                                 <section class="orders-lane" data-mobile-lane="domicilios">
                                     <div class="orders-lane-header">
-                                        <strong class="orders-lane-title">Domicilios</strong>
+                                        <button type="button" class="orders-lane-title orders-lane-quick-btn" data-quick-type="domicilio" title="Nuevo pedido a domicilio">Domicilios <span class="lane-quick-plus">+</span></button>
                                         <span class="kanban-count" id="ordersCountDelivery">0</span>
                                     </div>
                                     <div class="kanban-list" id="ordersColumnDelivery"></div>
                                 </section>
                                 <section class="orders-lane" data-mobile-lane="recoger">
                                     <div class="orders-lane-header">
-                                        <strong class="orders-lane-title">Para recoger</strong>
+                                        <button type="button" class="orders-lane-title orders-lane-quick-btn" data-quick-type="recoger" title="Nuevo pedido para recoger">Para recoger <span class="lane-quick-plus">+</span></button>
                                         <span class="kanban-count" id="ordersCountTakeaway">0</span>
                                     </div>
                                     <div class="kanban-list" id="ordersColumnTakeaway"></div>
                                 </section>
                                 <section class="orders-lane" data-mobile-lane="mesa">
                                     <div class="orders-lane-header">
-                                        <strong class="orders-lane-title">Mesas</strong>
+                                        <button type="button" class="orders-lane-title orders-lane-quick-btn" data-quick-type="mesa" title="Nuevo pedido de mesa">Mesas <span class="lane-quick-plus">+</span></button>
                                         <span class="kanban-count" id="ordersCountMesa">0</span>
                                     </div>
                                     <div class="kanban-list" id="ordersColumnMesa"></div>

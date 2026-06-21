@@ -13527,7 +13527,7 @@ function _ptsMarkOccupiedMesas() {
     });
 }
 
-function openPosTicketSetupModal(configOnly = false) {
+function openPosTicketSetupModal(configOnly = false, presetType = null) {
     const modal = document.getElementById('posTicketSetupModal');
     if (!modal) return;
 
@@ -13538,11 +13538,13 @@ function openPosTicketSetupModal(configOnly = false) {
     const prefill = configOnly && activeTicket ? activeTicket : null;
 
     // Reset estado
-    _ptsSelectedType = prefill?.orderType || null;
+    _ptsSelectedType = presetType || prefill?.orderType || null;
     _ptsSelectedMesa = prefill?.mesaNumber || null;
     _ptsSelectedClient = prefill?.customerName ? { name: prefill.customerName, phone: prefill.customerPhone || '' } : null;
     // Si hay cliente prefill, usar tab 'quick' para mostrar los datos
     _ptsActiveTab = (_ptsSelectedClient && configOnly) ? 'quick' : 'none';
+    // Atajo rápido de columna: abrir directo en tab búsqueda (no para mesa)
+    if (presetType && presetType !== 'mesa') _ptsActiveTab = 'search';
 
     // Reset UI — tipo
     modal.querySelectorAll('.pts-type-btn').forEach((b) => {
@@ -13570,6 +13572,9 @@ function openPosTicketSetupModal(configOnly = false) {
     } else {
         if (quickName) quickName.value = '';
         if (quickPhone) quickPhone.value = '';
+        if (_ptsActiveTab === 'search') {
+            document.getElementById('ptsPanelSearch')?.removeAttribute('hidden');
+        }
     }
     const searchInput = document.getElementById('ptsSearchInput');
     if (searchInput) { searchInput.value = ''; searchInput.removeAttribute('hidden'); }
@@ -13619,6 +13624,9 @@ function openPosTicketSetupModal(configOnly = false) {
     _ptsUpdateConfirmBtn();
     modal.removeAttribute('hidden');
     _ptsMarkOccupiedMesas();
+    if (presetType && presetType !== 'mesa') {
+        setTimeout(() => document.getElementById('ptsSearchInput')?.focus(), 80);
+    }
 }
 
 function closePosTicketSetupModal() {
@@ -14439,6 +14447,25 @@ document.getElementById('posNewTicketBtn')?.addEventListener('click', () => {
     renderPosTotals();
     renderPosBottomBar();
     showPosScreen('main');
+});
+
+// Atajo rápido desde encabezados de columna del tablero de pedidos
+document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-quick-type]');
+    if (!btn) return;
+    const type = btn.dataset.quickType;
+    posTicketConfig = null;
+    internalOrderItems = [];
+    createNewPosTicket();
+    if (!internalOrderModal?.classList.contains('is-open')) {
+        openInternalOrderModal();
+    } else {
+        renderPosOrderItems();
+        renderPosTotals();
+        renderPosBottomBar();
+        showPosScreen('main');
+    }
+    setTimeout(() => openPosTicketSetupModal(true, type), 60);
 });
 
 // Botón cliente en topbar principal
