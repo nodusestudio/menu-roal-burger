@@ -4158,26 +4158,33 @@
             line-height: 1; padding: 2px 6px; border-radius: 4px;
         }
         .pos-drawer-close:hover { color: #fff; }
-        .pos-drawer-customize-btn,
+        .pos-drawer-edit-btns {
+            display: flex;
+            gap: 5px;
+            margin-left: auto;
+            margin-right: 6px;
+        }
+        .pos-drawer-edit-btn,
         .pos-drawer-clear-btn {
             background: rgba(255,255,255,0.07);
             border: 1px solid rgba(255,255,255,0.12);
             color: rgba(255,255,255,0.6);
-            font-size: 1rem; cursor: pointer;
-            line-height: 1; padding: 3px 8px; border-radius: 6px;
-            margin-left: auto; margin-right: 6px;
+            font-size: 0.72rem; cursor: pointer;
+            line-height: 1; padding: 5px 9px; border-radius: 6px;
             transition: background 0.15s, color 0.15s, border-color 0.15s;
+            white-space: nowrap;
+            letter-spacing: 0.2px;
         }
         .pos-drawer-clear-btn {
-            margin-left: 0;
             font-size: 0.88rem;
+            padding: 3px 8px;
         }
         .pos-drawer-clear-btn:hover {
             background: rgba(220,50,50,0.2);
             border-color: rgba(220,50,50,0.45);
             color: #ff8080;
         }
-        .pos-drawer-customize-btn:hover {
+        .pos-drawer-edit-btn:hover {
             background: rgba(255,122,26,0.18);
             border-color: rgba(255,122,26,0.45);
             color: #ffb07a;
@@ -12861,7 +12868,10 @@
                 <div class="pos-drawer-handle"></div>
                 <div class="pos-drawer-head">
                     <span class="pos-drawer-title">Pedido actual</span>
-                    <button type="button" class="pos-drawer-customize-btn" id="posCartCustomizeBtn" title="Personalizar ticket">&#9998;</button>
+                    <div class="pos-drawer-edit-btns">
+                        <button type="button" class="pos-drawer-edit-btn" id="posCartCustomizeBtn" title="Editar tipo de pedido y cliente">&#9998; Info</button>
+                        <button type="button" class="pos-drawer-edit-btn" id="posCartEditProductsBtn" title="Editar productos">&#9783; Productos</button>
+                    </div>
                     <button type="button" class="pos-drawer-clear-btn" id="posClearCartBtn" title="Vaciar carrito">🗑</button>
                     <button type="button" class="pos-drawer-close" id="posCartDrawerCloseBtn">&#215;</button>
                 </div>

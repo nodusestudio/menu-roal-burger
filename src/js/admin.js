@@ -13417,6 +13417,15 @@ document.getElementById('posCartCustomizeBtn')?.addEventListener('click', () => 
     openPosTicketSetupModal(true);
 });
 
+// Editar productos: cierra el drawer en móvil y vuelve a la pantalla principal
+document.getElementById('posCartEditProductsBtn')?.addEventListener('click', () => {
+    showPosScreen('main');
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+        const drawer = document.getElementById('posCartDrawer');
+        if (drawer) drawer.hidden = true;
+    }
+});
+
 // Vaciar carrito
 document.getElementById('posClearCartBtn')?.addEventListener('click', () => {
     if (!internalOrderItems.length && !posTicketConfig) return;
