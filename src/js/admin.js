@@ -13065,7 +13065,6 @@ async function reloadDataAndRender() {
     renderMetricsUsers();
     renderMetricasProductos();
     await syncStats();
-    _migrateCategoryFlags();
 
     if (activeCategoryModalId) {
         const activeCategory = categoriesState.find((category) => category.id === activeCategoryModalId);
