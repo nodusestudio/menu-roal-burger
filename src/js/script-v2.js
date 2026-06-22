@@ -11315,7 +11315,7 @@ function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig
     if (!saboresDisp.length) {
         const opts = Object.assign({}, baseOptions || {}, { upgradeHandled: true, comment: bebidaConfig.bebida_nombre ? `🥤 ${bebidaConfig.bebida_nombre}` : '' });
         if (replaceItemKey) shoppingCart = shoppingCart.filter((i) => i.itemKey !== replaceItemKey);
-        addItemToCart(productName, categoryName, buttonId, opts);
+        addItemToCart(productName, categoryName, opts, buttonId);
         return;
     }
 
@@ -11394,7 +11394,7 @@ function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig
         const opts = Object.assign({}, baseOptions || {}, { upgradeHandled: true, comment });
         overlay.remove();
         if (replaceItemKey) shoppingCart = shoppingCart.filter((i) => i.itemKey !== replaceItemKey);
-        addItemToCart(productName, categoryName, buttonId, opts);
+        addItemToCart(productName, categoryName, opts, buttonId);
     });
 
     card.appendChild(header);
