@@ -11484,9 +11484,9 @@ function renderPublicUpgradeStep1() {
     if (titleEl) titleEl.textContent = '¿Quieres acompañarlo?';
 
     const catData = _getPublicCategoryData(_publicUpgradePending.categoryName);
-    const hayAcomp  = (catData?.acompanantes_menu !== false) && _latestAcompanantes.some((a) => a.estado === 'active' && a.activo_menu);
-    const hayBebida = (catData?.bebidas_menu !== false) && _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_acompanante);
-    const hayCombos = (catData?.combos_menu !== false) && _latestCombosPacks.some((c) => c.estado === 'active' && c.activo_menu);
+    const hayAcomp  = (catData ? catData.acompanantes_menu !== false : false) && _latestAcompanantes.some((a) => a.estado === 'active' && a.activo_menu);
+    const hayBebida = (catData ? catData.bebidas_menu      !== false : false) && _latestBebidas.some((b) => b.estado === 'active' && b.mostrar_acompanante);
+    const hayCombos = (catData ? catData.combos_menu       !== false : false) && _latestCombosPacks.some((c) => c.estado === 'active' && c.activo_menu);
 
     body.innerHTML = `
         <div class="pub-home-btns">
