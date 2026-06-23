@@ -1811,11 +1811,17 @@ body.is-offline #menuScreen {
         transform: scale(1) !important;
     }
 
+    .info-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+
     .info-item .icon {
-        font-size: 1.2rem;
-        width: 26px;
-        height: 26px;
-        margin-right: 8px;
+        font-size: 1.3rem;
+        width: 30px;
+        height: 30px;
+        margin-right: 0;
     }
 }
 
@@ -3990,11 +3996,11 @@ body.has-consent-doc-open .guest-register-banner {
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #3b2a1a, #5a3a1b);
-    border: 1.5px solid rgba(200, 110, 30, 0.40);
-    color: #fff;
+    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    border: none;
+    color: #fff7ef;
     cursor: pointer;
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.40), 0 2px 8px rgba(200, 100, 30, 0.20);
+    box-shadow: 0 4px 18px rgba(200, 75, 0, 0.38), 0 2px 8px rgba(255, 100, 0, 0.22);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -6456,6 +6462,27 @@ body.has-consent-doc-open .guest-register-banner {
     letter-spacing: 0.05em;
     text-transform: uppercase;
     margin: 0 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.home-section-icon {
+    font-size: 1.15rem;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+@media (max-width: 480px) {
+    .home-section-title {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
+    }
+
+    .home-section-icon {
+        font-size: 1.4rem;
+    }
 }
 
 /* Sección Combos Futboleros */
