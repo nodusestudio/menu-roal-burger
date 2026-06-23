@@ -3361,7 +3361,7 @@ body.has-consent-doc-open .guest-register-banner {
 .cart-fab {
     position: fixed;
     left: 20px;
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
     z-index: 10002;
     min-height: 54px;
     padding: 0 18px;
@@ -3984,7 +3984,7 @@ body.has-consent-doc-open .guest-register-banner {
 /* ===== FAB CHAT PÚBLICO ===== */
 .pub-chat-fab {
     position: fixed;
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));   /* alineado con .cart-fab */
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));   /* alineado con .cart-fab */
     right: 16px;
     z-index: 9050;
     width: 50px;
@@ -4389,6 +4389,167 @@ body.has-consent-doc-open .guest-register-banner {
     font-size: 0.95rem;
     line-height: 1.4;
     text-align: center;
+}
+
+/* ── PWA Install Guide Sheet ─────────────────────────────────── */
+.pwa-install-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10100;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.pwa-install-overlay.is-open {
+    opacity: 1;
+    visibility: visible;
+}
+
+.pwa-install-sheet {
+    width: 100%;
+    max-width: 480px;
+    background: #1a1e2e;
+    border-radius: 20px 20px 0 0;
+    padding: 12px 24px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    transform: translateY(20px);
+    transition: transform 0.25s ease;
+    text-align: center;
+}
+
+.pwa-install-overlay.is-open .pwa-install-sheet {
+    transform: translateY(0);
+}
+
+.pwa-install-handle {
+    width: 40px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+}
+
+.pwa-install-appicon {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    object-fit: contain;
+    margin-bottom: 4px;
+    box-shadow: 0 4px 16px rgba(255, 122, 26, 0.35);
+}
+
+.pwa-install-kicker {
+    margin: 0;
+}
+
+.pwa-install-title {
+    margin: 0 !important;
+    font-size: 1.8rem !important;
+}
+
+.pwa-install-desc {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    max-width: 320px;
+}
+
+.pwa-install-steps {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 320px;
+}
+
+.pwa-install-step {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 12px 14px;
+    text-align: left;
+}
+
+.pwa-install-step-num {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #ff7a1a;
+    color: #fff;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pwa-install-step-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.pwa-install-step-text {
+    font-size: 0.88rem;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.pwa-install-step-text strong {
+    color: #fff;
+    display: block;
+    font-size: 0.92rem;
+    margin-bottom: 1px;
+}
+
+.pwa-install-confirm-btn {
+    margin-top: 8px;
+    width: 100%;
+    max-width: 320px;
+    padding: 15px 20px;
+    background: linear-gradient(135deg, #ff7a1a 0%, #ff4500 100%);
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: filter 0.18s ease, transform 0.18s ease;
+}
+
+.pwa-install-confirm-btn:hover {
+    filter: brightness(1.1);
+}
+
+.pwa-install-confirm-btn:active {
+    transform: scale(0.97);
 }
 
 @media (max-width: 768px) {
@@ -5076,7 +5237,7 @@ body.has-consent-doc-open .guest-register-banner {
     left: 0;
     right: 0;
     /* La barra crece para incluir el safe-area (home indicator Android/iPhone) */
-    height: calc(58px + env(safe-area-inset-bottom, 0px));
+    height: calc(68px + env(safe-area-inset-bottom, 0px));
     /* El padding empuja los iconos hacia arriba, fuera del safe-area */
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: rgba(255, 255, 255, 0.18);
@@ -5092,15 +5253,17 @@ body.has-consent-doc-open .guest-register-banner {
 .ban-item {
     flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 3px;
     background: none;
     border: none;
     cursor: pointer;
     color: rgba(90, 50, 15, 0.60);
     position: relative;
     transition: color 0.2s ease, background 0.2s ease;
-    padding: 0;
+    padding: 6px 0 4px;
     -webkit-tap-highlight-color: transparent;
 }
 
@@ -5115,6 +5278,17 @@ body.has-consent-doc-open .guest-register-banner {
     height: 22px;
     flex-shrink: 0;
     pointer-events: none;
+}
+
+.ban-label {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.6rem;
+    font-weight: 500;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    line-height: 1;
+    pointer-events: none;
+    color: inherit;
 }
 
 /* Tooltip flotante */
@@ -5227,7 +5401,7 @@ body.has-consent-doc-open .guest-register-banner {
 
 /* Ajustes globales — barra inferior siempre activa */
 .cart-fab {
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Topbar: ocultar botón de perfil y dejar solo el espacio mínimo */

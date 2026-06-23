@@ -6290,6 +6290,81 @@
         }
         .pos-item-comment-input::placeholder { color: rgba(200,210,255,0.35); }
 
+        /* ── Grupo item + extras compactos ── */
+        .pos-item-group {
+            display: flex;
+            flex-direction: column;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: border-color 0.15s;
+        }
+        .pos-item-group:hover { border-color: rgba(255,255,255,0.13); }
+        .pos-item-group .pos-item-row {
+            background: transparent;
+            border: none;
+            border-radius: 0;
+        }
+        .pos-item-group .pos-item-row:hover { background: rgba(255,255,255,0.025); }
+        .pos-extras-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 0 10px 8px;
+        }
+        .pos-extra-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(255,145,0,0.1);
+            border: 1px solid rgba(255,145,0,0.22);
+            border-radius: 20px;
+            padding: 3px 5px 3px 9px;
+            font-size: 0.73rem;
+            color: rgba(255,255,255,0.82);
+            max-width: 100%;
+        }
+        .pos-extra-chip-name {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .pos-extra-chip-price {
+            color: #ff9a50;
+            font-weight: 700;
+            flex-shrink: 0;
+            font-size: 0.71rem;
+        }
+        .pos-extra-chip-incl {
+            color: rgba(255,255,255,0.35);
+            font-size: 0.71rem;
+            flex-shrink: 0;
+        }
+        .pos-extra-chip-del {
+            background: none;
+            border: none;
+            color: rgba(255,110,110,0.65);
+            cursor: pointer;
+            padding: 0;
+            font-size: 0.85rem;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            transition: background 0.15s, color 0.15s;
+        }
+        .pos-extra-chip-del:hover {
+            background: rgba(255,70,70,0.18);
+            color: #ff8080;
+        }
+
         .pos-totals {
             padding: 10px 12px;
             background: rgba(255, 122, 26, 0.06);

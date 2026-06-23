@@ -2206,10 +2206,27 @@ async function _handleRegPhoneNext() {
     }
 
     const btn = customerRegisterUI.stepContent.querySelector('#regPhoneNext');
-    if (btn) { btn.disabled = true; btn.textContent = 'Enviando código…'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Verificando…'; }
     feedback.textContent = '';
 
+    // Si el teléfono ya está registrado, abrir el login en lugar de continuar con el registro
+    try {
+        const existingProfile = await fetchClientProfileForRecovery(phone);
+        if (existingProfile) {
+            closeCustomerRegisterModal();
+            openCustomerAuthModal();
+            if (customerAuthUI?.lookupPhone) customerAuthUI.lookupPhone.value = phone;
+            if (customerAuthUI?.feedback) {
+                customerAuthUI.feedback.textContent = 'Ya tienes una cuenta. Ingresa tu contraseña para continuar. Si no la recuerdas, usa "Olvidé contraseña" y te respondemos a la brevedad.';
+                customerAuthUI.feedback.className = 'support-feedback';
+            }
+            setTimeout(() => customerAuthUI?.lookupPin?.focus(), 100);
+            return;
+        }
+    } catch (_) {}
+
     // Intentar enviar OTP; si falla por cualquier razón, avanzar directo al perfil
+    if (btn) btn.textContent = 'Enviando código…';
     let otpSent = false;
     try { await callSendWhatsAppOtp(digits); otpSent = true; } catch (_) {}
     customerRegisterUI.pendingPhone = phone;
@@ -3621,9 +3638,59 @@ function downloadDesktopShortcut() {
     URL.revokeObjectURL(objectUrl);
 }
 
-async function handleShortcutInstall() {
-    const url = getOfficialMenuUrl();
+function showPwaInstallSheet() {
+    const overlay = document.getElementById('pwaInstallOverlay');
+    const steps = document.getElementById('pwaInstallSteps');
+    const closeBtn = document.getElementById('pwaInstallCloseBtn');
+    if (!overlay || !steps) return;
 
+    const ios = isIOSDevice();
+
+    const iosShareSvg = `<svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true"><path d="M16 5l-1.42 1.42-1.59-1.59V16h-1.98V4.83L9.42 6.42 8 5l4-4 4 4zm4 5v11c0 1.1-.9 2-2 2H6c-1.11 0-2-.9-2-2V10c0-1.11.89-2 2-2h3v2H6v11h12V10h-3V8h3c1.1 0 2 .89 2 2z"/></svg>`;
+    const androidMenuSvg = `<svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>`;
+    const addHomeSvg = `<svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>`;
+
+    steps.innerHTML = ios
+        ? `<li class="pwa-install-step">
+                <div class="pwa-install-step-num">1</div>
+                <div class="pwa-install-step-icon">${iosShareSvg}</div>
+                <p class="pwa-install-step-text"><strong>Toca el botón Compartir</strong>En la barra inferior de Safari</p>
+           </li>
+           <li class="pwa-install-step">
+                <div class="pwa-install-step-num">2</div>
+                <div class="pwa-install-step-icon">${addHomeSvg}</div>
+                <p class="pwa-install-step-text"><strong>Toca "Agregar a pantalla de inicio"</strong>Desplaza el menú hasta encontrarlo</p>
+           </li>`
+        : `<li class="pwa-install-step">
+                <div class="pwa-install-step-num">1</div>
+                <div class="pwa-install-step-icon">${androidMenuSvg}</div>
+                <p class="pwa-install-step-text"><strong>Abre el menú del navegador</strong>Toca los 3 puntos en la esquina</p>
+           </li>
+           <li class="pwa-install-step">
+                <div class="pwa-install-step-num">2</div>
+                <div class="pwa-install-step-icon">${addHomeSvg}</div>
+                <p class="pwa-install-step-text"><strong>Toca "Agregar a pantalla de inicio"</strong>o "Instalar aplicación"</p>
+           </li>`;
+
+    overlay.hidden = false;
+    requestAnimationFrame(() => overlay.classList.add('is-open'));
+
+    function closePwaSheet() {
+        overlay.classList.remove('is-open');
+        overlay.addEventListener('transitionend', () => { overlay.hidden = true; }, { once: true });
+        overlay.removeEventListener('click', onOverlayClick);
+        if (closeBtn) closeBtn.removeEventListener('click', closePwaSheet);
+    }
+
+    function onOverlayClick(e) {
+        if (e.target === overlay) closePwaSheet();
+    }
+
+    if (closeBtn) closeBtn.addEventListener('click', closePwaSheet);
+    overlay.addEventListener('click', onOverlayClick);
+}
+
+async function handleShortcutInstall() {
     if (deferredInstallPrompt) {
         deferredInstallPrompt.prompt();
         const choiceResult = await deferredInstallPrompt.userChoice.catch(() => null);
@@ -3641,28 +3708,7 @@ async function handleShortcutInstall() {
         return;
     }
 
-    if (navigator.share) {
-        try {
-            await navigator.share({
-                title: _getRestaurantName(),
-                text: `Guarda el enlace oficial de ${_getRestaurantName()}.`,
-                url
-            });
-            return;
-        } catch (error) {
-            // Continua con el siguiente fallback si el navegador cancela la accion.
-        }
-    }
-
-    if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url).catch(() => null);
-    }
-
-    window.alert(isIOSDevice()
-        ? 'El enlace oficial ya esta listo. En iPhone o iPad abre Compartir y luego Anadir a pantalla de inicio.'
-        : 'El enlace oficial ya esta listo. Si tu navegador no ofrece instalar, abre el menu del navegador y elige Anadir a pantalla de inicio.');
-
-    await requestPublicNotificationPermission();
+    showPwaInstallSheet();
 }
 
 function initShortcutInstallUI() {
