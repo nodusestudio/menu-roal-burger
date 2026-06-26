@@ -11148,14 +11148,7 @@ async function connectBluetoothPrinter() {
     try {
         renderBtPrinterStatus('connecting');
         const device = await navigator.bluetooth.requestDevice({
-            filters: [
-                { services: ['00001101-0000-1000-8000-00805f9b34fb'] },
-                { namePrefix: 'POS' },
-                { namePrefix: 'Printer' },
-                { namePrefix: 'MTP' },
-                { namePrefix: 'RPP' },
-                { namePrefix: 'BT' },
-            ],
+            acceptAllDevices: true,
             optionalServices: _BT_SERVICES,
         });
         const server = await device.gatt.connect();
