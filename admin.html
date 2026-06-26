@@ -9076,6 +9076,31 @@
                 font-size: 0.76rem;
             }
 
+            /* ── Barra BT: siempre visible en móvil ── */
+            .ticket-bt-bar {
+                display: flex !important;
+                visibility: visible !important;
+                flex-shrink: 0;
+                padding: 8px 14px;
+                gap: 10px;
+                min-height: 38px;
+            }
+
+            .ticket-bt-btn {
+                display: inline-flex !important;
+                visibility: visible !important;
+                align-items: center;
+                min-height: 32px;
+                min-width: 64px;
+                padding: 6px 14px;
+                font-size: 0.75rem;
+                touch-action: manipulation;
+            }
+
+            .ticket-bt-label {
+                font-size: 0.74rem;
+            }
+
             .mobile-ticket-backdrop {
                 position: fixed;
                 inset: 0;
@@ -11668,10 +11693,19 @@
 
             * { forced-color-adjust: none; box-sizing: border-box; }
 
+            /* Forzar ancho de página a 58mm en navegadores móviles que ignoran @page */
+            html, body {
+                width: 58mm !important;
+                max-width: 58mm !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
             /* ── Base del ticket ── */
             .ticket-paper-wrap,
             .ticket-paper {
                 width: 52mm !important;
+                max-width: 52mm !important;
                 margin: 0 auto !important;
                 background: #ffffff !important;
                 color: #000000 !important;
@@ -11863,6 +11897,7 @@
             .ticket-cobrar-btn,
             .ticket-contact-btn,
             .ticket-wa-btn,
+            .ticket-bt-bar,
             .state-pill { display: none !important; }
 
             /* ── Dirección ── */

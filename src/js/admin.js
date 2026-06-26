@@ -547,8 +547,10 @@ let _comboHorarioTipo = 'siempre';
 let _btPrinterDevice = null;
 let _btPrinterCharacteristic = null;
 const _BT_SERVICES = [
+    '00001101-0000-1000-8000-00805f9b34fb',
     '000018f0-0000-1000-8000-00805f9b34fb',
     'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+    '49535343-fe7d-4158-b166-31a325542a27',
     '49535343-fe7d-4ae5-8fa9-9fafd205e455',
 ];
 const _BT_TX_CHARS = [
@@ -11146,7 +11148,14 @@ async function connectBluetoothPrinter() {
     try {
         renderBtPrinterStatus('connecting');
         const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
+            filters: [
+                { services: ['00001101-0000-1000-8000-00805f9b34fb'] },
+                { namePrefix: 'POS' },
+                { namePrefix: 'Printer' },
+                { namePrefix: 'MTP' },
+                { namePrefix: 'RPP' },
+                { namePrefix: 'BT' },
+            ],
             optionalServices: _BT_SERVICES,
         });
         const server = await device.gatt.connect();
