@@ -11462,22 +11462,75 @@ async function openOrderPrintTicket(orderId) {
 }
 
 function _printOrderViaBrowser(order) {
+    const markup = buildThermalTicketMarkup(order, { printMode: true });
+
+    // CSS inline completo para que el documento sea autónomo (PrintHand no ejecuta JS ni carga hojas externas)
+    const css = [
+        '*{box-sizing:border-box;margin:0;padding:0}',
+        '@page{size:58mm auto;margin:2mm 3mm}',
+        'html,body{width:58mm;max-width:58mm;margin:0;padding:0;background:#fff;color:#000;font-family:"Courier New",Courier,monospace;font-size:9pt;line-height:1.35}',
+        '.ticket-paper-wrap,.ticket-paper{width:52mm;margin:0 auto;background:#fff;color:#000;font-family:"Courier New",Courier,monospace;font-size:9pt;line-height:1.35;overflow:visible}',
+        '.ticket-brand{text-align:center;padding-bottom:4px;border-bottom:1px dashed #000;margin-bottom:5px}',
+        '.ticket-brand-name{font-size:13pt;font-weight:700;letter-spacing:1px;text-transform:uppercase;line-height:1.2;color:#000}',
+        '.ticket-brand-copy{font-size:7.5pt;color:#444}',
+        '.ticket-order-meta{display:flex;justify-content:space-between;font-size:7.5pt;color:#444;margin-bottom:3px}',
+        '.ticket-section{margin-top:5px;padding-top:5px;border-top:1px dashed #ccc;page-break-inside:avoid}',
+        '.ticket-section-title{font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;margin-bottom:3px}',
+        '.ticket-customer-card{font-size:8pt}',
+        '.ticket-customer-row{display:flex;justify-content:space-between;gap:4px;font-size:8pt;margin-bottom:1px}',
+        '.ticket-copy-btn-name{font-size:8.5pt;font-weight:700;display:block;margin-bottom:2px}',
+        '.ticket-copy-btn-inline{font-size:8pt}',
+        '.ticket-copy-btn{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:default;display:inline}',
+        '.ticket-address-block{font-size:8pt}',
+        '.ticket-address-text{white-space:normal;word-break:break-word;overflow-wrap:break-word;font-size:8pt}',
+        '.ticket-table{width:100%;border-collapse:collapse;font-size:8.5pt}',
+        '.ticket-table th{font-size:7pt;text-transform:uppercase;font-weight:700;text-align:left;border-bottom:1px solid #000;padding-bottom:2px}',
+        '.ticket-table th:last-child,.ticket-table td:last-child{text-align:right}',
+        '.ticket-table td{padding:1px 0;vertical-align:top}',
+        '.ticket-table td strong{display:block}',
+        '.ticket-line-meta{display:block;font-size:7.5pt;color:#555;padding-left:4px}',
+        '.ticket-total{margin-top:5px;padding-top:5px;border-top:1px dashed #ccc}',
+        '.ticket-summary-line,.ticket-total-row{display:flex;justify-content:space-between;font-size:8.5pt;gap:4px;color:#000}',
+        '.ticket-total-row.is-grand-total{font-size:11pt;font-weight:700;border-top:1px solid #000;padding-top:3px;margin-top:2px}',
+        '.ticket-footer-copy{margin-top:6px;padding-top:5px;border-top:1px dashed #ccc;text-align:center;font-size:7.5pt;color:#444;line-height:1.4;display:flex;flex-direction:column;gap:1px}',
+        '.ticket-promo-banner{display:flex;align-items:flex-start;gap:6px;margin:4px 0;padding:4px 6px;border:1px dashed #888;font-size:7.5pt}',
+        '.ticket-promo-title{font-weight:700;font-size:7pt;text-transform:uppercase}',
+        '.ticket-promo-label{font-size:7.5pt}',
+        '.ticket-print-row,.ticket-print-btn,.ticket-action-btn,.ticket-cobrar-btn,.ticket-contact-btn,.ticket-wa-btn,.ticket-kitchen-btn,.ticket-bt-bar,.state-pill{display:none!important}',
+        '._ph-btn{display:block;width:100%;margin:16px 0 8px;padding:12px;background:#ff7a1a;color:#fff;border:0;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.5px;text-align:center}',
+        '@media print{._ph-btn{display:none!important}}',
+    ].join('');
+
+    const html = '<!DOCTYPE html><html lang="es"><head>' +
+        '<meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+        '<title>Ticket #' + (order.code || '') + '</title>' +
+        '<style>' + css + '</style>' +
+        '</head><body>' +
+        markup +
+        '<button class="_ph-btn" onclick="window.print()">Imprimir ticket</button>' +
+        '<script>setTimeout(function(){window.print();},400);<\/script>' +
+        '</body></html>';
+
+    showNotice('Selecciona tu impresora en el dialogo de Chrome.', 'ok');
+
+    try {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, '_blank');
+        if (win) {
+            setTimeout(() => { URL.revokeObjectURL(url); }, 60000);
+            return;
+        }
+        URL.revokeObjectURL(url);
+    } catch (_) { /* fallback si Blob falla */ }
+
+    // Fallback: imprimir en la misma página si la ventana fue bloqueada
     const printArea = document.getElementById('thermalPrintArea');
-    if (!printArea) {
-        showNotice('Error interno: area de impresion no encontrada.', 'error');
-        return;
-    }
-
-    printArea.innerHTML = buildThermalTicketMarkup(order, { printMode: true });
-    showNotice('Abriendo dialogo de impresion — selecciona tu impresora.', 'ok');
-
-    const cleanup = () => {
-        printArea.innerHTML = '';
-        window.removeEventListener('afterprint', cleanup);
-    };
+    if (!printArea) { showNotice('Error interno: area de impresion no encontrada.', 'error'); return; }
+    printArea.innerHTML = markup;
+    const cleanup = () => { printArea.innerHTML = ''; window.removeEventListener('afterprint', cleanup); };
     window.addEventListener('afterprint', cleanup);
-
-    // Delay para que el DOM renderice el ticket antes de llamar print()
     setTimeout(() => { window.print(); }, 150);
 }
 
