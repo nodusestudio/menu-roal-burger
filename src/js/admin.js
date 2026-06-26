@@ -547,7 +547,6 @@ let _comboHorarioTipo = 'siempre';
 let _btPrinterDevice = null;
 let _btPrinterCharacteristic = null;
 const _BT_SERVICES = [
-    '00001101-0000-1000-8000-00805f9b34fb',
     '000018f0-0000-1000-8000-00805f9b34fb',
     'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
     '49535343-fe7d-4158-b166-31a325542a27',
