@@ -11451,17 +11451,13 @@ async function openOrderPrintTicket(orderId) {
         return;
     }
 
-    // Asegurar conexión BT: auto-reconecta si es posible, o abre picker si no
-    if (navigator.bluetooth) {
-        const char = await _btEnsureConnected();
-        if (!char) await connectBluetoothPrinter();
-    }
-
+    // Solo usa BT si ya hay una impresora emparejada en esta sesión
     if (_btPrinterDevice) {
         const ok = await printViaBluetoothESCPOS(order);
         if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); return; }
     }
 
+    // Sin BT activo → diálogo de impresión del navegador (Android/PC)
     _printOrderViaBrowser(order);
 }
 
@@ -11473,8 +11469,16 @@ function _printOrderViaBrowser(order) {
     }
 
     printArea.innerHTML = buildThermalTicketMarkup(order, { printMode: true });
-    window.print();
-    printArea.innerHTML = '';
+    showNotice('Abriendo dialogo de impresion — selecciona tu impresora.', 'ok');
+
+    const cleanup = () => {
+        printArea.innerHTML = '';
+        window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+
+    // Delay para que el DOM renderice el ticket antes de llamar print()
+    setTimeout(() => { window.print(); }, 150);
 }
 
 function buildKitchenTicketHtml(order) {
@@ -11534,10 +11538,17 @@ function openKitchenPrintTicket(orderId) {
 
     printArea.innerHTML = buildKitchenTicketHtml(order);
     printArea.classList.add('kitchen-mode');
-    window.print();
-    printArea.innerHTML = '';
-    printArea.classList.remove('kitchen-mode');
-    pageStyle.remove();
+    showNotice('Abriendo dialogo de impresion — selecciona tu impresora.', 'ok');
+
+    const cleanup = () => {
+        printArea.innerHTML = '';
+        printArea.classList.remove('kitchen-mode');
+        pageStyle.remove();
+        window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+
+    setTimeout(() => { window.print(); }, 150);
 }
 
 function refreshLivePreview() {
