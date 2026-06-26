@@ -11508,8 +11508,10 @@ function _printOrderViaBrowser(order) {
         '<style>' + css + '</style>' +
         '</head><body>' +
         markup +
+        '<div style="padding:12px 0 24px;">' +
         '<button class="_ph-btn" onclick="window.print()">Imprimir ticket</button>' +
-        '<script>setTimeout(function(){window.print();},400);<\/script>' +
+        '<p style="text-align:center;font-size:11px;color:#888;margin-top:8px;">Verifica el ticket y toca el boton para imprimir</p>' +
+        '</div>' +
         '</body></html>';
 
     showNotice('Selecciona tu impresora en el dialogo de Chrome.', 'ok');
