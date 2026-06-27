@@ -19175,163 +19175,110 @@ async function renderLibroCierres() {
                 <td style="color:${netColor};font-weight:700;">${dg.net < 0 ? '−' : ''}${formatMoney(Math.abs(dg.net))}</td>
             </tr>`;
 
-            // ── Filas de detalle (ocultas) ──
-            const detailRows = dg.entries.map((entry) => {
+            // ── Ticket de detalle (oculto) ──
+            const ticketCards = dg.entries.map((entry) => {
                 if (entry._tipo === 'cierre') {
-        // cierre: 2 sub-filas ingreso + egreso
-        const c = entry;
-        const tMs = entry._ms;
-        const dD = tMs ? new Date(tMs) : null;
-        const fechaStr = dD ? dD.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : c.date || '—';
-        const iM = c.ingresosMethod || c.methodTotals || {};
-        const gM = c.gastosMethod || {};
-        const iT = Number(c.ingresosTotal ?? c.grandTotal ?? 0);
-        const gT = Number(c.gastosTotal || 0);
-        const gt = Number(c.grandTotal || 0);
-        const iCells = methodKeys.map((k) => { const v = Number(iM[k]||0); return v===0?'<td style="color:var(--admin-muted);font-size:0.8rem;">—</td>':`<td style="color:#6ee7b7;font-size:0.8rem;">+${formatMoney(v)}</td>`; }).join('');
-        const gCells = methodKeys.map((k) => { const v = Number(gM[k]||0); return v===0?'<td style="color:var(--admin-muted);font-size:0.8rem;">—</td>':`<td style="color:#fca5a5;font-size:0.8rem;">−${formatMoney(v)}</td>`; }).join('');
-        const gtC = gt >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
-        const cid = escapeHtml(c.id);
-        return `
-        <tr class="day-detail-row" data-day-parent="${groupId}" style="display:none;background:rgba(255,255,255,0.015);">
-            <td class="col-left" style="font-size:0.72rem;color:rgba(255,255,255,0.25);padding-left:18px;" rowspan="2">↳</td>
-            <td class="col-left" style="font-size:0.78rem;color:rgba(255,255,255,0.55);" rowspan="2">${escapeHtml(fechaStr)}</td>
-            ${iCells}
-            <td style="color:var(--admin-muted);font-size:0.8rem;">—</td>
-            <td style="color:#6ee7b7;font-size:0.8rem;">+${formatMoney(iT)}</td>
-            <td style="text-align:center;vertical-align:middle;" rowspan="2">
-                <button class="btn-ver-cierre" data-cierre-id="${cid}" style="font-size:0.7rem;padding:3px 9px;background:rgba(255,255,255,0.06);color:#e2d9f3;border:1px solid rgba(255,255,255,0.12);border-radius:5px;cursor:pointer;">👁 Ver</button>
-            </td>
-        </tr>
-        <tr class="day-detail-row" data-day-parent="${groupId}" style="display:none;background:rgba(252,165,165,0.025);">
-            ${gCells}
-            <td style="color:${gT>0?'#fca5a5':'var(--admin-muted)'};font-size:0.8rem;">${gT>0?'−'+formatMoney(gT):'—'}</td>
-            <td style="color:${gtC};font-size:0.8rem;">${gt<0?'−':''}${formatMoney(Math.abs(gt))}</td>
-        </tr>`;
-
-                } else if (entry._tipo === 'gastos_dia') {
-        const g = entry;
-        const tMs = entry._ms;
-        const dateLabel = tMs ? new Date(tMs).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
-        const mSumCells = methodKeys.map((k) => { const v = Number(g._totByMethod[k]||0); return v===0?'<td style="color:var(--admin-muted);font-size:0.8rem;">—</td>':`<td style="color:#fca5a5;font-size:0.8rem;">−${formatMoney(v)}</td>`; }).join('');
-        if (g._items.length === 1) {
-            const item = g._items[0];
-            const catObj = getCategoriasGastos().find((cat) => cat.id === item.categoria);
-            const catIcon = catObj ? catObj.icon : '💸';
-            const catLabel = (catObj ? catObj.nombre : (item.categoria || 'Gasto')) + (item.subcategoria ? ' · ' + item.subcategoria : '');
-            return `<tr class="day-detail-row" data-day-parent="${groupId}" style="display:none;background:rgba(252,165,165,0.035);border-left:3px solid rgba(252,165,165,0.22);">
-                <td class="col-left" style="font-size:0.72rem;color:rgba(255,255,255,0.25);padding-left:18px;">↳</td>
-                <td class="col-left" style="font-size:0.78rem;"><span style="color:rgba(255,255,255,0.5);">${escapeHtml(dateLabel)}</span> <span style="color:#fca5a5;font-size:0.72rem;">${catIcon} ${escapeHtml(catLabel)}</span></td>
-                ${mSumCells}
-                <td style="color:#fca5a5;font-size:0.8rem;">−${formatMoney(g._totalAmt)}</td>
-                <td style="color:#fca5a5;font-size:0.8rem;">−${formatMoney(g._totalAmt)}</td>
-                <td></td>
-            </tr>`;
-        }
-        const subGid = `gd_${tMs || Date.now()}`;
-        const detailSubRows = [...g._items].sort((a, b) => b._ts - a._ts).map((item) => {
-            const iD = item._ts ? new Date(item._ts) : null;
-            const iTime = iD ? iD.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '—';
-            const catObj = getCategoriasGastos().find((cat) => cat.id === item.categoria);
-            const catIcon = catObj ? catObj.icon : '💸';
-            const catLabel = (catObj ? catObj.nombre : (item.categoria || 'Gasto')) + (item.subcategoria ? ' · ' + item.subcategoria : '');
-            const amt = Number(item.monto || 0);
-            const iCells = methodKeys.map((k) => { const mk = item.paymentMethod||''; return (k===mk&&amt)?`<td style="color:#fca5a5;font-size:0.75rem;">−${formatMoney(amt)}</td>`:'<td style="color:var(--admin-muted);font-size:0.75rem;">—</td>'; }).join('');
-            return `<tr class="day-detail-row gastos-detail-row" data-day-parent="${groupId}" data-gastos-parent="${subGid}" style="display:none;background:rgba(252,165,165,0.018);">
-                <td class="col-left" style="font-size:0.68rem;color:rgba(255,255,255,0.22);padding-left:28px;">↳ ${escapeHtml(iTime)}</td>
-                <td class="col-left" style="font-size:0.72rem;color:#fca5a5;">${catIcon} ${escapeHtml(catLabel)}</td>
-                ${iCells}
-                <td style="font-size:0.75rem;color:#fca5a5;">−${formatMoney(amt)}</td>
-                <td style="font-size:0.75rem;color:#fca5a5;">−${formatMoney(amt)}</td>
-                <td></td>
-            </tr>`;
-        }).join('');
-        return `<tr class="day-detail-row" data-day-parent="${groupId}" style="display:none;background:rgba(252,165,165,0.035);border-left:3px solid rgba(252,165,165,0.22);">
-            <td class="col-left" style="font-size:0.72rem;color:rgba(255,255,255,0.25);padding-left:18px;">↳</td>
-            <td class="col-left" style="font-size:0.78rem;"><span style="color:rgba(255,255,255,0.5);">${escapeHtml(dateLabel)}</span> <span style="color:#fca5a5;font-size:0.72rem;">💸 ${g._items.length} gastos</span></td>
-            ${mSumCells}
-            <td style="color:#fca5a5;font-size:0.8rem;">−${formatMoney(g._totalAmt)}</td>
-            <td style="color:#fca5a5;font-size:0.8rem;">−${formatMoney(g._totalAmt)}</td>
-            <td style="text-align:center;">
-                <button class="toggle-gastos-detail" data-group="${subGid}" style="background:none;border:1px solid rgba(252,165,165,0.3);color:#fca5a5;cursor:pointer;font-size:0.72rem;padding:1px 7px;border-radius:4px;line-height:1;">▶</button>
-            </td>
-        </tr>${detailSubRows}`;
-
-                } else if (entry._tipo === 'traslado') {
-        const t = entry._data;
-        const tMs = entry._ms;
-        const tD  = tMs ? new Date(tMs) : new Date();
-        const tFecha = tD.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-        const fM = methods.find((m) => m.id === t.methodFrom);
-        const tM = methods.find((m) => m.id === t.methodTo);
-        const tAmt = Number(t.monto || 0);
-        const fromLbl = fM ? `${fM.icon} ${escapeHtml(fM.label)}` : escapeHtml(t.methodFrom || '?');
-        const toLbl   = tM ? `${tM.icon} ${escapeHtml(tM.label)}` : escapeHtml(t.methodTo   || '?');
-        const mCells = methodKeys.map((k) => {
-            if (k===t.methodFrom) return `<td style="color:#a5b4fc;font-size:0.8rem;">−${formatMoney(tAmt)}</td>`;
-            if (k===t.methodTo)   return `<td style="color:#a5b4fc;font-size:0.8rem;">+${formatMoney(tAmt)}</td>`;
-            return '<td style="color:var(--admin-muted);font-size:0.8rem;">—</td>';
-        }).join('');
-        const tid = escapeHtml(t.id || '');
-        return `<tr class="day-detail-row" data-day-parent="${groupId}" style="display:none;background:rgba(99,102,241,0.04);border-left:3px solid rgba(99,102,241,0.22);">
-            <td class="col-left" style="font-size:0.72rem;color:rgba(255,255,255,0.25);padding-left:18px;">↳</td>
-            <td class="col-left" style="font-size:0.78rem;">
-                <span style="color:rgba(255,255,255,0.45);">${escapeHtml(tFecha)}</span>
-                <span style="color:#a5b4fc;font-size:0.72rem;margin-left:5px;">🔄 ${fromLbl} → ${toLbl}</span>
-            </td>
-            ${mCells}
-            <td style="color:rgba(165,180,252,0.4);font-size:0.78rem;">—</td>
-            <td style="color:rgba(165,180,252,0.4);font-size:0.78rem;">—</td>
-            <td style="text-align:center;white-space:nowrap;">
-                <button type="button" class="mini-btn" data-traslado-edit="${tid}" style="font-size:0.65rem;padding:1px 6px;margin-right:2px;">✏️</button>
-                <button type="button" class="mini-btn remove" data-traslado-del="${tid}" style="font-size:0.65rem;padding:1px 6px;">🗑️</button>
-            </td>
-        </tr>`;
+                    const c   = entry;
+                    const hora = new Date(entry._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+                    const iM  = c.ingresosMethod || c.methodTotals || {};
+                    const gM  = c.gastosMethod || {};
+                    const iT  = Number(c.ingresosTotal ?? c.grandTotal ?? 0);
+                    const gT  = Number(c.gastosTotal || 0);
+                    const net = Number(c.grandTotal ?? iT - gT);
+                    const netC = net >= 0 ? '#ff9540' : '#fca5a5';
+                    const ingLines = methods.filter((m) => Number(iM[m.id] || 0) > 0)
+                        .map((m) => `<div class="ht-line"><span>${m.icon} ${escapeHtml(m.label)}</span><span class="ht-ing">${formatMoney(Number(iM[m.id]))}</span></div>`).join('');
+                    const egrLines = methods.filter((m) => Number(gM[m.id] || 0) > 0)
+                        .map((m) => `<div class="ht-line"><span>${m.icon} ${escapeHtml(m.label)}</span><span class="ht-egr">−${formatMoney(Number(gM[m.id]))}</span></div>`).join('');
+                    const cid = escapeHtml(c.id);
+                    return `<div class="ht-card">
+                        <div class="ht-card-hdr">🧾 Cierre de caja · ${hora}
+                            <button class="btn-ver-cierre" data-cierre-id="${cid}" style="float:right;font-size:0.68rem;padding:2px 8px;background:rgba(255,255,255,0.08);color:#e2d9f3;border:1px solid rgba(255,255,255,0.14);border-radius:5px;cursor:pointer;">👁 Ver</button>
+                        </div>
+                        <div class="ht-cols">
+                            <div class="ht-col">
+                                <div class="ht-col-title">📥 Ingresos</div>
+                                ${ingLines || '<div class="ht-line ht-muted">Sin ingresos</div>'}
+                                <div class="ht-line ht-sep"><span>Total ingresos</span><span class="ht-ing">${formatMoney(iT)}</span></div>
+                            </div>
+                            ${gT > 0 ? `<div class="ht-col">
+                                <div class="ht-col-title">📤 Egresos del cierre</div>
+                                ${egrLines || '<div class="ht-line ht-muted">—</div>'}
+                                <div class="ht-line ht-sep"><span>Total egresos</span><span class="ht-egr">−${formatMoney(gT)}</span></div>
+                            </div>` : ''}
+                        </div>
+                        <div class="ht-net"><span>💰 Total neto</span><span style="color:${netC};">${net < 0 ? '−' : ''}${formatMoney(Math.abs(net))}</span></div>
+                    </div>`;
+                }
+                if (entry._tipo === 'gastos_dia') {
+                    const items = [...entry._items].sort((a, b) => (b._ts || 0) - (a._ts || 0));
+                    const gastoLines = items.map((item) => {
+                        const catObj = getCategoriasGastos().find((cat) => cat.id === item.categoria);
+                        const parts  = [
+                            catObj ? (catObj.icon + ' ' + catObj.nombre) : '💸',
+                            item.subcategoria || '', item.proveedor || '', item.descripcion || '',
+                        ].map((s) => s.trim()).filter(Boolean);
+                        const desc = parts.map(escapeHtml).join(' · ');
+                        const hora = item._ts ? new Date(item._ts).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+                        const mObj = methods.find((m) => m.id === item.paymentMethod);
+                        return `<div class="ht-line">
+                            <span>${desc}${hora ? ` <span class="ht-muted">· ${hora}</span>` : ''}${mObj ? ` <span class="ht-muted">${mObj.icon}</span>` : ''}</span>
+                            <span class="ht-egr">−${formatMoney(Number(item.monto || 0))}</span>
+                        </div>`;
+                    }).join('');
+                    return `<div class="ht-card ht-card-egr">
+                        <div class="ht-card-hdr">💸 Gastos externos del día</div>
+                        ${gastoLines}
+                        <div class="ht-line ht-sep"><span>Total gastos externos</span><span class="ht-egr">−${formatMoney(entry._totalAmt)}</span></div>
+                    </div>`;
+                }
+                if (entry._tipo === 'traslado') {
+                    const t    = entry._data;
+                    const hora = entry._ms ? new Date(entry._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+                    const fM   = methods.find((m) => m.id === t.methodFrom);
+                    const tM   = methods.find((m) => m.id === t.methodTo);
+                    const fromLbl = fM ? `${fM.icon} ${escapeHtml(fM.label)}` : escapeHtml(t.methodFrom || '?');
+                    const toLbl   = tM ? `${tM.icon} ${escapeHtml(tM.label)}` : escapeHtml(t.methodTo   || '?');
+                    const amt  = Number(t.monto || 0);
+                    const tid  = escapeHtml(t.id || '');
+                    return `<div class="ht-card ht-card-tras">
+                        <div class="ht-card-hdr">🔄 Traslado${hora ? ' · ' + hora : ''}
+                            <span style="float:right;white-space:nowrap;">
+                                <button type="button" class="mini-btn" data-traslado-edit="${tid}" style="font-size:0.65rem;padding:1px 6px;margin-right:2px;">✏️</button>
+                                <button type="button" class="mini-btn remove" data-traslado-del="${tid}" style="font-size:0.65rem;padding:1px 6px;">🗑️</button>
+                            </span>
+                        </div>
+                        <div class="ht-line">
+                            <span>${fromLbl} <span class="ht-muted">→</span> ${toLbl}</span>
+                            <span class="ht-tras">${formatMoney(amt)}</span>
+                        </div>
+                    </div>`;
                 }
                 return '';
             }).join('');
 
-            return daySepRow + summaryRows + detailRows;
+            const detailRow = `<tr class="day-detail-row" data-day-parent="${groupId}" style="display:none;">
+                <td colspan="${totalCols}" style="padding:0 10px 14px;">
+                    <div class="hist-ticket">${ticketCards}</div>
+                </td>
+            </tr>`;
+
+            return daySepRow + summaryRows + detailRow;
         }).join('');
 
-        // Toggle Detalle del día
+        // Toggle ticket de detalle del día
         if (!tbody.dataset.dayToggle) {
             tbody.dataset.dayToggle = '1';
             tbody.addEventListener('click', (e) => {
                 const btn = e.target.closest('.toggle-day-detail');
                 if (!btn) return;
-                const gid = btn.dataset.group;
+                const gid    = btn.dataset.group;
                 const isOpen = btn.dataset.open === '1';
-                const rows = tbody.querySelectorAll(`.day-detail-row[data-day-parent="${gid}"]`);
-                if (isOpen) {
-                    // Cerrar: ocultar todo y resetear sub-toggles de gastos
-                    rows.forEach((r) => { r.style.display = 'none'; });
-                    tbody.querySelectorAll(`.toggle-gastos-detail`).forEach((b) => {
-                        if (b.closest(`[data-day-parent="${gid}"]`)) { b.dataset.open = '0'; b.textContent = '▶'; }
-                    });
-                } else {
-                    // Abrir: mostrar solo filas directas (no sub-filas de gastos)
-                    rows.forEach((r) => { if (!r.dataset.gastosParent) r.style.display = ''; });
-                }
+                const row    = tbody.querySelector(`.day-detail-row[data-day-parent="${gid}"]`);
+                if (row) row.style.display = isOpen ? 'none' : '';
                 btn.dataset.open = isOpen ? '0' : '1';
-                btn.innerHTML = isOpen ? '▶ Detalle' : '▼ Ocultar';
-                btn.style.color = isOpen ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.85)';
-            });
-        }
-
-        // Toggle detalle de gastos agrupados (sub-filas dentro del detalle del día)
-        if (!tbody.dataset.gastoToggle) {
-            tbody.dataset.gastoToggle = '1';
-            tbody.addEventListener('click', (e) => {
-                const btn = e.target.closest('.toggle-gastos-detail');
-                if (!btn) return;
-                const groupId = btn.dataset.group;
-                const rows = tbody.querySelectorAll(`[data-gastos-parent="${groupId}"]`);
-                const isOpen = btn.dataset.open === '1';
-                rows.forEach((r) => { r.style.display = isOpen ? 'none' : ''; });
-                btn.dataset.open = isOpen ? '0' : '1';
-                btn.textContent = isOpen ? '▶' : '▼';
-                btn.title = isOpen ? 'Ver detalle' : 'Ocultar detalle';
+                btn.innerHTML    = isOpen ? '▶ Detalle' : '▼ Ocultar';
+                btn.style.color  = isOpen ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.85)';
             });
         }
 

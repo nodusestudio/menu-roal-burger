@@ -10375,6 +10375,39 @@
         }
         .cierre-drp-clear:hover { color: #fca5a5; }
 
+        /* ── Ticket de detalle — Historial de Cajas ── */
+        .hist-ticket { display:flex; flex-direction:column; gap:8px; padding:8px 4px 4px; }
+        .ht-card {
+            background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);
+            border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:5px;
+        }
+        .ht-card-egr  { border-color:rgba(252,165,165,0.14); background:rgba(252,165,165,0.025); }
+        .ht-card-tras { border-color:rgba(99,102,241,0.18);  background:rgba(99,102,241,0.03); }
+        .ht-card-hdr  {
+            font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.7px;
+            color:rgba(255,255,255,0.38); padding-bottom:8px;
+            border-bottom:1px solid rgba(255,255,255,0.06); margin-bottom:2px;
+        }
+        .ht-cols { display:flex; gap:16px; flex-wrap:wrap; }
+        .ht-col  { flex:1; min-width:130px; display:flex; flex-direction:column; gap:3px; }
+        .ht-col-title { font-size:0.65rem; text-transform:uppercase; letter-spacing:.6px; color:var(--admin-muted); margin-bottom:3px; font-weight:700; }
+        .ht-line {
+            display:flex; justify-content:space-between; align-items:baseline;
+            gap:8px; font-size:0.81rem; color:rgba(255,255,255,0.7); padding:1px 0;
+        }
+        .ht-line.ht-sub { font-size:0.75rem; color:rgba(255,255,255,0.45); padding-left:10px; }
+        .ht-line.ht-sep { border-top:1px dashed rgba(255,255,255,0.07); margin-top:3px; padding-top:5px; font-weight:700; }
+        .ht-net {
+            display:flex; justify-content:space-between; align-items:center;
+            border-top:1px solid rgba(255,255,255,0.1); padding-top:8px; margin-top:3px;
+            font-weight:800; font-size:0.88rem;
+        }
+        .ht-ing  { color:#6ee7b7; font-weight:600; white-space:nowrap; }
+        .ht-egr  { color:#fca5a5; font-weight:600; white-space:nowrap; }
+        .ht-tras { color:#a5b4fc; font-weight:600; white-space:nowrap; }
+        .ht-muted { color:var(--admin-muted); font-size:0.72rem; }
+        @media(max-width:600px){ .ht-cols { flex-direction:column; gap:10px; } }
+
         /* Libro contable Caja Diaria */
         .caja-ledger-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 0 0 16px 16px; }
         .caja-ledger-table {
