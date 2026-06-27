@@ -19409,55 +19409,7 @@ document.getElementById('cierresFilterClearBtn')?.addEventListener('click', () =
 let _lcActivePeriod = 'diario';
 
 function renderLibroContable() {
-    const lcSummaryBar = document.getElementById('lcSummaryBar');
-    if (!lcSummaryBar) return;
-
-    const getMs  = (c) => c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
-    const getIng = (c) => Number(c.ingresosTotal ?? 0);
-    const getEgr = (c) => Number(c.gastosTotal   ?? 0);
-
-    // Totales globales (todo el historial)
-    const globalIng = _cierresCajaState.reduce((s, c) => s + getIng(c), 0);
-    const globalEgr = _cierresCajaState.reduce((s, c) => s + getEgr(c), 0)
-                    + _gastosExternosState.reduce((s, g) => s + Number(g.monto || 0), 0);
-    const globalNet = globalIng - globalEgr;
-
-    // Poblar selector de año
-    const allYears = [...new Set(_cierresCajaState.map((c) => {
-        const ms = getMs(c); return ms ? new Date(ms).getFullYear() : null;
-    }).filter(Boolean))].sort((a, b) => b - a);
-    const yearSel = document.getElementById('lcYearFilter');
-    if (yearSel && allYears.length) {
-        const prev = yearSel.value;
-        yearSel.innerHTML = allYears.map((y) => `<option value="${y}">${y}</option>`).join('');
-        if (prev && allYears.includes(Number(prev))) yearSel.value = prev;
-    }
-
-    lcSummaryBar.innerHTML = `
-        <div class="lc-sum-item">
-            <span class="lc-sum-label">📥 Ingresos totales</span>
-            <span class="lc-sum-val lc-sum-ing">${formatMoney(globalIng)}</span>
-        </div>
-        <div class="lc-sum-item">
-            <span class="lc-sum-label">📤 Egresos totales</span>
-            <span class="lc-sum-val lc-sum-egr">−${formatMoney(globalEgr)}</span>
-        </div>
-        <div class="lc-sum-item" style="border-right:none;">
-            <span class="lc-sum-label">💰 Total neto</span>
-            <span class="lc-sum-val" style="color:${globalNet >= 0 ? '#ff9540' : '#fca5a5'};">${globalNet < 0 ? '−' : ''}${formatMoney(Math.abs(globalNet))}</span>
-        </div>
-        <button type="button" class="lc-ver-mov-btn" id="lcVerMovBtn">📋 Ver movimientos</button>
-    `;
-
-    document.getElementById('lcVerMovBtn')?.addEventListener('click', () => {
-        const wrap = document.getElementById('lcMovimientosWrap');
-        const btn  = document.getElementById('lcVerMovBtn');
-        if (!wrap) return;
-        const open = wrap.style.display !== 'none';
-        wrap.style.display = open ? 'none' : '';
-        if (btn) btn.textContent = open ? '📋 Ver movimientos' : '▲ Ocultar movimientos';
-        if (!open) _renderLcTable();
-    });
+    _renderLcTable();
 }
 
 function _renderLcTable() {
