@@ -8650,7 +8650,7 @@ function renderMetricsUsers() {
     const avgOrders = users.length
         ? (users.reduce((s, u) => s + (u.totalOrders || 0), 0) / users.length).toFixed(1)
         : '0';
-    const totalSpent = users.reduce((s, u) => s + (u.lastOrderTotal || 0), 0);
+    const totalSpent = users.reduce((s, u) => s + (u.totalSpent || 0), 0);
 
     const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     setKpi('metricsUserCount', users.length.toLocaleString('es-CO'));
@@ -8691,8 +8691,8 @@ function _renderMetricsUserRows(users) {
                 <div class="metrics-user-chips">${orderChip}${addrChip}</div>
             </div>
             <div class="metrics-user-side">
-                <div class="metrics-user-total">${u.lastOrderTotal ? formatMoney(u.lastOrderTotal) : '—'}</div>
-                <div class="metrics-user-since">desde ${since}</div>
+                <div class="metrics-user-total">${u.totalSpent ? formatMoney(u.totalSpent) : '—'}</div>
+                <div class="metrics-user-since">total gastado</div>
             </div>
         </div>
         <div class="metrics-user-detail" id="metricsDetail_${escapeHtml(u.id || u.customerPhone || '')}" hidden></div>`;
@@ -8753,8 +8753,8 @@ function _renderMetricsPosRows(clients) {
                 <div class="metrics-user-chips">${orderChip}</div>
             </div>
             <div class="metrics-user-side">
-                <div class="metrics-user-total">${u.lastOrderTotal ? formatMoney(u.lastOrderTotal) : '—'}</div>
-                <div class="metrics-user-since">desde ${since}</div>
+                <div class="metrics-user-total">${u.totalSpent ? formatMoney(u.totalSpent) : '—'}</div>
+                <div class="metrics-user-since">total gastado</div>
             </div>
         </div>`;
     }).join('');
