@@ -8639,7 +8639,7 @@ function renderMetricsUsers() {
     if (!list) return;
 
     const users = (clientsState || [])
-        .filter((c) => c.source !== 'admin_pos')
+        .filter((c) => Boolean(c.passwordHash))
         .slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
     // KPIs de resumen
