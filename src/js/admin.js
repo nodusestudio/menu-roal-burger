@@ -19461,176 +19461,147 @@ function renderLibroContable() {
 }
 
 function _renderLcTable() {
-    const lcHead  = document.getElementById('lcHead');
-    const lcBody  = document.getElementById('lcBody');
-    const lcFoot  = document.getElementById('lcFoot');
-    const yearSel = document.getElementById('lcYearFilter');
+    const lcHead = document.getElementById('lcHead');
+    const lcBody = document.getElementById('lcBody');
+    const lcFoot = document.getElementById('lcFoot');
     if (!lcBody) return;
 
     const getMs  = (c) => c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
     const getIng = (c) => Number(c.ingresosTotal ?? 0);
     const getEgr = (c) => Number(c.gastosTotal   ?? 0);
 
-    const fmtNet = (v) => v >= 0
-        ? `<span class="lc-utilidad-pos">${formatMoney(v)}</span>`
-        : `<span class="lc-utilidad-neg">−${formatMoney(Math.abs(v))}</span>`;
+    const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    const dayOf = (ms) => {
+        const d = new Date(ms);
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    };
 
-    const extEgrByYear = {};
+    // Agrupar por día de calendario
+    const dayGroups = {};
+    const dayOrder  = [];
+    const addDay = (dk, ms) => {
+        if (!dayGroups[dk]) { dayGroups[dk] = { dk, ms, cierres: [], extGastos: [], ingT: 0, gasT: 0, netT: 0 }; dayOrder.push(dk); }
+        if (ms > dayGroups[dk].ms) dayGroups[dk].ms = ms;
+        return dayGroups[dk];
+    };
+
+    _cierresCajaState.forEach((c) => {
+        const ms = getMs(c); if (!ms) return;
+        const dg = addDay(dayOf(ms), ms);
+        dg.cierres.push(c);
+        dg.ingT += getIng(c);
+        dg.gasT += getEgr(c);
+        dg.netT += Number(c.grandTotal ?? getIng(c) - getEgr(c));
+    });
+
     _gastosExternosState.forEach((g) => {
         const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
         if (!ms) return;
-        const yr = new Date(ms).getFullYear();
-        extEgrByYear[yr] = (extEgrByYear[yr] || 0) + Number(g.monto || 0);
+        const dg = addDay(dayOf(ms), ms);
+        dg.extGastos.push({ ...g, _ms: ms });
+        const amt = Number(g.monto || 0);
+        dg.gasT += amt;
+        dg.netT -= amt;
     });
 
-    const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    const HEAD = `<tr>
+    dayOrder.sort((a, b) => dayGroups[b].ms - dayGroups[a].ms);
+
+    const totalIng = dayOrder.reduce((s, dk) => s + dayGroups[dk].ingT, 0);
+    const totalEgr = dayOrder.reduce((s, dk) => s + dayGroups[dk].gasT, 0);
+    const totalNet = totalIng - totalEgr;
+
+    if (lcHead) lcHead.innerHTML = `<tr>
         <th class="col-left">Fecha</th>
         <th class="col-entrada">Ingresos</th>
         <th class="col-salida">Egresos</th>
-        <th>Total</th>
+        <th>Total Neto</th>
+        <th style="width:60px;text-align:center;"></th>
     </tr>`;
 
-    // ── VISTA ANUAL ──
-    if (_lcActivePeriod === 'anual') {
-        const byYear = {};
-        _cierresCajaState.forEach((c) => {
-            const ms = getMs(c); if (!ms) return;
-            const yr = new Date(ms).getFullYear();
-            if (!byYear[yr]) byYear[yr] = { ing: 0, egr: 0 };
-            byYear[yr].ing += getIng(c);
-            byYear[yr].egr += getEgr(c);
-        });
-        Object.entries(extEgrByYear).forEach(([yr, amt]) => {
-            const y = Number(yr);
-            if (!byYear[y]) byYear[y] = { ing: 0, egr: 0 };
-            byYear[y].egr += amt;
-        });
-        const entries = Object.entries(byYear).sort(([a], [b]) => Number(b) - Number(a));
-        const totalIng = entries.reduce((s, [, v]) => s + v.ing, 0);
-        const totalEgr = entries.reduce((s, [, v]) => s + v.egr, 0);
-        const totalNet = totalIng - totalEgr;
-        if (lcHead) lcHead.innerHTML = HEAD;
-        lcBody.innerHTML = entries.map(([yr, v]) => {
-            const net = v.ing - v.egr;
-            return `<tr>
-                <td class="col-left" style="font-weight:800;">${yr}</td>
-                <td class="caja-cell-entrada">${formatMoney(v.ing)}</td>
-                <td>${v.egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(v.egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
-                <td>${fmtNet(net)}</td>
-            </tr>`;
-        }).join('') || `<tr><td class="caja-empty" colspan="4">Sin registros.</td></tr>`;
-        if (lcFoot) lcFoot.innerHTML = `<tr>
-            <td class="col-left foot-label">TOTAL HISTÓRICO</td>
-            <td class="foot-entrada">${formatMoney(totalIng)}</td>
-            <td class="foot-salida">${totalEgr > 0 ? `−${formatMoney(totalEgr)}` : '$0'}</td>
-            <td class="foot-total">${totalNet < 0 ? '−' : ''}${formatMoney(Math.abs(totalNet))}</td>
-        </tr>`;
+    if (!dayOrder.length) {
+        lcBody.innerHTML = `<tr><td class="caja-empty" colspan="5">Sin registros.</td></tr>`;
+        if (lcFoot) lcFoot.innerHTML = '';
         return;
     }
 
-    // Vistas diaria y mensual: filtrar por año
-    const allYears = [...new Set(_cierresCajaState.map((c) => {
-        const ms = getMs(c); return ms ? new Date(ms).getFullYear() : null;
-    }).filter(Boolean))].sort((a, b) => b - a);
-    const selectedYear = yearSel?.value ? Number(yearSel.value) : (allYears[0] || new Date().getFullYear());
-    const cierres = _cierresCajaState.filter((c) => {
-        const ms = getMs(c); return ms ? new Date(ms).getFullYear() === selectedYear : false;
-    });
-    const gastosExtYear = _gastosExternosState.filter((g) => {
-        const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
-        return ms ? new Date(ms).getFullYear() === selectedYear : false;
-    });
-    const extEgrForYear = gastosExtYear.reduce((s, g) => s + Number(g.monto || 0), 0);
-    const totalIng = cierres.reduce((s, c) => s + getIng(c), 0);
-    const totalEgr = cierres.reduce((s, c) => s + getEgr(c), 0) + extEgrForYear;
-    const totalNet = totalIng - totalEgr;
+    lcBody.innerHTML = dayOrder.map((dk) => {
+        const dg = dayGroups[dk];
+        const d  = new Date(dg.ms);
+        const diaStr = DIAS[d.getDay()];
+        const fecha  = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const gid    = `lcday_${dk.replace(/-/g, '')}`;
+        const netC   = dg.netT >= 0 ? '#ff9540' : '#fca5a5';
 
-    if (!cierres.length && !gastosExtYear.length) {
-        if (lcHead) lcHead.innerHTML = '';
-        lcBody.innerHTML = `<tr><td class="caja-empty" colspan="4">Sin registros para ${selectedYear}.</td></tr>`;
-        if (lcFoot) lcFoot.innerHTML = ''; return;
-    }
+        const mainRow = `<tr style="border-top:1px solid rgba(255,255,255,0.06);">
+            <td class="col-left" style="font-weight:700;white-space:nowrap;">
+                <span style="font-size:0.7rem;color:var(--admin-muted);display:block;text-transform:uppercase;letter-spacing:0.04em;">${diaStr}</span>
+                ${fecha}
+            </td>
+            <td class="caja-cell-entrada">${dg.ingT > 0 ? formatMoney(dg.ingT) : '<span style="color:var(--admin-muted);">—</span>'}</td>
+            <td>${dg.gasT > 0 ? `<span class="caja-cell-salida">−${formatMoney(dg.gasT)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
+            <td style="color:${netC};font-weight:800;">${dg.netT < 0 ? '−' : ''}${formatMoney(Math.abs(dg.netT))}</td>
+            <td style="text-align:center;">
+                <button class="lc-toggle-detail" data-gid="${gid}"
+                    style="font-size:0.72rem;padding:3px 10px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.12);border-radius:6px;cursor:pointer;white-space:nowrap;">
+                    ▶ Ver
+                </button>
+            </td>
+        </tr>`;
 
-    if (lcHead) lcHead.innerHTML = HEAD;
+        const detailRows = [
+            ...dg.cierres.map((c) => {
+                const cMs  = getMs(c);
+                const hora = new Date(cMs).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+                const ing  = getIng(c), egr = getEgr(c), net = Number(c.grandTotal ?? ing - egr);
+                const nc   = net >= 0 ? '#ff9540' : '#fca5a5';
+                return `<tr class="lc-det-row" data-gid="${gid}" style="display:none;background:rgba(255,255,255,0.015);font-size:0.82rem;">
+                    <td class="col-left" style="padding-left:24px;color:rgba(255,255,255,0.55);">
+                        <span style="font-size:0.68rem;color:var(--admin-muted);display:block;">Cierre de caja · ${hora}</span>
+                    </td>
+                    <td style="color:#6ee7b7;">${ing > 0 ? formatMoney(ing) : '—'}</td>
+                    <td style="color:#fca5a5;">${egr > 0 ? '−'+formatMoney(egr) : '—'}</td>
+                    <td style="color:${nc};font-weight:700;">${net < 0 ? '−' : ''}${formatMoney(Math.abs(net))}</td>
+                    <td></td>
+                </tr>`;
+            }),
+            ...dg.extGastos.map((g) => {
+                const hora = new Date(g._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+                const amt  = Number(g.monto || 0);
+                const desc = g.descripcion ? escapeHtml(g.descripcion) : 'Sin descripción';
+                return `<tr class="lc-det-row" data-gid="${gid}" style="display:none;background:rgba(252,165,165,0.04);font-size:0.82rem;">
+                    <td class="col-left" style="padding-left:24px;color:rgba(255,255,255,0.55);">
+                        <span style="font-size:0.68rem;color:#fca5a5;display:block;">Gasto externo · ${hora}</span>
+                        ${desc}
+                    </td>
+                    <td style="color:var(--admin-muted);">—</td>
+                    <td style="color:#fca5a5;">−${formatMoney(amt)}</td>
+                    <td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>
+                    <td></td>
+                </tr>`;
+            }),
+        ].join('');
 
-    if (_lcActivePeriod === 'diario') {
-        // ── VISTA DIARIA ──
-        const extRows = gastosExtYear.map((g) => {
-            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
-            const d = new Date(ms);
-            const dia = d.toLocaleDateString('es-CO', { weekday: 'long' });
-            const fecha = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            const amt = Number(g.monto || 0);
-            const desc = g.descripcion ? ` — ${g.descripcion}` : '';
-            return { ms, html: `<tr style="opacity:0.85;">
-                <td class="col-left" style="font-weight:600;white-space:nowrap;">
-                    <span style="display:block;font-size:0.75rem;font-weight:400;color:var(--admin-muted);letter-spacing:0.04em;text-transform:uppercase;">${dia.charAt(0).toUpperCase()+dia.slice(1)}</span>
-                    ${fecha}<span style="font-size:0.7rem;color:var(--admin-muted);display:block;">Gasto externo${escapeHtml(desc)}</span>
-                </td>
-                <td class="caja-cell-entrada">—</td>
-                <td><span class="caja-cell-salida">−${formatMoney(amt)}</span></td>
-                <td>${fmtNet(-amt)}</td>
-            </tr>` };
-        });
-        const cierreRows = [...cierres].sort((a, b) => getMs(b) - getMs(a)).map((c) => {
-            const d = new Date(getMs(c));
-            const dia = d.toLocaleDateString('es-CO', { weekday: 'long' });
-            const fecha = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            const ing = getIng(c), egr = getEgr(c), net = ing - egr;
-            return { ms: getMs(c), html: `<tr>
-                <td class="col-left" style="font-weight:600;white-space:nowrap;">
-                    <span style="display:block;font-size:0.75rem;font-weight:400;color:var(--admin-muted);letter-spacing:0.04em;text-transform:uppercase;">${dia.charAt(0).toUpperCase()+dia.slice(1)}</span>
-                    ${fecha}
-                </td>
-                <td class="caja-cell-entrada">${formatMoney(ing)}</td>
-                <td>${egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
-                <td>${fmtNet(net)}</td>
-            </tr>` };
-        });
-        lcBody.innerHTML = [...cierreRows, ...extRows].sort((a, b) => b.ms - a.ms).map((r) => r.html).join('')
-            || `<tr><td class="caja-empty" colspan="4">Sin datos.</td></tr>`;
-    } else {
-        // ── VISTA MENSUAL ──
-        const byMonth = {};
-        cierres.forEach((c) => {
-            const mo = new Date(getMs(c)).getMonth();
-            if (!byMonth[mo]) byMonth[mo] = { ing: 0, egr: 0 };
-            byMonth[mo].ing += getIng(c); byMonth[mo].egr += getEgr(c);
-        });
-        gastosExtYear.forEach((g) => {
-            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
-            if (!ms) return;
-            const mo = new Date(ms).getMonth();
-            if (!byMonth[mo]) byMonth[mo] = { ing: 0, egr: 0 };
-            byMonth[mo].egr += Number(g.monto || 0);
-        });
-        lcBody.innerHTML = Object.entries(byMonth).sort(([a], [b]) => Number(b) - Number(a)).map(([mo, m]) => {
-            const net = m.ing - m.egr;
-            return `<tr>
-                <td class="col-left" style="font-weight:700;">${MESES[Number(mo)]}</td>
-                <td class="caja-cell-entrada">${formatMoney(m.ing)}</td>
-                <td>${m.egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(m.egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
-                <td>${fmtNet(net)}</td>
-            </tr>`;
-        }).join('') || `<tr><td class="caja-empty" colspan="4">Sin datos mensuales.</td></tr>`;
-    }
+        return mainRow + detailRows;
+    }).join('');
 
     if (lcFoot) lcFoot.innerHTML = `<tr>
-        <td class="col-left foot-label">TOTAL ${selectedYear}</td>
+        <td class="col-left foot-label">TOTAL HISTÓRICO</td>
         <td class="foot-entrada">${formatMoney(totalIng)}</td>
         <td class="foot-salida">${totalEgr > 0 ? `−${formatMoney(totalEgr)}` : '$0'}</td>
         <td class="foot-total">${totalNet < 0 ? '−' : ''}${formatMoney(Math.abs(totalNet))}</td>
+        <td></td>
     </tr>`;
 }
 
-// Period tab switcher
+// Toggle detalle por día en libro contable
 document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.lc-period-btn');
+    const btn = e.target.closest('.lc-toggle-detail');
     if (!btn) return;
-    _lcActivePeriod = btn.dataset.lcPeriod || 'diario';
-    document.querySelectorAll('.lc-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    _renderLcTable();
+    const gid  = btn.dataset.gid;
+    const rows = document.querySelectorAll(`.lc-det-row[data-gid="${gid}"]`);
+    const open = btn.textContent.trim().startsWith('▶');
+    rows.forEach((r) => { r.style.display = open ? '' : 'none'; });
+    btn.textContent = open ? '▼ Ocultar' : '▶ Ver';
 });
 
 document.getElementById('refreshLibroContableBtn')?.addEventListener('click', async () => {
@@ -19639,8 +19610,6 @@ document.getElementById('refreshLibroContableBtn')?.addEventListener('click', as
     const wrap = document.getElementById('lcMovimientosWrap');
     if (wrap && wrap.style.display !== 'none') _renderLcTable();
 });
-
-document.getElementById('lcYearFilter')?.addEventListener('change', _renderLcTable);
 
 document.getElementById('libroCierresList')?.addEventListener('click', (e) => {
     const verBtn = e.target.closest('.btn-ver-cierre');
