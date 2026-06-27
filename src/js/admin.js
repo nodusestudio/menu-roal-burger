@@ -1970,6 +1970,7 @@ function normalizeOrder(raw) {
         total,
         currency: String(raw.currency || 'COP'),
         source: String(raw.source || 'web').trim(),
+        isAdminOrder: raw.isAdminOrder === true,
         orderType,
         fulfillmentType: String(raw.fulfillmentType || '').trim().toLowerCase(),
         mesaNumber: raw.mesaNumber ? Number(raw.mesaNumber) : null,
@@ -2195,7 +2196,9 @@ async function fetchClients() {
                 totalSpent: Number(raw.totalSpent || 0),
                 lastOrderAt: raw.lastOrderAt || raw.updatedAt || raw.createdAt || null,
                 createdAt: raw.createdAt || null,
-                updatedAt: raw.updatedAt || null
+                updatedAt: raw.updatedAt || null,
+                source: String(raw.source || '').trim(),
+                passwordHash: String(raw.passwordHash || '').trim()
             };
         })
         .sort((a, b) => {
@@ -8709,7 +8712,7 @@ function renderMetricsPos() {
     const posClients = (clientsState || [])
         .slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
-    const totalRevenue = posOrders.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+    const totalRevenue = posOrders.reduce((s, o) => s + Number(o.total || 0), 0);
     const avgTicket = posOrders.length ? totalRevenue / posOrders.length : 0;
 
     const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
