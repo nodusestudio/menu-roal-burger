@@ -9465,8 +9465,8 @@
                 padding: 0 10px !important;
                 border-radius: 8px !important;
             }
-            /* Mover Caja Chica + Nuevo Ticket a barra fija inferior */
-            #cajaChicaBtn, #openAdminTicketsViewBtn, #openCreateInternalOrderBtn { display: none !important; }
+            /* Ocultar Nuevo Ticket y Tickets Abiertos del área de chips (se manejan en barra inferior) */
+            #openAdminTicketsViewBtn, #openCreateInternalOrderBtn { display: none !important; }
 
             /* 3. Ocultar card-head "Recepcion de Pedidos" — no agrega valor en mobile */
             [data-tab-panel="pedidos"] .admin-card > .card-head { display: none !important; }
@@ -12355,6 +12355,7 @@
                         <span class="unread-tray-badge" id="ordersCountUnread">0</span>
                     </button>
                     <button type="button" class="section-save-btn" data-section-save="pedidos" title="Actualizar pedidos">↺ Actualizar</button>
+                    <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
                     <button type="button" id="abrirCajaBtnPos" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">📂 Abrir Caja</button>
                     <button type="button" id="cerrarCajaBtnPos" style="background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">🔒 Cerrar Caja</button>
                 </div>
@@ -12381,7 +12382,6 @@
                                 <span class="sales-day-chip" id="salesDayGrandTotal">💳 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
                                 <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
                                 <span class="sales-day-chip sales-day-chip--delivery" id="salesDayDeliveryFeesChip" hidden>🛵 $0</span>
-                                <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
                                 <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn" hidden style="display:none!important">
                                     Tickets Abiertos
                                     <span id="adminTicketsCountBadge"></span>
@@ -13992,10 +13992,6 @@
 
     <!-- ══ Mobile: barra de acciones rápidas (visible solo en móvil) ══ -->
     <div id="mobPosBottomBar" class="mob-pos-bottombar" role="toolbar" aria-label="Acciones POS">
-        <button type="button" class="mob-pos-bb-caja" onclick="document.getElementById('cajaChicaBtn')?.click()" aria-label="Caja Chica">
-            <span class="bb-icon">💰</span>
-            <span>Caja</span>
-        </button>
         <button type="button" class="mob-pos-bb-nuevo" onclick="document.getElementById('openCreateInternalOrderBtn')?.click()" aria-label="Nuevo Ticket">
             <span class="bb-icon">＋</span>
             <span>Nuevo Ticket</span>
