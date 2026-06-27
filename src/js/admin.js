@@ -19019,6 +19019,7 @@ async function renderLibroCierres() {
         methodKeys.forEach((k) => { sumTotals[k] = 0; });
         let grandSumTotal = 0;
         let grandSumEgresos = 0;
+        let grandSumIngresos = 0;
 
         // Agrupar gastos externos por día de calendario
         const _gasByDay = {};
@@ -19085,11 +19086,13 @@ async function renderLibroCierres() {
                 });
                 const gT = Number(entry.gastosTotal || 0);
                 const gNet = Number(entry.grandTotal || 0);
-                dg.ingT += Number(entry.ingresosTotal ?? entry.grandTotal ?? 0);
+                const ingT = Number(entry.ingresosTotal ?? entry.grandTotal ?? 0);
+                dg.ingT += ingT;
                 dg.gasT += gT;
                 dg.net  += gNet;
-                grandSumEgresos += gT;
-                grandSumTotal   += gNet;
+                grandSumIngresos += ingT;
+                grandSumEgresos  += gT;
+                grandSumTotal    += gNet;
             } else if (entry._tipo === 'gastos_dia') {
                 methodKeys.forEach((k) => { dg.gasM[k] += Number(entry._totByMethod[k] || 0); });
                 const amt = entry._totalAmt;
@@ -19371,6 +19374,11 @@ async function renderLibroCierres() {
                 </div>`;
             }).join('');
 
+            const chipIng = grandSumIngresos > 0 ? `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(110,231,183,0.06);border:1px solid rgba(110,231,183,0.18);border-radius:10px;min-width:110px;">
+                <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">📥 Ingresos</span>
+                <span style="font-size:1rem;font-weight:700;color:#6ee7b7;">${formatMoney(grandSumIngresos)}</span>
+            </div>` : '';
+
             const egColor = grandSumEgresos > 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
             const chipEgr = grandSumEgresos > 0 ? `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(252,165,165,0.06);border:1px solid rgba(252,165,165,0.18);border-radius:10px;min-width:110px;">
                 <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">📤 Egresos</span>
@@ -19383,7 +19391,7 @@ async function renderLibroCierres() {
                 <span style="font-size:1rem;font-weight:700;color:${ntColor};">${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</span>
             </div>`;
 
-            kpiEl.innerHTML = `<div style="grid-column:1/-1;display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;padding:10px 2px 12px;">${chipMethod}${chipEgr}${chipNet}</div>`;
+            kpiEl.innerHTML = `<div style="grid-column:1/-1;display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;padding:10px 2px 12px;">${chipMethod}${chipIng}${chipEgr}${chipNet}</div>`;
         }
     } catch (err) {
         tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
