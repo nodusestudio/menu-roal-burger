@@ -18942,8 +18942,28 @@ function _getCierresFilterRange() {
     const fromVal = document.getElementById('cierresDateFrom')?.value || '';
     const toVal   = document.getElementById('cierresDateTo')?.value   || '';
     const from = fromVal ? new Date(`${fromVal}T00:00:00`) : null;
-    const to   = toVal   ? new Date(`${toVal}T23:59:59`)  : null;
+    // Si solo hay inicio, muestra ese único día (fin = mismo día)
+    const to = toVal ? new Date(`${toVal}T23:59:59`) : from ? new Date(`${fromVal}T23:59:59`) : null;
     return { from, to };
+}
+
+function _updateCierreDrp() {
+    const from = document.getElementById('cierresDateFrom')?.value || '';
+    const to   = document.getElementById('cierresDateTo')?.value   || '';
+    const btn  = document.getElementById('cierreDrpBtn');
+    const lbl  = document.getElementById('cierreDrpLabel');
+    const fmt  = (s) => new Date(s + 'T12:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    if (!from && !to) {
+        if (lbl) lbl.textContent = 'Todas las fechas';
+        btn?.classList.remove('active');
+    } else if (from && (!to || from === to)) {
+        if (lbl) lbl.textContent = fmt(from);
+        btn?.classList.add('active');
+    } else {
+        if (lbl) lbl.textContent = `${fmt(from)} → ${fmt(to)}`;
+        btn?.classList.add('active');
+    }
+    renderLibroCierres();
 }
 
 async function renderLibroCierres() {
@@ -19399,18 +19419,32 @@ async function renderLibroCierres() {
 }
 
 document.getElementById('refreshLibroCierresBtn')?.addEventListener('click', renderLibroCierres);
-document.getElementById('cierresDateFrom')?.addEventListener('change', renderLibroCierres);
-document.getElementById('cierresDateTo')?.addEventListener('change', renderLibroCierres);
+document.getElementById('cierresDateFrom')?.addEventListener('change', _updateCierreDrp);
+document.getElementById('cierresDateTo')?.addEventListener('change', _updateCierreDrp);
+
+// Toggle panel del date-range picker
+document.getElementById('cierreDrpBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const panel = document.getElementById('cierreDrpPanel');
+    if (panel) panel.style.display = panel.style.display === 'none' ? '' : 'none';
+});
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#cierreDrpWrap')) {
+        const panel = document.getElementById('cierreDrpPanel');
+        if (panel) panel.style.display = 'none';
+    }
+});
+document.getElementById('cierreDrpClear')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const f = document.getElementById('cierresDateFrom');
+    const t = document.getElementById('cierresDateTo');
+    if (f) f.value = '';
+    if (t) t.value = '';
+    _updateCierreDrp();
+});
 document.getElementById('gastosHistorialBtn')?.addEventListener('click', () => {
     _gastoFromHistorial = true;
     openGastoModal();
-});
-document.getElementById('cierresFilterClearBtn')?.addEventListener('click', () => {
-    const from = document.getElementById('cierresDateFrom');
-    const to   = document.getElementById('cierresDateTo');
-    if (from) from.value = '';
-    if (to)   to.value   = '';
-    renderLibroCierres();
 });
 
 // ── Libro Contable ────────────────────────────────────────────────────────────

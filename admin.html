@@ -10341,36 +10341,39 @@
         .caja-empty { text-align: center; padding: 40px 16px; color: var(--admin-muted); font-size: 0.88rem; }
 
         /* Filtro de fechas — Historial de Cajas */
-        .cierres-filter-bar {
-            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        .cierre-drp { position: relative; display: inline-flex; }
+        .cierre-drp-btn {
+            display: flex; align-items: center; gap: 6px;
+            padding: 5px 14px; border-radius: 20px;
+            background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.16);
+            color: rgba(255,255,255,0.65); font-size: 0.78rem; font-weight: 600;
+            cursor: pointer; font-family: 'Space Grotesk',sans-serif;
+            transition: border-color .15s, color .15s; white-space: nowrap;
         }
-        .cierres-filter-label {
-            font-size: 0.72rem; color: var(--admin-muted); white-space: nowrap;
+        .cierre-drp-btn.active { border-color: rgba(255,122,26,0.5); color: #ff9540; }
+        .cierre-drp-panel {
+            position: absolute; top: calc(100% + 8px); left: 0; z-index: 300;
+            background: #1e1a17; border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 14px; padding: 14px 16px; min-width: 230px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            display: flex; flex-direction: column; gap: 10px;
         }
-        .cierres-date-input {
-            background: rgba(255,255,255,0.07);
-            border: 1px solid rgba(255,255,255,0.16);
-            border-radius: 8px;
-            color: #fff;
+        .cierre-drp-row { display: flex; align-items: center; gap: 8px; }
+        .cierre-drp-lbl { font-size: 0.7rem; color: var(--admin-muted); width: 38px; flex-shrink: 0; }
+        .cierre-drp-input {
+            flex: 1; background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.14); border-radius: 8px;
+            color: #fff; font-size: 0.78rem; padding: 5px 8px;
+            cursor: pointer; color-scheme: dark; outline: none;
             font-family: 'Space Grotesk', sans-serif;
-            font-size: 0.78rem;
-            padding: 4px 8px;
-            cursor: pointer;
-            color-scheme: dark;
         }
-        .cierres-date-input:focus { outline: none; border-color: rgba(255,122,26,0.5); }
-        .cierres-clear-btn {
-            background: rgba(255,255,255,0.07);
-            border: 1px solid rgba(255,255,255,0.16);
-            border-radius: 8px;
-            color: var(--admin-muted);
-            font-size: 0.75rem;
-            padding: 4px 8px;
-            cursor: pointer;
-            line-height: 1;
-            transition: color 0.15s, border-color 0.15s;
+        .cierre-drp-input:focus { border-color: rgba(255,122,26,0.5); }
+        .cierre-drp-clear {
+            background: none; border: none; color: var(--admin-muted);
+            font-size: 0.72rem; cursor: pointer; text-align: left; padding: 2px 0;
+            font-family: 'Space Grotesk', sans-serif; transition: color .15s;
         }
-        .cierres-clear-btn:hover { color: #fca5a5; border-color: rgba(252,165,165,0.4); }
+        .cierre-drp-clear:hover { color: #fca5a5; }
 
         /* Libro contable Caja Diaria */
         .caja-ledger-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 0 0 16px 16px; }
@@ -12567,12 +12570,19 @@
                                 <article class="admin-card">
                                     <div class="card-head" style="flex-wrap:wrap;gap:8px;">
                                         <h2>Historial de Cajas</h2>
-                                        <div class="cierres-filter-bar">
-                                            <label class="cierres-filter-label">Desde</label>
-                                            <input type="date" id="cierresDateFrom" class="cierres-date-input" aria-label="Desde">
-                                            <label class="cierres-filter-label">Hasta</label>
-                                            <input type="date" id="cierresDateTo" class="cierres-date-input" aria-label="Hasta">
-                                            <button type="button" id="cierresFilterClearBtn" class="cierres-clear-btn" title="Limpiar filtro">✕</button>
+                                        <div class="cierre-drp" id="cierreDrpWrap">
+                                            <button type="button" class="cierre-drp-btn" id="cierreDrpBtn">📅 <span id="cierreDrpLabel">Todas las fechas</span></button>
+                                            <div class="cierre-drp-panel" id="cierreDrpPanel" style="display:none;">
+                                                <div class="cierre-drp-row">
+                                                    <span class="cierre-drp-lbl">Inicio</span>
+                                                    <input type="date" id="cierresDateFrom" class="cierre-drp-input">
+                                                </div>
+                                                <div class="cierre-drp-row">
+                                                    <span class="cierre-drp-lbl">Fin</span>
+                                                    <input type="date" id="cierresDateTo" class="cierre-drp-input">
+                                                </div>
+                                                <button type="button" class="cierre-drp-clear" id="cierreDrpClear">✕ Limpiar filtro</button>
+                                            </div>
                                         </div>
                                         <button type="button" class="card-collapse-btn" id="refreshLibroCierresBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
                                         <button type="button" id="gastosHistorialBtn" style="font-size:0.78rem;padding:4px 14px;background:rgba(252,165,165,0.15);color:#fca5a5;border:1px solid rgba(252,165,165,0.35);border-radius:8px;cursor:pointer;font-weight:600;">💸 Gastos</button>
