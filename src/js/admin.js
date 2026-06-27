@@ -19395,6 +19395,117 @@ document.getElementById('cierresFilterClearBtn')?.addEventListener('click', () =
 // ── Libro Contable ────────────────────────────────────────────────────────────
 let _lcActivePeriod = 'diario';
 
+// ── Movimientos no cubiertos por ningún cierre de caja ──────────────────────
+function _getMovimientosSinCierre() {
+    // Rangos de tiempo cubiertos por cierres existentes
+    const rangos = _cierresCajaState.map((c) => {
+        const toMs   = c.closedAt?.toMillis  ? c.closedAt.toMillis()  : Number(c.closedAt  || 0);
+        const fromMs = c.aperturaAt?.toMillis ? c.aperturaAt.toMillis() : Number(c.aperturaAt || 0);
+        return { from: fromMs || (toMs - 86400000), to: toMs };
+    }).filter((r) => r.to > 0);
+
+    const isCubierto = (ms) => !ms || rangos.some((r) => ms >= r.from && ms <= r.to);
+
+    const ordenes = (ordersState || []).filter((o) => {
+        if (o.voided || o.anulado) return false;
+        if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+        const ms = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt || 0);
+        return ms > 0 && !isCubierto(ms);
+    });
+
+    const gastos = (_gastosCajaState || []).filter((g) => {
+        const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+        return ms > 0 && !isCubierto(ms);
+    });
+
+    const ingresos = ordenes.reduce((s, o) => s + Number(getOrderDisplayTotal(o) || 0), 0);
+    const egresos  = gastos.reduce((s, g) => s + Number(g.monto || 0), 0);
+    return { ingresos, egresos, ordenes, gastos };
+}
+
+function _openMovimientosSincierreModal(data) {
+    const existing = document.getElementById('movSincierreModal');
+    if (existing) existing.remove();
+
+    const { ingresos, egresos, ordenes, gastos } = data;
+    const neto = ingresos - egresos;
+    const fmtDate = (ts) => ts
+        ? new Date(ts?.toMillis ? ts.toMillis() : Number(ts)).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
+
+    const ordenesHtml = ordenes.length
+        ? [...ordenes].sort((a, b) => {
+            const ma = a.paidAt?.toMillis ? a.paidAt.toMillis() : Number(a.paidAt || 0);
+            const mb = b.paidAt?.toMillis ? b.paidAt.toMillis() : Number(b.paidAt || 0);
+            return mb - ma;
+        }).map((o) => `
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 12px;background:rgba(110,231,183,0.06);border-radius:8px;margin-bottom:4px;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.82rem;font-weight:600;color:rgba(255,255,255,0.85);">${escapeHtml(o.customerName || 'Sin nombre')} · #${escapeHtml(o.code || o.id.slice(-5))}</div>
+                    <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);">${fmtDate(o.paidAt || o.createdAt)} · ${escapeHtml(o.paymentMethod || '')}</div>
+                </div>
+                <span style="font-size:0.9rem;font-weight:700;color:#6ee7b7;white-space:nowrap;">+${formatMoney(getOrderDisplayTotal(o))}</span>
+            </div>`).join('')
+        : `<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:6px 0;">Sin pedidos pendientes</div>`;
+
+    const gastosHtml = gastos.length
+        ? [...gastos].sort((a, b) => {
+            const ma = a.registradoAt?.toMillis ? a.registradoAt.toMillis() : Number(a.registradoAt || 0);
+            const mb = b.registradoAt?.toMillis ? b.registradoAt.toMillis() : Number(b.registradoAt || 0);
+            return mb - ma;
+        }).map((g) => {
+            const cat = [g.categoria, g.subcategoria].filter(Boolean).join(' · ');
+            const desc = [g.proveedor, g.descripcion].filter(Boolean).join(' · ');
+            return `
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 12px;background:rgba(252,165,165,0.06);border-radius:8px;margin-bottom:4px;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.82rem;font-weight:600;color:#fca5a5;">💸 ${escapeHtml(cat || 'Gasto')}</div>
+                    <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);">${fmtDate(g.registradoAt)} · ${escapeHtml(g.paymentMethod || '')}</div>
+                    ${desc ? `<div style="font-size:0.72rem;color:rgba(255,255,255,0.3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(desc)}</div>` : ''}
+                </div>
+                <span style="font-size:0.9rem;font-weight:700;color:#fca5a5;white-space:nowrap;">−${formatMoney(Number(g.monto || 0))}</span>
+            </div>`;
+        }).join('')
+        : `<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:6px 0;">Sin egresos pendientes</div>`;
+
+    const modal = document.createElement('div');
+    modal.id = 'movSincierreModal';
+    modal.className = 'admin-modal-overlay';
+    modal.innerHTML = `
+        <div class="admin-modal" style="max-width:560px;">
+            <div class="admin-modal-header">
+                <h3 class="admin-modal-title">⏳ Movimientos sin cierre</h3>
+                <button type="button" class="admin-modal-close" id="movSincierreClose">×</button>
+            </div>
+            <div class="admin-modal-body" style="max-height:70vh;overflow-y:auto;">
+                <article class="admin-card" style="margin-bottom:14px;">
+                    <h4 style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:rgba(255,255,255,0.45);margin:0 0 10px;">📥 Ingresos — ${ordenes.length} pedido(s)</h4>
+                    ${ordenesHtml}
+                    <div style="display:flex;justify-content:space-between;padding:10px 12px;background:rgba(110,231,183,0.1);border-radius:8px;border:1px solid rgba(110,231,183,0.2);margin-top:6px;">
+                        <span style="font-size:0.85rem;font-weight:700;">TOTAL INGRESOS</span>
+                        <span style="font-weight:700;color:#6ee7b7;">+${formatMoney(ingresos)}</span>
+                    </div>
+                </article>
+                <article class="admin-card" style="margin-bottom:14px;">
+                    <h4 style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:rgba(255,255,255,0.45);margin:0 0 10px;">📤 Egresos — ${gastos.length} gasto(s)</h4>
+                    ${gastosHtml}
+                    ${egresos > 0 ? `<div style="display:flex;justify-content:space-between;padding:10px 12px;background:rgba(252,165,165,0.1);border-radius:8px;border:1px solid rgba(252,165,165,0.2);margin-top:6px;">
+                        <span style="font-size:0.85rem;font-weight:700;">TOTAL EGRESOS</span>
+                        <span style="font-weight:700;color:#fca5a5;">−${formatMoney(egresos)}</span>
+                    </div>` : ''}
+                </article>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:rgba(255,149,64,0.1);border-radius:10px;border:1px solid rgba(255,149,64,0.25);">
+                    <span style="font-size:0.9rem;font-weight:700;">NETO SIN CIERRE</span>
+                    <span style="font-size:1.05rem;font-weight:800;color:${neto >= 0 ? '#ff9540' : '#fca5a5'};">${neto < 0 ? '−' : ''}${formatMoney(Math.abs(neto))}</span>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal || e.target.id === 'movSincierreClose') modal.remove();
+    });
+}
+
 function renderLibroContable() {
     const lcHead  = document.getElementById('lcHead');
     const lcBody  = document.getElementById('lcBody');
@@ -19411,6 +19522,21 @@ function renderLibroContable() {
     const fmtNet = (v) => v >= 0
         ? `<span class="lc-utilidad-pos">${formatMoney(v)}</span>`
         : `<span class="lc-utilidad-neg">−${formatMoney(Math.abs(v))}</span>`;
+
+    // Movimientos fuera de cualquier jornada cerrada
+    const _sinC = _getMovimientosSinCierre();
+    const _sinCHasData = _sinC.ingresos > 0 || _sinC.egresos > 0;
+    const _sinCNeto = _sinC.ingresos - _sinC.egresos;
+    const _sinCRow = _sinCHasData ? `<tr class="lc-row-sincierre">
+        <td class="col-left">
+            <span class="lc-sincierre-badge">⏳ Sin cierre</span>
+            <span style="display:block;font-weight:600;">Movimientos activos</span>
+            <span style="font-size:0.7rem;color:var(--admin-muted);">${_sinC.ordenes.length} pedido(s) · ${_sinC.gastos.length} gasto(s)</span>
+        </td>
+        <td class="caja-cell-entrada">${_sinC.ingresos > 0 ? formatMoney(_sinC.ingresos) : '<span style="color:var(--admin-muted);">—</span>'}</td>
+        <td>${_sinC.egresos > 0 ? `<span class="caja-cell-salida">−${formatMoney(_sinC.egresos)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
+        <td style="white-space:nowrap;">${fmtNet(_sinCNeto)}&nbsp;<button type="button" class="lc-ver-sincierre-btn" data-lc-action="ver-sincierre">Ver</button></td>
+    </tr>` : '';
 
     // Populate year selector from ALL cierres
     const allYears = [...new Set(_cierresCajaState.map((c) => {
@@ -19446,13 +19572,21 @@ function renderLibroContable() {
         });
 
         const entries = Object.entries(byYear).sort(([a], [b]) => Number(b) - Number(a));
-        const totalIng = entries.reduce((s, [, v]) => s + v.ing, 0);
-        const totalEgr = entries.reduce((s, [, v]) => s + v.egr, 0);
+        // Agregar sin-cierre al año actual
+        if (_sinCHasData) {
+            const curYr = new Date().getFullYear();
+            if (!byYear[curYr]) byYear[curYr] = { ing: 0, egr: 0 };
+            byYear[curYr].ing += _sinC.ingresos;
+            byYear[curYr].egr += _sinC.egresos;
+        }
+        const entriesWithSinC = Object.entries(byYear).sort(([a], [b]) => Number(b) - Number(a));
+        const totalIng = entriesWithSinC.reduce((s, [, v]) => s + v.ing, 0);
+        const totalEgr = entriesWithSinC.reduce((s, [, v]) => s + v.egr, 0);
         const totalNet = totalIng - totalEgr;
 
-        if (lcKpi) lcKpi.innerHTML = _lcKpiHtml(totalIng, totalEgr, totalNet, entries.length, 'años');
+        if (lcKpi) lcKpi.innerHTML = _lcKpiHtml(totalIng, totalEgr, totalNet, entriesWithSinC.length, 'años');
         if (lcHead) lcHead.innerHTML = HEAD;
-        lcBody.innerHTML = entries.map(([yr, v]) => {
+        lcBody.innerHTML = (entriesWithSinC.map(([yr, v]) => {
             const net = v.ing - v.egr;
             return `<tr>
                 <td class="col-left" style="font-weight:800;">${yr}</td>
@@ -19460,7 +19594,7 @@ function renderLibroContable() {
                 <td>${v.egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(v.egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
                 <td>${fmtNet(net)}</td>
             </tr>`;
-        }).join('') || `<tr><td class="caja-empty" colspan="4">Sin registros.</td></tr>`;
+        }).join('') || `<tr><td class="caja-empty" colspan="4">Sin registros.</td></tr>`) + _sinCRow;
         if (lcFoot) lcFoot.innerHTML = `<tr>
             <td class="col-left foot-label">TOTAL HISTÓRICO</td>
             <td class="foot-entrada">${formatMoney(totalIng)}</td>
@@ -19477,8 +19611,14 @@ function renderLibroContable() {
         return ms ? new Date(ms).getFullYear() === selectedYear : false;
     });
 
-    const totalIng = cierres.reduce((s, c) => s + getIng(c), 0);
-    const totalEgr = cierres.reduce((s, c) => s + getEgr(c), 0);
+    const cierresIng = cierres.reduce((s, c) => s + getIng(c), 0);
+    const cierresEgr = cierres.reduce((s, c) => s + getEgr(c), 0);
+    // Incluir sin-cierre del año seleccionado en los totales
+    const curYear = new Date().getFullYear();
+    const sinCIngYear = selectedYear === curYear ? _sinC.ingresos : 0;
+    const sinCEgrYear = selectedYear === curYear ? _sinC.egresos  : 0;
+    const totalIng = cierresIng + sinCIngYear;
+    const totalEgr = cierresEgr + sinCEgrYear;
     const totalNet = totalIng - totalEgr;
 
     if (lcKpi) lcKpi.innerHTML = _lcKpiHtml(totalIng, totalEgr, totalNet, cierres.length, 'jornadas');
@@ -19495,7 +19635,7 @@ function renderLibroContable() {
     if (_lcActivePeriod === 'diario') {
         // ── VISTA DIARIA ──
         const sorted = [...cierres].sort((a, b) => getMs(b) - getMs(a));
-        lcBody.innerHTML = sorted.map((c) => {
+        lcBody.innerHTML = _sinCRow + sorted.map((c) => {
             const d     = new Date(getMs(c));
             const dia   = d.toLocaleDateString('es-CO', { weekday: 'long' });
             const fecha = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -19523,8 +19663,15 @@ function renderLibroContable() {
             byMonth[mo].ing += getIng(c);
             byMonth[mo].egr += getEgr(c);
         });
+        // Agregar sin-cierre al mes actual si el año seleccionado es el corriente
+        if (selectedYear === curYear && _sinCHasData) {
+            const moActual = new Date().getMonth();
+            if (!byMonth[moActual]) byMonth[moActual] = { ing: 0, egr: 0 };
+            byMonth[moActual].ing += _sinC.ingresos;
+            byMonth[moActual].egr += _sinC.egresos;
+        }
 
-        lcBody.innerHTML = Object.entries(byMonth)
+        lcBody.innerHTML = (Object.entries(byMonth)
             .sort(([a], [b]) => Number(b) - Number(a))
             .map(([mo, m]) => {
                 const net = m.ing - m.egr;
@@ -19534,7 +19681,7 @@ function renderLibroContable() {
                     <td>${m.egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(m.egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
                     <td>${fmtNet(net)}</td>
                 </tr>`;
-            }).join('') || `<tr><td class="caja-empty" colspan="4">Sin datos mensuales.</td></tr>`;
+            }).join('') || `<tr><td class="caja-empty" colspan="4">Sin datos mensuales.</td></tr>`) + _sinCRow;
     }
 
     if (lcFoot) lcFoot.innerHTML = `<tr>
@@ -19581,6 +19728,13 @@ document.addEventListener('click', (e) => {
 document.getElementById('refreshLibroContableBtn')?.addEventListener('click', async () => {
     await loadCierresCaja();
     renderLibroContable();
+});
+
+// Botón "Ver" de la fila sin-cierre en el Libro Contable
+document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-lc-action="ver-sincierre"]')) {
+        _openMovimientosSincierreModal(_getMovimientosSinCierre());
+    }
 });
 
 document.getElementById('lcYearFilter')?.addEventListener('change', renderLibroContable);
