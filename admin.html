@@ -10429,7 +10429,28 @@
         .caja-cell-total-neg { color: #fca5a5; font-weight: 800; }
         .caja-cell-method   { color: rgba(255,255,255,0.55); font-weight: 600; }
         /* ── Libro Contable ── */
-        .lc-period-nav { display: flex; gap: 6px; padding: 14px 16px 0; flex-wrap: wrap; }
+        .lc-summary-bar {
+            display: flex; align-items: center; gap: 0; padding: 18px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.06); flex-wrap: wrap; gap: 12px;
+        }
+        .lc-sum-item {
+            display: flex; flex-direction: column; gap: 2px;
+            padding: 0 20px; border-right: 1px solid rgba(255,255,255,0.08);
+        }
+        .lc-sum-item:first-child { padding-left: 0; }
+        .lc-sum-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: .6px; color: var(--admin-muted); }
+        .lc-sum-val { font-size: 1.15rem; font-weight: 800; font-family: 'Oswald', sans-serif; }
+        .lc-sum-ing { color: #6ee7b7; }
+        .lc-sum-egr { color: #fca5a5; }
+        .lc-ver-mov-btn {
+            margin-left: auto; padding: 8px 18px; border-radius: 20px;
+            background: rgba(255,149,64,0.12); border: 1px solid rgba(255,149,64,0.35);
+            color: #ff9540; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif; transition: background .15s;
+            white-space: nowrap;
+        }
+        .lc-ver-mov-btn:hover { background: rgba(255,149,64,0.22); }
+        .lc-period-nav { display: flex; gap: 6px; padding: 14px 16px 10px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .lc-period-btn {
             padding: 5px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.14);
             background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.6);
@@ -10440,20 +10461,8 @@
         .lc-year-select {
             padding: 5px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.14);
             background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.8);
-            font-size: 0.75rem; font-weight: 600; cursor: pointer; outline: none;
+            font-size: 0.75rem; font-weight: 600; cursor: pointer; outline: none; margin-left: auto;
         }
-        .lc-kpi-grid {
-            display: grid; grid-template-columns: repeat(4,1fr); gap: 10px;
-            padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.06);
-        }
-        @media (max-width:900px) { .lc-kpi-grid { grid-template-columns: repeat(2,1fr); } }
-        .lc-kpi {
-            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 12px; padding: 12px 14px;
-        }
-        .lc-kpi-label { font-size: 0.66rem; color: var(--admin-muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 4px; }
-        .lc-kpi-value { font-size: 1.2rem; font-weight: 800; font-family: 'Oswald',sans-serif; }
-        .lc-kpi-sub { font-size: 0.68rem; color: var(--admin-muted); margin-top: 2px; }
         .lc-section-header {
             font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1.2px;
             color: var(--admin-muted); padding: 10px 16px 4px; font-weight: 700;
@@ -12538,26 +12547,27 @@
                                 <article class="admin-card">
                                     <div class="card-head">
                                         <h2>Libro Contable</h2>
-                                        <div style="display:flex;gap:8px;align-items:center;">
+                                        <button type="button" class="card-collapse-btn" id="refreshLibroContableBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
+                                    </div>
+                                    <!-- Línea de totales globales -->
+                                    <div id="lcSummaryBar" class="lc-summary-bar">
+                                        <span style="color:var(--admin-muted);font-size:0.85rem;">Cargando…</span>
+                                    </div>
+                                    <!-- Panel de movimientos (colapsable) -->
+                                    <div id="lcMovimientosWrap" style="display:none;">
+                                        <div class="lc-period-nav">
+                                            <button type="button" class="lc-period-btn active" data-lc-period="diario">📅 Diario</button>
+                                            <button type="button" class="lc-period-btn" data-lc-period="mensual">📆 Mensual</button>
+                                            <button type="button" class="lc-period-btn" data-lc-period="anual">📊 Anual</button>
                                             <select id="lcYearFilter" class="lc-year-select" title="Filtrar por año"></select>
-                                            <button type="button" class="card-collapse-btn" id="refreshLibroContableBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
                                         </div>
-                                    </div>
-                                    <!-- Tabs de periodo -->
-                                    <div class="lc-period-nav">
-                                        <button type="button" class="lc-period-btn active" data-lc-period="diario">📅 Diario</button>
-                                        <button type="button" class="lc-period-btn" data-lc-period="mensual">📆 Mensual</button>
-                                        <button type="button" class="lc-period-btn" data-lc-period="anual">📊 Anual</button>
-                                    </div>
-                                    <!-- KPI cards -->
-                                    <div class="lc-kpi-grid" id="lcKpiGrid"></div>
-                                    <!-- Tabla contable -->
-                                    <div class="caja-ledger-wrap">
-                                        <table class="caja-ledger-table" style="min-width:700px;">
-                                            <thead id="lcHead"></thead>
-                                            <tbody id="lcBody"><tr><td class="caja-empty" colspan="8">Cargando libro contable…</td></tr></tbody>
-                                            <tfoot id="lcFoot"></tfoot>
-                                        </table>
+                                        <div class="caja-ledger-wrap">
+                                            <table class="caja-ledger-table" style="min-width:700px;">
+                                                <thead id="lcHead"></thead>
+                                                <tbody id="lcBody"><tr><td class="caja-empty" colspan="8">Cargando libro contable…</td></tr></tbody>
+                                                <tfoot id="lcFoot"></tfoot>
+                                            </table>
+                                        </div>
                                     </div>
                                 </article>
                             </div>
