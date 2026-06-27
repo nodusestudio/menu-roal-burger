@@ -19519,7 +19519,14 @@ function _renderLcTable() {
             ...dg.extGastos.map((g) => {
                 const hora = new Date(g._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
                 const amt  = Number(g.monto || 0);
-                const desc = g.descripcion ? escapeHtml(g.descripcion) : 'Sin descripción';
+                const cat  = getCategoriasGastos().find((c) => c.id === g.categoria);
+                const parts = [
+                    cat ? (cat.icon + ' ' + cat.nombre) : '',
+                    g.subcategoria || '',
+                    g.proveedor    || '',
+                    g.descripcion  || '',
+                ].map((s) => s.trim()).filter(Boolean);
+                const desc = parts.length ? parts.map(escapeHtml).join(' · ') : 'Sin descripción';
                 return `<tr class="lc-det-row" data-gid="${gid}" style="display:none;background:rgba(252,165,165,0.04);font-size:0.82rem;">
                     <td class="col-left" style="padding-left:24px;color:rgba(255,255,255,0.55);">
                         <span style="font-size:0.68rem;color:#fca5a5;display:block;">Gasto externo · ${hora}</span>
