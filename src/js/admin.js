@@ -5796,7 +5796,13 @@ function renderPosOrderItems() {
                             const _prevExtras = internalOrderItems
                                 .filter((i) => i.parentKey === key)
                                 .map((i) => ({ id: i.productId, name: i.productName, price: i.unitPrice }));
-                            internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== key && i.parentKey !== key);
+                            // Si tiene más de 1 unidad SIN extras propios, solo quitar 1 (el resto queda en carrito)
+                            if (item.quantity > 1 && !_prevExtras.length) {
+                                item.quantity -= 1;
+                                item.subtotal = item.quantity * item.unitPrice;
+                            } else {
+                                internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== key && i.parentKey !== key);
+                            }
                             renderPosOrderItems();
                             renderPosTotals();
                             posSelectedCategory = _editCat;
@@ -5906,11 +5912,13 @@ function _setPosUpgradeAddBtnState(enabled) {
 }
 
 function openPosUpgradeSheet(productId, productName, productPrice) {
-    _posUpgradePending = { productId, productName, productPrice, extras: [] };
+    _posUpgradePending = { productId, productName, productPrice, extras: [], qty: 1 };
     const overlay = document.getElementById('posUpgradeOverlay');
     if (!overlay) return;
     const commentInput = document.getElementById('posUpgradeComment');
     if (commentInput) commentInput.value = '';
+    const qtyVal = document.getElementById('posUpgradeQtyVal');
+    if (qtyVal) qtyVal.textContent = '1';
     overlay.hidden = false;
     overlay.style.display = 'flex';
 
@@ -5918,19 +5926,22 @@ function openPosUpgradeSheet(productId, productName, productPrice) {
     const addBtn = document.getElementById('posUpgradeAddBtn');
     if (addBtn) {
         addBtn.onclick = () => {
-            const { productId: pid, productName: pname, productPrice: pprice, extras } = _posUpgradePending;
+            const { productId: pid, productName: pname, productPrice: pprice, extras, qty = 1 } = _posUpgradePending;
             const comment = String(document.getElementById('posUpgradeComment')?.value || '').trim();
-            let mainKey;
+            const ts = Date.now();
             if (extras.length > 0) {
-                // Forzar clave única para evitar fusión con otro item del mismo producto
-                mainKey = `${pid}::u${Date.now()}`;
-                if (comment) mainKey += `::${comment}`;
-                addProductToPosOrder(pid, pname, pprice, comment || '', null, { forcedKey: mainKey });
+                // Cada unidad necesita su propio item padre con clave única (para vincular extras independientes)
+                for (let i = 0; i < qty; i++) {
+                    const mainKey = comment ? `${pid}::u${ts}_${i}::${comment}` : `${pid}::u${ts}_${i}`;
+                    addProductToPosOrder(pid, pname, pprice, comment || '', null, { forcedKey: mainKey });
+                    extras.forEach((e) => addProductToPosOrder(e.id, e.name, e.price, '', null, { parentKey: mainKey }));
+                }
             } else {
-                mainKey = comment ? `${pid}::${comment}` : pid;
-                addProductToPosOrder(pid, pname, pprice, comment || '');
+                // Sin extras: fusión normal (se suman al item existente del mismo producto/nota)
+                for (let i = 0; i < qty; i++) {
+                    addProductToPosOrder(pid, pname, pprice, comment || '');
+                }
             }
-            extras.forEach((e) => addProductToPosOrder(e.id, e.name, e.price, '', null, { parentKey: mainKey }));
             closePosUpgradeSheet();
         };
     }
@@ -5976,20 +5987,26 @@ function renderPosUpgradeStep1() {
 
     const catCombosPos = catData ? catData.combos_pos !== false : false;
     const combosDisponibles = catCombosPos ? combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false) : [];
-    const hayComboMenu = !yaHayCombo && combosDisponibles.length > 0;
-    const mostrarBebida = !yaHayBebida && hayBebida;
+    const hayComboMenu = combosDisponibles.length > 0;
+    const mostrarBebida = hayBebida;
 
     body.innerHTML = `
         <div class="pus-home-btns">
-            ${hayComboMenu    ? `<button type="button" class="pus-cat-btn combo"    id="pusGoCombo">🍔 Agregar Combo</button>` : ''}
-            ${hayAcomp        ? `<button type="button" class="pus-cat-btn adicional" id="pusGoAdicional">🥗 Adicionales</button>` : ''}
-            ${mostrarBebida   ? `<button type="button" class="pus-cat-btn bebida"    id="pusGoBebida">🥤 Solo Bebida</button>` : ''}
+            ${hayComboMenu  ? `<button type="button" class="pus-cat-btn combo${yaHayCombo ? ' is-change' : ''}" id="pusGoCombo">${yaHayCombo ? '🔄 Cambiar combo' : '🍔 Agregar combo'}</button>` : ''}
+            ${hayAcomp      ? `<button type="button" class="pus-cat-btn adicional" id="pusGoAdicional">🥗 Adicionales</button>` : ''}
+            ${mostrarBebida ? `<button type="button" class="pus-cat-btn bebida${yaHayBebida ? ' is-change' : ''}" id="pusGoBebida">${yaHayBebida ? '🔄 Cambiar bebida' : '🥤 Solo bebida'}</button>` : ''}
         </div>
         ${extrasHtml}`;
 
-    body.querySelector('#pusGoCombo')?.addEventListener('click', () => _renderPosUpgradeCombosPack(combosDisponibles));
+    body.querySelector('#pusGoCombo')?.addEventListener('click', () => {
+        if (yaHayCombo) _posUpgradePending.extras = _posUpgradePending.extras.filter((e) => !e.id.startsWith('combo-pack-'));
+        _renderPosUpgradeCombosPack(combosDisponibles);
+    });
     body.querySelector('#pusGoAdicional')?.addEventListener('click', () => _renderPosUpgradeAdicionales());
-    body.querySelector('#pusGoBebida')?.addEventListener('click', () => _renderPosUpgradeBebidas());
+    body.querySelector('#pusGoBebida')?.addEventListener('click', () => {
+        if (yaHayBebida) _posUpgradePending.extras = _posUpgradePending.extras.filter((e) => !e.id.startsWith('bev-'));
+        _renderPosUpgradeBebidas();
+    });
 
     body.querySelectorAll('.pus-extra-del').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -14634,6 +14651,20 @@ document.getElementById('internalOrderDiscount')?.addEventListener('input', rend
 
 // ── Cerrar upgrade sheet
 document.getElementById('posUpgradeCloseBtn')?.addEventListener('click', closePosUpgradeSheet);
+
+// ── Contador de cantidad en upgrade sheet ────────────────────────────────────
+document.getElementById('posUpgradeQtyMinus')?.addEventListener('click', () => {
+    if (!_posUpgradePending) return;
+    _posUpgradePending.qty = Math.max(1, (_posUpgradePending.qty || 1) - 1);
+    const el = document.getElementById('posUpgradeQtyVal');
+    if (el) el.textContent = _posUpgradePending.qty;
+});
+document.getElementById('posUpgradeQtyPlus')?.addEventListener('click', () => {
+    if (!_posUpgradePending) return;
+    _posUpgradePending.qty = (_posUpgradePending.qty || 1) + 1;
+    const el = document.getElementById('posUpgradeQtyVal');
+    if (el) el.textContent = _posUpgradePending.qty;
+});
 
 // ── Admin: agregar nueva opción de acompañamiento
 document.getElementById('addUpgradeOptionBtn')?.addEventListener('click', () => {

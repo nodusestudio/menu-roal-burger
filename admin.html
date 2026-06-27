@@ -4471,6 +4471,19 @@
         .pus-cat-btn.bebida { border-color: rgba(80,160,255,0.3); }
         .pus-cat-btn.adicional { border-color: rgba(255,170,50,0.3); }
         .pus-cat-btn.combo { border-color: rgba(110,231,183,0.4); color: #6ee7b7; }
+        .pus-cat-btn.is-change { opacity: 0.75; font-size: 0.78rem; }
+        .pos-upgrade-qty-row {
+            display: flex; align-items: center; justify-content: center; gap: 14px;
+            padding: 4px 0 2px;
+        }
+        .pus-qty-btn {
+            width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.08); color: #fff; font-size: 1.2rem; font-weight: 700;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: background 0.12s;
+        }
+        .pus-qty-btn:active { background: rgba(255,255,255,0.18); }
+        .pus-qty-label { font-size: 0.88rem; font-weight: 700; color: #eef4ff; min-width: 70px; text-align: center; }
 .pus-extras-list { display: flex; flex-direction: column; gap: 5px; }
         .pus-extra-row {
             display: flex; align-items: center; justify-content: space-between;
@@ -13256,6 +13269,11 @@
                 </div>
                 <div class="pos-upgrade-body" id="posUpgradeBody"></div>
                 <div class="pos-upgrade-footer">
+                    <div class="pos-upgrade-qty-row">
+                        <button type="button" class="pus-qty-btn" id="posUpgradeQtyMinus">−</button>
+                        <span class="pus-qty-label"><span id="posUpgradeQtyVal">1</span> unidad</span>
+                        <button type="button" class="pus-qty-btn" id="posUpgradeQtyPlus">+</button>
+                    </div>
                     <textarea id="posUpgradeComment" class="pos-upgrade-comment" placeholder="Comentario: sin cebolla, extra salsa..." rows="1"></textarea>
                     <button type="button" class="pos-upgrade-add-btn" id="posUpgradeAddBtn">AGREGAR AL CARRITO</button>
                 </div>
