@@ -13006,19 +13006,51 @@
             <div class="admin-tab-panel" data-tab-panel="metricas">
                 <div class="section-toolbar">
                     <nav class="metrics-tabs-nav" role="tablist">
-                        <button type="button" class="metrics-tab-btn active" data-metrics-tab="usuarios" role="tab">Usuarios</button>
+                        <button type="button" class="metrics-tab-btn active" data-metrics-tab="pos" role="tab">POS</button>
+                        <button type="button" class="metrics-tab-btn" data-metrics-tab="app" role="tab">APP</button>
                         <button type="button" class="metrics-tab-btn" data-metrics-tab="productos" role="tab">Productos</button>
                     </nav>
                     <button type="button" class="section-save-btn" data-section-save="metricas">Actualizar</button>
                 </div>
 
-                <!-- PESTAÑA: USUARIOS -->
-                <div class="metrics-panel active" id="metricsPanelUsuarios">
+                <!-- PESTAÑA: POS -->
+                <div class="metrics-panel active" id="metricsPanelPos">
+                    <article class="admin-card">
+                        <div class="metrics-summary-strip">
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="metricsPosOrders">—</span>
+                                <span class="metrics-kpi-label">Pedidos POS</span>
+                            </div>
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="metricsPosClients">—</span>
+                                <span class="metrics-kpi-label">Clientes POS</span>
+                            </div>
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="metricsPosRevenue">—</span>
+                                <span class="metrics-kpi-label">Ingresos POS</span>
+                            </div>
+                            <div class="metrics-kpi-tile">
+                                <span class="metrics-kpi-num" id="metricsPosAvgTicket">—</span>
+                                <span class="metrics-kpi-label">Ticket promedio</span>
+                            </div>
+                        </div>
+                    </article>
+                    <article class="admin-card admin-card--flush">
+                        <div class="metrics-users-toolbar">
+                            <input type="text" class="metrics-search" id="metricsPosSrch" placeholder="Buscar cliente POS..." autocomplete="off">
+                            <span class="metrics-users-count" id="metricsPosCountLbl"></span>
+                        </div>
+                        <div id="metricsPosList" class="metrics-users-list"></div>
+                    </article>
+                </div>
+
+                <!-- PESTAÑA: APP -->
+                <div class="metrics-panel" id="metricsPanelApp">
                     <article class="admin-card">
                         <div class="metrics-summary-strip">
                             <div class="metrics-kpi-tile">
                                 <span class="metrics-kpi-num" id="metricsUserCount">—</span>
-                                <span class="metrics-kpi-label">Usuarios registrados</span>
+                                <span class="metrics-kpi-label">Usuarios APP</span>
                             </div>
                             <div class="metrics-kpi-tile">
                                 <span class="metrics-kpi-num" id="metricsUserWithOrders">—</span>

@@ -8549,6 +8549,7 @@ function createFeaturedRow(product) {
 // ── Métricas: Pestaña Usuarios ────────────────────────────────────────────────
 
 let _metricsUsersFiltered = [];
+let _metricsPosFiltered = [];
 
 let _prodMetricsPeriod = 'all';
 
@@ -8637,9 +8638,9 @@ function renderMetricsUsers() {
     const list = document.getElementById('metricsUsersList');
     if (!list) return;
 
-    const users = (clientsState || []).slice().sort((a, b) =>
-        (b.totalOrders || 0) - (a.totalOrders || 0)
-    );
+    const users = (clientsState || [])
+        .filter((c) => c.source !== 'admin_pos')
+        .slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
     // KPIs de resumen
     const withOrders = users.filter((u) => (u.totalOrders || 0) > 0);
@@ -8698,6 +8699,63 @@ function _renderMetricsUserRows(users) {
     list.querySelectorAll('.metrics-user-row').forEach((row) => {
         row.addEventListener('click', () => _toggleMetricsUserDetail(row));
     });
+}
+
+function renderMetricsPos() {
+    const list = document.getElementById('metricsPosList');
+    if (!list) return;
+
+    const posOrders = (ordersState || []).filter((o) => o.isAdminOrder || o.source === 'admin_pos');
+    const posClients = (clientsState || [])
+        .filter((c) => c.source === 'admin_pos')
+        .slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
+
+    const totalRevenue = posOrders.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+    const avgTicket = posOrders.length ? totalRevenue / posOrders.length : 0;
+
+    const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setKpi('metricsPosOrders', posOrders.length.toLocaleString('es-CO'));
+    setKpi('metricsPosClients', posClients.length.toLocaleString('es-CO'));
+    setKpi('metricsPosRevenue', formatMoney(totalRevenue));
+    setKpi('metricsPosAvgTicket', formatMoney(avgTicket));
+
+    _metricsPosFiltered = posClients;
+    _renderMetricsPosRows(posClients);
+}
+
+function _renderMetricsPosRows(clients) {
+    const list = document.getElementById('metricsPosList');
+    const countLbl = document.getElementById('metricsPosCountLbl');
+    if (!list) return;
+    if (countLbl) countLbl.textContent = `${clients.length} cliente${clients.length !== 1 ? 's' : ''}`;
+
+    if (!clients.length) {
+        list.innerHTML = '<p class="muted" style="padding:24px 16px;text-align:center;">Sin clientes POS registrados.</p>';
+        return;
+    }
+
+    list.innerHTML = clients.map((u) => {
+        const orders = u.totalOrders || 0;
+        const since = u.firstOrderAt
+            ? new Date(u.firstOrderAt.seconds ? u.firstOrderAt.seconds * 1000 : u.firstOrderAt)
+                .toLocaleDateString('es-CO', { year: 'numeric', month: 'short' })
+            : '—';
+        const orderChip = orders > 0
+            ? `<span class="metrics-chip hi">${orders} pedido${orders !== 1 ? 's' : ''}</span>`
+            : `<span class="metrics-chip">Sin pedidos</span>`;
+        return `
+        <div class="metrics-user-row">
+            <div class="metrics-user-main">
+                <div class="metrics-user-name">${escapeHtml(u.customerName || 'Sin nombre')}</div>
+                <div class="metrics-user-phone">${escapeHtml(u.customerPhone || '—')}</div>
+                <div class="metrics-user-chips">${orderChip}</div>
+            </div>
+            <div class="metrics-user-side">
+                <div class="metrics-user-total">${u.lastOrderTotal ? formatMoney(u.lastOrderTotal) : '—'}</div>
+                <div class="metrics-user-since">desde ${since}</div>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 async function _toggleMetricsUserDetail(row) {
@@ -13207,6 +13265,7 @@ async function reloadDataAndRender() {
     renderClients();
     renderMessages();
     updateMessagesAttentionState();
+    renderMetricsPos();
     renderMetricsUsers();
     renderMetricasProductos();
     await syncStats();
@@ -14531,12 +14590,25 @@ document.getElementById('metricsUserSearch')?.addEventListener('input', (e) => {
     _renderMetricsUserRows(filtered);
 });
 
-// Tabs de métricas (Usuarios / Productos)
+// Buscador de clientes POS en métricas
+document.getElementById('metricsPosSrch')?.addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const filtered = q ? _metricsPosFiltered.filter((u) => {
+        const name = String(u.customerName || '').toLowerCase();
+        const phone = String(u.customerPhone || '');
+        return name.includes(q) || phone.includes(q);
+    }) : _metricsPosFiltered;
+    _renderMetricsPosRows(filtered);
+});
+
+// Tabs de métricas (POS / APP / Productos)
 document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
         const tab = btn.dataset.metricsTab;
         document.querySelectorAll('.metrics-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
         document.querySelectorAll('.metrics-panel').forEach((p) => p.classList.toggle('active', p.id === `metricsPanel${tab.charAt(0).toUpperCase()}${tab.slice(1)}`));
+        if (tab === 'pos') renderMetricsPos();
+        if (tab === 'app') renderMetricsUsers();
         if (tab === 'productos') renderMetricasProductos();
     });
 });
