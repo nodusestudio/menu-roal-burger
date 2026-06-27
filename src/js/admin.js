@@ -8707,7 +8707,6 @@ function renderMetricsPos() {
 
     const posOrders = (ordersState || []).filter((o) => o.isAdminOrder || o.source === 'admin_pos');
     const posClients = (clientsState || [])
-        .filter((c) => c.source === 'admin_pos')
         .slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
     const totalRevenue = posOrders.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
