@@ -13824,12 +13824,22 @@ function _ptsRenderSearchResults(query) {
         return;
     }
 
-    container.innerHTML = matches.map((c) => `
+    container.innerHTML = matches.map((c) => {
+        const rawAddrs = Array.isArray(c.savedAddresses) ? c.savedAddresses : [];
+        const addrTexts = rawAddrs.map((a) => {
+            if (!a) return '';
+            return typeof a === 'string' ? a.trim() : String(a.address || a.value || a.label || '').trim();
+        }).filter(Boolean);
+        const addrsHtml = addrTexts.length
+            ? `<div class="pts-result-addrs">${addrTexts.map((t) => `<span class="pts-result-addr-chip">${escapeHtml(t)}</span>`).join('')}</div>`
+            : '';
+        return `
         <div class="pts-result-item" data-pts-client-id="${escapeHtml(c.id || '')}" data-pts-client-name="${escapeHtml(c.customerName || '')}" data-pts-client-phone="${escapeHtml(c.customerPhone || '')}">
             <div class="pts-result-name">${escapeHtml(c.customerName || 'Sin nombre')}</div>
             <div class="pts-result-phone">${escapeHtml(c.customerPhone || '')}</div>
-        </div>
-    `).join('');
+            ${addrsHtml}
+        </div>`;
+    }).join('');
 }
 
 // Muestra el chip de cliente seleccionado y oculta el input de búsqueda
