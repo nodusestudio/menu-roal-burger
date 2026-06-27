@@ -7439,9 +7439,14 @@
 
         .clients-table {
             width: 100%;
-            min-width: 980px;
+            min-width: 860px;
             border-collapse: separate;
             border-spacing: 0 10px;
+        }
+        /* Ocultar "Primera visita" para ganar espacio y que las acciones siempre sean visibles */
+        .clients-table thead th:nth-child(4),
+        .clients-table tbody td:nth-child(4) {
+            display: none;
         }
 
         .clients-table thead th {
