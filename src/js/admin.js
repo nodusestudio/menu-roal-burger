@@ -18915,6 +18915,7 @@ function _updateCajaEstadoUI() {
 // ── Libro Contable: historial de cierres de caja ──────────────────────────────
 let _cierresCajaState = [];
 let _cierresSumTotals = {};
+let _gastosExternosState = []; // gastos tipo:'externo' añadidos desde el historial
 
 async function loadCierresCaja() {
     const snap = await firebaseDb.collection(CIERRES_CAJA_COLLECTION)
@@ -18922,6 +18923,18 @@ async function loadCierresCaja() {
         .limit(100)
         .get();
     _cierresCajaState = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    // Cargar gastos externos (registrados desde Historial, fuera de cualquier cierre)
+    try {
+        const gSnap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
+            .orderBy('registradoAt', 'desc')
+            .limit(500)
+            .get();
+        _gastosExternosState = gSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((g) => g.tipo === 'externo');
+    } catch (_) { _gastosExternosState = []; }
+
     return _cierresCajaState;
 }
 
@@ -19412,6 +19425,20 @@ function renderLibroContable() {
         ? `<span class="lc-utilidad-pos">${formatMoney(v)}</span>`
         : `<span class="lc-utilidad-neg">−${formatMoney(Math.abs(v))}</span>`;
 
+    // Gastos externos (tipo:'externo') agrupados por año y mes — misma fuente que Historial de Cajas
+    const _extEgrByYear  = {};
+    const _extEgrByMonth = {}; // clave: 'YYYY-M'
+    _gastosExternosState.forEach((g) => {
+        const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+        if (!ms) return;
+        const d   = new Date(ms);
+        const yr  = d.getFullYear();
+        const mo  = d.getMonth();
+        const amt = Number(g.monto || 0);
+        _extEgrByYear[yr]          = (_extEgrByYear[yr]          || 0) + amt;
+        _extEgrByMonth[`${yr}-${mo}`] = (_extEgrByMonth[`${yr}-${mo}`] || 0) + amt;
+    });
+
     // Populate year selector from ALL cierres
     const allYears = [...new Set(_cierresCajaState.map((c) => {
         const ms = getMs(c);
@@ -19445,6 +19472,12 @@ function renderLibroContable() {
             byYear[yr].egr += getEgr(c);
         });
 
+        // Sumar gastos externos al año correspondiente
+        Object.entries(_extEgrByYear).forEach(([yr, amt]) => {
+            const y = Number(yr);
+            if (!byYear[y]) byYear[y] = { ing: 0, egr: 0 };
+            byYear[y].egr += amt;
+        });
         const entries = Object.entries(byYear).sort(([a], [b]) => Number(b) - Number(a));
         const totalIng = entries.reduce((s, [, v]) => s + v.ing, 0);
         const totalEgr = entries.reduce((s, [, v]) => s + v.egr, 0);
@@ -19477,13 +19510,20 @@ function renderLibroContable() {
         return ms ? new Date(ms).getFullYear() === selectedYear : false;
     });
 
+    // Gastos externos del año seleccionado
+    const gastosExtYear = _gastosExternosState.filter((g) => {
+        const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+        return ms ? new Date(ms).getFullYear() === selectedYear : false;
+    });
+    const extEgrForYear = gastosExtYear.reduce((s, g) => s + Number(g.monto || 0), 0);
+
     const totalIng = cierres.reduce((s, c) => s + getIng(c), 0);
-    const totalEgr = cierres.reduce((s, c) => s + getEgr(c), 0);
+    const totalEgr = cierres.reduce((s, c) => s + getEgr(c), 0) + extEgrForYear;
     const totalNet = totalIng - totalEgr;
 
     if (lcKpi) lcKpi.innerHTML = _lcKpiHtml(totalIng, totalEgr, totalNet, cierres.length, 'jornadas');
 
-    if (!cierres.length) {
+    if (!cierres.length && !gastosExtYear.length) {
         if (lcHead) lcHead.innerHTML = '';
         lcBody.innerHTML = `<tr><td class="caja-empty" colspan="4">Sin registros para ${selectedYear}.</td></tr>`;
         if (lcFoot) lcFoot.innerHTML = '';
@@ -19495,7 +19535,26 @@ function renderLibroContable() {
     if (_lcActivePeriod === 'diario') {
         // ── VISTA DIARIA ──
         const sorted = [...cierres].sort((a, b) => getMs(b) - getMs(a));
-        lcBody.innerHTML = sorted.map((c) => {
+        // Gastos externos como filas individuales
+        const extRows = gastosExtYear.map((g) => {
+            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            const d = new Date(ms);
+            const dia = d.toLocaleDateString('es-CO', { weekday: 'long' });
+            const fecha = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const diaLabel = dia.charAt(0).toUpperCase() + dia.slice(1);
+            const amt = Number(g.monto || 0);
+            const desc = g.descripcion ? ` — ${g.descripcion}` : '';
+            return { ms, html: `<tr style="opacity:0.85;">
+                <td class="col-left" style="font-weight:600;white-space:nowrap;">
+                    <span style="display:block;font-size:0.75rem;font-weight:400;color:var(--admin-muted);letter-spacing:0.04em;text-transform:uppercase;">${diaLabel}</span>
+                    ${fecha}<span style="font-size:0.7rem;color:var(--admin-muted);display:block;">Gasto externo${escapeHtml(desc)}</span>
+                </td>
+                <td class="caja-cell-entrada">—</td>
+                <td><span class="caja-cell-salida">−${formatMoney(amt)}</span></td>
+                <td>${fmtNet(-amt)}</td>
+            </tr>` };
+        });
+        const cierreRows = sorted.map((c) => {
             const d     = new Date(getMs(c));
             const dia   = d.toLocaleDateString('es-CO', { weekday: 'long' });
             const fecha = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -19503,7 +19562,7 @@ function renderLibroContable() {
             const ing = getIng(c);
             const egr = getEgr(c);
             const net = ing - egr;
-            return `<tr>
+            return { ms: getMs(c), html: `<tr>
                 <td class="col-left" style="font-weight:600;white-space:nowrap;">
                     <span style="display:block;font-size:0.75rem;font-weight:400;color:var(--admin-muted);letter-spacing:0.04em;text-transform:uppercase;">${diaLabel}</span>
                     ${fecha}
@@ -19511,8 +19570,10 @@ function renderLibroContable() {
                 <td class="caja-cell-entrada">${formatMoney(ing)}</td>
                 <td>${egr > 0 ? `<span class="caja-cell-salida">−${formatMoney(egr)}</span>` : '<span style="color:var(--admin-muted);">—</span>'}</td>
                 <td>${fmtNet(net)}</td>
-            </tr>`;
-        }).join('');
+            </tr>` };
+        });
+        const allRows = [...cierreRows, ...extRows].sort((a, b) => b.ms - a.ms);
+        lcBody.innerHTML = allRows.map((r) => r.html).join('') || `<tr><td class="caja-empty" colspan="4">Sin datos.</td></tr>`;
 
     } else {
         // ── VISTA MENSUAL ──
@@ -19522,6 +19583,14 @@ function renderLibroContable() {
             if (!byMonth[mo]) byMonth[mo] = { ing: 0, egr: 0 };
             byMonth[mo].ing += getIng(c);
             byMonth[mo].egr += getEgr(c);
+        });
+        // Sumar gastos externos al mes correspondiente
+        gastosExtYear.forEach((g) => {
+            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            if (!ms) return;
+            const mo = new Date(ms).getMonth();
+            if (!byMonth[mo]) byMonth[mo] = { ing: 0, egr: 0 };
+            byMonth[mo].egr += Number(g.monto || 0);
         });
 
         lcBody.innerHTML = Object.entries(byMonth)
