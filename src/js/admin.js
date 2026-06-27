@@ -623,6 +623,25 @@ function parseClientSavedAddressesInput(rawValue = '', primaryAddress = '') {
     return normalizeClientSavedAddresses(lines, primaryAddress);
 }
 
+function renderClientAddrChips(addresses) {
+    const list = document.getElementById('clientEditAddressList');
+    if (!list) return;
+    list.innerHTML = addresses.filter(Boolean).map((addr) =>
+        `<div class="client-addr-chip" data-addr="${escapeHtml(addr)}">
+            <span class="client-addr-text">${escapeHtml(addr)}</span>
+            <button type="button" class="client-addr-del" aria-label="Eliminar direccion">&times;</button>
+        </div>`
+    ).join('');
+}
+
+function getClientAddrChips() {
+    const list = document.getElementById('clientEditAddressList');
+    if (!list) return [];
+    return Array.from(list.querySelectorAll('.client-addr-chip'))
+        .map((chip) => String(chip.dataset.addr || '').trim())
+        .filter(Boolean);
+}
+
 let _mobToastTimer = null;
 function _bindOverlayClose(overlay, closeFn) {
     let _downOnOverlay = false;
@@ -10992,9 +11011,7 @@ function openCreateClientModal() {
         clientEditSaveBtn.textContent = 'Guardar cliente';
         clientEditSaveBtn.disabled = false;
     }
-    if (clientEditSavedAddressesInput) {
-        clientEditSavedAddressesInput.value = '';
-    }
+    renderClientAddrChips([]);
     clientEditModal.classList.add('show');
     clientEditModal.setAttribute('aria-hidden', 'false');
     clientEditNameInput?.focus();
@@ -11022,9 +11039,7 @@ function openEditClientModal(client) {
     if (clientEditAddressInput) {
         clientEditAddressInput.value = client.address;
     }
-    if (clientEditSavedAddressesInput) {
-        clientEditSavedAddressesInput.value = client.savedAddresses.join('\n');
-    }
+    renderClientAddrChips(client.savedAddresses || []);
     if (clientEditSaveBtn) {
         clientEditSaveBtn.textContent = 'Guardar cambios';
         clientEditSaveBtn.disabled = false;
@@ -15161,6 +15176,31 @@ document.addEventListener('click', async (event) => {
     }
 });
 
+// ── Chips de direcciones: agregar y eliminar ──
+document.getElementById('clientEditAddAddressBtn')?.addEventListener('click', () => {
+    const input = document.getElementById('clientEditNewAddress');
+    const val = String(input?.value || '').trim();
+    if (!val) return;
+    const current = getClientAddrChips();
+    if (current.some((a) => a.toLowerCase() === val.toLowerCase())) return;
+    renderClientAddrChips([...current, val]);
+    if (input) input.value = '';
+    input?.focus();
+});
+
+document.getElementById('clientEditNewAddress')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('clientEditAddAddressBtn')?.click(); }
+});
+
+document.getElementById('clientEditAddressList')?.addEventListener('click', (e) => {
+    const del = e.target.closest('.client-addr-del');
+    if (!del) return;
+    const chip = del.closest('.client-addr-chip');
+    if (!chip) return;
+    const current = getClientAddrChips().filter((a) => a !== chip.dataset.addr);
+    renderClientAddrChips(current);
+});
+
 if (clientEditForm) {
     clientEditForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -15170,7 +15210,7 @@ if (clientEditForm) {
         const customerName = String(clientEditNameInput?.value || '').trim();
         const customerPhone = String(clientEditPhoneInput?.value || '').trim();
         const address = String(clientEditAddressInput?.value || '').trim();
-        const savedAddresses = parseClientSavedAddressesInput(clientEditSavedAddressesInput?.value || '', address);
+        const savedAddresses = normalizeClientSavedAddresses(getClientAddrChips(), address);
         const customerPhoneDigits = normalizePhoneDigits(customerPhone);
 
         if (!customerName || !customerPhone || !address) {
