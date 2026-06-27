@@ -10159,12 +10159,12 @@ function renderOrders() {
     });
 
     const selectedOrder = ordersState.find((order) => order.id === selectedOrderId) || null;
-    if (!selectedOrder || selectedOrder.status === 'entregado') {
+    if (!selectedOrder) {
         selectedOrderId = null;
         closeMobileTicketPanel();
     }
 
-    renderOrderTicket(selectedOrder?.status === 'entregado' ? null : selectedOrder);
+    renderOrderTicket(selectedOrder || null);
     applyMobileOrdersLane();
     updateOrdersAttentionState();
     renderSalesDayBanner();
