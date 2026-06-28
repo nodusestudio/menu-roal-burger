@@ -10444,14 +10444,17 @@ function renderOrders() {
 function renderSalesDayBanner() {
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // Todos los pedidos cobrados en la jornada (pagados, sin importar si ya fueron entregados)
+    // Pedidos cobrados HOY (el banner siempre muestra el día actual,
+    // independientemente de cuándo se abrió la caja para evitar acumulación de días anteriores)
+    const aperturaHoy = cajaAperturaAt && new Date(cajaAperturaAt).toISOString().split('T')[0] === todayStr;
     const paidOrders = ordersState.filter((o) => {
         if (o.voided || o.anulado) return false;
         if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
         const paidMs = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt || 0);
         if (!paidMs) return false;
-        if (cajaAperturaAt) return paidMs >= cajaAperturaAt;
-        return new Date(paidMs).toISOString().split('T')[0] === todayStr;
+        if (new Date(paidMs).toISOString().split('T')[0] !== todayStr) return false;
+        if (aperturaHoy) return paidMs >= cajaAperturaAt;
+        return true;
     });
 
     // Efectivo vs digital
@@ -10481,9 +10484,19 @@ function renderSalesDayBanner() {
     }
 
     if (salesDayStatusMeta) {
-        salesDayStatusMeta.textContent = salesDayState?.openedAt
-            ? `Apertura: ${formatDateTime(salesDayState.openedAt)}`
-            : 'Se abrira automaticamente al sincronizar.';
+        if (salesDayState?.openedAt) {
+            const openedDate = new Date(
+                salesDayState.openedAt?.toMillis ? salesDayState.openedAt.toMillis() : Number(salesDayState.openedAt)
+            ).toISOString().split('T')[0];
+            const esJornadaAnterior = openedDate && openedDate !== todayStr;
+            salesDayStatusMeta.textContent = esJornadaAnterior
+                ? `⚠️ Jornada sin cerrar desde ${formatDateTime(salesDayState.openedAt)} — cierra y reabre la caja`
+                : `Apertura: ${formatDateTime(salesDayState.openedAt)}`;
+            salesDayStatusMeta.style.color = esJornadaAnterior ? '#fbbf24' : '';
+        } else {
+            salesDayStatusMeta.textContent = 'Se abrira automaticamente al sincronizar.';
+            salesDayStatusMeta.style.color = '';
+        }
     }
 
     if (salesDayDeliveredTotal) {
