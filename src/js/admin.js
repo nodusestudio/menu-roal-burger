@@ -18713,7 +18713,25 @@ async function cerrarCaja() {
         });
 
         if (!paid.length) {
-            showNotice('No hay cobros en la jornada actual para cerrar la caja.', 'error');
+            // Sin ventas → ofrecer cierre forzado para resetear la jornada
+            const confirmar = window.confirm(
+                '⚠️ No hay cobros en esta jornada.\n\n' +
+                '¿Deseas cerrar la caja y resetear la jornada de todas formas?\n' +
+                '(Útil para corregir una jornada que quedó abierta del día anterior)'
+            );
+            if (!confirmar) return;
+            // Reset físico de caja + reset de jornada en Firestore
+            cajaAperturaAt = 0;
+            _cajaAperturaBy = '';
+            _cajaFondoInicial = 0;
+            try { localStorage.removeItem(CAJA_APERTURA_STORAGE_KEY); } catch {}
+            await saveCajaAperturaToFirestore(0, { aperturaBy: '', fondoInicial: 0, cerrada: true });
+            await firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(SALES_DAY_STATE_DOC_ID)
+                .set({ openedAt: null, status: 'idle', updatedAt: firestoreNow() }, { merge: true });
+            renderCajaDiaria();
+            renderOrders();
+            _updateCajaEstadoUI();
+            showNotice('Caja cerrada y jornada reseteada. Ya puedes abrir una nueva jornada.', 'ok');
             return;
         }
 
