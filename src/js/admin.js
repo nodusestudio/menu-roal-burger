@@ -10479,11 +10479,15 @@ function renderSalesDayBanner() {
         .reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
 
     if (salesDayStatusLabel) {
-        salesDayStatusLabel.textContent = salesDayState?.openedAt ? 'Jornada activa' : 'Jornada en preparacion';
+        salesDayStatusLabel.textContent = (aperturaHoy || salesDayState?.openedAt) ? 'Jornada activa' : 'Jornada en preparacion';
     }
 
     if (salesDayStatusMeta) {
-        if (salesDayState?.openedAt) {
+        if (aperturaHoy) {
+            // Caja abierta hoy → mostrar hora exacta de apertura física
+            salesDayStatusMeta.textContent = `Apertura: ${formatDateTime(cajaAperturaAt)}`;
+            salesDayStatusMeta.style.color = '';
+        } else if (salesDayState?.openedAt) {
             const openedDate = new Date(
                 salesDayState.openedAt?.toMillis ? salesDayState.openedAt.toMillis() : Number(salesDayState.openedAt)
             ).toISOString().split('T')[0];
