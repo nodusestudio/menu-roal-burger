@@ -67,7 +67,29 @@ function trackMenuModal() {
     }
 }
 
+function trackVisita(db) {
+    try {
+        if (!db) return;
+        const now = new Date();
+        const date = now.toISOString().slice(0, 10);
+        const hour = now.getHours();
+        const ref = document.referrer || '';
+        const params = new URLSearchParams(window.location.search);
+        const utm = params.get('utm_source');
+        let source = 'directo';
+        if (utm) { source = utm.toLowerCase(); }
+        else if (ref.includes('instagram.com')) { source = 'instagram'; }
+        else if (ref.includes('facebook.com') || ref.includes('fb.com') || ref.includes('fb.me')) { source = 'facebook'; }
+        else if (ref.includes('tiktok.com')) { source = 'tiktok'; }
+        else if (ref.includes('wa.me') || ref.includes('whatsapp')) { source = 'whatsapp'; }
+        else if (ref.includes('google.')) { source = 'google'; }
+        else if (ref) { source = 'otro'; }
+        db.collection('visitas').add({ ts: Date.now(), date, hour, source });
+    } catch(e) {}
+}
+
 // Expose to global scope explicitly (for older browsers)
 window.trackButtonClick = window.trackButtonClick || trackButtonClick;
 window.trackProductInterest = window.trackProductInterest || trackProductInterest;
 window.trackMenuModal = window.trackMenuModal || trackMenuModal;
+window.trackVisita = window.trackVisita || trackVisita;

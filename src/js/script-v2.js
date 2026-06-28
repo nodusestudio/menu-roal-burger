@@ -11769,6 +11769,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('has-auth-nav');
     setActiveCustomerProfile(loadStoredCustomerProfile());
 
+    // Registrar visita al menú para métricas de tráfico
+    try {
+        const _vdb = getPublicFirebaseDb();
+        if (typeof trackVisita === 'function') trackVisita(_vdb);
+    } catch(e) {}
+
+
     // Garantía: cualquier ruta que cierre el splash también muestra el homeScreen.
     // El failsafe de 4s en el inline script re-lee window.__roalHideSplash, que ya es
     // este wrapper, así que también llama showHomeScreen() en ese caso.

@@ -13328,6 +13328,38 @@
                         </div>
                     </article>
 
+                    <article class="admin-card" id="artTrafico">
+                        <div class="met-section-title">Tráfico al menú <small id="trafPeriodLbl" style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">cargando…</small></div>
+                        <div class="met-kpi-row">
+                            <div class="met-kpi-card met-kpi-card--hi">
+                                <span class="met-kpi-val" id="trafKpi30d">—</span>
+                                <span class="met-kpi-lbl">Visitas (30 días)</span>
+                            </div>
+                            <div class="met-kpi-card">
+                                <span class="met-kpi-val" id="trafKpi7d">—</span>
+                                <span class="met-kpi-lbl">Visitas (7 días)</span>
+                            </div>
+                            <div class="met-kpi-card met-kpi-card--green">
+                                <span class="met-kpi-val" id="trafKpiHoy">—</span>
+                                <span class="met-kpi-lbl">Visitas hoy</span>
+                            </div>
+                            <div class="met-kpi-card met-kpi-card--purple">
+                                <span class="met-kpi-val" id="trafKpiSource">—</span>
+                                <span class="met-kpi-lbl">Fuente principal</span>
+                            </div>
+                        </div>
+                        <div class="met-analytics-grid" style="margin-top:1rem">
+                            <div class="met-analytics-card">
+                                <div class="met-analytics-title">Visitas diarias — últimos 14 días</div>
+                                <div id="trafDayChart"></div>
+                            </div>
+                            <div class="met-analytics-card">
+                                <div class="met-analytics-title">Origen de visitas</div>
+                                <div id="trafSourceChart"></div>
+                            </div>
+                        </div>
+                    </article>
+
                     <article class="admin-card">
                         <div class="met-section-title">Segmentación de clientes</div>
                         <div class="met-segments">
@@ -14332,7 +14364,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260628a"></script>
+    <script src="admin.js?v=20260628b"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
