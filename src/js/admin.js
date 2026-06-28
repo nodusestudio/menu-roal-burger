@@ -9574,12 +9574,35 @@ function buildSalesBreakdownMarkup(entries, emptyLabel, includeCategory = false)
 
 function buildOrderWhatsAppLink(order) {
     const digits = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D+/g, '');
-    if (!digits) {
-        return '';
-    }
+    if (!digits) return '';
 
-    const message = encodeURIComponent(`Hola ${order.customerName || ''}, te escribimos desde ${brandingState.restaurantName || 'Roal Burger'} por tu pedido ${order.code}.`);
-    return `https://wa.me/${digits}?text=${message}`;
+    const nombre = order.customerName || 'Cliente';
+    const restaurante = brandingState.restaurantName || 'Roal Burger';
+    const codigo = order.code || '';
+
+    // Listado de productos
+    const items = Array.isArray(order.items) ? order.items : [];
+    const lineas = items.map(i => {
+        const qty = Number(i.quantity || 1);
+        const name = i.productName || i.name || '';
+        return `• ${qty}x ${name}`;
+    }).join('\n');
+
+    const total = formatMoney(Number(order.total || order.subtotal || 0));
+
+    const mensaje =
+`¡Hola ${nombre}! 👋
+Tu pedido *${codigo}* ya está en preparación en *${restaurante}* 🍔🔥
+
+📋 *Tu pedido:*
+${lineas || '• (sin detalle)'}
+
+💰 *Total a cobrar:* ${total}
+🕐 *Tiempo estimado:* ~50 min (trabajamos para que sea menos ⚡)
+
+¡Gracias por preferirnos! Pronto estará en tu puerta 🛵`;
+
+    return `https://wa.me/${digits}?text=${encodeURIComponent(mensaje)}`;
 }
 
 async function copyTextToClipboard(text) {
