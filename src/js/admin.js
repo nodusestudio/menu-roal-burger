@@ -9585,14 +9585,15 @@ function buildOrderWhatsAppLink(order) {
     const lineas = items.map(i => {
         const qty = Number(i.quantity || 1);
         const name = i.productName || i.name || '';
-        return `• ${qty}x ${name}`;
+        const opcion = String(i.optionLabel || '').trim();
+        return opcion ? `• ${qty}x ${name}\n   ↳ ${opcion}` : `• ${qty}x ${name}`;
     }).join('\n');
 
     const total = formatMoney(Number(order.total || order.subtotal || 0));
 
     const mensaje =
 `¡Hola ${nombre}! 👋
-Tu pedido *${codigo}* ya está en preparación en *${restaurante}* 🍔🔥
+Tu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥
 
 📋 *Tu pedido:*
 ${lineas || '• (sin detalle)'}
