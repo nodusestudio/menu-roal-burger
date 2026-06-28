@@ -9572,15 +9572,9 @@ function buildSalesBreakdownMarkup(entries, emptyLabel, includeCategory = false)
     `;
 }
 
-function buildOrderWhatsAppLink(order) {
-    const digits = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D+/g, '');
-    if (!digits) return '';
-
+function buildOrderWhatsAppMessage(order) {
     const nombre = order.customerName || 'Cliente';
-    const restaurante = brandingState.restaurantName || 'Roal Burger';
     const codigo = order.code || '';
-
-    // Listado de productos
     const items = Array.isArray(order.items) ? order.items : [];
     const lineas = items.map(i => {
         const qty = Number(i.quantity || 1);
@@ -9588,22 +9582,14 @@ function buildOrderWhatsAppLink(order) {
         const opcion = String(i.optionLabel || '').trim();
         return opcion ? `• ${qty}x ${name}\n   ↳ ${opcion}` : `• ${qty}x ${name}`;
     }).join('\n');
-
     const total = formatMoney(Number(order.total || order.subtotal || 0));
+    return `¡Hola ${nombre}! 👋\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n💰 *Total a cobrar:* ${total}\n🕐 *Tiempo estimado:* ~50 min (trabajamos para que sea menos ⚡)\n\n¡Gracias por preferirnos! Pronto estará en tu puerta 🛵`;
+}
 
-    const mensaje =
-`¡Hola ${nombre}! 👋
-Tu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥
-
-📋 *Tu pedido:*
-${lineas || '• (sin detalle)'}
-
-💰 *Total a cobrar:* ${total}
-🕐 *Tiempo estimado:* ~50 min (trabajamos para que sea menos ⚡)
-
-¡Gracias por preferirnos! Pronto estará en tu puerta 🛵`;
-
-    return `https://wa.me/${digits}?text=${encodeURIComponent(mensaje)}`;
+function buildOrderWhatsAppLink(order) {
+    const digits = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D+/g, '');
+    if (!digits) return '';
+    return `https://wa.me/${digits}?text=${encodeURIComponent(buildOrderWhatsAppMessage(order))}`;
 }
 
 async function copyTextToClipboard(text) {
@@ -9848,6 +9834,8 @@ function openOrderContactCard(orderId) {
 function buildThermalTicketMarkup(order, options = {}) {
     const printMode = options.printMode === true;
     const whatsappLink = buildOrderWhatsAppLink(order);
+    const whatsappMsg  = order.customerPhone ? buildOrderWhatsAppMessage(order) : '';
+    const _isMobile    = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     const statusMeta = getOrderStatusMeta(order.status);
     const totalAmount = getOrderDisplayTotal(order);
     const deliveryText = formatMoney(order.deliveryFee != null ? order.deliveryFee : 0);
@@ -9996,7 +9984,11 @@ function buildThermalTicketMarkup(order, options = {}) {
                     <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion de entrega' : order.orderType === 'mesa' ? (order.mesaNumber ? `Mesa ${order.mesaNumber}` : '⚠️ Sin mesa asignada') : 'Retiro en local'}</div>
                     <div class="ticket-address-block">
                         ${addressLines}
-                        ${whatsappLink ? `<a class="ticket-wa-btn" href="${whatsappLink}" target="_blank" rel="noopener noreferrer">💬 Abrir WhatsApp</a>` : ''}
+                        ${whatsappMsg ? (
+                            _isMobile
+                                ? `<a class="ticket-wa-btn" href="${whatsappLink}" target="_blank" rel="noopener noreferrer">💬 Abrir WhatsApp</a>`
+                                : `<button type="button" class="ticket-wa-btn" data-wa-copy="${escapeHtml(whatsappMsg)}">📋 Copiar mensaje</button>`
+                        ) : ''}
                     </div>
                 </section>
 
@@ -15878,6 +15870,17 @@ if (orderTicketPanel) {
     orderTicketPanel.addEventListener('click', async (event) => {
         const target = event.target;
         if (!(target instanceof Element)) {
+            return;
+        }
+
+        // Botón "Copiar mensaje" WhatsApp en desktop
+        const waCopyBtn = target.closest('button[data-wa-copy]');
+        if (waCopyBtn instanceof HTMLButtonElement) {
+            const msg = String(waCopyBtn.dataset.waCopy || '').trim();
+            if (msg) {
+                await copyTextToClipboard(msg);
+                showNotice('Mensaje copiado — pégalo en WhatsApp Web 💬', 'ok');
+            }
             return;
         }
 
