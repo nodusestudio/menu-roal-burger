@@ -18935,10 +18935,10 @@ function _showAbrirCajaModal() {
                     style="background:none;border:none;color:rgba(255,255,255,0.55);font-size:0.82rem;cursor:pointer;padding:0;margin-bottom:0.75rem;display:flex;align-items:center;gap:4px;">
                     ‹ Volver
                 </button>
-                <div style="color:#f3c56a;font-size:0.75rem;font-weight:700;letter-spacing:1.2px;margin-bottom:6px;">BILLETES</div>
-                <div id="_acBilletesGrid" style="margin-bottom:10px;"></div>
                 <div style="color:#f3c56a;font-size:0.75rem;font-weight:700;letter-spacing:1.2px;margin-bottom:6px;">MONEDAS</div>
-                <div id="_acMonedasGrid" style="margin-bottom:12px;"></div>
+                <div id="_acMonedasGrid" style="margin-bottom:10px;"></div>
+                <div style="color:#f3c56a;font-size:0.75rem;font-weight:700;letter-spacing:1.2px;margin-bottom:6px;">BILLETES</div>
+                <div id="_acBilletesGrid" style="margin-bottom:12px;"></div>
                 <div style="color:#94a3b8;font-size:0.75rem;font-weight:700;letter-spacing:1.2px;margin-bottom:6px;">GUARDADOS (caja fuerte / sobre)</div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
                     <div>
