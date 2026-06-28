@@ -8592,65 +8592,64 @@ function _orderTs(o) {
     return o.createdAt.seconds ? o.createdAt.seconds * 1000 : Number(o.createdAt);
 }
 
-async function renderMetricasTrafico() {
+let _traficoUnsubscribe = null;
+
+function _traficoDetach() {
+    if (_traficoUnsubscribe) { _traficoUnsubscribe(); _traficoUnsubscribe = null; }
+}
+
+function _traficoProcess(docs) {
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-    if (!firebaseDb) { set('trafKpi30d','—'); return; }
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const d7Str  = new Date(now.getTime() - 6  * 86400000).toISOString().slice(0, 10);
+    const d14Str = new Date(now.getTime() - 13 * 86400000).toISOString().slice(0, 10);
+    const d30Str = new Date(now.getTime() - 29 * 86400000).toISOString().slice(0, 10);
+
+    set('trafKpi30d',  docs.length);
+    set('trafKpi7d',   docs.filter(d => d.date >= d7Str).length);
+    set('trafKpiHoy',  docs.filter(d => d.date === todayStr).length);
+
+    const lbl = document.getElementById('trafPeriodLbl');
+    if (lbl) lbl.textContent = `en vivo · desde ${d30Str}`;
+
+    const srcMap = {};
+    docs.forEach(d => { const s = d.source || 'directo'; srcMap[s] = (srcMap[s] || 0) + 1; });
+    const sortedSrc = Object.entries(srcMap).sort((a,b) => b[1]-a[1]);
+    const srcLabels = { directo:'Directo', instagram:'Instagram', facebook:'Facebook', tiktok:'TikTok', whatsapp:'WhatsApp', google:'Google', otro:'Otro' };
+    set('trafKpiSource', sortedSrc.length ? (srcLabels[sortedSrc[0][0]] || sortedSrc[0][0]) : '—');
+
+    const dayMap14 = {};
+    for (let i = 0; i < 14; i++) {
+        const d = new Date(now.getTime() - (13 - i) * 86400000);
+        dayMap14[d.toISOString().slice(0, 10)] = 0;
+    }
+    docs.filter(d => d.date >= d14Str).forEach(d => {
+        if (dayMap14[d.date] !== undefined) dayMap14[d.date]++;
+    });
+    _renderBarChart('trafDayChart',
+        Object.entries(dayMap14).map(([date, val]) => ({ label: date.slice(5), val })),
+        '#60a5fa');
+    _renderBarChart('trafSourceChart',
+        sortedSrc.slice(0, 6).map(([s, v]) => ({ label: srcLabels[s] || s, val: v })),
+        '#a78bfa');
+}
+
+function renderMetricasTrafico() {
+    _traficoDetach();
+    if (!firebaseDb) return;
 
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
-    const d30 = new Date(now); d30.setDate(d30.getDate() - 29);
-    const d30Str = d30.toISOString().slice(0, 10);
+    const d30Str = new Date(now.getTime() - 29 * 86400000).toISOString().slice(0, 10);
 
-    try {
-        const snap = await firebaseDb.collection('visitas')
-            .where('date', '>=', d30Str)
-            .where('date', '<=', todayStr)
-            .get();
-
-        const docs = snap.docs.map(d => d.data());
-
-        // KPIs
-        const d7Str = new Date(now.getTime() - 6 * 86400000).toISOString().slice(0, 10);
-        const total30 = docs.length;
-        const total7  = docs.filter(d => d.date >= d7Str).length;
-        const totalHoy = docs.filter(d => d.date === todayStr).length;
-
-        set('trafKpi30d',  total30);
-        set('trafKpi7d',   total7);
-        set('trafKpiHoy',  totalHoy);
-
-        const lbl = document.getElementById('trafPeriodLbl');
-        if (lbl) lbl.textContent = `datos desde ${d30Str}`;
-
-        // Fuente principal
-        const srcMap = {};
-        docs.forEach(d => { const s = d.source || 'directo'; srcMap[s] = (srcMap[s] || 0) + 1; });
-        const sortedSrc = Object.entries(srcMap).sort((a,b) => b[1]-a[1]);
-        const srcLabels = { directo:'Directo', instagram:'Instagram', facebook:'Facebook', tiktok:'TikTok', whatsapp:'WhatsApp', google:'Google', otro:'Otro' };
-        set('trafKpiSource', sortedSrc.length ? (srcLabels[sortedSrc[0][0]] || sortedSrc[0][0]) : '—');
-
-        // Gráfico diario — últimos 14 días
-        const d14Str = new Date(now.getTime() - 13 * 86400000).toISOString().slice(0, 10);
-        const dayMap14 = {};
-        for (let i = 0; i < 14; i++) {
-            const d = new Date(now.getTime() - (13 - i) * 86400000);
-            dayMap14[d.toISOString().slice(0, 10)] = 0;
-        }
-        docs.filter(d => d.date >= d14Str).forEach(d => {
-            if (dayMap14[d.date] !== undefined) dayMap14[d.date]++;
-        });
-        _renderBarChart('trafDayChart',
-            Object.entries(dayMap14).map(([date, val]) => ({ label: date.slice(5), val })),
-            '#60a5fa');
-
-        // Gráfico de fuentes
-        _renderBarChart('trafSourceChart',
-            sortedSrc.slice(0, 6).map(([s, v]) => ({ label: srcLabels[s] || s, val: v })),
-            '#a78bfa');
-
-    } catch(e) {
-        console.warn('renderMetricasTrafico error:', e);
-    }
+    _traficoUnsubscribe = firebaseDb.collection('visitas')
+        .where('date', '>=', d30Str)
+        .where('date', '<=', todayStr)
+        .onSnapshot(
+            snap => _traficoProcess(snap.docs.map(d => d.data())),
+            e => console.warn('trafico snapshot error:', e)
+        );
 }
 
 function renderMetricasProductos(period) {
@@ -14821,9 +14820,9 @@ document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
         const tab = btn.dataset.metricsTab;
         document.querySelectorAll('.metrics-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
         document.querySelectorAll('.metrics-panel').forEach((p) => p.classList.toggle('active', p.id === `metricsPanel${tab.charAt(0).toUpperCase()}${tab.slice(1)}`));
-        if (tab === 'pos') renderMetricsPos();
-        if (tab === 'app') { renderMetricsUsers(); renderMetricasTrafico(); }
-        if (tab === 'productos') renderMetricasProductos();
+        if (tab === 'pos')       { _traficoDetach(); renderMetricsPos(); }
+        if (tab === 'app')       { renderMetricsUsers(); renderMetricasTrafico(); }
+        if (tab === 'productos') { _traficoDetach(); renderMetricasProductos(); }
     });
 });
 
