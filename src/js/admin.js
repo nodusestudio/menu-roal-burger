@@ -9714,21 +9714,21 @@ Quedo atento para poder procesar tu pedido.`;
 
 function buildDeliveredOrderMessage(order) {
     const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
-    return `Hola ${customerName} tu pedido ya va en camino, que tengas muy buen provecho, te agradecemos por preferirnos, te esperamos pronto.
+    return `¡Hola ${customerName}! 🍔🔥
 
-📲 Síguenos en nuestras redes sociales y entérate de promociones, nuevos productos y contenido brutal 🔥🍔
+Tu pedido acaba de salir de nuestra cocina y ya está en manos del domiciliario 🛵💨
 
-TikTok:
-https://www.tiktok.com/@roalburger?_r=1&_t=ZS-94kgEkN4aEH
+¡Va en camino a tu ubicación! Pronto estará contigo 😊
 
-Instagram:
-https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr
+Gracias por preferirnos, eso nos motiva a darlo todo cada día 🙌
 
-Facebook:
-https://www.facebook.com/share/1B9MGGXh6h/?mibextid=wwXIfr
+📲 Síguenos y entérate de promos y novedades:
+🎵 tiktok.com/@roalburger
+📸 instagram.com/roalburgerarmenia
+👍 facebook.com/roalburgerarmenia
 
-${brandingState.restaurantName || 'Roal Burger'}
-Comida rápida con acento venezolano 🇻🇪🔥`;
+¡Buen provecho! 🔥
+${brandingState.restaurantName || 'Roal Burger'}`;
 }
 
 function buildPickupReadyMessage(order) {
