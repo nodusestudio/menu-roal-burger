@@ -8553,8 +8553,44 @@ function createFeaturedRow(product) {
 
 let _metricsUsersFiltered = [];
 let _metricsPosFiltered = [];
-
 let _prodMetricsPeriod = 'all';
+
+// ── helper: mini bar chart ─────────────────────────────────────────────────
+function _renderBarChart(containerId, data, color) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (!data || !data.length) { el.innerHTML = '<p class="met-empty-note">Sin datos suficientes.</p>'; return; }
+    const max = Math.max(...data.map(d => d.val), 1);
+    el.innerHTML = data.map(d => {
+        const pct = Math.round((d.val / max) * 100);
+        return `<div class="met-bar-item">
+            <span class="met-bar-label">${escapeHtml(String(d.label))}</span>
+            <div class="met-bar-track"><div class="met-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+            <span class="met-bar-val">${d.val}</span>
+        </div>`;
+    }).join('');
+}
+
+// ── helper: stats por período ──────────────────────────────────────────────
+function _periodStats(orders, unit) {
+    const now = new Date();
+    const start = new Date(now);
+    if (unit === 'today')      { start.setHours(0,0,0,0); }
+    else if (unit === 'week')  { start.setDate(start.getDate() - start.getDay()); start.setHours(0,0,0,0); }
+    else if (unit === 'month') { start.setDate(1); start.setHours(0,0,0,0); }
+    const filtered = orders.filter(o => {
+        if (!o.createdAt) return false;
+        const ts = o.createdAt.seconds ? o.createdAt.seconds * 1000 : Number(o.createdAt);
+        return ts >= start.getTime();
+    });
+    return { count: filtered.length, revenue: filtered.reduce((s,o) => s + Number(o.total||0), 0) };
+}
+
+// ── helper: extraer hora/día de una orden ──────────────────────────────────
+function _orderTs(o) {
+    if (!o.createdAt) return null;
+    return o.createdAt.seconds ? o.createdAt.seconds * 1000 : Number(o.createdAt);
+}
 
 function renderMetricasProductos(period) {
     if (period !== undefined) _prodMetricsPeriod = period;
@@ -8605,6 +8641,7 @@ function renderMetricasProductos(period) {
     setKpi('prodMetricUnits',    totalUnits.toLocaleString('es-CO'));
     setKpi('prodMetricRevenue',  formatMoney(totalRev));
     setKpi('prodMetricDistinct', map.size.toLocaleString('es-CO'));
+    setKpi('prodMetricStar',     sorted.length ? sorted[0].name : '—');
 
     if (!sorted.length) {
         ranking.innerHTML = '<p class="prod-rank-empty">Sin pedidos en este período.</p>';
@@ -8642,21 +8679,72 @@ function renderMetricsUsers() {
     if (!list) return;
 
     const users = (clientsState || [])
-        .filter((c) => Boolean(c.passwordHash))
+        .filter(c => Boolean(c.passwordHash))
         .slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
-    // KPIs de resumen
-    const withOrders = users.filter((u) => (u.totalOrders || 0) > 0);
-    const avgOrders = users.length
-        ? (users.reduce((s, u) => s + (u.totalOrders || 0), 0) / users.length).toFixed(1)
-        : '0';
-    const totalSpent = users.reduce((s, u) => s + (u.totalSpent || 0), 0);
+    const withOrders   = users.filter(u => (u.totalOrders || 0) > 0);
+    const totalSpent   = users.reduce((s, u) => s + (u.totalSpent || 0), 0);
+    const totalOrders  = users.reduce((s, u) => s + (u.totalOrders || 0), 0);
+    const convRate     = users.length ? Math.round((withOrders.length / users.length) * 100) : 0;
+    const ltv          = withOrders.length ? Math.round(totalSpent / withOrders.length) : 0;
+    const avgTicket    = totalOrders ? Math.round(totalSpent / totalOrders) : 0;
+    const retained     = withOrders.filter(u => (u.totalOrders || 0) >= 2).length;
+    const retRate      = withOrders.length ? Math.round((retained / withOrders.length) * 100) : 0;
 
-    const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    setKpi('metricsUserCount', users.length.toLocaleString('es-CO'));
-    setKpi('metricsUserWithOrders', withOrders.length.toLocaleString('es-CO'));
-    setKpi('metricsUserAvgOrders', avgOrders);
-    setKpi('metricsUserTotalSpent', formatMoney(totalSpent));
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('appKpiTotal',      users.length);
+    set('appKpiConversion', `${convRate}%`);
+    set('appKpiConvSub',    `${withOrders.length} de ${users.length} compraron`);
+    set('appKpiLtv',        formatMoney(ltv));
+    set('appKpiTicket',     formatMoney(avgTicket));
+    set('appKpiRetention',  `${retRate}%`);
+
+    // Segmentación
+    const pct = n => withOrders.length ? `${Math.round((n / withOrders.length) * 100)}% de compradores` : '';
+    const segNew  = withOrders.filter(u => u.totalOrders === 1).length;
+    const segRec  = withOrders.filter(u => u.totalOrders >= 2 && u.totalOrders <= 4).length;
+    const segFrec = withOrders.filter(u => u.totalOrders >= 5 && u.totalOrders <= 9).length;
+    const segVip  = withOrders.filter(u => u.totalOrders >= 10).length;
+    set('appSegNew',  segNew);  set('appSegNewPct',  pct(segNew));
+    set('appSegRec',  segRec);  set('appSegRecPct',  pct(segRec));
+    set('appSegFrec', segFrec); set('appSegFrecPct', pct(segFrec));
+    set('appSegVip',  segVip);  set('appSegVipPct',  pct(segVip));
+
+    // Comportamiento — desde órdenes APP (no POS)
+    const appOrders = (ordersState || []).filter(o => !o.isAdminOrder && o.source !== 'admin_pos');
+
+    const hourMap = new Map();
+    const dayMap  = new Array(7).fill(0);
+    const payMap  = new Map();
+    const typeMap = new Map();
+    const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    const typeLabels = { delivery:'Domicilio', takeaway:'Para llevar', dineIn:'En local' };
+
+    appOrders.forEach(o => {
+        const ts = _orderTs(o);
+        if (ts) {
+            const d = new Date(ts);
+            hourMap.set(d.getHours(), (hourMap.get(d.getHours()) || 0) + 1);
+            dayMap[d.getDay()]++;
+        }
+        const m = o.paymentMethod || 'otro';
+        payMap.set(m, (payMap.get(m) || 0) + 1);
+        const t = typeLabels[o.orderType] || o.orderType || 'Otro';
+        typeMap.set(t, (typeMap.get(t) || 0) + 1);
+    });
+
+    _renderBarChart('appHourChart',
+        [...hourMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([h,c])=>({label:`${String(h).padStart(2,'0')}:00`,val:c})),
+        '#ff7b45');
+    _renderBarChart('appDayChart',
+        dayNames.map((n,i)=>({label:n,val:dayMap[i]})).filter(d=>d.val>0).sort((a,b)=>b.val-a.val).slice(0,5),
+        '#60a5fa');
+    _renderBarChart('appPayChart',
+        [...payMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4).map(([m,c])=>({label:m.charAt(0).toUpperCase()+m.slice(1),val:c})),
+        '#4ade80');
+    _renderBarChart('appTypeChart',
+        [...typeMap.entries()].sort((a,b)=>b[1]-a[1]).map(([l,v])=>({label:l,val:v})),
+        '#a78bfa');
 
     _metricsUsersFiltered = users;
     _renderMetricsUserRows(users);
@@ -8673,33 +8761,37 @@ function _renderMetricsUserRows(users) {
         return;
     }
 
-    list.innerHTML = users.map((u) => {
-        const orders = u.totalOrders || 0;
-        const since = u.firstOrderAt
-            ? new Date(u.firstOrderAt.seconds ? u.firstOrderAt.seconds * 1000 : u.firstOrderAt).toLocaleDateString('es-CO', { year: 'numeric', month: 'short' })
-            : '—';
-        const orderChip = orders > 0
-            ? `<span class="metrics-chip hi">${orders} compra${orders !== 1 ? 's' : ''}</span>`
-            : `<span class="metrics-chip">Sin compras</span>`;
-        const addrCount = (u.savedAddresses || []).length;
-        const addrChip = addrCount > 0 ? `<span class="metrics-chip">${addrCount} dirección${addrCount !== 1 ? 'es' : ''}</span>` : '';
+    const getBadge = u => {
+        const n = u.totalOrders || 0;
+        if (n === 0)  return ['Sin compras', 'sin'];
+        if (n === 1)  return ['Nuevo',       'nuevo'];
+        if (n <= 4)   return ['Recurrente',  'rec'];
+        if (n <= 9)   return ['Frecuente',   'frec'];
+        return              ['VIP',          'vip'];
+    };
+
+    list.innerHTML = users.map(u => {
+        const [bl, bc] = getBadge(u);
+        const initials = (u.customerName || '?').split(' ').map(w => w[0] || '').slice(0, 2).join('').toUpperCase() || '?';
+        const lastTs = u.lastOrderAt ? (u.lastOrderAt.seconds ? u.lastOrderAt.seconds * 1000 : u.lastOrderAt) : null;
+        const lastStr = lastTs ? new Date(lastTs).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' }) : '—';
         return `
-        <div class="metrics-user-row" data-user-phone="${escapeHtml(u.customerPhone || '')}" data-user-id="${escapeHtml(u.id || '')}">
-            <div class="metrics-user-main">
-                <div class="metrics-user-name">${escapeHtml(u.customerName || 'Sin nombre')}</div>
-                <div class="metrics-user-phone">${escapeHtml(u.customerPhone || '—')}</div>
-                <div class="metrics-user-chips">${orderChip}${addrChip}</div>
+        <div class="met-user-row-v2" data-user-phone="${escapeHtml(u.customerPhone || '')}" data-user-id="${escapeHtml(u.id || '')}">
+            <div class="met-avatar">${escapeHtml(initials)}</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(u.customerName || 'Sin nombre')}</div>
+                <div class="met-user-meta-v2">${escapeHtml(u.customerPhone || '—')} · Último: ${lastStr}</div>
             </div>
-            <div class="metrics-user-side">
-                <div class="metrics-user-total">${u.totalSpent ? formatMoney(u.totalSpent) : '—'}</div>
-                <div class="metrics-user-since">total gastado</div>
+            <span class="met-badge met-badge--${bc}">${bl}</span>
+            <div class="met-user-stat">
+                <div class="met-user-stat-val">${u.totalSpent ? formatMoney(u.totalSpent) : '—'}</div>
+                <div class="met-user-stat-sub">${u.totalOrders || 0} compras</div>
             </div>
         </div>
         <div class="metrics-user-detail" id="metricsDetail_${escapeHtml(u.id || u.customerPhone || '')}" hidden></div>`;
     }).join('');
 
-    // Click para expandir detalle
-    list.querySelectorAll('.metrics-user-row').forEach((row) => {
+    list.querySelectorAll('.met-user-row-v2').forEach(row => {
         row.addEventListener('click', () => _toggleMetricsUserDetail(row));
     });
 }
@@ -8708,18 +8800,52 @@ function renderMetricsPos() {
     const list = document.getElementById('metricsPosList');
     if (!list) return;
 
-    const posOrders = (ordersState || []).filter((o) => o.isAdminOrder || o.source === 'admin_pos');
-    const posClients = (clientsState || [])
-        .slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
+    const posOrders  = (ordersState || []).filter(o => o.isAdminOrder || o.source === 'admin_pos');
+    const posClients = (clientsState || []).slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
-    const totalRevenue = posOrders.reduce((s, o) => s + Number(o.total || 0), 0);
-    const avgTicket = posOrders.length ? totalRevenue / posOrders.length : 0;
+    const totalRev   = posOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+    const avgTicket  = posOrders.length ? Math.round(totalRev / posOrders.length) : 0;
+    const maxTicket  = posOrders.length ? Math.max(...posOrders.map(o => Number(o.total || 0))) : 0;
+    const uniqueClients = new Set(posOrders.map(o => o.customerPhone).filter(Boolean)).size || posClients.length;
 
-    const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    setKpi('metricsPosOrders', posOrders.length.toLocaleString('es-CO'));
-    setKpi('metricsPosClients', posClients.length.toLocaleString('es-CO'));
-    setKpi('metricsPosRevenue', formatMoney(totalRevenue));
-    setKpi('metricsPosAvgTicket', formatMoney(avgTicket));
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('posKpiOrders',  posOrders.length.toLocaleString('es-CO'));
+    set('posKpiClients', uniqueClients.toLocaleString('es-CO'));
+    set('posKpiRevenue', formatMoney(totalRev));
+    set('posKpiTicket',  formatMoney(avgTicket));
+    set('posKpiMax',     formatMoney(maxTicket));
+
+    // Períodos
+    const pT = _periodStats(posOrders, 'today');
+    const pW = _periodStats(posOrders, 'week');
+    const pM = _periodStats(posOrders, 'month');
+    set('posPeriodTodayRev',  formatMoney(pT.revenue)); set('posPeriodTodayOrds',  `${pT.count} pedido${pT.count!==1?'s':''}`);
+    set('posPeriodWeekRev',   formatMoney(pW.revenue)); set('posPeriodWeekOrds',   `${pW.count} pedido${pW.count!==1?'s':''}`);
+    set('posPeriodMonthRev',  formatMoney(pM.revenue)); set('posPeriodMonthOrds',  `${pM.count} pedido${pM.count!==1?'s':''}`);
+
+    // Comportamiento POS
+    const hourMap = new Map(); const dayMap = new Array(7).fill(0);
+    const payMap = new Map(); const typeMap = new Map();
+    const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    const typeLabels = { delivery:'Domicilio', takeaway:'Para llevar', dineIn:'En local' };
+
+    posOrders.forEach(o => {
+        const ts = _orderTs(o);
+        if (ts) { const d = new Date(ts); hourMap.set(d.getHours(),(hourMap.get(d.getHours())||0)+1); dayMap[d.getDay()]++; }
+        const m = o.paymentMethod || 'otro';
+        payMap.set(m, (payMap.get(m)||0)+1);
+        const t = typeLabels[o.orderType] || o.orderType || 'Otro';
+        typeMap.set(t, (typeMap.get(t)||0)+1);
+    });
+
+    _renderBarChart('posHourChart',
+        [...hourMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([h,c])=>({label:`${String(h).padStart(2,'0')}:00`,val:c})), '#ff7b45');
+    _renderBarChart('posDayChart',
+        dayNames.map((n,i)=>({label:n,val:dayMap[i]})).filter(d=>d.val>0).sort((a,b)=>b.val-a.val).slice(0,5), '#60a5fa');
+    _renderBarChart('posPayChart',
+        [...payMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4).map(([m,c])=>({label:m.charAt(0).toUpperCase()+m.slice(1),val:c})), '#4ade80');
+    _renderBarChart('posTypeChart',
+        [...typeMap.entries()].sort((a,b)=>b[1]-a[1]).map(([l,v])=>({label:l,val:v})), '#a78bfa');
 
     _metricsPosFiltered = posClients;
     _renderMetricsPosRows(posClients);
@@ -8736,25 +8862,31 @@ function _renderMetricsPosRows(clients) {
         return;
     }
 
-    list.innerHTML = clients.map((u) => {
-        const orders = u.totalOrders || 0;
-        const since = u.firstOrderAt
-            ? new Date(u.firstOrderAt.seconds ? u.firstOrderAt.seconds * 1000 : u.firstOrderAt)
-                .toLocaleDateString('es-CO', { year: 'numeric', month: 'short' })
-            : '—';
-        const orderChip = orders > 0
-            ? `<span class="metrics-chip hi">${orders} pedido${orders !== 1 ? 's' : ''}</span>`
-            : `<span class="metrics-chip">Sin pedidos</span>`;
+    const getBadge = u => {
+        const n = u.totalOrders || 0;
+        if (n === 0) return ['Sin pedidos', 'sin'];
+        if (n === 1) return ['Nuevo',       'nuevo'];
+        if (n <= 4)  return ['Recurrente',  'rec'];
+        if (n <= 9)  return ['Frecuente',   'frec'];
+        return             ['VIP',          'vip'];
+    };
+
+    list.innerHTML = clients.map(u => {
+        const [bl, bc] = getBadge(u);
+        const initials = (u.customerName || '?').split(' ').map(w => w[0] || '').slice(0, 2).join('').toUpperCase() || '?';
+        const lastTs = u.lastOrderAt ? (u.lastOrderAt.seconds ? u.lastOrderAt.seconds * 1000 : u.lastOrderAt) : null;
+        const lastStr = lastTs ? new Date(lastTs).toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' }) : '—';
         return `
-        <div class="metrics-user-row">
-            <div class="metrics-user-main">
-                <div class="metrics-user-name">${escapeHtml(u.customerName || 'Sin nombre')}</div>
-                <div class="metrics-user-phone">${escapeHtml(u.customerPhone || '—')}</div>
-                <div class="metrics-user-chips">${orderChip}</div>
+        <div class="met-user-row-v2">
+            <div class="met-avatar">${escapeHtml(initials)}</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(u.customerName || 'Sin nombre')}</div>
+                <div class="met-user-meta-v2">${escapeHtml(u.customerPhone || '—')} · Último: ${lastStr}</div>
             </div>
-            <div class="metrics-user-side">
-                <div class="metrics-user-total">${u.totalSpent ? formatMoney(u.totalSpent) : '—'}</div>
-                <div class="metrics-user-since">total gastado</div>
+            <span class="met-badge met-badge--${bc}">${bl}</span>
+            <div class="met-user-stat">
+                <div class="met-user-stat-val">${u.totalSpent ? formatMoney(u.totalSpent) : '—'}</div>
+                <div class="met-user-stat-sub">${u.totalOrders || 0} pedidos</div>
             </div>
         </div>`;
     }).join('');
@@ -8770,7 +8902,7 @@ async function _toggleMetricsUserDetail(row) {
     const isOpen = !detail.hidden;
     // Cerrar todos los detalles abiertos
     document.querySelectorAll('.metrics-user-detail').forEach((d) => { d.hidden = true; });
-    document.querySelectorAll('.metrics-user-row').forEach((r) => r.classList.remove('is-expanded'));
+    document.querySelectorAll('.metrics-user-row, .met-user-row-v2').forEach((r) => r.classList.remove('is-expanded'));
 
     if (isOpen) return; // si ya estaba abierto, solo cerramos
 
