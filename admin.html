@@ -3489,6 +3489,70 @@
             background: rgba(255,255,255,0.1);
         }
 
+        /* ── Pestaña Negocio — rediseño por secciones ── */
+        .biz-sections-wrap { display: flex; flex-direction: column; gap: 0; }
+        .biz-section { padding: 20px 0; border-bottom: 1px solid rgba(255,255,255,0.07); }
+        .biz-section:last-child { border-bottom: none; padding-bottom: 8px; }
+        .biz-section-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .biz-section-icon {
+            font-size: 1.25rem; width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(255,123,69,0.1); border: 1px solid rgba(255,123,69,0.2);
+            border-radius: 10px; flex-shrink: 0;
+        }
+        .biz-section-title {
+            font-size: 0.7rem; font-weight: 700; letter-spacing: 1.8px;
+            text-transform: uppercase; color: var(--admin-accent, #ff7b45);
+        }
+        .biz-section-desc { font-size: 0.76rem; color: var(--admin-muted); margin-top: 2px; }
+        .biz-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .biz-fields .full { grid-column: 1 / -1; }
+
+        /* Save bar flotante */
+        .biz-save-bar {
+            position: sticky; bottom: 12px;
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            padding: 12px 16px;
+            background: rgba(18,18,22,0.95); backdrop-filter: blur(14px);
+            border: 1px solid rgba(255,123,69,0.32); border-radius: 12px;
+            margin-top: 16px; z-index: 20;
+            animation: savebar-in 0.2s ease;
+        }
+        @keyframes savebar-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        .biz-save-bar[hidden] { display: none; }
+        .biz-save-bar-msg { font-size: 0.78rem; color: rgba(255,255,255,0.6); }
+        .biz-save-btn {
+            padding: 8px 22px;
+            background: linear-gradient(135deg, #ff7b45, #d95c26);
+            color: #fff; border: none; border-radius: 8px;
+            font-family: 'Space Grotesk', sans-serif; font-size: 0.8rem; font-weight: 700;
+            letter-spacing: 0.4px; cursor: pointer; white-space: nowrap;
+            transition: opacity 0.15s;
+        }
+        .biz-save-btn:hover { opacity: 0.88; }
+        .biz-save-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        /* Sección Seguridad */
+        .biz-section--security .biz-section-icon {
+            background: rgba(99,102,241,0.1); border-color: rgba(99,102,241,0.22);
+        }
+        .biz-pass-btn {
+            width: 100%; padding: 11px 16px;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 10px; color: #fff;
+            font-family: 'Space Grotesk', sans-serif; font-size: 0.82rem; font-weight: 600;
+            cursor: pointer; transition: background 0.15s, border-color 0.15s;
+        }
+        .biz-pass-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.28); }
+        .biz-pass-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .biz-pass-status {
+            grid-column: 1 / -1; padding: 10px 14px; border-radius: 8px;
+            font-size: 0.8rem; font-weight: 600;
+        }
+        .biz-pass-status.ok { background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.3); color: #4ade80; }
+        .biz-pass-status.error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #f87171; }
+        .admin-field input[readonly] { opacity: 0.5; cursor: default; }
+
         .preview-box {
             margin-top: 12px;
             border: 1px dashed rgba(255, 255, 255, 0.3);
@@ -10850,6 +10914,7 @@
             transition: background 0.15s, border-color 0.15s;
         }
         .gasto-cat-btn:hover { background: rgba(255,255,255,0.13); border-color: rgba(255,255,255,0.28); }
+        .gasto-cat-btn.active { background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.55); color: #fca5a5; }
         .gasto-cat-icon { font-size: 1.6rem; line-height: 1; }
         .dpm-sub-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--admin-muted); margin: 0 0 6px; }
         .gasto-sub-chips { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -11178,7 +11243,8 @@
             background: rgba(255, 149, 64, 0.07);
             color: #fff;
         }
-        .dpm-method-btn.active {
+        .dpm-method-btn.active,
+        .dpm-method-btn--active {
             border-color: rgba(255, 149, 64, 0.75);
             background: rgba(255, 149, 64, 0.16);
             color: #ffa060;
@@ -12733,80 +12799,145 @@
                         <!-- Panel: Negocio -->
                         <div class="menu-inner-panel active" data-section-panel="negocio" data-section-scope="configuracion" role="tabpanel">
                             <article class="admin-card">
-                                <div class="card-head">
-                                    <h2>Informacion del Negocio</h2>
-                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-branding" aria-expanded="true">Retraer</button>
-                                </div>
-                                <div class="card-body" id="card-branding">
-                                    <form id="brandingForm" class="admin-form">
+                                <div class="card-body" style="padding-top:8px;">
 
-                                        <div class="config-group-header"><span>Identidad</span></div>
-                                        <div class="admin-field">
-                                            <label for="restaurantName">Nombre del restaurante</label>
-                                            <input type="text" id="restaurantName" name="restaurantName" placeholder="Ej: FODEXA" required>
-                                        </div>
-                                        <div class="admin-field">
-                                            <label for="restaurantSlogan">Eslogan</label>
-                                            <input type="text" id="restaurantSlogan" name="restaurantSlogan" placeholder="Ej: Sabor real en cada mordida" required>
-                                        </div>
+                                    <form id="brandingForm" class="biz-sections-wrap" autocomplete="off">
 
-                                        <div class="config-group-header"><span>Contacto</span></div>
-                                        <div class="admin-field">
-                                            <label for="restaurantWhatsappNumber">Número de WhatsApp</label>
-                                            <input type="tel" id="restaurantWhatsappNumber" name="restaurantWhatsappNumber" placeholder="573144689509" required>
-                                        </div>
-                                        <div class="admin-field full">
-                                            <label for="restaurantWhatsappLink">Link de WhatsApp</label>
-                                            <input type="text" id="restaurantWhatsappLink" name="restaurantWhatsappLink" placeholder="https://wa.me/573..." required>
-                                        </div>
-
-                                        <div class="config-group-header"><span>Ubicación y Horario</span></div>
-                                        <div class="admin-field full">
-                                            <label for="restaurantBusinessHours">Horario de atención</label>
-                                            <input type="text" id="restaurantBusinessHours" name="restaurantBusinessHours" placeholder="Ej: Lunes a Domingo: 4:00 P.M. a 10:00 P.M." required>
-                                        </div>
-                                        <div class="admin-field full">
-                                            <label for="restaurantAddress">Dirección</label>
-                                            <input type="text" id="restaurantAddress" name="restaurantAddress" placeholder="Ej: Cl. 22 #29-59, Armenia, Quindio" required>
-                                        </div>
-                                        <div class="admin-field full">
-                                            <label for="restaurantLocationLink">Link de Google Maps</label>
-                                            <input type="text" id="restaurantLocationLink" name="restaurantLocationLink" placeholder="https://maps.google.com/...">
-                                        </div>
-
-                                        <div class="config-group-header"><span>Redes Sociales</span></div>
-                                        <div class="admin-field">
-                                            <label for="restaurantInstagramLink">Instagram</label>
-                                            <input type="text" id="restaurantInstagramLink" name="restaurantInstagramLink" placeholder="https://instagram.com/...">
-                                        </div>
-                                        <div class="admin-field">
-                                            <label for="restaurantTiktokLink">TikTok</label>
-                                            <input type="text" id="restaurantTiktokLink" name="restaurantTiktokLink" placeholder="https://tiktok.com/@...">
-                                        </div>
-                                        <div class="admin-field">
-                                            <label for="restaurantFacebookLink">Facebook</label>
-                                            <input type="text" id="restaurantFacebookLink" name="restaurantFacebookLink" placeholder="https://facebook.com/...">
-                                        </div>
-
-                                        <div class="admin-field full">
-                                            <button type="submit" class="admin-button" id="brandingSaveBtn" disabled>Guardar configuración</button>
-                                        </div>
-                                    </form>
-                                    <div class="preview-box" id="brandingPreview">
-                                        <div class="preview-brand">
-                                            <div>
-                                                <strong id="previewName">FODEXA</strong>
-                                                <p id="previewSlogan" class="muted">Comida rapida con acento venezolano</p>
+                                        <!-- Identidad -->
+                                        <div class="biz-section">
+                                            <div class="biz-section-head">
+                                                <span class="biz-section-icon">🏪</span>
+                                                <div>
+                                                    <div class="biz-section-title">Identidad</div>
+                                                    <div class="biz-section-desc">Nombre y presentación visible de tu negocio</div>
+                                                </div>
+                                            </div>
+                                            <div class="biz-fields">
+                                                <div class="admin-field">
+                                                    <label for="restaurantName">Nombre del restaurante</label>
+                                                    <input type="text" id="restaurantName" name="restaurantName" placeholder="Ej: ROAL BURGER">
+                                                </div>
+                                                <div class="admin-field">
+                                                    <label for="restaurantSlogan">Eslogan</label>
+                                                    <input type="text" id="restaurantSlogan" name="restaurantSlogan" placeholder="Ej: Sabor real en cada mordida">
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="support-link-list">
-                                            <span class="support-link-chip" id="previewWhatsapp">WhatsApp</span>
-                                            <span class="support-link-chip" id="previewBusinessHours">Horario</span>
+
+                                        <!-- Contacto -->
+                                        <div class="biz-section">
+                                            <div class="biz-section-head">
+                                                <span class="biz-section-icon">📲</span>
+                                                <div>
+                                                    <div class="biz-section-title">Contacto</div>
+                                                    <div class="biz-section-desc">Canal de pedidos por WhatsApp</div>
+                                                </div>
+                                            </div>
+                                            <div class="biz-fields">
+                                                <div class="admin-field">
+                                                    <label for="restaurantWhatsappNumber">Número de WhatsApp</label>
+                                                    <input type="tel" id="restaurantWhatsappNumber" name="restaurantWhatsappNumber" placeholder="573144689509">
+                                                </div>
+                                                <div class="admin-field full">
+                                                    <label for="restaurantWhatsappLink">Link de WhatsApp</label>
+                                                    <input type="text" id="restaurantWhatsappLink" name="restaurantWhatsappLink" placeholder="https://wa.me/573...">
+                                                </div>
+                                            </div>
                                         </div>
-                                        <p class="muted" id="previewAddress">Direccion</p>
-                                        <p class="muted" id="previewLocation">Ubicacion</p>
-                                        <p class="muted" id="previewSocials">Redes sociales</p>
+
+                                        <!-- Ubicación -->
+                                        <div class="biz-section">
+                                            <div class="biz-section-head">
+                                                <span class="biz-section-icon">📍</span>
+                                                <div>
+                                                    <div class="biz-section-title">Ubicación y Horario</div>
+                                                    <div class="biz-section-desc">Dirección física y horario de atención</div>
+                                                </div>
+                                            </div>
+                                            <div class="biz-fields">
+                                                <div class="admin-field">
+                                                    <label for="restaurantBusinessHours">Horario de atención</label>
+                                                    <input type="text" id="restaurantBusinessHours" name="restaurantBusinessHours" placeholder="Ej: Lunes a Domingo: 4:00 PM a 10:00 PM">
+                                                </div>
+                                                <div class="admin-field">
+                                                    <label for="restaurantAddress">Dirección</label>
+                                                    <input type="text" id="restaurantAddress" name="restaurantAddress" placeholder="Ej: Cl. 22 #29-59, Armenia">
+                                                </div>
+                                                <div class="admin-field full">
+                                                    <label for="restaurantLocationLink">Link de Google Maps</label>
+                                                    <input type="text" id="restaurantLocationLink" name="restaurantLocationLink" placeholder="https://maps.google.com/...">
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Redes Sociales -->
+                                        <div class="biz-section">
+                                            <div class="biz-section-head">
+                                                <span class="biz-section-icon">📡</span>
+                                                <div>
+                                                    <div class="biz-section-title">Redes Sociales</div>
+                                                    <div class="biz-section-desc">Links visibles en el menú público</div>
+                                                </div>
+                                            </div>
+                                            <div class="biz-fields">
+                                                <div class="admin-field">
+                                                    <label for="restaurantInstagramLink">Instagram</label>
+                                                    <input type="text" id="restaurantInstagramLink" name="restaurantInstagramLink" placeholder="https://instagram.com/...">
+                                                </div>
+                                                <div class="admin-field">
+                                                    <label for="restaurantTiktokLink">TikTok</label>
+                                                    <input type="text" id="restaurantTiktokLink" name="restaurantTiktokLink" placeholder="https://tiktok.com/@...">
+                                                </div>
+                                                <div class="admin-field">
+                                                    <label for="restaurantFacebookLink">Facebook</label>
+                                                    <input type="text" id="restaurantFacebookLink" name="restaurantFacebookLink" placeholder="https://facebook.com/...">
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Botón submit oculto (disparado por el save bar) -->
+                                        <button type="submit" id="brandingSaveBtn" hidden aria-hidden="true"></button>
+                                    </form>
+
+                                    <!-- Barra de guardado flotante (aparece al editar) -->
+                                    <div class="biz-save-bar" id="bizSaveBar" hidden>
+                                        <span class="biz-save-bar-msg">Tienes cambios sin guardar</span>
+                                        <button type="button" class="biz-save-btn" id="bizSaveBarBtn">Guardar cambios</button>
                                     </div>
+
+                                    <!-- Seguridad — Cambiar contraseña -->
+                                    <div class="biz-section biz-section--security" style="padding-top:20px; border-top:1px solid rgba(255,255,255,0.07); margin-top:8px;">
+                                        <div class="biz-section-head">
+                                            <span class="biz-section-icon">🔐</span>
+                                            <div>
+                                                <div class="biz-section-title">Seguridad</div>
+                                                <div class="biz-section-desc">Cambia la contraseña de acceso al panel de administración</div>
+                                            </div>
+                                        </div>
+                                        <div class="biz-fields">
+                                            <div class="admin-field full">
+                                                <label>Correo vinculado</label>
+                                                <input type="email" id="bizCurrentEmail" readonly placeholder="Cargando...">
+                                            </div>
+                                            <div class="admin-field">
+                                                <label>Contraseña actual</label>
+                                                <input type="password" id="bizCurrentPassword" placeholder="Tu contraseña actual" autocomplete="current-password">
+                                            </div>
+                                            <div class="admin-field">
+                                                <label>Nueva contraseña</label>
+                                                <input type="password" id="bizNewPassword" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+                                            </div>
+                                            <div class="admin-field full">
+                                                <label>Confirmar nueva contraseña</label>
+                                                <input type="password" id="bizConfirmPassword" placeholder="Repite la nueva contraseña" autocomplete="new-password">
+                                            </div>
+                                            <div class="admin-field full">
+                                                <button type="button" class="biz-pass-btn" id="bizChangePasswordBtn">Actualizar contraseña</button>
+                                            </div>
+                                            <div id="bizPasswordStatus" class="biz-pass-status" hidden></div>
+                                        </div>
+                                    </div>
+
                                 </div>
                             </article>
                         </div>
@@ -13966,11 +14097,6 @@
                     <div class="gasto-field">
                         <label>Descripción</label>
                         <input type="text" id="gastoDescripcion" placeholder="¿En qué se gastó?" maxlength="100">
-                    </div>
-                    <div class="gasto-field" id="gastoProveedorWrap">
-                        <label>Proveedor <span style="color:var(--admin-muted);font-weight:400;">(opcional)</span></label>
-                        <input type="text" id="gastoProveedor" placeholder="Nombre del proveedor" maxlength="60" list="proveedoresList" autocomplete="off">
-                        <datalist id="proveedoresList"></datalist>
                     </div>
                     <div class="gasto-field">
                         <label>Monto</label>

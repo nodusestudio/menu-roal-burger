@@ -11909,6 +11909,11 @@ function renderBrandingForm() {
     brandingForm.restaurantTiktokLink.value = brandingState.tiktokLink;
     brandingForm.restaurantFacebookLink.value = brandingState.facebookLink;
 
+    const bizEmailEl = document.getElementById('bizCurrentEmail');
+    if (bizEmailEl && firebaseAuth?.currentUser?.email) {
+        bizEmailEl.value = firebaseAuth.currentUser.email;
+    }
+
     renderBrandingPreview();
 }
 
@@ -16130,8 +16135,67 @@ function initDirtyForm(formEl, saveBtnId) {
 
 const brandingDirty = initDirtyForm(brandingForm, 'brandingSaveBtn');
 
-brandingForm.addEventListener('input', () => {
-    renderBrandingPreview();
+// ── Save bar del panel Negocio ─────────────────────────────────────────────
+const _bizSaveBar = document.getElementById('bizSaveBar');
+const _bizSaveBarBtn = document.getElementById('bizSaveBarBtn');
+function _bizShowSaveBar() { if (_bizSaveBar) _bizSaveBar.hidden = false; }
+function _bizHideSaveBar() { if (_bizSaveBar) _bizSaveBar.hidden = true; }
+brandingForm.addEventListener('input', _bizShowSaveBar);
+brandingForm.addEventListener('change', _bizShowSaveBar);
+if (_bizSaveBarBtn) _bizSaveBarBtn.addEventListener('click', () => brandingForm.requestSubmit());
+
+// ── Cambio de contraseña (Firebase Auth) ───────────────────────────────────
+document.getElementById('bizChangePasswordBtn')?.addEventListener('click', async () => {
+    const statusEl = document.getElementById('bizPasswordStatus');
+    const btn = document.getElementById('bizChangePasswordBtn');
+    const currentPwd = document.getElementById('bizCurrentPassword')?.value?.trim() || '';
+    const newPwd     = document.getElementById('bizNewPassword')?.value?.trim() || '';
+    const confirmPwd = document.getElementById('bizConfirmPassword')?.value?.trim() || '';
+
+    const showPassStatus = (msg, type) => {
+        if (!statusEl) return;
+        statusEl.textContent = msg;
+        statusEl.className = `biz-pass-status ${type}`;
+        statusEl.hidden = false;
+    };
+
+    if (!currentPwd || !newPwd || !confirmPwd) {
+        showPassStatus('Completa todos los campos de contraseña.', 'error'); return;
+    }
+    if (newPwd !== confirmPwd) {
+        showPassStatus('Las contraseñas nuevas no coinciden.', 'error'); return;
+    }
+    if (newPwd.length < 6) {
+        showPassStatus('La nueva contraseña debe tener al menos 6 caracteres.', 'error'); return;
+    }
+    if (newPwd === currentPwd) {
+        showPassStatus('La nueva contraseña debe ser diferente a la actual.', 'error'); return;
+    }
+
+    const user = firebaseAuth?.currentUser;
+    if (!user || !user.email) {
+        showPassStatus('No hay sesión activa. Recarga la página.', 'error'); return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Actualizando...'; }
+    try {
+        const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPwd);
+        await user.reauthenticateWithCredential(credential);
+        await user.updatePassword(newPwd);
+        showPassStatus('Contraseña actualizada correctamente.', 'ok');
+        document.getElementById('bizCurrentPassword').value = '';
+        document.getElementById('bizNewPassword').value = '';
+        document.getElementById('bizConfirmPassword').value = '';
+    } catch (err) {
+        const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
+            ? 'La contraseña actual es incorrecta.'
+            : err.code === 'auth/too-many-requests'
+            ? 'Demasiados intentos. Espera un momento.'
+            : `Error: ${err.message || 'intenta de nuevo.'}`;
+        showPassStatus(msg, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Actualizar contraseña'; }
+    }
 });
 
 brandingForm.addEventListener('submit', async (event) => {
@@ -16173,6 +16237,7 @@ brandingForm.addEventListener('submit', async (event) => {
         brandingState = payload;
         renderBrandingForm();
         brandingDirty.markClean();
+        _bizHideSaveBar();
         showNotice('Informacion del negocio guardada.', 'ok');
     } catch (error) {
         showNotice(`No se pudo guardar la configuracion: ${error.message || 'Error inesperado.'}`, 'error');
@@ -17357,14 +17422,9 @@ function _gastoShowStep2(catId) {
     }
 
     const descEl   = document.getElementById('gastoDescripcion');
-    const provEl   = document.getElementById('gastoProveedor');
     const montoEl  = document.getElementById('gastoMonto');
-    const provWrap = document.getElementById('gastoProveedorWrap');
     if (descEl)  descEl.value  = '';
-    if (provEl)  provEl.value  = '';
     if (montoEl) montoEl.value = '';
-    // Mostrar campo proveedor solo en la categoría "proveedor"
-    if (provWrap) provWrap.style.display = catId === 'proveedor' ? '' : 'none';
     _gastoSelectedMethod = null;
     document.querySelectorAll('#gastoMethodsGrid .dpm-method-btn').forEach((b) => b.classList.remove('dpm-method-btn--active'));
     renderGastoMethodButtons();
@@ -17533,7 +17593,6 @@ document.getElementById('gastoMonto')?.addEventListener('input', (e) => {
 });
 
 document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async () => {
-    const proveedor  = document.getElementById('gastoProveedor')?.value?.trim() || '';
     const descripcion = document.getElementById('gastoDescripcion')?.value?.trim() || '';
     const monto = Number((document.getElementById('gastoMonto')?.value || '').replace(/\./g, '') || 0);
     if (!monto || monto <= 0 || !_gastoSelectedMethod) return;
@@ -17548,7 +17607,6 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             id: gastoId,
             categoria: _gastoCategoriaId || 'otros',
             subcategoria: _gastoSubcategoria || '',
-            proveedor,
             descripcion,
             monto,
             paymentMethod: _gastoSelectedMethod,
