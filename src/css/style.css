@@ -7701,17 +7701,6 @@ a,
     scroll-behavior: smooth;
 }
 
-/* touch-action: pan-y en todos los screens de scroll vertical — le dice
-   explícitamente al browser que procese el gesto como scroll vertical,
-   evitando que el intérprete de touch vacile entre ejes en móvil */
-#homeScreen,
-#promoScreen,
-#navCategoriesScreen,
-#categoryDetailScreen,
-#perfilScreen,
-#searchScreen {
-    touch-action: pan-y;
-}
 
 /* Forzar compositing layer en elementos animados críticos */
 .cart-fab,
