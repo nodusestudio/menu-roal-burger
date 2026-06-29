@@ -10093,6 +10093,9 @@ function renderExtraPromoCards() {
         section.querySelector('.home-rec-name').textContent = nombre;
 
         const btn = section.querySelector('.promo-btn-order');
+        btn.dataset.couponId = 'desc_' + promo.id;
+        const _descRem = _getRedeemRemaining(btn.dataset.couponId);
+        if (_descRem > 0) _applyBtnLockUI(btn, _descRem);
         btn.addEventListener('click', () => {
             if (!activeCustomerProfile) {
                 closePromoScreen();
@@ -10159,7 +10162,11 @@ function render2x1Cards() {
         section.querySelector('.home-rec-name').textContent = nombre;
         section.querySelector('.promo-2x1-desc').textContent = descripcion;
 
-        section.querySelector('.promo-btn-order').addEventListener('click', () => {
+        const btn2x1 = section.querySelector('.promo-btn-order');
+        btn2x1.dataset.couponId = '2x1_' + promo.id;
+        const _2x1Rem = _getRedeemRemaining(btn2x1.dataset.couponId);
+        if (_2x1Rem > 0) _applyBtnLockUI(btn2x1, _2x1Rem);
+        btn2x1.addEventListener('click', () => {
             if (!activeCustomerProfile) {
                 closePromoScreen();
                 openPromoRegistrationPrompt();
@@ -10411,6 +10418,10 @@ function renderHomeRecBanner() {
         if (origPriceEl) origPriceEl.textContent = raw > discounted ? `$${raw.toLocaleString('es-CO')}` : '';
     }
     if (btn) {
+        const _hrId = 'rec_' + (product.id || product.nombre || 'dia');
+        btn.dataset.couponId = _hrId;
+        const _hrRem = _getRedeemRemaining(_hrId);
+        if (_hrRem > 0) _applyBtnLockUI(btn, _hrRem);
         btn.onclick = () => {
             if (!activeCustomerProfile) {
                 openPromoRegistrationPrompt();
@@ -10704,6 +10715,39 @@ function _playRedeemEffect(btn) {
     }
 }
 
+// ── Redeem lock: bloquea cupón 24 h después de redimirse ─────────────────────────────────
+const _RDM_LOCK_PREFIX = 'rb_rdm_';
+const _RDM_LOCK_MS = 24 * 60 * 60 * 1000;
+
+function _setRedeemLock(id) {
+    try { localStorage.setItem(_RDM_LOCK_PREFIX + id, Date.now().toString()); } catch (_) {}
+}
+function _getRedeemRemaining(id) {
+    try {
+        const ts = localStorage.getItem(_RDM_LOCK_PREFIX + id);
+        if (!ts) return 0;
+        const rem = _RDM_LOCK_MS - (Date.now() - +ts);
+        return rem > 0 ? rem : 0;
+    } catch (_) { return 0; }
+}
+function _fmtRedeemTime(ms) {
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    return h >= 1 ? `${h}h ${m}min` : `${m} min`;
+}
+function _applyBtnLockUI(btn, remaining) {
+    btn.dataset.locked = '1';
+    btn.style.cssText += ';background:rgba(80,80,80,0.4)!important;opacity:0.6;cursor:not-allowed;';
+    btn.textContent = `🔒 Disponible en ${_fmtRedeemTime(remaining)}`;
+}
+function _showLockedToast(remaining) {
+    const t = document.createElement('div');
+    t.className = 'redeem-locked-toast';
+    t.textContent = `🔒 Cupón ya redimido · disponible en ${_fmtRedeemTime(remaining)}`;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+}
+
 // Listener global — intercepta click en botones de redención, reproduce animación y luego
 // re-dispara el click para que el flujo normal de pedido ocurra después de la animación.
 let _redeemFiring = false;
@@ -10713,12 +10757,25 @@ document.addEventListener('click', (e) => {
         '#homeRecBtn, #promoOrderButton, .promo-btn-order, .combo-order-btn, [data-redeem]'
     );
     if (!btn) return;
+    const cid = btn.dataset.couponId;
+    if (cid) {
+        const rem = _getRedeemRemaining(cid);
+        if (rem > 0) {
+            e.stopPropagation();
+            _showLockedToast(rem);
+            return;
+        }
+    }
     e.stopPropagation();
     _playRedeemEffect(btn);
     setTimeout(() => {
         _redeemFiring = true;
         btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         _redeemFiring = false;
+        if (cid) {
+            _setRedeemLock(cid);
+            _applyBtnLockUI(btn, _RDM_LOCK_MS);
+        }
     }, 700);
 }, true);
 
@@ -11146,7 +11203,13 @@ function _makeRecomendadoCard(rec) {
         categoria: rec.categoria || ''
     });
     const btn = card.querySelector('.mobile-order-btn');
-    if (btn) { btn.dataset.redeem = '1'; btn.textContent = 'Redimir cupón 🎟️'; }
+    if (btn) {
+        btn.dataset.redeem = '1';
+        btn.dataset.couponId = 'rec_' + (rec.id || rec.nombre || 'dia');
+        btn.textContent = 'Redimir cupón 🎟️';
+        const _recRem = _getRedeemRemaining(btn.dataset.couponId);
+        if (_recRem > 0) _applyBtnLockUI(btn, _recRem);
+    }
     return card;
 }
 
@@ -11229,7 +11292,10 @@ function _makeComboEspecialCarouselCard(combo) {
     btn.type = 'button';
     btn.className = 'mobile-order-btn';
     btn.dataset.redeem = '1';
+    btn.dataset.couponId = 'ce_' + combo.id;
     btn.textContent = 'Redimir cupón 🎟️';
+    const _ceRem = _getRedeemRemaining(btn.dataset.couponId);
+    if (_ceRem > 0) _applyBtnLockUI(btn, _ceRem);
     btn.addEventListener('click', () => {
         if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
         const prods = productos.map(p => latestProducts.find(x => x.id === p.id)).filter(Boolean);
@@ -11275,11 +11341,18 @@ function renderPromoCarousels() {
     const descCards = (_promosData || []).map(promo => {
         const product = productMap.get(promo.producto_id);
         if (!product) return null;
-        return _makeComboCard({
+        const card = _makeComboCard({
             nombre: product.nombre || promo.producto_nombre || '',
             imagen_url: product.image_url,
             categoria: product.categoria || ''
         });
+        const dBtn = card.querySelector('.mobile-order-btn');
+        if (dBtn) {
+            dBtn.dataset.couponId = 'desc_' + promo.id;
+            const dRem = _getRedeemRemaining(dBtn.dataset.couponId);
+            if (dRem > 0) _applyBtnLockUI(dBtn, dRem);
+        }
+        return card;
     }).filter(Boolean);
 
     // ── 3. Combos Especiales (si los hay) ──
@@ -11291,11 +11364,18 @@ function renderPromoCarousels() {
     const x2Cards = (_promos2x1Data || []).map(promo => {
         const product = productMap.get(promo.producto_id);
         if (!product) return null;
-        return _makeComboCard({
+        const card = _makeComboCard({
             nombre: product.nombre || promo.producto_nombre || '',
             imagen_url: product.image_url,
             categoria: product.categoria || ''
         });
+        const x2Btn = card.querySelector('.mobile-order-btn');
+        if (x2Btn) {
+            x2Btn.dataset.couponId = '2x1_' + promo.id;
+            const x2Rem = _getRedeemRemaining(x2Btn.dataset.couponId);
+            if (x2Rem > 0) _applyBtnLockUI(x2Btn, x2Rem);
+        }
+        return card;
     }).filter(Boolean);
 
     const s1 = _buildPromoSection('🔥 Descuentos', descCards);
