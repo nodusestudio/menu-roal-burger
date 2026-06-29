@@ -18046,7 +18046,9 @@ function renderCajaDiaria() {
             const ts   = o.paidAt || o.createdAt;
             const hora = formatOrderTime(ts);
             const amt  = getOrderDisplayTotal(o);
-            const baseDesc = `<strong>${escapeHtml(o.code)}</strong> · ${escapeHtml(o.customerName || '—')} · ${escapeHtml(getOrderTypeLabel(o))}`;
+            const _typeLabel = getOrderTypeLabel(o);
+            const _nameStr = (o.customerName && o.customerName !== _typeLabel) ? ` · ${escapeHtml(o.customerName)}` : '';
+            const baseDesc = `<strong>${escapeHtml(o.code)}</strong>${_nameStr} · ${escapeHtml(_typeLabel)}`;
             const isSplitOrder = o.paymentMethod === 'split' && Array.isArray(o.paymentSplit);
             const isKnown = isSplitOrder ? true : methodKeys.includes(o.paymentMethod);
 
@@ -18146,9 +18148,9 @@ function renderCajaDiaria() {
 
             const cat = getCategoriasGastos().find((c) => c.id === g.categoria);
             const catStr = cat ? ` · ${cat.icon} ${escapeHtml(cat.nombre)}` : '';
-            const provStr = g.proveedor ? ` · ${escapeHtml(g.proveedor)}` : '';
+            const subStr = g.subcategoria ? ` · ${escapeHtml(g.subcategoria)}` : '';
             const descStr = g.descripcion ? ` · ${escapeHtml(g.descripcion)}` : '';
-            const gastoDesc = `<span style="color:#fca5a5;font-weight:700;">💸 Gasto${catStr}</span>${provStr}${descStr}`;
+            const gastoDesc = `<span style="color:#fca5a5;font-weight:700;">💸 Gasto${catStr}</span>${subStr}${descStr}`;
 
             rows.push(`<tr>
                 <td class="col-left" style="color:#fca5a5;">${hora}</td>
