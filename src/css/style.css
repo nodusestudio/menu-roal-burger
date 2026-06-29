@@ -5676,7 +5676,7 @@ body.has-consent-doc-open .guest-register-banner {
     padding-left: 18px;
     padding-right: 18px;
     contain: none;
-    touch-action: pan-x pinch-zoom;
+    touch-action: pan-x pan-y pinch-zoom;
     overscroll-behavior-x: contain;
 }
 
@@ -7699,6 +7699,18 @@ a,
 .customer-order-history-list,
 .customer-messages-thread {
     scroll-behavior: smooth;
+}
+
+/* touch-action: pan-y en todos los screens de scroll vertical — le dice
+   explícitamente al browser que procese el gesto como scroll vertical,
+   evitando que el intérprete de touch vacile entre ejes en móvil */
+#homeScreen,
+#promoScreen,
+#navCategoriesScreen,
+#categoryDetailScreen,
+#perfilScreen,
+#searchScreen {
+    touch-action: pan-y;
 }
 
 /* Forzar compositing layer en elementos animados críticos */
