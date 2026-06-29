@@ -10643,6 +10643,58 @@ function _renderDtCatSidebar() {
     });
 }
 
+// ── Image Lightbox ─────────────────────────────────────────────────────────────
+function openImageLightbox(src, alt) {
+    const lb = document.getElementById('imgLightbox');
+    if (!lb) return;
+    const img = lb.querySelector('.lb-img');
+    const caption = lb.querySelector('.lb-caption');
+    img.src = src;
+    img.alt = alt || '';
+    caption.textContent = alt || '';
+    lb.classList.add('is-open');
+    lb.focus();
+
+    // Swipe-down para cerrar en móvil
+    let startY = 0;
+    const onTouchStart = (e) => { startY = e.touches[0].clientY; };
+    const onTouchEnd = (e) => {
+        if (e.changedTouches[0].clientY - startY > 60) {
+            closeImageLightbox();
+        }
+    };
+    lb.addEventListener('touchstart', onTouchStart, { passive: true, once: false });
+    lb._swipeTouchStart = onTouchStart;
+    lb.addEventListener('touchend', onTouchEnd, { passive: true, once: false });
+    lb._swipeTouchEnd = onTouchEnd;
+}
+
+function closeImageLightbox() {
+    const lb = document.getElementById('imgLightbox');
+    if (!lb) return;
+    lb.classList.remove('is-open');
+    if (lb._swipeTouchStart) lb.removeEventListener('touchstart', lb._swipeTouchStart);
+    if (lb._swipeTouchEnd)   lb.removeEventListener('touchend',   lb._swipeTouchEnd);
+}
+
+document.addEventListener('click', (e) => {
+    if (e.target.id === 'imgLightbox' || e.target.classList.contains('lb-close')) {
+        closeImageLightbox();
+        return;
+    }
+    const wrapper = e.target.closest('.card-image-wrapper');
+    if (!wrapper) return;
+    const img = wrapper.querySelector('.product-image-mobile');
+    if (!img) return;
+    e.stopPropagation();
+    openImageLightbox(img.src, img.alt);
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeImageLightbox();
+});
+// ───────────────────────────────────────────────────────────────────────────────
+
 function openCategoryDetail(cat) {
     const screen = document.getElementById('categoryDetailScreen');
     const title  = document.getElementById('cdsTitle');
