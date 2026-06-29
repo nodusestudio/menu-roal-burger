@@ -3954,6 +3954,7 @@ function checkAndPurgeStaleRecommendedCartItems() {
             shoppingCart = shoppingCart.filter((item) => !(item.orderOptions && item.orderOptions.recommendedDiscount));
             if (shoppingCart.length < before) {
                 saveCartState();
+                _checkSoftLockReleases();
                 setTimeout(() => {
                     showCartAddedToast('Carrito actualizado', 'El recomendado del día anterior fue removido');
                 }, 2500);
@@ -4538,9 +4539,11 @@ function updateCartItemQuantity(itemKey, delta) {
     shoppingCart = shoppingCart.filter((entry) => Number(entry.quantity || 0) > 0);
     saveCartState();
     renderCartUI();
+    _checkSoftLockReleases();
 }
 
 function clearCart() {
+    _softLockedCoupons.clear();
     shoppingCart = [];
     saveCartState();
     renderCartUI();
@@ -4825,6 +4828,7 @@ async function submitPaymentFlow() {
 
         paymentFlowUI.send.textContent = 'Pedido recibido...';
 
+        _convertSoftLocksToHardLocks();
         closePaymentFlowModal();
         clearCart();
         closeCartDrawer();
@@ -10095,7 +10099,12 @@ function renderExtraPromoCards() {
         const btn = section.querySelector('.promo-btn-order');
         btn.dataset.couponId = 'desc_' + promo.id;
         const _descRem = _getRedeemRemaining(btn.dataset.couponId);
-        if (_descRem > 0) _applyBtnLockUI(btn, _descRem);
+        if (_descRem > 0) {
+            _applyBtnLockUI(btn, _descRem);
+        } else if (_softLockedCoupons.has(btn.dataset.couponId)) {
+            _softLockedCoupons.get(btn.dataset.couponId).btn = btn;
+            _applyBtnSoftLockUI(btn);
+        }
         btn.addEventListener('click', () => {
             if (!activeCustomerProfile) {
                 closePromoScreen();
@@ -10165,7 +10174,12 @@ function render2x1Cards() {
         const btn2x1 = section.querySelector('.promo-btn-order');
         btn2x1.dataset.couponId = '2x1_' + promo.id;
         const _2x1Rem = _getRedeemRemaining(btn2x1.dataset.couponId);
-        if (_2x1Rem > 0) _applyBtnLockUI(btn2x1, _2x1Rem);
+        if (_2x1Rem > 0) {
+            _applyBtnLockUI(btn2x1, _2x1Rem);
+        } else if (_softLockedCoupons.has(btn2x1.dataset.couponId)) {
+            _softLockedCoupons.get(btn2x1.dataset.couponId).btn = btn2x1;
+            _applyBtnSoftLockUI(btn2x1);
+        }
         btn2x1.addEventListener('click', () => {
             if (!activeCustomerProfile) {
                 closePromoScreen();
@@ -10421,7 +10435,12 @@ function renderHomeRecBanner() {
         const _hrId = 'rec_' + (product.id || product.nombre || 'dia');
         btn.dataset.couponId = _hrId;
         const _hrRem = _getRedeemRemaining(_hrId);
-        if (_hrRem > 0) _applyBtnLockUI(btn, _hrRem);
+        if (_hrRem > 0) {
+            _applyBtnLockUI(btn, _hrRem);
+        } else if (_softLockedCoupons.has(_hrId)) {
+            _softLockedCoupons.get(_hrId).btn = btn;
+            _applyBtnSoftLockUI(btn);
+        }
         btn.onclick = () => {
             if (!activeCustomerProfile) {
                 openPromoRegistrationPrompt();
@@ -10715,9 +10734,12 @@ function _playRedeemEffect(btn) {
     }
 }
 
-// ── Redeem lock: bloquea cupón 24 h después de redimirse ─────────────────────────────────
+// ── Redeem lock — dos estados: soft (en carrito) y hard (pedido enviado, 24h) ────────────
 const _RDM_LOCK_PREFIX = 'rb_rdm_';
 const _RDM_LOCK_MS = 24 * 60 * 60 * 1000;
+
+// soft locks: cid → { btn, itemKeys[] } — vive solo en memoria (se limpia al recargar)
+const _softLockedCoupons = new Map();
 
 function _setRedeemLock(id) {
     try { localStorage.setItem(_RDM_LOCK_PREFIX + id, Date.now().toString()); } catch (_) {}
@@ -10735,15 +10757,64 @@ function _fmtRedeemTime(ms) {
     const m = Math.floor((ms % 3600000) / 60000);
     return h >= 1 ? `${h}h ${m}min` : `${m} min`;
 }
+
+// Hard lock UI (24h conteo)
 function _applyBtnLockUI(btn, remaining) {
-    btn.dataset.locked = '1';
-    btn.style.cssText += ';background:rgba(80,80,80,0.4)!important;opacity:0.6;cursor:not-allowed;';
+    if (!btn) return;
+    btn.dataset.locked = 'hard';
+    btn._origStyle = btn._origStyle ?? (btn.getAttribute('style') || '');
+    btn._origText  = btn._origText  ?? btn.textContent;
+    btn.style.cssText = btn._origStyle + ';background:rgba(80,80,80,0.4)!important;opacity:0.6;cursor:not-allowed;';
     btn.textContent = `🔒 Disponible en ${_fmtRedeemTime(remaining)}`;
 }
-function _showLockedToast(remaining) {
+// Soft lock UI (cupón en carrito)
+function _applyBtnSoftLockUI(btn) {
+    if (!btn) return;
+    btn.dataset.locked = 'soft';
+    btn._origStyle = btn._origStyle ?? (btn.getAttribute('style') || '');
+    btn._origText  = btn._origText  ?? btn.textContent;
+    btn.style.cssText = btn._origStyle + ';background:linear-gradient(135deg,rgba(59,130,246,0.6),rgba(37,99,235,0.6))!important;opacity:0.82;cursor:not-allowed;';
+    btn.textContent = '🛒 Cupón en carrito';
+}
+// Liberar soft lock (item eliminado del carrito)
+function _releaseSoftLockUI(btn) {
+    if (!btn) return;
+    delete btn.dataset.locked;
+    btn.setAttribute('style', btn._origStyle || '');
+    btn.textContent = btn._origText || 'Redimir cupón 🎟️';
+    delete btn._origStyle;
+    delete btn._origText;
+}
+
+// Aplicar soft lock al registro y al botón
+function _softLockCoupon(cid, btn, itemKeys) {
+    _softLockedCoupons.set(cid, { btn, itemKeys });
+    _applyBtnSoftLockUI(btn);
+}
+
+// Verificar si algún ítem fue eliminado del carrito y liberar el soft lock correspondiente
+function _checkSoftLockReleases() {
+    const currentKeys = new Set(shoppingCart.map(i => i.itemKey));
+    for (const [cid, lock] of _softLockedCoupons) {
+        if (lock.itemKeys.every(k => !currentKeys.has(k))) {
+            _releaseSoftLockUI(lock.btn);
+            _softLockedCoupons.delete(cid);
+        }
+    }
+}
+
+// Convertir todos los soft locks activos en hard locks (al enviar pedido)
+function _convertSoftLocksToHardLocks() {
+    for (const [cid] of _softLockedCoupons) {
+        _setRedeemLock(cid);
+    }
+    _softLockedCoupons.clear();
+}
+
+function _showLockedToast(msg) {
     const t = document.createElement('div');
     t.className = 'redeem-locked-toast';
-    t.textContent = `🔒 Cupón ya redimido · disponible en ${_fmtRedeemTime(remaining)}`;
+    t.textContent = msg;
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 3000);
 }
@@ -10759,22 +10830,33 @@ document.addEventListener('click', (e) => {
     if (!btn) return;
     const cid = btn.dataset.couponId;
     if (cid) {
+        // Bloqueo duro (24h conteo activo)
         const rem = _getRedeemRemaining(cid);
         if (rem > 0) {
             e.stopPropagation();
-            _showLockedToast(rem);
+            _showLockedToast(`🔒 Cupón ya redimido · disponible en ${_fmtRedeemTime(rem)}`);
+            return;
+        }
+        // Bloqueo suave (ya está en carrito)
+        if (_softLockedCoupons.has(cid)) {
+            e.stopPropagation();
+            _showLockedToast('🛒 Este cupón ya está en tu carrito');
             return;
         }
     }
     e.stopPropagation();
     _playRedeemEffect(btn);
     setTimeout(() => {
+        // Capturar keys del carrito antes del click para detectar qué ítems se agregan
+        const prevKeys = new Set(shoppingCart.map(i => i.itemKey));
         _redeemFiring = true;
         btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         _redeemFiring = false;
         if (cid) {
-            _setRedeemLock(cid);
-            _applyBtnLockUI(btn, _RDM_LOCK_MS);
+            const newKeys = shoppingCart
+                .filter(i => !prevKeys.has(i.itemKey))
+                .map(i => i.itemKey);
+            if (newKeys.length) _softLockCoupon(cid, btn, newKeys);
         }
     }, 700);
 }, true);
@@ -11208,7 +11290,12 @@ function _makeRecomendadoCard(rec) {
         btn.dataset.couponId = 'rec_' + (rec.id || rec.nombre || 'dia');
         btn.textContent = 'Redimir cupón 🎟️';
         const _recRem = _getRedeemRemaining(btn.dataset.couponId);
-        if (_recRem > 0) _applyBtnLockUI(btn, _recRem);
+        if (_recRem > 0) {
+            _applyBtnLockUI(btn, _recRem);
+        } else if (_softLockedCoupons.has(btn.dataset.couponId)) {
+            _softLockedCoupons.get(btn.dataset.couponId).btn = btn;
+            _applyBtnSoftLockUI(btn);
+        }
     }
     return card;
 }
@@ -11295,7 +11382,12 @@ function _makeComboEspecialCarouselCard(combo) {
     btn.dataset.couponId = 'ce_' + combo.id;
     btn.textContent = 'Redimir cupón 🎟️';
     const _ceRem = _getRedeemRemaining(btn.dataset.couponId);
-    if (_ceRem > 0) _applyBtnLockUI(btn, _ceRem);
+    if (_ceRem > 0) {
+        _applyBtnLockUI(btn, _ceRem);
+    } else if (_softLockedCoupons.has(btn.dataset.couponId)) {
+        _softLockedCoupons.get(btn.dataset.couponId).btn = btn;
+        _applyBtnSoftLockUI(btn);
+    }
     btn.addEventListener('click', () => {
         if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
         const prods = productos.map(p => latestProducts.find(x => x.id === p.id)).filter(Boolean);
@@ -11350,7 +11442,12 @@ function renderPromoCarousels() {
         if (dBtn) {
             dBtn.dataset.couponId = 'desc_' + promo.id;
             const dRem = _getRedeemRemaining(dBtn.dataset.couponId);
-            if (dRem > 0) _applyBtnLockUI(dBtn, dRem);
+            if (dRem > 0) {
+                _applyBtnLockUI(dBtn, dRem);
+            } else if (_softLockedCoupons.has(dBtn.dataset.couponId)) {
+                _softLockedCoupons.get(dBtn.dataset.couponId).btn = dBtn;
+                _applyBtnSoftLockUI(dBtn);
+            }
         }
         return card;
     }).filter(Boolean);
@@ -11373,7 +11470,12 @@ function renderPromoCarousels() {
         if (x2Btn) {
             x2Btn.dataset.couponId = '2x1_' + promo.id;
             const x2Rem = _getRedeemRemaining(x2Btn.dataset.couponId);
-            if (x2Rem > 0) _applyBtnLockUI(x2Btn, x2Rem);
+            if (x2Rem > 0) {
+                _applyBtnLockUI(x2Btn, x2Rem);
+            } else if (_softLockedCoupons.has(x2Btn.dataset.couponId)) {
+                _softLockedCoupons.get(x2Btn.dataset.couponId).btn = x2Btn;
+                _applyBtnSoftLockUI(x2Btn);
+            }
         }
         return card;
     }).filter(Boolean);
