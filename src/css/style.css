@@ -5458,9 +5458,9 @@ body.has-consent-doc-open .guest-register-banner {
     inset: 0;
     background: #f3e9d8;
     z-index: 200;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
 }
 
 /* Tarjetas de promo en carrusel */
@@ -5627,9 +5627,9 @@ body.has-consent-doc-open .guest-register-banner {
     inset: 0;
     background: #f3e9d8;
     z-index: 200;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
 }
 
 .menu-carousel-card-price {
@@ -5647,17 +5647,12 @@ body.has-consent-doc-open .guest-register-banner {
     inset: 0;
     background: #f3e9d8;
     z-index: 200;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
 }
 
 .combos-screen-body {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    overscroll-behavior-y: contain;
     padding: 20px 0 100px;
     display: flex;
     flex-direction: column;
