@@ -3359,7 +3359,7 @@ function renderPosPromocionesPanel(grid) {
         comboBtns.push(makeBtn({
             badgeText: combo.descuento > 0 ? `-${combo.descuento}%` : '🎁',
             badgeColor: '#7b3fa0',
-            nombre: combo.nombre || 'Combo',
+            nombre: combo.titulo || 'Combo',
             precioFinal: precioCombo,
             precioOrig: rate > 0 && precioOrig > precioCombo ? precioOrig : null,
             detalle: itemNames,
@@ -3372,7 +3372,7 @@ function renderPosPromocionesPanel(grid) {
                     const unitAdj = precioOrig > 0 && rate > 0 ? Math.round(unitOrig * (1 - rate)) : unitOrig;
                     setTimeout(() => {
                         for (let q = 0; q < qty; q++) {
-                            addProductToPosOrder(found.id, found.nombre, unitAdj, `Combo: ${combo.nombre || ''}`, rate > 0 ? unitOrig : null);
+                            addProductToPosOrder(found.id, found.nombre, unitAdj, `Combo: ${combo.titulo || ''}`, rate > 0 ? unitOrig : null);
                         }
                     }, i * 60);
                 });
