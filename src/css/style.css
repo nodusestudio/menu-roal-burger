@@ -2600,6 +2600,45 @@ body.has-guest-register-banner #ayudaScreen {
     0%, 100% { transform: scale(1); }
     50%       { transform: scale(1.025); }
 }
+@keyframes redeemParticle {
+    0%   { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0); opacity: 0; }
+}
+
+@keyframes redeemStamp {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.6) rotate(-8deg); }
+    35%  { opacity: 1; transform: translate(-50%, -50%) scale(0.92) rotate(2deg); }
+    65%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85) rotate(0deg); }
+}
+
+.redeem-particle {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 99999;
+    animation: redeemParticle 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.redeem-stamp {
+    position: fixed;
+    pointer-events: none;
+    z-index: 99999;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 22px;
+    border-radius: 50px;
+    border: 3px solid rgba(255,255,255,0.6);
+    box-shadow: 0 4px 24px rgba(34, 197, 94, 0.55), 0 0 0 6px rgba(34,197,94,0.15);
+    white-space: nowrap;
+    animation: redeemStamp 1.1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
 @keyframes confirm-ring {
     0%, 100% { opacity: 0.6; transform: scale(1); }
     50%       { opacity: 0;   transform: scale(1.08); }
@@ -5392,6 +5431,53 @@ body.has-consent-doc-open .guest-register-banner {
     box-shadow: 0 0 8px rgba(255, 140, 0, 0.6);
 }
 
+/* ── Botón Cupones: featured pill ── */
+#bnavPromo {
+    position: relative;
+    color: #fff;
+    background: linear-gradient(145deg, #ff8c00, #e85500);
+    border-radius: 14px;
+    box-shadow:
+        0 4px 18px rgba(232, 85, 0, 0.55),
+        0 -1px 8px rgba(255, 140, 0, 0.30),
+        inset 0 1px 0 rgba(255, 220, 140, 0.30);
+    margin: 2px 1px;
+    transform: translateY(-2px);
+}
+
+#bnavPromo .ban-icon {
+    width: 24px;
+    height: 24px;
+    color: #fff;
+}
+
+#bnavPromo .ban-label {
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+#bnavPromo:hover {
+    background: linear-gradient(145deg, #ff9d1a, #f06000);
+    box-shadow:
+        0 6px 22px rgba(232, 85, 0, 0.65),
+        0 -1px 10px rgba(255, 140, 0, 0.35),
+        inset 0 1px 0 rgba(255, 230, 160, 0.35);
+    transform: translateY(-3px);
+}
+
+#bnavPromo.is-current {
+    background: linear-gradient(145deg, #ff9d1a, #e85500);
+    box-shadow:
+        0 5px 20px rgba(232, 85, 0, 0.60),
+        0 -1px 10px rgba(255, 140, 0, 0.30),
+        inset 0 1px 0 rgba(255, 230, 160, 0.30);
+}
+
+#bnavPromo.is-current::before {
+    display: none;
+}
+
 /* Nombre del tooltip */
 .ban-tooltip-name {
     display: block;
@@ -6174,12 +6260,12 @@ body.has-consent-doc-open .guest-register-banner {
     gap: 4px;
     background: rgba(255, 255, 255, 0.35);
     cursor: zoom-in;
+    touch-action: manipulation;
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.55);
     border-radius: 14px;
     padding: 8px 10px;
-    cursor: pointer;
     transition: background 0.18s, transform 0.15s;
     min-width: 60px;
     max-width: 80px;

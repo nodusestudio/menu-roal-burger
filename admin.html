@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260629-1616">
+    <link rel="stylesheet" href="style.css?v=20260629-1712">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -7202,6 +7202,50 @@
             display: none !important;
         }
 
+        .cupon-type-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 480px;
+            margin-top: 4px;
+        }
+
+        .cupon-type-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            padding: 16px 10px 14px;
+            background: rgba(255,255,255,0.06);
+            border: 1.5px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.18s, border-color 0.18s;
+            color: var(--admin-text, #f0f0f0);
+            text-align: center;
+        }
+
+        .cupon-type-card:hover {
+            background: rgba(255,122,26,0.15);
+            border-color: rgba(255,122,26,0.55);
+        }
+
+        .cupon-type-card-icon { font-size: 1.5rem; line-height: 1; }
+        .cupon-type-card strong { font-size: 0.82rem; font-family: 'Oswald', sans-serif; letter-spacing: 0.05em; text-transform: uppercase; }
+        .cupon-type-card small { font-size: 0.69rem; color: var(--admin-muted, #888); line-height: 1.3; }
+
+        .cupon-unified-item { margin-bottom: 6px; }
+        .cupon-type-label {
+            display: inline-block;
+            font-size: 0.64rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: #fff;
+            padding: 2px 9px;
+            border-radius: 5px 5px 0 0;
+        }
+
         /* Responsive: tabs stack labels on narrow screens */
         @media (max-width: 480px) {
             .menu-inner-tab {
@@ -12409,17 +12453,9 @@
                     <div class="menu-inner-panel" data-menu-panel="promociones" role="tabpanel" hidden style="display:none;">
 
                         <nav class="promo-sub-tabs-nav" role="tablist" aria-label="Secciones de Cupones">
-                            <button class="promo-sub-tab active" data-promo-tab="promos" role="tab" aria-selected="true">
+                            <button class="promo-sub-tab active" data-promo-tab="cupones" role="tab" aria-selected="true">
                                 <span class="promo-sub-tab-icon">🏷️</span>
-                                <span>Descuentos</span>
-                            </button>
-                            <button class="promo-sub-tab" data-promo-tab="combos" role="tab" aria-selected="false">
-                                <span class="promo-sub-tab-icon">🎁</span>
-                                <span>Combos</span>
-                            </button>
-                            <button class="promo-sub-tab" data-promo-tab="2x1" role="tab" aria-selected="false">
-                                <span class="promo-sub-tab-icon">2×1</span>
-                                <span>2x1</span>
+                                <span>Cupones</span>
                             </button>
                             <button class="promo-sub-tab" data-promo-tab="recomendado" role="tab" aria-selected="false">
                                 <span class="promo-sub-tab-icon">⭐</span>
@@ -12427,16 +12463,8 @@
                             </button>
                         </nav>
 
-                        <div class="promo-sub-panel active" data-promo-panel="promos">
-                            <div id="promosTabPanel"></div>
-                        </div>
-
-                        <div class="promo-sub-panel" data-promo-panel="combos" hidden style="display:none;">
-                            <div id="combosTabPanel"></div>
-                        </div>
-
-                        <div class="promo-sub-panel" data-promo-panel="2x1" hidden style="display:none;">
-                            <div id="promos2x1TabPanel"></div>
+                        <div class="promo-sub-panel active" data-promo-panel="cupones">
+                            <div id="cuponesUnifiedPanel"></div>
                         </div>
 
                         <div class="promo-sub-panel" data-promo-panel="recomendado" hidden style="display:none;">
@@ -14368,7 +14396,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260629-1616"></script>
+    <script src="admin.js?v=20260629-1712"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

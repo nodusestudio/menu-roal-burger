@@ -9971,7 +9971,7 @@ function updatePromoModalContent() {
             orderButton.style.opacity = '0.45';
             orderButton.style.cursor = 'not-allowed';
         } else {
-            orderButton.textContent = '¡Lo Quiero! 🔥';
+            orderButton.textContent = 'Redimir cupón 🎟️';
             orderButton.disabled = false;
             orderButton.style.opacity = '';
             orderButton.style.cursor = '';
@@ -10086,7 +10086,7 @@ function renderExtraPromoCards() {
                             <span class="home-rec-price">$${discounted.toLocaleString('es-CO')}</span>
                         </div>
                     </div>
-                    <button class="home-rec-btn promo-btn-order" type="button">¡Lo Quiero! 🔥</button>
+                    <button class="home-rec-btn promo-btn-order" type="button">Redimir cupón 🎟️</button>
                 </div>
             </div>`;
 
@@ -10152,7 +10152,7 @@ function render2x1Cards() {
                 <div class="home-rec-body">
                     <strong class="home-rec-name"></strong>
                     <p class="promo-2x1-desc"></p>
-                    <button class="home-rec-btn promo-btn-order" type="button">¡Lo Quiero! 🔥</button>
+                    <button class="home-rec-btn promo-btn-order" type="button">Redimir cupón 🎟️</button>
                 </div>
             </div>`;
 
@@ -10242,7 +10242,7 @@ function renderCombosEspeciales() {
 
         section.innerHTML = `
             <div class="combo-especial-header">
-                <span class="combo-especial-badge">🎁 ${escapeXml(combo.titulo || 'Combo Especial')}</span>
+                <span class="combo-especial-badge">⭐ ${escapeXml(combo.titulo || 'Cupón Exclusivo')}</span>
                 ${descuento > 0 ? `<span class="combo-especial-pct">-${descuento}%</span>` : ''}
             </div>
             <div class="combo-especial-icons">${iconsHTML}</div>
@@ -10251,7 +10251,15 @@ function renderCombosEspeciales() {
                 ${precioOrig > precioCombo ? `<span class="combo-especial-orig">$${precioOrig.toLocaleString('es-CO')}</span>` : ''}
                 <span class="combo-especial-price">$${precioCombo.toLocaleString('es-CO')}</span>
             </div>
-            <button type="button" class="combo-order-btn">¡Lo Quiero! 🔥</button>`;
+            <button type="button" class="combo-order-btn">Redimir cupón 🎟️</button>`;
+
+        section.querySelectorAll('.combo-public-icon-btn').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const img = btn.querySelector('img');
+                if (img) openImageLightbox(img.src, img.alt);
+            });
+        });
 
         section.querySelector('.combo-order-btn').addEventListener('click', () => {
             if (!activeCustomerProfile) {
@@ -10263,7 +10271,7 @@ function renderCombosEspeciales() {
             const activeProds = productos.map((p) => latestProducts.find((x) => x.id === p.id)).filter(Boolean);
             if (!activeProds.length) return;
             const comboGroupId = `cgid-${combo.id}-${Date.now()}`;
-            const comboLabel = combo.titulo || 'Combo Especial';
+            const comboLabel = combo.titulo || 'Cupón Exclusivo';
             const mkOpts = (isChild) => ({
                 type: 'solo',
                 recommendedDiscount: discountRate > 0,
@@ -10289,25 +10297,6 @@ function renderCombosEspeciales() {
     });
 
     _applyPromoCarousel(container);
-
-    let _lbPx = 0, _lbPy = 0, _lbPending = null;
-    container.addEventListener('pointerdown', (e) => {
-        const btn = e.target.closest('.combo-public-icon-btn');
-        _lbPending = btn || null;
-        _lbPx = e.clientX; _lbPy = e.clientY;
-        console.log('[LB] pointerdown', btn ? 'ON BTN' : 'not btn', e.target.tagName, e.target.className);
-    });
-    container.addEventListener('pointerup', (e) => {
-        const btn = _lbPending;
-        _lbPending = null;
-        if (!btn) return;
-        const dx = Math.abs(e.clientX - _lbPx);
-        const dy = Math.abs(e.clientY - _lbPy);
-        console.log('[LB] pointerup on btn, dx=', dx, 'dy=', dy);
-        if (dx > 12 || dy > 12) return;
-        const img = btn.querySelector('img');
-        if (img) openImageLightbox(img.src, img.alt);
-    });
 }
 
 function escapeXml(str) {
@@ -10654,6 +10643,74 @@ function _renderDtCatSidebar() {
         nav.appendChild(btn);
     });
 }
+
+// ── Redeem Effect — partículas + stamp + haptic ──────────────────────────────
+function _playRedeemEffect(btn) {
+    if (!btn) return;
+
+    // Haptic en móvil
+    try { navigator.vibrate?.([80, 40, 120]); } catch (_) {}
+
+    const rect = btn.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    // Flash verde en el botón
+    const prevBg  = btn.style.background;
+    const prevTxt = btn.textContent;
+    btn.style.transition = 'background 0.15s, transform 0.15s';
+    btn.style.background  = 'linear-gradient(135deg, #22c55e, #16a34a)';
+    btn.style.transform   = 'scale(0.95)';
+    btn.textContent = '✓ ¡Canjeado!';
+    setTimeout(() => {
+        btn.style.background  = prevBg;
+        btn.style.transform   = '';
+        btn.textContent = prevTxt;
+        setTimeout(() => { btn.style.transition = ''; }, 200);
+    }, 750);
+
+    // Stamp flotante sobre el botón
+    const stamp = document.createElement('div');
+    stamp.className = 'redeem-stamp';
+    stamp.textContent = '✓ ¡Cupón aplicado!';
+    stamp.style.left = `${cx}px`;
+    stamp.style.top  = `${cy - 52}px`;
+    document.body.appendChild(stamp);
+    setTimeout(() => stamp.remove(), 1200);
+
+    // Partículas
+    const colors = ['#ff8c00', '#ffb830', '#ff5500', '#fff700', '#ffffff', '#22c55e', '#ff3d3d'];
+    const count  = 16;
+    for (let i = 0; i < count; i++) {
+        const angle  = (360 / count) * i + Math.random() * 15;
+        const dist   = 55 + Math.random() * 55;
+        const size   = 5 + Math.random() * 7;
+        const color  = colors[Math.floor(Math.random() * colors.length)];
+        const delay  = Math.random() * 80;
+        const p = document.createElement('span');
+        p.className = 'redeem-particle';
+        p.style.cssText = [
+            `left:${cx}px`,
+            `top:${cy}px`,
+            `width:${size}px`,
+            `height:${size}px`,
+            `background:${color}`,
+            `--dx:${(Math.cos(angle * Math.PI / 180) * dist).toFixed(1)}px`,
+            `--dy:${(Math.sin(angle * Math.PI / 180) * dist).toFixed(1)}px`,
+            `animation-delay:${delay}ms`,
+        ].join(';');
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 800 + delay);
+    }
+}
+
+// Listener global — captura click en cualquier botón de redención antes de que se procese
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest(
+        '#homeRecBtn, #promoOrderButton, .promo-btn-order, .combo-order-btn'
+    );
+    if (btn) _playRedeemEffect(btn);
+}, true);
 
 // ── Image Lightbox — overlay creado dinámicamente (sin depender de HTML/CSS externos) ─
 function openImageLightbox(src, alt) {
@@ -11090,7 +11147,7 @@ function _makeComboEspecialCarouselCard(combo) {
 
     const title = document.createElement('p');
     title.className = 'ce-carousel-title';
-    title.textContent = combo.titulo || 'Combo Especial';
+    title.textContent = combo.titulo || 'Cupón Exclusivo';
     header.appendChild(title);
 
     if (combo.descuento > 0) {
@@ -11158,7 +11215,7 @@ function _makeComboEspecialCarouselCard(combo) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'mobile-order-btn';
-    btn.textContent = '¡Lo Quiero! 🔥';
+    btn.textContent = 'Redimir cupón 🎟️';
     btn.addEventListener('click', () => {
         if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
         const prods = productos.map(p => latestProducts.find(x => x.id === p.id)).filter(Boolean);
@@ -11227,7 +11284,7 @@ function renderPromoCarousels() {
     }).filter(Boolean);
 
     const s1 = _buildPromoSection('🔥 Descuentos', descCards);
-    const s2 = _buildPromoSection('🎁 Combos Especiales', ceCards);
+    const s2 = _buildPromoSection('🎁 Cupones Exclusivos', ceCards);
     const s3 = _buildPromoSection('2×1 Especiales', x2Cards);
 
     if (s1) body.appendChild(s1);

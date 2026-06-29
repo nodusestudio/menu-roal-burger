@@ -542,6 +542,7 @@ let _promo2x1FormProductId = null;
 let _comboFormProducts = [];  // [{id, nombre, precio, imagen}]
 let _comboDiasSeleccionados = [];
 let _comboHorarioTipo = 'siempre';
+let _cuponCreatingType = null; // null | 'selector' | 'descuento' | '2x1' | 'combo'
 
 // ── Bluetooth printer state ──
 let _btPrinterDevice = null;
@@ -12562,7 +12563,7 @@ async function savePromo() {
         _promoEditingId = null;
         _promoFormProductId = null;
         await reloadDataAndRender();
-        renderPromosTabPanel();
+        renderCuponesUnified();
         showNotice('Promoción guardada.', 'ok');
     } catch (err) {
         showNotice('Error al guardar la promoción.', 'error');
@@ -12582,6 +12583,230 @@ async function deleteAdminPromo(id) {
 }
 
 // ===== FIN PANEL PROMOCIONES ADMIN =====
+
+// ===== PANEL CUPONES UNIFICADO =====
+
+function renderCuponesUnified() {
+    const container = document.getElementById('cuponesUnifiedPanel');
+    if (!container) return;
+
+    const isEditingPromo  = _promoEditingId !== null;
+    const isEditing2x1    = _promo2x1EditingId !== null;
+    const isEditingCombo  = _comboEditingId !== null;
+    const isFormOpen      = isEditingPromo || isEditing2x1 || isEditingCombo;
+
+    let topHTML = '';
+    if (!isFormOpen && _cuponCreatingType === null) {
+        topHTML = `<button type="button" class="admin-button" id="addCuponBtn" style="margin-top:4px;">+ Agregar cupón</button>`;
+    } else if (_cuponCreatingType === 'selector') {
+        topHTML = _buildCuponTypeSelectorHTML();
+    } else if (isEditingPromo) {
+        topHTML = _buildPromoFormHTML();
+    } else if (isEditing2x1) {
+        topHTML = _build2x1FormHTML();
+    } else if (isEditingCombo) {
+        topHTML = _buildComboFormHTML();
+    }
+
+    const allCoupons = [
+        ...promosState.map((p) => ({ ...p, _cupType: 'descuento' })),
+        ...promos2x1State.map((p) => ({ ...p, _cupType: '2x1' })),
+        ...combosEspecialesState.map((p) => ({ ...p, _cupType: 'combo' })),
+    ].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+
+    const listHTML = allCoupons.length
+        ? allCoupons.map(_buildUnifiedCouponCardHTML).join('')
+        : '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin cupones aún. Usa el botón de arriba para crear uno.</p>';
+
+    container.innerHTML = `
+        <div style="padding:16px 0;">
+            ${topHTML}
+            <div class="promo-admin-list" id="cuponesUnifiedList" style="margin-top:18px;">
+                ${listHTML}
+            </div>
+        </div>`;
+
+    // ── Add button
+    document.getElementById('addCuponBtn')?.addEventListener('click', () => {
+        _cuponCreatingType = 'selector';
+        renderCuponesUnified();
+    });
+
+    // ── Type selector
+    container.querySelectorAll('[data-cupon-type]').forEach((card) => {
+        card.addEventListener('click', () => {
+            const type = card.dataset.cuponType;
+            _cuponCreatingType = null;
+            if (type === 'descuento') {
+                _promoEditingId = 'new';
+                _promoFormProductId = null;
+            } else if (type === '2x1') {
+                _promo2x1EditingId = 'new';
+                _promo2x1FormProductId = null;
+            } else if (type === 'combo') {
+                _comboEditingId = 'new';
+                _comboFormProducts = [];
+                _comboDiasSeleccionados = [];
+                _comboHorarioTipo = 'siempre';
+            }
+            renderCuponesUnified();
+        });
+    });
+
+    document.getElementById('cuponSelectorCancelBtn')?.addEventListener('click', () => {
+        _cuponCreatingType = null;
+        renderCuponesUnified();
+    });
+
+    // ── Promo (descuento) form
+    if (isEditingPromo) {
+        container.querySelector('#promoFormProductSearch')?.addEventListener('input', (e) => _renderPromoFormSearchResults(e.target.value));
+        document.getElementById('promoFormSaveBtn')?.addEventListener('click', savePromo);
+        document.getElementById('promoFormCancelBtn')?.addEventListener('click', () => {
+            _promoEditingId = null;
+            _promoFormProductId = null;
+            renderCuponesUnified();
+        });
+    }
+
+    // ── 2×1 form
+    if (isEditing2x1) {
+        container.querySelector('#promo2x1FormProductSearch')?.addEventListener('input', (e) => _render2x1FormSearchResults(e.target.value));
+        document.getElementById('promo2x1FormSaveBtn')?.addEventListener('click', savePromo2x1);
+        document.getElementById('promo2x1FormCancelBtn')?.addEventListener('click', () => {
+            _promo2x1EditingId = null;
+            _promo2x1FormProductId = null;
+            renderCuponesUnified();
+        });
+    }
+
+    // ── Combo form
+    if (isEditingCombo) {
+        _wireComboFormListeners();
+    }
+
+    // ── Actions: descuento cards
+    container.querySelectorAll('[data-promo-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.promoAction;
+            const id = btn.dataset.promoId;
+            if (action === 'edit') {
+                _promoEditingId = id;
+                const promo = promosState.find((p) => p.id === id);
+                _promoFormProductId = promo?.producto_id || null;
+                renderCuponesUnified();
+            } else if (action === 'delete') {
+                deleteAdminPromo(id);
+            } else if (action === 'toggle') {
+                const promo = promosState.find((p) => p.id === id);
+                if (promo) {
+                    await firebaseDb.collection(PROMOCIONES_COLLECTION).doc(id).update({ activo: !promo.activo, updated_at: firestoreNow() });
+                    promo.activo = !promo.activo;
+                    renderCuponesUnified();
+                }
+            }
+        });
+    });
+
+    // ── Actions: 2×1 cards
+    container.querySelectorAll('[data-2x1-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const action = btn.getAttribute('data-2x1-action');
+            const id = btn.getAttribute('data-2x1-id');
+            if (action === 'edit') {
+                _promo2x1EditingId = id;
+                const p = promos2x1State.find((x) => x.id === id);
+                _promo2x1FormProductId = p?.producto_id || null;
+                renderCuponesUnified();
+            } else if (action === 'delete') {
+                deleteAdminPromo2x1(id);
+            } else if (action === 'toggle') {
+                const p = promos2x1State.find((x) => x.id === id);
+                if (p) {
+                    const newActivo = !(p.activo !== false);
+                    btn.disabled = true;
+                    try {
+                        await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(id).update({ activo: newActivo, updated_at: firestoreNow() });
+                        p.activo = newActivo;
+                        renderCuponesUnified();
+                        showNotice(newActivo ? '✅ Promo 2×1 activada.' : '⏸ Promo 2×1 pausada.', 'ok');
+                    } catch (err) {
+                        showNotice('No se pudo actualizar la promo.', 'error');
+                        btn.disabled = false;
+                    }
+                }
+            }
+        });
+    });
+
+    // ── Actions: combo cards
+    container.querySelectorAll('[data-combo-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.comboAction;
+            const id = btn.dataset.comboId;
+            if (action === 'edit') {
+                const combo = combosEspecialesState.find((c) => c.id === id);
+                if (!combo) return;
+                _comboEditingId = id;
+                _comboFormProducts = (combo.productos || []).map((p) => ({ ...p }));
+                _comboDiasSeleccionados = (combo.horario?.dias || []).map(Number);
+                _comboHorarioTipo = combo.horario?.tipo || 'siempre';
+                renderCuponesUnified();
+            } else if (action === 'toggle') {
+                const combo = combosEspecialesState.find((c) => c.id === id);
+                if (!combo) return;
+                await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).doc(id).update({ activo: !combo.activo });
+                await reloadDataAndRender();
+                renderCuponesUnified();
+            } else if (action === 'delete') {
+                const combo = combosEspecialesState.find((c) => c.id === id);
+                if (!window.confirm(`¿Eliminar el combo "${combo?.titulo || ''}"?`)) return;
+                await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).doc(id).delete();
+                await reloadDataAndRender();
+                renderCuponesUnified();
+                showNotice('Combo eliminado.', 'ok');
+            }
+        });
+    });
+}
+
+function _buildCuponTypeSelectorHTML() {
+    return `
+        <div style="margin-top:16px;">
+            <h4 style="margin:0 0 14px;font-family:'Oswald',sans-serif;font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--admin-accent);">¿Qué tipo de cupón deseas crear?</h4>
+            <div class="cupon-type-grid">
+                <button type="button" class="cupon-type-card" data-cupon-type="descuento">
+                    <span class="cupon-type-card-icon">🏷️</span>
+                    <strong>Descuento</strong>
+                    <small>Un artículo con % de descuento</small>
+                </button>
+                <button type="button" class="cupon-type-card" data-cupon-type="2x1">
+                    <span class="cupon-type-card-icon" style="font-weight:800;font-size:1.2rem;">2×1</span>
+                    <strong>2×1</strong>
+                    <small>Dos por el precio de uno</small>
+                </button>
+                <button type="button" class="cupon-type-card" data-cupon-type="combo">
+                    <span class="cupon-type-card-icon">🎁</span>
+                    <strong>Combo</strong>
+                    <small>Varios artículos con descuento especial</small>
+                </button>
+            </div>
+            <button type="button" class="ghost-button" id="cuponSelectorCancelBtn" style="margin-top:12px;padding:6px 14px;font-size:0.8rem;">Cancelar</button>
+        </div>`;
+}
+
+function _buildUnifiedCouponCardHTML(item) {
+    const type = item._cupType;
+    const colors = { descuento: '#8b3a00', '2x1': '#1a7a42', combo: '#1a3a7a' };
+    const labels = { descuento: '🏷️ Descuento', '2x1': '2×1', combo: '🎁 Combo' };
+    const cardHTML = type === 'descuento' ? _buildPromoAdminCardHTML(item)
+        : type === '2x1' ? _build2x1AdminCardHTML(item)
+        : _buildComboAdminCardHTML(item);
+    return `<div class="cupon-unified-item">
+        <span class="cupon-type-label" style="background:${colors[type] || '#444'};">${labels[type] || type}</span>
+        ${cardHTML}
+    </div>`;
+}
 
 // ===== PANEL 2x1 ADMIN =====
 
@@ -12793,7 +13018,7 @@ async function savePromo2x1() {
         _promo2x1EditingId = null;
         _promo2x1FormProductId = null;
         await reloadDataAndRender();
-        render2x1TabPanel();
+        renderCuponesUnified();
         showNotice('Oferta 2×1 guardada.', 'ok');
     } catch (err) {
         showNotice('Error al guardar la oferta 2×1.', 'error');
@@ -12824,7 +13049,7 @@ function renderCombosTabPanel() {
 
     container.innerHTML = `
         <div style="padding:16px 0;">
-            <p class="admin-hint">Los combos especiales aparecen en la pantalla de Promociones del menú público, debajo del Recomendado del Día. Arma paquetes con varios productos, porcentaje de descuento y horario de disponibilidad.</p>
+            <p class="admin-hint">Los cupones exclusivos aparecen en la pantalla de Cupones del menú público, debajo del Recomendado del Día. Arma paquetes con varios productos, porcentaje de descuento y horario de disponibilidad.</p>
             ${!isFormOpen
                 ? `<button type="button" class="admin-button" id="addComboBtn" style="margin-top:14px;">+ Nuevo combo</button>`
                 : _buildComboFormHTML()
@@ -12953,7 +13178,7 @@ function _buildComboFormHTML() {
 }
 
 function _wireComboFormListeners() {
-    const container = document.getElementById('combosTabPanel');
+    const container = document.getElementById('cuponesUnifiedPanel');
     if (!container) return;
 
     // Horario tipo toggle
@@ -13030,7 +13255,7 @@ function _wireComboFormListeners() {
     document.getElementById('comboFormCancelBtn')?.addEventListener('click', () => {
         _comboEditingId = null;
         _comboFormProducts = [];
-        renderCombosTabPanel();
+        renderCuponesUnified();
     });
 }
 
@@ -13099,7 +13324,7 @@ async function saveComboEspecial() {
         _comboEditingId = null;
         _comboFormProducts = [];
         await reloadDataAndRender();
-        renderCombosTabPanel();
+        renderCuponesUnified();
         showNotice('Combo guardado.', 'ok');
     } catch (err) {
         showNotice('Error al guardar el combo.', 'error');
@@ -13493,9 +13718,7 @@ async function reloadDataAndRender() {
     renderBrandingForm();
     renderHorarioForm();
     renderRecomendadoDiaPanel();
-    renderPromosTabPanel();
-    renderCombosTabPanel();
-    render2x1TabPanel();
+    renderCuponesUnified();
     renderOrders();
     renderSalesSummaries();
     renderLedgerBook();
