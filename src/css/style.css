@@ -5676,7 +5676,7 @@ body.has-consent-doc-open .guest-register-banner {
     padding-left: 18px;
     padding-right: 18px;
     contain: none;
-    touch-action: pan-x pan-y pinch-zoom;
+    touch-action: pan-x pinch-zoom;
     overscroll-behavior-x: contain;
 }
 
