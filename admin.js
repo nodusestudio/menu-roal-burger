@@ -3359,24 +3359,11 @@ function renderPosPromocionesPanel(grid) {
         comboBtns.push(makeBtn({
             badgeText: combo.descuento > 0 ? `-${combo.descuento}%` : '🎁',
             badgeColor: '#7b3fa0',
-            nombre: combo.nombre || 'Combo',
+            nombre: combo.titulo || 'Combo',
             precioFinal: precioCombo,
             precioOrig: rate > 0 && precioOrig > precioCombo ? precioOrig : null,
             detalle: itemNames,
-            onClick: () => {
-                combo.productos.forEach((p, i) => {
-                    const found = productsState.find((x) => x.id === p.id);
-                    if (!found) return;
-                    const qty = Number(p.cantidad || 1);
-                    const unitOrig = Number(found.precio || 0);
-                    const unitAdj = precioOrig > 0 && rate > 0 ? Math.round(unitOrig * (1 - rate)) : unitOrig;
-                    setTimeout(() => {
-                        for (let q = 0; q < qty; q++) {
-                            addProductToPosOrder(found.id, found.nombre, unitAdj, `Combo: ${combo.nombre || ''}`, rate > 0 ? unitOrig : null);
-                        }
-                    }, i * 60);
-                });
-            }
+            onClick: () => addComboEspecialToPosOrder(combo)
         }));
     });
     const comboSection = buildSection('🎁 Combos', comboBtns);
@@ -5594,6 +5581,41 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
     document.body.appendChild(overlay);
 }
 
+function addComboEspecialToPosOrder(combo) {
+    const rate = Math.min(Math.max(Number(combo.descuento || 0), 0), 80) / 100;
+    const precioOrig = (combo.productos || []).reduce((sum, p) => {
+        const found = productsState.find((x) => x.id === p.id);
+        return sum + (found ? Number(found.precio || 0) * Number(p.cantidad || 1) : 0);
+    }, 0) || Number(combo.precio_original || 0);
+    const precioCombo = Number(combo.precio_combo || 0) || (precioOrig > 0 && rate > 0 ? Math.round(precioOrig * (1 - rate)) : precioOrig);
+    const comboItems = (combo.productos || []).map((p) => {
+        const found = productsState.find((x) => x.id === p.id);
+        const nombre = found?.nombre || p.nombre || '';
+        return Number(p.cantidad || 1) > 1 ? `${nombre} x${p.cantidad}` : nombre;
+    }).filter(Boolean);
+
+    const itemKey = `ce-${combo.id}-${Date.now()}`;
+    internalOrderItems.push({
+        itemKey,
+        productId: `ce-${combo.id}`,
+        productName: combo.titulo || 'Cupón Exclusivo',
+        categoryName: 'CUPONES EXCLUSIVOS',
+        quantity: 1,
+        unitPrice: precioCombo,
+        originalUnitPrice: precioOrig > precioCombo ? precioOrig : null,
+        subtotal: precioCombo,
+        note: comboItems.join(' + '),
+        optionLabel: comboItems.join(' + '),
+        promoLabel: combo.titulo || '',
+        isComboEspecial: true,
+        comboItems,
+        parentKey: null
+    });
+    renderPosOrderItems();
+    renderPosTotals();
+    renderPosBottomBar();
+}
+
 function addProductToPosOrder(productId, productName, productPrice, note = '', originalUnitPrice = null, opts = {}) {
     productId = String(productId || '').trim();
     productName = String(productName || 'Producto').trim();
@@ -5739,6 +5761,22 @@ function renderPosOrderItems() {
         const priceHTML = hasDiscount
             ? `<div class="pos-item-price"><s class="pos-item-orig-price">${formatMoney(origSubtotal)}</s><span class="pos-item-final-price">${subtotal === 0 ? '<span class="pos-item-free">GRATIS</span>' : formatMoney(subtotal)}</span></div>`
             : `<div class="pos-item-price">${formatMoney(subtotal)}</div>`;
+        if (item.isComboEspecial) {
+            const listHTML = Array.isArray(item.comboItems) && item.comboItems.length
+                ? `<span class="pos-item-combo-list">${escapeHtml(item.comboItems.join(' + '))}</span>`
+                : '';
+            return `<div class="pos-item-row pos-item-row-combo" data-item-key="${escapeHtml(item.itemKey)}">
+                <div class="pos-item-name">
+                    <span class="pos-item-combo-badge">⭐ Cupón Exclusivo</span>
+                    ${escapeHtml(item.productName)}
+                    ${listHTML}
+                </div>
+                <div class="pos-item-qty-price">
+                    ${priceHTML}
+                    <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
+                </div>
+            </div>`;
+        }
         return `<div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
             <div class="pos-item-name">
                 ${escapeHtml(item.productName)}
