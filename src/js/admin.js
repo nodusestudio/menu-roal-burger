@@ -10457,17 +10457,23 @@ function renderOrders() {
 }
 
 function renderSalesDayBanner() {
-    const todayStr = new Date().toISOString().split('T')[0];
+    // Usar fecha local (Colombia UTC-5) en vez de toISOString() que devuelve UTC
+    const _now = new Date();
+    const todayStr = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
 
     // Pedidos cobrados HOY (el banner siempre muestra el día actual,
     // independientemente de cuándo se abrió la caja para evitar acumulación de días anteriores)
-    const aperturaHoy = cajaAperturaAt && new Date(cajaAperturaAt).toISOString().split('T')[0] === todayStr;
+    const _aperturaDate = cajaAperturaAt ? new Date(cajaAperturaAt) : null;
+    const aperturaHoyStr = _aperturaDate ? `${_aperturaDate.getFullYear()}-${String(_aperturaDate.getMonth()+1).padStart(2,'0')}-${String(_aperturaDate.getDate()).padStart(2,'0')}` : null;
+    const aperturaHoy = cajaAperturaAt && aperturaHoyStr === todayStr;
     const paidOrders = ordersState.filter((o) => {
         if (o.voided || o.anulado) return false;
         if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
         const paidMs = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt || 0);
         if (!paidMs) return false;
-        if (new Date(paidMs).toISOString().split('T')[0] !== todayStr) return false;
+        const _paidDate = new Date(paidMs);
+        const paidDateStr = `${_paidDate.getFullYear()}-${String(_paidDate.getMonth()+1).padStart(2,'0')}-${String(_paidDate.getDate()).padStart(2,'0')}`;
+        if (paidDateStr !== todayStr) return false;
         if (aperturaHoy) return paidMs >= cajaAperturaAt;
         return true;
     });
@@ -17921,8 +17927,10 @@ function renderCajaDiaria() {
         const paidMs = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
         if (!paidMs) return false;
         if (cajaAperturaAt) return paidMs >= cajaAperturaAt;
-        const todayStr = new Date().toISOString().split('T')[0];
-        return new Date(paidMs).toISOString().split('T')[0] === todayStr;
+        const _nd = new Date(); const _pd = new Date(paidMs);
+        const todayStr = `${_nd.getFullYear()}-${String(_nd.getMonth()+1).padStart(2,'0')}-${String(_nd.getDate()).padStart(2,'0')}`;
+        const paidStr = `${_pd.getFullYear()}-${String(_pd.getMonth()+1).padStart(2,'0')}-${String(_pd.getDate()).padStart(2,'0')}`;
+        return paidStr === todayStr;
     });
 
     // Filtrar gastos de la jornada actual (excluir gastos externos del historial)
