@@ -5457,7 +5457,7 @@ body.has-consent-doc-open .guest-register-banner {
 #promoCarouselScreen {
     position: fixed;
     inset: 0;
-    background: #f3e9d8;
+    background: transparent;
     z-index: 200;
     overflow-x: hidden;
     overflow-y: auto;
@@ -5626,7 +5626,7 @@ body.has-consent-doc-open .guest-register-banner {
 #menuCarouselScreen {
     position: fixed;
     inset: 0;
-    background: #f3e9d8;
+    background: transparent;
     z-index: 200;
     overflow-x: hidden;
     overflow-y: auto;
@@ -5646,7 +5646,7 @@ body.has-consent-doc-open .guest-register-banner {
 #combosScreen {
     position: fixed;
     inset: 0;
-    background: #f3e9d8;
+    background: transparent;
     z-index: 200;
     overflow-x: hidden;
     overflow-y: auto;
