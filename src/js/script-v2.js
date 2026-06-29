@@ -10688,13 +10688,21 @@ function openImageLightbox(src, alt) {
     document.body.appendChild(ov);
 
     const close = () => ov.remove();
-    ov.addEventListener('click', close);
 
+    // Delay el handler de click para evitar que el click sintético de Android
+    // (que se genera justo cuando el overlay aparece) lo cierre inmediatamente.
+    setTimeout(() => {
+        if (!document.getElementById('_roalLightbox')) return;
+        ov.addEventListener('click', close);
+    }, 80);
+
+    // Swipe-down cierra (sin delay). Botón X también por touchend.
     let _sy = 0;
     ov.addEventListener('touchstart', e => { _sy = e.touches[0].clientY; }, { passive: true });
     ov.addEventListener('touchend', e => {
         if (e.changedTouches[0].clientY - _sy > 70) close();
     }, { passive: true });
+    closeBtn.addEventListener('touchend', e => { e.stopPropagation(); close(); }, { passive: true });
 
     const onKey = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
     document.addEventListener('keydown', onKey);
