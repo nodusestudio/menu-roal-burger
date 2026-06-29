@@ -10557,6 +10557,7 @@ function renderHomeCategoryCards() {
             img.loading = 'lazy';
             img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
             wrap.appendChild(img);
+            _bindLightboxTap(wrap, img);
 
             const nameEl = document.createElement('p');
             nameEl.className = 'card-product-name';
@@ -10644,55 +10645,66 @@ function _renderDtCatSidebar() {
 }
 
 // ── Image Lightbox ─────────────────────────────────────────────────────────────
-function openImageLightbox(src, alt) {
-    const lb = document.getElementById('imgLightbox');
-    if (!lb) return;
-    const img = lb.querySelector('.lb-img');
-    const caption = lb.querySelector('.lb-caption');
-    img.src = src;
-    img.alt = alt || '';
-    caption.textContent = alt || '';
-    lb.classList.add('is-open');
-    lb.focus();
+(function _initLightbox() {
+    let _lbStartY = 0;
+    const _lb = () => document.getElementById('imgLightbox');
 
-    // Swipe-down para cerrar en móvil
-    let startY = 0;
-    const onTouchStart = (e) => { startY = e.touches[0].clientY; };
-    const onTouchEnd = (e) => {
-        if (e.changedTouches[0].clientY - startY > 60) {
+    window.openImageLightbox = function(src, alt) {
+        const lb = _lb(); if (!lb) return;
+        lb.querySelector('.lb-img').src = src;
+        lb.querySelector('.lb-img').alt = alt || '';
+        lb.querySelector('.lb-caption').textContent = alt || '';
+        lb.classList.add('is-open');
+    };
+
+    window.closeImageLightbox = function() {
+        const lb = _lb(); if (!lb) return;
+        lb.classList.remove('is-open');
+        lb.querySelector('.lb-img').src = '';
+    };
+
+    // Cierre: tap en fondo o botón X
+    document.addEventListener('click', (e) => {
+        if (e.target.id === 'imgLightbox' || e.target.classList.contains('lb-close')) {
             closeImageLightbox();
         }
-    };
-    lb.addEventListener('touchstart', onTouchStart, { passive: true, once: false });
-    lb._swipeTouchStart = onTouchStart;
-    lb.addEventListener('touchend', onTouchEnd, { passive: true, once: false });
-    lb._swipeTouchEnd = onTouchEnd;
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeImageLightbox(); });
+
+    // Swipe-down para cerrar
+    document.addEventListener('touchstart', (e) => {
+        if (_lb()?.classList.contains('is-open')) _lbStartY = e.touches[0].clientY;
+    }, { passive: true });
+    document.addEventListener('touchend', (e) => {
+        if (_lb()?.classList.contains('is-open') &&
+            e.changedTouches[0].clientY - _lbStartY > 70) {
+            closeImageLightbox();
+        }
+    }, { passive: true });
+})();
+
+// Adjunta apertura del lightbox al wrapper de imagen de una tarjeta.
+// Usa touchend (iOS/Android) con supresión del click sintético para evitar doble disparo.
+function _bindLightboxTap(wrapEl, imgEl) {
+    let _sx = 0, _sy = 0, _suppress = false;
+    wrapEl.addEventListener('touchstart', e => {
+        _sx = e.touches[0].clientX;
+        _sy = e.touches[0].clientY;
+        _suppress = false;
+    }, { passive: true });
+    wrapEl.addEventListener('touchend', e => {
+        const dx = Math.abs(e.changedTouches[0].clientX - _sx);
+        const dy = Math.abs(e.changedTouches[0].clientY - _sy);
+        if (dx < 12 && dy < 12) {
+            _suppress = true;
+            openImageLightbox(imgEl.src, imgEl.alt);
+        }
+    });
+    wrapEl.addEventListener('click', () => {
+        if (_suppress) { _suppress = false; return; }
+        openImageLightbox(imgEl.src, imgEl.alt);
+    });
 }
-
-function closeImageLightbox() {
-    const lb = document.getElementById('imgLightbox');
-    if (!lb) return;
-    lb.classList.remove('is-open');
-    if (lb._swipeTouchStart) lb.removeEventListener('touchstart', lb._swipeTouchStart);
-    if (lb._swipeTouchEnd)   lb.removeEventListener('touchend',   lb._swipeTouchEnd);
-}
-
-document.addEventListener('click', (e) => {
-    if (e.target.id === 'imgLightbox' || e.target.classList.contains('lb-close')) {
-        closeImageLightbox();
-        return;
-    }
-    const wrapper = e.target.closest('.card-image-wrapper');
-    if (!wrapper) return;
-    const img = wrapper.querySelector('.product-image-mobile');
-    if (!img) return;
-    e.stopPropagation();
-    openImageLightbox(img.src, img.alt);
-});
-
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeImageLightbox();
-});
 // ───────────────────────────────────────────────────────────────────────────────
 
 function openCategoryDetail(cat) {
@@ -10871,6 +10883,7 @@ function _makeComboCard(product) {
     img.loading = 'lazy';
     img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
     wrap.appendChild(img);
+    _bindLightboxTap(wrap, img);
 
     const nameEl = document.createElement('p');
     nameEl.className = 'combo-card-name';
@@ -10940,6 +10953,7 @@ function _makeMenuCarouselCard(product) {
     img.loading = 'lazy';
     img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
     wrap.appendChild(img);
+    _bindLightboxTap(wrap, img);
 
     const nameEl = document.createElement('p');
     nameEl.className = 'combo-card-name';
