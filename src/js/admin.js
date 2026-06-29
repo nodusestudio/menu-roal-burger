@@ -2670,7 +2670,7 @@ function renderPosCategoriesPanel() {
         select.dataset.listenerAttached = 'true';
     }
 
-    const promoOption       = `<option value="__POS_PROMOCIONES__">🏷️ PROMOCIONES</option>`;
+    const promoOption       = `<option value="__POS_PROMOCIONES__">🏷️ CUPONES</option>`;
     const cobroExtraOption  = `<option value="__POS_COBRO_EXTRA__">➕ COBRO EXTRA</option>`;
     const descuentoOption   = `<option value="__POS_DESCUENTO__">🏷 DESCUENTO</option>`;
     const bebidasCatOption  = catalogoVisibilidad.bebidas_pos && bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
