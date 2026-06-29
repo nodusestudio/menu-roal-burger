@@ -4156,7 +4156,6 @@ body.has-consent-doc-open .guest-register-banner {
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     contain: layout paint;
-    touch-action: pan-x;
 }
 
 .mobile-carousel.is-auto-playing {
@@ -5673,7 +5672,6 @@ body.has-consent-doc-open .guest-register-banner {
     padding-left: 18px;
     padding-right: 18px;
     contain: none;
-    touch-action: pan-x;
     overscroll-behavior-x: contain;
 }
 
@@ -5711,7 +5709,6 @@ body.has-consent-doc-open .guest-register-banner {
     inset: 0;
     z-index: 500;
     background: transparent;
-    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
 }
@@ -6176,6 +6173,7 @@ body.has-consent-doc-open .guest-register-banner {
     align-items: center;
     gap: 4px;
     background: rgba(255, 255, 255, 0.35);
+    cursor: zoom-in;
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.55);

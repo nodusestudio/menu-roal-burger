@@ -10254,15 +10254,8 @@ function renderCombosEspeciales() {
             <button type="button" class="combo-order-btn">¡Lo Quiero! 🔥</button>`;
 
         section.querySelectorAll('.combo-public-icon-btn').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const pid = btn.dataset.productId;
-                const prod = latestProducts.find((p) => p.id === pid);
-                if (prod) {
-                    closePromoScreen();
-                    setTimeout(() => handleProductClick(prod), 220);
-                }
-            });
+            const img = btn.querySelector('img');
+            if (img) _bindLightboxTap(btn, img);
         });
 
         section.querySelector('.combo-order-btn').addEventListener('click', () => {
