@@ -4156,6 +4156,7 @@ body.has-consent-doc-open .guest-register-banner {
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     contain: layout paint;
+    touch-action: pan-x;
 }
 
 .mobile-carousel.is-auto-playing {
@@ -5672,7 +5673,7 @@ body.has-consent-doc-open .guest-register-banner {
     padding-left: 18px;
     padding-right: 18px;
     contain: none;
-    touch-action: pan-x pan-y;
+    touch-action: pan-x;
     overscroll-behavior-x: contain;
 }
 
@@ -5710,6 +5711,7 @@ body.has-consent-doc-open .guest-register-banner {
     inset: 0;
     z-index: 500;
     background: transparent;
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
 }
@@ -7739,7 +7741,6 @@ a,
 .perfil-screen-content,
 .cart-drawer-body,
 .menu-drawer-body,
-#homeScreen,
 .customer-order-history-list,
 .customer-messages-thread {
     scroll-behavior: smooth;
