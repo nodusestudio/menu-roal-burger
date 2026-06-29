@@ -9582,8 +9582,17 @@
                 flex-wrap: nowrap !important;
                 align-items: center !important;
             }
-            /* Mostrar total vendido + domicilios; ocultar los demás */
-            #salesDayDeliveredTotal, #salesDayGrandTotal { display: none !important; }
+            /* Chips de totales en mobile: compactos pero todos visibles */
+            #salesDayDeliveredTotal, #salesDayGrandTotal {
+                display: flex !important;
+                align-items: center !important;
+                font-size: 0.72rem !important;
+                font-weight: 600 !important;
+                min-height: 28px !important;
+                padding: 0 7px !important;
+                border-radius: 7px !important;
+                flex-shrink: 0 !important;
+            }
             #salesDayTotalChip {
                 display: flex !important;
                 align-items: center !important;
@@ -9598,16 +9607,15 @@
             #salesDayDeliveryFeesChip {
                 display: flex !important;
                 align-items: center !important;
-                flex: 1 !important;
-                justify-content: center !important;
-                font-size: 0.82rem !important;
+                font-size: 0.72rem !important;
                 font-weight: 600 !important;
-                min-height: 30px !important;
-                padding: 0 10px !important;
-                border-radius: 8px !important;
+                min-height: 28px !important;
+                padding: 0 7px !important;
+                border-radius: 7px !important;
+                flex-shrink: 0 !important;
             }
-            /* Ocultar Nuevo Ticket y Tickets Abiertos del área de chips (se manejan en barra inferior) */
-            #openAdminTicketsViewBtn, #openCreateInternalOrderBtn { display: none !important; }
+            /* Ocultar Nuevo Ticket, Tickets Abiertos y Caja Chica del área de chips (se manejan en barra inferior) */
+            #openAdminTicketsViewBtn, #openCreateInternalOrderBtn, .sales-day-banner-metrics .caja-chica-btn { display: none !important; }
 
             /* 3. Ocultar card-head "Recepcion de Pedidos" — no agrega valor en mobile */
             [data-tab-panel="pedidos"] .admin-card > .card-head { display: none !important; }
@@ -12498,7 +12506,6 @@
                         <span class="unread-tray-badge" id="ordersCountUnread">0</span>
                     </button>
                     <button type="button" class="section-save-btn" data-section-save="pedidos" title="Actualizar pedidos">↺ Actualizar</button>
-                    <button type="button" class="caja-chica-btn" id="cajaChicaBtn" title="Caja Chica">💰</button>
                     <button type="button" id="abrirCajaBtnPos" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">📂 Abrir Caja</button>
                     <button type="button" id="cerrarCajaBtnPos" style="background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">🔒 Cerrar Caja</button>
                 </div>
@@ -12525,6 +12532,7 @@
                                 <span class="sales-day-chip" id="salesDayGrandTotal">💳 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
                                 <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
                                 <span class="sales-day-chip sales-day-chip--delivery" id="salesDayDeliveryFeesChip" hidden>🛵 $0</span>
+                                <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
                                 <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn" hidden style="display:none!important">
                                     Tickets Abiertos
                                     <span id="adminTicketsCountBadge"></span>
@@ -14337,6 +14345,10 @@
 
     <!-- ══ Mobile: barra de acciones rápidas (visible solo en móvil) ══ -->
     <div id="mobPosBottomBar" class="mob-pos-bottombar" role="toolbar" aria-label="Acciones POS">
+        <button type="button" class="mob-pos-bb-caja" onclick="document.getElementById('cajaChicaBtn')?.click()" aria-label="Caja Chica">
+            <span class="bb-icon">💰</span>
+            <span>Caja</span>
+        </button>
         <button type="button" class="mob-pos-bb-nuevo" onclick="document.getElementById('openCreateInternalOrderBtn')?.click()" aria-label="Nuevo Ticket">
             <span class="bb-icon">＋</span>
             <span>Nuevo Ticket</span>

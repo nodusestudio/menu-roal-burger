@@ -18225,7 +18225,7 @@ async function loadCajaAperturaFromFirestore() {
     try {
         const snap = await firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).get();
         const d = snap.exists ? snap.data() : null;
-        if (d && d.aperturaAt && d.cerrada === false) {
+        if (d && d.aperturaAt && d.cerrada !== true) {
             cajaAperturaAt = Number(d.aperturaAt);
             _cajaAperturaBy = d.aperturaBy || '';
             _cajaFondoInicial = Number(d.fondoInicial || 0);
@@ -18245,7 +18245,7 @@ function initCajaAperturaSync() {
         if (!snap.exists) return;
         const data = snap.data();
         const remoteTs = Number(data.aperturaAt || 0);
-        const remoteCerrada = data.cerrada !== false;
+        const remoteCerrada = data.cerrada === true;
         if (remoteCerrada) {
             if (cajaAperturaAt !== 0) {
                 cajaAperturaAt = 0;
@@ -18256,13 +18256,15 @@ function initCajaAperturaSync() {
                 renderOrders();
                 _updateCajaEstadoUI();
             }
-        } else if (remoteTs && remoteTs !== cajaAperturaAt) {
-            cajaAperturaAt = remoteTs;
-            _cajaAperturaBy = data.aperturaBy || '';
-            _cajaFondoInicial = Number(data.fondoInicial || 0);
-            try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(remoteTs)); } catch {}
-            renderCajaDiaria();
-            renderOrders();
+        } else if (remoteTs) {
+            if (remoteTs !== cajaAperturaAt) {
+                cajaAperturaAt = remoteTs;
+                _cajaAperturaBy = data.aperturaBy || '';
+                _cajaFondoInicial = Number(data.fondoInicial || 0);
+                try { localStorage.setItem(CAJA_APERTURA_STORAGE_KEY, String(remoteTs)); } catch {}
+                renderCajaDiaria();
+                renderOrders();
+            }
             _updateCajaEstadoUI();
         }
     });

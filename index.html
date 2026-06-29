@@ -353,6 +353,41 @@
         <div class="ncs-grid" id="ncsCategoriesGrid"></div>
     </div>
 
+    <!-- ===== PANTALLA MENÚ CARRUSELES ===== -->
+    <div id="menuCarouselScreen" hidden>
+        <div class="cds-header">
+            <button type="button" class="cds-back-btn" id="menuCarouselCloseBtn" aria-label="Volver">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+            </button>
+            <h2 class="cds-title">MENÚ</h2>
+        </div>
+        <div class="combos-screen-body" id="menuCarouselBody"></div>
+    </div>
+
+    <!-- ===== PANTALLA COMBOS ===== -->
+    <div id="combosScreen" hidden>
+        <div class="cds-header">
+            <button type="button" class="cds-back-btn" id="combosCloseBtn" aria-label="Volver">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+            </button>
+            <h2 class="cds-title">COMBOS</h2>
+        </div>
+        <div class="combos-screen-body">
+            <section class="combos-carousel-section">
+                <h3 class="combos-section-title">🍟 Combos con Papas y Bebida</h3>
+                <div class="mobile-carousel" id="combosPapasBebidaCarousel"></div>
+            </section>
+            <section class="combos-carousel-section">
+                <h3 class="combos-section-title">🍔 Combos Mixtos</h3>
+                <div class="mobile-carousel" id="combosMixtosCarousel"></div>
+            </section>
+        </div>
+    </div>
+
     <!-- ===== BUSCADOR INTELIGENTE ===== -->
     <div id="searchScreen" hidden>
         <div class="cds-header">
@@ -575,6 +610,19 @@
             <div id="combosEspecialesCards"></div>
         </div>
         <p id="promoModalText" hidden aria-hidden="true"></p>
+    </div>
+
+    <!-- ===== PANTALLA PROMOS CARRUSELES ===== -->
+    <div id="promoCarouselScreen" hidden>
+        <div class="cds-header">
+            <button type="button" class="cds-back-btn" id="promoCarouselCloseBtn" aria-label="Volver">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                </svg>
+            </button>
+            <h2 class="cds-title">PROMOCIONES</h2>
+        </div>
+        <div class="combos-screen-body" id="promoCarouselBody"></div>
     </div>
 
     <!-- ===== PANTALLA PERFIL / MI CUENTA ===== -->

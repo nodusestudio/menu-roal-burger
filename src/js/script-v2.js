@@ -272,7 +272,7 @@ let _skipNextPopstate  = false;
 let _closingByBackBtn  = false;
 
 // ── Gestión centralizada de pantallas secundarias ──
-const _SECONDARY_SCREENS = ['searchScreen', 'navCategoriesScreen', 'promoScreen', 'categoryDetailScreen', 'perfilScreen', 'ayudaScreen'];
+const _SECONDARY_SCREENS = ['searchScreen', 'navCategoriesScreen', 'promoScreen', 'categoryDetailScreen', 'perfilScreen', 'ayudaScreen', 'combosScreen', 'menuCarouselScreen', 'promoCarouselScreen'];
 let _screenHistoryPushed = false;
 
 function _pushModalState() {
@@ -5421,7 +5421,6 @@ function openCheckoutInfoModal() {
                     <button type="button" id="checkoutUseLocationButton" class="support-send-btn checkout-map-button">📍 Usar mi ubicación actual</button>
                     <span id="checkoutDeliveryZoneStatus" class="checkout-zone-status">Usa el botón de arriba para detectar tu ubicación o toca el mapa para ajustar el pin.</span>
                     <button type="button" id="checkoutRequestQuoteButton" class="checkout-map-button" style="display:none;">📩 Solicitar cotización</button>
-                    <button type="button" id="checkoutConfirmLocationButton" class="support-send-btn checkout-map-button" hidden>✓ Confirmar ubicación</button>
                 </div>
                 <div id="deliveryMap" class="checkout-map-area"></div>
             </div>
@@ -5445,7 +5444,8 @@ function openCheckoutInfoModal() {
                 </div>
             </div>
             <p class="support-feedback" id="checkoutInfoFeedback"></p>
-            <div class="support-actions">
+            <div class="support-actions stack">
+                <button type="button" id="checkoutConfirmLocationButton" class="support-send-btn checkout-confirm-location-btn" hidden>✓ Confirmar ubicación en el mapa</button>
                 <button type="button" class="support-send-btn" id="checkoutSubmitButton">Finalizar pedido</button>
             </div>
         </div>
@@ -10729,6 +10729,351 @@ function closeNavCategoriesScreen() {
     _exitScreen();
 }
 
+// ── Pantalla de Combos con dos carruseles ────────────────────────────────────
+
+function openCombosScreen() {
+    const screen = document.getElementById('combosScreen');
+    if (!screen) return;
+    _enterScreen('combosScreen');
+    screen.hidden = false;
+    screen.scrollTop = 0;
+    renderCombosCarousels();
+}
+
+function _makeComboCard(product) {
+    const card = document.createElement('div');
+    card.className = 'product-card-mobile';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'card-image-wrapper';
+    const img = document.createElement('img');
+    img.className = 'product-image-mobile';
+    img.src = String(product.imagen_url || product.image_url || '').trim() || _IMG_FINAL_FALLBACK;
+    img.alt = product.nombre || '';
+    img.loading = 'lazy';
+    img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
+    wrap.appendChild(img);
+
+    const nameEl = document.createElement('p');
+    nameEl.className = 'combo-card-name';
+    nameEl.textContent = product.nombre || '';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mobile-order-btn';
+    btn.textContent = '¡Lo Quiero! 🔥';
+    btn.addEventListener('click', () => startProductOrderFlow(product.nombre || '', product.categoria || '', 'combos-screen-btn'));
+
+    card.appendChild(wrap);
+    card.appendChild(nameEl);
+    card.appendChild(btn);
+    return card;
+}
+
+function _fillComboCarousel(carouselId, products) {
+    const carousel = document.getElementById(carouselId);
+    if (!carousel) return;
+    carousel.innerHTML = '';
+
+    if (!products.length) {
+        const empty = document.createElement('p');
+        empty.className = 'combos-empty-msg';
+        empty.textContent = 'Sin combos disponibles por el momento.';
+        carousel.appendChild(empty);
+        return;
+    }
+
+    products.forEach(p => carousel.appendChild(_makeComboCard(p)));
+    syncOrderingAvailabilityUI();
+}
+
+function renderCombosCarousels() {
+    const all = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
+    const catKey = p => normalizeCategoryKey(String(p.categoria || ''));
+
+    const papasBebida = all.filter(p => catKey(p) === 'combos con papas y bebida');
+    const mixtos      = all.filter(p => catKey(p) === 'combos mixtos');
+
+    _fillComboCarousel('combosPapasBebidaCarousel', papasBebida);
+    _fillComboCarousel('combosMixtosCarousel', mixtos);
+}
+
+// ── Pantalla Menú con carruseles por categoría ──────────────────────────────
+
+function openMenuCarouselScreen() {
+    const screen = document.getElementById('menuCarouselScreen');
+    if (!screen) return;
+    _enterScreen('menuCarouselScreen');
+    screen.hidden = false;
+    screen.scrollTop = 0;
+    renderMenuCarousels();
+}
+
+function _makeMenuCarouselCard(product) {
+    const card = document.createElement('div');
+    card.className = 'product-card-mobile';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'card-image-wrapper';
+    const img = document.createElement('img');
+    img.className = 'product-image-mobile';
+    img.src = String(product.imagen_url || product.image_url || '').trim() || _IMG_FINAL_FALLBACK;
+    img.alt = product.nombre || '';
+    img.loading = 'lazy';
+    img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
+    wrap.appendChild(img);
+
+    const nameEl = document.createElement('p');
+    nameEl.className = 'combo-card-name';
+    nameEl.textContent = product.nombre || '';
+
+    const price = resolveProductDisplayPrice(product);
+    const priceEl = document.createElement('p');
+    priceEl.className = 'menu-carousel-card-price';
+    priceEl.textContent = price ? '$' + price.toLocaleString('es-CO') : '';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mobile-order-btn';
+    btn.textContent = '¡Lo Quiero! 🔥';
+    btn.addEventListener('click', () => startProductOrderFlow(product.nombre || '', product.categoria || '', 'menu-carousel-btn'));
+
+    card.appendChild(wrap);
+    card.appendChild(nameEl);
+    if (price) card.appendChild(priceEl);
+    card.appendChild(btn);
+    return card;
+}
+
+function renderMenuCarousels() {
+    const body = document.getElementById('menuCarouselBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    const cats = activeCategoryMeta || [];
+    const allProds = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
+
+    cats.forEach(cat => {
+        const products = allProds.filter(p =>
+            normalizeCategoryKey(String(p.categoria || '')) === cat.key
+        );
+        if (!products.length) return;
+
+        const section = document.createElement('section');
+        section.className = 'combos-carousel-section';
+
+        const title = document.createElement('h3');
+        title.className = 'combos-section-title';
+        title.textContent = cat.name;
+
+        const carousel = document.createElement('div');
+        carousel.className = 'mobile-carousel';
+
+        products.forEach(p => carousel.appendChild(_makeMenuCarouselCard(p)));
+
+        section.appendChild(title);
+        section.appendChild(carousel);
+        body.appendChild(section);
+    });
+
+    syncOrderingAvailabilityUI();
+}
+
+// ── Pantalla Promos con carruseles ──────────────────────────────────────────
+
+function openPromoCarouselScreen() {
+    const screen = document.getElementById('promoCarouselScreen');
+    if (!screen) return;
+    _enterScreen('promoCarouselScreen');
+    screen.hidden = false;
+    screen.scrollTop = 0;
+    renderPromoCarousels();
+}
+
+
+function _buildPromoSection(title, cards) {
+    if (!cards.length) return null;
+    const section = document.createElement('section');
+    section.className = 'combos-carousel-section';
+
+    const h = document.createElement('h3');
+    h.className = 'combos-section-title';
+    h.textContent = title;
+
+    const carousel = document.createElement('div');
+    carousel.className = 'mobile-carousel';
+    cards.forEach(c => carousel.appendChild(c));
+
+    section.appendChild(h);
+    section.appendChild(carousel);
+    return section;
+}
+
+function _makeRecomendadoCard(rec) {
+    return _makeComboCard({
+        nombre: rec.nombre || '',
+        imagen_url: rec.image_url,
+        categoria: rec.categoria || ''
+    });
+}
+
+function _makeComboEspecialCarouselCard(combo) {
+    const card = document.createElement('div');
+    card.className = 'ce-carousel-card';
+
+    // Encabezado: título + badge
+    const header = document.createElement('div');
+    header.className = 'ce-carousel-header';
+
+    const title = document.createElement('p');
+    title.className = 'ce-carousel-title';
+    title.textContent = combo.titulo || 'Combo Especial';
+    header.appendChild(title);
+
+    if (combo.descuento > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'ce-carousel-badge';
+        badge.textContent = `-${combo.descuento}%`;
+        header.appendChild(badge);
+    }
+    card.appendChild(header);
+
+    // Miniaturas cuadradas de cada producto
+    const productos = combo.productos || [];
+    if (productos.length) {
+        const thumbsRow = document.createElement('div');
+        thumbsRow.className = 'ce-carousel-thumbs';
+
+        productos.forEach(p => {
+            const thumb = document.createElement('div');
+            thumb.className = 'ce-carousel-thumb';
+
+            const img = document.createElement('img');
+            img.src = p.imagen || _IMG_FINAL_FALLBACK;
+            img.alt = p.nombre || '';
+            img.loading = 'lazy';
+            img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
+
+            const name = document.createElement('span');
+            name.className = 'ce-carousel-thumb-name';
+            name.textContent = p.nombre || '';
+
+            thumb.appendChild(img);
+            thumb.appendChild(name);
+            thumbsRow.appendChild(thumb);
+        });
+        card.appendChild(thumbsRow);
+
+        const desc = document.createElement('p');
+        desc.className = 'ce-carousel-desc';
+        desc.textContent = productos.map(p => p.nombre || '').filter(Boolean).join(' + ');
+        card.appendChild(desc);
+    }
+
+    // Precio
+    const precioOrig  = combo.precio_original || 0;
+    const precioCombo = combo.precio_combo || precioOrig;
+    if (precioCombo > 0) {
+        const priceRow = document.createElement('div');
+        priceRow.className = 'ce-carousel-price-row';
+
+        if (precioOrig > precioCombo) {
+            const orig = document.createElement('span');
+            orig.className = 'ce-carousel-orig';
+            orig.textContent = '$' + precioOrig.toLocaleString('es-CO');
+            priceRow.appendChild(orig);
+        }
+
+        const disc = document.createElement('span');
+        disc.className = 'ce-carousel-disc';
+        disc.textContent = '$' + precioCombo.toLocaleString('es-CO');
+        priceRow.appendChild(disc);
+        card.appendChild(priceRow);
+    }
+
+    // Botón
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mobile-order-btn';
+    btn.textContent = '¡Lo Quiero! 🔥';
+    btn.addEventListener('click', () => {
+        if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
+        const prods = productos.map(p => latestProducts.find(x => x.id === p.id)).filter(Boolean);
+        if (!prods.length) return;
+        const cgId = `cgid-${combo.id}-${Date.now()}`;
+        prods.forEach((p, i) => addItemToCart(p.nombre || '', p.categoria || '', {
+            type: 'solo', imagePath: p.imagen_url || p.image_url,
+            comboGroupId: cgId, comboLabel: combo.titulo,
+            discountRate: i === 0 && combo.descuento > 0 ? combo.descuento / 100 : 0
+        }, `btn-ce-${combo.id}-${i}`));
+    });
+    card.appendChild(btn);
+
+    return card;
+}
+
+function renderPromoCarousels() {
+    const body = document.getElementById('promoCarouselBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    // ── 1. Recomendado del Día (siempre) ──
+    const rec = getRecommendedProductOfDay();
+    if (rec && rec.nombre && String(rec.estado || '').toLowerCase() !== 'paused') {
+        const recCard = _makeRecomendadoCard(rec);
+        const recSection = document.createElement('section');
+        recSection.className = 'combos-carousel-section';
+        const recTitle = document.createElement('h3');
+        recTitle.className = 'combos-section-title';
+        recTitle.textContent = '⭐ Recomendado del Día';
+        const recCarousel = document.createElement('div');
+        recCarousel.className = 'mobile-carousel';
+        recCarousel.appendChild(recCard);
+        recSection.appendChild(recTitle);
+        recSection.appendChild(recCarousel);
+        body.appendChild(recSection);
+    }
+
+    const productMap = new Map((latestProducts || []).map(p => [p.id, p]));
+
+    // ── 2. Descuentos (si los hay) ──
+    const descCards = (_promosData || []).map(promo => {
+        const product = productMap.get(promo.producto_id);
+        if (!product) return null;
+        return _makeComboCard({
+            nombre: product.nombre || promo.producto_nombre || '',
+            imagen_url: product.image_url,
+            categoria: product.categoria || ''
+        });
+    }).filter(Boolean);
+
+    // ── 3. Combos Especiales (si los hay) ──
+    const ceCards = (_combosEspecialesData || [])
+        .filter(c => _isComboActivoAhora(c.horario))
+        .map(combo => _makeComboEspecialCarouselCard(combo));
+
+    // ── 4. 2×1 (si los hay) ──
+    const x2Cards = (_promos2x1Data || []).map(promo => {
+        const product = productMap.get(promo.producto_id);
+        if (!product) return null;
+        return _makeComboCard({
+            nombre: product.nombre || promo.producto_nombre || '',
+            imagen_url: product.image_url,
+            categoria: product.categoria || ''
+        });
+    }).filter(Boolean);
+
+    const s1 = _buildPromoSection('🔥 Descuentos', descCards);
+    const s2 = _buildPromoSection('🎁 Combos Especiales', ceCards);
+    const s3 = _buildPromoSection('2×1 Especiales', x2Cards);
+
+    if (s1) body.appendChild(s1);
+    if (s2) body.appendChild(s2);
+    if (s3) body.appendChild(s3);
+
+    syncOrderingAvailabilityUI();
+}
+
 // Estado de filtros de búsqueda
 let _searchActiveCat = null;
 let _searchPricePreset = 'all'; // 'all' | '15000' | '30000' | '99999'
@@ -11812,11 +12157,12 @@ document.addEventListener('DOMContentLoaded', () => {
         window.__roalHideSplash?.(); // oculta splash si todavía está visible
         showHomeScreen();            // siempre navega al home (el wrapper no lo hace si splash ya cerró)
     });
-    document.getElementById('bnavMenu')?.addEventListener('click', () => openNavCategoriesScreen('Nuestro Menu', null));
-    document.getElementById('bnavCombos')?.addEventListener('click', () => {
-        openNavCategoriesScreen('Combos', cat => normalizeCategoryKey(cat.name || '').includes('combo'));
-    });
-    document.getElementById('bnavPromo')?.addEventListener('click', () => openPromoScreen());
+    document.getElementById('bnavMenu')?.addEventListener('click', () => openMenuCarouselScreen());
+    document.getElementById('menuCarouselCloseBtn')?.addEventListener('click', () => _exitScreen());
+    document.getElementById('bnavCombos')?.addEventListener('click', () => openCombosScreen());
+    document.getElementById('combosCloseBtn')?.addEventListener('click', () => _exitScreen());
+    document.getElementById('bnavPromo')?.addEventListener('click', () => openPromoCarouselScreen());
+    document.getElementById('promoCarouselCloseBtn')?.addEventListener('click', () => _exitScreen());
     document.getElementById('bnavBuscador')?.addEventListener('click', () => openSearchScreen());
     document.getElementById('bnavPerfil')?.addEventListener('click', () => openCustomerAuthModal());
     document.getElementById('bnavAyuda')?.addEventListener('click', () => openAyudaScreen());
