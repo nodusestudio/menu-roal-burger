@@ -10675,11 +10675,43 @@ function _renderDtCatSidebar() {
 }
 
 // ── Redeem Effect — partículas + stamp + haptic ──────────────────────────────
+function _playRedeemSound() {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        if (!window.__roalBurgerCartAudioContext) {
+            window.__roalBurgerCartAudioContext = new AudioContext();
+        }
+        const ctx = window.__roalBurgerCartAudioContext;
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+        // Arpegio ascendente "cha-ching" — 3 notas festivas
+        const notes = [659.25, 880, 1318.5]; // E5, A5, E6
+        const startGain = 0.14;
+        notes.forEach((freq, i) => {
+            const t0 = ctx.currentTime + i * 0.08;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, t0);
+            gain.gain.setValueAtTime(startGain, t0);
+            gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.22);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(t0);
+            osc.stop(t0 + 0.22);
+        });
+    } catch (_) {
+        // Silencio en navegadores sin Web Audio
+    }
+}
+
 function _playRedeemEffect(btn) {
     if (!btn) return;
 
     // Haptic en móvil
     try { navigator.vibrate?.([80, 40, 120]); } catch (_) {}
+    _playRedeemSound();
 
     const rect = btn.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
