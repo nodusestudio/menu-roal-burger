@@ -4800,7 +4800,6 @@ body.has-consent-doc-open .guest-register-banner {
     z-index: 503;
     background: transparent;
     overflow-y: auto;
-    overscroll-behavior-y: contain;
     padding-top: 0;
 }
 
@@ -5655,6 +5654,7 @@ body.has-consent-doc-open .guest-register-banner {
 
 .combos-screen-body {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior-y: contain;
@@ -5676,7 +5676,7 @@ body.has-consent-doc-open .guest-register-banner {
     padding-left: 18px;
     padding-right: 18px;
     contain: none;
-    touch-action: pan-x pinch-zoom;
+    touch-action: pan-x pan-y;
     overscroll-behavior-x: contain;
 }
 
