@@ -3428,6 +3428,7 @@ function setOrderControlAvailability(control) {
     if (!control) {
         return;
     }
+    if (control.dataset.locked) return;
 
     const availability = getOrderingAvailability();
     const openLabel = control.dataset.openLabel || control.textContent.trim();
