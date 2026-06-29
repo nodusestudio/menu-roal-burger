@@ -8373,9 +8373,7 @@ function renderFeaturedCards(carousel, items) {
             image.loading = 'lazy';
             image.decoding = 'async';
             image.src = item.src;
-            imageWrap.addEventListener('click', () => {
-                abrirModalBebida(safeName, item.src, featuredCategoryName, { orderImagePath: item.orderImageSrc });
-            });
+            _bindLightboxTap(imageWrap, image);
             const button = document.createElement('button');
             button.className = 'mobile-order-btn';
             button.id = buttonId;
@@ -10403,6 +10401,11 @@ function renderHomeRecBanner() {
     if (imgWrap) imgWrap.classList.remove('skel-loading');
     img.src = String(product.image_url || product.imageUrl || '');
     img.alt = String(product.nombre || product.name || 'Recomendado del dia');
+    if (imgWrap && !imgWrap._lbBound) {
+        imgWrap.style.cursor = 'zoom-in';
+        _bindLightboxTap(imgWrap, img);
+        imgWrap._lbBound = true;
+    }
     if (name)  name.textContent  = String(product.nombre || product.name || 'Recomendado del dia');
     const origPriceEl = document.getElementById('homeRecOrigPrice');
     if (price || origPriceEl) {
