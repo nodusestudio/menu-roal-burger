@@ -10253,11 +10253,6 @@ function renderCombosEspeciales() {
             </div>
             <button type="button" class="combo-order-btn">¡Lo Quiero! 🔥</button>`;
 
-        section.querySelectorAll('.combo-public-icon-btn').forEach((btn) => {
-            const img = btn.querySelector('img');
-            if (img) _bindLightboxTap(btn, img);
-        });
-
         section.querySelector('.combo-order-btn').addEventListener('click', () => {
             if (!activeCustomerProfile) {
                 closePromoScreen();
@@ -10294,6 +10289,25 @@ function renderCombosEspeciales() {
     });
 
     _applyPromoCarousel(container);
+
+    let _lbPx = 0, _lbPy = 0, _lbPending = null;
+    container.addEventListener('pointerdown', (e) => {
+        const btn = e.target.closest('.combo-public-icon-btn');
+        _lbPending = btn || null;
+        _lbPx = e.clientX; _lbPy = e.clientY;
+        console.log('[LB] pointerdown', btn ? 'ON BTN' : 'not btn', e.target.tagName, e.target.className);
+    });
+    container.addEventListener('pointerup', (e) => {
+        const btn = _lbPending;
+        _lbPending = null;
+        if (!btn) return;
+        const dx = Math.abs(e.clientX - _lbPx);
+        const dy = Math.abs(e.clientY - _lbPy);
+        console.log('[LB] pointerup on btn, dx=', dx, 'dy=', dy);
+        if (dx > 12 || dy > 12) return;
+        const img = btn.querySelector('img');
+        if (img) openImageLightbox(img.src, img.alt);
+    });
 }
 
 function escapeXml(str) {
