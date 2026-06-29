@@ -1,6 +1,6 @@
 /**
  * bump-version.js
- * Actualiza el CACHE_VER en sw.js y el ?v= en admin.html con la fecha+hora actual.
+ * Actualiza el CACHE_VER en sw.js y el ?v= en admin.html e index.html con la fecha+hora actual.
  * Corre automáticamente como primer paso de npm run dev y npm run build.
  */
 
@@ -48,3 +48,23 @@ adminHtml = adminHtml.replace(
 
 fs.writeFileSync(adminHtmlPath, adminHtml, 'utf8');
 console.log(`[bump] admin.html   → admin.js?v=${stamp}  style.css?v=${stamp}`);
+
+// ── 3. index.html — ?v= en script-v2.js, tracking.js y style.css ─────────────
+const indexHtmlPath = path.join(ROOT, 'index.html');
+let indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
+
+indexHtml = indexHtml.replace(
+    /script-v2\.js\?v=[\w-]+/g,
+    `script-v2.js?v=${stamp}`
+);
+indexHtml = indexHtml.replace(
+    /tracking\.js(\?v=[\w-]+)?(?=")/g,
+    `tracking.js?v=${stamp}`
+);
+indexHtml = indexHtml.replace(
+    /href="style\.css(\?v=[\w-]+)?"/g,
+    `href="style.css?v=${stamp}"`
+);
+
+fs.writeFileSync(indexHtmlPath, indexHtml, 'utf8');
+console.log(`[bump] index.html   → script-v2.js?v=${stamp}  tracking.js?v=${stamp}  style.css?v=${stamp}`);
