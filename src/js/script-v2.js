@@ -10498,39 +10498,105 @@ function renderHomeComboCarousel() {
 }
 
 function renderHomeCategoryCards() {
-    const grid = document.getElementById('homeCategoriesGrid');
-    if (!grid) return;
+    const container = document.getElementById('homeCategoriesGrid');
+    if (!container) return;
 
     const categories = activeCategoryMeta;
     if (!categories || categories.length === 0) {
-        if (!grid.querySelector('.home-cat-card') && !grid.querySelector('.skel-cat-card')) {
-            grid.innerHTML = Array(6).fill('<div class="skel-card skel-cat-card" aria-hidden="true"></div>').join('');
+        if (!container.querySelector('.combos-carousel-section')) {
+            container.innerHTML = '<p class="home-loading-msg">Cargando categorías...</p>';
         }
         return;
     }
 
-    grid.innerHTML = '';
+    const allProducts = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
+    const normKey = p => normalizeCategoryKey(String(p.categoria || ''));
+
+    container.innerHTML = '';
+    let sectionsAdded = 0;
+
     categories.forEach(cat => {
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = 'home-cat-card';
+        const key = cat.key || normalizeCategoryKey(cat.name || '');
+        const products = allProducts.filter(p => normKey(p) === key);
+        if (!products.length) return;
 
-        const imgEl = document.createElement('img');
-        imgEl.className = 'home-cat-img';
-        imgEl.src = cat.image_url || '';
-        imgEl.alt = cat.name;
-        imgEl.loading = 'lazy';
-        imgEl.onerror = () => { imgEl.style.display = 'none'; };
+        const section = document.createElement('section');
+        section.className = 'combos-carousel-section';
 
-        const labelEl = document.createElement('span');
-        labelEl.className = 'home-cat-label';
-        labelEl.textContent = cat.name;
+        // Header: título + "Ver todo"
+        const header = document.createElement('div');
+        header.className = 'home-cat-section-header';
 
-        card.appendChild(imgEl);
-        card.appendChild(labelEl);
-        card.addEventListener('click', () => openCategoryDetail(cat));
-        grid.appendChild(card);
+        const titleEl = document.createElement('h3');
+        titleEl.className = 'combos-section-title';
+        titleEl.textContent = cat.name;
+
+        const verTodoBtn = document.createElement('button');
+        verTodoBtn.type = 'button';
+        verTodoBtn.className = 'home-cat-all-btn';
+        verTodoBtn.textContent = 'Ver todo →';
+        verTodoBtn.addEventListener('click', () => openCategoryDetail(cat));
+
+        header.appendChild(titleEl);
+        header.appendChild(verTodoBtn);
+
+        // Carrusel de productos
+        const carousel = document.createElement('div');
+        carousel.className = 'mobile-carousel';
+
+        products.forEach(product => {
+            const card = document.createElement('div');
+            card.className = 'product-card-mobile';
+
+            const wrap = document.createElement('div');
+            wrap.className = 'card-image-wrapper';
+            const img = document.createElement('img');
+            img.className = 'product-image-mobile';
+            img.src = String(product.imagen_url || product.image_url || '').trim() || _IMG_FINAL_FALLBACK;
+            img.alt = product.nombre || '';
+            img.loading = 'lazy';
+            img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
+            wrap.appendChild(img);
+
+            const nameEl = document.createElement('p');
+            nameEl.className = 'card-product-name';
+            nameEl.textContent = product.nombre || '';
+
+            const priceRaw = resolveProductDisplayPrice(product);
+
+            card.appendChild(wrap);
+            card.appendChild(nameEl);
+
+            if (priceRaw) {
+                const priceEl = document.createElement('p');
+                priceEl.className = 'card-product-price';
+                priceEl.textContent = `$${Math.round(priceRaw).toLocaleString('es-CO')}`;
+                card.appendChild(priceEl);
+            }
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'mobile-order-btn';
+            btn.textContent = '¡Lo Quiero! 🔥';
+            btn.addEventListener('click', () => startProductOrderFlow(
+                product.nombre || '',
+                product.categoria || '',
+                'home-cat-carousel-btn'
+            ));
+            card.appendChild(btn);
+
+            carousel.appendChild(card);
+        });
+
+        section.appendChild(header);
+        section.appendChild(carousel);
+        container.appendChild(section);
+        sectionsAdded++;
     });
+
+    if (sectionsAdded === 0) {
+        container.innerHTML = '<p class="home-loading-msg">Cargando productos...</p>';
+    }
 
     _renderDtCatSidebar();
 }

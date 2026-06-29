@@ -6764,20 +6764,68 @@ body.has-consent-doc-open .guest-register-banner {
     cursor: grab;
 }
 
-/* Grid de categorías */
+/* Contenedor de secciones de categorías */
 .home-categories-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
 }
 
 .home-loading-msg {
-    grid-column: 1 / -1;
     text-align: center;
     color: rgba(80, 45, 12, 0.5);
     font-family: 'Roboto', sans-serif;
     font-size: 0.85rem;
     padding: 20px 0;
+}
+
+/* Header de cada sección-categoría: título + "Ver todo" */
+.home-cat-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+}
+
+.home-cat-section-header .combos-section-title {
+    padding: 0;
+}
+
+.home-cat-all-btn {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #ff6600;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 4px 0;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.card-product-name {
+    margin: 8px 0 0;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #3a1e00;
+    text-align: center;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0 6px;
+    line-height: 1.25;
+}
+
+.card-product-price {
+    margin: 3px 0 0;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #ff6600;
+    text-align: center;
 }
 
 /* Tarjeta de categoría — solo texto */
