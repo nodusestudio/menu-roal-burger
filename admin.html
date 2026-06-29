@@ -9582,17 +9582,8 @@
                 flex-wrap: nowrap !important;
                 align-items: center !important;
             }
-            /* Chips de totales en mobile: compactos pero todos visibles */
-            #salesDayDeliveredTotal, #salesDayGrandTotal {
-                display: flex !important;
-                align-items: center !important;
-                font-size: 0.72rem !important;
-                font-weight: 600 !important;
-                min-height: 28px !important;
-                padding: 0 7px !important;
-                border-radius: 7px !important;
-                flex-shrink: 0 !important;
-            }
+            /* Mostrar solo total y domicilios en móvil; ocultar efectivo/digital para evitar overflow */
+            #salesDayDeliveredTotal, #salesDayGrandTotal { display: none !important; }
             #salesDayTotalChip {
                 display: flex !important;
                 align-items: center !important;
@@ -9607,12 +9598,13 @@
             #salesDayDeliveryFeesChip {
                 display: flex !important;
                 align-items: center !important;
-                font-size: 0.72rem !important;
+                flex: 1 !important;
+                justify-content: center !important;
+                font-size: 0.82rem !important;
                 font-weight: 600 !important;
-                min-height: 28px !important;
-                padding: 0 7px !important;
-                border-radius: 7px !important;
-                flex-shrink: 0 !important;
+                min-height: 30px !important;
+                padding: 0 10px !important;
+                border-radius: 8px !important;
             }
             /* Ocultar Nuevo Ticket, Tickets Abiertos y Caja Chica del área de chips (se manejan en barra inferior) */
             #openAdminTicketsViewBtn, #openCreateInternalOrderBtn, .sales-day-banner-metrics .caja-chica-btn { display: none !important; }
