@@ -10704,12 +10704,22 @@ function _playRedeemEffect(btn) {
     }
 }
 
-// Listener global — captura click en cualquier botón de redención antes de que se procese
+// Listener global — intercepta click en botones de redención, reproduce animación y luego
+// re-dispara el click para que el flujo normal de pedido ocurra después de la animación.
+let _redeemFiring = false;
 document.addEventListener('click', (e) => {
+    if (_redeemFiring) return;
     const btn = e.target.closest(
-        '#homeRecBtn, #promoOrderButton, .promo-btn-order, .combo-order-btn'
+        '#homeRecBtn, #promoOrderButton, .promo-btn-order, .combo-order-btn, [data-redeem]'
     );
-    if (btn) _playRedeemEffect(btn);
+    if (!btn) return;
+    e.stopPropagation();
+    _playRedeemEffect(btn);
+    setTimeout(() => {
+        _redeemFiring = true;
+        btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        _redeemFiring = false;
+    }, 700);
 }, true);
 
 // ── Image Lightbox — overlay creado dinámicamente (sin depender de HTML/CSS externos) ─
@@ -11130,11 +11140,14 @@ function _buildPromoSection(title, cards) {
 }
 
 function _makeRecomendadoCard(rec) {
-    return _makeComboCard({
+    const card = _makeComboCard({
         nombre: rec.nombre || '',
         imagen_url: rec.image_url,
         categoria: rec.categoria || ''
     });
+    const btn = card.querySelector('.mobile-order-btn');
+    if (btn) { btn.dataset.redeem = '1'; btn.textContent = 'Redimir cupón 🎟️'; }
+    return card;
 }
 
 function _makeComboEspecialCarouselCard(combo) {
@@ -11215,6 +11228,7 @@ function _makeComboEspecialCarouselCard(combo) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'mobile-order-btn';
+    btn.dataset.redeem = '1';
     btn.textContent = 'Redimir cupón 🎟️';
     btn.addEventListener('click', () => {
         if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
@@ -11224,6 +11238,7 @@ function _makeComboEspecialCarouselCard(combo) {
         prods.forEach((p, i) => addItemToCart(p.nombre || '', p.categoria || '', {
             type: 'solo', imagePath: p.imagen_url || p.image_url,
             comboGroupId: cgId, comboLabel: combo.titulo,
+            upgradeHandled: true,
             discountRate: i === 0 && combo.descuento > 0 ? combo.descuento / 100 : 0
         }, `btn-ce-${combo.id}-${i}`));
     });
