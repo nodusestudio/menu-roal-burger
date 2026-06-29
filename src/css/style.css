@@ -3699,6 +3699,30 @@ body.has-consent-doc-open .guest-register-banner {
     width: 100%;
 }
 
+.cart-item-combo-especial {
+    border: 1.5px solid rgba(230, 126, 0, 0.5);
+    background: linear-gradient(135deg, rgba(255, 240, 215, 0.92), rgba(255, 255, 245, 0.82));
+}
+.cart-item-combo-badge {
+    display: inline-block;
+    margin-bottom: 4px;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #ff8c00, #e85500);
+    color: #fff;
+}
+.cart-item-combo-list {
+    font-size: 0.79rem;
+    line-height: 1.4;
+    color: #5a3a1b;
+    margin: 3px 0 2px;
+    font-style: italic;
+}
+
 .cart-item-controls {
     display: flex;
     flex-direction: column;

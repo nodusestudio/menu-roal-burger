@@ -4249,6 +4249,7 @@ function getCartItemUnitPrice(item) {
 }
 
 function getCartItemOriginalUnitPrice(item) {
+    if (item?.isComboEspecial) return Number(item.originalUnitPrice || item.unitPrice || 0);
     const normalizedOptions = normalizeOrderOptions(item?.orderOptions);
     if (!normalizedOptions.recommendedDiscount) {
         return getCartItemUnitPrice(item);
@@ -4324,13 +4325,15 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const cashTenderAmount = Number(customerInfo.cashTenderAmount || 0);
     const orderTotal = getCartTotalAmount() + deliveryFee;
     const lines = shoppingCart.map((item, index) => {
-        const optionLabel = getWhatsAppOrderDetail(item.categoryName, item.orderOptions);
         const details = [
             `${index + 1}. ${item.productName} x${item.quantity}`,
             `   Categoria: ${item.categoryName}`
         ];
-        if (optionLabel) {
-            details.push(`   Detalle: ${optionLabel}`);
+        if (item.isComboEspecial && Array.isArray(item.comboItems) && item.comboItems.length) {
+            details.push(`   Incluye: ${item.comboItems.join(', ')}`);
+        } else {
+            const optionLabel = getWhatsAppOrderDetail(item.categoryName, item.orderOptions);
+            if (optionLabel) details.push(`   Detalle: ${optionLabel}`);
         }
         if (item.orderOptions?.comment) {
             details.push(`   Nota: ${item.orderOptions.comment}`);
@@ -4383,7 +4386,8 @@ function buildCartOrderItems() {
             discountAmount: discountAmount > 0 ? discountAmount : null,
             optionLabel,
             note,
-            orderOptions: normalizeOrderOptions(item.orderOptions)
+            orderOptions: normalizeOrderOptions(item.orderOptions),
+            ...(item.isComboEspecial && Array.isArray(item.comboItems) ? { comboItems: item.comboItems } : {})
         };
     });
 }
@@ -5673,6 +5677,96 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
     showCartAddedToast(safeCategoryName, safeProductName);
 }
 
+function addComboEspecialToCart(combo, prods) {
+    const precioOrig  = Number(combo.precio_original || 0) || prods.reduce((s, p) => s + Number(p.precio || 0), 0);
+    const precioCombo = Number(combo.precio_combo || precioOrig);
+    const itemKey = `ce-${combo.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const comboItems = prods.map(p => String(p.nombre || '').trim()).filter(Boolean);
+    shoppingCart.push({
+        itemKey,
+        productName: String(combo.titulo || 'Cupón Exclusivo').trim(),
+        categoryName: 'CUPONES EXCLUSIVOS',
+        isComboEspecial: true,
+        comboItems,
+        unitPrice: precioCombo,
+        originalUnitPrice: precioOrig,
+        quantity: 1,
+        parentKey: null,
+        orderOptions: normalizeOrderOptions({
+            type: 'solo',
+            promoLabel: combo.titulo,
+            staticPrice: precioCombo,
+            allowClosedOrder: true
+        })
+    });
+    saveCartState();
+    renderCartUI();
+    openCartDrawer();
+    playCartAddSound();
+    showCartAddedToast('CUPONES EXCLUSIVOS', String(combo.titulo || 'Cupón Exclusivo').trim());
+}
+
+function renderComboEspecialCartRow(item) {
+    const unitPrice  = Number(item.unitPrice || 0);
+    const origPrice  = Number(item.originalUnitPrice || unitPrice);
+    const qty        = Number(item.quantity || 1);
+    const finalPrice = unitPrice * qty;
+    const origTotal  = origPrice * qty;
+    const discountPct = origPrice > unitPrice ? Math.round((1 - unitPrice / origPrice) * 100) : 0;
+    const savings    = Math.max(0, origTotal - finalPrice);
+
+    const row = document.createElement('div');
+    row.className = 'cart-item cart-item-combo-especial';
+
+    const info = document.createElement('div');
+    info.className = 'cart-item-info';
+
+    const badge = document.createElement('span');
+    badge.className = 'cart-item-combo-badge';
+    badge.textContent = '⭐ Cupón Exclusivo';
+
+    const title = document.createElement('strong');
+    title.className = 'cart-item-title-editable';
+    title.style.fontSize = '0.92rem';
+    title.textContent = item.productName;
+
+    const comboList = document.createElement('p');
+    comboList.className = 'cart-item-combo-list';
+    comboList.textContent = Array.isArray(item.comboItems) ? item.comboItems.join(' + ') : '';
+
+    const price = document.createElement('div');
+    price.className = 'cart-item-price-row';
+    if (discountPct > 0) {
+        price.innerHTML = `
+            <s class="cart-item-orig-price">${formatCurrency(origTotal)}</s>
+            <span class="cart-item-discount-pill">-${discountPct}%</span>
+            <span class="cart-item-final-price">${formatCurrency(finalPrice)}</span>
+            <span class="cart-item-savings">Ahorras ${formatCurrency(savings)}</span>`;
+    } else {
+        price.innerHTML = `<span class="cart-item-final-price">${formatCurrency(finalPrice)}</span>`;
+    }
+
+    info.appendChild(badge);
+    info.appendChild(title);
+    info.appendChild(comboList);
+    info.appendChild(price);
+
+    const controls = document.createElement('div');
+    controls.className = 'cart-item-controls';
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'cart-remove-btn';
+    remove.setAttribute('aria-label', 'Quitar cupón exclusivo');
+    remove.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
+    remove.addEventListener('click', () => updateCartItemQuantity(item.itemKey, -qty));
+
+    controls.appendChild(remove);
+    row.appendChild(info);
+    row.appendChild(controls);
+    return row;
+}
+
 function renderCartUI() {
     if (!cartUI) {
         initCartUI();
@@ -5740,6 +5834,7 @@ function renderCartUI() {
     };
 
     topItems.forEach((item) => {
+        if (item.isComboEspecial) { cartUI.list.appendChild(renderComboEspecialCartRow(item)); return; }
         const unitPrice = getCartItemUnitPrice(item);
         const originalUnitPrice = getCartItemOriginalUnitPrice(item);
         const subtotal = unitPrice * Number(item.quantity || 0);
@@ -11424,13 +11519,7 @@ function _makeComboEspecialCarouselCard(combo) {
         if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
         const prods = productos.map(p => latestProducts.find(x => x.id === p.id)).filter(Boolean);
         if (!prods.length) return;
-        const cgId = `cgid-${combo.id}-${Date.now()}`;
-        prods.forEach((p, i) => addItemToCart(p.nombre || '', p.categoria || '', {
-            type: 'solo', imagePath: p.imagen_url || p.image_url,
-            comboGroupId: cgId, comboLabel: combo.titulo,
-            upgradeHandled: true,
-            discountRate: i === 0 && combo.descuento > 0 ? combo.descuento / 100 : 0
-        }, `btn-ce-${combo.id}-${i}`));
+        addComboEspecialToCart(combo, prods);
     });
     card.appendChild(btn);
 
