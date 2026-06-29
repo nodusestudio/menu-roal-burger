@@ -10464,6 +10464,7 @@ function renderHomeComboCarousel() {
         img.alt = item.nombre;
         img.loading = 'lazy';
         wrap.appendChild(img);
+        _bindLightboxTap(wrap, img);
         const btn = document.createElement('button');
         btn.className = 'mobile-order-btn';
         btn.type = 'button';
