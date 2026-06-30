@@ -12289,7 +12289,9 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
     document.body.appendChild(modal);
     syncBodyScrollLock();
 
+    let pollRef = null;
     let unsubSnap = null;
+    let redeemed = false;
 
     const releaseLocalLock = () => {
         if (couponId && _softLockedCoupons.has(couponId)) {
@@ -12303,6 +12305,7 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
 
     const cleanup = (deleteDoc) => {
         clearInterval(tid);
+        clearInterval(pollRef);
         if (unsubSnap) { unsubSnap(); unsubSnap = null; }
         modal.remove();
         syncBodyScrollLock();
@@ -12310,6 +12313,15 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
     };
 
     const closeAndDelete = () => { cleanup(true); releaseLocalLock(); };
+
+    const onRedeemed = () => {
+        if (redeemed) return;
+        redeemed = true;
+        cleanup(false);
+        releaseLocalLock();
+        if (couponId) _setRedeemLock(couponId);
+        _showCuponRedimidoModal(couponTitle);
+    };
 
     const timerEl = document.getElementById('cuponCodTimer');
     const tid = setInterval(() => {
@@ -12328,24 +12340,85 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
         }
     }, 1000);
 
-    // Tiempo real: cuando el admin confirma, status cambia a 'used'
+    // Polling cada 3s — principal en móvil (más confiable que WebSocket)
+    pollRef = setInterval(async () => {
+        try {
+            const snap = await docRef.get();
+            if (snap.exists && snap.data()?.status === 'used') onRedeemed();
+        } catch (_) {}
+    }, 3000);
+
+    // onSnapshot como refuerzo en tiempo real cuando la conexión lo permite
     try {
         unsubSnap = docRef.onSnapshot(
-            snap => {
-                if (!snap.exists || snap.data()?.status !== 'used') return;
-                cleanup(false);
-                releaseLocalLock();
-                if (couponId) _setRedeemLock(couponId);
-                _showCuponRedimidoModal(couponTitle);
-            },
-            err => { console.warn('[cupon] onSnapshot error:', err.code, err.message); }
+            snap => { if (snap.exists && snap.data()?.status === 'used') onRedeemed(); },
+            _ => {}
         );
     } catch (_) {}
 
     document.getElementById('cuponCodCancel')?.addEventListener('click', closeAndDelete);
 }
 
+function _playBellSound() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.8);
+        gain.gain.setValueAtTime(0.5, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.6);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 1.6);
+    } catch (_) {}
+}
+
+function _launchConfetti() {
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:10000';
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    const colors = ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b','#c77dff','#f06595'];
+    const pieces = Array.from({length: 90}, () => ({
+        x: Math.random() * canvas.width,
+        y: -20 - Math.random() * 80,
+        w: Math.random() * 10 + 6,
+        h: Math.random() * 5 + 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: (Math.random() - 0.5) * 5,
+        vy: Math.random() * 3 + 2,
+        angle: Math.random() * Math.PI * 2,
+        spin: (Math.random() - 0.5) * 0.15,
+        g: 0.05
+    }));
+    let frame;
+    const draw = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        let alive = false;
+        pieces.forEach(p => {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.angle);
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+            ctx.restore();
+            p.x += p.vx; p.y += p.vy; p.vy += p.g; p.angle += p.spin;
+            if (p.y < canvas.height + 30) alive = true;
+        });
+        if (alive) { frame = requestAnimationFrame(draw); } else { canvas.remove(); }
+    };
+    frame = requestAnimationFrame(draw);
+    setTimeout(() => { cancelAnimationFrame(frame); canvas.remove(); }, 5000);
+}
+
 function _showCuponRedimidoModal(couponTitle) {
+    _playBellSound();
+    _launchConfetti();
     const modal = document.createElement('div');
     modal.id = 'cuponRedimidoModal';
     modal.className = 'support-modal is-open';
@@ -12360,7 +12433,7 @@ function _showCuponRedimidoModal(couponTitle) {
     syncBodyScrollLock();
     const close = () => { modal.remove(); syncBodyScrollLock(); };
     document.getElementById('cuponRedClose')?.addEventListener('click', close);
-    setTimeout(close, 6000);
+    setTimeout(close, 7000);
 }
 
 function orderDailyRecommendation() {
