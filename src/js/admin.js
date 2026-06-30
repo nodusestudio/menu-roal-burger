@@ -9835,6 +9835,14 @@ function buildReceivedOrderMessage(order) {
     const itemsLabel = buildOrderItemSummary(order);
     const totalLabel = formatMoney(getOrderDisplayTotal(order));
     const paymentLabel = getOrderPaymentLabel(order);
+    const method = String(order.paymentMethod || 'pendiente').toLowerCase();
+    const isCashOrPending = !method || method === 'pendiente' || method === 'efectivo';
+
+    // Para transferencia / tarjeta / link / split el cliente ya pagó o confirmó el pago;
+    // no tiene sentido decirle "Total a pagar" sino "Monto pagado".
+    const pagoLine = isCashOrPending
+        ? `Total a pagar: ${totalLabel}\nMedio de pago: ${paymentLabel}`
+        : `Monto pagado: ${totalLabel} (${paymentLabel})`;
 
     return `Hola ${customerName} soy Johan Rojas tu asesor del dia de hoy, me confirmas que este todo correcto por favor.
 
@@ -9843,8 +9851,7 @@ Direccion: ${deliveryLabel}
 Telefono: ${phoneLabel}
 Pedido:
 ${itemsLabel}
-Total a pagar: ${totalLabel}
-Medio de pago: ${paymentLabel}
+${pagoLine}
 
 Quedo atento para poder procesar tu pedido.`;
 }
