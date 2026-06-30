@@ -5187,6 +5187,101 @@ body.has-consent-doc-open .guest-register-banner {
 }
 /* ===== FIN MODAL REGISTRO PARA PROMOS ===== */
 
+/* ===== MODAL CANAL DE CUPÓN (Pedir aquí / Usar en local) ===== */
+.cupon-channel-card { max-width: 300px; text-align: center; }
+.cupon-channel-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 18px;
+}
+.cupon-channel-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 18px 10px;
+    border-radius: 14px;
+    border: 1.5px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    cursor: pointer;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.25;
+    transition: background 0.18s, transform 0.12s;
+    -webkit-tap-highlight-color: transparent;
+}
+.cupon-channel-btn:active { transform: scale(0.95); }
+.cupon-channel-btn--delivery { background: rgba(220, 53, 34, 0.28); border-color: rgba(220, 53, 34, 0.45); }
+.cupon-channel-btn--delivery:hover { background: rgba(220, 53, 34, 0.42); }
+.cupon-channel-btn--local { background: rgba(59, 130, 246, 0.28); border-color: rgba(59, 130, 246, 0.45); }
+.cupon-channel-btn--local:hover { background: rgba(59, 130, 246, 0.42); }
+.cupon-channel-btn-icon { font-size: 2rem; display: block; }
+
+/* ===== MODAL CÓDIGO LOCAL ===== */
+.cupon-code-card { max-width: 300px; text-align: center; }
+.cupon-code-display {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    margin: 20px auto;
+}
+.cupon-code-char {
+    width: 36px;
+    height: 46px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid rgba(255, 255, 255, 0.32);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0;
+}
+.cupon-code-sep {
+    color: rgba(255, 255, 255, 0.38);
+    font-size: 1.4rem;
+    font-weight: 300;
+    margin: 0 2px;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.cupon-code-timer {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.9rem;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.65);
+    margin: 0 0 18px;
+}
+.cupon-code-timer.urgent { color: #ff6b6b; animation: cuponTimerPulse 1s ease-in-out infinite; }
+.cupon-code-cancel {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1.5px solid rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.62);
+    border-radius: 10px;
+    padding: 10px 24px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.18s;
+    -webkit-tap-highlight-color: transparent;
+}
+.cupon-code-cancel:active { background: rgba(220, 53, 34, 0.3); }
+@keyframes cuponTimerPulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.45; }
+}
+
 /* ===== PANTALLA DE INICIO (SPLASH) ===== */
 #splashScreen {
     position: fixed;

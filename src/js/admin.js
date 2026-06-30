@@ -3270,6 +3270,99 @@ function renderPosPromocionesPanel(grid) {
 
     let hasAny = false;
 
+    // ── 0. VALIDAR CÓDIGO DEL CLIENTE ────────────────────────────────────────
+    const codeSection = document.createElement('div');
+    codeSection.className = 'pos-cupon-code-section';
+    codeSection.innerHTML = `
+        <h4 class="pos-cupon-code-title">🎟️ Código del cliente</h4>
+        <div class="pos-cupon-code-input-row">
+            <input type="text" class="pos-cupon-code-input" id="posCuponCodeInput"
+                   maxlength="6" placeholder="A7X2K9" autocomplete="off"
+                   autocorrect="off" autocapitalize="characters" spellcheck="false">
+            <button type="button" class="pos-cupon-validate-btn" id="posCuponValidateBtn">Validar</button>
+        </div>
+        <div id="posCuponResult"></div>`;
+    wrap.appendChild(codeSection);
+
+    const codeInput   = codeSection.querySelector('#posCuponCodeInput');
+    const validateBtn = codeSection.querySelector('#posCuponValidateBtn');
+    const resultDiv   = codeSection.querySelector('#posCuponResult');
+
+    codeInput.addEventListener('input', () => {
+        codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+        resultDiv.innerHTML = '';
+    });
+    codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') validateBtn.click(); });
+
+    validateBtn.addEventListener('click', async () => {
+        const code = codeInput.value.trim().toUpperCase();
+        if (code.length !== 6) {
+            resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
+                <span class="pos-cupon-result-title">Código inválido</span>
+                <span class="pos-cupon-result-sub">Debe tener exactamente 6 caracteres</span>
+            </div>`;
+            return;
+        }
+        validateBtn.disabled = true;
+        validateBtn.textContent = 'Buscando…';
+        resultDiv.innerHTML = '';
+        try {
+            const snap = await firebaseDb.collection('codigos_cupon').doc(code).get();
+            if (!snap.exists) {
+                resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
+                    <span class="pos-cupon-result-title">❌ Código no encontrado</span>
+                    <span class="pos-cupon-result-sub">Verifica que el cliente te haya dado el código correcto</span>
+                </div>`;
+                return;
+            }
+            const data = snap.data();
+            if (data.status === 'used') {
+                resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
+                    <span class="pos-cupon-result-title">❌ Ya fue redimido</span>
+                    <span class="pos-cupon-result-sub">Este código ya fue usado anteriormente</span>
+                </div>`;
+                return;
+            }
+            const expiresAt = data.expiresAt?.toDate ? data.expiresAt.toDate() : new Date(data.expiresAt);
+            if (expiresAt < new Date()) {
+                resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
+                    <span class="pos-cupon-result-title">⏱️ Código expirado</span>
+                    <span class="pos-cupon-result-sub">Dile al cliente que genere un nuevo código desde la app</span>
+                </div>`;
+                return;
+            }
+            const mins = Math.ceil((expiresAt - new Date()) / 60000);
+            resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--ok">
+                <span class="pos-cupon-result-title">✅ ${escapeHtml(data.couponTitle || 'Cupón')}</span>
+                <span class="pos-cupon-result-sub">👤 ${escapeHtml(data.userName || 'Cliente')} · ⏱️ Expira en ${mins} min</span>
+                <button type="button" class="pos-cupon-confirm-btn" id="posCuponConfirmBtn">Agregar al ticket →</button>
+            </div>`;
+            resultDiv.querySelector('#posCuponConfirmBtn')?.addEventListener('click', async () => {
+                const confirmBtn = resultDiv.querySelector('#posCuponConfirmBtn');
+                if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Procesando…'; }
+                try {
+                    await _posConfirmarCupon(snap.ref, data);
+                    codeInput.value = '';
+                    resultDiv.innerHTML = '';
+                    showNotice('✅ Cupón redimido y agregado al ticket', 'ok');
+                } catch (err) {
+                    console.error('Error redimiendo cupón:', err);
+                    showNotice('Error al redimir el cupón. Intenta de nuevo.', 'error');
+                    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Agregar al ticket →'; }
+                }
+            });
+        } catch (err) {
+            console.error('Error validando código:', err);
+            resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
+                <span class="pos-cupon-result-title">Error de conexión</span>
+                <span class="pos-cupon-result-sub">Verifica tu conexión e intenta de nuevo</span>
+            </div>`;
+        } finally {
+            validateBtn.disabled = false;
+            validateBtn.textContent = 'Validar';
+        }
+    });
+
     // ── 1. RECOMENDADO DEL DÍA ───────────────────────────────────────────────
     let _recProd = null;
     if (recomendadoDiaState && recomendadoDiaState.activo && recomendadoDiaState.producto_id) {
@@ -3393,6 +3486,72 @@ function renderPosPromocionesPanel(grid) {
     }
 
     grid.appendChild(wrap);
+}
+
+async function _posConfirmarCupon(docRef, data) {
+    const meta      = data.couponMeta || {};
+    const couponId  = data.couponId   || '';
+    const userPhone = data.userPhone  || '';
+
+    // 1. Agregar al ticket según tipo de cupón
+    if (meta.type === 'descuento') {
+        const prod         = productsState.find((p) => p.id === meta.productId);
+        const precioOrig   = Number(prod?.precio || 0);
+        const discountRate = Number(meta.discountRate || 0);
+        const precioFinal  = discountRate > 0 ? Math.round(precioOrig * (1 - discountRate)) : precioOrig;
+        const pct          = Math.round(discountRate * 100);
+        addProductToPosOrder(
+            meta.productId || '', meta.productNombre || data.couponTitle || 'Producto',
+            precioFinal, pct > 0 ? `Desc. ${pct}% (cupón)` : 'Cupón',
+            discountRate > 0 ? precioOrig : null
+        );
+    } else if (meta.type === '2x1') {
+        const prod  = productsState.find((p) => p.id === meta.productId);
+        const price = prod ? Number(prod.precio || 0) : 0;
+        addProductToPosOrder(
+            meta.productId || '', meta.productNombre || data.couponTitle || 'Producto',
+            price, '2×1 (cupón)', null,
+            { promoLabel: `PROMO 2×1 — ${meta.productNombre} (incluye 2)`, promo2x1: true, initialQuantity: 1 }
+        );
+    } else if (meta.type === 'combo') {
+        const comboFromState = combosEspecialesState.find((c) => c.id === meta.comboId);
+        addComboEspecialToPosOrder(comboFromState || {
+            id: meta.comboId, titulo: meta.comboTitulo || data.couponTitle,
+            productos: meta.productos || [], precio_combo: meta.precioCombo,
+            descuento: meta.discountRate ? Math.round(meta.discountRate * 100) : 0
+        });
+    } else if (meta.type === 'recomendado') {
+        const prod         = productsState.find((p) => p.id === meta.productId);
+        const precioOrig   = Number(prod?.precio || 0);
+        const discountRate = Number(meta.discountRate || 0.2);
+        const precioFinal  = Math.round(precioOrig * (1 - discountRate));
+        addProductToPosOrder(
+            meta.productId || '', meta.productNombre || data.couponTitle || 'Recomendado',
+            precioFinal, `Recomendado -${Math.round(discountRate * 100)}% (cupón)`, precioOrig
+        );
+    }
+
+    // 2. Marcar el código como usado en Firestore
+    await docRef.update({
+        status: 'used',
+        redeemedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // 3. Bloquear el cupón en el perfil del cliente (24h) para que la app refleje el estado
+    if (userPhone && couponId) {
+        const clientRef  = firebaseDb.collection(CLIENTS_COLLECTION).doc(`phone_${userPhone}`);
+        const expiresAt  = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        const lockPayload = {
+            redeemedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            expiresAt
+        };
+        try {
+            await clientRef.update({ [`cupones_bloqueados.${couponId}`]: lockPayload });
+        } catch (_) {
+            // El doc puede no existir aún — usar set con merge
+            await clientRef.set({ cupones_bloqueados: { [couponId]: lockPayload } }, { merge: true });
+        }
+    }
 }
 
 const POS_COMBOS_CON_PAPAS_PRICES = {

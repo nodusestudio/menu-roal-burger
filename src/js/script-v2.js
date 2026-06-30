@@ -596,11 +596,26 @@ function showWelcomeGreeting(profile) {
     }, 4000);
 }
 
+async function _applyServerSideCouponLocks(profile) {
+    if (!profile?.customerPhoneDigits) return;
+    try {
+        const snap = await db.collection(CLIENTS_COLLECTION).doc(`phone_${profile.customerPhoneDigits}`).get();
+        if (!snap.exists) return;
+        const locks = snap.data()?.cupones_bloqueados || {};
+        const now = new Date();
+        Object.entries(locks).forEach(([couponId, lock]) => {
+            const expiresAt = lock.expiresAt?.toDate ? lock.expiresAt.toDate() : new Date(lock.expiresAt);
+            if (expiresAt > now) _setRedeemLock(couponId);
+        });
+    } catch (_) {}
+}
+
 function setActiveCustomerProfile(profile) {
     activeCustomerProfile = profile ? normalizeCustomerProfile(profile) : null;
     persistCustomerProfile(activeCustomerProfile);
     if (activeCustomerProfile) {
         _chatFabSeenCount = _loadChatSeenCount();
+        _applyServerSideCouponLocks(activeCustomerProfile);
     }
     updateCustomerSessionUI();
     syncCustomerProfileRealtimeStreams();
@@ -10207,13 +10222,21 @@ function renderExtraPromoCards() {
                 openPromoRegistrationPrompt();
                 return;
             }
-            closePromoScreen();
-            addItemToCart(nombre, product.categoria || '', {
-                type: 'solo',
-                imagePath: img,
-                recommendedDiscount: rate > 0,
-                discountRate: rate
-            }, `btn-promo-extra-${promo.id}`);
+            _openChannelModal({
+                couponId: btn.dataset.couponId,
+                couponTitle: nombre,
+                couponMeta: { type: 'descuento', promoId: promo.id, productId: product.id, productNombre: nombre, discountRate: rate },
+                redeemBtn: btn,
+                onDelivery: () => {
+                    closePromoScreen();
+                    addItemToCart(nombre, product.categoria || '', {
+                        type: 'solo',
+                        imagePath: img,
+                        recommendedDiscount: rate > 0,
+                        discountRate: rate
+                    }, `btn-promo-extra-${promo.id}`);
+                }
+            });
         });
 
         frag.appendChild(section);
@@ -10282,13 +10305,21 @@ function render2x1Cards() {
                 openPromoRegistrationPrompt();
                 return;
             }
-            closePromoScreen();
-            addItemToCart(nombre, product.categoria || '', {
-                type: 'solo',
-                imagePath: img,
-                promoLabel: `PROMO 2×1 — ${promo.kicker || nombre} (incluye 2)`,
-                promo2x1: true
-            }, `btn-2x1-${promo.id}`, 1);
+            _openChannelModal({
+                couponId: btn2x1.dataset.couponId,
+                couponTitle: `2×1 ${nombre}`,
+                couponMeta: { type: '2x1', promoId: promo.id, productId: product.id, productNombre: nombre },
+                redeemBtn: btn2x1,
+                onDelivery: () => {
+                    closePromoScreen();
+                    addItemToCart(nombre, product.categoria || '', {
+                        type: 'solo',
+                        imagePath: img,
+                        promoLabel: `PROMO 2×1 — ${promo.kicker || nombre} (incluye 2)`,
+                        promo2x1: true
+                    }, `btn-2x1-${promo.id}`, 1);
+                }
+            });
         });
 
         frag2x1.appendChild(section);
@@ -10378,35 +10409,53 @@ function renderCombosEspeciales() {
             });
         });
 
-        section.querySelector('.combo-order-btn').addEventListener('click', () => {
+        const comboOrderBtn = section.querySelector('.combo-order-btn');
+        comboOrderBtn.dataset.couponId = `ce_${combo.id}`;
+        const _ceBannerRem = _getRedeemRemaining(comboOrderBtn.dataset.couponId);
+        if (_ceBannerRem > 0) {
+            _applyBtnLockUI(comboOrderBtn, _ceBannerRem);
+        } else if (_softLockedCoupons.has(comboOrderBtn.dataset.couponId)) {
+            _softLockedCoupons.get(comboOrderBtn.dataset.couponId).btn = comboOrderBtn;
+            _applyBtnSoftLockUI(comboOrderBtn);
+        }
+        comboOrderBtn.addEventListener('click', () => {
             if (!activeCustomerProfile) {
                 closePromoScreen();
                 openPromoRegistrationPrompt();
                 return;
             }
-            closePromoScreen();
-            const activeProds = productos.map((p) => latestProducts.find((x) => x.id === p.id)).filter(Boolean);
-            if (!activeProds.length) return;
-            const comboGroupId = `cgid-${combo.id}-${Date.now()}`;
-            const comboLabel = combo.titulo || 'Cupón Exclusivo';
-            const mkOpts = (isChild) => ({
-                type: 'solo',
-                recommendedDiscount: discountRate > 0,
-                discountRate,
-                upgradeHandled: true,
-                promoLabel: comboLabel,
-                comboGroupId,
-                isComboChild: isChild
-            });
-            const firstProd = activeProds[0];
-            const parentOpts = { ...mkOpts(false), imagePath: firstProd.image_url || _IMG_FINAL_FALLBACK };
-            const parentKey = getCartItemKey(firstProd.nombre, firstProd.categoria || '', parentOpts);
-            addItemToCart(firstProd.nombre, firstProd.categoria || '', parentOpts, `btn-combo-${combo.id}-0`);
-            activeProds.slice(1).forEach((prod, i) => {
-                const childOpts = { ...mkOpts(true), imagePath: prod.image_url || _IMG_FINAL_FALLBACK };
-                setTimeout(() => {
-                    addItemToCart(prod.nombre, prod.categoria || '', childOpts, `btn-combo-${combo.id}-${i + 1}`, 1, parentKey);
-                }, (i + 1) * 60);
+            const _doAddCombo = () => {
+                closePromoScreen();
+                const activeProds = productos.map((p) => latestProducts.find((x) => x.id === p.id)).filter(Boolean);
+                if (!activeProds.length) return;
+                const comboGroupId = `cgid-${combo.id}-${Date.now()}`;
+                const comboLabel = combo.titulo || 'Cupón Exclusivo';
+                const mkOpts = (isChild) => ({
+                    type: 'solo',
+                    recommendedDiscount: discountRate > 0,
+                    discountRate,
+                    upgradeHandled: true,
+                    promoLabel: comboLabel,
+                    comboGroupId,
+                    isComboChild: isChild
+                });
+                const firstProd = activeProds[0];
+                const parentOpts = { ...mkOpts(false), imagePath: firstProd.image_url || _IMG_FINAL_FALLBACK };
+                const parentKey = getCartItemKey(firstProd.nombre, firstProd.categoria || '', parentOpts);
+                addItemToCart(firstProd.nombre, firstProd.categoria || '', parentOpts, `btn-combo-${combo.id}-0`);
+                activeProds.slice(1).forEach((prod, i) => {
+                    const childOpts = { ...mkOpts(true), imagePath: prod.image_url || _IMG_FINAL_FALLBACK };
+                    setTimeout(() => {
+                        addItemToCart(prod.nombre, prod.categoria || '', childOpts, `btn-combo-${combo.id}-${i + 1}`, 1, parentKey);
+                    }, (i + 1) * 60);
+                });
+            };
+            _openChannelModal({
+                couponId: comboOrderBtn.dataset.couponId,
+                couponTitle: combo.titulo || 'Cupón Exclusivo',
+                couponMeta: { type: 'combo', comboId: combo.id, comboTitulo: combo.titulo, productos: combo.productos, precioCombo, discountRate },
+                redeemBtn: comboOrderBtn,
+                onDelivery: _doAddCombo
             });
         });
 
@@ -10542,16 +10591,25 @@ function renderHomeRecBanner() {
                 openPromoRegistrationPrompt();
                 return;
             }
-            startProductOrderFlow(
-                String(product.nombre || product.name || ''),
-                String(product.categoria || product.category || ''),
-                'home-rec-btn',
-                {
-                    recommendedDiscount: true,
-                    discountRate: RECOMMENDED_DAY_DISCOUNT_RATE,
-                    imagePath: product.image_url
+            const _hrCouponTitle = String(product.nombre || product.name || 'Recomendado del Día');
+            _openChannelModal({
+                couponId: _hrId,
+                couponTitle: _hrCouponTitle,
+                couponMeta: { type: 'recomendado', productId: product.id, productNombre: product.nombre, discountRate: RECOMMENDED_DAY_DISCOUNT_RATE },
+                redeemBtn: btn,
+                onDelivery: () => {
+                    startProductOrderFlow(
+                        String(product.nombre || product.name || ''),
+                        String(product.categoria || product.category || ''),
+                        'home-rec-btn',
+                        {
+                            recommendedDiscount: true,
+                            discountRate: RECOMMENDED_DAY_DISCOUNT_RATE,
+                            imagePath: product.image_url
+                        }
+                    );
                 }
-            );
+            });
         };
     }
 }
@@ -11412,18 +11470,42 @@ function _makeRecomendadoCard(rec) {
         imagen_url: rec.image_url,
         categoria: rec.categoria || ''
     });
-    const btn = card.querySelector('.mobile-order-btn');
-    if (btn) {
+    const origBtn = card.querySelector('.mobile-order-btn');
+    if (origBtn) {
+        // Clonar para eliminar el listener original de startProductOrderFlow
+        const btn = origBtn.cloneNode(true);
+        origBtn.parentNode.replaceChild(btn, origBtn);
+
+        const couponId = 'rec_' + (rec.id || rec.nombre || 'dia');
         btn.dataset.redeem = '1';
-        btn.dataset.couponId = 'rec_' + (rec.id || rec.nombre || 'dia');
+        btn.dataset.couponId = couponId;
         btn.textContent = 'Redimir cupón 🎟️';
-        const _recRem = _getRedeemRemaining(btn.dataset.couponId);
+
+        const _recRem = _getRedeemRemaining(couponId);
         if (_recRem > 0) {
             _applyBtnLockUI(btn, _recRem);
-        } else if (_softLockedCoupons.has(btn.dataset.couponId)) {
-            _softLockedCoupons.get(btn.dataset.couponId).btn = btn;
+        } else if (_softLockedCoupons.has(couponId)) {
+            _softLockedCoupons.get(couponId).btn = btn;
             _applyBtnSoftLockUI(btn);
         }
+
+        btn.addEventListener('click', () => {
+            if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
+            _openChannelModal({
+                couponId,
+                couponTitle: rec.nombre || 'Recomendado del Día',
+                couponMeta: { type: 'recomendado', productId: rec.id, productNombre: rec.nombre, discountRate: RECOMMENDED_DAY_DISCOUNT_RATE },
+                redeemBtn: btn,
+                onDelivery: () => {
+                    addItemToCart(rec.nombre, rec.categoria || '', {
+                        type: 'solo',
+                        imagePath: rec.image_url,
+                        recommendedDiscount: true,
+                        discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
+                    }, 'carousel-rec-btn');
+                }
+            });
+        });
     }
     return card;
 }
@@ -11520,7 +11602,13 @@ function _makeComboEspecialCarouselCard(combo) {
         if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
         const prods = productos.map(p => latestProducts.find(x => x.id === p.id)).filter(Boolean);
         if (!prods.length) return;
-        addComboEspecialToCart(combo, prods);
+        _openChannelModal({
+            couponId: btn.dataset.couponId,
+            couponTitle: combo.titulo || 'Cupón Exclusivo',
+            couponMeta: { type: 'combo', comboId: combo.id, comboTitulo: combo.titulo, productos: combo.productos, precioCombo: combo.precio_combo, discountRate: precioOrig > 0 ? Math.max(0, Math.min(1, 1 - (combo.precio_combo || precioOrig) / precioOrig)) : 0 },
+            redeemBtn: btn,
+            onDelivery: () => addComboEspecialToCart(combo, prods)
+        });
     });
     card.appendChild(btn);
 
@@ -11560,16 +11648,38 @@ function renderPromoCarousels() {
             imagen_url: product.image_url,
             categoria: product.categoria || ''
         });
-        const dBtn = card.querySelector('.mobile-order-btn');
-        if (dBtn) {
-            dBtn.dataset.couponId = 'desc_' + promo.id;
-            const dRem = _getRedeemRemaining(dBtn.dataset.couponId);
+        const origDBtn = card.querySelector('.mobile-order-btn');
+        if (origDBtn) {
+            const dBtn = origDBtn.cloneNode(true);
+            origDBtn.parentNode.replaceChild(dBtn, origDBtn);
+            const dCouponId = 'desc_' + promo.id;
+            const dRate = Math.min(Math.max(Number(promo.descuento || 0), 0), 100) / 100;
+            dBtn.textContent = 'Redimir cupón 🎟️';
+            dBtn.dataset.couponId = dCouponId;
+            const dRem = _getRedeemRemaining(dCouponId);
             if (dRem > 0) {
                 _applyBtnLockUI(dBtn, dRem);
-            } else if (_softLockedCoupons.has(dBtn.dataset.couponId)) {
-                _softLockedCoupons.get(dBtn.dataset.couponId).btn = dBtn;
+            } else if (_softLockedCoupons.has(dCouponId)) {
+                _softLockedCoupons.get(dCouponId).btn = dBtn;
                 _applyBtnSoftLockUI(dBtn);
             }
+            dBtn.addEventListener('click', () => {
+                if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
+                _openChannelModal({
+                    couponId: dCouponId,
+                    couponTitle: product.nombre || promo.producto_nombre || '',
+                    couponMeta: { type: 'descuento', promoId: promo.id, productId: product.id, productNombre: product.nombre, discountRate: dRate },
+                    redeemBtn: dBtn,
+                    onDelivery: () => {
+                        addItemToCart(product.nombre || '', product.categoria || '', {
+                            type: 'solo',
+                            imagePath: product.image_url,
+                            recommendedDiscount: dRate > 0,
+                            discountRate: dRate
+                        }, `carousel-desc-${promo.id}`);
+                    }
+                });
+            });
         }
         return card;
     }).filter(Boolean);
@@ -11588,16 +11698,37 @@ function renderPromoCarousels() {
             imagen_url: product.image_url,
             categoria: product.categoria || ''
         });
-        const x2Btn = card.querySelector('.mobile-order-btn');
-        if (x2Btn) {
-            x2Btn.dataset.couponId = '2x1_' + promo.id;
-            const x2Rem = _getRedeemRemaining(x2Btn.dataset.couponId);
+        const origX2Btn = card.querySelector('.mobile-order-btn');
+        if (origX2Btn) {
+            const x2Btn = origX2Btn.cloneNode(true);
+            origX2Btn.parentNode.replaceChild(x2Btn, origX2Btn);
+            const x2CouponId = '2x1_' + promo.id;
+            x2Btn.textContent = 'Redimir cupón 🎟️';
+            x2Btn.dataset.couponId = x2CouponId;
+            const x2Rem = _getRedeemRemaining(x2CouponId);
             if (x2Rem > 0) {
                 _applyBtnLockUI(x2Btn, x2Rem);
-            } else if (_softLockedCoupons.has(x2Btn.dataset.couponId)) {
-                _softLockedCoupons.get(x2Btn.dataset.couponId).btn = x2Btn;
+            } else if (_softLockedCoupons.has(x2CouponId)) {
+                _softLockedCoupons.get(x2CouponId).btn = x2Btn;
                 _applyBtnSoftLockUI(x2Btn);
             }
+            x2Btn.addEventListener('click', () => {
+                if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
+                _openChannelModal({
+                    couponId: x2CouponId,
+                    couponTitle: `2×1 ${product.nombre || promo.producto_nombre || ''}`,
+                    couponMeta: { type: '2x1', promoId: promo.id, productId: product.id, productNombre: product.nombre },
+                    redeemBtn: x2Btn,
+                    onDelivery: () => {
+                        addItemToCart(product.nombre || '', product.categoria || '', {
+                            type: 'solo',
+                            imagePath: product.image_url,
+                            promoLabel: `PROMO 2×1 — ${promo.kicker || product.nombre} (incluye 2)`,
+                            promo2x1: true
+                        }, `carousel-2x1-${promo.id}`, 1);
+                    }
+                });
+            });
         }
         return card;
     }).filter(Boolean);
@@ -12037,6 +12168,166 @@ function closePromoRegistrationPrompt() {
     if (modal) { modal.remove(); syncBodyScrollLock(); }
 }
 
+// ── REDENCIÓN EN LOCAL — código temporal + modal ─────────────────────────────
+
+function _generateLocalCode() {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // sin 0,O,1,I,L
+    let c = '';
+    for (let i = 0; i < 6; i++) c += chars[Math.floor(Math.random() * chars.length)];
+    return c;
+}
+
+function _openChannelModal({ couponId, couponTitle, couponMeta, redeemBtn, onDelivery }) {
+    const existing = document.getElementById('cuponChannelModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'cuponChannelModal';
+    modal.className = 'support-modal is-open';
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass cupon-channel-card" role="dialog" aria-modal="true" aria-label="Cómo quieres usar tu cupón">
+            <button type="button" class="support-modal-close" id="cuponChClose" aria-label="Cerrar">&times;</button>
+            <p class="support-modal-kicker">🎟️ ${escapeHtml(couponTitle || 'Cupón')}</p>
+            <h3 class="support-modal-title">¿Cómo lo usas?</h3>
+            <div class="cupon-channel-grid">
+                <button type="button" class="cupon-channel-btn cupon-channel-btn--delivery" id="cuponChDelivery">
+                    <span class="cupon-channel-btn-icon">🛵</span>
+                    Pedir aquí
+                </button>
+                <button type="button" class="cupon-channel-btn cupon-channel-btn--local" id="cuponChLocal">
+                    <span class="cupon-channel-btn-icon">🏪</span>
+                    Usar en local
+                </button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    syncBodyScrollLock();
+
+    const close = () => { modal.remove(); syncBodyScrollLock(); };
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.getElementById('cuponChClose')?.addEventListener('click', close);
+
+    document.getElementById('cuponChDelivery')?.addEventListener('click', () => {
+        close();
+        const prevKeys = new Set(shoppingCart.map(i => i.itemKey));
+        onDelivery();
+        if (couponId && redeemBtn) {
+            const newKeys = shoppingCart.filter(i => !prevKeys.has(i.itemKey)).map(i => i.itemKey);
+            if (newKeys.length) _softLockCoupon(couponId, redeemBtn, newKeys);
+        }
+    });
+
+    document.getElementById('cuponChLocal')?.addEventListener('click', () => {
+        close();
+        _generarCodigoLocal(couponId, couponTitle, couponMeta, redeemBtn);
+    });
+}
+
+async function _generarCodigoLocal(couponId, couponTitle, couponMeta, redeemBtn) {
+    if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
+
+    const rem = _getRedeemRemaining(couponId);
+    if (rem > 0) { _showLockedToast(`🔒 Cupón ya redimido · disponible en ${_fmtRedeemTime(rem)}`); return; }
+    if (_softLockedCoupons.has(couponId)) { _showLockedToast('🛒 Este cupón ya está en uso'); return; }
+
+    const code = _generateLocalCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const docRef = db.collection('codigos_cupon').doc(code);
+
+    try {
+        await docRef.set({
+            code,
+            userId: activeCustomerProfile.id || '',
+            userName: activeCustomerProfile.customerName || '',
+            userPhone: activeCustomerProfile.customerPhoneDigits || '',
+            couponId: couponId || '',
+            couponTitle: couponTitle || 'Cupón',
+            couponMeta: couponMeta || {},
+            expiresAt,
+            status: 'pending',
+            createdAt: _serverTimestamp()
+        });
+
+        if (redeemBtn) {
+            _softLockedCoupons.set(couponId, { btn: redeemBtn, itemKeys: [], isLocal: true });
+            redeemBtn._origText = redeemBtn._origText ?? redeemBtn.textContent;
+            redeemBtn._origStyle = redeemBtn._origStyle ?? (redeemBtn.getAttribute('style') || '');
+            redeemBtn.dataset.locked = 'soft';
+            redeemBtn.style.cssText = redeemBtn._origStyle + ';background:linear-gradient(135deg,rgba(59,130,246,0.55),rgba(37,99,235,0.55))!important;opacity:0.82;cursor:not-allowed;';
+            redeemBtn.textContent = '🏪 Código generado';
+        }
+
+        _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, redeemBtn);
+    } catch (err) {
+        console.error('Error generando código local:', err);
+        _showLockedToast('Error al generar el código. Intenta de nuevo.');
+    }
+}
+
+function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, redeemBtn) {
+    const existing = document.getElementById('cuponCodigoModal');
+    if (existing) existing.remove();
+
+    const codeHTML = code.split('').map((c, i) =>
+        (i === 3 ? `<span class="cupon-code-sep">·</span>` : '') +
+        `<span class="cupon-code-char">${c}</span>`
+    ).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'cuponCodigoModal';
+    modal.className = 'support-modal is-open';
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass cupon-code-card" role="dialog" aria-modal="true" aria-label="Código de cupón para usar en el local">
+            <p class="support-modal-kicker">🏪 Muéstrale esto al cajero</p>
+            <h3 class="support-modal-title">${escapeHtml(couponTitle || 'Cupón')}</h3>
+            <div class="cupon-code-display">${codeHTML}</div>
+            <p class="cupon-code-timer" id="cuponCodTimer">⏱️ Expira en 10:00</p>
+            <button type="button" class="cupon-code-cancel" id="cuponCodCancel">Cancelar código</button>
+        </div>`;
+    document.body.appendChild(modal);
+    syncBodyScrollLock();
+
+    const releaseLocalLock = () => {
+        if (couponId && _softLockedCoupons.has(couponId)) {
+            const lock = _softLockedCoupons.get(couponId);
+            if (lock.isLocal) {
+                _releaseSoftLockUI(lock.btn);
+                _softLockedCoupons.delete(couponId);
+            }
+        }
+    };
+
+    const closeAndDelete = async () => {
+        clearInterval(tid);
+        modal.remove();
+        syncBodyScrollLock();
+        releaseLocalLock();
+        try { await docRef.delete(); } catch (_) {}
+    };
+
+    const timerEl = document.getElementById('cuponCodTimer');
+    const tid = setInterval(() => {
+        const rem = expiresAt.getTime() - Date.now();
+        if (rem <= 0) {
+            clearInterval(tid);
+            modal.remove();
+            syncBodyScrollLock();
+            releaseLocalLock();
+            try { docRef.delete(); } catch (_) {}
+            _showLockedToast('⏱️ El código expiró. Genera uno nuevo.');
+            return;
+        }
+        const m = Math.floor(rem / 60000);
+        const s = Math.floor((rem % 60000) / 1000);
+        if (timerEl) {
+            timerEl.textContent = `⏱️ Expira en ${m}:${String(s).padStart(2, '0')}`;
+            timerEl.className = 'cupon-code-timer' + (m < 2 ? ' urgent' : '');
+        }
+    }, 1000);
+
+    document.getElementById('cuponCodCancel')?.addEventListener('click', closeAndDelete);
+}
+
 function orderDailyRecommendation() {
     if (!canPlaceOrdersNow()) {
         showOrderingClosedMessage();
@@ -12052,14 +12343,25 @@ function orderDailyRecommendation() {
     const recommendedProduct = currentRecommendedProduct || getRecommendedProductOfDay();
     if (recommendedProduct.estado === 'paused') return;
 
-    trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${recommendedProduct.nombre}`);
-    closePromoScreen();
-    addItemToCart(recommendedProduct.nombre, recommendedProduct.categoria, {
-        type: 'solo',
-        imagePath: recommendedProduct.image_url,
-        recommendedDiscount: true,
-        discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
-    }, 'btn-promo-dia-order');
+    const _ordCouponId = 'rec_' + (recommendedProduct.id || recommendedProduct.nombre || 'dia');
+    const _ordBtn = document.getElementById('promoOrderButton');
+
+    _openChannelModal({
+        couponId: _ordCouponId,
+        couponTitle: recommendedProduct.nombre || 'Recomendado del Día',
+        couponMeta: { type: 'recomendado', productId: recommendedProduct.id, productNombre: recommendedProduct.nombre, discountRate: RECOMMENDED_DAY_DISCOUNT_RATE },
+        redeemBtn: _ordBtn,
+        onDelivery: () => {
+            trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${recommendedProduct.nombre}`);
+            closePromoScreen();
+            addItemToCart(recommendedProduct.nombre, recommendedProduct.categoria, {
+                type: 'solo',
+                imagePath: recommendedProduct.image_url,
+                recommendedDiscount: true,
+                discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
+            }, 'btn-promo-dia-order');
+        }
+    });
 }
 document.addEventListener('click', function(event) {
     const menuModal = document.getElementById('menuModal');
