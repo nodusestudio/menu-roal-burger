@@ -12084,12 +12084,15 @@ function _exitScreen() {
 // Marca el ítem de la barra de navegación correspondiente a la pantalla activa
 function _setNavCurrent(screenId) {
     const navMap = {
-        navCategoriesScreen: 'bnavMenu',
+        navCategoriesScreen:  'bnavMenu',
         categoryDetailScreen: 'bnavMenu',
-        promoScreen: 'bnavPromo',
-        searchScreen: 'bnavBuscador',
-        perfilScreen: 'bnavPerfil',
-        ayudaScreen: 'bnavAyuda',
+        menuCarouselScreen:   'bnavMenu',
+        combosScreen:         'bnavCombos',
+        promoScreen:          'bnavPromo',
+        promoCarouselScreen:  'bnavPromo',
+        searchScreen:         'bnavBuscador',
+        perfilScreen:         'bnavPerfil',
+        ayudaScreen:          'bnavAyuda',
     };
     document.querySelectorAll('.ban-item').forEach(btn => btn.classList.remove('is-current'));
     const btnId = screenId ? navMap[screenId] : 'bnavInicio';
