@@ -13289,6 +13289,60 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+    // ── Scroll vertical en Android Chrome para carruseles horizontales ────────
+    // Android Chrome "latchea" el toque al elemento con overflow-x:auto antes de
+    // analizar la dirección del gesto, bloqueando el scroll vertical del padre.
+    // iOS lo resuelve nativamente; este parche solo actúa en Android.
+    if (/android/i.test(navigator.userAgent)) {
+        const CAROUSEL_SEL = '.mobile-carousel, .menu-carousel, .promo-carousel-track, .search-filter-cats, .search-filter-prices';
+
+        function _findScrollParent(el) {
+            let node = el.parentElement;
+            while (node && node !== document.documentElement) {
+                const oy = window.getComputedStyle(node).overflowY;
+                if (oy === 'auto' || oy === 'scroll') return node;
+                node = node.parentElement;
+            }
+            return null;
+        }
+
+        let _ct = null; // estado del toque activo sobre un carrusel
+
+        document.addEventListener('touchstart', (e) => {
+            const carousel = e.target.closest(CAROUSEL_SEL);
+            if (!carousel) { _ct = null; return; }
+            _ct = {
+                x0: e.touches[0].clientX,
+                y0: e.touches[0].clientY,
+                prevY: e.touches[0].clientY,
+                decided: false,
+                vertical: false,
+                parent: _findScrollParent(carousel),
+            };
+        }, { passive: true });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!_ct) return;
+            const t = e.touches[0];
+            if (!_ct.decided) {
+                const dx = Math.abs(t.clientX - _ct.x0);
+                const dy = Math.abs(t.clientY - _ct.y0);
+                if (dx > 8 || dy > 8) {
+                    _ct.decided = true;
+                    _ct.vertical = dy > dx;
+                }
+            }
+            if (_ct.vertical) {
+                e.preventDefault(); // evitar que el carrusel scrollee en diagonal
+                if (_ct.parent) _ct.parent.scrollTop += _ct.prevY - t.clientY;
+            }
+            _ct.prevY = t.clientY;
+        }, { passive: false }); // passive:false necesario para poder llamar preventDefault
+
+        document.addEventListener('touchend',    () => { _ct = null; }, { passive: true });
+        document.addEventListener('touchcancel', () => { _ct = null; }, { passive: true });
+    }
 });
 
 /* ===== PANTALLA AYUDA / CONTACTO WHATSAPP ===== */
