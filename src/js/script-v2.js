@@ -12192,10 +12192,10 @@ function _openChannelModal({ couponId, couponTitle, couponMeta, redeemBtn, onDel
             <div class="cupon-channel-grid">
                 <button type="button" class="cupon-channel-btn cupon-channel-btn--delivery" id="cuponChDelivery">
                     <span class="cupon-channel-btn-icon">🛵</span>
-                    Pedir aquí
+                    Usar online
                 </button>
                 <button type="button" class="cupon-channel-btn cupon-channel-btn--local" id="cuponChLocal">
-                    <span class="cupon-channel-btn-icon">🏪</span>
+                    <span class="cupon-channel-btn-icon">🍽️</span>
                     Usar en local
                 </button>
             </div>
@@ -12254,7 +12254,7 @@ async function _generarCodigoLocal(couponId, couponTitle, couponMeta, redeemBtn)
             redeemBtn._origStyle = redeemBtn._origStyle ?? (redeemBtn.getAttribute('style') || '');
             redeemBtn.dataset.locked = 'soft';
             redeemBtn.style.cssText = redeemBtn._origStyle + ';background:linear-gradient(135deg,rgba(59,130,246,0.55),rgba(37,99,235,0.55))!important;opacity:0.82;cursor:not-allowed;';
-            redeemBtn.textContent = '🏪 Código generado';
+            redeemBtn.textContent = '🍽️ Código generado';
         }
 
         _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, redeemBtn);
@@ -12278,7 +12278,7 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
     modal.className = 'support-modal is-open';
     modal.innerHTML = `
         <div class="support-modal-card liquid-glass cupon-code-card" role="dialog" aria-modal="true" aria-label="Código de cupón para usar en el local">
-            <p class="support-modal-kicker">🏪 Muéstrale esto al cajero</p>
+            <p class="support-modal-kicker">🍽️ Muéstrale esto al cajero</p>
             <h3 class="support-modal-title">${escapeHtml(couponTitle || 'Cupón')}</h3>
             <div class="cupon-code-display">${codeHTML}</div>
             <p class="cupon-code-timer" id="cuponCodTimer">⏱️ Expira en 10:00</p>
