@@ -13185,6 +13185,13 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(_searchTimer);
         _searchTimer = setTimeout(() => renderSearchResults(e.target.value), 180);
     });
+    // Android: el teclado virtual tarda ~300ms en abrirse tras el focus.
+    // scrollIntoView después de ese delay garantiza que el input quede visible.
+    if (/android/i.test(navigator.userAgent)) {
+        document.getElementById('searchInput')?.addEventListener('focus', () => {
+            setTimeout(() => document.getElementById('searchInput')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 320);
+        });
+    }
 
     // Botones de la pantalla splash (fallback manual si el auto-dismiss es lento)
     document.getElementById('splashContinueBtn')?.addEventListener('click', () => {
