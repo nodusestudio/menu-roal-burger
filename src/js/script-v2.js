@@ -249,6 +249,9 @@ let activeCategories = null;
 let activeCategoryMeta = [];
 let allCategoryMeta = [];
 let buttonConfigsMap = new Map();
+
+// Vibración táctil breve en botones CTA — solo Android/dispositivos compatibles
+function _hapticTap() { try { navigator.vibrate?.([30]); } catch (_) {} }
 let selectedCategoryKey = '';
 let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
@@ -4581,6 +4584,7 @@ function checkoutCart() {
         return;
     }
 
+    _hapticTap();
     openCheckoutInfoModal();
 }
 
@@ -5643,6 +5647,7 @@ function showCartAddedToast(categoryName, productName) {
 }
 
 function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId, initialQuantity = 1, parentKey = null) {
+    _hapticTap();
     // Interceptar para mostrar upgrades si corresponde
     const upgradeExtra = Number(orderOptions?.upgradeExtra || 0);
     const upgradeHandled = !!(orderOptions?.upgradeHandled);
@@ -7755,6 +7760,7 @@ function openComboChoiceModal(productName, categoryName, buttonId, extraOptions 
 }
 
 function startProductOrderFlow(productName, categoryName, buttonId, extraOptions = {}) {
+    _hapticTap();
     if (!canPlaceOrdersNow()) {
         showOrderingClosedMessage();
         return;
@@ -11332,6 +11338,15 @@ function _fillComboCarousel(carouselId, products) {
     carousel.innerHTML = '';
 
     if (!products.length) {
+        // Datos aún no llegaron de Firestore → mostrar skeleton
+        if (!latestProducts.length) {
+            for (let i = 0; i < 3; i++) {
+                const sk = document.createElement('div');
+                sk.className = 'product-card-mobile skel-card';
+                carousel.appendChild(sk);
+            }
+            return;
+        }
         const empty = document.createElement('p');
         empty.className = 'combos-empty-msg';
         empty.textContent = 'Sin combos disponibles por el momento.';
@@ -11409,6 +11424,25 @@ function renderMenuCarousels() {
 
     const cats = activeCategoryMeta || [];
     const allProds = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
+
+    // Datos aún no llegaron → mostrar secciones skeleton
+    if (!latestProducts.length) {
+        const skelCount = cats.length || 3;
+        for (let s = 0; s < skelCount; s++) {
+            const section = document.createElement('section');
+            section.className = 'combos-carousel-section';
+            const carousel = document.createElement('div');
+            carousel.className = 'mobile-carousel';
+            for (let i = 0; i < 3; i++) {
+                const sk = document.createElement('div');
+                sk.className = 'product-card-mobile skel-card';
+                carousel.appendChild(sk);
+            }
+            section.appendChild(carousel);
+            body.appendChild(section);
+        }
+        return;
+    }
 
     cats.forEach(cat => {
         const products = allProds.filter(p =>
@@ -12441,6 +12475,7 @@ function _showCuponRedimidoModal(couponTitle) {
 }
 
 function orderDailyRecommendation() {
+    _hapticTap();
     if (!activeCustomerProfile) {
         closePromoScreen();
         openPromoRegistrationPrompt();
@@ -13134,7 +13169,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (feedback) { feedback.textContent = '¡Mensaje enviado! Será atendido a la brevedad posible.'; feedback.hidden = false; }
         setTimeout(() => closeAyudaScreen(), 3000);
     });
-    document.getElementById('searchInput')?.addEventListener('input', e => renderSearchResults(e.target.value));
+    let _searchTimer = null;
+    document.getElementById('searchInput')?.addEventListener('input', e => {
+        clearTimeout(_searchTimer);
+        _searchTimer = setTimeout(() => renderSearchResults(e.target.value), 180);
+    });
 
     // Botones de la pantalla splash (fallback manual si el auto-dismiss es lento)
     document.getElementById('splashContinueBtn')?.addEventListener('click', () => {
