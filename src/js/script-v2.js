@@ -5796,13 +5796,14 @@ function renderCartUI() {
     }
 
     const totalItems = getCartProductCount();
-    const prevCount = Number(cartUI.badge.textContent) || 0;
-    cartUI.badge.textContent = String(totalItems);
-    cartUI.badge.hidden = totalItems === 0;
-    if (totalItems > prevCount) {
-        const badge = cartUI.badge;
-        badge.classList.remove('badge-bounce');
-        requestAnimationFrame(() => badge.classList.add('badge-bounce'));
+    const prevCount = Number(cartUI.badge?.textContent) || 0;
+    if (cartUI.badge) {
+        cartUI.badge.textContent = String(totalItems);
+        cartUI.badge.hidden = totalItems === 0;
+        if (totalItems > prevCount) {
+            cartUI.badge.classList.remove('badge-bounce');
+            requestAnimationFrame(() => cartUI.badge?.classList.add('badge-bounce'));
+        }
     }
     cartUI.list.innerHTML = '';
 
@@ -5946,7 +5947,8 @@ function renderCartUI() {
         minus.className = 'cart-qty-btn';
         minus.textContent = '-';
         minus.addEventListener('click', () => {
-            if (is2x1 && Number(item.quantity || 0) <= 2) {
+            const is2x1_local = normalizeOrderOptions(item.orderOptions).promo2x1 === true;
+            if (is2x1_local && Number(item.quantity || 0) <= 2) {
                 updateCartItemQuantity(item.itemKey, -Number(item.quantity || 2));
             } else {
                 updateCartItemQuantity(item.itemKey, -qtyStep);
@@ -6172,10 +6174,7 @@ function initCartUI() {
 
     loadCartState();
 
-    const fab = document.createElement('button');
-    fab.type = 'button';
-    fab.className = 'cart-fab';
-    fab.innerHTML = '<span class="cart-fab-icon">🛒</span><span class="cart-fab-label">Carrito</span><span class="cart-fab-badge" hidden>0</span>';
+    const navBtn = document.getElementById('bnavCarrito');
 
     const overlay = document.createElement('div');
     overlay.className = 'cart-overlay';
@@ -6209,13 +6208,12 @@ function initCartUI() {
         </div>
     `;
 
-    document.body.appendChild(fab);
     document.body.appendChild(overlay);
     document.body.appendChild(drawer);
 
     cartUI = {
-        fab,
-        badge: fab.querySelector('.cart-fab-badge'),
+        navBtn,
+        badge: navBtn?.querySelector('.ban-cart-badge') ?? null,
         overlay,
         drawer,
         close: drawer.querySelector('.cart-close-btn'),
@@ -6226,7 +6224,7 @@ function initCartUI() {
         clear: drawer.querySelector('#cartClearBtn')
     };
 
-    fab.addEventListener('click', openCartDrawer);
+    navBtn?.addEventListener('click', openCartDrawer);
     overlay.addEventListener('click', closeCartDrawer);
     cartUI.close.addEventListener('click', closeCartDrawer);
     cartUI.continue.addEventListener('click', closeCartDrawer);
@@ -6234,13 +6232,10 @@ function initCartUI() {
     cartUI.clear.addEventListener('click', clearCart);
 
     renderCartUI();
-    _updateFabVisibility();
 }
 
 function _updateFabVisibility() {
-    if (!cartUI?.fab) return;
-    const isHome = document.getElementById('homeScreen')?.hidden === false;
-    cartUI.fab.style.display = isHome ? '' : 'none';
+    // cart is now always visible in the bottom nav bar
 }
 
 function getSupportSocialEntries() {
