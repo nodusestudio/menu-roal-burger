@@ -312,8 +312,8 @@ a.is-ordering-closed {
 .category-order-btn.is-ordering-closed,
 .category-hero-order-btn.is-ordering-closed,
 .promo-btn-order.is-ordering-closed {
-    opacity: 0.48;
-    filter: grayscale(0.45);
+    opacity: 0.52;
+    filter: none;
     cursor: not-allowed;
     box-shadow: none;
 }
@@ -1200,7 +1200,7 @@ body.is-offline #menuScreen {
 
 .category-hero-order-btn {
     margin-top: 10px;
-    background: #ff6600;
+    background: linear-gradient(135deg, #ff5200, #ff2800);
     color: white;
     padding: 0 28px;
     text-decoration: none;
@@ -1209,7 +1209,7 @@ body.is-offline #menuScreen {
     font-size: 14px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
+    box-shadow: 0 6px 22px rgba(255, 60, 0, 0.65), 0 2px 6px rgba(200, 20, 0, 0.40);
     transition: background 0.2s ease, transform 0.2s ease;
     height: 48px;
     display: flex;
@@ -4064,7 +4064,7 @@ body.has-consent-doc-open .guest-register-banner {
 .cie-save-btn {
     width: 100%;
     padding: 14px;
-    background: linear-gradient(135deg, #ff7a00, #e84800);
+    background: linear-gradient(135deg, #ff5200, #e83000);
     border: none;
     border-radius: 14px;
     color: #fff;
@@ -4074,7 +4074,7 @@ body.has-consent-doc-open .guest-register-banner {
     letter-spacing: 0.06em;
     text-transform: uppercase;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(232, 72, 0, 0.35);
+    box-shadow: 0 5px 22px rgba(232, 55, 0, 0.62), 0 2px 6px rgba(180, 10, 0, 0.38);
     transition: transform 0.15s, box-shadow 0.15s;
 }
 .cie-save-btn:active {
@@ -4327,7 +4327,7 @@ body.has-consent-doc-open .guest-register-banner {
 /* BOTÓN "LO QUIERO" */
 .mobile-order-btn {
     margin-top: 18px;
-    background: #ff6600;
+    background: linear-gradient(135deg, #ff5200, #ff2800);
     color: white;
     padding: 0 42px;
     text-decoration: none;
@@ -4336,7 +4336,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-size: 21px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
+    box-shadow: 0 6px 24px rgba(255, 60, 0, 0.68), 0 2px 8px rgba(200, 20, 0, 0.42);
     transition: background 0.2s ease, transform 0.2s ease;
     height: 72px;
     display: flex;
@@ -4352,9 +4352,9 @@ body.has-consent-doc-open .guest-register-banner {
 
 .mobile-order-btn:hover,
 .mobile-order-btn:active {
-    background: #e55a00;
+    background: linear-gradient(135deg, #ff4400, #e02000);
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(255, 102, 0, 0.6);
+    box-shadow: 0 8px 30px rgba(255, 55, 0, 0.78), 0 3px 10px rgba(180, 10, 0, 0.50);
     text-decoration: none;
     color: white;
 }
@@ -4920,16 +4920,16 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .promo-btn-order {
-    background: linear-gradient(135deg, #ff7a00, #ff5400);
+    background: linear-gradient(135deg, #ff5500, #ff2800);
     color: #fff;
     border: none;
-    box-shadow: 0 10px 24px rgba(200, 75, 0, 0.32);
+    box-shadow: 0 10px 26px rgba(220, 50, 0, 0.55), 0 3px 8px rgba(180, 10, 0, 0.35);
 }
 
 .promo-btn-order:hover {
-    background: linear-gradient(135deg, #ff8b18, #ff6210);
+    background: linear-gradient(135deg, #ff4400, #e01e00);
     transform: translateY(-2px);
-    box-shadow: 0 14px 28px rgba(200, 75, 0, 0.38);
+    box-shadow: 0 14px 32px rgba(220, 45, 0, 0.68), 0 4px 10px rgba(180, 10, 0, 0.45);
 }
 
 .promo-btn-menu {
@@ -5080,15 +5080,15 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .bebidas-modal-btn-primary {
-    border: 1px solid rgba(255, 132, 0, 0.22);
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
-    color: #fff7ef;
-    box-shadow: 0 12px 28px rgba(200, 75, 0, 0.28);
+    border: 1px solid rgba(255, 80, 0, 0.30);
+    background: linear-gradient(135deg, #ff5200, #ff2800);
+    color: #fff;
+    box-shadow: 0 10px 28px rgba(220, 50, 0, 0.55), 0 3px 8px rgba(180, 10, 0, 0.35);
 }
 
 .bebidas-modal-btn-primary:hover {
-    background: linear-gradient(135deg, #ff8c1a, #ff6000);
-    box-shadow: 0 16px 32px rgba(200, 75, 0, 0.36);
+    background: linear-gradient(135deg, #ff4400, #e01e00);
+    box-shadow: 0 14px 34px rgba(220, 45, 0, 0.68), 0 4px 10px rgba(180, 10, 0, 0.45);
 }
 
 @media (max-width: 480px) {
@@ -5167,12 +5167,12 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .promo-reg-btn--register {
-    background: linear-gradient(135deg, #ff7a1a, #e85d00);
+    background: linear-gradient(135deg, #ff5200, #e83000);
     color: #ffffff;
-    box-shadow: 0 8px 24px rgba(255, 122, 26, 0.35);
+    box-shadow: 0 8px 26px rgba(220, 55, 0, 0.58), 0 3px 8px rgba(180, 10, 0, 0.35);
 }
 .promo-reg-btn--register:hover {
-    box-shadow: 0 12px 30px rgba(255, 122, 26, 0.5);
+    box-shadow: 0 12px 32px rgba(220, 50, 0, 0.70), 0 4px 10px rgba(180, 10, 0, 0.45);
 }
 
 .promo-reg-btn--guest {
@@ -6239,7 +6239,7 @@ body.has-consent-doc-open .guest-register-banner {
     margin-top: 4px;
     align-self: stretch;
     padding: 13px 22px;
-    background: #ff6000;
+    background: linear-gradient(135deg, #ff5200, #ff2800);
     border: none;
     border-radius: 999px;
     color: #fff;
@@ -6250,7 +6250,7 @@ body.has-consent-doc-open .guest-register-banner {
     text-transform: uppercase;
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 4px 22px rgba(255, 96, 0, 0.75), 0 1px 4px rgba(255, 80, 0, 0.50);
+    box-shadow: 0 5px 26px rgba(255, 65, 0, 0.80), 0 2px 6px rgba(200, 20, 0, 0.55);
     -webkit-tap-highlight-color: transparent;
 }
 
@@ -6511,7 +6511,7 @@ body.has-consent-doc-open .guest-register-banner {
     margin-top: 14px;
     width: 100%;
     padding: 13px 22px;
-    background: linear-gradient(135deg, #ff7200, #ff3300);
+    background: linear-gradient(135deg, #ff5200, #ff2200);
     border: none;
     border-radius: 999px;
     color: #fff;
@@ -6522,7 +6522,7 @@ body.has-consent-doc-open .guest-register-banner {
     text-transform: uppercase;
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 4px 20px rgba(255, 70, 0, 0.55), 0 1px 4px rgba(255, 50, 0, 0.30);
+    box-shadow: 0 5px 24px rgba(255, 55, 0, 0.70), 0 2px 6px rgba(200, 15, 0, 0.45);
     -webkit-tap-highlight-color: transparent;
     position: relative;
     z-index: 1;
@@ -6530,12 +6530,12 @@ body.has-consent-doc-open .guest-register-banner {
 
 .combo-order-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 7px 28px rgba(255, 70, 0, 0.70), 0 2px 6px rgba(255, 50, 0, 0.40);
+    box-shadow: 0 8px 30px rgba(255, 50, 0, 0.80), 0 3px 8px rgba(200, 10, 0, 0.55);
 }
 
 .combo-order-btn:active {
     transform: translateY(0);
-    box-shadow: 0 3px 12px rgba(255, 70, 0, 0.50);
+    box-shadow: 0 3px 14px rgba(255, 50, 0, 0.60);
 }
 /* ===== FIN COMBOS ESPECIALES ===== */
 
@@ -7288,7 +7288,7 @@ body.has-consent-doc-open .guest-register-banner {
     padding: 8px 0;
     border: none;
     border-radius: 8px;
-    background: linear-gradient(135deg, #ff7a00, #f65102);
+    background: linear-gradient(135deg, #ff5200, #e83000);
     color: #fff;
     font-family: 'Oswald', sans-serif;
     font-size: 0.78rem;
@@ -7296,12 +7296,13 @@ body.has-consent-doc-open .guest-register-banner {
     letter-spacing: 0.04em;
     cursor: pointer;
     transition: transform 0.14s, box-shadow 0.14s;
+    box-shadow: 0 3px 14px rgba(240, 60, 0, 0.55);
     -webkit-tap-highlight-color: transparent;
 }
 
 .cds-product-btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(246, 81, 2, 0.4);
+    box-shadow: 0 5px 18px rgba(230, 50, 0, 0.68);
 }
 
 /* ===== FIN PANTALLA DETALLE ===== */
