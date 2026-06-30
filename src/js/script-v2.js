@@ -12247,7 +12247,7 @@ async function _generarCodigoLocal(couponId, couponTitle, couponMeta, redeemBtn)
             couponMeta: couponMeta || {},
             expiresAt,
             status: 'pending',
-            createdAt: _serverTimestamp()
+            createdAt: getPublicServerTimestamp()
         });
 
         if (redeemBtn) {
