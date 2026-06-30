@@ -5800,9 +5800,9 @@ function renderCartUI() {
     cartUI.badge.textContent = String(totalItems);
     cartUI.badge.hidden = totalItems === 0;
     if (totalItems > prevCount) {
-        cartUI.badge.classList.remove('badge-bounce');
-        void cartUI.badge.offsetWidth;
-        cartUI.badge.classList.add('badge-bounce');
+        const badge = cartUI.badge;
+        badge.classList.remove('badge-bounce');
+        requestAnimationFrame(() => badge.classList.add('badge-bounce'));
     }
     cartUI.list.innerHTML = '';
 
