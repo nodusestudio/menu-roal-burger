@@ -599,6 +599,7 @@ function showWelcomeGreeting(profile) {
 async function _applyServerSideCouponLocks(profile) {
     if (!profile?.customerPhoneDigits) return;
     try {
+        const db = getPublicFirebaseDb();
         const snap = await db.collection(CLIENTS_COLLECTION).doc(`phone_${profile.customerPhoneDigits}`).get();
         if (!snap.exists) return;
         const locks = snap.data()?.cupones_bloqueados || {};
@@ -12230,6 +12231,7 @@ async function _generarCodigoLocal(couponId, couponTitle, couponMeta, redeemBtn)
     if (rem > 0) { _showLockedToast(`🔒 Cupón ya redimido · disponible en ${_fmtRedeemTime(rem)}`); return; }
     if (_softLockedCoupons.has(couponId)) { _showLockedToast('🛒 Este cupón ya está en uso'); return; }
 
+    const db = getPublicFirebaseDb();
     const code = _generateLocalCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     const docRef = db.collection('codigos_cupon').doc(code);
