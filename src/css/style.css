@@ -4279,6 +4279,19 @@ body.has-consent-doc-open .guest-register-banner {
     display: none;
 }
 
+/* ── Fade de borde derecho: indica que hay más contenido al deslizar.
+      mask-image se aplica al viewport visible del contenedor (no al
+      contenido desplazable), así el degradado siempre queda fijo en
+      el borde derecho sin importar la posición de scroll. ── */
+.mobile-carousel:not(#home-combos-carousel),
+.menu-carousel,
+.promo-carousel-track,
+.search-filter-cats,
+.search-filter-prices {
+    -webkit-mask-image: linear-gradient(to right, #000 72%, transparent 100%);
+    mask-image: linear-gradient(to right, #000 72%, transparent 100%);
+}
+
 .product-card-mobile {
     flex: 0 0 370px;
     scroll-snap-align: center;
