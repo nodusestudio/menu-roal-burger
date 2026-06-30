@@ -439,6 +439,8 @@ let _editingOrderData = null; // set when editing an existing order, cleared aft
 const POS_TICKETS_COLLECTION = 'pos_tickets';
 let posTicketsUnsubscribe = null;
 const _sentToReceptionIds = new Set(); // IDs de tickets enviados a recepción, pendientes de eliminar en Firestore
+let _posAutoSaveTimer = null; // debounce de auto-guardado al agregar artículos
+let _changeMesaOrderId = null; // ID del pedido al que se le va a cambiar la mesa
 
 async function savePosTicketToFirestore(ticket) {
     if (!ticket || !firebaseDb) return;
@@ -459,6 +461,23 @@ async function deletePosTicketFromFirestore(ticketId) {
     } catch (err) {
         console.error('[POS] Error eliminando ticket de Firestore:', err);
     }
+}
+
+// Auto-guarda el ticket activo en Firestore 2 s después del último cambio, para no perder
+// datos si la sesión se interrumpe antes de que el cajero haga clic en "Guardar pedido".
+function _schedulePosTicketAutoSave() {
+    if (_posAutoSaveTimer) clearTimeout(_posAutoSaveTimer);
+    _posAutoSaveTimer = setTimeout(() => {
+        _posAutoSaveTimer = null;
+        if (!posActiveTicketId) return;
+        const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
+        if (!activeTicket || !internalOrderItems.length) return;
+        activeTicket.items = [...internalOrderItems];
+        if (!activeTicket.orderType) {
+            activeTicket.label = 'Por Definir';
+        }
+        savePosTicketToFirestore(activeTicket);
+    }, 2000);
 }
 
 function subscribePosTickets() {
@@ -5660,6 +5679,7 @@ function addProductToPosOrder(productId, productName, productPrice, note = '', o
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
+    _schedulePosTicketAutoSave();
 }
 
 function isPosDesktop() {
@@ -7159,6 +7179,84 @@ function closeInternalOrderModal(clearCurrentTicket = false) {
     document.body.classList.remove('pos-is-open');
     document.body.style.overflow = '';
 }
+
+// ─── Cambiar Mesa ────────────────────────────────────────────────────────────
+
+function openChangeMesaModal(orderId) {
+    const modal = document.getElementById('changeMesaModal');
+    if (!modal) return;
+    _changeMesaOrderId = orderId;
+    const order = ordersState.find((o) => o.id === orderId);
+
+    // Mesas ocupadas por otros pedidos activos (excluyendo este mismo pedido)
+    const byOrders = (ordersState || [])
+        .filter((o) => o.orderType === 'mesa' && o.mesaNumber && o.id !== orderId && !['entregado', 'cancelado'].includes(o.status))
+        .map((o) => Number(o.mesaNumber));
+    // Mesas ocupadas por pos_tickets en progreso
+    const byTickets = posTickets
+        .filter((t) => t.orderType === 'mesa' && t.mesaNumber)
+        .map((t) => Number(t.mesaNumber));
+    const allOccupied = new Set([...byOrders, ...byTickets]);
+
+    modal.querySelectorAll('.chm-mesa-btn').forEach((btn) => {
+        const num = Number(btn.dataset.chmMesa);
+        const isCurrent = num === Number(order?.mesaNumber);
+        const isOccupied = allOccupied.has(num) && !isCurrent;
+        btn.classList.toggle('active', isCurrent);
+        btn.classList.toggle('occupied', isOccupied);
+        btn.disabled = isOccupied;
+        btn.title = isOccupied ? `Mesa ${num} en uso` : isCurrent ? `Mesa actual` : '';
+    });
+
+    const subtitle = modal.querySelector('.chm-subtitle-ref');
+    if (subtitle) subtitle.textContent = order?.mesaNumber ? `Mesa actual: ${order.mesaNumber}` : 'Sin mesa asignada';
+
+    modal.removeAttribute('hidden');
+}
+
+function closeChangeMesaModal() {
+    document.getElementById('changeMesaModal')?.setAttribute('hidden', '');
+    _changeMesaOrderId = null;
+}
+
+document.addEventListener('click', (e) => {
+    const modal = document.getElementById('changeMesaModal');
+    if (!modal || modal.hidden) return;
+
+    if (e.target.closest('#changeMesaCloseBtn')) {
+        closeChangeMesaModal();
+        return;
+    }
+
+    const btn = e.target.closest('.chm-mesa-btn[data-chm-mesa]');
+    if (btn && !btn.disabled && _changeMesaOrderId) {
+        const newMesa = Number(btn.dataset.chmMesa);
+        _confirmChangeMesa(_changeMesaOrderId, newMesa);
+        return;
+    }
+
+    // Cerrar al hacer clic fuera del panel
+    if (e.target === modal) closeChangeMesaModal();
+});
+
+async function _confirmChangeMesa(orderId, newMesa) {
+    const order = ordersState.find((o) => o.id === orderId);
+    if (!order) return;
+    closeChangeMesaModal();
+    try {
+        const updates = { mesaNumber: newMesa, updatedAt: firestoreNow() };
+        // Actualizar nombre solo si era el nombre auto-generado "Mesa N"
+        if (!order.customerName || /^Mesa \d+$/.test(order.customerName)) {
+            updates.customerName = `Mesa ${newMesa}`;
+        }
+        await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).update(updates);
+        showNotice(`Pedido movido a Mesa ${newMesa}.`, 'ok');
+    } catch (err) {
+        showNotice(`Error al cambiar mesa: ${err.message || 'error'}`, 'error');
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function submitInternalOrderForm(event) {
     event.preventDefault();
@@ -10087,18 +10185,26 @@ function buildThermalTicketMarkup(order, options = {}) {
             </article>
             ${printMode ? '' : (() => {
                 const _isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+                const _isEntregado = order.status === 'entregado';
                 const _hasType = !!order.orderType;
-                const _cobrarDisabled = (_isPaid || !_hasType) ? 'disabled' : '';
-                const _cobrarTitle = _isPaid
-                    ? 'Pedido ya cobrado'
+                // Cobrar: habilitado mientras no esté entregado y tenga tipo.
+                // Ya no se deshabilita si el cliente pre-seleccionó un método desde la app.
+                const _cobrarDisabled = (!_hasType || _isEntregado) ? 'disabled' : '';
+                const _cobrarTitle = _isEntregado
+                    ? 'El pedido ya fue cerrado'
                     : !_hasType
                         ? 'Asigna tipo de pedido (mesa / recoger / domicilio) primero'
                         : 'Cobrar este pedido';
+                // "Editar pago": disponible cuando ya hay método registrado (incluso en pedidos entregados)
+                const _editPagoBtn = (_isPaid && _hasType)
+                    ? `<button type="button" class="ticket-editpago-link" data-order-ticket-action="editar_pago" data-order-id="${order.id}" title="Corregir el método de pago sin cambiar el estado del pedido">✏️ Editar método de pago</button>`
+                    : '';
                 return `
-                <div class="ticket-print-row">
+                <div class="ticket-print-row${_editPagoBtn ? ' ticket-print-row--has-edit' : ''}">
                     <button type="button" class="ticket-print-btn ticket-action-btn" data-order-ticket-action="print" data-order-id="${order.id}">Imprimir</button>
                     <button type="button" class="ticket-cobrar-btn ticket-action-btn" data-order-ticket-action="cobrar" data-order-id="${order.id}" ${_cobrarDisabled} title="${_cobrarTitle}">💰 Cobrar</button>
                     <button type="button" class="ticket-contact-btn ticket-action-btn" data-order-ticket-action="contact" data-order-id="${order.id}">Agregar contacto</button>
+                    ${_editPagoBtn}
                 </div>`;
             })()}
         </div>
@@ -10281,7 +10387,7 @@ function createOrderCard(order) {
     let actionsMarkup = '';
 
     if (isMesaOrder && order.status !== 'entregado') {
-        // Layout mesa: [ Servido/Cobrar | 💰? ]
+        // Layout mesa: [ Servido/Cobrar | 💰? ⇄? ]
         const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
         const isServido = order.status === 'servido';
         const mainLabel = isServido ? (isPaid ? 'Entregado' : '💰 Cobrar') : (order.status === 'pendiente' ? 'Servido' : 'Servido');
@@ -10290,9 +10396,10 @@ function createOrderCard(order) {
         const cobrarMesaBtn = !isServido && !isPaid
             ? `<button type="button" class="order-action-btn order-action-btn-cobrar koa-icon-btn" data-order-card-action="cobrar_mesa" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
             : '';
+        const cambiarMesaBtn = `<button type="button" class="order-action-btn koa-icon-btn koa-cambiar-mesa-btn" data-order-card-action="cambiar_mesa" data-order-id="${order.id}" title="Cambiar mesa">⇄</button>`;
         actionsMarkup = `<div class="kanban-order-actions kanban-order-actions--mesa">
             <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
-            <div class="koa-mesa-icons">${cobrarMesaBtn}</div>
+            <div class="koa-mesa-icons">${cobrarMesaBtn}${cambiarMesaBtn}</div>
         </div>`;
     } else if (isDeliveryOrder && order.status !== 'entregado') {
         // Layout domicilio: [ Pedir domiciliario → Entregado | 💰? ]
@@ -16030,6 +16137,12 @@ if (ordersActionRoot) {
                     return;
                 }
 
+                if (nextStatus === 'cambiar_mesa') {
+                    openChangeMesaModal(orderId);
+                    actionButton.disabled = false;
+                    return;
+                }
+
                 if (nextStatus === 'eliminar') {
                     if (order.status === 'entregado') {
                         // Orden ya procesada: eliminar permanentemente del sistema
@@ -16227,6 +16340,14 @@ if (orderTicketPanel) {
             const order = ordersState.find(o => o.id === orderId);
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
             _triggerTicketCobro(order);
+            return;
+        }
+
+        if (actionButton.dataset.orderTicketAction === 'editar_pago') {
+            const order = ordersState.find(o => o.id === orderId);
+            if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+            // receiveOrder=false: solo cambia el método de pago, no mueve el estado del pedido
+            openDeliveryPaymentModal(order, false);
             return;
         }
 

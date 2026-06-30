@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260629-1839">
+    <link rel="stylesheet" href="style.css?v=20260629-2028">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -2180,6 +2180,33 @@
             cursor: not-allowed;
             box-shadow: none;
             filter: none;
+        }
+
+        /* "Editar pago" — aparece en su propia fila dentro del ticket-print-row */
+        .ticket-print-row--has-edit {
+            flex-wrap: wrap;
+        }
+        .ticket-editpago-link {
+            flex: 0 0 100%;
+            display: block;
+            width: 100%;
+            margin-top: 4px;
+            padding: 7px 12px;
+            background: none;
+            border: 1px dashed rgba(255,255,255,0.18);
+            border-radius: 12px;
+            color: rgba(255,255,255,0.46);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.74rem;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            letter-spacing: 0.2px;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .ticket-editpago-link:hover {
+            color: #ff9540;
+            border-color: rgba(255,149,64,0.45);
         }
 
         .ticket-paper,
@@ -10448,6 +10475,46 @@
         }
         .pts-btn-confirm:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
 
+        /* ── Modal: Cambiar Mesa ── */
+        #changeMesaModal {
+            position: fixed; inset: 0; z-index: 10300;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.65);
+            -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
+            padding: 16px;
+        }
+        #changeMesaModal[hidden] { display: none; }
+        .chm-panel {
+            width: 100%; max-width: 340px;
+            background: linear-gradient(150deg, rgba(28,35,58,0.97), rgba(9,14,26,0.99));
+            border: 1px solid rgba(255,255,255,0.13);
+            border-radius: 22px;
+            padding: 24px 22px 20px;
+            display: flex; flex-direction: column; gap: 18px;
+            box-shadow: 0 30px 70px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+        }
+        .chm-header { display: flex; align-items: center; justify-content: space-between; }
+        .chm-title { font-family: 'Space Grotesk', sans-serif; font-size: 1rem; font-weight: 700; color: #fff; margin: 0; }
+        .chm-close { background: none; border: none; color: rgba(255,255,255,0.5); font-size: 1.1rem; cursor: pointer; line-height: 1; padding: 4px 6px; border-radius: 6px; }
+        .chm-close:hover { color: #fff; background: rgba(255,255,255,0.1); }
+        .chm-subtitle { font-family: 'Space Grotesk', sans-serif; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.9px; color: rgba(255,255,255,0.42); margin: 0; }
+        .chm-mesa-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+        .chm-mesa-btn {
+            width: 52px; height: 52px; border-radius: 13px;
+            border: 1.5px solid rgba(255,255,255,0.18);
+            background: rgba(255,255,255,0.06);
+            color: rgba(255,255,255,0.85);
+            font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 700;
+            cursor: pointer; transition: all 0.14s;
+        }
+        .chm-mesa-btn:hover:not(:disabled):not(.active) { background: rgba(255,149,64,0.18); border-color: rgba(255,149,64,0.55); color: #ff9540; }
+        .chm-mesa-btn.active { background: rgba(255,149,64,0.22); border-color: #ff9540; color: #ff9540; }
+        .chm-mesa-btn.occupied, .chm-mesa-btn:disabled { opacity: 0.35; cursor: not-allowed; background: rgba(255,60,60,0.07); border-color: rgba(255,80,80,0.25); color: rgba(255,110,110,0.65); }
+
+        /* Botón ⇄ en tarjeta de mesa */
+        .koa-cambiar-mesa-btn { color: rgba(255,255,255,0.55); font-size: 1.05rem; }
+        .koa-cambiar-mesa-btn:hover { color: #ff9540; }
+
         /* ── Modal: Cobro domicilio ── */
         /* ── Sub-tabs de Cajas ── */
         .cajas-subtabs-nav {
@@ -14210,6 +14277,27 @@
         </div>
     </div>
 
+    <!-- ══════════ MODAL: Cambiar Mesa ══════════ -->
+    <div id="changeMesaModal" hidden>
+        <div class="chm-panel">
+            <div class="chm-header">
+                <p class="chm-title">Cambiar Mesa</p>
+                <button type="button" class="chm-close" id="changeMesaCloseBtn" aria-label="Cerrar">&#10005;</button>
+            </div>
+            <p class="chm-subtitle chm-subtitle-ref">Selecciona la nueva mesa</p>
+            <div class="chm-mesa-btns">
+                <button type="button" class="chm-mesa-btn" data-chm-mesa="1">1</button>
+                <button type="button" class="chm-mesa-btn" data-chm-mesa="2">2</button>
+                <button type="button" class="chm-mesa-btn" data-chm-mesa="3">3</button>
+                <button type="button" class="chm-mesa-btn" data-chm-mesa="4">4</button>
+                <button type="button" class="chm-mesa-btn" data-chm-mesa="5">5</button>
+                <button type="button" class="chm-mesa-btn" data-chm-mesa="6">6</button>
+                <button type="button" class="chm-mesa-btn" data-chm-mesa="7">7</button>
+                <button type="button" class="chm-mesa-btn" data-chm-mesa="8">8</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ══════════ MODAL: Cobro domicilio ══════════ -->
     <!-- Modal vista previa de ticket -->
     <div id="ticketPreviewModal" hidden>
@@ -14408,7 +14496,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260629-1839"></script>
+    <script src="admin.js?v=20260629-2028"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
