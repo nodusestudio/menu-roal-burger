@@ -12330,13 +12330,16 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
 
     // Tiempo real: cuando el admin confirma, status cambia a 'used'
     try {
-        unsubSnap = docRef.onSnapshot(snap => {
-            if (!snap.exists || snap.data()?.status !== 'used') return;
-            cleanup(false);
-            releaseLocalLock();
-            if (couponId) _setRedeemLock(couponId);
-            _showCuponRedimidoModal(couponTitle);
-        });
+        unsubSnap = docRef.onSnapshot(
+            snap => {
+                if (!snap.exists || snap.data()?.status !== 'used') return;
+                cleanup(false);
+                releaseLocalLock();
+                if (couponId) _setRedeemLock(couponId);
+                _showCuponRedimidoModal(couponTitle);
+            },
+            err => { console.warn('[cupon] onSnapshot error:', err.code, err.message); }
+        );
     } catch (_) {}
 
     document.getElementById('cuponCodCancel')?.addEventListener('click', closeAndDelete);
