@@ -1359,7 +1359,6 @@ body.is-offline #menuScreen {
     overflow-x: auto;
     padding: 10px 0;
     scroll-behavior: smooth;
-    touch-action: pan-x;
 }
 
 .menu-carousel::-webkit-scrollbar {
@@ -4238,7 +4237,6 @@ body.has-consent-doc-open .guest-register-banner {
     padding: 10px 5px 20px;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
-    touch-action: pan-x;
     -ms-overflow-style: none;
     scroll-behavior: smooth;
     contain: layout paint;
@@ -5691,9 +5689,15 @@ body.has-consent-doc-open .guest-register-banner {
     display: none !important;
 }
 
-/* ── Scroll vertical Android: touch-action explícito en todos los contenedores
-      fixed scrolleables. Sin esto, Android Chrome puede ignorar el gesto vertical
-      cuando el body tiene overflow-x gestionado. ── */
+/* ── Scroll vertical: overflow-x explícito en "clip" (no "hidden") en todos los
+      contenedores fixed scrolleables. "hidden" + position:fixed + overflow-y:auto
+      es el combo que rompe el scroll vertical táctil en Android Chrome; "clip" no
+      crea un contenedor de scroll y evita ese bug, sin habilitar overflow-x
+      accidental (auto-pairing CSS al dejar overflow-x sin declarar).
+      touch-action se deja en "auto" (valor por defecto): forzar pan-y aquí
+      bloqueaba por completo el gesto horizontal de los carruseles hijos
+      (intersección pan-x ∩ pan-y = ninguno), y el navegador ya resuelve
+      correctamente a qué eje pertenece cada gesto de forma nativa. ── */
 #homeScreen,
 #navCategoriesScreen,
 #categoryDetailScreen,
@@ -5704,7 +5708,7 @@ body.has-consent-doc-open .guest-register-banner {
 #ayudaScreen,
 #promoCarouselScreen,
 #menuCarouselScreen {
-    touch-action: pan-y;
+    overflow-x: clip;
     overscroll-behavior-y: contain;
 }
 
@@ -6545,7 +6549,6 @@ body.has-consent-doc-open .guest-register-banner {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
-    touch-action: pan-x;
 }
 
 .promo-carousel-track::-webkit-scrollbar {
@@ -6591,6 +6594,7 @@ body.has-consent-doc-open .guest-register-banner {
     z-index: 9200;
     background: rgba(10, 4, 1, 0.97);
     overflow-y: auto;
+    overflow-x: clip;
     touch-action: pan-y;
     overscroll-behavior-y: contain;
 }
@@ -7589,7 +7593,6 @@ body.has-consent-doc-open .guest-register-banner {
     overflow-x: auto;
     scrollbar-width: none;
     padding-bottom: 2px;
-    touch-action: pan-x;
 }
 .search-filter-cats::-webkit-scrollbar { display: none; }
 .search-cat-chip {
@@ -7621,7 +7624,6 @@ body.has-consent-doc-open .guest-register-banner {
     overflow-x: auto;
     scrollbar-width: none;
     padding-bottom: 2px;
-    touch-action: pan-x;
 }
 .search-filter-prices::-webkit-scrollbar { display: none; }
 .search-price-btn {
