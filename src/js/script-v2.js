@@ -3862,7 +3862,8 @@ function syncBodyScrollLock() {
     const isCustomerConsentOpen = Boolean(customerConsentDocumentUI && customerConsentDocumentUI.modal.classList.contains('is-open'));
     const isCustomerDeleteOpen = Boolean(customerDeleteAccountUI && customerDeleteAccountUI.modal.classList.contains('is-open'));
     const isCustomerPasswordResetOpen = Boolean(customerPasswordResetUI && customerPasswordResetUI.modal.classList.contains('is-open'));
-    document.body.style.overflow = isMenuOpen || isCartOpen || isSupportOpen || isCheckoutOpen || isPaymentFlowOpen || isOrderSentOpen || isCustomerAuthOpen || isCustomerRegisterOpen || isCustomerConsentOpen || isCustomerDeleteOpen || isCustomerPasswordResetOpen ? 'hidden' : 'auto';
+    const hasAnyOpenModal = Boolean(document.querySelector('.support-modal.is-open'));
+    document.body.style.overflow = isMenuOpen || isCartOpen || isSupportOpen || isCheckoutOpen || isPaymentFlowOpen || isOrderSentOpen || isCustomerAuthOpen || isCustomerRegisterOpen || isCustomerConsentOpen || isCustomerDeleteOpen || isCustomerPasswordResetOpen || hasAnyOpenModal ? 'hidden' : 'auto';
 }
 
 function normalizeOrderOptions(orderOptions = { type: 'solo' }) {

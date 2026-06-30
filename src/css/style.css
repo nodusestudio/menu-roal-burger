@@ -26,12 +26,12 @@ body {
     min-height: 100vh;
     padding: 0;
     color: #1f1c15;
-    overflow-x: hidden;
     position: relative;
 }
 
 html {
     background-color: #c9a96e;
+    overflow-x: hidden;
 }
 
 #bg-layer {
@@ -5687,6 +5687,23 @@ body.has-consent-doc-open .guest-register-banner {
 #menuCarouselScreen[hidden],
 #promoCarouselScreen[hidden] {
     display: none !important;
+}
+
+/* ── Scroll vertical Android: touch-action explícito en todos los contenedores
+      fixed scrolleables. Sin esto, Android Chrome puede ignorar el gesto vertical
+      cuando el body tiene overflow-x gestionado. ── */
+#homeScreen,
+#navCategoriesScreen,
+#categoryDetailScreen,
+#promoScreen,
+#searchScreen,
+#combosScreen,
+#perfilScreen,
+#ayudaScreen,
+#promoCarouselScreen,
+#menuCarouselScreen {
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
 }
 
 #promoCarouselScreen {
