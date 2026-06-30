@@ -1359,6 +1359,7 @@ body.is-offline #menuScreen {
     overflow-x: auto;
     padding: 10px 0;
     scroll-behavior: smooth;
+    touch-action: pan-x;
 }
 
 .menu-carousel::-webkit-scrollbar {
@@ -4237,6 +4238,7 @@ body.has-consent-doc-open .guest-register-banner {
     padding: 10px 5px 20px;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
+    touch-action: pan-x;
     -ms-overflow-style: none;
     scroll-behavior: smooth;
     contain: layout paint;
@@ -6543,6 +6545,7 @@ body.has-consent-doc-open .guest-register-banner {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
+    touch-action: pan-x;
 }
 
 .promo-carousel-track::-webkit-scrollbar {
@@ -7014,6 +7017,7 @@ body.has-consent-doc-open .guest-register-banner {
     gap: 14px;
     padding-left: 4px;
     cursor: grab;
+    touch-action: pan-y;
 }
 
 /* Contenedor de secciones de categorías */
@@ -7585,6 +7589,7 @@ body.has-consent-doc-open .guest-register-banner {
     overflow-x: auto;
     scrollbar-width: none;
     padding-bottom: 2px;
+    touch-action: pan-x;
 }
 .search-filter-cats::-webkit-scrollbar { display: none; }
 .search-cat-chip {
@@ -7616,6 +7621,7 @@ body.has-consent-doc-open .guest-register-banner {
     overflow-x: auto;
     scrollbar-width: none;
     padding-bottom: 2px;
+    touch-action: pan-x;
 }
 .search-filter-prices::-webkit-scrollbar { display: none; }
 .search-price-btn {
