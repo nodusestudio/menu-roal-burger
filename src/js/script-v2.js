@@ -5633,8 +5633,7 @@ function showCartAddedToast(categoryName, productName) {
         document.body.appendChild(toast);
     }
 
-    const label = [safeCategoryName, safeProductName].filter(Boolean).join(' ');
-    toast.textContent = `${toastCopy.article} ${label} ha sido ${toastCopy.adjective} a tu carrito`;
+    toast.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;color:#ff9d1a"><polyline points="20 6 9 17 4 12"/></svg><span>${toastCopy.article} <b>${safeProductName}</b> ${toastCopy.adjective} al carrito</span>`;
     toast.classList.add('is-visible');
 
     if (cartToastTimeout) {
@@ -5695,7 +5694,6 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
 
     saveCartState();
     renderCartUI();
-    openCartDrawer();
     playCartAddSound();
     showCartAddedToast(safeCategoryName, safeProductName);
 }
@@ -5724,7 +5722,6 @@ function addComboEspecialToCart(combo, prods) {
     });
     saveCartState();
     renderCartUI();
-    openCartDrawer();
     playCartAddSound();
     showCartAddedToast('CUPONES EXCLUSIVOS', String(combo.titulo || 'Cupón Exclusivo').trim());
 }
