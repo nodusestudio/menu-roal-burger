@@ -5580,47 +5580,78 @@ body.has-consent-doc-open .guest-register-banner {
     box-shadow: 0 0 8px rgba(255, 140, 0, 0.6);
 }
 
-/* ── Botón Cupones: featured pill ── */
+/* ── Botón Cupones: neutro en default, badge pulsante, naranja solo en pantalla activa ── */
 #bnavPromo {
     position: relative;
+    transform: translateY(-2px);
+}
+
+/* Badge punto — estático, sin animación (no fuerza paint) */
+#bnavPromo::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 5px);
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ff8c00, #ff3d00);
+    border: 1.5px solid rgba(255, 255, 255, 0.85);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Anillo "ping" — solo opacity + transform (GPU composite, cero paint) */
+#bnavPromo::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 5px);
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgba(255, 110, 0, 0.65);
+    pointer-events: none;
+    will-change: transform, opacity;
+    animation: ban-badge-ping 2.5s ease-out infinite;
+}
+
+@keyframes ban-badge-ping {
+    0%        { transform: scale(1);   opacity: 0.8; }
+    65%, 100% { transform: scale(2.4); opacity: 0;   }
+}
+
+#bnavPromo:hover:not(.is-current) {
+    background: rgba(255, 98, 0, 0.08);
+    border-radius: 12px;
+}
+
+/* Activo: naranja completo, badge oculto */
+#bnavPromo.is-current {
     color: #fff;
-    background: linear-gradient(145deg, #ff8c00, #e85500);
+    background: linear-gradient(145deg, #ff9d1a, #e85500);
     border-radius: 14px;
     box-shadow:
         0 4px 18px rgba(232, 85, 0, 0.55),
         0 -1px 8px rgba(255, 140, 0, 0.30),
         inset 0 1px 0 rgba(255, 220, 140, 0.30);
-    margin: 2px 1px;
     transform: translateY(-2px);
 }
 
-#bnavPromo .ban-icon {
+#bnavPromo.is-current .ban-icon {
     width: 24px;
     height: 24px;
     color: #fff;
 }
 
-#bnavPromo .ban-label {
+#bnavPromo.is-current .ban-label {
     color: #fff;
     font-weight: 700;
     letter-spacing: 0.04em;
 }
 
-#bnavPromo:hover {
-    background: linear-gradient(145deg, #ff9d1a, #f06000);
-    box-shadow:
-        0 6px 22px rgba(232, 85, 0, 0.65),
-        0 -1px 10px rgba(255, 140, 0, 0.35),
-        inset 0 1px 0 rgba(255, 230, 160, 0.35);
-    transform: translateY(-3px);
-}
-
-#bnavPromo.is-current {
-    background: linear-gradient(145deg, #ff9d1a, #e85500);
-    box-shadow:
-        0 5px 20px rgba(232, 85, 0, 0.60),
-        0 -1px 10px rgba(255, 140, 0, 0.30),
-        inset 0 1px 0 rgba(255, 230, 160, 0.30);
+#bnavPromo.is-current::after {
+    display: none;
 }
 
 #bnavPromo.is-current::before {
