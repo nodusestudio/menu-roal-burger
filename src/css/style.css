@@ -3466,6 +3466,16 @@ body.has-consent-doc-open .guest-register-banner {
     font-size: 0.78rem;
     font-family: 'Roboto', sans-serif;
     font-weight: 700;
+    will-change: transform;
+}
+.cart-fab-badge.badge-bounce {
+    animation: badge-bounce 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes badge-bounce {
+    0%   { transform: scale(1); }
+    45%  { transform: scale(1.55); }
+    75%  { transform: scale(0.88); }
+    100% { transform: scale(1); }
 }
 
 .cart-added-toast {
@@ -8462,8 +8472,6 @@ a,
     display: block;
 }
 
-/* ─ Badge offline: permanentemente oculto ─ */
-#offlineBanner { display: none !important; }
 
 /* ─ Desktop: fondo con parallax suave ─ */
 @media (min-width: 1024px) {

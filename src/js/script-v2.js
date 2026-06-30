@@ -5796,8 +5796,14 @@ function renderCartUI() {
     }
 
     const totalItems = getCartProductCount();
+    const prevCount = Number(cartUI.badge.textContent) || 0;
     cartUI.badge.textContent = String(totalItems);
     cartUI.badge.hidden = totalItems === 0;
+    if (totalItems > prevCount) {
+        cartUI.badge.classList.remove('badge-bounce');
+        void cartUI.badge.offsetWidth;
+        cartUI.badge.classList.add('badge-bounce');
+    }
     cartUI.list.innerHTML = '';
 
     if (!shoppingCart.length) {
@@ -13246,12 +13252,26 @@ document.addEventListener('DOMContentLoaded', () => {
     loadCombosPackPublic();
     loadCustomerPaymentMethods();
 
-    // ── Detector de conexión offline / online ─────────────────────────────
-    // El banner de estado de conexión no se muestra al usuario final;
-    // el caché de Firebase ya maneja el menú offline de forma transparente.
+    // ── Detector de conexión offline / online ──────────────────────────────
     (function _setupOfflineBanner() {
-        function _showOffline() { document.body.classList.add('is-offline'); }
-        function _hideOffline() { document.body.classList.remove('is-offline'); }
+        const banner = document.getElementById('offlineBanner');
+        const textEl = banner?.querySelector('.offline-text');
+        let _onlineTimer = null;
+        function _showOffline() {
+            document.body.classList.add('is-offline');
+            if (banner) {
+                clearTimeout(_onlineTimer);
+                if (textEl) textEl.textContent = 'Sin conexión — mostrando menú guardado';
+                banner.hidden = false;
+            }
+        }
+        function _hideOffline() {
+            document.body.classList.remove('is-offline');
+            if (banner) {
+                if (textEl) textEl.textContent = 'Conexión restaurada';
+                _onlineTimer = setTimeout(() => { banner.hidden = true; }, 2000);
+            }
+        }
         window.addEventListener('offline', _showOffline);
         window.addEventListener('online', _hideOffline);
         if (!navigator.onLine) _showOffline();
