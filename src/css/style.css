@@ -5281,6 +5281,16 @@ body.has-consent-doc-open .guest-register-banner {
     0%, 100% { opacity: 1; }
     50%       { opacity: 0.45; }
 }
+.cupon-redimido-card { text-align: center; padding: 36px 24px 28px; }
+.cupon-redimido-icon { font-size: 64px; line-height: 1; margin-bottom: 12px; animation: cuponRedimidoPop 0.4s cubic-bezier(0.34,1.56,0.64,1) both; }
+.cupon-redimido-title { color: #4ade80 !important; margin-bottom: 8px; }
+.cupon-redimido-sub { font-size: 0.97rem; color: rgba(255,255,255,0.72); margin: 0 0 22px; }
+.cupon-redimido-close { background: rgba(74,222,128,0.18) !important; border-color: rgba(74,222,128,0.35) !important; color: #4ade80 !important; }
+.cupon-redimido-close:active { background: rgba(74,222,128,0.35) !important; }
+@keyframes cuponRedimidoPop {
+    0%   { transform: scale(0.4); opacity: 0; }
+    100% { transform: scale(1);   opacity: 1; }
+}
 
 /* ===== PANTALLA DE INICIO (SPLASH) ===== */
 #splashScreen {

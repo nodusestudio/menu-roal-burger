@@ -12289,6 +12289,8 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
     document.body.appendChild(modal);
     syncBodyScrollLock();
 
+    let unsubSnap = null;
+
     const releaseLocalLock = () => {
         if (couponId && _softLockedCoupons.has(couponId)) {
             const lock = _softLockedCoupons.get(couponId);
@@ -12299,23 +12301,22 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
         }
     };
 
-    const closeAndDelete = async () => {
+    const cleanup = (deleteDoc) => {
         clearInterval(tid);
+        if (unsubSnap) { unsubSnap(); unsubSnap = null; }
         modal.remove();
         syncBodyScrollLock();
-        releaseLocalLock();
-        try { await docRef.delete(); } catch (_) {}
+        if (deleteDoc) { try { docRef.delete(); } catch (_) {} }
     };
+
+    const closeAndDelete = () => { cleanup(true); releaseLocalLock(); };
 
     const timerEl = document.getElementById('cuponCodTimer');
     const tid = setInterval(() => {
         const rem = expiresAt.getTime() - Date.now();
         if (rem <= 0) {
-            clearInterval(tid);
-            modal.remove();
-            syncBodyScrollLock();
+            cleanup(true);
             releaseLocalLock();
-            try { docRef.delete(); } catch (_) {}
             _showLockedToast('⏱️ El código expiró. Genera uno nuevo.');
             return;
         }
@@ -12327,7 +12328,36 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
         }
     }, 1000);
 
+    // Tiempo real: cuando el admin confirma, status cambia a 'used'
+    try {
+        unsubSnap = docRef.onSnapshot(snap => {
+            if (!snap.exists || snap.data()?.status !== 'used') return;
+            cleanup(false);
+            releaseLocalLock();
+            if (couponId) _setRedeemLock(couponId);
+            _showCuponRedimidoModal(couponTitle);
+        });
+    } catch (_) {}
+
     document.getElementById('cuponCodCancel')?.addEventListener('click', closeAndDelete);
+}
+
+function _showCuponRedimidoModal(couponTitle) {
+    const modal = document.createElement('div');
+    modal.id = 'cuponRedimidoModal';
+    modal.className = 'support-modal is-open';
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass cupon-code-card cupon-redimido-card" role="dialog" aria-modal="true" aria-label="Cupón canjeado">
+            <div class="cupon-redimido-icon">✅</div>
+            <h3 class="support-modal-title cupon-redimido-title">¡Cupón canjeado!</h3>
+            <p class="cupon-redimido-sub">${escapeHtml(couponTitle || 'Cupón')} aplicado en tu pedido.</p>
+            <button type="button" class="cupon-code-cancel cupon-redimido-close" id="cuponRedClose">Cerrar</button>
+        </div>`;
+    document.body.appendChild(modal);
+    syncBodyScrollLock();
+    const close = () => { modal.remove(); syncBodyScrollLock(); };
+    document.getElementById('cuponRedClose')?.addEventListener('click', close);
+    setTimeout(close, 6000);
 }
 
 function orderDailyRecommendation() {
