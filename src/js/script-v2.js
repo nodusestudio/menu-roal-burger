@@ -12072,7 +12072,11 @@ function _enterScreen(screenId) {
     _SECONDARY_SCREENS.forEach(id => {
         if (id !== screenId) {
             const el = document.getElementById(id);
-            if (el) { el.hidden = true; el.classList.remove('screen-slide-in'); }
+            if (el) {
+                el.style.transform = '';
+                el.style.transition = '';
+                el.hidden = true;
+            }
         }
     });
     // Si no abrimos el detalle de categoría, limpiar el tracking de navCategoriesScreen
@@ -12088,13 +12092,23 @@ function _enterScreen(screenId) {
         history.pushState({ roalMenuScreen: true }, '');
         _screenHistoryPushed = true;
     }
-    // Pre-registrar animación mientras el elemento aún está hidden.
-    // animation-fill-mode:backwards aplica el from-keyframe (translateX(100%))
-    // en cuanto el caller hace hidden=false — sin ningún flash visible.
+    // Slide-in: el elemento se pre-posiciona fuera del viewport (aún hidden),
+    // el caller hace hidden=false, y en el siguiente frame arranca la transición.
+    // Usar inline styles + rAF en vez de animation-fill-mode para evitar el bug
+    // de Android donde el from-state queda fijo y la animación nunca corre.
     const newEl = document.getElementById(screenId);
     if (newEl) {
-        newEl.classList.remove('screen-slide-in');
-        newEl.classList.add('screen-slide-in');
+        newEl.style.transition = 'none';
+        newEl.style.transform = 'translateX(100%)';
+        requestAnimationFrame(() => {
+            void newEl.getBoundingClientRect();
+            newEl.style.transition = 'transform 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+            newEl.style.transform = 'translateX(0)';
+            newEl.addEventListener('transitionend', () => {
+                newEl.style.transform = '';
+                newEl.style.transition = '';
+            }, { once: true });
+        });
     }
 }
 
