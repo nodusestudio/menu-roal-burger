@@ -12072,7 +12072,7 @@ function _enterScreen(screenId) {
     _SECONDARY_SCREENS.forEach(id => {
         if (id !== screenId) {
             const el = document.getElementById(id);
-            if (el) el.hidden = true;
+            if (el) { el.hidden = true; el.classList.remove('screen-slide-in'); }
         }
     });
     // Si no abrimos el detalle de categoría, limpiar el tracking de navCategoriesScreen
@@ -12087,6 +12087,14 @@ function _enterScreen(screenId) {
     if (!_screenHistoryPushed && !_closingByBackBtn) {
         history.pushState({ roalMenuScreen: true }, '');
         _screenHistoryPushed = true;
+    }
+    // Pre-registrar animación mientras el elemento aún está hidden.
+    // animation-fill-mode:backwards aplica el from-keyframe (translateX(100%))
+    // en cuanto el caller hace hidden=false — sin ningún flash visible.
+    const newEl = document.getElementById(screenId);
+    if (newEl) {
+        newEl.classList.remove('screen-slide-in');
+        newEl.classList.add('screen-slide-in');
     }
 }
 

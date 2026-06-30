@@ -5741,6 +5741,15 @@ body.has-consent-doc-open .guest-register-banner {
     overscroll-behavior-y: contain;
 }
 
+/* ── Transición slide-in al entrar a pantallas secundarias ── */
+@keyframes screen-slide-in {
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
+}
+.screen-slide-in {
+    animation: screen-slide-in 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
 #promoCarouselScreen {
     position: fixed;
     inset: 0;
