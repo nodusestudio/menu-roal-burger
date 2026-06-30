@@ -12438,11 +12438,6 @@ function _showCuponRedimidoModal(couponTitle) {
 }
 
 function orderDailyRecommendation() {
-    if (!canPlaceOrdersNow()) {
-        showOrderingClosedMessage();
-        return;
-    }
-
     if (!activeCustomerProfile) {
         closePromoScreen();
         openPromoRegistrationPrompt();
@@ -12450,7 +12445,7 @@ function orderDailyRecommendation() {
     }
 
     const recommendedProduct = currentRecommendedProduct || getRecommendedProductOfDay();
-    if (recommendedProduct.estado === 'paused') return;
+    if (!recommendedProduct || recommendedProduct.estado === 'paused') return;
 
     const _ordCouponId = 'rec_' + (recommendedProduct.id || recommendedProduct.nombre || 'dia');
     const _ordBtn = document.getElementById('promoOrderButton');
@@ -12461,6 +12456,7 @@ function orderDailyRecommendation() {
         couponMeta: { type: 'recomendado', productId: recommendedProduct.id, productNombre: recommendedProduct.nombre, discountRate: RECOMMENDED_DAY_DISCOUNT_RATE },
         redeemBtn: _ordBtn,
         onDelivery: () => {
+            if (!canPlaceOrdersNow()) { showOrderingClosedMessage(); return; }
             trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${recommendedProduct.nombre}`);
             closePromoScreen();
             addItemToCart(recommendedProduct.nombre, recommendedProduct.categoria, {
