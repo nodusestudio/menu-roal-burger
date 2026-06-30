@@ -1359,7 +1359,6 @@ body.is-offline #menuScreen {
     overflow-x: auto;
     padding: 10px 0;
     scroll-behavior: smooth;
-    -webkit-overflow-scrolling: touch;
 }
 
 .menu-carousel::-webkit-scrollbar {
@@ -4240,7 +4239,6 @@ body.has-consent-doc-open .guest-register-banner {
     scrollbar-width: none;
     -ms-overflow-style: none;
     scroll-behavior: smooth;
-    -webkit-overflow-scrolling: touch;
     contain: layout paint;
 }
 
@@ -5006,7 +5004,6 @@ body.has-consent-doc-open .guest-register-banner {
     max-height: 90vh;
     max-height: 90dvh;
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
     margin: 0;
     padding: 18px;
     display: flex;
@@ -5714,7 +5711,6 @@ body.has-consent-doc-open .guest-register-banner {
     inset: 0;
     background: transparent;
     z-index: 200;
-    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
 }
@@ -5883,7 +5879,6 @@ body.has-consent-doc-open .guest-register-banner {
     inset: 0;
     background: transparent;
     z-index: 200;
-    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
 }
@@ -5903,7 +5898,6 @@ body.has-consent-doc-open .guest-register-banner {
     inset: 0;
     background: transparent;
     z-index: 200;
-    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior-y: contain;
 }
@@ -7589,7 +7583,6 @@ body.has-consent-doc-open .guest-register-banner {
     display: flex;
     gap: 6px;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     padding-bottom: 2px;
 }
@@ -7621,7 +7614,6 @@ body.has-consent-doc-open .guest-register-banner {
     display: flex;
     gap: 6px;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     padding-bottom: 2px;
 }
@@ -8393,7 +8385,6 @@ a,
         display: flex;
         gap: 8px;
         overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
         padding: 2px 0 8px;
         scroll-snap-type: x mandatory;
