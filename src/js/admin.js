@@ -9879,7 +9879,13 @@ function buildOrderWhatsAppMessage(order) {
         return opcion ? `• ${qty}x ${name}\n   ↳ ${opcion}` : `• ${qty}x ${name}`;
     }).join('\n');
     const total = formatMoney(Number(order.total || order.subtotal || 0));
-    return `¡Hola ${nombre}! 👋\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n💰 *Total a cobrar:* ${total}\n🕐 *Tiempo estimado:* ~50 min (trabajamos para que sea menos ⚡)\n\n¡Gracias por preferirnos! Pronto estará en tu puerta 🛵`;
+    const method = String(order.paymentMethod || 'pendiente').toLowerCase();
+    const isPaid = method && method !== 'pendiente' && method !== 'efectivo';
+    const paymentLabel = getOrderPaymentLabel(order);
+    const paymentLine = isPaid
+        ? `Monto pagado: ${total} (${paymentLabel})`
+        : `Total a cobrar: ${total} ${method === 'efectivo' ? `\nMedio de pago: ${paymentLabel}` : ''}`;
+    return `¡Hola ${nombre}! 👋\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n💰 *${paymentLine}*\n🕐 *Tiempo estimado:* ~50 min (trabajamos para que sea menos ⚡)\n\n¡Gracias por preferirnos! Pronto estará en tu puerta 🛵`;
 }
 
 function buildOrderWhatsAppLink(order) {
