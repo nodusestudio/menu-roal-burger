@@ -435,6 +435,7 @@ let posTicketConfig = null; // { orderType, mesaNumber, customerName, customerPh
 let posTickets = [];
 let posActiveTicketId = null;
 let _editingOrderData = null; // set when editing an existing order, cleared after save
+let _editingItemsOnlyOrderId = null; // set when editing only the items of an existing order (safe partial update)
 
 const POS_TICKETS_COLLECTION = 'pos_tickets';
 let posTicketsUnsubscribe = null;
@@ -7295,6 +7296,107 @@ async function editAdminPosOrder(order) {
     }
 }
 
+// Edición SEGURA de solo los productos de un pedido existente (cualquier origen/estado).
+// A diferencia de editAdminPosOrder()/saveAdminOrderQuick(), NO reescribe el documento
+// completo — solo hace un merge parcial de items/totales, así que no toca paymentMethod,
+// status, paidAt, voided, source, etc.
+function openOrderItemsEditor(order) {
+    try {
+        const posItems = (order.items || []).map((item) => ({
+            itemKey: item.itemKey || `${item.productId || 'p'}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            productId: String(item.productId || ''),
+            productName: String(item.productName || ''),
+            categoryName: String(item.categoryName || ''),
+            note: String(item.note || item.optionLabel || ''),
+            quantity: Number(item.quantity || 1),
+            unitPrice: Number(item.unitPrice || 0),
+            originalUnitPrice: item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null,
+            subtotal: Number(item.subtotal || 0),
+            promoLabel: String(item.orderOptions?.promoLabel || item.promoLabel || ''),
+            promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true
+        }));
+
+        _editingOrderData = null;
+        _editingItemsOnlyOrderId = order.id;
+        posTicketConfig = null;
+
+        if (selectedOrderId === order.id) selectedOrderId = null;
+
+        openInternalOrderModal();
+
+        internalOrderItems = posItems;
+        const currentTicket = posTickets.find((t) => t.id === posActiveTicketId);
+        if (currentTicket) {
+            currentTicket.items = posItems;
+            currentTicket.label = `Editando productos #${order.code}`;
+        }
+        const labelEl = document.getElementById('posActiveTicketLabel');
+        if (labelEl) labelEl.textContent = `Editando productos #${order.code}`;
+
+        renderPosOrderItems();
+        renderPosTotals();
+        renderPosBottomBar();
+        showNotice('Ajusta los productos y presiona Guardar. No se modifica el pago ni el estado del pedido.', 'ok');
+    } catch (error) {
+        showNotice(`Error al cargar los productos del pedido: ${error.message || 'error'}`, 'error');
+    }
+}
+
+async function saveOrderItemsEdit() {
+    const orderId = _editingItemsOnlyOrderId;
+    if (!orderId) return;
+
+    if (!internalOrderItems.length) {
+        showNotice('Agrega al menos un producto al pedido.', 'error');
+        return;
+    }
+    const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    if (subtotal <= 0) {
+        showNotice('El total del pedido no puede ser $0. Revisa los precios de los productos.', 'error');
+        return;
+    }
+
+    const order = ordersState.find((o) => o.id === orderId);
+    const deliveryFee = Number(order?.deliveryFee || 0);
+    const total = order?.orderType === 'domicilio' ? subtotal + deliveryFee : subtotal;
+
+    const saveBtn = document.getElementById('posDrawerSaveBtn');
+    try {
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+
+        const items = internalOrderItems.map((item, index) => ({
+            index: index + 1,
+            itemKey: item.itemKey,
+            productId: item.productId,
+            productName: item.productName,
+            categoryName: item.categoryName,
+            optionLabel: item.note || '',
+            note: item.note || '',
+            quantity: Number(item.quantity || 0),
+            unitPrice: Number(item.unitPrice || 0),
+            subtotal: Number(item.subtotal || 0),
+            ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
+        }));
+
+        await updateOrder(orderId, {
+            items,
+            itemCount: internalOrderItems.length,
+            totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+            subtotal,
+            total
+        });
+
+        _editingItemsOnlyOrderId = null;
+        renderOrders();
+        showNotice('Productos del pedido actualizados.', 'ok');
+        closeInternalOrderModal(true);
+    } catch (error) {
+        showNotice(`Error al guardar los productos: ${error.message || 'error'}`, 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'GUARDAR'; }
+    }
+}
+
 function closeInternalOrderModal(clearCurrentTicket = false) {
     if (!internalOrderModal) return;
 
@@ -7329,6 +7431,7 @@ function closeInternalOrderModal(clearCurrentTicket = false) {
     posActiveTicketId = null;
     posTicketConfig = null;
     _editingOrderData = null;
+    _editingItemsOnlyOrderId = null;
     internalOrderItems = [];
     renderPosCartTicketInfo();
     const cartDrawer = document.getElementById('posCartDrawer');
@@ -10056,14 +10159,15 @@ function buildTicketAddressLines(order) {
         .filter(Boolean);
 }
 
-function buildTicketCopyButton(label, value, options = {}) {
-    const safeValue = String(value || '').trim();
-    const safeLabel = escapeHtml(label);
-    const safeDisplay = escapeHtml(options.displayValue || safeValue || 'No registrado');
-    const safeCopyValue = escapeHtml(safeValue || 'No registrado');
+// Botón que navega a editar un dato del pedido (nombre/telefono/direccion), en vez de copiarlo.
+// En printMode (impresión / vista de solo lectura de tickets históricos) se muestra texto plano.
+function buildTicketEditFieldButton(order, field, displayValue, printMode, options = {}) {
+    const safeDisplay = escapeHtml(displayValue || 'No registrado');
+    if (printMode) {
+        return `<span class="ticket-address-text${options.className ? ` ${escapeHtml(options.className)}` : ''}">${safeDisplay}</span>`;
+    }
     const className = options.className ? ` ${escapeHtml(options.className)}` : '';
-
-    return `<button type="button" class="ticket-copy-btn${className}" data-order-ticket-action="copy" data-copy-label="${safeLabel}" data-copy-value="${safeCopyValue}">${safeDisplay}</button>`;
+    return `<button type="button" class="ticket-copy-btn${className}" data-order-ticket-action="edit-field" data-edit-field="${escapeHtml(field)}" data-order-id="${escapeHtml(order.id)}" title="Tocar para editar">${safeDisplay}</button>`;
 }
 
 function escapeVCardValue(value) {
@@ -10160,9 +10264,11 @@ function buildThermalTicketMarkup(order, options = {}) {
         ? (order.cashChangeAmount != null ? Number(order.cashChangeAmount) : (cashGiven > totalAmount ? cashGiven - totalAmount : null))
         : null;
 
-    const addressLines = buildTicketAddressLines(order)
-        .map((line) => `<div class="ticket-address-text">${buildTicketCopyButton('Direccion', line, {})}</div>`)
-        .join('');
+    const addressLines = order.orderType === 'domicilio'
+        ? `<div class="ticket-address-text">${buildTicketEditFieldButton(order, 'deliveryAddress', order.deliveryAddress || 'Sin direccion registrada', printMode)}</div>`
+        : buildTicketAddressLines(order)
+            .map((line) => `<div class="ticket-address-text">${escapeHtml(line)}</div>`)
+            .join('');
 
     const ticketDiscountTotal = (order.items || []).reduce((sum, item) => {
         const orig = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
@@ -10188,11 +10294,16 @@ function buildThermalTicketMarkup(order, options = {}) {
             ? `<s style="color:#aaa;font-size:0.78em;">${escapeHtml(formatMoney(origSubtotal))}</s><br><strong>${subtotal === 0 ? 'GRATIS' : escapeHtml(formatMoney(subtotal))}</strong>`
             : escapeHtml(formatMoney(subtotal));
 
+        const itemNameBlock = `<strong>${escapeHtml(`${item.quantity} x ${item.productName}`)}</strong>
+                    ${detailParts.map((p) => `<span class="ticket-line-meta">${escapeHtml(p)}</span>`).join('')}`;
+        const itemNameCell = printMode
+            ? itemNameBlock
+            : `<button type="button" class="ticket-item-edit-btn" data-order-ticket-action="edit-items" data-order-id="${escapeHtml(order.id)}" title="Editar productos del pedido">${itemNameBlock}</button>`;
+
         return `
             <tr>
                 <td>
-                    <strong>${escapeHtml(`${item.quantity} x ${item.productName}`)}</strong>
-                    ${detailParts.map((p) => `<span class="ticket-line-meta">${escapeHtml(p)}</span>`).join('')}
+                    ${itemNameCell}
                 </td>
                 <td style="text-align:right;">${priceCell}</td>
             </tr>
@@ -10269,10 +10380,10 @@ function buildThermalTicketMarkup(order, options = {}) {
                 <section class="ticket-section">
                     <div class="ticket-section-title">Cliente</div>
                     <div class="ticket-customer-card">
-                        ${buildTicketCopyButton('Cliente', order.customerName || 'Cliente sin nombre', { displayValue: order.customerName || 'Cliente sin nombre', className: 'ticket-copy-btn-name' })}
+                        ${buildTicketEditFieldButton(order, 'customerName', order.customerName || 'Cliente sin nombre', printMode, { className: 'ticket-copy-btn-name' })}
                         <div class="ticket-customer-row">
                             <span>Telefono</span>
-                            ${buildTicketCopyButton('Telefono', order.customerPhone || 'No registrado', { className: 'ticket-copy-btn-inline' })}
+                            ${buildTicketEditFieldButton(order, 'customerPhone', order.customerPhone || 'No registrado', printMode, { className: 'ticket-copy-btn-inline' })}
                         </div>
                         <div class="ticket-customer-row">
                             <span>Tipo</span>
@@ -10284,7 +10395,9 @@ function buildThermalTicketMarkup(order, options = {}) {
                         </div>
                         <div class="ticket-customer-row">
                             <span>Pago</span>
-                            <span>${escapeHtml(paymentMethod)}${_ticketPagoRowDetail}</span>
+                            <span>${(!printMode && _ticketPaymentMethod && _ticketPaymentMethod !== 'pendiente')
+                                ? `<button type="button" class="ticket-copy-btn ticket-copy-btn-inline" data-order-ticket-action="editar_pago" data-order-id="${escapeHtml(order.id)}" title="Tocar para cambiar el método de pago">${escapeHtml(paymentMethod)}</button>`
+                                : escapeHtml(paymentMethod)}${_ticketPagoRowDetail}</span>
                         </div>
                     </div>
                 </section>
@@ -10359,14 +10472,16 @@ function buildThermalTicketMarkup(order, options = {}) {
                 const _isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
                 const _isEntregado = order.status === 'entregado';
                 const _hasType = !!order.orderType;
-                // Cobrar: habilitado mientras no esté entregado y tenga tipo.
-                // Ya no se deshabilita si el cliente pre-seleccionó un método desde la app.
-                const _cobrarDisabled = (!_hasType || _isEntregado) ? 'disabled' : '';
+                // Cobrar: se deshabilita en cuanto el pedido queda pagado o entregado.
+                // Para corregir el método de pago de un pedido ya pagado, usar "Editar método de pago".
+                const _cobrarDisabled = (!_hasType || _isEntregado || _isPaid) ? 'disabled' : '';
                 const _cobrarTitle = _isEntregado
                     ? 'El pedido ya fue cerrado'
-                    : !_hasType
-                        ? 'Asigna tipo de pedido (mesa / recoger / domicilio) primero'
-                        : 'Cobrar este pedido';
+                    : _isPaid
+                        ? 'Este pedido ya está pagado — usa "Editar método de pago" para corregirlo'
+                        : !_hasType
+                            ? 'Asigna tipo de pedido (mesa / recoger / domicilio) primero'
+                            : 'Cobrar este pedido';
                 // "Editar pago": disponible cuando ya hay método registrado (incluso en pedidos entregados)
                 const _editPagoBtn = (_isPaid && _hasType)
                     ? `<button type="button" class="ticket-editpago-link" data-order-ticket-action="editar_pago" data-order-id="${order.id}" title="Corregir el método de pago sin cambiar el estado del pedido">✏️ Editar método de pago</button>`
@@ -10431,7 +10546,7 @@ function renderOrderTicket(order, options = {}) {
         ticketPaper.style.position = 'relative';
         const floatDiv = document.createElement('div');
         floatDiv.className = 'ticket-float-actions';
-        floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-edit-btn" data-order-ticket-action="editar_pos" title="Editar pedido en POS">✎ Editar</button>`;
+        floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-edit-btn" data-order-ticket-action="edit-items" title="Editar productos del pedido">✎ Editar</button>`;
         floatDiv.innerHTML += `<button type="button" class="tpv-action-btn tpv-delete-btn" data-order-ticket-action="eliminar" title="Eliminar pedido">🗑</button>`;
         ticketPaper.appendChild(floatDiv);
     }
@@ -11615,6 +11730,8 @@ function closeClientEditModal() {
 
     activeClientEditId = null;
     hideModalFeedback(clientEditFeedback);
+    _clientEditSyncOrderId = null;
+    _clientEditSyncField = null;
 
     if (clientEditSaveBtn) {
         clientEditSaveBtn.disabled = false;
@@ -11643,7 +11760,7 @@ function openCreateClientModal() {
     clientEditNameInput?.focus();
 }
 
-function openEditClientModal(client) {
+function openEditClientModal(client, focusField = 'customerName') {
     if (!clientEditModal || !client || !clientEditForm) {
         return;
     }
@@ -11673,8 +11790,113 @@ function openEditClientModal(client) {
 
     clientEditModal.classList.add('show');
     clientEditModal.setAttribute('aria-hidden', 'false');
-    clientEditNameInput?.focus();
+    const _focusInput = focusField === 'customerPhone' ? clientEditPhoneInput
+        : focusField === 'deliveryAddress' ? clientEditAddressInput
+        : clientEditNameInput;
+    (_focusInput || clientEditNameInput)?.focus();
 }
+
+// ── Edición de nombre/teléfono/dirección directo desde el ticket ────────────
+let _clientEditSyncOrderId = null; // pedido a sincronizar tras guardar el cliente
+let _clientEditSyncField = null;   // campo del pedido a sincronizar (customerName/customerPhone/deliveryAddress)
+
+function _findClientForOrder(order) {
+    const phoneDigits = normalizePhoneDigits(order.customerPhone);
+    if (!phoneDigits) return null;
+    return clientsState.find((c) => normalizePhoneDigits(c.customerPhoneDigits || c.customerPhone) === phoneDigits) || null;
+}
+
+const ORDER_FIELD_EDIT_LABELS = {
+    customerName: 'Nombre',
+    customerPhone: 'Telefono',
+    deliveryAddress: 'Direccion de entrega'
+};
+
+function openOrderContactFieldEditor(order, field) {
+    const client = _findClientForOrder(order);
+    if (client) {
+        _clientEditSyncOrderId = order.id;
+        _clientEditSyncField = field;
+        document.querySelector('[data-accordion-target="clientes"]')?.click();
+        openEditClientModal(client, field);
+        return;
+    }
+    const currentValue = field === 'deliveryAddress'
+        ? (order.deliveryAddress || order.customerAddress || '')
+        : String(order[field] || '');
+    openOrderFieldEditModal(order, field, currentValue);
+}
+
+function openOrderFieldEditModal(order, field, currentValue) {
+    const modal = document.getElementById('orderFieldEditModal');
+    const input = document.getElementById('orderFieldEditInput');
+    const label = document.getElementById('orderFieldEditLabel');
+    const title = document.getElementById('orderFieldEditTitle');
+    if (!modal || !input) return;
+
+    modal.dataset.orderId = order.id;
+    modal.dataset.field = field;
+    const fieldLabel = ORDER_FIELD_EDIT_LABELS[field] || 'Valor';
+    if (title) title.textContent = `Editar ${fieldLabel.toLowerCase()}`;
+    if (label) label.textContent = fieldLabel;
+    input.value = currentValue;
+    input.type = field === 'customerPhone' ? 'tel' : 'text';
+    hideModalFeedback(document.getElementById('orderFieldEditFeedback'));
+
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    input.focus();
+}
+
+function closeOrderFieldEditModal() {
+    const modal = document.getElementById('orderFieldEditModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    modal.dataset.orderId = '';
+    modal.dataset.field = '';
+}
+
+document.getElementById('orderFieldEditCloseBtn')?.addEventListener('click', closeOrderFieldEditModal);
+document.getElementById('orderFieldEditModal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'orderFieldEditModal') closeOrderFieldEditModal();
+});
+document.addEventListener('keydown', (event) => {
+    const modal = document.getElementById('orderFieldEditModal');
+    if (event.key === 'Escape' && modal && modal.classList.contains('show')) {
+        closeOrderFieldEditModal();
+    }
+});
+
+document.getElementById('orderFieldEditForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const modal = document.getElementById('orderFieldEditModal');
+    const input = document.getElementById('orderFieldEditInput');
+    const feedback = document.getElementById('orderFieldEditFeedback');
+    const saveBtn = document.getElementById('orderFieldEditSaveBtn');
+    const orderId = modal?.dataset.orderId;
+    const field = modal?.dataset.field;
+    if (!orderId || !field) return;
+
+    const value = String(input?.value || '').trim();
+    if (!value) {
+        showModalFeedback(feedback, 'Este campo no puede quedar vacio.', 'error');
+        return;
+    }
+
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+    try {
+        const updates = { [field]: value };
+        if (field === 'customerPhone') updates.customerPhoneDigits = normalizePhoneDigits(value);
+        await updateOrder(orderId, updates);
+        showNotice(`${ORDER_FIELD_EDIT_LABELS[field] || 'Dato'} actualizado.`, 'ok');
+        closeOrderFieldEditModal();
+    } catch (error) {
+        showModalFeedback(feedback, `No se pudo guardar: ${error.message || 'error inesperado.'}`, 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+    }
+});
 
 async function deleteClient(clientId) {
     await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).delete();
@@ -14433,6 +14655,10 @@ document.getElementById('posDrawerSaveBtn')?.addEventListener('click', () => {
         showNotice('Agrega al menos un producto al pedido.', 'error');
         return;
     }
+    if (_editingItemsOnlyOrderId) {
+        saveOrderItemsEdit();
+        return;
+    }
     if (posTicketConfig) {
         saveAdminOrderQuick(posTicketConfig);
         posTicketConfig = null;
@@ -16154,6 +16380,16 @@ if (clientEditForm) {
                 updatedAt: firestoreNow()
             }, { merge: true });
 
+            if (_clientEditSyncOrderId && _clientEditSyncField) {
+                const _syncValues = { customerName, customerPhone, deliveryAddress: savedAddresses[0] || address };
+                await updateOrder(_clientEditSyncOrderId, {
+                    [_clientEditSyncField]: _syncValues[_clientEditSyncField],
+                    ...(_clientEditSyncField === 'customerPhone' ? { customerPhoneDigits } : {})
+                }).catch(() => {});
+                _clientEditSyncOrderId = null;
+                _clientEditSyncField = null;
+            }
+
             await reloadDataAndRender();
             closeClientEditModal();
             showNotice(activeClientEditId ? 'Cliente actualizado correctamente.' : 'Cliente creado correctamente.', 'ok');
@@ -16441,18 +16677,12 @@ if (orderTicketPanel) {
             return;
         }
 
-        if (actionButton.dataset.orderTicketAction === 'copy') {
-            const copyValue = String(actionButton.dataset.copyValue || '').trim();
-            const copyLabel = String(actionButton.dataset.copyLabel || 'Dato').trim();
-
-            try {
-                const copied = await copyTextToClipboard(copyValue);
-                if (!copied) {
-                    showNotice(`No se pudo copiar ${copyLabel.toLowerCase()} automaticamente.`, 'error');
-                }
-            } catch (error) {
-                showNotice(`No se pudo copiar ${copyLabel.toLowerCase()}: ${error.message || 'error inesperado.'}`, 'error');
-            }
+        if (actionButton.dataset.orderTicketAction === 'edit-field') {
+            const targetOrderId = String(actionButton.dataset.orderId || '').trim();
+            const field = String(actionButton.dataset.editField || '').trim();
+            const order = ordersState.find(o => o.id === targetOrderId);
+            if (!order || !field) { showNotice('Pedido no encontrado.', 'error'); return; }
+            openOrderContactFieldEditor(order, field);
             return;
         }
 
@@ -16461,6 +16691,14 @@ if (orderTicketPanel) {
             const order = ordersState.find(o => o.id === selectedOrderId);
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
             editAdminPosOrder(order);
+            return;
+        }
+
+        if (actionButton.dataset.orderTicketAction === 'edit-items') {
+            const targetId = String(actionButton.dataset.orderId || '').trim() || selectedOrderId;
+            const order = ordersState.find(o => o.id === targetId);
+            if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+            openOrderItemsEditor(order);
             return;
         }
 
@@ -16518,6 +16756,7 @@ if (orderTicketPanel) {
         if (actionButton.dataset.orderTicketAction === 'editar_pago') {
             const order = ordersState.find(o => o.id === orderId);
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+            if (!confirm('¿Cambiar el método de pago? Se anulará el pago actual (no sumará en cajas) y el ticket quedará libre para cobrar de nuevo por cualquier medio.')) return;
             // receiveOrder=false: solo cambia el método de pago, no mueve el estado del pedido
             openDeliveryPaymentModal(order, false);
             return;
@@ -17595,6 +17834,7 @@ async function _pfProcessPayment(method, subMethod, cashTender) {
         cashTenderAmount: method === 'efectivo' ? cashTender : null,
         cashChangeRequired: method === 'efectivo' && cashTender > total,
         cashChangeAmount: method === 'efectivo' && cashTender > total ? cashTender - total : null,
+        paymentSplit: null, // limpia un pago dividido anterior si se cambia a un método simple
         paidAt: firestoreNow(),
     };
 
@@ -21025,6 +21265,19 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', async (
         } else if (action === 'editar_pos' && order) {
             closeTicketPreviewModal();
             editAdminPosOrder(order);
+        } else if (action === 'edit-items' && order) {
+            closeTicketPreviewModal();
+            openOrderItemsEditor(order);
+        } else if (action === 'edit-field' && order) {
+            const field = String(btn.dataset.editField || '').trim();
+            if (field) {
+                closeTicketPreviewModal();
+                openOrderContactFieldEditor(order, field);
+            }
+        } else if (action === 'editar_pago' && order) {
+            if (!confirm('¿Cambiar el método de pago? Se anulará el pago actual (no sumará en cajas) y el ticket quedará libre para cobrar de nuevo por cualquier medio.')) return;
+            closeTicketPreviewModal();
+            openDeliveryPaymentModal(order, false);
         } else if (action === 'eliminar' && order) {
             closeTicketPreviewModal();
             if (confirm(`¿Eliminar el pedido #${order.code}?`)) {

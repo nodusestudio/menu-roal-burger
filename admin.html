@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260710-1650">
+    <link rel="stylesheet" href="style.css?v=20260710-1830">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -14264,6 +14264,26 @@
         </div>
     </div>
 
+    <!-- ── Modal: editar un solo dato de un pedido sin cliente registrado ── -->
+    <div class="product-edit-modal" id="orderFieldEditModal" aria-hidden="true">
+        <div class="product-edit-card">
+            <div class="product-edit-head">
+                <h3 id="orderFieldEditTitle">Editar dato</h3>
+                <button type="button" class="product-edit-close" id="orderFieldEditCloseBtn">&times;</button>
+            </div>
+            <form id="orderFieldEditForm" class="admin-form">
+                <div class="admin-field full">
+                    <label for="orderFieldEditInput" id="orderFieldEditLabel">Valor</label>
+                    <input type="text" id="orderFieldEditInput" name="orderFieldEditInput" required>
+                </div>
+                <div class="admin-field full">
+                    <div id="orderFieldEditFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
+                </div>
+                <button type="submit" class="admin-button" id="orderFieldEditSaveBtn">Guardar</button>
+            </form>
+        </div>
+    </div>
+
     <!-- ── Modal: Personalizar ticket antes de guardar ── -->
     <div id="posTicketSetupModal" hidden>
         <div class="pts-modal">
@@ -14597,7 +14617,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260710-1650"></script>
+    <script src="admin.js?v=20260710-1830"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
