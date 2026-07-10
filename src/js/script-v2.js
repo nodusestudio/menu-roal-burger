@@ -1956,15 +1956,15 @@ function applyCustomerConsentState(isAuthorized = false) {
     const isApproved = Boolean(isAuthorized) || hasPreviousConsent;
 
     formUI.consent.checked = isApproved;
-    formUI.consent.disabled = true;
+    formUI.consent.disabled = hasPreviousConsent;
     formUI.consentViewed = isApproved;
 
     if (formUI.consentStatus) {
         formUI.consentStatus.textContent = hasPreviousConsent
-            ? 'Esta autorizacion ya fue registrada en tu perfil.'
+            ? 'Esta autorización ya fue registrada en tu perfil.'
             : (isApproved
-                ? 'Documento revisado y autorizacion aceptada. Ya puedes continuar.'
-                : 'Debes abrir y leer el documento antes de autorizar el manejo de tus datos.');
+                ? 'Autorización aceptada. Ya puedes continuar.'
+                : 'Marca la casilla para aceptar la autorización y continuar.');
     }
 
     if (formUI.reviewConsentButton) {
@@ -1975,8 +1975,9 @@ function applyCustomerConsentState(isAuthorized = false) {
 
     if (formUI.save) {
         formUI.save.classList.toggle('is-disabled', !isApproved);
+        formUI.save.disabled = !isApproved;
         formUI.save.setAttribute('aria-disabled', isApproved ? 'false' : 'true');
-        formUI.save.title = isApproved ? '' : 'Primero debes leer y aceptar la autorizacion de tratamiento de datos.';
+        formUI.save.title = isApproved ? '' : 'Marca la casilla de autorización de datos para continuar.';
     }
 }
 
@@ -2061,11 +2062,11 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
             <p class="support-field-hint">Toca el icono 🌍 para anclar tu GPS a esa dirección.</p>
         </div>
         <div class="support-consent-box">
-            <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Leer autorización de tratamiento de datos</button>
-            <p class="support-field-hint" id="customerConsentStatus">Debes abrir el documento antes de autorizar.</p>
+            <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Ver autorización de tratamiento de datos</button>
+            <p class="support-field-hint" id="customerConsentStatus">${hasConsent ? 'Esta autorización ya fue registrada en tu perfil.' : 'Marca la casilla para aceptar la autorización y continuar.'}</p>
         </div>
         <label class="support-check" for="customerDataConsent">
-            <input type="checkbox" id="customerDataConsent" ${hasConsent ? 'checked' : ''} disabled>
+            <input type="checkbox" id="customerDataConsent" ${hasConsent ? 'checked disabled' : ''}>
             <span>${consentMarkup}</span>
         </label>
         <button type="button" class="support-send-btn" id="customerRegisterSave">${saveLabel}</button>`;
@@ -2185,6 +2186,10 @@ function _mountRegProfileStep() {
     const { hasPreviousConsent } = customerRegisterUI;
 
     customerRegisterUI.reviewConsentButton?.addEventListener('click', openCustomerConsentDocument);
+    customerRegisterUI.consent?.addEventListener('change', () => {
+        const isChecked = Boolean(customerRegisterUI?.consent?.checked);
+        applyCustomerConsentState(isChecked);
+    });
     customerRegisterUI.save?.addEventListener('click', submitCustomerProfileForm);
     customerRegisterUI.addAddressButton?.addEventListener('click', () => {
         if (!customerRegisterUI) return;
@@ -3150,9 +3155,9 @@ async function submitCustomerProfileForm() {
         return;
     }
 
-    if (!formUI.consentViewed && !formUI.hasPreviousConsent) {
-        formUI.feedback.textContent = 'Primero debes leer y aceptar la autorizacion de tratamiento de datos.';
-        formUI.reviewConsentButton?.focus();
+    if (!formUI.consent?.checked && !formUI.hasPreviousConsent) {
+        formUI.feedback.textContent = 'Marca la casilla de autorización de datos para continuar.';
+        formUI.consent?.focus();
         return;
     }
 
