@@ -15617,7 +15617,7 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
                 else if (subTarget === 'libro-contable') renderLibroContable();
             }
             if (target === 'tickets') _autoLoadTicketsTab();
-            if (target === 'gastos') renderGastosInformes();
+            if (target === 'gastos') loadGastosCaja().then(renderGastosInformes);
         }
     });
 });
@@ -18131,12 +18131,14 @@ async function loadGastosCaja() {
     try {
         const snap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
             .orderBy('registradoAt', 'desc')
-            .limit(200)
+            .limit(500)
             .get();
-        // Excluir gastos externos (tipo:'externo') — esos pertenecen al historial
+        // Incluye gastos de caja y externos (el reporte de Informes > Gastos necesita ambos).
+        // Excluye traslados: no son gastos reales, son movimientos entre métodos de pago.
+        // renderCajaDiaria() sigue excluyendo 'externo' aparte, así que no hay doble conteo ahí.
         _gastosCajaState = snap.docs
             .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((g) => g.tipo !== 'externo');
+            .filter((g) => g.tipo !== 'traslado');
     } catch (_) {
         _gastosCajaState = [];
     }
@@ -19356,8 +19358,9 @@ async function cerrarCaja() {
             ingresosTotal += amt;
         });
 
-        // Incluir gastos de la jornada actual (excluir traslados internos del cálculo de egresos)
+        // Incluir gastos de la jornada actual (excluir traslados internos y gastos externos del cálculo de egresos)
         const _allJornadaGastos = _gastosCajaState.filter((g) => {
+            if (g.tipo === 'externo') return false;
             const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
             if (cajaAperturaAt) return ms >= cajaAperturaAt;
             return new Date(ms).toISOString().split('T')[0] === todayStr;
@@ -19994,11 +19997,12 @@ async function renderLibroCierres() {
         let grandSumEgresos = 0;
         let grandSumIngresos = 0;
 
-        // Agrupar gastos externos por día de calendario
+        // Agrupar gastos externos por día de calendario (hora local, no UTC)
+        const _localDayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
         const _gasByDay = {};
         gastosExternos.forEach((g) => {
             const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
-            const dayKey = ms ? new Date(ms).toISOString().split('T')[0] : '_nd';
+            const dayKey = ms ? _localDayKey(ms) : '_nd';
             if (!_gasByDay[dayKey]) _gasByDay[dayKey] = [];
             _gasByDay[dayKey].push({ ...g, _ts: ms });
         });
@@ -20350,7 +20354,10 @@ document.getElementById('gastosHistorialBtn')?.addEventListener('click', () => {
 // ── Libro Contable ────────────────────────────────────────────────────────────
 let _lcActivePeriod = 'diario';
 
-function renderLibroContable() {
+async function renderLibroContable() {
+    if (!_cierresCajaState.length && !_gastosExternosState.length) {
+        await loadCierresCaja();
+    }
     _renderLcTable();
 }
 
@@ -21050,8 +21057,11 @@ async function _autoLoadTicketsTab() {
     try {
         const orders = await loadTicketsReport(from, to);
         renderTicketsTable(orders);
-    } catch (_) { /* silencioso */ }
-    finally {
+    } catch (err) {
+        const bodyEl = document.getElementById('ticketsTableBody');
+        if (bodyEl) bodyEl.innerHTML = '<tr><td class="caja-empty" colspan="7">No se pudo cargar los tickets (revisa tu conexión) y presiona Buscar para reintentar.</td></tr>';
+        showNotice('Error al cargar tickets: ' + (err.message || 'sin conexión'), 'error');
+    } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Buscar'; }
     }
 }
@@ -21368,7 +21378,7 @@ function renderGastosInformes() {
     let gastos = [..._gastosCajaState];
 
     if (desdeVal) {
-        const desdeMs = new Date(desdeVal).getTime();
+        const desdeMs = new Date(desdeVal + 'T00:00:00').getTime();
         gastos = gastos.filter((g) => {
             const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
             return ms >= desdeMs;
