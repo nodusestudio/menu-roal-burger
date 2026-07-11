@@ -10298,7 +10298,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                     ${detailParts.map((p) => `<span class="ticket-line-meta">${escapeHtml(p)}</span>`).join('')}`;
         const itemNameCell = printMode
             ? itemNameBlock
-            : `<button type="button" class="ticket-item-edit-btn" data-order-ticket-action="edit-items" data-order-id="${escapeHtml(order.id)}" title="Editar productos del pedido">${itemNameBlock}</button>`;
+            : `<button type="button" class="ticket-copy-btn" style="display:block;width:100%;" data-order-ticket-action="edit-items" data-order-id="${escapeHtml(order.id)}" title="Editar productos del pedido">${itemNameBlock}</button>`;
 
         return `
             <tr>
