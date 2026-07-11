@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260710-1935">
+    <link rel="stylesheet" href="style.css?v=20260710-2040">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -14514,6 +14514,21 @@
                     <button type="button" class="pf-method-btn" data-pf-method="nequi">💜<span>Nequi</span></button>
                     <button type="button" class="pf-method-btn" data-pf-method="bold">⚡<span>Bold</span></button>
                 </div>
+                <button type="button" id="pfSplitToggleBtn" class="dpm-split-toggle" style="margin:12px auto 0;">➗ Dividir pago entre 2 métodos</button>
+            </div>
+            <!-- Paso split: pago dividido entre 2+ métodos -->
+            <div id="pfStepSplit" class="pf-step" hidden>
+                <p class="pf-cash-total-label">Total a cobrar</p>
+                <p id="pfSplitOrderTotal" class="pf-cash-order-total"></p>
+                <div class="dpm-split-parts" id="pfSplitParts"></div>
+                <button type="button" class="dpm-split-add-btn" id="pfSplitAddBtn">+ Agregar otro método</button>
+                <div class="dpm-split-balance" id="pfSplitBalance">
+                    <span>Asignado</span>
+                    <span id="pfSplitBalanceAmt" class="dsb-right"></span>
+                </div>
+                <div class="pf-cash-footer">
+                    <button type="button" id="pfSplitConfirmBtn" disabled>✓ Confirmar pago dividido</button>
+                </div>
             </div>
             <!-- Paso 2a: Efectivo -->
             <div id="pfStep2Cash" class="pf-step" hidden>
@@ -14617,7 +14632,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260710-1935"></script>
+    <script src="admin.js?v=20260710-2040"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
