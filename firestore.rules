@@ -63,6 +63,15 @@ service cloud.firestore {
       allow update, delete: if request.auth != null;
     }
 
+    // ─── Pedidos archivados ─────────────────────────────────────────────────
+    // Al cerrar caja, el admin mueve aquí los pedidos ya procesados (en vez de
+    // borrarlos) para que Tickets/Historial puedan seguir mostrando jornadas
+    // anteriores. Solo el admin autenticado accede — los clientes no necesitan
+    // consultar pedidos ya cerrados.
+    match /pedidos_archivados/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
     // Contador de secuencia de pedidos — necesita update sin auth dentro de transacción.
     // Ruta más específica tiene precedencia sobre /pedidos/{doc}.
     match /pedidos/_meta_order_sequence {

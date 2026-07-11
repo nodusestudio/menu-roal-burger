@@ -180,6 +180,9 @@ const DEFAULT_HORARIO = {
 let horarioState = { ...DEFAULT_HORARIO };
 let horarioForm = null;
 const ORDERS_COLLECTION = 'pedidos';
+// Al cerrar caja, los pedidos procesados se mueven aquí (no se borran) para que
+// Tickets/Historial puedan seguir mostrando jornadas anteriores.
+const ORDERS_ARCHIVE_COLLECTION = 'pedidos_archivados';
 const CLIENTS_COLLECTION = 'clientes';
 const MESSAGES_COLLECTION = 'mensajes';
 const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
@@ -10220,7 +10223,8 @@ function isMobileContactImportContext() {
 }
 
 function openOrderContactCard(orderId) {
-    const order = ordersState.find((entry) => entry.id === orderId);
+    const order = ordersState.find((entry) => entry.id === orderId)
+        || _ticketsData.find((entry) => entry.id === orderId);
     if (!order) {
         throw new Error('No se encontro el pedido para crear el contacto.');
     }
@@ -11962,15 +11966,26 @@ async function deleteMessageRequest(messageId) {
     await firebaseDb.collection(MESSAGES_COLLECTION).doc(messageId).delete();
 }
 
+// Actualiza un pedido existente. Si ya fue archivado al cerrar caja (ya no está
+// en ORDERS_COLLECTION), reintenta automáticamente sobre ORDERS_ARCHIVE_COLLECTION
+// — así ningún llamador necesita saber si el pedido sigue activo o ya se archivó.
 async function updateOrder(orderId, updates) {
-    await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set({
-        ...updates,
-        updatedAt: firestoreNow()
-    }, { merge: true });
+    const payload = { ...updates, updatedAt: firestoreNow() };
+    try {
+        await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).update(payload);
+    } catch (err) {
+        if (err.code !== 'not-found') throw err;
+        await firebaseDb.collection(ORDERS_ARCHIVE_COLLECTION).doc(orderId).update(payload);
+    }
 }
 
 async function deleteOrder(orderId) {
-    await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).delete();
+    // delete() no falla si el doc no existe, así que basta con pedirlo en ambas
+    // colecciones — solo hará efecto en la que realmente tenga el pedido.
+    await Promise.all([
+        firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).delete(),
+        firebaseDb.collection(ORDERS_ARCHIVE_COLLECTION).doc(orderId).delete()
+    ]);
 }
 
 async function anularOrder(orderId) {
@@ -12309,7 +12324,10 @@ async function printViaBluetoothESCPOS(order) {
 }
 
 async function openOrderPrintTicket(orderId) {
-    const order = ordersState.find((entry) => entry.id === orderId);
+    // Busca en pedidos activos y, si no está (ej. tickets de jornadas ya archivadas
+    // en la pestaña Tickets), en la última búsqueda cargada ahí.
+    const order = ordersState.find((entry) => entry.id === orderId)
+        || _ticketsData.find((entry) => entry.id === orderId);
     if (!order) {
         showNotice('No se encontro el pedido para imprimir.', 'error');
         return;
@@ -19183,17 +19201,23 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
             return new Date(ms).toISOString().split('T')[0] === _todayStr2;
         });
 
-        // Eliminar pedidos procesados de la jornada cerrada para reiniciar la recepción
-        // (los activos/no entregados permanecen para la nueva jornada)
-        const procesadosIds = paid
-            .filter((o) => o.status === 'entregado' || o.status === 'cancelado' || o.anulado || o.voided)
-            .map((o) => o.id);
-        if (procesadosIds.length) {
-            const batch = firebaseDb.batch();
-            procesadosIds.forEach((id) => {
-                batch.delete(firebaseDb.collection(ORDERS_COLLECTION).doc(id));
-            });
-            await batch.commit();
+        // Archivar (no borrar) los pedidos procesados de la jornada cerrada: se copian a
+        // ORDERS_ARCHIVE_COLLECTION y luego se quitan de la bandeja activa, así Tickets e
+        // Historial los pueden seguir mostrando aunque la jornada ya haya cerrado.
+        const procesados = paid.filter((o) => o.status === 'entregado' || o.status === 'cancelado' || o.anulado || o.voided);
+        if (procesados.length) {
+            const CHUNK = 200; // 2 ops por pedido (set + delete); límite de batch es 500
+            for (let i = 0; i < procesados.length; i += CHUNK) {
+                const batch = firebaseDb.batch();
+                procesados.slice(i, i + CHUNK).forEach((order) => {
+                    batch.set(firebaseDb.collection(ORDERS_ARCHIVE_COLLECTION).doc(order.id), {
+                        ...order,
+                        archivedAt: firestoreNow()
+                    });
+                    batch.delete(firebaseDb.collection(ORDERS_COLLECTION).doc(order.id));
+                });
+                await batch.commit();
+            }
         }
 
         // La caja chica se mantiene — no se resetea entre jornadas
@@ -20902,15 +20926,27 @@ function renderTicketsTable(orders) {
     bodyEl.innerHTML = orders.map(_ticketRowHtml).join('');
 }
 
+// Busca en ambas colecciones: ORDERS_COLLECTION tiene la jornada activa (aún sin
+// cerrar), ORDERS_ARCHIVE_COLLECTION tiene las jornadas ya cerradas. Un rango de
+// fechas puede abarcar días de ambas, así que siempre se consultan las dos.
 async function loadTicketsReport(fromDate, toDate) {
     const start = firebase.firestore.Timestamp.fromDate(new Date(fromDate + 'T00:00:00'));
     const end   = firebase.firestore.Timestamp.fromDate(new Date(toDate + 'T23:59:59'));
-    const snap  = await firebaseDb.collection(ORDERS_COLLECTION)
+    const rangeQuery = (collectionName, isArchived) => firebaseDb.collection(collectionName)
         .where('createdAt', '>=', start)
         .where('createdAt', '<=', end)
         .orderBy('createdAt', 'desc')
-        .get();
-    const orders = snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() }));
+        .get()
+        .then((snap) => snap.docs.map((d) => ({ ...normalizeOrder({ id: d.id, ...d.data() }), _isArchived: isArchived })));
+
+    const [activeOrders, archivedOrders] = await Promise.all([
+        rangeQuery(ORDERS_COLLECTION, false),
+        rangeQuery(ORDERS_ARCHIVE_COLLECTION, true)
+    ]);
+    const orders = [...activeOrders, ...archivedOrders].sort((a, b) => {
+        const msOf = (o) => o.createdAt?.toMillis ? o.createdAt.toMillis() : Number(o.createdAt || 0);
+        return msOf(b) - msOf(a);
+    });
     _ticketsData = orders.filter((o) => o.paymentMethod && o.paymentMethod !== 'pendiente');
     return _ticketsData;
 }
