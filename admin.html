@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-1816">
+    <link rel="stylesheet" href="style.css?v=20260714-1836">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -6718,7 +6718,7 @@
         }
 
         .orders-workspace {
-            grid-template-columns: 1fr 1fr 1fr 2fr;
+            grid-template-columns: minmax(190px, 0.9fr) minmax(0, 1.5fr) minmax(240px, 1.1fr);
             gap: 12px;
             align-items: start;
         }
@@ -6744,8 +6744,14 @@
             display: contents;
         }
 
+        /* Domicilios + Para llevar siguen apiladas y angostas tambien en este breakpoint —
+           no se colapsa con display:contents como .orders-lanes, para que ocupe una sola
+           columna del grid de 3 columnas de arriba. */
         .orders-lanes-left {
-            display: contents;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-height: 0;
         }
 
         .orders-lane {
@@ -14476,7 +14482,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260714-1816"></script>
+    <script src="admin.js?v=20260714-1836"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
