@@ -271,29 +271,7 @@ const salesDayGrandTotal     = document.getElementById('salesDayGrandTotal');
 const openCreateInternalOrderBtn = document.getElementById('openCreateInternalOrderBtn');
 const internalOrderModal = document.getElementById('posView');
 const internalOrderCloseBtn = document.getElementById('posCloseBtn');
-const internalOrderForm = document.getElementById('internalOrderForm');
-const internalOrderClientSelect = null; // replaced by posClientSearchInput
-const internalOrderClientAddressField = document.getElementById('internalOrderClientAddressField');
-const internalOrderClientAddressSelect = document.getElementById('internalOrderClientAddressSelect');
-const internalOrderUseNewClientCheckbox = null;
-const internalOrderNewClientFields = document.getElementById('internalOrderNewClientFields');
-const internalOrderNewClientNameInput = document.getElementById('internalOrderNewClientName');
-const internalOrderNewClientPhoneInput = document.getElementById('internalOrderNewClientPhone');
-const internalOrderNewClientAddressInput = document.getElementById('internalOrderNewClientAddress');
-const internalOrderTypeSelect = document.getElementById('internalOrderType');
-const internalOrderDeliveryAddressField = document.getElementById('internalOrderDeliveryAddressField');
-const internalOrderDeliveryAddressInput = document.getElementById('internalOrderDeliveryAddress');
-const internalOrderPaymentMethodSelect = document.getElementById('internalOrderPaymentMethod');
-const internalOrderProductCategorySelect = document.getElementById('internalOrderProductCategory');
-const internalOrderProductGrid = document.getElementById('internalOrderProductGrid');
-const internalOrderProductSelect = document.getElementById('internalOrderProductSelect');
-const internalOrderProductQuantityInput = document.getElementById('internalOrderProductQuantity');
-const internalOrderAddProductBtn = document.getElementById('internalOrderAddProductBtn');
 const internalOrderItemsSummary = document.getElementById('internalOrderItemsSummary');
-const internalOrderNotesInput = document.getElementById('internalOrderNotes');
-const internalOrderDiscount = document.getElementById('internalOrderDiscount');
-const internalOrderFeedback = document.getElementById('internalOrderFeedback');
-const internalOrderSaveBtn = document.getElementById('internalOrderSaveBtn');
 const salesSummaryDateFrom = document.getElementById('salesSummaryDateFrom');
 const salesSummaryDateTo = document.getElementById('salesSummaryDateTo');
 const salesSummaryFilterType = document.getElementById('salesSummaryFilterType');
@@ -397,13 +375,8 @@ let editingCategoryContextId = null;
 let activeCategoryModalId = null;
 let activeClientEditId = null;
 let internalOrderItems = [];
-let internalOrderUseNewClient = false;
 let posSelectedCategory = null;
 let posProductSearchQuery = '';
-let posCurrentClient = null;
-let posSelectedClientData = null;
-let _posClientEditPending = false; // true when edit modal opened from POS card
-let _posClientOutsideClickBound = false;
 let posTicketConfig = null; // { orderType, mesaNumber, customerName, customerPhone }
 let posTickets = [];
 let posActiveTicketId = null;
@@ -5544,21 +5517,17 @@ function renderPosTotals() {
     const totalElem        = document.getElementById('posTotalFinal');
     const deliveryRow      = document.getElementById('posTotalDeliveryRow');
     const deliveryElem     = document.getElementById('posTotalDelivery');
-    const discountInput    = document.getElementById('internalOrderDiscount');
-    const paymentTotal     = document.getElementById('posPaymentTotalDisplay');
     const bottomTotal      = document.getElementById('posBottomTotalAmt');
     const subtotal  = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-    const discount  = Number(discountInput?.value || 0);
     const fee       = (posTicketConfig?.orderType === 'domicilio' && posTicketConfig?.deliveryFee != null)
                         ? Number(posTicketConfig.deliveryFee)
                         : 0;
-    const total     = Math.max(0, subtotal - discount + fee);
+    const total     = Math.max(0, subtotal + fee);
 
     if (subtotalElem) subtotalElem.textContent = formatMoney(subtotal);
     if (deliveryRow) deliveryRow.hidden = fee <= 0;
     if (deliveryElem) deliveryElem.textContent = formatMoney(fee);
     if (totalElem) totalElem.textContent = formatMoney(total);
-    if (paymentTotal) paymentTotal.textContent = formatMoney(total);
     if (bottomTotal) bottomTotal.textContent = formatMoney(total);
 }
 
@@ -6095,7 +6064,6 @@ function renderPosTicketsList() {
 
 function showPosScreen(screen) {
     const main = document.getElementById('posScreenMain');
-    const payment = document.getElementById('posScreenPayment');
     const tickets = document.getElementById('posScreenTickets');
     const cartDrawer = document.getElementById('posCartDrawer');
 
@@ -6107,164 +6075,25 @@ function showPosScreen(screen) {
         main.hidden = !showMain;
         main.style.display = showMain ? 'flex' : 'none';
     }
-    if (payment) { payment.hidden = screen !== 'payment'; payment.style.display = screen === 'payment' ? 'flex' : 'none'; }
     if (tickets) { tickets.hidden = screen !== 'tickets'; tickets.style.display = screen === 'tickets' ? 'flex' : 'none'; }
 
     if (cartDrawer) {
-        if (isPosDesktop() && screen !== 'payment') {
+        if (isPosDesktop()) {
             // En desktop el carrito es un panel fijo siempre visible (main y tickets)
             cartDrawer.hidden = false;
             cartDrawer.style.display = '';
-        } else if (!isPosDesktop() && screen !== 'main') {
-            cartDrawer.hidden = true;
-            cartDrawer.style.display = 'none';
-        } else if (screen === 'payment') {
+        } else if (screen !== 'main') {
             cartDrawer.hidden = true;
             cartDrawer.style.display = 'none';
         }
     }
 
-    if (screen === 'payment') {
-        renderPosTotals();
-        initPosClientSearch();
-        _syncClientFieldLabels();
-    }
     if (screen === 'tickets') {
         renderPosTicketsList();
     }
 }
 
-// En retiro (venta rápida de mostrador) el nombre/teléfono son opcionales — se reflejan
-// en el label. Se llama al mostrar la pantalla de cobro y al cambiar el tipo de pedido.
-function _syncClientFieldLabels() {
-    const isRetiro = String(internalOrderTypeSelect?.value || 'retiro') === 'retiro';
-    const nameLabel = document.querySelector('label[for="internalOrderNewClientName"]');
-    const phoneLabel = document.querySelector('label[for="internalOrderNewClientPhone"]');
-    if (nameLabel) nameLabel.textContent = isRetiro ? 'Nombre (opcional)' : 'Nombre *';
-    if (phoneLabel) phoneLabel.textContent = isRetiro ? 'Teléfono (opcional)' : 'Teléfono *';
-}
-
 /* ─── Buscador de clientes POS ─── */
-
-function initPosClientSearch() {
-    const searchInput = document.getElementById('posClientSearchInput');
-    const clearBtn = document.getElementById('posClientClearBtn');
-
-    if (searchInput && !searchInput.dataset.listenerAttached) {
-        searchInput.addEventListener('input', () => {
-            const query = searchInput.value.trim().toLowerCase();
-            if (!query) {
-                hidePosClientResults();
-                return;
-            }
-            const matches = clientsState
-                .filter((c) => {
-                    const name = String(c.customerName || '').toLowerCase();
-                    const phone = String(c.customerPhone || '').toLowerCase();
-                    return name.includes(query) || phone.includes(query);
-                })
-                .slice(0, 6);
-            showPosClientResults(matches);
-        });
-        searchInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') hidePosClientResults();
-        });
-        searchInput.dataset.listenerAttached = 'true';
-    }
-
-    if (clearBtn && !clearBtn.dataset.listenerAttached) {
-        clearBtn.addEventListener('click', clearPosClient);
-        clearBtn.dataset.listenerAttached = 'true';
-    }
-
-    const editBtn = document.getElementById('posClientEditBtn');
-    if (editBtn && !editBtn.dataset.listenerAttached) {
-        editBtn.addEventListener('click', () => {
-            if (posSelectedClientData) {
-                _posClientEditPending = true;
-                openEditClientModal(posSelectedClientData);
-            }
-        });
-        editBtn.dataset.listenerAttached = 'true';
-    }
-
-    if (!_posClientOutsideClickBound) {
-        document.addEventListener('click', (e) => {
-            const wrap = document.querySelector('.pos-client-search-wrap');
-            if (wrap && !wrap.contains(e.target)) hidePosClientResults();
-        }, { capture: false });
-        _posClientOutsideClickBound = true;
-    }
-}
-
-function showPosClientResults(matches) {
-    const resultsEl = document.getElementById('posClientResults');
-    if (!resultsEl) return;
-
-    if (!matches.length) {
-        resultsEl.innerHTML = `<div class="pos-client-result-empty">Sin resultados — <button type="button" class="pos-client-new-btn" id="posClientNewBtn">Crear nuevo</button></div>`;
-        resultsEl.querySelector('#posClientNewBtn')?.addEventListener('click', () => {
-            hidePosClientResults();
-            if (internalOrderNewClientFields) internalOrderNewClientFields.hidden = false;
-            if (internalOrderNewClientNameInput) internalOrderNewClientNameInput.focus();
-        });
-    } else {
-        resultsEl.innerHTML = matches.map((client) => `
-            <div class="pos-client-result-item" data-client-id="${escapeHtml(client.id)}">
-                <strong>${escapeHtml(client.customerName || 'Sin nombre')}</strong>
-                <span>${escapeHtml(client.customerPhone || '')}</span>
-            </div>
-        `).join('');
-        resultsEl.querySelectorAll('.pos-client-result-item').forEach((item) => {
-            item.addEventListener('click', () => {
-                const client = clientsState.find((c) => c.id === item.dataset.clientId);
-                if (client) selectPosClient(client);
-            });
-        });
-    }
-    resultsEl.hidden = false;
-}
-
-function hidePosClientResults() {
-    const resultsEl = document.getElementById('posClientResults');
-    if (resultsEl) resultsEl.hidden = true;
-}
-
-function selectPosClient(client) {
-    posSelectedClientData = client;
-    hidePosClientResults();
-
-    const searchInput = document.getElementById('posClientSearchInput');
-    const posClientCard = document.getElementById('posClientCard');
-    const posClientCardName = document.getElementById('posClientCardName');
-    const posClientCardPhone = document.getElementById('posClientCardPhone');
-
-    if (searchInput) searchInput.value = '';
-    if (posClientCard) posClientCard.hidden = false;
-    if (posClientCardName) posClientCardName.textContent = client.customerName || 'Sin nombre';
-    if (posClientCardPhone) posClientCardPhone.textContent = client.customerPhone || '';
-    if (internalOrderNewClientFields) internalOrderNewClientFields.hidden = true;
-
-    const addresses = Array.isArray(client.savedAddresses) ? client.savedAddresses.filter(Boolean) : [];
-    if (addresses.length && internalOrderClientAddressField && internalOrderClientAddressSelect) {
-        internalOrderClientAddressSelect.innerHTML = addresses
-            .map((addr) => `<option value="${escapeHtml(addr)}">${escapeHtml(addr)}</option>`)
-            .join('');
-        internalOrderClientAddressField.hidden = false;
-    } else {
-        if (internalOrderClientAddressField) internalOrderClientAddressField.hidden = true;
-    }
-}
-
-function clearPosClient() {
-    posSelectedClientData = null;
-    const searchInput = document.getElementById('posClientSearchInput');
-    const posClientCard = document.getElementById('posClientCard');
-    if (posClientCard) posClientCard.hidden = true;
-    if (searchInput) { searchInput.value = ''; searchInput.focus(); }
-    if (internalOrderClientAddressField) internalOrderClientAddressField.hidden = true;
-    if (internalOrderNewClientFields) internalOrderNewClientFields.hidden = true;
-}
 
 function openInternalOrderModal() {
     if (!internalOrderModal) return;
@@ -6294,47 +6123,11 @@ function openInternalOrderModal() {
         };
     }
 
-    posSelectedClientData = null;
-    internalOrderUseNewClient = false;
-
-    // Reset UI de cliente
-    const posClientCard = document.getElementById('posClientCard');
-    const posClientSearchInput = document.getElementById('posClientSearchInput');
-    const posClientResults = document.getElementById('posClientResults');
-    if (posClientCard) posClientCard.hidden = true;
-    if (posClientSearchInput) posClientSearchInput.value = '';
-    if (posClientResults) posClientResults.hidden = true;
-    if (internalOrderClientAddressField) internalOrderClientAddressField.hidden = true;
-    if (internalOrderNewClientFields) internalOrderNewClientFields.hidden = true;
-
-    // Reset pantalla de pago
-    if (internalOrderTypeSelect) internalOrderTypeSelect.value = 'retiro';
-    if (internalOrderDeliveryAddressField) internalOrderDeliveryAddressField.hidden = true;
-    if (internalOrderPaymentMethodSelect) internalOrderPaymentMethodSelect.value = 'efectivo';
-    if (internalOrderNotesInput) internalOrderNotesInput.value = '';
-    if (internalOrderDiscount) internalOrderDiscount.value = '0';
-    const cashAmountInput = document.getElementById('posCashAmount');
-    if (cashAmountInput) cashAmountInput.value = '';
-    if (internalOrderNewClientNameInput) internalOrderNewClientNameInput.value = '';
-    if (internalOrderNewClientPhoneInput) internalOrderNewClientPhoneInput.value = '';
-    if (internalOrderNewClientAddressInput) internalOrderNewClientAddressInput.value = '';
-
-    document.querySelectorAll('.pos-type-btn').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.type === 'retiro');
-    });
-    document.querySelectorAll('.pos-pay-method-btn').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.method === 'efectivo');
-    });
-    const cashSection = document.getElementById('posCashSection');
-    if (cashSection) cashSection.hidden = false;
-
-    initPosClientSearch();
     renderPosCategoriesPanel();
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
     renderPosTicketsBadge();
-    hideModalFeedback(internalOrderFeedback);
 
     showPosScreen('main');
     internalOrderModal.classList.add('is-open');
@@ -6792,162 +6585,6 @@ async function _confirmChangeMesa(orderId, newMesa) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-
-async function submitInternalOrderForm(event) {
-    event.preventDefault();
-    hideNotice();
-    hideModalFeedback(internalOrderFeedback);
-
-    const useNewClient = !posSelectedClientData;
-    const selectedClientId = posSelectedClientData?.id || '';
-    const selectedClient = posSelectedClientData || null;
-
-    const customerName = useNewClient
-        ? String(internalOrderNewClientNameInput?.value || '').trim()
-        : selectedClient?.customerName || '';
-    const customerPhone = useNewClient
-        ? String(internalOrderNewClientPhoneInput?.value || '').trim()
-        : selectedClient?.customerPhone || '';
-    const selectedClientAddress = !useNewClient && internalOrderClientAddressSelect
-        ? String(internalOrderClientAddressSelect.value || selectedClient?.address || '').trim()
-        : '';
-    const customerAddress = useNewClient
-        ? String(internalOrderNewClientAddressInput?.value || '').trim()
-        : selectedClientAddress || selectedClient?.address || '';
-    const orderType = String(internalOrderTypeSelect?.value || 'retiro').trim();
-    const deliveryAddress = orderType === 'domicilio'
-        ? String(internalOrderDeliveryAddressInput?.value || '').trim() || customerAddress
-        : customerAddress;
-    const paymentMethod = String(internalOrderPaymentMethodSelect?.value || 'efectivo').trim();
-    const discount = Number(internalOrderDiscount?.value || 0);
-
-    // En retiro (venta rápida de mostrador) el nombre/teléfono son opcionales — pedirlos
-    // ahí solo agrega fricción. En domicilio y mesa sí se exigen (hace falta poder ubicar
-    // o contactar al cliente).
-    if (orderType !== 'retiro' && !customerName) {
-        showModalFeedback(internalOrderFeedback, 'Ingresa el nombre del cliente.', 'error');
-        return;
-    }
-    if (orderType !== 'retiro' && !customerPhone) {
-        showModalFeedback(internalOrderFeedback, 'Ingresa el telefono del cliente.', 'error');
-        return;
-    }
-    if (orderType === 'domicilio' && !deliveryAddress) {
-        showModalFeedback(internalOrderFeedback, 'Ingresa la direccion de entrega.', 'error');
-        return;
-    }
-    if (!internalOrderItems.length) {
-        showModalFeedback(internalOrderFeedback, 'Agrega al menos un producto al pedido.', 'error');
-        return;
-    }
-
-    try {
-        if (internalOrderSaveBtn) {
-            internalOrderSaveBtn.disabled = true;
-            internalOrderSaveBtn.textContent = 'Creando...';
-        }
-
-        const orderId = firebaseDb.collection(ORDERS_COLLECTION).doc().id;
-        const orderCode = await getNextAdminOrderCode();
-        const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-        const deliveryFee = orderType === 'domicilio' ? 0 : null;
-        const total = Math.max(0, (deliveryFee !== null ? subtotal + Number(deliveryFee) : subtotal) - discount);
-        const customerPhoneDigits = normalizePhoneDigits(customerPhone);
-        const displayCustomerName = customerName || 'Cliente mostrador';
-        // Venta de retiro sin nombre ni teléfono: no hay dato real para identificar un cliente,
-        // así que no se registra en CLIENTS_COLLECTION (evita que todas las ventas anónimas
-        // colisionen en el mismo documento y corrompan sus totales).
-        const isAnonymousSale = useNewClient && !customerName && !customerPhone;
-        const clientId = useNewClient
-            ? buildAdminClientDocumentId({ customerName, customerPhone, address: customerAddress })
-            : selectedClientId;
-        const currentClient = clientsState.find((client) => client.id === clientId);
-        const clientTotalOrders = Number(currentClient?.totalOrders || 0) + 1;
-        const clientTotalSpent = Number(currentClient?.totalSpent || 0) + total;
-
-        const cashGiven = paymentMethod === 'efectivo' ? Number(document.getElementById('posCashAmount')?.value || 0) : 0;
-        const cashChangeRequired = cashGiven > 0 && cashGiven > total;
-        const cashTenderAmount = cashGiven > 0 ? cashGiven : null;
-
-        const _orderWrites = [
-            firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set({
-                id: orderId,
-                code: orderCode,
-                customerName: displayCustomerName,
-                customerPhone,
-                customerPhoneDigits,
-                customerAddress,
-                deliveryAddress,
-                profileAddress: customerAddress,
-                paymentMethod,
-                cashChangeRequired,
-                cashTenderAmount,
-                orderType,
-                source: 'admin_panel',
-                status: 'pendiente',
-                cajero: _cajaAperturaBy || '',
-                items: internalOrderItems.map((item, index) => ({
-                    index: index + 1,
-                    itemKey: item.itemKey,
-                    productId: item.productId,
-                    productName: item.productName,
-                    categoryName: item.categoryName,
-                    optionLabel: item.note || '',
-                    note: item.note || '',
-                    quantity: Number(item.quantity || 0),
-                    unitPrice: Number(item.unitPrice || 0),
-                    subtotal: Number(item.subtotal || 0),
-                    ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
-                })),
-                itemCount: internalOrderItems.length,
-                totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
-                subtotal,
-                discount,
-                deliveryFee,
-                total,
-                currency: 'COP',
-                summaryMessage: String(internalOrderNotesInput?.value || '').trim(),
-                createdAt: firestoreNow(),
-                updatedAt: firestoreNow(),
-                paidAt: firestoreNow()
-            })
-        ];
-        if (!isAnonymousSale) {
-            _orderWrites.push(
-                firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
-                    customerName,
-                    customerPhone,
-                    customerPhoneDigits,
-                    address: customerAddress,
-                    savedAddresses: normalizeClientSavedAddresses(currentClient?.savedAddresses || [], customerAddress),
-                    totalOrders: clientTotalOrders,
-                    totalSpent: clientTotalSpent,
-                    lastOrderCode: orderCode,
-                    lastOrderId: orderId,
-                    lastOrderTotal: total,
-                    firstOrderAt: currentClient?.firstOrderAt || firestoreNow(),
-                    lastOrderAt: firestoreNow(),
-                    source: currentClient?.source || 'admin_panel',
-                    createdAt: currentClient?.createdAt || firestoreNow(),
-                    updatedAt: firestoreNow()
-                }, { merge: true })
-            );
-        }
-        await Promise.all(_orderWrites);
-
-        closeInternalOrderModal(true);
-        showNotice('Pedido creado correctamente.', 'ok');
-        // Actualiza clientes en segundo plano; los pedidos los maneja onSnapshot
-        fetchClients().then(() => renderClients()).catch(() => {});
-    } catch (error) {
-        showModalFeedback(internalOrderFeedback, `Error: ${error.message || 'error'}`, 'error');
-    } finally {
-        if (internalOrderSaveBtn) {
-            internalOrderSaveBtn.disabled = false;
-            internalOrderSaveBtn.textContent = 'CREAR PEDIDO';
-        }
-    }
-}
 
 async function fetchMessages() {
     const snapshot = await firebaseDb.collection(MESSAGES_COLLECTION)
@@ -10923,14 +10560,6 @@ function closeClientEditModal() {
     clientEditModal.setAttribute('aria-hidden', 'true');
     clientEditForm.reset();
 
-    if (_posClientEditPending && posSelectedClientData) {
-        _posClientEditPending = false;
-        const refreshedClient = clientsState.find((c) => c.id === posSelectedClientData.id);
-        if (refreshedClient) selectPosClient(refreshedClient);
-    } else {
-        _posClientEditPending = false;
-    }
-
     activeClientEditId = null;
     hideModalFeedback(clientEditFeedback);
     _clientEditSyncOrderId = null;
@@ -13596,11 +13225,6 @@ if (internalOrderCloseBtn) {
     internalOrderCloseBtn.addEventListener('click', () => closeInternalOrderModal());
 }
 
-// Envío del formulario de pago
-if (internalOrderForm) {
-    internalOrderForm.addEventListener('submit', submitInternalOrderForm);
-}
-
 // Botón COBRAR (barra de acción)
 // Botón TICKETS ABIERTOS
 document.getElementById('posOpenTicketsBtn')?.addEventListener('click', () => showPosScreen('tickets'));
@@ -14586,9 +14210,6 @@ document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => 
     openPosTicketSetupModal();
 });
 
-// Volver desde pantalla de pago
-document.getElementById('posPaymentBackBtn')?.addEventListener('click', () => showPosScreen('main'));
-
 // Buscador de usuarios en métricas
 document.getElementById('metricsUserSearch')?.addEventListener('input', (e) => {
     const q = e.target.value.trim().toLowerCase();
@@ -14707,34 +14328,6 @@ document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
     }
     setTimeout(() => openPosTicketSetupModal(true, type), 60);
 });
-
-// Botón cliente en topbar principal
-
-// Botones de tipo de pedido (Retiro / Domicilio / Mesa)
-document.addEventListener('click', (event) => {
-    const typeBtn = event.target.closest('.pos-type-btn');
-    if (typeBtn && document.getElementById('posView')?.classList.contains('is-open')) {
-        document.querySelectorAll('.pos-type-btn').forEach((b) => b.classList.remove('active'));
-        typeBtn.classList.add('active');
-        if (internalOrderTypeSelect) internalOrderTypeSelect.value = typeBtn.dataset.type;
-        if (internalOrderDeliveryAddressField) {
-            internalOrderDeliveryAddressField.hidden = typeBtn.dataset.type !== 'domicilio';
-        }
-        _syncClientFieldLabels();
-    }
-
-    const methodBtn = event.target.closest('.pos-pay-method-btn');
-    if (methodBtn && document.getElementById('posView')?.classList.contains('is-open')) {
-        document.querySelectorAll('.pos-pay-method-btn').forEach((b) => b.classList.remove('active'));
-        methodBtn.classList.add('active');
-        if (internalOrderPaymentMethodSelect) internalOrderPaymentMethodSelect.value = methodBtn.dataset.method;
-        const cashSection = document.getElementById('posCashSection');
-        if (cashSection) cashSection.hidden = methodBtn.dataset.method !== 'efectivo';
-    }
-});
-
-// Descuento → actualizar totales
-document.getElementById('internalOrderDiscount')?.addEventListener('input', renderPosTotals);
 
 // ── Cerrar upgrade sheet
 document.getElementById('posUpgradeCloseBtn')?.addEventListener('click', closePosUpgradeSheet);
