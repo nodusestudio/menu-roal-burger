@@ -2603,6 +2603,13 @@ function renderPosCategoriesPanel() {
             btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
             renderPosProductsPanel();
         });
+        // En escritorio no hay gesto táctil para deslizar: convertir la rueda vertical del mouse
+        // en scroll horizontal para poder recorrer las pestañas.
+        tabs.addEventListener('wheel', (e) => {
+            if (e.deltaY === 0) return;
+            tabs.scrollLeft += e.deltaY;
+            e.preventDefault();
+        }, { passive: false });
         tabs.dataset.listenerAttached = 'true';
     }
 
