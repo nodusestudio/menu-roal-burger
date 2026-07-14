@@ -399,6 +399,7 @@ let activeClientEditId = null;
 let internalOrderItems = [];
 let internalOrderUseNewClient = false;
 let posSelectedCategory = null;
+let posProductSearchQuery = '';
 let posCurrentClient = null;
 let posSelectedClientData = null;
 let _posClientEditPending = false; // true when edit modal opened from POS card
@@ -2613,7 +2614,50 @@ function renderPosCategoriesPanel() {
         tabs.dataset.listenerAttached = 'true';
     }
 
+    const searchInput = document.getElementById('posProductSearch');
+    if (searchInput && searchInput.dataset.listenerAttached !== 'true') {
+        searchInput.addEventListener('input', () => {
+            posProductSearchQuery = searchInput.value;
+            renderPosProductsPanel();
+        });
+        searchInput.dataset.listenerAttached = 'true';
+    }
+
     renderPosProductsPanel();
+}
+
+function _normalizeSearchText(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function _renderPosProductCards(grid, products) {
+    products.forEach((product) => {
+        const card = document.createElement('div');
+        card.className = 'pos-product-card';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const imgUrl = String(product.image_url || '').trim();
+
+        if (imgUrl) {
+            btn.className = 'pos-product-btn has-image';
+            btn.innerHTML = `<img class="pos-product-btn-img" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
+            const label = document.createElement('div');
+            label.className = 'pos-product-label';
+            label.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
+            card.appendChild(btn);
+            card.appendChild(label);
+        } else {
+            btn.className = 'pos-product-btn';
+            btn.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
+            card.appendChild(btn);
+        }
+
+        card.addEventListener('click', () => {
+            handlePosProductAdd(String(product.id || ''), String(product.nombre || ''), Number(product.precio || 0));
+        });
+        grid.appendChild(card);
+    });
 }
 
 function renderPosProductsPanel() {
@@ -2621,6 +2665,21 @@ function renderPosProductsPanel() {
     if (!grid) return;
 
     grid.style.display = ''; // reset override aplicado por renderPosPromocionesPanel
+
+    if (posProductSearchQuery.trim()) {
+        const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
+        const query = _normalizeSearchText(posProductSearchQuery);
+        const matches = catalog
+            .filter((p) => p.visible_pos !== false && _normalizeSearchText(p.nombre).includes(query))
+            .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+        grid.innerHTML = '';
+        if (!matches.length) {
+            grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Sin resultados</p>';
+            return;
+        }
+        _renderPosProductCards(grid, matches);
+        return;
+    }
 
     if (!posSelectedCategory) {
         grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Selecciona una categoría</p>';
@@ -6371,6 +6430,29 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
     const isEditing = _editingOrderData !== null;
     const editData = _editingOrderData;
 
+    // Si se edita un pedido que YA tenía un pago real registrado y se quitaron ítems del
+    // carrito respecto al original, exigir un motivo y dejar auditoría (quién, cuándo, por qué).
+    const _voidedItemsThisSave = [];
+    if (isEditing && editData.paymentMethod && editData.paymentMethod !== 'pendiente' && Array.isArray(editData.items) && editData.items.length) {
+        const currentKeys = new Set(internalOrderItems.map((item) => item.itemKey));
+        const removedItems = editData.items.filter((item) => !currentKeys.has(item.itemKey));
+        for (const item of removedItems) {
+            const reason = window.prompt(`Motivo de la anulación de "${item.productName}":`);
+            if (!reason || !reason.trim()) {
+                showNotice('Debes indicar un motivo para anular un producto de un pedido ya cobrado.', 'error');
+                return;
+            }
+            _voidedItemsThisSave.push({
+                itemKey: item.itemKey,
+                productName: item.productName,
+                subtotal: Number(item.subtotal || 0),
+                reason: reason.trim(),
+                voidedBy: _cajaAperturaBy || '',
+                voidedAt: firestoreNow()
+            });
+        }
+    }
+
     const saveBtn = document.getElementById('posDrawerSaveBtn');
     const mesaNumber = config.mesaNumber || editData?.mesaNumber || null;
     const defaultName = orderType === 'mesa' && mesaNumber ? `Mesa ${mesaNumber}` : 'Pedido Admin';
@@ -6406,6 +6488,8 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
             source: 'admin_pos',
             isAdminOrder: true,
             status: orderStatus,
+            cajero: isEditing ? (editData.cajero || _cajaAperturaBy || '') : (_cajaAperturaBy || ''),
+            voidedItems: [...(editData?.voidedItems || []), ..._voidedItemsThisSave],
             items: internalOrderItems.map((item, index) => ({
                 index: index + 1,
                 itemKey: item.itemKey,
@@ -6507,7 +6591,12 @@ async function editAdminPosOrder(order) {
             customerPhone: order.customerPhone || '',
             deliveryAddress: order.deliveryAddress || order.customerAddress || '',
             deliveryFee: order.deliveryFee ?? null,
-            paymentMethod: order.paymentMethod || 'pendiente'
+            paymentMethod: order.paymentMethod || 'pendiente',
+            cajero: order.cajero || '',
+            voidedItems: order.voidedItems || [],
+            // Snapshot de los ítems originales (copia, no la misma referencia que el carrito en vivo)
+            // para poder detectar cuáles se quitaron al guardar y auditar si el pedido ya estaba cobrado.
+            items: posItems.map((item) => ({ ...item }))
         };
 
         // No pre-set posTicketConfig — setup modal will ask user to confirm/edit
@@ -6852,6 +6941,7 @@ async function submitInternalOrderForm(event) {
                 orderType,
                 source: 'admin_panel',
                 status: 'pendiente',
+                cajero: _cajaAperturaBy || '',
                 items: internalOrderItems.map((item, index) => ({
                     index: index + 1,
                     itemKey: item.itemKey,
@@ -9487,7 +9577,15 @@ function buildThermalTicketMarkup(order, options = {}) {
                 <td style="text-align:right;">${priceCell}</td>
             </tr>
         `;
-    }).join('');
+    }).join('') + (order.voidedItems || []).map((v) => `
+        <tr>
+            <td>
+                <s style="color:#c99;">${escapeHtml(v.productName)}</s>
+                <br><span class="ticket-line-meta">Anulado por ${escapeHtml(v.voidedBy || 'sin registrar')}: ${escapeHtml(v.reason || '')}</span>
+            </td>
+            <td style="text-align:right;"><s style="color:#c99;">${escapeHtml(formatMoney(Number(v.subtotal || 0)))}</s></td>
+        </tr>
+    `).join('');
 
     // Build payment rows for totals section
     const _ticketPaymentMethod = String(order.paymentMethod || '').toLowerCase();

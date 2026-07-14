@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-1201">
+    <link rel="stylesheet" href="style.css?v=20260714-1233">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -4139,7 +4139,7 @@
             padding: 0 12px;
         }
         .pos-action-tickets {
-            background: #1f6b2e; color: #fff;
+            background: var(--admin-accent); color: #fff;
             border-right: 1px solid rgba(255,255,255,0.1);
         }
         .pos-action-tickets:hover { filter: brightness(1.12); }
@@ -4155,6 +4155,28 @@
             padding: 1px 7px;
             font-size: 0.72rem; font-weight: 700;
         }
+
+        /* ── Buscador de productos ── */
+        .pos-searchbar {
+            padding: 8px 10px;
+            background: #1a2130;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            flex-shrink: 0;
+        }
+        .pos-product-search {
+            width: 100%; height: 40px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 9px;
+            color: #eef4ff;
+            font-size: 0.88rem;
+            padding: 0 12px;
+            outline: none;
+            box-sizing: border-box;
+            transition: border-color 0.15s;
+        }
+        .pos-product-search:focus { border-color: var(--admin-accent); }
+        .pos-product-search::placeholder { color: rgba(180,200,230,0.4); }
 
         /* ── Barra de categoría ── */
         .pos-catbar {
@@ -4309,11 +4331,10 @@
         }
         .pos-bottom-save-btn:hover { filter: brightness(1.12); }
         .pos-bottom-ticket-btn {
-            background: #19892e; color: #fff;
+            background: linear-gradient(135deg, #16a34a, #15803d); color: #fff;
         }
         .pos-bottom-ticket-btn:hover { filter: brightness(1.12); }
         .pos-bottom-cobrar-btn {
-            background: linear-gradient(135deg, #16a34a, #15803d);
             font-size: 0.86rem;
             font-weight: 700;
             letter-spacing: 1px;
@@ -4424,7 +4445,7 @@
         }
         .pos-cobrar-full-btn {
             width: 100%; padding: 15px;
-            background: #19892e; border: none;
+            background: linear-gradient(135deg, #16a34a, #15803d); border: none;
             border-radius: 10px; color: #fff;
             font-family: 'Oswald', sans-serif;
             font-size: 1.1rem; text-transform: uppercase;
@@ -4505,8 +4526,8 @@
             font-family: 'Roboto', sans-serif;
         }
         .pos-pay-method-btn.active {
-            background: rgba(25,137,46,0.25);
-            border-color: #19892e; color: #fff;
+            background: rgba(255,122,26,0.2);
+            border-color: var(--admin-accent); color: #ffdca7;
         }
         .pos-cash-label { color: var(--admin-ok) !important; }
         .pos-payment-footer {
@@ -4516,7 +4537,7 @@
         }
         .pos-payment-confirm-btn {
             width: 100%; padding: 16px;
-            background: #19892e; border: none;
+            background: linear-gradient(135deg, #16a34a, #15803d); border: none;
             border-radius: 10px; color: #fff;
             font-family: 'Oswald', sans-serif;
             font-size: 1.1rem; text-transform: uppercase;
@@ -4577,7 +4598,7 @@
         .pos-ticket-del-btn { background: #7a1a1a; color: #ffb0b0; }
         .pos-ticket-del-btn:hover { filter: brightness(1.18); }
         .pos-ticket-type-btn {
-            background: #1a3a6a; color: #b0d0ff;
+            background: rgba(255,255,255,0.06); color: #eef4ff;
             border-left: 1px solid rgba(255,255,255,0.08);
         }
         .pos-ticket-type-btn:hover { filter: brightness(1.18); }
@@ -13543,7 +13564,7 @@
             <div class="admin-tab-panel" data-tab-panel="metricas">
                 <div class="section-toolbar">
                     <nav class="metrics-tabs-nav" role="tablist">
-                        <button type="button" class="metrics-tab-btn active" data-metrics-tab="pos" role="tab">POS</button>
+                        <button type="button" class="metrics-tab-btn active" data-metrics-tab="pos" role="tab">Ventas POS</button>
                         <button type="button" class="metrics-tab-btn" data-metrics-tab="app" role="tab">APP</button>
                         <button type="button" class="metrics-tab-btn" data-metrics-tab="productos" role="tab">Productos</button>
                     </nav>
@@ -13819,6 +13840,10 @@
                 <button type="button" class="pos-action-btn pos-action-tickets" id="posOpenTicketsBtn" style="grid-column:1/-1;">
                     TICKETS ABIERTOS <span class="pos-tickets-count-badge" id="posTicketsCountBadge">1</span>
                 </button>
+            </div>
+
+            <div class="pos-searchbar">
+                <input type="text" id="posProductSearch" class="pos-product-search" placeholder="🔍 Buscar producto por nombre..." autocomplete="off">
             </div>
 
             <div class="pos-catbar">
@@ -14724,7 +14749,7 @@
     <div id="mobPosBottomBar" class="mob-pos-bottombar" role="toolbar" aria-label="Acciones POS">
         <button type="button" class="mob-pos-bb-caja" onclick="document.getElementById('cajaChicaBtn')?.click()" aria-label="Caja Chica">
             <span class="bb-icon">💰</span>
-            <span>Caja</span>
+            <span>Caja Chica</span>
         </button>
         <button type="button" class="mob-pos-bb-nuevo" onclick="document.getElementById('openCreateInternalOrderBtn')?.click()" aria-label="Nuevo Ticket">
             <span class="bb-icon">＋</span>
@@ -14753,7 +14778,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260714-1201"></script>
+    <script src="admin.js?v=20260714-1233"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
