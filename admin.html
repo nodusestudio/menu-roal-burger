@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-1316">
+    <link rel="stylesheet" href="style.css?v=20260714-1330">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -8366,15 +8366,6 @@
             -webkit-tap-highlight-color: transparent;
             transition: filter 0.12s, background 0.12s;
         }
-        .mob-pos-bb-caja {
-            flex: 0 0 80px;
-            background: rgba(255, 215, 0, 0.06);
-            border-right: 1px solid rgba(255,255,255,0.07) !important;
-            color: #ffd700;
-            font-size: 0.62rem;
-        }
-        .mob-pos-bb-caja .bb-icon { font-size: 1.3rem; line-height: 1; }
-        .mob-pos-bb-caja:active { background: rgba(255,215,0,0.14); }
         .mob-pos-bb-nuevo {
             flex: 1;
             background: linear-gradient(135deg, #16a34a, #15803d) !important;
@@ -14747,10 +14738,6 @@
 
     <!-- ══ Mobile: barra de acciones rápidas (visible solo en móvil) ══ -->
     <div id="mobPosBottomBar" class="mob-pos-bottombar" role="toolbar" aria-label="Acciones POS">
-        <button type="button" class="mob-pos-bb-caja" onclick="document.getElementById('cajaChicaBtn')?.click()" aria-label="Caja Chica">
-            <span class="bb-icon">💰</span>
-            <span>Caja Chica</span>
-        </button>
         <button type="button" class="mob-pos-bb-nuevo" onclick="document.getElementById('openCreateInternalOrderBtn')?.click()" aria-label="Nuevo Ticket">
             <span class="bb-icon">＋</span>
             <span>Nuevo Ticket</span>
@@ -14778,7 +14765,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260714-1316"></script>
+    <script src="admin.js?v=20260714-1330"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
