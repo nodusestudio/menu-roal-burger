@@ -5925,6 +5925,29 @@ function createNewPosTicket() {
     return ticket;
 }
 
+// Al tocar una mesa libre en el mapa de Recepción: crea el ticket ya configurado para esa
+// mesa y abre directo la pantalla de productos del POS, sin pasar por el modal de "tipo de pedido".
+function startPosOrderForMesa(mesaNumber) {
+    posTicketConfig = null;
+    internalOrderItems = [];
+    const ticket = createNewPosTicket();
+    ticket.orderType = 'mesa';
+    ticket.mesaNumber = mesaNumber;
+    ticket.label = `Mesa ${mesaNumber}`;
+    const labelEl = document.getElementById('posActiveTicketLabel');
+    if (labelEl) labelEl.textContent = ticket.label;
+    posTicketConfig = { orderType: 'mesa', mesaNumber, customerName: '', customerPhone: '', deliveryAddress: '', deliveryFee: null };
+    renderPosCartTicketInfo();
+    if (!internalOrderModal?.classList.contains('is-open')) {
+        openInternalOrderModal();
+    } else {
+        renderPosOrderItems();
+        renderPosTotals();
+        renderPosBottomBar();
+        showPosScreen('main');
+    }
+}
+
 function switchPosTicket(ticketId) {
     const current = posTickets.find((t) => t.id === posActiveTicketId);
     if (current) current.items = internalOrderItems;
@@ -9747,10 +9770,10 @@ function renderMesaMap(container, mesaOrders) {
     container.innerHTML = RECEPTION_MESA_NUMBERS.map((num) => {
         const order = byMesa.get(num);
         if (!order) {
-            return `<div class="mesa-map-tile is-libre">
+            return `<button type="button" class="mesa-map-tile is-libre" data-mesa-number="${num}" title="Nuevo pedido en Mesa ${num}">
                 <span class="mesa-map-num">${num}</span>
                 <span class="mesa-map-label">Libre</span>
-            </div>`;
+            </button>`;
         }
         const isSelected = order.id === selectedOrderId;
         return `<button type="button" class="mesa-map-tile is-ocupada${isSelected ? ' is-selected' : ''}" data-order-id="${escapeHtml(order.id)}">
@@ -14434,6 +14457,12 @@ document.getElementById('posNewTicketBtn')?.addEventListener('click', () => {
 
 // Atajo rápido desde encabezados de columna del tablero de pedidos
 document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
+    const mesaTile = e.target.closest('.mesa-map-tile.is-libre[data-mesa-number]');
+    if (mesaTile) {
+        startPosOrderForMesa(Number(mesaTile.dataset.mesaNumber));
+        return;
+    }
+
     const btn = e.target.closest('[data-quick-type]');
     if (!btn) return;
     const type = btn.dataset.quickType;
