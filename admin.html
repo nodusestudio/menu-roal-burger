@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-1633">
+    <link rel="stylesheet" href="style.css?v=20260714-1816">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -651,9 +651,17 @@
 
         .orders-lanes {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: minmax(230px, 0.85fr) minmax(0, 1.5fr);
             gap: 16px;
             min-height: 72vh;
+        }
+
+        /* Domicilios + Para llevar apiladas, angostas — Mesas se lleva el resto del ancho */
+        .orders-lanes-left {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-height: 0;
         }
 
         .orders-mobile-tabs {
@@ -687,6 +695,61 @@
             display: grid;
             gap: 14px;
             align-content: start;
+        }
+
+        /* ── Mapa de mesas: mismo tono que .koc-type--mesa (ocupada) para consistencia ── */
+        .mesa-map {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .mesa-map-tile {
+            aspect-ratio: 1;
+            border-radius: 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            border: none;
+            font-family: 'Oswald', sans-serif;
+            transition: transform 0.1s ease, filter 0.12s ease;
+        }
+        .mesa-map-tile.is-libre {
+            background: rgba(67, 192, 156, 0.07);
+            border: 1.5px dashed rgba(67, 192, 156, 0.32);
+        }
+        .mesa-map-tile.is-ocupada {
+            background: linear-gradient(160deg, rgba(67, 192, 156, 0.32), rgba(67, 192, 156, 0.14));
+            border: 1.5px solid rgba(67, 192, 156, 0.65);
+            cursor: pointer;
+        }
+        .mesa-map-tile.is-ocupada:hover { filter: brightness(1.15); }
+        .mesa-map-tile.is-ocupada:active { transform: scale(0.95); }
+        .mesa-map-tile.is-selected { outline: 2px solid #fff; outline-offset: 2px; }
+        .mesa-map-num {
+            font-size: 1.5rem;
+            font-weight: 700;
+            line-height: 1;
+            color: #fff;
+        }
+        .mesa-map-tile.is-libre .mesa-map-num { color: rgba(255, 255, 255, 0.45); }
+        .mesa-map-label {
+            font-size: 0.66rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.75);
+        }
+        .mesa-map-tile.is-libre .mesa-map-label { color: rgba(126, 211, 148, 0.7); }
+        .mesa-map-total {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #fff;
+        }
+        @media (max-width: 1400px) {
+            .mesa-map { grid-template-columns: repeat(3, 1fr); }
         }
 
         .orders-lane-header,
@@ -1344,6 +1407,18 @@
             color: #ffd090;
             border-color: rgba(255, 183, 96, 0.22);
         }
+
+        .koc-pickup-mode-tag {
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 0.6rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        .koc-pickup-mode--llamo { background: rgba(74, 144, 226, 0.16); color: #89c4ff; }
+        .koc-pickup-mode--llego { background: rgba(67, 192, 156, 0.16); color: #7fffd4; }
 
         .koc-time {
             margin-left: auto;
@@ -4197,10 +4272,13 @@
         .pos-cat-tabs::-webkit-scrollbar { display: none; }
         .pos-cat-tab {
             flex-shrink: 0;
-            min-height: 40px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 20px;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            background: rgba(var(--cc-rgb, 255,123,69), 0.08);
+            border: 1px solid rgba(var(--cc-rgb, 255,123,69), 0.32);
+            border-radius: 10px;
             color: #eef4ff;
             font-size: 0.85rem;
             padding: 0 16px;
@@ -4212,9 +4290,16 @@
             transition: background 0.15s, border-color 0.15s, color 0.15s;
             -webkit-tap-highlight-color: transparent;
         }
+        .pos-cat-tab::before {
+            content: '';
+            width: 8px; height: 8px;
+            border-radius: 3px;
+            background: var(--cc, var(--admin-accent));
+            flex-shrink: 0;
+        }
         .pos-cat-tab.is-active {
-            background: var(--admin-accent);
-            border-color: var(--admin-accent);
+            background: rgba(var(--cc-rgb, 255,123,69), 0.28);
+            border-color: var(--cc, var(--admin-accent));
             color: #fff;
             font-weight: 700;
         }
@@ -4245,7 +4330,7 @@
         @media (min-width: 1400px) { .pos-product-grid-v2 { grid-template-columns: repeat(8, 1fr); } }
 
         .pos-product-btn {
-            background: var(--admin-accent);
+            background: var(--cc, var(--admin-accent));
             border: none; border-radius: 9px;
             color: #fff; cursor: pointer;
             padding: 10px 6px;
@@ -4262,6 +4347,7 @@
             justify-content: flex-end;
             align-items: stretch;
             background: #111418;
+            box-shadow: inset 0 0 0 2px rgba(var(--cc-rgb, 255,123,69), 0.4);
         }
         .pos-product-btn:active { transform: scale(0.93); }
         .pos-product-btn:hover { filter: brightness(1.12); }
@@ -4924,7 +5010,7 @@
         }
         .pos-product-label .pos-product-btn-price {
             font-size: 0.65rem;
-            color: var(--admin-accent);
+            color: var(--cc, var(--admin-accent));
             font-weight: 700;
         }
 
@@ -6191,7 +6277,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 10px;
+            padding: 9px 11px;
             background: rgba(255, 255, 255, 0.03);
             border-radius: 6px;
             border: 1px solid rgba(255, 255, 255, 0.06);
@@ -6207,7 +6293,11 @@
         .pos-item-name {
             flex: 1;
             color: #f2f7ff;
-            font-weight: 500;
+            font-weight: 600;
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+            font-size: 0.88rem;
             margin-right: 6px;
         }
 
@@ -6221,19 +6311,21 @@
             display: flex;
             gap: 2px;
             align-items: center;
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 4px;
+            background: rgba(255, 123, 69, 0.14);
+            border-radius: 8px;
             padding: 2px;
         }
 
         .pos-item-qty input {
-            width: 35px;
+            width: 30px;
             text-align: center;
             padding: 2px 3px;
             background: transparent;
             border: none;
             color: #ffdca7;
-            font-weight: 600;
+            font-weight: 700;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.86rem;
         }
 
         .pos-item-qty input:focus {
@@ -6262,6 +6354,8 @@
         .pos-item-price {
             color: #ffdca7;
             font-weight: 700;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.95rem;
             min-width: 55px;
             text-align: right;
             display: flex;
@@ -6316,9 +6410,9 @@
         .pos-item-group {
             display: flex;
             flex-direction: column;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 8px;
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
             overflow: hidden;
             transition: border-color 0.15s;
         }
@@ -6410,10 +6504,14 @@
 
         .pos-total-row.total {
             border-top: 1px solid rgba(255, 122, 26, 0.3);
-            padding-top: 5px;
+            padding-top: 7px;
+            margin-top: 2px;
             font-weight: 700;
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
             color: #ffdca7;
-            font-size: 1rem;
+            font-size: 1.25rem;
         }
 
         .pos-total-row input {
@@ -6643,6 +6741,10 @@
         }
 
         .orders-lanes {
+            display: contents;
+        }
+
+        .orders-lanes-left {
             display: contents;
         }
 
@@ -9933,6 +10035,36 @@
             color: rgba(255, 110, 110, 0.65);
         }
 
+        /* Llamó / Llegó — mismo lenguaje visual que .pts-mesa-btn, sin aspect-ratio cuadrado */
+        .pts-pickup-mode-btns {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+        .pts-pickup-mode-btn {
+            padding: 10px 6px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.7);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.13s ease;
+        }
+        .pts-pickup-mode-btn:hover {
+            background: rgba(255, 149, 64, 0.14);
+            border-color: rgba(255, 149, 64, 0.4);
+            color: #fff;
+        }
+        .pts-pickup-mode-btn.active {
+            background: rgba(255, 149, 64, 0.28);
+            border-color: rgba(255, 149, 64, 0.85);
+            color: #ffa060;
+            box-shadow: 0 0 12px rgba(255, 149, 64, 0.28);
+        }
+
         /* Tabs de cliente */
         .pts-client-tabs {
             display: flex;
@@ -12465,30 +12597,32 @@
                                 <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="unread" hidden style="display:none!important">Por Confirmar</button>
                                 <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="mesa">Mesa</button>
                                 <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="domicilios">Domicilios</button>
-                                <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="recoger">Recoger</button>
+                                <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="recoger">Para llevar</button>
                             </div>
                             <div class="orders-lanes" id="ordersBoard">
                                 <!-- columna POR CONFIRMAR reemplazada por #unreadTray en toolbar -->
-                                <section class="orders-lane" data-mobile-lane="domicilios">
-                                    <div class="orders-lane-header">
-                                        <button type="button" class="orders-lane-title orders-lane-quick-btn" data-quick-type="domicilio" title="Nuevo pedido a domicilio">Domicilios</button>
-                                        <span class="kanban-count" id="ordersCountDelivery">0</span>
-                                    </div>
-                                    <div class="kanban-list" id="ordersColumnDelivery"></div>
-                                </section>
-                                <section class="orders-lane" data-mobile-lane="recoger">
-                                    <div class="orders-lane-header">
-                                        <button type="button" class="orders-lane-title orders-lane-quick-btn" data-quick-type="retiro" title="Nuevo pedido para recoger">Para recoger</button>
-                                        <span class="kanban-count" id="ordersCountTakeaway">0</span>
-                                    </div>
-                                    <div class="kanban-list" id="ordersColumnTakeaway"></div>
-                                </section>
+                                <div class="orders-lanes-left">
+                                    <section class="orders-lane" data-mobile-lane="domicilios">
+                                        <div class="orders-lane-header">
+                                            <button type="button" class="orders-lane-title orders-lane-quick-btn" data-quick-type="domicilio" title="Nuevo pedido a domicilio">Domicilios</button>
+                                            <span class="kanban-count" id="ordersCountDelivery">0</span>
+                                        </div>
+                                        <div class="kanban-list" id="ordersColumnDelivery"></div>
+                                    </section>
+                                    <section class="orders-lane" data-mobile-lane="recoger">
+                                        <div class="orders-lane-header">
+                                            <button type="button" class="orders-lane-title orders-lane-quick-btn" data-quick-type="retiro" title="Nuevo pedido para llevar">Para llevar</button>
+                                            <span class="kanban-count" id="ordersCountTakeaway">0</span>
+                                        </div>
+                                        <div class="kanban-list" id="ordersColumnTakeaway"></div>
+                                    </section>
+                                </div>
                                 <section class="orders-lane" data-mobile-lane="mesa">
                                     <div class="orders-lane-header">
                                         <button type="button" class="orders-lane-title orders-lane-quick-btn" data-quick-type="mesa" title="Nuevo pedido de mesa">Mesas</button>
                                         <span class="kanban-count" id="ordersCountMesa">0</span>
                                     </div>
-                                    <div class="kanban-list" id="ordersColumnMesa"></div>
+                                    <div class="mesa-map" id="ordersColumnMesa"></div>
                                 </section>
                             </div>
                             <aside class="ticket-panel" id="orderTicketPanel" aria-live="polite">
@@ -14004,7 +14138,7 @@
                         <span class="pts-type-icon">🍽️</span>Mesa
                     </button>
                     <button type="button" class="pts-type-btn" data-pts-type="retiro">
-                        <span class="pts-type-icon">🥡</span>Recoger
+                        <span class="pts-type-icon">🥡</span>Para llevar
                     </button>
                     <button type="button" class="pts-type-btn" data-pts-type="domicilio">
                         <span class="pts-type-icon">🛵</span>Domicilio
@@ -14021,6 +14155,13 @@
                         <button type="button" class="pts-mesa-btn" data-pts-mesa="6">6</button>
                         <button type="button" class="pts-mesa-btn" data-pts-mesa="7">7</button>
                         <button type="button" class="pts-mesa-btn" data-pts-mesa="8">8</button>
+                    </div>
+                </div>
+                <div class="pts-mesa-grid" id="ptsPickupModeGrid" hidden>
+                    <p class="pts-mesa-sublabel">¿Llamó o ya llegó al local?</p>
+                    <div class="pts-pickup-mode-btns">
+                        <button type="button" class="pts-pickup-mode-btn" data-pts-pickup-mode="llamo">📞 Llamó</button>
+                        <button type="button" class="pts-pickup-mode-btn active" data-pts-pickup-mode="llego">🚶 Llegó</button>
                     </div>
                 </div>
             </div>
@@ -14335,7 +14476,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260714-1633"></script>
+    <script src="admin.js?v=20260714-1816"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

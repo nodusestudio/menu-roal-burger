@@ -383,6 +383,26 @@ let posActiveTicketId = null;
 let _editingOrderData = null; // set when editing an existing order, cleared after save
 let _editingItemsOnlyOrderId = null; // set when editing only the items of an existing order (safe partial update)
 
+// Color de acento por categoría del POS (pestañas + tiles de producto), para que el cajero
+// reconozca la sección por color en vez de leer texto. Se asigna por hash del nombre, así
+// cualquier categoría que se cree en el admin recibe un color estable sin configuración manual.
+const POS_CATEGORY_PALETTE = [
+    { hex: '#e2483f', rgb: '226,72,63' },
+    { hex: '#c9932a', rgb: '201,147,42' },
+    { hex: '#4f9d5c', rgb: '79,157,92' },
+    { hex: '#d98a2b', rgb: '217,138,43' },
+    { hex: '#3d8f8a', rgb: '61,143,138' },
+    { hex: '#3a7bd5', rgb: '58,123,213' },
+    { hex: '#ff7b45', rgb: '255,123,69' },
+    { hex: '#8a5fc9', rgb: '138,95,201' }
+];
+function getPosCategoryColor(name) {
+    const s = String(name || '').trim().toUpperCase();
+    let hash = 0;
+    for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+    return POS_CATEGORY_PALETTE[hash % POS_CATEGORY_PALETTE.length];
+}
+
 // Punto único de mutación del carrito activo (internalOrderItems). Centraliza la fusión por
 // itemKey, la matemática de cantidad/subtotal y el mapeo hacia el payload que se guarda en Firestore,
 // para no repetir esa lógica en cada handler de UI que toca el carrito.
@@ -2010,6 +2030,9 @@ function normalizeOrder(raw) {
         source: String(raw.source || 'web').trim(),
         isAdminOrder: raw.isAdminOrder === true,
         orderType,
+        // Solo aplica a orderType 'retiro': 'llamo' (pidió por telefono/web, viene despues) vs
+        // 'llego' (ya esta en el local). Pedidos viejos sin el campo se infieren por su origen.
+        pickupMode: String(raw.pickupMode || (String(raw.source || '') === 'admin_pos' ? 'llego' : 'llamo')).trim(),
         fulfillmentType: String(raw.fulfillmentType || '').trim().toLowerCase(),
         mesaNumber: raw.mesaNumber ? Number(raw.mesaNumber) : null,
         status,
@@ -2694,7 +2717,7 @@ function renderPosCategoriesPanel() {
         const count = catalog.filter(
             (p) => String(p.categoria || '').trim() === cat && p.visible_pos !== false
         ).length;
-        return { value: cat, label: `${cat} (${count})` };
+        return { value: cat, label: `${cat} (${count})`, color: getPosCategoryColor(cat) };
     });
 
     const allTabs = [promoTab, cobroExtraTab, descuentoTab, bebidasTab, acompTab].filter(Boolean).concat(catTabs);
@@ -2705,7 +2728,7 @@ function renderPosCategoriesPanel() {
     }
 
     tabs.innerHTML = allTabs.map((tab) => `
-        <button type="button" class="pos-cat-tab${tab.value === posSelectedCategory ? ' is-active' : ''}" data-cat-value="${escapeHtml(tab.value)}">${escapeHtml(tab.label)}</button>`).join('');
+        <button type="button" class="pos-cat-tab${tab.value === posSelectedCategory ? ' is-active' : ''}" data-cat-value="${escapeHtml(tab.value)}"${tab.color ? ` style="--cc:${tab.color.hex};--cc-rgb:${tab.color.rgb}"` : ''}>${escapeHtml(tab.label)}</button>`).join('');
 
     if (tabs.dataset.listenerAttached !== 'true') {
         tabs.addEventListener('click', (e) => {
@@ -2746,6 +2769,9 @@ function _renderPosProductCards(grid, products) {
     products.forEach((product) => {
         const card = document.createElement('div');
         card.className = 'pos-product-card';
+        const color = getPosCategoryColor(product.categoria);
+        card.style.setProperty('--cc', color.hex);
+        card.style.setProperty('--cc-rgb', color.rgb);
 
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -2852,33 +2878,7 @@ function renderPosProductsPanel() {
         return;
     }
 
-    categoryProducts.forEach((product) => {
-        const card = document.createElement('div');
-        card.className = 'pos-product-card';
-
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        const imgUrl = String(product.image_url || '').trim();
-
-        if (imgUrl) {
-            btn.className = 'pos-product-btn has-image';
-            btn.innerHTML = `<img class="pos-product-btn-img" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
-            const label = document.createElement('div');
-            label.className = 'pos-product-label';
-            label.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
-            card.appendChild(btn);
-            card.appendChild(label);
-        } else {
-            btn.className = 'pos-product-btn';
-            btn.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
-            card.appendChild(btn);
-        }
-
-        card.addEventListener('click', () => {
-            handlePosProductAdd(String(product.id || ''), String(product.nombre || ''), Number(product.precio || 0));
-        });
-        grid.appendChild(card);
-    });
+    _renderPosProductCards(grid, categoryProducts);
 }
 
 function renderPosAcompanantesNewPanel(grid) {
@@ -6310,6 +6310,9 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         if (mesaNumber) {
             orderDoc.mesaNumber = mesaNumber;
         }
+        if (orderType === 'retiro') {
+            orderDoc.pickupMode = config.pickupMode || editData?.pickupMode || 'llego';
+        }
 
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
         _editingOrderData = null;
@@ -8594,7 +8597,14 @@ function getOrderColumnKey(order) {
 function getOrderTypeLabel(order) {
     if (order.orderType === 'domicilio') return 'Domicilio';
     if (order.orderType === 'mesa') return order.mesaNumber ? `Mesa ${order.mesaNumber}` : 'Mesa';
-    return 'Recoger';
+    return 'Para llevar';
+}
+
+function getPickupModeTag(order) {
+    if (order.orderType !== 'retiro') return '';
+    return order.pickupMode === 'llego'
+        ? '<span class="koc-pickup-mode-tag koc-pickup-mode--llego">🚶 Llegó</span>'
+        : '<span class="koc-pickup-mode-tag koc-pickup-mode--llamo">📞 Llamó</span>';
 }
 
 function getOrderDisplayTotal(order) {
@@ -9701,6 +9711,7 @@ function createOrderCard(order) {
         <div class="koc-header">
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
             <span class="koc-type-badge ${typeClass}">${escapeHtml(getOrderTypeLabel(order))}</span>
+            ${getPickupModeTag(order)}
             ${sinMesaBadge}
             ${promoHeaderBadge}
             <span class="koc-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
@@ -9719,6 +9730,35 @@ function createOrderCard(order) {
     `;
 
     return card;
+}
+
+// Mismas 8 mesas que ya usan #ptsMesaGrid y .chm-mesa-btn en el POS.
+const RECEPTION_MESA_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+// Pinta el mapa de mesas de Recepción (libre/ocupada) en vez de una lista de tarjetas.
+// mesaOrders ya viene filtrado a pedidos de mesa activos (status !== 'entregado').
+function renderMesaMap(container, mesaOrders) {
+    if (!container) return;
+    const byMesa = new Map();
+    mesaOrders.forEach((order) => {
+        if (order.mesaNumber) byMesa.set(Number(order.mesaNumber), order);
+    });
+
+    container.innerHTML = RECEPTION_MESA_NUMBERS.map((num) => {
+        const order = byMesa.get(num);
+        if (!order) {
+            return `<div class="mesa-map-tile is-libre">
+                <span class="mesa-map-num">${num}</span>
+                <span class="mesa-map-label">Libre</span>
+            </div>`;
+        }
+        const isSelected = order.id === selectedOrderId;
+        return `<button type="button" class="mesa-map-tile is-ocupada${isSelected ? ' is-selected' : ''}" data-order-id="${escapeHtml(order.id)}">
+            <span class="mesa-map-num">${num}</span>
+            <span class="mesa-map-label">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
+            <span class="mesa-map-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
+        </button>`;
+    }).join('');
 }
 
 function renderOrders() {
@@ -9753,6 +9793,11 @@ function renderOrders() {
         }
 
         if (!column.container) return;
+
+        if (column.key === 'mesa') {
+            renderMesaMap(column.container, activeOrders);
+            return;
+        }
 
         column.container.innerHTML = '';
 
@@ -13355,6 +13400,7 @@ document.getElementById('posDrawerSaveBtn')?.addEventListener('click', () => {
 // ── Modal: Personalizar ticket ────────────────────────────────────────────────
 let _ptsSelectedType = null;
 let _ptsSelectedMesa = null;
+let _ptsSelectedPickupMode = 'llego'; // 'llamo' (pidió por telefono/web) vs 'llego' (ya esta en el local) — solo aplica a orderType 'retiro'
 let _ptsSelectedClient = null; // { name, phone }
 let _ptsActiveTab = 'none';
 let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin enviar
@@ -13432,6 +13478,7 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
     // Reset estado
     _ptsSelectedType = presetType || prefill?.orderType || null;
     _ptsSelectedMesa = prefill?.mesaNumber || null;
+    _ptsSelectedPickupMode = prefill?.pickupMode || 'llego';
     _ptsSelectedClient = prefill?.customerName ? { name: prefill.customerName, phone: prefill.customerPhone || '' } : null;
     // Si hay cliente prefill, usar tab 'quick' para mostrar los datos
     _ptsActiveTab = (_ptsSelectedClient && configOnly) ? 'quick' : 'none';
@@ -13447,6 +13494,14 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
         if (_ptsSelectedType === 'mesa') mesaGrid.removeAttribute('hidden');
         else mesaGrid.setAttribute('hidden', '');
     }
+    const pickupModeGrid = document.getElementById('ptsPickupModeGrid');
+    if (pickupModeGrid) {
+        if (_ptsSelectedType === 'retiro') pickupModeGrid.removeAttribute('hidden');
+        else pickupModeGrid.setAttribute('hidden', '');
+    }
+    modal.querySelectorAll('.pts-pickup-mode-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.ptsPickupMode === _ptsSelectedPickupMode);
+    });
     modal.querySelectorAll('.pts-mesa-btn').forEach((b) => {
         b.classList.toggle('active', Number(b.dataset.ptsMesa) === _ptsSelectedMesa);
     });
@@ -13751,8 +13806,10 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     // Leer estado desde DOM como fuente de verdad (evita problemas de caché/closure)
     const activeTypeBtn = document.querySelector('#posTicketSetupModal .pts-type-btn.active');
     const activeMesaBtn = document.querySelector('#posTicketSetupModal .pts-mesa-btn.active');
+    const activePickupModeBtn = document.querySelector('#posTicketSetupModal .pts-pickup-mode-btn.active');
     const resolvedType = (activeTypeBtn?.dataset?.ptsType) || _ptsSelectedType;
     const resolvedMesa = activeMesaBtn ? Number(activeMesaBtn.dataset.ptsMesa) : _ptsSelectedMesa;
+    const resolvedPickupMode = activePickupModeBtn ? activePickupModeBtn.dataset.ptsPickupMode : _ptsSelectedPickupMode;
 
     if (!resolvedType) return;
 
@@ -13808,8 +13865,9 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
             activeTicket.customerPhone = customerPhone;
             activeTicket.deliveryAddress = deliveryAddress;
             activeTicket.deliveryFee = deliveryFee;
+            activeTicket.pickupMode = resolvedType === 'retiro' ? resolvedPickupMode : null;
             // Actualizar label del ticket
-            const typeLabels = { mesa: 'Mesa', retiro: 'Recoger', domicilio: 'Domicilio' };
+            const typeLabels = { mesa: 'Mesa', retiro: 'Para llevar', domicilio: 'Domicilio' };
             if (resolvedType === 'mesa' && resolvedMesa) {
                 activeTicket.label = customerName ? `Mesa ${resolvedMesa} · ${customerName}` : `Mesa ${resolvedMesa}`;
             } else if (customerName) {
@@ -13820,7 +13878,7 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
             const labelEl = document.getElementById('posActiveTicketLabel');
             if (labelEl) labelEl.textContent = activeTicket.label;
         }
-        posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone, deliveryAddress, deliveryFee };
+        posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, pickupMode: resolvedPickupMode, customerName, customerPhone, deliveryAddress, deliveryFee };
         renderPosCartTicketInfo();
 
         // Modo GUARDAR TICKET: guardar ticket configurado en Firestore y cerrar POS
@@ -13833,7 +13891,7 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     }
 
     // Modo guardar pedido: enviar a Firestore
-    posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, customerName, customerPhone, deliveryAddress, deliveryFee };
+    posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, pickupMode: resolvedPickupMode, customerName, customerPhone, deliveryAddress, deliveryFee };
     renderPosCartTicketInfo();
     if (internalOrderItems.length) {
         const cobrar = _ptsCobrarAfterSave;
@@ -13858,6 +13916,11 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
             if (_ptsSelectedType === 'mesa') mesaGrid.removeAttribute('hidden');
             else mesaGrid.setAttribute('hidden', '');
         }
+        const pickupModeGrid = document.getElementById('ptsPickupModeGrid');
+        if (pickupModeGrid) {
+            if (_ptsSelectedType === 'retiro') pickupModeGrid.removeAttribute('hidden');
+            else pickupModeGrid.setAttribute('hidden', '');
+        }
         _ptsRefreshDomicilioSection();
         _ptsUpdateConfirmBtn();
         return;
@@ -13870,6 +13933,14 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
         _ptsSelectedMesa = Number(mesaBtn.dataset.ptsMesa);
         document.querySelectorAll('.pts-mesa-btn').forEach((b) => b.classList.toggle('active', b === mesaBtn));
         _ptsUpdateConfirmBtn();
+        return;
+    }
+
+    // Llamó / Llegó (solo para "Para llevar")
+    const pickupModeBtn = e.target.closest('[data-pts-pickup-mode]');
+    if (pickupModeBtn) {
+        _ptsSelectedPickupMode = pickupModeBtn.dataset.ptsPickupMode;
+        document.querySelectorAll('.pts-pickup-mode-btn').forEach((b) => b.classList.toggle('active', b === pickupModeBtn));
         return;
     }
 
@@ -15282,7 +15353,7 @@ if (ordersActionRoot) {
             return;
         }
 
-        const card = target.closest('.kanban-order-card');
+        const card = target.closest('.kanban-order-card, .mesa-map-tile[data-order-id]');
         if (!(card instanceof HTMLElement)) {
             return;
         }
