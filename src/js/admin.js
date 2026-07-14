@@ -3955,24 +3955,11 @@ function openAcompananteModal(acomp = null) {
     let _pendingImageFile = null;
     let _resolvedImageUrl = acomp?.imagen_url || '';
 
-    const overlay = document.createElement('div');
-    overlay.className = 'combo-modal-overlay';
-    overlay.style.zIndex = '8500';
-
-    const card = document.createElement('div');
-    card.className = 'combo-modal-card acomp-form-card';
-
-    const header = document.createElement('div');
-    header.className = 'combo-modal-header';
-    const htitle = document.createElement('div');
-    htitle.innerHTML = `<h4>${isEdit ? 'Editar acompañante' : 'Nuevo acompañante'}</h4>`;
-    const closeX = document.createElement('button');
-    closeX.type = 'button';
-    closeX.className = 'combo-modal-close-x';
-    closeX.textContent = '×';
-    closeX.addEventListener('click', () => overlay.remove());
-    header.appendChild(htitle);
-    header.appendChild(closeX);
+    const { overlay, card } = _createComboModalShell({
+        titleHtml: isEdit ? 'Editar acompañante' : 'Nuevo acompañante',
+        zIndex: '8500'
+    });
+    card.classList.add('acomp-form-card');
 
     const body = document.createElement('div');
     body.className = 'acomp-form-body';
@@ -4172,10 +4159,8 @@ function openAcompananteModal(acomp = null) {
 
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
-    card.appendChild(header);
     card.appendChild(body);
     card.appendChild(footer);
-    overlay.appendChild(card);
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
     setTimeout(() => nombreInput.focus(), 80);
@@ -4328,24 +4313,11 @@ function openComboPackModal(combo = null) {
     const isEdit = !!combo;
     let sabores = combo ? [...(combo.bebida_sabores || [])] : [];
 
-    const overlay = document.createElement('div');
-    overlay.className = 'combo-modal-overlay';
-    overlay.style.zIndex = '8500';
-
-    const card = document.createElement('div');
-    card.className = 'combo-modal-card acomp-form-card';
-
-    const header = document.createElement('div');
-    header.className = 'combo-modal-header';
-    const htitle = document.createElement('div');
-    htitle.innerHTML = `<h4>${isEdit ? 'Editar combo' : 'Nuevo combo'}</h4>`;
-    const closeX = document.createElement('button');
-    closeX.type = 'button';
-    closeX.className = 'combo-modal-close-x';
-    closeX.textContent = '×';
-    closeX.addEventListener('click', () => overlay.remove());
-    header.appendChild(htitle);
-    header.appendChild(closeX);
+    const { overlay, card } = _createComboModalShell({
+        titleHtml: isEdit ? 'Editar combo' : 'Nuevo combo',
+        zIndex: '8500'
+    });
+    card.classList.add('acomp-form-card');
 
     const body = document.createElement('div');
     body.className = 'acomp-form-body';
@@ -4544,10 +4516,8 @@ function openComboPackModal(combo = null) {
 
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
-    card.appendChild(header);
     card.appendChild(body);
     card.appendChild(footer);
-    overlay.appendChild(card);
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
     setTimeout(() => nombreInput.focus(), 80);
@@ -4562,24 +4532,11 @@ function openBebidaModal(bebida = null) {
     let _pendingImageFile = null;
     let _resolvedImageUrl = bebida?.image_url || '';
 
-    const overlay = document.createElement('div');
-    overlay.className = 'combo-modal-overlay';
-    overlay.style.zIndex = '8500';
-
-    const card = document.createElement('div');
-    card.className = 'combo-modal-card bebida-form-card';
-
-    const header = document.createElement('div');
-    header.className = 'combo-modal-header';
-    const htitle = document.createElement('div');
-    htitle.innerHTML = `<h4>${isEdit ? 'Editar bebida' : 'Nueva bebida'}</h4>`;
-    const closeX = document.createElement('button');
-    closeX.type = 'button';
-    closeX.className = 'combo-modal-close-x';
-    closeX.textContent = '×';
-    closeX.addEventListener('click', () => overlay.remove());
-    header.appendChild(htitle);
-    header.appendChild(closeX);
+    const { overlay, card } = _createComboModalShell({
+        titleHtml: isEdit ? 'Editar bebida' : 'Nueva bebida',
+        zIndex: '8500'
+    });
+    card.classList.add('bebida-form-card');
 
     const body = document.createElement('div');
     body.className = 'bebida-form-body';
@@ -4885,10 +4842,8 @@ function openBebidaModal(bebida = null) {
 
     footer.appendChild(cancelBtn2);
     footer.appendChild(saveBtn);
-    card.appendChild(header);
     card.appendChild(body);
     card.appendChild(footer);
-    overlay.appendChild(card);
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
     setTimeout(() => marcaInput.focus(), 80);
