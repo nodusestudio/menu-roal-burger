@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260710-2139">
+    <link rel="stylesheet" href="style.css?v=20260714-1134">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -4159,27 +4159,43 @@
         /* ── Barra de categoría ── */
         .pos-catbar {
             display: flex; align-items: center;
-            height: 46px;
+            height: 58px;
             background: #1a2130;
             border-bottom: 1px solid rgba(255,255,255,0.07);
             flex-shrink: 0;
             padding: 0 8px;
         }
-        .pos-cat-select {
-            flex: 1; height: 36px;
+        .pos-cat-tabs {
+            flex: 1; height: 100%;
+            display: flex; align-items: center; gap: 8px;
+            overflow-x: auto; overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .pos-cat-tabs::-webkit-scrollbar { display: none; }
+        .pos-cat-tab {
+            flex-shrink: 0;
+            min-height: 40px;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 7px;
+            border-radius: 20px;
             color: #eef4ff;
             font-size: 0.85rem;
-            padding: 0 10px;
+            padding: 0 16px;
             cursor: pointer;
             font-family: 'Oswald', sans-serif;
             text-transform: uppercase;
             letter-spacing: 0.4px;
-            outline: none;
+            white-space: nowrap;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+            -webkit-tap-highlight-color: transparent;
         }
-        .pos-cat-select option { background: #1a2130; color: #eef4ff; }
+        .pos-cat-tab.is-active {
+            background: var(--admin-accent);
+            border-color: var(--admin-accent);
+            color: #fff;
+            font-weight: 700;
+        }
 
         /* ── Grid de productos ── */
         .pos-products-scroll {
@@ -4227,21 +4243,21 @@
         }
         .pos-product-btn-info {
             position: relative; z-index: 1;
-            padding: 18px 6px 8px;
-            background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.78));
+            padding: 24px 8px 10px;
+            background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.82));
             display: flex; flex-direction: column;
-            align-items: center; gap: 2px; width: 100%;
+            align-items: center; gap: 3px; width: 100%;
         }
         .pos-product-btn-name {
             font-family: 'Oswald', sans-serif;
-            font-size: 0.76rem;
+            font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 0.2px;
             line-height: 1.2; color: #fff;
             word-break: break-word;
         }
         .pos-product-btn-price {
-            font-size: 0.68rem;
+            font-size: 0.75rem;
             color: rgba(255,255,255,0.88);
             font-weight: 600;
         }
@@ -4470,14 +4486,15 @@
         .pos-pay-input:focus { border-color: var(--admin-accent); }
         .pos-pay-input::placeholder { color: rgba(180,200,230,0.38); }
         .pos-pay-input--sm { width: 100px; flex-shrink: 0; }
-        .pos-payment-methods { display: flex; flex-direction: column; gap: 8px; }
+        .pos-payment-methods { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
         .pos-pay-method-btn {
-            padding: 14px 16px;
+            padding: 18px 14px;
+            min-height: 56px;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 8px; color: #eef4ff;
-            font-size: 0.88rem; cursor: pointer;
-            text-align: left; transition: all 0.15s;
+            border-radius: 10px; color: #eef4ff;
+            font-size: 0.95rem; font-weight: 600; cursor: pointer;
+            text-align: center; transition: all 0.15s;
             font-family: 'Roboto', sans-serif;
         }
         .pos-pay-method-btn.active {
@@ -4667,23 +4684,25 @@
         }
 
         /* Listas de opciones */
-        .pos-upgrade-options { display: flex; flex-direction: column; gap: 6px; }
+        .pos-upgrade-options { display: flex; flex-direction: column; gap: 8px; }
         .pos-upgrade-opt {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 9px 12px; background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+            padding: 15px 16px; background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
             cursor: pointer; color: #eef4ff; transition: background 0.15s;
             width: 100%; text-align: left; gap: 10px;
+            min-height: 48px;
         }
         .pos-upgrade-opt:active { background: rgba(255,255,255,0.12); }
-        .pos-upgrade-opt-name { font-weight: 600; font-size: 0.88rem; }
-        .pos-upgrade-opt-detail { font-size: 0.72rem; color: var(--admin-muted); margin-top: 1px; }
-        .pos-upgrade-opt-price { color: var(--admin-accent); font-weight: 700; font-size: 0.85rem; flex-shrink: 0; }
-        .pos-flavors-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+        .pos-upgrade-opt-name { font-weight: 600; font-size: 1rem; }
+        .pos-upgrade-opt-detail { font-size: 0.78rem; color: var(--admin-muted); margin-top: 2px; }
+        .pos-upgrade-opt-price { color: var(--admin-accent); font-weight: 700; font-size: 0.95rem; flex-shrink: 0; }
+        .pos-flavors-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
         .pos-flavor-btn {
-            padding: 11px 8px; background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.1); border-radius: 9px;
-            color: #eef4ff; font-size: 0.85rem; cursor: pointer; text-align: center;
+            padding: 16px 10px; background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 11px;
+            color: #eef4ff; font-size: 0.95rem; cursor: pointer; text-align: center;
+            min-height: 48px;
         }
         .pos-flavor-btn:active { background: var(--admin-accent-soft); border-color: var(--admin-accent); }
         .pos-upgrade-back-btn {
@@ -12558,6 +12577,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="gastos"><span class="nav-icon">💸</span><span>Gastos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="botones"><span class="nav-icon">🔘</span><span>Botones</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
         </nav>
 
@@ -12969,6 +12989,8 @@
                                             </div>
                                         </div>
                                         <button type="button" class="card-collapse-btn" id="refreshLibroCierresBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
+                                        <button type="button" class="card-collapse-btn" id="exportCierresExcelBtn" style="font-size:0.78rem;padding:4px 14px;">⬇️ Excel</button>
+                                        <button type="button" class="card-collapse-btn" id="exportCierresPdfBtn" style="font-size:0.78rem;padding:4px 14px;">⬇️ PDF</button>
                                         <button type="button" id="gastosHistorialBtn" style="font-size:0.78rem;padding:4px 14px;background:rgba(252,165,165,0.15);color:#fca5a5;border:1px solid rgba(252,165,165,0.35);border-radius:8px;cursor:pointer;font-weight:600;">💸 Gastos</button>
                                         <button type="button" id="trasladoHistorialBtn" style="font-size:0.78rem;padding:4px 14px;background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.35);border-radius:8px;cursor:pointer;font-weight:600;">🔄 Traslado</button>
                                     </div>
@@ -13059,6 +13081,98 @@
                             </article>
                         </div>
 
+                    </div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="botones">
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>Botones de Publico</h2>
+                    </div>
+                    <div class="card-body">
+                        <form id="buttonConfigForm" class="admin-form">
+                            <div class="admin-field">
+                                <label for="buttonId">ID del boton</label>
+                                <input type="text" id="buttonId" name="buttonId" placeholder="Ej: btn-menu" required>
+                                <p class="form-note">IDs actuales: btn-menu, btn-whatsapp-main, btn-instagram, btn-tiktok, btn-facebook.</p>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonLabel">Texto</label>
+                                <input type="text" id="buttonLabel" name="buttonLabel" placeholder="Ej: VER MENU DIGITAL" required>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonIcon">Icono</label>
+                                <input type="text" id="buttonIcon" name="buttonIcon" placeholder="Ej: 📱">
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonActionType">Accion</label>
+                                <select id="buttonActionType" name="buttonActionType">
+                                    <option value="external">Abrir enlace</option>
+                                    <option value="menu-modal">Abrir Publico (modal)</option>
+                                </select>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="buttonLink">Link destino</label>
+                                <input type="text" id="buttonLink" name="buttonLink" placeholder="https://...">
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonType">Tipo de boton</label>
+                                <select id="buttonType" name="buttonType">
+                                    <option value="neon">Neon</option>
+                                    <option value="solid">Solido</option>
+                                    <option value="glass">Glass</option>
+                                    <option value="minimal">Minimal</option>
+                                </select>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonColor">Color base</label>
+                                <input type="color" id="buttonColor" name="buttonColor" value="#ff6000">
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonSize">Tamano</label>
+                                <select id="buttonSize" name="buttonSize">
+                                    <option value="sm">Pequeno</option>
+                                    <option value="md" selected>Medio</option>
+                                    <option value="lg">Grande</option>
+                                    <option value="xl">Extra grande</option>
+                                </select>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonOrder">Orden visual</label>
+                                <input type="number" id="buttonOrder" name="buttonOrder" min="1" step="1" value="1">
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonState">Estado</label>
+                                <select id="buttonState" name="buttonState">
+                                    <option value="active">Activo</option>
+                                    <option value="paused">Pausado</option>
+                                </select>
+                            </div>
+                            <div class="admin-field">
+                                <label for="buttonVisible">Visible</label>
+                                <select id="buttonVisible" name="buttonVisible">
+                                    <option value="true">Si</option>
+                                    <option value="false">No</option>
+                                </select>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="buttonVolume">Volumen del sonido de clic</label>
+                                <div class="range-wrap">
+                                    <input type="range" id="buttonVolume" name="buttonVolume" min="0" max="1" step="0.05" value="0.1">
+                                    <output id="buttonVolumeOut">0.10</output>
+                                </div>
+                            </div>
+                            <div class="admin-field full">
+                                <label>
+                                    <input type="checkbox" id="buttonSoundEnabled" name="buttonSoundEnabled" checked>
+                                    Sonido activo
+                                </label>
+                            </div>
+                            <input type="hidden" id="buttonEditId" name="buttonEditId" value="">
+                            <button type="submit" class="admin-button" id="buttonSaveBtn">Guardar boton</button>
+                        </form>
+                        <div id="buttonConfigList" class="stack-list stack-list-top-14"></div>
                     </div>
                 </article>
             </div>
@@ -13694,14 +13808,14 @@
                 </div>
             </div>
 
-            <div class="pos-action-row" hidden style="display:none!important">
+            <div class="pos-action-row">
                 <button type="button" class="pos-action-btn pos-action-tickets" id="posOpenTicketsBtn" style="grid-column:1/-1;">
                     TICKETS ABIERTOS <span class="pos-tickets-count-badge" id="posTicketsCountBadge">1</span>
                 </button>
             </div>
 
             <div class="pos-catbar">
-                <select class="pos-cat-select" id="posCatSelect"></select>
+                <div class="pos-cat-tabs" id="posCatTabs"></div>
             </div>
 
             <div class="pos-products-scroll" id="posProductsScroll">
@@ -13777,6 +13891,26 @@
                     <div class="pos-payment-amount-label">Importe total adeudado</div>
                 </div>
 
+                <!-- Método de pago -->
+                <div class="pos-payment-section">
+                    <div class="pos-payment-label">Método de pago</div>
+                    <div class="pos-payment-methods">
+                        <button type="button" class="pos-pay-method-btn active" data-method="efectivo">&#128181; EFECTIVO</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="bancolombia">&#127968; BANCOLOMBIA</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="nequi">&#128241; NEQUI</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="tarjeta">&#128179; TARJETA</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="rappi">&#128665; RAPPI</button>
+                        <button type="button" class="pos-pay-method-btn" data-method="otro">&#9744; OTRO</button>
+                    </div>
+                    <input type="hidden" id="internalOrderPaymentMethod" name="internalOrderPaymentMethod" value="efectivo">
+                </div>
+
+                <!-- Efectivo recibido -->
+                <div class="pos-payment-section" id="posCashSection">
+                    <div class="pos-payment-label pos-cash-label">Efectivo recibido</div>
+                    <input type="number" class="pos-pay-input" id="posCashAmount" name="posCashAmount" placeholder="0">
+                </div>
+
                 <!-- Tipo de pedido -->
                 <div class="pos-payment-section">
                     <div class="pos-payment-label">Tipo de pedido</div>
@@ -13843,26 +13977,6 @@
                 <div class="pos-payment-section">
                     <div class="pos-payment-label">Notas del pedido</div>
                     <textarea class="pos-pay-input" id="internalOrderNotes" name="internalOrderNotes" rows="2" placeholder="Sin cebolla, extra salsa..."></textarea>
-                </div>
-
-                <!-- Método de pago -->
-                <div class="pos-payment-section">
-                    <div class="pos-payment-label">Método de pago</div>
-                    <div class="pos-payment-methods">
-                        <button type="button" class="pos-pay-method-btn active" data-method="efectivo">&#128181; EFECTIVO</button>
-                        <button type="button" class="pos-pay-method-btn" data-method="bancolombia">&#127968; BANCOLOMBIA</button>
-                        <button type="button" class="pos-pay-method-btn" data-method="nequi">&#128241; NEQUI</button>
-                        <button type="button" class="pos-pay-method-btn" data-method="tarjeta">&#128179; TARJETA</button>
-                        <button type="button" class="pos-pay-method-btn" data-method="rappi">&#128665; RAPPI</button>
-                        <button type="button" class="pos-pay-method-btn" data-method="otro">&#9744; OTRO</button>
-                    </div>
-                    <input type="hidden" id="internalOrderPaymentMethod" name="internalOrderPaymentMethod" value="efectivo">
-                </div>
-
-                <!-- Efectivo recibido -->
-                <div class="pos-payment-section" id="posCashSection">
-                    <div class="pos-payment-label pos-cash-label">Efectivo recibido</div>
-                    <input type="number" class="pos-pay-input" id="posCashAmount" name="posCashAmount" placeholder="0">
                 </div>
 
                 <div id="internalOrderFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
@@ -14632,7 +14746,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260710-2139"></script>
+    <script src="admin.js?v=20260714-1134"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

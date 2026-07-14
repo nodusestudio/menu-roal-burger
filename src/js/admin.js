@@ -225,7 +225,6 @@ if (RECAPTCHA_SITE_KEY) {
     document.head.appendChild(_rcScript);
 }
 
-const categoryForm = document.getElementById('categoryForm');
 const categoryList = document.getElementById('categoryList');
 const categoryDetailPanel = document.getElementById('categoryDetailPanel');
 const carruselTabPanel = document.getElementById('carruselTabPanel');
@@ -303,21 +302,6 @@ const salesSummaryList = document.getElementById('salesSummaryList');
 const salesSummaryTotalAmount = document.getElementById('salesSummaryTotalAmount');
 const salesSummaryTotalOrders = document.getElementById('salesSummaryTotalOrders');
 const salesSummaryTotalDays = document.getElementById('salesSummaryTotalDays');
-const ledgerBookDateFrom = document.getElementById('ledgerBookDateFrom');
-const ledgerBookDateTo = document.getElementById('ledgerBookDateTo');
-const ledgerBookList = document.getElementById('ledgerBookList');
-const ledgerBookTotalIncome = document.getElementById('ledgerBookTotalIncome');
-const ledgerBookTotalEntries = document.getElementById('ledgerBookTotalEntries');
-const ledgerBookAverageIncome = document.getElementById('ledgerBookAverageIncome');
-const exportLedgerExcelBtn = document.getElementById('exportLedgerExcelBtn');
-const exportLedgerPdfBtn = document.getElementById('exportLedgerPdfBtn');
-const previewRefreshBtn = document.getElementById('previewRefreshBtn');
-const liveMenuPreview = document.getElementById('liveMenuPreview');
-const previewViewportControls = document.getElementById('previewViewportControls');
-const previewViewportWrap = document.getElementById('previewViewportWrap');
-const advancedSettingsToggle = document.getElementById('advancedSettingsToggle');
-const advancedSettingsPanel = document.getElementById('advancedSettingsPanel');
-
 const categoryProductsModal = document.getElementById('categoryProductsModal');
 const categoryProductsModalTitle = document.getElementById('categoryProductsModalTitle');
 const categoryProductsModalMeta = document.getElementById('categoryProductsModalMeta');
@@ -340,7 +324,6 @@ const createProductCategorySelect = document.getElementById('createProductCatego
 const createProductStateSelect = document.getElementById('createProductState');
 const createProductFeaturedSelect = document.getElementById('createProductFeatured');
 const createProductImageFileInput = document.getElementById('createProductImageFile');
-const createProductImageUrlInput = document.getElementById('createProductImageUrl');
 const productCreateSaveBtn = document.getElementById('productCreateSaveBtn');
 const productCreateFeedback = document.getElementById('productCreateFeedback');
 
@@ -388,21 +371,6 @@ const buttonEditIdInput = document.getElementById('buttonEditId');
 const buttonSaveBtn = document.getElementById('buttonSaveBtn');
 
 const brandingForm = document.getElementById('brandingForm');
-const templateGrid = document.getElementById('templateGrid');
-const previewName = document.getElementById('previewName');
-const previewSlogan = document.getElementById('previewSlogan');
-const brandingPreview = document.getElementById('brandingPreview');
-const previewWhatsapp = document.getElementById('previewWhatsapp');
-const previewBusinessHours = document.getElementById('previewBusinessHours');
-const previewAddress = document.getElementById('previewAddress');
-const previewLocation = document.getElementById('previewLocation');
-const previewSocials = document.getElementById('previewSocials');
-const designFontSizeInput = document.getElementById('designFontSize');
-const designFontSizeOut = document.getElementById('designFontSizeOut');
-const interactionVolumeInput = document.getElementById('interactionVolume');
-const interactionVolumeOut = document.getElementById('interactionVolumeOut');
-const animationSpeedInput = document.getElementById('animationSpeed');
-const animationSpeedOut = document.getElementById('animationSpeedOut');
 
 let firebaseDb;
 let firebaseStorage;
@@ -434,6 +402,7 @@ let posSelectedCategory = null;
 let posCurrentClient = null;
 let posSelectedClientData = null;
 let _posClientEditPending = false; // true when edit modal opened from POS card
+let _posClientOutsideClickBound = false;
 let posTicketConfig = null; // { orderType, mesaNumber, customerName, customerPhone }
 let posTickets = [];
 let posActiveTicketId = null;
@@ -530,8 +499,7 @@ function subscribePosTickets() {
                 _ptsMarkOccupiedMesas();
                 const ticketsScreen = document.getElementById('posScreenTickets');
                 if (ticketsScreen && !ticketsScreen.hidden) renderPosTicketsList();
-                const modal = document.getElementById('internalOrderModal');
-                if (modal?.classList.contains('is-open')) {
+                if (internalOrderModal?.classList.contains('is-open')) {
                     const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
                     const labelEl = document.getElementById('posActiveTicketLabel');
                     if (labelEl && activeTicket) labelEl.textContent = activeTicket.label;
@@ -583,7 +551,6 @@ const _BT_TX_CHARS = [
 ];
 let _recomendadoSelectedProductId = null;
 const _processedAccordionExpanded = new Set();
-let previewRefreshTimer = null;
 let ordersRealtimeTimer = null;
 let _liveReloadTimer = null;
 let _posTicketsRenderTimer = null;
@@ -636,15 +603,6 @@ function normalizeClientSavedAddresses(rawAddresses = [], primaryAddress = '') {
     }
 
     return normalizedAddresses.slice(0, 5);
-}
-
-function parseClientSavedAddressesInput(rawValue = '', primaryAddress = '') {
-    const lines = String(rawValue || '')
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-
-    return normalizeClientSavedAddresses(lines, primaryAddress);
 }
 
 function renderClientAddrChips(addresses) {
@@ -1396,10 +1354,11 @@ function setupAccordion() {
         clientes: ['clientes'],
         gastos: ['gastos'],
         mensajes: ['mensajes'],
-        metricas: ['metricas']
+        metricas: ['metricas'],
+        botones: ['botones']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', gastos:'Gastos', mensajes:'Mensajes', metricas:'Métricas' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', gastos:'Gastos', mensajes:'Mensajes', metricas:'Métricas', botones:'Botones' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -1433,6 +1392,10 @@ function setupAccordion() {
         if (target === 'gastos') {
             loadCategoriasGastos().then(renderCategoriasGastosPanel);
         }
+
+        if (target === 'clientes') {
+            fetchClients().then(renderClients);
+        }
     }
 
     // Ajusta padding-top del admin-page según altura real de barras fijas en mobile
@@ -1455,42 +1418,6 @@ function setupAccordion() {
     });
 
     activateAccordion('pedidos');
-}
-
-function setupAdvancedSettingsPanel() {
-    if (!advancedSettingsToggle || !advancedSettingsPanel) {
-        return;
-    }
-
-    advancedSettingsToggle.addEventListener('click', () => {
-        const collapsed = advancedSettingsPanel.classList.toggle('collapsed');
-        advancedSettingsToggle.setAttribute('aria-expanded', String(!collapsed));
-    });
-}
-
-function setupPreviewViewportControls() {
-    if (!previewViewportControls || !previewViewportWrap) {
-        return;
-    }
-
-    previewViewportControls.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLButtonElement)) {
-            return;
-        }
-
-        const mode = String(target.dataset.previewSize || '').trim().toLowerCase();
-        if (!mode) {
-            return;
-        }
-
-        previewViewportWrap.classList.remove('mobile', 'tablet', 'desktop');
-        previewViewportWrap.classList.add(mode);
-
-        Array.from(previewViewportControls.querySelectorAll('.viewport-btn')).forEach((button) => {
-            button.classList.toggle('active', button === target);
-        });
-    });
 }
 
 function setupCardCollapse() {
@@ -1562,26 +1489,6 @@ function setupSectionSaveButtons() {
             return;
         }
 
-        if (section === 'categorias' && categoryForm) {
-            categoryForm.requestSubmit();
-            return;
-        }
-
-        if (section === 'configuracion') {
-            if (brandingForm) brandingForm.requestSubmit();
-            return;
-        }
-
-        if (section === 'horario') {
-            if (horarioFormEl) horarioFormEl.requestSubmit();
-            return;
-        }
-
-        if (section === 'botones' && buttonConfigForm) {
-            buttonConfigForm.requestSubmit();
-            return;
-        }
-
         if (section === 'metricas') {
             await reloadDataAndRender();
             showNotice('Métricas actualizadas.', 'ok');
@@ -1597,12 +1504,6 @@ function setupSectionSaveButtons() {
         if (section === 'resumen-ventas') {
             await reloadDataAndRender();
             showNotice('Resumen de ventas actualizado.', 'ok');
-            return;
-        }
-
-        if (section === 'libro') {
-            await reloadDataAndRender();
-            showNotice('Libro contable actualizado.', 'ok');
         }
     });
 }
@@ -2184,7 +2085,14 @@ async function fetchSalesDayState() {
     salesDayState = doc.exists ? normalizeSalesDayState(doc.data()) : null;
 }
 
-async function fetchClients() {
+let _clientsLastFetchedAt = 0;
+const CLIENTS_CACHE_TTL_MS = 60000; // clientes crece sin limite y se relee en decenas de flujos;
+// evita releer toda la coleccion en cada accion menor del admin (guardar producto, promo, gasto, etc.)
+
+async function fetchClients({ force = false } = {}) {
+    if (!force && clientsState.length && (Date.now() - _clientsLastFetchedAt) < CLIENTS_CACHE_TTL_MS) {
+        return;
+    }
     const BATCH_SIZE = 500;
     const allDocs = [];
     let lastVisible = null;
@@ -2230,6 +2138,7 @@ async function fetchClients() {
             const bTs = b.lastOrderAt && typeof b.lastOrderAt.toMillis === 'function' ? b.lastOrderAt.toMillis() : 0;
             return bTs - aTs;
         });
+    _clientsLastFetchedAt = Date.now();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2299,34 +2208,6 @@ function renderMenuUpgradesAdmin() {
     const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
     _renderUpgradesMasterList(cfg);
     _renderUpgradesDetailPanel(_upgradeSelectedOptId);
-}
-
-function _renderUpgradeCategoryToggles(cfg) {
-    const container = document.getElementById('upgradeCategoryToggles');
-    if (!container) return;
-    const aplica = (cfg.categorias_aplica || []).map((c) => c.toUpperCase());
-    const categories = categoriesState.filter((c) => c.active !== false);
-    if (!categories.length) {
-        container.innerHTML = '<p style="color:var(--admin-muted);font-size:0.8rem;">No hay categorías disponibles aún.</p>';
-        return;
-    }
-    container.innerHTML = categories.map((cat) => {
-        const checked = aplica.includes(cat.name.toUpperCase());
-        return `
-        <label class="upgrade-cat-toggle-row">
-            <input type="checkbox" class="upgrade-cat-toggle-chk"
-                   data-cat-name="${escapeHtml(cat.name)}" ${checked ? 'checked' : ''}>
-            <span class="upgrade-cat-toggle-name">${escapeHtml(cat.name)}</span>
-        </label>`;
-    }).join('');
-    container.querySelectorAll('.upgrade-cat-toggle-chk').forEach((chk) => {
-        chk.addEventListener('change', () => {
-            if (!menuUpgradesConfig) menuUpgradesConfig = { ...DEFAULT_UPGRADES_CONFIG };
-            menuUpgradesConfig.categorias_aplica = Array.from(
-                container.querySelectorAll('.upgrade-cat-toggle-chk:checked')
-            ).map((c) => c.dataset.catName);
-        });
-    });
 }
 
 function _renderUpgradesMasterList(cfg) {
@@ -2676,8 +2557,8 @@ function _renderUpgradesDetailPanel(optId) {
 
 
 function renderPosCategoriesPanel() {
-    const select = document.getElementById('posCatSelect');
-    if (!select) return;
+    const tabs = document.getElementById('posCatTabs');
+    if (!tabs) return;
 
     const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
 
@@ -2686,36 +2567,43 @@ function renderPosCategoriesPanel() {
         ? categoriesState.filter((c) => c.active !== false).map((c) => c.name.trim())
         : [...new Set(catalog.map((p) => String(p.categoria || 'Sin categoria').trim()))];
 
-    if (select.dataset.listenerAttached !== 'true') {
-        select.addEventListener('change', () => {
-            posSelectedCategory = select.value;
-            renderPosProductsPanel();
-        });
-        select.dataset.listenerAttached = 'true';
-    }
+    const promoTab      = { value: '__POS_PROMOCIONES__', label: '🏷️ CUPONES' };
+    const cobroExtraTab = { value: '__POS_COBRO_EXTRA__', label: '➕ COBRO EXTRA' };
+    const descuentoTab  = { value: '__POS_DESCUENTO__', label: '🏷 DESCUENTO' };
+    const bebidasTab    = catalogoVisibilidad.bebidas_pos && bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
+        ? { value: '__POS_BEBIDAS__', label: `🥤 Bebidas (${bebidasState.filter((b) => b.estado === 'active' && b.mostrar_categoria).length})` }
+        : null;
+    const acompTab       = catalogoVisibilidad.acompanantes_pos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos)
+        ? { value: '__POS_ACOMPANANTES__', label: `🥗 Acompañantes (${acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).length})` }
+        : null;
 
-    const promoOption       = `<option value="__POS_PROMOCIONES__">🏷️ CUPONES</option>`;
-    const cobroExtraOption  = `<option value="__POS_COBRO_EXTRA__">➕ COBRO EXTRA</option>`;
-    const descuentoOption   = `<option value="__POS_DESCUENTO__">🏷 DESCUENTO</option>`;
-    const bebidasCatOption  = catalogoVisibilidad.bebidas_pos && bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
-        ? `<option value="__POS_BEBIDAS__">🥤 Bebidas (${bebidasState.filter((b) => b.estado === 'active' && b.mostrar_categoria).length})</option>`
-        : '';
-    const acompCatOption    = catalogoVisibilidad.acompanantes_pos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos)
-        ? `<option value="__POS_ACOMPANANTES__">🥗 Acompañantes (${acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).length})</option>`
-        : '';
-    select.innerHTML = promoOption + cobroExtraOption + descuentoOption + bebidasCatOption + acompCatOption + categories.map((cat) => {
+    const catTabs = categories.map((cat) => {
         const count = catalog.filter(
             (p) => String(p.categoria || '').trim() === cat && p.visible_pos !== false
         ).length;
-        return `<option value="${escapeHtml(cat)}">${escapeHtml(cat)} (${count})</option>`;
-    }).join('');
+        return { value: cat, label: `${cat} (${count})` };
+    });
+
+    const allTabs = [promoTab, cobroExtraTab, descuentoTab, bebidasTab, acompTab].filter(Boolean).concat(catTabs);
 
     const specialKeys = ['__POS_PROMOCIONES__', '__POS_COBRO_EXTRA__', '__POS_DESCUENTO__', '__POS_BEBIDAS__', '__POS_ACOMPANANTES__'];
-    if (posSelectedCategory && (specialKeys.includes(posSelectedCategory) || categories.includes(posSelectedCategory))) {
-        select.value = posSelectedCategory;
-    } else if (categories.length > 0) {
-        posSelectedCategory = categories[0];
-        select.value = categories[0];
+    if (!(posSelectedCategory && (specialKeys.includes(posSelectedCategory) || categories.includes(posSelectedCategory)))) {
+        posSelectedCategory = categories.length > 0 ? categories[0] : null;
+    }
+
+    tabs.innerHTML = allTabs.map((tab) => `
+        <button type="button" class="pos-cat-tab${tab.value === posSelectedCategory ? ' is-active' : ''}" data-cat-value="${escapeHtml(tab.value)}">${escapeHtml(tab.label)}</button>`).join('');
+
+    if (tabs.dataset.listenerAttached !== 'true') {
+        tabs.addEventListener('click', (e) => {
+            const btn = e.target.closest('.pos-cat-tab');
+            if (!btn) return;
+            posSelectedCategory = btn.dataset.catValue;
+            tabs.querySelectorAll('.pos-cat-tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+            btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            renderPosProductsPanel();
+        });
+        tabs.dataset.listenerAttached = 'true';
     }
 
     renderPosProductsPanel();
@@ -3639,10 +3527,6 @@ function handlePosProductAdd(productId, productName, productPrice) {
     addProductToPosOrder(productId, productName, productPrice);
 }
 
-function isComboCategory(categoryName) {
-    return String(categoryName || '').toLowerCase().includes('combo');
-}
-
 // ═══════════════════════════════════════════════════════════════════
 //  SISTEMA BEBIDAS — colección `bebidas` independiente de `productos`
 // ═══════════════════════════════════════════════════════════════════
@@ -3821,134 +3705,6 @@ function renderBebidasPanel() {
     container.appendChild(list);
 }
 
-function _renderBebidasLegacy_UNUSED() {
-    const bebidas = productsState
-        .filter((p) => _isBebidaCategory(p.categoria))
-        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
-
-    container.innerHTML = '';
-
-    const toolbar = document.createElement('div');
-    toolbar.className = 'section-toolbar bebidas-panel-toolbar';
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'section-action-btn primary';
-    addBtn.textContent = '+ Crear bebida';
-    addBtn.addEventListener('click', () => openProductCreateModal('BEBIDAS'));
-    toolbar.appendChild(addBtn);
-    container.appendChild(toolbar);
-
-    if (!bebidas.length) {
-        const empty = document.createElement('div');
-        empty.className = 'bebidas-panel-empty';
-        empty.innerHTML = '<p>🥤</p><p>Todavía no hay bebidas. Crea la primera.</p>';
-        container.appendChild(empty);
-        return;
-    }
-
-    const grid = document.createElement('div');
-    grid.className = 'bebidas-panel-grid';
-
-    bebidas.forEach((bev) => {
-        const card = document.createElement('div');
-        card.className = `bebidas-panel-card${bev.estado === 'paused' ? ' paused' : ''}`;
-
-        const img = document.createElement('img');
-        img.className = 'bebidas-panel-img';
-        img.src = bev.image_url || 'logo.png';
-        img.alt = bev.nombre;
-        img.loading = 'lazy';
-        img.addEventListener('error', () => { img.src = 'logo.png'; });
-
-        const info = document.createElement('div');
-        info.className = 'bebidas-panel-info';
-
-        const nombre = document.createElement('div');
-        nombre.className = 'bebidas-panel-nombre';
-        nombre.textContent = bev.nombre;
-        info.appendChild(nombre);
-
-        const metaParts = [];
-        if (bev.marca) metaParts.push(bev.marca);
-        if (bev.ml) metaParts.push(`${bev.ml}ml`);
-        if (metaParts.length) {
-            const meta = document.createElement('div');
-            meta.className = 'bebidas-panel-meta';
-            meta.textContent = metaParts.join(' · ');
-            info.appendChild(meta);
-        }
-
-        const price = document.createElement('div');
-        price.className = 'bebidas-panel-price';
-        price.textContent = formatMoney(bev.precio);
-        info.appendChild(price);
-
-        if (bev.sabores && bev.sabores.length) {
-            const saboresWrap = document.createElement('div');
-            saboresWrap.className = 'bebidas-panel-sabores';
-            bev.sabores.forEach((s) => {
-                const chip = document.createElement('span');
-                chip.className = 'bebidas-sabor-chip';
-                chip.textContent = s;
-                saboresWrap.appendChild(chip);
-            });
-            info.appendChild(saboresWrap);
-        }
-
-        const actions = document.createElement('div');
-        actions.className = 'bebidas-panel-actions';
-
-        const editBtn = document.createElement('button');
-        editBtn.type = 'button';
-        editBtn.className = 'mini-btn';
-        editBtn.textContent = 'Editar';
-        editBtn.addEventListener('click', () => {
-            const cat = categoriesState.find((c) => _isBebidaCategory(c.name));
-            openProductEditModal(bev, cat?.id || '');
-        });
-
-        const pauseBtn = document.createElement('button');
-        pauseBtn.type = 'button';
-        pauseBtn.className = 'mini-btn';
-        pauseBtn.textContent = bev.estado === 'paused' ? 'Reanudar' : 'Pausar';
-        pauseBtn.addEventListener('click', async () => {
-            const newEstado = bev.estado === 'paused' ? 'active' : 'paused';
-            try {
-                await firebaseDb.collection('productos').doc(bev.id).update({ estado: newEstado, updated_at: firestoreNow() });
-                await reloadDataAndRender();
-            } catch (e) {
-                showNotice(`No se pudo cambiar estado: ${e.message}`, 'error');
-            }
-        });
-
-        const delBtn = document.createElement('button');
-        delBtn.type = 'button';
-        delBtn.className = 'mini-btn remove';
-        delBtn.textContent = 'Eliminar';
-        delBtn.addEventListener('click', async () => {
-            if (!window.confirm(`¿Eliminar "${bev.nombre}"?`)) return;
-            try {
-                await firebaseDb.collection('productos').doc(bev.id).delete();
-                await reloadDataAndRender();
-                showNotice('Bebida eliminada.', 'ok');
-            } catch (e) {
-                showNotice(`No se pudo eliminar: ${e.message}`, 'error');
-            }
-        });
-
-        actions.appendChild(editBtn);
-        actions.appendChild(pauseBtn);
-        actions.appendChild(delBtn);
-
-        card.appendChild(img);
-        card.appendChild(info);
-        card.appendChild(actions);
-        grid.appendChild(card);
-    });
-
-    container.appendChild(grid);
-}
-
 // ─────────────────────────────────────────
 //  ACOMPAÑANTES — Colección propia Firestore
 // ─────────────────────────────────────────
@@ -3968,11 +3724,6 @@ async function fetchCatalogoVisibilidad() {
         }
     } catch (_) {}
 }
-
-async function _saveCatalogoVisibilidad() {
-    await firebaseDb.collection('configuracion').doc('visibilidad_catalogo').set(catalogoVisibilidad, { merge: true });
-}
-
 
 function normalizeAcompanante(raw) {
     return {
@@ -5059,203 +4810,6 @@ function openBebidaModal(bebida = null) {
     setTimeout(() => marcaInput.focus(), 80);
 }
 
-// Modal POS: Marca → Presentación → Sabor
-function openComboBeverageModal(productId, productName, productPrice, categoryName) {
-    const beverageOptions = getBeverageOptions();
-    let selectedBebida = null;
-    let selectedPres = null;
-    let selectedSabor = null;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'combo-modal-overlay';
-    const card = document.createElement('div');
-    card.className = 'combo-modal-card';
-
-    const header = document.createElement('div');
-    header.className = 'combo-modal-header';
-    const headerText = document.createElement('div');
-    headerText.innerHTML = `<h4>${escapeHtml(productName)}</h4><p class="combo-modal-subtitle">${escapeHtml(categoryName || 'Combo')}</p>`;
-    const closeX = document.createElement('button');
-    closeX.type = 'button';
-    closeX.className = 'combo-modal-close-x';
-    closeX.setAttribute('aria-label', 'Cerrar');
-    closeX.textContent = '×';
-    closeX.addEventListener('click', () => overlay.remove());
-    header.appendChild(headerText);
-    header.appendChild(closeX);
-
-    const secLabel = document.createElement('div');
-    secLabel.className = 'combo-modal-section-label';
-    secLabel.textContent = 'Bebida incluida';
-
-    const bevGrid = document.createElement('div');
-    bevGrid.className = 'combo-bev-grid';
-
-    // Paso 2: presentaciones (aparece al seleccionar marca)
-    const presRow = document.createElement('div');
-    presRow.className = 'combo-sabor-row';
-    presRow.style.display = 'none';
-    const presLabel = document.createElement('div');
-    presLabel.className = 'combo-modal-section-label combo-sabor-label';
-    presLabel.textContent = 'Presentación';
-    const presChips = document.createElement('div');
-    presChips.className = 'combo-sabor-chips';
-    presRow.appendChild(presLabel);
-    presRow.appendChild(presChips);
-
-    // Paso 3: sabores (aparece al seleccionar presentación con sabores)
-    const saborRow = document.createElement('div');
-    saborRow.className = 'combo-sabor-row';
-    saborRow.style.display = 'none';
-    const saborLabel = document.createElement('div');
-    saborLabel.className = 'combo-modal-section-label combo-sabor-label';
-    saborLabel.textContent = 'Sabor';
-    const saborChips = document.createElement('div');
-    saborChips.className = 'combo-sabor-chips';
-    saborRow.appendChild(saborLabel);
-    saborRow.appendChild(saborChips);
-
-    const showSaborRow = (sabores) => {
-        selectedSabor = null;
-        saborChips.innerHTML = '';
-        if (!sabores || !sabores.length) { saborRow.style.display = 'none'; return; }
-        sabores.forEach((sabor) => {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'combo-sabor-chip';
-            chip.textContent = sabor;
-            chip.addEventListener('click', () => {
-                saborChips.querySelectorAll('.combo-sabor-chip').forEach((c) => c.classList.remove('selected'));
-                chip.classList.add('selected');
-                selectedSabor = sabor;
-                saborLabel.style.color = '';
-            });
-            saborChips.appendChild(chip);
-        });
-        saborRow.style.display = '';
-    };
-
-    const showPresRow = (bebida) => {
-        selectedPres = null;
-        selectedSabor = null;
-        presChips.innerHTML = '';
-        saborRow.style.display = 'none';
-        if (!bebida || !bebida.presentaciones.length) { presRow.style.display = 'none'; return; }
-        bebida.presentaciones.forEach((pres) => {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'combo-sabor-chip';
-            chip.textContent = `${pres.nombre} — ${formatMoney(pres.precio)}`;
-            chip.addEventListener('click', () => {
-                presChips.querySelectorAll('.combo-sabor-chip').forEach((c) => c.classList.remove('selected'));
-                chip.classList.add('selected');
-                selectedPres = pres;
-                presLabel.style.color = '';
-                showSaborRow(pres.sabores);
-            });
-            presChips.appendChild(chip);
-        });
-        presRow.style.display = '';
-    };
-
-    const makeBevCard = (bebida) => {
-        const bevCard = document.createElement('div');
-        bevCard.className = 'combo-bev-card';
-        if (!bebida) {
-            const noImg = document.createElement('div');
-            noImg.className = 'combo-bev-no-img';
-            noImg.textContent = '—';
-            const lbl = document.createElement('span');
-            lbl.textContent = 'Sin bebida';
-            bevCard.appendChild(noImg);
-            bevCard.appendChild(lbl);
-            bevCard.classList.add('selected');
-        } else {
-            const img = document.createElement('img');
-            img.src = bebida.image_url || 'logo.png';
-            img.alt = bebida.marca;
-            img.loading = 'lazy';
-            img.addEventListener('error', () => { img.src = 'logo.png'; });
-            const lbl = document.createElement('span');
-            lbl.textContent = bebida.marca;
-            bevCard.appendChild(img);
-            bevCard.appendChild(lbl);
-        }
-        bevCard.addEventListener('click', () => {
-            bevGrid.querySelectorAll('.combo-bev-card').forEach((c) => c.classList.remove('selected'));
-            bevCard.classList.add('selected');
-            selectedBebida = bebida;
-            selectedPres = null;
-            selectedSabor = null;
-            showPresRow(bebida);
-        });
-        return bevCard;
-    };
-
-    bevGrid.appendChild(makeBevCard(null));
-    beverageOptions.forEach((bev) => bevGrid.appendChild(makeBevCard(bev)));
-
-    const noteRow = document.createElement('div');
-    noteRow.className = 'combo-modal-note-row';
-    const noteLbl = document.createElement('label');
-    noteLbl.className = 'combo-modal-note-label';
-    noteLbl.textContent = 'Nota (opcional)';
-    const noteInput = document.createElement('input');
-    noteInput.type = 'text';
-    noteInput.className = 'combo-modal-note-input';
-    noteInput.placeholder = 'Ej: sin hielo, con limón...';
-    noteRow.appendChild(noteLbl);
-    noteRow.appendChild(noteInput);
-
-    const footer = document.createElement('div');
-    footer.className = 'combo-modal-footer';
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'combo-modal-cancel-btn';
-    cancelBtn.textContent = 'Cancelar';
-    cancelBtn.addEventListener('click', () => overlay.remove());
-
-    const confirmBtn = document.createElement('button');
-    confirmBtn.type = 'button';
-    confirmBtn.className = 'combo-modal-confirm-btn';
-    confirmBtn.textContent = 'Agregar al pedido';
-    confirmBtn.addEventListener('click', () => {
-        if (selectedBebida && !selectedPres) {
-            presLabel.style.color = '#ff6b6b';
-            presChips.classList.add('combo-sabor-shake');
-            presChips.addEventListener('animationend', () => presChips.classList.remove('combo-sabor-shake'), { once: true });
-            return;
-        }
-        if (selectedPres && selectedPres.sabores.length > 0 && !selectedSabor) {
-            saborLabel.style.color = '#ff6b6b';
-            saborChips.classList.add('combo-sabor-shake');
-            saborChips.addEventListener('animationend', () => saborChips.classList.remove('combo-sabor-shake'), { once: true });
-            return;
-        }
-        const note = noteInput.value.trim();
-        const bevId = selectedBebida ? String(selectedBebida.id || '').trim() : 'none';
-        let orderName = selectedBebida ? `${productName} + ${selectedBebida.marca}` : productName;
-        if (selectedPres) orderName += ` ${selectedPres.nombre}`;
-        if (selectedSabor) orderName += ` (${selectedSabor})`;
-        const itemKey = `${String(productId).trim()}::${bevId}`;
-        addProductToPosOrder(itemKey, orderName, productPrice, note);
-        overlay.remove();
-    });
-
-    footer.appendChild(cancelBtn);
-    footer.appendChild(confirmBtn);
-    card.appendChild(header);
-    card.appendChild(secLabel);
-    card.appendChild(bevGrid);
-    card.appendChild(presRow);
-    card.appendChild(saborRow);
-    card.appendChild(noteRow);
-    card.appendChild(footer);
-    overlay.appendChild(card);
-    _bindOverlayClose(overlay, () => overlay.remove());
-    document.body.appendChild(overlay);
-}
-
 function openBurgerClasicasPosModal(productId, productName) {
     const overlay = document.createElement('div');
     overlay.className = 'combo-modal-overlay';
@@ -5541,118 +5095,6 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     document.body.appendChild(overlay);
 }
 
-function openComboConPapasPosModal(productId, productName, categoryName) {
-    const normProd = normalizeCategoryKey(productName).replace(/[^a-z0-9]/g, '');
-    let prices;
-    if (normProd.includes('papuda')) prices = POS_COMBOS_CON_PAPAS_PRICES.comboburgerpapuda;
-    else if (normProd.includes('super')) prices = POS_COMBOS_CON_PAPAS_PRICES.comboburgersuper;
-    else if (normProd.includes('perro')) prices = POS_COMBOS_CON_PAPAS_PRICES.comboperronormal;
-    else prices = POS_COMBOS_CON_PAPAS_PRICES.comboburgernormal;
-
-    let selectedCount = 0;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'combo-modal-overlay';
-
-    const card = document.createElement('div');
-    card.className = 'combo-modal-card';
-
-    const header = document.createElement('div');
-    header.className = 'combo-modal-header';
-    const headerText = document.createElement('div');
-    headerText.innerHTML = `<h4>${escapeHtml(productName)}</h4><p class="combo-modal-subtitle">${escapeHtml(categoryName)}</p>`;
-    const closeX = document.createElement('button');
-    closeX.type = 'button';
-    closeX.className = 'combo-modal-close-x';
-    closeX.setAttribute('aria-label', 'Cerrar');
-    closeX.textContent = '×';
-    closeX.addEventListener('click', () => overlay.remove());
-    header.appendChild(headerText);
-    header.appendChild(closeX);
-
-    const secLabel = document.createElement('div');
-    secLabel.className = 'combo-modal-section-label';
-    secLabel.textContent = 'Para cuantas personas';
-
-    const peopleGrid = document.createElement('div');
-    peopleGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px;';
-
-    const confirmBtn = document.createElement('button');
-    confirmBtn.type = 'button';
-    confirmBtn.className = 'combo-modal-confirm-btn';
-    confirmBtn.textContent = 'Selecciona personas';
-    confirmBtn.disabled = true;
-    confirmBtn.style.opacity = '0.45';
-
-    const countBtns = [];
-    [1, 2, 3, 4].forEach((count) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.style.cssText = 'padding:12px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;text-align:center;font-size:0.88rem;line-height:1.4;transition:background 0.15s;';
-        btn.innerHTML = `<strong style="display:block;">${count} PERSONA${count > 1 ? 'S' : ''}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${prices[count].toLocaleString('es-CO')}</span>`;
-        btn.addEventListener('click', () => {
-            selectedCount = count;
-            countBtns.forEach((b) => {
-                b.style.background = 'rgba(255,255,255,0.07)';
-                b.style.borderColor = 'rgba(255,255,255,0.15)';
-            });
-            btn.style.background = 'rgba(231,111,0,0.25)';
-            btn.style.borderColor = 'var(--admin-accent,#e76f00)';
-            confirmBtn.disabled = false;
-            confirmBtn.style.opacity = '1';
-            confirmBtn.textContent = `Agregar — $${prices[count].toLocaleString('es-CO')}`;
-        });
-        countBtns.push(btn);
-        peopleGrid.appendChild(btn);
-    });
-
-    const noteRow = document.createElement('div');
-    noteRow.className = 'combo-modal-note-row';
-    const noteLabel = document.createElement('label');
-    noteLabel.className = 'combo-modal-note-label';
-    noteLabel.textContent = 'Nota (opcional)';
-    const noteInput = document.createElement('input');
-    noteInput.type = 'text';
-    noteInput.className = 'combo-modal-note-input';
-    noteInput.placeholder = 'Ej: sin papas fritas extras, sin hielo...';
-    noteRow.appendChild(noteLabel);
-    noteRow.appendChild(noteInput);
-
-    const footer = document.createElement('div');
-    footer.className = 'combo-modal-footer';
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'combo-modal-cancel-btn';
-    cancelBtn.textContent = 'Cancelar';
-    cancelBtn.addEventListener('click', () => overlay.remove());
-
-    confirmBtn.addEventListener('click', () => {
-        if (!selectedCount) return;
-        const note = noteInput.value.trim();
-        const optLabel = `${selectedCount} persona${selectedCount > 1 ? 's' : ''}${note ? ` | ${note}` : ''}`;
-        addProductToPosOrder(
-            `${String(productId).trim()}::${selectedCount}p`,
-            productName,
-            prices[selectedCount],
-            optLabel
-        );
-        overlay.remove();
-    });
-
-    footer.appendChild(cancelBtn);
-    footer.appendChild(confirmBtn);
-
-    card.appendChild(header);
-    card.appendChild(secLabel);
-    card.appendChild(peopleGrid);
-    card.appendChild(noteRow);
-    card.appendChild(footer);
-    overlay.appendChild(card);
-
-    _bindOverlayClose(overlay, () => overlay.remove());
-    document.body.appendChild(overlay);
-}
-
 function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, replaceItemKey = null) {
     const beb = bebidasState.find((b) => b.id === bebidaConfig.bebida_ref_id);
     const pres = beb?.presentaciones?.find((p) => p.id === bebidaConfig.bebida_pres_id);
@@ -5853,6 +5295,7 @@ function renderPosBottomBar() {
     const bottomBar = document.getElementById('posBottomBar');
     const qtyElem = document.getElementById('posBottomQty');
     const scrollArea = document.getElementById('posProductsScroll');
+    const itemsCountBadge = document.getElementById('posItemsCountBadge');
 
     const totalQty = internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
@@ -5864,6 +5307,10 @@ function renderPosBottomBar() {
         if (scrollArea) scrollArea.style.paddingBottom = totalQty > 0 ? '106px' : '10px';
     }
     if (qtyElem) qtyElem.textContent = `${totalQty} ${totalQty === 1 ? 'item' : 'items'}`;
+    if (itemsCountBadge) {
+        itemsCountBadge.textContent = String(totalQty);
+        itemsCountBadge.style.display = totalQty > 0 ? '' : 'none';
+    }
 }
 
 function _openPosNoteModal(item, itemKey, container) {
@@ -6107,7 +5554,6 @@ function renderPosTotals() {
     const deliveryRow      = document.getElementById('posTotalDeliveryRow');
     const deliveryElem     = document.getElementById('posTotalDelivery');
     const discountInput    = document.getElementById('internalOrderDiscount');
-    const cobrarAmount     = document.getElementById('posCobrarAmount');
     const paymentTotal     = document.getElementById('posPaymentTotalDisplay');
     const bottomTotal      = document.getElementById('posBottomTotalAmt');
     const subtotal  = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
@@ -6121,7 +5567,6 @@ function renderPosTotals() {
     if (deliveryRow) deliveryRow.hidden = fee <= 0;
     if (deliveryElem) deliveryElem.textContent = formatMoney(fee);
     if (totalElem) totalElem.textContent = formatMoney(total);
-    if (cobrarAmount) cobrarAmount.textContent = formatMoney(total);
     if (paymentTotal) paymentTotal.textContent = formatMoney(total);
     if (bottomTotal) bottomTotal.textContent = formatMoney(total);
 }
@@ -6242,47 +5687,63 @@ function renderPosUpgradeStep1() {
 }
 
 // Combos de papas+bebida desde combosPackState (Artículos > COMBOS tab)
-function _renderPosUpgradeCombosPack(combos) {
+/**
+ * Shared renderer for the POS upgrade-sheet "grid of options" step (combo packs, sabores de
+ * combo, adicionales, bebidas, presentaciones de bebida). Callers precompute the already
+ * name/detail/price/key strings (escaped where the original did) so this only handles the
+ * repeated body/title/guard boilerplate, markup and event wiring.
+ */
+function _renderPosUpgradeOptionGrid({ title, items, emptyMessage, onSelect, onBack }) {
     const body = document.getElementById('posUpgradeBody');
     const titleEl = document.getElementById('posUpgradeTitle');
     if (!body) return;
     _setPosUpgradeAddBtnState(false);
-    if (titleEl) titleEl.textContent = 'Agregar Combo';
+    if (titleEl) titleEl.textContent = title;
 
-    if (!combos.length) {
-        body.innerHTML = `<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">Sin combos activos configurados</p>
+    if (!items.length && emptyMessage) {
+        body.innerHTML = `<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">${emptyMessage}</p>
             <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
-        body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
+        body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', onBack);
         return;
     }
 
+    body.innerHTML = `
+        <div class="pos-upgrade-options">
+            ${items.map((it) => `
+            <button type="button" class="pos-upgrade-opt" data-key="${it.key}">
+                <div>
+                    <div class="pos-upgrade-opt-name">${it.name}</div>
+                    ${it.detail ? `<div class="pos-upgrade-opt-detail">${it.detail}</div>` : ''}
+                </div>
+                ${it.price !== undefined ? `<span class="pos-upgrade-opt-price">${it.price}</span>` : ''}
+            </button>`).join('')}
+        </div>
+        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
+
+    body.querySelectorAll('.pos-upgrade-opt[data-key]').forEach((btn) => {
+        btn.addEventListener('click', () => onSelect(btn.dataset.key));
+    });
+    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', onBack);
+}
+
+function _renderPosUpgradeCombosPack(combos) {
     const detalle = (c) => {
         const parts = [];
         if (c.papas)         parts.push(c.papas);
         if (c.bebida_nombre) parts.push(c.bebida_nombre);
         return parts.join(' + ');
     };
-
-    body.innerHTML = `
-        <div class="pos-upgrade-options">
-            ${combos.map((c) => {
-                const precio  = Number(c.valor || 0);
-                const nombre  = String(c.nombre || 'Combo');
-                const desc    = detalle(c);
-                return `<button type="button" class="pos-upgrade-opt" data-pack-id="${c.id}">
-                    <div>
-                        <div class="pos-upgrade-opt-name">${nombre}</div>
-                        ${desc ? `<div class="pos-upgrade-opt-detail">${desc}</div>` : ''}
-                    </div>
-                    <span class="pos-upgrade-opt-price">${precio > 0 ? '+' + formatMoney(precio) : 'incluido'}</span>
-                </button>`;
-            }).join('')}
-        </div>
-        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
-
-    body.querySelectorAll('.pos-upgrade-opt[data-pack-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const c = combos.find((x) => x.id === btn.dataset.packId);
+    _renderPosUpgradeOptionGrid({
+        title: 'Agregar Combo',
+        emptyMessage: 'Sin combos activos configurados',
+        items: combos.map((c) => ({
+            key: c.id,
+            name: String(c.nombre || 'Combo'),
+            detail: detalle(c),
+            price: Number(c.valor || 0) > 0 ? '+' + formatMoney(Number(c.valor || 0)) : 'incluido',
+        })),
+        onSelect: (packId) => {
+            const c = combos.find((x) => x.id === packId);
             if (!c) return;
             const sabores = Array.isArray(c.bebida_sabores) ? c.bebida_sabores.filter(Boolean) : [];
             if (sabores.length > 1) {
@@ -6296,238 +5757,64 @@ function _renderPosUpgradeCombosPack(combos) {
                 _posUpgradePending.extras.push({ id: `combo-pack-${c.id}${saborSuffix}`, name: nombre, price: precio });
                 renderPosUpgradeStep1();
             }
-        });
+        },
+        onBack: renderPosUpgradeStep1,
     });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
 }
 
 function _renderPosUpgradePackSabor(combo, sabores) {
-    const body = document.getElementById('posUpgradeBody');
-    const titleEl = document.getElementById('posUpgradeTitle');
-    if (!body) return;
-    _setPosUpgradeAddBtnState(false);
-    if (titleEl) titleEl.textContent = 'Elige sabor de bebida';
-
-    body.innerHTML = `
-        <div class="pos-upgrade-options">
-            ${sabores.map((s) => `
-            <button type="button" class="pos-upgrade-opt" data-sabor="${s}">
-                <div><div class="pos-upgrade-opt-name">${s}</div></div>
-            </button>`).join('')}
-        </div>
-        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
-
-    body.querySelectorAll('.pos-upgrade-opt[data-sabor]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const nombre = `${combo.nombre} (${btn.dataset.sabor})`;
+    _renderPosUpgradeOptionGrid({
+        title: 'Elige sabor de bebida',
+        items: sabores.map((s) => ({ key: s, name: s })),
+        onSelect: (sabor) => {
+            const nombre = `${combo.nombre} (${sabor})`;
             const precio = Number(combo.valor || 0);
-            _posUpgradePending.extras.push({ id: `combo-pack-${combo.id}-${btn.dataset.sabor}`, name: nombre, price: precio });
+            _posUpgradePending.extras.push({ id: `combo-pack-${combo.id}-${sabor}`, name: nombre, price: precio });
             renderPosUpgradeStep1();
-        });
+        },
+        onBack: () => {
+            const activos = combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false);
+            _renderPosUpgradeCombosPack(activos);
+        },
     });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => {
-        const activos = combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false);
-        _renderPosUpgradeCombosPack(activos);
-    });
-}
-
-// Flujo Combo legacy (ya no usado, se mantiene por compatibilidad)
-function _renderPosUpgradeCombo() {
-    const body = document.getElementById('posUpgradeBody');
-    const titleEl = document.getElementById('posUpgradeTitle');
-    if (!body) return;
-    _setPosUpgradeAddBtnState(false);
-    if (titleEl) titleEl.textContent = 'Combo — Elige adicional';
-
-    const activos = acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).sort((a, b) => a.orden - b.orden);
-
-    body.innerHTML = `
-        <div class="pos-upgrade-options">
-            ${activos.map((a) => `
-            <button type="button" class="pos-upgrade-opt" data-acomp-id="${escapeHtml(a.id)}">
-                <div>
-                    <div class="pos-upgrade-opt-name">${escapeHtml(a.nombre)}</div>
-                    ${a.cantidad ? `<div class="pos-upgrade-opt-detail">${escapeHtml(a.cantidad)}</div>` : ''}
-                </div>
-                <span class="pos-upgrade-opt-price">${a.precio > 0 ? '+' + formatMoney(a.precio) : 'incluido'}</span>
-            </button>`).join('')}
-        </div>
-        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
-
-    body.querySelectorAll('.pos-upgrade-opt[data-acomp-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const acomp = acompanantesState.find((a) => a.id === btn.dataset.acompId);
-            if (!acomp) return;
-            _posUpgradePending.extras.push({ id: `acomp-${acomp.id}`, name: acomp.nombre, price: acomp.precio });
-            // Continuar al paso de bebida
-            _renderPosUpgradeCombo_Bebida();
-        });
-    });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', renderPosUpgradeStep1);
-}
-
-function _renderPosUpgradeCombo_Bebida() {
-    const body = document.getElementById('posUpgradeBody');
-    const titleEl = document.getElementById('posUpgradeTitle');
-    if (!body) return;
-    _setPosUpgradeAddBtnState(false);
-    if (titleEl) titleEl.textContent = 'Combo — Elige bebida';
-
-    const activas = bebidasState.filter((b) => b.estado === 'active' && b.mostrar_acompanante).sort((a, b) => a.orden - b.orden);
-
-    body.innerHTML = `
-        <div class="pos-upgrade-options">
-            ${activas.map((b) => {
-                const min = b.presentaciones.length > 0 ? Math.min(...b.presentaciones.map((p) => p.precio)) : 0;
-                const det = b.presentaciones.length > 1 ? `${b.presentaciones.length} presentaciones` : (b.presentaciones[0]?.nombre || '');
-                return `<button type="button" class="pos-upgrade-opt" data-bebida-id="${escapeHtml(b.id)}">
-                    <div>
-                        <div class="pos-upgrade-opt-name">${escapeHtml(b.marca)}</div>
-                        ${det ? `<div class="pos-upgrade-opt-detail">${escapeHtml(det)}</div>` : ''}
-                    </div>
-                    <span class="pos-upgrade-opt-price">${b.presentaciones.length > 0 ? 'desde +' + formatMoney(min) : ''}</span>
-                </button>`;
-            }).join('')}
-        </div>
-        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Cambiar adicional</button>`;
-
-    body.querySelectorAll('.pos-upgrade-opt[data-bebida-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const bev = bebidasState.find((b) => b.id === btn.dataset.bebidaId);
-            if (!bev) return;
-            if (bev.presentaciones.length === 1 && bev.presentaciones[0].sabores.length === 0) {
-                const pres = bev.presentaciones[0];
-                _posUpgradePending.extras.push({ id: `bev-${bev.id}-${pres.id}`, name: `${bev.marca} ${pres.nombre}`, price: pres.precio });
-                renderPosUpgradeStep1();
-            } else {
-                _renderPosUpgradeCombo_BebidaPres(bev);
-            }
-        });
-    });
-    // Volver = deshacer el acompañante recién agregado y volver al paso 1 del combo
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => {
-        _posUpgradePending.extras.pop();
-        _renderPosUpgradeCombo();
-    });
-}
-
-function _renderPosUpgradeCombo_BebidaPres(bebida) {
-    const body = document.getElementById('posUpgradeBody');
-    const titleEl = document.getElementById('posUpgradeTitle');
-    if (!body) return;
-    _setPosUpgradeAddBtnState(false);
-    if (titleEl) titleEl.textContent = `Combo — ${escapeHtml(bebida.marca)}`;
-
-    body.innerHTML = `
-        <div class="pos-upgrade-options">
-            ${bebida.presentaciones.map((p) => `
-            <button type="button" class="pos-upgrade-opt" data-pres-id="${escapeHtml(p.id)}">
-                <div><div class="pos-upgrade-opt-name">${escapeHtml(p.nombre)}</div></div>
-                <span class="pos-upgrade-opt-price">+${formatMoney(p.precio)}</span>
-            </button>`).join('')}
-        </div>
-        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
-
-    body.querySelectorAll('.pos-upgrade-opt[data-pres-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const pres = bebida.presentaciones.find((p) => p.id === btn.dataset.presId);
-            if (!pres) return;
-            if (pres.sabores.length > 0) {
-                _renderPosUpgradeCombo_Sabores(bebida, pres);
-            } else {
-                _posUpgradePending.extras.push({ id: `bev-${bebida.id}-${pres.id}`, name: `${bebida.marca} ${pres.nombre}`, price: pres.precio });
-                renderPosUpgradeStep1();
-            }
-        });
-    });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => _renderPosUpgradeCombo_Bebida());
-}
-
-function _renderPosUpgradeCombo_Sabores(bebida, presentacion) {
-    const body = document.getElementById('posUpgradeBody');
-    const titleEl = document.getElementById('posUpgradeTitle');
-    if (!body) return;
-    _setPosUpgradeAddBtnState(false);
-    if (titleEl) titleEl.textContent = `Combo — ${escapeHtml(bebida.marca)} sabor`;
-
-    body.innerHTML = `
-        <div class="pos-flavors-grid">
-            ${presentacion.sabores.map((s) => `
-            <button type="button" class="pos-flavor-btn" data-sabor="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
-        </div>
-        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
-
-    body.querySelectorAll('.pos-flavor-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const name = `${bebida.marca} ${presentacion.nombre} (${btn.dataset.sabor})`;
-            _posUpgradePending.extras.push({ id: `bev-${bebida.id}-${presentacion.id}`, name, price: presentacion.precio });
-            renderPosUpgradeStep1();
-        });
-    });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => _renderPosUpgradeCombo_BebidaPres(bebida));
 }
 
 function _renderPosUpgradeAdicionales(onBack = renderPosUpgradeStep1) {
-    const body = document.getElementById('posUpgradeBody');
-    const titleEl = document.getElementById('posUpgradeTitle');
-    if (!body) return;
-    _setPosUpgradeAddBtnState(false);
-    if (titleEl) titleEl.textContent = 'Adicionales';
-
     const activos = acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).sort((a, b) => a.orden - b.orden);
-
-    body.innerHTML = `
-        <div class="pos-upgrade-options">
-            ${activos.map((a) => `
-            <button type="button" class="pos-upgrade-opt" data-acomp-id="${escapeHtml(a.id)}">
-                <div>
-                    <div class="pos-upgrade-opt-name">${escapeHtml(a.nombre)}</div>
-                    ${a.cantidad ? `<div class="pos-upgrade-opt-detail">${escapeHtml(a.cantidad)}</div>` : ''}
-                </div>
-                <span class="pos-upgrade-opt-price">${a.precio > 0 ? '+' + formatMoney(a.precio) : 'incluido'}</span>
-            </button>`).join('')}
-        </div>
-        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
-
-    body.querySelectorAll('.pos-upgrade-opt[data-acomp-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const acomp = acompanantesState.find((a) => a.id === btn.dataset.acompId);
+    _renderPosUpgradeOptionGrid({
+        title: 'Adicionales',
+        items: activos.map((a) => ({
+            key: escapeHtml(a.id),
+            name: escapeHtml(a.nombre),
+            detail: a.cantidad ? escapeHtml(a.cantidad) : '',
+            price: a.precio > 0 ? '+' + formatMoney(a.precio) : 'incluido',
+        })),
+        onSelect: (id) => {
+            const acomp = acompanantesState.find((a) => a.id === id);
             if (!acomp) return;
             _posUpgradePending.extras.push({ id: `acomp-${acomp.id}`, name: acomp.nombre, price: acomp.precio });
             onBack();
-        });
+        },
+        onBack,
     });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', onBack);
 }
 
 function _renderPosUpgradeBebidas(onBack = renderPosUpgradeStep1) {
-    const body = document.getElementById('posUpgradeBody');
-    const titleEl = document.getElementById('posUpgradeTitle');
-    if (!body) return;
-    _setPosUpgradeAddBtnState(false);
-    if (titleEl) titleEl.textContent = 'Bebidas';
-
     const activas = bebidasState.filter((b) => b.estado === 'active' && b.mostrar_acompanante).sort((a, b) => a.orden - b.orden);
-
-    body.innerHTML = `
-        <div class="pos-upgrade-options">
-            ${activas.map((b) => {
-                const min = b.presentaciones.length > 0 ? Math.min(...b.presentaciones.map((p) => p.precio)) : 0;
-                const det = b.presentaciones.length > 1 ? `${b.presentaciones.length} presentaciones` : (b.presentaciones[0]?.nombre || '');
-                return `<button type="button" class="pos-upgrade-opt" data-bebida-id="${escapeHtml(b.id)}">
-                    <div>
-                        <div class="pos-upgrade-opt-name">${escapeHtml(b.marca)}</div>
-                        ${det ? `<div class="pos-upgrade-opt-detail">${escapeHtml(det)}</div>` : ''}
-                    </div>
-                    <span class="pos-upgrade-opt-price">${b.presentaciones.length > 0 ? 'desde +' + formatMoney(min) : ''}</span>
-                </button>`;
-            }).join('')}
-        </div>
-        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
-
-    body.querySelectorAll('.pos-upgrade-opt[data-bebida-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const bev = bebidasState.find((b) => b.id === btn.dataset.bebidaId);
+    _renderPosUpgradeOptionGrid({
+        title: 'Bebidas',
+        items: activas.map((b) => {
+            const min = b.presentaciones.length > 0 ? Math.min(...b.presentaciones.map((p) => p.precio)) : 0;
+            const det = b.presentaciones.length > 1 ? `${b.presentaciones.length} presentaciones` : (b.presentaciones[0]?.nombre || '');
+            return {
+                key: escapeHtml(b.id),
+                name: escapeHtml(b.marca),
+                detail: det ? escapeHtml(det) : '',
+                price: b.presentaciones.length > 0 ? 'desde +' + formatMoney(min) : '',
+            };
+        }),
+        onSelect: (id) => {
+            const bev = bebidasState.find((b) => b.id === id);
             if (!bev) return;
             if (bev.presentaciones.length === 1 && bev.presentaciones[0].sabores.length === 0) {
                 const pres = bev.presentaciones[0];
@@ -6536,31 +5823,21 @@ function _renderPosUpgradeBebidas(onBack = renderPosUpgradeStep1) {
             } else {
                 _renderPosUpgradeBebidaPresentaciones(bev, onBack);
             }
-        });
+        },
+        onBack,
     });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', onBack);
 }
 
 function _renderPosUpgradeBebidaPresentaciones(bebida, onBack = renderPosUpgradeStep1) {
-    const body = document.getElementById('posUpgradeBody');
-    const titleEl = document.getElementById('posUpgradeTitle');
-    if (!body) return;
-    _setPosUpgradeAddBtnState(false);
-    if (titleEl) titleEl.textContent = escapeHtml(bebida.marca);
-
-    body.innerHTML = `
-        <div class="pos-upgrade-options">
-            ${bebida.presentaciones.map((p) => `
-            <button type="button" class="pos-upgrade-opt" data-pres-id="${escapeHtml(p.id)}">
-                <div><div class="pos-upgrade-opt-name">${escapeHtml(p.nombre)}</div></div>
-                <span class="pos-upgrade-opt-price">+${formatMoney(p.precio)}</span>
-            </button>`).join('')}
-        </div>
-        <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
-
-    body.querySelectorAll('.pos-upgrade-opt[data-pres-id]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const pres = bebida.presentaciones.find((p) => p.id === btn.dataset.presId);
+    _renderPosUpgradeOptionGrid({
+        title: escapeHtml(bebida.marca),
+        items: bebida.presentaciones.map((p) => ({
+            key: escapeHtml(p.id),
+            name: escapeHtml(p.nombre),
+            price: '+' + formatMoney(p.precio),
+        })),
+        onSelect: (id) => {
+            const pres = bebida.presentaciones.find((p) => p.id === id);
             if (!pres) return;
             if (pres.sabores.length > 0) {
                 _renderPosUpgradeBebidaSabores(bebida, pres, onBack);
@@ -6568,9 +5845,9 @@ function _renderPosUpgradeBebidaPresentaciones(bebida, onBack = renderPosUpgrade
                 _posUpgradePending.extras.push({ id: `bev-${bebida.id}-${pres.id}`, name: `${bebida.marca} ${pres.nombre}`, price: pres.precio });
                 onBack();
             }
-        });
+        },
+        onBack: () => _renderPosUpgradeBebidas(onBack),
     });
-    body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => _renderPosUpgradeBebidas(onBack));
 }
 
 function _renderPosUpgradeBebidaSabores(bebida, presentacion, onBack = renderPosUpgradeStep1) {
@@ -6865,48 +6142,6 @@ function showPosScreen(screen) {
     }
 }
 
-function populateInternalOrderClientSelect() {
-    if (!internalOrderClientSelect) {
-        return;
-    }
-
-    internalOrderClientSelect.innerHTML = '<option value="">Nuevo cliente</option>';
-    clientsState.forEach((client) => {
-        const option = document.createElement('option');
-        option.value = client.id;
-        option.textContent = `${client.customerName} · ${client.customerPhone}`;
-        internalOrderClientSelect.appendChild(option);
-    });
-}
-
-function renderInternalOrderClientAddressOptions() {
-    if (!internalOrderClientSelect || !internalOrderClientAddressField || !internalOrderClientAddressSelect) {
-        return;
-    }
-
-    const selectedClientId = String(internalOrderClientSelect.value || '').trim();
-    const selectedClient = clientsState.find((client) => client.id === selectedClientId);
-
-    if (!selectedClient) {
-        internalOrderClientAddressField.hidden = true;
-        internalOrderClientAddressSelect.innerHTML = '';
-        return;
-    }
-
-    const addresses = Array.isArray(selectedClient.savedAddresses) ? selectedClient.savedAddresses.filter((a) => String(a || '').trim()) : [];
-
-    if (!addresses.length) {
-        internalOrderClientAddressField.hidden = true;
-        internalOrderClientAddressSelect.innerHTML = '';
-        return;
-    }
-
-    internalOrderClientAddressSelect.innerHTML = addresses
-        .map((address) => `<option value="${escapeHtml(address)}">${escapeHtml(address)}</option>`)
-        .join('');
-    internalOrderClientAddressField.hidden = false;
-}
-
 /* ─── Buscador de clientes POS ─── */
 
 function initPosClientSearch() {
@@ -6951,10 +6186,13 @@ function initPosClientSearch() {
         editBtn.dataset.listenerAttached = 'true';
     }
 
-    document.addEventListener('click', (e) => {
-        const wrap = document.querySelector('.pos-client-search-wrap');
-        if (wrap && !wrap.contains(e.target)) hidePosClientResults();
-    }, { capture: false });
+    if (!_posClientOutsideClickBound) {
+        document.addEventListener('click', (e) => {
+            const wrap = document.querySelector('.pos-client-search-wrap');
+            if (wrap && !wrap.contains(e.target)) hidePosClientResults();
+        }, { capture: false });
+        _posClientOutsideClickBound = true;
+    }
 }
 
 function showPosClientResults(matches) {
@@ -8825,47 +8063,6 @@ async function _saveCategoryFromDetail(categoryId) {
     }
 }
 
-function _buildCatAcompHtml(category) {
-    const cfg = menuUpgradesConfig || DEFAULT_UPGRADES_CONFIG;
-    const opciones = (cfg.opciones || []).filter((o) => o.id && o.nombre);
-    if (opciones.length === 0) return '';
-
-    const catName = category.name || '';
-    const aplica = (cfg.categorias_aplica || []).map((c) => c.toUpperCase());
-    const isActive = aplica.includes(catName.toUpperCase());
-    const catIdsMap = cfg.categorias_ids || {};
-    const savedIds = catIdsMap[catName] || catIdsMap[catName.toUpperCase()] || [];
-
-    const items = opciones.map((opt) => {
-        const checked = isActive && (savedIds.length === 0 || savedIds.includes(opt.id)) ? 'checked' : '';
-        const precioLabel = opt.precio > 0 ? `+$${Number(opt.precio).toLocaleString('es-CO')}` : 'Incluido';
-        const detalle = opt.detalle ? `<span style="font-size:0.72rem;color:rgba(200,210,230,0.5);margin-top:1px;display:block;">${escapeHtml(opt.detalle)}</span>` : '';
-        return `<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer;background:rgba(255,255,255,0.02);">
-            <input type="checkbox" name="catAcompId" value="${escapeHtml(opt.id)}" ${checked} style="width:16px;height:16px;accent-color:#ff7a00;flex-shrink:0;cursor:pointer;">
-            <div style="flex:1;min-width:0;">
-                <span style="font-size:0.85rem;font-weight:600;color:#eef4ff;">${escapeHtml(opt.nombre)}</span>
-                ${detalle}
-            </div>
-            <span style="font-size:0.80rem;font-weight:700;color:#ff7a00;white-space:nowrap;">${precioLabel}</span>
-        </label>`;
-    }).join('');
-
-    return `<div style="margin-top:14px;border-top:1px solid rgba(255,255,255,0.08);padding-top:14px;">
-        <button type="button" id="catAcompToggleBtn" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;cursor:pointer;color:inherit;text-align:left;gap:8px;">
-            <span style="font-size:0.78rem;font-weight:600;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;">Acompañantes (POS)${isActive ? ' ✓' : ''}</span>
-            <span id="catAcompArrow" style="font-size:0.72rem;color:var(--admin-muted);flex-shrink:0;transition:transform 0.18s;">▼</span>
-        </button>
-        <div id="catAcompBody" style="display:none;margin-top:6px;">
-            <label style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(255,122,26,0.08);border:1px solid rgba(255,122,26,0.22);border-radius:10px;cursor:pointer;margin-bottom:6px;">
-                <span style="font-size:0.82rem;font-weight:600;color:#eef4ff;">Activar acompañantes para esta categoría</span>
-                <input type="checkbox" id="catAcompActivo" ${isActive ? 'checked' : ''} style="width:17px;height:17px;accent-color:#ff7a00;cursor:pointer;">
-            </label>
-            <div id="catAcompList" style="display:${isActive ? 'block' : 'none'};border:1px solid rgba(255,122,26,0.22);border-radius:10px;overflow:hidden;">${items}</div>
-        </div>
-    </div>`;
-}
-
-
 async function _saveProductInline(productId, categoryId) {
     const nameInput = document.getElementById('cpefName');
     const priceInput = document.getElementById('cpefPrice');
@@ -8927,28 +8124,6 @@ async function _saveProductInline(productId, categoryId) {
         showNotice(`Error al guardar: ${e.message || 'Error inesperado.'}`, 'error');
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
     }
-}
-
-function createFeaturedRow(product) {
-    const row = document.createElement('div');
-    row.className = 'list-item';
-
-    const stateClass = product.estado === 'active' ? 'visible' : 'hidden';
-    const stateText = product.estado === 'active' ? 'Activo' : 'Pausado';
-    const toggleText = product.estado === 'active' ? 'Pausar' : 'Reanudar';
-
-    row.innerHTML = `
-        <div class="product-main">
-            <img src="${product.image_url || 'logo.png'}" alt="${product.nombre}">
-            <span>${product.nombre}</span>
-        </div>
-        <div class="muted">$ ${Number(product.precio).toLocaleString('es-CO')} - ${product.categoria}</div>
-        <span class="state-pill ${stateClass}">${stateText}</span>
-        <button class="mini-btn" data-product-id="${product.id}" data-action="toggle-featured-state">${toggleText}</button>
-        <button class="mini-btn remove" data-product-id="${product.id}" data-action="remove-featured">Quitar</button>
-    `;
-
-    return row;
 }
 
 // ── Métricas: Pestaña Usuarios ────────────────────────────────────────────────
@@ -9920,13 +9095,6 @@ function summaryMatchesDateRangeForInputs(summary, fromInput, toInput) {
     }
 
     return true;
-}
-
-function getFilteredLedgerEntries() {
-    const tsOf = (v) => v && typeof v.toMillis === 'function' ? v.toMillis() : (Number.isFinite(Number(v)) ? Number(v) : 0);
-    return [...salesSummariesState]
-        .filter((summary) => summaryMatchesDateRangeForInputs(summary, ledgerBookDateFrom, ledgerBookDateTo))
-        .sort((a, b) => tsOf(b.closedAt) - tsOf(a.closedAt));
 }
 
 function getSalesSummaryBreakdown(summary, type, value) {
@@ -11076,85 +10244,61 @@ function renderSalesSummaries() {
     }).join('');
 }
 
-function renderLedgerBook() {
-    const entries = getFilteredLedgerEntries();
-    const totalIncome = entries.reduce((sum, entry) => sum + Number(entry.totalSales || 0), 0);
-    const totalEntries = entries.length;
-    const averageIncome = totalEntries ? totalIncome / totalEntries : 0;
-
-    if (ledgerBookTotalIncome) {
-        ledgerBookTotalIncome.textContent = formatMoney(totalIncome);
-    }
-
-    if (ledgerBookTotalEntries) {
-        ledgerBookTotalEntries.textContent = Number(totalEntries).toLocaleString('es-CO');
-    }
-
-    if (ledgerBookAverageIncome) {
-        ledgerBookAverageIncome.textContent = formatMoney(averageIncome);
-    }
-
-    if (!ledgerBookList) {
-        return;
-    }
-
-    if (!entries.length) {
-        ledgerBookList.innerHTML = '<tr><td class="client-empty-row" colspan="4">No hay cierres disponibles para el libro contable.</td></tr>';
-        return;
-    }
-
-    ledgerBookList.innerHTML = entries.map((entry) => {
-        return `
-            <tr>
-                <td>${escapeHtml(formatDateTime(entry.closedAt))}</td>
-                <td>${escapeHtml(String(entry.totalOrders || 0))}</td>
-                <td>${escapeHtml(String(entry.totalItems || 0))}</td>
-                <td><strong>${escapeHtml(formatMoney(entry.totalSales || 0))}</strong></td>
-            </tr>
-        `;
-    }).join('');
-}
-
-function getLedgerExportColumns() {
+function getCierresExportColumns() {
+    const methods = getPaymentMethods();
     return [
-        { key: 'fecha', label: 'Fecha' },
-        { key: 'pedidos', label: 'Pedidos' },
-        { key: 'items', label: 'Items' },
-        { key: 'ventas_total', label: 'Ventas total' }
+        { key: 'fecha', label: 'Fecha cierre' },
+        ...methods.map((m) => ({ key: `metodo_${m.id}`, label: m.label })),
+        { key: 'egresos', label: 'Egresos' },
+        { key: 'total_neto', label: 'Total neto' }
     ];
 }
 
-function buildLedgerExportRows(entries) {
-    return entries.map((entry) => ({
-        fecha: formatExportDate(entry.closedAt),
-        pedidos: Number(entry.totalOrders || 0),
-        items: Number(entry.totalItems || 0),
-        ventas_total: Number(entry.totalSales || 0)
-    }));
+function buildCierresExportRows(cierres) {
+    const methods = getPaymentMethods();
+    return cierres.map((c) => {
+        const methodTotals = c.methodTotals || {};
+        const row = { fecha: formatExportDate(c.closedAt) };
+        methods.forEach((m) => { row[`metodo_${m.id}`] = Number(methodTotals[m.id] || 0); });
+        row.egresos = Number(c.gastosTotal || 0);
+        row.total_neto = Number(c.grandTotal || 0);
+        return row;
+    });
 }
 
-function exportLedgerBook(format) {
-    const entries = getFilteredLedgerEntries();
-    if (!entries.length) {
-        showNotice('No hay cierres en el libro para exportar con el filtro actual.', 'error');
+function exportCierresHistorial(format) {
+    const { from, to } = _getCierresFilterRange();
+    const inRange = (ms) => {
+        if (!ms) return false;
+        const d = new Date(ms);
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+    };
+    let cierres = [..._cierresCajaState];
+    if (from || to) {
+        cierres = cierres.filter((c) => inRange(c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0)));
+    }
+    if (!cierres.length) {
+        showNotice('No hay cierres en el historial para exportar con el filtro actual.', 'error');
         return;
     }
 
-    const rows = buildLedgerExportRows(entries);
-    const columns = getLedgerExportColumns();
+    const rows = buildCierresExportRows(cierres);
+    const columns = getCierresExportColumns();
     const headers = columns.map((column) => column.key);
     const headerLabels = columns.map((column) => column.label);
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
     const formatKey = String(format || 'csv').trim().toLowerCase();
-    const fromLabel = String(ledgerBookDateFrom?.value || '').trim();
-    const toLabel = String(ledgerBookDateTo?.value || '').trim();
+    const fromLabel = String(document.getElementById('cierresDateFrom')?.value || '').trim();
+    const toLabel = String(document.getElementById('cierresDateTo')?.value || '').trim();
     const subtitle = fromLabel || toLabel
         ? `Periodo filtrado: ${fromLabel || 'inicio'} a ${toLabel || 'hoy'}.`
         : 'Periodo: todos los cierres registrados.';
 
     if (formatKey === 'pdf') {
         const printableHtml = buildClientExportHtmlDocument(rows, columns, {
-            title: 'Libro contable',
+            title: 'Historial de cajas',
             subtitle: `${subtitle} Usa Guardar como PDF en la ventana de impresion.`
         });
         printClientExportPdf(printableHtml);
@@ -11170,8 +10314,8 @@ function exportLedgerBook(format) {
         }).join(','))
     ].join('\r\n');
 
-    downloadExportFile(`libro-contable-${stamp}.csv`, csvContent, 'text/csv;charset=utf-8');
-    showNotice(`Libro contable exportado en Excel/CSV (${rows.length}).`, 'ok');
+    downloadExportFile(`historial-cajas-${stamp}.csv`, csvContent, 'text/csv;charset=utf-8');
+    showNotice(`Historial de cajas exportado en Excel/CSV (${rows.length}).`, 'ok');
 }
 
 async function closeCurrentSalesDay() {
@@ -12146,19 +11290,15 @@ function _escNormalize(str) {
         .replace(/[^\x20-\x7E]/g, ''); // elimina emojis y cualquier char fuera de ASCII imprimible
 }
 
-function buildESCPOSData(order) {
-    const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
-    const COLS = 32;
-    const bytes = [];
-    const pb = (...a) => bytes.push(...a);
-
-    // Emite una sola línea ya ajustada (uso interno de ww/wc)
+// Helpers de formato ESC/POS compartidos por buildESCPOSData y buildCierreESCPOSData:
+// _emit (línea cruda), ww (envuelve por palabras, nunca corta), wl (envuelve o no según COLS),
+// wc (columna izquierda/derecha), sep/sep2 (separadores). `pb` recibe los bytes a imprimir.
+function createEscPosLineBuilder(pb, COLS) {
     function _emit(line) {
         const s = _escNormalize(line);
         for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
-        pb(LF);
+        pb(0x0A);
     }
-    // Imprime texto envolviéndolo por palabras — nunca corta
     function ww(str, prefix) {
         const pfx = _escNormalize(prefix || '');
         const s = _escNormalize(str);
@@ -12189,7 +11329,6 @@ function buildESCPOSData(order) {
         }
         if (current) emit((firstLine ? pfx : contPfx) + current);
     }
-    // wl: envuelve si el texto supera COLS, nunca trunca
     function wl(str) { ww(str, ''); }
     function wc(left, right) {
         const l = _escNormalize(left); const r = _escNormalize(right);
@@ -12205,6 +11344,15 @@ function buildESCPOSData(order) {
     }
     function sep()  { _emit('-'.repeat(COLS)); }
     function sep2() { _emit('='.repeat(COLS)); }
+    return { ww, wl, wc, sep, sep2 };
+}
+
+function buildESCPOSData(order) {
+    const ESC = 0x1B; const GS = 0x1D;
+    const COLS = 32;
+    const bytes = [];
+    const pb = (...a) => bytes.push(...a);
+    const { ww, wl, wc, sep, sep2 } = createEscPosLineBuilder(pb, COLS);
 
     // ── ENCABEZADO ──────────────────────────────────────────────────────────
     pb(ESC, 0x40);
@@ -12488,32 +11636,10 @@ function openKitchenPrintTicket(orderId) {
     setTimeout(() => { window.print(); }, 150);
 }
 
-function refreshLivePreview() {
-    if (!liveMenuPreview) {
-        return;
-    }
-
-    const currentUrl = new URL(liveMenuPreview.src, window.location.href);
-    currentUrl.searchParams.set('adminPreview', '1');
-    currentUrl.searchParams.set('t', String(Date.now()));
-    liveMenuPreview.src = currentUrl.toString();
-}
-
-function queueLivePreviewRefresh() {
-    if (previewRefreshTimer) {
-        clearTimeout(previewRefreshTimer);
-    }
-
-    previewRefreshTimer = setTimeout(() => {
-        refreshLivePreview();
-    }, 450);
-}
-
 function _scheduleLiveReload() {
     clearTimeout(_liveReloadTimer);
     _liveReloadTimer = setTimeout(async () => {
         await reloadDataAndRender();
-        queueLivePreviewRefresh();
     }, 1500);
 }
 
@@ -12703,52 +11829,6 @@ function renderBrandingForm() {
     if (bizEmailEl && firebaseAuth?.currentUser?.email) {
         bizEmailEl.value = firebaseAuth.currentUser.email;
     }
-
-    renderBrandingPreview();
-}
-
-function renderBrandingPreview() {
-    if (!brandingForm || !previewName || !previewSlogan || !brandingPreview) {
-        return;
-    }
-
-    const name = String(brandingForm.restaurantName.value || '').trim() || defaultBranding.restaurantName;
-    const slogan = String(brandingForm.restaurantSlogan.value || '').trim() || defaultBranding.slogan;
-    const whatsappNumber = String(brandingForm.restaurantWhatsappNumber.value || '').trim() || defaultBranding.whatsappNumber;
-    const businessHours = String(brandingForm.restaurantBusinessHours.value || '').trim() || defaultBranding.businessHours;
-    const address = String(brandingForm.restaurantAddress.value || '').trim() || defaultBranding.address;
-    const locationLink = String(brandingForm.restaurantLocationLink.value || '').trim() || defaultBranding.locationLink;
-    const socialLabels = [
-        String(brandingForm.restaurantInstagramLink.value || '').trim() ? 'Instagram' : '',
-        String(brandingForm.restaurantTiktokLink.value || '').trim() ? 'TikTok' : '',
-        String(brandingForm.restaurantFacebookLink.value || '').trim() ? 'Facebook' : ''
-    ].filter(Boolean);
-
-    previewName.textContent = name;
-    previewSlogan.textContent = slogan;
-    brandingPreview.style.borderColor = `${brandingState.primaryColor}55`;
-    brandingPreview.style.background = `linear-gradient(135deg, ${brandingState.bgColor}, ${brandingState.secondaryColor}16)`;
-    brandingPreview.style.fontFamily = brandingState.fontFamily;
-
-    if (previewWhatsapp) {
-        previewWhatsapp.textContent = `WhatsApp: ${whatsappNumber}`;
-    }
-    if (previewBusinessHours) {
-        previewBusinessHours.textContent = businessHours;
-    }
-    if (previewAddress) {
-        previewAddress.textContent = address;
-    }
-    if (previewLocation) {
-        previewLocation.textContent = locationLink ? `Ubicacion: ${locationLink}` : 'Ubicacion no configurada';
-    }
-    if (previewSocials) {
-        previewSocials.textContent = socialLabels.length
-            ? `Redes configuradas: ${socialLabels.join(' · ')}`
-            : 'Redes sociales no configuradas';
-    }
-
-    applyDesignToPreviewFrame(brandingState);
 }
 
 async function fetchRecomendadoDiaConfig() {
@@ -13998,72 +13078,6 @@ async function syncBrandingLinksToButtons(brandingConfig) {
     await batch.commit();
 }
 
-function applyDesignToPreviewFrame(config) {
-    if (!liveMenuPreview || !liveMenuPreview.contentDocument) {
-        return;
-    }
-
-    const previewDoc = liveMenuPreview.contentDocument;
-    const previewBody = previewDoc.body;
-    if (!previewBody) {
-        return;
-    }
-
-    previewBody.dataset.theme = config.template || defaultBranding.template;
-
-    const previewRoot = previewDoc.documentElement;
-    previewRoot.style.setProperty('--brand-primary', config.primaryColor || defaultBranding.primaryColor);
-    previewRoot.style.setProperty('--brand-secondary', config.secondaryColor || defaultBranding.secondaryColor);
-    previewRoot.style.setProperty('--brand-accent', config.accentColor || defaultBranding.accentColor);
-    previewRoot.style.setProperty('--landing-bg-color', config.bgColor || defaultBranding.bgColor);
-    previewRoot.style.setProperty('--landing-button-border-color', config.buttonBorderColor || defaultBranding.buttonBorderColor);
-    previewRoot.style.setProperty('--landing-font-family', config.fontFamily || defaultBranding.fontFamily);
-    previewRoot.style.setProperty('--landing-font-size-base', `${config.fontSizeBase || defaultBranding.fontSizeBase}px`);
-    previewRoot.style.setProperty('--landing-animation-speed', String(config.animationSpeed || defaultBranding.animationSpeed));
-
-    ensurePreviewGoogleFont(previewDoc, config.fontFamily || defaultBranding.fontFamily);
-}
-
-function ensurePreviewGoogleFont(previewDoc, fontFamily) {
-    const family = String(fontFamily || '').toLowerCase();
-    const familyParamMap = {
-        roboto: 'Roboto:wght@300;400;500;700',
-        manrope: 'Manrope:wght@400;500;700;800',
-        'plus jakarta sans': 'Plus+Jakarta+Sans:wght@400;600;700',
-        'space grotesk': 'Space+Grotesk:wght@400;500;700'
-    };
-
-    const key = Object.keys(familyParamMap).find((item) => family.includes(item));
-    if (!key || !previewDoc.head) {
-        return;
-    }
-
-    let link = previewDoc.getElementById('dynamicLandingFont');
-    if (!link) {
-        link = previewDoc.createElement('link');
-        link.id = 'dynamicLandingFont';
-        link.rel = 'stylesheet';
-        previewDoc.head.appendChild(link);
-    }
-
-    link.href = `https://fonts.googleapis.com/css2?family=${familyParamMap[key]}&display=swap`;
-}
-
-function applyTemplateToForm(templateName) {
-    if (!brandingForm || !BRAND_TEMPLATES[templateName]) {
-        return;
-    }
-
-    const template = BRAND_TEMPLATES[templateName];
-    brandingForm.brandTemplate.value = templateName;
-    brandingForm.brandPrimaryColor.value = template.primaryColor;
-    brandingForm.brandSecondaryColor.value = template.secondaryColor;
-    brandingForm.brandAccentColor.value = template.accentColor;
-    brandingForm.designBgColor.value = template.bgColor;
-    brandingForm.designButtonBorderColor.value = template.buttonBorderColor;
-    renderBrandingPreview();
-}
-
 function withTimeout(promise, timeoutMs, timeoutMessage) {
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -14099,19 +13113,6 @@ async function uploadImageToFirebase(file, productName) {
         7000,
         'No se pudo obtener la URL de la imagen desde Firebase Storage.'
     );
-}
-
-function readFileAsDataUrl(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            resolve(String(reader.result || ''));
-        };
-        reader.onerror = () => {
-            reject(new Error('No se pudo leer la imagen local.'));
-        };
-        reader.readAsDataURL(file);
-    });
 }
 
 function loadImageElementFromFile(file) {
@@ -14189,51 +13190,7 @@ async function _uploadProductImageToStorage(file, productName) {
     return withTimeout(ref.getDownloadURL(), 7_000, 'No se pudo obtener la URL de descarga.');
 }
 
-async function getStatDocument(metric) {
-    const byId = await firebaseDb.collection('estadisticas').doc(metric).get();
-    if (byId.exists) {
-        return byId.data();
-    }
 
-    const query = await firebaseDb.collection('estadisticas').where('metric', '==', metric).limit(1).get();
-    if (query.empty) {
-        return null;
-    }
-
-    return query.docs[0].data();
-}
-
-async function syncStats() {
-    // reservado para futuras métricas
-}
-
-
-async function _migrateCategoryFlags() {
-    try {
-        const snap = await firebaseDb.collection('categorias').get();
-        const batch = firebaseDb.batch();
-        let changes = 0;
-        snap.docs.forEach((doc) => {
-            const d = doc.data();
-            const name = normalizeCategoryKey(String(d.name || d.nombre || ''));
-            const updates = {};
-            // Burgers → combos_menu ON
-            if (name.includes('burger') || name.includes('clasica') || name.includes('pepito') || name.includes('premium')) {
-                if (d.combos_menu === false) { updates.combos_menu = true; }
-            }
-            // Combos mixtos → bebidas ON (POS + menú)
-            if (name.includes('combos mixtos') || name.includes('combo mixto')) {
-                if (d.bebidas_menu === false) { updates.bebidas_menu = true; }
-                if (d.bebidas_pos === false)   { updates.bebidas_pos  = true; }
-            }
-            if (Object.keys(updates).length > 0) {
-                batch.update(doc.ref, updates);
-                changes++;
-            }
-        });
-        if (changes > 0) await batch.commit();
-    } catch (_) {}
-}
 
 async function reloadDataAndRender() {
     await Promise.all([
@@ -14279,7 +13236,6 @@ async function reloadDataAndRender() {
     renderCuponesUnified();
     renderOrders();
     renderSalesSummaries();
-    renderLedgerBook();
     renderCajaDiaria();
     renderClients();
     renderMessages();
@@ -14288,7 +13244,6 @@ async function reloadDataAndRender() {
     renderMetricsUsers();
     renderMetricasProductos();
     renderMetricasTrafico();
-    await syncStats();
 
     if (activeCategoryModalId) {
         const activeCategory = categoriesState.find((category) => category.id === activeCategoryModalId);
@@ -14298,25 +13253,6 @@ async function reloadDataAndRender() {
             closeCategoryProductsModal();
         }
     }
-}
-
-if (categoryForm) {
-    categoryForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        hideNotice();
-
-        const formData = new FormData(categoryForm);
-        const name = String(formData.get('categoryName') || '').trim();
-
-        try {
-            const created = await createCategoryByName(name);
-            if (created) {
-                categoryForm.reset();
-            }
-        } catch (error) {
-            showNotice(`No se pudo crear la categoria: ${error.message || 'Error inesperado.'}`, 'error');
-        }
-    });
 }
 
 categoryList.addEventListener('click', async (event) => {
@@ -16027,34 +14963,25 @@ if (salesSummaryDateTo) {
     });
 }
 
-if (ledgerBookDateFrom) {
-    ledgerBookDateFrom.addEventListener('change', () => {
-        renderLedgerBook();
-    });
-}
+const exportCierresExcelBtn = document.getElementById('exportCierresExcelBtn');
+const exportCierresPdfBtn = document.getElementById('exportCierresPdfBtn');
 
-if (ledgerBookDateTo) {
-    ledgerBookDateTo.addEventListener('change', () => {
-        renderLedgerBook();
-    });
-}
-
-if (exportLedgerExcelBtn) {
-    exportLedgerExcelBtn.addEventListener('click', () => {
+if (exportCierresExcelBtn) {
+    exportCierresExcelBtn.addEventListener('click', () => {
         try {
-            exportLedgerBook('csv');
+            exportCierresHistorial('csv');
         } catch (error) {
-            showNotice(`No se pudo exportar el libro en Excel: ${error.message || 'error inesperado.'}`, 'error');
+            showNotice(`No se pudo exportar el historial en Excel: ${error.message || 'error inesperado.'}`, 'error');
         }
     });
 }
 
-if (exportLedgerPdfBtn) {
-    exportLedgerPdfBtn.addEventListener('click', () => {
+if (exportCierresPdfBtn) {
+    exportCierresPdfBtn.addEventListener('click', () => {
         try {
-            exportLedgerBook('pdf');
+            exportCierresHistorial('pdf');
         } catch (error) {
-            showNotice(`No se pudo exportar el libro en PDF: ${error.message || 'error inesperado.'}`, 'error');
+            showNotice(`No se pudo exportar el historial en PDF: ${error.message || 'error inesperado.'}`, 'error');
         }
     });
 }
@@ -16182,6 +15109,8 @@ if (clientsList) {
 
             try {
                 await deleteClient(clientId);
+                await fetchClients({ force: true });
+                renderClients();
                 showNotice('Cliente eliminado correctamente.', 'ok');
             } catch (error) {
                 showNotice(`No se pudo eliminar el cliente: ${error.message || 'error inesperado.'}`, 'error');
@@ -16409,6 +15338,7 @@ if (clientEditForm) {
                 _clientEditSyncField = null;
             }
 
+            await fetchClients({ force: true });
             await reloadDataAndRender();
             closeClientEditModal();
             showNotice(activeClientEditId ? 'Cliente actualizado correctamente.' : 'Cliente creado correctamente.', 'ok');
@@ -17329,58 +16259,9 @@ if (horarioFormEl) {
     });
 }
 
-if (templateGrid) {
-    templateGrid.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLButtonElement)) {
-            return;
-        }
-
-        const template = target.dataset.template;
-        if (!template) {
-            return;
-        }
-
-        applyTemplateToForm(template);
-    });
-}
-
 if (buttonVolumeInput && buttonVolumeOut) {
     buttonVolumeInput.addEventListener('input', () => {
         buttonVolumeOut.textContent = Number(buttonVolumeInput.value).toFixed(2);
-    });
-}
-
-if (designFontSizeInput && designFontSizeOut) {
-    designFontSizeInput.addEventListener('input', () => {
-        designFontSizeOut.textContent = `${Math.round(Number(designFontSizeInput.value || 16))}px`;
-        renderBrandingPreview();
-    });
-}
-
-if (interactionVolumeInput && interactionVolumeOut) {
-    interactionVolumeInput.addEventListener('input', () => {
-        interactionVolumeOut.textContent = Number(interactionVolumeInput.value || 0.1).toFixed(2);
-        renderBrandingPreview();
-    });
-}
-
-if (animationSpeedInput && animationSpeedOut) {
-    animationSpeedInput.addEventListener('input', () => {
-        animationSpeedOut.textContent = `${Number(animationSpeedInput.value || 1).toFixed(1)}x`;
-        renderBrandingPreview();
-    });
-}
-
-if (liveMenuPreview) {
-    liveMenuPreview.addEventListener('load', () => {
-        renderBrandingPreview();
-    });
-}
-
-if (previewRefreshBtn) {
-    previewRefreshBtn.addEventListener('click', () => {
-        refreshLivePreview();
     });
 }
 
@@ -17502,8 +16383,6 @@ async function initAdmin() {
         requestAdminNotificationPermission();
 
         setupAccordion();
-        setupAdvancedSettingsPanel();
-        setupPreviewViewportControls();
         setupCardCollapse();
         setupSectionSaveButtons();
         resetButtonForm();
@@ -17851,10 +16730,6 @@ function openDeliveryPaymentModal(order, receiveOrder = true) {
     window.visualViewport?.addEventListener('resize', _pfHandleViewport);
     window.visualViewport?.addEventListener('scroll', _pfHandleViewport);
     _pfHandleViewport();
-}
-
-function closeDeliveryPaymentModal() {
-    _pfClose();
 }
 
 // ── Payment Flow — event handlers ─────────────────────────────────────────
@@ -18924,53 +17799,11 @@ let _pendingCierreDoc = null;
 let _cierrePrintData = null; // {c, dateStr, timeStr} para reimpresión BT
 
 function buildCierreESCPOSData(c, dateStr, timeStr) {
-    const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
+    const ESC = 0x1B; const GS = 0x1D;
     const COLS = 32;
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
-
-    function _emit(line) {
-        const s = _escNormalize(line);
-        for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
-        pb(LF);
-    }
-    function ww(str, prefix) {
-        const pfx = _escNormalize(prefix || '');
-        const s = _escNormalize(str);
-        const contPfx = ' '.repeat(pfx.length);
-        let firstLine = true;
-        function emit(line) { _emit(line); firstLine = false; }
-        const words = s.split(/\s+/).filter(Boolean);
-        if (!words.length) return;
-        let current = '';
-        for (const word of words) {
-            const lp = firstLine ? pfx : contPfx;
-            const avail = COLS - lp.length;
-            if (!current) {
-                if (word.length > avail) { let rem = word; while (rem.length) { const lp2 = firstLine ? pfx : contPfx; const a2 = COLS - lp2.length; emit(lp2 + rem.substring(0, a2)); rem = rem.substring(a2); } }
-                else { current = word; }
-            } else {
-                const test = current + ' ' + word;
-                if (test.length <= avail) { current = test; } else { emit(lp + current); current = word; }
-            }
-        }
-        if (current) emit((firstLine ? pfx : contPfx) + current);
-    }
-    function wl(str) { ww(str, ''); }
-    function wc(left, right) {
-        const l = _escNormalize(left); const r = _escNormalize(right);
-        const maxLeft = COLS - r.length - 1;
-        if (l.length <= maxLeft) {
-            const pad = Math.max(1, COLS - l.length - r.length);
-            _emit(l + ' '.repeat(pad) + r);
-            return;
-        }
-        ww(l, '');
-        const pad = Math.max(0, COLS - r.length);
-        _emit(' '.repeat(pad) + r);
-    }
-    function sep()  { _emit('-'.repeat(COLS)); }
-    function sep2() { _emit('='.repeat(COLS)); }
+    const { ww, wl, wc, sep, sep2 } = createEscPosLineBuilder(pb, COLS);
 
     const ingresosMethod = c.ingresosMethod || c.methodTotals || {};
     const gastosMethod   = c.gastosMethod   || {};
@@ -22228,6 +21061,10 @@ async function _icmHandleFile(file) {
             const icon = document.getElementById('icmProgIcon');
             if (icon) { icon.textContent = '✅'; icon.style.animation = 'none'; }
             _icmShowPhase(4);
+            if (imported > 0) {
+                await fetchClients({ force: true });
+                renderClients();
+            }
         } catch (err) {
             showNotice(`Error durante la importación: ${err.message}`, 'error');
             _icmShowPhase(2);
