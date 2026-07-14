@@ -6202,10 +6202,21 @@ function showPosScreen(screen) {
     if (screen === 'payment') {
         renderPosTotals();
         initPosClientSearch();
+        _syncClientFieldLabels();
     }
     if (screen === 'tickets') {
         renderPosTicketsList();
     }
+}
+
+// En retiro (venta rápida de mostrador) el nombre/teléfono son opcionales — se reflejan
+// en el label. Se llama al mostrar la pantalla de cobro y al cambiar el tipo de pedido.
+function _syncClientFieldLabels() {
+    const isRetiro = String(internalOrderTypeSelect?.value || 'retiro') === 'retiro';
+    const nameLabel = document.querySelector('label[for="internalOrderNewClientName"]');
+    const phoneLabel = document.querySelector('label[for="internalOrderNewClientPhone"]');
+    if (nameLabel) nameLabel.textContent = isRetiro ? 'Nombre (opcional)' : 'Nombre *';
+    if (phoneLabel) phoneLabel.textContent = isRetiro ? 'Teléfono (opcional)' : 'Teléfono *';
 }
 
 /* ─── Buscador de clientes POS ─── */
@@ -6885,11 +6896,14 @@ async function submitInternalOrderForm(event) {
     const paymentMethod = String(internalOrderPaymentMethodSelect?.value || 'efectivo').trim();
     const discount = Number(internalOrderDiscount?.value || 0);
 
-    if (!customerName) {
+    // En retiro (venta rápida de mostrador) el nombre/teléfono son opcionales — pedirlos
+    // ahí solo agrega fricción. En domicilio y mesa sí se exigen (hace falta poder ubicar
+    // o contactar al cliente).
+    if (orderType !== 'retiro' && !customerName) {
         showModalFeedback(internalOrderFeedback, 'Ingresa el nombre del cliente.', 'error');
         return;
     }
-    if (!customerPhone) {
+    if (orderType !== 'retiro' && !customerPhone) {
         showModalFeedback(internalOrderFeedback, 'Ingresa el telefono del cliente.', 'error');
         return;
     }
@@ -6914,6 +6928,11 @@ async function submitInternalOrderForm(event) {
         const deliveryFee = orderType === 'domicilio' ? 0 : null;
         const total = Math.max(0, (deliveryFee !== null ? subtotal + Number(deliveryFee) : subtotal) - discount);
         const customerPhoneDigits = normalizePhoneDigits(customerPhone);
+        const displayCustomerName = customerName || 'Cliente mostrador';
+        // Venta de retiro sin nombre ni teléfono: no hay dato real para identificar un cliente,
+        // así que no se registra en CLIENTS_COLLECTION (evita que todas las ventas anónimas
+        // colisionen en el mismo documento y corrompan sus totales).
+        const isAnonymousSale = useNewClient && !customerName && !customerPhone;
         const clientId = useNewClient
             ? buildAdminClientDocumentId({ customerName, customerPhone, address: customerAddress })
             : selectedClientId;
@@ -6925,11 +6944,11 @@ async function submitInternalOrderForm(event) {
         const cashChangeRequired = cashGiven > 0 && cashGiven > total;
         const cashTenderAmount = cashGiven > 0 ? cashGiven : null;
 
-        await Promise.all([
+        const _orderWrites = [
             firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set({
                 id: orderId,
                 code: orderCode,
-                customerName,
+                customerName: displayCustomerName,
                 customerPhone,
                 customerPhoneDigits,
                 customerAddress,
@@ -6966,25 +6985,30 @@ async function submitInternalOrderForm(event) {
                 createdAt: firestoreNow(),
                 updatedAt: firestoreNow(),
                 paidAt: firestoreNow()
-            }),
-            firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
-                customerName,
-                customerPhone,
-                customerPhoneDigits,
-                address: customerAddress,
-                savedAddresses: normalizeClientSavedAddresses(currentClient?.savedAddresses || [], customerAddress),
-                totalOrders: clientTotalOrders,
-                totalSpent: clientTotalSpent,
-                lastOrderCode: orderCode,
-                lastOrderId: orderId,
-                lastOrderTotal: total,
-                firstOrderAt: currentClient?.firstOrderAt || firestoreNow(),
-                lastOrderAt: firestoreNow(),
-                source: currentClient?.source || 'admin_panel',
-                createdAt: currentClient?.createdAt || firestoreNow(),
-                updatedAt: firestoreNow()
-            }, { merge: true })
-        ]);
+            })
+        ];
+        if (!isAnonymousSale) {
+            _orderWrites.push(
+                firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
+                    customerName,
+                    customerPhone,
+                    customerPhoneDigits,
+                    address: customerAddress,
+                    savedAddresses: normalizeClientSavedAddresses(currentClient?.savedAddresses || [], customerAddress),
+                    totalOrders: clientTotalOrders,
+                    totalSpent: clientTotalSpent,
+                    lastOrderCode: orderCode,
+                    lastOrderId: orderId,
+                    lastOrderTotal: total,
+                    firstOrderAt: currentClient?.firstOrderAt || firestoreNow(),
+                    lastOrderAt: firestoreNow(),
+                    source: currentClient?.source || 'admin_panel',
+                    createdAt: currentClient?.createdAt || firestoreNow(),
+                    updatedAt: firestoreNow()
+                }, { merge: true })
+            );
+        }
+        await Promise.all(_orderWrites);
 
         closeInternalOrderModal(true);
         showNotice('Pedido creado correctamente.', 'ok');
@@ -14771,6 +14795,7 @@ document.addEventListener('click', (event) => {
         if (internalOrderDeliveryAddressField) {
             internalOrderDeliveryAddressField.hidden = typeBtn.dataset.type !== 'domicilio';
         }
+        _syncClientFieldLabels();
     }
 
     const methodBtn = event.target.closest('.pos-pay-method-btn');
