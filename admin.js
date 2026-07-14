@@ -383,6 +383,111 @@ let posActiveTicketId = null;
 let _editingOrderData = null; // set when editing an existing order, cleared after save
 let _editingItemsOnlyOrderId = null; // set when editing only the items of an existing order (safe partial update)
 
+// Punto único de mutación del carrito activo (internalOrderItems). Centraliza la fusión por
+// itemKey, la matemática de cantidad/subtotal y el mapeo hacia el payload que se guarda en Firestore,
+// para no repetir esa lógica en cada handler de UI que toca el carrito.
+const PosCart = {
+    addItem(productId, productName, productPrice, note = '', originalUnitPrice = null, opts = {}) {
+        productId = String(productId || '').trim();
+        productName = String(productName || 'Producto').trim();
+        productPrice = Number(productPrice || 0);
+        note = String(note || '').trim();
+        originalUnitPrice = originalUnitPrice !== null ? Number(originalUnitPrice) : null;
+        if (!productId) return null;
+
+        const category = posSelectedCategory || 'Sin categoria';
+        const promoLabel = String(opts.promoLabel || '').trim();
+        const promo2x1 = opts.promo2x1 === true;
+        const initialQuantity = Math.max(1, Number(opts.initialQuantity) || 1);
+
+        // itemKey determinístico por (productId + nota) → ítems con misma nota se fusionan.
+        // opts.forcedKey fuerza una clave única (ej. items con combo) para evitar fusión.
+        const itemKey = opts.forcedKey || (note ? `${productId}::${note}` : productId);
+        const existing = internalOrderItems.find((item) => item.itemKey === itemKey);
+
+        if (existing) {
+            existing.quantity = Number(existing.quantity || 0) + 1;
+            existing.subtotal = Number(existing.quantity) * existing.unitPrice;
+            return existing;
+        }
+        const item = {
+            itemKey,
+            productId,
+            productName,
+            categoryName: category,
+            quantity: initialQuantity,
+            unitPrice: productPrice,
+            originalUnitPrice: originalUnitPrice !== null && originalUnitPrice > productPrice ? originalUnitPrice : null,
+            subtotal: productPrice * initialQuantity,
+            note,
+            optionLabel: note || '',
+            promoLabel,
+            promo2x1,
+            parentKey: opts.parentKey || null
+        };
+        internalOrderItems.push(item);
+        return item;
+    },
+
+    // delta puede ser negativo; la cantidad nunca baja de 1 (usar removeItem para eliminar).
+    incrementQuantity(itemKey, delta) {
+        const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+        if (!item) return null;
+        const next = Number(item.quantity || 0) + delta;
+        if (next < 1) return item;
+        item.quantity = next;
+        item.subtotal = item.quantity * item.unitPrice;
+        return item;
+    },
+
+    updateQuantity(itemKey, quantity) {
+        const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+        if (!item) return null;
+        item.quantity = Math.max(1, Number(quantity) || 1);
+        item.subtotal = item.quantity * item.unitPrice;
+        return item;
+    },
+
+    setNote(itemKey, note) {
+        const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+        if (item) item.note = String(note || '').trim();
+        return item;
+    },
+
+    // Elimina el ítem y sus hijos (extras/acompañantes vinculados por parentKey).
+    removeItem(itemKey) {
+        internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey && i.parentKey !== itemKey);
+    },
+
+    getTotals() {
+        const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+        const fee = (posTicketConfig?.orderType === 'domicilio' && posTicketConfig?.deliveryFee != null)
+            ? Number(posTicketConfig.deliveryFee)
+            : 0;
+        return { subtotal, fee, total: Math.max(0, subtotal + fee) };
+    },
+
+    // Forma en la que el carrito se guarda dentro de un pedido en Firestore.
+    // parentItemKey viaja para que impresión/kitchen puedan reconstruir qué extra
+    // pertenece a qué producto (antes se perdía: solo vivía como parentKey en el carrito).
+    toOrderPayload() {
+        return internalOrderItems.map((item, index) => ({
+            index: index + 1,
+            itemKey: item.itemKey,
+            parentItemKey: item.parentKey || null,
+            productId: item.productId,
+            productName: item.productName,
+            categoryName: item.categoryName,
+            optionLabel: item.note || '',
+            note: item.note || '',
+            quantity: Number(item.quantity || 0),
+            unitPrice: Number(item.unitPrice || 0),
+            subtotal: Number(item.subtotal || 0),
+            ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
+        }));
+    }
+};
+
 const POS_TICKETS_COLLECTION = 'pos_tickets';
 let posTicketsUnsubscribe = null;
 const _sentToReceptionIds = new Set(); // IDs de tickets enviados a recepción, pendientes de eliminar en Firestore
@@ -5205,45 +5310,7 @@ function addComboEspecialToPosOrder(combo) {
 }
 
 function addProductToPosOrder(productId, productName, productPrice, note = '', originalUnitPrice = null, opts = {}) {
-    productId = String(productId || '').trim();
-    productName = String(productName || 'Producto').trim();
-    productPrice = Number(productPrice || 0);
-    note = String(note || '').trim();
-    originalUnitPrice = originalUnitPrice !== null ? Number(originalUnitPrice) : null;
-
-    if (!productId) return;
-
-    const category = posSelectedCategory || 'Sin categoria';
-    const promoLabel = String(opts.promoLabel || '').trim();
-    const promo2x1 = opts.promo2x1 === true;
-    const initialQuantity = Math.max(1, Number(opts.initialQuantity) || 1);
-    const qtyStep = 1;
-
-    // itemKey determinístico por (productId + nota) → ítems con misma nota se fusionan.
-    // opts.forcedKey fuerza una clave única (ej. items con combo) para evitar fusión.
-    const itemKey = opts.forcedKey || (note ? `${productId}::${note}` : productId);
-    const existing = internalOrderItems.find((item) => item.itemKey === itemKey);
-
-    if (existing) {
-        existing.quantity = Number(existing.quantity || 0) + qtyStep;
-        existing.subtotal = Number(existing.quantity) * existing.unitPrice;
-    } else {
-        internalOrderItems.push({
-            itemKey,
-            productId,
-            productName,
-            categoryName: category,
-            quantity: initialQuantity,
-            unitPrice: productPrice,
-            originalUnitPrice: originalUnitPrice !== null && originalUnitPrice > productPrice ? originalUnitPrice : null,
-            subtotal: productPrice * initialQuantity,
-            note,
-            optionLabel: note || '',
-            promoLabel,
-            promo2x1,
-            parentKey: opts.parentKey || null
-        });
-    }
+    if (!PosCart.addItem(productId, productName, productPrice, note, originalUnitPrice, opts)) return;
 
     renderPosOrderItems();
     renderPosTotals();
@@ -5294,7 +5361,7 @@ function _openPosNoteModal(item, itemKey, container) {
         </div>`;
 
     const applyNote = (note) => {
-        item.note = note;
+        PosCart.setNote(itemKey, note);
         const row = container.querySelector(`.pos-item-row[data-item-key="${itemKey}"]`);
         if (row) {
             const nameEl = row.querySelector('.pos-item-name');
@@ -5333,6 +5400,33 @@ function _openPosNoteModal(item, itemKey, container) {
     ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
+// Contenido interno de .pos-item-price para un ítem — separado de renderTopItem para poder
+// refrescar solo el precio de un renglón (updatePosItemRow) sin reconstruir todo el carrito.
+function _posItemPriceInnerHTML(item) {
+    const subtotal = Number(item.subtotal || 0);
+    const origUnit = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
+    const hasDiscount = origUnit !== null && origUnit > item.unitPrice;
+    if (!hasDiscount) return formatMoney(subtotal);
+    const origSubtotal = origUnit * Number(item.quantity || 1);
+    return `<s class="pos-item-orig-price">${formatMoney(origSubtotal)}</s><span class="pos-item-final-price">${subtotal === 0 ? '<span class="pos-item-free">GRATIS</span>' : formatMoney(subtotal)}</span>`;
+}
+
+// Actualiza cantidad y precio de un solo renglón ya pintado, sin reconstruir el innerHTML
+// completo del carrito (renderPosOrderItems). Se usa para +/- de cantidad, que en un carrito
+// con muchas líneas no debe re-renderizar todo en cada tap.
+function updatePosItemRow(itemKey) {
+    const container = document.getElementById('internalOrderItemsSummary');
+    const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+    if (!container || !item) return false;
+    const row = container.querySelector(`.pos-item-row[data-item-key="${itemKey}"]`);
+    if (!row) return false;
+    const qtyInput = row.querySelector('.pos-qty-input');
+    if (qtyInput) qtyInput.value = item.quantity;
+    const priceEl = row.querySelector('.pos-item-price');
+    if (priceEl) priceEl.innerHTML = _posItemPriceInnerHTML(item);
+    return true;
+}
+
 function renderPosOrderItems() {
     const itemsContainer = document.getElementById('internalOrderItemsSummary');
     if (!itemsContainer) {
@@ -5348,13 +5442,7 @@ function renderPosOrderItems() {
     const subItemsOf = (key) => internalOrderItems.filter((i) => i.parentKey === key);
 
     const renderTopItem = (item) => {
-        const subtotal = Number(item.subtotal || 0);
-        const origUnit = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
-        const hasDiscount = origUnit !== null && origUnit > item.unitPrice;
-        const origSubtotal = hasDiscount ? origUnit * Number(item.quantity || 1) : null;
-        const priceHTML = hasDiscount
-            ? `<div class="pos-item-price"><s class="pos-item-orig-price">${formatMoney(origSubtotal)}</s><span class="pos-item-final-price">${subtotal === 0 ? '<span class="pos-item-free">GRATIS</span>' : formatMoney(subtotal)}</span></div>`
-            : `<div class="pos-item-price">${formatMoney(subtotal)}</div>`;
+        const priceHTML = `<div class="pos-item-price">${_posItemPriceInnerHTML(item)}</div>`;
         if (item.isComboEspecial) {
             const listHTML = Array.isArray(item.comboItems) && item.comboItems.length
                 ? `<span class="pos-item-combo-list">${escapeHtml(item.comboItems.join(' + '))}</span>`
@@ -5434,10 +5522,9 @@ function renderPosOrderItems() {
                                 .map((i) => ({ id: i.productId, name: i.productName, price: i.unitPrice }));
                             // Si tiene más de 1 unidad SIN extras propios, solo quitar 1 (el resto queda en carrito)
                             if (item.quantity > 1 && !_prevExtras.length) {
-                                item.quantity -= 1;
-                                item.subtotal = item.quantity * item.unitPrice;
+                                PosCart.incrementQuantity(key, -1);
                             } else {
-                                internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== key && i.parentKey !== key);
+                                PosCart.removeItem(key);
                             }
                             renderPosOrderItems();
                             renderPosTotals();
@@ -5464,29 +5551,25 @@ function renderPosOrderItems() {
             const item = internalOrderItems.find((i) => i.itemKey === itemKey);
 
             if (minusBtn && item) {
-                if (item.quantity > 1) {
-                    item.quantity -= 1;
-                    item.subtotal = item.quantity * item.unitPrice;
-                    renderPosOrderItems();
+                // qty=1 es el mínimo — usar × para eliminar
+                if (item.quantity > 1 && PosCart.incrementQuantity(itemKey, -1)) {
+                    updatePosItemRow(itemKey);
                     renderPosTotals();
                     renderPosBottomBar();
                 }
-                // qty=1 es el mínimo — usar × para eliminar
                 return;
             }
 
             if (plusBtn && item) {
-                item.quantity += 1;
-                item.subtotal = item.quantity * item.unitPrice;
-                renderPosOrderItems();
+                PosCart.incrementQuantity(itemKey, 1);
+                updatePosItemRow(itemKey);
                 renderPosTotals();
                 renderPosBottomBar();
                 return;
             }
 
             if (removeBtn && itemKey) {
-                // Borrar el ítem y sus hijos si es un padre
-                internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey && i.parentKey !== itemKey);
+                PosCart.removeItem(itemKey);
                 renderPosOrderItems();
                 renderPosTotals();
                 renderPosBottomBar();
@@ -5497,12 +5580,9 @@ function renderPosOrderItems() {
             const input = event.target.closest('.pos-qty-input');
             if (!input) return;
             const itemKey = input.dataset.itemKey;
-            const item = internalOrderItems.find((i) => i.itemKey === itemKey);
-            let quantity = Math.max(1, Number(input.value || 1));
-            if (item) {
-                item.quantity = quantity;
-                item.subtotal = quantity * item.unitPrice;
-                renderPosOrderItems();
+            const quantity = Math.max(1, Number(input.value || 1));
+            if (PosCart.updateQuantity(itemKey, quantity)) {
+                updatePosItemRow(itemKey);
                 renderPosTotals();
                 renderPosBottomBar();
             }
@@ -5518,11 +5598,7 @@ function renderPosTotals() {
     const deliveryRow      = document.getElementById('posTotalDeliveryRow');
     const deliveryElem     = document.getElementById('posTotalDelivery');
     const bottomTotal      = document.getElementById('posBottomTotalAmt');
-    const subtotal  = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-    const fee       = (posTicketConfig?.orderType === 'domicilio' && posTicketConfig?.deliveryFee != null)
-                        ? Number(posTicketConfig.deliveryFee)
-                        : 0;
-    const total     = Math.max(0, subtotal + fee);
+    const { subtotal, fee, total } = PosCart.getTotals();
 
     if (subtotalElem) subtotalElem.textContent = formatMoney(subtotal);
     if (deliveryRow) deliveryRow.hidden = fee <= 0;
@@ -6141,8 +6217,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
         return;
     }
-    const _checkTotal = internalOrderItems.reduce((s, i) => s + Number(i.subtotal || 0), 0);
-    if (_checkTotal <= 0) {
+    if (PosCart.getTotals().subtotal <= 0) {
         showNotice('El total del pedido no puede ser $0. Revisa los precios de los productos.', 'error');
         return;
     }
@@ -6197,7 +6272,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         const deliveryFeeVal = config.deliveryFee !== undefined && config.deliveryFee !== null
             ? Number(config.deliveryFee)
             : (editData?.deliveryFee != null ? Number(editData.deliveryFee) : 0);
-        const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+        const subtotal = PosCart.getTotals().subtotal;
 
         const orderDoc = {
             id: orderId,
@@ -6219,19 +6294,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
             status: orderStatus,
             cajero: isEditing ? (editData.cajero || _cajaAperturaBy || '') : (_cajaAperturaBy || ''),
             voidedItems: [...(editData?.voidedItems || []), ..._voidedItemsThisSave],
-            items: internalOrderItems.map((item, index) => ({
-                index: index + 1,
-                itemKey: item.itemKey,
-                productId: item.productId,
-                productName: item.productName,
-                categoryName: item.categoryName,
-                optionLabel: item.note || '',
-                note: item.note || '',
-                quantity: Number(item.quantity || 0),
-                unitPrice: Number(item.unitPrice || 0),
-                subtotal: Number(item.subtotal || 0),
-                ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
-            })),
+            items: PosCart.toOrderPayload(),
             itemCount: internalOrderItems.length,
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
             subtotal,
@@ -6416,7 +6479,7 @@ async function saveOrderItemsEdit() {
         showNotice('Agrega al menos un producto al pedido.', 'error');
         return;
     }
-    const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    const subtotal = PosCart.getTotals().subtotal;
     if (subtotal <= 0) {
         showNotice('El total del pedido no puede ser $0. Revisa los precios de los productos.', 'error');
         return;
@@ -6430,19 +6493,7 @@ async function saveOrderItemsEdit() {
     try {
         if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
 
-        const items = internalOrderItems.map((item, index) => ({
-            index: index + 1,
-            itemKey: item.itemKey,
-            productId: item.productId,
-            productName: item.productName,
-            categoryName: item.categoryName,
-            optionLabel: item.note || '',
-            note: item.note || '',
-            quantity: Number(item.quantity || 0),
-            unitPrice: Number(item.unitPrice || 0),
-            subtotal: Number(item.subtotal || 0),
-            ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
-        }));
+        const items = PosCart.toOrderPayload();
 
         await updateOrder(orderId, {
             items,
