@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-1845">
+    <link rel="stylesheet" href="style.css?v=20260714-1851">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -695,6 +695,7 @@
             display: grid;
             gap: 14px;
             align-content: start;
+            min-width: 0;
         }
 
         /* ── Mapa de mesas: mismo tono que .koc-type--mesa (ocupada) para consistencia ── */
@@ -702,6 +703,7 @@
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 10px;
+            min-width: 0;
         }
         .mesa-map-tile {
             aspect-ratio: 1;
@@ -714,6 +716,9 @@
             border: none;
             font-family: 'Oswald', sans-serif;
             transition: transform 0.1s ease, filter 0.12s ease;
+            min-width: 0;
+            padding: 4px;
+            box-sizing: border-box;
         }
         .mesa-map-tile.is-libre {
             background: rgba(67, 192, 156, 0.07);
@@ -741,6 +746,9 @@
             letter-spacing: 0.05em;
             font-weight: 700;
             color: rgba(255, 255, 255, 0.75);
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            text-align: center;
         }
         .mesa-map-tile.is-libre .mesa-map-label { color: rgba(126, 211, 148, 0.7); }
         .mesa-map-total {
@@ -748,9 +756,23 @@
             font-size: 0.72rem;
             font-weight: 700;
             color: #fff;
+            max-width: 100%;
+            overflow-wrap: anywhere;
         }
         @media (max-width: 1400px) {
             .mesa-map { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .mesa-map {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 7px;
+            }
+            .mesa-map-num { font-size: 1.15rem; }
+            .mesa-map-label { font-size: 0.58rem; }
+            .mesa-map-total { font-size: 0.62rem; }
+        }
+        @media (max-width: 360px) {
+            .mesa-map { grid-template-columns: repeat(2, 1fr); }
         }
 
         .orders-lane-header,
@@ -14483,7 +14505,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260714-1845"></script>
+    <script src="admin.js?v=20260714-1851"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
