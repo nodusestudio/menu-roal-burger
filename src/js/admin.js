@@ -632,6 +632,40 @@ function _bindOverlayClose(overlay, closeFn) {
     overlay.addEventListener('click', (e) => { if (_downOnOverlay && e.target === overlay) closeFn(); });
 }
 
+/**
+ * Esqueleto compartido de los modales tipo "combo-modal-*" del POS: overlay + card + header
+ * (título opcional con subtítulo + botón de cerrar). `titleHtml`/`subtitleHtml` ya deben venir
+ * escapados/armados por el llamador (aquí no se vuelve a escapar). El body/footer específico
+ * de cada modal se sigue construyendo y agregando a `card` por fuera de este helper.
+ */
+function _createComboModalShell({ titleHtml, subtitleHtml = '', zIndex = null } = {}) {
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+    if (zIndex) overlay.style.zIndex = zIndex;
+
+    const card = document.createElement('div');
+    card.className = 'combo-modal-card';
+
+    const header = document.createElement('div');
+    header.className = 'combo-modal-header';
+    const headerText = document.createElement('div');
+    headerText.innerHTML = subtitleHtml
+        ? `<h4>${titleHtml}</h4><p class="combo-modal-subtitle">${subtitleHtml}</p>`
+        : `<h4>${titleHtml}</h4>`;
+    const closeX = document.createElement('button');
+    closeX.type = 'button';
+    closeX.className = 'combo-modal-close-x';
+    closeX.setAttribute('aria-label', 'Cerrar');
+    closeX.textContent = '×';
+    closeX.addEventListener('click', () => overlay.remove());
+    header.appendChild(headerText);
+    header.appendChild(closeX);
+    card.appendChild(header);
+    overlay.appendChild(card);
+
+    return { overlay, card, header };
+}
+
 function showNotice(text, type = 'ok') {
     if (!notice) {
         return;
@@ -2844,25 +2878,11 @@ function openPosBebidaPickerModal(bev) {
     const prev = document.getElementById('pos-bebida-picker-modal');
     if (prev) prev.remove();
 
-    const overlay = document.createElement('div');
-    overlay.className = 'combo-modal-overlay';
-    overlay.style.zIndex = '11000';
-
-    const card = document.createElement('div');
-    card.className = 'combo-modal-card';
+    const { overlay, card } = _createComboModalShell({
+        titleHtml: `🥤 ${escapeHtml(bev.marca)}`,
+        zIndex: '11000'
+    });
     card.style.maxWidth = '380px';
-
-    const header = document.createElement('div');
-    header.className = 'combo-modal-header';
-    const htitle = document.createElement('div');
-    htitle.innerHTML = `<h4>🥤 ${escapeHtml(bev.marca)}</h4>`;
-    const closeX = document.createElement('button');
-    closeX.type = 'button';
-    closeX.className = 'combo-modal-close-x';
-    closeX.textContent = '×';
-    closeX.addEventListener('click', () => overlay.remove());
-    header.appendChild(htitle);
-    header.appendChild(closeX);
 
     const body = document.createElement('div');
     body.style.cssText = 'padding:12px 16px;display:flex;flex-direction:column;gap:14px;';
@@ -2962,10 +2982,8 @@ function openPosBebidaPickerModal(bev) {
 
     footer.appendChild(cancelBtn);
     footer.appendChild(confirmBtn);
-    card.appendChild(header);
     card.appendChild(body);
     card.appendChild(footer);
-    overlay.appendChild(card);
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
     overlay.id = 'pos-bebida-picker-modal';
@@ -4877,24 +4895,10 @@ function openBebidaModal(bebida = null) {
 }
 
 function openBurgerClasicasPosModal(productId, productName) {
-    const overlay = document.createElement('div');
-    overlay.className = 'combo-modal-overlay';
-
-    const card = document.createElement('div');
-    card.className = 'combo-modal-card';
-
-    const header = document.createElement('div');
-    header.className = 'combo-modal-header';
-    const headerText = document.createElement('div');
-    headerText.innerHTML = `<h4>${escapeHtml(productName)}</h4><p class="combo-modal-subtitle">Selecciona tamano y cantidad de carne</p>`;
-    const closeX = document.createElement('button');
-    closeX.type = 'button';
-    closeX.className = 'combo-modal-close-x';
-    closeX.setAttribute('aria-label', 'Cerrar');
-    closeX.textContent = '×';
-    closeX.addEventListener('click', () => overlay.remove());
-    header.appendChild(headerText);
-    header.appendChild(closeX);
+    const { overlay, card } = _createComboModalShell({
+        titleHtml: escapeHtml(productName),
+        subtitleHtml: 'Selecciona tamano y cantidad de carne'
+    });
 
     const secLabel = document.createElement('div');
     secLabel.className = 'combo-modal-section-label';
@@ -4947,11 +4951,9 @@ function openBurgerClasicasPosModal(productId, productName) {
         optGrid.appendChild(btn);
     });
 
-    card.appendChild(header);
     card.appendChild(secLabel);
     card.appendChild(optGrid);
     card.appendChild(noteRow);
-    overlay.appendChild(card);
 
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
@@ -4961,25 +4963,10 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     let selectedVariante = null;
     let selectedSabores = []; // array de largo cantidad_bebidas, cada slot es null o string
 
-    const overlay = document.createElement('div');
-    overlay.className = 'combo-modal-overlay';
-
-    const card = document.createElement('div');
-    card.className = 'combo-modal-card';
-
-    // Header
-    const header = document.createElement('div');
-    header.className = 'combo-modal-header';
-    const headerText = document.createElement('div');
-    headerText.innerHTML = `<h4>${escapeHtml(productName)}</h4><p class="combo-modal-subtitle">${escapeHtml(categoryName)}</p>`;
-    const closeX = document.createElement('button');
-    closeX.type = 'button';
-    closeX.className = 'combo-modal-close-x';
-    closeX.setAttribute('aria-label', 'Cerrar');
-    closeX.textContent = '×';
-    closeX.addEventListener('click', () => overlay.remove());
-    header.appendChild(headerText);
-    header.appendChild(closeX);
+    const { overlay, card } = _createComboModalShell({
+        titleHtml: escapeHtml(productName),
+        subtitleHtml: escapeHtml(categoryName)
+    });
 
     // Etiqueta variantes
     const secLabel = document.createElement('div');
@@ -5149,13 +5136,11 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     footer.appendChild(cancelBtn);
     footer.appendChild(confirmBtn);
 
-    card.appendChild(header);
     card.appendChild(secLabel);
     card.appendChild(grid);
     card.appendChild(saborSection);
     card.appendChild(noteRow);
     card.appendChild(footer);
-    overlay.appendChild(card);
 
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
@@ -5178,23 +5163,10 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
 
     let selectedSabores = new Array(cant).fill(null);
 
-    const overlay = document.createElement('div');
-    overlay.className = 'combo-modal-overlay';
-    const card = document.createElement('div');
-    card.className = 'combo-modal-card';
-
-    const header = document.createElement('div');
-    header.className = 'combo-modal-header';
-    const headerText = document.createElement('div');
-    headerText.innerHTML = `<h4>${escapeHtml(productName)}</h4><p class="combo-modal-subtitle">🥤 ${escapeHtml(bebidaConfig.bebida_nombre || 'Bebida incluida')}</p>`;
-    const closeX = document.createElement('button');
-    closeX.type = 'button';
-    closeX.className = 'combo-modal-close-x';
-    closeX.setAttribute('aria-label', 'Cerrar');
-    closeX.textContent = '×';
-    closeX.addEventListener('click', () => overlay.remove());
-    header.appendChild(headerText);
-    header.appendChild(closeX);
+    const { overlay, card } = _createComboModalShell({
+        titleHtml: escapeHtml(productName),
+        subtitleHtml: `🥤 ${escapeHtml(bebidaConfig.bebida_nombre || 'Bebida incluida')}`
+    });
 
     const saborLabel = document.createElement('div');
     saborLabel.className = 'combo-modal-section-label';
@@ -5262,11 +5234,9 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
         addProductToPosOrder(productId, productName, productPrice, note);
     });
 
-    card.appendChild(header);
     card.appendChild(saborLabel);
     card.appendChild(saborGrid);
     card.appendChild(confirmBtn);
-    overlay.appendChild(card);
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
 }
