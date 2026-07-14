@@ -18024,6 +18024,10 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         _cajaAperturaBy = '';
         _cajaFondoInicial = 0;
         await saveCajaAperturaToFirestore(0, { aperturaBy: '', fondoInicial: 0, cerrada: true });
+        // Resetear también la "jornada" (banner de Recepción de Pedidos) — sin esto el aviso
+        // "Jornada sin cerrar desde..." queda pegado en la fecha de apertura para siempre.
+        await firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(SALES_DAY_STATE_DOC_ID)
+            .set({ openedAt: null, status: 'idle', updatedAt: firestoreNow() }, { merge: true });
         renderCajaDiaria();
         _updateCajaEstadoUI();
 

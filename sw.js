@@ -1,6 +1,6 @@
 // Service Worker — ROAL BURGER
 // Bump CACHE_VER en cada deploy para invalidar caches viejos
-const CACHE_VER    = 'rb-20260714-1142';
+const CACHE_VER    = 'rb-20260714-1201';
 const STATIC_CACHE = `${CACHE_VER}-static`;
 const IMG_CACHE    = `${CACHE_VER}-img`;
 
