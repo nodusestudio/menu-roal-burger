@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260715-0050">
+    <link rel="stylesheet" href="style.css?v=20260715-0056">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -4518,7 +4518,12 @@
             -webkit-overflow-scrolling: touch;
             padding: 10px;
             background: #141922;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.22) transparent;
         }
+        .pos-products-scroll::-webkit-scrollbar { width: 8px; }
+        .pos-products-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 4px; }
+        .pos-products-scroll::-webkit-scrollbar-track { background: transparent; }
         .pos-product-grid-v2 {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -5292,6 +5297,19 @@
             #posView .pos-product-grid-v2 { grid-template-columns: repeat(5, 1fr); }
             /* Pantalla tickets no cubre el carrito fijo */
             .pos-screen-tickets { right: 30%; }
+            /* Sheet de acompañamiento: centrado como los modales de cobro, no cubre el carrito */
+            .pos-upgrade-overlay {
+                right: 30%;
+                align-items: center;
+                justify-content: center;
+                padding: 24px;
+            }
+            .pos-upgrade-sheet {
+                width: 100%;
+                max-width: 460px;
+                max-height: 85vh;
+                border-radius: 16px;
+            }
         }
         @media (min-width: 1400px) {
             #posView .pos-product-grid-v2 { grid-template-columns: repeat(7, 1fr); }
@@ -14776,7 +14794,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260715-0050"></script>
+    <script defer src="admin.js?v=20260715-0056"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
