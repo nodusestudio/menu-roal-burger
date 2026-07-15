@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260715-0056">
+    <link rel="stylesheet" href="style.css?v=20260715-0107">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -12799,13 +12799,6 @@
             </div>
 
             <div class="admin-tab-panel active" data-tab-panel="pedidos">
-                <div class="section-toolbar">
-                    <button type="button" class="section-action-btn unread-tray-btn" id="unreadTrayBtn" aria-expanded="false" aria-controls="unreadTray" hidden>
-                        Por Confirmar
-                        <span class="unread-tray-badge" id="ordersCountUnread">0</span>
-                    </button>
-                    <button type="button" id="abrirCajaBtnPos" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">📂 Abrir Caja</button>
-                </div>
                 <div class="unread-tray" id="unreadTray" hidden>
                     <div class="unread-tray-head">
                         <span class="unread-tray-title">Pedidos por confirmar</span>
@@ -12815,7 +12808,13 @@
                 </div>
                 <article class="admin-card" id="posOrdersCard" style="position:relative;">
                     <div class="card-head">
-                        <h2>Recepcion de Pedidos</h2>
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <h2>Recepcion de Pedidos</h2>
+                            <button type="button" class="section-action-btn unread-tray-btn" id="unreadTrayBtn" aria-expanded="false" aria-controls="unreadTray" hidden>
+                                Por Confirmar
+                                <span class="unread-tray-badge" id="ordersCountUnread">0</span>
+                            </button>
+                        </div>
                         <button type="button" class="card-collapse-btn" data-collapse-target="card-orders" aria-expanded="true">Retraer</button>
                     </div>
                     <div class="card-body" id="card-orders">
@@ -12839,7 +12838,7 @@
                                     </button>
                                     <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
-                                        Nuevo Ticket
+                                        Nuevo Pedido
                                     </button>
                                 </div>
                             </div>
@@ -14747,9 +14746,9 @@
 
     <!-- ══ Mobile: barra de acciones rápidas (visible solo en móvil) ══ -->
     <div id="mobPosBottomBar" class="mob-pos-bottombar" role="toolbar" aria-label="Acciones POS">
-        <button type="button" class="mob-pos-bb-nuevo" onclick="document.getElementById('openCreateInternalOrderBtn')?.click()" aria-label="Nuevo Ticket">
+        <button type="button" class="mob-pos-bb-nuevo" onclick="document.getElementById('openCreateInternalOrderBtn')?.click()" aria-label="Nuevo Pedido">
             <span class="bb-icon">＋</span>
-            <span>Nuevo Ticket</span>
+            <span>Nuevo Pedido</span>
         </button>
     </div>
 
@@ -14794,7 +14793,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260715-0056"></script>
+    <script defer src="admin.js?v=20260715-0107"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

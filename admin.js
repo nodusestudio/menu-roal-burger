@@ -18799,28 +18799,21 @@ function _showAbrirCajaModal() {
     setTimeout(() => document.getElementById('_acNombreInput')?.focus(), 120);
 }
 
-document.getElementById('abrirCajaBtnPos')?.addEventListener('click', () => {
-    _showAbrirCajaModal();
-});
-
 // ── Estado visual de la caja (abierta / cerrada) ─────────────────────────────
 function _updateCajaEstadoUI() {
     const abierta = cajaAperturaAt > 0;
-    const abrirBtn   = document.getElementById('abrirCajaBtnPos');
     const newTickBtn = document.getElementById('posNewTicketBtn');
     const posCard    = document.getElementById('posOrdersCard');
 
-    // "Abrir Caja": solo visible cuando está cerrada
-    if (abrirBtn) abrirBtn.style.display = abierta ? 'none' : '';
-
-    // Botón "+" nuevo ticket: deshabilitado cuando está cerrada
+    // Botón "+" nuevo pedido: deshabilitado cuando está cerrada
     if (newTickBtn) {
         newTickBtn.disabled      = !abierta;
         newTickBtn.style.opacity = abierta ? '' : '0.35';
         newTickBtn.style.cursor  = abierta ? '' : 'not-allowed';
     }
 
-    // Bloqueador visual sobre el panel de recepción de pedidos
+    // Bloqueador visual sobre el panel de recepción de pedidos — su propio botón es la
+    // única forma de abrir caja ahora que se quitó el botón duplicado de la barra superior.
     let blocker = document.getElementById('_posCajaBlocker');
     if (!abierta) {
         if (!blocker && posCard) {
@@ -18830,8 +18823,10 @@ function _updateCajaEstadoUI() {
             blocker.innerHTML = `
                 <div style="font-size:2.8rem;line-height:1;">🔒</div>
                 <p style="color:#fff;font-size:1.05rem;font-weight:700;margin:0;">Caja cerrada</p>
-                <p style="color:rgba(255,255,255,0.45);font-size:0.82rem;margin:0;text-align:center;max-width:260px;">Presiona <strong style="color:#86efac;">Abrir Caja</strong> en la barra superior para comenzar la jornada</p>`;
+                <p style="color:rgba(255,255,255,0.45);font-size:0.82rem;margin:0;text-align:center;max-width:260px;">Abre la caja para comenzar la jornada</p>
+                <button type="button" id="_posCajaBlockerAbrirBtn" style="margin-top:4px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 18px;font-size:0.85rem;">📂 Abrir Caja</button>`;
             posCard.appendChild(blocker);
+            blocker.querySelector('#_posCajaBlockerAbrirBtn')?.addEventListener('click', () => _showAbrirCajaModal());
         }
     } else {
         if (blocker) blocker.remove();
