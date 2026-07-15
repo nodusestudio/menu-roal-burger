@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-2118">
+    <link rel="stylesheet" href="style.css?v=20260714-2128">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -11846,6 +11846,14 @@
             border-bottom: 1px solid rgba(255,255,255,0.07);
             flex-shrink: 0;
         }
+        /* En Configuración → Negocio ya no es una barra divisoria de panel, es un control
+           independiente dentro de la sección — pierde el borde de "barra" y gana esquinas. */
+        .ticket-bt-bar--settings {
+            border-bottom: none;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 10px 14px;
+        }
         .ticket-bt-dot {
             width: 8px;
             height: 8px;
@@ -12737,11 +12745,6 @@
                                 <div class="ticket-header">
                                     <button type="button" class="ticket-close-btn" id="mobileTicketCloseBtn" aria-label="Cerrar ticket">&times;</button>
                                 </div>
-                                <div class="ticket-bt-bar" id="ticketBtBar">
-                                    <span class="ticket-bt-dot" id="ticketBtDot" data-status="off"></span>
-                                    <span class="ticket-bt-label" id="ticketBtLabel">Sin impresora BT</span>
-                                    <button type="button" class="ticket-bt-btn" id="ticketBtBtn" data-bt-action="connect">Buscar</button>
-                                </div>
                                 <div class="ticket-body" id="orderTicketBody">
                                     <div class="ticket-empty">
                                         <div>
@@ -13273,6 +13276,25 @@
                                                 <button type="button" class="biz-pass-btn" id="bizChangePasswordBtn">Actualizar contraseña</button>
                                             </div>
                                             <div id="bizPasswordStatus" class="biz-pass-status" hidden></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Impresora térmica — antes vivía en el panel de ticket de Recepción; es
+                                         una configuración de hardware que se hace una vez, no una acción por pedido. -->
+                                    <div class="biz-section" style="padding-top:20px; border-top:1px solid rgba(255,255,255,0.07); margin-top:8px;">
+                                        <div class="biz-section-head">
+                                            <span class="biz-section-icon">🖨️</span>
+                                            <div>
+                                                <div class="biz-section-title">Impresora térmica</div>
+                                                <div class="biz-section-desc">Conexión Bluetooth para imprimir los tickets de recepción</div>
+                                            </div>
+                                        </div>
+                                        <div class="biz-fields">
+                                            <div class="ticket-bt-bar ticket-bt-bar--settings" id="ticketBtBar">
+                                                <span class="ticket-bt-dot" id="ticketBtDot" data-status="off"></span>
+                                                <span class="ticket-bt-label" id="ticketBtLabel">Sin impresora BT</span>
+                                                <button type="button" class="ticket-bt-btn" id="ticketBtBtn" data-bt-action="connect">Buscar</button>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -14591,7 +14613,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260714-2118"></script>
+    <script defer src="admin.js?v=20260714-2128"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
