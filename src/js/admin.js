@@ -1648,12 +1648,6 @@ function setupSectionSaveButtons() {
             return;
         }
 
-        if (section === 'pedidos') {
-            await reloadDataAndRender();
-            showNotice('Pedidos actualizados.', 'ok');
-            return;
-        }
-
         if (section === 'resumen-ventas') {
             await reloadDataAndRender();
             showNotice('Resumen de ventas actualizado.', 'ok');
@@ -18602,12 +18596,6 @@ function _showCerrarCajaConfirm(onAccept) {
 document.getElementById('cerrarCajaBtn')?.addEventListener('click', () => {
     _showCerrarCajaConfirm(() => cerrarCaja());
 });
-document.getElementById('cerrarCajaBtnPos')?.addEventListener('click', () => {
-    _showCerrarCajaConfirm(() => {
-        _navigateToCajaDiaria();
-        cerrarCaja();
-    });
-});
 
 // ── Apertura de Caja ──────────────────────────────────────────────────────────
 function _showAbrirCajaModal() {
@@ -18819,20 +18807,11 @@ document.getElementById('abrirCajaBtnPos')?.addEventListener('click', () => {
 function _updateCajaEstadoUI() {
     const abierta = cajaAperturaAt > 0;
     const abrirBtn   = document.getElementById('abrirCajaBtnPos');
-    const cerrarBtn  = document.getElementById('cerrarCajaBtnPos');
     const newTickBtn = document.getElementById('posNewTicketBtn');
     const posCard    = document.getElementById('posOrdersCard');
 
     // "Abrir Caja": solo visible cuando está cerrada
     if (abrirBtn) abrirBtn.style.display = abierta ? 'none' : '';
-
-    // "Cerrar Caja": siempre visible, opaco e inactivo cuando está cerrada
-    if (cerrarBtn) {
-        cerrarBtn.disabled       = !abierta;
-        cerrarBtn.style.opacity  = abierta ? '' : '0.35';
-        cerrarBtn.style.cursor   = abierta ? '' : 'not-allowed';
-        cerrarBtn.style.filter   = abierta ? '' : 'grayscale(0.5)';
-    }
 
     // Botón "+" nuevo ticket: deshabilitado cuando está cerrada
     if (newTickBtn) {

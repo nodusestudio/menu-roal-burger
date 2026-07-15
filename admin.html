@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260715-0029">
+    <link rel="stylesheet" href="style.css?v=20260715-0050">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -3900,6 +3900,21 @@
             font-size: 0.78rem;
         }
 
+        /* Insignia flotante de reCAPTCHA oculta — el aviso legal requerido queda como texto
+           fijo debajo del formulario (.admin-auth-recaptcha-note) en su lugar. */
+        .grecaptcha-badge { visibility: hidden !important; }
+        .admin-auth-recaptcha-note {
+            margin: 14px 0 0;
+            font-size: 0.68rem;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, 0.4);
+            text-align: center;
+        }
+        .admin-auth-recaptcha-note a {
+            color: rgba(255, 255, 255, 0.55);
+            text-decoration: underline;
+        }
+
         .password-input-wrap {
             display: flex;
             align-items: center;
@@ -4187,8 +4202,6 @@
         body.mesero-mode .mesero-not-owner .order-action-btn,
         body.mesero-mode .mesero-not-owner .ticket-action-btn,
         body.mesero-mode #abrirCajaBtnPos,
-        body.mesero-mode #cerrarCajaBtnPos,
-        body.mesero-mode [data-section-save="pedidos"],
         body.mesero-mode .sales-day-banner-data,
         body.mesero-mode #cajaChicaBtn,
         body.mesero-mode #openAdminTicketsViewBtn,
@@ -7588,11 +7601,15 @@
             padding: 8px 12px;
         }
         .admin-domicilio-searcher {
-            flex: 1 1 260px;
             display: flex;
             align-items: center;
             gap: 8px;
             min-width: 0;
+            margin-top: 18px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
         }
         .admin-domicilio-input {
             flex: 1;
@@ -9712,11 +9729,10 @@
                 -webkit-backdrop-filter: blur(16px);
                 backdrop-filter: blur(16px);
             }
-            /* Buscador: ocupa el espacio restante */
-            [data-tab-panel="pedidos"] .section-toolbar .admin-domicilio-searcher {
-                flex: 1 1 auto !important;
+            /* Buscador: ahora vive debajo de la card de Recepcion, no en el toolbar fijo */
+            [data-tab-panel="pedidos"] #adminDomicilioSearcher {
+                margin: 12px 8px 0 !important;
                 width: auto !important;
-                min-width: 0 !important;
             }
             [data-tab-panel="pedidos"] .admin-domicilio-input {
                 font-size: 0.75rem !important;
@@ -9725,35 +9741,13 @@
                 border-radius: 7px !important;
             }
             /* Botones: auto, no se expanden */
-            [data-tab-panel="pedidos"] .section-toolbar > *:not(.admin-domicilio-searcher) {
+            [data-tab-panel="pedidos"] .section-toolbar > * {
                 width: auto !important;
                 flex-shrink: 0 !important;
                 margin-left: 0 !important;
             }
-            /* Actualizar: mismas medidas que Cerrar Caja */
-            [data-tab-panel="pedidos"] [data-section-save="pedidos"] {
-                padding: 0 !important;
-                width: 32px !important;
-                height: 32px !important;
-                min-width: 32px !important;
-                min-height: 32px !important;
-                font-size: 0 !important;
-                line-height: 1 !important;
-                border-radius: 7px !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                letter-spacing: 0 !important;
-                flex-shrink: 0 !important;
-            }
-            [data-tab-panel="pedidos"] [data-section-save="pedidos"]::before {
-                content: '↺' !important;
-                font-size: 1rem !important;
-                display: block !important;
-                line-height: 1 !important;
-            }
-            /* Abrir / Cerrar Caja: compactos, solo ícono */
-            #abrirCajaBtnPos, #cerrarCajaBtnPos {
+            /* Abrir Caja: compacto, solo ícono */
+            #abrirCajaBtnPos {
                 padding: 0 !important;
                 width: 32px !important;
                 height: 32px !important;
@@ -9765,11 +9759,6 @@
             }
             #abrirCajaBtnPos::before {
                 content: '📂';
-                font-size: 0.95rem;
-                display: block;
-            }
-            #cerrarCajaBtnPos::before {
-                content: '🔒';
                 font-size: 0.95rem;
                 display: block;
             }
@@ -12623,6 +12612,13 @@
                 <button type="button" id="authForgotBtn">Olvido contrasena</button>
                 <button type="button" id="authRegisterBtn">Registrarse</button>
             </div>
+            <p class="admin-auth-recaptcha-note">
+                Este sitio está protegido por reCAPTCHA y aplican la
+                <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Política de Privacidad</a>
+                y los
+                <a href="https://policies.google.com/terms" target="_blank" rel="noopener noreferrer">Términos de Servicio</a>
+                de Google.
+            </p>
         </div>
     </section>
 
@@ -12786,17 +12782,11 @@
 
             <div class="admin-tab-panel active" data-tab-panel="pedidos">
                 <div class="section-toolbar">
-                    <div class="admin-domicilio-searcher" id="adminDomicilioSearcher">
-                        <input type="text" id="adminDomicilioInput" class="admin-domicilio-input" placeholder="🔍 Buscar precio de domicilio por dirección..." autocomplete="off">
-                        <span id="adminDomicilioResult" class="admin-domicilio-result"></span>
-                    </div>
                     <button type="button" class="section-action-btn unread-tray-btn" id="unreadTrayBtn" aria-expanded="false" aria-controls="unreadTray" hidden>
                         Por Confirmar
                         <span class="unread-tray-badge" id="ordersCountUnread">0</span>
                     </button>
-                    <button type="button" class="section-save-btn" data-section-save="pedidos" title="Actualizar pedidos">↺ Actualizar</button>
                     <button type="button" id="abrirCajaBtnPos" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">📂 Abrir Caja</button>
-                    <button type="button" id="cerrarCajaBtnPos" style="background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 16px;font-size:0.82rem;">🔒 Cerrar Caja</button>
                 </div>
                 <div class="unread-tray" id="unreadTray" hidden>
                     <div class="unread-tray-head">
@@ -12886,6 +12876,10 @@
                         </div>
                     </div>
                 </article>
+                <div class="admin-domicilio-searcher" id="adminDomicilioSearcher">
+                    <input type="text" id="adminDomicilioInput" class="admin-domicilio-input" placeholder="🔍 Buscar precio de domicilio por dirección..." autocomplete="off">
+                    <span id="adminDomicilioResult" class="admin-domicilio-result"></span>
+                </div>
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="informes">
@@ -14782,7 +14776,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260715-0029"></script>
+    <script defer src="admin.js?v=20260715-0050"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
