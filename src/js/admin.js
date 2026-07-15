@@ -655,6 +655,7 @@ const _BT_TX_CHARS = [
     'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f',
     '49535343-1e4d-4bd9-ba61-23c647249616',
 ];
+const _BT_PRINTER_ID_KEY = 'roal_bt_printer_id'; // recordar el dispositivo para reconectar solo al recargar
 let _recomendadoSelectedProductId = null;
 const _processedAccordionExpanded = new Set();
 let ordersRealtimeTimer = null;
@@ -11066,6 +11067,44 @@ function renderBtPrinterStatus(status, deviceName) {
     }
 }
 
+// Dado un GATT server ya conectado, busca entre los servicios/características conocidos
+// una característica escribible (impresora térmica). Reusado al emparejar, al reconectar
+// tras un corte, y al reconectar automáticamente en una pestaña nueva.
+async function _btDiscoverWritableChar(server) {
+    for (const svcUuid of _BT_SERVICES) {
+        try {
+            const svc = await server.getPrimaryService(svcUuid);
+            let chars = [];
+            try { chars = await svc.getCharacteristics(); } catch (_) { /* ignorar */ }
+            // Primero busca por UUID conocido
+            for (const charUuid of _BT_TX_CHARS) {
+                try {
+                    const c = await svc.getCharacteristic(charUuid);
+                    if (c.properties.write || c.properties.writeWithoutResponse) return c;
+                } catch (_) { /* siguiente */ }
+            }
+            // Si no encontró por UUID, toma la primera característica escribible descubierta
+            for (const c of chars) {
+                if (c.properties.write || c.properties.writeWithoutResponse) return c;
+            }
+        } catch (_) { /* servicio no disponible */ }
+    }
+    return null;
+}
+
+function _btWireDisconnectHandler(device) {
+    device.addEventListener('gattserverdisconnected', () => {
+        _btPrinterCharacteristic = null;
+        renderBtPrinterStatus('connecting');
+        setTimeout(() => {
+            _btAutoReconnect().then((ok) => {
+                if (ok) { showNotice('Impresora Bluetooth reconectada.', 'ok'); }
+                else { renderBtPrinterStatus('disconnected'); showNotice('No se pudo reconectar la impresora BT.', 'error'); }
+            });
+        }, 2000);
+    });
+}
+
 async function connectBluetoothPrinter() {
     if (!navigator.bluetooth) {
         showNotice('Web Bluetooth no esta disponible en este navegador. Usa Chrome o Brave.', 'error');
@@ -11078,30 +11117,7 @@ async function connectBluetoothPrinter() {
             optionalServices: _BT_SERVICES,
         });
         const server = await device.gatt.connect();
-        let char = null;
-
-        // Intenta descubrir todos los servicios disponibles y busca una característica escribible
-        for (const svcUuid of _BT_SERVICES) {
-            if (char) break;
-            try {
-                const svc = await server.getPrimaryService(svcUuid);
-                let chars = [];
-                try { chars = await svc.getCharacteristics(); } catch (_) { /* ignorar */ }
-                // Primero busca por UUID conocido
-                for (const charUuid of _BT_TX_CHARS) {
-                    try {
-                        const c = await svc.getCharacteristic(charUuid);
-                        if (c.properties.write || c.properties.writeWithoutResponse) { char = c; break; }
-                    } catch (_) { /* siguiente */ }
-                }
-                // Si no encontró por UUID, toma la primera característica escribible descubierta
-                if (!char) {
-                    for (const c of chars) {
-                        if (c.properties.write || c.properties.writeWithoutResponse) { char = c; break; }
-                    }
-                }
-            } catch (_) { /* servicio no disponible */ }
-        }
+        const char = await _btDiscoverWritableChar(server);
 
         if (!char) {
             showNotice('Impresora conectada pero no se encontro caracteristica de escritura. Verifica que sea la impresora correcta.', 'error');
@@ -11110,16 +11126,11 @@ async function connectBluetoothPrinter() {
         }
         _btPrinterDevice = device;
         _btPrinterCharacteristic = char;
-        device.addEventListener('gattserverdisconnected', () => {
-            _btPrinterCharacteristic = null;
-            renderBtPrinterStatus('connecting');
-            setTimeout(() => {
-                _btAutoReconnect().then((ok) => {
-                    if (ok) { showNotice('Impresora Bluetooth reconectada.', 'ok'); }
-                    else { renderBtPrinterStatus('disconnected'); showNotice('No se pudo reconectar la impresora BT.', 'error'); }
-                });
-            }, 2000);
-        });
+        _btWireDisconnectHandler(device);
+        // Recordar el dispositivo para reconectar solo (sin el diálogo "Buscar") la próxima
+        // vez que se abra el admin — Web Bluetooth permite reconectar a dispositivos ya
+        // autorizados sin un gesto nuevo del usuario.
+        try { localStorage.setItem(_BT_PRINTER_ID_KEY, device.id); } catch (_) { /* ignorar */ }
         renderBtPrinterStatus('connected', device.name || '');
         showNotice(`Impresora "${device.name || 'BT'}" conectada. Ya puedes imprimir.`, 'ok');
     } catch (err) {
@@ -11130,10 +11141,40 @@ async function connectBluetoothPrinter() {
     }
 }
 
+// Al abrir/recargar el admin: si el navegador soporta reconexión persistente (Chrome/Brave)
+// y ya hay una impresora autorizada de una sesión anterior, reconectar sola sin que el
+// cajero tenga que tocar "Buscar" cada vez.
+async function _btTryAutoConnectOnLoad() {
+    if (!navigator.bluetooth || typeof navigator.bluetooth.getDevices !== 'function') return;
+    let savedId = '';
+    try { savedId = localStorage.getItem(_BT_PRINTER_ID_KEY) || ''; } catch (_) { return; }
+    if (!savedId) return;
+
+    try {
+        const devices = await navigator.bluetooth.getDevices();
+        const device = devices.find((d) => d.id === savedId);
+        if (!device) return;
+
+        renderBtPrinterStatus('connecting');
+        const server = await device.gatt.connect();
+        const char = await _btDiscoverWritableChar(server);
+        if (!char) { renderBtPrinterStatus('disconnected'); return; }
+
+        _btPrinterDevice = device;
+        _btPrinterCharacteristic = char;
+        _btWireDisconnectHandler(device);
+        renderBtPrinterStatus('connected', device.name || '');
+        showNotice(`Impresora "${device.name || 'BT'}" reconectada.`, 'ok');
+    } catch (_) {
+        renderBtPrinterStatus('disconnected');
+    }
+}
+
 function disconnectBluetoothPrinter() {
     try { if (_btPrinterDevice?.gatt?.connected) _btPrinterDevice.gatt.disconnect(); } catch (_) { /* ignorar */ }
     _btPrinterDevice = null;
     _btPrinterCharacteristic = null;
+    try { localStorage.removeItem(_BT_PRINTER_ID_KEY); } catch (_) { /* ignorar */ }
     renderBtPrinterStatus('disconnected');
     showNotice('Impresora Bluetooth desconectada.', 'ok');
 }
@@ -11142,26 +11183,7 @@ async function _btAutoReconnect() {
     if (!_btPrinterDevice) return false;
     try {
         const server = await _btPrinterDevice.gatt.connect();
-        let char = null;
-        for (const svcUuid of _BT_SERVICES) {
-            if (char) break;
-            try {
-                const svc = await server.getPrimaryService(svcUuid);
-                let chars = [];
-                try { chars = await svc.getCharacteristics(); } catch (_) { /* ignorar */ }
-                for (const charUuid of _BT_TX_CHARS) {
-                    try {
-                        const c = await svc.getCharacteristic(charUuid);
-                        if (c.properties.write || c.properties.writeWithoutResponse) { char = c; break; }
-                    } catch (_) { /* siguiente */ }
-                }
-                if (!char) {
-                    for (const c of chars) {
-                        if (c.properties.write || c.properties.writeWithoutResponse) { char = c; break; }
-                    }
-                }
-            } catch (_) { /* servicio no disponible */ }
-        }
+        const char = await _btDiscoverWritableChar(server);
         if (char) {
             _btPrinterCharacteristic = char;
             renderBtPrinterStatus('connected', _btPrinterDevice.name || '');
@@ -11252,7 +11274,7 @@ function createEscPosLineBuilder(pb, COLS) {
 }
 
 function buildESCPOSData(order) {
-    const ESC = 0x1B; const GS = 0x1D;
+    const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
     const COLS = 32;
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
@@ -11361,9 +11383,9 @@ async function _btWriteChunk(char, slice) {
 async function printViaBluetoothESCPOS(order) {
     const char = await _btEnsureConnected();
     if (!char) return false;
-    const data = buildESCPOSData(order);
     const CHUNK = 20;
     try {
+        const data = buildESCPOSData(order);
         for (let i = 0; i < data.length; i += CHUNK) {
             await _btWriteChunk(char, data.slice(i, i + CHUNK));
             await new Promise((r) => setTimeout(r, 80));
@@ -14947,6 +14969,8 @@ document.getElementById('ticketBtBtn')?.addEventListener('click', () => {
     }
 });
 
+_btTryAutoConnectOnLoad();
+
 mobileTicketBackdrop?.addEventListener('click', () => {
     closeMobileTicketPanel({ clearSelection: true });
     renderOrders();
@@ -17700,7 +17724,7 @@ let _pendingCierreDoc = null;
 let _cierrePrintData = null; // {c, dateStr, timeStr} para reimpresión BT
 
 function buildCierreESCPOSData(c, dateStr, timeStr) {
-    const ESC = 0x1B; const GS = 0x1D;
+    const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
     const COLS = 32;
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
