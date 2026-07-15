@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-2356">
+    <link rel="stylesheet" href="style.css?v=20260715-0029">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -4176,23 +4176,32 @@
         body.mesero-mode .pos-view {
             top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
         }
-        body.mesero-mode #posCloseBtn,
         body.mesero-mode #posOpenTicketsBtn { display: none !important; }
         body.mesero-mode.mesero-mode-invalid .pos-view,
-        body.mesero-mode.mesero-mode-invalid .admin-page { display: none !important; }
+        body.mesero-mode.mesero-mode-invalid .admin-page,
+        body.mesero-mode.mesero-mode-gate .pos-view,
+        body.mesero-mode.mesero-mode-gate .admin-page { display: none !important; }
 
-        /* Solo ver, no tocar: oculta acciones de escritura sobre pedidos (propios o ajenos) */
-        body.mesero-mode .order-action-btn,
-        body.mesero-mode .ticket-action-btn,
+        /* Solo ver, no tocar en pedidos ajenos — en los propios (.mesero-not-owner ausente)
+           quedan tocables "Editar productos", los campos del ticket y "Eliminar". */
+        body.mesero-mode .mesero-not-owner .order-action-btn,
+        body.mesero-mode .mesero-not-owner .ticket-action-btn,
         body.mesero-mode #abrirCajaBtnPos,
         body.mesero-mode #cerrarCajaBtnPos,
         body.mesero-mode [data-section-save="pedidos"],
-        body.mesero-mode .sales-day-banner-copy,
         body.mesero-mode .sales-day-banner-data,
         body.mesero-mode #cajaChicaBtn,
         body.mesero-mode #openAdminTicketsViewBtn,
         body.mesero-mode #adminChatFab { display: none !important; }
-        body.mesero-mode .ticket-copy-btn { pointer-events: none !important; }
+        body.mesero-mode .mesero-not-owner .ticket-copy-btn { pointer-events: none !important; }
+        /* Cobrar/Cambiar mesa/Imprimir siguen ocultos incluso en pedidos propios del mesero */
+        body.mesero-mode .ticket-cobrar-btn,
+        body.mesero-mode .ticket-print-btn,
+        body.mesero-mode .koa-cambiar-mesa-btn,
+        body.mesero-mode [data-order-ticket-action="cambiar_mesa"],
+        body.mesero-mode [data-order-card-action="cobrar_mesa"],
+        body.mesero-mode [data-order-card-action="cobrar_domicilio"],
+        body.mesero-mode [data-order-card-action="cobrar_retiro"] { display: none !important; }
 
         .mesero-invalid-screen {
             position: fixed; inset: 0; z-index: 9999;
@@ -4208,6 +4217,9 @@
         }
         .mesero-invalid-screen p {
             max-width: 320px; margin: 0; font-size: 0.9rem; color: rgba(238,244,255,0.7); line-height: 1.5;
+        }
+        .mesero-open-session-btn {
+            margin-top: 10px; min-height: 48px; padding: 0 28px; font-size: 0.9rem;
         }
 
         .koc-mesero-tag {
@@ -4249,6 +4261,17 @@
             background: rgba(252, 165, 165, 0.1); border-color: rgba(252, 165, 165, 0.3); color: #fca5a5;
         }
         .mesero-action-btn--del:hover { background: rgba(252, 165, 165, 0.2); }
+
+        .mesero-history-wrap { display: flex; flex-direction: column; gap: 6px; }
+        .mesero-history-wrap[hidden] { display: none; }
+        .mesero-history-card {
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+            gap: 6px; padding: 8px 10px; border-radius: 8px;
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+            font-size: 0.78rem; color: rgba(255,255,255,0.75);
+        }
+        .mesero-history-date { font-weight: 600; color: #fff; }
+        .mesero-history-open { color: #7ee0a3; font-weight: 600; }
 
         /* Ocultar el card de recepcion cuando el POS esta abierto */
         body.pos-is-open [data-tab-panel="pedidos"] .admin-card {
@@ -14731,6 +14754,16 @@
         <p>Este enlace de mesero es inválido o fue desactivado. Pide al administrador que te envíe uno nuevo.</p>
     </div>
 
+    <!-- ══ Modo mesero: candado de abrir/cerrar sesión ══ -->
+    <div id="meseroWelcomeScreen" class="mesero-invalid-screen mesero-welcome-screen" hidden>
+        <div class="mesero-invalid-icon">👋</div>
+        <h1 id="meseroWelcomeGreeting">Hola</h1>
+        <p id="meseroWelcomeSub">Toca para abrir tu sesión y empezar a tomar pedidos.</p>
+        <button type="button" id="meseroOpenSessionBtn" class="nuevo-ticket-btn mesero-open-session-btn">
+            🟢 Abrir sesión
+        </button>
+    </div>
+
     <!-- defer: deja que las 5 SDK de Firebase + Sortable + los locales se descarguen en
          paralelo en vez de uno tras otro (eran 8 round-trips en serie antes de que admin.js
          siquiera empezara a bajar); defer garantiza que igual se EJECUTEN en este mismo orden. -->
@@ -14749,7 +14782,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260714-2356"></script>
+    <script defer src="admin.js?v=20260715-0029"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

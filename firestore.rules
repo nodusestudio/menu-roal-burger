@@ -60,7 +60,15 @@ service cloud.firestore {
         && request.resource.data.customerName is string
         && request.resource.data.customerName.size() > 0
         && request.resource.data.customerName.size() <= 120;
-      allow update, delete: if request.auth != null;
+      // El mesero (sin auth) puede editar/borrar un pedido propio (meseroId propio, aun
+      // pendiente de cobro) para corregir un error apenas lo crea — una vez cobrado, solo admin.
+      allow update: if request.auth != null
+        || (resource.data.meseroId is string && resource.data.meseroId.size() > 0
+            && resource.data.paymentMethod == 'pendiente'
+            && request.resource.data.meseroId == resource.data.meseroId);
+      allow delete: if request.auth != null
+        || (resource.data.meseroId is string && resource.data.meseroId.size() > 0
+            && resource.data.paymentMethod == 'pendiente');
     }
 
     // ─── Pedidos archivados ─────────────────────────────────────────────────
@@ -141,7 +149,27 @@ service cloud.firestore {
     match /meseros/{token} {
       allow get: if true;
       allow list: if request.auth != null;
-      allow write: if request.auth != null;
+      // El mesero (sin auth) puede actualizar UNICAMENTE currentSessionId de su propio doc
+      // (abrir/cerrar su turno) — cualquier otro campo sigue exigiendo sesion de admin.
+      allow update: if request.auth != null
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentSessionId']);
+      allow create, delete: if request.auth != null;
+    }
+
+    // ─── Historial de turnos de meseros (abrió/cerró sesión) ─────────────────
+    // ID autogenerado. El mesero (sin auth) crea la apertura y luego solo puede
+    // rellenar cerradoAt — nunca reescribir meseroId/abiertoAt de un turno ya creado.
+    match /mesero_sesiones/{sessionId} {
+      allow get: if true;
+      allow list: if request.auth != null;
+      allow create: if true
+        && request.resource.data.meseroId is string
+        && request.resource.data.meseroId.size() > 0
+        && request.resource.data.abiertoAt != null
+        && request.resource.data.cerradoAt == null;
+      allow update: if request.resource.data.meseroId == resource.data.meseroId
+        && request.resource.data.abiertoAt == resource.data.abiertoAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cerradoAt']);
     }
 
     // ─── Solo admin ─────────────────────────────────────────────────────────

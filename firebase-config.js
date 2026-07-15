@@ -38,7 +38,7 @@ function initFirebaseServices() {
 
     return {
         db,
-        storage: firebase.storage(),
+        storage: typeof firebase.storage === 'function' ? firebase.storage() : null,
         auth: typeof firebase.auth === 'function' ? firebase.auth() : null,
         functions: typeof firebase.functions === 'function' ? firebase.functions() : null
     };

@@ -187,8 +187,12 @@ const CLIENTS_COLLECTION = 'clientes';
 const MESSAGES_COLLECTION = 'mensajes';
 // El ID del documento ES el token del enlace (ver firestore.rules: get permitido, list bloqueado).
 const MESEROS_COLLECTION = 'meseros';
+// Historial de turnos (abrió/cerró sesión) de cada mesero — ID autogenerado.
+const MESERO_SESIONES_COLLECTION = 'mesero_sesiones';
 // Sesión activa de mesero cuando admin.html se abre con ?mesero=<token> — null en uso normal de admin.
 let _meseroSession = null;
+// ID del doc en mesero_sesiones para el turno actualmente abierto — null si el candado sigue cerrado.
+let _meseroCurrentSessionId = null;
 const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
 const ORDER_CODE_PREFIX = 'RB';
 const ORDER_CODE_START = 2026;
@@ -5792,7 +5796,11 @@ function renderPosUpgradeStep1() {
     if (nameEl) nameEl.textContent = _posUpgradePending.productName;
     _setPosUpgradeAddBtnState(true);
 
-    const selectedCategory = String(posSelectedCategory || '').trim();
+    // Categoría real del producto, no la pestaña activa (que puede ser una clave de grupo
+    // __POS_GROUP__:Nombre cuando el admin agrupó categorías bajo una "categoría principal").
+    const prodEntry = productsState.find((p) => p.id === _posUpgradePending.productId);
+    const fallbackCategory = String(posSelectedCategory || '').startsWith('__POS_GROUP__:') ? '' : posSelectedCategory;
+    const selectedCategory = String(prodEntry?.categoria || fallbackCategory || '').trim();
     const catData = categoriesState.find((c) => c.name.trim().toUpperCase() === selectedCategory.toUpperCase());
     const hayAcomp  = catData && catData.acompanantes_pos !== false && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
     const hayBebida = catData && catData.bebidas_pos !== false && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante);
@@ -9471,8 +9479,9 @@ function buildThermalTicketMarkup(order, options = {}) {
             </div>
         </div>` : '';
 
+    const _ticketNotOwner = _meseroSession && order.meseroId !== _meseroSession.id;
     return `
-        <div class="ticket-paper-wrap">
+        <div class="ticket-paper-wrap${_ticketNotOwner ? ' mesero-not-owner' : ''}">
             <article class="ticket-paper" data-ticket-print-root="true">
                 <div class="ticket-brand">
                     <div class="ticket-brand-name">${restaurantName}</div>
@@ -9601,6 +9610,10 @@ function buildThermalTicketMarkup(order, options = {}) {
                 const _cambiarMesaBtn = order.orderType === 'mesa'
                     ? `<button type="button" class="ticket-action-btn" data-order-ticket-action="cambiar_mesa" data-order-id="${order.id}" title="Mover este pedido a otra mesa">⇄ Cambiar mesa</button>`
                     : '';
+                // Solo en modo mesero, y solo en un pedido propio aun pendiente de cobro.
+                const _meseroDeleteBtn = (_meseroSession && !_isPaid)
+                    ? `<button type="button" class="ticket-action-btn" data-order-ticket-action="eliminar" data-order-id="${order.id}" title="Eliminar este pedido">🗑 Eliminar</button>`
+                    : '';
                 return `
                 <div class="ticket-print-row${_editPagoBtn ? ' ticket-print-row--has-edit' : ''}">
                     <button type="button" class="ticket-print-btn ticket-action-btn" data-order-ticket-action="print" data-order-id="${order.id}">Imprimir</button>
@@ -9608,6 +9621,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                     <button type="button" class="ticket-contact-btn ticket-action-btn" data-order-ticket-action="contact" data-order-id="${order.id}">Agregar contacto</button>
                     ${_cambiarMesaBtn}
                     ${_editPagoBtn}
+                    ${_meseroDeleteBtn}
                 </div>`;
             })()}
         </div>
@@ -9736,6 +9750,10 @@ function createOrderCard(order) {
         card.classList.add('kanban-order-card--admin');
     }
     card.dataset.orderId = order.id;
+
+    if (_meseroSession && order.meseroId !== _meseroSession.id) {
+        card.classList.add('mesero-not-owner');
+    }
 
     if (order.status === 'entregado') {
         card.classList.add('kanban-order-card-compact');
@@ -16402,10 +16420,110 @@ async function initAdmin() {
 
 // ── Modo mesero: arranque restringido solo a "Crear Pedido" ────────────────
 // admin.html?mesero=<token> — sin cuenta de Firebase, sin sidebar/otras pestañas.
+function _getGreeting() {
+    const h = new Date().getHours();
+    if (h < 12) return 'Buenos días';
+    if (h < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+}
+
 function _showMeseroInvalidScreen() {
     document.body.classList.add('mesero-mode', 'mesero-mode-invalid');
     const el = document.getElementById('meseroInvalidScreen');
     if (el) el.hidden = false;
+}
+
+function _todayLocalDateString() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Candado de "Abrir sesión": se muestra hasta que el mesero toca el botón — no ve Recepción
+// ni puede crear pedidos antes de eso.
+function _showMeseroWelcomeScreen() {
+    document.body.classList.add('mesero-mode', 'mesero-mode-gate');
+    const el = document.getElementById('meseroWelcomeScreen');
+    const greetEl = document.getElementById('meseroWelcomeGreeting');
+    if (greetEl) greetEl.textContent = `${_getGreeting()}, ${_meseroSession.nombre}`;
+    if (el) el.hidden = false;
+
+    const btn = document.getElementById('meseroOpenSessionBtn');
+    if (btn) {
+        btn.onclick = async () => {
+            btn.disabled = true;
+            btn.textContent = 'Abriendo...';
+            try {
+                const meseroName = `${_meseroSession.nombre} ${_meseroSession.apellido}`.trim();
+                const sessionRef = await firebaseDb.collection(MESERO_SESIONES_COLLECTION).add({
+                    meseroId: _meseroSession.id,
+                    meseroName,
+                    abiertoAt: firestoreNow(),
+                    cerradoAt: null,
+                    fecha: _todayLocalDateString()
+                });
+                await firebaseDb.collection(MESEROS_COLLECTION).doc(_meseroSession.id)
+                    .update({ currentSessionId: sessionRef.id });
+                if (el) el.hidden = true;
+                document.body.classList.remove('mesero-mode-gate');
+                await _meseroEnterWorkspace(sessionRef.id);
+            } catch (error) {
+                console.error('[Mesero] Error al abrir sesión:', error);
+                showNotice('No se pudo abrir la sesión. Intenta de nuevo.', 'error');
+                btn.disabled = false;
+                btn.textContent = '🟢 Abrir sesión';
+            }
+        };
+    }
+}
+
+async function _meseroCloseSession() {
+    if (!_meseroCurrentSessionId) return;
+    if (!confirm('¿Cerrar tu sesión de hoy?')) return;
+    try {
+        await firebaseDb.collection(MESERO_SESIONES_COLLECTION).doc(_meseroCurrentSessionId)
+            .update({ cerradoAt: firestoreNow() });
+        await firebaseDb.collection(MESEROS_COLLECTION).doc(_meseroSession.id)
+            .update({ currentSessionId: null });
+    } catch (error) {
+        console.error('[Mesero] Error al cerrar sesión:', error);
+    }
+    _meseroCurrentSessionId = null;
+    document.body.classList.remove('admin-unlocked');
+    _showMeseroWelcomeScreen();
+}
+
+// Todo lo que hoy hace ver Recepcion + Crear Pedido en modo mesero — extraído para poder
+// llamarlo tanto al tocar "Abrir sesión" como al reanudar un turno ya abierto.
+async function _meseroEnterWorkspace(sessionId) {
+    _meseroCurrentSessionId = sessionId;
+    document.body.classList.remove('admin-loading', 'mesero-mode-gate');
+    document.body.classList.add('mesero-mode', 'admin-unlocked');
+
+    const _greetLabel = document.getElementById('salesDayStatusLabel');
+    const _greetMeta = document.getElementById('salesDayStatusMeta');
+    if (_greetLabel) _greetLabel.textContent = `${_getGreeting()}, ${_meseroSession.nombre}`;
+    if (_greetMeta) _greetMeta.textContent = 'Bienvenido a tu app de pedidos.';
+
+    renderPosCategoriesPanel();
+
+    // Deja "pedidos" (Recepcion) como unica pantalla visible — el sidebar para navegar a
+    // otras secciones esta oculto por CSS, asi que el mesero nunca dispara otro target.
+    setupAccordion();
+    setupCardCollapse();
+    announceNewOrders(ordersState);
+    renderOrders();
+    _subscribeMeseroOrders();
+
+    const actionsRow = document.querySelector('.sales-day-banner-actions');
+    if (actionsRow && !document.getElementById('meseroCloseSessionBtn')) {
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.id = 'meseroCloseSessionBtn';
+        closeBtn.className = 'tickets-abiertos-btn';
+        closeBtn.textContent = '🔴 Cerrar sesión';
+        closeBtn.addEventListener('click', _meseroCloseSession);
+        actionsRow.insertBefore(closeBtn, actionsRow.firstChild);
+    }
 }
 
 async function initMeseroMode(token) {
@@ -16419,7 +16537,18 @@ async function initMeseroMode(token) {
         firebaseStorage = services.storage;
         // Sin firebaseAuth: el modo mesero nunca inicia sesión de Firebase.
 
-        const snap = await firebaseDb.collection(MESEROS_COLLECTION).doc(token).get();
+        // Validar el token EN PARALELO con el catálogo (no esperar el round-trip del token
+        // antes de arrancar las descargas) — se ahorra una vuelta completa de red.
+        const [snap] = await Promise.all([
+            firebaseDb.collection(MESEROS_COLLECTION).doc(token).get(),
+            fetchCategories(),
+            fetchProducts(),
+            fetchBebidas(),
+            fetchAcompanantes(),
+            fetchCombosPack(),
+            fetchCatalogoVisibilidad(),
+            fetchOrders()
+        ]);
         if (!snap.exists) {
             _showMeseroInvalidScreen();
             return;
@@ -16432,27 +16561,17 @@ async function initMeseroMode(token) {
             apellido: String(data.apellido || '').trim()
         };
 
-        document.body.classList.remove('admin-loading');
-        document.body.classList.add('mesero-mode', 'admin-unlocked');
-
-        await Promise.all([
-            fetchCategories(),
-            fetchProducts(),
-            fetchBebidas(),
-            fetchAcompanantes(),
-            fetchCombosPack(),
-            fetchCatalogoVisibilidad(),
-            fetchOrders()
-        ]);
-        renderPosCategoriesPanel();
-
-        // Deja "pedidos" (Recepcion) como unica pantalla visible — el sidebar para navegar a
-        // otras secciones esta oculto por CSS, asi que el mesero nunca dispara otro target.
-        setupAccordion();
-        setupCardCollapse();
-        announceNewOrders(ordersState);
-        renderOrders();
-        _subscribeMeseroOrders();
+        // ¿Ya tenía un turno abierto (cerró la pestaña sin tocar "Cerrar sesión")? Si sí, entra
+        // directo sin volver a preguntar; si no, muestra el candado de "Abrir sesión".
+        const currentSessionId = String(data.currentSessionId || '').trim();
+        if (currentSessionId) {
+            const sessSnap = await firebaseDb.collection(MESERO_SESIONES_COLLECTION).doc(currentSessionId).get();
+            if (sessSnap.exists && !sessSnap.data().cerradoAt) {
+                await _meseroEnterWorkspace(currentSessionId);
+                return;
+            }
+        }
+        _showMeseroWelcomeScreen();
     } catch (error) {
         console.error('[Mesero] Error al iniciar modo mesero:', error);
         _showMeseroInvalidScreen();
@@ -20252,8 +20371,10 @@ function renderMeserosPanel() {
             <div class="mesero-row-actions">
                 <button type="button" class="mesero-action-btn" data-mesero-copy="${escapeHtml(m.token)}">📋 Copiar enlace</button>
                 <button type="button" class="mesero-action-btn mesero-action-btn--wa" data-mesero-wa="${escapeHtml(m.token)}">💬 WhatsApp</button>
+                <button type="button" class="mesero-action-btn" data-mesero-historial="${escapeHtml(m.token)}">🕒 Historial</button>
                 <button type="button" class="mesero-action-btn mesero-action-btn--del" data-mesero-del="${escapeHtml(m.token)}">🗑 Eliminar acceso</button>
             </div>
+            <div class="mesero-history-wrap" data-mesero-history-wrap="${escapeHtml(m.token)}" hidden></div>
         </div>`;
     }).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay meseros registrados.</p>`;
 
@@ -20287,6 +20408,38 @@ function renderMeserosPanel() {
             showNotice('Acceso de mesero eliminado.', 'ok');
         });
     });
+    wrap.querySelectorAll('[data-mesero-historial]').forEach((btn) => {
+        btn.addEventListener('click', () => _toggleMeseroHistorial(btn.dataset.meseroHistorial));
+    });
+}
+
+async function _toggleMeseroHistorial(token) {
+    const box = document.querySelector(`[data-mesero-history-wrap="${CSS.escape(token)}"]`);
+    if (!box) return;
+    if (!box.hidden) { box.hidden = true; return; }
+
+    box.hidden = false;
+    box.innerHTML = `<p style="color:var(--admin-muted);font-size:0.8rem;padding:6px 0;">Cargando...</p>`;
+    try {
+        // Sin orderBy: un solo filtro de igualdad no exige indice compuesto; se ordena en JS.
+        const snap = await firebaseDb.collection(MESERO_SESIONES_COLLECTION)
+            .where('meseroId', '==', token).get();
+        const sesiones = snap.docs.map((d) => d.data())
+            .sort((a, b) => (b.abiertoAt?.toMillis?.() || 0) - (a.abiertoAt?.toMillis?.() || 0));
+
+        box.innerHTML = sesiones.length ? sesiones.map((s) => `
+            <div class="mesero-history-card">
+                <span class="mesero-history-date">📅 ${escapeHtml(s.fecha || formatOrderDate(s.abiertoAt))}</span>
+                <span class="mesero-history-times">
+                    Abrió ${escapeHtml(formatOrderTime(s.abiertoAt))}
+                    ${s.cerradoAt
+                        ? `· Cerró ${escapeHtml(formatOrderTime(s.cerradoAt))}`
+                        : '· <span class="mesero-history-open">🟢 En curso</span>'}
+                </span>
+            </div>`).join('') : `<p style="color:var(--admin-muted);font-size:0.8rem;padding:6px 0;">Sin turnos registrados.</p>`;
+    } catch (err) {
+        box.innerHTML = `<p style="color:#fca5a5;font-size:0.8rem;padding:6px 0;">Error al cargar historial: ${escapeHtml(err.message || '')}</p>`;
+    }
 }
 
 function _meseroOpenForm() {
