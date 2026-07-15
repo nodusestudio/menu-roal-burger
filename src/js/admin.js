@@ -9601,7 +9601,7 @@ function renderOrderTicket(order, options = {}) {
         ticketPaper.style.position = 'relative';
         const floatDiv = document.createElement('div');
         floatDiv.className = 'ticket-float-actions';
-        floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-edit-btn" data-order-ticket-action="edit-items" title="Editar productos del pedido">✎ Editar</button>`;
+        floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-edit-btn" data-order-ticket-action="edit-items" title="Editar productos del pedido">✎</button>`;
         floatDiv.innerHTML += `<button type="button" class="tpv-action-btn tpv-delete-btn" data-order-ticket-action="eliminar" title="Eliminar pedido">🗑</button>`;
         ticketPaper.appendChild(floatDiv);
     }
@@ -16476,10 +16476,13 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             );
             closeUnreadTray();
         } else {
+            // Si ya tenía un método de pago real, esto es una corrección (editar_pago), no un
+            // primer registro — el aviso lo refleja para no confundir al cajero.
+            const wasAlreadyPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
             await updateOrder(order.id, paymentUpdate);
             await reloadDataAndRender();
             if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
-            showNotice('Pago registrado correctamente.', 'ok');
+            showNotice(wasAlreadyPaid ? 'Método de pago corregido.' : 'Pago registrado correctamente.', 'ok');
         }
 
         if (!_cajaDiariaAutoOpened && paidSinceApertura === 0) {

@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-2008">
+    <link rel="stylesheet" href="style.css?v=20260714-2024">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -529,7 +529,8 @@
 
         .orders-workspace {
             display: grid;
-            grid-template-columns: minmax(0, 7fr) minmax(320px, 3fr);
+            /* 3 columnas directas: Domicilios+Para llevar (20%) / Mesas (40%) / Recibo (40%) */
+            grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.6fr) minmax(300px, 1.6fr);
             gap: 18px;
             align-items: start;
         }
@@ -649,19 +650,19 @@
             color: #fff;
         }
 
+        /* Deja que sus hijos (stack Domicilios+Llevar y la sección de Mesas) entren directo
+           como columnas del grid de 3 de .orders-workspace, en vez de armar un grid propio
+           de 2 columnas anidado — así el Recibo compite por ancho con las tres a la vez. */
         .orders-lanes {
-            display: grid;
-            grid-template-columns: minmax(230px, 0.85fr) minmax(0, 1.5fr);
-            gap: 16px;
-            min-height: 72vh;
+            display: contents;
         }
 
-        /* Domicilios + Para llevar apiladas, angostas — Mesas se lleva el resto del ancho */
+        /* Domicilios + Para llevar apiladas, angostas — Mesas y Recibo se llevan el resto del ancho */
         .orders-lanes-left {
             display: flex;
             flex-direction: column;
             gap: 16px;
-            min-height: 0;
+            min-height: 72vh;
         }
 
         .orders-mobile-tabs {
@@ -6768,7 +6769,7 @@
         }
 
         .orders-workspace {
-            grid-template-columns: minmax(190px, 0.9fr) minmax(0, 1.5fr) minmax(240px, 1.1fr);
+            grid-template-columns: minmax(170px, 0.72fr) minmax(0, 1.35fr) minmax(240px, 1.43fr);
             gap: 12px;
             align-items: start;
         }
@@ -14532,7 +14533,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="firebase-config.js"></script>
     <script src="tracking.js"></script>
-    <script src="admin.js?v=20260714-2008"></script>
+    <script src="admin.js?v=20260714-2024"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
