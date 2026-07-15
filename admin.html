@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-2135">
+    <link rel="stylesheet" href="style.css?v=20260714-2319">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -572,12 +572,31 @@
 
         .sales-day-banner-metrics {
             display: flex;
-            gap: 10px;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .sales-day-banner-data {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding: 5px 8px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .sales-day-banner-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             flex-wrap: wrap;
         }
 
         .sales-day-chip {
-            min-height: 30px;
+            min-height: 28px;
             padding: 0 10px;
             border-radius: 999px;
             display: inline-flex;
@@ -588,6 +607,7 @@
             color: #fff;
             font-size: 0.72rem;
             font-weight: 700;
+            font-variant-numeric: tabular-nums;
         }
 
         .sales-day-chip--total {
@@ -628,28 +648,28 @@
         }
 
         .tickets-abiertos-btn {
-            min-height: 30px;
-            padding: 0 13px;
+            min-height: 28px;
+            padding: 0 11px;
             border-radius: 999px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 5px;
-            background: linear-gradient(135deg, rgba(255, 123, 69, 0.28), rgba(255, 123, 69, 0.14));
-            border: 1px solid rgba(255, 123, 69, 0.55);
+            background: transparent;
+            border: 1px solid rgba(255, 123, 69, 0.4);
             color: #ffb38a;
             font-family: 'Oswald', sans-serif;
-            font-size: 0.74rem;
+            font-size: 0.7rem;
             font-weight: 700;
-            letter-spacing: 0.7px;
+            letter-spacing: 0.5px;
             text-transform: uppercase;
             cursor: pointer;
             transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
         }
 
         .tickets-abiertos-btn:hover {
-            background: linear-gradient(135deg, rgba(255, 123, 69, 0.42), rgba(255, 123, 69, 0.22));
-            box-shadow: 0 5px 16px rgba(255, 123, 69, 0.32);
+            background: rgba(255, 123, 69, 0.18);
+            box-shadow: 0 5px 16px rgba(255, 123, 69, 0.22);
             transform: translateY(-1px);
             color: #fff;
         }
@@ -4149,6 +4169,41 @@
             color: #eef4ff;
         }
         .pos-view.is-open { display: block; }
+
+        /* ── Modo mesero: solo "Crear Pedido", sin sidebar/topbar/salidas ── */
+        body.mesero-mode .admin-sidebar,
+        body.mesero-mode .admin-page,
+        body.mesero-mode .admin-auth-overlay { display: none !important; }
+        body.mesero-mode .pos-view {
+            top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+        }
+        body.mesero-mode #posCloseBtn,
+        body.mesero-mode #posOpenTicketsBtn { display: none !important; }
+        body.mesero-mode.mesero-mode-invalid .pos-view { display: none !important; }
+
+        .mesero-invalid-screen {
+            position: fixed; inset: 0; z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 12px; text-align: center; padding: 32px;
+            background: #141922; color: #eef4ff;
+        }
+        .mesero-invalid-screen[hidden] { display: none !important; }
+        .mesero-invalid-icon { font-size: 2.6rem; }
+        .mesero-invalid-screen h1 {
+            font-family: 'Oswald', sans-serif; font-size: 1.3rem; letter-spacing: 0.03em;
+            text-transform: uppercase; margin: 0; color: #fff;
+        }
+        .mesero-invalid-screen p {
+            max-width: 320px; margin: 0; font-size: 0.9rem; color: rgba(238,244,255,0.7); line-height: 1.5;
+        }
+
+        .koc-mesero-tag {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 700;
+            background: rgba(167, 139, 250, 0.16); border: 1px solid rgba(167, 139, 250, 0.35);
+            color: #c4b5fd;
+        }
+
         /* Ocultar el card de recepcion cuando el POS esta abierto */
         body.pos-is-open [data-tab-panel="pedidos"] .admin-card {
             display: none;
@@ -10859,17 +10914,17 @@
 
         /* ── Caja Chica ──────────────────────────────── */
         .caja-chica-btn {
-            min-height: 30px; padding: 0 13px; border-radius: 999px;
+            min-height: 28px; padding: 0 11px; border-radius: 999px;
             display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-            background: linear-gradient(135deg, rgba(255,149,64,0.22), rgba(255,149,64,0.10));
-            border: 1px solid rgba(255,149,64,0.5); color: #ffb98a;
-            font-family: 'Oswald', sans-serif; font-size: 0.74rem; font-weight: 700;
-            letter-spacing: 0.7px; text-transform: uppercase; cursor: pointer;
+            background: transparent;
+            border: 1px solid rgba(255,149,64,0.35); color: #ffb98a;
+            font-family: 'Oswald', sans-serif; font-size: 0.7rem; font-weight: 700;
+            letter-spacing: 0.5px; text-transform: uppercase; cursor: pointer;
             transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
         }
         .caja-chica-btn:hover {
-            background: linear-gradient(135deg, rgba(255,149,64,0.4), rgba(255,149,64,0.2));
-            box-shadow: 0 5px 16px rgba(255,149,64,0.3); transform: translateY(-1px); color: #fff;
+            background: rgba(255,149,64,0.16);
+            box-shadow: 0 5px 16px rgba(255,149,64,0.2); transform: translateY(-1px); color: #fff;
         }
         #cajaChicaModal {
             position: fixed; inset: 0; z-index: 1100;
@@ -12693,19 +12748,23 @@
                                 <span id="salesDayStatusMeta">Abierta ahora mismo.</span>
                             </div>
                             <div class="sales-day-banner-metrics">
-                                <span class="sales-day-chip" id="salesDayDeliveredTotal">💵 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
-                                <span class="sales-day-chip" id="salesDayGrandTotal">💳 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
-                                <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
-                                <span class="sales-day-chip sales-day-chip--delivery" id="salesDayDeliveryFeesChip" hidden>🛵 $0</span>
-                                <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
-                                <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn" hidden style="display:none!important">
-                                    Tickets Abiertos
-                                    <span id="adminTicketsCountBadge"></span>
-                                </button>
-                                <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
-                                    Nuevo Ticket
-                                </button>
+                                <div class="sales-day-banner-data">
+                                    <span class="sales-day-chip" id="salesDayDeliveredTotal">💵 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
+                                    <span class="sales-day-chip" id="salesDayGrandTotal">💳 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
+                                    <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
+                                    <span class="sales-day-chip sales-day-chip--delivery" id="salesDayDeliveryFeesChip" hidden>🛵 $0</span>
+                                </div>
+                                <div class="sales-day-banner-actions">
+                                    <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
+                                    <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn" hidden style="display:none!important">
+                                        Tickets Abiertos
+                                        <span id="adminTicketsCountBadge"></span>
+                                    </button>
+                                    <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
+                                        Nuevo Ticket
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         <div class="orders-workspace">
@@ -13134,6 +13193,10 @@
                             <span class="menu-inner-tab-icon">💳</span>
                             <span>Tipos de Pago</span>
                         </button>
+                        <button class="menu-inner-tab" data-section-tab="meseros" data-section-scope="configuracion" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">🧑‍🍳</span>
+                            <span>Meseros</span>
+                        </button>
                     </nav>
                     <div class="menu-inner-panels-wrap">
 
@@ -13348,6 +13411,26 @@
                                         Configura los métodos de pago disponibles al cobrar. Puedes activar/desactivar, editar o eliminar cada uno, y agregar nuevos.
                                     </p>
                                     <div id="paymentConfigPanel">
+                                        <!-- renderizado por JS -->
+                                    </div>
+                                </div>
+                            </article>
+                        </div>
+
+                        <!-- Panel: Meseros -->
+                        <div class="menu-inner-panel" data-section-panel="meseros" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Meseros</h2>
+                                    <button type="button" class="section-action-btn primary" id="addMeseroBtn">+ Agregar mesero</button>
+                                </div>
+                                <div class="card-body" id="card-meseros">
+                                    <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
+                                        Crea un acceso exclusivo para que un mesero tome pedidos desde su celular. El enlace generado
+                                        abre solo la pantalla de "Crear Pedido" — sin acceso a nada más — y cada pedido queda
+                                        identificado con su nombre. Eliminar un mesero desactiva su enlace de inmediato.
+                                    </p>
+                                    <div id="meserosPanelWrap">
                                         <!-- renderizado por JS -->
                                     </div>
                                 </div>
@@ -14595,6 +14678,13 @@
         <span class="admin-chat-fab-badge" id="adminChatFabBadge" hidden>0</span>
     </button>
 
+    <!-- ══ Modo mesero: enlace inválido o revocado ══ -->
+    <div id="meseroInvalidScreen" class="mesero-invalid-screen" hidden>
+        <div class="mesero-invalid-icon">🔒</div>
+        <h1>Enlace no disponible</h1>
+        <p>Este enlace de mesero es inválido o fue desactivado. Pide al administrador que te envíe uno nuevo.</p>
+    </div>
+
     <!-- defer: deja que las 5 SDK de Firebase + Sortable + los locales se descarguen en
          paralelo en vez de uno tras otro (eran 8 round-trips en serie antes de que admin.js
          siquiera empezara a bajar); defer garantiza que igual se EJECUTEN en este mismo orden. -->
@@ -14613,7 +14703,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260714-2135"></script>
+    <script defer src="admin.js?v=20260714-2319"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

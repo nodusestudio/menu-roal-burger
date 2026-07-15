@@ -185,6 +185,10 @@ const ORDERS_COLLECTION = 'pedidos';
 const ORDERS_ARCHIVE_COLLECTION = 'pedidos_archivados';
 const CLIENTS_COLLECTION = 'clientes';
 const MESSAGES_COLLECTION = 'mensajes';
+// El ID del documento ES el token del enlace (ver firestore.rules: get permitido, list bloqueado).
+const MESEROS_COLLECTION = 'meseros';
+// Sesión activa de mesero cuando admin.html se abre con ?mesero=<token> — null en uso normal de admin.
+let _meseroSession = null;
 const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
 const ORDER_CODE_PREFIX = 'RB';
 const ORDER_CODE_START = 2026;
@@ -522,6 +526,8 @@ let _posAutoSaveTimer = null; // debounce de auto-guardado al agregar artículos
 let _changeMesaOrderId = null; // ID del pedido al que se le va a cambiar la mesa
 
 async function savePosTicketToFirestore(ticket) {
+    // pos_tickets exige sesión de admin (firestore.rules) — el modo mesero nunca lo usa.
+    if (_meseroSession) return;
     if (!ticket || !firebaseDb) return;
     try {
         const data = { ...ticket };
@@ -534,6 +540,7 @@ async function savePosTicketToFirestore(ticket) {
 }
 
 async function deletePosTicketFromFirestore(ticketId) {
+    if (_meseroSession) return;
     if (!ticketId || !firebaseDb) return;
     try {
         await firebaseDb.collection(POS_TICKETS_COLLECTION).doc(ticketId).delete();
@@ -545,6 +552,7 @@ async function deletePosTicketFromFirestore(ticketId) {
 // Auto-guarda el ticket activo en Firestore 2 s después del último cambio, para no perder
 // datos si la sesión se interrumpe antes de que el cajero haga clic en "Guardar pedido".
 function _schedulePosTicketAutoSave() {
+    if (_meseroSession) return;
     if (_posAutoSaveTimer) clearTimeout(_posAutoSaveTimer);
     _posAutoSaveTimer = setTimeout(() => {
         _posAutoSaveTimer = null;
@@ -2059,6 +2067,8 @@ function normalizeOrder(raw) {
         anulado: raw.anulado === true,
         anuladoAt: raw.anuladoAt || null,
         paymentSplit: Array.isArray(raw.paymentSplit) ? raw.paymentSplit : null,
+        meseroId: String(raw.meseroId || '').trim() || null,
+        meseroName: String(raw.meseroName || '').trim() || null,
     };
 }
 
@@ -6447,9 +6457,29 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         if (orderType === 'retiro') {
             orderDoc.pickupMode = config.pickupMode || editData?.pickupMode || 'llego';
         }
+        if (_meseroSession) {
+            orderDoc.meseroId = _meseroSession.id;
+            orderDoc.meseroName = `${_meseroSession.nombre} ${_meseroSession.apellido}`.trim();
+        }
 
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
         _editingOrderData = null;
+
+        if (_meseroSession) {
+            // El mesero nunca ve Recepción/dashboard: se queda en el POS con un ticket nuevo listo.
+            posTickets = posTickets.filter((t) => t.id !== posActiveTicketId);
+            posActiveTicketId = null;
+            posTicketConfig = null;
+            internalOrderItems = [];
+            createNewPosTicket();
+            renderPosOrderItems();
+            renderPosTotals();
+            renderPosBottomBar();
+            showPosScreen('main');
+            showNotice('Pedido enviado. Listo para el siguiente.', 'ok');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'GUARDAR'; }
+            return;
+        }
 
         // onSnapshot actualiza ordersState y re-renderiza en ~600 ms
         renderOrders();
@@ -8760,6 +8790,11 @@ function getPickupModeTag(order) {
         : '<span class="koc-pickup-mode-tag koc-pickup-mode--llamo">📞 Llamó</span>';
 }
 
+function getMeseroTag(order) {
+    if (!order.meseroName) return '';
+    return `<span class="koc-mesero-tag">🧑‍🍳 ${escapeHtml(order.meseroName)}</span>`;
+}
+
 function getOrderDisplayTotal(order) {
     if (Number.isFinite(Number(order.total))) {
         return Number(order.total);
@@ -9869,6 +9904,7 @@ function createOrderCard(order) {
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
             <span class="koc-type-badge ${typeClass}">${escapeHtml(getOrderTypeLabel(order))}</span>
             ${getPickupModeTag(order)}
+            ${getMeseroTag(order)}
             ${sinMesaBadge}
             ${promoHeaderBadge}
             <span class="koc-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
@@ -16364,6 +16400,62 @@ async function initAdmin() {
     }
 }
 
+// ── Modo mesero: arranque restringido solo a "Crear Pedido" ────────────────
+// admin.html?mesero=<token> — sin cuenta de Firebase, sin sidebar/otras pestañas.
+function _showMeseroInvalidScreen() {
+    document.body.classList.add('mesero-mode', 'mesero-mode-invalid');
+    const el = document.getElementById('meseroInvalidScreen');
+    if (el) el.hidden = false;
+}
+
+async function initMeseroMode(token) {
+    try {
+        if (!getSharedFirebaseConfig()) {
+            throw new Error('No se encontro FIREBASE_CONFIG compartido.');
+        }
+
+        const services = initFirebaseServices();
+        firebaseDb = services.db;
+        firebaseStorage = services.storage;
+        // Sin firebaseAuth: el modo mesero nunca inicia sesión de Firebase.
+
+        const snap = await firebaseDb.collection(MESEROS_COLLECTION).doc(token).get();
+        if (!snap.exists) {
+            _showMeseroInvalidScreen();
+            return;
+        }
+
+        const data = snap.data() || {};
+        _meseroSession = {
+            id: token,
+            nombre: String(data.nombre || '').trim(),
+            apellido: String(data.apellido || '').trim()
+        };
+
+        document.body.classList.remove('admin-loading');
+        document.body.classList.add('mesero-mode');
+
+        await Promise.all([
+            fetchCategories(),
+            fetchProducts(),
+            fetchBebidas(),
+            fetchAcompanantes(),
+            fetchCombosPack(),
+            fetchCatalogoVisibilidad()
+        ]);
+        renderPosCategoriesPanel();
+
+        posActiveTicketId = null;
+        posTicketConfig = null;
+        internalOrderItems = [];
+        createNewPosTicket();
+        openInternalOrderModal();
+    } catch (error) {
+        console.error('[Mesero] Error al iniciar modo mesero:', error);
+        _showMeseroInvalidScreen();
+    }
+}
+
 // ── Modal cobro domicilio ──────────────────────────────────────────────────
 const PAYMENT_METHODS_DOC_ID = 'metodos_pago';
 
@@ -20102,6 +20194,142 @@ document.getElementById('addProveedorBtn')?.addEventListener('click', () => {
     _proveedorOpenForm(null);
 });
 
+// ── Meseros (acceso exclusivo vía enlace) ─────────────────────────────────
+let _meserosState = [];
+
+async function loadMeseros() {
+    try {
+        const snap = await firebaseDb.collection(MESEROS_COLLECTION).get();
+        _meserosState = snap.docs.map((d) => ({ token: d.id, ...d.data() }));
+    } catch {
+        _meserosState = [];
+    }
+    return _meserosState;
+}
+
+async function deleteMesero(token) {
+    await firebaseDb.collection(MESEROS_COLLECTION).doc(token).delete();
+}
+
+function _buildMeseroLink(token) {
+    return `${window.location.origin}${window.location.pathname}?mesero=${token}`;
+}
+
+function renderMeserosPanel() {
+    const wrap = document.getElementById('meserosPanelWrap');
+    if (!wrap) return;
+
+    const rows = _meserosState.map((m) => {
+        const nombreCompleto = `${m.nombre || ''} ${m.apellido || ''}`.trim() || '—';
+        return `
+        <div class="pm-method-item" data-mesero-token="${escapeHtml(m.token)}">
+            <div class="pm-method-info">
+                <span class="pm-method-name">🧑‍🍳 ${escapeHtml(nombreCompleto)}</span>
+                <span class="pm-method-meta">${escapeHtml(m.celular || 'Sin celular')}</span>
+            </div>
+            <div class="pm-method-actions">
+                <button type="button" class="pm-icon-btn" data-mesero-copy="${escapeHtml(m.token)}" title="Copiar enlace">📋</button>
+                <button type="button" class="pm-icon-btn" data-mesero-wa="${escapeHtml(m.token)}" title="Enviar por WhatsApp">💬</button>
+                <button type="button" class="pm-icon-btn pm-icon-btn--del" data-mesero-del="${escapeHtml(m.token)}" title="Eliminar acceso">🗑</button>
+            </div>
+        </div>`;
+    }).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay meseros registrados.</p>`;
+
+    wrap.innerHTML = `
+        <div id="meserosListWrap">${rows}</div>
+        <div id="meseroFormWrap" style="display:none;"></div>`;
+
+    wrap.querySelectorAll('[data-mesero-copy]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            await copyTextToClipboard(_buildMeseroLink(btn.dataset.meseroCopy));
+            showNotice('Enlace copiado.', 'ok');
+        });
+    });
+    wrap.querySelectorAll('[data-mesero-wa]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const m = _meserosState.find((x) => x.token === btn.dataset.meseroWa);
+            if (!m) return;
+            const digits = normalizePhoneDigits(m.celular);
+            const link = _buildMeseroLink(m.token);
+            const msg = `Hola ${m.nombre}! Este es tu enlace exclusivo para crear pedidos en ROAL BURGER: ${link}`;
+            const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+            window.open(waUrl, '_blank', 'noopener');
+        });
+    });
+    wrap.querySelectorAll('[data-mesero-del]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('¿Eliminar el acceso de este mesero? El enlace dejará de funcionar de inmediato.')) return;
+            await deleteMesero(btn.dataset.meseroDel);
+            await loadMeseros();
+            renderMeserosPanel();
+            showNotice('Acceso de mesero eliminado.', 'ok');
+        });
+    });
+}
+
+function _meseroOpenForm() {
+    const wrap = document.getElementById('meseroFormWrap');
+    const listWrap = document.getElementById('meserosListWrap');
+    if (!wrap) return;
+    if (listWrap) listWrap.style.display = 'none';
+
+    wrap.style.display = '';
+    wrap.innerHTML = `
+        <div class="pm-method-form-wrap">
+            <div class="pm-method-form">
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Nombre *</label>
+                    <input class="pm-form-input" id="meseroFormNombre" type="text" maxlength="60" placeholder="Ej: Juan">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Apellido *</label>
+                    <input class="pm-form-input" id="meseroFormApellido" type="text" maxlength="60" placeholder="Ej: Pérez">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Celular *</label>
+                    <input class="pm-form-input" id="meseroFormCelular" type="tel" maxlength="20" placeholder="Ej: 3001234567">
+                </div>
+                <div class="pm-form-actions">
+                    <button type="button" class="admin-button" id="meseroFormSaveBtn">Crear mesero</button>
+                    <button type="button" class="pm-icon-btn" id="meseroFormCancelBtn">Cancelar</button>
+                </div>
+            </div>
+        </div>`;
+
+    wrap.querySelector('#meseroFormSaveBtn')?.addEventListener('click', _meseroFormSave);
+    wrap.querySelector('#meseroFormCancelBtn')?.addEventListener('click', () => {
+        if (listWrap) listWrap.style.display = '';
+        wrap.style.display = 'none';
+    });
+}
+
+async function _meseroFormSave() {
+    const nombre = document.getElementById('meseroFormNombre')?.value.trim() || '';
+    const apellido = document.getElementById('meseroFormApellido')?.value.trim() || '';
+    const celular = document.getElementById('meseroFormCelular')?.value.trim() || '';
+    if (!nombre || !apellido || !celular) { showNotice('Nombre, apellido y celular son requeridos.', 'error'); return; }
+    const btn = document.getElementById('meseroFormSaveBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Creando...'; }
+    try {
+        const token = window.crypto?.randomUUID ? window.crypto.randomUUID() : `mesero_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        await firebaseDb.collection(MESEROS_COLLECTION).doc(token).set({
+            nombre, apellido, celular,
+            createdAt: firestoreNow()
+        });
+        await loadMeseros();
+        renderMeserosPanel();
+        showNotice('Mesero creado. Envíale el enlace por WhatsApp.', 'ok');
+    } catch (err) {
+        showNotice(`Error al crear mesero: ${err.message || 'error inesperado.'}`, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Crear mesero'; }
+    }
+}
+
+// Botón "Agregar mesero"
+document.getElementById('addMeseroBtn')?.addEventListener('click', () => {
+    _meseroOpenForm();
+});
+
 // ── Categorías Gastos — Panel CRUD ────────────────────────────────────────────
 let _catGastosPanelBound = false;
 
@@ -21086,8 +21314,14 @@ async function _icmHandleFile(file) {
     });
 })();
 
-initAdmin();
-loadPaymentMethods();
-loadGastosCaja();
-loadCategoriasGastos();
-loadProveedores();
+const _meseroLinkToken = new URLSearchParams(window.location.search).get('mesero');
+if (_meseroLinkToken) {
+    initMeseroMode(_meseroLinkToken);
+} else {
+    initAdmin();
+    loadPaymentMethods();
+    loadGastosCaja();
+    loadCategoriasGastos();
+    loadProveedores();
+    loadMeseros().then(renderMeserosPanel);
+}
