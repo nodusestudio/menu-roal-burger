@@ -8797,6 +8797,16 @@ function getMeseroTag(order) {
     return `<span class="koc-mesero-tag">🧑‍🍳 ${escapeHtml(order.meseroName)}</span>`;
 }
 
+// Defensa en profundidad: la UI ya oculta editar/eliminar en pedidos ajenos con CSS
+// (.mesero-not-owner), pero esto bloquea la acción igual si por lo que sea el boton
+// quedo visible o clickeable, y le explica al mesero por que no puede hacerlo.
+function _meseroCheckOwnOrder(order) {
+    if (!_meseroSession) return true;
+    if (order.meseroId === _meseroSession.id) return true;
+    showNotice('No es tu pedido, no estás autorizado a modificarlo. Habla con el administrador.', 'error');
+    return false;
+}
+
 function getOrderDisplayTotal(order) {
     if (Number.isFinite(Number(order.total))) {
         return Number(order.total);
@@ -15491,23 +15501,28 @@ if (ordersActionRoot) {
                 }
 
                 if (nextStatus === 'eliminar') {
-                    if (order.status === 'entregado') {
-                        // Orden ya procesada: eliminar permanentemente del sistema
-                        const confirmed = window.confirm(`¿Eliminar definitivamente el pedido #${order.code}?\nEsta acción no se puede deshacer.`);
-                        if (!confirmed) return;
-                        await deleteOrder(orderId);
-                        if (selectedOrderId === orderId) selectedOrderId = null;
-                        await fetchOrders();
-                        renderOrders();
-                        showNotice('Pedido eliminado permanentemente.', 'ok');
-                    } else {
-                        // Orden activa: anular (queda registrada como ANULADO)
-                        const confirmed = window.confirm(`¿Anular el pedido #${order.code}?\nQuedará registrado como ANULADO en Procesados.`);
-                        if (!confirmed) return;
-                        await anularOrder(orderId);
-                        if (selectedOrderId === orderId) selectedOrderId = null;
-                        showNotice('Pedido anulado. Aparece en Procesados con sello ANULADO.', 'ok');
-                        closeUnreadTray();
+                    if (!_meseroCheckOwnOrder(order)) return;
+                    try {
+                        if (order.status === 'entregado') {
+                            // Orden ya procesada: eliminar permanentemente del sistema
+                            const confirmed = window.confirm(`¿Eliminar definitivamente el pedido #${order.code}?\nEsta acción no se puede deshacer.`);
+                            if (!confirmed) return;
+                            await deleteOrder(orderId);
+                            if (selectedOrderId === orderId) selectedOrderId = null;
+                            await fetchOrders();
+                            renderOrders();
+                            showNotice('Pedido eliminado permanentemente.', 'ok');
+                        } else {
+                            // Orden activa: anular (queda registrada como ANULADO)
+                            const confirmed = window.confirm(`¿Anular el pedido #${order.code}?\nQuedará registrado como ANULADO en Procesados.`);
+                            if (!confirmed) return;
+                            await anularOrder(orderId);
+                            if (selectedOrderId === orderId) selectedOrderId = null;
+                            showNotice('Pedido anulado. Aparece en Procesados con sello ANULADO.', 'ok');
+                            closeUnreadTray();
+                        }
+                    } catch (error) {
+                        showNotice(`No se pudo completar la acción: ${error.message || 'error inesperado.'}`, 'error');
                     }
                     return;
                 }
@@ -15637,6 +15652,7 @@ if (orderTicketPanel) {
             const targetId = String(actionButton.dataset.orderId || '').trim() || selectedOrderId;
             const order = ordersState.find(o => o.id === targetId);
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+            if (!_meseroCheckOwnOrder(order)) return;
             openOrderItemsEditor(order);
             return;
         }
@@ -15644,10 +15660,15 @@ if (orderTicketPanel) {
         if (actionButton.dataset.orderTicketAction === 'eliminar') {
             const order = ordersState.find(o => o.id === selectedOrderId);
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+            if (!_meseroCheckOwnOrder(order)) return;
             if (confirm(`¿Eliminar el pedido #${order.code}?`)) {
-                selectedOrderId = null;
-                await deleteOrder(order.id);
-                showNotice(`Pedido #${order.code} eliminado.`, 'ok');
+                try {
+                    await deleteOrder(order.id);
+                    selectedOrderId = null;
+                    showNotice(`Pedido #${order.code} eliminado.`, 'ok');
+                } catch (error) {
+                    showNotice(`No se pudo eliminar: ${error.message || 'error inesperado.'}`, 'error');
+                }
             }
             return;
         }

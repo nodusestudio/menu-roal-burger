@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260715-0122">
+    <link rel="stylesheet" href="style.css?v=20260715-0131">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -4225,7 +4225,8 @@
         body.mesero-mode [data-order-ticket-action="cambiar_mesa"],
         body.mesero-mode [data-order-card-action="cobrar_mesa"],
         body.mesero-mode [data-order-card-action="cobrar_domicilio"],
-        body.mesero-mode [data-order-card-action="cobrar_retiro"] { display: none !important; }
+        body.mesero-mode [data-order-card-action="cobrar_retiro"],
+        body.mesero-mode .koc-compact-del { display: none !important; }
 
         .mesero-invalid-screen {
             position: fixed; inset: 0; z-index: 9999;
@@ -14754,7 +14755,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260715-0122"></script>
+    <script defer src="admin.js?v=20260715-0131"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
