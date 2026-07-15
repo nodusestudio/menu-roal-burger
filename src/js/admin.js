@@ -415,7 +415,14 @@ const PosCart = {
         originalUnitPrice = originalUnitPrice !== null ? Number(originalUnitPrice) : null;
         if (!productId) return null;
 
-        const category = posSelectedCategory || 'Sin categoria';
+        // Resolver la categoría real del producto en vez de confiar en la pestaña activa: con
+        // categorías principales agrupadas, posSelectedCategory puede ser una clave de grupo
+        // (__POS_GROUP__:Nombre) que no es un nombre de categoría real y no debe persistirse
+        // como categoryName del pedido guardado ni de las métricas de ventas por categoría.
+        const baseProductId = productId.split('::')[0];
+        const realProduct = productsState.find((p) => p.id === baseProductId);
+        const fallbackCategory = String(posSelectedCategory || '').startsWith('__POS_GROUP__:') ? '' : posSelectedCategory;
+        const category = String(realProduct?.categoria || fallbackCategory || 'Sin categoria').trim() || 'Sin categoria';
         const promoLabel = String(opts.promoLabel || '').trim();
         const promo2x1 = opts.promo2x1 === true;
         const initialQuantity = Math.max(1, Number(opts.initialQuantity) || 1);
@@ -1879,6 +1886,9 @@ function normalizeCategory(raw) {
         name: String(raw.name || raw.nombre || '').trim(),
         image_url: String(raw.image_url || '').trim(),
         active: raw.active !== false,
+        // Categoría principal (texto libre, ej. "Burger") para agrupar varias categorías reales
+        // bajo una sola pestaña en el POS. null = sin agrupar, se ve como pestaña individual.
+        parentCategory: String(raw.parentCategory || '').trim() || null,
         tipo_pos: ['acompanantes'].includes(raw.tipo_pos) ? raw.tipo_pos : null,
         order: raw.order != null ? Number(raw.order) : undefined,
         bebidas_pos: raw.bebidas_pos !== false,
@@ -2699,9 +2709,9 @@ function renderPosCategoriesPanel() {
     const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
 
     // Usar categoriesState como fuente de verdad: orden correcto y respeto al campo active
-    const categories = categoriesState.length
-        ? categoriesState.filter((c) => c.active !== false).map((c) => c.name.trim())
-        : [...new Set(catalog.map((p) => String(p.categoria || 'Sin categoria').trim()))];
+    const categoryObjs = categoriesState.length
+        ? categoriesState.filter((c) => c.active !== false)
+        : [...new Set(catalog.map((p) => String(p.categoria || 'Sin categoria').trim()))].map((name) => ({ name, parentCategory: null }));
 
     const promoTab      = { value: '__POS_PROMOCIONES__', label: '🏷️ CUPONES' };
     const cobroExtraTab = { value: '__POS_COBRO_EXTRA__', label: '➕ COBRO EXTRA' };
@@ -2713,18 +2723,37 @@ function renderPosCategoriesPanel() {
         ? { value: '__POS_ACOMPANANTES__', label: `🥗 Acompañantes (${acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).length})` }
         : null;
 
-    const catTabs = categories.map((cat) => {
-        const count = catalog.filter(
-            (p) => String(p.categoria || '').trim() === cat && p.visible_pos !== false
-        ).length;
-        return { value: cat, label: `${cat} (${count})`, color: getPosCategoryColor(cat) };
+    // Agrupar por categoría principal: una pestaña por cada valor distinto de parentCategory
+    // (agrupando las categorías reales que lo comparten); las categorías sin categoría principal
+    // se siguen viendo como pestaña individual, igual que antes.
+    const catTabs = [];
+    const seenParents = new Set();
+    categoryObjs.forEach((cat) => {
+        const parent = String(cat.parentCategory || '').trim();
+        if (parent) {
+            if (seenParents.has(parent)) return;
+            seenParents.add(parent);
+            const siblingNames = categoryObjs
+                .filter((c) => String(c.parentCategory || '').trim() === parent)
+                .map((c) => c.name);
+            const count = catalog.filter(
+                (p) => siblingNames.includes(String(p.categoria || '').trim()) && p.visible_pos !== false
+            ).length;
+            catTabs.push({ value: `__POS_GROUP__:${parent}`, label: `${parent} (${count})`, color: getPosCategoryColor(parent) });
+        } else {
+            const count = catalog.filter(
+                (p) => String(p.categoria || '').trim() === cat.name && p.visible_pos !== false
+            ).length;
+            catTabs.push({ value: cat.name, label: `${cat.name} (${count})`, color: getPosCategoryColor(cat.name) });
+        }
     });
 
     const allTabs = [promoTab, cobroExtraTab, descuentoTab, bebidasTab, acompTab].filter(Boolean).concat(catTabs);
 
     const specialKeys = ['__POS_PROMOCIONES__', '__POS_COBRO_EXTRA__', '__POS_DESCUENTO__', '__POS_BEBIDAS__', '__POS_ACOMPANANTES__'];
-    if (!(posSelectedCategory && (specialKeys.includes(posSelectedCategory) || categories.includes(posSelectedCategory)))) {
-        posSelectedCategory = categories.length > 0 ? categories[0] : null;
+    const validCatValues = catTabs.map((t) => t.value);
+    if (!(posSelectedCategory && (specialKeys.includes(posSelectedCategory) || validCatValues.includes(posSelectedCategory)))) {
+        posSelectedCategory = catTabs.length > 0 ? catTabs[0].value : null;
     }
 
     tabs.innerHTML = allTabs.map((tab) => `
@@ -2803,6 +2832,7 @@ function renderPosProductsPanel() {
     if (!grid) return;
 
     grid.style.display = ''; // reset override aplicado por renderPosPromocionesPanel
+    grid.classList.remove('is-grouped'); // reset override aplicado por renderPosGroupedProductsPanel
 
     if (posProductSearchQuery.trim()) {
         const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
@@ -2821,6 +2851,12 @@ function renderPosProductsPanel() {
 
     if (!posSelectedCategory) {
         grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Selecciona una categoría</p>';
+        return;
+    }
+
+    // Categoría principal agrupando varias categorías reales
+    if (posSelectedCategory.startsWith('__POS_GROUP__:')) {
+        renderPosGroupedProductsPanel(grid, posSelectedCategory.slice('__POS_GROUP__:'.length));
         return;
     }
 
@@ -2879,6 +2915,58 @@ function renderPosProductsPanel() {
     }
 
     _renderPosProductCards(grid, categoryProducts);
+}
+
+// Pestaña de "categoría principal": muestra de una vez todos los productos de las categorías
+// reales agrupadas bajo ese nombre, en secciones separadas por sub-categoría (con su propio
+// color, igual que las pestañas individuales) en vez de una segunda fila de sub-pestañas.
+function renderPosGroupedProductsPanel(grid, parentName) {
+    grid.classList.add('is-grouped');
+    grid.innerHTML = '';
+
+    const subCats = categoriesState
+        .filter((c) => c.active !== false && String(c.parentCategory || '').trim() === parentName)
+        .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+
+    if (!subCats.length) {
+        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">Sin categorías en este grupo</p>';
+        return;
+    }
+
+    const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
+    let hasAnyProduct = false;
+
+    subCats.forEach((subCat) => {
+        const products = catalog
+            .filter((p) => String(p.categoria || '').trim() === subCat.name && p.visible_pos !== false)
+            .sort((a, b) => {
+                const oa = a.order ?? 9999;
+                const ob = b.order ?? 9999;
+                if (oa !== ob) return oa - ob;
+                return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
+            });
+        if (!products.length) return;
+        hasAnyProduct = true;
+
+        const color = getPosCategoryColor(subCat.name);
+        const section = document.createElement('div');
+        section.className = 'pos-subcat-section';
+        section.innerHTML = `<div class="pos-subcat-head">
+            <span class="pos-subcat-dot" style="background:${color.hex}"></span>
+            <span class="pos-subcat-name">${escapeHtml(subCat.name)}</span>
+        </div>`;
+
+        const innerGrid = document.createElement('div');
+        innerGrid.className = 'pos-product-grid-v2 pos-subcat-grid';
+        section.appendChild(innerGrid);
+        grid.appendChild(section);
+
+        _renderPosProductCards(innerGrid, products);
+    });
+
+    if (!hasAnyProduct) {
+        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">Sin productos disponibles</p>';
+    }
 }
 
 function renderPosAcompanantesNewPanel(grid) {
@@ -3622,11 +3710,13 @@ const POS_BURGER_CLASICAS_OPTIONS = [
 ];
 
 function handlePosProductAdd(productId, productName, productPrice) {
-    const selectedCategory = String(posSelectedCategory || '').trim();
+    // La categoría real del producto (no la pestaña activa): con categorías principales agrupadas,
+    // posSelectedCategory puede ser una clave de grupo que mezcla varias categorías reales.
+    const prodEntry = productsState.find((p) => p.id === productId);
+    const selectedCategory = String(prodEntry?.categoria || posSelectedCategory || '').trim();
     const normCat = normalizeCategoryKey(selectedCategory);
 
     // Si el producto tiene variantes configuradas, usar el nuevo modal de variantes
-    const prodEntry = productsState.find((p) => p.id === productId);
     if (prodEntry && Array.isArray(prodEntry.variantes) && prodEntry.variantes.length > 0) {
         openProductVariantesModal(productId, productName, selectedCategory, prodEntry.variantes);
         return;
@@ -7540,9 +7630,19 @@ function _renderCategoryDetailPanel(categoryId) {
             </div>
         </div>
         <div class="upgrades-detail-body">
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                 <input type="text" class="admin-input" id="catDetailName" value="${category.name}" placeholder="Nombre categoría" style="flex:1;min-width:0;">
                 <button type="button" class="section-action-btn primary" id="catDetailAddProductBtn" style="flex-shrink:0;white-space:nowrap;">+ Agregar</button>
+            </div>
+            <div style="margin-bottom:12px;">
+                <input type="text" class="admin-input" id="catDetailParent" list="catParentSuggestions"
+                    value="${escapeHtml(category.parentCategory || '')}"
+                    placeholder="Categoría principal (opcional, ej: Burger) — agrupa esta categoría con otras en el POS"
+                    style="width:100%;box-sizing:border-box;">
+                <datalist id="catParentSuggestions">
+                    ${[...new Set(categoriesState.map((c) => c.parentCategory).filter(Boolean))]
+                        .map((p) => `<option value="${escapeHtml(p)}">`).join('')}
+                </datalist>
             </div>
             <div class="cat-vis-panel">
                 <div class="cat-vis-panel-label">Activar en esta categoría</div>
@@ -7805,6 +7905,7 @@ function _renderCategoryDetailPanel(categoryId) {
 async function _saveCategoryFromDetail(categoryId) {
     const nameInput = document.getElementById('catDetailName');
     const activeInput = document.getElementById('catDetailActive');
+    const parentInput = document.getElementById('catDetailParent');
     const newName = nameInput ? nameInput.value.trim() : '';
     if (!newName) { showNotice('El nombre no puede estar vacío.', 'error'); return; }
     try {
@@ -7813,6 +7914,7 @@ async function _saveCategoryFromDetail(categoryId) {
             name: newName,
             image_url: existing ? (existing.image_url || '') : '',
             active: activeInput ? activeInput.checked : true,
+            parentCategory: parentInput ? (parentInput.value.trim() || null) : null,
             updated_at: firestoreNow()
         });
         _selectedCategoryId = null;
@@ -15468,7 +15570,7 @@ if (orderTicketPanel) {
 
         if (actionButton.dataset.orderTicketAction === 'print') {
             try {
-                openOrderPrintTicket(orderId);
+                await openOrderPrintTicket(orderId);
             } catch (error) {
                 showNotice(`No se pudo abrir la impresion: ${error.message || 'error inesperado.'}`, 'error');
             }
@@ -19724,7 +19826,13 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', async (
         const order = _ticketPreviewCurrentOrder;
         if (action === 'print') {
             const orderId = String(btn.dataset.orderId || '').trim();
-            if (orderId) openOrderPrintTicket(orderId);
+            if (orderId) {
+                try {
+                    await openOrderPrintTicket(orderId);
+                } catch (error) {
+                    showNotice(`No se pudo abrir la impresion: ${error.message || 'error inesperado.'}`, 'error');
+                }
+            }
         } else if (action === 'cobrar' && order) {
             _triggerTicketCobro(order);
         } else if (action === 'contact') {
