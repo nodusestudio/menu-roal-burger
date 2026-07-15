@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260715-0149">
+    <link rel="stylesheet" href="style.css?v=20260715-0153">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -6544,6 +6544,7 @@
 
         .pos-item-row {
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
             padding: 9px 11px;
@@ -6552,10 +6553,11 @@
             border: 1px solid rgba(255, 255, 255, 0.06);
             font-size: 0.8rem;
             transition: all 0.2s ease;
-            /* Nada de lo que hay adentro se sale de la casilla: el nombre se encoge/rompe
-               y el grupo de acciones (cantidad, precio, quitar) nunca se corta. */
+            /* Nada de lo que hay adentro se sale de la casilla: si no cabe el nombre completo
+               junto a cantidad/precio/quitar en una linea, el grupo de acciones baja a su
+               propia linea en vez de aplastar el nombre letra por letra. */
             overflow: hidden;
-            gap: 6px;
+            gap: 4px 6px;
         }
 
         .pos-item-row:hover {
@@ -6564,7 +6566,7 @@
         }
 
         .pos-item-name {
-            flex: 1;
+            flex: 1 1 130px;
             min-width: 0;
             overflow-wrap: anywhere;
             color: #f2f7ff;
@@ -6581,6 +6583,7 @@
             gap: 8px;
             align-items: center;
             flex-shrink: 0;
+            margin-left: auto;
         }
 
         .pos-item-qty {
@@ -14781,7 +14784,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260715-0149"></script>
+    <script defer src="admin.js?v=20260715-0153"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
