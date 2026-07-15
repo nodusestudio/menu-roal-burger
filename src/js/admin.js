@@ -1965,13 +1965,19 @@ function normalizeOrderItem(raw, index = 0) {
     return {
         index: Number(raw.index || index + 1),
         itemKey: String(raw.itemKey || `item-${index + 1}`),
+        // Sin esto, un producto guardado con extras/combo vinculados (parentItemKey) perdía la
+        // relación al recargar el pedido — el editor de productos los mostraba sueltos en vez
+        // de agrupados bajo su producto base.
+        parentItemKey: raw.parentItemKey ? String(raw.parentItemKey) : null,
+        productId: String(raw.productId || ''),
         productName: String(raw.productName || raw.nombre || 'Producto').trim(),
         categoryName: String(raw.categoryName || raw.categoria || '').trim(),
         quantity: Number(raw.quantity || 0),
         unitPrice: Number(raw.unitPrice ?? raw.precio ?? 0),
         subtotal: Number(raw.subtotal ?? ((Number(raw.quantity || 0)) * Number(raw.unitPrice ?? raw.precio ?? 0))),
         optionLabel: String(raw.optionLabel || '').trim(),
-        note: String(raw.note || raw.comment || '').trim()
+        note: String(raw.note || raw.comment || '').trim(),
+        orderOptions: raw.orderOptions || null
     };
 }
 
