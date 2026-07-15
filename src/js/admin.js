@@ -3318,10 +3318,7 @@ function renderPosCobroExtraPanel(grid) {
         addProductToPosOrder(`cobro-extra::${concepto}`, concepto, monto, '', null);
         showNotice(`${concepto} — ${formatMoney(monto)} agregado al ticket.`, 'ok');
 
-        // Limpiar campos tras agregar
-        if (conceptoInput) conceptoInput.value = '';
-        if (montoInput)    montoInput.value    = '';
-        conceptoInput?.focus();
+        _closePosActionPopovers();
     });
 
     // Enter en monto dispara el botón de agregar
@@ -3384,9 +3381,7 @@ function renderPosDescuentoPanel(grid) {
         addProductToPosOrder(`descuento::${concepto}`, concepto, -monto, '', null);
         showNotice(`${concepto} — -${formatMoney(monto)} aplicado al ticket.`, 'ok');
 
-        if (conceptoInput) conceptoInput.value = '';
-        if (montoInput)    montoInput.value    = '';
-        conceptoInput?.focus();
+        _closePosActionPopovers();
     });
 
     wrap.querySelector('#descuentoMonto').addEventListener('keydown', (e) => {
