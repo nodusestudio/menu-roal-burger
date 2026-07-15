@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260715-0107">
+    <link rel="stylesheet" href="style.css?v=20260715-0122">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -28,6 +28,18 @@
         html {
             background-color: #0f1116;
         }
+
+        /* Barra de scroll oscura por defecto en toda la app (vertical y horizontal) —
+           reglas mas especificas (por clase/id) siguen ganando sobre esta base. */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.22) transparent;
+        }
+        *::-webkit-scrollbar { width: 8px; height: 8px; }
+        *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 4px; }
+        *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.32); }
+        *::-webkit-scrollbar-track { background: transparent; }
+        *::-webkit-scrollbar-corner { background: transparent; }
 
         :root {
             --admin-accent: #ff7b45;
@@ -4204,8 +4216,7 @@
         body.mesero-mode #abrirCajaBtnPos,
         body.mesero-mode .sales-day-banner-data,
         body.mesero-mode #cajaChicaBtn,
-        body.mesero-mode #openAdminTicketsViewBtn,
-        body.mesero-mode #adminChatFab { display: none !important; }
+        body.mesero-mode #openAdminTicketsViewBtn { display: none !important; }
         body.mesero-mode .mesero-not-owner .ticket-copy-btn { pointer-events: none !important; }
         /* Cobrar/Cambiar mesa/Imprimir siguen ocultos incluso en pedidos propios del mesero */
         body.mesero-mode .ticket-cobrar-btn,
@@ -8342,49 +8353,6 @@
         }
         .inbox-reply-send:hover { transform: scale(1.08); }
 
-        /* Chat FAB */
-        .admin-chat-fab {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 9800;
-            width: 54px;
-            height: 54px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #ff7a00, #e84800);
-            border: none;
-            color: #fff;
-            font-size: 1.40rem;
-            cursor: pointer;
-            box-shadow: 0 6px 24px rgba(232,72,0,0.45);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: transform 0.15s, box-shadow 0.15s;
-        }
-        .admin-chat-fab:hover {
-            transform: scale(1.10);
-            box-shadow: 0 8px 30px rgba(232,72,0,0.60);
-        }
-        .admin-chat-fab-badge {
-            position: absolute;
-            top: -4px;
-            right: -4px;
-            min-width: 20px;
-            height: 20px;
-            border-radius: 999px;
-            background: #e84800;
-            border: 2px solid #0f0802;
-            color: #fff;
-            font-size: 0.62rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 4px;
-        }
-        .admin-chat-fab-badge[hidden] { display: none; }
-
         /* ══════════════════════════════════════════
            MOBILE POS — Barra de acciones fija inferior
         ══════════════════════════════════════════ */
@@ -9901,10 +9869,9 @@
             .koc-name, .kanban-order-name { font-size: 1.05rem !important; font-weight: 700 !important; }
             .koc-total, .kanban-order-total { font-size: 0.98rem !important; font-weight: 700 !important; }
 
-            /* 6. Espacio para barra inferior fija; sin scroll horizontal; ocultar chat FAB */
+            /* 6. Espacio para barra inferior fija; sin scroll horizontal */
             .admin-page { padding-bottom: 76px !important; overflow-x: hidden; }
             .admin-shell { overflow-x: hidden; }
-            .admin-chat-fab { display: none !important; }
 
             /* 7. Mostrar barra fija inferior */
             .mob-pos-bottombar { display: flex; }
@@ -14752,12 +14719,6 @@
         </button>
     </div>
 
-    <!-- ══════════ CHAT FAB ══════════ -->
-    <button type="button" id="adminChatFab" class="admin-chat-fab" title="Mensajes">
-        <span class="admin-chat-fab-icon">💬</span>
-        <span class="admin-chat-fab-badge" id="adminChatFabBadge" hidden>0</span>
-    </button>
-
     <!-- ══ Modo mesero: enlace inválido o revocado ══ -->
     <div id="meseroInvalidScreen" class="mesero-invalid-screen" hidden>
         <div class="mesero-invalid-icon">🔒</div>
@@ -14793,7 +14754,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260715-0107"></script>
+    <script defer src="admin.js?v=20260715-0122"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

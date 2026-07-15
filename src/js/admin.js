@@ -10494,13 +10494,6 @@ function renderMessages() {
     const messagesCountEl = document.getElementById('messagesCount');
     if (messagesCountEl) messagesCountEl.textContent = pendingCount || messagesState.length;
 
-    // Actualizar badge del FAB
-    const fab = document.getElementById('adminChatFabBadge');
-    if (fab) {
-        if (pendingCount > 0) { fab.textContent = pendingCount; fab.removeAttribute('hidden'); }
-        else fab.setAttribute('hidden', '');
-    }
-
     const searchTerm = (document.getElementById('inboxSearch')?.value || '').trim().toLowerCase();
 
     let filtered = messagesState;
@@ -15127,13 +15120,6 @@ if (clientsList) {
 document.addEventListener('click', async (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-
-    // FAB chat → ir a mensajes
-    if (target.closest('#adminChatFab')) {
-        const mensajesBtn = document.querySelector('[data-accordion-target="mensajes"]');
-        if (mensajesBtn) mensajesBtn.click();
-        return;
-    }
 
     const actionButton = target.closest('button[data-message-action]');
     if (!(actionButton instanceof HTMLButtonElement)) return;
