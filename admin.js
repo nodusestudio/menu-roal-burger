@@ -464,6 +464,18 @@ const PosCart = {
         return item;
     },
 
+    // Un combo/adicional vinculado (parentKey) representa "uno por unidad" del producto base —
+    // si el producto pasa a 2 unidades, su combo debe pasar a 2 también. Si el cliente quiere
+    // una unidad más SIN combo, la agrega aparte (queda como su propia fila, sin parentKey).
+    _syncChildrenQuantity(item) {
+        internalOrderItems
+            .filter((i) => i.parentKey === item.itemKey)
+            .forEach((child) => {
+                child.quantity = item.quantity;
+                child.subtotal = child.quantity * child.unitPrice;
+            });
+    },
+
     // delta puede ser negativo; la cantidad nunca baja de 1 (usar removeItem para eliminar).
     incrementQuantity(itemKey, delta) {
         const item = internalOrderItems.find((i) => i.itemKey === itemKey);
@@ -472,6 +484,7 @@ const PosCart = {
         if (next < 1) return item;
         item.quantity = next;
         item.subtotal = item.quantity * item.unitPrice;
+        this._syncChildrenQuantity(item);
         return item;
     },
 
@@ -480,6 +493,7 @@ const PosCart = {
         if (!item) return null;
         item.quantity = Math.max(1, Number(quantity) || 1);
         item.subtotal = item.quantity * item.unitPrice;
+        this._syncChildrenQuantity(item);
         return item;
     },
 
