@@ -11317,7 +11317,12 @@ async function connectBluetoothPrinter() {
         renderBtPrinterStatus('connected', device.name || '');
         showNotice(`Impresora "${device.name || 'BT'}" conectada. Ya puedes imprimir.`, 'ok');
     } catch (err) {
-        if (err.name !== 'NotFoundError') {
+        // Chrome lanza el mismo err.name "NotFoundError" tanto si el usuario cierra
+        // el diálogo sin elegir nada como si no hay adaptador Bluetooth o está apagado.
+        // Solo el primer caso debe quedar en silencio; el segundo necesita avisar.
+        if (err.name === 'NotFoundError' && /adapter/i.test(err.message || '')) {
+            showNotice('No se detecta Bluetooth en este dispositivo. Verifica que esté activado (o que el computador tenga adaptador Bluetooth) e intenta de nuevo.', 'error');
+        } else if (err.name !== 'NotFoundError') {
             showNotice(`Error Bluetooth: ${err.message || 'desconocido'}`, 'error');
         }
         renderBtPrinterStatus('disconnected');
