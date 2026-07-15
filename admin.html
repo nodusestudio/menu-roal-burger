@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-2034">
+    <link rel="stylesheet" href="style.css?v=20260714-2118">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -4259,15 +4259,19 @@
             font-size: 0.72rem; font-weight: 700;
         }
 
-        /* ── Buscador de productos ── */
+        /* ── Buscador de productos + acciones de carrito (Cobro extra / Descuento) ── */
         .pos-searchbar {
             padding: 8px 10px;
             background: #1a2130;
             border-bottom: 1px solid rgba(255,255,255,0.07);
             flex-shrink: 0;
+            display: flex;
+            gap: 8px;
+            position: relative;
         }
         .pos-product-search {
-            width: 100%; height: 40px;
+            flex: 1; min-width: 0;
+            height: 40px;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 9px;
@@ -4280,6 +4284,37 @@
         }
         .pos-product-search:focus { border-color: var(--admin-accent); }
         .pos-product-search::placeholder { color: rgba(180,200,230,0.4); }
+
+        .pos-cart-action-btn {
+            flex-shrink: 0;
+            display: flex; align-items: center; gap: 5px;
+            height: 40px; padding: 0 12px;
+            border-radius: 9px;
+            border: 1px dashed rgba(255,255,255,0.22);
+            background: rgba(255,255,255,0.04);
+            color: rgba(255,255,255,0.65);
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase; letter-spacing: 0.3px;
+            font-size: 0.7rem; font-weight: 700;
+            cursor: pointer; white-space: nowrap;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .pos-cart-action-btn:hover { background: rgba(255,255,255,0.09); color: #fff; border-color: rgba(255,255,255,0.4); }
+
+        .pos-action-popover {
+            position: absolute;
+            top: 100%;
+            right: 10px;
+            margin-top: 6px;
+            width: 280px;
+            max-width: calc(100vw - 20px);
+            background: #1e2636;
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 12px;
+            box-shadow: 0 20px 40px -12px rgba(0,0,0,0.6);
+            z-index: 40;
+        }
+        .pos-action-popover[hidden] { display: none; }
 
         /* ── Barra de categoría ── */
         .pos-catbar {
@@ -4382,6 +4417,18 @@
             font-size: 0.85rem;
             font-weight: 700;
             color: #eef4ff;
+        }
+        .pos-subcat-source-tag {
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 2px 7px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.07);
+            color: rgba(255,255,255,0.45);
+            margin-left: auto;
         }
 
         .pos-product-btn {
@@ -13708,6 +13755,10 @@
 
             <div class="pos-searchbar">
                 <input type="text" id="posProductSearch" class="pos-product-search" placeholder="🔍 Buscar producto por nombre..." autocomplete="off">
+                <button type="button" class="pos-cart-action-btn" id="posCobroExtraBtn" title="Agregar un cobro extra al ticket">➕ Cobro extra</button>
+                <button type="button" class="pos-cart-action-btn" id="posDescuentoBtn" title="Aplicar un descuento al ticket">🏷 Descuento</button>
+                <div class="pos-action-popover" id="posCobroExtraPopover" hidden></div>
+                <div class="pos-action-popover" id="posDescuentoPopover" hidden></div>
             </div>
 
             <div class="pos-catbar">
@@ -14540,7 +14591,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260714-2034"></script>
+    <script defer src="admin.js?v=20260714-2118"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

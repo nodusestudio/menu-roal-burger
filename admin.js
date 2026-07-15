@@ -2714,15 +2714,11 @@ function renderPosCategoriesPanel() {
         ? categoriesState.filter((c) => c.active !== false)
         : [...new Set(catalog.map((p) => String(p.categoria || 'Sin categoria').trim()))].map((name) => ({ name, parentCategory: null }));
 
-    const promoTab      = { value: '__POS_PROMOCIONES__', label: '🏷️ CUPONES' };
-    const cobroExtraTab = { value: '__POS_COBRO_EXTRA__', label: '➕ COBRO EXTRA' };
-    const descuentoTab  = { value: '__POS_DESCUENTO__', label: '🏷 DESCUENTO' };
-    const bebidasTab    = catalogoVisibilidad.bebidas_pos && bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria)
-        ? { value: '__POS_BEBIDAS__', label: `🥤 Bebidas (${bebidasState.filter((b) => b.estado === 'active' && b.mostrar_categoria).length})` }
-        : null;
-    const acompTab       = catalogoVisibilidad.acompanantes_pos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos)
-        ? { value: '__POS_ACOMPANANTES__', label: `🥗 Acompañantes (${acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).length})` }
-        : null;
+    // Cupones va al final de la barra — es un catálogo de promociones, no una categoría de
+    // productos. Cobro Extra/Descuento dejaron de ser pestañas (son acciones, viven junto al
+    // buscador); Bebidas/Acompañantes dejaron de ser pestañas propias — entran como sub-sección
+    // más dentro del grupo "Otros" (ver renderPosGroupedProductsPanel).
+    const promoTab = { value: '__POS_PROMOCIONES__', label: '🏷️ CUPONES' };
 
     // Agrupar por categoría principal: una pestaña por cada valor distinto de parentCategory
     // (agrupando las categorías reales que lo comparten); las categorías sin categoría principal
@@ -2749,9 +2745,9 @@ function renderPosCategoriesPanel() {
         }
     });
 
-    const allTabs = [promoTab, cobroExtraTab, descuentoTab, bebidasTab, acompTab].filter(Boolean).concat(catTabs);
+    const allTabs = catTabs.concat([promoTab]);
 
-    const specialKeys = ['__POS_PROMOCIONES__', '__POS_COBRO_EXTRA__', '__POS_DESCUENTO__', '__POS_BEBIDAS__', '__POS_ACOMPANANTES__'];
+    const specialKeys = ['__POS_PROMOCIONES__'];
     const validCatValues = catTabs.map((t) => t.value);
     if (!(posSelectedCategory && (specialKeys.includes(posSelectedCategory) || validCatValues.includes(posSelectedCategory)))) {
         posSelectedCategory = catTabs.length > 0 ? catTabs[0].value : null;
@@ -2867,30 +2863,6 @@ function renderPosProductsPanel() {
         return;
     }
 
-    // Panel especial de Cobro Extra
-    if (posSelectedCategory === '__POS_COBRO_EXTRA__') {
-        renderPosCobroExtraPanel(grid);
-        return;
-    }
-
-    // Panel especial de Descuento por monto
-    if (posSelectedCategory === '__POS_DESCUENTO__') {
-        renderPosDescuentoPanel(grid);
-        return;
-    }
-
-    // Panel especial de Bebidas (colección propia)
-    if (posSelectedCategory === '__POS_BEBIDAS__') {
-        renderPosBebidasPanel(grid);
-        return;
-    }
-
-    // Panel especial de Acompañantes (colección propia)
-    if (posSelectedCategory === '__POS_ACOMPANANTES__') {
-        renderPosAcompanantesNewPanel(grid);
-        return;
-    }
-
     // Verificar si la categoría tiene tipo_pos = 'acompanantes'
     const categoryMeta = categoriesState.find((c) => c.name.trim() === posSelectedCategory);
     if (categoryMeta && categoryMeta.tipo_pos === 'acompanantes') {
@@ -2921,6 +2893,24 @@ function renderPosProductsPanel() {
 // Pestaña de "categoría principal": muestra de una vez todos los productos de las categorías
 // reales agrupadas bajo ese nombre, en secciones separadas por sub-categoría (con su propio
 // color, igual que las pestañas individuales) en vez de una segunda fila de sub-pestañas.
+// Pinta una sub-sección (rótulo de color + nombre + tag opcional de origen) dentro de la
+// grilla agrupada, y llena su grilla interna con lo que haga renderFn. Se reutiliza tanto para
+// categorías reales como para Bebidas/Acompañantes (colecciones aparte, ver más abajo).
+function _appendPosSubcatSection(grid, name, color, sourceTag, renderFn) {
+    const section = document.createElement('div');
+    section.className = 'pos-subcat-section';
+    section.innerHTML = `<div class="pos-subcat-head">
+        <span class="pos-subcat-dot" style="background:${color.hex}"></span>
+        <span class="pos-subcat-name">${escapeHtml(name)}</span>
+        ${sourceTag ? `<span class="pos-subcat-source-tag">${escapeHtml(sourceTag)}</span>` : ''}
+    </div>`;
+    const innerGrid = document.createElement('div');
+    innerGrid.className = 'pos-product-grid-v2 pos-subcat-grid';
+    section.appendChild(innerGrid);
+    grid.appendChild(section);
+    renderFn(innerGrid);
+}
+
 function renderPosGroupedProductsPanel(grid, parentName) {
     grid.classList.add('is-grouped');
     grid.innerHTML = '';
@@ -2928,11 +2918,6 @@ function renderPosGroupedProductsPanel(grid, parentName) {
     const subCats = categoriesState
         .filter((c) => c.active !== false && String(c.parentCategory || '').trim() === parentName)
         .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
-
-    if (!subCats.length) {
-        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">Sin categorías en este grupo</p>';
-        return;
-    }
 
     const catalog = productsState.length ? productsState : PUBLIC_PRODUCT_CATALOG;
     let hasAnyProduct = false;
@@ -2948,27 +2933,62 @@ function renderPosGroupedProductsPanel(grid, parentName) {
             });
         if (!products.length) return;
         hasAnyProduct = true;
-
-        const color = getPosCategoryColor(subCat.name);
-        const section = document.createElement('div');
-        section.className = 'pos-subcat-section';
-        section.innerHTML = `<div class="pos-subcat-head">
-            <span class="pos-subcat-dot" style="background:${color.hex}"></span>
-            <span class="pos-subcat-name">${escapeHtml(subCat.name)}</span>
-        </div>`;
-
-        const innerGrid = document.createElement('div');
-        innerGrid.className = 'pos-product-grid-v2 pos-subcat-grid';
-        section.appendChild(innerGrid);
-        grid.appendChild(section);
-
-        _renderPosProductCards(innerGrid, products);
+        _appendPosSubcatSection(grid, subCat.name, getPosCategoryColor(subCat.name), null, (innerGrid) => {
+            _renderPosProductCards(innerGrid, products);
+        });
     });
+
+    // El grupo "Otros" también trae Bebidas y Acompañantes — vienen de colecciones aparte
+    // (bebidasState/acompanantesState), no de categoriesState, pero ya se comportan igual que
+    // una grilla de productos para agregar al carrito, así que encajan aquí como sub-sección.
+    if (parentName.trim().toLowerCase() === 'otros') {
+        const bebidasActivas = catalogoVisibilidad.bebidas_pos && bebidasState.some((b) => b.estado === 'active' && b.mostrar_categoria);
+        if (bebidasActivas) {
+            hasAnyProduct = true;
+            _appendPosSubcatSection(grid, 'Bebidas', getPosCategoryColor('Bebidas'), 'Colección Bebidas', renderPosBebidasPanel);
+        }
+        const acompActivos = catalogoVisibilidad.acompanantes_pos && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos);
+        if (acompActivos) {
+            hasAnyProduct = true;
+            _appendPosSubcatSection(grid, 'Acompañantes', getPosCategoryColor('Acompañantes'), 'Colección Acompañantes', renderPosAcompanantesNewPanel);
+        }
+    }
 
     if (!hasAnyProduct) {
         grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">Sin productos disponibles</p>';
     }
 }
+
+// ── Cobro extra / Descuento: ya no son pestañas, son botones junto al buscador que abren
+// un popover chico con el mismo formulario de siempre (renderPosCobroExtraPanel/renderPosDescuentoPanel).
+function _closePosActionPopovers() {
+    document.getElementById('posCobroExtraPopover')?.setAttribute('hidden', '');
+    document.getElementById('posDescuentoPopover')?.setAttribute('hidden', '');
+}
+
+function _togglePosActionPopover(popoverId, renderFn) {
+    const popover = document.getElementById(popoverId);
+    if (!popover) return;
+    const willOpen = popover.hasAttribute('hidden');
+    _closePosActionPopovers();
+    if (willOpen) {
+        renderFn(popover);
+        popover.removeAttribute('hidden');
+    }
+}
+
+document.getElementById('posCobroExtraBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _togglePosActionPopover('posCobroExtraPopover', renderPosCobroExtraPanel);
+});
+document.getElementById('posDescuentoBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _togglePosActionPopover('posDescuentoPopover', renderPosDescuentoPanel);
+});
+document.addEventListener('click', (e) => {
+    if (e.target.closest('.pos-action-popover') || e.target.closest('.pos-cart-action-btn')) return;
+    _closePosActionPopovers();
+});
 
 function renderPosAcompanantesNewPanel(grid) {
     grid.innerHTML = '';
