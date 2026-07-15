@@ -16,9 +16,13 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-2024">
+    <link rel="stylesheet" href="style.css?v=20260714-2034">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
+         para que cuando lleguen a descargarse ya no esperen ese handshake. -->
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Oswald:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Roboto:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         html {
@@ -14518,11 +14522,14 @@
         <span class="admin-chat-fab-badge" id="adminChatFabBadge" hidden>0</span>
     </button>
 
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
+    <!-- defer: deja que las 5 SDK de Firebase + Sortable + los locales se descarguen en
+         paralelo en vez de uno tras otro (eran 8 round-trips en serie antes de que admin.js
+         siquiera empezara a bajar); defer garantiza que igual se EJECUTEN en este mismo orden. -->
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
     <script>
       // Registrar el Service Worker de FCM para notificaciones en segundo plano
       if ('serviceWorker' in navigator) {
@@ -14530,10 +14537,10 @@
           .catch(() => undefined);
       }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script src="firebase-config.js"></script>
-    <script src="tracking.js"></script>
-    <script src="admin.js?v=20260714-2024"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script defer src="firebase-config.js"></script>
+    <script defer src="tracking.js"></script>
+    <script defer src="admin.js?v=20260714-2034"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
