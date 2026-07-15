@@ -15767,7 +15767,8 @@ if (orderTicketPanel) {
         }
 
         if (actionButton.dataset.orderTicketAction === 'eliminar') {
-            const order = ordersState.find(o => o.id === selectedOrderId);
+            const targetId = String(actionButton.dataset.orderId || '').trim() || selectedOrderId;
+            const order = ordersState.find(o => o.id === targetId);
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
             if (!_meseroCheckOwnOrder(order)) return;
             if (confirm(`¿Eliminar el pedido #${order.code}?`)) {
