@@ -6595,6 +6595,12 @@ function openOrderItemsEditor(order) {
         if (currentTicket) {
             currentTicket.items = posItems;
             currentTicket.label = `Editando productos #${order.code}`;
+            // El ticket que se reutiliza para esta edición puede venir con metadata vieja de
+            // lo último que se hizo con él (ej. una mesa distinta) — sincronizarla con el pedido
+            // que realmente se está editando evita que quede una mesa "ocupada" fantasma en el
+            // modal de Cambiar Mesa si el cajero abandona esta edición sin guardar.
+            currentTicket.orderType = order.orderType || null;
+            currentTicket.mesaNumber = order.mesaNumber || null;
         }
         const labelEl = document.getElementById('posActiveTicketLabel');
         if (labelEl) labelEl.textContent = `Editando productos #${order.code}`;
