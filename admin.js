@@ -9532,6 +9532,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                     <div class="ticket-section-title">Cliente</div>
                     <div class="ticket-customer-card">
                         ${buildTicketEditFieldButton(order, 'customerName', order.customerName || 'Cliente sin nombre', printMode, { className: 'ticket-copy-btn-name' })}
+                        ${printMode ? '' : `<button type="button" class="ticket-editpago-link" data-order-ticket-action="cambiar_cliente" data-order-id="${escapeHtml(order.id)}">🔁 Cambiar cliente</button>`}
                         <div class="ticket-customer-row">
                             <span>Telefono</span>
                             ${buildTicketEditFieldButton(order, 'customerPhone', order.customerPhone || 'No registrado', printMode, { className: 'ticket-copy-btn-inline' })}
@@ -10973,6 +10974,80 @@ const ORDER_FIELD_EDIT_LABELS = {
     customerPhone: 'Telefono',
     deliveryAddress: 'Direccion de entrega'
 };
+
+// ── Cambiar cliente: reasignar el pedido a un cliente distinto ya registrado ───────────────
+function openChangeClientModal(order) {
+    const modal = document.getElementById('orderChangeClientModal');
+    const input = document.getElementById('occSearchInput');
+    if (!modal) return;
+    modal.dataset.orderId = order.id;
+    if (input) input.value = '';
+    _occRenderResults(order, '');
+    modal.hidden = false;
+    input?.focus();
+}
+
+function closeChangeClientModal() {
+    const modal = document.getElementById('orderChangeClientModal');
+    if (!modal) return;
+    modal.hidden = true;
+    modal.dataset.orderId = '';
+}
+
+function _occRenderResults(order, term) {
+    const list = document.getElementById('occResultsList');
+    if (!list) return;
+    const normTerm = normalizeCategoryKey(term || '');
+    const matches = clientsState.filter((client) => {
+        if (!normTerm) return true;
+        const haystack = [client.customerName, client.customerPhone, client.address].join(' | ');
+        return normalizeCategoryKey(haystack).includes(normTerm);
+    }).slice(0, 50);
+
+    list.innerHTML = matches.length ? matches.map((client) => `
+        <button type="button" class="occ-result-row" data-client-id="${escapeHtml(client.id)}">
+            <strong>${escapeHtml(client.customerName || 'Sin nombre')}</strong>
+            <span>${escapeHtml(client.customerPhone || 'Sin telefono')}</span>
+            <span class="occ-result-address">${escapeHtml(client.address || 'Sin direccion')}</span>
+        </button>`).join('') : `<p style="color:var(--admin-muted);font-size:0.85rem;padding:10px 0;">No hay clientes que coincidan.</p>`;
+
+    list.querySelectorAll('[data-client-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const client = clientsState.find((c) => c.id === btn.dataset.clientId);
+            if (!client) return;
+            _occApplyClient(order, client);
+        });
+    });
+}
+
+async function _occApplyClient(order, client) {
+    if (!confirm(`¿Reasignar el pedido #${order.code} a ${client.customerName}?`)) return;
+    try {
+        const updates = {
+            customerName: client.customerName,
+            customerPhone: client.customerPhone,
+            customerPhoneDigits: normalizePhoneDigits(client.customerPhone)
+        };
+        if (order.orderType === 'domicilio') {
+            updates.deliveryAddress = client.address || '';
+        }
+        await updateOrder(order.id, updates);
+        closeChangeClientModal();
+        showNotice(`Cliente cambiado a ${client.customerName}.`, 'ok');
+    } catch (error) {
+        showNotice(`No se pudo cambiar el cliente: ${error.message || 'error inesperado.'}`, 'error');
+    }
+}
+
+document.getElementById('occCloseBtn')?.addEventListener('click', closeChangeClientModal);
+document.getElementById('orderChangeClientModal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'orderChangeClientModal') closeChangeClientModal();
+});
+document.getElementById('occSearchInput')?.addEventListener('input', (event) => {
+    const modal = document.getElementById('orderChangeClientModal');
+    const order = ordersState.find((o) => o.id === modal?.dataset.orderId);
+    if (order) _occRenderResults(order, event.target.value);
+});
 
 function openOrderContactFieldEditor(order, field) {
     const client = _findClientForOrder(order);
@@ -15663,6 +15738,14 @@ if (orderTicketPanel) {
             const order = ordersState.find(o => o.id === targetOrderId);
             if (!order || !field) { showNotice('Pedido no encontrado.', 'error'); return; }
             openOrderContactFieldEditor(order, field);
+            return;
+        }
+
+        if (actionButton.dataset.orderTicketAction === 'cambiar_cliente') {
+            const targetOrderId = String(actionButton.dataset.orderId || '').trim();
+            const order = ordersState.find(o => o.id === targetOrderId);
+            if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+            openChangeClientModal(order);
             return;
         }
 

@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260715-0215">
+    <link rel="stylesheet" href="style.css?v=20260715-0224">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -4228,6 +4228,7 @@
         body.mesero-mode [data-order-card-action="cobrar_mesa"],
         body.mesero-mode [data-order-card-action="cobrar_domicilio"],
         body.mesero-mode [data-order-card-action="cobrar_retiro"],
+        body.mesero-mode [data-order-ticket-action="cambiar_cliente"],
         body.mesero-mode .koc-compact-del { display: none !important; }
 
         .mesero-invalid-screen {
@@ -11262,6 +11263,28 @@
         }
         #gastoModal[hidden] { display: none; }
         #gastoModal .dpm-card { max-width: 400px; width: 100%; }
+
+        #orderChangeClientModal {
+            position: fixed; inset: 0; z-index: 1200;
+            background: rgba(0,0,0,0.72);
+            display: flex; align-items: center; justify-content: center; padding: 16px;
+        }
+        #orderChangeClientModal[hidden] { display: none; }
+        #orderChangeClientModal .dpm-card { max-width: 420px; width: 100%; }
+        .occ-results-list {
+            display: flex; flex-direction: column; gap: 6px;
+            max-height: 340px; overflow-y: auto;
+        }
+        .occ-result-row {
+            display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+            width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+            color: var(--admin-text); cursor: pointer; transition: background 0.15s, border-color 0.15s;
+        }
+        .occ-result-row:hover { background: rgba(255,149,64,0.1); border-color: rgba(255,149,64,0.3); }
+        .occ-result-row strong { font-size: 0.88rem; }
+        .occ-result-row span { font-size: 0.76rem; color: var(--admin-muted); }
+        .occ-result-address { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .gasto-form { display: flex; flex-direction: column; gap: 14px; padding: 4px 0; }
         .gasto-field { display: flex; flex-direction: column; gap: 5px; }
         .gasto-field label {
@@ -14700,6 +14723,20 @@
         </div>
     </div>
 
+    <!-- ══════════ MODAL CAMBIAR CLIENTE ══════════ -->
+    <div id="orderChangeClientModal" hidden>
+        <article class="dpm-card" style="max-width:420px;">
+            <div class="dpm-header">
+                <p class="dpm-title" style="margin:0;">Cambiar cliente</p>
+                <button type="button" id="occCloseBtn" style="background:none;border:none;color:var(--admin-muted);cursor:pointer;font-size:1.3rem;line-height:1;">&times;</button>
+            </div>
+            <div class="dpm-unified-body">
+                <input type="text" id="occSearchInput" class="admin-domicilio-input" placeholder="Buscar por nombre o teléfono..." style="width:100%;margin-bottom:10px;box-sizing:border-box;">
+                <div id="occResultsList" class="occ-results-list"></div>
+            </div>
+        </article>
+    </div>
+
     <!-- ══════════ MODAL GASTOS ══════════ -->
     <div id="gastoModal" hidden>
         <article class="dpm-card">
@@ -14786,7 +14823,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260715-0215"></script>
+    <script defer src="admin.js?v=20260715-0224"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
