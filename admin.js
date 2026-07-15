@@ -6466,17 +6466,17 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         _editingOrderData = null;
 
         if (_meseroSession) {
-            // El mesero nunca ve Recepción/dashboard: se queda en el POS con un ticket nuevo listo.
-            posTickets = posTickets.filter((t) => t.id !== posActiveTicketId);
-            posActiveTicketId = null;
-            posTicketConfig = null;
-            internalOrderItems = [];
-            createNewPosTicket();
-            renderPosOrderItems();
-            renderPosTotals();
-            renderPosBottomBar();
-            showPosScreen('main');
-            showNotice('Pedido enviado. Listo para el siguiente.', 'ok');
+            // El mesero ve Recepción (solo lectura): vuelve al tablero para confirmar donde
+            // quedó su pedido, igual que un cajero normal tras guardar.
+            renderOrders();
+            closeInternalOrderModal();
+            if (isMobileAdminViewport()) {
+                const _laneMap = { mesa: 'mesa', domicilio: 'domicilios', retiro: 'recoger' };
+                activeMobileOrdersLane = _laneMap[orderType] || 'domicilios';
+                applyMobileOrdersLane();
+                closeMobileTicketPanel({ clearSelection: true });
+            }
+            showNotice('Pedido enviado a recepción.', 'ok');
             if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'GUARDAR'; }
             return;
         }
@@ -16433,7 +16433,7 @@ async function initMeseroMode(token) {
         };
 
         document.body.classList.remove('admin-loading');
-        document.body.classList.add('mesero-mode');
+        document.body.classList.add('mesero-mode', 'admin-unlocked');
 
         await Promise.all([
             fetchCategories(),
@@ -16441,19 +16441,40 @@ async function initMeseroMode(token) {
             fetchBebidas(),
             fetchAcompanantes(),
             fetchCombosPack(),
-            fetchCatalogoVisibilidad()
+            fetchCatalogoVisibilidad(),
+            fetchOrders()
         ]);
         renderPosCategoriesPanel();
 
-        posActiveTicketId = null;
-        posTicketConfig = null;
-        internalOrderItems = [];
-        createNewPosTicket();
-        openInternalOrderModal();
+        // Deja "pedidos" (Recepcion) como unica pantalla visible — el sidebar para navegar a
+        // otras secciones esta oculto por CSS, asi que el mesero nunca dispara otro target.
+        setupAccordion();
+        setupCardCollapse();
+        announceNewOrders(ordersState);
+        renderOrders();
+        _subscribeMeseroOrders();
     } catch (error) {
         console.error('[Mesero] Error al iniciar modo mesero:', error);
         _showMeseroInvalidScreen();
     }
+}
+
+// Sincronizacion en vivo de pedidos para modo mesero — version minima de
+// setupLiveFirebaseSync() que solo mira `pedidos` (lectura publica), sin arrastrar las
+// suscripciones de mensajes/ventas/config que exigen sesion de admin.
+function _subscribeMeseroOrders() {
+    if (!firebaseDb) return;
+    firebaseDb.collection(ORDERS_COLLECTION)
+        .where('createdAt', '>=', _ordersCutoff())
+        .orderBy('createdAt', 'desc')
+        .onSnapshot(
+            _makeDebouncedHandler(async () => {
+                await fetchOrders();
+                announceNewOrders(ordersState);
+                renderOrders();
+            }, 600),
+            (err) => console.warn('[Mesero] pedidos listener error:', err.code || err.message)
+        );
 }
 
 // ── Modal cobro domicilio ──────────────────────────────────────────────────
@@ -20222,16 +20243,16 @@ function renderMeserosPanel() {
     const rows = _meserosState.map((m) => {
         const nombreCompleto = `${m.nombre || ''} ${m.apellido || ''}`.trim() || '—';
         return `
-        <div class="pm-method-item" data-mesero-token="${escapeHtml(m.token)}">
-            <div class="pm-method-info">
-                <span class="pm-method-name">🧑‍🍳 ${escapeHtml(nombreCompleto)}</span>
-                <span class="pm-method-meta">${escapeHtml(m.celular || 'Sin celular')}</span>
-                <span class="mesero-link-text" title="Enlace exclusivo de ${escapeHtml(nombreCompleto)}">${escapeHtml(_buildMeseroLink(m.token))}</span>
+        <div class="mesero-row" data-mesero-token="${escapeHtml(m.token)}">
+            <div class="mesero-row-info">
+                <span class="mesero-row-name">🧑‍🍳 ${escapeHtml(nombreCompleto)}</span>
+                <span class="mesero-row-phone">${escapeHtml(m.celular || 'Sin celular')}</span>
             </div>
-            <div class="pm-method-actions">
-                <button type="button" class="pm-icon-btn" data-mesero-copy="${escapeHtml(m.token)}" title="Copiar enlace">📋</button>
-                <button type="button" class="pm-icon-btn" data-mesero-wa="${escapeHtml(m.token)}" title="Enviar por WhatsApp">💬</button>
-                <button type="button" class="pm-icon-btn pm-icon-btn--del" data-mesero-del="${escapeHtml(m.token)}" title="Eliminar acceso">🗑</button>
+            <span class="mesero-link-text" title="Enlace exclusivo de ${escapeHtml(nombreCompleto)}">${escapeHtml(_buildMeseroLink(m.token))}</span>
+            <div class="mesero-row-actions">
+                <button type="button" class="mesero-action-btn" data-mesero-copy="${escapeHtml(m.token)}">📋 Copiar enlace</button>
+                <button type="button" class="mesero-action-btn mesero-action-btn--wa" data-mesero-wa="${escapeHtml(m.token)}">💬 WhatsApp</button>
+                <button type="button" class="mesero-action-btn mesero-action-btn--del" data-mesero-del="${escapeHtml(m.token)}">🗑 Eliminar acceso</button>
             </div>
         </div>`;
     }).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay meseros registrados.</p>`;

@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260714-2337">
+    <link rel="stylesheet" href="style.css?v=20260714-2356">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -4170,16 +4170,29 @@
         }
         .pos-view.is-open { display: block; }
 
-        /* ── Modo mesero: solo "Crear Pedido", sin sidebar/topbar/salidas ── */
+        /* ── Modo mesero: Recepcion (solo lectura) + Crear Pedido, sin sidebar/otras secciones ── */
         body.mesero-mode .admin-sidebar,
-        body.mesero-mode .admin-page,
         body.mesero-mode .admin-auth-overlay { display: none !important; }
         body.mesero-mode .pos-view {
             top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
         }
         body.mesero-mode #posCloseBtn,
         body.mesero-mode #posOpenTicketsBtn { display: none !important; }
-        body.mesero-mode.mesero-mode-invalid .pos-view { display: none !important; }
+        body.mesero-mode.mesero-mode-invalid .pos-view,
+        body.mesero-mode.mesero-mode-invalid .admin-page { display: none !important; }
+
+        /* Solo ver, no tocar: oculta acciones de escritura sobre pedidos (propios o ajenos) */
+        body.mesero-mode .order-action-btn,
+        body.mesero-mode .ticket-action-btn,
+        body.mesero-mode #abrirCajaBtnPos,
+        body.mesero-mode #cerrarCajaBtnPos,
+        body.mesero-mode [data-section-save="pedidos"],
+        body.mesero-mode .sales-day-banner-copy,
+        body.mesero-mode .sales-day-banner-data,
+        body.mesero-mode #cajaChicaBtn,
+        body.mesero-mode #openAdminTicketsViewBtn,
+        body.mesero-mode #adminChatFab { display: none !important; }
+        body.mesero-mode .ticket-copy-btn { pointer-events: none !important; }
 
         .mesero-invalid-screen {
             position: fixed; inset: 0; z-index: 9999;
@@ -4203,11 +4216,39 @@
             background: rgba(167, 139, 250, 0.16); border: 1px solid rgba(167, 139, 250, 0.35);
             color: #c4b5fd;
         }
+        .mesero-row {
+            display: flex; flex-direction: column; gap: 8px;
+            padding: 14px 16px; margin-bottom: 10px; border-radius: 12px;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+        }
+        .mesero-row-info { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+        .mesero-row-name {
+            font-family: 'Oswald', sans-serif; font-size: 0.95rem; font-weight: 600;
+            letter-spacing: 0.02em; color: #fff;
+        }
+        .mesero-row-phone { font-size: 0.82rem; color: var(--admin-muted); }
         .mesero-link-text {
             display: block; font-family: monospace; font-size: 0.74rem;
             color: rgba(167, 139, 250, 0.9); word-break: break-all; user-select: all;
-            margin-top: 2px;
+            padding: 6px 8px; border-radius: 6px; background: rgba(167, 139, 250, 0.08);
         }
+        .mesero-row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .mesero-action-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 7px 12px; border-radius: 8px; cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif; font-size: 0.78rem; font-weight: 600;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14);
+            color: rgba(255,255,255,0.85); transition: background 0.15s, border-color 0.15s;
+        }
+        .mesero-action-btn:hover { background: rgba(255,255,255,0.1); }
+        .mesero-action-btn--wa {
+            background: rgba(37, 211, 102, 0.14); border-color: rgba(37, 211, 102, 0.35); color: #7ee0a3;
+        }
+        .mesero-action-btn--wa:hover { background: rgba(37, 211, 102, 0.24); }
+        .mesero-action-btn--del {
+            background: rgba(252, 165, 165, 0.1); border-color: rgba(252, 165, 165, 0.3); color: #fca5a5;
+        }
+        .mesero-action-btn--del:hover { background: rgba(252, 165, 165, 0.2); }
 
         /* Ocultar el card de recepcion cuando el POS esta abierto */
         body.pos-is-open [data-tab-panel="pedidos"] .admin-card {
@@ -14708,7 +14749,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260714-2337"></script>
+    <script defer src="admin.js?v=20260714-2356"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
