@@ -136,10 +136,11 @@ service cloud.firestore {
 
     // ─── Meseros (acceso exclusivo vía enlace) ───────────────────────────────
     // El ID del documento ES el token del enlace — permite validar el enlace con
-    // un get() por ID conocido sin exponer la colección completa (list bloqueado).
+    // un get() por ID conocido sin exponer la colección completa a clientes públicos.
+    // El admin autenticado sí puede listar (panel Configuracion > Meseros).
     match /meseros/{token} {
       allow get: if true;
-      allow list: if false;
+      allow list: if request.auth != null;
       allow write: if request.auth != null;
     }
 

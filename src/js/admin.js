@@ -20226,6 +20226,7 @@ function renderMeserosPanel() {
             <div class="pm-method-info">
                 <span class="pm-method-name">🧑‍🍳 ${escapeHtml(nombreCompleto)}</span>
                 <span class="pm-method-meta">${escapeHtml(m.celular || 'Sin celular')}</span>
+                <span class="mesero-link-text" title="Enlace exclusivo de ${escapeHtml(nombreCompleto)}">${escapeHtml(_buildMeseroLink(m.token))}</span>
             </div>
             <div class="pm-method-actions">
                 <button type="button" class="pm-icon-btn" data-mesero-copy="${escapeHtml(m.token)}" title="Copiar enlace">📋</button>
