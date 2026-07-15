@@ -6529,6 +6529,9 @@ async function editAdminPosOrder(order) {
     try {
         const posItems = (order.items || []).map((item) => ({
             itemKey: item.itemKey || `${item.productId || 'p'}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            // Sin esto, todo item vuelve a quedar como "principal" al reabrir el pedido —
+            // los extras de un combo aparecían sueltos, separados de su producto base.
+            parentKey: item.parentItemKey || null,
             productId: String(item.productId || ''),
             productName: String(item.productName || ''),
             categoryName: String(item.categoryName || ''),
@@ -6602,6 +6605,9 @@ function openOrderItemsEditor(order) {
     try {
         const posItems = (order.items || []).map((item) => ({
             itemKey: item.itemKey || `${item.productId || 'p'}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            // Sin esto, todo item vuelve a quedar como "principal" al reabrir el pedido —
+            // los extras de un combo aparecían sueltos, separados de su producto base.
+            parentKey: item.parentItemKey || null,
             productId: String(item.productId || ''),
             productName: String(item.productName || ''),
             categoryName: String(item.categoryName || ''),

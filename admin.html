@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260715-0141">
+    <link rel="stylesheet" href="style.css?v=20260715-0149">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -6552,6 +6552,10 @@
             border: 1px solid rgba(255, 255, 255, 0.06);
             font-size: 0.8rem;
             transition: all 0.2s ease;
+            /* Nada de lo que hay adentro se sale de la casilla: el nombre se encoge/rompe
+               y el grupo de acciones (cantidad, precio, quitar) nunca se corta. */
+            overflow: hidden;
+            gap: 6px;
         }
 
         .pos-item-row:hover {
@@ -6561,6 +6565,8 @@
 
         .pos-item-name {
             flex: 1;
+            min-width: 0;
+            overflow-wrap: anywhere;
             color: #f2f7ff;
             font-weight: 600;
             font-family: 'Oswald', sans-serif;
@@ -6574,6 +6580,7 @@
             display: flex;
             gap: 8px;
             align-items: center;
+            flex-shrink: 0;
         }
 
         .pos-item-qty {
@@ -6641,7 +6648,7 @@
             height: 26px;
             flex-shrink: 0;
             padding: 0;
-            border-radius: 50%;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 1rem;
             line-height: 1;
@@ -6746,7 +6753,7 @@
             justify-content: center;
             width: 15px;
             height: 15px;
-            border-radius: 50%;
+            border-radius: 3px;
             flex-shrink: 0;
             transition: background 0.15s, color 0.15s;
         }
@@ -14774,7 +14781,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
-    <script defer src="admin.js?v=20260715-0141"></script>
+    <script defer src="admin.js?v=20260715-0149"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
