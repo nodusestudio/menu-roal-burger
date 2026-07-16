@@ -6890,7 +6890,13 @@ async function fetchMessages() {
 }
 
 async function seedDataIfNeeded() {
-    const categoriesCheck = await firebaseDb.collection('categorias').limit(1).get();
+    const [categoriesCheck, productsCheck, buttonsCheck, brandingCheck] = await Promise.all([
+        firebaseDb.collection('categorias').limit(1).get(),
+        firebaseDb.collection('productos').limit(1).get(),
+        firebaseDb.collection('botones').limit(1).get(),
+        firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).get()
+    ]);
+
     if (categoriesCheck.empty) {
         const batch = firebaseDb.batch();
         seedCategories.forEach((category) => {
@@ -6906,7 +6912,6 @@ async function seedDataIfNeeded() {
         await batch.commit();
     }
 
-    const productsCheck = await firebaseDb.collection('productos').limit(1).get();
     if (productsCheck.empty) {
         const batch = firebaseDb.batch();
         seedProducts.forEach((product) => {
@@ -6925,7 +6930,6 @@ async function seedDataIfNeeded() {
         await batch.commit();
     }
 
-    const buttonsCheck = await firebaseDb.collection('botones').limit(1).get();
     if (buttonsCheck.empty) {
         const batch = firebaseDb.batch();
         defaultButtons.forEach((button) => {
@@ -6939,7 +6943,6 @@ async function seedDataIfNeeded() {
         await batch.commit();
     }
 
-    const brandingCheck = await firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).get();
     if (!brandingCheck.exists) {
         await firebaseDb.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID).set({
             ...defaultBranding,
@@ -13344,7 +13347,7 @@ async function _uploadProductImageToStorage(file, productName) {
 
 
 
-async function reloadDataAndRender() {
+async function reloadDataAndRender({ skipClients = false } = {}) {
     await Promise.all([
         fetchCategories(),
         fetchProducts(),
@@ -13357,7 +13360,7 @@ async function reloadDataAndRender() {
         fetchOrders(),
         fetchSalesSummaries(),
         fetchSalesDayState(),
-        fetchClients(),
+        ...(skipClients ? [] : [fetchClients()]),
         fetchMessages(),
         fetchMenuUpgradesConfig(),
         fetchRecomendadoDiaConfig(),
@@ -16557,11 +16560,21 @@ async function initAdmin() {
         resetButtonForm();
 
         await seedDataIfNeeded();
-        await reloadDataAndRender();
+        // Clientes crece sin límite (cada registro por OTP suma una fila) y paginarlo completo
+        // puede tardar varios segundos — no lo esperamos aquí para que Recepción de Pedidos,
+        // Mesas, etc. aparezcan de inmediato. Se carga en segundo plano y re-renderiza al llegar.
+        await reloadDataAndRender({ skipClients: true });
         initCajaAperturaSync();
         ensureOrdersRealtimeTicker();
         setupLiveFirebaseSync();
         subscribePosTickets();
+
+        fetchClients().then(() => {
+            renderClients();
+            renderMetricsPos();
+            renderMetricsUsers();
+            renderPosCategoriesPanel();
+        }).catch((err) => console.warn('[ADMIN] fetchClients (segundo plano) error:', err.code || err.message));
     } catch (error) {
         if (!document.body.classList.contains('admin-unlocked')) {
             document.body.classList.add('admin-locked');
