@@ -11834,6 +11834,27 @@ function setupLiveFirebaseSync() {
         firebaseDb.collection(SALES_DAY_STATE_COLLECTION).onSnapshot(salesHandler, onErr('caja-dia'))
     );
 
+    // Caja Chica: sincroniza el conteo de billetes/monedas entre dispositivos en vivo.
+    liveSubscriptions.push(
+        firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(CC_DOC_ID).onSnapshot((doc) => {
+            const incoming = doc.exists ? doc.data() : {};
+            const changed = JSON.stringify({ billetes: _ccBilletes, monedas: _ccMonedas, guardadosBilletes: _ccGuardadosBilletes, guardadasMonedas: _ccGuardadasMonedas })
+                !== JSON.stringify({ billetes: incoming.billetes || {}, monedas: incoming.monedas || {}, guardadosBilletes: Number(incoming.guardadosBilletes || 0), guardadasMonedas: Number(incoming.guardadasMonedas || 0) });
+            if (!changed) return;
+            _ccApplyData(incoming);
+            const modalOpen = !document.getElementById('cajaChicaModal')?.hasAttribute('hidden');
+            if (modalOpen) {
+                _ccRenderGrid('ccBilletesGrid', CC_BILLETES, _ccBilletes);
+                _ccRenderGrid('ccMonedasGrid',  CC_MONEDAS,  _ccMonedas);
+                const gbEl = document.getElementById('ccGuardadosBilletes');
+                const gmEl = document.getElementById('ccGuardadasMonedas');
+                if (gbEl) gbEl.value = _ccGuardadosBilletes > 0 ? _ccGuardadosBilletes : '';
+                if (gmEl) gmEl.value = _ccGuardadasMonedas  > 0 ? _ccGuardadasMonedas  : '';
+            }
+            _ccRefreshTotals();
+        }, onErr('caja-chica'))
+    );
+
     // Config general: recarga completa (afecta todo el UI)
     // Catálogo (productos/categorías/botones/promos) NO tiene listener en tiempo real —
     // se recarga automáticamente después de cada acción de guardado del admin.
@@ -18739,7 +18760,6 @@ document.getElementById('cerrarCajaBtn')?.addEventListener('click', () => {
 // ── Apertura de Caja ──────────────────────────────────────────────────────────
 function _showAbrirCajaModal() {
     document.getElementById('_abrirCajaOverlay')?.remove();
-    _ccLoad();
     const savedTotal = _ccTotal();
 
     const now = new Date();
@@ -18876,7 +18896,8 @@ function _showAbrirCajaModal() {
             _ccMonedas  = { ...countedMonedas };
             _ccGuardadosBilletes = countedGuardadosBilletes;
             _ccGuardadasMonedas  = countedGuardadasMonedas;
-            _ccSave();
+            clearTimeout(_ccSaveTimer);
+            _ccSaveNow();
             _ccRefreshTotals();
         }
         saveCajaAperturaToFirestore(ts, { aperturaBy: nombre, fondoInicial: fondoUsado, cerrada: false });
@@ -20888,30 +20909,39 @@ document.getElementById('gastosClearFilterBtn')?.addEventListener('click', () =>
 });
 
 // ── Caja Chica ────────────────────────────────────────────────────────────────
+// Estado en vivo vía Firestore (mismo doc "admin_estado" que la Jornada) para que
+// coincida entre todos los dispositivos — antes vivía solo en localStorage y por
+// eso cada dispositivo mostraba un total distinto.
 const CC_BILLETES = [2000, 5000, 10000, 20000, 50000, 100000];
 const CC_MONEDAS  = [50, 100, 200, 500, 1000];
-const CC_STORAGE_KEY = 'roalburger-caja-chica';
+const CC_DOC_ID = 'caja_chica_actual';
 
 let _ccBilletes = {};
 let _ccMonedas  = {};
 let _ccGuardadosBilletes = 0;
 let _ccGuardadasMonedas  = 0;
+let _ccSaveTimer = null;
 
-function _ccLoad() {
-    try {
-        const raw = JSON.parse(localStorage.getItem(CC_STORAGE_KEY) || '{}');
-        _ccBilletes = raw.billetes || {};
-        _ccMonedas  = raw.monedas  || {};
-        _ccGuardadosBilletes = Number(raw.guardadosBilletes || 0);
-        _ccGuardadasMonedas  = Number(raw.guardadasMonedas  || 0);
-    } catch (_) {}
+function _ccApplyData(data) {
+    data = data || {};
+    _ccBilletes = data.billetes || {};
+    _ccMonedas  = data.monedas  || {};
+    _ccGuardadosBilletes = Number(data.guardadosBilletes || 0);
+    _ccGuardadasMonedas  = Number(data.guardadasMonedas  || 0);
 }
 
-function _ccSave() {
-    localStorage.setItem(CC_STORAGE_KEY, JSON.stringify({
+function _ccSaveNow() {
+    if (!firebaseDb) return;
+    firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(CC_DOC_ID).set({
         billetes: _ccBilletes, monedas: _ccMonedas,
         guardadosBilletes: _ccGuardadosBilletes, guardadasMonedas: _ccGuardadasMonedas,
-    }));
+        updatedAt: firestoreNow(),
+    }, { merge: true }).catch((err) => console.warn('[ADMIN] caja-chica save error:', err.code || err.message));
+}
+
+function _ccSaveDebounced() {
+    clearTimeout(_ccSaveTimer);
+    _ccSaveTimer = setTimeout(_ccSaveNow, 500);
 }
 
 function _ccSubB() { return CC_BILLETES.reduce((s, d) => s + d * (Number(_ccBilletes[d] || 0)), 0); }
@@ -20956,7 +20986,6 @@ function _ccRefreshTotals() {
 }
 
 function openCajaChicaModal() {
-    _ccLoad();
     _ccRenderGrid('ccBilletesGrid', CC_BILLETES, _ccBilletes);
     _ccRenderGrid('ccMonedasGrid',  CC_MONEDAS,  _ccMonedas);
     const gbEl = document.getElementById('ccGuardadosBilletes');
@@ -20980,14 +21009,15 @@ document.getElementById('cajaChicaModal')?.addEventListener('input', (e) => {
         const sub = d * count;
         const subEl = denomInput.closest('.cc-denom-row')?.querySelector(`[data-cc-sub="${d}"]`);
         if (subEl) { subEl.textContent = sub > 0 ? formatMoney(sub) : '—'; subEl.classList.toggle('has-value', sub > 0); }
-        _ccSave(); _ccRefreshTotals(); return;
+        _ccSaveDebounced(); _ccRefreshTotals(); return;
     }
-    if (e.target.id === 'ccGuardadosBilletes') { _ccGuardadosBilletes = Number(e.target.value) || 0; _ccSave(); _ccRefreshTotals(); }
-    if (e.target.id === 'ccGuardadasMonedas')  { _ccGuardadasMonedas  = Number(e.target.value) || 0; _ccSave(); _ccRefreshTotals(); }
+    if (e.target.id === 'ccGuardadosBilletes') { _ccGuardadosBilletes = Number(e.target.value) || 0; _ccSaveDebounced(); _ccRefreshTotals(); }
+    if (e.target.id === 'ccGuardadasMonedas')  { _ccGuardadasMonedas  = Number(e.target.value) || 0; _ccSaveDebounced(); _ccRefreshTotals(); }
 });
 
 document.getElementById('ccSaveBtn')?.addEventListener('click', () => {
-    _ccSave();
+    clearTimeout(_ccSaveTimer);
+    _ccSaveNow();
     const total = _ccTotal();
     closeCajaChicaModal();
     showNotice(`Caja chica guardada: ${formatMoney(total)}`, 'ok');
@@ -20999,8 +21029,8 @@ document.getElementById('cajaChicaModal')?.addEventListener('click', (e) => {
 document.getElementById('cajaChicaBtn')?.addEventListener('click', openCajaChicaModal);
 document.getElementById('ccCajaDiariaSummaryInner')?.addEventListener('click', openCajaChicaModal);
 
-// Cargar al inicio
-_ccLoad();
+// Estado inicial en cero mientras llega el primer snapshot de Firestore
+// (ver listener "caja-chica" en setupLiveFirebaseSync).
 _ccRefreshTotals();
 
 // ═══════════════════════════════════════════════════════════════════════════
