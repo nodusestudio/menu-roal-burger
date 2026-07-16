@@ -18771,8 +18771,19 @@ document.getElementById('cerrarCajaBtn')?.addEventListener('click', () => {
 });
 
 // ── Apertura de Caja ──────────────────────────────────────────────────────────
-function _showAbrirCajaModal() {
+async function _showAbrirCajaModal() {
     document.getElementById('_abrirCajaOverlay')?.remove();
+    // Lectura directa (no confiar solo en el listener en vivo): este modal puede abrirse
+    // apenas carga la página —antes de que setupLiveFirebaseSync() reciba el primer
+    // snapshot de Caja Chica— y mostrar $0 en vez del monto real guardado.
+    if (firebaseDb) {
+        try {
+            const doc = await firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(CC_DOC_ID).get();
+            _ccApplyData(doc.exists ? doc.data() : {});
+        } catch (err) {
+            console.warn('[ADMIN] caja-chica fetch (abrir caja) error:', err.code || err.message);
+        }
+    }
     const savedTotal = _ccTotal();
 
     const now = new Date();
