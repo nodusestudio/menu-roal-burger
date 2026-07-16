@@ -196,7 +196,6 @@ let _meseroCurrentSessionId = null;
 const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
 const ORDER_CODE_PREFIX = 'RB';
 const ORDER_CODE_START = 2026;
-const SALES_SUMMARY_COLLECTION = 'resumen_ventas';
 const SALES_DAY_STATE_COLLECTION = 'admin_estado';
 const SALES_DAY_STATE_DOC_ID = 'jornada_ventas_actual';
 const CIERRES_CAJA_COLLECTION = 'cierres_caja';
@@ -270,7 +269,6 @@ const orderTicketPanel = document.getElementById('orderTicketPanel');
 const orderTicketBody = document.getElementById('orderTicketBody');
 const mobileTicketCloseBtn = document.getElementById('mobileTicketCloseBtn');
 const mobileTicketBackdrop = document.getElementById('mobileTicketBackdrop');
-const closeSalesDayBtn = document.getElementById('closeSalesDayBtn');
 const salesDayStatusLabel = document.getElementById('salesDayStatusLabel');
 const salesDayStatusMeta = document.getElementById('salesDayStatusMeta');
 const salesDayDeliveredCount = document.getElementById('salesDayDeliveredCount');
@@ -280,14 +278,6 @@ const openCreateInternalOrderBtn = document.getElementById('openCreateInternalOr
 const internalOrderModal = document.getElementById('posView');
 const internalOrderCloseBtn = document.getElementById('posCloseBtn');
 const internalOrderItemsSummary = document.getElementById('internalOrderItemsSummary');
-const salesSummaryDateFrom = document.getElementById('salesSummaryDateFrom');
-const salesSummaryDateTo = document.getElementById('salesSummaryDateTo');
-const salesSummaryFilterType = document.getElementById('salesSummaryFilterType');
-const salesSummaryFilterValue = document.getElementById('salesSummaryFilterValue');
-const salesSummaryList = document.getElementById('salesSummaryList');
-const salesSummaryTotalAmount = document.getElementById('salesSummaryTotalAmount');
-const salesSummaryTotalOrders = document.getElementById('salesSummaryTotalOrders');
-const salesSummaryTotalDays = document.getElementById('salesSummaryTotalDays');
 const categoryProductsModal = document.getElementById('categoryProductsModal');
 const categoryProductsModalTitle = document.getElementById('categoryProductsModalTitle');
 const categoryProductsModalMeta = document.getElementById('categoryProductsModalMeta');
@@ -368,7 +358,6 @@ let brandingState = { ...defaultBranding };
 let ordersState = [];
 let clientsState = [];
 let messagesState = [];
-let salesSummariesState = [];
 let salesDayState = null;
 let selectedOrderId = null;
 let knownOrderIds = new Set();
@@ -1659,12 +1648,6 @@ function setupSectionSaveButtons() {
         if (section === 'metricas') {
             await reloadDataAndRender();
             showNotice('Métricas actualizadas.', 'ok');
-            return;
-        }
-
-        if (section === 'resumen-ventas') {
-            await reloadDataAndRender();
-            showNotice('Resumen de ventas actualizado.', 'ok');
         }
     });
 }
@@ -2090,32 +2073,6 @@ function normalizeOrder(raw) {
     };
 }
 
-function normalizeSalesBreakdownEntry(raw = {}) {
-    return {
-        name: String(raw.name || raw.categoryName || raw.productName || 'Sin nombre').trim() || 'Sin nombre',
-        categoryName: String(raw.categoryName || raw.category || '').trim(),
-        amount: Number(raw.amount || 0),
-        quantity: Number(raw.quantity || 0),
-        orderCount: Number(raw.orderCount || raw.orders || 0)
-    };
-}
-
-function normalizeSalesSummary(raw) {
-    return {
-        id: String(raw.id || '').trim(),
-        openedAt: raw.openedAt || raw.createdAt || null,
-        closedAt: raw.closedAt || raw.updatedAt || null,
-        totalSales: Number(raw.totalSales || 0),
-        totalOrders: Number(raw.totalOrders || 0),
-        totalItems: Number(raw.totalItems || 0),
-        takeawaySales: Number(raw.takeawaySales || 0),
-        deliverySales: Number(raw.deliverySales || 0),
-        categories: Array.isArray(raw.categories) ? raw.categories.map((entry) => normalizeSalesBreakdownEntry(entry)) : [],
-        products: Array.isArray(raw.products) ? raw.products.map((entry) => normalizeSalesBreakdownEntry(entry)) : [],
-        orders: Array.isArray(raw.orders) ? raw.orders : []
-    };
-}
-
 function normalizeSalesDayState(raw) {
     return {
         openedAt: raw.openedAt || raw.updatedAt || null,
@@ -2239,19 +2196,6 @@ async function fetchOrders() {
             const aTs = a.createdAt && typeof a.createdAt.toMillis === 'function' ? a.createdAt.toMillis() : 0;
             const bTs = b.createdAt && typeof b.createdAt.toMillis === 'function' ? b.createdAt.toMillis() : 0;
             return bTs - aTs;
-        });
-}
-
-async function fetchSalesSummaries() {
-    const snapshot = await firebaseDb.collection(SALES_SUMMARY_COLLECTION)
-        .orderBy('closedAt', 'desc')
-        .limit(180)
-        .get();
-    salesSummariesState = snapshot.docs
-        .map((doc) => normalizeSalesSummary({ id: doc.id, ...doc.data() }))
-        .sort((a, b) => {
-            const tsOf = (v) => v && typeof v.toMillis === 'function' ? v.toMillis() : (Number.isFinite(Number(v)) ? Number(v) : 0);
-            return tsOf(b.closedAt) - tsOf(a.closedAt);
         });
 }
 
@@ -3320,7 +3264,9 @@ function renderPosCobroExtraPanel(grid) {
             return;
         }
 
-        addProductToPosOrder(`cobro-extra::${concepto}`, concepto, monto, '', null);
+        // El monto va en el productId (no solo el concepto) para que dos cobros con el mismo
+        // concepto pero distinto monto no se fusionen en una sola fila con el monto del primero.
+        addProductToPosOrder(`cobro-extra::${concepto}::${monto}`, concepto, monto, '', null);
         showNotice(`${concepto} — ${formatMoney(monto)} agregado al ticket.`, 'ok');
 
         _closePosActionPopovers();
@@ -3385,8 +3331,9 @@ function renderPosDescuentoPanel(grid) {
             return;
         }
 
-        // Precio negativo = descuento
-        addProductToPosOrder(`descuento::${concepto}`, concepto, -monto, '', null);
+        // Precio negativo = descuento. El monto va en el productId para que dos descuentos con
+        // el mismo concepto pero distinto monto no se fusionen en una sola fila (ver cobro extra).
+        addProductToPosOrder(`descuento::${concepto}::${monto}`, concepto, -monto, '', null);
         showNotice(`${concepto} — -${formatMoney(monto)} aplicado al ticket.`, 'ok');
 
         _closePosActionPopovers();
@@ -5463,6 +5410,7 @@ function addComboEspecialToPosOrder(combo) {
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
+    _schedulePosTicketAutoSave();
 }
 
 function addProductToPosOrder(productId, productName, productPrice, note = '', originalUnitPrice = null, opts = {}) {
@@ -6522,7 +6470,6 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
 
         // onSnapshot actualiza ordersState y re-renderiza en ~600 ms
         renderOrders();
-        renderSalesSummaries();
 
         // Eliminar el ticket procesado de Firestore y cerrar POS
         const _processedTicketId = posActiveTicketId;
@@ -6608,10 +6555,14 @@ async function editAdminPosOrder(order) {
         openInternalOrderModal();
 
         internalOrderItems = posItems;
+        // Se muestra ya en el encabezado y en el carrito aunque el cajero no llegue a
+        // confirmar el modal de tipo/cliente que se abre abajo — antes dependía de eso
+        // y mientras tanto no se veía a nombre de quién estaba el pedido que se edita.
+        const editLabel = `Editando #${order.code}${order.customerName ? ' · ' + order.customerName : ''}`;
         const currentTicket = posTickets.find((t) => t.id === posActiveTicketId);
         if (currentTicket) {
             currentTicket.items = posItems;
-            currentTicket.label = `Editando #${order.code}`;
+            currentTicket.label = editLabel;
             // Store order metadata so setup modal can pre-fill all fields
             currentTicket.orderType = order.orderType;
             currentTicket.mesaNumber = order.mesaNumber || null;
@@ -6621,11 +6572,12 @@ async function editAdminPosOrder(order) {
             currentTicket.deliveryFee = order.deliveryFee ?? null;
         }
         const labelEl = document.getElementById('posActiveTicketLabel');
-        if (labelEl) labelEl.textContent = `Editando #${order.code}`;
+        if (labelEl) labelEl.textContent = editLabel;
 
         renderPosOrderItems();
         renderPosTotals();
         renderPosBottomBar();
+        renderPosCartTicketInfo();
 
         // Open setup modal immediately so user can see/edit type and customer
         setTimeout(() => openPosTicketSetupModal(true), 120);
@@ -6666,23 +6618,30 @@ function openOrderItemsEditor(order) {
         openInternalOrderModal();
 
         internalOrderItems = posItems;
+        const editItemsLabel = `Editando productos #${order.code}${order.customerName ? ' · ' + order.customerName : ''}`;
         const currentTicket = posTickets.find((t) => t.id === posActiveTicketId);
         if (currentTicket) {
             currentTicket.items = posItems;
-            currentTicket.label = `Editando productos #${order.code}`;
+            currentTicket.label = editItemsLabel;
             // El ticket que se reutiliza para esta edición puede venir con metadata vieja de
             // lo último que se hizo con él (ej. una mesa distinta) — sincronizarla con el pedido
             // que realmente se está editando evita que quede una mesa "ocupada" fantasma en el
             // modal de Cambiar Mesa si el cajero abandona esta edición sin guardar.
             currentTicket.orderType = order.orderType || null;
             currentTicket.mesaNumber = order.mesaNumber || null;
+            // Sin esto el carrito no mostraba a nombre de quién estaba el pedido mientras se
+            // le seguían agregando productos (posTicketConfig se deja en null a propósito acá).
+            currentTicket.customerName = order.customerName || '';
+            currentTicket.customerPhone = order.customerPhone || '';
+            currentTicket.deliveryAddress = order.deliveryAddress || order.customerAddress || '';
         }
         const labelEl = document.getElementById('posActiveTicketLabel');
-        if (labelEl) labelEl.textContent = `Editando productos #${order.code}`;
+        if (labelEl) labelEl.textContent = editItemsLabel;
 
         renderPosOrderItems();
         renderPosTotals();
         renderPosBottomBar();
+        renderPosCartTicketInfo();
         showNotice('Ajusta los productos y presiona Guardar. No se modifica el pago ni el estado del pedido.', 'ok');
     } catch (error) {
         showNotice(`Error al cargar los productos del pedido: ${error.message || 'error'}`, 'error');
@@ -8681,6 +8640,13 @@ function formatMoney(value) {
     return `$ ${Number(value || 0).toLocaleString('es-CO')}`;
 }
 
+// Convierte un timestamp de Firestore (o un número/epoch ya plano) a milisegundos.
+// Repetido igual en ~25 lugares de Informes/Caja antes de esta función — un solo punto
+// para ese cálculo evita que una copia quede desactualizada respecto a las demás.
+function _tsMs(value) {
+    return value?.toMillis ? value.toMillis() : Number(value || 0);
+}
+
 function formatOrderTime(value) {
     if (!value) {
         return '--:--';
@@ -8866,118 +8832,9 @@ function getDeliveredOrdersForCurrentDay() {
         if (order.status !== 'entregado') return false;
         if (!cajaAperturaAt) return true;
         const ts = order.deliveredAt || order.paidAt;
-        const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+        const ms = _tsMs(ts);
         return ms >= cajaAperturaAt;
     });
-}
-
-function buildSalesSummaryPayload(deliveredOrders, openedAt, closedAt) {
-    const categoriesMap = new Map();
-    const productsMap = new Map();
-
-    let totalSales = 0;
-    let totalItems = 0;
-    let takeawaySales = 0;
-    let deliverySales = 0;
-
-    const orders = deliveredOrders.map((order) => {
-        const orderTotal = Number(getOrderDisplayTotal(order) || 0);
-        totalSales += orderTotal;
-        totalItems += Number(order.totalItems || order.itemCount || 0);
-        if (order.orderType === 'domicilio') {
-            deliverySales += orderTotal;
-        } else {
-            takeawaySales += orderTotal;
-        }
-
-        order.items.forEach((item) => {
-            const categoryName = String(item.categoryName || 'Sin categoria').trim() || 'Sin categoria';
-            const productName = String(item.productName || 'Producto').trim() || 'Producto';
-            const quantity = Number(item.quantity || 0);
-            const amount = Number(item.subtotal || ((Number(item.unitPrice || 0)) * quantity) || 0);
-
-            const categoryEntry = categoriesMap.get(categoryName) || {
-                name: categoryName,
-                amount: 0,
-                quantity: 0,
-                orderIds: new Set()
-            };
-            categoryEntry.amount += amount;
-            categoryEntry.quantity += quantity;
-            categoryEntry.orderIds.add(order.id);
-            categoriesMap.set(categoryName, categoryEntry);
-
-            const productKey = `${categoryName}__${productName}`;
-            const productEntry = productsMap.get(productKey) || {
-                name: productName,
-                categoryName,
-                amount: 0,
-                quantity: 0,
-                orderIds: new Set()
-            };
-            productEntry.amount += amount;
-            productEntry.quantity += quantity;
-            productEntry.orderIds.add(order.id);
-            productsMap.set(productKey, productEntry);
-        });
-
-        return {
-            id: order.id,
-            code: order.code,
-            customerName: order.customerName,
-            customerPhone: order.customerPhone,
-            orderType: order.orderType,
-            paymentMethod: order.paymentMethod,
-            subtotal: Number(order.subtotal || 0),
-            deliveryFee: Number(order.deliveryFee || 0),
-            total: orderTotal,
-            createdAt: order.createdAt || null,
-            deliveredAt: order.deliveredAt || order.updatedAt || null,
-            items: order.items.map((item) => ({
-                productName: item.productName,
-                categoryName: item.categoryName,
-                quantity: Number(item.quantity || 0),
-                unitPrice: Number(item.unitPrice || 0),
-                subtotal: Number(item.subtotal || 0),
-                optionLabel: item.optionLabel,
-                note: item.note
-            }))
-        };
-    });
-
-    const categories = Array.from(categoriesMap.values())
-        .map((entry) => ({
-            name: entry.name,
-            amount: entry.amount,
-            quantity: entry.quantity,
-            orderCount: entry.orderIds.size
-        }))
-        .sort((a, b) => b.amount - a.amount);
-
-    const products = Array.from(productsMap.values())
-        .map((entry) => ({
-            name: entry.name,
-            categoryName: entry.categoryName,
-            amount: entry.amount,
-            quantity: entry.quantity,
-            orderCount: entry.orderIds.size
-        }))
-        .sort((a, b) => b.amount - a.amount);
-
-    return {
-        openedAt,
-        closedAt,
-        totalSales,
-        totalOrders: deliveredOrders.length,
-        totalItems,
-        takeawaySales,
-        deliverySales,
-        categories,
-        products,
-        orders,
-        createdAt: closedAt,
-        updatedAt: closedAt
-    };
 }
 
 async function ensureActiveSalesDay() {
@@ -8994,142 +8851,6 @@ async function ensureActiveSalesDay() {
         lastClosureId: ''
     }, { merge: true });
     return true;
-}
-
-function getSalesSummaryFilterOptions(type) {
-    const values = new Set();
-    if (type === 'category') {
-        salesSummariesState.forEach((summary) => {
-            summary.categories.forEach((entry) => values.add(entry.name));
-        });
-    } else if (type === 'product') {
-        salesSummariesState.forEach((summary) => {
-            summary.products.forEach((entry) => values.add(entry.name));
-        });
-    }
-
-    return Array.from(values).sort((a, b) => a.localeCompare(b, 'es'));
-}
-
-function getSalesSummaryDateKey(value) {
-    if (!value) {
-        return '';
-    }
-
-    const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
-    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-        return '';
-    }
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
-function syncSalesSummaryFilterOptions() {
-    if (!salesSummaryFilterType || !salesSummaryFilterValue) {
-        return;
-    }
-
-    const type = String(salesSummaryFilterType.value || 'all');
-    const options = getSalesSummaryFilterOptions(type);
-    const previousValue = String(salesSummaryFilterValue.value || '');
-
-    if (type === 'all') {
-        salesSummaryFilterValue.innerHTML = '<option value="">Selecciona un filtro</option>';
-        salesSummaryFilterValue.disabled = true;
-        salesSummaryFilterValue.value = '';
-        return;
-    }
-
-    salesSummaryFilterValue.disabled = false;
-    salesSummaryFilterValue.innerHTML = `
-        <option value="">Todas</option>
-        ${options.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('')}
-    `;
-    salesSummaryFilterValue.value = options.includes(previousValue) ? previousValue : '';
-}
-
-function summaryMatchesFilter(summary, type, value) {
-    if (type === 'category' && value) {
-        return summary.categories.some((entry) => entry.name === value);
-    }
-
-    if (type === 'product' && value) {
-        return summary.products.some((entry) => entry.name === value);
-    }
-
-    return true;
-}
-
-function summaryMatchesDateRange(summary) {
-    return summaryMatchesDateRangeForInputs(summary, salesSummaryDateFrom, salesSummaryDateTo);
-}
-
-function summaryMatchesDateRangeForInputs(summary, fromInput, toInput) {
-    const summaryDate = getSalesSummaryDateKey(summary.closedAt);
-    if (!summaryDate) {
-        return false;
-    }
-
-    const fromValue = String(fromInput?.value || '').trim();
-    const toValue = String(toInput?.value || '').trim();
-
-    if (fromValue && summaryDate < fromValue) {
-        return false;
-    }
-
-    if (toValue && summaryDate > toValue) {
-        return false;
-    }
-
-    return true;
-}
-
-function getSalesSummaryBreakdown(summary, type, value) {
-    if (type === 'category' && value) {
-        return {
-            categories: summary.categories.filter((entry) => entry.name === value),
-            products: summary.products.filter((entry) => entry.categoryName === value)
-        };
-    }
-
-    if (type === 'product' && value) {
-        const productEntries = summary.products.filter((entry) => entry.name === value);
-        const categories = productEntries.length
-            ? summary.categories.filter((entry) => entry.name === productEntries[0].categoryName)
-            : [];
-        return {
-            categories,
-            products: productEntries
-        };
-    }
-
-    return {
-        categories: summary.categories.slice(0, 5),
-        products: summary.products.slice(0, 5)
-    };
-}
-
-function buildSalesBreakdownMarkup(entries, emptyLabel, includeCategory = false) {
-    if (!entries.length) {
-        return `<div class="sales-summary-breakdown-note">${escapeHtml(emptyLabel)}</div>`;
-    }
-
-    return `
-        <div class="sales-summary-breakdown-list">
-            ${entries.map((entry) => `
-                <div class="sales-summary-breakdown-row">
-                    <div>
-                        <strong>${escapeHtml(entry.name)}</strong>
-                        <span>${escapeHtml(`${entry.quantity} uds · ${entry.orderCount} pedido(s)${includeCategory && entry.categoryName ? ` · ${entry.categoryName}` : ''}`)}</span>
-                    </div>
-                    <em>${escapeHtml(formatMoney(entry.amount))}</em>
-                </div>
-            `).join('')}
-        </div>
-    `;
 }
 
 function buildOrderWhatsAppMessage(order) {
@@ -10046,7 +9767,7 @@ function renderOrders() {
             if (o.voided || o.anulado) return false; // anulados solo visibles en Informes/Tickets
             if (!cajaAperturaAt) return true;
             const ts = o.deliveredAt || o.paidAt;
-            const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+            const ms = _tsMs(ts);
             return ms >= cajaAperturaAt;
         });
 
@@ -10123,7 +9844,7 @@ function renderSalesDayBanner() {
     const paidOrders = ordersState.filter((o) => {
         if (o.voided || o.anulado) return false;
         if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
-        const paidMs = o.paidAt?.toMillis ? o.paidAt.toMillis() : Number(o.paidAt || 0);
+        const paidMs = _tsMs(o.paidAt);
         if (!paidMs) return false;
         const _paidDate = new Date(paidMs);
         const paidDateStr = `${_paidDate.getFullYear()}-${String(_paidDate.getMonth()+1).padStart(2,'0')}-${String(_paidDate.getDate()).padStart(2,'0')}`;
@@ -10201,96 +9922,6 @@ function renderSalesDayBanner() {
             deliveryFeesChip.hidden = true;
         }
     }
-
-    // El botón de cierre sigue basado en pedidos entregados (no en pagados)
-    const deliveredOrders = getDeliveredOrdersForCurrentDay();
-    const validDelivered  = deliveredOrders.filter((o) => !o.anulado && !o.voided);
-    if (closeSalesDayBtn) {
-        closeSalesDayBtn.disabled = validDelivered.length === 0;
-        closeSalesDayBtn.textContent = validDelivered.length
-            ? `Cierre del dia (${validDelivered.length})`
-            : 'Cierre del dia';
-    }
-}
-
-function renderSalesSummaries() {
-    syncSalesSummaryFilterOptions();
-
-    const type = String(salesSummaryFilterType?.value || 'all');
-    const value = String(salesSummaryFilterValue?.value || '');
-    const filteredSummaries = salesSummariesState.filter((summary) => summaryMatchesDateRange(summary) && summaryMatchesFilter(summary, type, value));
-
-    const totalAmount = filteredSummaries.reduce((sum, summary) => sum + Number(summary.totalSales || 0), 0);
-    const totalOrders = filteredSummaries.reduce((sum, summary) => sum + Number(summary.totalOrders || 0), 0);
-
-    if (salesSummaryTotalAmount) {
-        salesSummaryTotalAmount.textContent = formatMoney(totalAmount);
-    }
-
-    if (salesSummaryTotalOrders) {
-        salesSummaryTotalOrders.textContent = Number(totalOrders).toLocaleString('es-CO');
-    }
-
-    if (salesSummaryTotalDays) {
-        salesSummaryTotalDays.textContent = Number(filteredSummaries.length).toLocaleString('es-CO');
-    }
-
-    if (!salesSummaryList) {
-        return;
-    }
-
-    if (!filteredSummaries.length) {
-        salesSummaryList.innerHTML = '<div class="sales-summary-empty">No hay cierres del dia que coincidan con ese filtro.</div>';
-        return;
-    }
-
-    salesSummaryList.innerHTML = filteredSummaries.map((summary, index) => {
-        const breakdown = getSalesSummaryBreakdown(summary, type, value);
-        const title = `Cierre ${filteredSummaries.length - index}`;
-        return `
-            <article class="sales-summary-card">
-                <div class="sales-summary-card-head">
-                    <div>
-                        <strong>${escapeHtml(title)}</strong>
-                        <p>${escapeHtml(`${formatOrderDate(summary.closedAt)} · Apertura ${formatOrderTime(summary.openedAt)} · Cierre ${formatOrderTime(summary.closedAt)}`)}</p>
-                    </div>
-                    <span class="sales-summary-badge">${escapeHtml(formatMoney(summary.totalSales))}</span>
-                </div>
-                <div class="sales-summary-meta">
-                    <span>${escapeHtml(`Abierto: ${formatDateTime(summary.openedAt)}`)}</span>
-                    <span>${escapeHtml(`Cerrado: ${formatDateTime(summary.closedAt)}`)}</span>
-                </div>
-                <div class="sales-summary-metrics">
-                    <div class="sales-summary-metric">
-                        <span>Pedidos</span>
-                        <strong>${escapeHtml(String(summary.totalOrders))}</strong>
-                    </div>
-                    <div class="sales-summary-metric">
-                        <span>Items</span>
-                        <strong>${escapeHtml(String(summary.totalItems))}</strong>
-                    </div>
-                    <div class="sales-summary-metric">
-                        <span>Llevar</span>
-                        <strong>${escapeHtml(formatMoney(summary.takeawaySales))}</strong>
-                    </div>
-                    <div class="sales-summary-metric">
-                        <span>Domicilios</span>
-                        <strong>${escapeHtml(formatMoney(summary.deliverySales))}</strong>
-                    </div>
-                </div>
-                <div class="sales-summary-breakdown">
-                    <section class="sales-summary-panel">
-                        <h3>Categorias</h3>
-                        ${buildSalesBreakdownMarkup(breakdown.categories, 'No hubo ventas para esta categoria en el cierre.', false)}
-                    </section>
-                    <section class="sales-summary-panel">
-                        <h3>Productos</h3>
-                        ${buildSalesBreakdownMarkup(breakdown.products, 'No hubo ventas para este producto en el cierre.', true)}
-                    </section>
-                </div>
-            </article>
-        `;
-    }).join('');
 }
 
 function getCierresExportColumns() {
@@ -10326,7 +9957,7 @@ function exportCierresHistorial(format) {
     };
     let cierres = [..._cierresCajaState];
     if (from || to) {
-        cierres = cierres.filter((c) => inRange(c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0)));
+        cierres = cierres.filter((c) => inRange(_tsMs(c.closedAt)));
     }
     if (!cierres.length) {
         showNotice('No hay cierres en el historial para exportar con el filtro actual.', 'error');
@@ -10365,56 +9996,6 @@ function exportCierresHistorial(format) {
 
     downloadExportFile(`historial-cajas-${stamp}.csv`, csvContent, 'text/csv;charset=utf-8');
     showNotice(`Historial de cajas exportado en Excel/CSV (${rows.length}).`, 'ok');
-}
-
-async function closeCurrentSalesDay() {
-    if (!firebaseDb) {
-        throw new Error('Firestore no esta listo en el panel.');
-    }
-
-    const deliveredOrders = getDeliveredOrdersForCurrentDay();
-    if (!deliveredOrders.length) {
-        throw new Error('No hay pedidos entregados para cerrar en la jornada actual.');
-    }
-
-    if (!salesDayState?.openedAt) {
-        await ensureActiveSalesDay();
-        await fetchSalesDayState();
-    }
-
-    const closedAt = firestoreNow();
-    const openedAt = salesDayState?.openedAt || closedAt;
-    const closureId = `cierre_${Date.now()}`;
-    const totalSales = deliveredOrders.reduce((sum, order) => sum + Number(getOrderDisplayTotal(order) || 0), 0);
-    const confirmed = window.confirm(`Vas a cerrar el dia con ${deliveredOrders.length} pedido(s) entregado(s) por ${formatMoney(totalSales)}. Esta accion movera esas ventas al resumen y abrira una nueva jornada. Deseas continuar?`);
-    if (!confirmed) {
-        return false;
-    }
-
-    const batch = firebaseDb.batch();
-    batch.set(
-        firebaseDb.collection(SALES_SUMMARY_COLLECTION).doc(closureId),
-        buildSalesSummaryPayload(deliveredOrders, openedAt, closedAt)
-    );
-
-    deliveredOrders.forEach((order) => {
-        batch.delete(firebaseDb.collection(ORDERS_COLLECTION).doc(order.id));
-    });
-
-    batch.set(
-        firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(SALES_DAY_STATE_DOC_ID),
-        {
-            openedAt: closedAt,
-            status: 'active',
-            updatedAt: closedAt,
-            lastClosedAt: closedAt,
-            lastClosureId: closureId
-        },
-        { merge: true }
-    );
-
-    await batch.commit();
-    return true;
 }
 
 function renderClients() {
@@ -11715,15 +11296,31 @@ function buildKitchenTicketHtml(order) {
         ? `<div class="k-address" title="${escapeHtml(_rawAddr)}">${escapeHtml(_shortAddr)}</div>`
         : '';
 
-    const products = (order.items || []).map((item) => {
+    // Un combo/adición vinculado a un producto (parentItemKey) debe imprimirse anidado bajo
+    // ese producto, igual que se ve en el carrito del POS — si no, cocina no sabe a qué
+    // hamburguesa pertenece el combo o la adición y quedan como líneas sueltas sin relación.
+    const items = order.items || [];
+    const itemsByKey = new Map(items.map((i) => [i.itemKey, i]));
+    // Si el padre referenciado no existe en el pedido (dato antiguo/incompleto), el ítem se
+    // imprime igual como línea principal — nunca se debe perder un producto del ticket.
+    const topItems = items.filter((item) => !item.parentItemKey || !itemsByKey.has(item.parentItemKey));
+    const childrenOf = (key) => items.filter((item) => item.parentItemKey === key);
+
+    const products = topItems.map((item) => {
         const details = [item.categoryName, item.optionLabel]
             .filter(Boolean)
             .map((p) => `<div class="k-detail">${escapeHtml(p)}</div>`)
             .join('');
         const note = item.note ? `<div class="k-note">⚠ ${escapeHtml(item.note)}</div>` : '';
+        const children = childrenOf(item.itemKey);
+        const childrenHtml = children.length
+            ? `<div class="k-sub-items">${children.map((c) => `
+                <div class="k-sub-item">↳ ${escapeHtml(String(c.quantity))}x ${escapeHtml(c.productName)}${c.note ? ` <span class="k-sub-note">— ${escapeHtml(c.note)}</span>` : ''}</div>
+            `).join('')}</div>`
+            : '';
         return `<div class="k-product">
             <div class="k-qty-name">${escapeHtml(String(item.quantity))}x ${escapeHtml(item.productName)}</div>
-            ${details}${note}
+            ${details}${note}${childrenHtml}
         </div>`;
     }).join('');
 
@@ -11820,19 +11417,12 @@ function setupLiveFirebaseSync() {
             )
     );
 
-    // Ventas/resumen: solo recarga resúmenes
+    // Jornada de ventas: recarga el estado y el banner/caja diaria
     const salesHandler = _makeDebouncedHandler(async () => {
-        await Promise.all([fetchSalesSummaries(), fetchSalesDayState()]);
-        renderSalesSummaries();
+        await fetchSalesDayState();
         renderCajaDiaria();
         renderSalesDayBanner();
     }, 800);
-    liveSubscriptions.push(
-        firebaseDb.collection(SALES_SUMMARY_COLLECTION)
-            .orderBy('closedAt', 'desc')
-            .limit(180)
-            .onSnapshot(salesHandler, onErr('ventas'))
-    );
     liveSubscriptions.push(
         firebaseDb.collection(SALES_DAY_STATE_COLLECTION).onSnapshot(salesHandler, onErr('caja-dia'))
     );
@@ -13358,7 +12948,6 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
         fetchButtons(),
         fetchBranding(),
         fetchOrders(),
-        fetchSalesSummaries(),
         fetchSalesDayState(),
         ...(skipClients ? [] : [fetchClients()]),
         fetchMessages(),
@@ -13390,7 +12979,6 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
     renderRecomendadoDiaPanel();
     renderCuponesUnified();
     renderOrders();
-    renderSalesSummaries();
     renderCajaDiaria();
     renderClients();
     renderMessages();
@@ -13786,19 +13374,31 @@ let _ptsCobrarAfterSave = false; // true = crear pedido y cobrar inmediatamente
 function renderPosCartTicketInfo() {
     const el = document.getElementById('posCartTicketInfo');
     if (!el) return;
-    if (!posTicketConfig) {
+    // Al editar un pedido existente, posTicketConfig se deja en null a propósito (el modal de
+    // tipo/cliente es quien lo termina de fijar) — mientras tanto se usa la metadata que ya
+    // quedó guardada en el ticket activo, para no mostrar el carrito sin saber a nombre de
+    // quién está el pedido que se está editando.
+    const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
+    const source = posTicketConfig || (activeTicket?.customerName || activeTicket?.orderType ? {
+        orderType: activeTicket.orderType,
+        mesaNumber: activeTicket.mesaNumber,
+        customerName: activeTicket.customerName,
+        customerPhone: activeTicket.customerPhone,
+        deliveryAddress: activeTicket.deliveryAddress,
+    } : null);
+    if (!source) {
         el.hidden = true;
         el.innerHTML = '';
         return;
     }
     const typeLabels = { mesa: 'Mesa', retiro: 'Recoger', domicilio: 'Domicilio' };
-    const typeLabel = typeLabels[posTicketConfig.orderType] || posTicketConfig.orderType;
-    const typeValue = posTicketConfig.orderType === 'mesa' && posTicketConfig.mesaNumber
-        ? `Mesa ${posTicketConfig.mesaNumber}`
+    const typeLabel = typeLabels[source.orderType] || source.orderType;
+    const typeValue = source.orderType === 'mesa' && source.mesaNumber
+        ? `Mesa ${source.mesaNumber}`
         : typeLabel;
-    const clientValue = posTicketConfig.customerName || '';
-    const phoneValue = posTicketConfig.customerPhone || '';
-    const addressValue = posTicketConfig.deliveryAddress || '';
+    const clientValue = source.customerName || '';
+    const phoneValue = source.customerPhone || '';
+    const addressValue = source.deliveryAddress || '';
     el.innerHTML = `
         <div class="pos-ticket-info-row">
             <span class="pos-ticket-info-label">TIPO</span>
@@ -15090,31 +14690,6 @@ document.getElementById('inboxSearch')?.addEventListener('input', () => renderMe
     });
 })();
 
-if (salesSummaryFilterType) {
-    salesSummaryFilterType.addEventListener('change', () => {
-        syncSalesSummaryFilterOptions();
-        renderSalesSummaries();
-    });
-}
-
-if (salesSummaryFilterValue) {
-    salesSummaryFilterValue.addEventListener('change', () => {
-        renderSalesSummaries();
-    });
-}
-
-if (salesSummaryDateFrom) {
-    salesSummaryDateFrom.addEventListener('change', () => {
-        renderSalesSummaries();
-    });
-}
-
-if (salesSummaryDateTo) {
-    salesSummaryDateTo.addEventListener('change', () => {
-        renderSalesSummaries();
-    });
-}
-
 const exportCierresExcelBtn = document.getElementById('exportCierresExcelBtn');
 const exportCierresPdfBtn = document.getElementById('exportCierresPdfBtn');
 
@@ -15134,24 +14709,6 @@ if (exportCierresPdfBtn) {
             exportCierresHistorial('pdf');
         } catch (error) {
             showNotice(`No se pudo exportar el historial en PDF: ${error.message || 'error inesperado.'}`, 'error');
-        }
-    });
-}
-
-if (closeSalesDayBtn) {
-    closeSalesDayBtn.addEventListener('click', async () => {
-        closeSalesDayBtn.disabled = true;
-        try {
-            const closed = await closeCurrentSalesDay();
-            if (!closed) {
-                return;
-            }
-            showNotice('Cierre del dia guardado y nueva jornada abierta.', 'ok');
-            await reloadDataAndRender();
-        } catch (error) {
-            showNotice(`No se pudo cerrar el dia: ${error.message || 'error inesperado.'}`, 'error');
-        } finally {
-            renderSalesDayBanner();
         }
     });
 }
@@ -16888,13 +16445,16 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
         if (receiveOrder === 'mesa') {
             await updateOrder(order.id, { status: 'entregado', deliveredAt: firestoreNow(), ...paymentUpdate });
             await reloadDataAndRender();
-            if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
+            // Ocultar el ticket al cobrar en escritorio también — antes solo se cerraba en
+            // móvil (isMobileAdminViewport) y en desktop el panel quedaba abierto mostrando
+            // un pedido ya cobrado hasta que el cajero lo cerrara a mano.
+            closeMobileTicketPanel({ clearSelection: true });
             showNotice('Pago registrado y pedido cerrado.', 'ok');
         } else if (receiveOrder) {
             const copied = await copyTextToClipboard(buildReceivedOrderMessage({ ...order, ...paymentUpdate }));
             await updateOrder(order.id, { status: 'preparacion', receivedAt: firestoreNow(), ...paymentUpdate });
             await reloadDataAndRender();
-            if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
+            closeMobileTicketPanel({ clearSelection: true });
             showNotice(
                 copied ? 'Pedido recibido, movido a preparación y mensaje copiado.' : 'Pedido recibido y movido a preparación.',
                 copied ? 'ok' : 'error'
@@ -16906,7 +16466,7 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             const wasAlreadyPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
             await updateOrder(order.id, paymentUpdate);
             await reloadDataAndRender();
-            if (isMobileAdminViewport()) closeMobileTicketPanel({ clearSelection: true });
+            closeMobileTicketPanel({ clearSelection: true });
             showNotice(wasAlreadyPaid ? 'Método de pago corregido.' : 'Pago registrado correctamente.', 'ok');
         }
 
@@ -17428,12 +16988,12 @@ async function loadGastosCaja() {
             .orderBy('registradoAt', 'desc')
             .limit(500)
             .get();
-        // Incluye gastos de caja y externos (el reporte de Informes > Gastos necesita ambos).
-        // Excluye traslados: no son gastos reales, son movimientos entre métodos de pago.
-        // renderCajaDiaria() sigue excluyendo 'externo' aparte, así que no hay doble conteo ahí.
+        // Incluye gastos de caja, externos y traslados: renderCajaDiaria() y cerrarCaja()
+        // separan cada tipo internamente (y ambos esperan encontrar los traslados aquí para
+        // reflejarlos en el saldo por método). Los traslados no son gastos reales — quien
+        // los trate como "egreso" (ej. renderGastosInformes) debe excluirlos explícitamente ahí.
         _gastosCajaState = snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((g) => g.tipo !== 'traslado');
+            .map((d) => ({ id: d.id, ...d.data() }));
     } catch (_) {
         _gastosCajaState = [];
     }
@@ -17598,7 +17158,7 @@ function openTrasladoModal(existingData = null, existingId = null) {
     const _updateBalanceHint = () => {
         if (!balanceEl || !fromSel) return;
         const fromId = fromSel.value;
-        const bal = _cierresSumTotals[fromId] || 0;
+        const bal = _cajaDiariaSumMethod[fromId] || 0;
         const m = methods.find((x) => x.id === fromId);
         const label = m ? `${m.icon ? m.icon + ' ' : ''}${m.label}` : fromId;
         const color = bal > 0 ? '#6ee7b7' : bal < 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
@@ -17618,7 +17178,7 @@ function openTrasladoModal(existingData = null, existingId = null) {
         const monto = Number((montoEl?.value || '').replace(/\./g, '') || 0);
         if (!from || !to || from === to) { showNotice('Seleccione métodos distintos.', 'error'); return; }
         if (monto <= 0) { showNotice('Ingrese un monto válido.', 'error'); return; }
-        const available = _cierresSumTotals[from] || 0;
+        const available = _cajaDiariaSumMethod[from] || 0;
         if (monto > available) {
             const m = methods.find((x) => x.id === from);
             const lbl = m ? `${m.icon ? m.icon + ' ' : ''}${m.label}` : from;
@@ -17638,6 +17198,10 @@ function openTrasladoModal(existingData = null, existingId = null) {
                 showNotice('Traslado registrado.', 'ok');
             }
             await renderLibroCierres();
+            // Refresca la jornada abierta para que Caja Diaria y el saldo disponible del
+            // próximo traslado reflejen este movimiento sin esperar al próximo refresco manual.
+            await loadGastosCaja();
+            renderCajaDiaria();
         } catch (_) {
             showNotice('Error al guardar traslado.', 'error');
         }
@@ -17745,6 +17309,43 @@ function _cajaDiariaMethodLabel(order) {
     return subLabel ? `${method.icon} ${method.label} · ${subLabel}` : `${method.icon} ${method.label}`;
 }
 
+// El pago a domiciliarios no se registra como gasto real por cada pedido — se infiere de la
+// suma de deliveryFee de los pedidos a domicilio pagados en la jornada, salvo que ya exista un
+// gasto real (id que empieza con "gasto_domicilios_", registrado al cerrar caja). Usado tanto
+// por la vista en vivo (renderCajaDiaria) como por el cierre (cerrarCaja) para que ambos calculen
+// exactamente lo mismo — antes cada uno tenía su propia copia de este filtro y sumaba distinto
+// (la vista en vivo no excluía pedidos anulados, el cierre sí).
+function _computeDomicilioGastoVirtual(paidOrders, gastosJornada) {
+    const hasReal = gastosJornada.some((g) => String(g.id || '').startsWith('gasto_domicilios_'));
+    const deliveryPaid = paidOrders.filter((o) => !o.voided && (o.orderType === 'domicilio' || o.fulfillmentType === 'delivery'));
+    const monto = deliveryPaid.reduce((s, o) => s + Number(o.deliveryFee || 0), 0);
+    return { hasReal, deliveryCount: deliveryPaid.length, monto };
+}
+
+// Saldo neto por método de pago de la jornada actualmente abierta (lo que renderCajaDiaria()
+// muestra en la fila de TOTALES). Es lo que "Traslado entre cuentas" debe usar para saber
+// cuánta plata hay disponible para mover ahora mismo — el histórico acumulado de todos los
+// cierres pasados no representa efectivo físico en el cajón de hoy.
+let _cajaDiariaSumMethod = {};
+
+// Construye las celdas <td> de la fila de Caja Diaria, una por método de pago habilitado.
+// matchFn(key) devuelve el contenido ya formateado ("−$5.000", "+$5.000", "$5.000") para la
+// columna que corresponde a esa fila, o '' si esa columna no aplica (celda vacía). Antes esto
+// se repetía casi idéntico 5 veces (fila de domicilios, pedido, anulado, gasto, traslado).
+function _renderMethodCells(methodKeys, cellClass, matchFn) {
+    return methodKeys.map((k) => {
+        const content = matchFn(k);
+        return content ? `<td class="${cellClass}">${content}</td>` : '<td></td>';
+    }).join('');
+}
+
+// Celda "Otro" (métodos de pago históricos ya no habilitados). cellHtml es el <td> ya armado
+// para esa fila, o '' si esa fila no tiene nada que mostrar ahí.
+function _renderOtroCell(hasUnmatched, cellHtml) {
+    if (!hasUnmatched) return '';
+    return cellHtml || '<td></td>';
+}
+
 function renderCajaDiaria() {
     const headEl  = document.getElementById('cajaDiariaHead');
     const bodyEl  = document.getElementById('cajaDiariaBody');
@@ -17775,7 +17376,7 @@ function renderCajaDiaria() {
     const allPaid = ordersState.filter((o) => {
         if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
         const ts = o.paidAt || o.deliveredAt || o.createdAt;
-        const paidMs = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+        const paidMs = _tsMs(ts);
         if (!paidMs) return false;
         if (cajaAperturaAt) return paidMs >= cajaAperturaAt;
         const _nd = new Date(); const _pd = new Date(paidMs);
@@ -17787,7 +17388,7 @@ function renderCajaDiaria() {
     // Filtrar gastos de la jornada actual (excluir gastos externos del historial)
     const _allGastosJornada = _gastosCajaState.filter((g) => {
         if (g.tipo === 'externo') return false;
-        const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+        const ms = _tsMs(g.registradoAt);
         if (cajaAperturaAt) return ms >= cajaAperturaAt;
         const todayStr = new Date().toISOString().split('T')[0];
         return new Date(ms).toISOString().split('T')[0] === todayStr;
@@ -17827,13 +17428,11 @@ function renderCajaDiaria() {
 
     // Unificar y ordenar cobros + gastos por timestamp
     const _tsOf = (o) => o.paidAt?.toDate ? o.paidAt.toDate().getTime() : new Date(o.paidAt || 0).getTime();
-    const _tsGasto = (g) => g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+    const _tsGasto = (g) => _tsMs(g.registradoAt);
 
     // Gasto virtual de domicilios: se muestra si no existe ya el gasto real del cierre
-    const hasDomicilioGastoReal = allGastos.some((g) => String(g.id || '').startsWith('gasto_domicilios_'));
-    const deliveryPaid = allPaid.filter((o) => o.orderType === 'domicilio' || o.fulfillmentType === 'delivery');
-    const domicilioFeeSum = deliveryPaid.reduce((s, o) => s + Number(o.deliveryFee || 0), 0);
-    const virtualDomicilioGasto = (!hasDomicilioGastoReal && domicilioFeeSum > 0)
+    const domicilioVirtual = _computeDomicilioGastoVirtual(allPaid, allGastos);
+    const virtualDomicilioGasto = (!domicilioVirtual.hasReal && domicilioVirtual.monto > 0)
         ? [{
             _type: 'gasto',
             _ms: Date.now(),
@@ -17842,8 +17441,8 @@ function renderCajaDiaria() {
                 categoria: 'otros',
                 subcategoria: 'Domicilios',
                 proveedor: 'Domiciliario',
-                descripcion: `Domicilios (${deliveryPaid.length} pedido${deliveryPaid.length !== 1 ? 's' : ''})`,
-                monto: domicilioFeeSum,
+                descripcion: `Domicilios (${domicilioVirtual.deliveryCount} pedido${domicilioVirtual.deliveryCount !== 1 ? 's' : ''})`,
+                monto: domicilioVirtual.monto,
                 paymentMethod: 'efectivo',
                 registradoAt: Date.now(),
                 _virtual: true,
@@ -17871,22 +17470,20 @@ function renderCajaDiaria() {
         const isKnown = methodKeys.includes(g.paymentMethod);
         if (isKnown) { sumMethod[g.paymentMethod] -= amt; } else { sumOtro -= amt; }
         grandTotal -= amt;
-        const mCells = methodKeys.map((k) =>
-            k === g.paymentMethod
-                ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
-                : '<td></td>'
-        ).join('');
-        const otroCell = hasUnmatched ? '<td></td>' : '';
-        const pedStr = `${deliveryPaid.length} pedido${deliveryPaid.length !== 1 ? 's' : ''}`;
+        const mCells = _renderMethodCells(methodKeys, 'caja-cell-salida', (k) =>
+            k === g.paymentMethod ? `−${formatMoney(amt)}` : ''
+        );
+        const otroCell = _renderOtroCell(hasUnmatched, '');
+        const pedStr = `${domicilioVirtual.deliveryCount} pedido${domicilioVirtual.deliveryCount !== 1 ? 's' : ''}`;
         pinnedDomicilioRow = `<tr style="background:rgba(252,165,165,0.06);border-bottom:1px solid rgba(252,165,165,0.18);">
             <td class="col-left" style="color:#fca5a5;font-size:0.72rem;white-space:nowrap;">🛵 FIJO</td>
             <td class="col-left">
-                <span style="color:#fca5a5;font-weight:700;">🛵 Gasto domicilios</span>
+                <span class="caja-cell-salida">🛵 Gasto domicilios</span>
                 <span style="color:var(--admin-muted);font-size:0.78rem;"> · ${pedStr}</span>
                 <span style="font-size:0.68rem;opacity:0.55;"> · se registra al cerrar caja</span>
             </td>
             ${mCells}${otroCell}
-            <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
+            <td class="caja-cell-total-neg">−${formatMoney(amt)}</td>
         </tr>`;
     }
 
@@ -17917,22 +17514,18 @@ function renderCajaDiaria() {
 
             let mCellsIn, otroCellIn;
             if (isSplitOrder) {
-                mCellsIn = methodKeys.map((k) => {
+                mCellsIn = _renderMethodCells(methodKeys, 'caja-cell-entrada', (k) => {
                     const part = o.paymentSplit.find((s) => s.method === k);
-                    return part && Number(part.amount) > 0
-                        ? `<td style="color:#6ee7b7;font-weight:700;">${formatMoney(Number(part.amount))}</td>`
-                        : '<td></td>';
-                }).join('');
-                otroCellIn = hasUnmatched ? '<td></td>' : '';
+                    return part && Number(part.amount) > 0 ? formatMoney(Number(part.amount)) : '';
+                });
+                otroCellIn = _renderOtroCell(hasUnmatched, '');
             } else {
-                mCellsIn = methodKeys.map((k) =>
-                    k === o.paymentMethod
-                        ? `<td style="color:#6ee7b7;font-weight:700;">${formatMoney(amt)}</td>`
-                        : '<td></td>'
-                ).join('');
-                otroCellIn = hasUnmatched
-                    ? (!isKnown ? `<td style="color:#6ee7b7;font-weight:700;" title="${escapeHtml(o.paymentMethod || '')}">${formatMoney(amt)}</td>` : '<td></td>')
-                    : '';
+                mCellsIn = _renderMethodCells(methodKeys, 'caja-cell-entrada', (k) =>
+                    k === o.paymentMethod ? formatMoney(amt) : ''
+                );
+                otroCellIn = _renderOtroCell(hasUnmatched,
+                    !isKnown ? `<td class="caja-cell-entrada" title="${escapeHtml(o.paymentMethod || '')}">${formatMoney(amt)}</td>` : ''
+                );
             }
             const splitBadge = isSplitOrder ? ' <span style="font-size:0.68rem;background:rgba(251,191,36,0.2);color:#fbbf24;padding:1px 5px;border-radius:4px;font-weight:600;">÷ DIVIDIDO</span>' : '';
             rows.push(`<tr>
@@ -17956,26 +17549,22 @@ function renderCajaDiaria() {
                 grandTotal -= amt;
                 const horaVoid = formatOrderTime(o.voidedAt || ts);
                 const mCellsOut = isSplitOrder
-                    ? methodKeys.map((k) => {
+                    ? _renderMethodCells(methodKeys, 'caja-cell-salida', (k) => {
                         const part = o.paymentSplit.find((s) => s.method === k);
-                        return part && Number(part.amount) > 0
-                            ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(Number(part.amount))}</td>`
-                            : '<td></td>';
-                    }).join('')
-                    : methodKeys.map((k) =>
-                        k === o.paymentMethod
-                            ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
-                            : '<td></td>'
-                    ).join('');
-                const otroCellOut = hasUnmatched
-                    ? (!isKnown && !isSplitOrder ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>` : '<td></td>')
-                    : '';
+                        return part && Number(part.amount) > 0 ? `−${formatMoney(Number(part.amount))}` : '';
+                    })
+                    : _renderMethodCells(methodKeys, 'caja-cell-salida', (k) =>
+                        k === o.paymentMethod ? `−${formatMoney(amt)}` : ''
+                    );
+                const otroCellOut = _renderOtroCell(hasUnmatched,
+                    !isKnown && !isSplitOrder ? `<td class="caja-cell-salida">−${formatMoney(amt)}</td>` : ''
+                );
                 const voidDesc = `<span style="color:#fca5a5;">↩ ANULADO</span> · ${escapeHtml(o.code)} · ${escapeHtml(o.customerName || '—')}`;
                 rows.push(`<tr class="row-voided">
                     <td class="col-left" style="color:#fca5a5;">${horaVoid}</td>
                     <td class="col-left">${voidDesc}</td>
                     ${mCellsOut}${otroCellOut}
-                    <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
+                    <td class="caja-cell-total-neg">−${formatMoney(amt)}</td>
                 </tr>`);
             }
         } else if (entry._type === 'gasto') {
@@ -17988,26 +17577,24 @@ function renderCajaDiaria() {
             if (isKnown) { sumMethod[g.paymentMethod] -= amt; } else { sumOtro -= amt; }
             grandTotal -= amt;
 
-            const mGastoCells = methodKeys.map((k) =>
-                k === g.paymentMethod
-                    ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>`
-                    : '<td></td>'
-            ).join('');
-            const otroGastoCell = hasUnmatched
-                ? (!isKnown ? `<td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>` : '<td></td>')
-                : '';
+            const mGastoCells = _renderMethodCells(methodKeys, 'caja-cell-salida', (k) =>
+                k === g.paymentMethod ? `−${formatMoney(amt)}` : ''
+            );
+            const otroGastoCell = _renderOtroCell(hasUnmatched,
+                !isKnown ? `<td class="caja-cell-salida">−${formatMoney(amt)}</td>` : ''
+            );
 
             const cat = getCategoriasGastos().find((c) => c.id === g.categoria);
             const catStr = cat ? ` · ${cat.icon} ${escapeHtml(cat.nombre)}` : '';
             const subStr = g.subcategoria ? ` · ${escapeHtml(g.subcategoria)}` : '';
             const descStr = g.descripcion ? ` · ${escapeHtml(g.descripcion)}` : '';
-            const gastoDesc = `<span style="color:#fca5a5;font-weight:700;">💸 Gasto${catStr}</span>${subStr}${descStr}`;
+            const gastoDesc = `<span class="caja-cell-salida">💸 Gasto${catStr}</span>${subStr}${descStr}`;
 
             rows.push(`<tr>
                 <td class="col-left" style="color:#fca5a5;">${hora}</td>
                 <td class="col-left">${gastoDesc}</td>
                 ${mGastoCells}${otroGastoCell}
-                <td style="color:#fca5a5;font-weight:800;">−${formatMoney(amt)}</td>
+                <td class="caja-cell-total-neg">−${formatMoney(amt)}</td>
             </tr>`);
         } else {
             // Traslado entre métodos (índigo; mueve saldo sin afectar el total neto)
@@ -18023,22 +17610,26 @@ function renderCajaDiaria() {
             if (methodKeys.includes(t.methodTo))   sumMethod[t.methodTo]   += amt;
             // grandTotal no cambia (traslado interno)
 
-            const mTrasladoCells = methodKeys.map((k) => {
-                if (k === t.methodFrom) return `<td style="color:#a5b4fc;font-weight:700;">−${formatMoney(amt)}</td>`;
-                if (k === t.methodTo)   return `<td style="color:#a5b4fc;font-weight:700;">+${formatMoney(amt)}</td>`;
-                return '<td></td>';
-            }).join('');
-            const otroTrasladoCell = hasUnmatched ? '<td></td>' : '';
+            const mTrasladoCells = _renderMethodCells(methodKeys, 'caja-cell-traslado', (k) => {
+                if (k === t.methodFrom) return `−${formatMoney(amt)}`;
+                if (k === t.methodTo)   return `+${formatMoney(amt)}`;
+                return '';
+            });
+            const otroTrasladoCell = _renderOtroCell(hasUnmatched, '');
 
             rows.push(`<tr style="background:rgba(99,102,241,0.06);border-left:3px solid rgba(99,102,241,0.3);">
                 <td class="col-left" style="color:#a5b4fc;">${hora}</td>
-                <td class="col-left"><span style="color:#a5b4fc;font-weight:700;">🔄 Traslado</span> · ${fromLabel} → ${toLabel}</td>
+                <td class="col-left"><span class="caja-cell-traslado">🔄 Traslado</span> · ${fromLabel} → ${toLabel}</td>
                 ${mTrasladoCells}${otroTrasladoCell}
                 <td style="color:rgba(165,180,252,0.45);font-size:0.8rem;">$0</td>
             </tr>`);
         }
     });
     bodyEl.innerHTML = pinnedDomicilioRow + rows.join('');
+
+    // Saldo neto por método de la jornada abierta — lo usa el modal de Traslado para saber
+    // cuánta plata hay disponible para mover ahora mismo (ver _cajaDiariaSumMethod arriba).
+    _cajaDiariaSumMethod = { ...sumMethod };
 
     // Totales al pie
     if (footEl) {
@@ -18351,20 +17942,23 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
 
     if (confirmBtn) confirmBtn.textContent = 'Guardando...';
     try {
-        // Gasto automático de domicilios en efectivo
-        const domicilioFeeTotal = getDeliveredOrdersForCurrentDay()
-            .filter((o) => o.orderType === 'domicilio' || o.fulfillmentType === 'delivery')
-            .reduce((s, o) => s + Number(o.deliveryFee || 0), 0);
-        if (domicilioFeeTotal > 0) {
+        // Gasto automático de domicilios en efectivo — reutiliza el monto que ya calculó
+        // cerrarCaja() (vía _computeDomicilioGastoVirtual) y que el cajero vio en la vista
+        // previa, en vez de recalcularlo aquí con un filtro de pedidos distinto (antes usaba
+        // "entregados" en vez de "cobrados", pudiendo no coincidir con lo aprobado).
+        const domicilioDetalle = closureDoc.gastosDetalle.find(
+            (g) => g.subcategoria === 'Domicilios' && g.proveedor === 'Domiciliario'
+        );
+        if (domicilioDetalle && domicilioDetalle.monto > 0) {
             const gastoId = `gasto_domicilios_${Date.now()}`;
             const gastoDom = {
                 id: gastoId,
-                categoria: 'otros',
+                categoria: domicilioDetalle.categoria || 'otros',
                 subcategoria: 'Domicilios',
                 proveedor: 'Domiciliario',
-                descripcion: 'Gastos de domicilios',
-                monto: domicilioFeeTotal,
-                paymentMethod: 'efectivo',
+                descripcion: domicilioDetalle.descripcion || 'Gastos de domicilios',
+                monto: domicilioDetalle.monto,
+                paymentMethod: domicilioDetalle.paymentMethod || 'efectivo',
                 registradoAt: Date.now(),
                 cajaAperturaAt: cajaAperturaAt || 0,
             };
@@ -18395,7 +17989,7 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         const paid = ordersState.filter((o) => {
             if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
             const ts = o.paidAt || o.deliveredAt || o.createdAt;
-            const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+            const ms = _tsMs(ts);
             if (!ms) return false;
             if (_aperturaAnterior) return ms >= _aperturaAnterior;
             return new Date(ms).toISOString().split('T')[0] === _todayStr2;
@@ -18568,7 +18162,7 @@ async function cerrarCaja() {
         const paid = ordersState.filter((o) => {
             if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
             const ts = o.paidAt || o.deliveredAt || o.createdAt;
-            const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+            const ms = _tsMs(ts);
             if (!ms) return false;
             if (cajaAperturaAt) return ms >= cajaAperturaAt;
             return new Date(ms).toISOString().split('T')[0] === todayStr;
@@ -18604,7 +18198,9 @@ async function cerrarCaja() {
 
         paid.forEach((o) => {
             if (o.voided) { voidedCount++; return; }
-            const amt = Number(o.total || o.subtotal || 0);
+            // Mismo cálculo que renderCajaDiaria() — evita que el total que ve el cajero
+            // en vivo difiera del que queda grabado como cierre permanente.
+            const amt = getOrderDisplayTotal(o);
             // Desglosar pagos divididos por su método real
             if (o.paymentMethod === 'split' && Array.isArray(o.paymentSplit) && o.paymentSplit.length) {
                 o.paymentSplit.forEach(({ method: m, amount: a }) => {
@@ -18624,7 +18220,7 @@ async function cerrarCaja() {
         // Incluir gastos de la jornada actual (excluir traslados internos y gastos externos del cálculo de egresos)
         const _allJornadaGastos = _gastosCajaState.filter((g) => {
             if (g.tipo === 'externo') return false;
-            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            const ms = _tsMs(g.registradoAt);
             if (cajaAperturaAt) return ms >= cajaAperturaAt;
             return new Date(ms).toISOString().split('T')[0] === todayStr;
         });
@@ -18632,20 +18228,16 @@ async function cerrarCaja() {
         const trasladosInternos = _allJornadaGastos.filter((g) => g.tipo === 'traslado');
 
         // Incluir gasto virtual de domicilios si aún no fue registrado como gasto real
-        const hasDomicilioGastoReal = gastosFiltered.some((g) => String(g.id || '').startsWith('gasto_domicilios_'));
-        if (!hasDomicilioGastoReal) {
-            const deliveryPaid = paid.filter((o) => !o.voided && (o.orderType === 'domicilio' || o.fulfillmentType === 'delivery'));
-            const domicilioFeeSum = deliveryPaid.reduce((s, o) => s + Number(o.deliveryFee || 0), 0);
-            if (domicilioFeeSum > 0) {
-                gastosFiltered.push({
-                    categoria: 'otros',
-                    subcategoria: 'Domicilios',
-                    proveedor: 'Domiciliario',
-                    descripcion: `Gastos de domicilios (${deliveryPaid.length} pedido${deliveryPaid.length !== 1 ? 's' : ''})`,
-                    monto: domicilioFeeSum,
-                    paymentMethod: 'efectivo',
-                });
-            }
+        const domicilioVirtual = _computeDomicilioGastoVirtual(paid, gastosFiltered);
+        if (!domicilioVirtual.hasReal && domicilioVirtual.monto > 0) {
+            gastosFiltered.push({
+                categoria: 'otros',
+                subcategoria: 'Domicilios',
+                proveedor: 'Domiciliario',
+                descripcion: `Gastos de domicilios (${domicilioVirtual.deliveryCount} pedido${domicilioVirtual.deliveryCount !== 1 ? 's' : ''})`,
+                monto: domicilioVirtual.monto,
+                paymentMethod: 'efectivo',
+            });
         }
 
         const gastosMethod = {};
@@ -19124,8 +18716,8 @@ function _updateCajaEstadoUI() {
 
 // ── Libro Contable: historial de cierres de caja ──────────────────────────────
 let _cierresCajaState = [];
-let _cierresSumTotals = {};
 let _gastosExternosState = []; // gastos tipo:'externo' añadidos desde el historial
+let _trasladosState = []; // tipo:'traslado' — misma consulta que gastos externos, fuente única
 
 async function loadCierresCaja() {
     const snap = await firebaseDb.collection(CIERRES_CAJA_COLLECTION)
@@ -19134,16 +18726,21 @@ async function loadCierresCaja() {
         .get();
     _cierresCajaState = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-    // Cargar gastos externos (registrados desde Historial, fuera de cualquier cierre)
+    // Cargar gastos externos y traslados (registrados desde Historial, fuera de cualquier cierre).
+    // Fuente única para Historial de Cajas y Libro Contable: ambos leen de aquí en vez de
+    // repetir cada uno su propia consulta con su propio filtro.
     try {
         const gSnap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
             .orderBy('registradoAt', 'desc')
             .limit(500)
             .get();
-        _gastosExternosState = gSnap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((g) => g.tipo === 'externo');
-    } catch (_) { _gastosExternosState = []; }
+        const _gDocs = gSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        _gastosExternosState = _gDocs.filter((g) => g.tipo === 'externo');
+        _trasladosState = _gDocs.filter((g) => g.tipo === 'traslado');
+    } catch (_) {
+        _gastosExternosState = [];
+        _trasladosState = [];
+    }
 
     return _cierresCajaState;
 }
@@ -19204,18 +18801,10 @@ async function renderLibroCierres() {
     try {
         let cierres = await loadCierresCaja();
 
-        // Cargar gastos externos y traslados (registrados desde el historial)
-        let gastosExternos = [];
-        let trasladosHistorial = [];
-        try {
-            const gSnap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
-                .orderBy('registradoAt', 'desc')
-                .limit(500)
-                .get();
-            const _gDocs = gSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-            gastosExternos     = _gDocs.filter((g) => g.tipo === 'externo');
-            trasladosHistorial = _gDocs.filter((g) => g.tipo === 'traslado');
-        } catch (_) { gastosExternos = []; trasladosHistorial = []; }
+        // Gastos externos y traslados: misma consulta que ya hizo loadCierresCaja(),
+        // sin repetirla aquí (antes Historial de Cajas la volvía a pedir por su cuenta).
+        let gastosExternos     = [..._gastosExternosState];
+        let trasladosHistorial = [..._trasladosState];
 
         // Filtrar por rango de fechas si hay alguno activo
         const { from, to } = _getCierresFilterRange();
@@ -19227,9 +18816,9 @@ async function renderLibroCierres() {
             return true;
         };
         if (from || to) {
-            cierres = cierres.filter((c) => _inRange(c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0)));
-            gastosExternos = gastosExternos.filter((g) => _inRange(g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0)));
-            trasladosHistorial = trasladosHistorial.filter((t) => _inRange(t.registradoAt?.toMillis ? t.registradoAt.toMillis() : Number(t.registradoAt || 0)));
+            cierres = cierres.filter((c) => _inRange(_tsMs(c.closedAt)));
+            gastosExternos = gastosExternos.filter((g) => _inRange(_tsMs(g.registradoAt)));
+            trasladosHistorial = trasladosHistorial.filter((t) => _inRange(_tsMs(t.registradoAt)));
         }
         if (!cierres.length && !gastosExternos.length && !trasladosHistorial.length) {
             const emptyMsg = (from || to)
@@ -19255,7 +18844,7 @@ async function renderLibroCierres() {
         const _localDayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
         const _gasByDay = {};
         gastosExternos.forEach((g) => {
-            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            const ms = _tsMs(g.registradoAt);
             const dayKey = ms ? _localDayKey(ms) : '_nd';
             if (!_gasByDay[dayKey]) _gasByDay[dayKey] = [];
             _gasByDay[dayKey].push({ ...g, _ts: ms });
@@ -19277,12 +18866,12 @@ async function renderLibroCierres() {
             ...cierres.map((c) => ({ ...c, _tipo: 'cierre' })),
             ..._gastoGroups,
             ...trasladosHistorial.map((t) => {
-                const ms = t.registradoAt?.toMillis ? t.registradoAt.toMillis() : Number(t.registradoAt || 0);
+                const ms = _tsMs(t.registradoAt);
                 return { _tipo: 'traslado', _ts: ms, _data: t };
             }),
         ].sort((a, b) => {
-            const tsA = a._tipo === 'cierre' ? (a.closedAt?.toMillis ? a.closedAt.toMillis() : Number(a.closedAt || 0)) : a._ts;
-            const tsB = b._tipo === 'cierre' ? (b.closedAt?.toMillis ? b.closedAt.toMillis() : Number(b.closedAt || 0)) : b._ts;
+            const tsA = a._tipo === 'cierre' ? (_tsMs(a.closedAt)) : a._ts;
+            const tsB = b._tipo === 'cierre' ? (_tsMs(b.closedAt)) : b._ts;
             return tsB - tsA;
         });
 
@@ -19293,7 +18882,7 @@ async function renderLibroCierres() {
         const _dayOrder  = [];
         allEntries.forEach((entry) => {
             const ms = entry._tipo === 'cierre'
-                ? (entry.closedAt?.toMillis ? entry.closedAt.toMillis() : Number(entry.closedAt || 0))
+                ? (_tsMs(entry.closedAt))
                 : (entry._ts || 0);
             const dk = ms ? _dayOf(ms) : '_nd';
             if (!_dayGroups[dk]) {
@@ -19377,7 +18966,7 @@ async function renderLibroCierres() {
                 </td>
                 ${ingCells}
                 <td style="color:var(--admin-muted);">—</td>
-                <td style="color:#6ee7b7;font-weight:700;">${dg.ingT > 0 ? '+' + formatMoney(dg.ingT) : '—'}</td>
+                <td class="caja-cell-entrada">${dg.ingT > 0 ? '+' + formatMoney(dg.ingT) : '—'}</td>
                 <td style="text-align:center;vertical-align:middle;" rowspan="2">${toggleBtn}</td>
             </tr>
             <tr style="background:rgba(252,165,165,0.04);border-bottom:2px solid rgba(255,255,255,0.08);">
@@ -19504,6 +19093,8 @@ async function renderLibroCierres() {
                         await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(delBtn.dataset.trasladoDel).delete();
                         showNotice('Traslado eliminado.', 'ok');
                         await renderLibroCierres();
+                        await loadGastosCaja();
+                        renderCajaDiaria();
                     } catch (_) { showNotice('Error al eliminar traslado.', 'error'); }
                     return;
                 }
@@ -19535,9 +19126,6 @@ async function renderLibroCierres() {
                 <td></td>
             </tr>`;
         }
-
-        // Publicar sumTotals al scope de módulo para validación de traslados
-        _cierresSumTotals = { ...sumTotals };
 
         // Resumen de totales por columna en la cabecera
         const kpiEl = document.getElementById('cierresKpiGrid');
@@ -19621,7 +19209,7 @@ function _renderLcTable() {
     const lcFoot = document.getElementById('lcFoot');
     if (!lcBody) return;
 
-    const getMs  = (c) => c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+    const getMs  = (c) => _tsMs(c.closedAt);
     const getIng = (c) => Number(c.ingresosTotal ?? 0);
     const getEgr = (c) => Number(c.gastosTotal   ?? 0);
 
@@ -19635,7 +19223,7 @@ function _renderLcTable() {
     const dayGroups = {};
     const dayOrder  = [];
     const addDay = (dk, ms) => {
-        if (!dayGroups[dk]) { dayGroups[dk] = { dk, ms, cierres: [], extGastos: [], ingT: 0, gasT: 0, netT: 0 }; dayOrder.push(dk); }
+        if (!dayGroups[dk]) { dayGroups[dk] = { dk, ms, cierres: [], extGastos: [], traslados: [], ingT: 0, gasT: 0, netT: 0 }; dayOrder.push(dk); }
         if (ms > dayGroups[dk].ms) dayGroups[dk].ms = ms;
         return dayGroups[dk];
     };
@@ -19650,13 +19238,22 @@ function _renderLcTable() {
     });
 
     _gastosExternosState.forEach((g) => {
-        const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+        const ms = _tsMs(g.registradoAt);
         if (!ms) return;
         const dg = addDay(dayOf(ms), ms);
         dg.extGastos.push({ ...g, _ms: ms });
         const amt = Number(g.monto || 0);
         dg.gasT += amt;
         dg.netT -= amt;
+    });
+
+    // Traslados entre métodos: no afectan el total neto (misma plata, otro método), pero se
+    // listan en el detalle del día para que coincida con lo que muestra Historial de Cajas.
+    _trasladosState.forEach((t) => {
+        const ms = _tsMs(t.registradoAt);
+        if (!ms) return;
+        const dg = addDay(dayOf(ms), ms);
+        dg.traslados.push({ ...t, _ms: ms });
     });
 
     dayOrder.sort((a, b) => dayGroups[b].ms - dayGroups[a].ms);
@@ -19737,7 +19334,25 @@ function _renderLcTable() {
                     </td>
                     <td style="color:var(--admin-muted);">—</td>
                     <td style="color:#fca5a5;">−${formatMoney(amt)}</td>
-                    <td style="color:#fca5a5;font-weight:700;">−${formatMoney(amt)}</td>
+                    <td class="caja-cell-salida">−${formatMoney(amt)}</td>
+                    <td></td>
+                </tr>`;
+            }),
+            ...dg.traslados.map((t) => {
+                const hora = new Date(t._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+                const methods = getPaymentMethods();
+                const fM = methods.find((m) => m.id === t.methodFrom);
+                const tM = methods.find((m) => m.id === t.methodTo);
+                const fromLbl = fM ? `${fM.icon} ${escapeHtml(fM.label)}` : escapeHtml(t.methodFrom || '?');
+                const toLbl   = tM ? `${tM.icon} ${escapeHtml(tM.label)}` : escapeHtml(t.methodTo   || '?');
+                return `<tr class="lc-det-row" data-gid="${gid}" style="display:none;background:rgba(99,102,241,0.05);font-size:0.82rem;">
+                    <td class="col-left" style="padding-left:24px;color:rgba(255,255,255,0.55);">
+                        <span style="font-size:0.68rem;color:#a5b4fc;display:block;">🔄 Traslado · ${hora}</span>
+                        ${fromLbl} → ${toLbl}
+                    </td>
+                    <td style="color:var(--admin-muted);">—</td>
+                    <td style="color:var(--admin-muted);">—</td>
+                    <td style="color:#a5b4fc;">${formatMoney(Number(t.monto || 0))}</td>
                     <td></td>
                 </tr>`;
             }),
@@ -19793,7 +19408,7 @@ function _openCierreDetalleModal(c) {
     const existing = document.getElementById('cierreDetalleModal');
     if (existing) existing.remove();
 
-    const tsMs = c.closedAt?.toMillis ? c.closedAt.toMillis() : Number(c.closedAt || 0);
+    const tsMs = _tsMs(c.closedAt);
     const d = tsMs ? new Date(tsMs) : new Date();
     const fechaLarga = d.toLocaleDateString('es-CO', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     const horaApertura = c.aperturaAt ? new Date(Number(c.aperturaAt)).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : null;
@@ -19933,7 +19548,7 @@ function openCierreGastoModal(cierre) {
     if (existing) existing.remove();
 
     const methods = getEnabledPaymentMethods();
-    const tsMs = cierre.closedAt?.toMillis ? cierre.closedAt.toMillis() : Number(cierre.closedAt || 0);
+    const tsMs = _tsMs(cierre.closedAt);
     const fechaStr = tsMs ? new Date(tsMs).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) : cierre.date || '';
 
     // Saldos disponibles por método (ingresos netos ya descontados gastos anteriores)
@@ -19944,7 +19559,7 @@ function openCierreGastoModal(cierre) {
             if (v <= 0) return '';
             return `<div style="display:flex;justify-content:space-between;font-size:0.82rem;padding:3px 0;">
                 <span style="color:rgba(200,200,220,0.7);">${m.icon} ${escapeHtml(m.label)}</span>
-                <span style="color:#6ee7b7;font-weight:700;">${formatMoney(v)}</span>
+                <span class="caja-cell-entrada">${formatMoney(v)}</span>
             </div>`;
         }).filter(Boolean).join('') || `<div style="font-size:0.8rem;color:rgba(200,200,220,0.5);">Sin saldo disponible</div>`;
 
@@ -20135,7 +19750,7 @@ async function loadTicketsReport(fromDate, toDate) {
         rangeQuery(ORDERS_ARCHIVE_COLLECTION, true)
     ]);
     const orders = [...activeOrders, ...archivedOrders].sort((a, b) => {
-        const msOf = (o) => o.createdAt?.toMillis ? o.createdAt.toMillis() : Number(o.createdAt || 0);
+        const msOf = (o) => _tsMs(o.createdAt);
         return msOf(b) - msOf(a);
     });
     _ticketsData = orders.filter((o) => o.paymentMethod && o.paymentMethod !== 'pendiente');
@@ -20831,19 +20446,21 @@ function renderGastosInformes() {
     const desdeVal = document.getElementById('gastosDesde')?.value;
     const hastaVal = document.getElementById('gastosHasta')?.value;
 
-    let gastos = [..._gastosCajaState];
+    // Los traslados entre métodos de pago no son un gasto real (la plata no sale del
+    // negocio, solo cambia de método) — no deben contarse en este reporte.
+    let gastos = _gastosCajaState.filter((g) => g.tipo !== 'traslado');
 
     if (desdeVal) {
         const desdeMs = new Date(desdeVal + 'T00:00:00').getTime();
         gastos = gastos.filter((g) => {
-            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            const ms = _tsMs(g.registradoAt);
             return ms >= desdeMs;
         });
     }
     if (hastaVal) {
         const hastaMs = new Date(hastaVal + 'T23:59:59').getTime();
         gastos = gastos.filter((g) => {
-            const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+            const ms = _tsMs(g.registradoAt);
             return ms <= hastaMs;
         });
     }
@@ -20874,13 +20491,13 @@ function renderGastosInformes() {
 
     const methods = getPaymentMethods();
     const sortedGastos = [...gastos].sort((a, b) => {
-        const msA = a.registradoAt?.toMillis ? a.registradoAt.toMillis() : Number(a.registradoAt || 0);
-        const msB = b.registradoAt?.toMillis ? b.registradoAt.toMillis() : Number(b.registradoAt || 0);
+        const msA = _tsMs(a.registradoAt);
+        const msB = _tsMs(b.registradoAt);
         return msB - msA;
     });
 
     const tableRows = sortedGastos.map((g) => {
-        const ms = g.registradoAt?.toMillis ? g.registradoAt.toMillis() : Number(g.registradoAt || 0);
+        const ms = _tsMs(g.registradoAt);
         const fecha = ms ? new Date(ms).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
         const cat = cats.find((c) => c.id === g.categoria);
         const method = methods.find((m) => m.id === g.paymentMethod);
@@ -20891,7 +20508,7 @@ function renderGastosInformes() {
             <td>${escapeHtml(g.descripcion || '—')}</td>
             <td>${escapeHtml(g.proveedor || '—')}</td>
             <td><span class="caja-method-badge">${method ? `${method.icon} ${escapeHtml(method.label)}` : escapeHtml(g.paymentMethod || '—')}</span></td>
-            <td style="color:#fca5a5;font-weight:700;">${formatMoney(Number(g.monto || 0))}</td>
+            <td class="caja-cell-salida">${formatMoney(Number(g.monto || 0))}</td>
         </tr>`;
     }).join('');
 
@@ -20916,7 +20533,7 @@ function renderGastosInformes() {
                 <tbody>${tableRows}</tbody>
                 <tfoot><tr>
                     <td class="col-left" colspan="6" style="font-size:0.72rem;text-transform:uppercase;color:var(--admin-muted);">TOTAL</td>
-                    <td style="color:#fca5a5;font-weight:800;">${formatMoney(grandTotal)}</td>
+                    <td class="caja-cell-total-neg">${formatMoney(grandTotal)}</td>
                 </tr></tfoot>
             </table>
         </div>`}
