@@ -2990,8 +2990,10 @@ function renderPosGroupedProductsPanel(grid, parentName) {
 // ── Cobro extra / Descuento: ya no son pestañas, son botones junto al buscador que abren
 // un popover chico con el mismo formulario de siempre (renderPosCobroExtraPanel/renderPosDescuentoPanel).
 function _closePosActionPopovers() {
-    document.getElementById('posCobroExtraPopover')?.setAttribute('hidden', '');
-    document.getElementById('posDescuentoPopover')?.setAttribute('hidden', '');
+    const cobroExtra = document.getElementById('posCobroExtraPopover');
+    const descuento  = document.getElementById('posDescuentoPopover');
+    if (cobroExtra) { cobroExtra.setAttribute('hidden', ''); cobroExtra.style.display = ''; }
+    if (descuento)  { descuento.setAttribute('hidden', '');  descuento.style.display  = ''; }
 }
 
 function _togglePosActionPopover(popoverId, renderFn) {
@@ -3277,6 +3279,7 @@ function renderPosCobroExtraPanel(grid) {
         <div class="pos-cobro-extra-header">
             <span class="pos-cobro-extra-icon">➕</span>
             <span>Cobro extra al ticket</span>
+            <button type="button" class="pos-cobro-extra-close-btn" aria-label="Cerrar">✕</button>
         </div>
         <div class="pos-cobro-extra-fields">
             <div class="pos-cobro-extra-field">
@@ -3293,6 +3296,8 @@ function renderPosCobroExtraPanel(grid) {
         </div>
         <button type="button" id="cobroExtraAddBtn" class="pos-cobro-extra-add-btn">➕ Agregar al ticket</button>
     `;
+
+    wrap.querySelector('.pos-cobro-extra-close-btn').addEventListener('click', () => _closePosActionPopovers());
 
     // Presets rellenan el monto
     wrap.querySelectorAll('.pos-cobro-preset-btn').forEach((btn) => {
@@ -3341,6 +3346,7 @@ function renderPosDescuentoPanel(grid) {
         <div class="pos-cobro-extra-header" style="color:#f87171;">
             <span class="pos-cobro-extra-icon">🏷</span>
             <span>Descuento al ticket</span>
+            <button type="button" class="pos-cobro-extra-close-btn" aria-label="Cerrar">✕</button>
         </div>
         <div class="pos-cobro-extra-fields">
             <div class="pos-cobro-extra-field">
@@ -3357,6 +3363,8 @@ function renderPosDescuentoPanel(grid) {
         </div>
         <button type="button" id="descuentoAddBtn" class="pos-cobro-extra-add-btn" style="background:linear-gradient(135deg,#c0392b,#e74c3c);">🏷 Aplicar descuento</button>
     `;
+
+    wrap.querySelector('.pos-cobro-extra-close-btn').addEventListener('click', () => _closePosActionPopovers());
 
     wrap.querySelectorAll('.pos-cobro-preset-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -5342,6 +5350,18 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
     const saborGrid = document.createElement('div');
     saborGrid.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
 
+    const noteRow = document.createElement('div');
+    noteRow.className = 'combo-modal-note-row';
+    const noteLabel = document.createElement('label');
+    noteLabel.className = 'combo-modal-note-label';
+    noteLabel.textContent = 'Nota (opcional)';
+    const noteInput = document.createElement('input');
+    noteInput.type = 'text';
+    noteInput.className = 'combo-modal-note-input';
+    noteInput.placeholder = 'Ej: sin hielo, extra picante...';
+    noteRow.appendChild(noteLabel);
+    noteRow.appendChild(noteInput);
+
     const confirmBtn = document.createElement('button');
     confirmBtn.type = 'button';
     confirmBtn.className = 'combo-modal-confirm-btn';
@@ -5393,7 +5413,8 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
 
     confirmBtn.addEventListener('click', () => {
         const saborNote = selectedSabores.filter(Boolean).join(', ');
-        const note = `🥤 ${bebidaConfig.bebida_nombre}${saborNote ? ' — ' + saborNote : ''}`;
+        const userNote = noteInput.value.trim();
+        const note = `🥤 ${bebidaConfig.bebida_nombre}${saborNote ? ' — ' + saborNote : ''}${userNote ? ' | ' + userNote : ''}`;
         overlay.remove();
         if (replaceItemKey) internalOrderItems = internalOrderItems.filter(
             (i) => i.itemKey !== replaceItemKey && i.parentKey !== replaceItemKey
@@ -5403,6 +5424,7 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
 
     card.appendChild(saborLabel);
     card.appendChild(saborGrid);
+    card.appendChild(noteRow);
     card.appendChild(confirmBtn);
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
