@@ -270,7 +270,6 @@ const mobileTicketCloseBtn = document.getElementById('mobileTicketCloseBtn');
 const mobileTicketBackdrop = document.getElementById('mobileTicketBackdrop');
 const salesDayStatusLabel = document.getElementById('salesDayStatusLabel');
 const salesDayStatusMeta = document.getElementById('salesDayStatusMeta');
-const salesDayDeliveredCount = document.getElementById('salesDayDeliveredCount');
 const salesDayDeliveredTotal = document.getElementById('salesDayDeliveredTotal');
 const salesDayGrandTotal     = document.getElementById('salesDayGrandTotal');
 const openCreateInternalOrderBtn = document.getElementById('openCreateInternalOrderBtn');
@@ -334,7 +333,6 @@ const clientEditIdInput = document.getElementById('clientEditId');
 const clientEditNameInput = document.getElementById('clientEditName');
 const clientEditPhoneInput = document.getElementById('clientEditPhone');
 const clientEditAddressInput = document.getElementById('clientEditAddress');
-const clientEditSavedAddressesInput = document.getElementById('clientEditSavedAddresses');
 const clientEditFeedback = document.getElementById('clientEditFeedback');
 const clientEditSaveBtn = document.getElementById('clientEditSaveBtn');
 
@@ -3869,14 +3867,6 @@ async function fetchBebidas() {
     } catch (_) {
         bebidasState = [];
     }
-}
-
-function getBeverageOptions() {
-    return bebidasState.filter((b) => b.estado === 'active' && b.mostrar_acompanante);
-}
-
-function _isBebidaCategory(catName) {
-    return String(catName || '').toLowerCase().trim() === 'bebidas';
 }
 
 function renderBebidasPanel() {
@@ -9132,16 +9122,6 @@ function getOrderDisplayTotal(order) {
     return Number(order.subtotal || 0) + Number(order.deliveryFee || 0);
 }
 
-function getDeliveredOrdersForCurrentDay() {
-    return ordersState.filter((order) => {
-        if (order.status !== 'entregado') return false;
-        if (!cajaAperturaAt) return true;
-        const ts = order.deliveredAt || order.paidAt;
-        const ms = _tsMs(ts);
-        return ms >= cajaAperturaAt;
-    });
-}
-
 async function ensureActiveSalesDay() {
     if (!firebaseDb || salesDayState?.openedAt) {
         return false;
@@ -12110,61 +12090,6 @@ async function saveRecomendadoDiaConfig() {
 
 // ===== PANEL PROMOCIONES ADMIN =====
 
-function renderPromosTabPanel() {
-    const container = document.getElementById('promosTabPanel');
-    if (!container) return;
-
-    const isFormOpen = _promoEditingId !== null;
-
-    container.innerHTML = `
-        <div style="padding:16px 0;">
-            <p class="admin-hint">Las promociones adicionales aparecen en la pantalla Promociones del menú público, debajo del Recomendado del Día. Cada una es totalmente configurable.</p>
-            ${!isFormOpen ? `<button type="button" class="admin-button" id="addPromoBtn" style="margin-top:14px;">+ Agregar Promoción</button>` : _buildPromoFormHTML()}
-            <div class="promo-admin-list" id="promoAdminList" style="margin-top:18px;">
-                ${promosState.length === 0 && !isFormOpen
-                    ? '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin promociones aún. Usa el botón de arriba para crear una.</p>'
-                    : promosState.map(_buildPromoAdminCardHTML).join('')}
-            </div>
-        </div>`;
-
-    document.getElementById('addPromoBtn')?.addEventListener('click', () => {
-        _promoEditingId = 'new';
-        _promoFormProductId = null;
-        renderPromosTabPanel();
-    });
-
-    if (isFormOpen) {
-        const searchInput = document.getElementById('promoFormProductSearch');
-        searchInput?.addEventListener('input', (e) => _renderPromoFormSearchResults(e.target.value));
-        document.getElementById('promoFormSaveBtn')?.addEventListener('click', savePromo);
-        document.getElementById('promoFormCancelBtn')?.addEventListener('click', () => {
-            _promoEditingId = null;
-            _promoFormProductId = null;
-            renderPromosTabPanel();
-        });
-    }
-
-    container.querySelectorAll('[data-promo-action]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.promoAction;
-            const id = btn.dataset.promoId;
-            if (action === 'edit') {
-                _promoEditingId = id;
-                const promo = promosState.find((p) => p.id === id);
-                _promoFormProductId = promo?.producto_id || null;
-                renderPromosTabPanel();
-            } else if (action === 'delete') {
-                deleteAdminPromo(id);
-            } else if (action === 'toggle') {
-                const promo = promosState.find((p) => p.id === id);
-                if (promo) {
-                    await firebaseDb.collection(PROMOCIONES_COLLECTION).doc(id).update({ activo: !promo.activo, updated_at: firestoreNow() });
-                }
-            }
-        });
-    });
-}
-
 function _buildPromoAdminCardHTML(promo) {
     const product = productsState.find((p) => p.id === promo.producto_id);
     const img = product?.image_url || 'logo.png';
@@ -12566,74 +12491,6 @@ function _buildUnifiedCouponCardHTML(item) {
 
 // ===== PANEL 2x1 ADMIN =====
 
-function render2x1TabPanel() {
-    const container = document.getElementById('promos2x1TabPanel');
-    if (!container) return;
-
-    const isFormOpen = _promo2x1EditingId !== null;
-
-    container.innerHTML = `
-        <div style="padding:16px 0;">
-            <p class="admin-hint">Las ofertas 2×1 aparecen en la pantalla Promociones del menú público, debajo del Recomendado del Día. Cada oferta muestra un producto con el badge verde "2×1".</p>
-            ${!isFormOpen
-                ? `<button type="button" class="admin-button" id="add2x1Btn" style="margin-top:14px;">+ Agregar oferta 2×1</button>`
-                : _build2x1FormHTML()
-            }
-            <div class="promo-admin-list" id="promo2x1AdminList" style="margin-top:18px;">
-                ${promos2x1State.length === 0 && !isFormOpen
-                    ? '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin ofertas 2×1 aún. Usa el botón de arriba para crear una.</p>'
-                    : promos2x1State.map(_build2x1AdminCardHTML).join('')}
-            </div>
-        </div>`;
-
-    document.getElementById('add2x1Btn')?.addEventListener('click', () => {
-        _promo2x1EditingId = 'new';
-        _promo2x1FormProductId = null;
-        render2x1TabPanel();
-    });
-
-    if (isFormOpen) {
-        document.getElementById('promo2x1FormProductSearch')?.addEventListener('input', (e) => _render2x1FormSearchResults(e.target.value));
-        document.getElementById('promo2x1FormSaveBtn')?.addEventListener('click', savePromo2x1);
-        document.getElementById('promo2x1FormCancelBtn')?.addEventListener('click', () => {
-            _promo2x1EditingId = null;
-            _promo2x1FormProductId = null;
-            render2x1TabPanel();
-        });
-    }
-
-    container.querySelectorAll('[data-2x1-action]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-            const action = btn.getAttribute('data-2x1-action');
-            const id = btn.getAttribute('data-2x1-id');
-            if (action === 'edit') {
-                _promo2x1EditingId = id;
-                const p = promos2x1State.find((x) => x.id === id);
-                _promo2x1FormProductId = p?.producto_id || null;
-                render2x1TabPanel();
-            } else if (action === 'delete') {
-                deleteAdminPromo2x1(id);
-            } else if (action === 'toggle') {
-                const p = promos2x1State.find((x) => x.id === id);
-                if (p) {
-                    const currentActivo = p.activo !== false; // undefined/true → activo
-                    const newActivo = !currentActivo;
-                    btn.disabled = true;
-                    try {
-                        await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(id).update({ activo: newActivo, updated_at: firestoreNow() });
-                        p.activo = newActivo;
-                        render2x1TabPanel();
-                        showNotice(newActivo ? '✅ Promo 2×1 activada.' : '⏸ Promo 2×1 pausada.', 'ok');
-                    } catch (err) {
-                        showNotice('No se pudo actualizar la promo.', 'error');
-                        btn.disabled = false;
-                    }
-                }
-            }
-        });
-    });
-}
-
 function _build2x1AdminCardHTML(promo) {
     const product = productsState.find((p) => p.id === promo.producto_id);
     const img = product?.image_url || 'logo.png';
@@ -12796,69 +12653,6 @@ async function deleteAdminPromo2x1(id) {
 // ===== FIN PANEL 2x1 ADMIN =====
 
 // ===== PANEL COMBOS ESPECIALES ADMIN =====
-
-function renderCombosTabPanel() {
-    const container = document.getElementById('combosTabPanel');
-    if (!container) return;
-
-    const isFormOpen = _comboEditingId !== null;
-
-    container.innerHTML = `
-        <div style="padding:16px 0;">
-            <p class="admin-hint">Los cupones exclusivos aparecen en la pantalla de Cupones del menú público, debajo del Recomendado del Día. Arma paquetes con varios productos, porcentaje de descuento y horario de disponibilidad.</p>
-            ${!isFormOpen
-                ? `<button type="button" class="admin-button" id="addComboBtn" style="margin-top:14px;">+ Nuevo combo</button>`
-                : _buildComboFormHTML()
-            }
-            <div class="combo-admin-list" id="comboAdminList" style="margin-top:18px;">
-                ${combosEspecialesState.length === 0 && !isFormOpen
-                    ? '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin combos aún. Usa el botón de arriba para crear uno.</p>'
-                    : combosEspecialesState.map(_buildComboAdminCardHTML).join('')
-                }
-            </div>
-        </div>`;
-
-    document.getElementById('addComboBtn')?.addEventListener('click', () => {
-        _comboEditingId = 'new';
-        _comboFormProducts = [];
-        _comboDiasSeleccionados = [];
-        _comboHorarioTipo = 'siempre';
-        renderCombosTabPanel();
-    });
-
-    if (isFormOpen) {
-        _wireComboFormListeners();
-    }
-
-    container.querySelectorAll('[data-combo-action]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.comboAction;
-            const id = btn.dataset.comboId;
-            if (action === 'edit') {
-                const combo = combosEspecialesState.find((c) => c.id === id);
-                if (!combo) return;
-                _comboEditingId = id;
-                _comboFormProducts = (combo.productos || []).map((p) => ({ ...p }));
-                _comboDiasSeleccionados = (combo.horario?.dias || []).map(Number);
-                _comboHorarioTipo = combo.horario?.tipo || 'siempre';
-                renderCombosTabPanel();
-            } else if (action === 'toggle') {
-                const combo = combosEspecialesState.find((c) => c.id === id);
-                if (!combo) return;
-                await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).doc(id).update({ activo: !combo.activo });
-                await reloadDataAndRender();
-                renderCombosTabPanel();
-            } else if (action === 'delete') {
-                const combo = combosEspecialesState.find((c) => c.id === id);
-                if (!(await showConfirmModal({ title: `¿Eliminar el combo "${combo?.titulo || ''}"?`, confirmText: 'Eliminar' }))) return;
-                await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).doc(id).delete();
-                await reloadDataAndRender();
-                renderCombosTabPanel();
-                showNotice('Combo eliminado.', 'ok');
-            }
-        });
-    });
-}
 
 function _buildComboFormHTML() {
     const editingCombo = _comboEditingId && _comboEditingId !== 'new'
@@ -14517,13 +14311,11 @@ document.getElementById('ptsSaveAddrNo')?.addEventListener('click', () => {
 });
 
 // ── Crear nuevo cliente desde el modal POS ──────────────────────────────────
-// Crea un cliente nuevo desde el POS y lo deja seleccionado — antes esta lógica estaba
-// duplicada entre el botón inline (ptsNewClientBtn) y la pestaña "Nuevo" (ptsNewTab*), y
-// habían divergido: una mostraba aviso de éxito con un tipo ("success") que no existe en
-// el CSS (solo hay estilos para "ok"/"error", así que salía sin color), la otra no
-// mostraba ningún aviso; y ambas releían clientes sin "force", así que por el caché de
-// 60s el cliente recién creado podía no aparecer todavía si se le buscaba de nuevo en la
-// misma sesión de POS.
+// Crea un cliente nuevo desde el POS y lo deja seleccionado — usada por la pestaña
+// "Nuevo" del selector de cliente (ptsNewTab*). Antes esta misma lógica estaba
+// duplicada con un segundo flujo inline (formulario dentro de la pestaña "Buscar")
+// que resultó ser código muerto: su botón disparador nunca existió en el HTML, así
+// que ese formulario quedaba permanentemente oculto e inalcanzable.
 async function _ptsCreateAndSelectClient({ name, phone, addr }) {
     const phoneDigits = normalizePhoneDigits ? normalizePhoneDigits(phone) : phone;
     const clientId = buildAdminClientDocumentId
@@ -14551,55 +14343,6 @@ async function _ptsCreateAndSelectClient({ name, phone, addr }) {
     _ptsUpdateConfirmBtn();
     showNotice(`Cliente "${name}" creado y seleccionado.`, 'ok');
 }
-
-(function initPtsNewClient() {
-    const newClientBtn  = document.getElementById('ptsNewClientBtn');
-    const newClientForm = document.getElementById('ptsNewClientForm');
-    const saveBtn       = document.getElementById('ptsNewClientSaveBtn');
-    const nameInput     = document.getElementById('ptsNewClientName');
-    const phoneInput    = document.getElementById('ptsNewClientPhone');
-    const addrInput     = document.getElementById('ptsNewClientAddr');
-    if (!newClientBtn || !newClientForm || !saveBtn) return;
-
-    function resetForm() {
-        if (nameInput) nameInput.value = '';
-        if (phoneInput) phoneInput.value = '';
-        if (addrInput) addrInput.value = '';
-        newClientForm.setAttribute('hidden', '');
-        newClientBtn.removeAttribute('hidden');
-    }
-
-    newClientBtn.addEventListener('click', () => {
-        newClientBtn.setAttribute('hidden', '');
-        newClientForm.removeAttribute('hidden');
-        nameInput?.focus();
-    });
-
-    saveBtn.addEventListener('click', async () => {
-        const name  = String(nameInput?.value || '').trim();
-        const phone = String(phoneInput?.value || '').trim();
-        const addr  = String(addrInput?.value || '').trim();
-
-        if (!name || !phone) {
-            showNotice('Nombre y teléfono son requeridos.', 'error');
-            return;
-        }
-
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Guardando…';
-
-        try {
-            await _ptsCreateAndSelectClient({ name, phone, addr });
-            resetForm();
-        } catch (err) {
-            console.error('[POS] Error creando cliente:', err);
-            showNotice('No se pudo guardar el cliente.', 'error');
-        } finally {
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Guardar y seleccionar';
-        }
-    });
-})();
 
 (function initPtsNewClientTab() {
     const saveBtn    = document.getElementById('ptsNewTabSaveBtn');
@@ -20408,7 +20151,6 @@ async function loadProveedores() {
     } catch {
         _proveedoresState = [];
     }
-    _updateProveedorDatalist();
     return _proveedoresState;
 }
 
@@ -20420,14 +20162,6 @@ async function saveProveedor(data) {
 
 async function deleteProveedor(id) {
     await firebaseDb.collection(PROVEEDORES_COLLECTION).doc(id).delete();
-}
-
-function _updateProveedorDatalist() {
-    const dl = document.getElementById('proveedoresList');
-    if (!dl) return;
-    dl.innerHTML = _proveedoresState.map((p) =>
-        `<option value="${escapeHtml(p.nombre || '')}"></option>`
-    ).join('');
 }
 
 function renderProveedoresPanel() {

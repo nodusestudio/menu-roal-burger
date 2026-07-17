@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260717-1202">
+    <link rel="stylesheet" href="style.css?v=20260717-1248">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -12492,6 +12492,10 @@
                         <span class="menu-inner-tab-icon">🍔</span>
                         <span>Combos</span>
                     </button>
+                    <button class="menu-inner-tab" data-menu-tab="upgrades" role="tab" aria-selected="false">
+                        <span class="menu-inner-tab-icon">➕</span>
+                        <span>Opciones de Combo</span>
+                    </button>
                 </nav>
 
                 <div class="menu-inner-panels-wrap">
@@ -12564,6 +12568,23 @@
                     <!-- ── Panel: Combos ── -->
                     <div class="menu-inner-panel" data-menu-panel="combospacks" role="tabpanel" hidden style="display:none;">
                         <div id="combosPacksTabPanel"></div>
+                    </div>
+
+                    <!-- ── Panel: Opciones de Combo (acompañamientos: Combo/Papas/Bebida y sus
+                         variantes) — antes tenía admin pero su contenedor se perdió; el motor
+                         (menuUpgradesConfig) seguía activo en POS/menú sin forma de editarlo. -->
+                    <div class="menu-inner-panel" data-menu-panel="upgrades" role="tabpanel" hidden style="display:none;">
+                        <div class="section-toolbar">
+                            <button type="button" class="section-action-btn primary" id="addUpgradeOptionBtn">+ Agregar opción</button>
+                            <button type="button" class="section-action-btn" id="saveUpgradesConfigBtn">Guardar</button>
+                        </div>
+                        <p class="admin-hint" style="margin:0 0 12px;">Opciones para "subir a combo" un producto (ej. Combo, Papas a la Francesa, Bebida) con sus variantes — se ofrecen al agregar productos en el POS y en el menú público.</p>
+                        <div class="upgrades-master-detail">
+                            <div class="upgrades-master-list" id="upgradeOptionsList"></div>
+                            <div class="upgrades-detail-panel" id="upgradesDetailPanel">
+                                <div class="upgrades-detail-empty">← Selecciona un acompañamiento para configurar</div>
+                            </div>
+                        </div>
                     </div>
 
                 </div><!-- /.menu-inner-panels-wrap -->
@@ -14261,13 +14282,6 @@
                         <span class="pts-selected-chip-label" id="ptsSelectedChipLabel"></span>
                         <button type="button" class="pts-deselect-btn" id="ptsDeselectBtn">✕</button>
                     </div>
-                    <div class="pts-new-client-form" id="ptsNewClientForm" hidden>
-                        <p class="pts-new-client-form-label">Nuevo cliente</p>
-                        <input type="text" class="pts-input" id="ptsNewClientName" placeholder="Nombre *" autocomplete="off" maxlength="60">
-                        <input type="tel" class="pts-input" id="ptsNewClientPhone" placeholder="Teléfono *" autocomplete="off" maxlength="20" style="margin-top:6px;">
-                        <input type="text" class="pts-input" id="ptsNewClientAddr" placeholder="Dirección (opcional)" autocomplete="off" maxlength="120" style="margin-top:6px;">
-                        <button type="button" class="pts-new-client-save" id="ptsNewClientSaveBtn">Guardar y seleccionar</button>
-                    </div>
                 </div>
 
                 <!-- Panel: Nuevo cliente (tab dedicado) -->
@@ -14584,8 +14598,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260717-1202"></script>
-    <script defer src="admin.js?v=20260717-1202"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260717-1248"></script>
+    <script defer src="admin.js?v=20260717-1248"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
