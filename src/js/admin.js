@@ -21309,7 +21309,7 @@ async function _icmRunImport(rows) {
     for (let i = 0; i < total; i += BATCH_SIZE) {
         const chunk = rows.slice(i, i + BATCH_SIZE);
         const batch = firebaseDb.batch();
-        let batchHasOps = false;
+        let opsInChunk = 0;
 
         for (const row of chunk) {
             try {
@@ -21333,16 +21333,25 @@ async function _icmRunImport(rows) {
                 if ('totalSpent'  in client) data.totalSpent  = client.totalSpent;
                 // merge: true preserva totalOrders/totalSpent si ya existe
                 batch.set(ref, data, { merge: true });
-                batchHasOps = true;
-                imported++;
+                opsInChunk++;
             } catch (_e) {
                 errors++;
             }
         }
 
-        if (batchHasOps) {
-            try { await batch.commit(); }
-            catch (_e) { errors += chunk.length - (chunk.length - (batchHasOps ? 1 : 0)); }
+        if (opsInChunk) {
+            try {
+                await batch.commit();
+                // Solo cuenta como importado una vez confirmado el lote — antes se
+                // incrementaba por fila ANTES de saber si el commit realmente se
+                // guardó, así que una falla de red a mitad de importación reportaba
+                // como "importados" filas que nunca llegaron a Firestore.
+                imported += opsInChunk;
+            } catch (_e) {
+                // Si el lote falla, ninguna de sus filas se guardó — se contaban mal
+                // como un único error sin importar si eran 5 o 200 filas.
+                errors += opsInChunk;
+            }
         }
 
         _icmUpdateProgress(i + chunk.length, total);
