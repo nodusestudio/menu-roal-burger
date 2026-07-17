@@ -1074,8 +1074,7 @@ function canPlaceOrdersNow() {
     return getOrderingAvailability().isOpen;
 }
 
-function showOrderingClosedMessage() {
-    const availability = getOrderingAvailability();
+function showStatusToast(message) {
     let toast = document.getElementById('orderingStatusToast');
 
     if (!toast) {
@@ -1085,7 +1084,7 @@ function showOrderingClosedMessage() {
         document.body.appendChild(toast);
     }
 
-    toast.textContent = availability.statusLabel;
+    toast.textContent = message;
     toast.classList.add('is-visible');
 
     if (orderingStatusToastTimer) {
@@ -1095,6 +1094,10 @@ function showOrderingClosedMessage() {
     orderingStatusToastTimer = window.setTimeout(() => {
         toast.classList.remove('is-visible');
     }, 2600);
+}
+
+function showOrderingClosedMessage() {
+    showStatusToast(getOrderingAvailability().statusLabel);
 }
 
 let _activeOrderUnsubscribe = null;
@@ -4421,6 +4424,14 @@ function checkoutCart() {
         return;
     }
 
+    // Red de seguridad final: addItemToCart ya bloquea productos con precio no resuelto,
+    // pero un carrito guardado de una sesión anterior (localStorage) podría traer un ítem
+    // en $0 de antes de este fix — no dejar pasar un pedido así al checkout.
+    if (getCartTotalAmount() <= 0) {
+        showStatusToast('Hay un problema con el precio de tu pedido. Vacía el carrito e intenta de nuevo, o escríbenos por WhatsApp.');
+        return;
+    }
+
     _hapticTap();
     openCheckoutInfoModal();
 }
@@ -5509,6 +5520,16 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
     const safeProductName = String(productName || 'producto').trim() || 'producto';
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
     const unitPrice = resolveCartUnitPrice(safeProductName, safeCategoryName, normalizedOptions) + upgradeExtra;
+
+    // Si el nombre/categoría no coincide con ningún producto real (ej. cambió en el admin,
+    // o quedó un botón con datos viejos), resolveCartUnitPrice devuelve 0 — antes esto
+    // agregaba igual el producto al carrito mostrando "$0", sin ningún aviso al cliente.
+    if (!(unitPrice > 0)) {
+        console.warn(`[Carrito] No se pudo calcular el precio de "${safeProductName}" (${safeCategoryName}) — no se agregó al carrito.`);
+        showStatusToast('No pudimos calcular el precio de este producto. Intenta de nuevo o escríbenos por WhatsApp.');
+        return;
+    }
+
     const itemKey = getCartItemKey(safeProductName, safeCategoryName, normalizedOptions);
     const existingItem = shoppingCart.find((item) => item.itemKey === itemKey);
 
