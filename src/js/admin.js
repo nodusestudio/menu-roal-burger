@@ -10368,6 +10368,7 @@ function _inboxGetTypeLabel(type) {
     const map = {
         password_reset_request: '🔑 Reset contraseña',
         customer_direct_message: '💬 Mensaje directo',
+        admin_direct_message: '💬 Mensaje directo (admin)',
         admin_direct_reply: '↩️ Respuesta admin',
         support_request: '🛠️ Soporte',
         order_status_update: '📦 Estado pedido'
@@ -10384,7 +10385,11 @@ function renderMessages() {
 
     const pendingCount = messagesState.filter(m => m.status !== 'resolved').length;
     const messagesCountEl = document.getElementById('messagesCount');
-    if (messagesCountEl) messagesCountEl.textContent = pendingCount || messagesState.length;
+    // pendingCount ya es siempre un número válido (resultado de .length) — el "|| total"
+    // que tenía antes caía al total histórico (incluidos resueltos) cuando pendingCount
+    // era 0, el clásico bug del 0 falsy: con la bandeja al día mostraba igual un número
+    // grande, dando la falsa alarma de que había mucho por atender.
+    if (messagesCountEl) messagesCountEl.textContent = pendingCount;
 
     const searchTerm = (document.getElementById('inboxSearch')?.value || '').trim().toLowerCase();
 
@@ -14853,10 +14858,14 @@ document.getElementById('inboxSearch')?.addEventListener('input', () => renderMe
     async function openOrCreateConversation(client) {
         showComposePanel(false);
 
-        // Buscar conversación existente de este cliente
+        // Buscar conversación de "Nuevo mensaje" aún abierta con este cliente — antes
+        // buscaba CUALQUIER mensaje suyo sin importar el tipo, así que escribirle hoy
+        // podía reabrir y mezclar contexto con, por ejemplo, una solicitud de reseteo de
+        // contraseña de hace meses que ya estaba resuelta y no tenía nada que ver.
         const existing = messagesState.find(m =>
-            m.customerPhone === client.customerPhone ||
-            m.customerId === client.id
+            m.type === 'admin_direct_message' &&
+            m.status !== 'resolved' &&
+            (m.customerPhone === client.customerPhone || m.customerId === client.id)
         );
         if (existing) {
             openInboxDetail(existing.id);
