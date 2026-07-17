@@ -256,8 +256,9 @@ let featuredCarouselResumeTimer = null;
 let featuredCarouselUserPaused = false;
 let orderingStatusToastTimer = null;
 let orderSentToastTimer = null;
-let publicFirebaseDbInstance  = null;
-let publicFirebaseFnInstance  = null;
+let publicFirebaseDbInstance   = null;
+let publicFirebaseFnInstance   = null;
+let publicFirebaseAuthInstance = null;
 let publicUpgradesConfig = null;
 let _publicUpgradePending = null;
 let paymentFlowUI = null;
@@ -466,7 +467,9 @@ function normalizeCustomerProfile(raw = {}, fallbackId = '') {
         totalSpent: Number(raw.totalSpent || 0),
         lastOrderCode: String(raw.lastOrderCode || '').trim(),
         lastOrderId: String(raw.lastOrderId || '').trim(),
-        lastOrderTotal: Number(raw.lastOrderTotal || 0)
+        lastOrderTotal: Number(raw.lastOrderTotal || 0),
+        googleUid: String(raw.googleUid || '').trim(),
+        googleEmail: String(raw.googleEmail || '').trim()
     };
 }
 
@@ -1385,6 +1388,17 @@ function getPublicFirebaseFunctions() {
     return publicFirebaseFnInstance;
 }
 
+function getPublicFirebaseAuth() {
+    if (publicFirebaseAuthInstance) {
+        return publicFirebaseAuthInstance;
+    }
+    if (typeof initFirebaseServices !== 'function') {
+        return null;
+    }
+    publicFirebaseAuthInstance = initFirebaseServices().auth || null;
+    return publicFirebaseAuthInstance;
+}
+
 async function callSendWhatsAppOtp(phoneDigits) {
     const fn = getPublicFirebaseFunctions();
     if (!fn) throw new Error('Servicio de verificacion no disponible.');
@@ -1671,6 +1685,81 @@ async function fetchClientProfileByPhone(phoneValue, pinValue = '') {
     }
 
     return null;
+}
+
+async function fetchClientProfileByGoogleUid(googleUid) {
+    if (!googleUid) return null;
+    const db = getPublicFirebaseDb();
+    const snapshot = await db.collection(CLIENTS_COLLECTION)
+        .where('googleUid', '==', googleUid)
+        .limit(1)
+        .get();
+    if (snapshot.empty) return null;
+    const doc = snapshot.docs[0];
+    return normalizeCustomerProfile({ id: doc.id, ...doc.data() }, doc.id);
+}
+
+async function _signInWithGooglePopup() {
+    const auth = getPublicFirebaseAuth();
+    if (!auth || typeof firebase?.auth?.GoogleAuthProvider !== 'function') {
+        throw new Error('El inicio de sesion con Google no esta disponible en este momento.');
+    }
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const result = await auth.signInWithPopup(provider);
+    const googleUid = result?.user?.uid || '';
+    const googleEmail = result?.user?.email || '';
+    try { await auth.signOut(); } catch (_) {}
+    if (!googleUid) {
+        throw new Error('No pudimos verificar tu cuenta de Google. Intenta de nuevo.');
+    }
+    return { googleUid, googleEmail };
+}
+
+async function linkGoogleAccount() {
+    if (!activeCustomerProfile?.customerPhoneDigits) {
+        throw new Error('Inicia sesion con tu numero de WhatsApp antes de vincular Google.');
+    }
+
+    const { googleUid, googleEmail } = await _signInWithGooglePopup();
+
+    const existing = await fetchClientProfileByGoogleUid(googleUid);
+    if (existing && existing.customerPhoneDigits !== activeCustomerProfile.customerPhoneDigits) {
+        throw new Error('Esa cuenta de Google ya esta vinculada a otro perfil.');
+    }
+
+    const db = getPublicFirebaseDb();
+    const clientRef = db.collection(CLIENTS_COLLECTION).doc(`phone_${activeCustomerProfile.customerPhoneDigits}`);
+    await clientRef.set({
+        googleUid,
+        googleEmail,
+        googleLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    setActiveCustomerProfile({ ...activeCustomerProfile, googleUid, googleEmail });
+    return googleEmail;
+}
+
+async function unlinkGoogleAccount() {
+    if (!activeCustomerProfile?.customerPhoneDigits) return;
+    const db = getPublicFirebaseDb();
+    const clientRef = db.collection(CLIENTS_COLLECTION).doc(`phone_${activeCustomerProfile.customerPhoneDigits}`);
+    await clientRef.set({
+        googleUid: firebase.firestore.FieldValue.delete(),
+        googleEmail: firebase.firestore.FieldValue.delete()
+    }, { merge: true });
+    setActiveCustomerProfile({ ...activeCustomerProfile, googleUid: '', googleEmail: '' });
+}
+
+async function loginWithGoogle() {
+    const { googleUid } = await _signInWithGooglePopup();
+    const profile = await fetchClientProfileByGoogleUid(googleUid);
+    if (!profile) {
+        const notFoundError = new Error('No encontramos una cuenta vinculada a este correo de Google. Registrate primero con tu numero de WhatsApp y luego vincula Google desde tu perfil.');
+        notFoundError.code = 'GOOGLE_ACCOUNT_NOT_LINKED';
+        throw notFoundError;
+    }
+    setActiveCustomerProfile(profile);
+    closeCustomerAuthModal();
 }
 
 async function saveCustomerProfile(profileInput = {}) {
@@ -3160,6 +3249,13 @@ function openCustomerAuthModal() {
                             <span class="cp-menu-label">Tratamiento de datos${!hasConsent ? ' <span style="color:#f59e0b;font-size:0.72rem;font-weight:700;">● Pendiente</span>' : ''}</span>
                             ${_chevron}
                         </button>
+                        <button type="button" class="cp-menu-item" id="customerGoogleLinkButton">
+                            <span class="cp-menu-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.47c-.28 1.5-1.13 2.78-2.4 3.63v3.02h3.88c2.27-2.09 3.57-5.17 3.57-8.84z"/><path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.95-2.9l-3.88-3.02c-1.08.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.27v3.11C3.25 21.3 7.31 24 12 24z"/><path fill="#FBBC05" d="M5.27 14.27a7.2 7.2 0 010-4.54V6.62H1.27a12 12 0 000 10.76l4-3.11z"/><path fill="#EA4335" d="M12 4.77c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.27 6.62l4 3.11C6.22 6.88 8.87 4.77 12 4.77z"/></svg>
+                            </span>
+                            <span class="cp-menu-label">${profile?.googleEmail ? `Google vinculado <span style="opacity:.7;font-weight:400;">(${escapeHtml(profile.googleEmail)})</span>` : 'Vincular con Google'}</span>
+                            ${_chevron}
+                        </button>
                     </div>
 
                     <!-- Cerrar sesión -->
@@ -3233,6 +3329,11 @@ function openCustomerAuthModal() {
                         <button type="button" class="support-secondary-btn" id="customerForgotPasswordButton">Olvido contrasena</button>
                         <button type="button" class="support-secondary-btn" id="customerRegisterToggle">Registrarse</button>
                     </div>
+                    <p class="support-modal-text" style="text-align:center;margin:0.4rem 0 0;opacity:.7;">o</p>
+                    <button type="button" class="support-secondary-btn" id="customerGoogleLoginButton" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.47c-.28 1.5-1.13 2.78-2.4 3.63v3.02h3.88c2.27-2.09 3.57-5.17 3.57-8.84z"/><path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.95-2.9l-3.88-3.02c-1.08.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.27v3.11C3.25 21.3 7.31 24 12 24z"/><path fill="#FBBC05" d="M5.27 14.27a7.2 7.2 0 010-4.54V6.62H1.27a12 12 0 000 10.76l4-3.11z"/><path fill="#EA4335" d="M12 4.77c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.27 6.62l4 3.11C6.22 6.88 8.87 4.77 12 4.77z"/></svg>
+                        Continuar con Google
+                    </button>
                 </div>
             </div>
         `;
@@ -3251,6 +3352,8 @@ function openCustomerAuthModal() {
         editProfileButtonAlt: modal.querySelector('#customerEditProfileButtonAlt'),
         reviewAddressesButton: modal.querySelector('#customerReviewAddressesButton'),
         deleteAccountButton: modal.querySelector('#customerDeleteAccountButton'),
+        googleLoginButton: modal.querySelector('#customerGoogleLoginButton'),
+        googleLinkButton: modal.querySelector('#customerGoogleLinkButton'),
         tabButtons: Array.from(modal.querySelectorAll('[data-profile-tab]')),
         tabPanels: Array.from(modal.querySelectorAll('[data-profile-panel]')),
         ordersCurrent: modal.querySelector('#customerOrdersCurrent'),
@@ -3282,6 +3385,50 @@ function openCustomerAuthModal() {
     customerAuthUI.reviewAddressesButton?.addEventListener('click', openEditProfile);
     customerAuthUI.deleteAccountButton?.addEventListener('click', openCustomerDeleteAccountModal);
     customerAuthUI.sendMessageButton?.addEventListener('click', submitCustomerDirectMessage);
+    customerAuthUI.googleLoginButton?.addEventListener('click', async () => {
+        const btn = customerAuthUI.googleLoginButton;
+        const feedback = customerAuthUI.feedback;
+        if (btn) { btn.disabled = true; }
+        try {
+            await loginWithGoogle();
+        } catch (error) {
+            if (feedback) {
+                feedback.textContent = error.message || 'No se pudo iniciar sesion con Google.';
+                feedback.className = 'support-feedback support-feedback--error';
+            }
+        } finally {
+            if (btn) { btn.disabled = false; }
+        }
+    });
+    customerAuthUI.googleLinkButton?.addEventListener('click', async () => {
+        const btn = customerAuthUI.googleLinkButton;
+        const feedback = customerAuthUI.feedback;
+        if (activeCustomerProfile?.googleEmail) {
+            if (!window.confirm(`¿Desvincular la cuenta de Google (${activeCustomerProfile.googleEmail})?`)) return;
+            try {
+                await unlinkGoogleAccount();
+                openCustomerAuthModal();
+            } catch (error) {
+                if (feedback) {
+                    feedback.textContent = error.message || 'No se pudo desvincular la cuenta de Google.';
+                    feedback.className = 'support-feedback support-feedback--error';
+                }
+            }
+            return;
+        }
+        if (btn) { btn.disabled = true; }
+        try {
+            await linkGoogleAccount();
+            openCustomerAuthModal();
+        } catch (error) {
+            if (feedback) {
+                feedback.textContent = error.message || 'No se pudo vincular la cuenta de Google.';
+                feedback.className = 'support-feedback support-feedback--error';
+            }
+        } finally {
+            if (btn) { btn.disabled = false; }
+        }
+    });
     customerAuthUI.tabButtons?.forEach((button) => {
         button.addEventListener('click', () => activateCustomerProfileTab(button.dataset.profileTab || 'info'));
     });
