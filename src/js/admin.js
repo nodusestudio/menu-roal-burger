@@ -7389,6 +7389,8 @@ function createCategoryMasterItem(category) {
     return div;
 }
 
+let _categoryListSortable = null;
+
 function renderCategories() {
     if (!categoryList) return;
     categoryList.innerHTML = '';
@@ -7422,7 +7424,12 @@ function renderCategories() {
     }
 
     if (typeof Sortable !== 'undefined') {
-        Sortable.create(categoryList, {
+        // categoryList es el mismo nodo persistente en cada render (solo se limpia su
+        // innerHTML) — sin destruir la instancia anterior, cada llamada a renderCategories()
+        // apilaba otro Sortable sobre el mismo elemento y el drag terminaba disparando
+        // onEnd (y su escritura a Firestore) una vez por cada instancia acumulada.
+        _categoryListSortable?.destroy();
+        _categoryListSortable = Sortable.create(categoryList, {
             animation: 150,
             ghostClass: 'sortable-ghost',
             chosenClass: 'sortable-chosen',
