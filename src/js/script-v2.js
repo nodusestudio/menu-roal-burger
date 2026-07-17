@@ -4409,12 +4409,19 @@ async function createOrderFromCart(customerInfo = {}) {
     const customerName = String(customerInfo.name || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(customerInfo.fulfillmentType);
     let deliveryFee = Number.isFinite(Number(customerInfo.deliveryFee)) ? Number(customerInfo.deliveryFee) : getCheckoutDeliveryFee(fulfillmentType);
-    // Recalcular y verificar tarifa (simulación server-side): si hay coordenadas, determinamos la zona esperada
-    const deliveryLatitude = Number.isFinite(Number(customerInfo.deliveryLatitude)) ? Number(customerInfo.deliveryLatitude) : null;
-    const deliveryLongitude = Number.isFinite(Number(customerInfo.deliveryLongitude)) ? Number(customerInfo.deliveryLongitude) : null;
+    // Recalcular y verificar tarifa (simulación server-side): si hay coordenadas, determinamos la zona esperada.
+    // OJO: Number(null) es 0, no NaN — Number.isFinite(Number(x)) por si solo NO distingue "sin
+    // coordenadas" de "coordenadas en (0,0)". Antes esto hacia que un pedido sin GPS (direccion
+    // que no geocodificó y el cliente nunca arrastró el pin) se "verificara" contra Null Island,
+    // no encontrara zona ahi, y pisara silenciosamente la tarifa ya calculada con la tarifa plana
+    // por defecto — cobrando de menos en direcciones reales de zonas mas caras.
+    const deliveryLatitude = (customerInfo.deliveryLatitude !== null && customerInfo.deliveryLatitude !== undefined && Number.isFinite(Number(customerInfo.deliveryLatitude)))
+        ? Number(customerInfo.deliveryLatitude) : null;
+    const deliveryLongitude = (customerInfo.deliveryLongitude !== null && customerInfo.deliveryLongitude !== undefined && Number.isFinite(Number(customerInfo.deliveryLongitude)))
+        ? Number(customerInfo.deliveryLongitude) : null;
     let deliveryFeeVerified = false;
     let deliveryFeeExpected = deliveryFee;
-    if (fulfillmentType === 'delivery' && Number.isFinite(Number(deliveryLatitude)) && Number.isFinite(Number(deliveryLongitude))) {
+    if (fulfillmentType === 'delivery' && deliveryLatitude !== null && deliveryLongitude !== null) {
         const expectedZone = findDeliveryZoneForLocation({ latitude: deliveryLatitude, longitude: deliveryLongitude });
         deliveryFeeExpected = expectedZone ? expectedZone.fee : DELIVERY_FEE_AMOUNT;
         if (Number(deliveryFee) !== Number(deliveryFeeExpected)) {
@@ -4452,8 +4459,8 @@ async function createOrderFromCart(customerInfo = {}) {
         cashChangeRequired,
         cashTenderAmount: Number.isFinite(cashTenderAmount) ? cashTenderAmount : null,
         deliveryZone: String(customerInfo.deliveryZone || '').trim() || null,
-        deliveryLatitude: Number.isFinite(Number(customerInfo.deliveryLatitude)) ? Number(customerInfo.deliveryLatitude) : null,
-        deliveryLongitude: Number.isFinite(Number(customerInfo.deliveryLongitude)) ? Number(customerInfo.deliveryLongitude) : null,
+        deliveryLatitude,
+        deliveryLongitude,
         deliveryFeeVerified: Boolean(deliveryFeeVerified),
         deliveryFeeExpected: Number.isFinite(Number(deliveryFeeExpected)) ? Number(deliveryFeeExpected) : 0,
         deliveryFeeOverridden: Number.isFinite(Number(customerInfo.deliveryFee)) ? (Number(customerInfo.deliveryFee) !== Number(deliveryFee)) : false,
