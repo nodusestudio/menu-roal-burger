@@ -2393,223 +2393,6 @@
             display: none;
         }
 
-        .sales-summary-toolbar {
-            align-items: stretch;
-        }
-
-        .sales-summary-filters {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            width: 100%;
-            justify-content: flex-end;
-        }
-
-        .sales-summary-filters .clients-export-select {
-            min-width: 220px;
-        }
-
-        .sales-summary-date-input {
-            min-width: 180px;
-            min-height: 48px;
-            padding: 0 14px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            background: rgba(8, 13, 24, 0.78);
-            color: #fff;
-            font: inherit;
-        }
-
-        .sales-summary-date-input:focus {
-            outline: none;
-            border-color: var(--admin-accent);
-            box-shadow: 0 0 0 3px rgba(255, 123, 69, 0.18);
-        }
-
-        .sales-summary-overview {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 14px;
-            margin-bottom: 18px;
-        }
-
-        .sales-summary-stat {
-            padding: 18px;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(9, 15, 29, 0.42));
-            display: grid;
-            gap: 8px;
-        }
-
-        .sales-summary-stat span {
-            color: var(--admin-muted);
-            font-size: 0.78rem;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-
-        .sales-summary-stat strong {
-            color: #fff;
-            font-size: 1.48rem;
-            font-family: 'Space Grotesk', sans-serif;
-        }
-
-        .sales-summary-list {
-            display: grid;
-            gap: 16px;
-        }
-
-        .sales-summary-empty {
-            padding: 28px;
-            border-radius: 20px;
-            border: 1px dashed rgba(255, 255, 255, 0.18);
-            color: var(--admin-muted);
-            text-align: center;
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .sales-summary-card {
-            display: grid;
-            gap: 16px;
-            padding: 18px;
-            border-radius: 24px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(9, 15, 29, 0.42));
-        }
-
-        .sales-summary-card-head {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .sales-summary-card-head strong {
-            display: block;
-            color: #fff;
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 1rem;
-        }
-
-        .sales-summary-card-head span,
-        .sales-summary-card-head p,
-        .sales-summary-meta,
-        .sales-summary-breakdown-note {
-            color: var(--admin-muted);
-        }
-
-        .sales-summary-card-head p {
-            margin: 6px 0 0;
-            font-size: 0.84rem;
-        }
-
-        .sales-summary-badge {
-            min-height: 34px;
-            padding: 0 12px;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(67, 192, 156, 0.18);
-            border: 1px solid rgba(67, 192, 156, 0.32);
-            color: #d6fff0;
-            font-weight: 700;
-            font-size: 0.76rem;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-
-        .sales-summary-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px 14px;
-            font-size: 0.82rem;
-        }
-
-        .sales-summary-metrics {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 12px;
-        }
-
-        .sales-summary-metric {
-            padding: 14px;
-            border-radius: 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            display: grid;
-            gap: 6px;
-        }
-
-        .sales-summary-metric span {
-            color: var(--admin-muted);
-            font-size: 0.76rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .sales-summary-metric strong {
-            color: #fff;
-            font-size: 1rem;
-        }
-
-        .sales-summary-breakdown {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 14px;
-        }
-
-        .sales-summary-panel {
-            padding: 16px;
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            display: grid;
-            gap: 12px;
-        }
-
-        .sales-summary-panel h3 {
-            margin: 0;
-            color: #fff;
-            font-size: 0.9rem;
-            font-family: 'Space Grotesk', sans-serif;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-        }
-
-        .sales-summary-breakdown-list {
-            display: grid;
-            gap: 10px;
-        }
-
-        .sales-summary-breakdown-row {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            gap: 10px;
-            align-items: start;
-        }
-
-        .sales-summary-breakdown-row strong {
-            color: #fff;
-            display: block;
-        }
-
-        .sales-summary-breakdown-row span {
-            display: block;
-            color: var(--admin-muted);
-            font-size: 0.78rem;
-            margin-top: 3px;
-        }
-
-        .sales-summary-breakdown-row em {
-            font-style: normal;
-            color: #ffdd9f;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-
         @keyframes orderPulse {
             from {
                 box-shadow: 0 0 0 rgba(255, 122, 26, 0.1);
@@ -9553,20 +9336,17 @@
 
             .section-toolbar,
             .clients-toolbar,
-            .clients-toolbar-actions,
-            .sales-summary-filters {
+            .clients-toolbar-actions {
                 justify-content: stretch;
             }
 
             .card-head,
-            .sales-summary-card-head,
             .message-request-head {
                 flex-direction: column;
                 align-items: stretch;
             }
 
             .card-head .kanban-count,
-            .sales-summary-card-head .sales-summary-badge,
             .message-request-head .message-status-chip {
                 align-self: flex-start;
             }
@@ -9591,8 +9371,7 @@
             }
 
             .section-toolbar > *,
-            .clients-toolbar-actions > *,
-            .sales-summary-filters > * {
+            .clients-toolbar-actions > * {
                 width: 100%;
             }
 
@@ -9608,12 +9387,6 @@
 
             .client-name-cell {
                 max-width: none;
-            }
-
-            .sales-summary-overview,
-            .sales-summary-metrics,
-            .sales-summary-breakdown {
-                grid-template-columns: 1fr;
             }
 
             /* ── Scroll momentum iOS en contenedores principales ── */
@@ -10820,6 +10593,36 @@
         }
         .cierre-drp-clear:hover { color: #fca5a5; }
 
+        /* ── Atajos de fecha (Hoy / Ayer / Esta semana / Este mes) ── */
+        .date-preset-row { display: flex; gap: 6px; flex-wrap: wrap; }
+        .date-preset-btn {
+            padding: 5px 12px; border-radius: 20px;
+            background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.16);
+            color: rgba(255,255,255,0.65); font-size: 0.74rem; font-weight: 600;
+            cursor: pointer; font-family: 'Space Grotesk',sans-serif;
+            transition: border-color .15s, color .15s, background .15s; white-space: nowrap;
+        }
+        .date-preset-btn:hover { background: rgba(255,255,255,0.13); }
+        .date-preset-btn.active { border-color: rgba(255,122,26,0.5); color: #ff9540; background: rgba(255,122,26,0.12); }
+
+        /* ── Botones de accion de Informes (Actualizar / Exportar / Gastos / Traslado) ── */
+        .informes-action-btn {
+            font-size: 0.85rem; padding: 8px 20px; border-radius: 9px;
+            font-weight: 700; cursor: pointer; font-family: 'Space Grotesk', sans-serif;
+            border: 1px solid var(--admin-border); background: rgba(255,255,255,0.07);
+            color: rgba(255,255,255,0.8); transition: background .15s, border-color .15s;
+            white-space: nowrap;
+        }
+        .informes-action-btn:hover { background: rgba(255,255,255,0.14); }
+        .informes-action-btn--danger {
+            background: rgba(252,165,165,0.16); color: #fca5a5; border-color: rgba(252,165,165,0.4);
+        }
+        .informes-action-btn--danger:hover { background: rgba(252,165,165,0.26); }
+        .informes-action-btn--accent {
+            background: rgba(99,102,241,0.18); color: #a5b4fc; border-color: rgba(99,102,241,0.45);
+        }
+        .informes-action-btn--accent:hover { background: rgba(99,102,241,0.28); }
+
         /* ── Ticket de detalle — Historial de Cajas ── */
         .hist-ticket { display:flex; flex-direction:column; gap:8px; padding:8px 4px 4px; }
         .ht-card {
@@ -10852,6 +10655,18 @@
         .ht-tras { color:#a5b4fc; font-weight:600; white-space:nowrap; }
         .ht-muted { color:var(--admin-muted); font-size:0.72rem; }
         @media(max-width:600px){ .ht-cols { flex-direction:column; gap:10px; } }
+
+        /* Aviso de scroll horizontal en tablas anchas (Caja Diaria, Historial, Tickets, Gastos) —
+           oculto en escritorio, visible solo cuando la pantalla es angosta y el scroll lateral
+           no es obvio a simple vista. */
+        .table-scroll-hint { display: none; }
+        @media (max-width: 720px) {
+            .table-scroll-hint {
+                display: block; font-size: 0.7rem; color: rgba(255,255,255,0.38);
+                text-align: center; padding: 6px 0; letter-spacing: 0.3px;
+                font-family: 'Space Grotesk', sans-serif;
+            }
+        }
 
         /* Libro contable Caja Diaria */
         .caja-ledger-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 0 0 16px 16px; }
@@ -11384,7 +11199,8 @@
         .gi-filter-bar input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(0.5); }
         .gi-filter-btn {
             background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
-            border-radius: 8px; padding: 5px 14px; color: var(--admin-text); font-size: 0.8rem; cursor: pointer;
+            border-radius: 9px; padding: 8px 18px; color: var(--admin-text); font-size: 0.85rem;
+            font-weight: 700; cursor: pointer;
         }
         .gi-filter-btn:hover { background: rgba(255,255,255,0.15); }
         .gi-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
@@ -12971,8 +12787,8 @@
                                                 <span id="cajaDiariaFechaLabel" style="font-size:0.78rem;color:var(--admin-muted);font-family:'Space Grotesk',sans-serif;"></span>
                                             </div>
                                             <div style="display:flex;gap:8px;align-items:center;">
-                                                <button type="button" class="card-collapse-btn" id="refreshCajaDiariaBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
-                                                <button type="button" id="gastosBtn" style="font-size:0.78rem;padding:4px 14px;background:rgba(252,165,165,0.15);color:#fca5a5;border:1px solid rgba(252,165,165,0.35);border-radius:8px;cursor:pointer;font-weight:600;">💸 Gastos</button>
+                                                <button type="button" class="informes-action-btn" id="refreshCajaDiariaBtn">↺ Actualizar</button>
+                                                <button type="button" id="gastosBtn" class="informes-action-btn informes-action-btn--danger">💸 Gastos</button>
                                                 <button type="button" id="cerrarCajaBtn" style="font-size:0.78rem;padding:4px 14px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔒 Cerrar Caja</button>
                                             </div>
                                         </div>
@@ -12983,6 +12799,7 @@
                                                     <strong data-cc-summary-amount>$0</strong>
                                                 </div>
                                             </div>
+                                            <div class="table-scroll-hint">⇆ Desliza para ver todo</div>
                                             <div class="caja-ledger-wrap">
                                                 <table class="caja-ledger-table">
                                                     <thead id="cajaDiariaHead">
@@ -13022,10 +12839,11 @@
                                 <article class="admin-card">
                                     <div class="card-head">
                                         <h2>Libro Contable</h2>
-                                        <button type="button" class="card-collapse-btn" id="refreshLibroContableBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
+                                        <button type="button" class="informes-action-btn" id="refreshLibroContableBtn">↺ Actualizar</button>
                                     </div>
                                     <!-- Tabla de movimientos diarios -->
                                     <div id="lcMovimientosWrap">
+                                        <div class="table-scroll-hint">⇆ Desliza para ver todo</div>
                                         <div class="caja-ledger-wrap">
                                             <table class="caja-ledger-table" style="min-width:580px;">
                                                 <thead id="lcHead"></thead>
@@ -13045,6 +12863,12 @@
                                         <div class="cierre-drp" id="cierreDrpWrap">
                                             <button type="button" class="cierre-drp-btn" id="cierreDrpBtn">📅 <span id="cierreDrpLabel">Todas las fechas</span></button>
                                             <div class="cierre-drp-panel" id="cierreDrpPanel" style="display:none;">
+                                                <div class="date-preset-row" id="cierreDrpPresets">
+                                                    <button type="button" class="date-preset-btn" data-date-preset="hoy">Hoy</button>
+                                                    <button type="button" class="date-preset-btn" data-date-preset="ayer">Ayer</button>
+                                                    <button type="button" class="date-preset-btn" data-date-preset="semana">Esta semana</button>
+                                                    <button type="button" class="date-preset-btn" data-date-preset="mes">Este mes</button>
+                                                </div>
                                                 <div class="cierre-drp-row">
                                                     <span class="cierre-drp-lbl">Inicio</span>
                                                     <input type="date" id="cierresDateFrom" class="cierre-drp-input">
@@ -13056,14 +12880,15 @@
                                                 <button type="button" class="cierre-drp-clear" id="cierreDrpClear">✕ Limpiar filtro</button>
                                             </div>
                                         </div>
-                                        <button type="button" class="card-collapse-btn" id="refreshLibroCierresBtn" style="font-size:0.78rem;padding:4px 14px;">↺ Actualizar</button>
-                                        <button type="button" class="card-collapse-btn" id="exportCierresExcelBtn" style="font-size:0.78rem;padding:4px 14px;">⬇️ Excel</button>
-                                        <button type="button" class="card-collapse-btn" id="exportCierresPdfBtn" style="font-size:0.78rem;padding:4px 14px;">⬇️ PDF</button>
-                                        <button type="button" id="gastosHistorialBtn" style="font-size:0.78rem;padding:4px 14px;background:rgba(252,165,165,0.15);color:#fca5a5;border:1px solid rgba(252,165,165,0.35);border-radius:8px;cursor:pointer;font-weight:600;">💸 Gastos</button>
-                                        <button type="button" id="trasladoHistorialBtn" style="font-size:0.78rem;padding:4px 14px;background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.35);border-radius:8px;cursor:pointer;font-weight:600;">🔄 Traslado</button>
+                                        <button type="button" class="informes-action-btn" id="refreshLibroCierresBtn">↺ Actualizar</button>
+                                        <button type="button" class="informes-action-btn" id="exportCierresExcelBtn">⬇️ Excel</button>
+                                        <button type="button" class="informes-action-btn" id="exportCierresPdfBtn">⬇️ PDF</button>
+                                        <button type="button" id="gastosHistorialBtn" class="informes-action-btn informes-action-btn--danger">💸 Gastos</button>
+                                        <button type="button" id="trasladoHistorialBtn" class="informes-action-btn informes-action-btn--accent">🔄 Traslado</button>
                                     </div>
                                     <div class="lc-kpi-grid" id="cierresKpiGrid" style="border-top:1px solid rgba(255,255,255,0.06);"></div>
                                     <div class="card-body" style="padding:0;">
+                                        <div class="table-scroll-hint">⇆ Desliza para ver todo</div>
                                         <div class="caja-ledger-wrap">
                                             <table class="caja-ledger-table" style="min-width:600px;">
                                                 <thead id="libroCierresHead"></thead>
@@ -13089,10 +12914,17 @@
                                     </div>
                                     <div class="card-body">
                                         <div class="tickets-toolbar">
+                                            <div class="date-preset-row" id="ticketsDatePresets">
+                                                <button type="button" class="date-preset-btn" data-date-preset="hoy">Hoy</button>
+                                                <button type="button" class="date-preset-btn" data-date-preset="ayer">Ayer</button>
+                                                <button type="button" class="date-preset-btn" data-date-preset="semana">Esta semana</button>
+                                                <button type="button" class="date-preset-btn" data-date-preset="mes">Este mes</button>
+                                            </div>
                                             <input type="date" id="ticketsDateFrom" aria-label="Fecha desde">
                                             <input type="date" id="ticketsDateTo" aria-label="Fecha hasta">
                                             <button type="button" class="tickets-search-btn" id="ticketsSearchBtn">Buscar</button>
                                         </div>
+                                        <div class="table-scroll-hint">⇆ Desliza para ver todo</div>
                                         <div class="caja-table-wrap">
                                             <table class="caja-table">
                                                 <thead>
@@ -13135,6 +12967,12 @@
                                 </div>
                                 <div class="card-body">
                                     <div class="gi-filter-bar">
+                                        <div class="date-preset-row" id="gastosDatePresets">
+                                            <button type="button" class="date-preset-btn" data-date-preset="hoy">Hoy</button>
+                                            <button type="button" class="date-preset-btn" data-date-preset="ayer">Ayer</button>
+                                            <button type="button" class="date-preset-btn" data-date-preset="semana">Esta semana</button>
+                                            <button type="button" class="date-preset-btn" data-date-preset="mes">Este mes</button>
+                                        </div>
                                         <label style="font-size:0.78rem;color:var(--admin-muted);">Desde</label>
                                         <input type="date" id="gastosDesde" aria-label="Gastos desde">
                                         <label style="font-size:0.78rem;color:var(--admin-muted);">Hasta</label>

@@ -753,6 +753,63 @@ function _bindOverlayClose(overlay, closeFn) {
     overlay.addEventListener('click', (e) => { if (_downOnOverlay && e.target === overlay) closeFn(); });
 }
 
+// Modal de confirmación propio — reemplaza window.confirm() en los flujos de Caja/POS/Tickets,
+// donde el diálogo nativo del navegador desentona con el resto del panel. Resuelve true/false
+// según el botón que se toque, igual que confirm() pero sin bloquear el hilo ni verse genérico.
+function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 'Confirmar', cancelText = 'Cancelar', danger = true } = {}) {
+    return new Promise((resolve) => {
+        document.getElementById('_genericConfirmOverlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = '_genericConfirmOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:1rem;';
+        overlay.innerHTML = `
+            <div style="background:#1e1e2e;border:1.5px solid rgba(255,255,255,0.12);border-radius:18px;padding:2rem 1.75rem;max-width:380px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,0.55);text-align:center;">
+                <div style="font-size:2rem;margin-bottom:0.75rem;">${icon}</div>
+                <h3 style="margin:0 0 0.5rem;color:#fff;font-size:1.1rem;font-weight:700;">${escapeHtml(title || '')}</h3>
+                ${message ? `<p style="margin:0 0 1.25rem;color:rgba(255,255,255,0.65);font-size:0.88rem;line-height:1.5;">${escapeHtml(message)}</p>` : '<div style="margin-bottom:0.9rem;"></div>'}
+                <div style="display:flex;gap:0.75rem;">
+                    <button type="button" id="_gcCancelBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">${escapeHtml(cancelText)}</button>
+                    <button type="button" id="_gcAcceptBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:none;background:${danger ? '#e53935' : 'var(--admin-accent,#ff9540)'};color:${danger ? '#fff' : '#111'};font-size:0.9rem;font-weight:700;cursor:pointer;">${escapeHtml(confirmText)}</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        const finish = (result) => { overlay.remove(); resolve(result); };
+        _bindOverlayClose(overlay, () => finish(false));
+        document.getElementById('_gcCancelBtn').addEventListener('click', () => finish(false));
+        document.getElementById('_gcAcceptBtn').addEventListener('click', () => finish(true));
+    });
+}
+
+// Modal con campo de texto — reemplaza window.prompt(). Resuelve el texto ingresado, o null
+// si se cancela (mismo contrato que prompt()).
+function showPromptModal({ icon = '✎', title, message = '', placeholder = '', confirmText = 'Guardar', cancelText = 'Cancelar' } = {}) {
+    return new Promise((resolve) => {
+        document.getElementById('_genericPromptOverlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = '_genericPromptOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:1rem;';
+        overlay.innerHTML = `
+            <div style="background:#1e1e2e;border:1.5px solid rgba(255,255,255,0.12);border-radius:18px;padding:2rem 1.75rem;max-width:380px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,0.55);text-align:center;">
+                <div style="font-size:2rem;margin-bottom:0.75rem;">${icon}</div>
+                <h3 style="margin:0 0 0.5rem;color:#fff;font-size:1.1rem;font-weight:700;">${escapeHtml(title || '')}</h3>
+                ${message ? `<p style="margin:0 0 0.9rem;color:rgba(255,255,255,0.65);font-size:0.88rem;line-height:1.5;">${escapeHtml(message)}</p>` : ''}
+                <input type="text" id="_gpInput" placeholder="${escapeHtml(placeholder)}" style="width:100%;box-sizing:border-box;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.18);border-radius:10px;color:#fff;padding:10px 12px;font-size:0.9rem;margin-bottom:1.1rem;outline:none;font-family:'Space Grotesk',sans-serif;">
+                <div style="display:flex;gap:0.75rem;">
+                    <button type="button" id="_gpCancelBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">${escapeHtml(cancelText)}</button>
+                    <button type="button" id="_gpAcceptBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:none;background:var(--admin-accent,#ff9540);color:#111;font-size:0.9rem;font-weight:700;cursor:pointer;">${escapeHtml(confirmText)}</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        const input = document.getElementById('_gpInput');
+        const finish = (result) => { overlay.remove(); resolve(result); };
+        _bindOverlayClose(overlay, () => finish(null));
+        document.getElementById('_gpCancelBtn').addEventListener('click', () => finish(null));
+        document.getElementById('_gpAcceptBtn').addEventListener('click', () => finish(input.value));
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(input.value); });
+        setTimeout(() => input.focus(), 50);
+    });
+}
+
 /**
  * Esqueleto compartido de los modales tipo "combo-modal-*" del POS: overlay + card + header
  * (título opcional con subtítulo + botón de cerrar). `titleHtml`/`subtitleHtml` ya deben venir
@@ -3936,7 +3993,7 @@ function renderBebidasPanel() {
         delBtn.className = 'mini-btn remove';
         delBtn.textContent = 'Eliminar';
         delBtn.addEventListener('click', async () => {
-            if (!window.confirm(`¿Eliminar "${bev.marca}"?`)) return;
+            if (!(await showConfirmModal({ title: `¿Eliminar "${bev.marca}"?`, confirmText: 'Eliminar' }))) return;
             try {
                 await firebaseDb.collection('bebidas').doc(bev.id).delete();
                 await reloadDataAndRender();
@@ -4097,7 +4154,7 @@ function renderAcompanantesPanel() {
             delBtn.className = 'acomp-action-btn danger';
             delBtn.textContent = 'Eliminar';
             delBtn.addEventListener('click', async () => {
-                if (!confirm(`¿Eliminar "${acomp.nombre}"?`)) return;
+                if (!(await showConfirmModal({ title: `¿Eliminar "${acomp.nombre}"?`, confirmText: 'Eliminar' }))) return;
                 await firebaseDb.collection('acompanantes').doc(acomp.id).delete();
                 await reloadDataAndRender();
             });
@@ -4456,7 +4513,7 @@ function renderCombosPackPanel() {
             delBtn.className = 'acomp-action-btn danger';
             delBtn.textContent = 'Eliminar';
             delBtn.addEventListener('click', async () => {
-                if (!confirm(`¿Eliminar "${combo.nombre}"?`)) return;
+                if (!(await showConfirmModal({ title: `¿Eliminar "${combo.nombre}"?`, confirmText: 'Eliminar' }))) return;
                 await firebaseDb.collection('combospacks').doc(combo.id).delete();
                 await reloadDataAndRender();
             });
@@ -6175,8 +6232,8 @@ async function _posTicketSendInline(id) {
     await saveAdminOrderQuick(posTicketConfig || {});
 }
 
-function _posTicketDeleteInline(id) {
-    if (!confirm('¿Eliminar este ticket?')) return;
+async function _posTicketDeleteInline(id) {
+    if (!(await showConfirmModal({ title: '¿Eliminar este ticket?', confirmText: 'Eliminar' }))) return;
     deletePosTicketFromFirestore(id);
     posTickets = posTickets.filter((t) => t.id !== id);
     _posSelectedTicketIds.delete(id);
@@ -6372,7 +6429,13 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         const currentKeys = new Set(internalOrderItems.map((item) => item.itemKey));
         const removedItems = editData.items.filter((item) => !currentKeys.has(item.itemKey));
         for (const item of removedItems) {
-            const reason = window.prompt(`Motivo de la anulación de "${item.productName}":`);
+            const reason = await showPromptModal({
+                icon: '✎',
+                title: 'Motivo de la anulación',
+                message: `Vas a quitar "${item.productName}" de un pedido ya cobrado.`,
+                placeholder: 'Ej: el cliente lo canceló, error de carga...',
+                confirmText: 'Guardar motivo'
+            });
             if (!reason || !reason.trim()) {
                 showNotice('Debes indicar un motivo para anular un producto de un pedido ya cobrado.', 'error');
                 return;
@@ -7284,7 +7347,7 @@ async function handleCategoryProductAction(action, productId, categoryId) {
         }
 
         if (action === 'delete-product') {
-            const confirmed = window.confirm(`Eliminar ${product.nombre}?`);
+            const confirmed = await showConfirmModal({ title: `¿Eliminar "${product.nombre}"?`, confirmText: 'Eliminar' });
             if (!confirmed) {
                 return;
             }
@@ -7824,9 +7887,9 @@ function _renderCategoryDetailPanel(categoryId) {
     categoryDetailPanel.querySelector('#catDetailDeleteBtn')?.addEventListener('click', async () => {
         const related = productsState.filter((p) => p.categoria === category.name);
         const msg = related.length
-            ? `¿Eliminar "${category.name}" y sus ${related.length} producto(s)? No se puede deshacer.`
-            : `¿Eliminar "${category.name}"? No se puede deshacer.`;
-        if (!window.confirm(msg)) return;
+            ? `Se eliminarán también sus ${related.length} producto(s). No se puede deshacer.`
+            : 'No se puede deshacer.';
+        if (!(await showConfirmModal({ title: `¿Eliminar "${category.name}"?`, message: msg, confirmText: 'Eliminar' }))) return;
         try {
             const batch = firebaseDb.batch();
             batch.delete(firebaseDb.collection('categorias').doc(categoryId));
@@ -7882,7 +7945,7 @@ function _renderCategoryDetailPanel(categoryId) {
             e.stopPropagation();
             const pid = btn.dataset.productId;
             const pname = btn.dataset.productName || 'este producto';
-            if (!window.confirm(`¿Eliminar "${pname}"? No se puede deshacer.`)) return;
+            if (!(await showConfirmModal({ title: `¿Eliminar "${pname}"?`, message: 'No se puede deshacer.', confirmText: 'Eliminar' }))) return;
             try {
                 await firebaseDb.collection('productos').doc(pid).delete();
                 if (_editingProductId === pid) _editingProductId = null;
@@ -10622,7 +10685,7 @@ function _occRenderResults(order, term) {
 }
 
 async function _occApplyClient(order, client) {
-    if (!confirm(`¿Reasignar el pedido #${order.code} a ${client.customerName}?`)) return;
+    if (!(await showConfirmModal({ icon: '🔁', title: `¿Reasignar el pedido #${order.code}?`, message: `Quedará a nombre de ${client.customerName}.`, confirmText: 'Reasignar', danger: false }))) return;
     try {
         const updates = {
             customerName: client.customerName,
@@ -11956,7 +12019,7 @@ async function savePromo() {
 
 async function deleteAdminPromo(id) {
     const promo = promosState.find((p) => p.id === id);
-    if (!window.confirm(`¿Eliminar la promoción "${promo?.badge || promo?.producto_nombre || ''}"?`)) return;
+    if (!(await showConfirmModal({ title: `¿Eliminar la promoción "${promo?.badge || promo?.producto_nombre || ''}"?`, confirmText: 'Eliminar' }))) return;
     try {
         await firebaseDb.collection(PROMOCIONES_COLLECTION).doc(id).delete();
         showNotice('Promoción eliminada.', 'ok');
@@ -12143,7 +12206,7 @@ function renderCuponesUnified() {
                 renderCuponesUnified();
             } else if (action === 'delete') {
                 const combo = combosEspecialesState.find((c) => c.id === id);
-                if (!window.confirm(`¿Eliminar el combo "${combo?.titulo || ''}"?`)) return;
+                if (!(await showConfirmModal({ title: `¿Eliminar el combo "${combo?.titulo || ''}"?`, confirmText: 'Eliminar' }))) return;
                 await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).doc(id).delete();
                 await reloadDataAndRender();
                 renderCuponesUnified();
@@ -12411,7 +12474,7 @@ async function savePromo2x1() {
 
 async function deleteAdminPromo2x1(id) {
     const p = promos2x1State.find((x) => x.id === id);
-    if (!window.confirm(`¿Eliminar la oferta 2×1 "${p?.producto_nombre || ''}"?`)) return;
+    if (!(await showConfirmModal({ title: `¿Eliminar la oferta 2×1 "${p?.producto_nombre || ''}"?`, confirmText: 'Eliminar' }))) return;
     try {
         await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(id).delete();
         showNotice('Oferta 2×1 eliminada.', 'ok');
@@ -12477,7 +12540,7 @@ function renderCombosTabPanel() {
                 renderCombosTabPanel();
             } else if (action === 'delete') {
                 const combo = combosEspecialesState.find((c) => c.id === id);
-                if (!window.confirm(`¿Eliminar el combo "${combo?.titulo || ''}"?`)) return;
+                if (!(await showConfirmModal({ title: `¿Eliminar el combo "${combo?.titulo || ''}"?`, confirmText: 'Eliminar' }))) return;
                 await firebaseDb.collection(COMBOS_ESPECIALES_COLLECTION).doc(id).delete();
                 await reloadDataAndRender();
                 renderCombosTabPanel();
@@ -13040,11 +13103,13 @@ categoryList.addEventListener('click', async (event) => {
             }
 
             const relatedProducts = productsState.filter((product) => product.categoria === category.name);
-            const confirmed = window.confirm(
-                relatedProducts.length
-                    ? `Eliminar la categoria ${category.name} y sus ${relatedProducts.length} producto${relatedProducts.length === 1 ? '' : 's'} asociados? Esta accion no se puede deshacer.`
-                    : `Eliminar la categoria ${category.name}? Esta accion no se puede deshacer.`
-            );
+            const confirmed = await showConfirmModal({
+                title: `¿Eliminar la categoría "${category.name}"?`,
+                message: relatedProducts.length
+                    ? `Se eliminarán también sus ${relatedProducts.length} producto${relatedProducts.length === 1 ? '' : 's'} asociado${relatedProducts.length === 1 ? '' : 's'}. No se puede deshacer.`
+                    : 'No se puede deshacer.',
+                confirmText: 'Eliminar'
+            });
             if (!confirmed) {
                 return;
             }
@@ -13315,9 +13380,9 @@ document.getElementById('posCartCustomizeBtn')?.addEventListener('click', () => 
 });
 
 // Vaciar carrito
-document.getElementById('posClearCartBtn')?.addEventListener('click', () => {
+document.getElementById('posClearCartBtn')?.addEventListener('click', async () => {
     if (!internalOrderItems.length && !posTicketConfig) return;
-    if (!confirm('¿Vaciar el pedido actual?')) return;
+    if (!(await showConfirmModal({ icon: '🗑', title: '¿Vaciar el pedido actual?', confirmText: 'Vaciar' }))) return;
     internalOrderItems = [];
     posTicketConfig = null;
     const currentTicket = posTickets.find((t) => t.id === posActiveTicketId);
@@ -14361,10 +14426,10 @@ document.getElementById('posTicketsCloseBtn')?.addEventListener('click', () => {
 });
 
 // Eliminar tickets seleccionados
-document.getElementById('posTicketDeleteBtn')?.addEventListener('click', () => {
+document.getElementById('posTicketDeleteBtn')?.addEventListener('click', async () => {
     if (!_posSelectedTicketIds.size) return;
     const count = _posSelectedTicketIds.size;
-    if (!confirm(`¿Eliminar ${count} ticket${count > 1 ? 's' : ''}?`)) return;
+    if (!(await showConfirmModal({ title: `¿Eliminar ${count} ticket${count > 1 ? 's' : ''}?`, confirmText: 'Eliminar' }))) return;
     const toDelete = [..._posSelectedTicketIds];
     toDelete.forEach((id) => deletePosTicketFromFirestore(id));
     posTickets = posTickets.filter((t) => !_posSelectedTicketIds.has(t.id));
@@ -14813,7 +14878,7 @@ if (clientsList) {
         }
 
         if (action === 'delete') {
-            const confirmed = window.confirm(`Eliminar el cliente ${client.customerName}? Esta accion no se puede deshacer.`);
+            const confirmed = await showConfirmModal({ title: `¿Eliminar el cliente ${client.customerName}?`, message: 'No se puede deshacer.', confirmText: 'Eliminar' });
             if (!confirmed) {
                 return;
             }
@@ -14896,7 +14961,7 @@ document.addEventListener('click', async (event) => {
     }
 
     if (action === 'reset-password') {
-        const confirmed = window.confirm(`Resetear la contrasena del cliente ${message.customerName}? El cliente debera crear una nueva contrasena al volver a entrar.`);
+        const confirmed = await showConfirmModal({ icon: '🔑', title: `¿Resetear la contraseña de ${message.customerName}?`, message: 'El cliente deberá crear una nueva contraseña al volver a entrar.', confirmText: 'Resetear' });
         if (!confirmed) return;
         try {
             const adminIdentity = getCurrentAdminIdentity();
@@ -14930,7 +14995,7 @@ document.addEventListener('click', async (event) => {
     }
 
     if (action === 'delete') {
-        const confirmed = window.confirm(`Eliminar la solicitud de ${message.customerName}? Esta accion no se puede deshacer.`);
+        const confirmed = await showConfirmModal({ title: `¿Eliminar la solicitud de ${message.customerName}?`, message: 'No se puede deshacer.', confirmText: 'Eliminar' });
         if (!confirmed) return;
         try {
             if (_inboxActiveId === messageId) {
@@ -15209,7 +15274,7 @@ if (ordersActionRoot) {
                     try {
                         if (order.status === 'entregado') {
                             // Orden ya procesada: eliminar permanentemente del sistema
-                            const confirmed = window.confirm(`¿Eliminar definitivamente el pedido #${order.code}?\nEsta acción no se puede deshacer.`);
+                            const confirmed = await showConfirmModal({ title: `¿Eliminar definitivamente el pedido #${order.code}?`, message: 'No se puede deshacer.', confirmText: 'Eliminar' });
                             if (!confirmed) return;
                             await deleteOrder(orderId);
                             if (selectedOrderId === orderId) selectedOrderId = null;
@@ -15218,7 +15283,7 @@ if (ordersActionRoot) {
                             showNotice('Pedido eliminado permanentemente.', 'ok');
                         } else {
                             // Orden activa: anular (queda registrada como ANULADO)
-                            const confirmed = window.confirm(`¿Anular el pedido #${order.code}?\nQuedará registrado como ANULADO en Procesados.`);
+                            const confirmed = await showConfirmModal({ title: `¿Anular el pedido #${order.code}?`, message: 'Quedará registrado como ANULADO en Procesados.', confirmText: 'Anular' });
                             if (!confirmed) return;
                             await anularOrder(orderId);
                             if (selectedOrderId === orderId) selectedOrderId = null;
@@ -15374,7 +15439,7 @@ if (orderTicketPanel) {
             const order = ordersState.find(o => o.id === targetId);
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
             if (!_meseroCheckOwnOrder(order)) return;
-            if (confirm(`¿Eliminar el pedido #${order.code}?`)) {
+            if (await showConfirmModal({ title: `¿Eliminar el pedido #${order.code}?`, confirmText: 'Eliminar' })) {
                 try {
                     await deleteOrder(order.id);
                     selectedOrderId = null;
@@ -15434,7 +15499,7 @@ if (orderTicketPanel) {
         if (actionButton.dataset.orderTicketAction === 'editar_pago') {
             const order = ordersState.find(o => o.id === orderId);
             if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
-            if (!confirm('¿Cambiar el método de pago? Se anulará el pago actual (no sumará en cajas) y el ticket quedará libre para cobrar de nuevo por cualquier medio.')) return;
+            if (!(await showConfirmModal({ title: '¿Cambiar el método de pago?', message: 'Se anulará el pago actual (no sumará en cajas) y el ticket quedará libre para cobrar de nuevo por cualquier medio.', confirmText: 'Cambiar' }))) return;
             // receiveOrder=false: solo cambia el método de pago, no mueve el estado del pedido
             openDeliveryPaymentModal(order, false);
             return;
@@ -15819,7 +15884,7 @@ if (buttonConfigList) {
             }
 
             if (action === 'delete-button') {
-                const confirmed = window.confirm(`Eliminar boton ${buttonId}?`);
+                const confirmed = await showConfirmModal({ title: `¿Eliminar botón "${buttonId}"?`, confirmText: 'Eliminar' });
                 if (!confirmed) {
                     return;
                 }
@@ -16202,7 +16267,7 @@ function _showMeseroWelcomeScreen() {
 
 async function _meseroCloseSession() {
     if (!_meseroCurrentSessionId) return;
-    if (!confirm('¿Cerrar tu sesión de hoy?')) return;
+    if (!(await showConfirmModal({ icon: '🚪', title: '¿Cerrar tu sesión de hoy?', confirmText: 'Cerrar sesión', danger: false }))) return;
     try {
         await firebaseDb.collection(MESERO_SESIONES_COLLECTION).doc(_meseroCurrentSessionId)
             .update({ cerradoAt: firestoreNow() });
@@ -16871,7 +16936,7 @@ function renderPaymentConfigPanel() {
             const id = btn.dataset.pmDelete;
             const method = getPaymentMethods().find((m) => m.id === id);
             if (!method) return;
-            if (!confirm(`¿Eliminar el método "${method.label}"?`)) return;
+            if (!(await showConfirmModal({ title: `¿Eliminar el método "${method.label}"?`, confirmText: 'Eliminar' }))) return;
             const updated = getPaymentMethods().filter((m) => m.id !== id);
             await _pmSaveAndRefresh(updated, `Método "${method.label}" eliminado.`);
         });
@@ -17934,7 +17999,7 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
     const confirmBtn = document.getElementById('cierreCajaConfirmBtn');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Imprimiendo...'; }
 
-    const imprimir = confirm('¿Desea imprimir el ticket de cierre?');
+    const imprimir = await showConfirmModal({ icon: '🖨️', title: '¿Imprimir el ticket de cierre?', confirmText: 'Imprimir', cancelText: 'No, gracias', danger: false });
     if (imprimir) {
         _cierrePrintData = { c: closureDoc, dateStr, timeStr };
         await _printCierreTicket(ticketHtml);
@@ -18170,11 +18235,12 @@ async function cerrarCaja() {
 
         if (!paid.length) {
             // Sin ventas → ofrecer cierre forzado para resetear la jornada
-            const confirmar = window.confirm(
-                '⚠️ No hay cobros en esta jornada.\n\n' +
-                '¿Deseas cerrar la caja y resetear la jornada de todas formas?\n' +
-                '(Útil para corregir una jornada que quedó abierta del día anterior)'
-            );
+            const confirmar = await showConfirmModal({
+                icon: '⚠️',
+                title: 'No hay cobros en esta jornada',
+                message: '¿Deseas cerrar la caja y resetear la jornada de todas formas? Útil para corregir una jornada que quedó abierta del día anterior.',
+                confirmText: 'Sí, cerrar y resetear'
+            });
             if (!confirmar) return;
             // Reset físico de caja + reset de jornada en Firestore
             cajaAperturaAt = 0;
@@ -18745,6 +18811,41 @@ async function loadCierresCaja() {
     return _cierresCajaState;
 }
 
+// Atajos de fecha (Hoy/Ayer/Esta semana/Este mes) compartidos por los filtros de Historial de
+// Cajas, Tickets y Gastos. Devuelve strings YYYY-MM-DD listos para un <input type="date">.
+function _datePresetRange(preset) {
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = new Date();
+    if (preset === 'ayer') {
+        const y = new Date(today);
+        y.setDate(y.getDate() - 1);
+        return { from: fmt(y), to: fmt(y) };
+    }
+    if (preset === 'semana') {
+        const day = today.getDay(); // 0 = domingo
+        const diffToMonday = day === 0 ? 6 : day - 1;
+        const monday = new Date(today);
+        monday.setDate(today.getDate() - diffToMonday);
+        return { from: fmt(monday), to: fmt(today) };
+    }
+    if (preset === 'mes') {
+        const first = new Date(today.getFullYear(), today.getMonth(), 1);
+        return { from: fmt(first), to: fmt(today) };
+    }
+    // 'hoy' y cualquier valor no reconocido caen en el día de hoy
+    return { from: fmt(today), to: fmt(today) };
+}
+
+function _applyDatePreset(rowId, fromInputId, toInputId, presetBtn, onApplied) {
+    const { from, to } = _datePresetRange(presetBtn.dataset.datePreset);
+    const fromEl = document.getElementById(fromInputId);
+    const toEl   = document.getElementById(toInputId);
+    if (fromEl) fromEl.value = from;
+    if (toEl)   toEl.value   = to;
+    document.querySelectorAll(`#${rowId} .date-preset-btn`).forEach((b) => b.classList.toggle('active', b === presetBtn));
+    onApplied();
+}
+
 function _getCierresFilterRange() {
     const fromVal = document.getElementById('cierresDateFrom')?.value || '';
     const toVal   = document.getElementById('cierresDateTo')?.value   || '';
@@ -19088,7 +19189,7 @@ async function renderLibroCierres() {
             tbody.addEventListener('click', async (e) => {
                 const delBtn = e.target.closest('[data-traslado-del]');
                 if (delBtn) {
-                    if (!confirm('¿Eliminar este traslado?')) return;
+                    if (!(await showConfirmModal({ icon: '🔄', title: '¿Eliminar este traslado?', confirmText: 'Eliminar' }))) return;
                     try {
                         await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(delBtn.dataset.trasladoDel).delete();
                         showNotice('Traslado eliminado.', 'ok');
@@ -19167,6 +19268,13 @@ async function renderLibroCierres() {
 document.getElementById('refreshLibroCierresBtn')?.addEventListener('click', renderLibroCierres);
 document.getElementById('cierresDateFrom')?.addEventListener('change', _updateCierreDrp);
 document.getElementById('cierresDateTo')?.addEventListener('change', _updateCierreDrp);
+
+document.getElementById('cierreDrpPresets')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-date-preset]');
+    if (!btn) return;
+    e.stopPropagation();
+    _applyDatePreset('cierreDrpPresets', 'cierresDateFrom', 'cierresDateTo', btn, _updateCierreDrp);
+});
 
 // Toggle panel del date-range picker
 document.getElementById('cierreDrpBtn')?.addEventListener('click', (e) => {
@@ -19777,6 +19885,14 @@ document.getElementById('ticketsSearchBtn')?.addEventListener('click', async () 
     }
 });
 
+document.getElementById('ticketsDatePresets')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-date-preset]');
+    if (!btn) return;
+    _applyDatePreset('ticketsDatePresets', 'ticketsDateFrom', 'ticketsDateTo', btn, () => {
+        document.getElementById('ticketsSearchBtn')?.click();
+    });
+});
+
 // Tickets table actions (preview / void)
 document.getElementById('ticketsTableBody')?.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-ticket-action]');
@@ -19796,7 +19912,7 @@ document.getElementById('ticketsTableBody')?.addEventListener('click', async (e)
     }
 
     if (action === 'void') {
-        if (!window.confirm(`¿Anular el ticket ${order.code}? Se eliminará de la Caja Diaria.`)) return;
+        if (!(await showConfirmModal({ title: `¿Anular el ticket ${order.code}?`, message: 'Se eliminará de la Caja Diaria.', confirmText: 'Anular' }))) return;
         btn.disabled = true;
         try {
             await updateOrder(id, { voided: true, voidedAt: firestoreNow() });
@@ -19815,7 +19931,7 @@ document.getElementById('ticketsTableBody')?.addEventListener('click', async (e)
     }
 
     if (action === 'restore') {
-        if (!window.confirm(`¿Restaurar el ticket ${order.code}? Volverá a aparecer en la Caja Diaria.`)) return;
+        if (!(await showConfirmModal({ icon: '↩️', title: `¿Restaurar el ticket ${order.code}?`, message: 'Volverá a aparecer en la Caja Diaria.', confirmText: 'Restaurar', danger: false }))) return;
         btn.disabled = true;
         try {
             await updateOrder(id, { voided: false, voidedAt: null });
@@ -19922,12 +20038,12 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', async (
                 openOrderContactFieldEditor(order, field);
             }
         } else if (action === 'editar_pago' && order) {
-            if (!confirm('¿Cambiar el método de pago? Se anulará el pago actual (no sumará en cajas) y el ticket quedará libre para cobrar de nuevo por cualquier medio.')) return;
+            if (!(await showConfirmModal({ title: '¿Cambiar el método de pago?', message: 'Se anulará el pago actual (no sumará en cajas) y el ticket quedará libre para cobrar de nuevo por cualquier medio.', confirmText: 'Cambiar' }))) return;
             closeTicketPreviewModal();
             openDeliveryPaymentModal(order, false);
         } else if (action === 'eliminar' && order) {
             closeTicketPreviewModal();
-            if (confirm(`¿Eliminar el pedido #${order.code}?`)) {
+            if (await showConfirmModal({ title: `¿Eliminar el pedido #${order.code}?`, confirmText: 'Eliminar' })) {
                 await deleteOrder(order.id);
                 showNotice(`Pedido #${order.code} eliminado.`, 'ok');
             }
@@ -20025,7 +20141,7 @@ function renderProveedoresPanel() {
     });
     wrap.querySelectorAll('[data-prov-del]').forEach((btn) => {
         btn.addEventListener('click', async () => {
-            if (!confirm('¿Eliminar este proveedor?')) return;
+            if (!(await showConfirmModal({ title: '¿Eliminar este proveedor?', confirmText: 'Eliminar' }))) return;
             await deleteProveedor(btn.dataset.provDel);
             await loadProveedores();
             renderProveedoresPanel();
@@ -20174,7 +20290,7 @@ function renderMeserosPanel() {
     });
     wrap.querySelectorAll('[data-mesero-del]').forEach((btn) => {
         btn.addEventListener('click', async () => {
-            if (!confirm('¿Eliminar el acceso de este mesero? El enlace dejará de funcionar de inmediato.')) return;
+            if (!(await showConfirmModal({ title: '¿Eliminar el acceso de este mesero?', message: 'El enlace dejará de funcionar de inmediato.', confirmText: 'Eliminar' }))) return;
             await deleteMesero(btn.dataset.meseroDel);
             await loadMeseros();
             renderMeserosPanel();
@@ -20350,7 +20466,7 @@ function renderCategoriasGastosPanel() {
             if (delCat) {
                 const catId = delCat.dataset.catDel;
                 const cat = _categoriasGastosState.find((c) => c.id === catId);
-                if (!confirm(`¿Eliminar la categoría "${cat?.nombre || catId}"?`)) return;
+                if (!(await showConfirmModal({ title: `¿Eliminar la categoría "${cat?.nombre || catId}"?`, confirmText: 'Eliminar' }))) return;
                 _categoriasGastosState = _categoriasGastosState.filter((c) => c.id !== catId);
                 try { await saveCategoriasGastos(); } catch (err) { showNotice('Error al guardar.', 'error'); return; }
                 renderCategoriasGastosPanel();
@@ -20519,6 +20635,7 @@ function renderGastosInformes() {
             <strong>Total: ${formatMoney(grandTotal)}</strong>
         </div>
         ${gastos.length === 0 ? '<p class="caja-empty">No hay gastos registrados para el período seleccionado.</p>' : `
+        <div class="table-scroll-hint">⇆ Desliza para ver todo</div>
         <div class="caja-ledger-wrap" style="margin-top:12px;">
             <table class="caja-ledger-table gi-table">
                 <thead><tr>
@@ -20546,7 +20663,14 @@ document.getElementById('gastosClearFilterBtn')?.addEventListener('click', () =>
     const hastaEl = document.getElementById('gastosHasta');
     if (desdeEl) desdeEl.value = '';
     if (hastaEl) hastaEl.value = '';
+    document.querySelectorAll('#gastosDatePresets .date-preset-btn').forEach((b) => b.classList.remove('active'));
     renderGastosInformes();
+});
+
+document.getElementById('gastosDatePresets')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-date-preset]');
+    if (!btn) return;
+    _applyDatePreset('gastosDatePresets', 'gastosDesde', 'gastosHasta', btn, renderGastosInformes);
 });
 
 // ── Caja Chica ────────────────────────────────────────────────────────────────
