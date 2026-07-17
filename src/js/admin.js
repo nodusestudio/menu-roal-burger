@@ -7770,9 +7770,11 @@ function _renderCategoryDetailPanel(categoryId) {
                 <button type="button" class="section-action-btn primary" id="catDetailAddProductBtn" style="flex-shrink:0;white-space:nowrap;">+ Agregar</button>
             </div>
             <div style="margin-bottom:12px;">
+                <label for="catDetailParent" style="display:block;font-size:0.7rem;color:var(--admin-muted);margin-bottom:4px;">Categoría principal (agrupa esta categoría con otras en el POS)</label>
                 <input type="text" class="admin-input" id="catDetailParent" list="catParentSuggestions"
+                    name="catDetailParent-nofill" autocomplete="off" autocapitalize="off" spellcheck="false"
                     value="${escapeHtml(category.parentCategory || '')}"
-                    placeholder="Categoría principal (opcional, ej: Burger) — agrupa esta categoría con otras en el POS"
+                    placeholder="Ej: Burger — deja vacío para no agrupar"
                     style="width:100%;box-sizing:border-box;">
                 <datalist id="catParentSuggestions">
                     ${[...new Set(categoriesState.map((c) => c.parentCategory).filter(Boolean))]
