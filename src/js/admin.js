@@ -1565,13 +1565,12 @@ function setupAccordion() {
         configuracion: ['configuracion'],
         pedidos: ['pedidos'],
         clientes: ['clientes'],
-        gastos: ['gastos'],
         mensajes: ['mensajes'],
         metricas: ['metricas'],
         botones: ['botones']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', gastos:'Gastos', mensajes:'Mensajes', metricas:'Métricas', botones:'Botones' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', metricas:'Métricas', botones:'Botones' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -1600,10 +1599,6 @@ function setupAccordion() {
             markMessagesAsRead();
         } else {
             updateMessagesAttentionState();
-        }
-
-        if (target === 'gastos') {
-            loadCategoriasGastos().then(renderCategoriasGastosPanel);
         }
 
         if (target === 'clientes') {
@@ -14781,6 +14776,10 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
             if (target === 'tickets') _autoLoadTicketsTab();
             if (target === 'gastos') loadGastosCaja().then(renderGastosInformes);
         }
+        // Auto-cargar al abrir pestañas de Configuración
+        if (scope === 'configuracion') {
+            if (target === 'categorias_gastos') loadCategoriasGastos().then(renderCategoriasGastosPanel);
+        }
     });
 });
 
@@ -17446,6 +17445,12 @@ function openTrasladoModal(existingData = null, existingId = null) {
 }
 
 document.getElementById('gastosBtn')?.addEventListener('click', openGastoModal);
+// Informes → Gastos es un ledger histórico, no la jornada de hoy — igual que el botón de
+// Historial, se registra como "externo" (sin atarlo a la caja actualmente abierta).
+document.getElementById('gastosInformesNewBtn')?.addEventListener('click', () => {
+    _gastoFromHistorial = true;
+    openGastoModal();
+});
 document.getElementById('trasladoHistorialBtn')?.addEventListener('click', openTrasladoModal);
 document.getElementById('gastoCancelBtn')?.addEventListener('click', closeGastoModal);
 document.getElementById('gastoModal')?.addEventListener('click', (e) => {
@@ -17510,13 +17515,18 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             tipo: fromHistorial ? 'externo' : 'caja',
         };
         await saveGasto(gasto);
-        if (!fromHistorial) _gastosCajaState = [gasto, ..._gastosCajaState];
+        // Informes → Gastos lee de _gastosCajaState sin importar el tipo/origen, así que
+        // se actualiza sin importar desde qué pantalla se registró (antes solo se hacía
+        // para el caso "no viene de Historial", y el ledger de Informes quedaba desfasado
+        // hasta el próximo refresco manual).
+        _gastosCajaState = [gasto, ..._gastosCajaState];
         closeGastoModal();
         if (fromHistorial) {
             await renderLibroCierres();
         } else {
             renderCajaDiaria();
         }
+        renderGastosInformes();
         showNotice('Gasto registrado.', 'ok');
     } catch (err) {
         showNotice('Error al registrar gasto: ' + (err.message || 'error'), 'error');

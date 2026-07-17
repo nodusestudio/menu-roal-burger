@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260717-1032">
+    <link rel="stylesheet" href="style.css?v=20260717-1045">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -12426,7 +12426,6 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="informes"><span class="nav-icon">📊</span><span>Informes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="menu"><span class="nav-icon">🍔</span><span>Articulos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="gastos"><span class="nav-icon">💸</span><span>Gastos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="botones"><span class="nav-icon">🔘</span><span>Botones</span></button>
@@ -12870,6 +12869,7 @@
                             <article class="admin-card">
                                 <div class="card-head">
                                     <h2>Gastos</h2>
+                                    <button type="button" class="section-action-btn primary" id="gastosInformesNewBtn">+ Nuevo gasto</button>
                                 </div>
                                 <div class="card-body">
                                     <div class="gi-filter-bar">
@@ -13007,6 +13007,10 @@
                         <button class="menu-inner-tab" data-section-tab="meseros" data-section-scope="configuracion" role="tab" aria-selected="false">
                             <span class="menu-inner-tab-icon">🧑‍🍳</span>
                             <span>Meseros</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="categorias_gastos" data-section-scope="configuracion" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">💸</span>
+                            <span>Categorías de Gastos</span>
                         </button>
                     </nav>
                     <div class="menu-inner-panels-wrap">
@@ -13248,6 +13252,32 @@
                             </article>
                         </div>
 
+                        <!-- Panel: Categorías de Gastos -->
+                        <div class="menu-inner-panel" data-section-panel="categorias_gastos" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Categorías de Gastos</h2>
+                                    <button type="button" class="section-action-btn primary" id="addCategoriaGastoBtn">+ Nueva categoría</button>
+                                </div>
+                                <div class="card-body">
+                                    <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
+                                        Configura las categorías y subcategorías que aparecerán al registrar un gasto.
+                                    </p>
+                                    <div id="newCatGastoFormWrap" style="display:none;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+                                        <input type="text" id="newCatGastoIcon" class="cat-new-input-icon" placeholder="📦" maxlength="4">
+                                        <input type="text" id="newCatGastoNombre" class="cat-new-input-name" placeholder="Nombre de categoría" maxlength="40">
+                                        <button type="button" id="newCatGastoSaveBtn" class="cat-new-save-btn">Agregar</button>
+                                        <button type="button" id="newCatGastoCancelBtn" class="pm-icon-btn">Cancelar</button>
+                                    </div>
+                                    <div id="categoriasGastosPanelWrap">
+                                        <!-- renderizado por JS -->
+                                    </div>
+                                </div>
+                            </article>
+                            <!-- datalist de proveedores para el modal de gasto (oculto, mantenido por JS) -->
+                            <div id="proveedoresPanelWrap" hidden></div>
+                        </div>
+
                     </div>
                 </article>
             </div>
@@ -13313,32 +13343,6 @@
                 </article>
             </div>
 
-            <!-- ══════════ GASTOS CONFIG ══════════ -->
-            <div class="admin-tab-panel" data-tab-panel="gastos">
-                <!-- Categorías -->
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Categorías de Gastos</h2>
-                        <button type="button" class="section-action-btn primary" id="addCategoriaGastoBtn">+ Nueva categoría</button>
-                    </div>
-                    <div class="card-body">
-                        <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
-                            Configura las categorías y subcategorías que aparecerán al registrar un gasto.
-                        </p>
-                        <div id="newCatGastoFormWrap" style="display:none;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
-                            <input type="text" id="newCatGastoIcon" class="cat-new-input-icon" placeholder="📦" maxlength="4">
-                            <input type="text" id="newCatGastoNombre" class="cat-new-input-name" placeholder="Nombre de categoría" maxlength="40">
-                            <button type="button" id="newCatGastoSaveBtn" class="cat-new-save-btn">Agregar</button>
-                            <button type="button" id="newCatGastoCancelBtn" class="pm-icon-btn">Cancelar</button>
-                        </div>
-                        <div id="categoriasGastosPanelWrap">
-                            <!-- renderizado por JS -->
-                        </div>
-                    </div>
-                </article>
-                <!-- datalist de proveedores para el modal de gasto (oculto, mantenido por JS) -->
-                <div id="proveedoresPanelWrap" hidden></div>
-            </div>
 
             <div class="admin-tab-panel" data-tab-panel="mensajes">
                 <div class="section-toolbar">
@@ -14537,8 +14541,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260717-1032"></script>
-    <script defer src="admin.js?v=20260717-1032"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260717-1045"></script>
+    <script defer src="admin.js?v=20260717-1045"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
