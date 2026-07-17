@@ -7720,6 +7720,8 @@ function _cpefRenderVariantesList() {
     });
 }
 
+let _catParentDropdownOutsideClickHandler = null;
+
 function _renderCategoryDetailPanel(categoryId) {
     if (!categoryDetailPanel) return;
     const category = categoriesState.find((c) => c.id === categoryId);
@@ -7775,17 +7777,19 @@ function _renderCategoryDetailPanel(categoryId) {
                      cuando su heurístico decide que un campo "es de login", pero si el campo está en un
                      form aislado (sin un input de contraseña cerca en ese mismo form) no tiene con qué
                      emparejarlo y no ofrece el autocompletado de contraseñas guardadas. -->
-                <form autocomplete="off" onsubmit="return false" style="margin:0;">
-                    <input type="text" class="admin-input" id="catDetailParent" list="catParentSuggestions"
+                <form autocomplete="off" onsubmit="return false" style="margin:0;position:relative;">
+                    <input type="text" class="admin-input" id="catDetailParent"
                         autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"
                         value="${escapeHtml(category.parentCategory || '')}"
                         placeholder="Ej: Burger — deja vacío para no agrupar"
                         style="width:100%;box-sizing:border-box;">
+                    <div id="catParentDropdown" hidden style="position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:220px;overflow-y:auto;background:#1c1f26;border:1.5px solid rgba(255,255,255,0.16);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+                        ${[...new Set([
+                            ...categoriesState.map((c) => c.parentCategory).filter(Boolean),
+                            ...categoriesState.filter((c) => c.id !== categoryId).map((c) => c.name).filter(Boolean),
+                        ])].map((p) => `<div class="cat-parent-option" data-value="${escapeHtml(p)}" style="padding:9px 12px;font-size:0.82rem;color:#eef4ff;cursor:pointer;">${escapeHtml(p)}</div>`).join('')}
+                    </div>
                 </form>
-                <datalist id="catParentSuggestions">
-                    ${[...new Set(categoriesState.map((c) => c.parentCategory).filter(Boolean))]
-                        .map((p) => `<option value="${escapeHtml(p)}">`).join('')}
-                </datalist>
             </div>
             <div class="cat-vis-panel">
                 <div class="cat-vis-panel-label">Activar en esta categoría</div>
@@ -7918,6 +7922,40 @@ function _renderCategoryDetailPanel(categoryId) {
             showNotice(`Error al eliminar: ${e.message || 'Error inesperado.'}`, 'error');
         }
     });
+
+    const parentInputEl = categoryDetailPanel.querySelector('#catDetailParent');
+    const parentDropdownEl = categoryDetailPanel.querySelector('#catParentDropdown');
+    if (parentInputEl && parentDropdownEl) {
+        const options = Array.from(parentDropdownEl.querySelectorAll('.cat-parent-option'));
+        const showDropdown = () => { if (options.length) parentDropdownEl.hidden = false; };
+        const hideDropdown = () => { parentDropdownEl.hidden = true; };
+        // Al abrir el foco se muestra la lista completa sin filtrar (aunque el campo ya
+        // tenga texto) — filtrar solo ocurre a partir de lo que el usuario escriba después,
+        // para que siempre pueda ver todas las opciones disponibles con un clic.
+        parentInputEl.addEventListener('focus', showDropdown);
+        parentInputEl.addEventListener('click', showDropdown);
+        parentInputEl.addEventListener('input', () => {
+            const q = parentInputEl.value.trim().toLowerCase();
+            options.forEach((opt) => {
+                opt.style.display = !q || opt.dataset.value.toLowerCase().includes(q) ? '' : 'none';
+            });
+            showDropdown();
+        });
+        options.forEach((opt) => {
+            opt.addEventListener('mouseenter', () => { opt.style.background = 'rgba(255,122,26,0.16)'; });
+            opt.addEventListener('mouseleave', () => { opt.style.background = ''; });
+            opt.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                parentInputEl.value = opt.dataset.value;
+                hideDropdown();
+            });
+        });
+        if (_catParentDropdownOutsideClickHandler) document.removeEventListener('click', _catParentDropdownOutsideClickHandler);
+        _catParentDropdownOutsideClickHandler = (e) => {
+            if (!parentInputEl.contains(e.target) && !parentDropdownEl.contains(e.target)) hideDropdown();
+        };
+        document.addEventListener('click', _catParentDropdownOutsideClickHandler);
+    }
 
     const dragGrid = categoryDetailPanel.querySelector('[data-drag-grid]');
     if (dragGrid && typeof Sortable !== 'undefined') {
