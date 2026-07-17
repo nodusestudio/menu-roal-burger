@@ -6400,6 +6400,46 @@ function openInternalOrderModal() {
     document.body.style.overflow = 'hidden';
 }
 
+// Refleja en el perfil del cliente (colección "clientes") los pedidos creados desde el
+// POS. Antes solo la app pública (script-v2.js → upsertClientProfile) incrementaba
+// totalOrders/totalSpent al hacer checkout — un pedido tomado por el cajero (mesa,
+// domicilio, retiro) nunca tocaba esos campos, así que un cliente que solo pidiera
+// por POS quedaba congelado en 0 pedidos / $0 gastado para siempre en la pestaña
+// Clientes, aunque el pedido ya estuviera vinculado a su teléfono. Se usa una
+// transacción (igual que el lado público) para que dos cobros casi simultáneos del
+// mismo cliente no se pisen el contador entre sí.
+async function _upsertClientStatsFromPosOrder(orderDoc) {
+    const phoneDigits = String(orderDoc.customerPhoneDigits || '').trim();
+    if (!phoneDigits) return; // sin teléfono no hay con qué vincular un cliente real
+
+    const clientRef = firebaseDb.collection(CLIENTS_COLLECTION).doc(`phone_${phoneDigits}`);
+    const newAddress = String(orderDoc.deliveryAddress || '').trim();
+    try {
+        await firebaseDb.runTransaction(async (transaction) => {
+            const snap = await transaction.get(clientRef);
+            const previous = snap.exists ? snap.data() : {};
+            transaction.set(clientRef, {
+                customerName: String(orderDoc.customerName || previous.customerName || '').trim(),
+                customerPhone: String(orderDoc.customerPhone || previous.customerPhone || '').trim(),
+                customerPhoneDigits: phoneDigits,
+                address: newAddress || previous.address || 'Sin direccion registrada',
+                lastOrderCode: String(orderDoc.code || '').trim(),
+                lastOrderId: String(orderDoc.id || '').trim(),
+                lastOrderTotal: Number(orderDoc.total || 0),
+                totalOrders: Number(previous.totalOrders || 0) + 1,
+                totalSpent: Number(previous.totalSpent || 0) + Number(orderDoc.total || 0),
+                source: previous.source || 'admin_pos',
+                firstOrderAt: previous.firstOrderAt || firestoreNow(),
+                createdAt: previous.createdAt || firestoreNow(),
+                updatedAt: firestoreNow(),
+                lastOrderAt: firestoreNow()
+            }, { merge: true });
+        });
+    } catch (err) {
+        console.warn('[ADMIN] No se pudo actualizar estadisticas del cliente:', err.code || err.message);
+    }
+}
+
 async function saveAdminOrderQuick(config = {}, opts = {}) {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
@@ -6514,6 +6554,16 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
 
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
         _editingOrderData = null;
+
+        // Solo al crear (no en cada edición, igual que el checkout público) para no
+        // inflar el contador de visitas cada vez que se corrige un pedido ya guardado.
+        if (!isEditing) {
+            _upsertClientStatsFromPosOrder(orderDoc).then(() => fetchClients({ force: true })).then(() => {
+                renderClients();
+                renderMetricsPos();
+                renderMetricsUsers();
+            }).catch(() => {});
+        }
 
         if (_meseroSession) {
             // El mesero ve Recepción (solo lectura): vuelve al tablero para confirmar donde
