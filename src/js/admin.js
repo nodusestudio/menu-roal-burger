@@ -1604,6 +1604,10 @@ function setupAccordion() {
         if (target === 'clientes') {
             fetchClients().then(renderClients);
         }
+
+        if (target === 'metricas') {
+            _ensureMetricsOrdersLoaded();
+        }
     }
 
     // Ajusta padding-top del admin-page según altura real de barras fijas en mobile
@@ -8308,6 +8312,59 @@ let _metricsUsersFiltered = [];
 let _metricsPosFiltered = [];
 let _prodMetricsPeriod = 'all';
 
+// cerrarCaja() archiva (copia + borra) cada pedido pagado a ORDERS_ARCHIVE_COLLECTION al
+// cerrar el día — así que ordersState por sí solo deja de representar casi toda la
+// semana/mes apenas se cierra caja una vez. Las 3 vistas de Métricas (Productos, POS,
+// Comportamiento de Usuarios) necesitan historial real, no solo lo que sobrevive en la
+// colección activa. Mismo patrón que ya usa loadTicketsReport() en Informes → Tickets:
+// consultar ambas colecciones y combinar.
+let _metricsOrdersState = [];
+let _metricsOrdersLoadedAt = 0;
+const METRICS_ORDERS_LOOKBACK_DAYS = 400;
+const METRICS_ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function _loadMetricsOrders({ force = false } = {}) {
+    if (!force && _metricsOrdersState.length && (Date.now() - _metricsOrdersLoadedAt) < METRICS_ORDERS_CACHE_TTL_MS) {
+        return _metricsOrdersState;
+    }
+    const since = new Date();
+    since.setDate(since.getDate() - METRICS_ORDERS_LOOKBACK_DAYS);
+    const start = firebase.firestore.Timestamp.fromDate(since);
+    const rangeQuery = (collectionName) => firebaseDb.collection(collectionName)
+        .where('createdAt', '>=', start)
+        .orderBy('createdAt', 'desc')
+        .get()
+        .then((snap) => snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() })))
+        .catch(() => []);
+    const [activeOrders, archivedOrders] = await Promise.all([
+        rangeQuery(ORDERS_COLLECTION),
+        rangeQuery(ORDERS_ARCHIVE_COLLECTION)
+    ]);
+    const seen = new Set();
+    const merged = [];
+    for (const o of [...activeOrders, ...archivedOrders]) {
+        if (!seen.has(o.id)) { seen.add(o.id); merged.push(o); }
+    }
+    _metricsOrdersState = merged;
+    _metricsOrdersLoadedAt = Date.now();
+    return _metricsOrdersState;
+}
+
+// Dispara la carga (si hace falta) y re-renderiza las 3 vistas de Métricas cuando llega.
+// Mientras tanto, cada render usa ordersState como respaldo (ver _metricsOrdersOrFallback)
+// para no dejar la pantalla en blanco durante el primer fetch.
+function _ensureMetricsOrdersLoaded() {
+    _loadMetricsOrders().then(() => {
+        renderMetricasProductos();
+        renderMetricsPos();
+        renderMetricsUsers();
+    }).catch(() => {});
+}
+
+function _metricsOrdersOrFallback() {
+    return _metricsOrdersState.length ? _metricsOrdersState : (ordersState || []);
+}
+
 // ── helper: mini bar chart ─────────────────────────────────────────────────
 function _renderBarChart(containerId, data, color) {
     const el = document.getElementById(containerId);
@@ -8423,7 +8480,7 @@ function renderMetricasProductos(period) {
 
     // Agregar por producto
     const map = new Map();
-    for (const order of ordersState) {
+    for (const order of _metricsOrdersOrFallback()) {
         const ts = order.createdAt
             ? (typeof order.createdAt.toDate === 'function' ? order.createdAt.toDate() : new Date(order.createdAt))
             : null;
@@ -8524,7 +8581,7 @@ function renderMetricsUsers() {
     set('appSegVip',  segVip);  set('appSegVipPct',  pct(segVip));
 
     // Comportamiento — todos los pedidos para análisis de patrones
-    const appOrders = ordersState || [];
+    const appOrders = _metricsOrdersOrFallback();
 
     const hourMap = new Map();
     const dayMap  = new Array(7).fill(0);
@@ -8613,7 +8670,7 @@ function renderMetricsPos() {
     const list = document.getElementById('metricsPosList');
     if (!list) return;
 
-    const posOrders  = (ordersState || []).filter(o => o.isAdminOrder || o.source === 'admin_pos');
+    const posOrders  = _metricsOrdersOrFallback().filter(o => o.isAdminOrder || o.source === 'admin_pos');
     const posClients = (clientsState || []).slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
     const totalRev   = posOrders.reduce((s, o) => s + Number(o.total || 0), 0);
@@ -14593,6 +14650,7 @@ document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
         if (tab === 'pos')       { _traficoDetach(); renderMetricsPos(); }
         if (tab === 'app')       { renderMetricsUsers(); renderMetricasTrafico(); }
         if (tab === 'productos') { _traficoDetach(); renderMetricasProductos(); }
+        _ensureMetricsOrdersLoaded();
     });
 });
 
@@ -14601,6 +14659,7 @@ document.querySelectorAll('.prod-period-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.prod-period-btn').forEach((b) => b.classList.toggle('active', b === btn));
         renderMetricasProductos(btn.dataset.prodPeriod);
+        _ensureMetricsOrdersLoaded();
     });
 });
 
