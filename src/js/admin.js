@@ -782,7 +782,7 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
 
 // Modal con campo de texto — reemplaza window.prompt(). Resuelve el texto ingresado, o null
 // si se cancela (mismo contrato que prompt()).
-function showPromptModal({ icon = '✎', title, message = '', placeholder = '', confirmText = 'Guardar', cancelText = 'Cancelar' } = {}) {
+function showPromptModal({ icon = '✎', title, message = '', placeholder = '', value = '', confirmText = 'Guardar', cancelText = 'Cancelar' } = {}) {
     return new Promise((resolve) => {
         document.getElementById('_genericPromptOverlay')?.remove();
         const overlay = document.createElement('div');
@@ -793,7 +793,7 @@ function showPromptModal({ icon = '✎', title, message = '', placeholder = '', 
                 <div style="font-size:2rem;margin-bottom:0.75rem;">${icon}</div>
                 <h3 style="margin:0 0 0.5rem;color:#fff;font-size:1.1rem;font-weight:700;">${escapeHtml(title || '')}</h3>
                 ${message ? `<p style="margin:0 0 0.9rem;color:rgba(255,255,255,0.65);font-size:0.88rem;line-height:1.5;">${escapeHtml(message)}</p>` : ''}
-                <input type="text" id="_gpInput" placeholder="${escapeHtml(placeholder)}" style="width:100%;box-sizing:border-box;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.18);border-radius:10px;color:#fff;padding:10px 12px;font-size:0.9rem;margin-bottom:1.1rem;outline:none;font-family:'Space Grotesk',sans-serif;">
+                <input type="text" id="_gpInput" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(value)}" style="width:100%;box-sizing:border-box;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.18);border-radius:10px;color:#fff;padding:10px 12px;font-size:0.9rem;margin-bottom:1.1rem;outline:none;font-family:'Space Grotesk',sans-serif;">
                 <div style="display:flex;gap:0.75rem;">
                     <button type="button" id="_gpCancelBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">${escapeHtml(cancelText)}</button>
                     <button type="button" id="_gpAcceptBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:none;background:var(--admin-accent,#ff9540);color:#111;font-size:0.9rem;font-weight:700;cursor:pointer;">${escapeHtml(confirmText)}</button>
@@ -806,7 +806,7 @@ function showPromptModal({ icon = '✎', title, message = '', placeholder = '', 
         document.getElementById('_gpCancelBtn').addEventListener('click', () => finish(null));
         document.getElementById('_gpAcceptBtn').addEventListener('click', () => finish(input.value));
         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(input.value); });
-        setTimeout(() => input.focus(), 50);
+        setTimeout(() => { input.focus(); input.select(); }, 50);
     });
 }
 
@@ -7783,9 +7783,16 @@ function _renderCategoryDetailPanel(categoryId) {
                         value="${escapeHtml(category.parentCategory || '')}"
                         placeholder="Ej: Burger — deja vacío para no agrupar"
                         style="width:100%;box-sizing:border-box;">
-                    <div id="catParentDropdown" hidden style="position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:220px;overflow-y:auto;background:#1c1f26;border:1.5px solid rgba(255,255,255,0.16);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+                    <div id="catParentDropdown" hidden style="position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:260px;overflow-y:auto;background:#1c1f26;border:1.5px solid rgba(255,255,255,0.16);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);">
                         ${[...new Set(categoriesState.map((c) => c.parentCategory).filter(Boolean))]
-                            .map((p) => `<div class="cat-parent-option" data-value="${escapeHtml(p)}" style="padding:9px 12px;font-size:0.82rem;color:#eef4ff;cursor:pointer;">${escapeHtml(p)}</div>`).join('')}
+                            .map((p) => `<div class="cat-parent-option" data-value="${escapeHtml(p)}" style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:9px 8px 9px 12px;font-size:0.82rem;color:#eef4ff;cursor:pointer;">
+                                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p)}</span>
+                                <span style="display:flex;gap:2px;flex-shrink:0;">
+                                    <button type="button" class="cat-parent-group-edit" data-group="${escapeHtml(p)}" title="Renombrar grupo" style="width:24px;height:24px;border:none;background:transparent;color:rgba(255,255,255,0.55);border-radius:6px;cursor:pointer;font-size:0.8rem;">✏️</button>
+                                    <button type="button" class="cat-parent-group-delete" data-group="${escapeHtml(p)}" title="Eliminar grupo (desagrupa las categorías)" style="width:24px;height:24px;border:none;background:transparent;color:rgba(255,255,255,0.55);border-radius:6px;cursor:pointer;font-size:0.8rem;">🗑️</button>
+                                </span>
+                            </div>`).join('')}
+                        <div id="catParentGroupCreate" style="padding:9px 12px;font-size:0.8rem;color:var(--admin-accent,#ff9540);cursor:pointer;border-top:1px solid rgba(255,255,255,0.08);font-weight:600;">➕ Crear categoría principal nueva</div>
                     </div>
                 </form>
             </div>
@@ -7925,7 +7932,7 @@ function _renderCategoryDetailPanel(categoryId) {
     const parentDropdownEl = categoryDetailPanel.querySelector('#catParentDropdown');
     if (parentInputEl && parentDropdownEl) {
         const options = Array.from(parentDropdownEl.querySelectorAll('.cat-parent-option'));
-        const showDropdown = () => { if (options.length) parentDropdownEl.hidden = false; };
+        const showDropdown = () => { parentDropdownEl.hidden = false; };
         const hideDropdown = () => { parentDropdownEl.hidden = true; };
         // Al abrir el foco se muestra la lista completa sin filtrar (aunque el campo ya
         // tenga texto) — filtrar solo ocurre a partir de lo que el usuario escriba después,
@@ -7943,11 +7950,49 @@ function _renderCategoryDetailPanel(categoryId) {
             opt.addEventListener('mouseenter', () => { opt.style.background = 'rgba(255,122,26,0.16)'; });
             opt.addEventListener('mouseleave', () => { opt.style.background = ''; });
             opt.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.cat-parent-group-edit') || e.target.closest('.cat-parent-group-delete')) return;
                 e.preventDefault();
                 parentInputEl.value = opt.dataset.value;
                 hideDropdown();
             });
         });
+        parentDropdownEl.querySelectorAll('.cat-parent-group-edit').forEach((btn) => {
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                hideDropdown();
+                _renameCategoryParentGroup(btn.dataset.group);
+            });
+        });
+        parentDropdownEl.querySelectorAll('.cat-parent-group-delete').forEach((btn) => {
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                hideDropdown();
+                _deleteCategoryParentGroup(btn.dataset.group);
+            });
+        });
+        const createRow = parentDropdownEl.querySelector('#catParentGroupCreate');
+        if (createRow) {
+            createRow.addEventListener('mouseenter', () => { createRow.style.background = 'rgba(255,122,26,0.1)'; });
+            createRow.addEventListener('mouseleave', () => { createRow.style.background = ''; });
+            createRow.addEventListener('mousedown', async (e) => {
+                e.preventDefault();
+                hideDropdown();
+                const name = await showPromptModal({
+                    icon: '➕',
+                    title: 'Nueva categoría principal',
+                    message: 'Se usará para agrupar esta categoría con otras en una misma pestaña del POS. Recuerda pulsar "Guardar" para aplicarla.',
+                    placeholder: 'Ej: Burger',
+                    confirmText: 'Usar nombre',
+                });
+                if (name === null) return;
+                const trimmed = name.trim();
+                if (!trimmed) return;
+                parentInputEl.value = trimmed;
+                parentInputEl.focus();
+            });
+        }
         if (_catParentDropdownOutsideClickHandler) document.removeEventListener('click', _catParentDropdownOutsideClickHandler);
         _catParentDropdownOutsideClickHandler = (e) => {
             if (!parentInputEl.contains(e.target) && !parentDropdownEl.contains(e.target)) hideDropdown();
@@ -8101,6 +8146,51 @@ async function _saveCategoryFromDetail(categoryId) {
         showNotice('Categoría guardada.', 'ok');
     } catch (e) {
         showNotice(`Error al guardar: ${e.message || 'Error inesperado.'}`, 'error');
+    }
+}
+
+// "Categoría principal" es un valor libre compartido por varias categorías (no un
+// documento propio) — renombrar/eliminar el grupo significa reescribir ese valor en
+// todas las categorías que lo usan.
+async function _renameCategoryParentGroup(oldName) {
+    const affected = categoriesState.filter((c) => c.parentCategory === oldName);
+    const newName = await showPromptModal({
+        icon: '✏️',
+        title: 'Renombrar categoría principal',
+        message: `Se actualizará en ${affected.length} categoría${affected.length === 1 ? '' : 's'} que usan este grupo.`,
+        value: oldName,
+        confirmText: 'Renombrar',
+    });
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    try {
+        const batch = firebaseDb.batch();
+        affected.forEach((c) => batch.update(firebaseDb.collection('categorias').doc(c.id), { parentCategory: trimmed, updated_at: firestoreNow() }));
+        await batch.commit();
+        await reloadDataAndRender();
+        showNotice(`Categoría principal renombrada a "${trimmed}".`, 'ok');
+    } catch (e) {
+        showNotice(`Error al renombrar: ${e.message || 'Error inesperado.'}`, 'error');
+    }
+}
+
+async function _deleteCategoryParentGroup(name) {
+    const affected = categoriesState.filter((c) => c.parentCategory === name);
+    const confirmed = await showConfirmModal({
+        title: `¿Eliminar categoría principal "${name}"?`,
+        message: `Se quitará el agrupamiento de ${affected.length} categoría${affected.length === 1 ? '' : 's'}. Las categorías y sus productos no se eliminan, solo dejan de compartir pestaña en el POS.`,
+        confirmText: 'Eliminar grupo',
+    });
+    if (!confirmed) return;
+    try {
+        const batch = firebaseDb.batch();
+        affected.forEach((c) => batch.update(firebaseDb.collection('categorias').doc(c.id), { parentCategory: null, updated_at: firestoreNow() }));
+        await batch.commit();
+        await reloadDataAndRender();
+        showNotice('Categoría principal eliminada.', 'ok');
+    } catch (e) {
+        showNotice(`Error al eliminar: ${e.message || 'Error inesperado.'}`, 'error');
     }
 }
 
