@@ -17191,12 +17191,40 @@ let _gastoCategoriaId = null;
 let _gastoSubcategoria = null;
 let _gastoFromHistorial = false;
 
-async function loadGastosCaja() {
+// Gastos de la jornada de caja actualmente abierta (o del día de hoy si no hay apertura
+// registrada), separados en gastos reales y traslados internos entre métodos de pago (un
+// traslado no es un gasto real — la plata no sale del negocio). Antes esta misma lógica
+// de "cuáles gastos son de esta jornada" + "cuáles son traslados" estaba copiada casi
+// igual en renderCajaDiaria() y cerrarCaja().
+function _splitGastosDeJornada() {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const deLaJornada = _gastosCajaState.filter((g) => {
+        if (g.tipo === 'externo') return false;
+        const ms = _tsMs(g.registradoAt);
+        if (cajaAperturaAt) return ms >= cajaAperturaAt;
+        return new Date(ms).toISOString().split('T')[0] === todayStr;
+    });
+    return {
+        gastos: deLaJornada.filter((g) => g.tipo !== 'traslado'),
+        traslados: deLaJornada.filter((g) => g.tipo === 'traslado'),
+    };
+}
+
+// Sin rango de fechas: trae los 500 más recientes (vista por defecto, rápida). Con rango
+// (Informes → Gastos filtrando por fecha), consulta Firestore acotada a ese rango en vez
+// de limitarse a esos mismos 500 — antes el filtro de fecha se aplicaba en memoria SOLO
+// sobre esos 500 más recientes, así que un rango antiguo podía mostrarse vacío o
+// incompleto aunque sí hubiera gastos reales de esa fecha guardados en la base.
+async function loadGastosCaja({ desdeMs = null, hastaMs = null } = {}) {
     try {
-        const snap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
-            .orderBy('registradoAt', 'desc')
-            .limit(500)
-            .get();
+        let q = firebaseDb.collection(GASTOS_CAJA_COLLECTION).orderBy('registradoAt', 'desc');
+        if (desdeMs || hastaMs) {
+            if (hastaMs) q = q.where('registradoAt', '<=', hastaMs);
+            if (desdeMs) q = q.where('registradoAt', '>=', desdeMs);
+        } else {
+            q = q.limit(500);
+        }
+        const snap = await q.get();
         // Incluye gastos de caja, externos y traslados: renderCajaDiaria() y cerrarCaja()
         // separan cada tipo internamente (y ambos esperan encontrar los traslados aquí para
         // reflejarlos en el saldo por método). Los traslados no son gastos reales — quien
@@ -17594,15 +17622,7 @@ function renderCajaDiaria() {
     });
 
     // Filtrar gastos de la jornada actual (excluir gastos externos del historial)
-    const _allGastosJornada = _gastosCajaState.filter((g) => {
-        if (g.tipo === 'externo') return false;
-        const ms = _tsMs(g.registradoAt);
-        if (cajaAperturaAt) return ms >= cajaAperturaAt;
-        const todayStr = new Date().toISOString().split('T')[0];
-        return new Date(ms).toISOString().split('T')[0] === todayStr;
-    });
-    const allGastos    = _allGastosJornada.filter((g) => g.tipo !== 'traslado');
-    const allTraslados = _allGastosJornada.filter((g) => g.tipo === 'traslado');
+    const { gastos: allGastos, traslados: allTraslados } = _splitGastosDeJornada();
 
     const methods = getPaymentMethods();
     const methodKeys = methods.map((m) => m.id);
@@ -18423,14 +18443,7 @@ async function cerrarCaja() {
         });
 
         // Incluir gastos de la jornada actual (excluir traslados internos y gastos externos del cálculo de egresos)
-        const _allJornadaGastos = _gastosCajaState.filter((g) => {
-            if (g.tipo === 'externo') return false;
-            const ms = _tsMs(g.registradoAt);
-            if (cajaAperturaAt) return ms >= cajaAperturaAt;
-            return new Date(ms).toISOString().split('T')[0] === todayStr;
-        });
-        const gastosFiltered   = _allJornadaGastos.filter((g) => g.tipo !== 'traslado');
-        const trasladosInternos = _allJornadaGastos.filter((g) => g.tipo === 'traslado');
+        const { gastos: gastosFiltered, traslados: trasladosInternos } = _splitGastosDeJornada();
 
         // Incluir gasto virtual de domicilios si aún no fue registrado como gasto real
         const domicilioVirtual = _computeDomicilioGastoVirtual(paid, gastosFiltered);
@@ -20796,20 +20809,33 @@ function renderGastosInformes() {
     `;
 }
 
-document.getElementById('gastosFilterBtn')?.addEventListener('click', renderGastosInformes);
-document.getElementById('gastosClearFilterBtn')?.addEventListener('click', () => {
+// Re-consulta Firestore acotada al rango elegido en vez de solo filtrar en memoria los
+// 500 gastos más recientes ya cargados — así un rango de fechas antiguo trae los gastos
+// reales de esa fecha aunque hayan quedado fuera de ese tope de 500.
+async function _gastosFetchForCurrentFilter() {
+    const desdeVal = document.getElementById('gastosDesde')?.value;
+    const hastaVal = document.getElementById('gastosHasta')?.value;
+    const desdeMs = desdeVal ? new Date(desdeVal + 'T00:00:00').getTime() : null;
+    const hastaMs = hastaVal ? new Date(hastaVal + 'T23:59:59').getTime() : null;
+    await loadGastosCaja({ desdeMs, hastaMs });
+    renderGastosInformes();
+}
+
+document.getElementById('gastosFilterBtn')?.addEventListener('click', _gastosFetchForCurrentFilter);
+document.getElementById('gastosClearFilterBtn')?.addEventListener('click', async () => {
     const desdeEl = document.getElementById('gastosDesde');
     const hastaEl = document.getElementById('gastosHasta');
     if (desdeEl) desdeEl.value = '';
     if (hastaEl) hastaEl.value = '';
     document.querySelectorAll('#gastosDatePresets .date-preset-btn').forEach((b) => b.classList.remove('active'));
+    await loadGastosCaja(); // vuelve a la vista por defecto (500 más recientes)
     renderGastosInformes();
 });
 
 document.getElementById('gastosDatePresets')?.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-date-preset]');
     if (!btn) return;
-    _applyDatePreset('gastosDatePresets', 'gastosDesde', 'gastosHasta', btn, renderGastosInformes);
+    _applyDatePreset('gastosDatePresets', 'gastosDesde', 'gastosHasta', btn, _gastosFetchForCurrentFilter);
 });
 
 // ── Caja Chica ────────────────────────────────────────────────────────────────
