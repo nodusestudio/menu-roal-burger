@@ -7784,10 +7784,8 @@ function _renderCategoryDetailPanel(categoryId) {
                         placeholder="Ej: Burger — deja vacío para no agrupar"
                         style="width:100%;box-sizing:border-box;">
                     <div id="catParentDropdown" hidden style="position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;max-height:220px;overflow-y:auto;background:#1c1f26;border:1.5px solid rgba(255,255,255,0.16);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);">
-                        ${[...new Set([
-                            ...categoriesState.map((c) => c.parentCategory).filter(Boolean),
-                            ...categoriesState.filter((c) => c.id !== categoryId).map((c) => c.name).filter(Boolean),
-                        ])].map((p) => `<div class="cat-parent-option" data-value="${escapeHtml(p)}" style="padding:9px 12px;font-size:0.82rem;color:#eef4ff;cursor:pointer;">${escapeHtml(p)}</div>`).join('')}
+                        ${[...new Set(categoriesState.map((c) => c.parentCategory).filter(Boolean))]
+                            .map((p) => `<div class="cat-parent-option" data-value="${escapeHtml(p)}" style="padding:9px 12px;font-size:0.82rem;color:#eef4ff;cursor:pointer;">${escapeHtml(p)}</div>`).join('')}
                     </div>
                 </form>
             </div>
