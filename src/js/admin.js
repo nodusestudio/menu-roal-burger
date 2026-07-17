@@ -10434,6 +10434,46 @@ function _inboxInitial(name) {
     return String(name || '?').trim().charAt(0).toUpperCase();
 }
 
+// Identifica a "la misma persona" por teléfono (igual que el resto del admin liga
+// clientes/pedidos) — con respaldo por nombre normalizado para los pocos mensajes sin
+// teléfono. Antes cada solicitud (reset, soporte, mensaje directo) se listaba como una
+// conversación aparte aunque fuera la misma persona escribiendo varias veces.
+function _inboxThreadKey(msg) {
+    const digits = String(msg.customerPhoneDigits || normalizePhoneDigits(msg.customerPhone || '') || '').trim();
+    if (digits) return `phone:${digits}`;
+    return `name:${normalizeCategoryKey(msg.customerName || 'sin_nombre')}`;
+}
+
+// Agrupa mensajes en hilos por cliente — un hilo por persona, con todos sus mensajes en
+// orden cronológico (antiguo → nuevo) para verse como una conversación continua.
+function _inboxBuildThreads(messages) {
+    const map = new Map();
+    messages.forEach((msg) => {
+        const key = _inboxThreadKey(msg);
+        if (!map.has(key)) {
+            map.set(key, { key, customerName: '', customerPhone: '', customerPhoneDigits: '', customerAddress: '', messages: [], _latestMs: 0 });
+        }
+        const thread = map.get(key);
+        thread.messages.push(msg);
+        const ms = _tsMs(msg.createdAt);
+        if (ms >= thread._latestMs) {
+            thread._latestMs = ms;
+            thread.customerName = msg.customerName || thread.customerName;
+            thread.customerPhone = msg.customerPhone || thread.customerPhone;
+            thread.customerPhoneDigits = msg.customerPhoneDigits || thread.customerPhoneDigits;
+            thread.customerAddress = msg.customerAddress || thread.customerAddress;
+        }
+    });
+    const threads = Array.from(map.values());
+    threads.forEach((t) => {
+        t.messages.sort((a, b) => _tsMs(a.createdAt) - _tsMs(b.createdAt));
+        t.pendingCount = t.messages.filter((m) => m.status !== 'resolved').length;
+        t.lastMessage = t.messages[t.messages.length - 1];
+    });
+    threads.sort((a, b) => _tsMs(b.lastMessage.createdAt) - _tsMs(a.lastMessage.createdAt));
+    return threads;
+}
+
 function renderMessages() {
     if (!messagesList) return;
 
@@ -10456,31 +10496,34 @@ function renderMessages() {
         );
     }
 
+    const threads = _inboxBuildThreads(filtered);
+
     messagesList.innerHTML = '';
 
-    if (!filtered.length) {
+    if (!threads.length) {
         messagesList.innerHTML = '<p class="inbox-empty">Sin mensajes aún</p>';
         return;
     }
 
-    filtered.forEach(msg => {
-        const isActive = msg.id === _inboxActiveId;
-        const isPending = msg.status !== 'resolved';
+    threads.forEach(thread => {
+        const isActive = thread.key === _inboxActiveId;
+        const isPending = thread.pendingCount > 0;
+        const last = thread.lastMessage;
         const item = document.createElement('div');
         item.className = `inbox-thread-item${isActive ? ' is-active' : ''}`;
-        item.dataset.msgId = msg.id;
+        item.dataset.threadKey = thread.key;
         item.innerHTML = `
-            <div class="inbox-thread-avatar">${_inboxInitial(msg.customerName)}</div>
+            <div class="inbox-thread-avatar">${_inboxInitial(thread.customerName)}</div>
             <div class="inbox-thread-info">
-                <div class="inbox-thread-name">${escapeHtml(msg.customerName || 'Sin nombre')}</div>
-                <div class="inbox-thread-preview">${escapeHtml(String(msg.body || msg.subject || '').substring(0, 50))}</div>
+                <div class="inbox-thread-name">${escapeHtml(thread.customerName || 'Sin nombre')}</div>
+                <div class="inbox-thread-preview">${escapeHtml(String(last.body || last.subject || '').substring(0, 50))}</div>
             </div>
             <div class="inbox-thread-meta">
-                <span class="inbox-thread-time">${_inboxFormatTime(msg.createdAt)}</span>
+                <span class="inbox-thread-time">${_inboxFormatTime(last.createdAt)}</span>
                 ${isPending ? '<span class="inbox-thread-unread"></span>' : '<span class="inbox-thread-status-dot"></span>'}
             </div>
         `;
-        item.addEventListener('click', () => openInboxDetail(msg.id));
+        item.addEventListener('click', () => openInboxDetail(thread.key));
         messagesList.appendChild(item);
     });
 
@@ -10501,56 +10544,68 @@ function _inboxFormatTime(ts) {
     } catch { return ''; }
 }
 
-function openInboxDetail(messageId, scroll = true) {
-    _inboxActiveId = messageId;
-    const msg = messagesState.find(m => m.id === messageId);
+function openInboxDetail(threadKey, scroll = true) {
+    _inboxActiveId = threadKey;
+    const thread = _inboxBuildThreads(messagesState).find(t => t.key === threadKey);
     const detail = document.getElementById('inboxDetail');
     if (!detail) return;
 
     // Marcar activo en la lista
     document.querySelectorAll('.inbox-thread-item').forEach(el => {
-        el.classList.toggle('is-active', el.dataset.msgId === messageId);
+        el.classList.toggle('is-active', el.dataset.threadKey === threadKey);
     });
 
-    if (!msg) {
-        detail.innerHTML = '<div class="inbox-detail-empty"><span>⚠️</span><p>Mensaje no encontrado</p></div>';
+    if (!thread) {
+        detail.innerHTML = '<div class="inbox-detail-empty"><span>💬</span><p>Selecciona una conversación</p></div>';
         return;
     }
 
-    const isResolved = msg.status === 'resolved';
-    const canResetPassword = msg.type === 'password_reset_request' && msg.customerPhoneDigits;
-    const canReply = Boolean(msg.customerPhoneDigits) && msg.type !== 'admin_direct_reply';
-    const canWhatsApp = Boolean(msg.customerPhoneDigits);
+    const lastMsg = thread.lastMessage;
+    const lastResetMsg = [...thread.messages].reverse().find(m => m.type === 'password_reset_request');
+    const canResetPassword = Boolean(lastResetMsg && thread.customerPhoneDigits);
+    const canReply = Boolean(thread.customerPhoneDigits) && lastMsg.type !== 'admin_direct_reply';
+    const canWhatsApp = Boolean(thread.customerPhoneDigits);
 
-    detail.innerHTML = `
-        <div class="inbox-detail-head">
-            <div class="inbox-detail-avatar">${_inboxInitial(msg.customerName)}</div>
-            <div class="inbox-detail-head-info">
-                <div class="inbox-detail-head-name">${escapeHtml(msg.customerName || 'Sin nombre')}</div>
-                <div class="inbox-detail-head-sub">${escapeHtml(msg.customerPhone || '')}${msg.customerAddress ? ' · ' + escapeHtml(msg.customerAddress) : ''}</div>
-            </div>
-            <div class="inbox-detail-head-actions">
-                ${canWhatsApp ? `<button class="inbox-head-btn blue" data-message-action="whatsapp" data-message-id="${escapeHtml(msg.id)}">📲 WhatsApp</button>` : ''}
-                ${canResetPassword ? `<button class="inbox-head-btn blue" data-message-action="reset-password" data-message-id="${escapeHtml(msg.id)}">🔑 Reset</button>` : ''}
-                <button class="inbox-head-btn ${isResolved ? '' : 'green'}" data-message-action="resolve" data-message-id="${escapeHtml(msg.id)}">${isResolved ? '↩ Reabrir' : '✓ Atendido'}</button>
-                <button class="inbox-head-btn red" data-message-action="delete" data-message-id="${escapeHtml(msg.id)}">🗑</button>
-            </div>
-        </div>
-        <div class="inbox-messages-scroll" id="inboxMsgScroll">
-            <span class="inbox-msg-info-chip">${_inboxGetTypeLabel(msg.type)} · ${escapeHtml(formatOrderDate(msg.createdAt))} · ${escapeHtml(msg.source || 'app')}</span>
+    // Cada mensaje del hilo conserva sus propias acciones (atendido/eliminar) — son
+    // solicitudes distintas aunque se vean como una sola conversación continua.
+    const messagesHtml = thread.messages.map((msg) => {
+        const isResolved = msg.status === 'resolved';
+        return `
             <div class="inbox-msg-group">
+                <span class="inbox-msg-info-chip">
+                    ${_inboxGetTypeLabel(msg.type)} · ${escapeHtml(formatOrderDate(msg.createdAt))}
+                    <button type="button" class="inbox-msg-mini-action" data-message-action="resolve" data-message-id="${escapeHtml(msg.id)}">${isResolved ? '↩ Reabrir' : '✓ Atendido'}</button>
+                    <button type="button" class="inbox-msg-mini-action" data-message-action="delete" data-message-id="${escapeHtml(msg.id)}">🗑</button>
+                </span>
                 <div class="inbox-bubble from-user">${escapeHtml(msg.subject || '')}</div>
                 ${msg.body && msg.body !== msg.subject ? `<div class="inbox-bubble from-user">${escapeHtml(msg.body)}</div>` : ''}
                 <span class="inbox-bubble-meta">${escapeHtml(_inboxFormatTime(msg.createdAt))}</span>
+                ${msg.adminReply ? `
+                    <div class="inbox-bubble from-admin">${escapeHtml(msg.adminReply)}</div>
+                    <span class="inbox-bubble-meta">Admin · ${isResolved ? escapeHtml(_inboxFormatTime(msg.resolvedAt)) : ''}</span>
+                ` : ''}
+            </div>`;
+    }).join('');
+
+    detail.innerHTML = `
+        <div class="inbox-detail-head">
+            <div class="inbox-detail-avatar">${_inboxInitial(thread.customerName)}</div>
+            <div class="inbox-detail-head-info">
+                <div class="inbox-detail-head-name">${escapeHtml(thread.customerName || 'Sin nombre')}</div>
+                <div class="inbox-detail-head-sub">${escapeHtml(thread.customerPhone || '')}${thread.customerAddress ? ' · ' + escapeHtml(thread.customerAddress) : ''}</div>
             </div>
-            ${msg.adminReply ? `<div class="inbox-msg-group">
-                <div class="inbox-bubble from-admin">${escapeHtml(msg.adminReply)}</div>
-                <span class="inbox-bubble-meta">Admin · ${isResolved ? escapeHtml(_inboxFormatTime(msg.resolvedAt)) : ''}</span>
-            </div>` : ''}
+            <div class="inbox-detail-head-actions">
+                ${canWhatsApp ? `<button class="inbox-head-btn blue" data-message-action="whatsapp" data-message-id="${escapeHtml(lastMsg.id)}">📲 WhatsApp</button>` : ''}
+                ${canResetPassword ? `<button class="inbox-head-btn blue" data-message-action="reset-password" data-message-id="${escapeHtml(lastResetMsg.id)}">🔑 Reset</button>` : ''}
+                <button class="inbox-head-btn red" data-message-action="delete-thread" data-thread-key="${escapeHtml(threadKey)}">🗑 Eliminar conversación</button>
+            </div>
+        </div>
+        <div class="inbox-messages-scroll" id="inboxMsgScroll">
+            ${messagesHtml}
         </div>
         ${canReply ? `<div class="inbox-reply-bar">
             <textarea class="inbox-reply-input" id="inboxReplyInput" placeholder="Escribe una respuesta…" rows="1"></textarea>
-            <button class="inbox-reply-send" data-message-action="reply" data-message-id="${escapeHtml(msg.id)}" title="Enviar">➤</button>
+            <button class="inbox-reply-send" data-message-action="reply" data-message-id="${escapeHtml(lastMsg.id)}" title="Enviar">➤</button>
         </div>` : ''}
     `;
 
@@ -14923,7 +14978,7 @@ document.getElementById('inboxSearch')?.addEventListener('input', () => renderMe
             (m.customerPhone === client.customerPhone || m.customerId === client.id)
         );
         if (existing) {
-            openInboxDetail(existing.id);
+            openInboxDetail(_inboxThreadKey(existing));
             return;
         }
 
@@ -14941,10 +14996,10 @@ document.getElementById('inboxSearch')?.addEventListener('input', () => renderMe
                 replies: [],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
-            const ref = await firebaseDb.collection(MESSAGES_COLLECTION).add(newDoc);
-            // Esperar a que onSnapshot lo incorpore y luego abrir
-            // Como respaldo, abrimos por id inmediatamente
-            setTimeout(() => openInboxDetail(ref.id), 400);
+            await firebaseDb.collection(MESSAGES_COLLECTION).add(newDoc);
+            // Esperar a que onSnapshot lo incorpore y luego abrir el hilo del cliente
+            // (agrupado por teléfono — puede incluir otros mensajes suyos ya existentes).
+            setTimeout(() => openInboxDetail(_inboxThreadKey(newDoc)), 400);
         } catch (err) {
             console.error('[Inbox] Error creando conversación:', err);
         }
@@ -15111,8 +15166,38 @@ document.addEventListener('click', async (event) => {
     if (!(actionButton instanceof HTMLButtonElement)) return;
 
     const action = String(actionButton.dataset.messageAction || '').trim();
+    if (!action) return;
     const messageId = String(actionButton.dataset.messageId || '').trim();
-    if (!action || !messageId) return;
+
+    // Elimina toda la conversación (todos los mensajes de ese hilo) — a diferencia del
+    // resto de acciones, no apunta a un mensaje puntual sino a la clave del hilo completo.
+    if (action === 'delete-thread') {
+        const threadKey = String(actionButton.dataset.threadKey || '').trim();
+        if (!threadKey) return;
+        const threadMessages = messagesState.filter((m) => _inboxThreadKey(m) === threadKey);
+        if (!threadMessages.length) return;
+        const name = threadMessages[threadMessages.length - 1]?.customerName || 'este cliente';
+        const confirmed = await showConfirmModal({
+            title: `¿Eliminar toda la conversación con ${name}?`,
+            message: `Se eliminarán ${threadMessages.length} mensaje${threadMessages.length === 1 ? '' : 's'}. No se puede deshacer.`,
+            confirmText: 'Eliminar todo'
+        });
+        if (!confirmed) return;
+        try {
+            await Promise.all(threadMessages.map((m) => deleteMessageRequest(m.id)));
+            if (_inboxActiveId === threadKey) {
+                _inboxActiveId = null;
+                const detail = document.getElementById('inboxDetail');
+                if (detail) detail.innerHTML = '<div class="inbox-detail-empty"><span>💬</span><p>Selecciona una conversación</p></div>';
+            }
+            showNotice('Conversación eliminada correctamente.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo eliminar la conversación: ${error.message || 'error inesperado.'}`, 'error');
+        }
+        return;
+    }
+
+    if (!messageId) return;
 
     // Para reply desde el input inline
     if (action === 'reply') {
@@ -15202,18 +15287,22 @@ document.addEventListener('click', async (event) => {
     }
 
     if (action === 'delete') {
-        const confirmed = await showConfirmModal({ title: `¿Eliminar la solicitud de ${message.customerName}?`, message: 'No se puede deshacer.', confirmText: 'Eliminar' });
+        const confirmed = await showConfirmModal({ title: `¿Eliminar este mensaje de ${message.customerName}?`, message: 'No se puede deshacer.', confirmText: 'Eliminar' });
         if (!confirmed) return;
         try {
-            if (_inboxActiveId === messageId) {
+            await deleteMessageRequest(messageId);
+            // Si era el único mensaje del hilo que sigue abierto en el detalle, limpiar la
+            // vista — _inboxActiveId es la clave del hilo, no de este mensaje puntual.
+            const threadKey = _inboxThreadKey(message);
+            const remaining = messagesState.filter((m) => m.id !== messageId && _inboxThreadKey(m) === threadKey);
+            if (_inboxActiveId === threadKey && !remaining.length) {
                 _inboxActiveId = null;
                 const detail = document.getElementById('inboxDetail');
                 if (detail) detail.innerHTML = '<div class="inbox-detail-empty"><span>💬</span><p>Selecciona una conversación</p></div>';
             }
-            await deleteMessageRequest(messageId);
-            showNotice('Solicitud eliminada correctamente.', 'ok');
+            showNotice('Mensaje eliminado correctamente.', 'ok');
         } catch (error) {
-            showNotice(`No se pudo eliminar la solicitud: ${error.message || 'error inesperado.'}`, 'error');
+            showNotice(`No se pudo eliminar el mensaje: ${error.message || 'error inesperado.'}`, 'error');
         }
     }
 });

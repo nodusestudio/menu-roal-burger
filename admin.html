@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260717-1145">
+    <link rel="stylesheet" href="style.css?v=20260717-1202">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -8062,6 +8062,9 @@
         /* Info del mensaje (tipo, origen) */
         .inbox-msg-info-chip {
             align-self: center;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
             font-size: 0.63rem;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.08);
@@ -8070,6 +8073,20 @@
             color: var(--admin-muted);
             margin: 4px 0;
         }
+        /* Acciones por mensaje dentro de un hilo agrupado (atendido/eliminar) — cada
+           solicitud conserva su propio estado aunque se vea como una sola conversación. */
+        .inbox-msg-mini-action {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: #eef4ff;
+            border-radius: 999px;
+            padding: 1px 8px;
+            font-size: 0.6rem;
+            cursor: pointer;
+            line-height: 1.6;
+            transition: background 0.12s;
+        }
+        .inbox-msg-mini-action:hover { background: rgba(255,122,26,0.18); }
 
         /* Footer de respuesta */
         .inbox-reply-bar {
@@ -14567,8 +14584,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260717-1145"></script>
-    <script defer src="admin.js?v=20260717-1145"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260717-1202"></script>
+    <script defer src="admin.js?v=20260717-1202"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
