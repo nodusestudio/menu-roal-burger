@@ -6551,6 +6551,12 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
             }).catch(() => {});
         }
 
+        // Recordar el precio real cobrado para esta dirección — la próxima vez que llegue
+        // un pedido ahí, se sugiere de inmediato sin depender de una nueva consulta externa.
+        if (orderType === 'domicilio' && orderDoc.deliveryAddress && deliveryFeeVal > 0) {
+            _rememberDeliveryFee(orderDoc.deliveryAddress, deliveryFeeVal);
+        }
+
         if (_meseroSession) {
             // El mesero ve Recepción (solo lectura): vuelve al tablero para confirmar donde
             // quedó su pedido, igual que un cajero normal tras guardar.
@@ -14191,6 +14197,18 @@ async function _ptsSuggestDeliveryFee(addressText) {
 
     _ptsSetZoneBadge('🔍 Calculando tarifa...', '#aaa');
 
+    // Un precio ya cobrado antes en esta misma dirección es más confiable que el polígono
+    // (puede reflejar una corrección manual del cajero) y no depende de Nominatim.
+    const remembered = await _lookupRememberedDeliveryFee(val);
+    if (remembered && remembered.fee) {
+        const feeInput = document.getElementById('ptsDeliveryFee');
+        if (feeInput && (!feeInput.value || Number(feeInput.value) === 0)) {
+            feeInput.value = remembered.fee;
+        }
+        _ptsSetZoneBadge(`📍 $${Number(remembered.fee).toLocaleString('es-CO')} — ya usado antes en esta dirección`, '#6ee7b7');
+        return;
+    }
+
     try {
         const variants = _adminQueryVariants(val);
         let result = null;
@@ -18835,7 +18853,58 @@ function _updateCajaEstadoUI() {
     window._adminDetectZone = _adminZoneForPoint;
     window._adminGeocode = _adminGeocode;
     window._adminQueryVariants = _adminQueryVariants;
+    window._adminNormalizeAddress = _adminNormalizeAddress;
 })();
+
+// ── Memoria de tarifas por dirección ─────────────────────────────────────────
+// El polígono de zonas da un estimado, pero no cubre todo (direcciones nuevas,
+// zonas rurales, casos donde el cajero corrigió el valor a mano). Una vez se cobra
+// un domicilio real para una dirección, se recuerda ese monto — la próxima vez que
+// llegue un pedido a la misma dirección se sugiere ese precio real de inmediato,
+// sin depender de una nueva consulta a Nominatim (más rápido y más confiable).
+const DOMICILIO_TARIFAS_COLLECTION = 'domicilio_tarifas';
+const _domicilioTarifasCache = new Map();
+
+function _domicilioAddressKey(addressText) {
+    const normalized = (window._adminNormalizeAddress || ((s) => String(s || '').toLowerCase().trim()))(String(addressText || ''));
+    return normalized.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+async function _lookupRememberedDeliveryFee(addressText) {
+    const key = _domicilioAddressKey(addressText);
+    if (!key) return null;
+    if (_domicilioTarifasCache.has(key)) return _domicilioTarifasCache.get(key);
+    try {
+        const doc = await firebaseDb.collection(DOMICILIO_TARIFAS_COLLECTION).doc(key).get();
+        const data = doc.exists ? doc.data() : null;
+        _domicilioTarifasCache.set(key, data);
+        return data;
+    } catch (_) {
+        return null;
+    }
+}
+
+async function _rememberDeliveryFee(addressText, fee) {
+    const key = _domicilioAddressKey(addressText);
+    const feeNum = Number(fee);
+    if (!key || !Number.isFinite(feeNum) || feeNum <= 0) return;
+    try {
+        const ref = firebaseDb.collection(DOMICILIO_TARIFAS_COLLECTION).doc(key);
+        const snap = await ref.get();
+        const prevUses = snap.exists ? Number(snap.data().vecesUsado || 0) : 0;
+        const data = {
+            direccion: String(addressText || '').trim(),
+            direccionNormalizada: (window._adminNormalizeAddress || ((s) => s))(String(addressText || '')),
+            fee: feeNum,
+            vecesUsado: prevUses + 1,
+            updatedAt: firestoreNow()
+        };
+        await ref.set(data, { merge: true });
+        _domicilioTarifasCache.set(key, data);
+    } catch (_) {
+        // No bloquear el guardado del pedido por esto — es solo una sugerencia futura.
+    }
+}
 
 // ── Libro Contable: historial de cierres de caja ──────────────────────────────
 let _cierresCajaState = [];
