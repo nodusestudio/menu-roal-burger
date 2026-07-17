@@ -10741,7 +10741,10 @@ function buildClientExportHtmlDocument(rows, columns, options = {}) {
 }
 
 function printClientExportPdf(htmlContent) {
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1080,height=760');
+    // Sin noopener/noreferrer: necesitamos la referencia de la ventana para escribirle el
+    // HTML del PDF. No hay riesgo de tabnabbing porque abrimos una pestaña en blanco y le
+    // escribimos nuestro propio contenido — nunca navega a una URL externa/no confiable.
+    const printWindow = window.open('', '_blank', 'width=1080,height=760');
     if (!printWindow) {
         throw new Error('El navegador bloqueo la ventana de impresion.');
     }
@@ -11556,13 +11559,38 @@ async function openOrderPrintTicket(orderId) {
         return;
     }
 
-    // Solo usa BT si ya hay una impresora emparejada en esta sesión
+    // Si ya hay una impresora emparejada en esta sesión, usarla directo.
     if (_btPrinterDevice) {
         const ok = await printViaBluetoothESCPOS(order);
         if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); return; }
     }
 
-    // Sin BT activo → diálogo de impresión del navegador (Android/PC)
+    // Sin conexión activa: si el navegador soporta reconexión persistente y ya hubo una
+    // impresora BT emparejada antes, intenta reconectar en silencio (sin pedir un gesto
+    // nuevo) antes de recurrir al navegador.
+    if (!_btPrinterDevice) {
+        await _btTryAutoConnectOnLoad();
+        if (_btPrinterDevice) {
+            const ok = await printViaBluetoothESCPOS(order);
+            if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); return; }
+        }
+    }
+
+    // La reconexión silenciosa falló (ej. el navegador no soporta getDevices(), o el
+    // permiso expiró) pero hay una impresora BT guardada de una sesión anterior: en vez
+    // de saltar directo al PDF, reabre el selector de Bluetooth para volver a elegirla.
+    let _savedBtPrinterId = '';
+    try { _savedBtPrinterId = localStorage.getItem(_BT_PRINTER_ID_KEY) || ''; } catch (_) { /* ignorar */ }
+    if (!_btPrinterDevice && _savedBtPrinterId && navigator.bluetooth) {
+        showNotice('Buscando la impresora Bluetooth…', 'ok');
+        await connectBluetoothPrinter();
+        if (_btPrinterDevice) {
+            const ok = await printViaBluetoothESCPOS(order);
+            if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); return; }
+        }
+    }
+
+    // Sin BT disponible/emparejado → diálogo de impresión del navegador (Android/PC)
     _printOrderViaBrowser(order);
 }
 
