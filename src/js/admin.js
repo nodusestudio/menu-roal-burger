@@ -7771,11 +7771,17 @@ function _renderCategoryDetailPanel(categoryId) {
             </div>
             <div style="margin-bottom:12px;">
                 <label for="catDetailParent" style="display:block;font-size:0.7rem;color:var(--admin-muted);margin-bottom:4px;">Categoría principal (agrupa esta categoría con otras en el POS)</label>
-                <input type="text" class="admin-input" id="catDetailParent" list="catParentSuggestions"
-                    name="catDetailParent-nofill" autocomplete="off" autocapitalize="off" spellcheck="false"
-                    value="${escapeHtml(category.parentCategory || '')}"
-                    placeholder="Ej: Burger — deja vacío para no agrupar"
-                    style="width:100%;box-sizing:border-box;">
+                <!-- <form> propio, sin ningún otro input adentro: Chrome/Brave ignoran autocomplete="off"
+                     cuando su heurístico decide que un campo "es de login", pero si el campo está en un
+                     form aislado (sin un input de contraseña cerca en ese mismo form) no tiene con qué
+                     emparejarlo y no ofrece el autocompletado de contraseñas guardadas. -->
+                <form autocomplete="off" onsubmit="return false" style="margin:0;">
+                    <input type="text" class="admin-input" id="catDetailParent" list="catParentSuggestions"
+                        autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"
+                        value="${escapeHtml(category.parentCategory || '')}"
+                        placeholder="Ej: Burger — deja vacío para no agrupar"
+                        style="width:100%;box-sizing:border-box;">
+                </form>
                 <datalist id="catParentSuggestions">
                     ${[...new Set(categoriesState.map((c) => c.parentCategory).filter(Boolean))]
                         .map((p) => `<option value="${escapeHtml(p)}">`).join('')}
