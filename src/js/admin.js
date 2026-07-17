@@ -14581,23 +14581,6 @@ document.querySelectorAll('.menu-inner-tab[data-menu-tab]').forEach((tab) => {
     });
 });
 
-// ── Sub-pestañas de Promociones (Promociones / Combos / 2x1 / Recomendado)
-document.querySelectorAll('.promo-sub-tab[data-promo-tab]').forEach((tab) => {
-    tab.addEventListener('click', () => {
-        const target = tab.dataset.promoTab;
-        document.querySelectorAll('.promo-sub-tab[data-promo-tab]').forEach((t) => {
-            const isActive = t.dataset.promoTab === target;
-            t.classList.toggle('active', isActive);
-            t.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        });
-        document.querySelectorAll('.promo-sub-panel[data-promo-panel]').forEach((panel) => {
-            const isActive = panel.dataset.promoPanel === target;
-            panel.hidden = !isActive;
-            panel.style.display = isActive ? '' : 'none';
-        });
-    });
-});
-
 // ── Pestañas de sección genéricas con scope (Informes, Configuracion, etc.)
 document.querySelectorAll('[data-section-tab]').forEach((tab) => {
     tab.addEventListener('click', () => {
@@ -14616,36 +14599,12 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
         });
         // Auto-cargar al abrir pestañas de Informes
         if (scope === 'informes') {
-            if (target === 'cajas') {
-                const activeSubTab = document.querySelector('[data-cajas-tab].active');
-                const subTarget = activeSubTab?.dataset?.cajasTab || 'caja-diaria';
-                if (subTarget === 'caja-diaria') renderCajaDiaria();
-                else if (subTarget === 'historial') renderLibroCierres();
-                else if (subTarget === 'libro-contable') renderLibroContable();
-            }
+            if (target === 'caja-diaria') renderCajaDiaria();
+            if (target === 'historial') renderLibroCierres();
+            if (target === 'libro-contable') renderLibroContable();
             if (target === 'tickets') _autoLoadTicketsTab();
             if (target === 'gastos') loadGastosCaja().then(renderGastosInformes);
         }
-    });
-});
-
-// ── Sub-tabs de Cajas (Caja Diaria / Historial de Cajas) ─────────────────────
-document.querySelectorAll('[data-cajas-tab]').forEach((tab) => {
-    tab.addEventListener('click', () => {
-        const target = tab.dataset.cajasTab;
-        document.querySelectorAll('[data-cajas-tab]').forEach((t) => {
-            const isActive = t.dataset.cajasTab === target;
-            t.classList.toggle('active', isActive);
-            t.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        });
-        document.querySelectorAll('[data-cajas-panel]').forEach((panel) => {
-            const isActive = panel.dataset.cajasPanel === target;
-            panel.hidden = !isActive;
-            panel.style.display = isActive ? '' : 'none';
-        });
-        if (target === 'caja-diaria') renderCajaDiaria();
-        if (target === 'historial') renderLibroCierres();
-        if (target === 'libro-contable') renderLibroContable();
     });
 });
 
@@ -17811,12 +17770,8 @@ function _navigateToCajaDiaria() {
         }
     }
     setTimeout(() => {
-        const cajasTab = document.querySelector('[data-section-tab="cajas"][data-section-scope="informes"]');
-        cajasTab?.click();
-        setTimeout(() => {
-            const subTab = document.querySelector('[data-cajas-tab="caja-diaria"]');
-            if (subTab && !subTab.classList.contains('active')) subTab.click();
-        }, 100);
+        const cajaDiariaTab = document.querySelector('[data-section-tab="caja-diaria"][data-section-scope="informes"]');
+        if (cajaDiariaTab && !cajaDiariaTab.classList.contains('active')) cajaDiariaTab.click();
     }, 180);
 }
 

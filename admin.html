@@ -7201,60 +7201,6 @@
             line-height: 1.15;
         }
 
-        /* ── Sub-pestañas dentro de Promociones ── */
-        .promo-sub-tabs-nav {
-            display: flex;
-            gap: 4px;
-            padding: 0 0 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            margin-bottom: 4px;
-            flex-wrap: wrap;
-        }
-
-        .promo-sub-tab {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 7px 14px;
-            border-radius: 9px;
-            border: 1px solid transparent;
-            background: rgba(255, 255, 255, 0.05);
-            color: var(--admin-muted);
-            font-family: 'Oswald', sans-serif;
-            font-size: 0.82rem;
-            font-weight: 600;
-            letter-spacing: 0.7px;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: background 0.2s, color 0.2s, border-color 0.2s;
-            white-space: nowrap;
-        }
-
-        .promo-sub-tab-icon {
-            font-size: 0.9rem;
-            line-height: 1;
-        }
-
-        .promo-sub-tab:hover:not(.active) {
-            background: rgba(255, 255, 255, 0.09);
-            color: #e0e8f8;
-        }
-
-        .promo-sub-tab.active {
-            background: linear-gradient(135deg, rgba(255, 123, 69, 0.28) 0%, rgba(255, 123, 69, 0.10) 100%);
-            border-color: rgba(255, 123, 69, 0.45);
-            box-shadow: 0 2px 10px rgba(255, 123, 69, 0.15);
-            color: #ffffff;
-        }
-
-        .promo-sub-panel {
-            display: block;
-        }
-
-        .promo-sub-panel[hidden] {
-            display: none !important;
-        }
-
         .cupon-type-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -10470,39 +10416,6 @@
         .koa-cambiar-mesa-btn:hover { color: #ff9540; }
 
         /* ── Modal: Cobro domicilio ── */
-        /* ── Sub-tabs de Cajas ── */
-        .cajas-subtabs-nav {
-            display: flex;
-            gap: 8px;
-            padding: 0 0 14px;
-            border-bottom: 1px solid var(--admin-border);
-            margin-bottom: 16px;
-            flex-shrink: 0;
-        }
-        .cajas-subtab {
-            padding: 7px 22px;
-            border: 1px solid var(--admin-border);
-            border-radius: 10px;
-            background: transparent;
-            color: var(--admin-muted);
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 0.85rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.15s, color 0.15s, border-color 0.15s;
-        }
-        .cajas-subtab.active {
-            background: var(--admin-accent, #ff9540);
-            color: #111;
-            border-color: var(--admin-accent, #ff9540);
-        }
-        .cajas-subtab:not(.active):hover {
-            background: rgba(255,255,255,0.06);
-            color: var(--admin-fg, #fff);
-        }
-        .cajas-subpanel { width: 100%; }
-        .cajas-subpanel[hidden] { display: none !important; }
-        .menu-inner-panel[data-section-panel="cajas"] { flex-direction: column; }
 
         /* ── Caja Diaria & Tickets ── */
         .caja-stats-bar {
@@ -12545,6 +12458,10 @@
                         <span class="menu-inner-tab-icon">🏷️</span>
                         <span>Cupones</span>
                     </button>
+                    <button class="menu-inner-tab" data-menu-tab="recomendado" role="tab" aria-selected="false">
+                        <span class="menu-inner-tab-icon">⭐</span>
+                        <span>Recomendado del Día</span>
+                    </button>
                     <button class="menu-inner-tab" data-menu-tab="bebidas" role="tab" aria-selected="false">
                         <span class="menu-inner-tab-icon">🥤</span>
                         <span>Bebidas</span>
@@ -12581,54 +12498,40 @@
                         <div id="carruselTabPanel"></div>
                     </div>
 
-                    <!-- ── Panel: Promociones (con sub-pestañas) ── -->
+                    <!-- ── Panel: Cupones ── -->
                     <div class="menu-inner-panel" data-menu-panel="promociones" role="tabpanel" hidden style="display:none;">
+                        <div id="cuponesUnifiedPanel"></div>
+                    </div>
 
-                        <nav class="promo-sub-tabs-nav" role="tablist" aria-label="Secciones de Cupones">
-                            <button class="promo-sub-tab active" data-promo-tab="cupones" role="tab" aria-selected="true">
-                                <span class="promo-sub-tab-icon">🏷️</span>
-                                <span>Cupones</span>
-                            </button>
-                            <button class="promo-sub-tab" data-promo-tab="recomendado" role="tab" aria-selected="false">
-                                <span class="promo-sub-tab-icon">⭐</span>
-                                <span>Recomendado</span>
-                            </button>
-                        </nav>
-
-                        <div class="promo-sub-panel active" data-promo-panel="cupones">
-                            <div id="cuponesUnifiedPanel"></div>
-                        </div>
-
-                        <div class="promo-sub-panel" data-promo-panel="recomendado" hidden style="display:none;">
-                            <div style="padding: 16px 0;">
-                                <p class="admin-hint">El recomendado aparece en el menu publico al abrir la app. Puedes dejarlo en automatico (un producto diferente cada dia) o fijar siempre el mismo.</p>
-                                <div class="admin-field full" style="margin-top:16px;">
-                                    <label>Modo de seleccion</label>
-                                    <div class="recomendado-mode-radios">
-                                        <label class="recomendado-mode-option">
-                                            <input type="radio" name="recomendadoMode" id="recomendadoModeAuto" value="auto">
-                                            <span>Automatico</span>
-                                            <small>Algoritmo diario — cambia cada dia de forma determinista</small>
-                                        </label>
-                                        <label class="recomendado-mode-option">
-                                            <input type="radio" name="recomendadoMode" id="recomendadoModeManual" value="manual">
-                                            <span>Manual</span>
-                                            <small>Tu eliges cual producto aparece siempre</small>
-                                        </label>
-                                    </div>
+                    <!-- ── Panel: Recomendado del Día ── -->
+                    <div class="menu-inner-panel" data-menu-panel="recomendado" role="tabpanel" hidden style="display:none;">
+                        <div style="padding: 16px 0;">
+                            <p class="admin-hint">El recomendado aparece en el menu publico al abrir la app. Puedes dejarlo en automatico (un producto diferente cada dia) o fijar siempre el mismo.</p>
+                            <div class="admin-field full" style="margin-top:16px;">
+                                <label>Modo de seleccion</label>
+                                <div class="recomendado-mode-radios">
+                                    <label class="recomendado-mode-option">
+                                        <input type="radio" name="recomendadoMode" id="recomendadoModeAuto" value="auto">
+                                        <span>Automatico</span>
+                                        <small>Algoritmo diario — cambia cada dia de forma determinista</small>
+                                    </label>
+                                    <label class="recomendado-mode-option">
+                                        <input type="radio" name="recomendadoMode" id="recomendadoModeManual" value="manual">
+                                        <span>Manual</span>
+                                        <small>Tu eliges cual producto aparece siempre</small>
+                                    </label>
                                 </div>
-                                <div id="recomendadoManualPanel" hidden>
-                                    <div class="admin-field full" style="margin-top:14px;">
-                                        <label for="recomendadoProductSearch">Buscar producto</label>
-                                        <input type="search" id="recomendadoProductSearch" class="admin-input" placeholder="Escribe el nombre del producto...">
-                                    </div>
-                                    <ul id="recomendadoSearchResults" class="recomendado-results" hidden></ul>
-                                </div>
-                                <div class="recomendado-current-box" id="recomendadoCurrentBox" hidden></div>
-                                <button type="button" class="admin-button" id="saveRecomendadoDiaBtn" style="margin-top:18px;" disabled>Guardar</button>
                             </div>
+                            <div id="recomendadoManualPanel" hidden>
+                                <div class="admin-field full" style="margin-top:14px;">
+                                    <label for="recomendadoProductSearch">Buscar producto</label>
+                                    <input type="search" id="recomendadoProductSearch" class="admin-input" placeholder="Escribe el nombre del producto...">
+                                </div>
+                                <ul id="recomendadoSearchResults" class="recomendado-results" hidden></ul>
+                            </div>
+                            <div class="recomendado-current-box" id="recomendadoCurrentBox" hidden></div>
+                            <button type="button" class="admin-button" id="saveRecomendadoDiaBtn" style="margin-top:18px;" disabled>Guardar</button>
                         </div>
-
                     </div>
 
                     <!-- ── Panel: Bebidas ── -->
@@ -12751,9 +12654,17 @@
             <div class="admin-tab-panel" data-tab-panel="informes">
                 <article class="admin-card menu-section-card">
                     <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Informes">
-                        <button class="menu-inner-tab active" data-section-tab="cajas" data-section-scope="informes" role="tab" aria-selected="true">
+                        <button class="menu-inner-tab active" data-section-tab="caja-diaria" data-section-scope="informes" role="tab" aria-selected="true">
                             <span class="menu-inner-tab-icon">💵</span>
-                            <span>Cajas</span>
+                            <span>Caja Diaria</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="historial" data-section-scope="informes" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">📒</span>
+                            <span>Historial de Cajas</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="libro-contable" data-section-scope="informes" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">📗</span>
+                            <span>Libro Contable</span>
                         </button>
                         <button class="menu-inner-tab" data-section-tab="tickets" data-section-scope="informes" role="tab" aria-selected="false">
                             <span class="menu-inner-tab-icon">🎫</span>
@@ -12766,18 +12677,8 @@
                     </nav>
                     <div class="menu-inner-panels-wrap">
 
-                        <!-- Panel: Cajas (Caja Diaria + Historial de Cajas) -->
-                        <div class="menu-inner-panel active" data-section-panel="cajas" data-section-scope="informes" role="tabpanel">
-
-                            <!-- Sub-tabs de Cajas -->
-                            <nav class="cajas-subtabs-nav" role="tablist" aria-label="Secciones de Cajas">
-                                <button type="button" class="cajas-subtab active" data-cajas-tab="caja-diaria" role="tab" aria-selected="true">💵 Caja Diaria</button>
-                                <button type="button" class="cajas-subtab" data-cajas-tab="historial" role="tab" aria-selected="false">📒 Historial de Cajas</button>
-                                <button type="button" class="cajas-subtab" data-cajas-tab="libro-contable" role="tab" aria-selected="false">📗 Libro Contable</button>
-                            </nav>
-
-                            <!-- Sub-panel: Caja Diaria -->
-                            <div class="cajas-subpanel" data-cajas-panel="caja-diaria">
+                        <!-- Panel: Caja Diaria -->
+                        <div class="menu-inner-panel active" data-section-panel="caja-diaria" data-section-scope="informes" role="tabpanel">
                                 <div class="tickets-split-layout">
                                     <!-- Columna izquierda: tabla caja -->
                                     <article class="admin-card tickets-list-col">
@@ -12832,31 +12733,31 @@
                                         </article>
                                     </aside>
                                 </div>
-                            </div>
+                        </div>
 
-                            <!-- Sub-panel: Libro Contable -->
-                            <div class="cajas-subpanel" data-cajas-panel="libro-contable" hidden style="display:none;">
-                                <article class="admin-card">
-                                    <div class="card-head">
-                                        <h2>Libro Contable</h2>
-                                        <button type="button" class="informes-action-btn" id="refreshLibroContableBtn">↺ Actualizar</button>
+                        <!-- Panel: Libro Contable -->
+                        <div class="menu-inner-panel" data-section-panel="libro-contable" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Libro Contable</h2>
+                                    <button type="button" class="informes-action-btn" id="refreshLibroContableBtn">↺ Actualizar</button>
+                                </div>
+                                <!-- Tabla de movimientos diarios -->
+                                <div id="lcMovimientosWrap">
+                                    <div class="table-scroll-hint">⇆ Desliza para ver todo</div>
+                                    <div class="caja-ledger-wrap">
+                                        <table class="caja-ledger-table" style="min-width:580px;">
+                                            <thead id="lcHead"></thead>
+                                            <tbody id="lcBody"><tr><td class="caja-empty" colspan="5">Cargando libro contable…</td></tr></tbody>
+                                            <tfoot id="lcFoot"></tfoot>
+                                        </table>
                                     </div>
-                                    <!-- Tabla de movimientos diarios -->
-                                    <div id="lcMovimientosWrap">
-                                        <div class="table-scroll-hint">⇆ Desliza para ver todo</div>
-                                        <div class="caja-ledger-wrap">
-                                            <table class="caja-ledger-table" style="min-width:580px;">
-                                                <thead id="lcHead"></thead>
-                                                <tbody id="lcBody"><tr><td class="caja-empty" colspan="5">Cargando libro contable…</td></tr></tbody>
-                                                <tfoot id="lcFoot"></tfoot>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </article>
-                            </div>
+                                </div>
+                            </article>
+                        </div>
 
-                            <!-- Sub-panel: Historial de Cajas -->
-                            <div class="cajas-subpanel" data-cajas-panel="historial" hidden style="display:none;">
+                        <!-- Panel: Historial de Cajas -->
+                        <div class="menu-inner-panel" data-section-panel="historial" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
                                 <article class="admin-card">
                                     <div class="card-head" style="flex-wrap:wrap;gap:8px;">
                                         <h2>Historial de Cajas</h2>
@@ -12901,8 +12802,6 @@
                                     </div>
                                 </article>
                             </div>
-
-                        </div>
 
                         <!-- Panel: Tickets -->
                         <div class="menu-inner-panel" data-section-panel="tickets" data-section-scope="informes" role="tabpanel" hidden style="display:none;">
