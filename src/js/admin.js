@@ -144,7 +144,6 @@ const defaultBranding = {
     logoUrl: 'logo.png',
     whatsappNumber: '573144689509',
     whatsappLink: 'https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
-    businessHours: 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.',
     address: 'Cl. 22 #29-59, Armenia, Quindio. Barrio Las Americas.',
     locationLink: 'https://maps.google.com/?q=Cl.+22+%2329-59,+Armenia,+Quindio',
     instagramLink: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
@@ -1566,11 +1565,10 @@ function setupAccordion() {
         pedidos: ['pedidos'],
         clientes: ['clientes'],
         mensajes: ['mensajes'],
-        metricas: ['metricas'],
-        botones: ['botones']
+        metricas: ['metricas']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', metricas:'Métricas', botones:'Botones' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', metricas:'Métricas' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -1994,7 +1992,6 @@ function normalizeBranding(raw) {
         logoUrl: String(raw.logoUrl || defaultBranding.logoUrl),
         whatsappNumber: String(raw.whatsappNumber || defaultBranding.whatsappNumber),
         whatsappLink: String(raw.whatsappLink || defaultBranding.whatsappLink),
-        businessHours: String(raw.businessHours || defaultBranding.businessHours),
         address: String(raw.address || defaultBranding.address),
         locationLink: String(raw.locationLink || defaultBranding.locationLink),
         instagramLink: String(raw.instagramLink || defaultBranding.instagramLink),
@@ -11885,7 +11882,6 @@ function renderBrandingForm() {
     brandingForm.restaurantSlogan.value = brandingState.slogan;
     brandingForm.restaurantWhatsappNumber.value = brandingState.whatsappNumber;
     brandingForm.restaurantWhatsappLink.value = brandingState.whatsappLink;
-    brandingForm.restaurantBusinessHours.value = brandingState.businessHours;
     brandingForm.restaurantAddress.value = brandingState.address;
     brandingForm.restaurantLocationLink.value = brandingState.locationLink;
     brandingForm.restaurantInstagramLink.value = brandingState.instagramLink;
@@ -16199,7 +16195,6 @@ brandingForm.addEventListener('submit', async (event) => {
         logoUrl: brandingState.logoUrl,
         whatsappNumber: String(formData.get('restaurantWhatsappNumber') || '').trim(),
         whatsappLink: String(formData.get('restaurantWhatsappLink') || '').trim(),
-        businessHours: String(formData.get('restaurantBusinessHours') || '').trim(),
         address: String(formData.get('restaurantAddress') || '').trim(),
         locationLink: String(formData.get('restaurantLocationLink') || '').trim(),
         instagramLink: String(formData.get('restaurantInstagramLink') || '').trim(),

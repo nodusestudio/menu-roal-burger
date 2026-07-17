@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260717-1122">
+    <link rel="stylesheet" href="style.css?v=20260717-1145">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -12428,7 +12428,6 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="botones"><span class="nav-icon">🔘</span><span>Botones</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
         </nav>
 
@@ -12897,98 +12896,6 @@
                 </article>
             </div>
 
-            <div class="admin-tab-panel" data-tab-panel="botones">
-                <article class="admin-card">
-                    <div class="card-head">
-                        <h2>Botones de Publico</h2>
-                    </div>
-                    <div class="card-body">
-                        <form id="buttonConfigForm" class="admin-form">
-                            <div class="admin-field">
-                                <label for="buttonId">ID del boton</label>
-                                <input type="text" id="buttonId" name="buttonId" placeholder="Ej: btn-menu" required>
-                                <p class="form-note">IDs actuales: btn-menu, btn-whatsapp-main, btn-instagram, btn-tiktok, btn-facebook.</p>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonLabel">Texto</label>
-                                <input type="text" id="buttonLabel" name="buttonLabel" placeholder="Ej: VER MENU DIGITAL" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonIcon">Icono</label>
-                                <input type="text" id="buttonIcon" name="buttonIcon" placeholder="Ej: 📱">
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonActionType">Accion</label>
-                                <select id="buttonActionType" name="buttonActionType">
-                                    <option value="external">Abrir enlace</option>
-                                    <option value="menu-modal">Abrir Publico (modal)</option>
-                                </select>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="buttonLink">Link destino</label>
-                                <input type="text" id="buttonLink" name="buttonLink" placeholder="https://...">
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonType">Tipo de boton</label>
-                                <select id="buttonType" name="buttonType">
-                                    <option value="neon">Neon</option>
-                                    <option value="solid">Solido</option>
-                                    <option value="glass">Glass</option>
-                                    <option value="minimal">Minimal</option>
-                                </select>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonColor">Color base</label>
-                                <input type="color" id="buttonColor" name="buttonColor" value="#ff6000">
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonSize">Tamano</label>
-                                <select id="buttonSize" name="buttonSize">
-                                    <option value="sm">Pequeno</option>
-                                    <option value="md" selected>Medio</option>
-                                    <option value="lg">Grande</option>
-                                    <option value="xl">Extra grande</option>
-                                </select>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonOrder">Orden visual</label>
-                                <input type="number" id="buttonOrder" name="buttonOrder" min="1" step="1" value="1">
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonState">Estado</label>
-                                <select id="buttonState" name="buttonState">
-                                    <option value="active">Activo</option>
-                                    <option value="paused">Pausado</option>
-                                </select>
-                            </div>
-                            <div class="admin-field">
-                                <label for="buttonVisible">Visible</label>
-                                <select id="buttonVisible" name="buttonVisible">
-                                    <option value="true">Si</option>
-                                    <option value="false">No</option>
-                                </select>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="buttonVolume">Volumen del sonido de clic</label>
-                                <div class="range-wrap">
-                                    <input type="range" id="buttonVolume" name="buttonVolume" min="0" max="1" step="0.05" value="0.1">
-                                    <output id="buttonVolumeOut">0.10</output>
-                                </div>
-                            </div>
-                            <div class="admin-field full">
-                                <label>
-                                    <input type="checkbox" id="buttonSoundEnabled" name="buttonSoundEnabled" checked>
-                                    Sonido activo
-                                </label>
-                            </div>
-                            <input type="hidden" id="buttonEditId" name="buttonEditId" value="">
-                            <button type="submit" class="admin-button" id="buttonSaveBtn">Guardar boton</button>
-                        </form>
-                        <div id="buttonConfigList" class="stack-list stack-list-top-14"></div>
-                    </div>
-                </article>
-            </div>
-
             <div class="admin-tab-panel" data-tab-panel="configuracion">
                 <article class="admin-card menu-section-card">
                     <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Configuracion">
@@ -13011,6 +12918,18 @@
                         <button class="menu-inner-tab" data-section-tab="categorias_gastos" data-section-scope="configuracion" role="tab" aria-selected="false">
                             <span class="menu-inner-tab-icon">💸</span>
                             <span>Categorías de Gastos</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="botones" data-section-scope="configuracion" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">🔘</span>
+                            <span>Botones</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="seguridad" data-section-scope="configuracion" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">🔐</span>
+                            <span>Seguridad</span>
+                        </button>
+                        <button class="menu-inner-tab" data-section-tab="impresora" data-section-scope="configuracion" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">🖨️</span>
+                            <span>Impresora</span>
                         </button>
                     </nav>
                     <div class="menu-inner-panels-wrap">
@@ -13069,15 +12988,11 @@
                                             <div class="biz-section-head">
                                                 <span class="biz-section-icon">📍</span>
                                                 <div>
-                                                    <div class="biz-section-title">Ubicación y Horario</div>
-                                                    <div class="biz-section-desc">Dirección física y horario de atención</div>
+                                                    <div class="biz-section-title">Ubicación</div>
+                                                    <div class="biz-section-desc">Dirección física del negocio — el horario se edita en la pestaña "Horario"</div>
                                                 </div>
                                             </div>
                                             <div class="biz-fields">
-                                                <div class="admin-field">
-                                                    <label for="restaurantBusinessHours">Horario de atención</label>
-                                                    <input type="text" id="restaurantBusinessHours" name="restaurantBusinessHours" placeholder="Ej: Lunes a Domingo: 4:00 PM a 10:00 PM">
-                                                </div>
                                                 <div class="admin-field">
                                                     <label for="restaurantAddress">Dirección</label>
                                                     <input type="text" id="restaurantAddress" name="restaurantAddress" placeholder="Ej: Cl. 22 #29-59, Armenia">
@@ -13122,58 +13037,6 @@
                                     <div class="biz-save-bar" id="bizSaveBar" hidden>
                                         <span class="biz-save-bar-msg">Tienes cambios sin guardar</span>
                                         <button type="button" class="biz-save-btn" id="bizSaveBarBtn">Guardar cambios</button>
-                                    </div>
-
-                                    <!-- Seguridad — Cambiar contraseña -->
-                                    <div class="biz-section biz-section--security" style="padding-top:20px; border-top:1px solid rgba(255,255,255,0.07); margin-top:8px;">
-                                        <div class="biz-section-head">
-                                            <span class="biz-section-icon">🔐</span>
-                                            <div>
-                                                <div class="biz-section-title">Seguridad</div>
-                                                <div class="biz-section-desc">Cambia la contraseña de acceso al panel de administración</div>
-                                            </div>
-                                        </div>
-                                        <div class="biz-fields">
-                                            <div class="admin-field full">
-                                                <label>Correo vinculado</label>
-                                                <input type="email" id="bizCurrentEmail" readonly placeholder="Cargando...">
-                                            </div>
-                                            <div class="admin-field">
-                                                <label>Contraseña actual</label>
-                                                <input type="password" id="bizCurrentPassword" placeholder="Tu contraseña actual" autocomplete="current-password">
-                                            </div>
-                                            <div class="admin-field">
-                                                <label>Nueva contraseña</label>
-                                                <input type="password" id="bizNewPassword" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
-                                            </div>
-                                            <div class="admin-field full">
-                                                <label>Confirmar nueva contraseña</label>
-                                                <input type="password" id="bizConfirmPassword" placeholder="Repite la nueva contraseña" autocomplete="new-password">
-                                            </div>
-                                            <div class="admin-field full">
-                                                <button type="button" class="biz-pass-btn" id="bizChangePasswordBtn">Actualizar contraseña</button>
-                                            </div>
-                                            <div id="bizPasswordStatus" class="biz-pass-status" hidden></div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Impresora térmica — antes vivía en el panel de ticket de Recepción; es
-                                         una configuración de hardware que se hace una vez, no una acción por pedido. -->
-                                    <div class="biz-section" style="padding-top:20px; border-top:1px solid rgba(255,255,255,0.07); margin-top:8px;">
-                                        <div class="biz-section-head">
-                                            <span class="biz-section-icon">🖨️</span>
-                                            <div>
-                                                <div class="biz-section-title">Impresora térmica</div>
-                                                <div class="biz-section-desc">Conexión Bluetooth para imprimir los tickets de recepción</div>
-                                            </div>
-                                        </div>
-                                        <div class="biz-fields">
-                                            <div class="ticket-bt-bar ticket-bt-bar--settings" id="ticketBtBar">
-                                                <span class="ticket-bt-dot" id="ticketBtDot" data-status="off"></span>
-                                                <span class="ticket-bt-label" id="ticketBtLabel">Sin impresora BT</span>
-                                                <button type="button" class="ticket-bt-btn" id="ticketBtBtn" data-bt-action="connect">Buscar</button>
-                                            </div>
-                                        </div>
                                     </div>
 
                                 </div>
@@ -13276,6 +13139,169 @@
                             </article>
                             <!-- datalist de proveedores para el modal de gasto (oculto, mantenido por JS) -->
                             <div id="proveedoresPanelWrap" hidden></div>
+                        </div>
+
+                        <!-- Panel: Botones (del menú público) -->
+                        <div class="menu-inner-panel" data-section-panel="botones" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Botones de Publico</h2>
+                                </div>
+                                <div class="card-body">
+                                    <form id="buttonConfigForm" class="admin-form">
+                                        <div class="admin-field">
+                                            <label for="buttonId">ID del boton</label>
+                                            <input type="text" id="buttonId" name="buttonId" placeholder="Ej: btn-menu" required>
+                                            <p class="form-note">IDs actuales: btn-menu, btn-whatsapp-main, btn-instagram, btn-tiktok, btn-facebook.</p>
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="buttonLabel">Texto</label>
+                                            <input type="text" id="buttonLabel" name="buttonLabel" placeholder="Ej: VER MENU DIGITAL" required>
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="buttonIcon">Icono</label>
+                                            <input type="text" id="buttonIcon" name="buttonIcon" placeholder="Ej: 📱">
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="buttonActionType">Accion</label>
+                                            <select id="buttonActionType" name="buttonActionType">
+                                                <option value="external">Abrir enlace</option>
+                                                <option value="menu-modal">Abrir Publico (modal)</option>
+                                            </select>
+                                        </div>
+                                        <div class="admin-field full">
+                                            <label for="buttonLink">Link destino</label>
+                                            <input type="text" id="buttonLink" name="buttonLink" placeholder="https://...">
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="buttonType">Tipo de boton</label>
+                                            <select id="buttonType" name="buttonType">
+                                                <option value="neon">Neon</option>
+                                                <option value="solid">Solido</option>
+                                                <option value="glass">Glass</option>
+                                                <option value="minimal">Minimal</option>
+                                            </select>
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="buttonColor">Color base</label>
+                                            <input type="color" id="buttonColor" name="buttonColor" value="#ff6000">
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="buttonSize">Tamano</label>
+                                            <select id="buttonSize" name="buttonSize">
+                                                <option value="sm">Pequeno</option>
+                                                <option value="md" selected>Medio</option>
+                                                <option value="lg">Grande</option>
+                                                <option value="xl">Extra grande</option>
+                                            </select>
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="buttonOrder">Orden visual</label>
+                                            <input type="number" id="buttonOrder" name="buttonOrder" min="1" step="1" value="1">
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="buttonState">Estado</label>
+                                            <select id="buttonState" name="buttonState">
+                                                <option value="active">Activo</option>
+                                                <option value="paused">Pausado</option>
+                                            </select>
+                                        </div>
+                                        <div class="admin-field">
+                                            <label for="buttonVisible">Visible</label>
+                                            <select id="buttonVisible" name="buttonVisible">
+                                                <option value="true">Si</option>
+                                                <option value="false">No</option>
+                                            </select>
+                                        </div>
+                                        <div class="admin-field full">
+                                            <label for="buttonVolume">Volumen del sonido de clic</label>
+                                            <div class="range-wrap">
+                                                <input type="range" id="buttonVolume" name="buttonVolume" min="0" max="1" step="0.05" value="0.1">
+                                                <output id="buttonVolumeOut">0.10</output>
+                                            </div>
+                                        </div>
+                                        <div class="admin-field full">
+                                            <label>
+                                                <input type="checkbox" id="buttonSoundEnabled" name="buttonSoundEnabled" checked>
+                                                Sonido activo
+                                            </label>
+                                        </div>
+                                        <input type="hidden" id="buttonEditId" name="buttonEditId" value="">
+                                        <button type="submit" class="admin-button" id="buttonSaveBtn">Guardar boton</button>
+                                    </form>
+                                    <div id="buttonConfigList" class="stack-list stack-list-top-14"></div>
+                                </div>
+                            </article>
+                        </div>
+
+                        <!-- Panel: Seguridad -->
+                        <div class="menu-inner-panel" data-section-panel="seguridad" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Seguridad</h2>
+                                </div>
+                                <div class="card-body">
+                                    <div class="biz-section biz-section--security">
+                                        <div class="biz-section-head">
+                                            <span class="biz-section-icon">🔐</span>
+                                            <div>
+                                                <div class="biz-section-title">Contraseña de acceso</div>
+                                                <div class="biz-section-desc">Cambia la contraseña de acceso al panel de administración</div>
+                                            </div>
+                                        </div>
+                                        <div class="biz-fields">
+                                            <div class="admin-field full">
+                                                <label>Correo vinculado</label>
+                                                <input type="email" id="bizCurrentEmail" readonly placeholder="Cargando...">
+                                            </div>
+                                            <div class="admin-field">
+                                                <label>Contraseña actual</label>
+                                                <input type="password" id="bizCurrentPassword" placeholder="Tu contraseña actual" autocomplete="current-password">
+                                            </div>
+                                            <div class="admin-field">
+                                                <label>Nueva contraseña</label>
+                                                <input type="password" id="bizNewPassword" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+                                            </div>
+                                            <div class="admin-field full">
+                                                <label>Confirmar nueva contraseña</label>
+                                                <input type="password" id="bizConfirmPassword" placeholder="Repite la nueva contraseña" autocomplete="new-password">
+                                            </div>
+                                            <div class="admin-field full">
+                                                <button type="button" class="biz-pass-btn" id="bizChangePasswordBtn">Actualizar contraseña</button>
+                                            </div>
+                                            <div id="bizPasswordStatus" class="biz-pass-status" hidden></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </article>
+                        </div>
+
+                        <!-- Panel: Impresora térmica — antes vivía suelta dentro de Negocio, sin
+                             relación real con identidad de marca. -->
+                        <div class="menu-inner-panel" data-section-panel="impresora" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Impresora térmica</h2>
+                                </div>
+                                <div class="card-body">
+                                    <div class="biz-section">
+                                        <div class="biz-section-head">
+                                            <span class="biz-section-icon">🖨️</span>
+                                            <div>
+                                                <div class="biz-section-title">Conexión Bluetooth</div>
+                                                <div class="biz-section-desc">Conexión Bluetooth para imprimir los tickets de recepción</div>
+                                            </div>
+                                        </div>
+                                        <div class="biz-fields">
+                                            <div class="ticket-bt-bar ticket-bt-bar--settings" id="ticketBtBar">
+                                                <span class="ticket-bt-dot" id="ticketBtDot" data-status="off"></span>
+                                                <span class="ticket-bt-label" id="ticketBtLabel">Sin impresora BT</span>
+                                                <button type="button" class="ticket-bt-btn" id="ticketBtBtn" data-bt-action="connect">Buscar</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </article>
                         </div>
 
                     </div>
@@ -14541,8 +14567,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260717-1122"></script>
-    <script defer src="admin.js?v=20260717-1122"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260717-1145"></script>
+    <script defer src="admin.js?v=20260717-1145"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
