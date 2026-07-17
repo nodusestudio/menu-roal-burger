@@ -4369,7 +4369,25 @@ async function createOrderFromCart(customerInfo = {}) {
     };
 }
 
+// Cierra cualquier otro overlay "de pantalla completa" que haya quedado abierto antes de
+// abrir el carrito — con un tap/clic normal el z-index del selector de combo (100001, por
+// encima de la barra inferior a 9000) impide llegar al botón de carrito, pero por teclado,
+// lector de pantalla o algún flujo programático sí es alcanzable, y antes dejaba dos
+// modales apilados e interactivos al mismo tiempo. Cada close* ya se protege si su modal
+// no está abierto, así que llamarlos todos aquí es seguro.
+function _closeOtherOverlaysBeforeCart() {
+    closeComboChoiceModal();
+    closeCheckoutInfoModal();
+    closePaymentFlowModal();
+    closeCustomerAuthModal();
+    closeCustomerRegisterModal();
+    closePublicUpgradeSheet();
+    closeMenuModal();
+    closePromoScreen();
+}
+
 function openCartDrawer() {
+    _closeOtherOverlaysBeforeCart();
     if (!cartUI) {
         initCartUI();
         if (!cartUI) {
