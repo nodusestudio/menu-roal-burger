@@ -10264,7 +10264,10 @@ function renderClients() {
     if (_clientsPage >= totalPages) _clientsPage = totalPages - 1;
 
     if (clientsCount) {
-        clientsCount.textContent = Number(clientsState.length).toLocaleString('es-CO');
+        // Refleja el filtro activo (igual que la paginación de abajo) — antes mostraba
+        // siempre el total de la base aunque la tabla tuviera 3 resultados filtrados,
+        // dando dos números distintos a la vista al mismo tiempo.
+        clientsCount.textContent = Number(filteredClients.length).toLocaleString('es-CO');
     }
 
     clientsList.innerHTML = '';
@@ -10730,8 +10733,14 @@ function exportClients(format, scope = 'filtered') {
         headerLabels.join(separator),
         ...rows.map((row) => headers.map((header) => {
             const rawValue = String(row[header] ?? '');
+            if (formatKey === 'tsv') {
+                // TSV no tiene una convención de comillas real (a diferencia de CSV) — un
+                // tab o salto de línea embebido en un nombre/dirección correría las
+                // columnas al abrirlo en Excel, así que se limpia en vez de escapar.
+                return rawValue.replace(/[\t\r\n]+/g, ' ').trim();
+            }
             const escapedValue = rawValue.replace(/"/g, '""');
-            return formatKey === 'tsv' ? escapedValue : `"${escapedValue}"`;
+            return `"${escapedValue}"`;
         }).join(separator))
     ].join('\r\n');
 
@@ -14400,6 +14409,41 @@ document.getElementById('ptsSaveAddrNo')?.addEventListener('click', () => {
 });
 
 // ── Crear nuevo cliente desde el modal POS ──────────────────────────────────
+// Crea un cliente nuevo desde el POS y lo deja seleccionado — antes esta lógica estaba
+// duplicada entre el botón inline (ptsNewClientBtn) y la pestaña "Nuevo" (ptsNewTab*), y
+// habían divergido: una mostraba aviso de éxito con un tipo ("success") que no existe en
+// el CSS (solo hay estilos para "ok"/"error", así que salía sin color), la otra no
+// mostraba ningún aviso; y ambas releían clientes sin "force", así que por el caché de
+// 60s el cliente recién creado podía no aparecer todavía si se le buscaba de nuevo en la
+// misma sesión de POS.
+async function _ptsCreateAndSelectClient({ name, phone, addr }) {
+    const phoneDigits = normalizePhoneDigits ? normalizePhoneDigits(phone) : phone;
+    const clientId = buildAdminClientDocumentId
+        ? buildAdminClientDocumentId({ customerName: name, customerPhone: phone, address: addr })
+        : `${phoneDigits}_${name.toLowerCase().replace(/\s+/g, '_')}`;
+
+    const savedAddresses = addr ? [addr] : [];
+    await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
+        customerName: name,
+        customerPhone: phone,
+        customerPhoneDigits: phoneDigits,
+        address: addr,
+        savedAddresses,
+        totalOrders: 0,
+        totalSpent: 0,
+        createdAt: firestoreNow(),
+        source: 'admin_pos'
+    }, { merge: true });
+
+    await fetchClients({ force: true });
+
+    _ptsSelectedClient = { name, phone, savedAddresses };
+    _ptsShowSelectedClientChip(_ptsSelectedClient);
+    _ptsRefreshDomicilioSection();
+    _ptsUpdateConfirmBtn();
+    showNotice(`Cliente "${name}" creado y seleccionado.`, 'ok');
+}
+
 (function initPtsNewClient() {
     const newClientBtn  = document.getElementById('ptsNewClientBtn');
     const newClientForm = document.getElementById('ptsNewClientForm');
@@ -14437,32 +14481,7 @@ document.getElementById('ptsSaveAddrNo')?.addEventListener('click', () => {
         saveBtn.textContent = 'Guardando…';
 
         try {
-            const phoneDigits = normalizePhoneDigits ? normalizePhoneDigits(phone) : phone;
-            const clientId = buildAdminClientDocumentId
-                ? buildAdminClientDocumentId({ customerName: name, customerPhone: phone, address: addr })
-                : `${phoneDigits}_${name.toLowerCase().replace(/\s+/g, '_')}`;
-
-            const savedAddresses = addr ? [addr] : [];
-            await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
-                customerName: name,
-                customerPhone: phone,
-                customerPhoneDigits: phoneDigits,
-                address: addr,
-                savedAddresses,
-                totalOrders: 0,
-                totalSpent: 0,
-                createdAt: firestoreNow(),
-                source: 'admin_pos'
-            }, { merge: true });
-
-            // Recargar clientsState
-            await fetchClients();
-
-            // Seleccionar el cliente recién creado
-            _ptsSelectedClient = { name, phone, savedAddresses };
-            _ptsShowSelectedClientChip(_ptsSelectedClient);
-            _ptsRefreshDomicilioSection();
-            _ptsUpdateConfirmBtn();
+            await _ptsCreateAndSelectClient({ name, phone, addr });
             resetForm();
         } catch (err) {
             console.error('[POS] Error creando cliente:', err);
@@ -14495,37 +14514,12 @@ document.getElementById('ptsSaveAddrNo')?.addEventListener('click', () => {
         saveBtn.textContent = 'Guardando…';
 
         try {
-            const phoneDigits = normalizePhoneDigits ? normalizePhoneDigits(phone) : phone;
-            const clientId = buildAdminClientDocumentId
-                ? buildAdminClientDocumentId({ customerName: name, customerPhone: phone, address: addr })
-                : `${phoneDigits}_${name.toLowerCase().replace(/\s+/g, '_')}`;
-
-            const savedAddresses = addr ? [addr] : [];
-            await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
-                customerName: name,
-                customerPhone: phone,
-                customerPhoneDigits: phoneDigits,
-                address: addr,
-                savedAddresses,
-                totalOrders: 0,
-                totalSpent: 0,
-                createdAt: firestoreNow(),
-                source: 'admin_pos'
-            }, { merge: true });
-
-            await fetchClients();
-
-            _ptsSelectedClient = { name, phone, savedAddresses };
-            _ptsShowSelectedClientChip(_ptsSelectedClient);
-            _ptsUpdateConfirmBtn();
+            await _ptsCreateAndSelectClient({ name, phone, addr });
 
             // Limpiar campos
             if (nameInput) nameInput.value = '';
             if (phoneInput) phoneInput.value = '';
             if (addrInput) addrInput.value = '';
-
-            // Actualizar sección de domicilio ahora que el cliente está asignado
-            _ptsRefreshDomicilioSection();
 
             // Cambiar tab visualmente a "search" sin disparar el handler que limpiaría el cliente
             _ptsActiveTab = 'search';
@@ -14538,8 +14532,6 @@ document.getElementById('ptsSaveAddrNo')?.addEventListener('click', () => {
             if (panelQuick) panelQuick.setAttribute('hidden', '');
             if (panelSearch) panelSearch.removeAttribute('hidden');
             if (panelNew) panelNew.setAttribute('hidden', '');
-
-            showNotice(`Cliente "${name}" creado y seleccionado.`, 'success');
         } catch (err) {
             console.error('[POS] Error creando cliente desde pestaña Nuevo:', err);
             showNotice('No se pudo guardar el cliente.', 'error');
