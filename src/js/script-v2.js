@@ -26,7 +26,6 @@ let ORDERING_SCHEDULE = {
     openMessage: 'Abierto ahora. Ya puedes hacer tu pedido.',
     closedMessage: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.'
 };
-const ORDER_SENT_CONFIRMATION_MESSAGE = 'Tu pedido ha sido enviado exitosamente al restaurante. En un momento recibiras la confirmacion con tiempo aproximado de entrega.';
 const TRANSFER_PAYMENT_CONFIRMATION_MESSAGE = 'En un momento uno de nuestros asesores se comunicara contigo por WhatsApp para pasarte la informacion de la cuenta.';
 const CASH_PAYMENT_CONFIRMATION_MESSAGE = 'Tu pedido ya fue enviado al restaurante, manejamos un tiempo de entrega de 50 min aproximadamente, uno de nuestros asesores se comunicara contigo a la brevedad posible para confirmar el pedido.';
 const DELIVERY_CENTER_COORDINATES = [4.5419, -75.6835];
@@ -259,7 +258,6 @@ let orderingStatusToastTimer = null;
 let orderSentToastTimer = null;
 let publicFirebaseDbInstance  = null;
 let publicFirebaseFnInstance  = null;
-let orderSentConfirmationUI = null;
 let publicUpgradesConfig = null;
 let _publicUpgradePending = null;
 let paymentFlowUI = null;
@@ -384,11 +382,6 @@ function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '')
     return normalizedAddresses.slice(0, MAX_CUSTOMER_SAVED_ADDRESSES);
 }
 
-function getCustomerPrimarySavedAddress(profile = {}) {
-    const addresses = getCustomerSavedAddresses(profile);
-    return addresses.find((entry) => entry.primary) || addresses[0] || null;
-}
-
 function appendCustomerSavedAddress(rawAddresses = [], newAddress = '') {
     const addresses = normalizeCustomerSavedAddresses(rawAddresses);
     const newEntry = typeof newAddress === 'string'
@@ -400,15 +393,6 @@ function appendCustomerSavedAddress(rawAddresses = [], newAddress = '') {
     }
 
     return normalizeCustomerSavedAddresses([...addresses, newEntry], addresses[0]?.address || newEntry.address);
-}
-
-function parseCustomerSavedAddressesInput(rawValue = '', primaryAddress = '') {
-    const lines = String(rawValue || '')
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
-
-    return normalizeCustomerSavedAddresses(lines, primaryAddress);
 }
 
 function getCustomerSavedAddresses(profile = {}) {
@@ -1111,51 +1095,6 @@ function showOrderingClosedMessage() {
     orderingStatusToastTimer = window.setTimeout(() => {
         toast.classList.remove('is-visible');
     }, 2600);
-}
-
-function closeOrderSentMessage() {
-    if (!orderSentConfirmationUI) {
-        return;
-    }
-
-    orderSentConfirmationUI.modal.remove();
-    orderSentConfirmationUI = null;
-    syncBodyScrollLock();
-}
-
-function showOrderSentMessage(message = ORDER_SENT_CONFIRMATION_MESSAGE) {
-    closeOrderSentMessage();
-
-    const modal = document.createElement('div');
-    modal.id = 'orderSentConfirmationModal';
-    modal.className = 'support-modal';
-    modal.classList.add('is-open');
-    modal.innerHTML = `
-        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Confirmacion de pedido enviado">
-            <p class="support-modal-kicker">Pedido enviado</p>
-            <h3 class="support-modal-title">Informacion importante</h3>
-            <p class="support-modal-text">${message}</p>
-            <div class="support-actions">
-                <button type="button" class="support-send-btn">Entendido</button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    orderSentConfirmationUI = {
-        modal,
-        accept: modal.querySelector('.support-send-btn')
-    };
-
-    orderSentConfirmationUI.accept.addEventListener('click', closeOrderSentMessage);
-    modal.addEventListener('click', (event) => {
-        if (event.target === modal && _lastMousedownTarget === modal) {
-            closeOrderSentMessage();
-        }
-    });
-
-    syncBodyScrollLock();
 }
 
 let _activeOrderUnsubscribe = null;
@@ -1889,37 +1828,6 @@ function getCustomerProfileFormUI() {
     return null;
 }
 
-function populateCustomerRegisterPanel(profile = {}) {
-    const formUI = getCustomerProfileFormUI();
-    if (!formUI) {
-        return;
-    }
-
-    if (formUI.name) {
-        formUI.name.value = String(profile.customerName || '').trim();
-    }
-    if (formUI.address) {
-        formUI.address.value = String(profile.address || '').trim();
-    }
-    if (formUI.registerPhone) {
-        formUI.registerPhone.value = String(profile.customerPhone || '').trim();
-    }
-    if (formUI.registerPin) {
-        formUI.registerPin.value = '';
-    }
-    if (formUI.confirmPin) {
-        formUI.confirmPin.value = '';
-    }
-    if (Array.isArray(formUI.savedAddressesData)) {
-        formUI.savedAddressesData = getCustomerSavedAddresses(profile);
-        formUI.selectedSavedAddressIndex = 0;
-        renderCustomerRegisterSavedAddresses();
-    }
-    const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
-    formUI.hasPreviousConsent = hasConsent;
-    applyCustomerConsentState(hasConsent);
-}
-
 function closeCustomerRegisterModal() {
     closeCustomerConsentDocument();
     closeCustomerDeleteAccountModal();
@@ -2363,20 +2271,6 @@ function getCustomerPrimarySavedAddressFromEditor() {
     return addresses.find((entry) => entry.primary) || addresses[0] || null;
 }
 
-function setCustomerRegisterSelectedAddressIndex(index) {
-    if (!customerRegisterUI) {
-        return;
-    }
-
-    const addresses = customerRegisterUI.savedAddressesData || [];
-    if (index < 0 || index >= addresses.length) {
-        return;
-    }
-
-    customerRegisterUI.selectedSavedAddressIndex = index;
-    renderCustomerRegisterSavedAddresses();
-}
-
 function createCustomerSavedAddressMapModal() {
     closeCustomerSavedAddressMapModal();
 
@@ -2578,24 +2472,6 @@ function setCustomerSavedAddressMapLocation(latitude, longitude) {
     addresses[index].latitude = Number.isFinite(Number(latitude)) ? Number(latitude) : null;
     addresses[index].longitude = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
     renderCustomerRegisterSavedAddresses();
-}
-
-function requestCustomerSavedAddressGeolocation() {
-    if (!customerRegisterUI || !navigator.geolocation) {
-        return;
-    }
-
-    navigator.geolocation.getCurrentPosition((position) => {
-        setCustomerSavedAddressMapLocation(position.coords.latitude, position.coords.longitude);
-    }, (error) => {
-        if (customerRegisterUI) {
-            customerRegisterUI.feedback.textContent = 'No se pudo obtener tu ubicacion. Asegurate de permitir el acceso al GPS.';
-        }
-    }, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
-    });
 }
 
 function handleSavedAddressUseLocation() {
@@ -3492,12 +3368,6 @@ function getSelectedCategoryName() {
     return selectedCategory?.name || 'NUESTROS PRODUCTOS';
 }
 
-function buildProductWhatsAppUrl(productName, categoryName) {
-    const safeProductName = String(productName || 'producto').trim() || 'producto';
-    const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
-    return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(`PEDIDO\nProducto: ${safeProductName}\nCategoria: ${safeCategoryName}`)}`;
-}
-
 const COMBO_EXTRA_PRICE = 7000;
 const COMBO_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_SMALL_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
@@ -3820,58 +3690,28 @@ function getComboButtonCopy(categoryName) {
     };
 }
 
-function buildOrderMessage(productName, categoryName, orderOptions = { type: 'solo' }) {
-    const safeProductName = String(productName || 'producto').trim() || 'producto';
-    const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
-    const detail = getWhatsAppOrderDetail(safeCategoryName, orderOptions);
-    const messageLines = [
-        'PEDIDO',
-        `Producto: ${safeProductName}`,
-        `Categoria: ${safeCategoryName}`
-    ];
-
-    if (detail) {
-        messageLines.push(`Detalle: ${detail}`);
-    }
-
-    return appendCommentText(messageLines.join('\n'), orderOptions);
-}
-
-function openWhatsAppOrder(productName, categoryName, orderOptions = { type: 'solo' }) {
-    if (!canPlaceOrdersNow()) {
-        showOrderingClosedMessage();
-        return;
-    }
-
-    const message = buildOrderMessage(productName, categoryName, orderOptions);
-    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
-    showOrderSentMessage();
-}
 
 const CART_STORAGE_KEY = 'roalburger-cart-v1';
 let shoppingCart = [];
 let cartUI = null;
-let supportUI = null;
-let activeSupportTopic = '';
 let checkoutInfoUI = null;
 let cartToastTimeout = null;
 
 function syncBodyScrollLock() {
     const menuModal = document.getElementById('menuModal');
-    const supportModal = supportUI?.modal || document.getElementById('supportModal');
     const isMenuOpen = Boolean(menuModal && menuModal.style.display === 'block');
     const isCartOpen = Boolean(cartUI && cartUI.drawer.classList.contains('is-open'));
-    const isSupportOpen = Boolean(supportModal && supportModal.classList.contains('is-open'));
     const isCheckoutOpen = Boolean(checkoutInfoUI && checkoutInfoUI.modal.classList.contains('is-open'));
     const isPaymentFlowOpen = Boolean(paymentFlowUI && paymentFlowUI.modal.classList.contains('is-open'));
-    const isOrderSentOpen = Boolean(orderSentConfirmationUI && orderSentConfirmationUI.modal.classList.contains('is-open'));
     const isCustomerAuthOpen = Boolean(customerAuthUI && customerAuthUI.modal.classList.contains('is-open'));
     const isCustomerRegisterOpen = Boolean(customerRegisterUI && customerRegisterUI.modal.classList.contains('is-open'));
     const isCustomerConsentOpen = Boolean(customerConsentDocumentUI && customerConsentDocumentUI.modal.classList.contains('is-open'));
     const isCustomerDeleteOpen = Boolean(customerDeleteAccountUI && customerDeleteAccountUI.modal.classList.contains('is-open'));
     const isCustomerPasswordResetOpen = Boolean(customerPasswordResetUI && customerPasswordResetUI.modal.classList.contains('is-open'));
+    // Cubre cualquier overlay que reutilice la clase .support-modal (registro, mapa de
+    // dirección, etc.) — no solo el modal de soporte viejo, que ya no existe.
     const hasAnyOpenModal = Boolean(document.querySelector('.support-modal.is-open'));
-    document.body.style.overflow = isMenuOpen || isCartOpen || isSupportOpen || isCheckoutOpen || isPaymentFlowOpen || isOrderSentOpen || isCustomerAuthOpen || isCustomerRegisterOpen || isCustomerConsentOpen || isCustomerDeleteOpen || isCustomerPasswordResetOpen || hasAnyOpenModal ? 'hidden' : 'auto';
+    document.body.style.overflow = isMenuOpen || isCartOpen || isCheckoutOpen || isPaymentFlowOpen || isCustomerAuthOpen || isCustomerRegisterOpen || isCustomerConsentOpen || isCustomerDeleteOpen || isCustomerPasswordResetOpen || hasAnyOpenModal ? 'hidden' : 'auto';
 }
 
 function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
@@ -3914,14 +3754,6 @@ function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo'
         comboGroupId: normalized.comboGroupId,
         isComboChild: normalized.isComboChild
     });
-}
-
-function appendCommentText(baseText, orderOptions = { type: 'solo' }) {
-    const comment = String(orderOptions.comment || '').trim();
-    if (!comment) {
-        return baseText;
-    }
-    return `${baseText}\nNota: ${comment}`;
 }
 
 function getWhatsAppOrderDetail(categoryName, orderOptions = { type: 'solo' }) {
@@ -6241,241 +6073,6 @@ function initCartUI() {
 
 function _updateFabVisibility() {
     // cart is now always visible in the bottom nav bar
-}
-
-function getSupportSocialEntries() {
-    return [
-        { label: 'Instagram', config: getButtonConfigByPlatform('instagram') },
-        { label: 'TikTok', config: getButtonConfigByPlatform('tiktok') },
-        { label: 'Facebook', config: getButtonConfigByPlatform('facebook') }
-    ].filter((item) => item.config && item.config.visible !== false && item.config.estado !== 'paused' && item.config.link);
-}
-
-function buildSupportWhatsAppMessage(name, details, topicKey) {
-    const safeName = String(name || '').trim();
-    const safeDetails = String(details || '').trim();
-    const topicLabelMap = {
-        horario: 'Horario',
-        direccion: 'Direccion',
-        redes: 'Nuestras redes',
-        reclamos: 'Quejas o reclamos'
-    };
-    const topicLabel = topicLabelMap[topicKey] || 'Ayuda general';
-    const restaurantName = _getRestaurantName();
-    return [
-        `Hola, ${restaurantName}! Necesito ayuda o informacion.`,
-        `Nombre: ${safeName}`,
-        `Tema: ${topicLabel}`,
-        `Consulta: ${safeDetails || `Quiero informacion sobre ${topicLabel.toLowerCase()}.`}`
-    ].join('\n');
-}
-
-function renderSupportAnswer(topicKey) {
-    if (!supportUI) {
-        return;
-    }
-
-    const answer = supportUI.answer;
-    answer.innerHTML = '';
-
-    const title = document.createElement('h4');
-    title.className = 'support-answer-title';
-    const body = document.createElement('div');
-    body.className = 'support-answer-body';
-
-    if (topicKey === 'horario') {
-        title.textContent = 'Horario de atencion';
-        body.textContent = 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.';
-    } else if (topicKey === 'direccion') {
-        title.textContent = 'Direccion';
-        body.textContent = 'Cl. 22 #29-59, Armenia, Quindio. Barrio Las Americas.';
-    } else if (topicKey === 'redes') {
-        title.textContent = 'Nuestras redes';
-        const socials = getSupportSocialEntries();
-        if (!socials.length) {
-            body.textContent = 'En este momento nuestras redes no estan disponibles.';
-        } else {
-            const list = document.createElement('div');
-            list.className = 'support-link-list';
-            socials.forEach((item) => {
-                const link = document.createElement('a');
-                link.className = 'support-link-chip';
-                link.href = item.config.link;
-                link.target = '_blank';
-                link.rel = 'noopener';
-                link.textContent = item.label;
-                list.appendChild(link);
-            });
-            body.appendChild(list);
-        }
-    } else if (topicKey === 'reclamos') {
-        title.textContent = 'Quejas o reclamos';
-        body.textContent = 'Escribenos tu queja, reclamo o novedad y la enviaremos directo por WhatsApp para darte respuesta.';
-    } else {
-        title.textContent = 'En que te podemos ayudar';
-        body.textContent = 'Selecciona una pregunta frecuente o escribenos tu consulta y te la enviamos por WhatsApp.';
-    }
-
-    answer.appendChild(title);
-    answer.appendChild(body);
-}
-
-function applySupportTopic(topicKey) {
-    activeSupportTopic = topicKey;
-    if (!supportUI) {
-        return;
-    }
-
-    supportUI.topicButtons.forEach((button) => {
-        button.classList.toggle('is-active', button.dataset.topic === topicKey);
-    });
-
-    const promptMap = {
-        horario: 'Quiero informacion sobre el horario.',
-        direccion: 'Quiero informacion sobre la direccion.',
-        redes: 'Quiero conocer sus redes sociales.',
-        reclamos: 'Quiero registrar una queja o reclamo.'
-    };
-
-    if (supportUI.details && promptMap[topicKey]) {
-        supportUI.details.value = promptMap[topicKey];
-    }
-
-    renderSupportAnswer(topicKey);
-}
-
-function resetSupportState() {
-    activeSupportTopic = '';
-    if (!supportUI) {
-        return;
-    }
-
-    supportUI.name.value = '';
-    supportUI.details.value = '';
-    supportUI.feedback.textContent = '';
-    supportUI.topicButtons.forEach((button) => {
-        button.classList.remove('is-active');
-    });
-    renderSupportAnswer('');
-}
-
-function closeSupportModal() {
-    if (!supportUI) {
-        return;
-    }
-
-    supportUI.modal.classList.remove('is-open');
-    if (!_closingByBackBtn) _popModalState();
-    syncBodyScrollLock();
-}
-
-function sendSupportRequest() {
-    if (!supportUI) {
-        return;
-    }
-
-    const name = String(supportUI.name.value || '').trim();
-    const details = String(supportUI.details.value || '').trim();
-
-    if (!name) {
-        supportUI.feedback.textContent = 'Escribe tu nombre para continuar.';
-        supportUI.name.focus();
-        return;
-    }
-
-    if (!details && !activeSupportTopic) {
-        supportUI.feedback.textContent = 'Selecciona una pregunta frecuente o escribe tu mensaje.';
-        supportUI.details.focus();
-        return;
-    }
-
-    supportUI.feedback.textContent = '';
-    trackButtonClick('btn-whatsapp-flotante-send', `Ayuda WhatsApp - ${activeSupportTopic || 'consulta libre'}`);
-    const message = buildSupportWhatsAppMessage(name, details, activeSupportTopic);
-    window.open(`${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
-    resetSupportState();
-    closeSupportModal();
-}
-
-function openSupportModal() {
-    if (!supportUI) {
-        initSupportModal();
-    }
-
-    supportUI.feedback.textContent = '';
-    supportUI.modal.classList.add('is-open');
-    _pushModalState();
-    syncBodyScrollLock();
-    if (!activeSupportTopic) {
-        renderSupportAnswer('');
-    }
-    supportUI.name.focus();
-}
-
-function initSupportModal() {
-    if (supportUI) {
-        return;
-    }
-
-    const modal = document.createElement('div');
-    modal.id = 'supportModal';
-    modal.className = 'support-modal';
-    modal.innerHTML = `
-        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Ayuda e informacion">
-            <button type="button" class="support-modal-close" aria-label="Cerrar ayuda">&times;</button>
-            <p class="support-modal-kicker">Ayuda e informacion</p>
-            <h3 class="support-modal-title">En que te podemos ayudar</h3>
-            <p class="support-modal-text">Responde rapido una duda frecuente o envianos tu consulta por WhatsApp.</p>
-            <div class="support-topic-grid">
-                <button type="button" class="support-topic-btn" data-topic="horario">Horario</button>
-                <button type="button" class="support-topic-btn" data-topic="direccion">Direccion</button>
-                <button type="button" class="support-topic-btn" data-topic="redes">Nuestras redes</button>
-                <button type="button" class="support-topic-btn" data-topic="reclamos">Quejas o reclamos</button>
-            </div>
-            <div class="support-answer" id="supportAnswer"></div>
-            <label class="support-field">
-                <span>Tu nombre</span>
-                <input type="text" id="supportName" placeholder="Escribe tu nombre">
-            </label>
-            <label class="support-field">
-                <span>Tu mensaje</span>
-                <textarea id="supportDetails" rows="4" placeholder="Cuentanos que necesitas"></textarea>
-            </label>
-            <p class="support-feedback" id="supportFeedback"></p>
-            <div class="support-actions">
-                <button type="button" class="support-send-btn">Enviar a WhatsApp</button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    supportUI = {
-        modal,
-        close: modal.querySelector('.support-modal-close'),
-        answer: modal.querySelector('#supportAnswer'),
-        name: modal.querySelector('#supportName'),
-        details: modal.querySelector('#supportDetails'),
-        feedback: modal.querySelector('#supportFeedback'),
-        send: modal.querySelector('.support-send-btn'),
-        topicButtons: Array.from(modal.querySelectorAll('.support-topic-btn'))
-    };
-
-    supportUI.close.addEventListener('click', closeSupportModal);
-    supportUI.send.addEventListener('click', sendSupportRequest);
-    supportUI.topicButtons.forEach((button) => {
-        button.addEventListener('click', () => {
-            applySupportTopic(button.dataset.topic || '');
-        });
-    });
-
-    modal.addEventListener('click', (event) => {
-        if (event.target === modal && _lastMousedownTarget === modal) {
-            closeSupportModal();
-        }
-    });
-
-    renderSupportAnswer('');
 }
 
 function closeComboChoiceModal() {
@@ -9526,11 +9123,6 @@ function focusMenuSection(targetSection, targetId) {
     targetSection.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 }
 
-function ensureBrandBanner() {
-    // Eliminado: No generar banner dinámico, solo usar el estático en el HTML
-    return null;
-}
-
 function _getRestaurantName() {
     return _publicBrandingConfig.restaurantName || 'Roal Burger';
 }
@@ -9564,26 +9156,6 @@ function applyBrandingConfig(configRaw) {
     const carouselTitleEl = document.querySelector('.home-section-title');
     if (carouselTitleEl && configRaw && configRaw.carousel_title) {
         carouselTitleEl.textContent = configRaw.carousel_title;
-    }
-
-    const banner = ensureBrandBanner();
-    if (banner) {
-        const logo = document.getElementById('brandBannerLogo');
-        const title = document.getElementById('brandBannerTitle');
-        const slogan = document.getElementById('brandBannerSlogan');
-
-        if (logo) {
-            logo.src = config.logoUrl || _IMG_FINAL_FALLBACK;
-            logo.alt = `Logo ${config.restaurantName}`;
-        }
-
-        if (title) {
-            title.textContent = config.restaurantName;
-        }
-
-        if (slogan) {
-            slogan.textContent = config.slogan;
-        }
     }
 }
 
@@ -9731,12 +9303,6 @@ async function renderPublicFeaturedFromAdmin() {
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         render2x1Cards();
     }, () => {});
-}
-
-function buildDynamicWhatsAppUrl(sectionName) {
-    const restaurantName = _getRestaurantName();
-    const message = `Hola, ${restaurantName}! Me interesa un producto de la seccion: ${sectionName}`;
-    return `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`;
 }
 
 function updateDynamicWhatsAppLink(sectionName) {
@@ -9989,18 +9555,6 @@ function getEligibleRecommendedProducts() {
 
 function getRecommendedProductSignature(product) {
     return `${normalizeCategoryKey(product?.categoria || '')}::${normalizeCategoryKey(product?.nombre || '')}`;
-}
-
-function createSeededRandom(seed) {
-    let value = Math.abs(Number(seed || 1)) % 2147483647;
-    if (!value) {
-        value = 1;
-    }
-
-    return () => {
-        value = (value * 48271) % 2147483647;
-        return (value - 1) / 2147483646;
-    };
 }
 
 function _hashProductDay(key, daySerial) {
@@ -10512,47 +10066,9 @@ function showHomeScreen() {
 }
 
 function renderHomeScreen() {
-    _updateClosedHoursBanner();
     renderHomeRecBanner();
     renderHomeComboCarousel();
     renderHomeCategoryCards();
-}
-
-let _closedBannerPollId = null;
-
-function _updateClosedHoursBanner() {
-    const banner = document.getElementById('closedHoursBanner');
-    if (!banner) return;
-
-    if (_closedBannerPollId) {
-        clearInterval(_closedBannerPollId);
-        _closedBannerPollId = null;
-    }
-
-    function _refresh() {
-        const availability = getOrderingAvailability();
-        if (availability.isOpen) {
-            banner.classList.remove('is-visible');
-            if (_closedBannerPollId) { clearInterval(_closedBannerPollId); _closedBannerPollId = null; }
-            return;
-        }
-
-        const openMinutes = ORDERING_SCHEDULE.startMinutes;
-        const h = Math.floor(openMinutes / 60);
-        const m = openMinutes % 60;
-        const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        const timeStr = `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
-
-        banner.innerHTML = `<strong>Estamos cerrados.</strong> Abrimos hoy a las ${timeStr} — puedes explorar el menú.`;
-        banner.classList.add('is-visible');
-    }
-
-    _refresh();
-
-    if (banner.classList.contains('is-visible')) {
-        _closedBannerPollId = setInterval(_refresh, 60_000);
-    }
 }
 
 function renderHomeRecBanner() {
@@ -10793,50 +10309,6 @@ function renderHomeCategoryCards() {
     if (sectionsAdded === 0) {
         container.innerHTML = '<p class="home-loading-msg">Cargando productos...</p>';
     }
-
-    _renderDtCatSidebar();
-}
-
-function _renderDtCatSidebar() {
-    const nav = document.getElementById('dtCatNav');
-    if (!nav) return;
-    const categories = activeCategoryMeta;
-    if (!categories || !categories.length) return;
-
-    // Solo re-renderizar si cambiaron las categorías
-    const currentKeys = [...nav.querySelectorAll('[data-cat-key]')].map(b => b.dataset.catKey).join(',');
-    const newKeys = categories.map(c => c.key || normalizeCategoryKey(c.name || '')).join(',');
-    if (currentKeys === newKeys) return;
-
-    nav.innerHTML = '';
-    categories.forEach(cat => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'dt-cat-btn';
-        btn.dataset.catKey = cat.key || normalizeCategoryKey(cat.name || '');
-
-        if (cat.image_url) {
-            const img = document.createElement('img');
-            img.className = 'dt-cat-img';
-            img.src = cat.image_url;
-            img.alt = '';
-            img.loading = 'lazy';
-            img.onerror = () => { img.style.display = 'none'; };
-            btn.appendChild(img);
-        }
-
-        const label = document.createElement('span');
-        label.textContent = cat.name;
-        btn.appendChild(label);
-
-        btn.addEventListener('click', () => {
-            nav.querySelectorAll('.dt-cat-btn').forEach(b => b.classList.remove('dt-cat-active'));
-            btn.classList.add('dt-cat-active');
-            openCategoryDetail(cat);
-        });
-
-        nav.appendChild(btn);
-    });
 }
 
 // ── Redeem Effect — partículas + stamp + haptic ──────────────────────────────
@@ -11156,15 +10628,7 @@ function openCategoryDetail(cat) {
 
     _enterScreen('categoryDetailScreen');
 
-    // Resaltar categoría activa en el sidebar desktop
     const catKey = cat.key || normalizeCategoryKey(cat.name);
-    const dtNav = document.getElementById('dtCatNav');
-    if (dtNav) {
-        dtNav.querySelectorAll('.dt-cat-btn').forEach(b => {
-            b.classList.toggle('dt-cat-active', b.dataset.catKey === catKey);
-        });
-    }
-
     title.textContent = cat.name;
     const products = latestProducts
         .filter(p => normalizeCategoryKey(String(p.categoria || p.category || '')) === catKey
@@ -12542,7 +12006,6 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         closeMenuModal();
         closePromoScreen();
-        closeSupportModal();
         closeCustomerAuthModal();
     }
 });
@@ -13148,19 +12611,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('publicChatFab')?.addEventListener('click', openPublicChatTab);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
 
-    // Desktop topbar — acciones
-    document.getElementById('dtBrandBtn')?.addEventListener('click', () => showHomeScreen());
-    document.getElementById('dtSessionBtn')?.addEventListener('click', () => openCustomerAuthModal());
-    document.querySelectorAll('[data-dt-nav]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const nav = btn.dataset.dtNav;
-            if      (nav === 'menu')   openNavCategoriesScreen('Nuestro Menu', null);
-            else if (nav === 'combos') openNavCategoriesScreen('Combos', cat => normalizeCategoryKey(cat.name || '').includes('combo'));
-            else if (nav === 'promos') openPromoScreen();
-            else if (nav === 'buscar') openSearchScreen();
-        });
-    });
-
     // Barra de navegación inferior — acciones
     document.getElementById('bnavInicio')?.addEventListener('click', () => {
         window.__roalHideSplash?.(); // oculta splash si todavía está visible
@@ -13230,7 +12680,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     initCartUI();
-    initSupportModal();
     // initPromoModal(); — desactivado: el recomendado se muestra fijo en el banner del home screen
     initShortcutInstallUI();
     setupMenuNavigation();
@@ -13323,7 +12772,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (paymentFlowUI) { closePaymentFlowModal(); return; }
                 const upgradeOverlay = document.getElementById('publicUpgradeOverlay');
                 if (upgradeOverlay && !upgradeOverlay.hidden) { closePublicUpgradeSheet(); return; }
-                if (supportUI?.modal?.classList.contains('is-open')) { closeSupportModal(); return; }
                 if (cartUI?.drawer.classList.contains('is-open')) { closeCartDrawer(); return; }
             } finally {
                 _closingByBackBtn = false;
@@ -13456,7 +12904,4 @@ function closeAyudaScreen() {
     if (screen) screen.hidden = true;
     _exitScreen();
 }
-
-// Alias para compatibilidad con código existente
-function openAyudaModal() { openAyudaScreen(); }
 
