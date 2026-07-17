@@ -8889,11 +8889,13 @@ function _meseroCheckOwnOrder(order) {
     return false;
 }
 
+// Delegado a src/js/caja/calculos.js (módulo real, con test propio en
+// calculos.test.js) — cargado antes que este script vía <script type="module">
+// en admin.html. El respaldo inline es solo por si ese script no llegara a
+// cargar; la lógica real vive en un solo lugar, no acá.
 function getOrderDisplayTotal(order) {
-    if (Number.isFinite(Number(order.total))) {
-        return Number(order.total);
-    }
-
+    if (window.CajaCalculos) return window.CajaCalculos.getOrderDisplayTotal(order);
+    if (Number.isFinite(Number(order.total))) return Number(order.total);
     return Number(order.subtotal || 0) + Number(order.deliveryFee || 0);
 }
 
@@ -17381,13 +17383,12 @@ function _cajaDiariaMethodLabel(order) {
     return subLabel ? `${method.icon} ${method.label} · ${subLabel}` : `${method.icon} ${method.label}`;
 }
 
-// El pago a domiciliarios no se registra como gasto real por cada pedido — se infiere de la
-// suma de deliveryFee de los pedidos a domicilio pagados en la jornada, salvo que ya exista un
-// gasto real (id que empieza con "gasto_domicilios_", registrado al cerrar caja). Usado tanto
-// por la vista en vivo (renderCajaDiaria) como por el cierre (cerrarCaja) para que ambos calculen
-// exactamente lo mismo — antes cada uno tenía su propia copia de este filtro y sumaba distinto
-// (la vista en vivo no excluía pedidos anulados, el cierre sí).
+// Delegado a src/js/caja/calculos.js (mismo módulo real de getOrderDisplayTotal,
+// con su propio test) — usado tanto por la vista en vivo (renderCajaDiaria) como
+// por el cierre (cerrarCaja) para que ambos calculen exactamente lo mismo. El
+// respaldo inline es solo por si el módulo no llegara a cargar.
 function _computeDomicilioGastoVirtual(paidOrders, gastosJornada) {
+    if (window.CajaCalculos) return window.CajaCalculos.computeDomicilioGastoVirtual(paidOrders, gastosJornada);
     const hasReal = gastosJornada.some((g) => String(g.id || '').startsWith('gasto_domicilios_'));
     const deliveryPaid = paidOrders.filter((o) => !o.voided && (o.orderType === 'domicilio' || o.fulfillmentType === 'delivery'));
     const monto = deliveryPaid.reduce((s, o) => s + Number(o.deliveryFee || 0), 0);

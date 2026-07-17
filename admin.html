@@ -14626,6 +14626,12 @@
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="tracking.js"></script>
+    <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
+         Se expone en window.CajaCalculos para que admin.js (script clásico) la use
+         sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
+         que admin.js — los <script type="module"> y los <script defer> ejecutan en
+         el orden en que aparecen en el documento, así que este orden es suficiente. -->
+    <script type="module" src="src/js/caja/calculos.js?v=20260715-1653"></script>
     <script defer src="admin.js?v=20260715-1653"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>

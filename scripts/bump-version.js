@@ -40,6 +40,12 @@ adminHtml = adminHtml.replace(
     `admin.js?v=${stamp}`
 );
 
+// src/js/caja/calculos.js?v=... (módulo de lógica de Caja, se sirve tal cual sin minificar)
+adminHtml = adminHtml.replace(
+    /caja\/calculos\.js\?v=[\w-]+/g,
+    `caja/calculos.js?v=${stamp}`
+);
+
 // style.css — agrega ?v= si no existe, o reemplaza la existente
 adminHtml = adminHtml.replace(
     /href="style\.css(\?v=[\w-]+)?"/g,
