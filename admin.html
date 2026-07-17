@@ -16,7 +16,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260715-0233">
+    <link rel="stylesheet" href="style.css?v=20260717-0043">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -7103,7 +7103,11 @@
             border-radius: 18px;
         }
 
-        /* ── Menu Section: inner tabs ── */
+        /* ── Menu Section: inner tabs ──
+           Antes las pestañas usaban flex:1 (ancho igual repartido entre todas) — con 5-7
+           pestañas eso las apretaba hasta cortar el texto en vez de mostrarlas completas.
+           Ahora cada pestaña mide su ancho natural y la barra hace scroll horizontal si no
+           entran todas, en vez de recortarlas silenciosamente. */
         .menu-inner-tabs-nav {
             display: flex;
             gap: 5px;
@@ -7116,10 +7120,13 @@
             backdrop-filter: none;
             position: relative;
             z-index: 1;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
         }
 
         .menu-inner-tab {
-            flex: 1;
+            flex: 0 0 auto;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -14530,8 +14537,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260715-1653"></script>
-    <script defer src="admin.js?v=20260715-1653"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260717-0043"></script>
+    <script defer src="admin.js?v=20260717-0043"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
