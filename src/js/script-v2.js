@@ -5869,6 +5869,16 @@ function renderCartUI() {
             requestAnimationFrame(() => cartUI.badge?.classList.add('badge-bounce'));
         }
     }
+    if (cartUI.pill) {
+        cartUI.pill.classList.toggle('is-visible', totalItems > 0);
+    }
+    if (cartUI.pillLabel) {
+        cartUI.pillLabel.textContent = `${totalItems} producto${totalItems === 1 ? '' : 's'}`;
+    }
+    if (cartUI.pillTotal) {
+        cartUI.pillTotal.textContent = formatCurrency(getCartTotalAmount());
+    }
+    document.body.classList.toggle('has-cart-pill', totalItems > 0);
     cartUI.list.innerHTML = '';
 
     if (!shoppingCart.length) {
@@ -6238,7 +6248,18 @@ function initCartUI() {
 
     loadCartState();
 
-    const navBtn = document.getElementById('bnavCarrito');
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.className = 'cart-pill';
+    pill.setAttribute('aria-label', 'Ver carrito');
+    pill.innerHTML = `
+        <span class="cart-pill-left">
+            <span class="cart-pill-badge">0</span>
+            <span class="cart-pill-label">0 productos</span>
+        </span>
+        <span class="cart-pill-total">$0</span>
+    `;
+    document.body.appendChild(pill);
 
     const overlay = document.createElement('div');
     overlay.className = 'cart-overlay';
@@ -6276,8 +6297,10 @@ function initCartUI() {
     document.body.appendChild(drawer);
 
     cartUI = {
-        navBtn,
-        badge: navBtn?.querySelector('.ban-cart-badge') ?? null,
+        pill,
+        badge: pill.querySelector('.cart-pill-badge'),
+        pillLabel: pill.querySelector('.cart-pill-label'),
+        pillTotal: pill.querySelector('.cart-pill-total'),
         overlay,
         drawer,
         close: drawer.querySelector('.cart-close-btn'),
@@ -6288,7 +6311,7 @@ function initCartUI() {
         clear: drawer.querySelector('#cartClearBtn')
     };
 
-    navBtn?.addEventListener('click', openCartDrawer);
+    pill.addEventListener('click', openCartDrawer);
     overlay.addEventListener('click', closeCartDrawer);
     cartUI.close.addEventListener('click', closeCartDrawer);
     cartUI.continue.addEventListener('click', closeCartDrawer);
@@ -6296,10 +6319,6 @@ function initCartUI() {
     cartUI.clear.addEventListener('click', clearCart);
 
     renderCartUI();
-}
-
-function _updateFabVisibility() {
-    // cart is now always visible in the bottom nav bar
 }
 
 function closeComboChoiceModal() {
@@ -10280,7 +10299,6 @@ function showHomeScreen() {
     document.getElementById('navCategoriesScreen')?.removeAttribute('data-hidden-by-detail');
     const hs = document.getElementById('homeScreen');
     if (hs) { hs.hidden = false; renderHomeScreen(); }
-    _updateFabVisibility();
     setPublicTopbarVisible(true);
     _setNavCurrent(null);
     if (_screenHistoryPushed && !_closingByBackBtn) {
@@ -11776,7 +11794,6 @@ function _enterScreen(screenId) {
     }
     const hs = document.getElementById('homeScreen');
     if (hs) hs.hidden = true;
-    _updateFabVisibility();
     setPublicTopbarVisible(false);
     _setNavCurrent(screenId);
     if (!_screenHistoryPushed && !_closingByBackBtn) {
@@ -11812,7 +11829,6 @@ function _exitScreen() {
     if (!anyOpen) {
         const hs = document.getElementById('homeScreen');
         if (hs) { hs.hidden = false; renderHomeScreen(); }
-        _updateFabVisibility();
         setPublicTopbarVisible(true);
         _setNavCurrent(null);
         if (_screenHistoryPushed && !_closingByBackBtn) {
