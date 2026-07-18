@@ -1560,7 +1560,8 @@ async function loadCustomerPaymentMethods() {
         const db = getPublicFirebaseDb();
         const doc = await db.collection('configuracion').doc('metodos_pago').get();
         if (doc.exists && Array.isArray(doc.data()?.methods)) {
-            _customerPaymentMethods = doc.data().methods.filter((m) => m.enabled !== false);
+            // "Solo POS" queda oculto para el cliente; el resto (ambos o sin definir) se muestra.
+            _customerPaymentMethods = doc.data().methods.filter((m) => m.enabled !== false && m.visibility !== 'pos');
         } else {
             _customerPaymentMethods = [
                 { id: 'efectivo',       label: 'Efectivo',       icon: '💵' },

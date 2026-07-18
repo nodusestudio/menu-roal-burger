@@ -11620,7 +11620,8 @@
             cursor: pointer;
             transition: all 0.14s;
         }
-        .pm-sub-option-toggle input[type="checkbox"] { display: none; }
+        .pm-sub-option-toggle input[type="checkbox"],
+        .pm-sub-option-toggle input[type="radio"] { display: none; }
         .pm-sub-option-toggle span {
             font-family: 'Space Grotesk', sans-serif;
             font-size: 0.8rem;
@@ -11645,6 +11646,24 @@
             background: rgba(255,149,64,0.18);
             border: 1px solid rgba(255,149,64,0.35);
             color: var(--admin-accent, #ff9540);
+        }
+        .pm-visibility-badge {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.68rem; font-weight: 600;
+            padding: 2px 7px; border-radius: 20px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.18);
+            color: var(--admin-muted);
+        }
+        .pm-visibility-badge--pos {
+            background: rgba(96,165,250,0.16);
+            border-color: rgba(96,165,250,0.4);
+            color: #93c5fd;
+        }
+        .pm-visibility-badge--menu {
+            background: rgba(74,222,128,0.14);
+            border-color: rgba(74,222,128,0.38);
+            color: #86efac;
         }
         .pm-method-actions {
             display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: 10px;
@@ -13124,7 +13143,7 @@
                                 </div>
                                 <div class="card-body" id="card-metodos-pago">
                                     <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
-                                        Configura los métodos de pago disponibles al cobrar. Puedes activar/desactivar, editar o eliminar cada uno, y agregar nuevos.
+                                        Configura los métodos de pago disponibles al cobrar y en el menú del cliente. Puedes activar/desactivar, editar o eliminar cada uno, elegir si aparece en el POS, en el menú o en ambos, y agregar nuevos.
                                     </p>
                                     <div id="paymentConfigPanel">
                                         <!-- renderizado por JS -->
