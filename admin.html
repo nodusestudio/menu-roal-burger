@@ -11647,20 +11647,24 @@
             border: 1px solid rgba(255,149,64,0.35);
             color: var(--admin-accent, #ff9540);
         }
-        .pm-visibility-badge {
+        .pm-visibility-select {
             font-family: 'Space Grotesk', sans-serif;
-            font-size: 0.68rem; font-weight: 600;
-            padding: 2px 7px; border-radius: 20px;
+            font-size: 0.72rem; font-weight: 600;
+            padding: 5px 8px; border-radius: 8px;
             background: rgba(255,255,255,0.08);
             border: 1px solid rgba(255,255,255,0.18);
             color: var(--admin-muted);
+            cursor: pointer;
+            outline: none;
         }
-        .pm-visibility-badge--pos {
+        .pm-visibility-select:focus { border-color: var(--admin-accent, #ff9540); }
+        .pm-visibility-select option { background: #1a1a1a; color: #fff; }
+        .pm-visibility-select--pos {
             background: rgba(96,165,250,0.16);
             border-color: rgba(96,165,250,0.4);
             color: #93c5fd;
         }
-        .pm-visibility-badge--menu {
+        .pm-visibility-select--menu {
             background: rgba(74,222,128,0.14);
             border-color: rgba(74,222,128,0.38);
             color: #86efac;

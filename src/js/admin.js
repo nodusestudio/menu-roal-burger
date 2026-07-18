@@ -16981,10 +16981,14 @@ function renderPaymentConfigPanel() {
                     <div class="pm-method-header">
                         <span class="pm-method-name">
                             <span class="pm-method-icon">${escapeHtml(m.icon)}</span>${escapeHtml(m.label)}
-                            <span class="pm-visibility-badge pm-visibility-badge--${m.visibility || 'ambos'}">${_PM_VISIBILITY_LABELS[m.visibility] || _PM_VISIBILITY_LABELS.ambos}</span>
                             ${m.subs.length > 0 ? `<span class="pm-subs-badges">${m.subs.map((s) => `<span class="pm-sub-badge">${_PM_SUB_LABELS[s] || s}</span>`).join('')}</span>` : ''}
                         </span>
                         <div class="pm-method-actions">
+                            <select class="pm-visibility-select pm-visibility-select--${m.visibility || 'ambos'}" data-pm-visibility="${escapeHtml(m.id)}" title="Dónde se muestra">
+                                <option value="ambos" ${(!m.visibility || m.visibility === 'ambos') ? 'selected' : ''}>${_PM_VISIBILITY_LABELS.ambos}</option>
+                                <option value="pos" ${m.visibility === 'pos' ? 'selected' : ''}>${_PM_VISIBILITY_LABELS.pos}</option>
+                                <option value="menu" ${m.visibility === 'menu' ? 'selected' : ''}>${_PM_VISIBILITY_LABELS.menu}</option>
+                            </select>
                             <label class="pm-toggle" title="${m.enabled !== false ? 'Activo' : 'Inactivo'}">
                                 <input type="checkbox" data-pm-toggle="${escapeHtml(m.id)}" ${m.enabled !== false ? 'checked' : ''}>
                                 <span class="pm-toggle-slider"></span>
@@ -17019,23 +17023,6 @@ function renderPaymentConfigPanel() {
                         </label>
                     </div>
                 </div>
-                <div class="pm-form-row">
-                    <label class="pm-form-label">Dónde se muestra</label>
-                    <div class="pm-sub-checks">
-                        <label class="pm-sub-option-toggle">
-                            <input type="radio" name="pmFormVisibility" id="pmFormVisAmbos" value="ambos">
-                            <span>POS y Menú</span>
-                        </label>
-                        <label class="pm-sub-option-toggle">
-                            <input type="radio" name="pmFormVisibility" id="pmFormVisPos" value="pos">
-                            <span>Solo POS</span>
-                        </label>
-                        <label class="pm-sub-option-toggle">
-                            <input type="radio" name="pmFormVisibility" id="pmFormVisMenu" value="menu">
-                            <span>Solo Menú</span>
-                        </label>
-                    </div>
-                </div>
                 <div class="pm-form-actions">
                     <button type="button" class="admin-button" id="pmFormSaveBtn" style="grid-column:auto;">Guardar</button>
                     <button type="button" class="ghost-button" id="pmFormCancelBtn">Cancelar</button>
@@ -17050,6 +17037,15 @@ function renderPaymentConfigPanel() {
             const id = cb.dataset.pmToggle;
             const updated = getPaymentMethods().map((m) => m.id === id ? { ...m, enabled: cb.checked } : m);
             await _pmSaveAndRefresh(updated, `Método ${cb.checked ? 'activado' : 'desactivado'}.`);
+        });
+    });
+
+    panel.querySelectorAll('[data-pm-visibility]').forEach((sel) => {
+        sel.addEventListener('change', async () => {
+            const id = sel.dataset.pmVisibility;
+            const method = getPaymentMethods().find((m) => m.id === id);
+            const updated = getPaymentMethods().map((m) => m.id === id ? { ...m, visibility: sel.value } : m);
+            await _pmSaveAndRefresh(updated, `"${method?.label || 'Método'}" ahora se muestra en: ${_PM_VISIBILITY_LABELS[sel.value]}.`);
         });
     });
 
@@ -17084,7 +17080,6 @@ function _pmOpenForm(editId) {
     const iconInput   = document.getElementById('pmFormIcon');
     const subTrans    = document.getElementById('pmFormSubTransferencia');
     const subTarjeta  = document.getElementById('pmFormSubTarjeta');
-    const visRadios   = document.querySelectorAll('input[name="pmFormVisibility"]');
     if (editId) {
         const m = getPaymentMethods().find((m) => m.id === editId);
         if (!m) return;
@@ -17092,13 +17087,11 @@ function _pmOpenForm(editId) {
         if (iconInput)  iconInput.value  = m.icon;
         if (subTrans)   subTrans.checked   = m.subs.includes('transferencia');
         if (subTarjeta) subTarjeta.checked = m.subs.includes('tarjeta');
-        visRadios.forEach((r) => { r.checked = r.value === (m.visibility || 'ambos'); });
     } else {
         if (labelInput) labelInput.value = '';
         if (iconInput)  iconInput.value  = '';
         if (subTrans)   subTrans.checked   = false;
         if (subTarjeta) subTarjeta.checked = false;
-        visRadios.forEach((r) => { r.checked = r.value === 'ambos'; });
     }
     wrap.removeAttribute('hidden');
     labelInput?.focus();
@@ -17111,19 +17104,20 @@ async function _pmFormSave() {
     const subs = [];
     if (document.getElementById('pmFormSubTransferencia')?.checked) subs.push('transferencia');
     if (document.getElementById('pmFormSubTarjeta')?.checked) subs.push('tarjeta');
-    const visibility = document.querySelector('input[name="pmFormVisibility"]:checked')?.value || 'ambos';
 
     const editingId = _pmEditingId;
     let updated;
     if (editingId) {
-        updated = getPaymentMethods().map((m) => m.id === editingId ? { ...m, label, icon, subs, visibility } : m);
+        // La visibilidad (POS/Menú/ambos) se controla con el selector inline de la fila,
+        // no desde este formulario — se conserva la que ya tenía el método.
+        updated = getPaymentMethods().map((m) => m.id === editingId ? { ...m, label, icon, subs } : m);
     } else {
         const id = label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
         if (!id) { showNotice('Nombre inválido.', 'error'); return; }
         if (getPaymentMethods().some((m) => m.id === id)) {
             showNotice('Ya existe un método con ese nombre.', 'error'); return;
         }
-        updated = [...getPaymentMethods(), { id, label, icon, enabled: true, subs, visibility }];
+        updated = [...getPaymentMethods(), { id, label, icon, enabled: true, subs, visibility: 'ambos' }];
     }
     document.getElementById('pmMethodFormWrap')?.setAttribute('hidden', '');
     _pmEditingId = null;

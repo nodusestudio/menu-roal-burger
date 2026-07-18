@@ -3534,11 +3534,6 @@ body.has-consent-doc-open .guest-register-banner {
     font-size: 0.98rem;
 }
 
-/* El chat FAB sube por encima de la píldora del carrito cuando esta visible */
-.has-cart-pill .pub-chat-fab {
-    bottom: calc(68px + env(safe-area-inset-bottom, 0px) + 74px);
-}
-
 .cart-added-toast {
     position: fixed;
     left: 50%;
@@ -4152,57 +4147,6 @@ body.has-consent-doc-open .guest-register-banner {
 .cie-save-btn:active {
     transform: scale(0.97);
 }
-
-/* ===== FAB CHAT PÚBLICO ===== */
-.pub-chat-fab {
-    position: fixed;
-    bottom: calc(82px + env(safe-area-inset-bottom, 0px));   /* alineado con .cart-fab */
-    right: 16px;
-    z-index: 9050;
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
-    border: none;
-    color: #fff7ef;
-    cursor: pointer;
-    box-shadow: 0 4px 18px rgba(200, 75, 0, 0.38), 0 2px 8px rgba(255, 100, 0, 0.22);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.15s, box-shadow 0.15s;
-}
-.pub-chat-fab[hidden] { display: none; }
-.pub-chat-fab:hover {
-    transform: scale(1.10);
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.50);
-}
-.pub-chat-fab-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-}
-.pub-chat-fab-badge {
-    position: absolute;
-    top: -3px;
-    right: -3px;
-    min-width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    background: #e84800;
-    border: 2px solid #f3e9d8;
-    color: #fff;
-    font-size: 0.58rem;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 3px;
-    font-family: 'Roboto', sans-serif;
-}
-.pub-chat-fab-badge[hidden] { display: none; }
-/* ===== FIN FAB CHAT PÚBLICO ===== */
 
 /* Responsive para el botón flotante - Optimizado para móviles */
 @media (max-width: 768px) {
@@ -7993,8 +7937,7 @@ a,
 .featured-item,
 .promo-item-card,
 .product-card,
-.cart-fab,
-.pub-chat-fab {
+.cart-fab {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
 }
@@ -8056,8 +7999,7 @@ a,
 }
 
 /* FABs */
-.cart-fab:active,
-.pub-chat-fab:active {
+.cart-fab:active {
     transform: scale(0.93);
     transition-duration: 0.1s;
 }
@@ -8084,7 +8026,6 @@ a,
 
 /* Forzar compositing layer en elementos animados críticos */
 .cart-fab,
-.pub-chat-fab,
 .bottom-auth-nav,
 .menu-drawer,
 .cart-drawer,

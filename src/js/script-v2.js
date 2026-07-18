@@ -606,14 +606,12 @@ function setActiveCustomerProfile(profile) {
     activeCustomerProfile = profile ? normalizeCustomerProfile(profile) : null;
     persistCustomerProfile(activeCustomerProfile);
     if (activeCustomerProfile) {
-        _chatFabSeenCount = _loadChatSeenCount();
         _applyServerSideCouponLocks(activeCustomerProfile);
     }
     updateCustomerSessionUI();
     syncCustomerProfileRealtimeStreams();
     renderCustomerOrdersPanel();
     renderCustomerMessagesPanel();
-    updatePublicChatFab();
     if (activeCustomerProfile) {
         showWelcomeGreeting(activeCustomerProfile);
     }
@@ -621,15 +619,12 @@ function setActiveCustomerProfile(profile) {
 
 function clearActiveCustomerProfile() {
     activeCustomerProfile = null;
-    _chatFabSeenCount = 0;
-    try { localStorage.removeItem(CHAT_SEEN_STORAGE_KEY); } catch {}
     persistCustomerProfile(null);
     updateCustomerSessionUI();
     syncCustomerProfileRealtimeStreams();
     customerProfileOrdersState = [];
     customerProfileMessagesState = [];
     renderCustomerOrdersPanel();
-    updatePublicChatFab();
     renderCustomerMessagesPanel();
 }
 
@@ -782,7 +777,9 @@ function renderCustomerOrdersPanel() {
         `;
     }
 
-    if (!customerProfileOrdersState.length) {
+    const historyOrders = customerProfileOrdersState.filter((order) => _doneStatuses.includes(String(order.status || '').trim().toLowerCase()));
+
+    if (!historyOrders.length) {
         customerAuthUI.ordersHistory.innerHTML = `
             <div class="customer-profile-empty-card">
                 <strong>Aun no tienes historial.</strong>
@@ -792,7 +789,7 @@ function renderCustomerOrdersPanel() {
         return;
     }
 
-    customerAuthUI.ordersHistory.innerHTML = customerProfileOrdersState
+    customerAuthUI.ordersHistory.innerHTML = historyOrders
         .map((order) => {
             const statusMeta = getPublicOrderStatusMeta(order.status, order.fulfillmentType);
             return `
@@ -815,89 +812,7 @@ function renderCustomerOrdersPanel() {
         .join('');
 }
 
-const CHAT_SEEN_STORAGE_KEY = 'roalburger-chat-seen-v1';
-let _chatFabSeenCount = 0;
-
-function _loadChatSeenCount() {
-    if (!activeCustomerProfile?.id) return 0;
-    try {
-        const stored = localStorage.getItem(CHAT_SEEN_STORAGE_KEY);
-        if (!stored) return 0;
-        const parsed = JSON.parse(stored);
-        return parsed?.profileId === activeCustomerProfile.id ? (Number(parsed.count) || 0) : 0;
-    } catch { return 0; }
-}
-
-function _saveChatSeenCount(count) {
-    if (!activeCustomerProfile?.id) return;
-    try {
-        localStorage.setItem(CHAT_SEEN_STORAGE_KEY, JSON.stringify({
-            profileId: activeCustomerProfile.id,
-            count
-        }));
-    } catch {}
-}
-
-function _markChatMessagesAsSeen() {
-    const adminMessages = customerProfileMessagesState.filter(m =>
-        String(m.type || '') === 'admin_direct_reply' ||
-        (String(m.source || '') === 'admin_panel' && String(m.type || '') !== 'customer_direct_message')
-    );
-    _chatFabSeenCount = adminMessages.length;
-    _saveChatSeenCount(_chatFabSeenCount);
-    updatePublicChatFab();
-}
-
-function updatePublicChatFab() {
-    const fab = document.getElementById('publicChatFab');
-    const badge = document.getElementById('publicChatFabBadge');
-    if (!fab) return;
-
-    if (!activeCustomerProfile) {
-        fab.hidden = true;
-        return;
-    }
-
-    fab.hidden = false;
-
-    // Contar mensajes del restaurante que llegaron después del último "visto"
-    const adminMessages = customerProfileMessagesState.filter(m =>
-        String(m.type || '') === 'admin_direct_reply' ||
-        (String(m.source || '') === 'admin_panel' && String(m.type || '') !== 'customer_direct_message')
-    );
-    const unread = adminMessages.length - _chatFabSeenCount;
-
-    if (badge) {
-        if (unread > 0) {
-            badge.textContent = unread;
-            badge.hidden = false;
-        } else {
-            badge.hidden = true;
-        }
-    }
-}
-
-function openPublicChatTab() {
-    _markChatMessagesAsSeen();
-
-    if (!customerAuthUI) {
-        openCustomerAuthModal();
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => activateCustomerProfileTab('mensajes'));
-        });
-    } else {
-        activateCustomerProfileTab('mensajes');
-    }
-}
-
 function renderCustomerMessagesPanel() {
-    // Si el tab de mensajes está activo, marcar los nuevos mensajes como vistos
-    if (customerAuthUI?.activeTab === 'mensajes') {
-        _markChatMessagesAsSeen();
-    } else {
-        updatePublicChatFab();
-    }
-
     if (!customerAuthUI?.messagesThread) {
         return;
     }
@@ -2901,10 +2816,6 @@ function activateCustomerProfileTab(tabKey = 'info') {
     customerAuthUI.tabPanels.forEach((panel) => {
         panel.hidden = panel.dataset.profilePanel !== tabKey;
     });
-
-    if (tabKey === 'mensajes') {
-        _markChatMessagesAsSeen();
-    }
 }
 
 function openCustomerConsentDocument() {
@@ -10286,10 +10197,6 @@ function escapeXml(str) {
 function setPublicTopbarVisible(visible) {
     const topbar = document.querySelector('.public-topbar');
     if (topbar) topbar.style.display = visible ? '' : 'none';
-    const chatFab = document.getElementById('publicChatFab');
-    if (chatFab && activeCustomerProfile) {
-        chatFab.style.display = visible ? '' : 'none';
-    }
 }
 
 function showHomeScreen() {
@@ -12852,7 +12759,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1 500 ms de animación de marca antes de entrar al menú.
     setTimeout(() => window.__roalHideSplash?.(), 1500);
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
-    document.getElementById('publicChatFab')?.addEventListener('click', openPublicChatTab);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
 
     // Barra de navegación inferior — acciones
