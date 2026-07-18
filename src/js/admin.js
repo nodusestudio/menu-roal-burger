@@ -6768,8 +6768,22 @@ async function saveOrderItemsEdit() {
     }
 
     const order = ordersState.find((o) => o.id === orderId);
-    const deliveryFee = Number(order?.deliveryFee || 0);
-    const total = order?.orderType === 'domicilio' ? subtotal + deliveryFee : subtotal;
+    // Si se usó "✎ Info" para tocar tipo/cliente/domicilio durante esta edición (posTicketConfig
+    // queda seteado por ese modal), respetar esos valores nuevos en vez de los originales del
+    // pedido — antes se descartaban en silencio y el domicilio corregido nunca se guardaba.
+    const orderType = posTicketConfig?.orderType || order?.orderType || null;
+    const deliveryFee = orderType === 'domicilio'
+        ? Number(posTicketConfig?.deliveryFee ?? order?.deliveryFee ?? 0)
+        : 0;
+    const total = orderType === 'domicilio' ? subtotal + deliveryFee : subtotal;
+    const infoFields = posTicketConfig ? {
+        orderType,
+        customerName: String(posTicketConfig.customerName || order?.customerName || '').trim(),
+        customerPhone: String(posTicketConfig.customerPhone || order?.customerPhone || '').trim(),
+        deliveryAddress: orderType === 'domicilio' ? String(posTicketConfig.deliveryAddress || order?.deliveryAddress || '').trim() : '',
+        deliveryFee: orderType === 'domicilio' ? deliveryFee : null,
+        mesaNumber: posTicketConfig.mesaNumber || order?.mesaNumber || null
+    } : {};
 
     const saveBtn = document.getElementById('posDrawerSaveBtn');
     try {
@@ -6782,12 +6796,14 @@ async function saveOrderItemsEdit() {
             itemCount: internalOrderItems.length,
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
             subtotal,
-            total
+            total,
+            ...infoFields
         });
 
         _editingItemsOnlyOrderId = null;
+        posTicketConfig = null;
         renderOrders();
-        showNotice('Productos del pedido actualizados.', 'ok');
+        showNotice('Pedido actualizado.', 'ok');
         closeInternalOrderModal(true);
     } catch (error) {
         showNotice(`Error al guardar los productos: ${error.message || 'error'}`, 'error');
@@ -14443,6 +14459,12 @@ async function _ptsCreateAndSelectClient({ name, phone, addr }) {
 document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'warn');
+        return;
+    }
+    // COBRAR crea un pedido nuevo — nunca debe dispararse mientras se edita uno existente
+    // (abierto con el lápiz ✎ "Editar productos"), o duplicaría el pedido en vez de actualizarlo.
+    if (_editingItemsOnlyOrderId) {
+        showNotice('Estás editando un pedido existente: usa GUARDAR, no COBRAR.', 'error');
         return;
     }
     if (posTicketConfig) {

@@ -3122,6 +3122,7 @@ async function submitCustomerProfileForm() {
     if (!formUI?.feedback) {
         return;
     }
+    const wasEditMode = Boolean(formUI.isEditMode);
 
     if (!formUI.consent?.checked && !formUI.hasPreviousConsent) {
         formUI.feedback.textContent = 'Marca la casilla de autorización de datos para continuar.';
@@ -3153,7 +3154,11 @@ async function submitCustomerProfileForm() {
 
         setActiveCustomerProfile(profile);
         closeCustomerRegisterModal();
-        closeCustomerAuthModal();
+        if (wasEditMode) {
+            openCustomerAuthModal();
+        } else {
+            closeCustomerAuthModal();
+        }
     } catch (error) {
         formUI.feedback.textContent = error.message || 'No se pudo guardar el perfil.';
     }
@@ -3374,7 +3379,6 @@ function openCustomerAuthModal() {
     customerAuthUI.reviewConsentButton?.addEventListener('click', openCustomerConsentDocument);
     const openEditProfile = () => {
         const currentProfile = activeCustomerProfile ? { ...activeCustomerProfile } : {};
-        closeCustomerAuthModal();
         openCustomerRegisterModal(currentProfile, {
             saveLabel: 'Guardar perfil',
             isEditMode: true
@@ -4431,6 +4435,12 @@ async function createOrderFromCart(customerInfo = {}) {
         deliveryFeeVerified = true;
     }
 
+    // Piso de seguridad: un pedido a domicilio nunca se guarda con tarifa $0, sin importar
+    // por qué llegó así (mapa nunca abierto, dirección sin GPS, zona no encontrada, etc.).
+    if (fulfillmentType === 'delivery' && !(deliveryFee > 0)) {
+        deliveryFee = DELIVERY_FEE_AMOUNT;
+    }
+
     const total = subtotal + deliveryFee;
     const deliveryAddress = String(customerInfo.address || '').trim();
     const customerPhone = String(customerInfo.phone || '').trim();
@@ -5044,6 +5054,12 @@ async function submitCheckoutInfo() {
                 setTimeout(() => confirmBtn.classList.remove('location-needs-confirm'), 2000);
             }
             return;
+        }
+        // El cliente nunca abrió el mapa, así que no hay zona calculada. El domicilio jamás
+        // puede quedar en $0 — se usa la tarifa plana por defecto como piso hasta que un
+        // asesor confirme la zona real por WhatsApp.
+        if (!(checkoutDeliveryFeeAmount > 0)) {
+            checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
         }
         checkoutDeliveryFeePending = true;
         checkoutDeliveryLocationConfirmed = true;
@@ -10347,10 +10363,10 @@ function renderHomeComboCarousel() {
         { nombre: 'Combo Burger Papuda', image_url: 'losmaspedidos/comboburgerpapuda.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
         { nombre: 'Combo Burger Super',  image_url: 'losmaspedidos/comboburgersuper.webp',  categoria: 'COMBOS CON PAPAS Y BEBIDA' },
         { nombre: 'Combo Perro Normal',  image_url: 'losmaspedidos/comboperronormal.webp',  categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'De La Casa',          image_url: 'losmaspedidos/combodelacasa.webp',      categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Emparejados',         image_url: 'losmaspedidos/comboemparejados.webp',   categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Familiar 3',          image_url: 'losmaspedidos/combofamiliar3.webp',     categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Familiar 4',          image_url: 'losmaspedidos/combofamiliar4.webp',     categoria: 'COMBOS MIXTOS' }
+        { nombre: 'Combo De La Casa',    image_url: 'losmaspedidos/combodelacasa.webp',      categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Combo Emparejados',   image_url: 'losmaspedidos/comboemparejados.webp',   categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Combo Familiar 3',    image_url: 'losmaspedidos/combofamiliar3.webp',     categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Combo Familiar 4',    image_url: 'losmaspedidos/combofamiliar4.webp',     categoria: 'COMBOS MIXTOS' }
     ];
 
     const makeCard = (item) => {
@@ -12897,10 +12913,10 @@ document.addEventListener('DOMContentLoaded', () => {
         { nombre: 'Combo Burger Papuda', image_url: 'losmaspedidos/comboburgerpapuda.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
         { nombre: 'Combo Burger Super', image_url: 'losmaspedidos/comboburgersuper.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
         { nombre: 'Combo Perro Normal', image_url: 'losmaspedidos/comboperronormal.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'De La Casa', image_url: 'losmaspedidos/combodelacasa.webp', categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Emparejados', image_url: 'losmaspedidos/comboemparejados.webp', categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Familiar 3', image_url: 'losmaspedidos/combofamiliar3.webp', categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Familiar 4', image_url: 'losmaspedidos/combofamiliar4.webp', categoria: 'COMBOS MIXTOS' }
+        { nombre: 'Combo De La Casa', image_url: 'losmaspedidos/combodelacasa.webp', categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Combo Emparejados', image_url: 'losmaspedidos/comboemparejados.webp', categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Combo Familiar 3', image_url: 'losmaspedidos/combofamiliar3.webp', categoria: 'COMBOS MIXTOS' },
+        { nombre: 'Combo Familiar 4', image_url: 'losmaspedidos/combofamiliar4.webp', categoria: 'COMBOS MIXTOS' }
     ];
     if (featuredCarousel) {
         renderFeaturedCards(featuredCarousel, localFeatured);
