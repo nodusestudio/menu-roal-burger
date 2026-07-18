@@ -3025,6 +3025,16 @@ body.has-guest-register-banner #ayudaScreen {
     background: linear-gradient(135deg, rgba(255, 244, 231, 0.96), rgba(255, 232, 209, 0.82));
 }
 
+.customer-order-history-card {
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.12s ease;
+}
+.customer-order-history-card:hover,
+.customer-order-history-card:focus-visible {
+    background: rgba(255, 255, 255, 0.62);
+    transform: translateY(-1px);
+}
+
 .customer-live-order-head,
 .customer-order-history-head {
     display: flex;
@@ -3051,8 +3061,7 @@ body.has-guest-register-banner #ayudaScreen {
 }
 
 .customer-live-order-meta,
-.customer-order-history-meta,
-.customer-order-history-items {
+.customer-order-history-meta {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -3060,7 +3069,6 @@ body.has-guest-register-banner #ayudaScreen {
 
 .customer-live-order-meta span,
 .customer-order-history-meta span,
-.customer-order-history-items span,
 .customer-live-order-status {
     padding: 6px 10px;
     border-radius: 999px;
@@ -3087,6 +3095,87 @@ body.has-guest-register-banner #ayudaScreen {
 .customer-live-order-status.cancelled {
     background: rgba(239, 68, 68, 0.18);
     color: #fca5a5;
+}
+
+/* ── Comprobante de pedido (no es factura) ─────────────────────────────── */
+.order-receipt-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.order-receipt-section,
+.order-receipt-totals {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 0;
+    border-top: 1px dashed rgba(90, 58, 27, 0.25);
+}
+.order-receipt-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.86rem;
+    color: #5a3a1b;
+}
+.order-receipt-row strong {
+    color: #1f140d;
+    text-align: right;
+}
+.order-receipt-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 0;
+    border-top: 1px dashed rgba(90, 58, 27, 0.25);
+}
+.order-receipt-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 0.86rem;
+    color: #5a3a1b;
+}
+.order-receipt-item-qty {
+    font-weight: 700;
+    color: #1f140d;
+    flex-shrink: 0;
+}
+.order-receipt-item-name {
+    flex: 1;
+}
+.order-receipt-item-name em {
+    display: block;
+    font-style: italic;
+    font-size: 0.78rem;
+    color: #8b6b47;
+}
+.order-receipt-item-price {
+    font-weight: 700;
+    color: #1f140d;
+    flex-shrink: 0;
+}
+.order-receipt-total-final {
+    font-size: 1rem;
+    padding-top: 6px;
+    border-top: 1px dashed rgba(90, 58, 27, 0.25);
+}
+.order-receipt-total-final strong {
+    color: #a54800;
+}
+
+@media print {
+    body * { visibility: hidden; }
+    #orderReceiptModal, #orderReceiptModal * { visibility: visible; }
+    #orderReceiptModal {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+    }
+    #orderReceiptModal .support-modal-close,
+    #orderReceiptModal .support-actions {
+        display: none;
+    }
 }
 
 .customer-order-history-list,

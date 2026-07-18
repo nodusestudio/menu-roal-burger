@@ -298,6 +298,7 @@ let customerDeleteAccountUI = null;
 let customerPasswordResetUI = null;
 let customerOrdersUnsubscribe = null;
 let customerMessagesUnsubscribe = null;
+let orderReceiptUI = null;
 let customerProfileOrdersState = [];
 let customerProfileMessagesState = [];
 
@@ -669,7 +670,7 @@ function getPublicOrderStatusMeta(status = '', fulfillmentType = '') {
         case 'listo_recoger':
             return { label: 'Pedido listo', detail: 'Tu pedido ya esta listo para recoger.', className: 'ready' };
         case 'entregado':
-            return { label: 'Entregado', detail: fulfillmentType === 'pickup' ? 'Tu pedido fue entregado en el local.' : 'Tu pedido ya fue entregado.', className: 'delivered' };
+            return { label: 'Despachado', detail: fulfillmentType === 'pickup' ? 'Tu pedido fue despachado en el local.' : 'Tu pedido ya fue despachado.', className: 'delivered' };
         case 'cancelado':
             return { label: 'Cancelado', detail: 'Este pedido fue cancelado. Contáctanos si tienes dudas.', className: 'cancelled' };
         default:
@@ -792,8 +793,9 @@ function renderCustomerOrdersPanel() {
     customerAuthUI.ordersHistory.innerHTML = historyOrders
         .map((order) => {
             const statusMeta = getPublicOrderStatusMeta(order.status, order.fulfillmentType);
+            const totalItems = Number(order.totalItems || order.itemCount || (Array.isArray(order.items) ? order.items.reduce((sum, i) => sum + Number(i.quantity || 0), 0) : 0));
             return `
-                <article class="customer-order-history-card">
+                <article class="customer-order-history-card" data-order-id="${escapeHtml(order.id || '')}" role="button" tabindex="0">
                     <div class="customer-order-history-head">
                         <strong>${escapeHtml(order.code || 'Pedido')}</strong>
                         <span class="customer-live-order-status ${escapeHtml(statusMeta.className)}">${escapeHtml(statusMeta.label)}</span>
@@ -802,14 +804,104 @@ function renderCustomerOrdersPanel() {
                     <div class="customer-order-history-meta">
                         <span>${escapeHtml(order.fulfillmentType === 'pickup' ? 'Recoger en local' : order.fulfillmentType === 'mesa' ? 'Comer en el local' : 'Domicilio')}</span>
                         <span>${escapeHtml(formatCurrency(Number(order.total || 0)))}</span>
-                    </div>
-                    <div class="customer-order-history-items">
-                        ${(Array.isArray(order.items) ? order.items : []).map((item) => `<span>${escapeHtml(`${Number(item.quantity || 1)}x ${item.name || item.nombre || 'Producto'}`)}</span>`).join('')}
+                        <span>${escapeHtml(`${totalItems} producto${totalItems === 1 ? '' : 's'}`)}</span>
                     </div>
                 </article>
             `;
         })
         .join('');
+}
+
+// Comprobante de pedido — NO es una factura electronica (no cumple los requisitos
+// legales de la DIAN: resolucion, numeracion autorizada, CUFE, firma digital, etc.),
+// es solo un resumen visual del pedido, imprimible desde el navegador.
+function openOrderReceiptModal(order) {
+    closeOrderReceiptModal();
+
+    const statusMeta = getPublicOrderStatusMeta(order.status, order.fulfillmentType);
+    const items = Array.isArray(order.items) ? order.items : [];
+    const fulfillmentLabel = order.fulfillmentType === 'pickup' ? 'Recoger en local' : order.fulfillmentType === 'mesa' ? 'Comer en el local' : 'Domicilio';
+    const receivedAt = order.receivedAt || order.createdAt;
+    const dispatchedAt = order.deliveredAt || null;
+    const pmLabels = { efectivo: 'Efectivo', transferencia: 'Transferencia', nequi: 'Nequi', bancolombia: 'Bancolombia', daviplata: 'Daviplata', tarjeta: 'Tarjeta' };
+    const pm = String(order.paymentMethod || '').trim().toLowerCase();
+    const paymentLabel = pmLabels[pm] || (pm && pm !== 'pendiente' ? pm : 'Sin registrar');
+    const subtotal = Number(order.subtotal ?? order.total ?? 0);
+    const deliveryFee = Number(order.deliveryFee || 0);
+
+    const modal = document.createElement('div');
+    modal.id = 'orderReceiptModal';
+    modal.className = 'support-modal';
+    modal.classList.add('is-open');
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass order-receipt-card" role="dialog" aria-modal="true" aria-label="Comprobante de pedido">
+            <button type="button" class="support-modal-close" aria-label="Cerrar comprobante">&times;</button>
+            <p class="support-modal-kicker">Comprobante de pedido — no es factura</p>
+            <h3 class="support-modal-title">${escapeHtml(order.code || 'Pedido')}</h3>
+            <span class="customer-live-order-status ${escapeHtml(statusMeta.className)}">${escapeHtml(statusMeta.label)}</span>
+
+            <div class="order-receipt-section">
+                <div class="order-receipt-row"><span>Hora de recibido</span><strong>${escapeHtml(formatProfileDateTime(receivedAt))}</strong></div>
+                ${dispatchedAt ? `<div class="order-receipt-row"><span>Hora de despachado</span><strong>${escapeHtml(formatProfileDateTime(dispatchedAt))}</strong></div>` : ''}
+                <div class="order-receipt-row"><span>Tipo</span><strong>${escapeHtml(fulfillmentLabel)}</strong></div>
+                ${order.deliveryAddress ? `<div class="order-receipt-row"><span>Direccion</span><strong>${escapeHtml(order.deliveryAddress)}</strong></div>` : ''}
+                <div class="order-receipt-row"><span>Metodo de pago</span><strong>${escapeHtml(paymentLabel)}</strong></div>
+            </div>
+
+            <div class="order-receipt-items">
+                ${items.map((item) => `
+                    <div class="order-receipt-item">
+                        <span class="order-receipt-item-qty">${escapeHtml(String(Number(item.quantity || 1)))}x</span>
+                        <span class="order-receipt-item-name">${escapeHtml(item.productName || 'Producto')}${item.note ? `<em> — ${escapeHtml(item.note)}</em>` : ''}</span>
+                        <span class="order-receipt-item-price">${escapeHtml(formatCurrency(Number(item.subtotal || 0)))}</span>
+                    </div>
+                `).join('')}
+            </div>
+
+            <div class="order-receipt-totals">
+                <div class="order-receipt-row"><span>Subtotal</span><strong>${escapeHtml(formatCurrency(subtotal))}</strong></div>
+                ${deliveryFee > 0 ? `<div class="order-receipt-row"><span>Domicilio</span><strong>${escapeHtml(formatCurrency(deliveryFee))}</strong></div>` : ''}
+                <div class="order-receipt-row order-receipt-total-final"><span>Total</span><strong>${escapeHtml(formatCurrency(Number(order.total || 0)))}</strong></div>
+            </div>
+
+            <div class="support-actions split">
+                <button type="button" class="support-secondary-btn" id="orderReceiptCloseBtn">Cerrar</button>
+                <button type="button" class="support-send-btn" id="orderReceiptPrintBtn">Imprimir</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    document.body.classList.add('has-order-receipt-open');
+
+    orderReceiptUI = {
+        modal,
+        close: modal.querySelector('.support-modal-close'),
+        closeButton: modal.querySelector('#orderReceiptCloseBtn'),
+        printButton: modal.querySelector('#orderReceiptPrintBtn')
+    };
+
+    orderReceiptUI.close?.addEventListener('click', closeOrderReceiptModal);
+    orderReceiptUI.closeButton?.addEventListener('click', closeOrderReceiptModal);
+    orderReceiptUI.printButton?.addEventListener('click', () => window.print());
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal && _lastMousedownTarget === modal) {
+            closeOrderReceiptModal();
+        }
+    });
+
+    syncBodyScrollLock();
+}
+
+function closeOrderReceiptModal() {
+    if (!orderReceiptUI) {
+        return;
+    }
+    orderReceiptUI.modal.remove();
+    orderReceiptUI = null;
+    document.body.classList.remove('has-order-receipt-open');
+    syncBodyScrollLock();
 }
 
 function renderCustomerMessagesPanel() {
@@ -3319,6 +3411,12 @@ function openCustomerAuthModal() {
     customerAuthUI.reviewAddressesButton?.addEventListener('click', openEditProfile);
     customerAuthUI.deleteAccountButton?.addEventListener('click', openCustomerDeleteAccountModal);
     customerAuthUI.sendMessageButton?.addEventListener('click', submitCustomerDirectMessage);
+    customerAuthUI.ordersHistory?.addEventListener('click', (event) => {
+        const card = event.target.closest('[data-order-id]');
+        if (!card) return;
+        const order = customerProfileOrdersState.find((o) => o.id === card.dataset.orderId);
+        if (order) openOrderReceiptModal(order);
+    });
     customerAuthUI.googleLoginButton?.addEventListener('click', async () => {
         const btn = customerAuthUI.googleLoginButton;
         const feedback = customerAuthUI.feedback;

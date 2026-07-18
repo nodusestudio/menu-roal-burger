@@ -13588,7 +13588,6 @@ let _ptsSelectedClient = null; // { name, phone }
 let _ptsActiveTab = 'none';
 let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin enviar
 let _ptsSaveAndNew = false; // true = guardar ticket con nombre y abrir uno nuevo en blanco
-let _ptsCobrarAfterSave = false; // true = crear pedido y cobrar inmediatamente
 
 function renderPosCartTicketInfo() {
     const el = document.getElementById('posCartTicketInfo');
@@ -13982,7 +13981,6 @@ function _ptsFillClientAddress(client) {
 // ── Listeners directos del modal (más robustos que delegación global) ──────────
 document.getElementById('ptsCancelBtn')?.addEventListener('click', () => {
     _ptsSaveAndNew = false;
-    _ptsCobrarAfterSave = false;
     closePosTicketSetupModal();
 });
 
@@ -14089,9 +14087,7 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, pickupMode: resolvedPickupMode, customerName, customerPhone, deliveryAddress, deliveryFee };
     renderPosCartTicketInfo();
     if (internalOrderItems.length) {
-        const cobrar = _ptsCobrarAfterSave;
-        _ptsCobrarAfterSave = false;
-        saveAdminOrderQuick(posTicketConfig, { cobrarAfter: cobrar });
+        saveAdminOrderQuick(posTicketConfig);
         posTicketConfig = null;
         renderPosCartTicketInfo();
     }
@@ -14467,14 +14463,11 @@ document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => 
         showNotice('Estás editando un pedido existente: usa GUARDAR, no COBRAR.', 'error');
         return;
     }
-    if (posTicketConfig) {
-        saveAdminOrderQuick(posTicketConfig, { cobrarAfter: true });
-        posTicketConfig = null;
-        renderPosCartTicketInfo();
-        return;
-    }
-    _ptsCobrarAfterSave = true;
-    openPosTicketSetupModal();
+    // COBRAR desde el carrito es una compra rápida: no pide tipo de pedido, va directo
+    // al modal de cobro (saveAdminOrderQuick ya asume "retiro" si no hay config asignada).
+    saveAdminOrderQuick(posTicketConfig || {}, { cobrarAfter: true });
+    posTicketConfig = null;
+    renderPosCartTicketInfo();
 });
 
 // Buscador de usuarios en métricas
