@@ -111,6 +111,20 @@ service cloud.firestore {
       allow read: if request.auth != null || clientId.matches('phone_[0-9]+');
     }
 
+    // ─── Puntero googleUid -> clientId (login con Google) ───────────────────
+    // Doc ID = googleUid. Permite buscar el perfil por Google sin sesion con un get()
+    // directo por ID, ya que Firestore no deja hacer where('googleUid', '==', ...) sin
+    // auth contra /clientes (ver fetchClientProfileByGoogleUid en script-v2.js).
+    // El valor guardado es solo un clientId (phone_XXXXXXXXXX) — mismo nivel de exposicion
+    // que ya tiene /clientes por ID directo, ningun dato adicional.
+    match /google_links/{googleUid} {
+      allow read: if true;
+      allow create, update: if true
+        && request.resource.data.clientId is string
+        && request.resource.data.clientId.matches('phone_[0-9]+');
+      allow delete: if true;
+    }
+
     // ─── Tokens FCM (push) — solo admin autenticado ──────────────────────────
     match /admin_fcm_tokens/{doc} {
       allow read, write: if request.auth != null;

@@ -3,6 +3,7 @@
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
+const GOOGLE_LINKS_COLLECTION = 'google_links';
 const CUSTOMER_CONSENT_VERSION = '2026-06-05';
 function getCustomerConsentCopy() { return `He leido y acepto que ${_getRestaurantName()} use mis datos para gestionar mi cuenta, atender pedidos, contactarme por canales oficiales y enviarme promociones, novedades y publicidad propia.`; }
 const CUSTOMER_CONSENT_POLICY_URL = 'politica-datos.html';
@@ -1690,12 +1691,17 @@ async function fetchClientProfileByPhone(phoneValue, pinValue = '') {
 async function fetchClientProfileByGoogleUid(googleUid) {
     if (!googleUid) return null;
     const db = getPublicFirebaseDb();
-    const snapshot = await db.collection(CLIENTS_COLLECTION)
-        .where('googleUid', '==', googleUid)
-        .limit(1)
-        .get();
-    if (snapshot.empty) return null;
-    const doc = snapshot.docs[0];
+    // No se puede hacer where('googleUid', '==', ...) sin sesion: las reglas de Firestore solo
+    // permiten leer /clientes por ID directo (phone_XXXXXXXXXX) a usuarios anonimos, y una query
+    // por campo no se puede verificar contra esa regla — Firestore la rechaza por completo
+    // ("Missing or insufficient permissions"), sin importar si de verdad hay un match.
+    // Por eso se mantiene este puntero aparte: doc ID = googleUid, lectura por ID sí es segura.
+    const linkDoc = await db.collection(GOOGLE_LINKS_COLLECTION).doc(googleUid).get();
+    if (!linkDoc.exists) return null;
+    const clientId = String(linkDoc.data()?.clientId || '').trim();
+    if (!clientId) return null;
+    const doc = await db.collection(CLIENTS_COLLECTION).doc(clientId).get();
+    if (!doc.exists) return null;
     return normalizeCustomerProfile({ id: doc.id, ...doc.data() }, doc.id);
 }
 
@@ -1728,12 +1734,20 @@ async function linkGoogleAccount() {
     }
 
     const db = getPublicFirebaseDb();
-    const clientRef = db.collection(CLIENTS_COLLECTION).doc(`phone_${activeCustomerProfile.customerPhoneDigits}`);
+    const clientId = `phone_${activeCustomerProfile.customerPhoneDigits}`;
+    const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
     await clientRef.set({
         googleUid,
         googleEmail,
         googleLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
+    // Puntero googleUid -> clientId para poder buscar el perfil por Google sin sesion (ver
+    // fetchClientProfileByGoogleUid). Si ya existia un link con otro googleUid (cambio de
+    // cuenta de Google), el anterior se limpia para no dejar punteros huerfanos.
+    if (activeCustomerProfile.googleUid && activeCustomerProfile.googleUid !== googleUid) {
+        await db.collection(GOOGLE_LINKS_COLLECTION).doc(activeCustomerProfile.googleUid).delete().catch(() => {});
+    }
+    await db.collection(GOOGLE_LINKS_COLLECTION).doc(googleUid).set({ clientId });
 
     setActiveCustomerProfile({ ...activeCustomerProfile, googleUid, googleEmail });
     return googleEmail;
@@ -1743,10 +1757,14 @@ async function unlinkGoogleAccount() {
     if (!activeCustomerProfile?.customerPhoneDigits) return;
     const db = getPublicFirebaseDb();
     const clientRef = db.collection(CLIENTS_COLLECTION).doc(`phone_${activeCustomerProfile.customerPhoneDigits}`);
+    const previousGoogleUid = activeCustomerProfile.googleUid || '';
     await clientRef.set({
         googleUid: firebase.firestore.FieldValue.delete(),
         googleEmail: firebase.firestore.FieldValue.delete()
     }, { merge: true });
+    if (previousGoogleUid) {
+        await db.collection(GOOGLE_LINKS_COLLECTION).doc(previousGoogleUid).delete().catch(() => {});
+    }
     setActiveCustomerProfile({ ...activeCustomerProfile, googleUid: '', googleEmail: '' });
 }
 
