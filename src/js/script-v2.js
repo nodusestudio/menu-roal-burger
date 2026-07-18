@@ -12602,9 +12602,9 @@ function renderPublicUpgradeStep1() {
 
     body.innerHTML = `
         <div class="pub-home-btns">
-            ${hayCombos ? `<button type="button" class="pub-cat-btn" id="pubBtnCombo">🍔 Combo</button>` : ''}
-            ${hayAcomp  ? `<button type="button" class="pub-cat-btn" id="pubBtnAcomp">🥗 Adicional</button>` : ''}
-            ${hayBebida ? `<button type="button" class="pub-cat-btn" id="pubBtnBebida">🥤 Bebida</button>` : ''}
+            ${hayCombos ? `<button type="button" class="pub-cat-btn" id="pubBtnCombo"><span class="pub-cat-btn-label">🍔 Combo</span><span class="pub-cat-btn-hint">Con papas y bebida</span></button>` : ''}
+            ${hayAcomp  ? `<button type="button" class="pub-cat-btn" id="pubBtnAcomp"><span class="pub-cat-btn-label">🥗 Adicional</span><span class="pub-cat-btn-hint">Ej: pollo, tocineta, queso</span></button>` : ''}
+            ${hayBebida ? `<button type="button" class="pub-cat-btn" id="pubBtnBebida"><span class="pub-cat-btn-label">🥤 Bebida</span><span class="pub-cat-btn-hint">Solo una bebida aparte</span></button>` : ''}
         </div>
         ${_pubUpgRenderExtrasList()}`;
 
