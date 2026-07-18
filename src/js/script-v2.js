@@ -891,6 +891,7 @@ function openOrderReceiptModal(order) {
         }
     });
 
+    _pushModalState();
     syncBodyScrollLock();
 }
 
@@ -901,6 +902,7 @@ function closeOrderReceiptModal() {
     orderReceiptUI.modal.remove();
     orderReceiptUI = null;
     document.body.classList.remove('has-order-receipt-open');
+    if (!_closingByBackBtn) _popModalState();
     syncBodyScrollLock();
 }
 
@@ -13017,6 +13019,7 @@ document.addEventListener('DOMContentLoaded', () => {
             _modalHistoryDepth--;
             _closingByBackBtn = true;
             try {
+                if (orderReceiptUI) { closeOrderReceiptModal(); return; }
                 if (paymentFlowUI) { closePaymentFlowModal(); return; }
                 const upgradeOverlay = document.getElementById('publicUpgradeOverlay');
                 if (upgradeOverlay && !upgradeOverlay.hidden) { closePublicUpgradeSheet(); return; }
