@@ -11578,7 +11578,7 @@ async function openOrderPrintTicket(orderId) {
     // Si ya hay una impresora emparejada en esta sesión, usarla directo.
     if (_btPrinterDevice) {
         const ok = await printViaBluetoothESCPOS(order);
-        if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); return; }
+        if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); closeMobileTicketPanel({ clearSelection: true }); return; }
     }
 
     // Sin conexión activa: si el navegador soporta reconexión persistente y ya hubo una
@@ -11588,7 +11588,7 @@ async function openOrderPrintTicket(orderId) {
         await _btTryAutoConnectOnLoad();
         if (_btPrinterDevice) {
             const ok = await printViaBluetoothESCPOS(order);
-            if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); return; }
+            if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); closeMobileTicketPanel({ clearSelection: true }); return; }
         }
     }
 
@@ -11602,12 +11602,13 @@ async function openOrderPrintTicket(orderId) {
         await connectBluetoothPrinter();
         if (_btPrinterDevice) {
             const ok = await printViaBluetoothESCPOS(order);
-            if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); return; }
+            if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); closeMobileTicketPanel({ clearSelection: true }); return; }
         }
     }
 
     // Sin BT disponible/emparejado → diálogo de impresión del navegador (Android/PC)
     _printOrderViaBrowser(order);
+    closeMobileTicketPanel({ clearSelection: true });
 }
 
 function _printOrderViaBrowser(order) {
@@ -15339,6 +15340,7 @@ if (ordersActionRoot) {
                         await updateOrder(orderId, { status: 'entregado', deliveredAt: firestoreNow() });
                         await reloadDataAndRender();
                         showNotice('Pedido cerrado.', 'ok');
+                        closeMobileTicketPanel({ clearSelection: true });
                         return;
                     }
                     openDeliveryPaymentModal(order, 'mesa');
@@ -15412,6 +15414,7 @@ if (ordersActionRoot) {
                             : 'Pedido en espera de domiciliario.',
                         'ok'
                     );
+                    closeMobileTicketPanel({ clearSelection: true });
                     return;
                 }
 
@@ -15449,6 +15452,7 @@ if (ordersActionRoot) {
                         : 'Pedido cerrado. No se pudo copiar el mensaje automaticamente.',
                     copied ? 'ok' : 'error'
                 );
+                closeMobileTicketPanel({ clearSelection: true });
             } catch (error) {
                 showNotice(`No se pudo actualizar el pedido: ${error.message || 'error inesperado.'}`, 'error');
             } finally {
@@ -15578,6 +15582,7 @@ if (orderTicketPanel) {
             try {
                 openOrderContactCard(orderId);
                 showNotice(isMobileContactImportContext() ? 'Abriendo el contacto del cliente.' : 'Contacto del cliente descargado en formato VCF.', 'ok');
+                closeMobileTicketPanel({ clearSelection: true });
             } catch (error) {
                 showNotice(`No se pudo crear el contacto: ${error.message || 'error inesperado.'}`, 'error');
             }
