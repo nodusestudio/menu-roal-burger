@@ -955,6 +955,10 @@ function closeMobileTicketPanel(options = {}) {
 
     if (shouldClearSelection && selectedOrderId) {
         selectedOrderId = null;
+        // En escritorio el panel de ticket es una barra lateral siempre visible (no un
+        // overlay que se oculta como en movil) — sin esto, quedaba mostrando el ticket
+        // ya cobrado/cerrado en vez de volver al estado vacio.
+        renderEmptyOrderTicket();
     }
 }
 
