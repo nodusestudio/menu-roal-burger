@@ -9237,12 +9237,68 @@ function buildCourierRequestMessage(order) {
     return `Buenas, me mandas un domiciliario porfavor, va para ${address}`;
 }
 
+// Agrupa para VISUALIZACION las unidades identicas de un mismo producto (con o sin combo
+// ligado) en una sola linea con cantidad sumada — ej. "3x Pepito Plus" + "3x Combo manzana"
+// en vez de 3 pares de lineas repetidas. No toca order.items ni el carrito editable: cada
+// unidad se sigue guardando por separado (con su propio parentItemKey) para poder editar o
+// quitar el combo de una unidad puntual sin afectar a las demas.
+function _groupOrderItemsForDisplay(items) {
+    if (!Array.isArray(items) || !items.length) return [];
+
+    const childSig = (item) => [item.productName, item.optionLabel, item.note, item.unitPrice].join('|');
+
+    // Firma propia de cada hijo, agrupados por su padre (aun sin fusionar padres iguales).
+    const childrenByParentKey = new Map();
+    items.filter((i) => i.parentItemKey).forEach((item) => {
+        if (!childrenByParentKey.has(item.parentItemKey)) childrenByParentKey.set(item.parentItemKey, []);
+        childrenByParentKey.get(item.parentItemKey).push(item);
+    });
+
+    // La firma del padre incluye el set ordenado de firmas de sus hijos: dos padres solo se
+    // fusionan si son el mismo producto Y llevan exactamente el mismo combo/adicional/bebida
+    // (evita mezclar, ej., un Pepito con combo y otro sin combo en una sola linea ambigua).
+    const parentGroups = new Map();
+    const parentGroupIdByKey = new Map();
+    items.filter((i) => !i.parentItemKey).forEach((item) => {
+        const ownSig = [item.productName, item.categoryName, item.optionLabel, item.note, item.unitPrice, item.originalUnitPrice ?? ''].join('|');
+        const childrenSig = (childrenByParentKey.get(item.itemKey) || []).map(childSig).sort().join('||');
+        const sig = `${ownSig}##${childrenSig}`;
+        if (!parentGroups.has(sig)) parentGroups.set(sig, { ...item, quantity: 0, subtotal: 0 });
+        const g = parentGroups.get(sig);
+        g.quantity += Number(item.quantity || 0);
+        g.subtotal += Number(item.subtotal || 0);
+        parentGroupIdByKey.set(item.itemKey, sig);
+    });
+
+    const childGroups = new Map();
+    const childOrderByParentSig = new Map();
+    items.filter((i) => i.parentItemKey).forEach((item) => {
+        const parentSig = parentGroupIdByKey.get(item.parentItemKey) || item.parentItemKey;
+        const sig = `${parentSig}::${childSig(item)}`;
+        if (!childGroups.has(sig)) {
+            childGroups.set(sig, { ...item, quantity: 0, subtotal: 0 });
+            if (!childOrderByParentSig.has(parentSig)) childOrderByParentSig.set(parentSig, []);
+            childOrderByParentSig.get(parentSig).push(sig);
+        }
+        const g = childGroups.get(sig);
+        g.quantity += Number(item.quantity || 0);
+        g.subtotal += Number(item.subtotal || 0);
+    });
+
+    const result = [];
+    for (const [sig, group] of parentGroups) {
+        result.push(group);
+        (childOrderByParentSig.get(sig) || []).forEach((csig) => result.push(childGroups.get(csig)));
+    }
+    return result;
+}
+
 function buildOrderItemSummary(order) {
     if (!Array.isArray(order.items) || !order.items.length) {
         return 'Sin productos registrados';
     }
 
-    return order.items.map((item) => {
+    return _groupOrderItemsForDisplay(order.items).map((item) => {
         const parts = [`${Number(item.quantity || 0)} x ${String(item.productName || 'Producto').trim()}`];
         if (item.categoryName) {
             parts.push(`Categoria: ${String(item.categoryName).trim()}`);
@@ -9477,7 +9533,7 @@ function buildThermalTicketMarkup(order, options = {}) {
         return sum;
     }, 0);
 
-    const rows = order.items.map((item) => {
+    const rows = _groupOrderItemsForDisplay(order.items).map((item) => {
         const origUnit = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
         const hasItemDiscount = origUnit !== null && origUnit > Number(item.unitPrice || 0);
         const origSubtotal = hasItemDiscount ? origUnit * Number(item.quantity || 1) : null;
