@@ -5748,7 +5748,11 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
         return;
     }
 
-    const itemKey = getCartItemKey(safeProductName, safeCategoryName, normalizedOptions);
+    // Los hijos de combo (extras/bebidas) llevan el parentKey al frente de su clave: sin esto,
+    // dos "Pepito" distintos con el mismo extra (ej. ambos con Coca-Cola) colisionaban en la
+    // misma clave y sus cantidades terminaban fusionadas bajo un solo padre.
+    const baseItemKey = getCartItemKey(safeProductName, safeCategoryName, normalizedOptions);
+    const itemKey = parentKey ? `${parentKey}::${baseItemKey}` : baseItemKey;
     const existingItem = shoppingCart.find((item) => item.itemKey === itemKey);
 
     let qty = Math.max(1, Number(initialQuantity) || 1);
