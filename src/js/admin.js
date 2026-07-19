@@ -5787,7 +5787,11 @@ function openPosUpgradeSheet(productId, productName, productPrice) {
                 for (let i = 0; i < qty; i++) {
                     const mainKey = comment ? `${pid}::u${ts}_${i}::${comment}` : `${pid}::u${ts}_${i}`;
                     addProductToPosOrder(pid, pname, pprice, comment || '', null, { forcedKey: mainKey });
-                    extras.forEach((e) => addProductToPosOrder(e.id, e.name, e.price, '', null, { parentKey: mainKey }));
+                    // Cada extra necesita su propia clave con el padre incluido: sin esto, el mismo
+                    // extra (ej. "Combo mediano") elegido para dos productos distintos colisionaba
+                    // en una sola clave y el segundo se fusionaba en el primero, quedando sin su
+                    // propia etiqueta de combo visible.
+                    extras.forEach((e) => addProductToPosOrder(e.id, e.name, e.price, '', null, { parentKey: mainKey, forcedKey: `${mainKey}::${e.id}` }));
                 }
             } else {
                 // Sin extras: fusión normal (se suman al item existente del mismo producto/nota)
