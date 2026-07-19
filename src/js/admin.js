@@ -6480,7 +6480,12 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
     const saveBtn = document.getElementById('posDrawerSaveBtn');
     const mesaNumber = config.mesaNumber || editData?.mesaNumber || null;
     const defaultName = orderType === 'mesa' && mesaNumber ? `Mesa ${mesaNumber}` : 'Pedido Admin';
-    const customerName = String(config.customerName || editData?.customerName || '').trim() || defaultName;
+    // Si el nombre que traiamos era el auto-generado "Mesa N" de una mesa distinta a la
+    // actual (ej. se cambio de mesa desde "Personalizar ticket" sin retipear el nombre),
+    // no lo arrastremos: recalcular el default para que quede "Mesa 8" y no "Mesa 7".
+    const existingName = String(config.customerName || editData?.customerName || '').trim();
+    const isStaleMesaName = /^Mesa \d+$/.test(existingName) && existingName !== defaultName;
+    const customerName = (existingName && !isStaleMesaName) ? existingName : defaultName;
     const customerPhone = String(config.customerPhone || editData?.customerPhone || '').trim();
 
     try {
