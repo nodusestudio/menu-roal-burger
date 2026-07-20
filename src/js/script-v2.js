@@ -237,6 +237,9 @@ let checkoutDeliveryFeeAmount = 0;
 let checkoutDeliveryLocation = null;
 let checkoutDeliveryLocationConfirmed = false;
 let checkoutDeliveryFeePending = false;
+let checkoutIsScheduled = false;
+let checkoutScheduledDate = '';
+let checkoutScheduledTime = '';
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
@@ -1087,6 +1090,113 @@ function canPlaceOrdersNow() {
     return getOrderingAvailability().isOpen;
 }
 
+// ── Pedidos programados (fuera de horario) ──────────────────────────────────
+// El menú público recibe pedidos las 24 horas: si el negocio está cerrado, en vez de
+// bloquear el checkout se le ofrece al cliente programar la entrega para un horario en el
+// que sí atendemos (mismo rango configurado en ORDERING_SCHEDULE).
+const _SCHEDULE_MONTH_NAMES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+function getTodayDateStringInScheduleTZ(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: ORDERING_SCHEDULE.timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(now);
+    const y = parts.find((p) => p.type === 'year')?.value || '1970';
+    const m = parts.find((p) => p.type === 'month')?.value || '01';
+    const d = parts.find((p) => p.type === 'day')?.value || '01';
+    return `${y}-${m}-${d}`;
+}
+
+function getOrderingScheduleWindowStrings() {
+    const pad = (n) => String(n).padStart(2, '0');
+    const toHM = (mins) => `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
+    return { min: toHM(ORDERING_SCHEDULE.startMinutes), max: toHM(ORDERING_SCHEDULE.endMinutes) };
+}
+
+// Valida una fecha/hora elegida para un pedido programado: fecha hoy-o-futura, hora dentro
+// del horario de atención, y que no sea un momento que ya pasó (si es hoy). Devuelve un
+// mensaje de error o cadena vacía si es válido.
+function validateScheduledOrderSelection(dateStr, timeStr) {
+    if (!dateStr || !timeStr) {
+        return 'Elige la fecha y la hora en que quieres tu pedido.';
+    }
+
+    const todayStr = getTodayDateStringInScheduleTZ();
+    if (dateStr < todayStr) {
+        return 'Elige una fecha válida, no puede ser en el pasado.';
+    }
+
+    const [h, m] = timeStr.split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) {
+        return 'Elige una hora válida.';
+    }
+    const chosenMinutes = (h * 60) + m;
+    if (chosenMinutes < ORDERING_SCHEDULE.startMinutes || chosenMinutes >= ORDERING_SCHEDULE.endMinutes) {
+        return `Elige una hora dentro de nuestro horario de atención: ${ORDERING_SCHEDULE.label}.`;
+    }
+    if (dateStr === todayStr && chosenMinutes <= getCurrentOrderingMinutes()) {
+        return 'Elige una hora más adelante, esa ya pasó.';
+    }
+
+    return '';
+}
+
+function formatScheduledLabel(dateStr, timeStr) {
+    const [y, m, d] = String(dateStr || '').split('-').map(Number);
+    const [h, min] = String(timeStr || '').split(':').map(Number);
+    if (!y || !m || !d || !Number.isFinite(h) || !Number.isFinite(min)) {
+        return '';
+    }
+    const monthName = _SCHEDULE_MONTH_NAMES_ES[m - 1] || '';
+    const period = h < 12 ? 'a.m.' : 'p.m.';
+    let h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+    const minStr = String(min).padStart(2, '0');
+    return `${d} de ${monthName}, ${h12}:${minStr} ${period}`;
+}
+
+// Modal de confirmación cuando el negocio está cerrado: ofrece programar el pedido en vez
+// de bloquear el checkout. Resuelve true si el cliente quiere continuar programando.
+function showClosedScheduleConfirm(availability) {
+    return new Promise((resolve) => {
+        document.getElementById('closedScheduleModal')?.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'closedScheduleModal';
+        modal.className = 'support-modal is-open';
+        modal.innerHTML = `
+            <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Estamos cerrados">
+                <button type="button" class="support-modal-close" aria-label="Cerrar">&times;</button>
+                <p class="support-modal-kicker">😴 Estamos cerrados</p>
+                <h3 class="support-modal-title">${escapeHtml(availability.statusLabel)}</h3>
+                <p class="support-modal-text">Nuestro horario es ${escapeHtml(availability.scheduleLabel)}. Si quieres, con mucho gusto programamos tu pedido para cuando volvamos a abrir.</p>
+                <div class="support-actions split">
+                    <button type="button" class="support-secondary-btn" id="closedScheduleCancelBtn">Cancelar</button>
+                    <button type="button" class="support-send-btn" id="closedScheduleContinueBtn">📅 Programar mi pedido</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        syncBodyScrollLock();
+
+        const finish = (result) => {
+            modal.remove();
+            syncBodyScrollLock();
+            resolve(result);
+        };
+
+        modal.querySelector('.support-modal-close').addEventListener('click', () => finish(false));
+        modal.querySelector('#closedScheduleCancelBtn').addEventListener('click', () => finish(false));
+        modal.querySelector('#closedScheduleContinueBtn').addEventListener('click', () => finish(true));
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal && _lastMousedownTarget === modal) finish(false);
+        });
+    });
+}
+
 function showStatusToast(message) {
     let toast = document.getElementById('orderingStatusToast');
 
@@ -1249,6 +1359,19 @@ function showOrderConfirmScreen(orderData = {}) {
     const ocCode = document.getElementById('ocOrderCode');
     if (ocCode) ocCode.textContent = String(orderData.code || orderData.id || '—');
 
+    // Subtítulo + entrega programada
+    const isScheduledOrder = Boolean(orderData.isScheduled && orderData.scheduledLabel);
+    const ocSubtitle = document.getElementById('ocSubtitle');
+    if (ocSubtitle) {
+        ocSubtitle.textContent = isScheduledOrder
+            ? 'Programamos tu pedido, lo prepararemos a la hora elegida'
+            : 'Tu orden ya está en camino al restaurante';
+    }
+    const ocScheduleRow = document.getElementById('ocScheduleRow');
+    const ocScheduleValue = document.getElementById('ocScheduleValue');
+    if (ocScheduleRow) ocScheduleRow.style.display = isScheduledOrder ? '' : 'none';
+    if (ocScheduleValue) ocScheduleValue.textContent = isScheduledOrder ? String(orderData.scheduledLabel) : '';
+
     // Cliente
     const ocName = document.getElementById('ocCustomerName');
     if (ocName) ocName.textContent = String(orderData.customerName || '—');
@@ -1346,8 +1469,11 @@ function buildWhatsAppOrderConfirmationText(orderData = {}) {
     const customerName = String(orderData.customerName || '').trim() || 'Cliente';
     const total = formatCurrency(Number(orderData.total || 0));
     const restaurantName = _getRestaurantName();
+    const scheduleLine = (orderData.isScheduled && orderData.scheduledLabel)
+        ? `\n🗓️ Entrega programada: ${orderData.scheduledLabel}`
+        : '';
 
-    return `¡Hola, ${restaurantName}! 🍔\n\nAcabo de hacer mi pedido desde la app. Aquí los detalles:\n\n📦 Pedido: ${orderCode}\n👤 Nombre: ${customerName}\n💰 Total: ${total}\n\nQuedo pendiente de la confirmación. ¡Muchas gracias!`;
+    return `¡Hola, ${restaurantName}! 🍔\n\nAcabo de hacer mi pedido desde la app. Aquí los detalles:\n\n📦 Pedido: ${orderCode}\n👤 Nombre: ${customerName}\n💰 Total: ${total}${scheduleLine}\n\nQuedo pendiente de la confirmación. ¡Muchas gracias!`;
 }
 
 function openOrderConfirmationWhatsApp(orderData = {}) {
@@ -3523,7 +3649,9 @@ function setOrderControlAvailability(control) {
 
     control.textContent = control.dataset.openLabel;
     control.classList.toggle('is-ordering-closed', !availability.isOpen);
-    control.title = availability.isOpen ? '' : availability.statusLabel;
+    // Aceptamos pedidos las 24 horas: fuera de horario el botón sigue siendo clickeable,
+    // solo se ofrece programar la entrega — el tooltip refleja eso en vez de sonar bloqueado.
+    control.title = availability.isOpen ? '' : `${availability.statusLabel} Puedes programar tu pedido.`;
 
     if (control.tagName === 'BUTTON') {
         control.disabled = control.classList.contains('cart-checkout-btn') ? !shoppingCart.length : false;
@@ -4388,6 +4516,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
         `Entrega: ${fulfillmentType === 'delivery' ? 'Domicilio' : fulfillmentType === 'mesa' ? 'Comer en el local' : 'Recoger en el restaurante'}`,
         deliveryAddress ? `Direccion: ${deliveryAddress}` : '',
         customerInfo.deliveryZone ? `Zona: ${customerInfo.deliveryZone}` : '',
+        (customerInfo.isScheduled && customerInfo.scheduledLabel) ? `Programado para: ${customerInfo.scheduledLabel}` : '',
         paymentMethod && paymentMethod !== 'pendiente' ? (() => {
             if (paymentMethod === 'efectivo') {
                 return `Pago: Efectivo${cashChangeRequired && cashTenderAmount > 0 ? ` | Paga con: ${formatCurrency(cashTenderAmount)}` : ' | Lleva completo'}`;
@@ -4511,6 +4640,10 @@ async function createOrderFromCart(customerInfo = {}) {
         deliveryFeeOverridden: Number.isFinite(Number(customerInfo.deliveryFee)) ? (Number(customerInfo.deliveryFee) !== Number(deliveryFee)) : false,
         currency: 'COP',
         source: 'web',
+        isScheduled: Boolean(customerInfo.isScheduled),
+        scheduledDate: customerInfo.isScheduled ? String(customerInfo.scheduledDate || '') : null,
+        scheduledTime: customerInfo.isScheduled ? String(customerInfo.scheduledTime || '') : null,
+        scheduledLabel: customerInfo.isScheduled ? String(customerInfo.scheduledLabel || '') : null,
         createdAt: getPublicServerTimestamp(),
         updatedAt: getPublicServerTimestamp(),
         summaryMessage: buildCartCheckoutMessage({
@@ -4521,7 +4654,9 @@ async function createOrderFromCart(customerInfo = {}) {
             cashChangeRequired,
             cashTenderAmount,
             deliveryZone: customerInfo.deliveryZone || null,
-            deliveryFee
+            deliveryFee,
+            isScheduled: customerInfo.isScheduled,
+            scheduledLabel: customerInfo.scheduledLabel
         })
     });
 
@@ -4631,13 +4766,8 @@ function clearCart() {
     renderCartUI();
 }
 
-function checkoutCart() {
+async function checkoutCart() {
     if (!shoppingCart.length) {
-        return;
-    }
-
-    if (!canPlaceOrdersNow()) {
-        showOrderingClosedMessage();
         return;
     }
 
@@ -4647,6 +4777,27 @@ function checkoutCart() {
     if (getCartTotalAmount() <= 0) {
         showStatusToast('Hay un problema con el precio de tu pedido. Vacía el carrito e intenta de nuevo, o escríbenos por WhatsApp.');
         return;
+    }
+
+    const availability = getOrderingAvailability();
+    if (!availability.isOpen) {
+        // Cierre temporal por adecuaciones (indefinido, no es el horario diario): no tiene
+        // sentido ofrecer programar una entrega, seguimos bloqueando como antes.
+        if (TEMP_CLOSURE_ACTIVE) {
+            showOrderingClosedMessage();
+            return;
+        }
+        const wantsToSchedule = await showClosedScheduleConfirm(availability);
+        if (!wantsToSchedule) {
+            return;
+        }
+        checkoutIsScheduled = true;
+        checkoutScheduledDate = '';
+        checkoutScheduledTime = '';
+    } else {
+        checkoutIsScheduled = false;
+        checkoutScheduledDate = '';
+        checkoutScheduledTime = '';
     }
 
     _hapticTap();
@@ -4931,7 +5082,9 @@ async function submitPaymentFlow() {
             deliveryFee: Number(capturedOrderData.deliveryFee || 0),
             fulfillmentType: capturedOrderData.fulfillmentType || '',
             address: capturedOrderData.address || '',
-            paymentMethod
+            paymentMethod,
+            isScheduled: Boolean(capturedOrderData.isScheduled),
+            scheduledLabel: capturedOrderData.scheduledLabel || ''
         });
     } catch (error) {
         const isNetworkOrQuota = /quota|network|offline|failed to fetch|unavailable/i.test(error.message || '');
@@ -5031,10 +5184,19 @@ async function submitCheckoutInfo() {
         return;
     }
 
-    if (!canPlaceOrdersNow()) {
-        checkoutInfoUI.feedback.textContent = ORDERING_SCHEDULE.closedMessage;
-        showOrderingClosedMessage();
-        return;
+    let scheduledLabel = '';
+    if (checkoutIsScheduled) {
+        const scheduleDateValue = String(checkoutInfoUI.scheduleDate?.value || '').trim();
+        const scheduleTimeValue = String(checkoutInfoUI.scheduleTime?.value || '').trim();
+        const scheduleError = validateScheduledOrderSelection(scheduleDateValue, scheduleTimeValue);
+        if (scheduleError) {
+            checkoutInfoUI.feedback.textContent = scheduleError;
+            (checkoutInfoUI.scheduleDate?.value ? checkoutInfoUI.scheduleTime : checkoutInfoUI.scheduleDate)?.focus();
+            return;
+        }
+        checkoutScheduledDate = scheduleDateValue;
+        checkoutScheduledTime = scheduleTimeValue;
+        scheduledLabel = formatScheduledLabel(scheduleDateValue, scheduleTimeValue);
     }
 
     const profile = activeCustomerProfile;
@@ -5134,7 +5296,11 @@ async function submitCheckoutInfo() {
             deliveryLatitude: checkoutInfoUI.deliveryLatitude || null,
             deliveryLongitude: checkoutInfoUI.deliveryLongitude || null,
             deliveryFee: getCheckoutDeliveryFee(fulfillmentType),
-            deliveryFeePending: fulfillmentType === 'delivery' ? checkoutDeliveryFeePending : false
+            deliveryFeePending: fulfillmentType === 'delivery' ? checkoutDeliveryFeePending : false,
+            isScheduled: checkoutIsScheduled,
+            scheduledDate: checkoutIsScheduled ? checkoutScheduledDate : '',
+            scheduledTime: checkoutIsScheduled ? checkoutScheduledTime : '',
+            scheduledLabel: checkoutIsScheduled ? scheduledLabel : ''
         };
 
         if (profile && shouldSaveNewAddress) {
@@ -5490,6 +5656,21 @@ function openCheckoutInfoModal() {
                     <option value="dine_in">🍽️ Comer en el local</option>
                 </select>
             </label>
+            ${checkoutIsScheduled ? `
+            <div class="checkout-schedule-panel" id="checkoutSchedulePanel">
+                <p class="support-modal-kicker" style="margin:0 0 0.4rem">📅 Programa tu pedido</p>
+                <p class="support-modal-text" style="margin:0 0 0.6rem">Estamos cerrados en este momento. Elige la fecha y hora en que quieres recibir tu pedido, dentro de nuestro horario: ${escapeHtml(ORDERING_SCHEDULE.label)}.</p>
+                <div class="checkout-schedule-row">
+                    <label class="support-field">
+                        <span>Fecha</span>
+                        <input type="date" id="checkoutScheduleDate" min="${getTodayDateStringInScheduleTZ()}">
+                    </label>
+                    <label class="support-field">
+                        <span>Hora</span>
+                        <input type="time" id="checkoutScheduleTime" min="${getOrderingScheduleWindowStrings().min}" max="${getOrderingScheduleWindowStrings().max}">
+                    </label>
+                </div>
+            </div>` : ''}
             ${profile && savedAddresses.length ? `
             <div id="checkoutSavedAddressField" class="checkout-addr-section" hidden>
                 <p class="support-modal-kicker" style="margin:0 0 0.6rem">¿A dónde te enviamos?</p>
@@ -5559,6 +5740,9 @@ function openCheckoutInfoModal() {
         close: modal.querySelector('.support-modal-close'),
         name: modal.querySelector('#checkoutCustomerName'),
         fulfillmentType: modal.querySelector('#checkoutFulfillmentType'),
+        schedulePanel: modal.querySelector('#checkoutSchedulePanel'),
+        scheduleDate: modal.querySelector('#checkoutScheduleDate'),
+        scheduleTime: modal.querySelector('#checkoutScheduleTime'),
         savedAddressField: modal.querySelector('#checkoutSavedAddressField'),
         addrCards: modal.querySelector('#checkoutAddrCards'),
         addNewAddrBtn: modal.querySelector('#checkoutAddNewAddrBtn'),
@@ -5730,11 +5914,6 @@ function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' 
     }
 
     const normalizedOptions = normalizeOrderOptions(orderOptions);
-
-    if (!canPlaceOrdersNow()) {
-        showOrderingClosedMessage();
-        return;
-    }
 
     if (buttonId) {
         trackProductInterest(productName, buttonId);
@@ -7628,10 +7807,6 @@ function openComboChoiceModal(productName, categoryName, buttonId, extraOptions 
 
 function startProductOrderFlow(productName, categoryName, buttonId, extraOptions = {}) {
     _hapticTap();
-    if (!canPlaceOrdersNow()) {
-        showOrderingClosedMessage();
-        return;
-    }
 
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
     const normalizedOptions = normalizeOrderOptions(extraOptions);
@@ -12255,7 +12430,6 @@ function orderDailyRecommendation() {
         couponMeta: { type: 'recomendado', productId: recommendedProduct.id, productNombre: recommendedProduct.nombre, discountRate: RECOMMENDED_DAY_DISCOUNT_RATE },
         redeemBtn: _ordBtn,
         onDelivery: () => {
-            if (!canPlaceOrdersNow()) { showOrderingClosedMessage(); return; }
             trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${recommendedProduct.nombre}`);
             closePromoScreen();
             addItemToCart(recommendedProduct.nombre, recommendedProduct.categoria, {

@@ -312,9 +312,9 @@ a.is-ordering-closed {
 .category-order-btn.is-ordering-closed,
 .category-hero-order-btn.is-ordering-closed,
 .promo-btn-order.is-ordering-closed {
-    opacity: 0.52;
+    opacity: 0.7;
     filter: none;
-    cursor: not-allowed;
+    cursor: pointer;
     box-shadow: none;
 }
 .mobile-order-btn.is-ordering-closed:hover,
@@ -8328,6 +8328,23 @@ a,
     color: #4ade80;
     font-weight: 600;
     padding: 0.2rem 0 0.4rem;
+}
+
+/* ===== PEDIDO PROGRAMADO (fuera de horario) ===== */
+.checkout-schedule-panel {
+    margin: 0.25rem 0 0.9rem;
+    padding: 0.85rem 1rem;
+    background: rgba(255,159,64,0.10);
+    border: 1.5px solid rgba(255,159,64,0.35);
+    border-radius: 14px;
+}
+.checkout-schedule-row {
+    display: flex;
+    gap: 0.65rem;
+}
+.checkout-schedule-row .support-field {
+    flex: 1;
+    min-width: 0;
 }
 
 /* ===== MAPA CHECKOUT ===== */

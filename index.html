@@ -25,7 +25,7 @@
     <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="manifest" href="site.webmanifest">
     <link rel="preload" as="image" href="portada.webp?v=20260615" type="image/webp" fetchpriority="high">
-    <link rel="stylesheet" href="style.css?v=20260717-1834">
+    <link rel="stylesheet" href="style.css?v=20260720-1651">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -423,7 +423,7 @@
                     <img src="isotipo.png" alt="ROAL BURGER" class="oc-logo">
                 </div>
                 <h1 class="oc-title">¡PEDIDO<br>RECIBIDO!</h1>
-                <p class="oc-subtitle">Tu orden ya está en camino al restaurante</p>
+                <p class="oc-subtitle" id="ocSubtitle">Tu orden ya está en camino al restaurante</p>
                 <div class="oc-code-badge">
                     <span class="oc-code-label">Código del pedido</span>
                     <span class="oc-code-value" id="ocOrderCode"></span>
@@ -451,6 +451,13 @@
             </div>
 
             <div class="oc-card oc-info-card">
+                <div class="oc-info-row" id="ocScheduleRow" style="display:none;">
+                    <span class="oc-info-icon">📅</span>
+                    <div>
+                        <span class="oc-info-label">Entrega programada</span>
+                        <span class="oc-info-value" id="ocScheduleValue"></span>
+                    </div>
+                </div>
                 <div class="oc-info-row">
                     <span class="oc-info-icon">👤</span>
                     <div>
@@ -675,9 +682,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script src="tracking.js?v=20260717-1834"></script>
+    <script src="tracking.js?v=20260720-1651"></script>
     <script src="firebase-config.js"></script>
-    <script src="script-v2.js?v=20260717-1834"></script>
+    <script src="script-v2.js?v=20260720-1651"></script>
 
     <!-- ── Public Upgrade Sheet ── -->
     <div id="publicUpgradeOverlay" class="pub-upgrade-overlay" hidden style="display:none;">
