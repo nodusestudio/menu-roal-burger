@@ -372,10 +372,13 @@ let internalOrderItems = [];
 let posSelectedCategory = null;
 let posProductSearchQuery = '';
 let posTicketConfig = null; // { orderType, mesaNumber, customerName, customerPhone }
-let posTickets = [];
-let posActiveTicketId = null;
 let _editingOrderData = null; // set when editing an existing order, cleared after save
 let _editingItemsOnlyOrderId = null; // set when editing only the items of an existing order (safe partial update)
+// Metadata del pedido que se está editando (editAdminPosOrder/openOrderItemsEditor), usada
+// solo para pre-rellenar el modal de tipo/cliente — nunca se confirma sola, el cajero debe
+// pasar por el modal. Antes esto se guardaba pisando el ticket "activo" de posTickets, lo que
+// contaminaba cualquier pedido nuevo que el cajero tuviera a medio armar en paralelo.
+let _posEditPrefill = null;
 
 // Color de acento por categoría del POS (pestañas + tiles de producto), para que el cajero
 // reconozca la sección por color en vez de leer texto. Se asigna por hash del nombre, así
@@ -523,114 +526,8 @@ const PosCart = {
     }
 };
 
-const POS_TICKETS_COLLECTION = 'pos_tickets';
-let posTicketsUnsubscribe = null;
-const _sentToReceptionIds = new Set(); // IDs de tickets enviados a recepción, pendientes de eliminar en Firestore
-let _posAutoSaveTimer = null; // debounce de auto-guardado al agregar artículos
 let _changeMesaOrderId = null; // ID del pedido al que se le va a cambiar la mesa
 
-async function savePosTicketToFirestore(ticket) {
-    // pos_tickets exige sesión de admin (firestore.rules) — el modo mesero nunca lo usa.
-    if (_meseroSession) return;
-    if (!ticket || !firebaseDb) return;
-    try {
-        const data = { ...ticket };
-        if (!data.createdAt) data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-        data.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-        await firebaseDb.collection(POS_TICKETS_COLLECTION).doc(ticket.id).set(data, { merge: true });
-    } catch (err) {
-        console.error('[POS] Error guardando ticket en Firestore:', err);
-    }
-}
-
-async function deletePosTicketFromFirestore(ticketId) {
-    if (_meseroSession) return;
-    if (!ticketId || !firebaseDb) return;
-    try {
-        await firebaseDb.collection(POS_TICKETS_COLLECTION).doc(ticketId).delete();
-    } catch (err) {
-        console.error('[POS] Error eliminando ticket de Firestore:', err);
-    }
-}
-
-// Auto-guarda el ticket activo en Firestore 2 s después del último cambio, para no perder
-// datos si la sesión se interrumpe antes de que el cajero haga clic en "Guardar pedido".
-function _schedulePosTicketAutoSave() {
-    if (_meseroSession) return;
-    if (_posAutoSaveTimer) clearTimeout(_posAutoSaveTimer);
-    _posAutoSaveTimer = setTimeout(() => {
-        _posAutoSaveTimer = null;
-        if (!posActiveTicketId) return;
-        const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
-        if (!activeTicket || !internalOrderItems.length) return;
-        activeTicket.items = [...internalOrderItems];
-        if (!activeTicket.orderType) {
-            activeTicket.label = 'Por Definir';
-        }
-        savePosTicketToFirestore(activeTicket);
-    }, 2000);
-}
-
-function subscribePosTickets() {
-    if (!firebaseDb) return;
-    if (posTicketsUnsubscribe) posTicketsUnsubscribe();
-    posTicketsUnsubscribe = firebaseDb.collection(POS_TICKETS_COLLECTION)
-        .orderBy('createdAt', 'asc')
-        .onSnapshot((snapshot) => {
-            const firestoreTickets = snapshot.docs
-                .map((doc) => ({ ...doc.data(), id: doc.id }))
-                .filter((t) => !_sentToReceptionIds.has(t.id)); // Ocultar tickets ya enviados a recepción
-            // Limpiar IDs que ya no están en Firestore (eliminación completada)
-            _sentToReceptionIds.forEach((id) => {
-                if (!snapshot.docs.find((d) => d.id === id)) _sentToReceptionIds.delete(id);
-            });
-            // Preservar solo el ticket local activo si aún no fue guardado en Firestore
-            // (descartar tickets vacíos locales que no están activos para evitar acumulación)
-            const localOnlyTickets = posTickets.filter(
-                (t) => !firestoreTickets.find((ft) => ft.id === t.id) &&
-                    (t.id === posActiveTicketId || (t.items && t.items.length > 0))
-            );
-            const merged = [...firestoreTickets, ...localOnlyTickets];
-            posTickets = merged.map((ft) =>
-                ft.id === posActiveTicketId ? { ...ft, items: internalOrderItems } : ft
-            );
-            // Si el ticket activo fue eliminado por otro usuario, cambiar al primero disponible
-            if (posActiveTicketId && !posTickets.find((t) => t.id === posActiveTicketId)) {
-                if (posTickets.length) {
-                    const first = posTickets[0];
-                    posActiveTicketId = first.id;
-                    internalOrderItems = first.items || [];
-                    posTicketConfig = first.orderType ? {
-                        orderType: first.orderType, mesaNumber: first.mesaNumber || null,
-                        customerName: first.customerName || '', customerPhone: first.customerPhone || '',
-                        deliveryAddress: first.deliveryAddress || '', deliveryFee: first.deliveryFee ?? null
-                    } : null;
-                } else {
-                    posActiveTicketId = null;
-                    internalOrderItems = [];
-                    posTicketConfig = null;
-                }
-            }
-            clearTimeout(_posTicketsRenderTimer);
-            _posTicketsRenderTimer = setTimeout(() => {
-                renderPosTicketsBadge();
-                _ptsMarkOccupiedMesas();
-                const ticketsScreen = document.getElementById('posScreenTickets');
-                if (ticketsScreen && !ticketsScreen.hidden) renderPosTicketsList();
-                if (internalOrderModal?.classList.contains('is-open')) {
-                    const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
-                    const labelEl = document.getElementById('posActiveTicketLabel');
-                    if (labelEl && activeTicket) labelEl.textContent = activeTicket.label;
-                    renderPosOrderItems();
-                    renderPosTotals();
-                    renderPosBottomBar();
-                }
-            }, 80);
-        }, (err) => {
-            console.error('[POS] Error en listener pos_tickets:', err);
-        });
-}
-let _posSelectedTicketIds = new Set();
 let menuUpgradesConfig = null;
 let _posUpgradePending = null;
 let clientsSearchTerm = '';
@@ -672,7 +569,6 @@ let _recomendadoSelectedProductId = null;
 const _processedAccordionExpanded = new Set();
 let ordersRealtimeTimer = null;
 let _liveReloadTimer = null;
-let _posTicketsRenderTimer = null;
 let clipboardToastTimer = null;
 let activeMobileOrdersLane = '';
 let adminTitleBlinkTimer = null;
@@ -5457,7 +5353,6 @@ function addComboEspecialToPosOrder(combo) {
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
-    _schedulePosTicketAutoSave();
 }
 
 function addProductToPosOrder(productId, productName, productPrice, note = '', originalUnitPrice = null, opts = {}) {
@@ -5466,7 +5361,6 @@ function addProductToPosOrder(productId, productName, productPrice, note = '', o
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
-    _schedulePosTicketAutoSave();
 }
 
 function isPosDesktop() {
@@ -6069,33 +5963,21 @@ function _renderPosUpgradeBebidaSabores(bebida, presentacion, onBack = renderPos
     body.querySelector('#posUpgradeBackBtn')?.addEventListener('click', () => _renderPosUpgradeBebidaPresentaciones(bebida, onBack));
 }
 
-/* ─── POS v2: Gestión de tickets múltiples ─── */
+/* ─── POS v2: pedido en construcción ───────────────────────────────────────
+ * Solo existe un pedido en construcción a la vez (internalOrderItems + posTicketConfig).
+ * Antes se podían aparcar varios "tickets" en paralelo y cambiar entre ellos: eso permitía
+ * que editar un pedido existente (editAdminPosOrder/openOrderItemsEditor) pisara por
+ * error el ticket aparcado de OTRO pedido que el cajero tenía a medio armar, mezclando
+ * sus productos. Se eliminó esa capacidad de aparcar varios a la vez para que ya no
+ * exista ese punto de mezcla — solo se puede construir un pedido por vez en el POS. */
 
-function createNewPosTicket() {
-    const ticketNumber = posTickets.length + 1;
-    const ticket = { id: `ticket-${Date.now()}`, label: `Pedido ${ticketNumber}`, items: [] };
-    posTickets.push(ticket);
-    posActiveTicketId = ticket.id;
-    internalOrderItems = ticket.items;
-    renderPosTicketsBadge();
-    const label = document.getElementById('posActiveTicketLabel');
-    if (label) label.textContent = ticket.label;
-    // No guardar en Firestore hasta que tenga items (GUARDAR TICKET / ENVIAR TICKET)
-    return ticket;
-}
-
-// Al tocar una mesa libre en el mapa de Recepción: crea el ticket ya configurado para esa
-// mesa y abre directo la pantalla de productos del POS, sin pasar por el modal de "tipo de pedido".
+// Al tocar una mesa libre en el mapa de Recepción: deja el carrito listo para esa mesa y
+// abre directo la pantalla de productos del POS, sin pasar por el modal de "tipo de pedido".
 function startPosOrderForMesa(mesaNumber) {
-    posTicketConfig = null;
     internalOrderItems = [];
-    const ticket = createNewPosTicket();
-    ticket.orderType = 'mesa';
-    ticket.mesaNumber = mesaNumber;
-    ticket.label = `Mesa ${mesaNumber}`;
-    const labelEl = document.getElementById('posActiveTicketLabel');
-    if (labelEl) labelEl.textContent = ticket.label;
     posTicketConfig = { orderType: 'mesa', mesaNumber, customerName: '', customerPhone: '', deliveryAddress: '', deliveryFee: null };
+    const labelEl = document.getElementById('posActiveTicketLabel');
+    if (labelEl) labelEl.textContent = `Mesa ${mesaNumber}`;
     renderPosCartTicketInfo();
     if (!internalOrderModal?.classList.contains('is-open')) {
         openInternalOrderModal();
@@ -6107,247 +5989,24 @@ function startPosOrderForMesa(mesaNumber) {
     }
 }
 
-function switchPosTicket(ticketId) {
-    const current = posTickets.find((t) => t.id === posActiveTicketId);
-    if (current) current.items = internalOrderItems;
-    const ticket = posTickets.find((t) => t.id === ticketId);
-    if (!ticket) return;
-    posActiveTicketId = ticketId;
-    internalOrderItems = ticket.items;
-    const label = document.getElementById('posActiveTicketLabel');
-    if (label) label.textContent = ticket.label;
-    // Restaurar metadata del ticket al carrito
-    if (ticket.orderType) {
-        posTicketConfig = {
-            orderType: ticket.orderType,
-            mesaNumber: ticket.mesaNumber || null,
-            customerName: ticket.customerName || '',
-            customerPhone: ticket.customerPhone || '',
-            deliveryAddress: ticket.deliveryAddress || '',
-            deliveryFee: ticket.deliveryFee !== undefined ? ticket.deliveryFee : null
-        };
-    } else {
-        posTicketConfig = null;
-    }
-    renderPosCartTicketInfo();
-    renderPosOrderItems();
-    renderPosTotals();
-    renderPosBottomBar();
-    showPosScreen('main');
-}
-
-function renderPosTicketsBadge() {
-    const savedCount = posTickets.filter((t) => t.items?.length > 0).length;
-    const badge = document.getElementById('posTicketsCountBadge');
-    if (badge) badge.textContent = savedCount;
-    const adminBadge = document.getElementById('adminTicketsCountBadge');
-    if (adminBadge) {
-        adminBadge.textContent = savedCount;
-        adminBadge.style.display = savedCount > 0 ? 'inline-block' : 'none';
-    }
-}
-
-function _refreshTicketActionBar() {
-    const bar = document.getElementById('posTicketActionBar');
-    const countBadge = document.getElementById('posTicketSelectionCount');
-    const changeTypeBtn = document.getElementById('posTicketChangeTypeBtn');
-    const n = _posSelectedTicketIds.size;
-    if (bar) bar.hidden = n === 0;
-    if (countBadge) { countBadge.style.display = n > 0 ? '' : 'none'; countBadge.textContent = n; }
-    if (changeTypeBtn) changeTypeBtn.disabled = n !== 1;
-}
-
-function _initPosTicketsListDelegation(list) {
-    if (list.dataset.delegationReady) return;
-    list.dataset.delegationReady = '1';
-    list.addEventListener('click', (e) => {
-        const item = e.target.closest('.pos-ticket-item[data-ticket-id]');
-        if (!item) return;
-        const id = item.dataset.ticketId;
-
-        if (e.target.closest('.pos-ticket-check')) {
-            e.stopPropagation();
-            if (_posSelectedTicketIds.has(id)) {
-                _posSelectedTicketIds.delete(id);
-                item.classList.remove('selected-ticket');
-            } else {
-                _posSelectedTicketIds.add(id);
-                item.classList.add('selected-ticket');
-            }
-            _refreshTicketActionBar();
-            return;
-        }
-        if (e.target.closest('.pos-ticket-edit-inline')) {
-            e.stopPropagation();
-            switchPosTicket(id);
-            openPosTicketSetupModal(true);
-            return;
-        }
-        if (e.target.closest('.pos-ticket-send-inline')) {
-            e.stopPropagation();
-            _posTicketSendInline(id);
-            return;
-        }
-        if (e.target.closest('.pos-ticket-del-inline')) {
-            e.stopPropagation();
-            _posTicketDeleteInline(id);
-            return;
-        }
-        if (_posSelectedTicketIds.size > 0) {
-            if (_posSelectedTicketIds.has(id)) {
-                _posSelectedTicketIds.delete(id);
-                item.classList.remove('selected-ticket');
-            } else {
-                _posSelectedTicketIds.add(id);
-                item.classList.add('selected-ticket');
-            }
-            _refreshTicketActionBar();
-            return;
-        }
-        switchPosTicket(id);
-    });
-}
-
-async function _posTicketSendInline(id) {
-    const ticket = posTickets.find((t) => t.id === id);
-    if (!ticket) return;
-    const current = posTickets.find((t) => t.id === posActiveTicketId);
-    if (current) current.items = [...internalOrderItems];
-    posActiveTicketId = id;
-    internalOrderItems = [...(ticket.items || [])];
-    posTicketConfig = ticket.orderType ? {
-        orderType: ticket.orderType,
-        mesaNumber: ticket.mesaNumber || null,
-        customerName: ticket.customerName || '',
-        customerPhone: ticket.customerPhone || '',
-        deliveryAddress: ticket.deliveryAddress || '',
-        deliveryFee: ticket.deliveryFee !== undefined ? ticket.deliveryFee : null
-    } : null;
-    await saveAdminOrderQuick(posTicketConfig || {});
-}
-
-async function _posTicketDeleteInline(id) {
-    if (!(await showConfirmModal({ title: '¿Eliminar este ticket?', confirmText: 'Eliminar' }))) return;
-    deletePosTicketFromFirestore(id);
-    posTickets = posTickets.filter((t) => t.id !== id);
-    _posSelectedTicketIds.delete(id);
-    if (!posTickets.find((t) => t.id === posActiveTicketId)) {
-        if (posTickets.length) {
-            posActiveTicketId = posTickets[0].id;
-            internalOrderItems = posTickets[0].items;
-            posTicketConfig = null;
-        } else {
-            createNewPosTicket();
-        }
-    }
-    renderPosTicketsList();
-    renderPosTicketsBadge();
-    renderPosCartTicketInfo();
-    renderPosOrderItems();
-    renderPosTotals();
-    renderPosBottomBar();
-}
-
-function renderPosTicketsList() {
-    const list = document.getElementById('posTicketsList');
-    if (!list) return;
-
-    _initPosTicketsListDelegation(list);
-
-    const visibleTickets = posTickets.filter((t) => t.items?.length > 0);
-    if (!visibleTickets.length) {
-        list.innerHTML = '<p style="text-align:center;color:#b8c8e8;padding:32px 16px;font-size:0.95rem;">Sin tickets guardados por el momento</p>';
-        _posSelectedTicketIds.clear();
-        _refreshTicketActionBar();
-        return;
-    }
-
-    const typeLabels = { mesa: '&#9632; Mesa', retiro: '&#8599; Recoger', domicilio: '&#8962; Domicilio' };
-    const presentIds = new Set(visibleTickets.map((t) => t.id));
-
-    // Eliminar elementos que ya no existen
-    Array.from(list.children).forEach((el) => {
-        if (el.dataset.ticketId && !presentIds.has(el.dataset.ticketId)) el.remove();
-    });
-
-    // Actualizar o crear cada ticket en su posición correcta
-    visibleTickets.forEach((ticket, idx) => {
-        const subtotal = ticket.items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-        const itemCount = ticket.items.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
-        const isActive = ticket.id === posActiveTicketId;
-        const isSelected = _posSelectedTicketIds.has(ticket.id);
-        const typeBadge = ticket.orderType ? `<span class="pos-ticket-type-badge">${typeLabels[ticket.orderType] || ticket.orderType}</span>` : '';
-        const classes = ['pos-ticket-item', isActive ? 'active-ticket' : '', isSelected ? 'selected-ticket' : ''].filter(Boolean).join(' ');
-
-        let el = null;
-        for (const child of list.children) {
-            if (child.dataset?.ticketId === ticket.id) { el = child; break; }
-        }
-
-        if (!el) {
-            el = document.createElement('div');
-            el.dataset.ticketId = ticket.id;
-            el.innerHTML = `<div class="pos-ticket-check" data-check-id="${escapeHtml(ticket.id)}">&#10003;</div>
-                <div class="pos-ticket-info">
-                    <div class="pos-ticket-name">${escapeHtml(ticket.label)}${typeBadge}</div>
-                    <div class="pos-ticket-meta">${itemCount} ${itemCount === 1 ? 'item' : 'items'}</div>
-                </div>
-                <div class="pos-ticket-total">${formatMoney(subtotal)}</div>
-                <button type="button" class="pos-ticket-edit-inline" data-edit-ticket-id="${escapeHtml(ticket.id)}" title="Editar tipo de pedido">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                </button>
-                <button type="button" class="pos-ticket-send-inline" data-send-ticket-id="${escapeHtml(ticket.id)}" title="Enviar a recepción">Enviar</button>
-                <button type="button" class="pos-ticket-del-inline" data-del-ticket-id="${escapeHtml(ticket.id)}" title="Eliminar ticket">🗑</button>`;
-            el.className = classes;
-            const sibling = list.children[idx];
-            if (sibling) list.insertBefore(el, sibling);
-            else list.appendChild(el);
-        } else {
-            // Solo actualizar lo que cambió
-            if (el.className !== classes) el.className = classes;
-            const nameEl = el.querySelector('.pos-ticket-name');
-            if (nameEl) nameEl.innerHTML = escapeHtml(ticket.label) + typeBadge;
-            const metaEl = el.querySelector('.pos-ticket-meta');
-            if (metaEl) metaEl.textContent = `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
-            const totalEl = el.querySelector('.pos-ticket-total');
-            if (totalEl) totalEl.textContent = formatMoney(subtotal);
-            // Corregir posición en el DOM si el orden cambió
-            const expectedSibling = list.children[idx];
-            if (expectedSibling && expectedSibling !== el) list.insertBefore(el, expectedSibling);
-        }
-    });
-
-    _refreshTicketActionBar();
-}
-
 function showPosScreen(screen) {
     const main = document.getElementById('posScreenMain');
-    const tickets = document.getElementById('posScreenTickets');
     const cartDrawer = document.getElementById('posCartDrawer');
 
-    // En escritorio, cuando se muestran los tickets, el main se mantiene en el flujo flex
-    // para que el carrito (30% derecho) conserve su posición; los tickets lo cubren como overlay.
-    const desktopTickets = isPosDesktop() && screen === 'tickets';
     if (main) {
-        const showMain = screen === 'main' || desktopTickets;
-        main.hidden = !showMain;
-        main.style.display = showMain ? 'flex' : 'none';
+        main.hidden = false;
+        main.style.display = 'flex';
     }
-    if (tickets) { tickets.hidden = screen !== 'tickets'; tickets.style.display = screen === 'tickets' ? 'flex' : 'none'; }
 
     if (cartDrawer) {
         if (isPosDesktop()) {
-            // En desktop el carrito es un panel fijo siempre visible (main y tickets)
+            // En desktop el carrito es un panel fijo siempre visible
             cartDrawer.hidden = false;
             cartDrawer.style.display = '';
         } else if (screen !== 'main') {
             cartDrawer.hidden = true;
             cartDrawer.style.display = 'none';
         }
-    }
-
-    if (screen === 'tickets') {
-        renderPosTicketsList();
     }
 }
 
@@ -6356,36 +6015,18 @@ function showPosScreen(screen) {
 function openInternalOrderModal() {
     if (!internalOrderModal) return;
 
-    // Restaurar o activar ticket (Firestore es la fuente de verdad via subscribePosTickets)
-    if (!posActiveTicketId) {
-        if (posTickets.length) {
-            const first = posTickets[0];
-            posActiveTicketId = first.id;
-            internalOrderItems = first.items || [];
-        } else {
-            createNewPosTicket();
-        }
-    } else {
-        internalOrderItems = posTickets.find((t) => t.id === posActiveTicketId)?.items || internalOrderItems;
-    }
-    // Reconstruir posTicketConfig desde el ticket activo si es necesario
-    const _restoredTicket = posTickets.find((t) => t.id === posActiveTicketId);
-    if (_restoredTicket?.orderType && !posTicketConfig) {
-        posTicketConfig = {
-            orderType: _restoredTicket.orderType,
-            mesaNumber: _restoredTicket.mesaNumber || null,
-            customerName: _restoredTicket.customerName || '',
-            customerPhone: _restoredTicket.customerPhone || '',
-            deliveryAddress: _restoredTicket.deliveryAddress || '',
-            deliveryFee: _restoredTicket.deliveryFee ?? null
-        };
+    const labelEl = document.getElementById('posActiveTicketLabel');
+    if (labelEl) {
+        labelEl.textContent = posTicketConfig?.orderType === 'mesa' && posTicketConfig?.mesaNumber
+            ? `Mesa ${posTicketConfig.mesaNumber}`
+            : (posTicketConfig?.customerName || 'Nuevo pedido');
     }
 
     renderPosCategoriesPanel();
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
-    renderPosTicketsBadge();
+    renderPosCartTicketInfo();
 
     showPosScreen('main');
     internalOrderModal.classList.add('is-open');
@@ -6574,7 +6215,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
             // El mesero ve Recepción (solo lectura): vuelve al tablero para confirmar donde
             // quedó su pedido, igual que un cajero normal tras guardar.
             renderOrders();
-            closeInternalOrderModal();
+            closeInternalOrderModal(true);
             if (isMobileAdminViewport()) {
                 const _laneMap = { mesa: 'mesa', domicilio: 'domicilios', retiro: 'recoger' };
                 activeMobileOrdersLane = _laneMap[orderType] || 'domicilios';
@@ -6589,12 +6230,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         // onSnapshot actualiza ordersState y re-renderiza en ~600 ms
         renderOrders();
 
-        // Eliminar el ticket procesado de Firestore y cerrar POS
-        const _processedTicketId = posActiveTicketId;
-        _sentToReceptionIds.add(_processedTicketId);
-        deletePosTicketFromFirestore(_processedTicketId);
-        posTickets = posTickets.filter((t) => t.id !== _processedTicketId);
-        closeInternalOrderModal();
+        closeInternalOrderModal(true);
         if (isMobileAdminViewport()) {
             const _laneMap = { mesa: 'mesa', domicilio: 'domicilios', retiro: 'recoger' };
             activeMobileOrdersLane = _laneMap[orderType] || 'domicilios';
@@ -6677,18 +6313,16 @@ async function editAdminPosOrder(order) {
         // confirmar el modal de tipo/cliente que se abre abajo — antes dependía de eso
         // y mientras tanto no se veía a nombre de quién estaba el pedido que se edita.
         const editLabel = `Editando #${order.code}${order.customerName ? ' · ' + order.customerName : ''}`;
-        const currentTicket = posTickets.find((t) => t.id === posActiveTicketId);
-        if (currentTicket) {
-            currentTicket.items = posItems;
-            currentTicket.label = editLabel;
-            // Store order metadata so setup modal can pre-fill all fields
-            currentTicket.orderType = order.orderType;
-            currentTicket.mesaNumber = order.mesaNumber || null;
-            currentTicket.customerName = order.customerName || '';
-            currentTicket.customerPhone = order.customerPhone || '';
-            currentTicket.deliveryAddress = order.deliveryAddress || order.customerAddress || '';
-            currentTicket.deliveryFee = order.deliveryFee ?? null;
-        }
+        // Solo para pre-rellenar el modal de tipo/cliente — no se guarda en ningún carrito
+        // ajeno, así que no hay forma de que esta edición contamine otro pedido en curso.
+        _posEditPrefill = {
+            orderType: order.orderType || null,
+            mesaNumber: order.mesaNumber || null,
+            customerName: order.customerName || '',
+            customerPhone: order.customerPhone || '',
+            deliveryAddress: order.deliveryAddress || order.customerAddress || '',
+            deliveryFee: order.deliveryFee ?? null
+        };
         const labelEl = document.getElementById('posActiveTicketLabel');
         if (labelEl) labelEl.textContent = editLabel;
 
@@ -6737,22 +6371,16 @@ function openOrderItemsEditor(order) {
 
         internalOrderItems = posItems;
         const editItemsLabel = `Editando productos #${order.code}${order.customerName ? ' · ' + order.customerName : ''}`;
-        const currentTicket = posTickets.find((t) => t.id === posActiveTicketId);
-        if (currentTicket) {
-            currentTicket.items = posItems;
-            currentTicket.label = editItemsLabel;
-            // El ticket que se reutiliza para esta edición puede venir con metadata vieja de
-            // lo último que se hizo con él (ej. una mesa distinta) — sincronizarla con el pedido
-            // que realmente se está editando evita que quede una mesa "ocupada" fantasma en el
-            // modal de Cambiar Mesa si el cajero abandona esta edición sin guardar.
-            currentTicket.orderType = order.orderType || null;
-            currentTicket.mesaNumber = order.mesaNumber || null;
-            // Sin esto el carrito no mostraba a nombre de quién estaba el pedido mientras se
-            // le seguían agregando productos (posTicketConfig se deja en null a propósito acá).
-            currentTicket.customerName = order.customerName || '';
-            currentTicket.customerPhone = order.customerPhone || '';
-            currentTicket.deliveryAddress = order.deliveryAddress || order.customerAddress || '';
-        }
+        // Solo para pre-rellenar el modal de tipo/cliente si el cajero abre "✎ Info" durante
+        // esta edición — no toca ningún otro pedido en curso (ver comentario en editAdminPosOrder).
+        _posEditPrefill = {
+            orderType: order.orderType || null,
+            mesaNumber: order.mesaNumber || null,
+            customerName: order.customerName || '',
+            customerPhone: order.customerPhone || '',
+            deliveryAddress: order.deliveryAddress || order.customerAddress || '',
+            deliveryFee: order.deliveryFee ?? null
+        };
         const labelEl = document.getElementById('posActiveTicketLabel');
         if (labelEl) labelEl.textContent = editItemsLabel;
 
@@ -6825,42 +6453,24 @@ async function saveOrderItemsEdit() {
     }
 }
 
-function closeInternalOrderModal(clearCurrentTicket = false) {
+// processed=true: el pedido en construcción ya se guardó/envió — se limpia el carrito
+// para el próximo pedido. processed=false (botón "atrás"/cerrar): si NO se estaba editando
+// un pedido existente, se deja el carrito tal cual para poder retomarlo la próxima vez que
+// se abra el POS; si SÍ se estaba editando, la edición se descarta por completo en vez de
+// dejarla puesta como si fuera un pedido nuevo (evita que una edición abandonada se cuele
+// como el próximo pedido que el cajero termine enviando).
+function closeInternalOrderModal(processed = false) {
     if (!internalOrderModal) return;
 
-    if (clearCurrentTicket) {
-        // Ticket procesado: eliminar de Firestore y activar el siguiente
-        const processedId = posActiveTicketId;
-        _sentToReceptionIds.add(processedId);
-        deletePosTicketFromFirestore(processedId);
-        posTickets = posTickets.filter((t) => t.id !== processedId);
-        if (posTickets.length > 0) {
-            posActiveTicketId = posTickets[0].id;
-            internalOrderItems = posTickets[0].items;
-            renderPosOrderItems();
-            renderPosTotals();
-            renderPosBottomBar();
-            renderPosTicketsBadge();
-            const label = document.getElementById('posActiveTicketLabel');
-            if (label) label.textContent = posTickets[0].label;
-            showPosScreen('main');
-            return;
-        }
-    } else {
-        // Cerrar sin procesar: guardar en Firestore solo si tiene items
-        const current = posTickets.find((t) => t.id === posActiveTicketId);
-        if (current && internalOrderItems.length > 0) {
-            current.items = [...internalOrderItems];
-            savePosTicketToFirestore(current);
-        }
+    const wasEditing = _editingOrderData !== null || _editingItemsOnlyOrderId !== null;
+    if (processed || wasEditing) {
+        internalOrderItems = [];
+        posTicketConfig = null;
     }
 
-    // Limpiar estado de sesión (posTickets se mantiene; Firestore es la fuente de verdad)
-    posActiveTicketId = null;
-    posTicketConfig = null;
     _editingOrderData = null;
     _editingItemsOnlyOrderId = null;
-    internalOrderItems = [];
+    _posEditPrefill = null;
     renderPosCartTicketInfo();
     const cartDrawer = document.getElementById('posCartDrawer');
     if (cartDrawer) cartDrawer.hidden = true;
@@ -6879,14 +6489,9 @@ function openChangeMesaModal(orderId) {
     const order = ordersState.find((o) => o.id === orderId);
 
     // Mesas ocupadas por otros pedidos activos (excluyendo este mismo pedido)
-    const byOrders = (ordersState || [])
+    const allOccupied = new Set((ordersState || [])
         .filter((o) => o.orderType === 'mesa' && o.mesaNumber && o.id !== orderId && !['entregado', 'cancelado'].includes(o.status))
-        .map((o) => Number(o.mesaNumber));
-    // Mesas ocupadas por pos_tickets en progreso
-    const byTickets = posTickets
-        .filter((t) => t.orderType === 'mesa' && t.mesaNumber)
-        .map((t) => Number(t.mesaNumber));
-    const allOccupied = new Set([...byOrders, ...byTickets]);
+        .map((o) => Number(o.mesaNumber)));
 
     modal.querySelectorAll('.chm-mesa-btn').forEach((btn) => {
         const num = Number(btn.dataset.chmMesa);
@@ -8930,7 +8535,9 @@ function _repeatOrderInPos(pastItems) {
         return;
     }
 
-    const ticket = createNewPosTicket();
+    internalOrderItems = [];
+    posTicketConfig = null;
+    const repeatBatchId = Date.now();
 
     pastItems.forEach((item, idx) => {
         const name     = String(item.productName || item.nombre || '').trim();
@@ -8939,7 +8546,7 @@ function _repeatOrderInPos(pastItems) {
         const unit     = Number(item.unitPrice || item.price || 0) || (qty ? Math.round(Number(item.subtotal || 0) / qty) : 0);
         const subtotal = unit * qty;
         const note     = String(item.note || item.optionLabel || item.nota || '');
-        const key      = `repeat_${ticket.id}_${idx}`;
+        const key      = `repeat_${repeatBatchId}_${idx}`;
 
         internalOrderItems.push({
             itemKey: key,
@@ -8957,8 +8564,6 @@ function _repeatOrderInPos(pastItems) {
             parentKey: null
         });
     });
-
-    ticket.items = internalOrderItems;
 
     openInternalOrderModal();
     showNotice(`${pastItems.length} producto${pastItems.length !== 1 ? 's' : ''} cargado${pastItems.length !== 1 ? 's' : ''} en POS.`, 'success');
@@ -9176,12 +8781,13 @@ async function ensureActiveSalesDay() {
 function buildOrderWhatsAppMessage(order) {
     const nombre = order.customerName || 'Cliente';
     const codigo = order.code || '';
-    const items = Array.isArray(order.items) ? order.items : [];
-    const lineas = items.map(i => {
+    const lineas = _groupOrderItemsForDisplay(order.items).map(i => {
         const qty = Number(i.quantity || 1);
         const name = i.productName || i.name || '';
-        const opcion = String(i.optionLabel || '').trim();
-        return opcion ? `• ${qty}x ${name}\n   ↳ ${opcion}` : `• ${qty}x ${name}`;
+        const detalles = [String(i.optionLabel || '').trim()];
+        if (i.note && i.note !== i.optionLabel) detalles.push(`Nota: ${String(i.note).trim()}`);
+        const detalleTexto = detalles.filter(Boolean).join(' | ');
+        return detalleTexto ? `• ${qty}x ${name}\n   ↳ ${detalleTexto}` : `• ${qty}x ${name}`;
     }).join('\n');
     const total = formatMoney(Number(order.total || order.subtotal || 0));
     const method = String(order.paymentMethod || 'pendiente').toLowerCase();
@@ -9335,7 +8941,12 @@ function getOrderPaymentLabel(order) {
 
     if (method === 'efectivo') {
         const tender = Number(order.cashTenderAmount || 0);
-        const change = Number(order.cashChangeAmount || 0);
+        // cashChangeAmount no siempre viene guardado (los pedidos creados desde el menú
+        // público solo guardan cashTenderAmount/cashChangeRequired) — si falta, se calcula
+        // aquí mismo contra el total real del pedido en vez de mostrar "Cambio $0".
+        const change = order.cashChangeAmount != null
+            ? Number(order.cashChangeAmount)
+            : Math.max(0, tender - getOrderDisplayTotal(order));
         if (order.cashChangeRequired && tender > 0) {
             return `Efectivo | Paga con ${formatMoney(tender)} — Cambio ${formatMoney(change)}`;
         }
@@ -11548,7 +11159,15 @@ function buildESCPOSData(order) {
     wc('  CANT  DESCRIPCION', 'TOTAL');
     pb(ESC, 0x45, 0x00);
     sep();
-    for (const item of (order.items || [])) {
+    // Agrupado (cantidades sumadas) y con los combos/adicionales anidados bajo su producto
+    // padre — igual que el ticket de cocina — para que este ticket (el que se le entrega al
+    // cliente) muestre el mismo detalle real del pedido en vez de listar cada unidad suelta.
+    for (const item of _groupOrderItemsForDisplay(order.items || [])) {
+        if (item.parentItemKey) {
+            ww(`  > ${item.quantity}x ${item.productName}`, '       ');
+            if (item.note) ww('    ' + item.note, '       ');
+            continue;
+        }
         const qty = String(item.quantity).padStart(2);
         wc(`  ${qty}   ${item.productName}`, formatMoney(item.subtotal));
         if (item.optionLabel) ww('> ' + item.optionLabel, '       ');
@@ -13537,20 +13156,12 @@ if (openCreateClientBtn) {
 
 if (openCreateInternalOrderBtn) {
     openCreateInternalOrderBtn.addEventListener('click', () => {
-        // Siempre crear un ticket en blanco — nunca reanudar uno existente
-        posActiveTicketId = null;
+        // Siempre empezar un pedido en blanco — nunca reanudar uno anterior sin terminar
         posTicketConfig = null;
         internalOrderItems = [];
-        createNewPosTicket();
         openInternalOrderModal();
     });
 }
-
-// Botón "Tickets Abiertos" — abre el POS directo en la pantalla de tickets
-document.getElementById('openAdminTicketsViewBtn')?.addEventListener('click', () => {
-    openInternalOrderModal();
-    showPosScreen('tickets');
-});
 
 if (unreadTrayBtn) {
     unreadTrayBtn.addEventListener('click', toggleUnreadTray);
@@ -13573,10 +13184,6 @@ document.addEventListener('click', (e) => {
 if (internalOrderCloseBtn) {
     internalOrderCloseBtn.addEventListener('click', () => closeInternalOrderModal());
 }
-
-// Botón COBRAR (barra de acción)
-// Botón TICKETS ABIERTOS
-document.getElementById('posOpenTicketsBtn')?.addEventListener('click', () => showPosScreen('tickets'));
 
 // Toggle carrito (barra inferior)
 document.getElementById('posCartToggleBtn')?.addEventListener('click', () => {
@@ -13609,16 +13216,7 @@ document.getElementById('posClearCartBtn')?.addEventListener('click', async () =
     if (!(await showConfirmModal({ icon: '🗑', title: '¿Vaciar el pedido actual?', confirmText: 'Vaciar' }))) return;
     internalOrderItems = [];
     posTicketConfig = null;
-    const currentTicket = posTickets.find((t) => t.id === posActiveTicketId);
-    if (currentTicket) {
-        currentTicket.items = [];
-        currentTicket.customerName = '';
-        currentTicket.customerPhone = '';
-        currentTicket.orderType = null;
-        currentTicket.mesaNumber = null;
-        currentTicket.deliveryAddress = '';
-        currentTicket.deliveryFee = null;
-    }
+    _posEditPrefill = null;
     renderPosOrderItems();
     renderPosCartTicketInfo();
     renderPosTotals();
@@ -13657,23 +13255,14 @@ let _ptsSelectedPickupMode = 'llego'; // 'llamo' (pidió por telefono/web) vs 'l
 let _ptsSelectedClient = null; // { name, phone }
 let _ptsActiveTab = 'none';
 let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin enviar
-let _ptsSaveAndNew = false; // true = guardar ticket con nombre y abrir uno nuevo en blanco
 
 function renderPosCartTicketInfo() {
     const el = document.getElementById('posCartTicketInfo');
     if (!el) return;
     // Al editar un pedido existente, posTicketConfig se deja en null a propósito (el modal de
-    // tipo/cliente es quien lo termina de fijar) — mientras tanto se usa la metadata que ya
-    // quedó guardada en el ticket activo, para no mostrar el carrito sin saber a nombre de
-    // quién está el pedido que se está editando.
-    const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
-    const source = posTicketConfig || (activeTicket?.customerName || activeTicket?.orderType ? {
-        orderType: activeTicket.orderType,
-        mesaNumber: activeTicket.mesaNumber,
-        customerName: activeTicket.customerName,
-        customerPhone: activeTicket.customerPhone,
-        deliveryAddress: activeTicket.deliveryAddress,
-    } : null);
+    // tipo/cliente es quien lo termina de fijar) — mientras tanto se usa _posEditPrefill, para
+    // no mostrar el carrito sin saber a nombre de quién está el pedido que se está editando.
+    const source = posTicketConfig || _posEditPrefill;
     if (!source) {
         el.hidden = true;
         el.innerHTML = '';
@@ -13711,14 +13300,10 @@ function renderPosCartTicketInfo() {
 }
 
 function _ptsMarkOccupiedMesas() {
-    const occupiedFromTickets = posTickets
-        .filter((t) => t.id !== posActiveTicketId && t.orderType === 'mesa' && t.mesaNumber)
-        .map((t) => t.mesaNumber);
-    // También bloquear mesas de pedidos activos en Firestore
-    const occupiedFromOrders = (ordersState || [])
+    // Mesas ocupadas por pedidos activos en Firestore
+    const allOccupied = [...new Set((ordersState || [])
         .filter((o) => o.orderType === 'mesa' && o.mesaNumber && !['entregado', 'cancelado'].includes(o.status))
-        .map((o) => Number(o.mesaNumber));
-    const allOccupied = [...new Set([...occupiedFromTickets, ...occupiedFromOrders])];
+        .map((o) => Number(o.mesaNumber)))];
     document.querySelectorAll('.pts-mesa-btn').forEach((btn) => {
         const num = Number(btn.dataset.ptsMesa);
         const occupied = allOccupied.includes(num);
@@ -13735,9 +13320,8 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
 
     _ptsConfigOnly = configOnly;
 
-    // Pre-poblar desde el ticket activo si existe metadata
-    const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
-    const prefill = configOnly && activeTicket ? activeTicket : null;
+    // Pre-poblar desde la metadata del pedido en construcción (o el que se está editando)
+    const prefill = configOnly ? (_posEditPrefill || posTicketConfig) : null;
 
     // Reset estado
     _ptsSelectedType = presetType || prefill?.orderType || null;
@@ -13826,8 +13410,7 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
     // Cambiar label del botón según modo
     const confirmBtn = document.getElementById('ptsConfirmBtn');
     if (confirmBtn) {
-        if (_ptsSaveAndNew) confirmBtn.textContent = 'Guardar ticket';
-        else if (configOnly && _editingOrderData) confirmBtn.textContent = 'Confirmar edición';
+        if (configOnly && _editingOrderData) confirmBtn.textContent = 'Confirmar edición';
         else if (configOnly) confirmBtn.textContent = 'Guardar configuración';
         else confirmBtn.textContent = 'Guardar pedido';
     }
@@ -14050,7 +13633,6 @@ function _ptsFillClientAddress(client) {
 
 // ── Listeners directos del modal (más robustos que delegación global) ──────────
 document.getElementById('ptsCancelBtn')?.addEventListener('click', () => {
-    _ptsSaveAndNew = false;
     closePosTicketSetupModal();
 });
 
@@ -14119,37 +13701,16 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     closePosTicketSetupModal();
 
     if (_ptsConfigOnly) {
-        // Modo configuración: actualizar el ticket activo con la metadata y mostrar en carrito
-        const activeTicket = posTickets.find((t) => t.id === posActiveTicketId);
-        if (activeTicket) {
-            activeTicket.orderType = resolvedType;
-            activeTicket.mesaNumber = resolvedMesa || null;
-            activeTicket.customerName = customerName;
-            activeTicket.customerPhone = customerPhone;
-            activeTicket.deliveryAddress = deliveryAddress;
-            activeTicket.deliveryFee = deliveryFee;
-            activeTicket.pickupMode = resolvedType === 'retiro' ? resolvedPickupMode : null;
-            // Actualizar label del ticket
-            const typeLabels = { mesa: 'Mesa', retiro: 'Para llevar', domicilio: 'Domicilio' };
-            if (resolvedType === 'mesa' && resolvedMesa) {
-                activeTicket.label = customerName ? `Mesa ${resolvedMesa} · ${customerName}` : `Mesa ${resolvedMesa}`;
-            } else if (customerName) {
-                activeTicket.label = `${customerName} (${typeLabels[resolvedType] || resolvedType})`;
-            } else {
-                activeTicket.label = typeLabels[resolvedType] || resolvedType;
-            }
-            const labelEl = document.getElementById('posActiveTicketLabel');
-            if (labelEl) labelEl.textContent = activeTicket.label;
-        }
+        // Modo configuración: fijar la metadata del pedido en construcción y mostrarla en el carrito
         posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, pickupMode: resolvedPickupMode, customerName, customerPhone, deliveryAddress, deliveryFee };
+        _posEditPrefill = null;
+        const typeLabels = { mesa: 'Mesa', retiro: 'Para llevar', domicilio: 'Domicilio' };
+        const label = resolvedType === 'mesa' && resolvedMesa
+            ? (customerName ? `Mesa ${resolvedMesa} · ${customerName}` : `Mesa ${resolvedMesa}`)
+            : (customerName ? `${customerName} (${typeLabels[resolvedType] || resolvedType})` : (typeLabels[resolvedType] || resolvedType));
+        const labelEl = document.getElementById('posActiveTicketLabel');
+        if (labelEl) labelEl.textContent = label;
         renderPosCartTicketInfo();
-
-        // Modo GUARDAR TICKET: guardar ticket configurado en Firestore y cerrar POS
-        if (_ptsSaveAndNew) {
-            _ptsSaveAndNew = false;
-            if (activeTicket) savePosTicketToFirestore(activeTicket);
-            closeInternalOrderModal();
-        }
         return;
     }
 
@@ -14588,60 +14149,6 @@ document.querySelectorAll('.prod-period-btn').forEach((btn) => {
     });
 });
 
-// Cerrar lista de tickets
-document.getElementById('posTicketsCloseBtn')?.addEventListener('click', () => {
-    _posSelectedTicketIds.clear();
-    showPosScreen('main');
-});
-
-// Eliminar tickets seleccionados
-document.getElementById('posTicketDeleteBtn')?.addEventListener('click', async () => {
-    if (!_posSelectedTicketIds.size) return;
-    const count = _posSelectedTicketIds.size;
-    if (!(await showConfirmModal({ title: `¿Eliminar ${count} ticket${count > 1 ? 's' : ''}?`, confirmText: 'Eliminar' }))) return;
-    const toDelete = [..._posSelectedTicketIds];
-    toDelete.forEach((id) => deletePosTicketFromFirestore(id));
-    posTickets = posTickets.filter((t) => !_posSelectedTicketIds.has(t.id));
-    _posSelectedTicketIds.clear();
-    // Si se eliminó el ticket activo, activar el primero que quede
-    if (!posTickets.find((t) => t.id === posActiveTicketId)) {
-        if (posTickets.length) {
-            posActiveTicketId = posTickets[0].id;
-            internalOrderItems = posTickets[0].items;
-            posTicketConfig = null;
-        } else {
-            createNewPosTicket();
-        }
-    }
-    renderPosTicketsList();
-    renderPosTicketsBadge();
-    renderPosCartTicketInfo();
-    renderPosOrderItems();
-    renderPosTotals();
-    renderPosBottomBar();
-});
-
-// Cambiar tipo de pedido del ticket seleccionado
-document.getElementById('posTicketChangeTypeBtn')?.addEventListener('click', () => {
-    if (_posSelectedTicketIds.size !== 1) return;
-    const [selectedId] = _posSelectedTicketIds;
-    // Activar ese ticket y abrir el modal de configuración
-    switchPosTicket(selectedId);
-    _posSelectedTicketIds.clear();
-    openPosTicketSetupModal(true);
-});
-
-// Nuevo ticket
-document.getElementById('posNewTicketBtn')?.addEventListener('click', () => {
-    posTicketConfig = null;
-    internalOrderItems = [];
-    createNewPosTicket();
-    renderPosOrderItems();
-    renderPosTotals();
-    renderPosBottomBar();
-    showPosScreen('main');
-});
-
 // Atajo rápido desde encabezados de columna del tablero de pedidos
 document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
     const mesaTile = e.target.closest('.mesa-map-tile.is-libre[data-mesa-number]');
@@ -14655,7 +14162,6 @@ document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
     const type = btn.dataset.quickType;
     posTicketConfig = null;
     internalOrderItems = [];
-    createNewPosTicket();
     if (!internalOrderModal?.classList.contains('is-open')) {
         openInternalOrderModal();
     } else {
@@ -16362,7 +15868,6 @@ async function initAdmin() {
         initCajaAperturaSync();
         ensureOrdersRealtimeTicker();
         setupLiveFirebaseSync();
-        subscribePosTickets();
 
         fetchClients().then(() => {
             renderClients();
@@ -18854,7 +18359,7 @@ async function _showAbrirCajaModal() {
 // ── Estado visual de la caja (abierta / cerrada) ─────────────────────────────
 function _updateCajaEstadoUI() {
     const abierta = cajaAperturaAt > 0;
-    const newTickBtn = document.getElementById('posNewTicketBtn');
+    const newTickBtn = document.getElementById('openCreateInternalOrderBtn');
     const posCard    = document.getElementById('posOrdersCard');
 
     // Botón "+" nuevo pedido: deshabilitado cuando está cerrada

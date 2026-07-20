@@ -659,33 +659,6 @@
             box-shadow: 0 5px 16px rgba(29, 185, 84, 0.45);
         }
 
-        .tickets-abiertos-btn {
-            min-height: 28px;
-            padding: 0 11px;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 5px;
-            background: transparent;
-            border: 1px solid rgba(255, 123, 69, 0.4);
-            color: #ffb38a;
-            font-family: 'Oswald', sans-serif;
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-        }
-
-        .tickets-abiertos-btn:hover {
-            background: rgba(255, 123, 69, 0.18);
-            box-shadow: 0 5px 16px rgba(255, 123, 69, 0.22);
-            transform: translateY(-1px);
-            color: #fff;
-        }
-
         /* Deja que sus hijos (stack Domicilios+Llevar y la sección de Mesas) entren directo
            como columnas del grid de 3 de .orders-workspace, en vez de armar un grid propio
            de 2 columnas anidado — así el Recibo compite por ancho con las tres a la vez. */
@@ -3988,7 +3961,6 @@
         body.mesero-mode .pos-view {
             top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
         }
-        body.mesero-mode #posOpenTicketsBtn { display: none !important; }
         body.mesero-mode.mesero-mode-invalid .pos-view,
         body.mesero-mode.mesero-mode-invalid .admin-page,
         body.mesero-mode.mesero-mode-gate .pos-view,
@@ -4000,8 +3972,7 @@
         body.mesero-mode .mesero-not-owner .ticket-action-btn,
         body.mesero-mode #abrirCajaBtnPos,
         body.mesero-mode .sales-day-banner-data,
-        body.mesero-mode #cajaChicaBtn,
-        body.mesero-mode #openAdminTicketsViewBtn { display: none !important; }
+        body.mesero-mode #cajaChicaBtn { display: none !important; }
         body.mesero-mode .mesero-not-owner .ticket-copy-btn { pointer-events: none !important; }
         /* Cobrar/Cambiar mesa/Imprimir siguen ocultos incluso en pedidos propios del mesero */
         body.mesero-mode .ticket-cobrar-btn,
@@ -4146,53 +4117,18 @@
             font-weight: 700;
             flex-shrink: 0;
         }
-        .pos-new-ticket-btn {
-            background: var(--admin-accent) !important;
-            font-size: 1.5rem !important;
-            font-weight: 700;
-            color: #fff !important;
-        }
-
         /* ── Pantalla principal ── */
         .pos-screen-main {
             position: absolute; inset: 0;
             display: flex; flex-direction: column;
             overflow: hidden;
         }
-        .pos-action-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            height: 58px;
-            flex-shrink: 0;
-        }
-        .pos-action-btn {
-            border: none; cursor: pointer;
-            font-family: 'Oswald', sans-serif;
-            font-size: 0.82rem;
-            letter-spacing: 0.4px;
-            text-transform: uppercase;
-            display: flex; align-items: center; justify-content: center;
-            gap: 8px;
-            transition: filter 0.15s;
-            padding: 0 12px;
-        }
-        .pos-action-tickets {
-            background: var(--admin-accent); color: #fff;
-            border-right: 1px solid rgba(255,255,255,0.1);
-        }
-        .pos-action-tickets:hover { filter: brightness(1.12); }
         .pos-action-cobrar {
             background: #19892e; color: #fff;
             flex-direction: column; gap: 1px;
         }
         .pos-action-cobrar:hover { filter: brightness(1.12); }
         .pos-cobrar-amount { font-size: 1rem; font-weight: 700; line-height: 1; }
-        .pos-tickets-count-badge {
-            background: rgba(255,255,255,0.2);
-            border-radius: 10px;
-            padding: 1px 7px;
-            font-size: 0.72rem; font-weight: 700;
-        }
 
         /* ── Buscador de productos + acciones de carrito (Cobro extra / Descuento) ── */
         .pos-searchbar {
@@ -4581,95 +4517,6 @@
             transition: filter 0.15s;
         }
         .pos-cobrar-full-btn:hover { filter: brightness(1.1); }
-
-        /* ── Pantalla de tickets abiertos ── */
-        .pos-screen-tickets {
-            position: absolute; inset: 0; z-index: 10;
-            background: #141922;
-            display: flex; flex-direction: column;
-            overflow: hidden;
-        }
-        .pos-tickets-list { flex: 1; overflow-y: auto; padding: 12px; }
-        .pos-ticket-item {
-            display: flex; align-items: center; gap: 12px;
-            padding: 14px 16px;
-            background: rgba(255,255,255,0.07);
-            border: 1px solid rgba(255,255,255,0.14);
-            border-radius: 10px; margin-bottom: 8px;
-            cursor: pointer; transition: background 0.15s;
-        }
-        .pos-ticket-item:hover { background: rgba(255,255,255,0.11); }
-        .pos-ticket-item.active-ticket {
-            border-left: 3px solid var(--admin-accent);
-        }
-        .pos-ticket-check {
-            width: 22px; height: 22px;
-            border: 2px solid rgba(255,255,255,0.25);
-            border-radius: 5px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 0.75rem; color: transparent; flex-shrink: 0;
-            cursor: pointer; transition: background 0.13s, border-color 0.13s;
-        }
-        .pos-ticket-check:hover { border-color: rgba(255,122,26,0.6); }
-        .pos-ticket-item.selected-ticket .pos-ticket-check {
-            background: rgba(255,122,26,0.85);
-            border-color: #ff7a1a; color: #fff;
-        }
-        .pos-ticket-item.selected-ticket {
-            border-color: rgba(255,122,26,0.55);
-            background: rgba(255,122,26,0.08);
-        }
-        .pos-ticket-action-bar {
-            display: flex; gap: 0; flex-shrink: 0;
-            border-top: 1px solid rgba(255,255,255,0.08);
-        }
-        .pos-ticket-action-bar[hidden] { display: none; }
-        .pos-ticket-action-btn {
-            flex: 1; height: 54px; border: none; cursor: pointer;
-            font-family: 'Oswald', sans-serif; font-size: 0.85rem;
-            letter-spacing: 0.4px; text-transform: uppercase;
-            transition: filter 0.13s;
-        }
-        .pos-ticket-del-btn { background: #7a1a1a; color: #ffb0b0; }
-        .pos-ticket-del-btn:hover { filter: brightness(1.18); }
-        .pos-ticket-type-btn {
-            background: rgba(255,255,255,0.06); color: #eef4ff;
-            border-left: 1px solid rgba(255,255,255,0.08);
-        }
-        .pos-ticket-type-btn:hover { filter: brightness(1.18); }
-        .pos-ticket-type-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .pos-ticket-del-inline {
-            width: 30px; height: 30px; border: none; cursor: pointer; flex-shrink: 0;
-            background: rgba(180,40,40,0.18); border-radius: 7px; color: #ff9090;
-            font-size: 0.85rem; display: flex; align-items: center; justify-content: center;
-            transition: background 0.15s;
-        }
-        .pos-ticket-del-inline:hover { background: rgba(180,40,40,0.45); }
-        .pos-ticket-edit-inline {
-            width: 30px; height: 30px; border: none; cursor: pointer; flex-shrink: 0;
-            background: rgba(60,100,180,0.18); border-radius: 7px; color: #90b8ff;
-            font-size: 0.8rem; display: flex; align-items: center; justify-content: center;
-            transition: background 0.15s;
-        }
-        .pos-ticket-edit-inline:hover { background: rgba(60,100,180,0.42); }
-        .pos-ticket-send-inline {
-            height: 30px; padding: 0 10px; border: none; cursor: pointer; flex-shrink: 0;
-            background: rgba(30,140,80,0.22); border-radius: 7px; color: #7be0a8;
-            font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em;
-            display: flex; align-items: center; justify-content: center;
-            transition: background 0.15s;
-        }
-        .pos-ticket-send-inline:hover { background: rgba(30,140,80,0.42); }
-        .pos-ticket-info { flex: 1; min-width: 0; }
-        .pos-ticket-name { font-weight: 600; font-size: 0.9rem; color: #eef4ff; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .pos-ticket-type-badge {
-            font-size: 0.65rem; font-weight: 700; font-family: 'Space Grotesk', sans-serif;
-            padding: 1px 7px; border-radius: 999px;
-            background: rgba(255,122,26,0.18); border: 1px solid rgba(255,122,26,0.35);
-            color: #ffb07a; text-transform: uppercase; letter-spacing: 0.4px;
-        }
-        .pos-ticket-meta { font-size: 0.76rem; color: var(--admin-muted); margin-top: 2px; }
-        .pos-ticket-total { font-size: 1rem; font-weight: 700; color: #fff; flex-shrink: 0; }
 
         /* ══ Upgrade Sheet (acompañamientos POS) ══ */
         .pos-upgrade-overlay {
@@ -5100,8 +4947,6 @@
             .pos-drawer-close { display: none; }
             .pos-bottom-bar { display: none; }
             #posView .pos-product-grid-v2 { grid-template-columns: repeat(5, 1fr); }
-            /* Pantalla tickets no cubre el carrito fijo */
-            .pos-screen-tickets { right: 30%; }
             /* Sheet de acompañamiento: centrado como los modales de cobro, no cubre el carrito */
             .pos-upgrade-overlay {
                 right: 30%;
@@ -7464,8 +7309,6 @@
             margin-right: auto;
         }
         .unread-tray-btn[hidden] { display: none !important; }
-        .tickets-abiertos-btn[hidden] { display: none !important; }
-        .pos-action-row[hidden] { display: none !important; }
 
         .unread-tray-badge {
             display: inline-flex;
@@ -9584,8 +9427,8 @@
                 padding: 0 10px !important;
                 border-radius: 8px !important;
             }
-            /* Ocultar Nuevo Ticket, Tickets Abiertos y Caja Chica del área de chips (se manejan en barra inferior) */
-            #openAdminTicketsViewBtn, #openCreateInternalOrderBtn, .sales-day-banner-metrics .caja-chica-btn { display: none !important; }
+            /* Ocultar Nuevo Ticket y Caja Chica del área de chips (se manejan en barra inferior) */
+            #openCreateInternalOrderBtn, .sales-day-banner-metrics .caja-chica-btn { display: none !important; }
 
             /* 3. Ocultar card-head "Recepcion de Pedidos" — no agrega valor en mobile */
             [data-tab-panel="pedidos"] .admin-card > .card-head { display: none !important; }
@@ -12650,10 +12493,6 @@
                                 </div>
                                 <div class="sales-day-banner-actions">
                                     <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
-                                    <button type="button" class="tickets-abiertos-btn" id="openAdminTicketsViewBtn" hidden style="display:none!important">
-                                        Tickets Abiertos
-                                        <span id="adminTicketsCountBadge"></span>
-                                    </button>
                                     <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
                                         Nuevo Pedido
@@ -13754,12 +13593,6 @@
                 </div>
             </div>
 
-            <div class="pos-action-row">
-                <button type="button" class="pos-action-btn pos-action-tickets" id="posOpenTicketsBtn" style="grid-column:1/-1;">
-                    TICKETS ABIERTOS <span class="pos-tickets-count-badge" id="posTicketsCountBadge">1</span>
-                </button>
-            </div>
-
             <div class="pos-searchbar">
                 <input type="text" id="posProductSearch" class="pos-product-search" placeholder="🔍 Buscar producto por nombre..." autocomplete="off">
                 <button type="button" class="pos-cart-action-btn" id="posCobroExtraBtn" title="Agregar un cobro extra al ticket">➕ Cobro extra</button>
@@ -13831,23 +13664,6 @@
             </div>
         </div>
 
-        <!-- ══════════ PANTALLA: COBRAR ══════════ -->
-        <!-- ══════════ PANTALLA: TICKETS ABIERTOS ══════════ -->
-        <div id="posScreenTickets" class="pos-screen-tickets" hidden>
-            <div class="pos-topbar">
-                <button type="button" class="pos-topbar-btn" id="posTicketsCloseBtn">&#215;</button>
-                <div class="pos-topbar-center">
-                    <span class="pos-topbar-title">Tickets abiertos</span>
-                    <span class="pos-topbar-badge" id="posTicketSelectionCount" style="display:none;background:#ff7a1a;">0</span>
-                </div>
-                <button type="button" class="pos-topbar-btn pos-new-ticket-btn" id="posNewTicketBtn" title="Nuevo ticket">+</button>
-            </div>
-            <div class="pos-tickets-list" id="posTicketsList"></div>
-            <div class="pos-ticket-action-bar" id="posTicketActionBar" hidden>
-                <button type="button" class="pos-ticket-action-btn pos-ticket-del-btn" id="posTicketDeleteBtn">🗑 Eliminar</button>
-                <button type="button" class="pos-ticket-action-btn pos-ticket-type-btn" id="posTicketChangeTypeBtn">✎ Cambiar tipo</button>
-            </div>
-        </div>
 
         <!-- ══════════ SHEET: ACOMPAÑAMIENTO ══════════ -->
         <div id="posUpgradeOverlay" class="pos-upgrade-overlay" hidden style="display:none;">
