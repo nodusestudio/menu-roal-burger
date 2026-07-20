@@ -8832,7 +8832,18 @@ function buildOrderWhatsAppMessage(order) {
     const paymentLine = isPaid
         ? `Monto pagado: ${total} (${paymentLabel})`
         : `Total a cobrar: ${total} ${method === 'efectivo' ? `\nMedio de pago: ${paymentLabel}` : ''}`;
-    return `¡Hola ${nombre}! 👋\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n💰 *${paymentLine}*\n🕐 *Tiempo estimado:* ~50 min (trabajamos para que sea menos ⚡)\n\n¡Gracias por preferirnos! Pronto estará en tu puerta 🛵`;
+
+    // Para llevar/recoger el cliente no espera un domiciliario — el tiempo y el cierre del
+    // mensaje deben hablar de pasar por el pedido, no de que "llega a la puerta".
+    const isRetiro = order.orderType === 'retiro';
+    const tiempoLine = isRetiro
+        ? '🕐 *Tiempo estimado:* ~25 min (te avisamos apenas esté listo)'
+        : '🕐 *Tiempo estimado:* ~50 min (trabajamos para que sea menos ⚡)';
+    const cierre = isRetiro
+        ? '¡Gracias por preferirnos! En unos 25 min ya puedes pasar por tu pedido 🥡'
+        : '¡Gracias por preferirnos! Pronto estará en tu puerta 🛵';
+
+    return `¡Hola ${nombre}! 👋\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n💰 *${paymentLine}*\n${tiempoLine}\n\n${cierre}`;
 }
 
 function buildOrderWhatsAppLink(order) {
