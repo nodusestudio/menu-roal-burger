@@ -11422,6 +11422,31 @@ function _makeRecomendadoCard(rec) {
         imagen_url: rec.image_url,
         categoria: rec.categoria || ''
     });
+
+    // Esta tarjeta usaba el layout genérico de combo (imagen + nombre + botón), sin mostrar
+    // el descuento ni el precio — a diferencia de la tarjeta "Recomendado del día" de Inicio,
+    // que sí los muestra. Se agregan aquí para que ambas vistas digan lo mismo.
+    const imgWrap = card.querySelector('.card-image-wrapper');
+    if (imgWrap) {
+        imgWrap.style.position = 'relative';
+        const badge = document.createElement('span');
+        badge.className = 'rec-carousel-badge';
+        badge.textContent = `-${Math.round(RECOMMENDED_DAY_DISCOUNT_RATE * 100)}% HOY`;
+        imgWrap.appendChild(badge);
+    }
+
+    const nameEl = card.querySelector('.combo-card-name');
+    const rawPrice = resolveProductDisplayPrice(rec);
+    if (nameEl && rawPrice > 0) {
+        const discounted = Math.round(rawPrice * (1 - RECOMMENDED_DAY_DISCOUNT_RATE));
+        const priceRow = document.createElement('div');
+        priceRow.className = 'rec-carousel-price-row';
+        priceRow.innerHTML = rawPrice > discounted
+            ? `<span class="rec-carousel-orig">$${rawPrice.toLocaleString('es-CO')}</span><span class="rec-carousel-disc">$${discounted.toLocaleString('es-CO')}</span>`
+            : `<span class="rec-carousel-disc">$${discounted.toLocaleString('es-CO')}</span>`;
+        nameEl.insertAdjacentElement('afterend', priceRow);
+    }
+
     const origBtn = card.querySelector('.mobile-order-btn');
     if (origBtn) {
         // Clonar para eliminar el listener original de startProductOrderFlow

@@ -6012,6 +6012,46 @@ body.has-consent-doc-open .guest-register-banner {
     text-align: center;
 }
 
+/* Tarjeta "Recomendado del día" en el carrusel de Cupones — replica el badge y precio
+   con descuento que ya se ven en la tarjeta del Inicio. */
+.rec-carousel-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: linear-gradient(135deg, #ff7a00, #e84800);
+    color: #fff;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+    box-shadow: 0 2px 8px rgba(232, 72, 0, 0.35);
+    white-space: nowrap;
+    z-index: 2;
+}
+
+.rec-carousel-price-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 4px 0 0;
+}
+
+.rec-carousel-orig {
+    font-size: 0.85rem;
+    color: rgba(90, 50, 15, 0.45);
+    text-decoration: line-through;
+}
+
+.rec-carousel-disc {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #ff6600;
+}
+
 /* ── Pantalla Combos ──────────────────────────────────────────────── */
 #combosScreen {
     position: fixed;
