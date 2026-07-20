@@ -673,6 +673,34 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
     });
 }
 
+// Pedidos que llegan del menu publico marcados con el metodo generico "transferencia" no
+// dicen a que cuenta entro la plata — antes de cerrar el pedido, el cajero debe indicar si
+// fue Bancolombia o Nequi, para que Informes/Cierre de Caja cuadren contra el banco correcto.
+// Resuelve el id del metodo elegido, o null si el cajero cierra el dialogo sin elegir.
+function promptTransferBankChoice() {
+    return new Promise((resolve) => {
+        document.getElementById('_transferBankOverlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = '_transferBankOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:1rem;';
+        overlay.innerHTML = `
+            <div style="background:#1e1e2e;border:1.5px solid rgba(255,255,255,0.12);border-radius:18px;padding:2rem 1.75rem;max-width:380px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,0.55);text-align:center;">
+                <div style="font-size:2rem;margin-bottom:0.75rem;">🏦</div>
+                <h3 style="margin:0 0 0.5rem;color:#fff;font-size:1.1rem;font-weight:700;">¿Por dónde entró la transferencia?</h3>
+                <p style="margin:0 0 1.25rem;color:rgba(255,255,255,0.65);font-size:0.88rem;line-height:1.5;">El cliente eligió pagar por transferencia. Indica a qué cuenta llegó antes de cerrar el pedido.</p>
+                <div style="display:flex;gap:0.75rem;">
+                    <button type="button" id="_tbBancolombiaBtn" style="flex:1;padding:0.85rem;border-radius:10px;border:none;background:#2f6fdd;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;">🏦 Bancolombia</button>
+                    <button type="button" id="_tbNequiBtn" style="flex:1;padding:0.85rem;border-radius:10px;border:none;background:#6a1b9a;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;">💜 Nequi</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        const finish = (result) => { overlay.remove(); resolve(result); };
+        _bindOverlayClose(overlay, () => finish(null));
+        document.getElementById('_tbBancolombiaBtn').addEventListener('click', () => finish('bancolombia'));
+        document.getElementById('_tbNequiBtn').addEventListener('click', () => finish('nequi'));
+    });
+}
+
 // Modal con campo de texto — reemplaza window.prompt(). Resuelve el texto ingresado, o null
 // si se cancela (mismo contrato que prompt()).
 function showPromptModal({ icon = '✎', title, message = '', placeholder = '', value = '', confirmText = 'Guardar', cancelText = 'Cancelar' } = {}) {
@@ -15038,8 +15066,18 @@ if (ordersActionRoot) {
                     return;
                 }
 
+                // El pedido llego del menu publico marcado con "transferencia" generica —
+                // antes de cerrarlo, el cajero debe indicar a que banco entro.
+                const deliveredPaymentUpdate = {};
+                if (nextStatus === 'entregado' && order.paymentMethod === 'transferencia') {
+                    const bank = await promptTransferBankChoice();
+                    if (!bank) { actionButton.disabled = false; return; }
+                    deliveredPaymentUpdate.paymentMethod = bank;
+                    deliveredPaymentUpdate.paymentSubMethod = 'transferencia';
+                }
+
                 const copied = await copyTextToClipboard(buildDeliveredOrderMessage(order));
-                await updateOrder(orderId, { status: nextStatus, deliveredAt: firestoreNow(), paidAt: firestoreNow() });
+                await updateOrder(orderId, { status: nextStatus, deliveredAt: firestoreNow(), paidAt: firestoreNow(), ...deliveredPaymentUpdate });
                 showNotice(
                     copied
                         ? 'Mensaje de pedido entregado copiado y pedido cerrado.'
@@ -16105,6 +16143,9 @@ function getEnabledPaymentMethods() {
 
 function _normalizePaymentMethodId(rawId) {
     if (!rawId) return rawId;
+    // "transferencia" generica (elegida desde el menu publico, antes de que el cajero
+    // indique a que banco entro) se cuenta en Informes como Bancolombia por el momento.
+    if (rawId === 'transferencia') return 'bancolombia';
     const methods = getPaymentMethods();
     if (methods.find((m) => m.id === rawId)) return rawId;
     const parent = methods.find((m) => Array.isArray(m.subs) && m.subs.includes(rawId));
@@ -17237,7 +17278,15 @@ function renderCajaDiaria() {
         const todayStr = `${_nd.getFullYear()}-${String(_nd.getMonth()+1).padStart(2,'0')}-${String(_nd.getDate()).padStart(2,'0')}`;
         const paidStr = `${_pd.getFullYear()}-${String(_pd.getMonth()+1).padStart(2,'0')}-${String(_pd.getDate()).padStart(2,'0')}`;
         return paidStr === todayStr;
-    });
+    // "transferencia" generica (aun no resuelta por el cajero a Bancolombia/Nequi) se
+    // cuenta aqui como Bancolombia — no debe aparecer como columna/bucket "Otro" aparte.
+    }).map((o) => ({
+        ...o,
+        paymentMethod: _normalizePaymentMethodId(o.paymentMethod),
+        paymentSplit: Array.isArray(o.paymentSplit)
+            ? o.paymentSplit.map((s) => ({ ...s, method: _normalizePaymentMethodId(s.method) }))
+            : o.paymentSplit
+    }));
 
     // Filtrar gastos de la jornada actual (excluir gastos externos del historial)
     const { gastos: allGastos, traslados: allTraslados } = _splitGastosDeJornada();
