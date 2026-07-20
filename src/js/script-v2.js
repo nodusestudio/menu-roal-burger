@@ -4412,7 +4412,12 @@ function buildCartOrderItems() {
         const quantity = Number(item.quantity || 0);
         const unitPrice = getCartItemUnitPrice(item);
         const originalUnitPrice = getCartItemOriginalUnitPrice(item);
-        const optionLabel = getCartOptionLabel(item.categoryName, item.orderOptions, { includeComment: false });
+        let optionLabel = getCartOptionLabel(item.categoryName, item.orderOptions, { includeComment: false });
+        if (item.isComboEspecial && Array.isArray(item.comboItems) && item.comboItems.length) {
+            // Mismo formato que usa el POS del admin (comboItems.join(' + ')) para que el
+            // ticket y los mensajes muestren el detalle igual sin importar dónde se creó el pedido.
+            optionLabel = item.comboItems.join(' + ');
+        }
         const note = String(item.orderOptions?.comment || '').trim();
         const discountAmount = Math.max(0, (originalUnitPrice - unitPrice) * quantity);
 
@@ -9446,6 +9451,18 @@ function ensureLandingGoogleFont(fontFamily) {
     link.href = `https://fonts.googleapis.com/css2?family=${familyParamMap[key]}&display=swap`;
 }
 
+// Suscribe en tiempo real, pero si el canal realtime de Firestore nunca llega a conectar
+// (bloqueado por el navegador embebido de WhatsApp/Instagram, redes corporativas, etc.) el
+// error quedaba silenciado (segundo callback vacío `() => {}`) y el menú público se quedaba
+// en blanco para siempre — sin reintento ni mensaje, el cliente solo veía el fondo. Ante un
+// error de conexión se hace una lectura única (.get(), HTTPS normal en vez de WebChannel
+// persistente) para que el contenido igual cargue aunque el realtime no logre conectar.
+function _liveOrOnceSnapshot(ref, onData) {
+    return ref.onSnapshot(onData, () => {
+        ref.get().then(onData).catch(() => {});
+    });
+}
+
 async function renderPublicFeaturedFromAdmin() {
     const carousel = document.getElementById('featured-carousel-dynamic');
     if (!carousel) {
@@ -9467,7 +9484,7 @@ async function renderPublicFeaturedFromAdmin() {
         return;
     }
 
-    featuredProductsUnsubscribe = firebaseDb.collection('productos').onSnapshot((snapshot) => {
+    featuredProductsUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('productos'), (snapshot) => {
         latestProducts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         _promoProductsReady = true;
         renderDynamicCategorySections();
@@ -9480,9 +9497,9 @@ async function renderPublicFeaturedFromAdmin() {
             openPromoScreen();
         }
         renderHomeScreen();
-    }, () => {});
+    });
 
-    categoriesUnsubscribe = firebaseDb.collection('categorias').onSnapshot((snapshot) => {
+    categoriesUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('categorias'), (snapshot) => {
         const catSort = (a, b) => {
             const oa = a.order ?? 9999;
             const ob = b.order ?? 9999;
@@ -9523,48 +9540,48 @@ async function renderPublicFeaturedFromAdmin() {
         renderCategoryExplorer();
         updatePromoModalContent();
         renderHomeScreen();
-    }, () => {});
+    });
 
-    buttonsUnsubscribe = firebaseDb.collection('botones').onSnapshot((snapshot) => {
+    buttonsUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('botones'), (snapshot) => {
         buttonConfigsMap = new Map();
         snapshot.docs.forEach((doc) => {
             buttonConfigsMap.set(doc.id, normalizeButtonConfig(doc.data(), doc.id));
         });
         renderConfiguredButtons();
-    }, () => {});
+    });
 
-    brandingUnsubscribe = firebaseDb.collection('configuracion').doc('config_landing').onSnapshot((doc) => {
+    brandingUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('configuracion').doc('config_landing'), (doc) => {
         applyBrandingConfig(doc.exists ? doc.data() : DEFAULT_BRANDING);
-    }, () => {});
+    });
 
-    recomendadoOverrideUnsubscribe = firebaseDb.collection('configuracion').doc('recomendado_dia').onSnapshot((doc) => {
+    recomendadoOverrideUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('configuracion').doc('recomendado_dia'), (doc) => {
         recomendadoOverride = doc.exists ? doc.data() : null;
         if (_promoProductsReady) updatePromoModalContent();
-    }, () => {});
+    });
 
-    firebaseDb.collection('promociones').onSnapshot((snap) => {
+    _liveOrOnceSnapshot(firebaseDb.collection('promociones'), (snap) => {
         _promosData = snap.docs
             .map((doc) => ({ id: doc.id, ...doc.data() }))
             .filter((p) => p.activo !== false)
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         renderExtraPromoCards();
-    }, () => {});
+    });
 
-    firebaseDb.collection('combos_especiales').onSnapshot((snap) => {
+    _liveOrOnceSnapshot(firebaseDb.collection('combos_especiales'), (snap) => {
         _combosEspecialesData = snap.docs
             .map((doc) => ({ id: doc.id, ...doc.data() }))
             .filter((c) => c.activo !== false)
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         renderCombosEspeciales();
-    }, () => {});
+    });
 
-    firebaseDb.collection('promos_2x1').onSnapshot((snap) => {
+    _liveOrOnceSnapshot(firebaseDb.collection('promos_2x1'), (snap) => {
         _promos2x1Data = snap.docs
             .map((doc) => ({ id: doc.id, ...doc.data() }))
             .filter((p) => p.activo !== false)
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         render2x1Cards();
-    }, () => {});
+    });
 }
 
 function updateDynamicWhatsAppLink(sectionName) {
