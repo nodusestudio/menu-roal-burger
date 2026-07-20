@@ -1730,8 +1730,16 @@ async function ensureAdminAuth() {
 
             if (authSubmitBtn) { authSubmitBtn.disabled = true; authSubmitBtn.textContent = 'Verificando...'; }
 
-            // reCAPTCHA v3 invisible — verifica score en servidor antes de autenticar
-            if (RECAPTCHA_SITE_KEY && window.grecaptcha) {
+            // reCAPTCHA v3 invisible — verifica score en servidor antes de autenticar.
+            // Fail-closed: si el script de Google no cargó (bloqueador de anuncios, Brave
+            // Shields, etc.) el login se bloquea en vez de saltarse la verificación en
+            // silencio — antes esto dejaba pasar cualquier login sin protección.
+            if (RECAPTCHA_SITE_KEY) {
+                if (!window.grecaptcha) {
+                    if (authSubmitBtn) { authSubmitBtn.disabled = false; authSubmitBtn.textContent = 'Ingresar'; }
+                    showAuthFailure('No se pudo cargar la verificacion de seguridad. Desactiva bloqueadores de anuncios/privacidad para este sitio e intenta de nuevo.');
+                    return;
+                }
                 try {
                     await new Promise((res) => window.grecaptcha.ready(res));
                     const rcToken  = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'admin_login' });
