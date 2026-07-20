@@ -9237,6 +9237,15 @@ function buildThermalTicketMarkup(order, options = {}) {
             </div>
         </div>` : '';
 
+    const _ticketScheduleBanner = (order.isScheduled && order.scheduledLabel) ? `
+        <div class="ticket-promo-banner" style="border-color:#2f6fdd;">
+            <span class="ticket-promo-icon">📅</span>
+            <div class="ticket-promo-info">
+                <div class="ticket-promo-title">PEDIDO PROGRAMADO</div>
+                <div class="ticket-promo-label">Entregar: ${escapeHtml(order.scheduledLabel)}</div>
+            </div>
+        </div>` : '';
+
     const _ticketNotOwner = _meseroSession && order.meseroId !== _meseroSession.id;
     return `
         <div class="ticket-paper-wrap${_ticketNotOwner ? ' mesero-not-owner' : ''}">
@@ -9254,6 +9263,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                     </div>
                 </div>
 
+                ${_ticketScheduleBanner}
                 ${_ticketPromoBanner}
 
                 <section class="ticket-section">
@@ -11426,6 +11436,7 @@ function buildKitchenTicketHtml(order) {
                     <div class="k-time">${orderHour}</div>
                 </div>
                 <div class="k-type-badge">${escapeHtml(orderTypeLabel)}</div>
+                ${(order.isScheduled && order.scheduledLabel) ? `<div class="k-type-badge" style="background:#2f6fdd;">📅 PROGRAMADO: ${escapeHtml(order.scheduledLabel)}</div>` : ''}
                 ${addressLine}
                 <div class="k-products">${products}</div>
                 <div class="k-footer">— Ticket de Cocina —</div>
@@ -16186,6 +16197,8 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             return new Date(ms).toISOString().split('T')[0] === todayStr;
         }).length;
 
+        let isGenuineCharge = false;
+
         if (receiveOrder === 'mesa') {
             await updateOrder(order.id, { status: 'entregado', deliveredAt: firestoreNow(), ...paymentUpdate });
             await reloadDataAndRender();
@@ -16194,6 +16207,7 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             // un pedido ya cobrado hasta que el cajero lo cerrara a mano.
             closeMobileTicketPanel({ clearSelection: true });
             showNotice('Pago registrado y pedido cerrado.', 'ok');
+            isGenuineCharge = true;
         } else if (receiveOrder) {
             const copied = await copyTextToClipboard(buildReceivedOrderMessage({ ...order, ...paymentUpdate }));
             await updateOrder(order.id, { status: 'preparacion', receivedAt: firestoreNow(), ...paymentUpdate });
@@ -16204,6 +16218,7 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
                 copied ? 'ok' : 'error'
             );
             closeUnreadTray();
+            isGenuineCharge = true;
         } else {
             // Si ya tenía un método de pago real, esto es una corrección (editar_pago), no un
             // primer registro — el aviso lo refleja para no confundir al cajero.
@@ -16212,15 +16227,47 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             await reloadDataAndRender();
             closeMobileTicketPanel({ clearSelection: true });
             showNotice(wasAlreadyPaid ? 'Método de pago corregido.' : 'Pago registrado correctamente.', 'ok');
+            isGenuineCharge = !wasAlreadyPaid;
         }
 
         if (!_cajaDiariaAutoOpened && paidSinceApertura === 0) {
             _cajaDiariaAutoOpened = true;
             _navigateToCajaDiaria();
         }
+
+        // Cada cobro real (no correcciones de método de pago) ofrece imprimir el recibo y,
+        // si se imprime, deja el aviso de "pedido en preparación" listo para pegarlo al cliente.
+        if (isGenuineCharge) {
+            await _promptPrintReceiptAfterCharge({ ...order, ...paymentUpdate });
+        }
     } catch (err) {
         showNotice(`No se pudo procesar el pedido: ${err.message || 'error inesperado.'}`, 'error');
     }
+}
+
+function buildOrderPreparingMessage(order) {
+    const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
+    return `Hola ${customerName}, tu pedido ya está siendo preparado. 👨‍🍳🔥`;
+}
+
+async function _promptPrintReceiptAfterCharge(order) {
+    const wantsPrint = await showConfirmModal({
+        icon: '🖨️',
+        title: '¿Imprimir el recibo?',
+        message: 'Se abrirá el ticket listo para imprimir.',
+        confirmText: 'Imprimir',
+        cancelText: 'No, gracias',
+        danger: false
+    });
+    if (!wantsPrint) return;
+
+    try {
+        await openOrderPrintTicket(order.id);
+    } catch (error) {
+        showNotice(`No se pudo imprimir el recibo: ${error.message || 'error inesperado.'}`, 'error');
+    }
+
+    await copyTextToClipboard(buildOrderPreparingMessage(order));
 }
 
 async function _pfProcessPayment(method, subMethod, cashTender) {
