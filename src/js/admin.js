@@ -9968,11 +9968,20 @@ function renderSalesDayBanner() {
     }
 }
 
-function getCierresExportColumns() {
+// Si algún cierre exportado tiene plata guardada bajo un método de pago que ya no existe
+// en Configuración (p. ej. se eliminó "Transferencia"), ese monto se agrupa en una columna
+// "Otro" — antes se descartaba en silencio y el Excel/PDF no cuadraba contra el total neto.
+function _cierresExportHasOtro(cierres) {
+    const methodKeys = getPaymentMethods().map((m) => m.id);
+    return cierres.some((c) => Object.keys(c.methodTotals || {}).some((k) => !methodKeys.includes(k)));
+}
+
+function getCierresExportColumns(cierres = []) {
     const methods = getPaymentMethods();
     return [
         { key: 'fecha', label: 'Fecha cierre' },
         ...methods.map((m) => ({ key: `metodo_${m.id}`, label: m.label })),
+        ..._cierresExportHasOtro(cierres) ? [{ key: 'otro', label: 'Otro (método eliminado)' }] : [],
         { key: 'egresos', label: 'Egresos' },
         { key: 'total_neto', label: 'Total neto' }
     ];
@@ -9980,10 +9989,12 @@ function getCierresExportColumns() {
 
 function buildCierresExportRows(cierres) {
     const methods = getPaymentMethods();
+    const methodKeys = methods.map((m) => m.id);
     return cierres.map((c) => {
         const methodTotals = c.methodTotals || {};
         const row = { fecha: formatExportDate(c.closedAt) };
         methods.forEach((m) => { row[`metodo_${m.id}`] = Number(methodTotals[m.id] || 0); });
+        row.otro = Object.entries(methodTotals).reduce((acc, [k, v]) => methodKeys.includes(k) ? acc : acc + Number(v || 0), 0);
         row.egresos = Number(c.gastosTotal || 0);
         row.total_neto = Number(c.grandTotal || 0);
         return row;
@@ -10009,7 +10020,7 @@ function exportCierresHistorial(format) {
     }
 
     const rows = buildCierresExportRows(cierres);
-    const columns = getCierresExportColumns();
+    const columns = getCierresExportColumns(cierres);
     const headers = columns.map((column) => column.key);
     const headerLabels = columns.map((column) => column.label);
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -18824,22 +18835,10 @@ async function renderLibroCierres() {
 
     const methods = getPaymentMethods();
     const methodKeys = methods.map((m) => m.id);
-    // cols: día + fecha + métodos (neto) + egresos + total neto + ver
-    const totalCols = 2 + methodKeys.length + 3;
+    // cols: día + fecha + métodos (neto) + [otro] + egresos + total neto + ver
+    let totalCols = 2 + methodKeys.length + 3;
 
     tbody.innerHTML = `<tr><td colspan="${totalCols}" style="text-align:center;padding:12px;color:var(--admin-muted);">Cargando…</td></tr>`;
-
-    // Cabecera dinámica
-    if (headEl) {
-        headEl.innerHTML = `<tr>
-            <th class="col-left">Día</th>
-            <th class="col-left">Fecha cierre</th>
-            ${methods.map((m) => `<th>${m.icon} ${escapeHtml(m.label)}</th>`).join('')}
-            <th style="color:#fca5a5;">💸 Egresos</th>
-            <th>Total neto</th>
-            <th style="text-align:center;"></th>
-        </tr>`;
-    }
 
     try {
         let cierres = await loadCierresCaja();
@@ -18848,6 +18847,35 @@ async function renderLibroCierres() {
         // sin repetirla aquí (antes Historial de Cajas la volvía a pedir por su cuenta).
         let gastosExternos     = [..._gastosExternosState];
         let trasladosHistorial = [..._trasladosState];
+
+        // Cierres/gastos guardados con un método de pago que ya no existe en Configuración
+        // (p. ej. se eliminó "Transferencia") no deben perderse silenciosamente — antes los
+        // bucles de abajo solo recorrían methodKeys y esos montos quedaban huérfanos: no
+        // sumaban en ninguna tarjeta ni en la fila de Totales, por lo que EFECTIVO/
+        // BANCOLOMBIA/NEQUI ya no cuadraban contra el Total Neto real. Se agrupan aquí en
+        // una columna "Otro" en vez de descartarlos.
+        const _otroKeys = new Set();
+        cierres.forEach((c) => {
+            Object.keys(c.ingresosMethod || c.methodTotals || {}).forEach((k) => { if (!methodKeys.includes(k)) _otroKeys.add(k); });
+            Object.keys(c.gastosMethod || {}).forEach((k) => { if (!methodKeys.includes(k)) _otroKeys.add(k); });
+            Object.keys(c.methodTotals || {}).forEach((k) => { if (!methodKeys.includes(k)) _otroKeys.add(k); });
+        });
+        gastosExternos.forEach((g) => { if (g.paymentMethod && !methodKeys.includes(g.paymentMethod)) _otroKeys.add(g.paymentMethod); });
+        const hasOtro = _otroKeys.size > 0;
+        totalCols = 2 + methodKeys.length + (hasOtro ? 1 : 0) + 3;
+
+        // Cabecera dinámica
+        if (headEl) {
+            headEl.innerHTML = `<tr>
+                <th class="col-left">Día</th>
+                <th class="col-left">Fecha cierre</th>
+                ${methods.map((m) => `<th>${m.icon} ${escapeHtml(m.label)}</th>`).join('')}
+                ${hasOtro ? '<th title="Métodos de pago que ya no existen en Configuración (p. ej. Transferencia eliminada)">🧾 Otro</th>' : ''}
+                <th style="color:#fca5a5;">💸 Egresos</th>
+                <th>Total neto</th>
+                <th style="text-align:center;"></th>
+            </tr>`;
+        }
 
         // Filtrar por rango de fechas si hay alguno activo
         const { from, to } = _getCierresFilterRange();
@@ -18879,6 +18907,7 @@ async function renderLibroCierres() {
         // Acumuladores
         const sumTotals = {};
         methodKeys.forEach((k) => { sumTotals[k] = 0; });
+        let sumOtro = 0;
         let grandSumTotal = 0;
         let grandSumEgresos = 0;
         let grandSumIngresos = 0;
@@ -18929,7 +18958,7 @@ async function renderLibroCierres() {
                 : (entry._ts || 0);
             const dk = ms ? _dayOf(ms) : '_nd';
             if (!_dayGroups[dk]) {
-                const dg0 = { dk, ms, entries: [], ingM: {}, gasM: {}, ingT: 0, gasT: 0, net: 0 };
+                const dg0 = { dk, ms, entries: [], ingM: {}, gasM: {}, ingOtro: 0, gasOtro: 0, ingT: 0, gasT: 0, net: 0 };
                 methodKeys.forEach((k) => { dg0.ingM[k] = 0; dg0.gasM[k] = 0; });
                 _dayGroups[dk] = dg0;
                 _dayOrder.push(dk);
@@ -18947,6 +18976,10 @@ async function renderLibroCierres() {
                     dg.gasM[k] += Number(gM[k] || 0);
                     sumTotals[k] += Number(nM[k] || 0);
                 });
+                // Métodos ya eliminados de Configuración: no se pierden, se agrupan en "Otro".
+                Object.entries(iM).forEach(([k, v]) => { if (!methodKeys.includes(k)) dg.ingOtro += Number(v || 0); });
+                Object.entries(gM).forEach(([k, v]) => { if (!methodKeys.includes(k)) dg.gasOtro += Number(v || 0); });
+                Object.entries(nM).forEach(([k, v]) => { if (!methodKeys.includes(k)) sumOtro += Number(v || 0); });
                 const gT = Number(entry.gastosTotal || 0);
                 const gNet = Number(entry.grandTotal || 0);
                 const ingT = Number(entry.ingresosTotal ?? entry.grandTotal ?? 0);
@@ -18961,7 +18994,10 @@ async function renderLibroCierres() {
                 const amt = entry._totalAmt;
                 dg.gasT += amt;
                 dg.net  -= amt;
-                Object.entries(entry._totByMethod).forEach(([k, a]) => { sumTotals[k] = (sumTotals[k] || 0) - a; });
+                Object.entries(entry._totByMethod).forEach(([k, a]) => {
+                    if (methodKeys.includes(k)) { sumTotals[k] = (sumTotals[k] || 0) - a; }
+                    else { dg.gasOtro += a; sumOtro -= a; }
+                });
                 grandSumEgresos += amt;
                 grandSumTotal   -= amt;
             } else if (entry._tipo === 'traslado') {
@@ -18990,13 +19026,17 @@ async function renderLibroCierres() {
                 const v = dg.ingM[k] || 0;
                 return v === 0 ? '<td style="color:var(--admin-muted);">—</td>'
                     : `<td style="color:#6ee7b7;font-weight:600;">+${formatMoney(v)}</td>`;
-            }).join('');
+            }).join('') + (hasOtro
+                ? (dg.ingOtro === 0 ? '<td style="color:var(--admin-muted);">—</td>' : `<td style="color:#6ee7b7;font-weight:600;">+${formatMoney(dg.ingOtro)}</td>`)
+                : '');
             // Fila resumen egresos
             const gasCells = methodKeys.map((k) => {
                 const v = dg.gasM[k] || 0;
                 return v === 0 ? '<td style="color:var(--admin-muted);">—</td>'
                     : `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(v)}</td>`;
-            }).join('');
+            }).join('') + (hasOtro
+                ? (dg.gasOtro === 0 ? '<td style="color:var(--admin-muted);">—</td>' : `<td style="color:#fca5a5;font-weight:600;">−${formatMoney(dg.gasOtro)}</td>`)
+                : '');
 
             const netColor = dg.net >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
             const toggleBtn = `<button class="toggle-day-detail" data-group="${groupId}"
@@ -19032,10 +19072,14 @@ async function renderLibroCierres() {
                     const gT  = Number(c.gastosTotal || 0);
                     const net = Number(c.grandTotal ?? iT - gT);
                     const netC = net >= 0 ? '#ff9540' : '#fca5a5';
+                    const ingLinesOtro = Object.entries(iM).filter(([k, v]) => !methodKeys.includes(k) && Number(v || 0) > 0)
+                        .map(([k, v]) => `<div class="ht-line"><span>🧾 ${escapeHtml(k)} <span class="ht-muted">(eliminado)</span></span><span class="ht-ing">${formatMoney(Number(v))}</span></div>`).join('');
+                    const egrLinesOtro = Object.entries(gM).filter(([k, v]) => !methodKeys.includes(k) && Number(v || 0) > 0)
+                        .map(([k, v]) => `<div class="ht-line"><span>🧾 ${escapeHtml(k)} <span class="ht-muted">(eliminado)</span></span><span class="ht-egr">−${formatMoney(Number(v))}</span></div>`).join('');
                     const ingLines = methods.filter((m) => Number(iM[m.id] || 0) > 0)
-                        .map((m) => `<div class="ht-line"><span>${m.icon} ${escapeHtml(m.label)}</span><span class="ht-ing">${formatMoney(Number(iM[m.id]))}</span></div>`).join('');
+                        .map((m) => `<div class="ht-line"><span>${m.icon} ${escapeHtml(m.label)}</span><span class="ht-ing">${formatMoney(Number(iM[m.id]))}</span></div>`).join('') + ingLinesOtro;
                     const egrLines = methods.filter((m) => Number(gM[m.id] || 0) > 0)
-                        .map((m) => `<div class="ht-line"><span>${m.icon} ${escapeHtml(m.label)}</span><span class="ht-egr">−${formatMoney(Number(gM[m.id]))}</span></div>`).join('');
+                        .map((m) => `<div class="ht-line"><span>${m.icon} ${escapeHtml(m.label)}</span><span class="ht-egr">−${formatMoney(Number(gM[m.id]))}</span></div>`).join('') + egrLinesOtro;
                     const cid = escapeHtml(c.id);
                     return `<div class="ht-card">
                         <div class="ht-card-hdr">🧾 Cierre de caja · ${hora}
@@ -19162,7 +19206,9 @@ async function renderLibroCierres() {
                 if (v === 0) return '<td style="color:var(--admin-muted,#6b7280);">$0</td>';
                 const color = v > 0 ? '#6ee7b7' : '#fca5a5';
                 return `<td style="color:${color};"><strong>${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}</strong></td>`;
-            }).join('');
+            }).join('') + (hasOtro
+                ? (sumOtro === 0 ? '<td style="color:var(--admin-muted,#6b7280);">$0</td>' : `<td style="color:${sumOtro > 0 ? '#6ee7b7' : '#fca5a5'};"><strong>${sumOtro < 0 ? '−' : ''}${formatMoney(Math.abs(sumOtro))}</strong></td>`)
+                : '');
             const gtTotalColor = grandSumTotal >= 0 ? 'var(--admin-accent,#ff9540)' : '#fca5a5';
             footEl.innerHTML = `<tr>
                 <td class="col-left" colspan="2" style="font-weight:700;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;">TOTALES</td>
@@ -19186,6 +19232,15 @@ async function renderLibroCierres() {
                 </div>`;
             }).join('');
 
+            const chipOtro = hasOtro ? (() => {
+                const v = sumOtro || 0;
+                const color = v > 0 ? '#6ee7b7' : v < 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
+                return `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;min-width:110px;" title="Montos guardados con métodos de pago que ya no existen en Configuración (p. ej. Transferencia eliminada)">
+                    <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">🧾 Otro</span>
+                    <span style="font-size:1rem;font-weight:700;color:${color};">${v < 0 ? '−' : ''}${v === 0 ? '$0' : formatMoney(Math.abs(v))}</span>
+                </div>`;
+            })() : '';
+
             const chipIng = grandSumIngresos > 0 ? `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(110,231,183,0.06);border:1px solid rgba(110,231,183,0.18);border-radius:10px;min-width:110px;">
                 <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">📥 Ingresos</span>
                 <span style="font-size:1rem;font-weight:700;color:#6ee7b7;">${formatMoney(grandSumIngresos)}</span>
@@ -19203,7 +19258,7 @@ async function renderLibroCierres() {
                 <span style="font-size:1rem;font-weight:700;color:${ntColor};">${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</span>
             </div>`;
 
-            kpiEl.innerHTML = `<div style="grid-column:1/-1;display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;padding:10px 2px 12px;">${chipMethod}${chipIng}${chipEgr}${chipNet}</div>`;
+            kpiEl.innerHTML = `<div style="grid-column:1/-1;display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;padding:10px 2px 12px;">${chipMethod}${chipOtro}${chipIng}${chipEgr}${chipNet}</div>`;
         }
     } catch (err) {
         tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
