@@ -16257,20 +16257,34 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             return new Date(ms).toISOString().split('T')[0] === todayStr;
         }).length;
 
-        let isGenuineCharge = false;
+        // paymentUpdate trae paidAt como FieldValue.serverTimestamp() (un sentinela, no un
+        // Timestamp real) — no puede meterse tal cual en ordersState sin romper cualquier
+        // código que intente leer .toMillis() de ahí antes de que llegue el reload.
+        const { paidAt: _omitPaidAt, ...paymentFieldsForLocalState } = paymentUpdate;
+
+        // Refleja el pago en el estado local YA, antes de esperar el reload/render (que
+        // puede tardar varios segundos) — así el ticket se imprime con el método de pago
+        // correcto y el aviso de impresión aparece de inmediato en vez de sentirse lento.
+        const _patchLocalOrder = (extra = {}) => {
+            const idx = ordersState.findIndex((o) => o.id === order.id);
+            if (idx >= 0) ordersState[idx] = { ...ordersState[idx], ...paymentFieldsForLocalState, ...extra };
+        };
 
         if (receiveOrder === 'mesa') {
             await updateOrder(order.id, { status: 'entregado', deliveredAt: firestoreNow(), ...paymentUpdate });
+            _patchLocalOrder({ status: 'entregado' });
+            await _promptPrintReceiptAfterCharge({ ...order, ...paymentFieldsForLocalState, status: 'entregado' });
             await reloadDataAndRender();
             // Ocultar el ticket al cobrar en escritorio también — antes solo se cerraba en
             // móvil (isMobileAdminViewport) y en desktop el panel quedaba abierto mostrando
             // un pedido ya cobrado hasta que el cajero lo cerrara a mano.
             closeMobileTicketPanel({ clearSelection: true });
             showNotice('Pago registrado y pedido cerrado.', 'ok');
-            isGenuineCharge = true;
         } else if (receiveOrder) {
             const copied = await copyTextToClipboard(buildReceivedOrderMessage({ ...order, ...paymentUpdate }));
             await updateOrder(order.id, { status: 'preparacion', receivedAt: firestoreNow(), ...paymentUpdate });
+            _patchLocalOrder({ status: 'preparacion' });
+            await _promptPrintReceiptAfterCharge({ ...order, ...paymentFieldsForLocalState, status: 'preparacion' });
             await reloadDataAndRender();
             closeMobileTicketPanel({ clearSelection: true });
             showNotice(
@@ -16278,36 +16292,27 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
                 copied ? 'ok' : 'error'
             );
             closeUnreadTray();
-            isGenuineCharge = true;
         } else {
             // Si ya tenía un método de pago real, esto es una corrección (editar_pago), no un
             // primer registro — el aviso lo refleja para no confundir al cajero.
             const wasAlreadyPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
             await updateOrder(order.id, paymentUpdate);
+            _patchLocalOrder();
+            if (!wasAlreadyPaid) {
+                await _promptPrintReceiptAfterCharge({ ...order, ...paymentFieldsForLocalState });
+            }
             await reloadDataAndRender();
             closeMobileTicketPanel({ clearSelection: true });
             showNotice(wasAlreadyPaid ? 'Método de pago corregido.' : 'Pago registrado correctamente.', 'ok');
-            isGenuineCharge = !wasAlreadyPaid;
         }
 
         if (!_cajaDiariaAutoOpened && paidSinceApertura === 0) {
             _cajaDiariaAutoOpened = true;
             _navigateToCajaDiaria();
         }
-
-        // Cada cobro real (no correcciones de método de pago) ofrece imprimir el recibo y,
-        // si se imprime, deja el aviso de "pedido en preparación" listo para pegarlo al cliente.
-        if (isGenuineCharge) {
-            await _promptPrintReceiptAfterCharge({ ...order, ...paymentUpdate });
-        }
     } catch (err) {
         showNotice(`No se pudo procesar el pedido: ${err.message || 'error inesperado.'}`, 'error');
     }
-}
-
-function buildOrderPreparingMessage(order) {
-    const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
-    return `Hola ${customerName}, tu pedido ya está siendo preparado. 👨‍🍳🔥`;
 }
 
 async function _promptPrintReceiptAfterCharge(order) {
@@ -16327,7 +16332,9 @@ async function _promptPrintReceiptAfterCharge(order) {
         showNotice(`No se pudo imprimir el recibo: ${error.message || 'error inesperado.'}`, 'error');
     }
 
-    await copyTextToClipboard(buildOrderPreparingMessage(order));
+    // Mismo mensaje completo que copia el botón "Copiar mensaje" del ticket — antes se
+    // copiaba una versión resumida que no servía para pegarle al cliente.
+    await copyTextToClipboard(buildOrderWhatsAppMessage(order));
 }
 
 async function _pfProcessPayment(method, subMethod, cashTender) {
