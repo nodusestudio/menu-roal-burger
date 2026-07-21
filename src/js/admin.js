@@ -17061,7 +17061,7 @@ function openTrasladoModal(existingData = null, existingId = null) {
     const _updateBalanceHint = () => {
         if (!balanceEl || !fromSel) return;
         const fromId = fromSel.value;
-        const bal = _cajaDiariaSumMethod[fromId] || 0;
+        const bal = (_historicoSumMethod[fromId] || 0) + (_cajaDiariaSumMethod[fromId] || 0);
         const m = methods.find((x) => x.id === fromId);
         const label = m ? `${m.icon ? m.icon + ' ' : ''}${m.label}` : fromId;
         const color = bal > 0 ? '#6ee7b7' : bal < 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
@@ -17081,7 +17081,7 @@ function openTrasladoModal(existingData = null, existingId = null) {
         const monto = Number((montoEl?.value || '').replace(/\./g, '') || 0);
         if (!from || !to || from === to) { showNotice('Seleccione métodos distintos.', 'error'); return; }
         if (monto <= 0) { showNotice('Ingrese un monto válido.', 'error'); return; }
-        const available = _cajaDiariaSumMethod[from] || 0;
+        const available = (_historicoSumMethod[from] || 0) + (_cajaDiariaSumMethod[from] || 0);
         if (monto > available) {
             const m = methods.find((x) => x.id === from);
             const lbl = m ? `${m.icon ? m.icon + ' ' : ''}${m.label}` : from;
@@ -18673,6 +18673,58 @@ let _cierresCajaState = [];
 let _gastosExternosState = []; // gastos tipo:'externo' añadidos desde el historial
 let _trasladosState = []; // tipo:'traslado' — misma consulta que gastos externos, fuente única
 
+// Saldo histórico acumulado por método (todos los cierres ya cerrados + gastos externos +
+// traslados aún no absorbidos por un cierre), sin importar el filtro de fecha activo en
+// Historial de Cajas. Junto con _cajaDiariaSumMethod (jornada de hoy, aún abierta) es lo
+// que usa el modal de Traslado para saber cuánta plata hay realmente disponible por
+// método — antes solo miraba _cajaDiariaSumMethod, por lo que con la caja cerrada
+// siempre mostraba $0 sin importar el saldo acumulado de días anteriores.
+let _historicoSumMethod = {};
+
+// Un traslado hecho con la caja abierta queda horneado dentro del methodTotals del cierre
+// de esa jornada al cerrarla (ver cerrarCaja(), bloque "Traslados internos"); el documento
+// del traslado en sí nunca se borra ni se marca, así que sumarlo de nuevo aquí lo contaría
+// dos veces en el saldo acumulado. Se excluye cualquier traslado cuyo registradoAt caiga
+// dentro de la ventana [aperturaAt, closedAt] de un cierre ya existente.
+function _trasladoEnCierreCerrado(t, cierresList) {
+    const tms = _tsMs(t.registradoAt);
+    if (!tms) return false;
+    return cierresList.some((c) => {
+        const closed = _tsMs(c.closedAt);
+        if (!closed) return false;
+        const open = _tsMs(c.aperturaAt);
+        if (open) return tms >= open && tms <= closed;
+        // Cierre antiguo sin aperturaAt registrada: aproxima por día de calendario.
+        const d1 = new Date(tms), d2 = new Date(closed);
+        return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+    });
+}
+
+function _computeHistoricoSumMethod() {
+    const methodKeys = getPaymentMethods().map((m) => m.id);
+    const sum = {};
+    methodKeys.forEach((k) => { sum[k] = 0; });
+    _cierresCajaState.forEach((c) => {
+        const nM = c.methodTotals || {};
+        methodKeys.forEach((k) => { sum[k] += Number(nM[k] || 0); });
+    });
+    _gastosExternosState.forEach((g) => {
+        const mk = g.paymentMethod;
+        const amt = Number(g.monto || 0);
+        if (mk && amt && methodKeys.includes(mk)) sum[mk] -= amt;
+    });
+    _trasladosState.forEach((t) => {
+        if (_trasladoEnCierreCerrado(t, _cierresCajaState)) return;
+        // Traslado de la jornada de hoy aún abierta: ya está contado en _cajaDiariaSumMethod.
+        const tms = _tsMs(t.registradoAt);
+        if (cajaAperturaAt && tms >= cajaAperturaAt) return;
+        const amt = Number(t.monto || 0);
+        if (methodKeys.includes(t.methodFrom)) sum[t.methodFrom] -= amt;
+        if (methodKeys.includes(t.methodTo))   sum[t.methodTo]   += amt;
+    });
+    return sum;
+}
+
 async function loadCierresCaja() {
     const snap = await firebaseDb.collection(CIERRES_CAJA_COLLECTION)
         .orderBy('closedAt', 'desc')
@@ -18695,6 +18747,8 @@ async function loadCierresCaja() {
         _gastosExternosState = [];
         _trasladosState = [];
     }
+
+    _historicoSumMethod = _computeHistoricoSumMethod();
 
     return _cierresCajaState;
 }
@@ -18912,6 +18966,9 @@ async function renderLibroCierres() {
                 grandSumTotal   -= amt;
             } else if (entry._tipo === 'traslado') {
                 const t = entry._data;
+                // Si esta jornada ya cerró, el traslado quedó horneado en el methodTotals
+                // del cierre (ver cerrarCaja()) — contarlo aquí también lo duplicaría.
+                if (_trasladoEnCierreCerrado(t, _cierresCajaState)) return;
                 const tAmt = Number(t.monto || 0);
                 if (methodKeys.includes(t.methodFrom)) sumTotals[t.methodFrom] = (sumTotals[t.methodFrom] || 0) - tAmt;
                 if (methodKeys.includes(t.methodTo))   sumTotals[t.methodTo]   = (sumTotals[t.methodTo]   || 0) + tAmt;
