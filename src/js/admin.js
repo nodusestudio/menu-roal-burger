@@ -17512,7 +17512,9 @@ function renderCajaDiaria() {
             const catStr = cat ? ` · ${cat.icon} ${escapeHtml(cat.nombre)}` : '';
             const subStr = g.subcategoria ? ` · ${escapeHtml(g.subcategoria)}` : '';
             const descStr = g.descripcion ? ` · ${escapeHtml(g.descripcion)}` : '';
-            const gastoDesc = `<span class="caja-cell-salida">💸 Gasto${catStr}</span>${subStr}${descStr}`;
+            const gastoId = escapeHtml(g.id || '');
+            const gastoDelBtn = gastoId ? `<button type="button" class="mini-btn remove" data-gasto-del="${gastoId}" title="Eliminar gasto" style="font-size:0.62rem;padding:0px 5px;margin-left:6px;">🗑️</button>` : '';
+            const gastoDesc = `<span class="caja-cell-salida">💸 Gasto${catStr}</span>${subStr}${descStr}${gastoDelBtn}`;
 
             rows.push(`<tr>
                 <td class="col-left" style="color:#fca5a5;">${hora}</td>
@@ -17550,6 +17552,23 @@ function renderCajaDiaria() {
         }
     });
     bodyEl.innerHTML = pinnedDomicilioRow + rows.join('');
+
+    // Listener delegado para eliminar un gasto mal registrado — se agrega una sola vez
+    // porque bodyEl.innerHTML se reemplaza en cada render (no los listeners del propio bodyEl).
+    if (!bodyEl.dataset.gastoDelListener) {
+        bodyEl.dataset.gastoDelListener = '1';
+        bodyEl.addEventListener('click', async (e) => {
+            const delBtn = e.target.closest('[data-gasto-del]');
+            if (!delBtn) return;
+            if (!(await showConfirmModal({ icon: '💸', title: '¿Eliminar este gasto?', confirmText: 'Eliminar' }))) return;
+            try {
+                await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(delBtn.dataset.gastoDel).delete();
+                showNotice('Gasto eliminado.', 'ok');
+                await loadGastosCaja();
+                renderCajaDiaria();
+            } catch (_) { showNotice('Error al eliminar el gasto.', 'error'); }
+        });
+    }
 
     // Saldo neto por método de la jornada abierta — lo usa el modal de Traslado para saber
     // cuánta plata hay disponible para mover ahora mismo (ver _cajaDiariaSumMethod arriba).
@@ -20608,6 +20627,7 @@ function renderGastosInformes() {
         const fecha = ms ? new Date(ms).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
         const cat = cats.find((c) => c.id === g.categoria);
         const method = methods.find((m) => m.id === g.paymentMethod);
+        const gastoId = escapeHtml(g.id || '');
         return `<tr>
             <td>${fecha}</td>
             <td>${cat ? `${cat.icon} ${escapeHtml(cat.nombre)}` : '—'}</td>
@@ -20616,6 +20636,7 @@ function renderGastosInformes() {
             <td>${escapeHtml(g.proveedor || '—')}</td>
             <td><span class="caja-method-badge">${method ? `${method.icon} ${escapeHtml(method.label)}` : escapeHtml(g.paymentMethod || '—')}</span></td>
             <td class="caja-cell-salida">${formatMoney(Number(g.monto || 0))}</td>
+            <td>${gastoId ? `<button type="button" class="mini-btn remove" data-gasto-informe-del="${gastoId}" title="Eliminar gasto" style="font-size:0.62rem;padding:1px 6px;">🗑️</button>` : ''}</td>
         </tr>`;
     }).join('');
 
@@ -20637,15 +20658,32 @@ function renderGastosInformes() {
                     <th class="col-left">Proveedor</th>
                     <th>Método</th>
                     <th>Monto</th>
+                    <th></th>
                 </tr></thead>
                 <tbody>${tableRows}</tbody>
                 <tfoot><tr>
                     <td class="col-left" colspan="6" style="font-size:0.72rem;text-transform:uppercase;color:var(--admin-muted);">TOTAL</td>
                     <td class="caja-cell-total-neg">${formatMoney(grandTotal)}</td>
+                    <td></td>
                 </tr></tfoot>
             </table>
         </div>`}
     `;
+
+    if (!container.dataset.gastoDelListener) {
+        container.dataset.gastoDelListener = '1';
+        container.addEventListener('click', async (e) => {
+            const delBtn = e.target.closest('[data-gasto-informe-del]');
+            if (!delBtn) return;
+            if (!(await showConfirmModal({ icon: '💸', title: '¿Eliminar este gasto?', confirmText: 'Eliminar' }))) return;
+            try {
+                await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(delBtn.dataset.gastoInformeDel).delete();
+                showNotice('Gasto eliminado.', 'ok');
+                await loadGastosCaja();
+                renderGastosInformes();
+            } catch (_) { showNotice('Error al eliminar el gasto.', 'error'); }
+        });
+    }
 }
 
 // Re-consulta Firestore acotada al rango elegido en vez de solo filtrar en memoria los
