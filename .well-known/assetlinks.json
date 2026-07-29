@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.roalburger.app",
+    "sha256_cert_fingerprints": [
+      "76:E3:D2:6A:5F:08:97:D5:A8:9A:9C:57:D0:E9:CF:DE:E9:3A:F5:CB:8A:F6:95:A6:27:38:3B:CF:B9:CB:DD:C9"
+    ]
+  }
+}]
