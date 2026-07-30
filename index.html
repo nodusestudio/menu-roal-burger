@@ -686,6 +686,15 @@
     <script src="firebase-config.js"></script>
     <script src="script-v2.js?v=20260720-1903"></script>
 
+    <!-- ── Anuncio de apertura (promo destacada al abrir el menu) ── -->
+    <div id="openingAdOverlay" class="opening-ad-overlay" hidden style="display:none;">
+        <div class="opening-ad-card liquid-glass">
+            <button type="button" class="opening-ad-close" id="openingAdCloseBtn" aria-label="Cerrar">&#215;</button>
+            <img class="opening-ad-img" id="openingAdImage" src="" alt="Promoción especial" loading="eager">
+            <button type="button" class="opening-ad-cta" id="openingAdCtaBtn">Ver cupón 🎟️</button>
+        </div>
+    </div>
+
     <!-- ── Public Upgrade Sheet ── -->
     <div id="publicUpgradeOverlay" class="pub-upgrade-overlay" hidden style="display:none;">
         <div class="pub-upgrade-sheet">

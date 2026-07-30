@@ -9757,6 +9757,11 @@ async function renderPublicFeaturedFromAdmin() {
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         render2x1Cards();
     });
+
+    _liveOrOnceSnapshot(firebaseDb.collection('configuracion').doc('anuncio_apertura'), (doc) => {
+        _openingAdConfig = doc.exists ? doc.data() : null;
+        maybeShowOpeningAd();
+    });
 }
 
 function updateDynamicWhatsAppLink(sectionName) {
@@ -9934,6 +9939,8 @@ let _promoModalPendingOpen = false;
 let _promosData = [];
 let _combosEspecialesData = [];
 let _promos2x1Data = [];
+let _openingAdConfig = null;
+let _openingAdShown = false;
 
 function getCurrentBogotaDateParts(now = new Date()) {
     const parts = new Intl.DateTimeFormat('en-CA', {
@@ -10346,6 +10353,55 @@ function render2x1Cards() {
 
     container.appendChild(frag2x1);
     _applyPromoCarousel(container);
+}
+
+// ===== ANUNCIO DE APERTURA (popup promocional al abrir el menú) =====
+
+const OPENING_AD_SEEN_KEY = 'roal_opening_ad_last_seen';
+
+function _openingAdSeenToday() {
+    try {
+        const { year, month, day } = getCurrentBogotaDateParts();
+        return localStorage.getItem(OPENING_AD_SEEN_KEY) === `${year}-${month}-${day}`;
+    } catch (_) {
+        return false;
+    }
+}
+
+function _markOpeningAdSeenToday() {
+    try {
+        const { year, month, day } = getCurrentBogotaDateParts();
+        localStorage.setItem(OPENING_AD_SEEN_KEY, `${year}-${month}-${day}`);
+    } catch (_) {}
+}
+
+function maybeShowOpeningAd() {
+    if (_openingAdShown) return;
+    if (!_openingAdConfig || _openingAdConfig.activo === false) return;
+    if (!_openingAdConfig.image_url) return;
+    if (_openingAdSeenToday()) return;
+
+    const homeScreen = document.getElementById('homeScreen');
+    const splashEl = document.getElementById('splashScreen');
+    const splashIsVisible = Boolean(splashEl && !splashEl.dataset.hidden);
+    if (splashIsVisible || !homeScreen || homeScreen.hidden) return;
+
+    const overlay = document.getElementById('openingAdOverlay');
+    const image = document.getElementById('openingAdImage');
+    if (!overlay || !image) return;
+
+    image.src = _openingAdConfig.image_url;
+    overlay.hidden = false;
+    overlay.style.display = 'flex';
+    _openingAdShown = true;
+    _markOpeningAdSeenToday();
+}
+
+function closeOpeningAd() {
+    const overlay = document.getElementById('openingAdOverlay');
+    if (!overlay) return;
+    overlay.hidden = true;
+    overlay.style.display = 'none';
 }
 
 // ===== COMBOS ESPECIALES (MENÚ PÚBLICO) =====
@@ -13073,6 +13129,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const splashIsVisible = Boolean(splashEl && !splashEl.dataset.hidden);
         if (_origHideSplash) _origHideSplash();
         if (splashIsVisible) showHomeScreen();
+        maybeShowOpeningAd();
     };
 
     // Auto-dismiss del splash: el menú se muestra directamente sin requerir interacción.
@@ -13100,6 +13157,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('promoCloseBtn')?.addEventListener('click', () => closePromoScreen());
     document.getElementById('perfilCloseBtn')?.addEventListener('click', () => closeCustomerAuthModal());
     document.getElementById('ayudaCloseBtn')?.addEventListener('click', () => closeAyudaScreen());
+    document.getElementById('openingAdCloseBtn')?.addEventListener('click', () => closeOpeningAd());
+    document.getElementById('openingAdCtaBtn')?.addEventListener('click', () => {
+        closeOpeningAd();
+        openPromoCarouselScreen();
+    });
 
     // Botón enviar de la pantalla Ayuda
     document.getElementById('ayudaWaSendBtn')?.addEventListener('click', function () {
@@ -13224,6 +13286,11 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('online', _hideOffline);
         if (!navigator.onLine) _showOffline();
     })();
+
+    // Cerrar anuncio de apertura al tocar fuera de la tarjeta
+    document.getElementById('openingAdOverlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeOpeningAd();
+    });
 
     // Cerrar upgrade sheet público
     document.getElementById('publicUpgradeOverlay')?.addEventListener('click', (e) => {

@@ -166,6 +166,7 @@ const CONFIG_COLLECTION = 'configuracion';
 const CONFIG_DOC_ID = 'config_landing';
 const HORARIO_DOC_ID = 'config_horario';
 const RECOMENDADO_DIA_DOC_ID = 'recomendado_dia';
+const OPENING_AD_DOC_ID = 'anuncio_apertura';
 const PROMOCIONES_COLLECTION = 'promociones';
 const COMBOS_ESPECIALES_COLLECTION = 'combos_especiales';
 const PROMOS_2X1_COLLECTION = 'promos_2x1';
@@ -545,6 +546,8 @@ let _comboEditingId = null;
 let promos2x1State = [];
 let _promo2x1EditingId = null;
 let _promo2x1FormProductId = null;
+let openingAdState = { activo: false, image_url: '' };
+let _openingAdPendingFile = null;
 let _comboFormProducts = [];  // [{id, nombre, precio, imagen}]
 let _comboDiasSeleccionados = [];
 let _comboHorarioTipo = 'siempre';
@@ -11779,6 +11782,15 @@ async function fetchPromos2x1() {
     }
 }
 
+async function fetchOpeningAdConfig() {
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(OPENING_AD_DOC_ID).get();
+        openingAdState = doc.exists ? doc.data() : { activo: false, image_url: '' };
+    } catch (_) {
+        openingAdState = { activo: false, image_url: '' };
+    }
+}
+
 function renderRecomendadoDiaPanel() {
     const autoRadio = document.getElementById('recomendadoModeAuto');
     const manualRadio = document.getElementById('recomendadoModeManual');
@@ -12076,6 +12088,61 @@ async function deleteAdminPromo(id) {
 // ===== FIN PANEL PROMOCIONES ADMIN =====
 
 // ===== PANEL CUPONES UNIFICADO =====
+
+function renderOpeningAdPanel() {
+    const activoToggle = document.getElementById('openingAdActivoToggle');
+    const fileInput = document.getElementById('openingAdFileInput');
+    const saveBtn = document.getElementById('openingAdSaveBtn');
+    const currentBox = document.getElementById('openingAdCurrentBox');
+    const previewImg = document.getElementById('openingAdPreviewImg');
+    if (!activoToggle || !fileInput || !saveBtn || !currentBox || !previewImg) return;
+
+    activoToggle.checked = openingAdState.activo === true;
+
+    if (!_openingAdPendingFile) {
+        if (openingAdState.image_url) {
+            previewImg.src = openingAdState.image_url;
+            currentBox.hidden = false;
+        } else {
+            currentBox.hidden = true;
+        }
+    }
+
+    fileInput.onchange = () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        _openingAdPendingFile = file;
+        previewImg.src = URL.createObjectURL(file);
+        currentBox.hidden = false;
+    };
+
+    saveBtn.onclick = async () => {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Guardando...';
+        try {
+            let imageUrl = openingAdState.image_url || '';
+            if (_openingAdPendingFile) {
+                imageUrl = await resolveProductImageUpload(_openingAdPendingFile, 'anuncio-apertura');
+            }
+            if (activoToggle.checked && !imageUrl) {
+                showNotice('Sube una imagen antes de activar el anuncio.', 'error');
+                return;
+            }
+            const payload = { activo: activoToggle.checked, image_url: imageUrl, updated_at: firestoreNow() };
+            await firebaseDb.collection(CONFIG_COLLECTION).doc(OPENING_AD_DOC_ID).set(payload, { merge: true });
+            openingAdState = payload;
+            _openingAdPendingFile = null;
+            fileInput.value = '';
+            renderOpeningAdPanel();
+            showNotice('Anuncio de apertura guardado.', 'ok');
+        } catch (err) {
+            showNotice('Error al guardar el anuncio.', 'error');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Guardar anuncio';
+        }
+    };
+}
 
 function renderCuponesUnified() {
     const container = document.getElementById('cuponesUnifiedPanel');
@@ -12935,7 +13002,8 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
         fetchHorarioConfig(),
         fetchPromos(),
         fetchCombosEspeciales(),
-        fetchPromos2x1()
+        fetchPromos2x1(),
+        fetchOpeningAdConfig()
     ]);
 
     const createdSalesDay = await ensureActiveSalesDay();
@@ -12956,6 +13024,7 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
     renderBrandingForm();
     renderHorarioForm();
     renderRecomendadoDiaPanel();
+    renderOpeningAdPanel();
     renderCuponesUnified();
     renderOrders();
     renderCajaDiaria();

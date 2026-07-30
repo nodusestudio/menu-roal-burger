@@ -8411,6 +8411,39 @@ a,
 }
 
 /* ===== MODAL UPGRADES / ORDEN PÚBLICA ===== */
+.opening-ad-overlay {
+    position: fixed; inset: 0; z-index: 9950;
+    background: rgba(0,0,0,0.6);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.opening-ad-card {
+    width: min(92vw, 380px);
+    padding: 14px 14px 16px;
+    margin-bottom: 0;
+    display: flex; flex-direction: column; align-items: stretch; gap: 12px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.35);
+}
+.opening-ad-close {
+    position: absolute; top: -14px; right: -14px;
+    width: 34px; height: 34px; border-radius: 50%;
+    background: #1a1a1a; color: #fff; border: 2px solid rgba(255,255,255,0.8);
+    font-size: 1.2rem; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+}
+.opening-ad-img {
+    width: 100%; height: auto; display: block;
+    border-radius: 12px;
+}
+.opening-ad-cta {
+    width: 100%; padding: 12px; border-radius: 12px; border: none;
+    background: linear-gradient(135deg,#ff7a00,#e05500);
+    color: #fff; font-size: 0.95rem; font-weight: 800;
+    letter-spacing: 0.5px; cursor: pointer; font-family: 'Oswald',sans-serif;
+}
+
 .pub-upgrade-overlay {
     position: fixed; inset: 0; z-index: 9900;
     background: rgba(0,0,0,0.55);

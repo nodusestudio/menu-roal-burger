@@ -12392,6 +12392,28 @@
 
                     <!-- ── Panel: Cupones ── -->
                     <div class="menu-inner-panel" data-menu-panel="promociones" role="tabpanel" hidden style="display:none;">
+                        <article class="admin-card">
+                            <div class="card-head">
+                                <h2>Anuncio al abrir</h2>
+                            </div>
+                            <div class="card-body">
+                                <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
+                                    Imagen promocional que aparece como anuncio emergente la primera vez que un cliente abre el menú en el día. Al tocarla, lo lleva directo a Cupones.
+                                </p>
+                                <div id="openingAdCurrentBox" class="recomendado-current-box" hidden style="margin-bottom:12px;">
+                                    <img id="openingAdPreviewImg" src="" alt="Anuncio actual" style="max-width:160px;border-radius:10px;display:block;">
+                                </div>
+                                <div class="admin-field full">
+                                    <label for="openingAdFileInput">Imagen del anuncio (cuadrada recomendada)</label>
+                                    <input type="file" id="openingAdFileInput" accept="image/*">
+                                </div>
+                                <div class="admin-field full" style="display:flex;align-items:center;gap:10px;">
+                                    <label for="openingAdActivoToggle" style="margin:0;">Anuncio activo</label>
+                                    <input type="checkbox" id="openingAdActivoToggle">
+                                </div>
+                                <button type="button" class="admin-button" id="openingAdSaveBtn">Guardar anuncio</button>
+                            </div>
+                        </article>
                         <div id="cuponesUnifiedPanel"></div>
                     </div>
 
