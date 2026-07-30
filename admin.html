@@ -13836,6 +13836,34 @@
                     </div>
                 </div>
 
+                <!-- Promoción 2×1 por producto -->
+                <div class="admin-field full">
+                    <div class="pedit-acomp-toggle-row">
+                        <span class="pedit-acomp-toggle-label">Activar promoción 2×1</span>
+                        <label class="pedit-acomp-switch">
+                            <input type="checkbox" id="editProduct2x1Activo">
+                            <span class="pedit-acomp-slider"></span>
+                        </label>
+                    </div>
+                    <div id="editProduct2x1Panel" class="pedit-acomp-list" style="display:none">
+                        <div class="admin-field full" style="margin-bottom:10px;">
+                            <label for="editProduct2x1ImageFile">Imagen para la promo (opcional — si no subes una, se usa la foto del producto)</label>
+                            <div id="editProduct2x1ImgPreviewWrap" style="margin-bottom:8px;">
+                                <img id="editProduct2x1ImgPreview" src="" alt="Imagen promo 2x1" style="display:none;max-height:140px;max-width:100%;border-radius:10px;object-fit:cover;border:1.5px solid rgba(255,255,255,0.15);">
+                            </div>
+                            <input type="file" id="editProduct2x1ImageFile" accept=".jpg,.jpeg,.png,.webp">
+                            <p id="editProduct2x1ImgStatus" style="margin:5px 0 0;font-size:0.78rem;color:var(--admin-muted);"></p>
+                        </div>
+                        <label class="pedit-acomp-item" style="cursor:pointer;">
+                            <input type="checkbox" id="editProduct2x1Incremento">
+                            <div class="pedit-acomp-item-body">
+                                <span class="pedit-acomp-item-name">Cobrar incremento para llevar / domicilio</span>
+                                <span class="pedit-acomp-item-detail">Se suma +$2.000 por unidad si el pedido no es para comer en el local.</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
                 <button type="submit" class="admin-button" id="productEditSaveBtn">Guardar cambios</button>
             </form>
         </div>

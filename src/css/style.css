@@ -6493,6 +6493,21 @@ body.has-consent-doc-open .guest-register-banner {
     font-weight: 500;
     line-height: 1.4;
 }
+
+.promo-2x1-big-title {
+    display: block;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #0f5c2e;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+    line-height: 1.05;
+}
+@media (min-width: 769px) {
+    .promo-2x1-big-title { font-size: 2rem; }
+}
 /* ===== FIN PROMOCIONES 2x1 ===== */
 
 /* ===== COMBOS ESPECIALES (MENÚ PÚBLICO) ===== */

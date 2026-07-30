@@ -12,6 +12,7 @@ const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
 const ORDER_CODE_PREFIX = 'RB';
 const ORDER_CODE_START = 2026;
 const DELIVERY_FEE_AMOUNT = 6000;
+const PROMO_2X1_INCREMENTO_AMOUNT = 2000;
 const MAX_CUSTOMER_SAVED_ADDRESSES = 5;
 const CUSTOMER_PROFILE_STORAGE_KEY = 'roalburger-customer-profile-v1';
 const ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS = false;
@@ -1013,8 +1014,17 @@ function getCheckoutDeliveryFee(fulfillmentType) {
         : 0;
 }
 
+function getCheckoutPromo2x1IncrementoFee(fulfillmentType) {
+    const type = getCheckoutFulfillmentType(fulfillmentType);
+    if (type !== 'pickup' && type !== 'delivery') return 0;
+    return shoppingCart.reduce((sum, item) => {
+        const opts = normalizeOrderOptions(item.orderOptions);
+        return sum + (opts.promo2x1Incremento ? PROMO_2X1_INCREMENTO_AMOUNT * Number(item.quantity || 0) : 0);
+    }, 0);
+}
+
 function getCheckoutOrderTotal(fulfillmentType) {
-    return getCartTotalAmount() + getCheckoutDeliveryFee(fulfillmentType);
+    return getCartTotalAmount() + getCheckoutDeliveryFee(fulfillmentType) + getCheckoutPromo2x1IncrementoFee(fulfillmentType);
 }
 
 function getCheckoutDiscountAmount() {
@@ -4042,6 +4052,7 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         staticPrice: Number.isFinite(rawStatic) && rawStatic > 0 ? rawStatic : null,
         promoLabel: String(orderOptions.promoLabel || '').trim(),
         promo2x1: orderOptions.promo2x1 === true,
+        promo2x1Incremento: orderOptions.promo2x1Incremento === true,
         comboGroupId: String(orderOptions.comboGroupId || '').trim(),
         isComboChild: orderOptions.isComboChild === true
     };
@@ -4098,6 +4109,10 @@ function getWhatsAppOrderDetail(categoryName, orderOptions = { type: 'solo' }) {
     if (normalized.recommendedDiscount) {
         const discountPercent = Math.round((normalized.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE) * 100);
         parts.push(`Recomendado -${discountPercent}%`);
+    }
+
+    if (normalized.promo2x1Incremento) {
+        parts.push(`Incremento 2x1 (llevar/domicilio): +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)}`);
     }
 
     return parts.join(' | ');
@@ -4467,6 +4482,10 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
         optionLabel = `🏷 ${normalized.promoLabel} | ${optionLabel}`;
     }
 
+    if (normalized.promo2x1Incremento) {
+        optionLabel = `${optionLabel} | +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} si es para llevar o domicilio`;
+    }
+
     if (normalized.recommendedDiscount) {
         const discountPercent = Math.round((normalized.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE) * 100);
         optionLabel = `${optionLabel} | Recomendado del dia -${discountPercent}%`;
@@ -4489,11 +4508,12 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const deliveryAddress = String(customerInfo.address || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(customerInfo.fulfillmentType);
     const deliveryFee = Number.isFinite(Number(customerInfo.deliveryFee)) ? Number(customerInfo.deliveryFee) : getCheckoutDeliveryFee(fulfillmentType);
+    const incrementoFee = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
     const discountAmount = getCheckoutDiscountAmount();
     const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
     const cashChangeRequired = customerInfo.cashChangeRequired === true;
     const cashTenderAmount = Number(customerInfo.cashTenderAmount || 0);
-    const orderTotal = getCartTotalAmount() + deliveryFee;
+    const orderTotal = getCartTotalAmount() + deliveryFee + incrementoFee;
     const lines = shoppingCart.map((item, index) => {
         const details = [
             `${index + 1}. ${item.productName} x${item.quantity}`,
@@ -4530,10 +4550,11 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const domicilioLine = fulfillmentType === 'delivery'
         ? (customerInfo.deliveryFeePending ? '\nDomicilio: Por confirmar (asesor contactará)' : `\nDomicilio: ${formatCurrency(deliveryFee)}`)
         : '';
+    const incrementoLine = incrementoFee > 0 ? `\nIncremento 2x1 (para llevar/domicilio): ${formatCurrency(incrementoFee)}` : '';
     const totalDisplay = fulfillmentType === 'delivery' && customerInfo.deliveryFeePending
-        ? `${formatCurrency(getCartTotalAmount())} + domicilio por confirmar`
+        ? `${formatCurrency(getCartTotalAmount() + incrementoFee)} + domicilio por confirmar`
         : formatCurrency(orderTotal);
-    return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nSubtotal: ${formatCurrency(getCartTotalAmount())}${discountAmount > 0 ? `\nDescuento: ${formatCurrency(discountAmount)}` : ''}${domicilioLine}\nTotal: ${totalDisplay}`;
+    return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nSubtotal: ${formatCurrency(getCartTotalAmount())}${discountAmount > 0 ? `\nDescuento: ${formatCurrency(discountAmount)}` : ''}${domicilioLine}${incrementoLine}\nTotal: ${totalDisplay}`;
 }
 
 function buildCartOrderItems() {
@@ -4605,7 +4626,8 @@ async function createOrderFromCart(customerInfo = {}) {
         deliveryFee = DELIVERY_FEE_AMOUNT;
     }
 
-    const total = subtotal + deliveryFee;
+    const promo2x1IncrementoFee = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
+    const total = subtotal + deliveryFee + promo2x1IncrementoFee;
     const deliveryAddress = String(customerInfo.address || '').trim();
     const customerPhone = String(customerInfo.phone || '').trim();
     const customerPhoneDigits = customerPhone.replace(/\D+/g, '');
@@ -4628,6 +4650,7 @@ async function createOrderFromCart(customerInfo = {}) {
         subtotal,
         deliveryFee,
         costoDomicilio: deliveryFee,
+        promo2x1IncrementoFee,
         total,
         paymentMethod,
         cashChangeRequired,
@@ -5552,14 +5575,15 @@ function updateCheckoutInfoModalState() {
     }
 
     if (checkoutInfoUI.orderTotalValue) {
+        const incrementoFeeForDisplay = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
         let displayTotal;
         if (!requiresAddress) {
-            displayTotal = getCartTotalAmount();
+            displayTotal = getCartTotalAmount() + incrementoFeeForDisplay;
         } else if (checkoutDeliveryFeePending) {
-            displayTotal = getCartTotalAmount();
+            displayTotal = getCartTotalAmount() + incrementoFeeForDisplay;
         } else {
             const feeForDisplay = checkoutDeliveryLocationConfirmed ? deliveryFee : DELIVERY_FEE_AMOUNT;
-            displayTotal = getCartTotalAmount() + feeForDisplay;
+            displayTotal = getCartTotalAmount() + feeForDisplay + incrementoFeeForDisplay;
         }
         checkoutInfoUI.orderTotalValue.textContent = formatCurrency(displayTotal);
     }
@@ -9667,6 +9691,7 @@ async function renderPublicFeaturedFromAdmin() {
         renderCategoryExplorer();
         updatePromoModalContent();
         renderExtraPromoCards();
+        render2x1Cards();
         if (_promoModalPendingOpen) {
             _promoModalPendingOpen = false;
             openPromoScreen();
@@ -10350,6 +10375,79 @@ function render2x1Cards() {
 
         frag2x1.appendChild(section);
     });
+
+    // ── 2×1 activado directamente en la ficha del producto (Admin > Artículos) ──
+    latestProducts
+        .filter((p) => p.promo2x1?.activo === true)
+        .forEach((product) => {
+            const img = product.promo2x1?.image_url || product.image_url || _IMG_FINAL_FALLBACK;
+            const nombre = product.nombre || '';
+            const unitPrice = resolveProductDisplayPrice(product);
+            const fullPrice = unitPrice * 2;
+
+            const section = document.createElement('section');
+            section.className = 'home-rec-banner home-rec-banner--2x1';
+            section.setAttribute('aria-label', nombre + ' 2x1');
+
+            section.innerHTML = `
+                <div class="home-rec-content">
+                    <div class="home-rec-img-wrap">
+                        <img class="home-rec-img" src="${img}" alt="${nombre}" loading="lazy" onerror="this.src='/isotipo.png'">
+                    </div>
+                    <div class="home-rec-body">
+                        <span class="promo-2x1-big-title">PROMOCIÓN 2×1</span>
+                        <strong class="home-rec-name"></strong>
+                        <div class="home-rec-price-row">
+                            <div class="home-rec-price-block">
+                                <span class="home-rec-price-tag">Full</span>
+                                <span class="home-rec-price-orig">$${fullPrice.toLocaleString('es-CO')}</span>
+                            </div>
+                            <div class="home-rec-price-block home-rec-price-block--hot">
+                                <span class="home-rec-price-tag">Promo</span>
+                                <span class="home-rec-price">$${unitPrice.toLocaleString('es-CO')}</span>
+                            </div>
+                        </div>
+                        <button class="home-rec-btn promo-btn-order" type="button">Redimir cupón 🎟️</button>
+                    </div>
+                </div>`;
+
+            section.querySelector('.home-rec-name').textContent = nombre;
+
+            const btnP = section.querySelector('.promo-btn-order');
+            btnP.dataset.couponId = '2x1p_' + product.id;
+            const _remP = _getRedeemRemaining(btnP.dataset.couponId);
+            if (_remP > 0) {
+                _applyBtnLockUI(btnP, _remP);
+            } else if (_softLockedCoupons.has(btnP.dataset.couponId)) {
+                _softLockedCoupons.get(btnP.dataset.couponId).btn = btnP;
+                _applyBtnSoftLockUI(btnP);
+            }
+            btnP.addEventListener('click', () => {
+                if (!activeCustomerProfile) {
+                    closePromoScreen();
+                    openPromoRegistrationPrompt();
+                    return;
+                }
+                _openChannelModal({
+                    couponId: btnP.dataset.couponId,
+                    couponTitle: `2×1 ${nombre}`,
+                    couponMeta: { type: '2x1', productId: product.id, productNombre: nombre },
+                    redeemBtn: btnP,
+                    onDelivery: () => {
+                        closePromoScreen();
+                        addItemToCart(nombre, product.categoria || '', {
+                            type: 'solo',
+                            imagePath: img,
+                            promoLabel: `PROMOCIÓN 2×1 — ${nombre} (incluye 2)`,
+                            promo2x1: true,
+                            promo2x1Incremento: product.promo2x1?.incremento === true
+                        }, `btn-2x1p-${product.id}`, 1);
+                    }
+                });
+            });
+
+            frag2x1.appendChild(section);
+        });
 
     container.appendChild(frag2x1);
     _applyPromoCarousel(container);

@@ -321,6 +321,13 @@ let _editProductExistingUrl = ''; // URL de imagen existente al abrir editar
 const editProductAcompActivo = document.getElementById('editProductAcompActivo');
 const editProductAcompList = document.getElementById('editProductAcompList');
 
+const editProduct2x1ActivoInput = document.getElementById('editProduct2x1Activo');
+const editProduct2x1Panel = document.getElementById('editProduct2x1Panel');
+const editProduct2x1ImageFileInput = document.getElementById('editProduct2x1ImageFile');
+const editProduct2x1IncrementoInput = document.getElementById('editProduct2x1Incremento');
+let _editProduct2x1ImgUrl = '';
+let _editProduct2x1ExistingUrl = '';
+
 let bebidasState = [];
 let acompanantesState = [];
 let combosPackState = [];
@@ -1865,6 +1872,7 @@ function normalizeProduct(raw) {
         descripcion: raw.descripcion || '',
         visible_pos: raw.visible_pos !== false,
         acompanantes: raw.acompanantes || null,
+        promo2x1: raw.promo2x1 || { activo: false, image_url: '', incremento: false },
         marca: raw.marca ? String(raw.marca).trim() : '',
         ml: raw.ml ? Number(raw.ml) : null,
         sabores,
@@ -6952,6 +6960,23 @@ function openProductEditModal(product, categoryId) {
     }
     const _epStatusEl = document.getElementById('editProductImgStatus');
     if (_epStatusEl) _epStatusEl.textContent = '';
+
+    // Promoción 2×1
+    const promo2x1 = product.promo2x1 || {};
+    _editProduct2x1ImgUrl = '';
+    _editProduct2x1ExistingUrl = promo2x1.image_url || '';
+    if (editProduct2x1ImageFileInput) editProduct2x1ImageFileInput.value = '';
+    if (editProduct2x1ActivoInput) editProduct2x1ActivoInput.checked = promo2x1.activo === true;
+    if (editProduct2x1Panel) editProduct2x1Panel.style.display = promo2x1.activo === true ? '' : 'none';
+    if (editProduct2x1IncrementoInput) editProduct2x1IncrementoInput.checked = promo2x1.incremento === true;
+    const _ep2x1ImgEl = document.getElementById('editProduct2x1ImgPreview');
+    if (_ep2x1ImgEl) {
+        _ep2x1ImgEl.src = _editProduct2x1ExistingUrl;
+        _ep2x1ImgEl.style.display = _editProduct2x1ExistingUrl ? 'block' : 'none';
+        _ep2x1ImgEl.onerror = () => { _ep2x1ImgEl.style.display = 'none'; };
+    }
+    const _ep2x1StatusEl = document.getElementById('editProduct2x1ImgStatus');
+    if (_ep2x1StatusEl) _ep2x1StatusEl.textContent = '';
 
     renderProductAcompList(product.acompanantes || null);
 
@@ -15495,6 +15520,10 @@ if (productEditForm) {
             : [];
         const acompanantes = { activo: acompActivo, ids: acompIds };
 
+        const promo2x1Activo = editProduct2x1ActivoInput ? editProduct2x1ActivoInput.checked : false;
+        const promo2x1Incremento = editProduct2x1IncrementoInput ? editProduct2x1IncrementoInput.checked : false;
+        const has2x1ImageFile = (editProduct2x1ImageFileInput?.files?.length ?? 0) > 0;
+
         if (!productId || !nombre || !categoria) {
             showNotice('Completa nombre y categoria del producto.', 'error');
             return;
@@ -15516,7 +15545,13 @@ if (productEditForm) {
                 if (productEditSaveBtn) { productEditSaveBtn.disabled = false; productEditSaveBtn.textContent = 'Guardar cambios'; }
                 return;
             }
+            if (has2x1ImageFile && !_editProduct2x1ImgUrl) {
+                showNotice('La imagen de la promo 2x1 no se pudo subir. Seleccionala de nuevo.', 'error');
+                if (productEditSaveBtn) { productEditSaveBtn.disabled = false; productEditSaveBtn.textContent = 'Guardar cambios'; }
+                return;
+            }
             const finalImageUrl = hasImageFile ? _editProductImgUrl : _editProductExistingUrl;
+            const finalPromo2x1ImageUrl = has2x1ImageFile ? _editProduct2x1ImgUrl : _editProduct2x1ExistingUrl;
 
             await firebaseDb.collection('productos').doc(productId).update({
                 nombre,
@@ -15526,6 +15561,11 @@ if (productEditForm) {
                 es_destacado: esDestacado,
                 image_url: finalImageUrl,
                 acompanantes,
+                promo2x1: {
+                    activo: promo2x1Activo,
+                    image_url: finalPromo2x1ImageUrl,
+                    incremento: promo2x1Incremento
+                },
                 updated_at: firestoreNow()
             });
 
@@ -15614,6 +15654,50 @@ if (editProductImageFileInput) {
             if (statusEl) statusEl.textContent = '✓ Imagen lista.';
         } catch (err) {
             _editProductImgUrl = '';
+            if (statusEl) statusEl.textContent = `Error al subir: ${err.message || 'intenta de nuevo'}`;
+        } finally {
+            if (productEditSaveBtn) productEditSaveBtn.disabled = false;
+        }
+    });
+}
+
+if (editProduct2x1ActivoInput) {
+    editProduct2x1ActivoInput.addEventListener('change', () => {
+        if (editProduct2x1Panel) editProduct2x1Panel.style.display = editProduct2x1ActivoInput.checked ? '' : 'none';
+    });
+}
+
+if (editProduct2x1ImageFileInput) {
+    editProduct2x1ImageFileInput.addEventListener('change', async () => {
+        const file       = editProduct2x1ImageFileInput.files[0];
+        const previewImg = document.getElementById('editProduct2x1ImgPreview');
+        const statusEl   = document.getElementById('editProduct2x1ImgStatus');
+        _editProduct2x1ImgUrl = '';
+
+        if (!file) {
+            if (previewImg) {
+                previewImg.src          = _editProduct2x1ExistingUrl;
+                previewImg.style.display = _editProduct2x1ExistingUrl ? 'block' : 'none';
+            }
+            return;
+        }
+
+        const objUrl = URL.createObjectURL(file);
+        if (previewImg) {
+            previewImg.src          = objUrl;
+            previewImg.style.display = 'block';
+            previewImg.onload       = () => URL.revokeObjectURL(objUrl);
+        }
+
+        if (productEditSaveBtn) productEditSaveBtn.disabled = true;
+        if (statusEl) statusEl.textContent = 'Subiendo imagen...';
+
+        try {
+            const nombre = (editProductNameInput?.value?.trim() || 'promo') + '-2x1';
+            _editProduct2x1ImgUrl = await _uploadProductImageToStorage(file, nombre);
+            if (statusEl) statusEl.textContent = '✓ Imagen lista.';
+        } catch (err) {
+            _editProduct2x1ImgUrl = '';
             if (statusEl) statusEl.textContent = `Error al subir: ${err.message || 'intenta de nuevo'}`;
         } finally {
             if (productEditSaveBtn) productEditSaveBtn.disabled = false;
