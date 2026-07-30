@@ -241,6 +241,8 @@ let _selectedCategoryId = null;
 let _editingProductId = null;
 let _cpefVariantes = [];
 let _cpefBebidaIncluida = {};
+let _cpef2x1 = {};
+let _cpef2x1ImgUrl = '';
 const notice = document.getElementById('adminNotice');
 const openCreateClientBtn = document.getElementById('openCreateClientBtn');
 const exportClientsBtn = document.getElementById('exportClientsBtn');
@@ -7376,6 +7378,43 @@ function _cpefRenderBebidaConfig() {
     });
 }
 
+function _cpefRender2x1Config() {
+    const container = categoryDetailPanel?.querySelector('#cpef2x1Config');
+    if (!container) return;
+    if (!_cpef2x1.activo) { container.innerHTML = ''; return; }
+
+    const previewSrc = _cpef2x1ImgUrl || _cpef2x1.image_url || '';
+    container.innerHTML = `<div style="margin-top:4px;">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+            <div id="cpef2x1ImgPreview" style="width:56px;height:56px;border-radius:8px;overflow:hidden;flex-shrink:0;border:1.5px solid rgba(255,255,255,0.15);background:rgba(0,0,0,0.4);">
+                ${previewSrc ? `<img src="${previewSrc}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.2rem;opacity:0.25;">📷</div>`}
+            </div>
+            <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);font-size:0.72rem;color:#eef4ff;cursor:pointer;">
+                📷 Imagen de la promo (opcional)
+                <input type="file" id="cpef2x1FileInput" accept="image/*" style="display:none;">
+            </label>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.75rem;color:#eef4ff;cursor:pointer;">
+            <input type="checkbox" id="cpef2x1Incremento" ${_cpef2x1.incremento ? 'checked' : ''}> Cobrar +$2.000 para llevar/domicilio
+        </label>
+    </div>`;
+
+    container.querySelector('#cpef2x1FileInput').addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            const preview = categoryDetailPanel.querySelector('#cpef2x1ImgPreview');
+            if (preview) preview.innerHTML = `<img src="${reader.result}" style="width:100%;height:100%;object-fit:cover;">`;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    container.querySelector('#cpef2x1Incremento').addEventListener('change', (e) => {
+        _cpef2x1.incremento = e.target.checked;
+    });
+}
+
 function _cpefRenderVariantesList() {
     const list = categoryDetailPanel?.querySelector('#cpefVariantesList');
     if (!list) return;
@@ -7624,6 +7663,15 @@ function _renderCategoryDetailPanel(categoryId) {
                                 </div>
                                 <div id="cpefBebidaConfig"></div>
                             </div>
+                            <div style="margin-top:10px;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                    <label style="font-size:0.7rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.4px;">Promoción 2×1</label>
+                                    <label style="display:flex;align-items:center;gap:5px;font-size:0.75rem;color:#eef4ff;cursor:pointer;">
+                                        <input type="checkbox" id="cpef2x1Activo" ${ep.promo2x1?.activo ? 'checked' : ''}> Activar 2×1
+                                    </label>
+                                </div>
+                                <div id="cpef2x1Config"></div>
+                            </div>
                             <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;">
                                 <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;color:#eef4ff;cursor:pointer;">
                                     <input type="checkbox" id="cpefActiveMenu" ${ep.estado !== 'paused' ? 'checked' : ''}> Activo en menú
@@ -7843,6 +7891,15 @@ function _renderCategoryDetailPanel(categoryId) {
                 _cpefBebidaIncluida.activo = e.target.checked;
                 _cpefRenderBebidaConfig();
             });
+
+            // Promoción 2×1
+            _cpef2x1 = epV.promo2x1 ? { ...epV.promo2x1 } : { activo: false, image_url: '', incremento: false };
+            _cpef2x1ImgUrl = '';
+            _cpefRender2x1Config();
+            categoryDetailPanel.querySelector('#cpef2x1Activo')?.addEventListener('change', (e) => {
+                _cpef2x1.activo = e.target.checked;
+                _cpefRender2x1Config();
+            });
         }
     }
 
@@ -7941,6 +7998,7 @@ async function _saveProductInline(productId, categoryId) {
     const activeMenuInput = document.getElementById('cpefActiveMenu');
     const activePosInput = document.getElementById('cpefActivePos');
     const fileInput = document.getElementById('cpefFileInput');
+    const promo2x1FileInput = document.getElementById('cpef2x1FileInput');
     const name = nameInput ? nameInput.value.trim() : '';
     if (!name) { showNotice('El nombre es obligatorio.', 'error'); return; }
 
@@ -7954,6 +8012,12 @@ async function _saveProductInline(productId, categoryId) {
         const file = fileInput && fileInput.files && fileInput.files[0];
         if (file) {
             imageUrl = await resolveProductImageUpload(file, name);
+        }
+
+        let promo2x1ImageUrl = _cpef2x1.image_url || '';
+        const promo2x1File = promo2x1FileInput && promo2x1FileInput.files && promo2x1FileInput.files[0];
+        if (promo2x1File) {
+            promo2x1ImageUrl = await resolveProductImageUpload(promo2x1File, name + '-2x1');
         }
 
         const estado = activeMenuInput && !activeMenuInput.checked ? 'paused' : 'active';
@@ -7984,6 +8048,11 @@ async function _saveProductInline(productId, categoryId) {
                 bebida_pres_id: _cpefBebidaIncluida.bebida_pres_id || null,
                 bebida_nombre: String(_cpefBebidaIncluida.bebida_nombre || '').trim(),
                 cantidad: Number(_cpefBebidaIncluida.cantidad) || 1
+            },
+            promo2x1: {
+                activo: _cpef2x1.activo === true,
+                image_url: promo2x1ImageUrl,
+                incremento: _cpef2x1.incremento === true
             },
             updated_at: firestoreNow()
         });
