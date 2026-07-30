@@ -12065,6 +12065,8 @@ async function deleteAdminPromo(id) {
     if (!(await showConfirmModal({ title: `¿Eliminar la promoción "${promo?.badge || promo?.producto_nombre || ''}"?`, confirmText: 'Eliminar' }))) return;
     try {
         await firebaseDb.collection(PROMOCIONES_COLLECTION).doc(id).delete();
+        promosState = promosState.filter((p) => p.id !== id);
+        renderCuponesUnified();
         showNotice('Promoción eliminada.', 'ok');
     } catch (err) {
         showNotice('Error al eliminar la promoción.', 'error');
@@ -12452,6 +12454,8 @@ async function deleteAdminPromo2x1(id) {
     if (!(await showConfirmModal({ title: `¿Eliminar la oferta 2×1 "${p?.producto_nombre || ''}"?`, confirmText: 'Eliminar' }))) return;
     try {
         await firebaseDb.collection(PROMOS_2X1_COLLECTION).doc(id).delete();
+        promos2x1State = promos2x1State.filter((x) => x.id !== id);
+        renderCuponesUnified();
         showNotice('Oferta 2×1 eliminada.', 'ok');
     } catch (err) {
         showNotice('Error al eliminar la oferta 2×1.', 'error');
