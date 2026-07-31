@@ -11642,6 +11642,78 @@ function _makeRecomendadoCard(rec) {
     return card;
 }
 
+function _makeProductPromo2x1Card(product) {
+    const card = _makeComboCard({
+        nombre: product.nombre || '',
+        imagen_url: product.promo2x1?.image_url || product.image_url,
+        categoria: product.categoria || ''
+    });
+
+    const imgWrap = card.querySelector('.card-image-wrapper');
+    if (imgWrap) {
+        imgWrap.style.position = 'relative';
+        const badge = document.createElement('span');
+        badge.className = 'x2-carousel-badge';
+        badge.textContent = '2×1';
+        imgWrap.appendChild(badge);
+    }
+
+    const nameEl = card.querySelector('.combo-card-name');
+    if (nameEl) {
+        const title = document.createElement('span');
+        title.className = 'x2-carousel-title';
+        title.textContent = 'PROMOCIÓN 2×1';
+        nameEl.insertAdjacentElement('beforebegin', title);
+    }
+
+    const rawPrice = resolveProductDisplayPrice(product);
+    if (nameEl && rawPrice > 0) {
+        const fullPrice = rawPrice * 2;
+        const priceRow = document.createElement('div');
+        priceRow.className = 'x2-carousel-price-row';
+        priceRow.innerHTML = `<span class="x2-carousel-orig">$${fullPrice.toLocaleString('es-CO')}</span><span class="x2-carousel-disc">$${rawPrice.toLocaleString('es-CO')}</span>`;
+        nameEl.insertAdjacentElement('afterend', priceRow);
+    }
+
+    const origBtn = card.querySelector('.mobile-order-btn');
+    if (origBtn) {
+        const btn = origBtn.cloneNode(true);
+        origBtn.parentNode.replaceChild(btn, origBtn);
+
+        const couponId = '2x1p_' + product.id;
+        btn.dataset.couponId = couponId;
+        btn.textContent = 'Redimir cupón 🎟️';
+
+        const _remP = _getRedeemRemaining(couponId);
+        if (_remP > 0) {
+            _applyBtnLockUI(btn, _remP);
+        } else if (_softLockedCoupons.has(couponId)) {
+            _softLockedCoupons.get(couponId).btn = btn;
+            _applyBtnSoftLockUI(btn);
+        }
+
+        btn.addEventListener('click', () => {
+            if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
+            _openChannelModal({
+                couponId,
+                couponTitle: `2×1 ${product.nombre || ''}`,
+                couponMeta: { type: '2x1', productId: product.id, productNombre: product.nombre },
+                redeemBtn: btn,
+                onDelivery: () => {
+                    addItemToCart(product.nombre || '', product.categoria || '', {
+                        type: 'solo',
+                        imagePath: product.promo2x1?.image_url || product.image_url,
+                        promoLabel: `PROMOCIÓN 2×1 — ${product.nombre || ''} (incluye 2)`,
+                        promo2x1: true,
+                        promo2x1Incremento: product.promo2x1?.incremento === true
+                    }, `carousel-2x1p-${product.id}`, 1);
+                }
+            });
+        });
+    }
+    return card;
+}
+
 function _makeComboEspecialCarouselCard(combo) {
     const card = document.createElement('div');
     card.className = 'ce-carousel-card';
@@ -11865,9 +11937,14 @@ function renderPromoCarousels() {
         return card;
     }).filter(Boolean);
 
+    // ── 4b. 2×1 activado directamente en la ficha del producto ──
+    const x2ProductCards = (latestProducts || [])
+        .filter(p => p.promo2x1?.activo === true)
+        .map(p => _makeProductPromo2x1Card(p));
+
     const s1 = _buildPromoSection('🔥 Descuentos', descCards);
     const s2 = _buildPromoSection('🎁 Cupones Exclusivos', ceCards);
-    const s3 = _buildPromoSection('2×1 Especiales', x2Cards);
+    const s3 = _buildPromoSection('2×1 Especiales', [...x2Cards, ...x2ProductCards]);
 
     if (s1) body.appendChild(s1);
     if (s2) body.appendChild(s2);

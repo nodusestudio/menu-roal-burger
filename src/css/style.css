@@ -6052,6 +6052,57 @@ body.has-consent-doc-open .guest-register-banner {
     color: #ff6600;
 }
 
+.x2-carousel-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: linear-gradient(135deg, #1a7a42, #0f5c2e);
+    color: #fff;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+    box-shadow: 0 2px 8px rgba(15, 92, 46, 0.40);
+    white-space: nowrap;
+    z-index: 2;
+}
+
+.x2-carousel-title {
+    display: block;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem;
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #0f5c2e;
+    text-align: center;
+    line-height: 1.1;
+    margin-top: 2px;
+}
+
+.x2-carousel-price-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 4px 0 0;
+}
+
+.x2-carousel-orig {
+    font-size: 0.85rem;
+    color: rgba(90, 50, 15, 0.45);
+    text-decoration: line-through;
+}
+
+.x2-carousel-disc {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0f5c2e;
+}
+
 /* ── Pantalla Combos ──────────────────────────────────────────────── */
 #combosScreen {
     position: fixed;
