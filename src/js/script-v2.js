@@ -1014,9 +1014,11 @@ function getCheckoutDeliveryFee(fulfillmentType) {
         : 0;
 }
 
-function getCheckoutPromo2x1IncrementoFee(fulfillmentType) {
-    const type = getCheckoutFulfillmentType(fulfillmentType);
-    if (type !== 'pickup' && type !== 'delivery') return 0;
+// El incremento de empaque aplica siempre que el 2x1 se pida "en linea" (delivery o
+// pickup vía checkout normal) — la unica otra forma de redimir un 2x1 es "usar en local"
+// (_generarCodigoLocal), que nunca agrega el item al carrito, asi que no hace falta mirar
+// el tipo de entrega elegido despues: si el item esta en el carrito, ya fue pedido online.
+function getCheckoutPromo2x1IncrementoFee() {
     return shoppingCart.reduce((sum, item) => {
         const opts = normalizeOrderOptions(item.orderOptions);
         return sum + (opts.promo2x1Incremento ? PROMO_2X1_INCREMENTO_AMOUNT * Number(item.quantity || 0) : 0);
@@ -1024,7 +1026,7 @@ function getCheckoutPromo2x1IncrementoFee(fulfillmentType) {
 }
 
 function getCheckoutOrderTotal(fulfillmentType) {
-    return getCartTotalAmount() + getCheckoutDeliveryFee(fulfillmentType) + getCheckoutPromo2x1IncrementoFee(fulfillmentType);
+    return getCartTotalAmount() + getCheckoutDeliveryFee(fulfillmentType) + getCheckoutPromo2x1IncrementoFee();
 }
 
 function getCheckoutDiscountAmount() {
@@ -4112,7 +4114,7 @@ function getWhatsAppOrderDetail(categoryName, orderOptions = { type: 'solo' }) {
     }
 
     if (normalized.promo2x1Incremento) {
-        parts.push(`Incremento 2x1 (llevar/domicilio): +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)}`);
+        parts.push(`Incremento 2x1 (pedido online): +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)}`);
     }
 
     return parts.join(' | ');
@@ -4483,7 +4485,7 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
     }
 
     if (normalized.promo2x1Incremento) {
-        optionLabel = `${optionLabel} | +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} si es para llevar o domicilio`;
+        optionLabel = `${optionLabel} | +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} (pedido online)`;
     }
 
     if (normalized.recommendedDiscount) {
@@ -4508,7 +4510,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const deliveryAddress = String(customerInfo.address || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(customerInfo.fulfillmentType);
     const deliveryFee = Number.isFinite(Number(customerInfo.deliveryFee)) ? Number(customerInfo.deliveryFee) : getCheckoutDeliveryFee(fulfillmentType);
-    const incrementoFee = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
+    const incrementoFee = getCheckoutPromo2x1IncrementoFee();
     const discountAmount = getCheckoutDiscountAmount();
     const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
     const cashChangeRequired = customerInfo.cashChangeRequired === true;
@@ -4550,7 +4552,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const domicilioLine = fulfillmentType === 'delivery'
         ? (customerInfo.deliveryFeePending ? '\nDomicilio: Por confirmar (asesor contactará)' : `\nDomicilio: ${formatCurrency(deliveryFee)}`)
         : '';
-    const incrementoLine = incrementoFee > 0 ? `\nIncremento 2x1 (para llevar/domicilio): ${formatCurrency(incrementoFee)}` : '';
+    const incrementoLine = incrementoFee > 0 ? `\nIncremento 2x1 (pedido online): ${formatCurrency(incrementoFee)}` : '';
     const totalDisplay = fulfillmentType === 'delivery' && customerInfo.deliveryFeePending
         ? `${formatCurrency(getCartTotalAmount() + incrementoFee)} + domicilio por confirmar`
         : formatCurrency(orderTotal);
@@ -4626,7 +4628,7 @@ async function createOrderFromCart(customerInfo = {}) {
         deliveryFee = DELIVERY_FEE_AMOUNT;
     }
 
-    const promo2x1IncrementoFee = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
+    const promo2x1IncrementoFee = getCheckoutPromo2x1IncrementoFee();
     const total = subtotal + deliveryFee + promo2x1IncrementoFee;
     const deliveryAddress = String(customerInfo.address || '').trim();
     const customerPhone = String(customerInfo.phone || '').trim();
@@ -5575,7 +5577,7 @@ function updateCheckoutInfoModalState() {
     }
 
     if (checkoutInfoUI.orderTotalValue) {
-        const incrementoFeeForDisplay = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
+        const incrementoFeeForDisplay = getCheckoutPromo2x1IncrementoFee();
         let displayTotal;
         if (!requiresAddress) {
             displayTotal = getCartTotalAmount() + incrementoFeeForDisplay;
@@ -6221,7 +6223,7 @@ function renderCartUI() {
         if (normalizeOrderOptions(item.orderOptions).promo2x1Incremento) {
             const incrementoBadge = document.createElement('span');
             incrementoBadge.className = 'cart-item-promo-badge cart-item-increment-badge';
-            incrementoBadge.textContent = `📦 +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} si es para llevar o domicilio`;
+            incrementoBadge.textContent = `📦 +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} (pedido online)`;
             info.appendChild(incrementoBadge);
         }
 

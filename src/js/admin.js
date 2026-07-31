@@ -7395,7 +7395,7 @@ function _cpefRender2x1Config() {
             </label>
         </div>
         <label style="display:flex;align-items:center;gap:6px;font-size:0.75rem;color:#eef4ff;cursor:pointer;">
-            <input type="checkbox" id="cpef2x1Incremento" ${_cpef2x1.incremento ? 'checked' : ''}> Cobrar +$2.000 para llevar/domicilio
+            <input type="checkbox" id="cpef2x1Incremento" ${_cpef2x1.incremento ? 'checked' : ''}> Cobrar +$2.000 en pedidos online (no aplica si se redime en el local)
         </label>
     </div>`;
 
