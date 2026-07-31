@@ -4463,6 +4463,12 @@ function getCartTotalAmount() {
     return shoppingCart.reduce((total, item) => total + (getCartItemUnitPrice(item) * Number(item.quantity || 0)), 0);
 }
 
+// Subtotal + incremento 2x1 (el incremento no depende de la direccion/zona, a diferencia
+// del domicilio, asi que a diferencia de ese sí puede mostrarse ya en el carrito).
+function getCartDisplayTotal() {
+    return getCartTotalAmount() + getCheckoutPromo2x1IncrementoFee();
+}
+
 function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, options = {}) {
     const normalized = normalizeOrderOptions(orderOptions);
     const includeComment = options.includeComment !== false;
@@ -6102,7 +6108,7 @@ function renderCartUI() {
         cartUI.pillLabel.textContent = `${totalItems} producto${totalItems === 1 ? '' : 's'}`;
     }
     if (cartUI.pillTotal) {
-        cartUI.pillTotal.textContent = formatCurrency(getCartTotalAmount());
+        cartUI.pillTotal.textContent = formatCurrency(getCartDisplayTotal());
     }
     document.body.classList.toggle('has-cart-pill', totalItems > 0);
     cartUI.list.innerHTML = '';
@@ -6288,7 +6294,7 @@ function renderCartUI() {
 
     const cartDiscountTotal = getCartDiscountTotalAmount();
     const refCount = topItems.length;
-    cartUI.summary.textContent = `${refCount} referencia${refCount === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'}${cartDiscountTotal > 0 ? ` | Descuento ${formatCurrency(cartDiscountTotal)}` : ''} | Total ${formatCurrency(getCartTotalAmount())}`;
+    cartUI.summary.textContent = `${refCount} referencia${refCount === 1 ? '' : 's'} | ${totalItems} producto${totalItems === 1 ? '' : 's'}${cartDiscountTotal > 0 ? ` | Descuento ${formatCurrency(cartDiscountTotal)}` : ''} | Total ${formatCurrency(getCartDisplayTotal())}`;
     cartUI.checkout.disabled = !shoppingCart.length;
     cartUI.clear.disabled = false;
     syncOrderingAvailabilityUI();
