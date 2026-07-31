@@ -6218,6 +6218,12 @@ function renderCartUI() {
             promoBadge.textContent = `🏷 ${promoLabel}`;
             info.appendChild(promoBadge);
         }
+        if (normalizeOrderOptions(item.orderOptions).promo2x1Incremento) {
+            const incrementoBadge = document.createElement('span');
+            incrementoBadge.className = 'cart-item-promo-badge cart-item-increment-badge';
+            incrementoBadge.textContent = `📦 +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} si es para llevar o domicilio`;
+            info.appendChild(incrementoBadge);
+        }
 
         if (normalizedType !== 'solo') info.appendChild(option);
         info.appendChild(price);

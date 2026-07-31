@@ -3817,6 +3817,15 @@ body.has-consent-doc-open .guest-register-banner {
     border: 1px solid rgba(230, 160, 0, 0.38);
 }
 
+.cart-item-increment-badge {
+    display: block;
+    margin: 3px 0 2px;
+    background: rgba(15, 92, 46, 0.10);
+    color: #0f5c2e;
+    border-color: rgba(15, 92, 46, 0.32);
+    text-transform: none;
+}
+
 .cart-item-price {
     font-size: 0.82rem;
     line-height: 1.4;
