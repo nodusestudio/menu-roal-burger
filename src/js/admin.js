@@ -170,6 +170,7 @@ const OPENING_AD_DOC_ID = 'anuncio_apertura';
 const PROMOCIONES_COLLECTION = 'promociones';
 const COMBOS_ESPECIALES_COLLECTION = 'combos_especiales';
 const PROMOS_2X1_COLLECTION = 'promos_2x1';
+const PROMO_2X1_INCREMENTO_AMOUNT = 2000;
 const UPGRADES_CONFIG_DOC_ID = 'acompañamientos';
 const DEFAULT_HORARIO = {
     aperturaHora: 16, aperturaMinuto: 0,
@@ -432,6 +433,7 @@ const PosCart = {
         const category = String(realProduct?.categoria || fallbackCategory || 'Sin categoria').trim() || 'Sin categoria';
         const promoLabel = String(opts.promoLabel || '').trim();
         const promo2x1 = opts.promo2x1 === true;
+        const promo2x1Incremento = opts.promo2x1Incremento === true;
         const initialQuantity = Math.max(1, Number(opts.initialQuantity) || 1);
 
         // itemKey determinístico por (productId + nota) → ítems con misma nota se fusionan.
@@ -457,6 +459,7 @@ const PosCart = {
             optionLabel: note || '',
             promoLabel,
             promo2x1,
+            promo2x1Incremento,
             parentKey: opts.parentKey || null
         };
         internalOrderItems.push(item);
@@ -507,12 +510,20 @@ const PosCart = {
         internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey && i.parentKey !== itemKey);
     },
 
+    // El incremento de empaque aplica para recoger o domicilio, no para comer en el local.
+    getPromo2x1IncrementoFee(orderType = posTicketConfig?.orderType) {
+        if (orderType === 'mesa') return 0;
+        return internalOrderItems.reduce((sum, item) =>
+            sum + (item.promo2x1Incremento ? PROMO_2X1_INCREMENTO_AMOUNT * Number(item.quantity || 0) : 0), 0);
+    },
+
     getTotals() {
         const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
         const fee = (posTicketConfig?.orderType === 'domicilio' && posTicketConfig?.deliveryFee != null)
             ? Number(posTicketConfig.deliveryFee)
             : 0;
-        return { subtotal, fee, total: Math.max(0, subtotal + fee) };
+        const incremento = PosCart.getPromo2x1IncrementoFee();
+        return { subtotal, fee, incremento, total: Math.max(0, subtotal + fee + incremento) };
     },
 
     // Forma en la que el carrito se guarda dentro de un pedido en Firestore.
@@ -531,7 +542,7 @@ const PosCart = {
             quantity: Number(item.quantity || 0),
             unitPrice: Number(item.unitPrice || 0),
             subtotal: Number(item.subtotal || 0),
-            ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel } } : {})
+            ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel, promo2x1Incremento: item.promo2x1Incremento === true } } : {})
         }));
     }
 };
@@ -2773,8 +2784,8 @@ function _renderPosProductCards(grid, products) {
 
         const btn = document.createElement('button');
         btn.type = 'button';
-        const imgUrl = String(product.image_url || '').trim();
         const is2x1 = product.promo2x1?.activo === true;
+        const imgUrl = String((is2x1 && product.promo2x1?.image_url) || product.image_url || '').trim();
         const badge2x1 = is2x1 ? `<span class="pos-product-2x1-badge">2×1</span>` : '';
 
         if (imgUrl) {
@@ -3609,6 +3620,7 @@ function renderPosPromocionesPanel(grid) {
                 addProductToPosOrder(prod.id, prod.nombre, price, '2×1', null, {
                     promoLabel: `PROMOCIÓN 2×1 — ${prod.nombre} (incluye 2)`,
                     promo2x1: true,
+                    promo2x1Incremento: prod.promo2x1?.incremento === true,
                     initialQuantity: 1
                 });
             }
@@ -3740,6 +3752,7 @@ function handlePosProductAdd(productId, productName, productPrice) {
         addProductToPosOrder(productId, productName, productPrice, '2×1', null, {
             promoLabel: `PROMOCIÓN 2×1 — ${productName} (incluye 2)`,
             promo2x1: true,
+            promo2x1Incremento: prodEntry.promo2x1?.incremento === true,
             initialQuantity: 1
         });
         return;
@@ -6226,6 +6239,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
             ? Number(config.deliveryFee)
             : (editData?.deliveryFee != null ? Number(editData.deliveryFee) : 0);
         const subtotal = PosCart.getTotals().subtotal;
+        const promo2x1IncrementoFee = PosCart.getPromo2x1IncrementoFee(orderType);
 
         const orderDoc = {
             id: orderId,
@@ -6253,7 +6267,8 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
             subtotal,
             discount: 0,
             deliveryFee: orderType === 'domicilio' ? deliveryFeeVal : null,
-            total: orderType === 'domicilio' ? subtotal + deliveryFeeVal : subtotal,
+            promo2x1IncrementoFee,
+            total: (orderType === 'domicilio' ? subtotal + deliveryFeeVal : subtotal) + promo2x1IncrementoFee,
             currency: 'COP',
             summaryMessage: '',
             createdAt: isEditing ? editData.createdAt : firestoreNow(),
@@ -6495,7 +6510,8 @@ async function saveOrderItemsEdit() {
     const deliveryFee = orderType === 'domicilio'
         ? Number(posTicketConfig?.deliveryFee ?? order?.deliveryFee ?? 0)
         : 0;
-    const total = orderType === 'domicilio' ? subtotal + deliveryFee : subtotal;
+    const promo2x1IncrementoFee = PosCart.getPromo2x1IncrementoFee(orderType);
+    const total = (orderType === 'domicilio' ? subtotal + deliveryFee : subtotal) + promo2x1IncrementoFee;
     const infoFields = posTicketConfig ? {
         orderType,
         customerName: String(posTicketConfig.customerName || order?.customerName || '').trim(),
@@ -6516,6 +6532,7 @@ async function saveOrderItemsEdit() {
             itemCount: internalOrderItems.length,
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
             subtotal,
+            promo2x1IncrementoFee,
             total,
             ...infoFields
         });
@@ -7425,7 +7442,7 @@ function _cpefRender2x1Config() {
             </label>
         </div>
         <label style="display:flex;align-items:center;gap:6px;font-size:0.75rem;color:#eef4ff;cursor:pointer;">
-            <input type="checkbox" id="cpef2x1Incremento" ${_cpef2x1.incremento ? 'checked' : ''}> Cobrar +$2.000 en pedidos online (no aplica si se redime en el local)
+            <input type="checkbox" id="cpef2x1Incremento" ${_cpef2x1.incremento ? 'checked' : ''}> Cobrar +$2.000 para llevar/domicilio
         </label>
     </div>`;
 
