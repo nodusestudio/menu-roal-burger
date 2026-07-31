@@ -5596,10 +5596,13 @@ function renderPosOrderItems() {
                 </div>
             </div>`;
         }
+        const noteHTML = item.promoLabel
+            ? `<span class="pos-item-promo-badge">🏷 ${escapeHtml(item.promoLabel)}</span>`
+            : (item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : '');
         return `<div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
             <div class="pos-item-name">
                 ${escapeHtml(item.productName)}
-                ${item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : ''}
+                ${noteHTML}
             </div>
             <div class="pos-item-qty-price">
                 <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
@@ -5734,11 +5737,15 @@ function renderPosTotals() {
     const totalElem        = document.getElementById('posTotalFinal');
     const deliveryRow      = document.getElementById('posTotalDeliveryRow');
     const deliveryElem     = document.getElementById('posTotalDelivery');
+    const incrementoRow    = document.getElementById('posTotalIncrementoRow');
+    const incrementoElem   = document.getElementById('posTotalIncremento');
     const bottomTotal      = document.getElementById('posBottomTotalAmt');
-    const { subtotal, fee, total } = PosCart.getTotals();
+    const { subtotal, fee, incremento, total } = PosCart.getTotals();
 
     if (subtotalElem) subtotalElem.textContent = formatMoney(subtotal);
     if (deliveryRow) deliveryRow.hidden = fee <= 0;
+    if (incrementoRow) incrementoRow.hidden = incremento <= 0;
+    if (incrementoElem) incrementoElem.textContent = formatMoney(incremento);
     if (deliveryElem) deliveryElem.textContent = formatMoney(fee);
     if (totalElem) totalElem.textContent = formatMoney(total);
     if (bottomTotal) bottomTotal.textContent = formatMoney(total);
