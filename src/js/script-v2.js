@@ -4565,6 +4565,14 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nSubtotal: ${formatCurrency(getCartTotalAmount())}${discountAmount > 0 ? `\nDescuento: ${formatCurrency(discountAmount)}` : ''}${domicilioLine}${incrementoLine}\nTotal: ${totalDisplay}`;
 }
 
+// Firestore rechaza un documento entero si pasa 1MiB. Las fotos normales de producto son
+// URLs cortas de Storage, pero una imagen local que no pudo subirse cae a un data: URI
+// embebido (cientos de KB) — eso nunca debe guardarse dentro de un pedido, o el pedido
+// completo falla al guardarse (aunque el resto del carrito sea liviano).
+function _stripHeavyImageForOrder(imagePath) {
+    return String(imagePath || '').startsWith('data:') ? '' : imagePath;
+}
+
 function buildCartOrderItems() {
     return shoppingCart.map((item, index) => {
         const quantity = Number(item.quantity || 0);
@@ -4578,6 +4586,7 @@ function buildCartOrderItems() {
         }
         const note = String(item.orderOptions?.comment || '').trim();
         const discountAmount = Math.max(0, (originalUnitPrice - unitPrice) * quantity);
+        const normalizedOrderOptions = normalizeOrderOptions(item.orderOptions);
 
         return {
             index: index + 1,
@@ -4591,7 +4600,10 @@ function buildCartOrderItems() {
             discountAmount: discountAmount > 0 ? discountAmount : null,
             optionLabel,
             note,
-            orderOptions: normalizeOrderOptions(item.orderOptions),
+            orderOptions: {
+                ...normalizedOrderOptions,
+                imagePath: _stripHeavyImageForOrder(normalizedOrderOptions.imagePath)
+            },
             ...(item.isComboEspecial && Array.isArray(item.comboItems) ? { comboItems: item.comboItems } : {})
         };
     });
