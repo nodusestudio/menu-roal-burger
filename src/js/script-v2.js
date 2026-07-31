@@ -10304,7 +10304,8 @@ function render2x1Cards() {
     if (!container) return;
     container.innerHTML = '';
 
-    if (!_promos2x1Data.length) return;
+    const hasProductPromos2x1 = latestProducts.some((p) => p.promo2x1?.activo === true);
+    if (!_promos2x1Data.length && !hasProductPromos2x1) return;
 
     const productMap2x1 = new Map(latestProducts.map((p) => [p.id, p]));
     const frag2x1 = document.createDocumentFragment();
