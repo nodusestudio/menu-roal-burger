@@ -2774,10 +2774,12 @@ function _renderPosProductCards(grid, products) {
         const btn = document.createElement('button');
         btn.type = 'button';
         const imgUrl = String(product.image_url || '').trim();
+        const is2x1 = product.promo2x1?.activo === true;
+        const badge2x1 = is2x1 ? `<span class="pos-product-2x1-badge">2×1</span>` : '';
 
         if (imgUrl) {
             btn.className = 'pos-product-btn has-image';
-            btn.innerHTML = `<img class="pos-product-btn-img" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
+            btn.innerHTML = `${badge2x1}<img class="pos-product-btn-img" src="${escapeHtml(imgUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
             const label = document.createElement('div');
             label.className = 'pos-product-label';
             label.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
@@ -2785,7 +2787,7 @@ function _renderPosProductCards(grid, products) {
             card.appendChild(label);
         } else {
             btn.className = 'pos-product-btn';
-            btn.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
+            btn.innerHTML = `${badge2x1}<span class="pos-product-btn-name">${escapeHtml(product.nombre)}</span><span class="pos-product-btn-price">${formatMoney(Number(product.precio || 0))}</span>`;
             card.appendChild(btn);
         }
 
@@ -3596,6 +3598,22 @@ function renderPosPromocionesPanel(grid) {
             }
         }));
     });
+    productsState.filter((p) => p.promo2x1?.activo === true).forEach((prod) => {
+        const price = Number(prod.precio || 0);
+        dosX1Btns.push(makeBtn({
+            badgeText: '2×1', badgeColor: '#1a7a42',
+            nombre: prod.nombre,
+            precioFinal: price,
+            detalle: 'Llevas 2 por el precio de 1',
+            onClick: () => {
+                addProductToPosOrder(prod.id, prod.nombre, price, '2×1', null, {
+                    promoLabel: `PROMOCIÓN 2×1 — ${prod.nombre} (incluye 2)`,
+                    promo2x1: true,
+                    initialQuantity: 1
+                });
+            }
+        }));
+    });
     const dosX1Section = buildSection('2×1', dosX1Btns);
     if (dosX1Section) { wrap.appendChild(dosX1Section); hasAny = true; }
 
@@ -3714,6 +3732,18 @@ function handlePosProductAdd(productId, productName, productPrice) {
     const prodEntry = productsState.find((p) => p.id === productId);
     const selectedCategory = String(prodEntry?.categoria || posSelectedCategory || '').trim();
     const normCat = normalizeCategoryKey(selectedCategory);
+
+    // Producto con 2x1 activado desde su ficha (Articulos): agregar directo con el mismo
+    // trato que el menu publico (cobra 1, incluye 2) — sin pasar por combos/acompañantes,
+    // igual que el flujo de "Redimir cupon" del cliente tampoco los ofrece.
+    if (prodEntry?.promo2x1?.activo === true) {
+        addProductToPosOrder(productId, productName, productPrice, '2×1', null, {
+            promoLabel: `PROMOCIÓN 2×1 — ${productName} (incluye 2)`,
+            promo2x1: true,
+            initialQuantity: 1
+        });
+        return;
+    }
 
     // Si el producto tiene variantes configuradas, usar el nuevo modal de variantes
     if (prodEntry && Array.isArray(prodEntry.variantes) && prodEntry.variantes.length > 0) {
