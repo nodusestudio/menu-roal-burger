@@ -11531,7 +11531,7 @@ function renderMenuCarousels() {
         const carousel = document.createElement('div');
         carousel.className = 'mobile-carousel';
 
-        products.forEach(p => carousel.appendChild(_makeMenuCarouselCard(p)));
+        products.forEach(p => carousel.appendChild(p.promo2x1?.activo === true ? _makeProductPromo2x1Card(p) : _makeMenuCarouselCard(p)));
 
         section.appendChild(title);
         section.appendChild(carousel);
