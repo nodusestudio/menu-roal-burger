@@ -351,7 +351,11 @@ function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '')
     let primaryFound = false;
 
     const appendAddressEntry = (entry) => {
-        const safeAddress = String(entry?.address || entry?.value || entry?.label || entry || '').trim();
+        // Mismo cuidado que getCustomerSavedAddressLabel: si `entry` es un objeto sin
+        // .address/.value/.label (ej. quedo guardado solo con coordenadas de un pin, sin
+        // texto), NO caer al objeto completo -- String(objeto) da "[object Object]", que no
+        // es vacio y se colaria como si fuera una direccion real guardada.
+        const safeAddress = String((typeof entry === 'string' ? entry : (entry?.address || entry?.value || entry?.label)) || '').trim();
         const normalizedKey = safeAddress.toLowerCase();
         if (!safeAddress || seen.has(normalizedKey)) {
             return;
