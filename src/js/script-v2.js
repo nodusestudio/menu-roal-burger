@@ -410,7 +410,16 @@ function getCustomerSavedAddressLabel(savedAddressEntry) {
     if (!savedAddressEntry) {
         return '';
     }
-    return String(savedAddressEntry.address || savedAddressEntry || '').trim();
+    // savedAddressEntry puede llegar como string suelto (formato viejo) o como objeto
+    // {address, latitude, longitude, primary}. El bug real: cuando era un objeto SIN texto
+    // de dirección (ej. guardado solo con coordenadas de un pin), `entry.address || entry`
+    // caía al objeto completo y String(objeto) devolvía literalmente "[object Object]" —
+    // eso se guardaba como la dirección del pedido y pasaba la validación de "no vacío"
+    // porque la cadena no estaba vacía, solo era basura.
+    if (typeof savedAddressEntry === 'string') {
+        return savedAddressEntry.trim();
+    }
+    return String(savedAddressEntry.address || '').trim();
 }
 
 function getSelectedCheckoutSavedAddress() {
@@ -5270,7 +5279,13 @@ async function submitCheckoutInfo() {
         return;
     }
 
-    if (fulfillmentType === 'delivery' && !deliveryAddress) {
+    // Cinturón de seguridad además del fix de raíz en getCustomerSavedAddressLabel: si por
+    // cualquier otro bug futuro la dirección terminara siendo un objeto mal convertido a texto
+    // (ej. "[object Object]") o algo demasiado corto para ser una dirección real, bloquear el
+    // envío en vez de guardar un pedido a domicilio sin forma de saber a dónde llevarlo.
+    const deliveryAddressLooksInvalid = fulfillmentType === 'delivery'
+        && (!deliveryAddress || deliveryAddress.length < 5 || /^\[object /i.test(deliveryAddress));
+    if (deliveryAddressLooksInvalid) {
         checkoutInfoUI.feedback.textContent = 'Escoge una dirección guardada o escribe una nueva para el domicilio.';
         checkoutInfoUI.address?.focus();
         return;
