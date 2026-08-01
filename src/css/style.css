@@ -8444,6 +8444,9 @@ a,
     font-weight: 600;
     padding: 0.2rem 0 0.4rem;
 }
+.checkout-location-badge[hidden] {
+    display: none;
+}
 
 /* ===== PEDIDO PROGRAMADO (fuera de horario) ===== */
 .checkout-schedule-panel {

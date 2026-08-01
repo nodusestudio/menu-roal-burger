@@ -5476,6 +5476,13 @@ function updateCheckoutInfoModalState() {
         return;
     }
 
+    // Cualquier mensaje de error previo (ej. "confirma tu ubicación en el mapa") queda obsoleto
+    // en cuanto el cliente vuelve a tocar el formulario — si no se limpia aquí, se queda pegado
+    // en pantalla aunque ya no aplique y confunde al cliente sobre por qué no puede continuar.
+    if (checkoutInfoUI.feedback) {
+        checkoutInfoUI.feedback.textContent = '';
+    }
+
     const fulfillmentType = getCheckoutFulfillmentType(checkoutInfoUI.fulfillmentType.value);
     const isDineIn = fulfillmentType === 'mesa';
     const requiresAddress = fulfillmentType === 'delivery';
