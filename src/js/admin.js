@@ -6380,7 +6380,8 @@ async function editAdminPosOrder(order) {
             originalUnitPrice: item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null,
             subtotal: Number(item.subtotal || 0),
             promoLabel: String(item.orderOptions?.promoLabel || item.promoLabel || ''),
-            promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true
+            promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true,
+            promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true
         }));
 
         _editingOrderData = {
@@ -6459,7 +6460,8 @@ function openOrderItemsEditor(order) {
             originalUnitPrice: item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null,
             subtotal: Number(item.subtotal || 0),
             promoLabel: String(item.orderOptions?.promoLabel || item.promoLabel || ''),
-            promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true
+            promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true,
+            promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true
         }));
 
         _editingOrderData = null;
