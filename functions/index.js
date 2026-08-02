@@ -19,6 +19,9 @@ const ALLOWED_ORIGINS = [
     'https://roalburger.com',
     'https://www.roalburger.com',
     'https://menu-roal-burger-main.vercel.app',
+    // Panel de administracion — sin este origen, verifyRecaptcha (login admin) queda
+    // bloqueado por CORS y el login falla con "revisa tu conexion" aunque la red este bien.
+    'https://admin-roal.vercel.app',
 ];
 
 // Secrets: configurar con `firebase functions:secrets:set ULTRAMSG_INSTANCE`
