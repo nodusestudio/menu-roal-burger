@@ -681,6 +681,11 @@
         .orders-lane,
         .ticket-panel {
             position: relative;
+            /* Sin min-width:0 un item de grid nunca se achica por debajo del ancho de su
+               contenido — un texto sin espacios (ej. una direccion mal escrita por el
+               cliente) podia forzar la columna entera, y con ella el layout, a desbordarse
+               fuera de la ventana en vez de quedarse dentro del recuadro. */
+            min-width: 0;
             overflow: hidden;
             border-radius: 28px;
             border: 1px solid rgba(255, 255, 255, 0.12);
@@ -2007,6 +2012,7 @@
         .ticket-customer-row span:last-child {
             text-align: right;
             max-width: 68%;
+            overflow-wrap: anywhere;
         }
 
         .ticket-table {
@@ -2023,6 +2029,7 @@
             vertical-align: top;
             color: var(--ticket-text);
             font-size: 0.85rem;
+            overflow-wrap: anywhere;
         }
 
         .ticket-table th {
@@ -2099,12 +2106,14 @@
             color: var(--ticket-text);
             font-size: 0.88rem;
             line-height: 1.5;
+            overflow-wrap: anywhere;
         }
 
         .ticket-address-text .ticket-copy-btn {
             text-align: left;
             width: 100%;
             line-height: 1.5;
+            overflow-wrap: anywhere;
         }
 
         .ticket-wa-btn {
