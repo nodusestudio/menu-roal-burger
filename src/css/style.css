@@ -2666,17 +2666,6 @@ body.has-guest-register-banner #ayudaScreen {
     50%       { opacity: 0;   transform: scale(1.08); }
 }
 
-/* Estado "atención" cuando el usuario intenta enviar sin confirmar */
-#checkoutConfirmLocationButton.location-needs-confirm {
-    animation: confirm-shake 0.45s ease-in-out, confirm-pulse 1.6s ease-in-out 0.45s infinite !important;
-    background: linear-gradient(135deg, #ff3b00, #e60000) !important;
-}
-@keyframes confirm-shake {
-    0%, 100% { transform: translateX(0); }
-    20%, 60%  { transform: translateX(-7px); }
-    40%, 80%  { transform: translateX(7px); }
-}
-
 #customerSavedAddressMapPanel {
     padding: 0;
 }

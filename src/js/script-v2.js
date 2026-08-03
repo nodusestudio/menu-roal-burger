@@ -5296,21 +5296,12 @@ async function submitCheckoutInfo() {
     }
 
     if (fulfillmentType === 'delivery' && !checkoutDeliveryLocationConfirmed) {
-        const mapPanel = checkoutInfoUI.deliveryMapPanel;
-        const mapOpen = mapPanel && !mapPanel.hidden;
-        if (mapOpen) {
-            checkoutInfoUI.feedback.textContent = '📍 Confirma tu ubicación en el mapa antes de enviar el pedido.';
-            const confirmBtn = checkoutInfoUI.confirmLocationButton;
-            if (confirmBtn) {
-                confirmBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                confirmBtn.classList.add('location-needs-confirm');
-                setTimeout(() => confirmBtn.classList.remove('location-needs-confirm'), 2000);
-            }
-            return;
-        }
-        // El cliente nunca abrió el mapa, así que no hay zona calculada. El domicilio jamás
-        // puede quedar en $0 — se usa la tarifa plana por defecto como piso hasta que un
-        // asesor confirme la zona real por WhatsApp.
+        // El cliente no fijó el pin en el mapa (nunca lo abrió, o lo abrió pero no llegó a
+        // tocar/arrastrar el marcador para que apareciera el botón de confirmar). Antes esto
+        // bloqueaba el pedido con un error si el mapa seguía abierto, dejando al cliente
+        // atascado sin forma de continuar — perdiendo la venta. El domicilio jamás puede
+        // quedar en $0, así que en vez de bloquear se usa la tarifa plana por defecto como
+        // piso y se deja pasar el pedido; un asesor confirma la zona real por WhatsApp.
         if (!(checkoutDeliveryFeeAmount > 0)) {
             checkoutDeliveryFeeAmount = DELIVERY_FEE_AMOUNT;
         }
