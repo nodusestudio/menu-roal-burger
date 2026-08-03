@@ -14160,8 +14160,40 @@ async function _ptsSuggestDeliveryFee(addressText) {
 
     _ptsSetZoneBadge('🔍 Calculando tarifa...', '#aaa');
 
-    // Un precio ya cobrado antes en esta misma dirección es más confiable que el polígono
-    // (puede reflejar una corrección manual del cajero) y no depende de Nominatim.
+    // El polígono de zonas es la referencia autoritativa (la misma que usa el menú
+    // público) y se consulta primero. El precio "recordado" de pedidos anteriores a esta
+    // misma dirección solo se usa como respaldo cuando la zona no se puede determinar
+    // (geocodificación fallida o fuera de cobertura) — si se consultara primero, un valor
+    // guardado por error una sola vez (typo del cajero, corrección manual equivocada)
+    // quedaría repitiéndose para siempre en esa dirección sin que la zona correcta lo
+    // corrigiera nunca.
+    let geocodeFailed = false;
+    try {
+        const variants = _adminQueryVariants(val);
+        let result = null;
+        for (const q of variants) {
+            result = await _adminGeocode(q);
+            if (result) break;
+        }
+
+        if (result) {
+            const zone = _adminDetectZone(result.lat, result.lon);
+            if (zone) {
+                const feeInput = document.getElementById('ptsDeliveryFee');
+                if (feeInput && (!feeInput.value || Number(feeInput.value) === 0)) {
+                    feeInput.value = zone.fee;
+                }
+                const colors = { amarilla: '#f6d743', azul: '#4aa1ff', roja: '#d32f2f', negra: '#aaa' };
+                _ptsSetZoneBadge(`✓ ${zone.label} — $${zone.fee.toLocaleString('es-CO')} (auto-detectado)`, colors[zone.name] || '#6ee7b7');
+                return;
+            }
+        } else {
+            geocodeFailed = true;
+        }
+    } catch (_e) {
+        geocodeFailed = true;
+    }
+
     const remembered = await _lookupRememberedDeliveryFee(val);
     if (remembered && remembered.fee) {
         const feeInput = document.getElementById('ptsDeliveryFee');
@@ -14172,34 +14204,10 @@ async function _ptsSuggestDeliveryFee(addressText) {
         return;
     }
 
-    try {
-        const variants = _adminQueryVariants(val);
-        let result = null;
-        for (const q of variants) {
-            result = await _adminGeocode(q);
-            if (result) break;
-        }
-
-        if (!result) {
-            _ptsSetZoneBadge('❓ Dirección no encontrada — ingresa el valor manualmente', '#ff9a50');
-            return;
-        }
-
-        const zone = _adminDetectZone(result.lat, result.lon);
-        const feeInput = document.getElementById('ptsDeliveryFee');
-
-        if (zone) {
-            if (feeInput && (!feeInput.value || Number(feeInput.value) === 0)) {
-                feeInput.value = zone.fee;
-            }
-            const colors = { amarilla: '#f6d743', azul: '#4aa1ff', roja: '#d32f2f', negra: '#aaa' };
-            _ptsSetZoneBadge(`✓ ${zone.label} — $${zone.fee.toLocaleString('es-CO')} (auto-detectado)`, colors[zone.name] || '#6ee7b7');
-        } else {
-            _ptsSetZoneBadge('⚠️ Fuera de cobertura — ingresa el valor manualmente', '#fca5a5');
-        }
-    } catch (_e) {
-        _ptsClearZoneBadge();
-    }
+    _ptsSetZoneBadge(
+        geocodeFailed ? '❓ Dirección no encontrada — ingresa el valor manualmente' : '⚠️ Fuera de cobertura — ingresa el valor manualmente',
+        geocodeFailed ? '#ff9a50' : '#fca5a5'
+    );
 }
 
 function _ptsHideFeeSuggestion() { _ptsClearZoneBadge(); }
