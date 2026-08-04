@@ -1665,6 +1665,22 @@ async function ensureAdminAuth() {
         authError.textContent = '';
     }
 
+    // Confirma que la sesion pertenece a un admin (existe admins/{uid}) antes de
+    // desbloquear el panel — request.auth != null ya no basta porque el menu
+    // publico tambien autentica clientes (Google Sign-In) contra este mismo
+    // proyecto de Firebase. admin_estado ya esta gateado por isAdmin() en las rules.
+    const verifyAdminAccess = async () => {
+        try {
+            await firebaseDb.collection(SALES_DAY_STATE_COLLECTION).limit(1).get();
+            return true;
+        } catch (error) {
+            if (error?.code === 'permission-denied') {
+                return false;
+            }
+            throw error;
+        }
+    };
+
     // Wait for Firebase to resolve the persisted session BEFORE showing any UI.
     // currentUser is null synchronously on page load even with a saved session;
     // onAuthStateChanged is the authoritative first-resolution event.
@@ -1673,13 +1689,21 @@ async function ensureAdminAuth() {
     });
 
     if (_initialUser) {
-        document.body.classList.remove('admin-loading');
-        document.body.classList.remove('admin-locked');
-        document.body.classList.add('admin-unlocked');
-        return _initialUser;
+        if (await verifyAdminAccess()) {
+            document.body.classList.remove('admin-loading');
+            document.body.classList.remove('admin-locked');
+            document.body.classList.add('admin-unlocked');
+            return _initialUser;
+        }
+
+        await firebaseAuth.signOut();
+        if (authError) {
+            authError.textContent = 'No tienes permisos de administrador.';
+            authError.classList.add('show');
+        }
     }
 
-    // No persisted session — now reveal the login form.
+    // No persisted session (o sesion sin permisos de admin) — revelar el formulario.
     document.body.classList.remove('admin-loading');
     document.body.classList.add('admin-locked');
     document.body.classList.remove('admin-unlocked');
@@ -1751,10 +1775,24 @@ async function ensureAdminAuth() {
             resolve(user);
         };
 
-        const unsubscribe = firebaseAuth.onAuthStateChanged((user) => {
-            if (user) {
-                finishUnlock(user);
+        const unsubscribe = firebaseAuth.onAuthStateChanged(async (user) => {
+            if (!user || settled) {
+                return;
             }
+
+            const hasAdminAccess = await verifyAdminAccess();
+            if (settled) {
+                return;
+            }
+
+            if (hasAdminAccess) {
+                finishUnlock(user);
+                return;
+            }
+
+            await firebaseAuth.signOut();
+            if (authSubmitBtn) { authSubmitBtn.disabled = false; authSubmitBtn.textContent = 'Ingresar'; }
+            showAuthFailure('No tienes permisos de administrador.');
         }, (error) => {
             if (settled) {
                 return;
@@ -6381,6 +6419,9 @@ async function editAdminPosOrder(order) {
             subtotal: Number(item.subtotal || 0),
             promoLabel: String(item.orderOptions?.promoLabel || item.promoLabel || ''),
             promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true,
+            // Sin esto, al reabrir un pedido guardado para editarlo (ej. para cambiar
+            // domicilio ↔ para llevar) se perdía el +$2.000 de empaque de los 2x1: quedaba
+            // undefined y PosCart.getPromo2x1IncrementoFee() lo trataba como "sin incremento".
             promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true
         }));
 
@@ -13547,6 +13588,7 @@ let _ptsSelectedPickupMode = 'llego'; // 'llamo' (pidió por telefono/web) vs 'l
 let _ptsSelectedClient = null; // { name, phone }
 let _ptsActiveTab = 'none';
 let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin enviar
+let _ptsCobrarAfterSave = false; // true = este guardado viene de COBRAR sin tipo asignado aún: abrir el modal de pago apenas se confirme el tipo
 
 function renderPosCartTicketInfo() {
     const el = document.getElementById('posCartTicketInfo');
@@ -13592,9 +13634,12 @@ function renderPosCartTicketInfo() {
 }
 
 function _ptsMarkOccupiedMesas() {
-    // Mesas ocupadas por pedidos activos en Firestore
+    // Mesas ocupadas por pedidos activos en Firestore — se excluye el propio pedido que se
+    // está editando (igual que openChangeMesaModal), si no, al abrir "Personalizar ticket"
+    // sobre un pedido de mesa ya guardado, su propia mesa aparecía marcada como "en uso".
+    const currentOrderId = _editingOrderData?.id || _editingItemsOnlyOrderId || null;
     const allOccupied = [...new Set((ordersState || [])
-        .filter((o) => o.orderType === 'mesa' && o.mesaNumber && !['entregado', 'cancelado'].includes(o.status))
+        .filter((o) => o.orderType === 'mesa' && o.mesaNumber && o.id !== currentOrderId && !['entregado', 'cancelado'].includes(o.status))
         .map((o) => Number(o.mesaNumber)))];
     document.querySelectorAll('.pts-mesa-btn').forEach((btn) => {
         const num = Number(btn.dataset.ptsMesa);
@@ -13611,6 +13656,10 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
     if (!modal) return;
 
     _ptsConfigOnly = configOnly;
+    // Se resetea en cada apertura — solo el propio handler de COBRAR lo vuelve a poner en
+    // true justo después de llamar a esta función, así un COBRAR cancelado no deja el flag
+    // pegado y termina disparando el cobro automático de un GUARDAR posterior sin relación.
+    _ptsCobrarAfterSave = false;
 
     // Pre-poblar desde la metadata del pedido en construcción (o el que se está editando)
     const prefill = configOnly ? (_posEditPrefill || posTicketConfig) : null;
@@ -14003,14 +14052,17 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
         const labelEl = document.getElementById('posActiveTicketLabel');
         if (labelEl) labelEl.textContent = label;
         renderPosCartTicketInfo();
+        _ptsCobrarAfterSave = false;
         return;
     }
 
     // Modo guardar pedido: enviar a Firestore
     posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, pickupMode: resolvedPickupMode, customerName, customerPhone, deliveryAddress, deliveryFee };
     renderPosCartTicketInfo();
+    const cobrarAfter = _ptsCobrarAfterSave;
+    _ptsCobrarAfterSave = false;
     if (internalOrderItems.length) {
-        saveAdminOrderQuick(posTicketConfig);
+        saveAdminOrderQuick(posTicketConfig, { cobrarAfter });
         posTicketConfig = null;
         renderPosCartTicketInfo();
     }
@@ -14394,11 +14446,17 @@ document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => 
         showNotice('Estás editando un pedido existente: usa GUARDAR, no COBRAR.', 'error');
         return;
     }
-    // COBRAR desde el carrito es una compra rápida: no pide tipo de pedido, va directo
-    // al modal de cobro (saveAdminOrderQuick ya asume "retiro" si no hay config asignada).
-    saveAdminOrderQuick(posTicketConfig || {}, { cobrarAfter: true });
-    posTicketConfig = null;
-    renderPosCartTicketInfo();
+    // Si el tipo de pedido ya está confirmado, cobrar directo. Si no, exigirlo primero
+    // (igual que GUARDAR) — antes este atajo asumía "para llevar" en silencio si nunca se
+    // abrió "✎ Info", perdiendo la tarifa y la dirección de un domicilio a medio armar.
+    if (posTicketConfig) {
+        saveAdminOrderQuick(posTicketConfig, { cobrarAfter: true });
+        posTicketConfig = null;
+        renderPosCartTicketInfo();
+        return;
+    }
+    openPosTicketSetupModal();
+    _ptsCobrarAfterSave = true;
 });
 
 // Buscador de usuarios en métricas
@@ -17566,6 +17624,10 @@ function renderCajaDiaria() {
     const footEl  = document.getElementById('cajaDiariaFoot');
     const fechaEl = document.getElementById('cajaDiariaFechaLabel');
     if (!bodyEl) return;
+
+    // Mantiene el recuadro "Caja Chica (fondo)" en sincro con el fondo congelado en la
+    // apertura (o el conteo en vivo si la jornada está cerrada) — ver _ccRefreshTotals().
+    _ccRefreshTotals();
 
     // Etiqueta de apertura en el encabezado
     if (fechaEl) {
@@ -21075,11 +21137,15 @@ function _ccRefreshTotals() {
     // Botón del banner
     const bannerBtn = document.getElementById('cajaChicaBtn');
     if (bannerBtn) bannerBtn.textContent = total > 0 ? `💰 ${formatMoney(total)}` : '💰 Caja Chica';
-    // Resumen en Caja Diaria
+    // Resumen en Caja Diaria — con la jornada abierta debe mostrar el fondo congelado en
+    // la apertura (_cajaFondoInicial), no el conteo en vivo de Caja Chica: ese conteo se
+    // puede editar en cualquier momento desde el botón 💰 sin relación con la jornada
+    // actual, y antes mostrarlo aquí hacía que el "fondo" pareciera cambiar solo.
     const wrapper = document.getElementById('ccCajaDiariaSummary');
     const amtEl   = wrapper?.querySelector('[data-cc-summary-amount]');
-    if (wrapper) wrapper.hidden = total <= 0;
-    if (amtEl)   amtEl.textContent = formatMoney(total);
+    const summaryTotal = cajaAperturaAt ? _cajaFondoInicial : total;
+    if (wrapper) wrapper.hidden = summaryTotal <= 0;
+    if (amtEl)   amtEl.textContent = formatMoney(summaryTotal);
 }
 
 function openCajaChicaModal() {
