@@ -4939,14 +4939,21 @@ function setCheckoutDeliveryLocation(latitude, longitude) {
         checkoutInfoUI.deliveryMap.setView([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude], 15);
     }
 
-    if (checkoutInfoUI.confirmLocationButton) {
-        checkoutInfoUI.confirmLocationButton.hidden = false;
-    }
-
     if (checkoutInfoUI.requestQuoteButton) {
         checkoutInfoUI.requestQuoteButton.style.display = 'none';
     }
 
+}
+
+// Cualquier acción manual sobre el pin (arrastrar, tocar el mapa, geolocalizarse) confirma
+// la ubicación al instante — antes había que tocar un botón "Confirmar ubicación" aparte,
+// un paso extra que no aportaba nada ya que mover el pin ya es una acción intencional.
+async function _confirmCheckoutDeliveryLocation() {
+    checkoutDeliveryLocationConfirmed = true;
+    if (activeCustomerProfile && checkoutDeliveryLocation && Array.isArray(checkoutInfoUI?.savedAddresses)) {
+        await _persistSavedAddressCoords(activeCustomerProfile, checkoutInfoUI.savedAddresses);
+    }
+    updateCheckoutInfoModalState();
 }
 
 async function initializeCheckoutDeliveryMap() {
@@ -4989,10 +4996,12 @@ async function initializeCheckoutDeliveryMap() {
     marker.on('dragend', () => {
         const latlng = marker.getLatLng();
         setCheckoutDeliveryLocation(latlng.lat, latlng.lng);
+        _confirmCheckoutDeliveryLocation();
     });
 
     map.on('click', (event) => {
         setCheckoutDeliveryLocation(event.latlng.lat, event.latlng.lng);
+        _confirmCheckoutDeliveryLocation();
     });
 
     checkoutInfoUI.deliveryMap = map;
@@ -5002,7 +5011,6 @@ async function initializeCheckoutDeliveryMap() {
     if (checkoutDeliveryLocation && Number.isFinite(checkoutDeliveryLocation.latitude) && Number.isFinite(checkoutDeliveryLocation.longitude)) {
         marker.setLatLng([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude]);
         map.setView([checkoutDeliveryLocation.latitude, checkoutDeliveryLocation.longitude], 16);
-        if (checkoutInfoUI.confirmLocationButton) checkoutInfoUI.confirmLocationButton.hidden = false;
     }
 
     // Invalidar tamaño después de que el mapa se haya agregado al DOM visible
@@ -5028,6 +5036,7 @@ function requestCheckoutGeolocation() {
     navigator.geolocation.getCurrentPosition(
         (position) => {
             setCheckoutDeliveryLocation(position.coords.latitude, position.coords.longitude);
+            _confirmCheckoutDeliveryLocation();
         },
         (error) => {
             checkoutInfoUI.deliveryZoneStatus.textContent = 'No se pudo obtener la ubicacion. Usa el mapa para ajustar el punto de entrega.';
@@ -5405,7 +5414,7 @@ function geocodeAddress(addressText) {
     .then((data) => {
         if (!Array.isArray(data) || data.length === 0) {
             if (checkoutInfoUI.deliveryZoneStatus) {
-                checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Por favor arrastra el punto en el mapa hasta tu ubicación y confirma.';
+                checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Arrastra el pin en el mapa de abajo hasta tu ubicación.';
             }
             return null;
         }
@@ -5418,20 +5427,15 @@ function geocodeAddress(addressText) {
             return null;
         }
 
-        // Una vez tenemos coordenadas, actualizar ubicación y zona
+        // Una vez tenemos coordenadas, actualizar ubicación, zona y confirmar
         setCheckoutDeliveryLocation(latitude, longitude);
-
-        // Marcar como confirmada automáticamente
-        checkoutDeliveryLocationConfirmed = true;
-
-        // Actualizar todo el estado del modal (total, mapa, botones, etc.)
-        updateCheckoutInfoModalState();
+        _confirmCheckoutDeliveryLocation();
 
         return { latitude, longitude, displayName: result.display_name };
     })
     .catch(() => {
         if (checkoutInfoUI.deliveryZoneStatus) {
-            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Por favor arrastra el punto en el mapa hasta tu ubicación y confirma.';
+            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Arrastra el pin en el mapa de abajo hasta tu ubicación.';
         }
         return null;
     });
@@ -5526,8 +5530,8 @@ function updateCheckoutInfoModalState() {
         checkoutInfoUI.deliveryLongitude = lng;
         if (checkoutInfoUI.deliveryZoneStatus) {
             checkoutInfoUI.deliveryZoneStatus.textContent = zone
-                ? `📍 Tu pin está en ${zone.label} — ${formatCurrency(zone.fee)}. Abre el mapa para ajustar si es necesario.`
-                : '📋 Tu pin está fuera de la zona de cobertura. Abre el mapa para ajustar el pin y confirma.';
+                ? `📍 Tu pin está en ${zone.label} — ${formatCurrency(zone.fee)}. Puedes ajustarlo en el mapa de abajo si es necesario.`
+                : '📋 Tu pin está fuera de la zona de cobertura. Ajústalo en el mapa de abajo si es necesario.';
         }
     }
 
@@ -5542,7 +5546,7 @@ function updateCheckoutInfoModalState() {
         checkoutInfoUI.deliveryLatitude = null;
         checkoutInfoUI.deliveryLongitude = null;
         if (checkoutInfoUI.deliveryZoneStatus) {
-            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Usa el botón "Usar mi ubicación actual" o toca el mapa para colocar el pin en tu dirección y confirma.';
+            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Usa el botón "Usar mi ubicación actual" o toca el mapa de abajo para colocar el pin en tu dirección.';
         }
     }
 
@@ -5550,31 +5554,15 @@ function updateCheckoutInfoModalState() {
     const deliveryFee = getCheckoutDeliveryFee(fulfillmentType);
     const orderTotal = getCheckoutOrderTotal(fulfillmentType);
 
-    // El mapa solo se muestra cuando el usuario lo abre explícitamente
-    const mapPanelOpen = Boolean(checkoutInfoUI.mapPanelOpen);
-    const shouldShowDeliveryMap = requiresAddress && mapPanelOpen;
-
-    if (checkoutInfoUI.mapTriggerArea) {
-        checkoutInfoUI.mapTriggerArea.hidden = !requiresAddress || usingSavedAddress;
-    }
-    if (checkoutInfoUI.locationConfirmedBadge) {
-        checkoutInfoUI.locationConfirmedBadge.hidden = !checkoutDeliveryLocationConfirmed;
-    }
-    if (checkoutInfoUI.openMapButton) {
-        checkoutInfoUI.openMapButton.textContent = checkoutDeliveryLocationConfirmed
-            ? '📍 Cambiar ubicación'
-            : '📍 Asignar ubicación en el mapa';
-    }
+    // El mapa se muestra apenas se elige "Domicilio" — antes quedaba escondido detrás de un
+    // botón "Asignar ubicación" que el cliente tenía que descubrir y tocar aparte.
+    const shouldShowDeliveryMap = requiresAddress;
 
     if (checkoutInfoUI.deliveryMapPanel) {
         checkoutInfoUI.deliveryMapPanel.hidden = !shouldShowDeliveryMap;
         if (shouldShowDeliveryMap) {
             window.setTimeout(initializeCheckoutDeliveryMap, 0);
         }
-    }
-
-    if (checkoutInfoUI.confirmLocationButton) {
-        checkoutInfoUI.confirmLocationButton.hidden = !shouldShowDeliveryMap || !checkoutDeliveryLocation;
     }
 
     if (checkoutInfoUI.saveAddressField && checkoutInfoUI.saveAddressToggle) {
@@ -5739,10 +5727,6 @@ function openCheckoutInfoModal() {
                     <span>Dirección de entrega</span>
                     <textarea id="checkoutDeliveryAddress" rows="3" placeholder="Calle, carrera, número, barrio, referencia..."></textarea>
                 </label>
-                <div id="checkoutMapTriggerArea" hidden>
-                    <button type="button" id="checkoutOpenMapButton" class="checkout-map-trigger-btn">📍 Asignar ubicación en el mapa</button>
-                    <span id="checkoutLocationConfirmedBadge" class="checkout-location-badge" hidden>✓ Ubicación confirmada</span>
-                </div>
                 ${profile ? `
                 <label class="support-check" id="checkoutSaveAddressField">
                     <input type="checkbox" id="checkoutSaveAddressToggle">
@@ -5756,7 +5740,7 @@ function openCheckoutInfoModal() {
             <div class="checkout-map-panel" id="checkoutDeliveryMapPanel" hidden>
                 <div class="checkout-map-actions">
                     <button type="button" id="checkoutUseLocationButton" class="support-send-btn checkout-map-button">📍 Usar mi ubicación actual</button>
-                    <span id="checkoutDeliveryZoneStatus" class="checkout-zone-status">Usa el botón de arriba para detectar tu ubicación o toca el mapa para ajustar el pin.</span>
+                    <span id="checkoutDeliveryZoneStatus" class="checkout-zone-status">Toca el mapa o arrastra el pin hasta tu dirección — queda confirmado al soltarlo.</span>
                     <button type="button" id="checkoutRequestQuoteButton" class="checkout-map-button" style="display:none;">📩 Solicitar cotización</button>
                 </div>
                 <div id="deliveryMap" class="checkout-map-area"></div>
@@ -5782,7 +5766,6 @@ function openCheckoutInfoModal() {
             </div>
             <p class="support-feedback" id="checkoutInfoFeedback"></p>
             <div class="support-actions stack">
-                <button type="button" id="checkoutConfirmLocationButton" class="support-send-btn checkout-confirm-location-btn" hidden>✓ Confirmar ubicación en el mapa</button>
                 <button type="button" class="support-send-btn" id="checkoutSubmitButton">Finalizar pedido</button>
             </div>
         </div>
@@ -5811,12 +5794,8 @@ function openCheckoutInfoModal() {
         setPrimaryToggle: modal.querySelector('#checkoutSetPrimaryToggle'),
         addressBookHint: modal.querySelector('#checkoutAddressBookHint'),
         phone: modal.querySelector('#checkoutCustomerPhone'),
-        mapTriggerArea: modal.querySelector('#checkoutMapTriggerArea'),
-        openMapButton: modal.querySelector('#checkoutOpenMapButton'),
-        locationConfirmedBadge: modal.querySelector('#checkoutLocationConfirmedBadge'),
         deliveryMapPanel: modal.querySelector('#checkoutDeliveryMapPanel'),
         useLocationButton: modal.querySelector('#checkoutUseLocationButton'),
-        confirmLocationButton: modal.querySelector('#checkoutConfirmLocationButton'),
         deliveryZoneStatus: modal.querySelector('#checkoutDeliveryZoneStatus'),
         requestQuoteButton: modal.querySelector('#checkoutRequestQuoteButton'),
         deliveryFeeRow: modal.querySelector('#checkoutDeliveryFeeRow'),
@@ -5839,7 +5818,6 @@ function openCheckoutInfoModal() {
     checkoutInfoUI.close.addEventListener('click', closeCheckoutInfoModal);
     checkoutInfoUI.send.addEventListener('click', submitCheckoutInfo);
     checkoutInfoUI.fulfillmentType.addEventListener('change', () => {
-        checkoutInfoUI.mapPanelOpen = false;
         updateCheckoutInfoModalState();
     });
     checkoutInfoUI.addNewAddrBtn?.addEventListener('click', () => {
@@ -5853,28 +5831,9 @@ function openCheckoutInfoModal() {
         checkoutDeliveryLocationConfirmed = false;
         updateCheckoutInfoModalState();
     });
-    checkoutInfoUI.openMapButton?.addEventListener('click', () => {
-        checkoutInfoUI.mapPanelOpen = true;
-        checkoutDeliveryLocationConfirmed = false;
-        updateCheckoutInfoModalState();
-        window.setTimeout(() => {
-            checkoutInfoUI.deliveryMapPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 80);
-    });
     checkoutInfoUI.useLocationButton?.addEventListener('click', () => {
         initializeCheckoutDeliveryMap();
         requestCheckoutGeolocation();
-    });
-    checkoutInfoUI.confirmLocationButton?.addEventListener('click', async () => {
-        checkoutDeliveryLocationConfirmed = true;
-        checkoutInfoUI.mapPanelOpen = false;
-        if (activeCustomerProfile && checkoutDeliveryLocation && Array.isArray(checkoutInfoUI.savedAddresses)) {
-            await _persistSavedAddressCoords(activeCustomerProfile, checkoutInfoUI.savedAddresses);
-        }
-        updateCheckoutInfoModalState();
-        window.setTimeout(() => {
-            checkoutInfoUI.mapTriggerArea?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 80);
     });
     checkoutInfoUI.requestQuoteButton?.addEventListener('click', requestDeliveryQuote);
     checkoutInfoUI.address?.addEventListener('input', handleCheckoutAddressInput);
