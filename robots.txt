@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /admin.html
+Disallow: /eliminar-cuenta.html
+
+Sitemap: https://roalburger.com/sitemap.xml
