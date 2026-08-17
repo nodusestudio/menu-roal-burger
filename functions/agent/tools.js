@@ -16,20 +16,73 @@ function normalizeText(value) {
     return String(value || '').trim().toLowerCase();
 }
 
+// SYNC: src/js/script-v2.js función getBurgerClasicasOptions (línea ~4292) — tamaños/precios de
+// "Burger Normal" están escritos a mano en el JS del sitio, no en Firestore. Si cambian ahí,
+// actualizar también aquí.
+function getBurgerClasicasOptions(nombreProducto) {
+    if (!normalizeText(nombreProducto).includes('normal')) return [];
+    return [
+        { nombre: 'Pequeña, 1 carne', precio: 14000 },
+        { nombre: 'Pequeña, 2 carnes', precio: 18000 },
+        { nombre: 'Mediana, 1 carne', precio: 17000 },
+        { nombre: 'Mediana, 2 carnes', precio: 22000 }
+    ];
+}
+
+// SYNC: src/js/script-v2.js función getSalchipapaOptions (línea ~4307) — mismo caso, tamaños de
+// "Salchipapa Super" escritos a mano en el JS, no en Firestore.
+function getSalchipapaOptions(nombreProducto) {
+    if (!normalizeText(nombreProducto).includes('super')) return [];
+    return [
+        { nombre: 'Pequeña', precio: 19000 },
+        { nombre: 'Grande', precio: 34000 }
+    ];
+}
+
 // Menú regular — src/js/script-v2.js filtra por p.estado !== 'paused', campo categoria.
+// Productos con tamaños/variantes (campo Firestore `variantes[]`, o los dos casos especiales
+// hardcodeados arriba) se abren en un item vendible por cada opción, en vez de un precio plano.
 async function fetchProductos(db) {
     const snapshot = await db.collection('productos').get();
-    return snapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((p) => String(p.estado || '').trim() !== 'paused')
-        .map((p) => ({
-            nombre: String(p.nombre || '').trim(),
-            precio: Number(p.precio) || 0,
-            categoria: String(p.categoria || '').trim() || 'Menú',
-            tipo: 'producto',
-            nota: ''
-        }))
-        .filter((p) => p.nombre);
+    const items = [];
+
+    snapshot.docs.forEach((doc) => {
+        const p = { id: doc.id, ...doc.data() };
+        if (String(p.estado || '').trim() === 'paused') return;
+        const nombre = String(p.nombre || '').trim();
+        if (!nombre) return;
+        const categoria = String(p.categoria || '').trim() || 'Menú';
+        const descripcion = String(p.descripcion || p.description || '').trim();
+
+        const hardcodedOptions = normalizeText(categoria).includes('burger clasicas')
+            ? getBurgerClasicasOptions(nombre)
+            : (normalizeText(categoria).includes('salchipapa') ? getSalchipapaOptions(nombre) : []);
+
+        if (hardcodedOptions.length) {
+            hardcodedOptions.forEach((opt) => {
+                items.push({ nombre: `${nombre} (${opt.nombre})`, precio: opt.precio, categoria, tipo: 'producto', nota: descripcion });
+            });
+            return;
+        }
+
+        const variantes = Array.isArray(p.variantes) ? p.variantes.filter((v) => v && v.nombre) : [];
+        if (variantes.length) {
+            variantes.forEach((v) => {
+                const bebidaNota = v.con_bebida ? ` Incluye ${Number(v.cantidad_bebidas) || 1}x bebida${v.bebida_nombre ? `: ${v.bebida_nombre}` : ''}.` : '';
+                items.push({
+                    nombre: `${nombre} (${String(v.nombre).trim()})`,
+                    precio: Number(v.precio) || 0,
+                    categoria, tipo: 'producto',
+                    nota: [descripcion, bebidaNota].filter(Boolean).join(' ')
+                });
+            });
+            return;
+        }
+
+        items.push({ nombre, precio: Number(p.precio) || 0, categoria, tipo: 'producto', nota: descripcion });
+    });
+
+    return items;
 }
 
 // Adiciones/acompañamientos (ej. "Huevos de codorniz") — SYNC: loadAcompanantesPublic en

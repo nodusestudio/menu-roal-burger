@@ -36,9 +36,16 @@ async function main() {
         });
 
         const productos = [
-            { id: 'burger-clasica', nombre: 'Burger Clasica', precio: 15000, categoria: 'burger clasicas', estado: 'active' },
+            { id: 'burger-clasica', nombre: 'Burger Clasica', precio: 15000, categoria: 'burger clasicas', estado: 'active', descripcion: 'Carne, queso, lechuga, tomate, salsa de la casa.' },
             { id: 'burger-doble', nombre: 'Burger Doble', precio: 20000, categoria: 'burger clasicas', estado: 'active' },
-            { id: 'salchipapa', nombre: 'Salchipapa', precio: 12000, categoria: 'salchipapas', estado: 'active' }
+            { id: 'burger-normal', nombre: 'Burger Normal', precio: 17000, categoria: 'burger clasicas', estado: 'active' },
+            { id: 'salchipapa', nombre: 'Salchipapa', precio: 12000, categoria: 'salchipapas', estado: 'active' },
+            { id: 'salchipapa-super', nombre: 'Salchipapa Super', precio: 19000, categoria: 'salchipapas', estado: 'active' },
+            { id: 'burger-premium', nombre: 'Burger Premium', precio: 25000, categoria: 'burger premium', estado: 'active',
+                variantes: [
+                    { id: 'v1', nombre: 'Sencilla', precio: 25000 },
+                    { id: 'v2', nombre: 'Con papas y bebida', precio: 32000, con_bebida: true, cantidad_bebidas: 1, bebida_nombre: 'Gaseosa' }
+                ] }
         ];
         for (const p of productos) {
             const { id, ...data } = p;
