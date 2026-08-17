@@ -1206,12 +1206,42 @@ const CHAT_ROAL_SOUND_PRESETS = {
     }
 };
 
-let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta' };
+let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono' };
 
 function playChatRoalSound(kind) {
-    const presetId = kind === 'escalation' ? chatRoalConfigState.soundEscalation : chatRoalConfigState.soundNewChat;
-    const preset = CHAT_ROAL_SOUND_PRESETS[presetId] || CHAT_ROAL_SOUND_PRESETS[kind === 'escalation' ? 'alerta' : 'ding'];
+    const presetId = kind === 'escalation' ? chatRoalConfigState.soundEscalation
+        : kind === 'eachMessage' ? chatRoalConfigState.soundEachMessage
+        : chatRoalConfigState.soundNewChat;
+    const fallbackId = kind === 'escalation' ? 'alerta' : kind === 'eachMessage' ? 'doble_tono' : 'ding';
+    const preset = CHAT_ROAL_SOUND_PRESETS[presetId] || CHAT_ROAL_SOUND_PRESETS[fallbackId];
     return playAlertTonePattern(preset.steps);
+}
+
+// Aviso emergente en pantalla (nombre + texto del mensaje) para cuando el cliente sigue
+// escribiendo en una conversación que ya está esperando a un humano (needsHuman/humanControl) —
+// a diferencia de showNotice, se apila (no se pisa entre sí) y se autodestruye a los 15s.
+function showChatRoalMessageToast(name, text) {
+    let stack = document.getElementById('chatRoalToastStack');
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'chatRoalToastStack';
+        document.body.appendChild(stack);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'chatroal-msg-toast';
+    toast.innerHTML = `
+        <strong>💬 ${escapeHtml(name)}</strong>
+        <p>${escapeHtml(text || '(sin texto)')}</p>
+    `;
+    toast.addEventListener('click', () => {
+        document.querySelector('.admin-accordion-trigger[data-accordion-target="chatroal"]')?.click();
+        toast.remove();
+    });
+    stack.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('chatroal-msg-toast--leaving');
+        setTimeout(() => toast.remove(), 300);
+    }, 15000);
 }
 
 function getCurrentAdminIdentity() {
@@ -10689,7 +10719,7 @@ function initChatRoal() {
         }, (err) => console.error('Chat Roal onSnapshot error:', err));
 
     firebaseDb.collection('configuracion').doc('chat_roal_config').onSnapshot((doc) => {
-        chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', ...(doc.exists ? doc.data() : {}) };
+        chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', ...(doc.exists ? doc.data() : {}) };
         renderChatRoalSettingsPanel();
     }, (err) => console.error('Chat Roal config onSnapshot error:', err));
 
@@ -10741,9 +10771,11 @@ function notifyNewChatRoalConversation(conv, kind) {
     };
 }
 
-// Trackea needsHuman por conversación (no solo los ids) para poder distinguir "chat nuevo"
-// de "chat existente que acaba de escalar a humano" — antes solo se avisaba de lo primero.
+// Trackea needsHuman y messageCount por conversación (no solo los ids) para poder distinguir
+// "chat nuevo" de "chat existente que acaba de escalar a humano" de "el cliente sigue
+// escribiendo en un chat que ya estaba esperando" — antes solo se avisaba de los dos primeros.
 let chatRoalKnownNeedsHuman = new Map();
+let chatRoalKnownMessageCount = new Map();
 
 function announceNewChatRoalConversations(conversations) {
     const currentIds = new Set(conversations.map((c) => c.id));
@@ -10751,6 +10783,7 @@ function announceNewChatRoalConversations(conversations) {
     if (!hasLoadedChatRoalOnce) {
         knownChatRoalIds = currentIds;
         chatRoalKnownNeedsHuman = new Map(conversations.map((c) => [c.id, Boolean(c.needsHuman)]));
+        chatRoalKnownMessageCount = new Map(conversations.map((c) => [c.id, Number(c.messageCount || 0)]));
         hasLoadedChatRoalOnce = true;
         updateChatRoalAttentionState();
         return;
@@ -10758,9 +10791,18 @@ function announceNewChatRoalConversations(conversations) {
 
     const newOnes = conversations.filter((c) => !knownChatRoalIds.has(c.id));
     const escalatedOnes = conversations.filter((c) => knownChatRoalIds.has(c.id) && c.needsHuman && chatRoalKnownNeedsHuman.get(c.id) === false);
+    // Mensajes nuevos en una conversación que YA estaba esperando un humano (needsHuman o
+    // humanControl) — a diferencia de escalatedOnes esto se puede disparar varias veces
+    // seguidas: es el caso de "el cliente insiste y nadie le contesta".
+    const moreWhileWaiting = conversations.filter((c) =>
+        knownChatRoalIds.has(c.id) &&
+        (c.needsHuman || c.humanControl) &&
+        Number(c.messageCount || 0) > (chatRoalKnownMessageCount.get(c.id) || 0)
+    );
 
     knownChatRoalIds = currentIds;
     chatRoalKnownNeedsHuman = new Map(conversations.map((c) => [c.id, Boolean(c.needsHuman)]));
+    chatRoalKnownMessageCount = new Map(conversations.map((c) => [c.id, Number(c.messageCount || 0)]));
     updateChatRoalAttentionState();
 
     escalatedOnes.forEach((conv) => {
@@ -10768,6 +10810,15 @@ function announceNewChatRoalConversations(conversations) {
         notifyNewChatRoalConversation(conv, 'escalation');
         showNotice(`${_chatRoalName(conv)} necesita atención humana.`, 'warn');
     });
+
+    // No repetir el aviso de "escribió de nuevo" en la misma conversación que ya sonó arriba
+    // por acabar de escalar.
+    moreWhileWaiting
+        .filter((c) => !escalatedOnes.includes(c))
+        .forEach((conv) => {
+            playChatRoalSound('eachMessage');
+            showChatRoalMessageToast(_chatRoalName(conv), conv.lastMessageText || '');
+        });
 
     if (!newOnes.length) return;
 
@@ -10827,6 +10878,11 @@ function renderChatRoalSettingsPanel() {
                 <select id="chatRoalSoundEscalation">${soundOptions}</select>
                 <button type="button" data-chatroal-test-sound="escalation">▶ Probar</button>
             </div>
+            <div class="chatroal-sound-row">
+                <label for="chatRoalSoundEachMessage">Cliente insiste sin respuesta</label>
+                <select id="chatRoalSoundEachMessage">${soundOptions}</select>
+                <button type="button" data-chatroal-test-sound="eachMessage">▶ Probar</button>
+            </div>
             <button type="button" class="chatroal-settings-save-btn" id="chatRoalSaveSoundsBtn">Guardar sonidos</button>
         </div>
         <div class="chatroal-settings-section">
@@ -10848,13 +10904,17 @@ function renderChatRoalSettingsPanel() {
 
     const soundNewChatSel = document.getElementById('chatRoalSoundNewChat');
     const soundEscalationSel = document.getElementById('chatRoalSoundEscalation');
+    const soundEachMessageSel = document.getElementById('chatRoalSoundEachMessage');
     if (soundNewChatSel) soundNewChatSel.value = chatRoalConfigState.soundNewChat;
     if (soundEscalationSel) soundEscalationSel.value = chatRoalConfigState.soundEscalation;
+    if (soundEachMessageSel) soundEachMessageSel.value = chatRoalConfigState.soundEachMessage;
 
     panel.querySelectorAll('[data-chatroal-test-sound]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const kind = btn.dataset.chatroalTestSound;
-            const presetId = kind === 'escalation' ? soundEscalationSel.value : soundNewChatSel.value;
+            const presetId = kind === 'escalation' ? soundEscalationSel.value
+                : kind === 'eachMessage' ? soundEachMessageSel.value
+                : soundNewChatSel.value;
             playAlertTonePattern((CHAT_ROAL_SOUND_PRESETS[presetId] || CHAT_ROAL_SOUND_PRESETS.ding).steps);
         });
     });
@@ -10863,7 +10923,8 @@ function renderChatRoalSettingsPanel() {
         try {
             await firebaseDb.collection('configuracion').doc('chat_roal_config').set({
                 soundNewChat: soundNewChatSel.value,
-                soundEscalation: soundEscalationSel.value
+                soundEscalation: soundEscalationSel.value,
+                soundEachMessage: soundEachMessageSel.value
             }, { merge: true });
             showNotice('Sonidos guardados.', 'ok');
         } catch (err) {

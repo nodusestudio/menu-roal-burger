@@ -7914,6 +7914,34 @@
             color: var(--admin-ok);
         }
 
+        /* Aviso emergente de Chat Roal: nombre + mensaje, se apila y se autodestruye a los 15s */
+        #chatRoalToastStack {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 360px;
+        }
+        .chatroal-msg-toast {
+            background: rgba(20, 22, 30, 0.97);
+            border: 1px solid var(--admin-border);
+            border-radius: 14px;
+            padding: 12px 14px;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+            display: grid;
+            gap: 4px;
+            cursor: pointer;
+            animation: chatroalToastIn 0.25s ease;
+        }
+        .chatroal-msg-toast strong { font-size: 0.82rem; color: var(--admin-accent); }
+        .chatroal-msg-toast p { margin: 0; font-size: 0.88rem; color: #fff; line-height: 1.35; }
+        .chatroal-msg-toast--leaving { animation: chatroalToastOut 0.3s ease forwards; }
+        @keyframes chatroalToastIn { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+        @keyframes chatroalToastOut { to { opacity: 0; transform: translateX(24px); } }
+
         /* Panel derecho — detalle */
         .inbox-detail {
             display: flex;
