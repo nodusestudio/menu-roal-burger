@@ -46,7 +46,9 @@
     }
 
     function buildWelcomeMessage(profile) {
-        if (profile && profile.customerName) {
+        // "Pedimos lo de siempre" solo tiene sentido si el perfil guardado ya completó al
+        // menos un pedido real — si no, es un cliente nuevo aunque haya guardado su nombre.
+        if (profile && profile.customerName && Number(profile.totalOrders) > 0) {
             const firstName = profile.customerName.split(/\s+/)[0];
             return `¡Hola de nuevo, ${firstName}! 👋 ¿Pedimos lo de siempre o se te antoja algo distinto hoy?`;
         }

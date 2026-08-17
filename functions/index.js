@@ -1,4 +1,4 @@
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp }     = require('firebase-admin/app');
@@ -130,6 +130,68 @@ exports.notifyNewOrder = onDocumentCreated(
         });
         if (invalid.length) {
             const db = getFirestore();
+            await Promise.all(invalid.map((id) => db.collection(FCM_TOKENS_COLLECTION).doc(id).delete()));
+        }
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Notificación push (FCM) para Chat Roal — mismo patrón que notifyNewOrder: cuando arranca
+// una conversación nueva del agente de IA, o cuando una ya existente pasa a necesitar un
+// humano (needsHuman false -> true), se avisa a los admins con el celular/PC abiertos.
+// ─────────────────────────────────────────────────────────────
+exports.notifyNewAgentChat = onDocumentWritten(
+    { document: 'agent_conversations/{conversationKey}', region: 'us-central1' },
+    async (event) => {
+        const before = event.data?.before?.exists ? event.data.before.data() : null;
+        const after  = event.data?.after?.exists  ? event.data.after.data()  : null;
+        if (!after) return; // documento eliminado, nada que notificar
+
+        const isNew = !before;
+        const justEscalated = Boolean(before) && !before.needsHuman && after.needsHuman;
+        if (!isNew && !justEscalated) return;
+
+        const db = getFirestore();
+        const tokensSnap = await db.collection(FCM_TOKENS_COLLECTION).get();
+        const tokens = tokensSnap.docs
+            .map((d) => d.data().token)
+            .filter((t) => typeof t === 'string' && t.length > 10);
+        if (!tokens.length) return;
+
+        const name = after.customerInfo?.name || after.customerInfo?.phone || after.phone || 'Cliente';
+        const conversationKey = event.params.conversationKey;
+        const title = justEscalated ? '🙋 Necesita atención — Chat Roal' : '📲 Nuevo chat — Chat Roal';
+        const body  = justEscalated ? `${name} necesita un asesor humano.` : `${name} empezó a chatear con el asistente.`;
+
+        const message = {
+            tokens,
+            notification: { title, body },
+            webpush: {
+                notification: {
+                    icon:              '/isotipo.webp',
+                    badge:             '/isotipo.webp',
+                    tag:               `roal-chat-${conversationKey}`,
+                    renotify:          true,
+                    requireInteraction: true,
+                    vibrate:           [400, 150, 400]
+                },
+                fcmOptions: { link: '/admin.html' },
+                data: { tag: `roal-chat-${conversationKey}`, url: '/admin.html' }
+            }
+        };
+
+        const response = await getMessaging().sendEachForMulticast(message);
+
+        const invalid = [];
+        response.responses.forEach((r, i) => {
+            if (!r.success && (
+                r.error?.code === 'messaging/registration-token-not-registered' ||
+                r.error?.code === 'messaging/invalid-registration-token'
+            )) {
+                invalid.push(tokensSnap.docs[i].id);
+            }
+        });
+        if (invalid.length) {
             await Promise.all(invalid.map((id) => db.collection(FCM_TOKENS_COLLECTION).doc(id).delete()));
         }
     }
