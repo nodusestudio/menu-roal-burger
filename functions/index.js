@@ -5,7 +5,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -258,6 +258,23 @@ exports.verifyWhatsAppOtp = onCall(
 // Agente de IA — widget de chat en la web pública
 // Requiere secret: firebase functions:secrets:set ANTHROPIC_API_KEY
 // ─────────────────────────────────────────────────────────────
+// Toma el perfil de cliente guardado en localStorage (roalburger-customer-profile-v1) que
+// manda el widget y se queda solo con los campos que el agente necesita, saneados — nunca
+// confiamos en longitudes/tipos que vengan del cliente.
+function sanitizeCustomerProfile(raw) {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const customerName = String(raw.customerName || '').trim().slice(0, 120);
+    const customerPhone = String(raw.customerPhone || '').trim().slice(0, 30);
+    if (!customerName && !customerPhone) return undefined;
+    return {
+        customerName,
+        customerPhone,
+        address: String(raw.address || '').trim().slice(0, 300),
+        lastOrderId: String(raw.lastOrderId || '').trim().slice(0, 60),
+        totalOrders: Number.isFinite(Number(raw.totalOrders)) ? Number(raw.totalOrders) : 0
+    };
+}
+
 exports.agentChatWeb = onCall(
     { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], cors: ALLOWED_ORIGINS },
     async (request) => {
@@ -287,12 +304,34 @@ exports.agentChatWeb = onCall(
                 text,
                 location: (location && Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude)))
                     ? { latitude: Number(location.latitude), longitude: Number(location.longitude) }
-                    : undefined
+                    : undefined,
+                customerProfile: sanitizeCustomerProfile(request.data?.customerProfile)
             });
             return result;
         } catch (err) {
             console.error('agentChatWeb error:', err);
             throw new HttpsError('internal', 'No se pudo procesar el mensaje.');
+        }
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Agente de IA — historial de la conversación (para re-mostrarla al reabrir el chat, como
+// WhatsApp). No requiere ANTHROPIC_API_KEY porque no llama al modelo, solo lee Firestore.
+// ─────────────────────────────────────────────────────────────
+exports.agentChatHistory = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const sessionId = String(request.data?.sessionId || '').trim();
+        if (!sessionId || sessionId.length > 100) {
+            throw new HttpsError('invalid-argument', 'sessionId invalido.');
+        }
+        try {
+            const messages = await getDisplayHistory(getFirestore(), `web_${sessionId}`);
+            return { messages };
+        } catch (err) {
+            console.error('agentChatHistory error:', err);
+            throw new HttpsError('internal', 'No se pudo cargar el historial.');
         }
     }
 );

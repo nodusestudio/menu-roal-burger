@@ -1,11 +1,16 @@
 // Widget de chat del agente de IA (toma pedidos) en el menú público.
 // Se carga después de script-v2.js y firebase-config.js — reutiliza getPublicFirebaseFunctions()
 // ya definida ahí (mismo patrón que sendWhatsAppOtp/verifyWhatsAppOtp).
+//
+// Diseño: banner pequeño fijo abajo que abre un chat a pantalla completa (como WhatsApp). La
+// conversación se guarda en el servidor por sessionId — al reabrir el chat se recarga el
+// historial. Si el cliente ya tiene perfil guardado (roalburger-customer-profile-v1), se lo
+// mandamos al agente para que lo reconozca y pueda ofrecerle repetir su último pedido.
 (function () {
     'use strict';
 
     const SESSION_STORAGE_KEY = 'roalburger-agent-session-v1';
-    const WELCOME_MESSAGE = '¡Hola! 👋 Soy el asistente virtual de ROAL BURGER. Puedo ayudarte a armar tu pedido del menú regular por acá mismo. ¿Qué se te antoja hoy?';
+    const CUSTOMER_PROFILE_STORAGE_KEY = 'roalburger-customer-profile-v1';
 
     function getOrCreateSessionId() {
         try {
@@ -20,17 +25,46 @@
         }
     }
 
+    function getStoredCustomerProfile() {
+        try {
+            const raw = window.localStorage.getItem(CUSTOMER_PROFILE_STORAGE_KEY);
+            if (!raw) return null;
+            const p = JSON.parse(raw);
+            const customerName = String(p.customerName || '').trim();
+            const customerPhone = String(p.customerPhone || '').trim();
+            if (!customerName && !customerPhone) return null;
+            return {
+                customerName,
+                customerPhone,
+                address: String(p.address || '').trim(),
+                lastOrderId: String(p.lastOrderId || '').trim(),
+                totalOrders: Number(p.totalOrders || 0)
+            };
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    function buildWelcomeMessage(profile) {
+        if (profile && profile.customerName) {
+            const firstName = profile.customerName.split(/\s+/)[0];
+            return `¡Hola de nuevo, ${firstName}! 👋 ¿Pedimos lo de siempre o se te antoja algo distinto hoy?`;
+        }
+        return '¡Hola! 👋 Soy el asistente virtual de ROAL BURGER. Puedo ayudarte a armar tu pedido del menú regular por acá mismo. ¿Qué se te antoja hoy?';
+    }
+
     function buildWidgetMarkup() {
         const wrap = document.createElement('div');
         wrap.id = 'agentChatWidget';
         wrap.innerHTML = `
-            <button type="button" id="agentChatFab" class="agent-chat-fab" aria-label="Chat con el asistente">
-                <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 5.94 2 10.8c0 2.66 1.36 5.03 3.5 6.63V22l3.98-2.18c.81.18 1.66.28 2.52.28 5.52 0 10-3.94 10-8.8S17.52 2 12 2z"/></svg>
+            <button type="button" id="agentChatBanner" class="agent-chat-banner" aria-label="Abrir chat con el asistente">
+                <span class="agent-chat-banner-icon">💬</span>
+                <span class="agent-chat-banner-text">Habla con nuestro asistente</span>
             </button>
-            <div id="agentChatPanel" class="agent-chat-panel liquid-glass" hidden>
+            <div id="agentChatPanel" class="agent-chat-panel" hidden>
                 <div class="agent-chat-header">
+                    <button type="button" id="agentChatBackBtn" class="agent-chat-back" aria-label="Cerrar chat">&#8249;</button>
                     <span class="agent-chat-title">Asistente ROAL BURGER</span>
-                    <button type="button" id="agentChatCloseBtn" class="agent-chat-close" aria-label="Cerrar chat">&#215;</button>
                 </div>
                 <div id="agentChatMessages" class="agent-chat-messages"></div>
                 <div id="agentChatTyping" class="agent-chat-typing" hidden>Escribiendo…</div>
@@ -61,9 +95,9 @@
         if (document.getElementById('agentChatWidget')) return;
 
         const wrap = buildWidgetMarkup();
-        const fab = wrap.querySelector('#agentChatFab');
+        const banner = wrap.querySelector('#agentChatBanner');
         const panel = wrap.querySelector('#agentChatPanel');
-        const closeBtn = wrap.querySelector('#agentChatCloseBtn');
+        const backBtn = wrap.querySelector('#agentChatBackBtn');
         const messagesEl = wrap.querySelector('#agentChatMessages');
         const typingEl = wrap.querySelector('#agentChatTyping');
         const input = wrap.querySelector('#agentChatInput');
@@ -71,29 +105,46 @@
         const locationBtn = wrap.querySelector('#agentChatLocationBtn');
 
         const sessionId = getOrCreateSessionId();
-        let opened = false;
+        const customerProfile = getStoredCustomerProfile();
+        let historyLoaded = false;
         let sending = false;
         let pendingLocation = null;
 
+        async function loadHistoryIfNeeded() {
+            if (historyLoaded) return;
+            historyLoaded = true;
+            try {
+                const fn = typeof getPublicFirebaseFunctions === 'function' ? getPublicFirebaseFunctions() : null;
+                if (!fn) throw new Error('no-functions');
+                const callable = fn.httpsCallable('agentChatHistory');
+                const result = await callable({ sessionId });
+                const messages = (result.data && Array.isArray(result.data.messages)) ? result.data.messages : [];
+                if (messages.length) {
+                    messages.forEach((m) => appendMessage(messagesEl, m.role, m.text));
+                    return;
+                }
+            } catch (_err) {
+                // Si falla la carga del historial, seguimos con el saludo normal.
+            }
+            appendMessage(messagesEl, 'assistant', buildWelcomeMessage(customerProfile));
+        }
+
         function openPanel() {
             panel.hidden = false;
-            fab.setAttribute('aria-expanded', 'true');
-            if (!opened) {
-                opened = true;
-                appendMessage(messagesEl, 'assistant', WELCOME_MESSAGE);
-            }
+            banner.hidden = true;
+            document.body.style.overflow = 'hidden';
+            loadHistoryIfNeeded();
             input.focus();
         }
 
         function closePanel() {
             panel.hidden = true;
-            fab.setAttribute('aria-expanded', 'false');
+            banner.hidden = false;
+            document.body.style.overflow = '';
         }
 
-        fab.addEventListener('click', () => {
-            if (panel.hidden) openPanel(); else closePanel();
-        });
-        closeBtn.addEventListener('click', closePanel);
+        banner.addEventListener('click', openPanel);
+        backBtn.addEventListener('click', closePanel);
 
         async function sendMessage(text) {
             if (sending || !text.trim()) return;
@@ -112,6 +163,7 @@
                     payload.location = pendingLocation;
                     pendingLocation = null;
                 }
+                if (customerProfile) payload.customerProfile = customerProfile;
                 const result = await callable(payload);
                 appendMessage(messagesEl, 'assistant', result.data && result.data.reply ? result.data.reply : 'No pude procesar tu mensaje, intenta de nuevo.');
             } catch (_err) {

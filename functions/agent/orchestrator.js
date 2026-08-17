@@ -11,6 +11,7 @@ const orderLogic = require('./orderLogic');
 
 const CONVERSATIONS_COLLECTION = 'agent_conversations';
 const RATE_LIMITS_COLLECTION = 'agent_rate_limits';
+const ORDERS_COLLECTION = 'pedidos';
 const MODEL = 'claude-opus-5';
 const MAX_TURNS_PER_CONVERSATION = 40;
 const MAX_TOOL_LOOP_ITERATIONS = 8;
@@ -38,19 +39,58 @@ async function checkRateLimit(db, key) {
     });
 }
 
-async function loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId }) {
+// Cuando un cliente que ya pidió antes (localStorage roalburger-customer-profile-v1) abre el
+// chat por primera vez, precargamos sus datos y su último pedido — así el agente ya sabe quién
+// es, para dónde entrega normalmente y qué pidió la última vez, sin tener que reinterrogarlo.
+async function buildReturningCustomerContext(db, customerProfile) {
+    if (!customerProfile) return null;
+    const name = String(customerProfile.customerName || '').trim();
+    const phone = String(customerProfile.customerPhone || '').trim();
+    const address = String(customerProfile.address || '').trim();
+    if (!name && !phone) return null;
+
+    let lastOrderSummary = '';
+    const lastOrderId = String(customerProfile.lastOrderId || '').trim();
+    if (lastOrderId) {
+        try {
+            const orderDoc = await db.collection(ORDERS_COLLECTION).doc(lastOrderId).get();
+            if (orderDoc.exists) {
+                const items = Array.isArray(orderDoc.data().items) ? orderDoc.data().items : [];
+                lastOrderSummary = items.map((it) => `${it.quantity}x ${it.productName}`).join(', ');
+            }
+        } catch (_e) {
+            // No crítico — seguimos sin el detalle del último pedido.
+        }
+    }
+
+    const totalOrders = Number(customerProfile.totalOrders || 0);
+    const lines = [];
+    lines.push(`[Sistema: cliente recurrente identificado por su perfil guardado.${name ? ` Nombre: ${name}.` : ''}${phone ? ` Teléfono: ${phone}.` : ''}${address ? ` Dirección habitual: ${address}.` : ''}${totalOrders > 0 ? ` Ha hecho ${totalOrders} pedido(s) antes.` : ''}${lastOrderSummary ? ` Su último pedido fue: ${lastOrderSummary}.` : ''} Salúdalo por su nombre y, si aplica, ofrécele repetir su último pedido — pero confirma igual cada dato antes de usarlo (pudo cambiar de dirección o de gustos).]`);
+
+    return {
+        note: lines.join(' '),
+        prefill: { name: name || undefined, phone: phone || undefined, address: address || undefined }
+    };
+}
+
+async function loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId, customerProfile }) {
     const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
     const snap = await ref.get();
     if (snap.exists) {
-        return { ref, state: snap.data() };
+        return { ref, state: snap.data(), returningCustomerNote: null };
     }
+
+    const returning = await buildReturningCustomerContext(db, customerProfile);
     const state = {
         channel,
-        phone: phone || null,
+        phone: phone || returning?.prefill?.phone || null,
         sessionId: sessionId || null,
         status: 'active',
         draftCart: { items: [] },
-        customerInfo: phone ? { phone } : {},
+        customerInfo: {
+            ...(phone ? { phone } : {}),
+            ...(returning?.prefill || {})
+        },
         needsHuman: false,
         turnCount: 0,
         messageCount: 0,
@@ -60,7 +100,27 @@ async function loadOrCreateConversation(db, conversationKey, { channel, phone, s
         updatedAt: FieldValue.serverTimestamp()
     };
     await ref.set(state);
-    return { ref, state };
+    return { ref, state, returningCustomerNote: returning?.note || null };
+}
+
+// Historial simplificado (solo texto visible, sin bloques de tool_use/tool_result ni notas de
+// sistema) para que el widget web pueda re-mostrar la conversación cuando el cliente reabre el
+// chat — como el historial de WhatsApp.
+async function getDisplayHistory(db, conversationKey) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    const snap = await ref.collection('messages').orderBy('seq', 'asc').limit(MAX_HISTORY_MESSAGES).get();
+    const messages = [];
+    for (const doc of snap.docs) {
+        const data = doc.data();
+        if (data.role !== 'user' && data.role !== 'assistant') continue;
+        const textBlocks = (Array.isArray(data.content) ? data.content : [])
+            .filter((b) => b.type === 'text' && typeof b.text === 'string')
+            .map((b) => b.text.trim())
+            .filter((t) => t && !t.startsWith('[Sistema:'));
+        if (!textBlocks.length) continue;
+        messages.push({ role: data.role, text: textBlocks.join('\n') });
+    }
+    return messages;
 }
 
 async function loadHistory(ref) {
@@ -110,15 +170,16 @@ function buildLocationNoteBlock(state, location) {
  * @param {string} [params.sessionId]
  * @param {string} params.text
  * @param {{latitude:number, longitude:number}} [params.location]
+ * @param {{customerName?:string, customerPhone?:string, address?:string, lastOrderId?:string, totalOrders?:number}} [params.customerProfile]
  */
-async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKey, phone, sessionId, text, location }) {
+async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKey, phone, sessionId, text, location, customerProfile }) {
     const rateLimitKey = phone || sessionId || conversationKey;
     const allowed = await checkRateLimit(db, rateLimitKey);
     if (!allowed) {
         return { reply: RATE_LIMITED_REPLY };
     }
 
-    const { ref, state } = await loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId });
+    const { ref, state, returningCustomerNote } = await loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId, customerProfile });
 
     if (state.status === 'needs_human') {
         return { reply: 'Ya avisamos a un asesor para que te contacte. Si es urgente, escríbenos directo por WhatsApp.' };
@@ -134,6 +195,7 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     const history = await loadHistory(ref);
 
     const userContentBlocks = [];
+    if (returningCustomerNote) userContentBlocks.push({ type: 'text', text: returningCustomerNote });
     const locationNote = buildLocationNoteBlock(state, location);
     if (locationNote) userContentBlocks.push(locationNote);
     userContentBlocks.push({ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' });
@@ -217,4 +279,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn };
+module.exports = { handleIncomingTurn, getDisplayHistory };
