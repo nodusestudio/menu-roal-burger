@@ -10738,7 +10738,7 @@ function initChatRoal() {
 function updateChatRoalAttentionState() {
     const btn = document.querySelector('.admin-accordion-trigger[data-accordion-target="chatroal"]');
     if (!(btn instanceof HTMLButtonElement)) return;
-    const count = _chatRoalConversations.filter((c) => c.needsHuman).length;
+    const count = _chatRoalConversations.filter((c) => c.needsHuman || c.pendingQuestion?.text).length;
     btn.classList.toggle('has-unread', count > 0);
     btn.classList.toggle('is-blinking', count > 0 && activeAccordionSection !== 'chatroal');
     btn.dataset.unreadCount = count > 99 ? '99+' : String(count || '');
@@ -10771,11 +10771,12 @@ function notifyNewChatRoalConversation(conv, kind) {
     };
 }
 
-// Trackea needsHuman y messageCount por conversación (no solo los ids) para poder distinguir
-// "chat nuevo" de "chat existente que acaba de escalar a humano" de "el cliente sigue
-// escribiendo en un chat que ya estaba esperando" — antes solo se avisaba de los dos primeros.
+// Trackea needsHuman, messageCount y pendingQuestion por conversación (no solo los ids) para
+// distinguir "chat nuevo" de "escaló a humano" de "el cliente sigue escribiendo" de "el agente
+// mandó una pregunta puntual al equipo" — cada una tiene su propio aviso.
 let chatRoalKnownNeedsHuman = new Map();
 let chatRoalKnownMessageCount = new Map();
+let chatRoalKnownHasQuestion = new Map();
 
 function announceNewChatRoalConversations(conversations) {
     const currentIds = new Set(conversations.map((c) => c.id));
@@ -10784,6 +10785,7 @@ function announceNewChatRoalConversations(conversations) {
         knownChatRoalIds = currentIds;
         chatRoalKnownNeedsHuman = new Map(conversations.map((c) => [c.id, Boolean(c.needsHuman)]));
         chatRoalKnownMessageCount = new Map(conversations.map((c) => [c.id, Number(c.messageCount || 0)]));
+        chatRoalKnownHasQuestion = new Map(conversations.map((c) => [c.id, Boolean(c.pendingQuestion?.text)]));
         hasLoadedChatRoalOnce = true;
         updateChatRoalAttentionState();
         return;
@@ -10791,6 +10793,7 @@ function announceNewChatRoalConversations(conversations) {
 
     const newOnes = conversations.filter((c) => !knownChatRoalIds.has(c.id));
     const escalatedOnes = conversations.filter((c) => knownChatRoalIds.has(c.id) && c.needsHuman && chatRoalKnownNeedsHuman.get(c.id) === false);
+    const newQuestionOnes = conversations.filter((c) => knownChatRoalIds.has(c.id) && c.pendingQuestion?.text && chatRoalKnownHasQuestion.get(c.id) === false);
     // Cualquier mensaje nuevo (messageCount subió) en una conversación YA conocida — a
     // diferencia de escalatedOnes esto se dispara en cada mensaje, no solo en la escalación.
     const moreWhileWaiting = conversations.filter((c) =>
@@ -10801,6 +10804,7 @@ function announceNewChatRoalConversations(conversations) {
     knownChatRoalIds = currentIds;
     chatRoalKnownNeedsHuman = new Map(conversations.map((c) => [c.id, Boolean(c.needsHuman)]));
     chatRoalKnownMessageCount = new Map(conversations.map((c) => [c.id, Number(c.messageCount || 0)]));
+    chatRoalKnownHasQuestion = new Map(conversations.map((c) => [c.id, Boolean(c.pendingQuestion?.text)]));
     updateChatRoalAttentionState();
 
     escalatedOnes.forEach((conv) => {
@@ -10809,10 +10813,16 @@ function announceNewChatRoalConversations(conversations) {
         showNotice(`${_chatRoalName(conv)} necesita atención humana.`, 'warn');
     });
 
+    newQuestionOnes.forEach((conv) => {
+        playChatRoalSound('escalation');
+        showChatRoalMessageToast(`❓ ${_chatRoalName(conv)} pregunta`, conv.pendingQuestion?.text || '');
+        showNotice(`El agente necesita un dato para ${_chatRoalName(conv)}.`, 'warn');
+    });
+
     // No repetir el aviso de "escribió de nuevo" en la misma conversación que ya sonó arriba
-    // por acabar de escalar.
+    // por acabar de escalar o por tener una pregunta nueva.
     moreWhileWaiting
-        .filter((c) => !escalatedOnes.includes(c))
+        .filter((c) => !escalatedOnes.includes(c) && !newQuestionOnes.includes(c))
         .forEach((conv) => {
             playChatRoalSound('eachMessage');
             showChatRoalMessageToast(_chatRoalName(conv), conv.lastCustomerMessageText || conv.lastMessageText || '');
@@ -10997,6 +11007,7 @@ function _chatRoalName(conv) {
 function _chatRoalStatusBadge(conv) {
     if (conv.humanControl) return '<span class="chatroal-badge chatroal-badge--you">👤 Tú</span>';
     if (conv.needsHuman) return '<span class="chatroal-badge chatroal-badge--alert">🙋 Atención</span>';
+    if (conv.pendingQuestion?.text) return '<span class="chatroal-badge chatroal-badge--alert">❓ Pregunta</span>';
     return '<span class="chatroal-badge chatroal-badge--bot">🤖 Agente</span>';
 }
 
@@ -11004,7 +11015,7 @@ function renderChatRoalList() {
     const listEl = document.getElementById('chatRoalList');
     if (!listEl) return;
     const countEl = document.getElementById('chatRoalCount');
-    if (countEl) countEl.textContent = _chatRoalConversations.filter((c) => c.needsHuman).length;
+    if (countEl) countEl.textContent = _chatRoalConversations.filter((c) => c.needsHuman || c.pendingQuestion?.text).length;
 
     const searchTerm = (document.getElementById('chatRoalSearch')?.value || '').trim().toLowerCase();
     let filtered = _chatRoalConversations;
@@ -11107,6 +11118,8 @@ function renderChatRoalDetail() {
             </div>`;
     }).join('');
 
+    const pendingQuestionText = conv.pendingQuestion?.text || '';
+
     detail.innerHTML = `
         <div class="inbox-detail-head">
             <div class="inbox-detail-avatar">${_inboxInitial(name)}</div>
@@ -11118,6 +11131,14 @@ function renderChatRoalDetail() {
                 ${conv.humanControl ? '<button class="inbox-head-btn blue" data-chatroal-action="handback">🤖 Devolver al agente</button>' : ''}
             </div>
         </div>
+        ${pendingQuestionText ? `
+        <div class="chatroal-question-banner">
+            <p>❓ El agente pregunta: <strong>${escapeHtml(pendingQuestionText)}</strong></p>
+            <div class="chatroal-question-form">
+                <input type="text" id="chatRoalQuestionAnswer" placeholder="Escribe la respuesta para el agente…">
+                <button type="button" data-chatroal-action="answer-question">Responder</button>
+            </div>
+        </div>` : ''}
         <div class="inbox-messages-scroll" id="chatRoalMsgScroll">
             ${messagesHtml || '<p class="inbox-empty">Sin mensajes aún</p>'}
         </div>
@@ -11164,6 +11185,22 @@ document.addEventListener('click', async (event) => {
             if (inputEl) inputEl.value = '';
         } catch (err) {
             showNotice(`Error: ${err.message || 'no se pudo enviar el mensaje'}`, 'error');
+        } finally {
+            actionButton.disabled = false;
+        }
+        return;
+    }
+
+    if (action === 'answer-question') {
+        const inputEl = document.getElementById('chatRoalQuestionAnswer');
+        const answer = inputEl ? inputEl.value.trim() : '';
+        if (!answer) { showNotice('Escribe la respuesta primero.', 'warn'); return; }
+        actionButton.disabled = true;
+        try {
+            await callable({ conversationKey: _chatRoalActiveId, answerQuestion: true, answer });
+            showNotice('Respuesta enviada al agente.', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo enviar la respuesta'}`, 'error');
         } finally {
             actionButton.disabled = false;
         }

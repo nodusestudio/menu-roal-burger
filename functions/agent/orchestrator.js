@@ -226,6 +226,26 @@ async function markConversationSeen(db, conversationKey) {
     await ref.set({ needsHuman: false }, { merge: true });
 }
 
+// El equipo responde una pregunta puntual que el agente mandó con ask_team_question (sin tomar
+// el control de la conversación) — se guarda como una nota de sistema en el historial, invisible
+// para el cliente (mismo patrón que la nota de "cliente recurrente"), así el agente la usa en su
+// próxima respuesta sin que el cliente note que hubo una intervención manual.
+async function answerPendingQuestion(db, conversationKey, answerText) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    const snap = await ref.get();
+    if (!snap.exists) throw new Error(`Conversación no encontrada: ${conversationKey}`);
+    const state = snap.data();
+    const question = state.pendingQuestion?.text || '';
+    const noteText = `[Sistema: el equipo respondió tu pregunta pendiente ("${question}"): ${String(answerText || '').trim()}]`;
+    const message = { role: 'user', content: [{ type: 'text', text: noteText }] };
+    const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [message]);
+    await ref.set({
+        messageCount: newSeq,
+        pendingQuestion: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+}
+
 function buildLocationNoteBlock(state, location) {
     if (!location || !Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) {
         return null;
@@ -353,6 +373,15 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
     const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
     if (instructionsBlock) systemBlocks.push(instructionsBlock);
+    // Si ya hay una pregunta sin responder (ask_team_question), se lo recuerda en cada turno —
+    // sin esto el modelo no tiene memoria de esto entre turnos y podía volver a preguntar lo
+    // mismo o escalar innecesariamente mientras espera.
+    if (state.pendingQuestion?.text) {
+        systemBlocks.push({
+            type: 'text',
+            text: `[Sistema: ya le preguntaste al equipo esto y todavía no responden: "${state.pendingQuestion.text}". No vuelvas a usar ask_team_question para lo mismo. Si el cliente pregunta por esto, dile que sigues esperando confirmación del equipo.]`
+        });
+    }
 
     let finalReplyText = '';
     let hadError = false;
@@ -438,4 +467,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion };

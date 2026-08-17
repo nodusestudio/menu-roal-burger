@@ -5,7 +5,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -423,6 +423,7 @@ exports.agentChatAdminReply = onCall(
         }
         const handback = request.data?.handback === true;
         const markSeen = request.data?.markSeen === true;
+        const answerQuestion = request.data?.answerQuestion === true;
         const text = String(request.data?.text || '').trim();
 
         try {
@@ -432,6 +433,14 @@ exports.agentChatAdminReply = onCall(
             }
             if (markSeen) {
                 await markConversationSeen(getFirestore(), conversationKey);
+                return { ok: true };
+            }
+            if (answerQuestion) {
+                const answer = String(request.data?.answer || '').trim();
+                if (!answer || answer.length > 2000) {
+                    throw new HttpsError('invalid-argument', 'Respuesta invalida.');
+                }
+                await answerPendingQuestion(getFirestore(), conversationKey, answer);
                 return { ok: true };
             }
             if (!text || text.length > 2000) {

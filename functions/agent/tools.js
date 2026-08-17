@@ -283,10 +283,19 @@ const AGENT_TOOL_DEFS = [
     },
     {
         name: 'escalate_to_human',
-        description: 'Marca la conversación para que un asesor humano la atienda (reclamos, cambios a un pedido ya confirmado, o algo fuera de lo que puedes resolver).',
+        description: 'Marca la conversación para que un asesor humano la atienda (reclamos, cambios a un pedido ya confirmado, o algo fuera de lo que puedes resolver). Esto DETIENE tus respuestas hasta que un humano tome el control — no la uses para preguntas puntuales de datos, para eso usa ask_team_question.',
         input_schema: {
             type: 'object',
             properties: { reason: { type: 'string' } }
+        }
+    },
+    {
+        name: 'ask_team_question',
+        description: 'Envíale una pregunta puntual al equipo humano cuando necesitas un dato que no tienes por ninguna otra tool (ej. tarifa de domicilio a una dirección que lookup_remembered_delivery_fee no encontró y el cliente no puede compartir GPS, marca/disponibilidad de un producto que no aparece en get_menu, o cualquier dato puntual). A diferencia de escalate_to_human, esto NO te quita el control de la conversación: le dices al cliente que esperas confirmación del equipo y puedes seguir ayudándolo con el resto del pedido mientras tanto. Solo puede haber UNA pregunta pendiente a la vez — si ya hay una sin responder, no mandes otra, dile al cliente que sigues esperando.',
+        input_schema: {
+            type: 'object',
+            properties: { question: { type: 'string', description: 'Pregunta puntual y clara para el equipo, ej. "¿Cuál es la tarifa de domicilio para Hoja Ancha?" o "¿Qué marcas de cerveza tenemos disponibles hoy?"' } },
+            required: ['question']
         }
     }
 ];
@@ -476,6 +485,16 @@ function buildAgentToolHandlers({ db, state }) {
             state.needsHuman = true;
             state.escalationReason = reason || '';
             return 'Marcado para atención humana.';
+        },
+
+        ask_team_question: async ({ question } = {}) => {
+            const text = String(question || '').trim();
+            if (!text) return JSON.stringify({ error: 'question es requerido.' });
+            if (state.pendingQuestion?.text) {
+                return JSON.stringify({ error: 'Ya hay una pregunta pendiente sin responder. No mandes otra — dile al cliente que sigues esperando confirmación del equipo.' });
+            }
+            state.pendingQuestion = { text, askedAt: Date.now() };
+            return 'Pregunta enviada al equipo. Dile al cliente que esperas su confirmación y sigue ayudándolo con el resto si puedes mientras tanto.';
         }
     };
 }
