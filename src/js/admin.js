@@ -11108,12 +11108,15 @@ document.addEventListener('click', async (event) => {
     if (action === 'send') {
         const inputEl = document.getElementById('chatRoalReplyInput');
         const text = inputEl ? inputEl.value.trim() : '';
+        console.log('[ChatRoal debug] send: text=', JSON.stringify(text), 'conversationKey=', _chatRoalActiveId);
         if (!text) { showNotice('Escribe un mensaje primero.', 'warn'); return; }
         actionButton.disabled = true;
         try {
-            await callable({ conversationKey: _chatRoalActiveId, text });
+            const result = await callable({ conversationKey: _chatRoalActiveId, text });
+            console.log('[ChatRoal debug] send: OK', result);
             if (inputEl) inputEl.value = '';
         } catch (err) {
+            console.error('[ChatRoal debug] send: ERROR', err);
             showNotice(`Error: ${err.message || 'no se pudo enviar el mensaje'}`, 'error');
         } finally {
             actionButton.disabled = false;
