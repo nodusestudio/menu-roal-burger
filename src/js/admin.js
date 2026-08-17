@@ -11078,6 +11078,16 @@ document.addEventListener('click', async (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     const actionButton = target.closest('button[data-chatroal-action]');
+    // TEMP DEBUG — quitar despues de encontrar por que "enviar" no dispara la llamada.
+    if (actionButton) {
+        console.log('[ChatRoal debug]', {
+            action: actionButton.dataset.chatroalAction,
+            isButton: actionButton instanceof HTMLButtonElement,
+            activeId: _chatRoalActiveId,
+            hasFunctions: !!firebaseFunctions,
+            typeofFirebaseFunctions: typeof firebaseFunctions
+        });
+    }
     if (!(actionButton instanceof HTMLButtonElement) || !_chatRoalActiveId || !firebaseFunctions) return;
 
     const action = actionButton.dataset.chatroalAction;
