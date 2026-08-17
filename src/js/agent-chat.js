@@ -132,10 +132,15 @@
             appendMessage(messagesEl, 'assistant', buildWelcomeMessage(customerProfile));
         }
 
+        // En escritorio (>=900px) el chat es un panel lateral y el menú sigue visible y
+        // usable al lado — solo bloqueamos el scroll de fondo en celular, donde el chat tapa
+        // toda la pantalla.
+        const isDesktopLayout = () => window.matchMedia('(min-width: 900px)').matches;
+
         function openPanel() {
             panel.hidden = false;
             banner.hidden = true;
-            document.body.style.overflow = 'hidden';
+            if (!isDesktopLayout()) document.body.style.overflow = 'hidden';
             loadHistoryIfNeeded();
             input.focus();
         }
