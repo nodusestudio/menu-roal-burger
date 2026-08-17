@@ -288,100 +288,13 @@ async function buildActiveInstructionsSystemBlock(db) {
     };
 }
 
-/**
- * Procesa un turno entrante (web o WhatsApp) y devuelve el texto de respuesta del agente.
- * @param {object} params
- * @param {import('firebase-admin/firestore').Firestore} params.db
- * @param {string} params.anthropicApiKey
- * @param {'web'|'whatsapp'} params.channel
- * @param {string} params.conversationKey
- * @param {string} [params.phone]
- * @param {string} [params.sessionId]
- * @param {string} params.text
- * @param {{latitude:number, longitude:number}} [params.location]
- * @param {{customerName?:string, customerPhone?:string, address?:string, lastOrderId?:string, totalOrders?:number}} [params.customerProfile]
- */
-async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKey, phone, sessionId, text, location, customerProfile }) {
-    const rateLimitKey = phone || sessionId || conversationKey;
-    const allowed = await checkRateLimit(db, rateLimitKey);
-    if (!allowed) {
-        return { reply: RATE_LIMITED_REPLY };
-    }
-
-    const { ref, state, returningCustomerNote } = await loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId, customerProfile });
-
-    // Un admin ya tomó el control de esta conversación desde FODEXA (Chat Roal) — solo se
-    // guarda el mensaje del cliente, sin gastar tokens ni dejar que el bot responda encima.
-    // Va ANTES del chequeo de needs_human: si no, un cliente que sigue escribiendo después de
-    // que el admin tomó el control caía en el mensaje enlatado de abajo y su mensaje ni se
-    // guardaba, porque status se queda en 'needs_human' hasta un handback explícito.
-    if (state.humanControl === true) {
-        const userMessage = { role: 'user', content: [{ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' }] };
-        const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [userMessage]);
-        await ref.set({
-            messageCount: newSeq,
-            lastMessageText: truncatePreview(text),
-            lastCustomerMessageText: truncatePreview(text),
-            updatedAt: FieldValue.serverTimestamp()
-        }, { merge: true });
-        return { reply: null };
-    }
-
-    if (state.status === 'needs_human') {
-        // updatedAt queda congelado en el momento de la escalación: mientras nadie tome el
-        // control (humanControl ya se descartó arriba), nada vuelve a escribir el doc. Se usa
-        // ese valor para saber cuánto lleva esperando sin que se necesite un campo nuevo.
-        const escalatedMs = state.updatedAt?.toMillis ? state.updatedAt.toMillis() : 0;
-        const waitingMs = escalatedMs ? Date.now() - escalatedMs : Infinity;
-        if (waitingMs < NEEDS_HUMAN_TIMEOUT_MS) {
-            return { reply: 'Ya avisamos a un asesor para que te contacte. Si es urgente, escríbenos directo por WhatsApp.' };
-        }
-        // Pasaron más de NEEDS_HUMAN_TIMEOUT_MS sin que nadie tomara el control: se le devuelve
-        // el control al bot solo y sigue el flujo normal más abajo, en vez de dejar al cliente
-        // hablándole a una pared para siempre.
-        state.status = 'active';
-        state.needsHuman = false;
-    }
-
-    if (Number(state.turnCount || 0) >= MAX_TURNS_PER_CONVERSATION) {
-        state.needsHuman = true;
-        state.status = 'needs_human';
-        state.updatedAt = FieldValue.serverTimestamp();
-        await ref.set(state, { merge: true });
-        return { reply: TURN_LIMIT_REPLY };
-    }
-
-    const history = await loadHistory(ref);
-
-    const userContentBlocks = [];
-    if (returningCustomerNote) userContentBlocks.push({ type: 'text', text: returningCustomerNote });
-    const locationNote = buildLocationNoteBlock(state, location);
-    if (locationNote) userContentBlocks.push(locationNote);
-    userContentBlocks.push({ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' });
-
-    const newUserMessage = { role: 'user', content: userContentBlocks };
-    const messages = [...history, newUserMessage];
-    const messagesToPersist = [newUserMessage];
-    // Separado de lastMessageText: ese campo termina reflejando lo último que se escribió en el
-    // doc, que casi siempre es la respuesta del BOT (se pisa más abajo) — Chat Roal necesita
-    // poder mostrarle al admin lo que dijo el CLIENTE, no la respuesta del bot a su propio aviso.
-    state.lastCustomerMessageText = truncatePreview(String(text || '').trim());
-
+// Loop de tool-use compartido por handleIncomingTurn (turno normal, con mensaje del cliente) y
+// runFollowUpTurn (turno "proactivo": el equipo respondió una ask_team_question y el agente
+// tiene que contestarle al cliente SIN que este haya escrito nada nuevo) — extraído para no
+// duplicar la llamada a Claude, el manejo de tools y el persistido final entre los dos.
+async function runAgentConversationLoop({ conversationKey, anthropicApiKey, state, ref, messages, messagesToPersist, systemBlocks }) {
     const client = new Anthropic({ apiKey: anthropicApiKey });
-    const handlers = buildAgentToolHandlers({ db, state });
-
-    const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
-    const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
-    if (instructionsBlock) systemBlocks.push(instructionsBlock);
-    // Si ya hay una pregunta sin responder (ask_team_question), se lo recuerda en cada turno —
-    // sin esto el modelo no tiene memoria de esto entre turnos y podía volver a preguntar lo
-    // mismo o escalar innecesariamente mientras espera.
-    if (state.pendingQuestion?.text) {
-        systemBlocks.push({
-            type: 'text',
-            text: `[Sistema: ya le preguntaste al equipo esto y todavía no responden: "${state.pendingQuestion.text}". No vuelvas a usar ask_team_question para lo mismo. Si el cliente pregunta por esto, dile que sigues esperando confirmación del equipo.]`
-        });
-    }
+    const handlers = buildAgentToolHandlers({ db: ref.firestore, state });
 
     let finalReplyText = '';
     let hadError = false;
@@ -464,7 +377,135 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     state.messageCount = newSeq;
     await ref.set(state, { merge: true });
 
+    return { reply: finalReplyText, hadError };
+}
+
+// Turno "proactivo": se dispara cuando el equipo responde una ask_team_question pendiente —
+// el agente ya tiene la nota de sistema con la respuesta al final del historial (la agregó
+// answerPendingQuestion) y genera su respuesta al cliente SIN que este haya escrito nada nuevo.
+// El caller (agentChatAdminReply) decide cómo hacérsela llegar: para web el widget la recoge
+// solo con el polling que ya tenía; para WhatsApp hay que empujarla activamente por UltraMsg.
+async function runFollowUpTurn(db, anthropicApiKey, conversationKey) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    const snap = await ref.get();
+    if (!snap.exists) throw new Error(`Conversación no encontrada: ${conversationKey}`);
+    const state = snap.data();
+
+    const messages = await loadHistory(ref);
+    if (!messages.length || messages[messages.length - 1].role !== 'user') {
+        // No hay nada nuevo que contestar (ya se le respondió, o el historial no termina en un
+        // mensaje sin responder) — no forzar una respuesta de la nada.
+        return { reply: null, channel: state.channel, phone: state.phone };
+    }
+
+    const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
+    const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
+    if (instructionsBlock) systemBlocks.push(instructionsBlock);
+
+    const { reply } = await runAgentConversationLoop({
+        conversationKey, anthropicApiKey, state, ref, messages, messagesToPersist: [], systemBlocks
+    });
+
+    return { reply, channel: state.channel, phone: state.phone };
+}
+
+/**
+ * Procesa un turno entrante (web o WhatsApp) y devuelve el texto de respuesta del agente.
+ * @param {object} params
+ * @param {import('firebase-admin/firestore').Firestore} params.db
+ * @param {string} params.anthropicApiKey
+ * @param {'web'|'whatsapp'} params.channel
+ * @param {string} params.conversationKey
+ * @param {string} [params.phone]
+ * @param {string} [params.sessionId]
+ * @param {string} params.text
+ * @param {{latitude:number, longitude:number}} [params.location]
+ * @param {{customerName?:string, customerPhone?:string, address?:string, lastOrderId?:string, totalOrders?:number}} [params.customerProfile]
+ */
+async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKey, phone, sessionId, text, location, customerProfile }) {
+    const rateLimitKey = phone || sessionId || conversationKey;
+    const allowed = await checkRateLimit(db, rateLimitKey);
+    if (!allowed) {
+        return { reply: RATE_LIMITED_REPLY };
+    }
+
+    const { ref, state, returningCustomerNote } = await loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId, customerProfile });
+
+    // Un admin ya tomó el control de esta conversación desde FODEXA (Chat Roal) — solo se
+    // guarda el mensaje del cliente, sin gastar tokens ni dejar que el bot responda encima.
+    // Va ANTES del chequeo de needs_human: si no, un cliente que sigue escribiendo después de
+    // que el admin tomó el control caía en el mensaje enlatado de abajo y su mensaje ni se
+    // guardaba, porque status se queda en 'needs_human' hasta un handback explícito.
+    if (state.humanControl === true) {
+        const userMessage = { role: 'user', content: [{ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' }] };
+        const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [userMessage]);
+        await ref.set({
+            messageCount: newSeq,
+            lastMessageText: truncatePreview(text),
+            lastCustomerMessageText: truncatePreview(text),
+            updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        return { reply: null };
+    }
+
+    if (state.status === 'needs_human') {
+        // updatedAt queda congelado en el momento de la escalación: mientras nadie tome el
+        // control (humanControl ya se descartó arriba), nada vuelve a escribir el doc. Se usa
+        // ese valor para saber cuánto lleva esperando sin que se necesite un campo nuevo.
+        const escalatedMs = state.updatedAt?.toMillis ? state.updatedAt.toMillis() : 0;
+        const waitingMs = escalatedMs ? Date.now() - escalatedMs : Infinity;
+        if (waitingMs < NEEDS_HUMAN_TIMEOUT_MS) {
+            return { reply: 'Ya avisamos a un asesor para que te contacte. Si es urgente, escríbenos directo por WhatsApp.' };
+        }
+        // Pasaron más de NEEDS_HUMAN_TIMEOUT_MS sin que nadie tomara el control: se le devuelve
+        // el control al bot solo y sigue el flujo normal más abajo, en vez de dejar al cliente
+        // hablándole a una pared para siempre.
+        state.status = 'active';
+        state.needsHuman = false;
+    }
+
+    if (Number(state.turnCount || 0) >= MAX_TURNS_PER_CONVERSATION) {
+        state.needsHuman = true;
+        state.status = 'needs_human';
+        state.updatedAt = FieldValue.serverTimestamp();
+        await ref.set(state, { merge: true });
+        return { reply: TURN_LIMIT_REPLY };
+    }
+
+    const history = await loadHistory(ref);
+
+    const userContentBlocks = [];
+    if (returningCustomerNote) userContentBlocks.push({ type: 'text', text: returningCustomerNote });
+    const locationNote = buildLocationNoteBlock(state, location);
+    if (locationNote) userContentBlocks.push(locationNote);
+    userContentBlocks.push({ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' });
+
+    const newUserMessage = { role: 'user', content: userContentBlocks };
+    const messages = [...history, newUserMessage];
+    const messagesToPersist = [newUserMessage];
+    // Separado de lastMessageText: ese campo termina reflejando lo último que se escribió en el
+    // doc, que casi siempre es la respuesta del BOT (se pisa más abajo) — Chat Roal necesita
+    // poder mostrarle al admin lo que dijo el CLIENTE, no la respuesta del bot a su propio aviso.
+    state.lastCustomerMessageText = truncatePreview(String(text || '').trim());
+
+    const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
+    const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
+    if (instructionsBlock) systemBlocks.push(instructionsBlock);
+    // Si ya hay una pregunta sin responder (ask_team_question), se lo recuerda en cada turno —
+    // sin esto el modelo no tiene memoria de esto entre turnos y podía volver a preguntar lo
+    // mismo o escalar innecesariamente mientras espera.
+    if (state.pendingQuestion?.text) {
+        systemBlocks.push({
+            type: 'text',
+            text: `[Sistema: ya le preguntaste al equipo esto y todavía no responden: "${state.pendingQuestion.text}". No vuelvas a usar ask_team_question para lo mismo. Si el cliente pregunta por esto, dile que sigues esperando confirmación del equipo.]`
+        });
+    }
+
+    const { reply: finalReplyText } = await runAgentConversationLoop({
+        conversationKey, anthropicApiKey, state, ref, messages, messagesToPersist, systemBlocks
+    });
+
     return { reply: finalReplyText, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn };

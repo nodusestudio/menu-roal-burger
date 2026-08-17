@@ -5,7 +5,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -35,6 +35,18 @@ const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 // Token compartido para validar que el webhook entrante viene de UltraMsg (UltraMsg no firma
 // sus webhooks): firebase functions:secrets:set ULTRAMSG_WEBHOOK_TOKEN
 const ULTRAMSG_WEBHOOK_TOKEN = defineSecret('ULTRAMSG_WEBHOOK_TOKEN');
+
+// Compartido por ultramsgWebhook (respuesta normal del agente) y agentChatAdminReply (empuje
+// proactivo cuando el equipo responde una ask_team_question) — mismo formato de número que
+// usaba UltraMsg antes de que esto se extrajera a una función aparte.
+async function sendWhatsAppMessage(instanceId, token, phoneDigits, body) {
+    const waPhone = phoneDigits.startsWith('57') ? phoneDigits : `57${phoneDigits}`;
+    await fetch(`https://api.ultramsg.com/${instanceId}/messages/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, to: `+${waPhone}`, body })
+    });
+}
 
 // ─────────────────────────────────────────────────────────────
 // Verificación reCAPTCHA v3 — valida el score antes del login admin
@@ -399,14 +411,16 @@ exports.agentChatHistory = onCall(
 );
 
 // ─────────────────────────────────────────────────────────────
-// Chat Roal (FODEXA) — el admin responde directo o le devuelve el control al agente de IA.
-// No hay secrets porque no llama al modelo. Requiere estar autenticado y tener doc en
-// `admins/{uid}` — mismo criterio que el resto del panel admin usa para verificar acceso
-// (ver ensureAdminAuth en src/js/admin.js), pero acá se valida server-side con el Admin SDK
-// porque es la primera Cloud Function del proyecto que solo debe poder llamar un admin.
+// Chat Roal (FODEXA) — el admin responde directo, le devuelve el control al agente de IA, o
+// contesta una pregunta puntual (ask_team_question). Este último caso SÍ llama al modelo (para
+// que el agente le conteste al cliente con el dato ya confirmado) y, si el canal es WhatsApp,
+// empuja el mensaje activamente por UltraMsg — de ahí los secrets. Requiere estar autenticado y
+// tener doc en `admins/{uid}` — mismo criterio que el resto del panel admin usa para verificar
+// acceso (ver ensureAdminAuth en src/js/admin.js), pero acá se valida server-side con el Admin
+// SDK porque es la primera Cloud Function del proyecto que solo debe poder llamar un admin.
 // ─────────────────────────────────────────────────────────────
 exports.agentChatAdminReply = onCall(
-    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY, ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN], cors: ALLOWED_ORIGINS },
     async (request) => {
         const uid = request.auth?.uid;
         if (!uid) {
@@ -441,6 +455,20 @@ exports.agentChatAdminReply = onCall(
                     throw new HttpsError('invalid-argument', 'Respuesta invalida.');
                 }
                 await answerPendingQuestion(getFirestore(), conversationKey, answer);
+                // Generar la respuesta del agente al cliente con el dato recien confirmado, y
+                // empujarla activamente si es WhatsApp -- la web ya la recoge sola con su
+                // polling (agentChatHistory), no hace falta empujarle nada.
+                try {
+                    const followUp = await runFollowUpTurn(getFirestore(), ANTHROPIC_API_KEY.value(), conversationKey);
+                    if (followUp.reply && followUp.channel === 'whatsapp' && followUp.phone) {
+                        await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), followUp.phone, followUp.reply);
+                    }
+                } catch (followUpErr) {
+                    // La respuesta del admin ya quedo guardada -- si esto falla, el cliente la
+                    // va a recibir igual apenas escriba de nuevo (ver system block de
+                    // pendingQuestion en orchestrator.js), no vale la pena fallarle al admin.
+                    console.error('runFollowUpTurn/push error:', followUpErr);
+                }
                 return { ok: true };
             }
             if (!text || text.length > 2000) {
@@ -523,14 +551,7 @@ exports.ultramsgWebhook = onRequest(
                 location
             });
 
-            const instanceId = ULTRAMSG_INSTANCE.value();
-            const token = ULTRAMSG_TOKEN.value();
-            const waPhone = phoneDigits.startsWith('57') ? phoneDigits : `57${phoneDigits}`;
-            await fetch(`https://api.ultramsg.com/${instanceId}/messages/chat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token, to: `+${waPhone}`, body: result.reply })
-            });
+            await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), phoneDigits, result.reply);
 
             res.status(200).send('ok');
         } catch (err) {
