@@ -63,8 +63,11 @@
             </button>
             <div id="agentChatPanel" class="agent-chat-panel" hidden>
                 <div class="agent-chat-header">
-                    <button type="button" id="agentChatBackBtn" class="agent-chat-back" aria-label="Cerrar chat">&#8249;</button>
                     <span class="agent-chat-title">Asistente ROAL BURGER</span>
+                    <button type="button" id="agentChatBackBtn" class="agent-chat-back" aria-label="Cerrar chat">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                        <span class="agent-chat-back-label">Cerrar</span>
+                    </button>
                 </div>
                 <div id="agentChatMessages" class="agent-chat-messages"></div>
                 <div id="agentChatTyping" class="agent-chat-typing" hidden>Escribiendo…</div>
