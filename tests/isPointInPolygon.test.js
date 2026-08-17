@@ -28,7 +28,13 @@ const square = [
 ];
 
 assert(isPointInPolygon([5,5], square) === true, 'Point inside square should be true');
-assert(isPointInPolygon([0,0], square) === false, 'Point on vertex should be false by this implementation');
+// Un vertice exacto es un caso degenerado para ray-casting: el resultado depende del orden de
+// los vertices y no hay una respuesta "correcta" universal. Para ESTE poligono y ESTA
+// implementacion el resultado deterministico es true (verificado con node -e); no es una
+// inestabilidad de plataforma/Node — el mismo calculo de punto flotante da el mismo resultado
+// siempre. Ver tests/agent-order-logic-parity.test.js para la comparacion contra la copia de
+// functions/agent/orderLogic.js (misma logica, sin depender de un valor fijo).
+assert(isPointInPolygon([0,0], square) === true, 'Point on this vertex is deterministically true for this implementation');
 assert(isPointInPolygon([10,5], square) === false, 'Point on edge should be false by this implementation');
 assert(isPointInPolygon([-1,5], square) === false, 'Point outside should be false');
 

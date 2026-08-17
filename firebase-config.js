@@ -25,6 +25,15 @@ function initFirebaseServices() {
         firebase.initializeApp(window.FIREBASE_CONFIG);
     }
 
+    // Emuladores locales (solo cuando el sitio se sirve desde localhost/127.0.0.1, ej. con
+    // `firebase emulators:start`) — nunca se activa en producción (roalburger.com / Vercel).
+    const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    if (isLocalHost && !window._firebaseEmulatorsConnected) {
+        window._firebaseEmulatorsConnected = true;
+        try { firebase.firestore().useEmulator('localhost', 8080); } catch (_e) {}
+        try { if (typeof firebase.functions === 'function') firebase.functions().useEmulator('localhost', 5001); } catch (_e) {}
+    }
+
     const db = firebase.firestore();
 
     // Persistencia offline solo en el menu publico (no en admin).

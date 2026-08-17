@@ -9568,6 +9568,11 @@ function buildThermalTicketMarkup(order, options = {}) {
                         <span>🎉 Ahorro en promos</span>
                         <strong style="color:#1a7a42;">-${escapeHtml(formatMoney(ticketDiscountTotal))}</strong>
                     </div>` : ''}
+                    ${Number(order.promo2x1IncrementoFee || 0) > 0 ? `
+                    <div class="ticket-summary-line ticket-total-row">
+                        <span>Incremento empaque 2×1</span>
+                        <strong>${escapeHtml(formatMoney(Number(order.promo2x1IncrementoFee)))}</strong>
+                    </div>` : ''}
                     ${order.orderType === 'domicilio' ? `
                     <div class="ticket-summary-line ticket-total-row">
                         <span>Domicilio</span>
@@ -11443,6 +11448,7 @@ function buildESCPOSData(order) {
 
     // ── TOTALES ─────────────────────────────────────────────────────────────
     wc('  Subtotal', formatMoney(order.subtotal || 0));
+    if (Number(order.promo2x1IncrementoFee || 0) > 0) wc('  Incremento 2x1', formatMoney(Number(order.promo2x1IncrementoFee)));
     if (order.orderType === 'domicilio') wc('  Domicilio', formatMoney(order.deliveryFee || 0));
     sep();
     pb(ESC, 0x45, 0x01, ESC, 0x21, 0x10);       // negrita + doble alto

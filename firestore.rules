@@ -2,54 +2,52 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── Catálogo público (lectura libre, escritura solo admin) ────────────
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
     match /configuracion/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
     match /categorias/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
     match /productos/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
     match /botones/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
     match /bebidas/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
     match /acompanantes/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
     match /promociones/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
     match /combos_especiales/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
     match /promos_2x1/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
-    // combospacks estaba sin regla — el menú público lo usa para leer combos
     match /combospacks/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
 
-    // ─── Pedidos ────────────────────────────────────────────────────────────
-    // Clientes crean pedidos sin auth. El total debe ser > 0 y los items
-    // no vacíos para evitar spam/pedidos corruptos.
-    // Lectura libre para que el cliente haga seguimiento de su pedido.
-    // Solo admin puede actualizar o eliminar.
     match /pedidos/{doc} {
       allow read: if true;
       allow create: if true
@@ -60,46 +58,30 @@ service cloud.firestore {
         && request.resource.data.customerName is string
         && request.resource.data.customerName.size() > 0
         && request.resource.data.customerName.size() <= 120;
-      // El mesero (sin auth) puede editar/borrar un pedido propio (meseroId propio, aun
-      // pendiente de cobro) para corregir un error apenas lo crea — una vez cobrado, solo admin.
-      allow update: if request.auth != null
+      allow update: if isAdmin()
         || (resource.data.meseroId is string && resource.data.meseroId.size() > 0
             && resource.data.paymentMethod == 'pendiente'
             && request.resource.data.meseroId == resource.data.meseroId);
-      allow delete: if request.auth != null
+      allow delete: if isAdmin()
         || (resource.data.meseroId is string && resource.data.meseroId.size() > 0
             && resource.data.paymentMethod == 'pendiente');
     }
 
-    // ─── Pedidos archivados ─────────────────────────────────────────────────
-    // Al cerrar caja, el admin mueve aquí los pedidos ya procesados (en vez de
-    // borrarlos) para que Tickets/Historial puedan seguir mostrando jornadas
-    // anteriores. Solo el admin autenticado accede — los clientes no necesitan
-    // consultar pedidos ya cerrados.
     match /pedidos_archivados/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
 
-    // Contador de secuencia de pedidos — necesita update sin auth dentro de transacción.
-    // Ruta más específica tiene precedencia sobre /pedidos/{doc}.
     match /pedidos/_meta_order_sequence {
       allow read: if true;
       allow write: if request.resource.data.metaType == 'order_sequence'
         && request.resource.data.current is int;
     }
 
-    // ─── Mensajes de contacto ───────────────────────────────────────────────
-    // Clientes envían mensajes sin auth. Admin los gestiona.
     match /mensajes/{doc} {
       allow create: if true;
-      allow read, update, delete: if request.auth != null;
+      allow read, update, delete: if isAdmin();
     }
 
-    // ─── Clientes ───────────────────────────────────────────────────────────
-    // Sin auth: crear perfil y actualizar datos propios (dirección, PIN, nombre).
-    // El teléfono es obligatorio para poder crear el perfil.
-    // Delete: el menú permite que el cliente elimine su propia cuenta.
-    // Solo admin puede leer el listado completo de clientes.
     match /clientes/{clientId} {
       allow create: if true
         && request.resource.data.customerPhone is string
@@ -107,16 +89,9 @@ service cloud.firestore {
       allow update: if true
         && request.resource.data.customerPhone is string;
       allow delete: if true;
-      // Admin lee todo; un cliente puede leer su propio doc (ID = phone_XXXXXXXXXX)
-      allow read: if request.auth != null || clientId.matches('phone_[0-9]+');
+      allow read: if isAdmin() || clientId.matches('phone_[0-9]+');
     }
 
-    // ─── Puntero googleUid -> clientId (login con Google) ───────────────────
-    // Doc ID = googleUid. Permite buscar el perfil por Google sin sesion con un get()
-    // directo por ID, ya que Firestore no deja hacer where('googleUid', '==', ...) sin
-    // auth contra /clientes (ver fetchClientProfileByGoogleUid en script-v2.js).
-    // El valor guardado es solo un clientId (phone_XXXXXXXXXX) — mismo nivel de exposicion
-    // que ya tiene /clientes por ID directo, ningun dato adicional.
     match /google_links/{googleUid} {
       allow read: if true;
       allow create, update: if true
@@ -125,27 +100,33 @@ service cloud.firestore {
       allow delete: if true;
     }
 
-    // ─── Tokens FCM (push) — solo admin autenticado ──────────────────────────
     match /admin_fcm_tokens/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
 
-    // ─── OTP / Verificaciones de teléfono ────────────────────────────────────
-    // Acceso exclusivo via Firebase Admin SDK (Cloud Functions).
-    // Los clientes nunca acceden directamente a esta colección.
     match /phone_verifications/{doc} {
       allow read, write: if false;
     }
 
-    // ─── Visitas al menú público (tracking de tráfico) ─────────────────────
-    match /visitas/{doc} {
-      allow create: if true;
-      allow read, update, delete: if request.auth != null;
+    // Conversaciones y límite de uso del agente de IA (chat web + WhatsApp) — solo las
+    // Cloud Functions (Admin SDK, que ignora estas reglas) los leen/escriben. El cliente
+    // nunca accede directo a estas colecciones.
+    match /agent_conversations/{doc} {
+      allow read, write: if false;
+
+      match /messages/{messageDoc} {
+        allow read, write: if false;
+      }
+    }
+    match /agent_rate_limits/{doc} {
+      allow read, write: if false;
     }
 
-    // ─── Códigos de redención en local (generados por el cliente) ───────────
-    // El cliente crea su propio código y puede eliminarlo (cancelar).
-    // El admin (auth) puede leerlo y marcarlo como usado.
+    match /visitas/{doc} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
     match /codigos_cupon/{code} {
       allow create: if true
         && request.resource.data.code is string
@@ -153,29 +134,20 @@ service cloud.firestore {
         && request.resource.data.status == 'pending';
       allow read:   if true;
       allow delete: if true;
-      allow update: if request.auth != null;
+      allow update: if isAdmin();
     }
 
-    // ─── Meseros (acceso exclusivo vía enlace) ───────────────────────────────
-    // El ID del documento ES el token del enlace — permite validar el enlace con
-    // un get() por ID conocido sin exponer la colección completa a clientes públicos.
-    // El admin autenticado sí puede listar (panel Configuracion > Meseros).
     match /meseros/{token} {
       allow get: if true;
-      allow list: if request.auth != null;
-      // El mesero (sin auth) puede actualizar UNICAMENTE currentSessionId de su propio doc
-      // (abrir/cerrar su turno) — cualquier otro campo sigue exigiendo sesion de admin.
-      allow update: if request.auth != null
+      allow list: if isAdmin();
+      allow update: if isAdmin()
         || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentSessionId']);
-      allow create, delete: if request.auth != null;
+      allow create, delete: if isAdmin();
     }
 
-    // ─── Historial de turnos de meseros (abrió/cerró sesión) ─────────────────
-    // ID autogenerado. El mesero (sin auth) crea la apertura y luego solo puede
-    // rellenar cerradoAt — nunca reescribir meseroId/abiertoAt de un turno ya creado.
     match /mesero_sesiones/{sessionId} {
       allow get: if true;
-      allow list: if request.auth != null;
+      allow list: if isAdmin();
       allow create: if true
         && request.resource.data.meseroId is string
         && request.resource.data.meseroId.size() > 0
@@ -186,27 +158,30 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cerradoAt']);
     }
 
-    // ─── Solo admin ─────────────────────────────────────────────────────────
     match /resumen_ventas/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
     match /admin_estado/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
     match /cierres_caja/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
     match /pos_tickets/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
     match /gastos_caja/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
     match /proveedores/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
     match /estadisticas/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
+    }
+
+    match /admins/{uid} {
+      allow read, write: if false;
     }
   }
 }

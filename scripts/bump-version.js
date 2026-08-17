@@ -68,9 +68,13 @@ indexHtml = indexHtml.replace(
     `tracking.js?v=${stamp}`
 );
 indexHtml = indexHtml.replace(
+    /agent-chat\.js(\?v=[\w-]+)?(?=")/g,
+    `agent-chat.js?v=${stamp}`
+);
+indexHtml = indexHtml.replace(
     /href="style\.css(\?v=[\w-]+)?"/g,
     `href="style.css?v=${stamp}"`
 );
 
 fs.writeFileSync(indexHtmlPath, indexHtml, 'utf8');
-console.log(`[bump] index.html   → script-v2.js?v=${stamp}  tracking.js?v=${stamp}  style.css?v=${stamp}`);
+console.log(`[bump] index.html   → script-v2.js?v=${stamp}  tracking.js?v=${stamp}  agent-chat.js?v=${stamp}  style.css?v=${stamp}`);

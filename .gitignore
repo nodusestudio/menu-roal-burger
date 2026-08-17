@@ -4,6 +4,9 @@ node_modules/
 .venv/
 .claude/
 firestore-debug.log
+firebase-debug.log
+ui-debug.log
+functions/.secret.local
 
 # Credenciales — NUNCA subir a git
 *serviceAccountKey*.json
@@ -14,4 +17,5 @@ firestore-debug.log
 /admin.js
 /script-v2.js
 /tracking.js
+/agent-chat.js
 /style.css

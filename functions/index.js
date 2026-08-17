@@ -1,10 +1,11 @@
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
+const { handleIncomingTurn } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -29,6 +30,11 @@ const ULTRAMSG_INSTANCE = defineSecret('ULTRAMSG_INSTANCE');
 const ULTRAMSG_TOKEN    = defineSecret('ULTRAMSG_TOKEN');
 // reCAPTCHA secret: firebase functions:secrets:set RECAPTCHA_SECRET
 const RECAPTCHA_SECRET  = defineSecret('RECAPTCHA_SECRET');
+// Agente de IA (Claude): firebase functions:secrets:set ANTHROPIC_API_KEY
+const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
+// Token compartido para validar que el webhook entrante viene de UltraMsg (UltraMsg no firma
+// sus webhooks): firebase functions:secrets:set ULTRAMSG_WEBHOOK_TOKEN
+const ULTRAMSG_WEBHOOK_TOKEN = defineSecret('ULTRAMSG_WEBHOOK_TOKEN');
 
 // ─────────────────────────────────────────────────────────────
 // Verificación reCAPTCHA v3 — valida el score antes del login admin
@@ -245,5 +251,132 @@ exports.verifyWhatsAppOtp = onCall(
         await ref.update({ verified: true, verifiedAt: new Date() });
 
         return { success: true };
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Agente de IA — widget de chat en la web pública
+// Requiere secret: firebase functions:secrets:set ANTHROPIC_API_KEY
+// ─────────────────────────────────────────────────────────────
+exports.agentChatWeb = onCall(
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const sessionId = String(request.data?.sessionId || '').trim();
+        const text      = String(request.data?.message || '').trim();
+        const location  = request.data?.location;
+
+        if (!sessionId || sessionId.length > 100) {
+            throw new HttpsError('invalid-argument', 'sessionId invalido.');
+        }
+        if (!text || text.length > 2000) {
+            throw new HttpsError('invalid-argument', 'Mensaje invalido.');
+        }
+
+        const apiKey = ANTHROPIC_API_KEY.value();
+        if (!apiKey) {
+            throw new HttpsError('failed-precondition', 'Agente no configurado.');
+        }
+
+        try {
+            const result = await handleIncomingTurn({
+                db: getFirestore(),
+                anthropicApiKey: apiKey,
+                channel: 'web',
+                conversationKey: `web_${sessionId}`,
+                sessionId,
+                text,
+                location: (location && Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude)))
+                    ? { latitude: Number(location.latitude), longitude: Number(location.longitude) }
+                    : undefined
+            });
+            return result;
+        } catch (err) {
+            console.error('agentChatWeb error:', err);
+            throw new HttpsError('internal', 'No se pudo procesar el mensaje.');
+        }
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Agente de IA — webhook entrante de WhatsApp (UltraMsg)
+// Configurar en el panel de UltraMsg: "Webhook on Received" ->
+//   https://<region>-<project>.cloudfunctions.net/ultramsgWebhook?wt=<ULTRAMSG_WEBHOOK_TOKEN>
+// Requiere secrets: ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN, ANTHROPIC_API_KEY, ULTRAMSG_WEBHOOK_TOKEN
+// NOTA: el shape exacto del payload de UltraMsg (especialmente para mensajes de ubicación) no
+// se verificó contra el dashboard real — probar con un mensaje real antes de confiar en
+// producción (ver plan de implementación).
+// ─────────────────────────────────────────────────────────────
+exports.ultramsgWebhook = onRequest(
+    { region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN, ANTHROPIC_API_KEY, ULTRAMSG_WEBHOOK_TOKEN] },
+    async (req, res) => {
+        const expectedToken = ULTRAMSG_WEBHOOK_TOKEN.value();
+        const providedToken = String(req.query?.wt || '');
+        if (!expectedToken || providedToken !== expectedToken) {
+            res.status(403).send('forbidden');
+            return;
+        }
+
+        // Responder rápido a UltraMsg y no bloquear su reintento; procesamos igual dentro del
+        // mismo request (Cloud Functions no permite "responder y seguir trabajando" de forma
+        // segura, así que devolvemos 200 al final del procesamiento).
+        try {
+            const body = req.body || {};
+            const eventType = body.event_type || body.eventType;
+            const data = body.data || {};
+
+            if (eventType && eventType !== 'message_received') {
+                res.status(200).send('ignored');
+                return;
+            }
+            if (data.fromMe === true) {
+                res.status(200).send('ignored');
+                return;
+            }
+
+            const fromRaw = String(data.from || '');
+            const phoneDigits = fromRaw.replace(/@.*$/, '').replace(/\D/g, '');
+            if (phoneDigits.length < 10) {
+                res.status(200).send('ignored');
+                return;
+            }
+
+            let location;
+            if (data.type === 'location' && data.location) {
+                const lat = Number(data.location.latitude ?? data.location.lat);
+                const lng = Number(data.location.longitude ?? data.location.lng);
+                if (Number.isFinite(lat) && Number.isFinite(lng)) location = { latitude: lat, longitude: lng };
+            }
+
+            const text = String(data.body || '').trim();
+            if (!text && !location) {
+                res.status(200).send('ignored');
+                return;
+            }
+
+            const apiKey = ANTHROPIC_API_KEY.value();
+            const result = await handleIncomingTurn({
+                db: getFirestore(),
+                anthropicApiKey: apiKey,
+                channel: 'whatsapp',
+                conversationKey: `wa_${phoneDigits}`,
+                phone: phoneDigits,
+                text: text || 'Compartí mi ubicación.',
+                location
+            });
+
+            const instanceId = ULTRAMSG_INSTANCE.value();
+            const token = ULTRAMSG_TOKEN.value();
+            const waPhone = phoneDigits.startsWith('57') ? phoneDigits : `57${phoneDigits}`;
+            await fetch(`https://api.ultramsg.com/${instanceId}/messages/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, to: `+${waPhone}`, body: result.reply })
+            });
+
+            res.status(200).send('ok');
+        } catch (err) {
+            console.error('ultramsgWebhook error:', err);
+            res.status(200).send('error-handled'); // 200 para que UltraMsg no reintente en loop
+        }
     }
 );
