@@ -9,25 +9,127 @@
 
 const orderLogic = require('./orderLogic');
 
-const PRODUCTS_COLLECTION = 'productos';
 const MAX_CART_LINES = 30;
-const MAX_MENU_RESULTS = 60;
+const MAX_MENU_RESULTS = 90;
 
 function normalizeText(value) {
     return String(value || '').trim().toLowerCase();
 }
 
-async function fetchActiveProducts(db) {
-    const snapshot = await db.collection(PRODUCTS_COLLECTION).get();
+// Menú regular — src/js/script-v2.js filtra por p.estado !== 'paused', campo categoria.
+async function fetchProductos(db) {
+    const snapshot = await db.collection('productos').get();
     return snapshot.docs
         .map((doc) => ({ id: doc.id, ...doc.data() }))
         .filter((p) => String(p.estado || '').trim() !== 'paused')
         .map((p) => ({
             nombre: String(p.nombre || '').trim(),
             precio: Number(p.precio) || 0,
-            categoria: String(p.categoria || '').trim()
+            categoria: String(p.categoria || '').trim() || 'Menú',
+            tipo: 'producto',
+            nota: ''
         }))
         .filter((p) => p.nombre);
+}
+
+// Adiciones/acompañamientos (ej. "Huevos de codorniz") — SYNC: loadAcompanantesPublic en
+// src/js/script-v2.js (línea ~1655).
+async function fetchAcompanantes(db) {
+    const snapshot = await db.collection('acompanantes').get();
+    return snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((a) => String(a.estado || '').trim() !== 'paused' && a.activo_menu !== false)
+        .map((a) => ({
+            nombre: String(a.nombre || '').trim(),
+            precio: Number(a.precio) || 0,
+            categoria: 'Adiciones',
+            tipo: 'acompanante',
+            nota: String(a.cantidad || '').trim()
+        }))
+        .filter((a) => a.nombre);
+}
+
+// Bebidas — cada "marca" tiene una o más presentaciones (tamaños), cada una con su propio
+// precio y, a veces, una lista de sabores para elegir. SYNC: _normalizeBebidaPublic en
+// src/js/script-v2.js (línea ~1598). Se aplanan a un item vendible por presentación.
+async function fetchBebidas(db) {
+    const snapshot = await db.collection('bebidas').get();
+    const items = [];
+    snapshot.docs.forEach((doc) => {
+        const raw = doc.data();
+        if (String(raw.estado || '').trim() === 'paused') return;
+        const marca = String(raw.marca || '').trim();
+        const presentaciones = Array.isArray(raw.presentaciones) ? raw.presentaciones : [];
+        presentaciones.forEach((p) => {
+            const nombrePres = String(p.nombre || '').trim();
+            if (!nombrePres) return;
+            const sabores = Array.isArray(p.sabores)
+                ? p.sabores.map((s) => String(s).trim()).filter(Boolean)
+                : (typeof p.sabores === 'string' ? p.sabores.split(',').map((s) => s.trim()).filter(Boolean) : []);
+            items.push({
+                nombre: `${marca} ${nombrePres}`.trim(),
+                precio: Number(p.precio) || 0,
+                categoria: 'Bebidas',
+                tipo: 'bebida',
+                nota: sabores.length ? `Sabores disponibles: ${sabores.join(', ')} — pregunta cuál prefiere.` : ''
+            });
+        });
+    });
+    return items;
+}
+
+// Combo pack (papas + bebida a precio fijo) — SYNC: loadCombosPackPublic en src/js/script-v2.js
+// (línea ~1675).
+async function fetchCombospacks(db) {
+    const snapshot = await db.collection('combospacks').get();
+    return snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((c) => String(c.estado || '').trim() !== 'paused' && c.activo_menu !== false)
+        .map((c) => {
+            const sabores = Array.isArray(c.bebida_sabores) ? c.bebida_sabores.map((s) => String(s).trim()).filter(Boolean) : [];
+            const incluye = [c.papas ? `Papas: ${c.papas}` : '', c.bebida_nombre ? `Bebida: ${c.bebida_nombre}` : ''].filter(Boolean).join(' + ');
+            return {
+                nombre: String(c.nombre || '').trim(),
+                precio: Number(c.valor) || 0,
+                categoria: 'Combos',
+                tipo: 'combo_pack',
+                nota: [incluye, sabores.length ? `Sabor de bebida a elegir: ${sabores.join(', ')}.` : ''].filter(Boolean).join(' ')
+            };
+        })
+        .filter((c) => c.nombre);
+}
+
+// Combos especiales (bundle de productos existentes a precio especial, con ventana horaria
+// opcional) — SYNC: renderCombosEspeciales/_isComboActivoAhora en src/js/script-v2.js
+// (línea ~10504/10533).
+async function fetchCombosEspeciales(db) {
+    const snapshot = await db.collection('combos_especiales').get();
+    return snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((c) => c.activo !== false && orderLogic.isComboActiveNow(c.horario))
+        .map((c) => {
+            const productos = Array.isArray(c.productos) ? c.productos : [];
+            const nombres = productos.map((p) => String(p.nombre || '').trim()).filter(Boolean);
+            return {
+                nombre: String(c.titulo || '').trim(),
+                precio: Number(c.precio_combo || c.precio_original) || 0,
+                categoria: 'Combos especiales',
+                tipo: 'combo_especial',
+                nota: nombres.length ? `Incluye: ${nombres.join(' + ')}.` : ''
+            };
+        })
+        .filter((c) => c.nombre && c.precio > 0);
+}
+
+async function fetchAllSellableItems(db) {
+    const [productos, acompanantes, bebidas, combospacks, combosEspeciales] = await Promise.all([
+        fetchProductos(db),
+        fetchAcompanantes(db),
+        fetchBebidas(db),
+        fetchCombospacks(db),
+        fetchCombosEspeciales(db)
+    ]);
+    return [...productos, ...acompanantes, ...bebidas, ...combospacks, ...combosEspeciales];
 }
 
 function findProductByName(products, name) {
@@ -42,12 +144,12 @@ function findProductByName(products, name) {
 const AGENT_TOOL_DEFS = [
     {
         name: 'get_menu',
-        description: 'Consulta el menú real de productos (nombre, precio, categoría). Úsalo antes de recomendar o agregar cualquier producto — nunca inventes productos o precios. Opcionalmente filtra por categoría o texto de búsqueda.',
+        description: 'Consulta el menú COMPLETO real: productos regulares, adiciones/acompañamientos (ej. huevos de codorniz), bebidas (por presentación, con sabores si aplica), combos pack y combos especiales — cada item trae "tipo" (producto/acompanante/bebida/combo_pack/combo_especial) y a veces "nota" con info extra (qué incluye, sabores para preguntar, etc.). Úsalo antes de recomendar o agregar cualquier cosa — nunca inventes productos, adiciones o precios. Opcionalmente filtra por categoría o texto de búsqueda.',
         input_schema: {
             type: 'object',
             properties: {
-                category: { type: 'string', description: 'Filtra por categoría exacta o parcial (ej. "burger clasicas").' },
-                search: { type: 'string', description: 'Texto de búsqueda dentro del nombre del producto.' }
+                category: { type: 'string', description: 'Filtra por categoría exacta o parcial (ej. "burger clasicas", "adiciones", "bebidas", "combos").' },
+                search: { type: 'string', description: 'Texto de búsqueda dentro del nombre del item.' }
             }
         }
     },
@@ -75,14 +177,14 @@ const AGENT_TOOL_DEFS = [
     },
     {
         name: 'update_cart',
-        description: 'Agrega, quita, cambia cantidad o vacía el carrito en curso. El precio siempre se toma del menú real, nunca de lo que tú recuerdes.',
+        description: 'Agrega, quita, cambia cantidad o vacía el carrito en curso. Funciona con CUALQUIER item de get_menu (productos, adiciones, bebidas, combo_pack, combo_especial) — cada uno se agrega como su propia línea del pedido. El precio siempre se toma del menú real, nunca de lo que tú recuerdes. Si el item tiene sabores para elegir (ver "nota" en get_menu), pregúntale al cliente y guarda su elección en "note".',
         input_schema: {
             type: 'object',
             properties: {
                 operation: { type: 'string', enum: ['add', 'remove', 'set_quantity', 'clear'] },
-                productName: { type: 'string', description: 'Nombre del producto tal como aparece en get_menu. Requerido salvo para operation="clear".' },
+                productName: { type: 'string', description: 'Nombre del item tal como aparece en get_menu (productos, adiciones, bebidas o combos). Requerido salvo para operation="clear".' },
                 quantity: { type: 'integer', minimum: 0, description: 'Para "add" es la cantidad a sumar (default 1); para "set_quantity" es la cantidad final.' },
-                note: { type: 'string', description: 'Nota del producto, ej. "sin cebolla".' }
+                note: { type: 'string', description: 'Nota del item, ej. "sin cebolla" o el sabor elegido para una bebida/combo.' }
             },
             required: ['operation']
         }
@@ -131,7 +233,7 @@ const AGENT_TOOL_DEFS = [
 function buildAgentToolHandlers({ db, state }) {
     return {
         get_menu: async ({ category, search } = {}) => {
-            const products = await fetchActiveProducts(db);
+            const products = await fetchAllSellableItems(db);
             let filtered = products;
             if (category) {
                 const needle = normalizeText(category);
@@ -197,7 +299,7 @@ function buildAgentToolHandlers({ db, state }) {
                 return `"${productName}" quitado del carrito.`;
             }
 
-            const products = await fetchActiveProducts(db);
+            const products = await fetchAllSellableItems(db);
             const product = findProductByName(products, productName);
             if (!product) {
                 return JSON.stringify({ error: `No encontré "${productName}" en el menú. Usa get_menu para ver los nombres exactos.` });

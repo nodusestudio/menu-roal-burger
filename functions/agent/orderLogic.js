@@ -153,6 +153,40 @@ function buildScheduleFromConfigDoc(configData) {
     };
 }
 
+// ── Disponibilidad de combos especiales ──────────────────────────────────────
+// SYNC: src/js/script-v2.js función _isComboActivoAhora (línea ~10504)
+function isComboActiveNow(horario, timeZone = 'America/Bogota', now = new Date()) {
+    if (!horario || horario.tipo === 'siempre') return true;
+
+    const dateParts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+    const year = dateParts.find((p) => p.type === 'year')?.value || '1970';
+    const month = dateParts.find((p) => p.type === 'month')?.value || '01';
+    const day = dateParts.find((p) => p.type === 'day')?.value || '01';
+
+    const timeParts = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false }).formatToParts(now);
+    const hour = Number(timeParts.find((p) => p.type === 'hour')?.value || 0);
+    const minute = Number(timeParts.find((p) => p.type === 'minute')?.value || 0);
+    const weekdayStr = timeParts.find((p) => p.type === 'weekday')?.value || 'Sun';
+    const DOW_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dow = DOW_MAP[weekdayStr] ?? now.getDay();
+
+    if (horario.tipo === 'rango_fechas') {
+        const todayStr = `${year}-${month}-${day}`;
+        const desde = horario.fecha_inicio || '';
+        const hasta = horario.fecha_fin || '';
+        return (!desde || todayStr >= desde) && (!hasta || todayStr <= hasta);
+    }
+    if (horario.tipo === 'dias_horas') {
+        const dias = horario.dias || [];
+        if (dias.length && !dias.map(Number).includes(dow)) return false;
+        const nowMin = hour * 60 + minute;
+        const [ih, im] = (horario.hora_inicio || '00:00').split(':').map(Number);
+        const [fh, fm] = (horario.hora_fin || '23:59').split(':').map(Number);
+        return nowMin >= ih * 60 + im && nowMin <= fh * 60 + fm;
+    }
+    return true;
+}
+
 // ── Armado y creación del pedido ─────────────────────────────────────────────
 function formatCurrencyCOP(amount) {
     return `$${Math.round(Number(amount) || 0).toLocaleString('es-CO')}`;
@@ -367,6 +401,7 @@ module.exports = {
     getCurrentOrderingMinutes,
     getOrderingAvailability,
     buildScheduleFromConfigDoc,
+    isComboActiveNow,
     createAgentOrder,
     DELIVERY_FEE_AMOUNT,
     DELIVERY_GEOFENCE_ZONES
