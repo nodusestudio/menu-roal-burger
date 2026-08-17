@@ -1,11 +1,12 @@
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -494,6 +495,29 @@ exports.agentChatAdminReply = onCall(
             console.error('agentChatAdminReply error:', err);
             throw new HttpsError('internal', 'No se pudo enviar el mensaje.');
         }
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Barrido de inactividad de Chat Roal — corre sola cada 5 minutos, sin que nadie escriba nada.
+// Es lo único que puede hacer que el agente actúe "solo": avisa al cliente si lleva 5+ min sin
+// responder, y archiva la conversación (nunca la borra) si pasan 15 min más sin respuesta al
+// aviso. Ver runInactivitySweep en orchestrator.js para el detalle.
+// ─────────────────────────────────────────────────────────────
+exports.chatRoalInactivitySweep = onSchedule(
+    { schedule: 'every 5 minutes', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
+    async () => {
+        const { warned, archived, toPushWhatsApp } = await runInactivitySweep(getFirestore());
+        if (toPushWhatsApp.length) {
+            const instanceId = ULTRAMSG_INSTANCE.value();
+            const token = ULTRAMSG_TOKEN.value();
+            await Promise.all(toPushWhatsApp.map(({ phone, text }) =>
+                sendWhatsAppMessage(instanceId, token, phone, text).catch((err) =>
+                    console.error(`chatRoalInactivitySweep: fallo al empujar WhatsApp a ${phone}:`, err)
+                )
+            ));
+        }
+        console.log(`chatRoalInactivitySweep: ${warned} avisos, ${archived} archivadas.`);
     }
 );
 

@@ -7913,6 +7913,26 @@
             background: rgba(67, 192, 156, 0.20);
             color: var(--admin-ok);
         }
+        .chatroal-badge--archived {
+            background: rgba(184, 200, 232, 0.12);
+            color: var(--admin-muted);
+        }
+
+        .chatroal-archived-toggle {
+            margin-left: auto;
+            background: transparent;
+            border: 1px solid var(--admin-border);
+            border-radius: 999px;
+            padding: 4px 10px;
+            color: var(--admin-muted);
+            font-size: 0.72rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .chatroal-archived-toggle.is-active {
+            border-color: var(--admin-accent);
+            color: var(--admin-accent);
+        }
 
         /* Aviso emergente de Chat Roal: nombre + mensaje, se apila y se autodestruye a los 15s */
         #chatRoalToastStack {
@@ -13600,6 +13620,7 @@
                     <aside class="inbox-sidebar">
                         <div class="inbox-sidebar-head">
                             <span class="inbox-sidebar-title">Conversaciones</span>
+                            <button type="button" class="chatroal-archived-toggle" id="chatRoalArchivedToggle">📦 Ver archivadas (0)</button>
                         </div>
                         <div class="inbox-search-wrap">
                             <input type="text" class="inbox-search" id="chatRoalSearch" placeholder="Buscar por nombre o teléfono…">

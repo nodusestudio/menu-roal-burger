@@ -23,6 +23,12 @@ const RATE_LIMIT_MAX_MESSAGES = 20;
 // devuelve el control al bot solo -- sin esto, una conversación quedaba respondiendo el mismo
 // mensaje enlatado para siempre si nadie de FODEXA llegaba a contestar.
 const NEEDS_HUMAN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutos
+// Usados por chatRoalInactivitySweep (functions/index.js, corre cada 5 min sola, sin que nadie
+// escriba) -- son los mismos tiempos que el negocio pidió desde "Instrucciones para el agente":
+// avisar tras 5 min sin respuesta del cliente, archivar tras 15 min más sin respuesta al aviso.
+const INACTIVITY_WARN_MS = 5 * 60 * 1000;
+const INACTIVITY_ARCHIVE_MS = 15 * 60 * 1000;
+const INACTIVITY_WARNING_TEXT = '¿Sigues ahí? 🙂 Aquí sigo atento para ayudarte a cerrar tu pedido cuando quieras continuar.';
 
 const FALLBACK_REPLY = 'Tuvimos un problema técnico en este momento. Por favor escríbenos directo por WhatsApp o usa el menú web mientras lo solucionamos.';
 const RATE_LIMITED_REPLY = 'Vamos muy rápido 🙂 Espera un momento y vuelve a escribir.';
@@ -262,6 +268,57 @@ async function addAdminNote(db, conversationKey, noteText) {
     await ref.set({ messageCount: newSeq, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 }
 
+// Corre sola cada 5 minutos (chatRoalInactivitySweep en functions/index.js, onSchedule) — es la
+// ÚNICA forma de que el agente actúe sin que nadie le escriba nada, porque handleIncomingTurn
+// solo corre quien le manda un mensaje (cliente, o una nota/instrucción del admin). Sin esto,
+// instrucciones como "avisa tras 5 min de inactividad y cierra a los 15 min más" no tenían
+// ningún reloj real que las disparara.
+// No borra nada: "archivar" es solo status:'archived' -- los mensajes y el historial completo
+// quedan intactos en Firestore para siempre, Chat Roal los sigue mostrando (con un toggle) para
+// tener la información a mano. Si el cliente vuelve a escribir, la conversación se reactiva sola.
+async function runInactivitySweep(db) {
+    const now = Date.now();
+    const toPushWhatsApp = [];
+    let warned = 0;
+    let archived = 0;
+
+    const snap = await db.collection(CONVERSATIONS_COLLECTION).where('status', '==', 'active').get();
+
+    for (const doc of snap.docs) {
+        const state = doc.data();
+        if (state.humanControl) continue; // un admin ya está con el cliente, no interferir
+
+        const updatedMs = state.updatedAt?.toMillis ? state.updatedAt.toMillis() : 0;
+        if (!updatedMs) continue;
+        const warnedMs = state.inactivityWarnedAt?.toMillis ? state.inactivityWarnedAt.toMillis() : 0;
+
+        if (warnedMs) {
+            if (now - warnedMs >= INACTIVITY_ARCHIVE_MS) {
+                await doc.ref.set({ status: 'archived', archivedAt: FieldValue.serverTimestamp() }, { merge: true });
+                archived += 1;
+            }
+            continue;
+        }
+
+        if (now - updatedMs < INACTIVITY_WARN_MS) continue;
+
+        const message = { role: 'assistant', content: [{ type: 'text', text: INACTIVITY_WARNING_TEXT }] };
+        const newSeq = await persistNewMessages(doc.ref, Number(state.messageCount || 0), [message]);
+        await doc.ref.set({
+            messageCount: newSeq,
+            lastMessageText: INACTIVITY_WARNING_TEXT,
+            inactivityWarnedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        warned += 1;
+        if (state.channel === 'whatsapp' && state.phone) {
+            toPushWhatsApp.push({ phone: state.phone, text: INACTIVITY_WARNING_TEXT });
+        }
+    }
+
+    return { warned, archived, toPushWhatsApp };
+}
+
 function buildLocationNoteBlock(state, location) {
     if (!location || !Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) {
         return null;
@@ -459,6 +516,7 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
             messageCount: newSeq,
             lastMessageText: truncatePreview(text),
             lastCustomerMessageText: truncatePreview(text),
+            inactivityWarnedAt: FieldValue.delete(),
             updatedAt: FieldValue.serverTimestamp()
         }, { merge: true });
         return { reply: null };
@@ -479,6 +537,13 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
         state.status = 'active';
         state.needsHuman = false;
     }
+
+    if (state.status === 'archived') {
+        // El cliente volvió a escribir después de que chatRoalInactivitySweep archivó la
+        // conversación por inactividad — se reactiva sola, como cualquier conversación normal.
+        state.status = 'active';
+    }
+    state.inactivityWarnedAt = FieldValue.delete();
 
     if (Number(state.turnCount || 0) >= MAX_TURNS_PER_CONVERSATION) {
         state.needsHuman = true;
@@ -524,4 +589,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep };

@@ -10736,6 +10736,10 @@ function initChatRoal() {
 
     document.getElementById('chatRoalSearch')?.addEventListener('input', renderChatRoalList);
     document.getElementById('chatRoalSettingsBtn')?.addEventListener('click', toggleChatRoalSettingsPanel);
+    document.getElementById('chatRoalArchivedToggle')?.addEventListener('click', () => {
+        _chatRoalShowArchived = !_chatRoalShowArchived;
+        renderChatRoalList();
+    });
 }
 
 // Mismo patrón que announceNewMessages/updateMessagesAttentionState (sonido + notificación
@@ -11011,11 +11015,17 @@ function _chatRoalName(conv) {
 }
 
 function _chatRoalStatusBadge(conv) {
+    if (conv.status === 'archived') return '<span class="chatroal-badge chatroal-badge--archived">📦 Archivada</span>';
     if (conv.humanControl) return '<span class="chatroal-badge chatroal-badge--you">👤 Tú</span>';
     if (conv.needsHuman) return '<span class="chatroal-badge chatroal-badge--alert">🙋 Atención</span>';
     if (conv.pendingQuestion?.text) return '<span class="chatroal-badge chatroal-badge--alert">❓ Pregunta</span>';
     return '<span class="chatroal-badge chatroal-badge--bot">🤖 Agente</span>';
 }
+
+// Las archivadas (chatRoalInactivitySweep, cerradas por inactividad) NO se borran nunca — solo
+// se sacan de la vista por defecto para no mezclarlas con las activas; este toggle las muestra
+// sin perder acceso a la información e historial completo.
+let _chatRoalShowArchived = false;
 
 function renderChatRoalList() {
     const listEl = document.getElementById('chatRoalList');
@@ -11023,8 +11033,15 @@ function renderChatRoalList() {
     const countEl = document.getElementById('chatRoalCount');
     if (countEl) countEl.textContent = _chatRoalConversations.filter((c) => c.needsHuman || c.pendingQuestion?.text).length;
 
+    const archivedToggleBtn = document.getElementById('chatRoalArchivedToggle');
+    if (archivedToggleBtn) {
+        const archivedCount = _chatRoalConversations.filter((c) => c.status === 'archived').length;
+        archivedToggleBtn.textContent = _chatRoalShowArchived ? '💬 Ver activas' : `📦 Ver archivadas (${archivedCount})`;
+        archivedToggleBtn.classList.toggle('is-active', _chatRoalShowArchived);
+    }
+
     const searchTerm = (document.getElementById('chatRoalSearch')?.value || '').trim().toLowerCase();
-    let filtered = _chatRoalConversations;
+    let filtered = _chatRoalConversations.filter((c) => _chatRoalShowArchived ? c.status === 'archived' : c.status !== 'archived');
     if (searchTerm) {
         filtered = filtered.filter((c) =>
             _chatRoalName(c).toLowerCase().includes(searchTerm) ||
