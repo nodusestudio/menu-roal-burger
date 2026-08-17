@@ -1820,26 +1820,30 @@ async function ensureAdminAuth() {
             if (authSubmitBtn) { authSubmitBtn.disabled = true; authSubmitBtn.textContent = 'Verificando...'; }
 
             // reCAPTCHA v3 invisible — verifica score en servidor antes de autenticar.
-            // Fail-closed: si el script de Google no cargó (bloqueador de anuncios, Brave
-            // Shields, etc.) el login se bloquea en vez de saltarse la verificación en
-            // silencio — antes esto dejaba pasar cualquier login sin protección.
-            if (RECAPTCHA_SITE_KEY) {
-                if (!window.grecaptcha) {
-                    if (authSubmitBtn) { authSubmitBtn.disabled = false; authSubmitBtn.textContent = 'Ingresar'; }
-                    showAuthFailure('No se pudo cargar la verificacion de seguridad. Desactiva bloqueadores de anuncios/privacidad para este sitio e intenta de nuevo.');
-                    return;
-                }
+            // Fail-open con timeout: si Google/nuestra funcion no responden en 6s (dominio
+            // mal configurado en el lado de reCAPTCHA, bloqueador de anuncios, red lenta,
+            // etc.), dejamos pasar el login igual — un tercero caido no debe poder dejar al
+            // admin fuera de su propio panel. Si SI responde y el score es malo, ahi si se
+            // bloquea (funcions/failed-precondition), eso no cambia.
+            if (RECAPTCHA_SITE_KEY && window.grecaptcha) {
                 try {
-                    await new Promise((res) => window.grecaptcha.ready(res));
-                    const rcToken  = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'admin_login' });
-                    const verifyFn = firebase.functions().httpsCallable('verifyRecaptcha');
-                    await verifyFn({ token: rcToken });
+                    const verification = (async () => {
+                        await new Promise((res) => window.grecaptcha.ready(res));
+                        const rcToken  = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'admin_login' });
+                        const verifyFn = firebase.functions().httpsCallable('verifyRecaptcha');
+                        await verifyFn({ token: rcToken });
+                    })();
+                    const timeout = new Promise((_, rej) => setTimeout(() => rej({ code: 'timeout' }), 6000));
+                    await Promise.race([verification, timeout]);
                 } catch (err) {
-                    if (authSubmitBtn) { authSubmitBtn.disabled = false; authSubmitBtn.textContent = 'Ingresar'; }
-                    showAuthFailure(err?.code === 'functions/failed-precondition'
-                        ? 'Verificacion de seguridad fallida. Intenta de nuevo.'
-                        : 'No se pudo completar la verificacion. Revisa tu conexion.');
-                    return;
+                    if (err?.code === 'functions/failed-precondition') {
+                        if (authSubmitBtn) { authSubmitBtn.disabled = false; authSubmitBtn.textContent = 'Ingresar'; }
+                        showAuthFailure('Verificacion de seguridad fallida. Intenta de nuevo.');
+                        return;
+                    }
+                    // Cualquier otro fallo (timeout, dominio no autorizado en reCAPTCHA, sin
+                    // script, red) no bloquea el login — solo se pierde la señal anti-bots.
+                    console.warn('reCAPTCHA no respondio a tiempo, continuando sin verificacion adicional:', err);
                 }
             }
 
