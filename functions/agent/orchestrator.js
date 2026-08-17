@@ -208,7 +208,18 @@ async function appendAdminMessage(db, conversationKey, text) {
 
 async function handbackToAgent(db, conversationKey) {
     const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
-    await ref.set({ humanControl: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    // needsHuman/status también se resetean acá: sin esto, una conversación que escaló una vez
+    // quedaba con status='needs_human' para siempre (handleIncomingTurn corta en seco antes de
+    // dejar responder al bot de nuevo), aunque el admin ya haya devuelto el control.
+    await ref.set({ humanControl: false, needsHuman: false, status: 'active', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+// Limpia el aviso de "necesita atención" sin tocar humanControl/status — se usa cuando el admin
+// simplemente abre la conversación en Chat Roal para leerla, así el badge de FODEXA deja de
+// parpadear sin que eso reanude al bot solo (reanudar sigue requiriendo handback explícito).
+async function markConversationSeen(db, conversationKey) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    await ref.set({ needsHuman: false }, { merge: true });
 }
 
 function buildLocationNoteBlock(state, location) {
@@ -275,12 +286,11 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
 
     const { ref, state, returningCustomerNote } = await loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId, customerProfile });
 
-    if (state.status === 'needs_human') {
-        return { reply: 'Ya avisamos a un asesor para que te contacte. Si es urgente, escríbenos directo por WhatsApp.' };
-    }
-
     // Un admin ya tomó el control de esta conversación desde FODEXA (Chat Roal) — solo se
     // guarda el mensaje del cliente, sin gastar tokens ni dejar que el bot responda encima.
+    // Va ANTES del chequeo de needs_human: si no, un cliente que sigue escribiendo después de
+    // que el admin tomó el control caía en el mensaje enlatado de abajo y su mensaje ni se
+    // guardaba, porque status se queda en 'needs_human' hasta un handback explícito.
     if (state.humanControl === true) {
         const userMessage = { role: 'user', content: [{ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' }] };
         const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [userMessage]);
@@ -290,6 +300,10 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
             updatedAt: FieldValue.serverTimestamp()
         }, { merge: true });
         return { reply: null };
+    }
+
+    if (state.status === 'needs_human') {
+        return { reply: 'Ya avisamos a un asesor para que te contacte. Si es urgente, escríbenos directo por WhatsApp.' };
     }
 
     if (Number(state.turnCount || 0) >= MAX_TURNS_PER_CONVERSATION) {
@@ -402,4 +416,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen };

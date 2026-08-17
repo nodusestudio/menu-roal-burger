@@ -7826,6 +7826,7 @@
             background: rgba(255,255,255,0.04);
             border: 1px solid var(--admin-border);
         }
+        .chatroal-settings-panel[hidden] { display: none; }
         .chatroal-settings-section h3 {
             margin: 0 0 10px;
             font-size: 0.85rem;
@@ -14656,7 +14657,7 @@
         </button>
     </div>
 
-    <!-- defer: deja que las 5 SDK de Firebase + Sortable + los locales se descarguen en
+    <!-- defer: deja que las 6 SDK de Firebase + Sortable + los locales se descarguen en
          paralelo en vez de uno tras otro (eran 8 round-trips en serie antes de que admin.js
          siquiera empezara a bajar); defer garantiza que igual se EJECUTEN en este mismo orden. -->
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -14664,6 +14665,10 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
+    <!-- Faltaba: sin esto, firebase.functions() no existe y Chat Roal (Devolver al agente,
+         responder, marcar como visto) quedaba en un no-op silencioso -- el botón de enviar
+         no hacía nada porque initFirebaseServices() devolvía functions:null. -->
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
     <script>
       // Registrar el Service Worker de FCM para notificaciones en segundo plano
       if ('serviceWorker' in navigator) {

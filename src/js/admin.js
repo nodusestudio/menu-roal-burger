@@ -1141,21 +1141,47 @@ function playAlertTonePattern(steps) {
     }
     return new Promise((resolve) => {
         const startAt = audioContext.currentTime + 0.02;
+
+        // Compresor de salida: deja llevar cada oscilador cerca del gain máximo (1.0) sin que
+        // se recorte/distorsione al sumarse varias voces — así suena lo más fuerte posible sin
+        // clip. El techo real de "qué tan fuerte suena" sigue siendo el volumen del sistema/
+        // altavoces del dispositivo, eso ningún código de audio del navegador lo puede superar.
+        const compressor = audioContext.createDynamicsCompressor();
+        compressor.threshold.setValueAtTime(-16, startAt);
+        compressor.knee.setValueAtTime(8, startAt);
+        compressor.ratio.setValueAtTime(16, startAt);
+        compressor.attack.setValueAtTime(0.002, startAt);
+        compressor.release.setValueAtTime(0.2, startAt);
+        compressor.connect(audioContext.destination);
+
         let totalMs = 0;
         steps.forEach((step) => {
             const t0 = startAt + step.offset;
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            oscillator.type = step.type || 'sine';
-            oscillator.frequency.setValueAtTime(step.freq, t0);
-            if (step.freqEnd) oscillator.frequency.linearRampToValueAtTime(step.freqEnd, t0 + step.duration);
-            gainNode.gain.setValueAtTime(0.0001, t0);
-            gainNode.gain.exponentialRampToValueAtTime(step.volume || 0.2, t0 + 0.02);
-            gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + step.duration);
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            oscillator.start(t0);
-            oscillator.stop(t0 + step.duration + 0.02);
+            const peak = Math.min(step.volume ?? 0.9, 1);
+
+            // Dos voces por paso (la nota + una octava abajo, más baja de volumen) para dar
+            // cuerpo grave y que se perciba más fuerte en parlantes chicos de laptop/celular,
+            // no solo un pitido fino.
+            const voices = [
+                { freq: step.freq, freqEnd: step.freqEnd, gain: peak, type: step.type || 'sine' },
+                { freq: step.freq / 2, freqEnd: step.freqEnd ? step.freqEnd / 2 : undefined, gain: peak * 0.55, type: 'sine' }
+            ];
+
+            voices.forEach((voice) => {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                oscillator.type = voice.type;
+                oscillator.frequency.setValueAtTime(voice.freq, t0);
+                if (voice.freqEnd) oscillator.frequency.linearRampToValueAtTime(voice.freqEnd, t0 + step.duration);
+                gainNode.gain.setValueAtTime(0.0001, t0);
+                gainNode.gain.exponentialRampToValueAtTime(voice.gain, t0 + 0.015);
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + step.duration);
+                oscillator.connect(gainNode);
+                gainNode.connect(compressor);
+                oscillator.start(t0);
+                oscillator.stop(t0 + step.duration + 0.02);
+            });
+
             totalMs = Math.max(totalMs, (step.offset + step.duration) * 1000 + 60);
         });
         window.setTimeout(resolve, totalMs);
@@ -1163,12 +1189,21 @@ function playAlertTonePattern(steps) {
 }
 
 const CHAT_ROAL_SOUND_PRESETS = {
-    ding:       { label: 'Ding',              steps: [{ offset: 0,    freq: 1100, duration: 0.18, type: 'triangle' }] },
-    campanita:  { label: 'Campanita',          steps: [{ offset: 0,    freq: 1400, duration: 0.14, type: 'sine' }, { offset: 0.16, freq: 1700, duration: 0.16, type: 'sine' }] },
-    doble_tono: { label: 'Doble tono',         steps: [{ offset: 0,    freq: 900,  duration: 0.12, type: 'square' }, { offset: 0.16, freq: 900, duration: 0.12, type: 'square' }] },
-    alerta:     { label: 'Alerta',             steps: [{ offset: 0,    freq: 750,  duration: 0.16, type: 'sawtooth' }, { offset: 0.18, freq: 550, duration: 0.22, type: 'sawtooth' }] },
-    urgente:    { label: 'Urgente (3 tonos)',  steps: [{ offset: 0,    freq: 1200, duration: 0.1,  type: 'square' }, { offset: 0.12, freq: 700, duration: 0.1, type: 'square' }, { offset: 0.24, freq: 1200, duration: 0.1, type: 'square' }] },
-    sirena:     { label: 'Sirena breve',       steps: [{ offset: 0,    freq: 500,  freqEnd: 1000, duration: 0.3, type: 'sawtooth' }] }
+    ding:       { label: 'Ding',                    steps: [{ offset: 0,    freq: 1100, duration: 0.18, type: 'triangle' }] },
+    campanita:  { label: 'Campanita',                steps: [{ offset: 0,    freq: 1400, duration: 0.14, type: 'sine' }, { offset: 0.16, freq: 1700, duration: 0.16, type: 'sine' }] },
+    doble_tono: { label: 'Doble tono',               steps: [{ offset: 0,    freq: 900,  duration: 0.12, type: 'square' }, { offset: 0.16, freq: 900, duration: 0.12, type: 'square' }] },
+    alerta:     { label: 'Alerta',                   steps: [{ offset: 0,    freq: 750,  duration: 0.16, type: 'sawtooth' }, { offset: 0.18, freq: 550, duration: 0.22, type: 'sawtooth' }] },
+    urgente:    { label: 'Urgente (3 tonos)',        steps: [{ offset: 0,    freq: 1200, duration: 0.1,  type: 'square' }, { offset: 0.12, freq: 700, duration: 0.1, type: 'square' }, { offset: 0.24, freq: 1200, duration: 0.1, type: 'square' }] },
+    sirena:     { label: 'Sirena breve',             steps: [{ offset: 0,    freq: 500,  freqEnd: 1000, duration: 0.3, type: 'sawtooth' }] },
+    alarma_max: {
+        label: '🚨 Alarma máxima (la más fuerte)',
+        steps: [
+            { offset: 0,    freq: 900,  freqEnd: 1400, duration: 0.22, type: 'square',   volume: 1 },
+            { offset: 0.26, freq: 1400, freqEnd: 900,  duration: 0.22, type: 'sawtooth', volume: 1 },
+            { offset: 0.52, freq: 900,  freqEnd: 1400, duration: 0.22, type: 'square',   volume: 1 },
+            { offset: 0.78, freq: 1400, freqEnd: 900,  duration: 0.26, type: 'sawtooth', volume: 1 }
+        ]
+    }
 };
 
 let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta' };
@@ -10954,6 +10989,15 @@ function openChatRoalDetail(conversationId) {
     document.querySelectorAll('#chatRoalList .inbox-thread-item').forEach((el) => {
         el.classList.toggle('is-active', el.dataset.conversationId === conversationId);
     });
+
+    // Abrir la conversación cuenta como "leída": apaga el aviso de "necesita atención" para que
+    // el badge/parpadeo de la pestaña Chat Roal no se quede pegado después de que el admin ya
+    // la revisó. No reanuda el bot solo (eso sigue siendo "Devolver al agente" explícito).
+    const openedConv = _chatRoalConversations.find((c) => c.id === conversationId);
+    if (openedConv?.needsHuman && firebaseFunctions) {
+        firebaseFunctions.httpsCallable('agentChatAdminReply')({ conversationKey: conversationId, markSeen: true })
+            .catch((err) => console.error('Chat Roal: no se pudo marcar como visto', err));
+    }
 
     if (_chatRoalUnsubMsgs) { _chatRoalUnsubMsgs(); _chatRoalUnsubMsgs = null; }
     _chatRoalMessages = [];

@@ -5,7 +5,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -422,11 +422,16 @@ exports.agentChatAdminReply = onCall(
             throw new HttpsError('invalid-argument', 'conversationKey invalido.');
         }
         const handback = request.data?.handback === true;
+        const markSeen = request.data?.markSeen === true;
         const text = String(request.data?.text || '').trim();
 
         try {
             if (handback) {
                 await handbackToAgent(getFirestore(), conversationKey);
+                return { ok: true };
+            }
+            if (markSeen) {
+                await markConversationSeen(getFirestore(), conversationKey);
                 return { ok: true };
             }
             if (!text || text.length > 2000) {
