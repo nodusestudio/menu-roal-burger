@@ -374,6 +374,8 @@ let hasLoadedOrdersOnce = false;
 let viewedOrderIds = new Set(); // pedidos abiertos en el ticket — dejan de tintiliar aunque sigan pendiente
 let knownMessageIds = new Set();
 let hasLoadedMessagesOnce = false;
+let knownChatRoalIds = new Set();
+let hasLoadedChatRoalOnce = false;
 let activeAccordionSection = 'categorias';
 let orderAnnouncementQueue = Promise.resolve();
 let orderBellAudioContext = null;
@@ -1549,6 +1551,7 @@ function setupAccordion() {
         } else {
             updateMessagesAttentionState();
         }
+        updateChatRoalAttentionState();
 
         if (target === 'clientes') {
             fetchClients().then(renderClients);
@@ -10594,10 +10597,68 @@ function initChatRoal() {
         .limit(50)
         .onSnapshot((snapshot) => {
             _chatRoalConversations = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            announceNewChatRoalConversations(_chatRoalConversations);
             renderChatRoalList();
         }, (err) => console.error('Chat Roal onSnapshot error:', err));
 
     document.getElementById('chatRoalSearch')?.addEventListener('input', renderChatRoalList);
+}
+
+// Mismo patrón que announceNewMessages/updateMessagesAttentionState (sonido + notificación
+// del sistema + pestaña parpadeando) — es lo que de verdad avisa hoy en FODEXA, la push real
+// por FCM nunca quedó configurada (falta la VAPID key).
+function updateChatRoalAttentionState() {
+    const btn = document.querySelector('.admin-accordion-trigger[data-accordion-target="chatroal"]');
+    if (!(btn instanceof HTMLButtonElement)) return;
+    const count = _chatRoalConversations.filter((c) => c.needsHuman).length;
+    btn.classList.toggle('has-unread', count > 0);
+    btn.classList.toggle('is-blinking', count > 0 && activeAccordionSection !== 'chatroal');
+    btn.dataset.unreadCount = count > 99 ? '99+' : String(count || '');
+    if (count <= 0) btn.removeAttribute('data-unread-count');
+}
+
+function notifyNewChatRoalConversation(conv) {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    // Igual que notifyNewOrder: si la pestaña está visible, con el sonido + showNotice alcanza.
+    if (!document.hidden) return;
+
+    const notification = new Notification(`Nuevo chat en ${brandingState.restaurantName || 'Roal Burger'}`, {
+        body: `${_chatRoalName(conv)} está chateando con el asistente.`,
+        icon: 'isotipo.png',
+        badge: 'isotipo.png',
+        tag: `roal-chat-${conv.id}`,
+        renotify: true
+    });
+
+    notification.onclick = () => {
+        window.focus();
+        document.querySelector('.admin-accordion-trigger[data-accordion-target="chatroal"]')?.click();
+        openChatRoalDetail(conv.id);
+        notification.close();
+    };
+}
+
+function announceNewChatRoalConversations(conversations) {
+    const currentIds = new Set(conversations.map((c) => c.id));
+
+    if (!hasLoadedChatRoalOnce) {
+        knownChatRoalIds = currentIds;
+        hasLoadedChatRoalOnce = true;
+        updateChatRoalAttentionState();
+        return;
+    }
+
+    const newOnes = conversations.filter((c) => !knownChatRoalIds.has(c.id));
+    knownChatRoalIds = currentIds;
+    updateChatRoalAttentionState();
+
+    if (!newOnes.length) return;
+
+    newOnes.slice().reverse().forEach((conv) => {
+        playMessageAlertTone();
+        notifyNewChatRoalConversation(conv);
+        showNotice(`Nuevo chat de ${_chatRoalName(conv)}.`, 'ok');
+    });
 }
 
 function _chatRoalName(conv) {
@@ -11989,6 +12050,12 @@ function setupLiveFirebaseSync() {
                 onErr('mensajes')
             )
     );
+
+    // Chat Roal: a diferencia de pedidos/mensajes de arriba, esta suscripción vive en su
+    // propia variable (_chatRoalUnsubList, ver initChatRoal) en vez de liveSubscriptions —
+    // igual queda activa desde el arranque del admin, no solo cuando se abre la pestaña, para
+    // que el aviso sonoro/visual de chat nuevo funcione aunque el admin esté en otra pestaña.
+    initChatRoal();
 
     // Jornada de ventas: recarga el estado y el banner/caja diaria
     const salesHandler = _makeDebouncedHandler(async () => {
