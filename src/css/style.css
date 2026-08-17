@@ -8685,6 +8685,9 @@ a,
     font-weight: 600;
     letter-spacing: 0.2px;
 }
+.agent-chat-banner[hidden] {
+    display: none;
+}
 .agent-chat-banner-icon {
     font-size: 1.15rem;
     line-height: 1;
@@ -8704,6 +8707,9 @@ a,
     flex-direction: column;
     overflow: hidden;
     font-family: 'Roboto', sans-serif;
+}
+.agent-chat-panel[hidden] {
+    display: none;
 }
 
 .agent-chat-header {
