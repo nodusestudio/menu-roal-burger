@@ -11139,6 +11139,12 @@ function renderChatRoalDetail() {
                 <button type="button" data-chatroal-action="answer-question">Responder</button>
             </div>
         </div>` : ''}
+        ${!conv.humanControl ? `
+        <div class="chatroal-note-bar">
+            <span title="El cliente no ve esto — el agente lo sigue en su próxima respuesta">📝</span>
+            <input type="text" id="chatRoalNoteInput" placeholder="Instrúyelo ahora (ej. «pídele la dirección») — el cliente no ve esto">
+            <button type="button" data-chatroal-action="add-note">Enviar</button>
+        </div>` : ''}
         <div class="inbox-messages-scroll" id="chatRoalMsgScroll">
             ${messagesHtml || '<p class="inbox-empty">Sin mensajes aún</p>'}
         </div>
@@ -11201,6 +11207,23 @@ document.addEventListener('click', async (event) => {
             showNotice('Respuesta enviada al agente.', 'ok');
         } catch (err) {
             showNotice(`Error: ${err.message || 'no se pudo enviar la respuesta'}`, 'error');
+        } finally {
+            actionButton.disabled = false;
+        }
+        return;
+    }
+
+    if (action === 'add-note') {
+        const inputEl = document.getElementById('chatRoalNoteInput');
+        const note = inputEl ? inputEl.value.trim() : '';
+        if (!note) { showNotice('Escribe la instrucción primero.', 'warn'); return; }
+        actionButton.disabled = true;
+        try {
+            await callable({ conversationKey: _chatRoalActiveId, addNote: true, note });
+            if (inputEl) inputEl.value = '';
+            showNotice('Instrucción enviada al agente.', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo enviar la instrucción'}`, 'error');
         } finally {
             actionButton.disabled = false;
         }

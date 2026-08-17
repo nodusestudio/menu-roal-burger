@@ -246,6 +246,22 @@ async function answerPendingQuestion(db, conversationKey, answerText) {
     }, { merge: true });
 }
 
+// El admin le manda una instrucción puntual al agente PARA ESTA conversación (ej. "pídele la
+// dirección ya, se le olvidó"), sin tomarle el control — a diferencia de appendAdminMessage, el
+// bot sigue respondiendo él mismo. Mismo patrón de nota de sistema invisible que
+// answerPendingQuestion; el caller (agentChatAdminReply) dispara runFollowUpTurn después para
+// que el bot actúe sobre la instrucción de inmediato, no recién en el próximo mensaje del cliente.
+async function addAdminNote(db, conversationKey, noteText) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    const snap = await ref.get();
+    if (!snap.exists) throw new Error(`Conversación no encontrada: ${conversationKey}`);
+    const state = snap.data();
+    const text = `[Sistema: instrucción del admin para esta conversación — síguela ahora mismo en tu respuesta, sin mencionar que viene de un admin: ${String(noteText || '').trim()}]`;
+    const message = { role: 'user', content: [{ type: 'text', text }] };
+    const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [message]);
+    await ref.set({ messageCount: newSeq, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
 function buildLocationNoteBlock(state, location) {
     if (!location || !Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) {
         return null;
@@ -508,4 +524,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote };

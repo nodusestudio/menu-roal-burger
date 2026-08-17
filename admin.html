@@ -7974,6 +7974,38 @@
             white-space: nowrap;
         }
 
+        /* Barra siempre visible para mandarle una instrucción privada al agente (addAdminNote) */
+        .chatroal-note-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 10px 16px 0;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.03);
+            border: 1px dashed var(--admin-border);
+        }
+        .chatroal-note-bar input {
+            flex: 1;
+            background: rgba(0,0,0,0.2);
+            color: #fff;
+            border: 1px solid var(--admin-border);
+            border-radius: 8px;
+            padding: 7px 10px;
+            font-size: 0.82rem;
+        }
+        .chatroal-note-bar button {
+            background: transparent;
+            color: var(--admin-accent);
+            border: 1px solid var(--admin-accent);
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
         /* Panel derecho — detalle */
         .inbox-detail {
             display: flex;

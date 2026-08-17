@@ -5,7 +5,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -46,6 +46,22 @@ async function sendWhatsAppMessage(instanceId, token, phoneDigits, body) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, to: `+${waPhone}`, body })
     });
+}
+
+// Corre el turno de seguimiento (el agente reacciona a la nota/respuesta que se acaba de
+// guardar) y empuja la respuesta si es WhatsApp. Se usa en las dos ramas de agentChatAdminReply
+// que dejan al agente "reaccionar solo" (answerQuestion y addNote) — nunca falla la acción del
+// admin por esto: su nota/respuesta ya quedó guardada, el cliente la recibe igual en su próximo
+// mensaje si este paso falla (ver system block de pendingQuestion en orchestrator.js).
+async function runFollowUpAndPush(conversationKey) {
+    try {
+        const followUp = await runFollowUpTurn(getFirestore(), ANTHROPIC_API_KEY.value(), conversationKey);
+        if (followUp.reply && followUp.channel === 'whatsapp' && followUp.phone) {
+            await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), followUp.phone, followUp.reply);
+        }
+    } catch (followUpErr) {
+        console.error('runFollowUpTurn/push error:', followUpErr);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -438,6 +454,7 @@ exports.agentChatAdminReply = onCall(
         const handback = request.data?.handback === true;
         const markSeen = request.data?.markSeen === true;
         const answerQuestion = request.data?.answerQuestion === true;
+        const addNote = request.data?.addNote === true;
         const text = String(request.data?.text || '').trim();
 
         try {
@@ -455,20 +472,16 @@ exports.agentChatAdminReply = onCall(
                     throw new HttpsError('invalid-argument', 'Respuesta invalida.');
                 }
                 await answerPendingQuestion(getFirestore(), conversationKey, answer);
-                // Generar la respuesta del agente al cliente con el dato recien confirmado, y
-                // empujarla activamente si es WhatsApp -- la web ya la recoge sola con su
-                // polling (agentChatHistory), no hace falta empujarle nada.
-                try {
-                    const followUp = await runFollowUpTurn(getFirestore(), ANTHROPIC_API_KEY.value(), conversationKey);
-                    if (followUp.reply && followUp.channel === 'whatsapp' && followUp.phone) {
-                        await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), followUp.phone, followUp.reply);
-                    }
-                } catch (followUpErr) {
-                    // La respuesta del admin ya quedo guardada -- si esto falla, el cliente la
-                    // va a recibir igual apenas escriba de nuevo (ver system block de
-                    // pendingQuestion en orchestrator.js), no vale la pena fallarle al admin.
-                    console.error('runFollowUpTurn/push error:', followUpErr);
+                await runFollowUpAndPush(conversationKey);
+                return { ok: true };
+            }
+            if (addNote) {
+                const note = String(request.data?.note || '').trim();
+                if (!note || note.length > 2000) {
+                    throw new HttpsError('invalid-argument', 'Instrucción invalida.');
                 }
+                await addAdminNote(getFirestore(), conversationKey, note);
+                await runFollowUpAndPush(conversationKey);
                 return { ok: true };
             }
             if (!text || text.length > 2000) {
