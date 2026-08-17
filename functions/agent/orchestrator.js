@@ -39,38 +39,73 @@ async function checkRateLimit(db, key) {
     });
 }
 
-// Cuando un cliente que ya pidió antes (localStorage roalburger-customer-profile-v1) abre el
-// chat por primera vez, precargamos sus datos y su último pedido — así el agente ya sabe quién
-// es, para dónde entrega normalmente y qué pidió la última vez, sin tener que reinterrogarlo.
-async function buildReturningCustomerContext(db, customerProfile) {
-    if (!customerProfile) return null;
-    const name = String(customerProfile.customerName || '').trim();
-    const phone = String(customerProfile.customerPhone || '').trim();
-    const address = String(customerProfile.address || '').trim();
-    if (!name && !phone) return null;
+// Memoria por cliente: en vez de confiar solo en lo que el navegador manda (localStorage), se
+// consulta el HISTORIAL REAL de pedidos de ese teléfono en `pedidos` — funciona igual para
+// WhatsApp (donde ya tenemos el teléfono desde el primer mensaje, sin depender de ningún
+// perfil guardado en un navegador) y para la web. Con cada pedido nuevo que hace el cliente,
+// esta memoria mejora sola — no hace falta mantener un contador aparte.
+const RETURNING_CUSTOMER_ORDER_LOOKBACK = 15;
 
-    let lastOrderSummary = '';
-    const lastOrderId = String(customerProfile.lastOrderId || '').trim();
-    if (lastOrderId) {
-        try {
-            const orderDoc = await db.collection(ORDERS_COLLECTION).doc(lastOrderId).get();
-            if (orderDoc.exists) {
-                const items = Array.isArray(orderDoc.data().items) ? orderDoc.data().items : [];
-                lastOrderSummary = items.map((it) => `${it.quantity}x ${it.productName}`).join(', ');
-            }
-        } catch (_e) {
-            // No crítico — seguimos sin el detalle del último pedido.
-        }
+function normalizePhoneDigitsLocal(value) {
+    return String(value || '').replace(/\D+/g, '');
+}
+
+async function buildReturningCustomerContext(db, phoneDigits, fallbackProfile) {
+    if (!phoneDigits || phoneDigits.length < 10) return null;
+
+    let ordersSnap;
+    try {
+        ordersSnap = await db.collection(ORDERS_COLLECTION)
+            .where('customerPhoneDigits', '==', phoneDigits)
+            .limit(RETURNING_CUSTOMER_ORDER_LOOKBACK)
+            .get();
+    } catch (_e) {
+        return null; // No crítico — seguimos como cliente nuevo.
     }
+    if (ordersSnap.empty) return null;
 
-    const totalOrders = Number(customerProfile.totalOrders || 0);
-    const lines = [];
-    lines.push(`[Sistema: cliente recurrente identificado por su perfil guardado.${name ? ` Nombre: ${name}.` : ''}${phone ? ` Teléfono: ${phone}.` : ''}${address ? ` Dirección habitual: ${address}.` : ''}${totalOrders > 0 ? ` Ha hecho ${totalOrders} pedido(s) antes.` : ''}${lastOrderSummary ? ` Su último pedido fue: ${lastOrderSummary}.` : ''} Salúdalo por su nombre y, si aplica, ofrécele repetir su último pedido — pero confirma igual cada dato antes de usarlo (pudo cambiar de dirección o de gustos).]`);
+    // Sin orderBy en la query (evita depender de un índice compuesto) — ordenamos en memoria.
+    const orders = ordersSnap.docs
+        .map((d) => d.data())
+        .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+    const latest = orders[0];
 
-    return {
-        note: lines.join(' '),
-        prefill: { name: name || undefined, phone: phone || undefined, address: address || undefined }
-    };
+    const itemCounts = new Map();
+    const fulfillmentCounts = new Map();
+    orders.forEach((o) => {
+        if (o.fulfillmentType) fulfillmentCounts.set(o.fulfillmentType, (fulfillmentCounts.get(o.fulfillmentType) || 0) + 1);
+        (Array.isArray(o.items) ? o.items : []).forEach((it) => {
+            const name = String(it.productName || '').trim();
+            if (!name) return;
+            itemCounts.set(name, (itemCounts.get(name) || 0) + Number(it.quantity || 1));
+        });
+    });
+    const topItems = [...itemCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name]) => name);
+    const preferredFulfillment = [...fulfillmentCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    const fulfillmentLabel = { delivery: 'domicilio', pickup: 'recoger en el local', mesa: 'comer en el local' }[preferredFulfillment] || '';
+
+    const name = String(latest.customerName || fallbackProfile?.customerName || '').trim();
+    const address = String(latest.deliveryAddress || fallbackProfile?.address || '').trim();
+    const lastOrderSummary = (Array.isArray(latest.items) ? latest.items : []).map((it) => `${it.quantity}x ${it.productName}`).join(', ');
+
+    const parts = [
+        '[Sistema: cliente recurrente — se consultó su historial real de pedidos.',
+        name ? ` Nombre: ${name}.` : '',
+        ` Ha hecho ${orders.length}${orders.length >= RETURNING_CUSTOMER_ORDER_LOOKBACK ? '+' : ''} pedido(s) registrados.`,
+        lastOrderSummary ? ` Su último pedido fue: ${lastOrderSummary}.` : '',
+        topItems.length ? ` Lo que más pide (de más a menos frecuente): ${topItems.join(', ')}.` : '',
+        fulfillmentLabel ? ` Normalmente pide para ${fulfillmentLabel}.` : '',
+        address ? ` Dirección habitual: ${address}.` : '',
+        ' Salúdalo por su nombre y, si aplica, ofrécele repetir lo que más pide o su último pedido — pero confirma igual cada dato antes de usarlo (pudo cambiar de dirección o de gustos).]'
+    ];
+
+    // Firestore rechaza valores "undefined" explícitos — solo incluir las llaves que sí
+    // tienen dato real, en vez de "campo: undefined".
+    const prefill = {};
+    if (name) prefill.name = name;
+    if (address) prefill.address = address;
+
+    return { note: parts.join(''), prefill };
 }
 
 async function loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId, customerProfile }) {
@@ -80,15 +115,17 @@ async function loadOrCreateConversation(db, conversationKey, { channel, phone, s
         return { ref, state: snap.data(), returningCustomerNote: null };
     }
 
-    const returning = await buildReturningCustomerContext(db, customerProfile);
+    const resolvedPhone = phone || customerProfile?.customerPhone || '';
+    const phoneDigits = normalizePhoneDigitsLocal(resolvedPhone);
+    const returning = await buildReturningCustomerContext(db, phoneDigits, customerProfile);
     const state = {
         channel,
-        phone: phone || returning?.prefill?.phone || null,
+        phone: phone || null,
         sessionId: sessionId || null,
         status: 'active',
         draftCart: { items: [] },
         customerInfo: {
-            ...(phone ? { phone } : {}),
+            ...(resolvedPhone ? { phone: resolvedPhone } : {}),
             ...(returning?.prefill || {})
         },
         needsHuman: false,
