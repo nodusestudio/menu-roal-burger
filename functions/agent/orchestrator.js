@@ -14,7 +14,7 @@ const RATE_LIMITS_COLLECTION = 'agent_rate_limits';
 const ORDERS_COLLECTION = 'pedidos';
 const MODEL = 'claude-opus-5';
 const MAX_TURNS_PER_CONVERSATION = 40;
-const MAX_TOOL_LOOP_ITERATIONS = 8;
+const MAX_TOOL_LOOP_ITERATIONS = 12;
 const MAX_HISTORY_MESSAGES = 60;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutos
 const RATE_LIMIT_MAX_MESSAGES = 20;
@@ -246,9 +246,11 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
 
     let finalReplyText = '';
     let hadError = false;
+    let loopIterations = 0;
 
     try {
         for (let iteration = 0; iteration < MAX_TOOL_LOOP_ITERATIONS; iteration++) {
+            loopIterations = iteration + 1;
             const response = await client.messages.create({
                 model: MODEL,
                 max_tokens: 2048,
@@ -261,6 +263,7 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
 
             if (response.stop_reason === 'refusal') {
                 hadError = true;
+                console.error(`Refusal del modelo [${conversationKey}] iter=${loopIterations}:`, JSON.stringify(response.stop_details || null));
                 break;
             }
 
@@ -270,6 +273,10 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
 
             const textBlocks = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
             if (textBlocks) finalReplyText = textBlocks;
+
+            if (response.stop_reason === 'max_tokens' && !textBlocks) {
+                console.error(`stop_reason=max_tokens sin texto [${conversationKey}] iter=${loopIterations} — probablemente se gastó el limite en thinking/tool_use.`);
+            }
 
             if (response.stop_reason !== 'tool_use') {
                 break;
@@ -297,7 +304,11 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
         }
     } catch (err) {
         hadError = true;
-        console.error('Error en el loop del agente:', err);
+        console.error(`Error en el loop del agente [${conversationKey}] iter=${loopIterations}:`, err?.stack || err);
+    }
+
+    if (!hadError && !finalReplyText) {
+        console.error(`Turno sin texto final y sin excepcion [${conversationKey}] iter=${loopIterations} — probablemente se agotaron las ${MAX_TOOL_LOOP_ITERATIONS} iteraciones de tools sin que el modelo cerrara con texto.`);
     }
 
     if (hadError || !finalReplyText) {
