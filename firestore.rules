@@ -108,14 +108,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Conversaciones y límite de uso del agente de IA (chat web + WhatsApp) — solo las
-    // Cloud Functions (Admin SDK, que ignora estas reglas) los leen/escriben. El cliente
-    // nunca accede directo a estas colecciones.
+    // Conversaciones del agente de IA (chat web + WhatsApp) — el admin puede leerlas en vivo
+    // desde Chat Roal (FODEXA), pero solo las Cloud Functions (Admin SDK) las escriben, para
+    // que handleIncomingTurn/agentChatAdminReply sigan siendo la unica fuente de verdad.
     match /agent_conversations/{doc} {
-      allow read, write: if false;
+      allow read: if isAdmin();
+      allow write: if false;
 
       match /messages/{messageDoc} {
-        allow read, write: if false;
+        allow read: if isAdmin();
+        allow write: if false;
       }
     }
     match /agent_rate_limits/{doc} {

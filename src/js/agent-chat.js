@@ -112,6 +112,11 @@
         let historyLoaded = false;
         let sending = false;
         let pendingLocation = null;
+        // Cuántos mensajes del historial del servidor ya están pintados — se usa para el
+        // polling (ver startPolling) y así solo agregar los mensajes nuevos, sin re-renderizar
+        // todo el hilo cada vez.
+        let renderedMessageCount = 0;
+        let pollTimer = null;
 
         async function loadHistoryIfNeeded() {
             if (historyLoaded) return;
@@ -124,12 +129,44 @@
                 const messages = (result.data && Array.isArray(result.data.messages)) ? result.data.messages : [];
                 if (messages.length) {
                     messages.forEach((m) => appendMessage(messagesEl, m.role, m.text));
+                    renderedMessageCount = messages.length;
                     return;
                 }
             } catch (_err) {
                 // Si falla la carga del historial, seguimos con el saludo normal.
             }
             appendMessage(messagesEl, 'assistant', buildWelcomeMessage(customerProfile));
+        }
+
+        // Un admin puede tomar el control de la conversación desde FODEXA (Chat Roal) y
+        // responder directo — este chat no tiene sesión en vivo (Firestore) del lado del
+        // cliente, así que mientras el panel está abierto se revisa el historial cada 5s para
+        // que esas respuestas aparezcan sin que el cliente tenga que reabrir el chat.
+        async function pollForNewMessages() {
+            try {
+                const fn = typeof getPublicFirebaseFunctions === 'function' ? getPublicFirebaseFunctions() : null;
+                if (!fn) return;
+                const callable = fn.httpsCallable('agentChatHistory');
+                const result = await callable({ sessionId });
+                const messages = (result.data && Array.isArray(result.data.messages)) ? result.data.messages : [];
+                if (messages.length > renderedMessageCount) {
+                    messages.slice(renderedMessageCount).forEach((m) => appendMessage(messagesEl, m.role, m.text));
+                    renderedMessageCount = messages.length;
+                }
+            } catch (_err) {
+                // Silencioso — se reintenta en el siguiente ciclo.
+            }
+        }
+
+        function startPolling() {
+            if (pollTimer) return;
+            pollTimer = window.setInterval(pollForNewMessages, 5000);
+        }
+
+        function stopPolling() {
+            if (!pollTimer) return;
+            window.clearInterval(pollTimer);
+            pollTimer = null;
         }
 
         // En escritorio (>=900px) el chat es un panel lateral y el menú sigue visible y
@@ -142,6 +179,7 @@
             banner.hidden = true;
             if (!isDesktopLayout()) document.body.style.overflow = 'hidden';
             loadHistoryIfNeeded();
+            startPolling();
             input.focus();
         }
 
@@ -149,6 +187,7 @@
             panel.hidden = true;
             banner.hidden = false;
             document.body.style.overflow = '';
+            stopPolling();
         }
 
         banner.addEventListener('click', openPanel);
@@ -173,7 +212,15 @@
                 }
                 if (customerProfile) payload.customerProfile = customerProfile;
                 const result = await callable(payload);
-                appendMessage(messagesEl, 'assistant', result.data && result.data.reply ? result.data.reply : 'No pude procesar tu mensaje, intenta de nuevo.');
+                renderedMessageCount += 1; // el mensaje del cliente que se acaba de guardar
+                const reply = result.data && result.data.reply;
+                if (reply) {
+                    appendMessage(messagesEl, 'assistant', reply);
+                    renderedMessageCount += 1;
+                }
+                // Si reply viene vacío (null) es porque un admin tomó el control de la
+                // conversación desde Chat Roal — no es un error, el polling va a traer su
+                // respuesta cuando la escriba.
             } catch (_err) {
                 appendMessage(messagesEl, 'assistant', 'Tuvimos un problema para responderte. Escríbenos por WhatsApp o usa el menú normal mientras tanto.');
             } finally {

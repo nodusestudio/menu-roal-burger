@@ -129,6 +129,8 @@ async function loadOrCreateConversation(db, conversationKey, { channel, phone, s
             ...(returning?.prefill || {})
         },
         needsHuman: false,
+        humanControl: false,
+        lastMessageText: '',
         turnCount: 0,
         messageCount: 0,
         lastOrderId: null,
@@ -178,6 +180,36 @@ async function persistNewMessages(ref, baseSeq, newMessages) {
     return seq;
 }
 
+function truncatePreview(text) {
+    const clean = String(text || '').trim();
+    return clean.length > 120 ? `${clean.slice(0, 120)}…` : clean;
+}
+
+// Usado por la Cloud Function agentChatAdminReply (functions/index.js) para que un admin
+// responda directo desde FODEXA — misma forma de mensaje que persistNewMessages guarda para
+// las respuestas del agente, así getDisplayHistory y el resto del historial no distinguen entre
+// una respuesta del bot y una del admin.
+async function appendAdminMessage(db, conversationKey, text) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    const snap = await ref.get();
+    if (!snap.exists) throw new Error(`Conversación no encontrada: ${conversationKey}`);
+    const state = snap.data();
+    const message = { role: 'assistant', content: [{ type: 'text', text }] };
+    const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [message]);
+    await ref.set({
+        messageCount: newSeq,
+        humanControl: true,
+        needsHuman: false,
+        lastMessageText: truncatePreview(text),
+        updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+}
+
+async function handbackToAgent(db, conversationKey) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    await ref.set({ humanControl: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
 function buildLocationNoteBlock(state, location) {
     if (!location || !Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) {
         return null;
@@ -220,6 +252,19 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
 
     if (state.status === 'needs_human') {
         return { reply: 'Ya avisamos a un asesor para que te contacte. Si es urgente, escríbenos directo por WhatsApp.' };
+    }
+
+    // Un admin ya tomó el control de esta conversación desde FODEXA (Chat Roal) — solo se
+    // guarda el mensaje del cliente, sin gastar tokens ni dejar que el bot responda encima.
+    if (state.humanControl === true) {
+        const userMessage = { role: 'user', content: [{ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' }] };
+        const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [userMessage]);
+        await ref.set({
+            messageCount: newSeq,
+            lastMessageText: truncatePreview(text),
+            updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        return { reply: null };
     }
 
     if (Number(state.turnCount || 0) >= MAX_TURNS_PER_CONVERSATION) {
@@ -318,6 +363,7 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
 
     state.turnCount = Number(state.turnCount || 0) + 1;
     state.updatedAt = FieldValue.serverTimestamp();
+    state.lastMessageText = truncatePreview(finalReplyText);
     if (state.needsHuman && state.status !== 'completed') state.status = 'needs_human';
 
     const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), messagesToPersist);
@@ -327,4 +373,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent };

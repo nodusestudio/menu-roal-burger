@@ -5,7 +5,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -332,6 +332,50 @@ exports.agentChatHistory = onCall(
         } catch (err) {
             console.error('agentChatHistory error:', err);
             throw new HttpsError('internal', 'No se pudo cargar el historial.');
+        }
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Chat Roal (FODEXA) — el admin responde directo o le devuelve el control al agente de IA.
+// No hay secrets porque no llama al modelo. Requiere estar autenticado y tener doc en
+// `admins/{uid}` — mismo criterio que el resto del panel admin usa para verificar acceso
+// (ver ensureAdminAuth en src/js/admin.js), pero acá se valida server-side con el Admin SDK
+// porque es la primera Cloud Function del proyecto que solo debe poder llamar un admin.
+// ─────────────────────────────────────────────────────────────
+exports.agentChatAdminReply = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const uid = request.auth?.uid;
+        if (!uid) {
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+        }
+        const adminDoc = await getFirestore().collection('admins').doc(uid).get();
+        if (!adminDoc.exists) {
+            throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+        }
+
+        const conversationKey = String(request.data?.conversationKey || '').trim();
+        if (!conversationKey || conversationKey.length > 150) {
+            throw new HttpsError('invalid-argument', 'conversationKey invalido.');
+        }
+        const handback = request.data?.handback === true;
+        const text = String(request.data?.text || '').trim();
+
+        try {
+            if (handback) {
+                await handbackToAgent(getFirestore(), conversationKey);
+                return { ok: true };
+            }
+            if (!text || text.length > 2000) {
+                throw new HttpsError('invalid-argument', 'Mensaje invalido.');
+            }
+            await appendAdminMessage(getFirestore(), conversationKey, text);
+            return { ok: true };
+        } catch (err) {
+            if (err instanceof HttpsError) throw err;
+            console.error('agentChatAdminReply error:', err);
+            throw new HttpsError('internal', 'No se pudo enviar el mensaje.');
         }
     }
 );

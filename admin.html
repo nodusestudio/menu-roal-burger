@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260817-0146">
+    <link rel="stylesheet" href="style.css?v=20260817-1216">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -7788,6 +7788,27 @@
             background: rgba(67,192,156,0.70);
         }
 
+        /* Insignias de estado de Chat Roal (agente / necesita atención / admin al control) */
+        .chatroal-badge {
+            font-size: 0.6rem;
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+        .chatroal-badge--bot {
+            background: rgba(184, 200, 232, 0.16);
+            color: var(--admin-muted);
+        }
+        .chatroal-badge--alert {
+            background: rgba(255, 122, 26, 0.20);
+            color: #ff7a1a;
+        }
+        .chatroal-badge--you {
+            background: rgba(67, 192, 156, 0.20);
+            color: var(--admin-ok);
+        }
+
         /* Panel derecho — detalle */
         .inbox-detail {
             display: flex;
@@ -12334,6 +12355,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="menu"><span class="nav-icon">🍔</span><span>Articulos</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="clientes"><span class="nav-icon">👥</span><span>Clientes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="chatroal"><span class="nav-icon">📲</span><span>Chat Roal</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
         </nav>
@@ -13356,6 +13378,42 @@
                     <main class="inbox-detail" id="inboxDetail">
                         <div class="inbox-detail-empty">
                             <span>💬</span>
+                            <p>Selecciona una conversación</p>
+                        </div>
+                    </main>
+                </div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="chatroal">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" disabled>Sincronizado en tiempo real</button>
+                </div>
+                <article class="admin-card admin-card--flush">
+                    <div class="card-head">
+                        <h2>Chat Roal</h2>
+                        <span class="kanban-count" id="chatRoalCount">0</span>
+                    </div>
+                    <div class="card-body">
+                <div class="inbox-layout">
+                    <!-- Columna izquierda: lista de conversaciones del agente de IA -->
+                    <aside class="inbox-sidebar">
+                        <div class="inbox-sidebar-head">
+                            <span class="inbox-sidebar-title">Conversaciones</span>
+                        </div>
+                        <div class="inbox-search-wrap">
+                            <input type="text" class="inbox-search" id="chatRoalSearch" placeholder="Buscar por nombre o teléfono…">
+                        </div>
+                        <div class="inbox-thread-list" id="chatRoalList">
+                            <p class="inbox-empty">Sin conversaciones aún</p>
+                        </div>
+                    </aside>
+
+                    <!-- Columna derecha: hilo de la conversación seleccionada -->
+                    <main class="inbox-detail" id="chatRoalDetail">
+                        <div class="inbox-detail-empty">
+                            <span>📲</span>
                             <p>Selecciona una conversación</p>
                         </div>
                     </main>
@@ -14515,8 +14573,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260817-0146"></script>
-    <script defer src="admin.js?v=20260817-0146"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260817-1216"></script>
+    <script defer src="admin.js?v=20260817-1216"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

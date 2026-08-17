@@ -359,6 +359,7 @@ const brandingForm = document.getElementById('brandingForm');
 let firebaseDb;
 let firebaseStorage;
 let firebaseAuth;
+let firebaseFunctions;
 let productsState = [];
 let categoriesState = [];
 let buttonsState = [];
@@ -1514,10 +1515,11 @@ function setupAccordion() {
         pedidos: ['pedidos'],
         clientes: ['clientes'],
         mensajes: ['mensajes'],
+        chatroal: ['chatroal'],
         metricas: ['metricas']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', metricas:'Métricas' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -1554,6 +1556,10 @@ function setupAccordion() {
 
         if (target === 'metricas') {
             _ensureMetricsOrdersLoaded();
+        }
+
+        if (target === 'chatroal') {
+            initChatRoal();
         }
     }
 
@@ -10568,6 +10574,207 @@ function openInboxDetail(threadKey, scroll = true) {
     }
 }
 
+// ── Chat Roal: conversaciones en vivo del agente de IA (colección agent_conversations) ──
+// A diferencia de "Mensajes" (solicitudes puntuales tipo reset de contraseña), esto es un
+// hilo de chat en vivo por cliente, con Firestore onSnapshot en vez de fetch-once, para que
+// se vea igual de "en vivo" que WhatsApp.
+let _chatRoalUnsubList = null;
+let _chatRoalUnsubMsgs = null;
+let _chatRoalConversations = [];
+let _chatRoalActiveId = null;
+let _chatRoalMessages = [];
+let _chatRoalInitialized = false;
+
+function initChatRoal() {
+    if (_chatRoalInitialized || !firebaseDb) return;
+    _chatRoalInitialized = true;
+
+    _chatRoalUnsubList = firebaseDb.collection('agent_conversations')
+        .orderBy('updatedAt', 'desc')
+        .limit(50)
+        .onSnapshot((snapshot) => {
+            _chatRoalConversations = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            renderChatRoalList();
+        }, (err) => console.error('Chat Roal onSnapshot error:', err));
+
+    document.getElementById('chatRoalSearch')?.addEventListener('input', renderChatRoalList);
+}
+
+function _chatRoalName(conv) {
+    const name = String(conv.customerInfo?.name || '').trim();
+    if (name) return name;
+    const phone = String(conv.customerInfo?.phone || conv.phone || '').trim();
+    if (phone) return phone;
+    return conv.channel === 'whatsapp' ? 'Cliente de WhatsApp' : 'Cliente (sesión web)';
+}
+
+function _chatRoalStatusBadge(conv) {
+    if (conv.humanControl) return '<span class="chatroal-badge chatroal-badge--you">👤 Tú</span>';
+    if (conv.needsHuman) return '<span class="chatroal-badge chatroal-badge--alert">🙋 Atención</span>';
+    return '<span class="chatroal-badge chatroal-badge--bot">🤖 Agente</span>';
+}
+
+function renderChatRoalList() {
+    const listEl = document.getElementById('chatRoalList');
+    if (!listEl) return;
+    const countEl = document.getElementById('chatRoalCount');
+    if (countEl) countEl.textContent = _chatRoalConversations.filter((c) => c.needsHuman).length;
+
+    const searchTerm = (document.getElementById('chatRoalSearch')?.value || '').trim().toLowerCase();
+    let filtered = _chatRoalConversations;
+    if (searchTerm) {
+        filtered = filtered.filter((c) =>
+            _chatRoalName(c).toLowerCase().includes(searchTerm) ||
+            String(c.customerInfo?.phone || c.phone || '').toLowerCase().includes(searchTerm)
+        );
+    }
+
+    listEl.innerHTML = '';
+    if (!filtered.length) {
+        listEl.innerHTML = '<p class="inbox-empty">Sin conversaciones aún</p>';
+        return;
+    }
+
+    filtered.forEach((conv) => {
+        const isActive = conv.id === _chatRoalActiveId;
+        const name = _chatRoalName(conv);
+        const item = document.createElement('div');
+        item.className = `inbox-thread-item${isActive ? ' is-active' : ''}`;
+        item.dataset.conversationId = conv.id;
+        item.innerHTML = `
+            <div class="inbox-thread-avatar">${_inboxInitial(name)}</div>
+            <div class="inbox-thread-info">
+                <div class="inbox-thread-name">${escapeHtml(name)}</div>
+                <div class="inbox-thread-preview">${escapeHtml(conv.lastMessageText || '')}</div>
+            </div>
+            <div class="inbox-thread-meta">
+                <span class="inbox-thread-time">${_inboxFormatTime(conv.updatedAt)}</span>
+                ${_chatRoalStatusBadge(conv)}
+            </div>
+        `;
+        item.addEventListener('click', () => openChatRoalDetail(conv.id));
+        listEl.appendChild(item);
+    });
+}
+
+function openChatRoalDetail(conversationId) {
+    _chatRoalActiveId = conversationId;
+    document.querySelectorAll('#chatRoalList .inbox-thread-item').forEach((el) => {
+        el.classList.toggle('is-active', el.dataset.conversationId === conversationId);
+    });
+
+    if (_chatRoalUnsubMsgs) { _chatRoalUnsubMsgs(); _chatRoalUnsubMsgs = null; }
+    _chatRoalMessages = [];
+
+    _chatRoalUnsubMsgs = firebaseDb.collection('agent_conversations').doc(conversationId)
+        .collection('messages')
+        .orderBy('seq', 'asc')
+        .limit(200)
+        .onSnapshot((snapshot) => {
+            _chatRoalMessages = snapshot.docs.map((doc) => doc.data());
+            renderChatRoalDetail();
+        }, (err) => console.error('Chat Roal messages onSnapshot error:', err));
+
+    renderChatRoalDetail();
+}
+
+// SYNC: misma lógica de filtrado que getDisplayHistory en functions/agent/orchestrator.js —
+// solo bloques de texto visibles, sin tool_use/tool_result ni notas "[Sistema:".
+function _chatRoalMessageText(msg) {
+    const blocks = Array.isArray(msg.content) ? msg.content : [];
+    return blocks
+        .filter((b) => b.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text.trim())
+        .filter((t) => t && !t.startsWith('[Sistema:'))
+        .join('\n');
+}
+
+function renderChatRoalDetail() {
+    const detail = document.getElementById('chatRoalDetail');
+    if (!detail) return;
+    const conv = _chatRoalConversations.find((c) => c.id === _chatRoalActiveId);
+    if (!conv) {
+        detail.innerHTML = '<div class="inbox-detail-empty"><span>📲</span><p>Selecciona una conversación</p></div>';
+        return;
+    }
+
+    const name = _chatRoalName(conv);
+    const phone = String(conv.customerInfo?.phone || conv.phone || '').trim();
+
+    const messagesHtml = _chatRoalMessages.map((msg) => {
+        const text = _chatRoalMessageText(msg);
+        if (!text) return '';
+        const isCustomer = msg.role === 'user';
+        return `
+            <div class="inbox-msg-group">
+                <div class="inbox-bubble ${isCustomer ? 'from-user' : 'from-admin'}">${escapeHtml(text)}</div>
+                <span class="inbox-bubble-meta">${escapeHtml(_inboxFormatTime(msg.createdAt))}</span>
+            </div>`;
+    }).join('');
+
+    detail.innerHTML = `
+        <div class="inbox-detail-head">
+            <div class="inbox-detail-avatar">${_inboxInitial(name)}</div>
+            <div class="inbox-detail-head-info">
+                <div class="inbox-detail-head-name">${escapeHtml(name)}</div>
+                <div class="inbox-detail-head-sub">${escapeHtml(phone)}${conv.channel ? ' · ' + escapeHtml(conv.channel === 'whatsapp' ? 'WhatsApp' : 'Web') : ''}</div>
+            </div>
+            <div class="inbox-detail-head-actions">
+                ${conv.humanControl ? '<button class="inbox-head-btn blue" data-chatroal-action="handback">🤖 Devolver al agente</button>' : ''}
+            </div>
+        </div>
+        <div class="inbox-messages-scroll" id="chatRoalMsgScroll">
+            ${messagesHtml || '<p class="inbox-empty">Sin mensajes aún</p>'}
+        </div>
+        <div class="inbox-reply-bar">
+            <textarea class="inbox-reply-input" id="chatRoalReplyInput" placeholder="Escribe un mensaje…" rows="1"></textarea>
+            <button class="inbox-reply-send" data-chatroal-action="send" title="Enviar">➤</button>
+        </div>
+    `;
+
+    const scrollEl = detail.querySelector('#chatRoalMsgScroll');
+    if (scrollEl) setTimeout(() => { scrollEl.scrollTop = scrollEl.scrollHeight; }, 50);
+}
+
+// Delegación de acciones de Chat Roal (enviar / devolver al agente) — mismo patrón que la
+// delegación de "data-message-action" de Mensajes.
+document.addEventListener('click', async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const actionButton = target.closest('button[data-chatroal-action]');
+    if (!(actionButton instanceof HTMLButtonElement) || !_chatRoalActiveId || !firebaseFunctions) return;
+
+    const action = actionButton.dataset.chatroalAction;
+    const callable = firebaseFunctions.httpsCallable('agentChatAdminReply');
+
+    if (action === 'handback') {
+        actionButton.disabled = true;
+        try {
+            await callable({ conversationKey: _chatRoalActiveId, handback: true });
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo devolver el control'}`, 'error');
+        } finally {
+            actionButton.disabled = false;
+        }
+        return;
+    }
+
+    if (action === 'send') {
+        const inputEl = document.getElementById('chatRoalReplyInput');
+        const text = inputEl ? inputEl.value.trim() : '';
+        if (!text) { showNotice('Escribe un mensaje primero.', 'warn'); return; }
+        actionButton.disabled = true;
+        try {
+            await callable({ conversationKey: _chatRoalActiveId, text });
+            if (inputEl) inputEl.value = '';
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo enviar el mensaje'}`, 'error');
+        } finally {
+            actionButton.disabled = false;
+        }
+    }
+});
+
 function getFilteredClients() {
     return clientsState.filter((client) => {
         if (!clientsSearchTerm) {
@@ -16285,6 +16492,7 @@ async function initAdmin() {
         firebaseDb = services.db;
         firebaseStorage = services.storage;
         firebaseAuth = services.auth;
+        firebaseFunctions = services.functions;
 
         applyAdminRuntimeLinks();
         syncResponsiveAdminState();
