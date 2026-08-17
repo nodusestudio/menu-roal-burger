@@ -12,6 +12,7 @@ const orderLogic = require('./orderLogic');
 const CONVERSATIONS_COLLECTION = 'agent_conversations';
 const RATE_LIMITS_COLLECTION = 'agent_rate_limits';
 const ORDERS_COLLECTION = 'pedidos';
+const AGENT_INSTRUCTIONS_COLLECTION = 'agent_instructions';
 const MODEL = 'claude-opus-5';
 const MAX_TURNS_PER_CONVERSATION = 40;
 const MAX_TOOL_LOOP_ITERATIONS = 12;
@@ -228,6 +229,30 @@ function buildLocationNoteBlock(state, location) {
     };
 }
 
+// Instrucciones operativas que el negocio carga desde Chat Roal (FODEXA) — reusa el mismo
+// shape de `horario` que combos_especiales (isComboActiveNow ya sabe filtrarlo), así que una
+// instrucción con horario "hoy de 4 a 5pm" deja de aplicar sola sin que nadie la borre. Se
+// arma como un bloque de `system` SEPARADO del prompt fijo (sin cache_control) para que un
+// cambio de instrucciones se refleje de inmediato, sin romper el cache del prompt grande.
+async function buildActiveInstructionsSystemBlock(db) {
+    let snap;
+    try {
+        snap = await db.collection(AGENT_INSTRUCTIONS_COLLECTION).get();
+    } catch (_e) {
+        return null;
+    }
+    const active = snap.docs
+        .map((d) => d.data())
+        .filter((d) => d.active !== false && orderLogic.isComboActiveNow(d.horario))
+        .map((d) => String(d.text || '').trim())
+        .filter(Boolean);
+    if (!active.length) return null;
+    return {
+        type: 'text',
+        text: `Instrucciones vigentes del negocio para ahora mismo (síguelas al pie de la letra, tienen prioridad sobre tus preferencias por defecto):\n${active.map((t) => `- ${t}`).join('\n')}`
+    };
+}
+
 /**
  * Procesa un turno entrante (web o WhatsApp) y devuelve el texto de respuesta del agente.
  * @param {object} params
@@ -289,6 +314,10 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     const client = new Anthropic({ apiKey: anthropicApiKey });
     const handlers = buildAgentToolHandlers({ db, state });
 
+    const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
+    const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
+    if (instructionsBlock) systemBlocks.push(instructionsBlock);
+
     let finalReplyText = '';
     let hadError = false;
     let loopIterations = 0;
@@ -301,7 +330,7 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
                 max_tokens: 2048,
                 thinking: { type: 'adaptive' },
                 output_config: { effort: 'medium' },
-                system: [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+                system: systemBlocks,
                 tools: AGENT_TOOL_DEFS,
                 messages
             });

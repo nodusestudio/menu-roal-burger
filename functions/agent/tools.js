@@ -229,6 +229,15 @@ const AGENT_TOOL_DEFS = [
         }
     },
     {
+        name: 'lookup_remembered_delivery_fee',
+        description: 'Busca si ya se conoce la tarifa de domicilio de una dirección de TEXTO (barrio, calle, punto de referencia) por pedidos anteriores a esa misma dirección — úsala cuando el cliente te da su dirección escrita en vez de compartir la ubicación GPS, ANTES de pedirle la ubicación. Si found:true, ya queda fijada la tarifa del carrito, dile el valor al cliente con naturalidad. Si found:false, ahí sí pide la ubicación GPS o avisa que un asesor confirmará el valor exacto.',
+        input_schema: {
+            type: 'object',
+            properties: { addressText: { type: 'string', description: 'Dirección tal como la escribió el cliente.' } },
+            required: ['addressText']
+        }
+    },
+    {
         name: 'update_cart',
         description: 'Agrega, quita, cambia cantidad o vacía el carrito en curso. Funciona con CUALQUIER item de get_menu (productos, adiciones, bebidas, combo_pack, combo_especial) — cada uno se agrega como su propia línea del pedido. El precio siempre se toma del menú real, nunca de lo que tú recuerdes. Si el item tiene sabores para elegir (ver "nota" en get_menu), pregúntale al cliente y guarda su elección en "note".',
         input_schema: {
@@ -330,6 +339,15 @@ function buildAgentToolHandlers({ db, state }) {
             state.customerInfo.deliveryZone = zone ? zone.name : null;
             state.customerInfo.deliveryFee = fee;
             return JSON.stringify({ zone: zone ? zone.name : null, zoneLabel: zone ? zone.label : null, fee });
+        },
+
+        lookup_remembered_delivery_fee: async ({ addressText } = {}) => {
+            const result = await orderLogic.lookupRememberedDeliveryFee(db, addressText);
+            if (!result) return JSON.stringify({ found: false });
+            state.customerInfo = state.customerInfo || {};
+            state.customerInfo.deliveryFee = result.fee;
+            state.customerInfo.deliveryZone = null;
+            return JSON.stringify({ found: true, fee: result.fee, timesUsed: result.vecesUsado });
         },
 
         update_cart: async ({ operation, productName, quantity, note } = {}) => {

@@ -1129,6 +1129,56 @@ function playMessageAlertTone() {
     });
 }
 
+// ── Sonidos de Chat Roal (configurables) ────────────────────────────────────
+// Genérico en vez de una función por sonido (como playOrderBell/playMessageAlertTone de
+// arriba) porque acá el usuario elige entre varios presets — se sintetizan a partir de datos,
+// sin archivos de audio.
+function playAlertTonePattern(steps) {
+    const audioContext = getOrderBellAudioContext();
+    if (!audioContext) return Promise.resolve();
+    if (audioContext.state === 'suspended') {
+        return audioContext.resume().catch(() => undefined).then(() => playAlertTonePattern(steps));
+    }
+    return new Promise((resolve) => {
+        const startAt = audioContext.currentTime + 0.02;
+        let totalMs = 0;
+        steps.forEach((step) => {
+            const t0 = startAt + step.offset;
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.type = step.type || 'sine';
+            oscillator.frequency.setValueAtTime(step.freq, t0);
+            if (step.freqEnd) oscillator.frequency.linearRampToValueAtTime(step.freqEnd, t0 + step.duration);
+            gainNode.gain.setValueAtTime(0.0001, t0);
+            gainNode.gain.exponentialRampToValueAtTime(step.volume || 0.2, t0 + 0.02);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, t0 + step.duration);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.start(t0);
+            oscillator.stop(t0 + step.duration + 0.02);
+            totalMs = Math.max(totalMs, (step.offset + step.duration) * 1000 + 60);
+        });
+        window.setTimeout(resolve, totalMs);
+    });
+}
+
+const CHAT_ROAL_SOUND_PRESETS = {
+    ding:       { label: 'Ding',              steps: [{ offset: 0,    freq: 1100, duration: 0.18, type: 'triangle' }] },
+    campanita:  { label: 'Campanita',          steps: [{ offset: 0,    freq: 1400, duration: 0.14, type: 'sine' }, { offset: 0.16, freq: 1700, duration: 0.16, type: 'sine' }] },
+    doble_tono: { label: 'Doble tono',         steps: [{ offset: 0,    freq: 900,  duration: 0.12, type: 'square' }, { offset: 0.16, freq: 900, duration: 0.12, type: 'square' }] },
+    alerta:     { label: 'Alerta',             steps: [{ offset: 0,    freq: 750,  duration: 0.16, type: 'sawtooth' }, { offset: 0.18, freq: 550, duration: 0.22, type: 'sawtooth' }] },
+    urgente:    { label: 'Urgente (3 tonos)',  steps: [{ offset: 0,    freq: 1200, duration: 0.1,  type: 'square' }, { offset: 0.12, freq: 700, duration: 0.1, type: 'square' }, { offset: 0.24, freq: 1200, duration: 0.1, type: 'square' }] },
+    sirena:     { label: 'Sirena breve',       steps: [{ offset: 0,    freq: 500,  freqEnd: 1000, duration: 0.3, type: 'sawtooth' }] }
+};
+
+let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta' };
+
+function playChatRoalSound(kind) {
+    const presetId = kind === 'escalation' ? chatRoalConfigState.soundEscalation : chatRoalConfigState.soundNewChat;
+    const preset = CHAT_ROAL_SOUND_PRESETS[presetId] || CHAT_ROAL_SOUND_PRESETS[kind === 'escalation' ? 'alerta' : 'ding'];
+    return playAlertTonePattern(preset.steps);
+}
+
 function getCurrentAdminIdentity() {
     const currentUser = firebaseAuth?.currentUser;
     if (currentUser?.email) {
@@ -10588,6 +10638,8 @@ let _chatRoalActiveId = null;
 let _chatRoalMessages = [];
 let _chatRoalInitialized = false;
 
+let _chatRoalInstructions = [];
+
 function initChatRoal() {
     if (_chatRoalInitialized || !firebaseDb) return;
     _chatRoalInitialized = true;
@@ -10601,7 +10653,18 @@ function initChatRoal() {
             renderChatRoalList();
         }, (err) => console.error('Chat Roal onSnapshot error:', err));
 
+    firebaseDb.collection('configuracion').doc('chat_roal_config').onSnapshot((doc) => {
+        chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', ...(doc.exists ? doc.data() : {}) };
+        renderChatRoalSettingsPanel();
+    }, (err) => console.error('Chat Roal config onSnapshot error:', err));
+
+    firebaseDb.collection('agent_instructions').orderBy('createdAt', 'desc').onSnapshot((snapshot) => {
+        _chatRoalInstructions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        renderChatRoalSettingsPanel();
+    }, (err) => console.error('agent_instructions onSnapshot error:', err));
+
     document.getElementById('chatRoalSearch')?.addEventListener('input', renderChatRoalList);
+    document.getElementById('chatRoalSettingsBtn')?.addEventListener('click', toggleChatRoalSettingsPanel);
 }
 
 // Mismo patrón que announceNewMessages/updateMessagesAttentionState (sonido + notificación
@@ -10617,18 +10680,23 @@ function updateChatRoalAttentionState() {
     if (count <= 0) btn.removeAttribute('data-unread-count');
 }
 
-function notifyNewChatRoalConversation(conv) {
+function notifyNewChatRoalConversation(conv, kind) {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     // Igual que notifyNewOrder: si la pestaña está visible, con el sonido + showNotice alcanza.
     if (!document.hidden) return;
 
-    const notification = new Notification(`Nuevo chat en ${brandingState.restaurantName || 'Roal Burger'}`, {
-        body: `${_chatRoalName(conv)} está chateando con el asistente.`,
-        icon: 'isotipo.png',
-        badge: 'isotipo.png',
-        tag: `roal-chat-${conv.id}`,
-        renotify: true
-    });
+    const isEscalation = kind === 'escalation';
+    const notification = new Notification(
+        isEscalation ? `🙋 Necesita atención — ${brandingState.restaurantName || 'Roal Burger'}` : `Nuevo chat en ${brandingState.restaurantName || 'Roal Burger'}`,
+        {
+            body: isEscalation ? `${_chatRoalName(conv)} necesita un asesor humano.` : `${_chatRoalName(conv)} está chateando con el asistente.`,
+            icon: 'isotipo.png',
+            badge: 'isotipo.png',
+            tag: `roal-chat-${conv.id}-${kind}`,
+            renotify: true,
+            requireInteraction: isEscalation
+        }
+    );
 
     notification.onclick = () => {
         window.focus();
@@ -10638,26 +10706,189 @@ function notifyNewChatRoalConversation(conv) {
     };
 }
 
+// Trackea needsHuman por conversación (no solo los ids) para poder distinguir "chat nuevo"
+// de "chat existente que acaba de escalar a humano" — antes solo se avisaba de lo primero.
+let chatRoalKnownNeedsHuman = new Map();
+
 function announceNewChatRoalConversations(conversations) {
     const currentIds = new Set(conversations.map((c) => c.id));
 
     if (!hasLoadedChatRoalOnce) {
         knownChatRoalIds = currentIds;
+        chatRoalKnownNeedsHuman = new Map(conversations.map((c) => [c.id, Boolean(c.needsHuman)]));
         hasLoadedChatRoalOnce = true;
         updateChatRoalAttentionState();
         return;
     }
 
     const newOnes = conversations.filter((c) => !knownChatRoalIds.has(c.id));
+    const escalatedOnes = conversations.filter((c) => knownChatRoalIds.has(c.id) && c.needsHuman && chatRoalKnownNeedsHuman.get(c.id) === false);
+
     knownChatRoalIds = currentIds;
+    chatRoalKnownNeedsHuman = new Map(conversations.map((c) => [c.id, Boolean(c.needsHuman)]));
     updateChatRoalAttentionState();
+
+    escalatedOnes.forEach((conv) => {
+        playChatRoalSound('escalation');
+        notifyNewChatRoalConversation(conv, 'escalation');
+        showNotice(`${_chatRoalName(conv)} necesita atención humana.`, 'warn');
+    });
 
     if (!newOnes.length) return;
 
     newOnes.slice().reverse().forEach((conv) => {
-        playMessageAlertTone();
-        notifyNewChatRoalConversation(conv);
+        playChatRoalSound('newChat');
+        notifyNewChatRoalConversation(conv, 'newChat');
         showNotice(`Nuevo chat de ${_chatRoalName(conv)}.`, 'ok');
+    });
+}
+
+// ── Panel de configuración de Chat Roal (sonidos + instrucciones para el agente) ───────────
+let _instructionHorarioTipo = 'siempre';
+
+function toggleChatRoalSettingsPanel() {
+    const panel = document.getElementById('chatRoalSettingsPanel');
+    if (!panel) return;
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) renderChatRoalSettingsPanel();
+}
+
+function _instructionHorarioLabel(horario) {
+    if (!horario || horario.tipo === 'siempre') return 'Siempre activa';
+    if (horario.tipo === 'dias_horas') return `Hoy · ${horario.hora_inicio || ''} – ${horario.hora_fin || ''}`;
+    return 'Configurado';
+}
+
+function renderChatRoalSettingsPanel() {
+    const panel = document.getElementById('chatRoalSettingsPanel');
+    if (!panel || panel.hidden) return;
+
+    const soundOptions = Object.entries(CHAT_ROAL_SOUND_PRESETS)
+        .map(([id, preset]) => `<option value="${id}">${escapeHtml(preset.label)}</option>`)
+        .join('');
+
+    const instructionsHtml = _chatRoalInstructions.length
+        ? _chatRoalInstructions.map((instr) => `
+            <div class="chatroal-instruction-card">
+                <p>${escapeHtml(instr.text)}</p>
+                <div class="chatroal-instruction-meta">
+                    <span>${instr.active === false ? '⏸ Pausada' : '✓ Activa'} · ${escapeHtml(_instructionHorarioLabel(instr.horario))}</span>
+                    <button type="button" data-instruction-delete="${escapeHtml(instr.id)}">🗑 Eliminar</button>
+                </div>
+            </div>
+        `).join('')
+        : '<p class="inbox-empty">Sin instrucciones guardadas</p>';
+
+    panel.innerHTML = `
+        <div class="chatroal-settings-section">
+            <h3>🔊 Sonidos de aviso</h3>
+            <div class="chatroal-sound-row">
+                <label for="chatRoalSoundNewChat">Chat nuevo</label>
+                <select id="chatRoalSoundNewChat">${soundOptions}</select>
+                <button type="button" data-chatroal-test-sound="newChat">▶ Probar</button>
+            </div>
+            <div class="chatroal-sound-row">
+                <label for="chatRoalSoundEscalation">Necesita atención humana</label>
+                <select id="chatRoalSoundEscalation">${soundOptions}</select>
+                <button type="button" data-chatroal-test-sound="escalation">▶ Probar</button>
+            </div>
+            <button type="button" class="chatroal-settings-save-btn" id="chatRoalSaveSoundsBtn">Guardar sonidos</button>
+        </div>
+        <div class="chatroal-settings-section">
+            <h3>📋 Instrucciones para el agente</h3>
+            ${instructionsHtml}
+            <button type="button" class="chatroal-instruction-add-btn" id="chatRoalAddInstructionBtn">+ Nueva instrucción</button>
+            <div class="chatroal-instruction-form" id="chatRoalInstructionForm" hidden>
+                <textarea id="chatRoalInstructionText" rows="2" placeholder="Ej: Hoy de 4 a 5pm recomienda la Burger Ranchera si preguntan qué pedir."></textarea>
+                <label><input type="radio" name="instructionHorarioTipo" value="siempre" checked> Siempre activa</label>
+                <label><input type="radio" name="instructionHorarioTipo" value="dias_horas"> Solo hoy, en un rango de horas</label>
+                <div id="chatRoalInstructionHoras" style="display:none;gap:8px;grid-template-columns:1fr 1fr;">
+                    <input type="time" id="chatRoalInstructionHoraInicio" value="16:00">
+                    <input type="time" id="chatRoalInstructionHoraFin" value="17:00">
+                </div>
+                <button type="button" class="chatroal-instruction-add-btn" id="chatRoalSaveInstructionBtn">Guardar instrucción</button>
+            </div>
+        </div>
+    `;
+
+    const soundNewChatSel = document.getElementById('chatRoalSoundNewChat');
+    const soundEscalationSel = document.getElementById('chatRoalSoundEscalation');
+    if (soundNewChatSel) soundNewChatSel.value = chatRoalConfigState.soundNewChat;
+    if (soundEscalationSel) soundEscalationSel.value = chatRoalConfigState.soundEscalation;
+
+    panel.querySelectorAll('[data-chatroal-test-sound]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const kind = btn.dataset.chatroalTestSound;
+            const presetId = kind === 'escalation' ? soundEscalationSel.value : soundNewChatSel.value;
+            playAlertTonePattern((CHAT_ROAL_SOUND_PRESETS[presetId] || CHAT_ROAL_SOUND_PRESETS.ding).steps);
+        });
+    });
+
+    document.getElementById('chatRoalSaveSoundsBtn')?.addEventListener('click', async () => {
+        try {
+            await firebaseDb.collection('configuracion').doc('chat_roal_config').set({
+                soundNewChat: soundNewChatSel.value,
+                soundEscalation: soundEscalationSel.value
+            }, { merge: true });
+            showNotice('Sonidos guardados.', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo guardar'}`, 'error');
+        }
+    });
+
+    document.getElementById('chatRoalAddInstructionBtn')?.addEventListener('click', () => {
+        _instructionHorarioTipo = 'siempre';
+        const form = document.getElementById('chatRoalInstructionForm');
+        if (form) form.hidden = !form.hidden;
+    });
+
+    panel.querySelectorAll('input[name="instructionHorarioTipo"]').forEach((radio) => {
+        radio.addEventListener('change', (e) => {
+            _instructionHorarioTipo = e.target.value;
+            const horasEl = document.getElementById('chatRoalInstructionHoras');
+            if (horasEl) horasEl.style.display = _instructionHorarioTipo === 'dias_horas' ? 'grid' : 'none';
+        });
+    });
+
+    document.getElementById('chatRoalSaveInstructionBtn')?.addEventListener('click', async () => {
+        const textEl = document.getElementById('chatRoalInstructionText');
+        const text = (textEl?.value || '').trim();
+        if (!text) { showNotice('Escribe la instrucción primero.', 'warn'); return; }
+
+        const horario = _instructionHorarioTipo === 'dias_horas'
+            ? {
+                tipo: 'dias_horas',
+                dias: [new Date().getDay()],
+                hora_inicio: document.getElementById('chatRoalInstructionHoraInicio')?.value || '00:00',
+                hora_fin: document.getElementById('chatRoalInstructionHoraFin')?.value || '23:59'
+            }
+            : { tipo: 'siempre' };
+
+        try {
+            await firebaseDb.collection('agent_instructions').add({
+                text,
+                active: true,
+                horario,
+                createdAt: firestoreNow(),
+                updatedAt: firestoreNow()
+            });
+            showNotice('Instrucción guardada.', 'ok');
+            const form = document.getElementById('chatRoalInstructionForm');
+            if (form) form.hidden = true;
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo guardar'}`, 'error');
+        }
+    });
+
+    panel.querySelectorAll('[data-instruction-delete]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await firebaseDb.collection('agent_instructions').doc(btn.dataset.instructionDelete).delete();
+                showNotice('Instrucción eliminada.', 'ok');
+            } catch (err) {
+                showNotice(`Error: ${err.message || 'no se pudo eliminar'}`, 'error');
+            }
+        });
     });
 }
 

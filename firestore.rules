@@ -124,6 +124,19 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Instrucciones operativas que el admin escribe desde Chat Roal (ej. "hoy recomienda X") —
+    // el agente las lee con el Admin SDK (ignora estas reglas), esto solo protege la UI.
+    match /agent_instructions/{doc} {
+      allow read, write: if isAdmin();
+    }
+
+    // Memoria de tarifas de domicilio por dirección de texto — compartida entre el POS
+    // (src/js/admin.js) y el agente de IA. No tenía regla propia (fallaba en silencio para
+    // el POS, el agente igual funciona vía Admin SDK).
+    match /domicilio_tarifas/{doc} {
+      allow read, write: if isAdmin();
+    }
+
     match /visitas/{doc} {
       allow create: if true;
       allow read, update, delete: if isAdmin();

@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260817-1304">
+    <link rel="stylesheet" href="style.css?v=20260817-1414">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -7804,6 +7804,110 @@
             background: rgba(255, 122, 26, 0.20);
             color: #ff7a1a;
         }
+        .chatroal-settings-btn {
+            margin-left: auto;
+            background: transparent;
+            border: 1px solid var(--admin-border);
+            border-radius: 10px;
+            width: 32px;
+            height: 32px;
+            font-size: 1rem;
+            cursor: pointer;
+            color: var(--admin-muted);
+        }
+        .chatroal-settings-btn:hover { background: rgba(255,255,255,0.06); }
+
+        .chatroal-settings-panel {
+            display: grid;
+            gap: 18px;
+            padding: 16px;
+            margin-bottom: 14px;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--admin-border);
+        }
+        .chatroal-settings-section h3 {
+            margin: 0 0 10px;
+            font-size: 0.85rem;
+            color: var(--admin-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .chatroal-sound-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .chatroal-sound-row label { flex: 0 0 190px; font-size: 0.85rem; }
+        .chatroal-sound-row select {
+            background: rgba(0,0,0,0.25);
+            color: #fff;
+            border: 1px solid var(--admin-border);
+            border-radius: 8px;
+            padding: 6px 8px;
+        }
+        .chatroal-sound-row button,
+        .chatroal-settings-save-btn,
+        .chatroal-instruction-add-btn {
+            background: var(--admin-accent);
+            color: #10131e;
+            border: none;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-weight: 600;
+            font-size: 0.82rem;
+            cursor: pointer;
+        }
+        .chatroal-instruction-card {
+            display: grid;
+            gap: 6px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--admin-border);
+            margin-bottom: 8px;
+        }
+        .chatroal-instruction-card p { margin: 0; font-size: 0.88rem; }
+        .chatroal-instruction-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.72rem;
+            color: var(--admin-muted);
+        }
+        .chatroal-instruction-meta button {
+            background: transparent;
+            border: none;
+            color: #ff7a7a;
+            cursor: pointer;
+            font-size: 0.75rem;
+        }
+        .chatroal-instruction-form {
+            display: grid;
+            gap: 8px;
+            margin-top: 10px;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px dashed var(--admin-border);
+        }
+        .chatroal-instruction-form textarea {
+            background: rgba(0,0,0,0.25);
+            color: #fff;
+            border: 1px solid var(--admin-border);
+            border-radius: 8px;
+            padding: 8px;
+            font-family: inherit;
+            resize: vertical;
+        }
+        .chatroal-instruction-form label {
+            font-size: 0.82rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
         .chatroal-badge--you {
             background: rgba(67, 192, 156, 0.20);
             color: var(--admin-ok);
@@ -13394,8 +13498,10 @@
                     <div class="card-head">
                         <h2>Chat Roal</h2>
                         <span class="kanban-count" id="chatRoalCount">0</span>
+                        <button type="button" class="chatroal-settings-btn" id="chatRoalSettingsBtn" title="Configuración de Chat Roal">⚙️</button>
                     </div>
                     <div class="card-body">
+                <div class="chatroal-settings-panel" id="chatRoalSettingsPanel" hidden></div>
                 <div class="inbox-layout">
                     <!-- Columna izquierda: lista de conversaciones del agente de IA -->
                     <aside class="inbox-sidebar">
@@ -14573,8 +14679,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260817-1304"></script>
-    <script defer src="admin.js?v=20260817-1304"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260817-1414"></script>
+    <script defer src="admin.js?v=20260817-1414"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

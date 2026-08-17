@@ -16,6 +16,7 @@ const CLIENTS_COLLECTION = 'clientes';
 const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
 const ORDER_CODE_PREFIX = 'RB';
 const ORDER_CODE_START = 2026;
+const DOMICILIO_TARIFAS_COLLECTION = 'domicilio_tarifas';
 
 // SYNC: src/js/script-v2.js línea 19 — const TEMP_CLOSURE_ACTIVE. Hoy está en `false`; si se
 // activa un cierre temporal ahí, hay que reflejarlo también aquí (o mejor, migrar a Firestore).
@@ -187,6 +188,58 @@ function isComboActiveNow(horario, timeZone = 'America/Bogota', now = new Date()
     return true;
 }
 
+// ── Memoria de tarifas por dirección ─────────────────────────────────────────
+// SYNC: src/js/admin.js funciones _adminNormalizeAddress y _domicilioAddressKey (línea ~19208
+// y ~19297) — misma colección `domicilio_tarifas` que ya usa el POS para recordar el costo real
+// de domicilio de una dirección de texto (barrio, calle) cuando no hay GPS o el polígono de
+// zonas no cubre esa dirección. El agente de IA reusa la MISMA memoria (mismo doc id), así que
+// una tarifa aprendida por el cajero en el POS o por un pedido del agente sirve para ambos.
+function normalizeAddressText(raw) {
+    return String(raw || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '') // quitar tildes
+        .toLowerCase()
+        .replace(/\bcra?\.?\s*/g, 'carrera ')
+        .replace(/\bcl\.?\s*/g, 'calle ')
+        .replace(/\bav\.?\s*/g, 'avenida ')
+        .replace(/\bdg\.?\s*/g, 'diagonal ')
+        .replace(/\btr\.?\s*/g, 'transversal ')
+        .replace(/\bkr\.?\s*/g, 'carrera ')
+        .replace(/\bn[oº°]\.?\s*/g, 'numero ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+function addressMemoryKey(addressText) {
+    const normalized = normalizeAddressText(addressText);
+    return normalized.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+async function lookupRememberedDeliveryFee(db, addressText) {
+    const key = addressMemoryKey(addressText);
+    if (!key) return null;
+    const doc = await db.collection(DOMICILIO_TARIFAS_COLLECTION).doc(key).get();
+    if (!doc.exists) return null;
+    const fee = Number(doc.data().fee);
+    if (!Number.isFinite(fee) || fee <= 0) return null;
+    return { fee, vecesUsado: Number(doc.data().vecesUsado || 1) };
+}
+
+async function rememberDeliveryFee(db, addressText, fee) {
+    const key = addressMemoryKey(addressText);
+    const feeNum = Number(fee);
+    if (!key || !Number.isFinite(feeNum) || feeNum <= 0) return;
+    const ref = db.collection(DOMICILIO_TARIFAS_COLLECTION).doc(key);
+    const snap = await ref.get();
+    const prevUses = snap.exists ? Number(snap.data().vecesUsado || 0) : 0;
+    await ref.set({
+        direccion: String(addressText || '').trim(),
+        direccionNormalizada: normalizeAddressText(addressText),
+        fee: feeNum,
+        vecesUsado: prevUses + 1,
+        updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+}
+
 // ── Armado y creación del pedido ─────────────────────────────────────────────
 function formatCurrencyCOP(amount) {
     return `$${Math.round(Number(amount) || 0).toLocaleString('es-CO')}`;
@@ -352,6 +405,14 @@ async function createAgentOrder(db, {
         // No crítico: el pedido ya quedó guardado.
     }
 
+    if (normalizedFulfillment === 'delivery' && address && deliveryFee > 0) {
+        try {
+            await rememberDeliveryFee(db, address, deliveryFee);
+        } catch (_memErr) {
+            // No crítico: el pedido ya quedó guardado.
+        }
+    }
+
     return { id: orderRef.id, code: orderCode, customerName, total, summaryMessage };
 }
 
@@ -403,6 +464,10 @@ module.exports = {
     buildScheduleFromConfigDoc,
     isComboActiveNow,
     createAgentOrder,
+    normalizeAddressText,
+    addressMemoryKey,
+    lookupRememberedDeliveryFee,
+    rememberDeliveryFee,
     DELIVERY_FEE_AMOUNT,
     DELIVERY_GEOFENCE_ZONES
 };
