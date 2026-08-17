@@ -19,6 +19,10 @@ const MAX_TOOL_LOOP_ITERATIONS = 12;
 const MAX_HISTORY_MESSAGES = 60;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutos
 const RATE_LIMIT_MAX_MESSAGES = 20;
+// Si escaló a needs_human y ningún admin tomó el control (humanControl) en este lapso, se le
+// devuelve el control al bot solo -- sin esto, una conversación quedaba respondiendo el mismo
+// mensaje enlatado para siempre si nadie de FODEXA llegaba a contestar.
+const NEEDS_HUMAN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutos
 
 const FALLBACK_REPLY = 'Tuvimos un problema técnico en este momento. Por favor escríbenos directo por WhatsApp o usa el menú web mientras lo solucionamos.';
 const RATE_LIMITED_REPLY = 'Vamos muy rápido 🙂 Espera un momento y vuelve a escribir.';
@@ -303,12 +307,25 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     }
 
     if (state.status === 'needs_human') {
-        return { reply: 'Ya avisamos a un asesor para que te contacte. Si es urgente, escríbenos directo por WhatsApp.' };
+        // updatedAt queda congelado en el momento de la escalación: mientras nadie tome el
+        // control (humanControl ya se descartó arriba), nada vuelve a escribir el doc. Se usa
+        // ese valor para saber cuánto lleva esperando sin que se necesite un campo nuevo.
+        const escalatedMs = state.updatedAt?.toMillis ? state.updatedAt.toMillis() : 0;
+        const waitingMs = escalatedMs ? Date.now() - escalatedMs : Infinity;
+        if (waitingMs < NEEDS_HUMAN_TIMEOUT_MS) {
+            return { reply: 'Ya avisamos a un asesor para que te contacte. Si es urgente, escríbenos directo por WhatsApp.' };
+        }
+        // Pasaron más de NEEDS_HUMAN_TIMEOUT_MS sin que nadie tomara el control: se le devuelve
+        // el control al bot solo y sigue el flujo normal más abajo, en vez de dejar al cliente
+        // hablándole a una pared para siempre.
+        state.status = 'active';
+        state.needsHuman = false;
     }
 
     if (Number(state.turnCount || 0) >= MAX_TURNS_PER_CONVERSATION) {
         state.needsHuman = true;
         state.status = 'needs_human';
+        state.updatedAt = FieldValue.serverTimestamp();
         await ref.set(state, { merge: true });
         return { reply: TURN_LIMIT_REPLY };
     }
