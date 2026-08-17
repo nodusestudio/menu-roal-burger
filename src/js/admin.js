@@ -10791,12 +10791,10 @@ function announceNewChatRoalConversations(conversations) {
 
     const newOnes = conversations.filter((c) => !knownChatRoalIds.has(c.id));
     const escalatedOnes = conversations.filter((c) => knownChatRoalIds.has(c.id) && c.needsHuman && chatRoalKnownNeedsHuman.get(c.id) === false);
-    // Mensajes nuevos en una conversación que YA estaba esperando un humano (needsHuman o
-    // humanControl) — a diferencia de escalatedOnes esto se puede disparar varias veces
-    // seguidas: es el caso de "el cliente insiste y nadie le contesta".
+    // Cualquier mensaje nuevo (messageCount subió) en una conversación YA conocida — a
+    // diferencia de escalatedOnes esto se dispara en cada mensaje, no solo en la escalación.
     const moreWhileWaiting = conversations.filter((c) =>
         knownChatRoalIds.has(c.id) &&
-        (c.needsHuman || c.humanControl) &&
         Number(c.messageCount || 0) > (chatRoalKnownMessageCount.get(c.id) || 0)
     );
 
