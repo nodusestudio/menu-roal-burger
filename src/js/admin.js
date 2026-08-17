@@ -10716,6 +10716,12 @@ function initChatRoal() {
             _chatRoalConversations = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
             announceNewChatRoalConversations(_chatRoalConversations);
             renderChatRoalList();
+            // Sin esto, acciones que solo tocan campos de la conversación (handback,
+            // answerPendingQuestion, addAdminNote sin mensaje nuevo del cliente todavía) nunca
+            // refrescaban el detalle abierto — el botón "Devolver al agente" seguía apareciendo
+            // aunque humanControl ya hubiera vuelto a false, porque el detalle solo se
+            // re-renderizaba desde el listener de la subcolección de mensajes.
+            renderChatRoalDetail();
         }, (err) => console.error('Chat Roal onSnapshot error:', err));
 
     firebaseDb.collection('configuracion').doc('chat_roal_config').onSnapshot((doc) => {
@@ -11120,6 +11126,16 @@ function renderChatRoalDetail() {
 
     const pendingQuestionText = conv.pendingQuestion?.text || '';
 
+    // El listener de la lista de conversaciones llama a este render cada vez que CUALQUIER
+    // conversación cambia (no solo la abierta) para que botones como "Devolver al agente" se
+    // actualicen sin esperar un mensaje nuevo — pero eso reconstruye todo el HTML de acá abajo,
+    // así que hay que guardar y devolver lo que el admin ya tenía tipeado sin enviar.
+    const draftValues = {};
+    ['chatRoalReplyInput', 'chatRoalNoteInput', 'chatRoalQuestionAnswer'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) draftValues[id] = el.value;
+    });
+
     detail.innerHTML = `
         <div class="inbox-detail-head">
             <div class="inbox-detail-avatar">${_inboxInitial(name)}</div>
@@ -11153,6 +11169,12 @@ function renderChatRoalDetail() {
             <button class="inbox-reply-send" data-chatroal-action="send" title="Enviar">➤</button>
         </div>
     `;
+
+    Object.entries(draftValues).forEach(([id, value]) => {
+        if (!value) return;
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    });
 
     const scrollEl = detail.querySelector('#chatRoalMsgScroll');
     if (scrollEl) setTimeout(() => { scrollEl.scrollTop = scrollEl.scrollHeight; }, 50);
