@@ -145,6 +145,12 @@
         // cliente, así que mientras el panel está abierto se revisa el historial cada 5s para
         // que esas respuestas aparezcan sin que el cliente tenga que reabrir el chat.
         async function pollForNewMessages() {
+            // Si sendMessage ya está en vuelo, va a pintar la respuesta él mismo apenas
+            // resuelva -- sin este freno, un turno lento (el agente puede tardar varios
+            // segundos con tool use) deja que este poll de 5s llegue primero, pinte el mismo
+            // par de mensajes desde el historial del servidor, y después sendMessage los
+            // vuelva a pintar encima: la respuesta aparece duplicada.
+            if (sending) return;
             try {
                 const fn = typeof getPublicFirebaseFunctions === 'function' ? getPublicFirebaseFunctions() : null;
                 if (!fn) return;

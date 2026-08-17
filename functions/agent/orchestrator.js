@@ -301,6 +301,7 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
         await ref.set({
             messageCount: newSeq,
             lastMessageText: truncatePreview(text),
+            lastCustomerMessageText: truncatePreview(text),
             updatedAt: FieldValue.serverTimestamp()
         }, { merge: true });
         return { reply: null };
@@ -341,6 +342,10 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     const newUserMessage = { role: 'user', content: userContentBlocks };
     const messages = [...history, newUserMessage];
     const messagesToPersist = [newUserMessage];
+    // Separado de lastMessageText: ese campo termina reflejando lo último que se escribió en el
+    // doc, que casi siempre es la respuesta del BOT (se pisa más abajo) — Chat Roal necesita
+    // poder mostrarle al admin lo que dijo el CLIENTE, no la respuesta del bot a su propio aviso.
+    state.lastCustomerMessageText = truncatePreview(String(text || '').trim());
 
     const client = new Anthropic({ apiKey: anthropicApiKey });
     const handlers = buildAgentToolHandlers({ db, state });

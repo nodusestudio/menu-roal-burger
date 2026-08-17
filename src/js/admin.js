@@ -10815,7 +10815,7 @@ function announceNewChatRoalConversations(conversations) {
         .filter((c) => !escalatedOnes.includes(c))
         .forEach((conv) => {
             playChatRoalSound('eachMessage');
-            showChatRoalMessageToast(_chatRoalName(conv), conv.lastMessageText || '');
+            showChatRoalMessageToast(_chatRoalName(conv), conv.lastCustomerMessageText || conv.lastMessageText || '');
         });
 
     if (!newOnes.length) return;
