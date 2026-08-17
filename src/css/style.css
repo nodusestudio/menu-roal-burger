@@ -1508,6 +1508,12 @@ body.is-offline #menuScreen {
     font-size: 0.9rem;
 }
 
+.info-text p a {
+    color: #8a3f00;
+    font-weight: 700;
+    text-decoration: underline;
+}
+
 /* Contenedor de Botones */
 .links-container {
     display: none;

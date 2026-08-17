@@ -25,7 +25,7 @@
     <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="manifest" href="site.webmanifest">
     <link rel="preload" as="image" href="portada.webp?v=20260615" type="image/webp" fetchpriority="high">
-    <link rel="stylesheet" href="style.css?v=20260817-0020">
+    <link rel="stylesheet" href="style.css?v=20260817-0146">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -48,6 +48,22 @@
     <!-- ===== FIN CONFIGURACIÓN DE ANALYTICS ===== -->
 </head>
 <body>
+    <!-- Contenido estático para crawlers/verificadores que no ejecutan JavaScript (ej. revisión
+         de cumplimiento de Meta para WhatsApp Business) — el resto del sitio es una SPA que
+         carga el menú real desde Firestore, invisible para un bot sin JS. -->
+    <noscript>
+        <main style="max-width:640px;margin:0 auto;padding:32px 20px;font-family:sans-serif;color:#2a1b12;background:#f9e9d0;">
+            <h1>ROAL BURGER</h1>
+            <p>Restaurante de comida rápida con acento venezolano en Armenia, Quindío. Vendemos hamburguesas, perros calientes, salchipapas, pepitos venezolanos, tequeños y combos, para domicilio, para llevar o para consumir en el local.</p>
+            <h2>Ubicación</h2>
+            <p>Cl. 22 #29-59, Armenia, Quindío (Barrio Las Américas)</p>
+            <h2>Horario de atención</h2>
+            <p>Lunes a Domingo: 4:00 P.M. a 10:00 P.M.</p>
+            <h2>Contacto</h2>
+            <p>WhatsApp / Teléfono: <a href="tel:+573144689509">+57 314 468 9509</a> — <a href="https://wa.me/573144689509">Escribir por WhatsApp</a></p>
+            <p><a href="politica-datos.html">Política de tratamiento de datos personales</a></p>
+        </main>
+    </noscript>
     <!-- Capa de fondo ilustrado — siempre fija detrás de todo -->
     <div id="bg-layer" aria-hidden="true"></div>
 
@@ -203,6 +219,13 @@
                             <strong>Horario de Atención</strong>
                             <p id="businessHoursText">Lunes a Domingo: 4:00 P.M. a 10:00 P.M.</p>
                             <p class="business-hours-status" id="businessHoursStatus" aria-live="polite"></p>
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <span class="icon">📞</span>
+                        <div class="info-text">
+                            <strong>Contacto</strong>
+                            <p><a href="https://wa.me/573144689509" target="_blank" rel="noopener noreferrer">+57 314 468 9509</a></p>
                         </div>
                     </div>
                 </div>
@@ -682,10 +705,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script src="tracking.js?v=20260817-0020"></script>
+    <script src="tracking.js?v=20260817-0146"></script>
     <script src="firebase-config.js"></script>
-    <script src="script-v2.js?v=20260817-0020"></script>
-    <script src="agent-chat.js?v=20260817-0020"></script>
+    <script src="script-v2.js?v=20260817-0146"></script>
+    <script src="agent-chat.js?v=20260817-0146"></script>
 
     <!-- ── Anuncio de apertura (promo destacada al abrir el menu) ── -->
     <div id="openingAdOverlay" class="opening-ad-overlay" hidden style="display:none;">
