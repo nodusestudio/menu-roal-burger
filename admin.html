@@ -14657,14 +14657,20 @@
         </button>
     </div>
 
-    <!-- defer: deja que las 6 SDK de Firebase + Sortable + los locales se descarguen en
+    <!-- defer: deja que las SDK de Firebase + Sortable + los locales se descarguen en
          paralelo en vez de uno tras otro (eran 8 round-trips en serie antes de que admin.js
          siquiera empezara a bajar); defer garantiza que igual se EJECUTEN en este mismo orden. -->
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
+    <!-- firebase-messaging-compat.js SACADO A PROPÓSITO: el push (VAPID) todavía no está
+         configurado, y con este script cargado firebase.functions() intenta sacar un token de
+         Messaging antes de CADA llamada a una Cloud Function (Chat Roal, etc.) -- si ese intento
+         de push falla (Registration failed - push service error, típico si el servicio de push
+         de Windows/Chrome no puede conectar), el SDK deja caer la llamada completa, no solo la
+         parte de push. Volver a agregarlo solo cuando el push esté realmente configurado y
+         probado, para no romper Chat Roal otra vez. -->
     <!-- Faltaba: sin esto, firebase.functions() no existe y Chat Roal (Devolver al agente,
          responder, marcar como visto) quedaba en un no-op silencioso -- el botón de enviar
          no hacía nada porque initFirebaseServices() devolvía functions:null. -->

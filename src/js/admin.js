@@ -11078,16 +11078,6 @@ document.addEventListener('click', async (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     const actionButton = target.closest('button[data-chatroal-action]');
-    // TEMP DEBUG — quitar despues de encontrar por que "enviar" no dispara la llamada.
-    if (actionButton) {
-        console.log('[ChatRoal debug]', {
-            action: actionButton.dataset.chatroalAction,
-            isButton: actionButton instanceof HTMLButtonElement,
-            activeId: _chatRoalActiveId,
-            hasFunctions: !!firebaseFunctions,
-            typeofFirebaseFunctions: typeof firebaseFunctions
-        });
-    }
     if (!(actionButton instanceof HTMLButtonElement) || !_chatRoalActiveId || !firebaseFunctions) return;
 
     const action = actionButton.dataset.chatroalAction;
@@ -11108,15 +11098,12 @@ document.addEventListener('click', async (event) => {
     if (action === 'send') {
         const inputEl = document.getElementById('chatRoalReplyInput');
         const text = inputEl ? inputEl.value.trim() : '';
-        console.log('[ChatRoal debug] send: text=', JSON.stringify(text), 'conversationKey=', _chatRoalActiveId);
         if (!text) { showNotice('Escribe un mensaje primero.', 'warn'); return; }
         actionButton.disabled = true;
         try {
-            const result = await callable({ conversationKey: _chatRoalActiveId, text });
-            console.log('[ChatRoal debug] send: OK', result);
+            await callable({ conversationKey: _chatRoalActiveId, text });
             if (inputEl) inputEl.value = '';
         } catch (err) {
-            console.error('[ChatRoal debug] send: ERROR', err);
             showNotice(`Error: ${err.message || 'no se pudo enviar el mensaje'}`, 'error');
         } finally {
             actionButton.disabled = false;
