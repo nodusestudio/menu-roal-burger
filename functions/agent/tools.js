@@ -355,7 +355,7 @@ const AGENT_TOOL_DEFS = [
 ];
 
 // ── Handlers ──────────────────────────────────────────────────────────────
-function buildAgentToolHandlers({ db, state }) {
+function buildAgentToolHandlers({ db, state, conversationKey }) {
     // Memoizado POR TURNO (buildAgentToolHandlers se crea de cero en cada llamada a
     // runAgentConversationLoop) -- antes get_menu y CADA update_cart volvían a traer el menú
     // completo (5 consultas a Firestore c/u) por separado, así que un turno que agrega 3
@@ -510,6 +510,13 @@ function buildAgentToolHandlers({ db, state }) {
             if (!items.length) return JSON.stringify({ error: 'El carrito está vacío.' });
             if (!info.name) return JSON.stringify({ error: 'Falta el nombre del cliente.' });
             if (!info.phone) return JSON.stringify({ error: 'Falta el teléfono del cliente.' });
+            // Sin esto, un teléfono corto/mal transcrito (ej. 9 dígitos en vez de 10) pasaba el
+            // pedido igual pero el número quedaba inútil para contactar al cliente Y hacía que
+            // upsertAgentClientProfile fallara en silencio (exige mínimo 10 dígitos), así que el
+            // cliente ni siquiera quedaba guardado en la base de clientes.
+            if (String(info.phone).replace(/\D+/g, '').length < 10) {
+                return JSON.stringify({ error: 'El teléfono no parece completo (debe tener 10 dígitos). Pídeselo de nuevo al cliente.' });
+            }
             if (!info.fulfillmentType) return JSON.stringify({ error: 'Falta el tipo de entrega (pickup, delivery o mesa).' });
             if (info.fulfillmentType === 'delivery' && !info.address) return JSON.stringify({ error: 'Falta la dirección de domicilio.' });
             if (!info.paymentMethod) return JSON.stringify({ error: 'Falta el método de pago.' });
@@ -539,7 +546,8 @@ function buildAgentToolHandlers({ db, state }) {
                     scheduledDate: info.scheduledDate,
                     scheduledTime: info.scheduledTime,
                     scheduledLabel: info.scheduledLabel,
-                    source: state.channel === 'whatsapp' ? 'agent-whatsapp' : 'agent-web'
+                    source: state.channel === 'whatsapp' ? 'agent-whatsapp' : 'agent-web',
+                    conversationKey
                 });
                 state.status = 'completed';
                 state.lastOrderId = result.id;

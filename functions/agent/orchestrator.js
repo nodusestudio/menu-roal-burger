@@ -279,12 +279,61 @@ async function lookupProductInfo(db, productName) {
     return { text, imageUrl };
 }
 
+// Usado por notifyOrderDelivered (functions/index.js) cuando un pedido que vino del agente pasa
+// a "entregado" -- a diferencia de appendAdminMessage, esto NO deja humanControl:true (nadie
+// tomó el control, el sistema solo está cerrando la conversación) y ARCHIVA de una vez, porque
+// el viaje del pedido ya terminó. Si la conversación ya no existe (se borró a mano), no falla.
+async function closeConversationWithMessage(db, conversationKey, text) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    const snap = await ref.get();
+    if (!snap.exists) return null;
+    const state = snap.data();
+    const message = { role: 'assistant', content: [{ type: 'text', text }] };
+    const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [message]);
+    await ref.set({
+        messageCount: newSeq,
+        lastMessageText: truncatePreview(text),
+        needsHuman: false,
+        status: 'archived',
+        archivedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    return { channel: state.channel, phone: state.phone };
+}
+
 async function handbackToAgent(db, conversationKey) {
     const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
     // needsHuman/status también se resetean acá: sin esto, una conversación que escaló una vez
     // quedaba con status='needs_human' para siempre (handleIncomingTurn corta en seco antes de
     // dejar responder al bot de nuevo), aunque el admin ya haya devuelto el control.
     await ref.set({ humanControl: false, needsHuman: false, status: 'active', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+// Acción manual del admin desde Chat Roal -- igual que el archivado automático por inactividad,
+// no borra nada, solo deja de aparecer en la lista por defecto (toggle "Ver archivadas" en
+// src/js/admin.js).
+async function archiveConversation(db, conversationKey) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    await ref.set({ status: 'archived', needsHuman: false, archivedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+// Bloquea esta conversación para que el agente deje de responderle -- se usa para clientes
+// abusivos o spam. A diferencia del interruptor global (agentEnabled), esto es POR conversación:
+// para WhatsApp equivale a bloquear el número (conversationKey = wa_{telefono}, siempre el mismo
+// para ese cliente); para web solo bloquea esa sesión puntual. handleIncomingTurn revisa esto
+// ANTES que cualquier otra cosa -- ni siquiera guarda needsHuman, para que no vuelva a aparecer
+// en la lista de "necesita atención".
+async function blockConversation(db, conversationKey) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    await ref.set({ blocked: true, humanControl: false, needsHuman: false, status: 'archived', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+// Borra la conversación y todos sus mensajes PARA SIEMPRE -- a diferencia de archivar, esto no
+// se puede deshacer. recursiveDelete (Admin SDK) se encarga de la subcolección de mensajes sin
+// que haya que paginarla a mano.
+async function deleteConversation(db, conversationKey) {
+    const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
+    await db.recursiveDelete(ref);
 }
 
 // Limpia el aviso de "necesita atención" sin tocar humanControl/status — se usa cuando el admin
@@ -549,7 +598,7 @@ function withCacheBreakpoint(messages) {
 // duplicar la llamada a Claude, el manejo de tools y el persistido final entre los dos.
 async function runAgentConversationLoop({ conversationKey, anthropicApiKey, state, ref, messages, messagesToPersist, systemBlocks }) {
     const client = new Anthropic({ apiKey: anthropicApiKey });
-    const handlers = buildAgentToolHandlers({ db: ref.firestore, state });
+    const handlers = buildAgentToolHandlers({ db: ref.firestore, state, conversationKey });
 
     let finalReplyText = '';
     let hadError = false;
@@ -733,6 +782,21 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
 
     const { ref, state, returningCustomerNote } = await loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId, customerProfile });
 
+    // Conversación bloqueada a mano desde Chat Roal (blockConversation) -- se guarda el mensaje
+    // por si el admin lo quiere revisar después, pero nunca se le responde ni se marca como que
+    // necesita atención (para eso ya se bloqueó, justamente para dejar de prestarle atención).
+    if (state.blocked === true) {
+        const userMessage = { role: 'user', content: [{ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' }] };
+        const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [userMessage]);
+        await ref.set({
+            messageCount: newSeq,
+            lastMessageText: truncatePreview(text),
+            lastCustomerMessageText: truncatePreview(text),
+            updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        return { reply: null };
+    }
+
     // Interruptor global apagado -- el admin va a atender él mismo por un rato, así que ni
     // siquiera se intenta llamar a Claude. Va ANTES del chequeo de humanControl porque aplica a
     // TODAS las conversaciones, no solo a la que ya estaba con un admin encima. wasAlreadyWaiting
@@ -855,4 +919,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, images, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo, closeConversationWithMessage, archiveConversation, blockConversation, deleteConversation };

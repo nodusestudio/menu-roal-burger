@@ -8309,6 +8309,35 @@
         .inbox-head-btn.red   { background: rgba(222,70,70,0.13); border-color: rgba(222,70,70,0.35); color: #ffc8c8; }
         .inbox-head-btn.blue  { background: rgba(47,111,221,0.15); border-color: rgba(95,149,234,0.35); color: #c5d9ff; }
 
+        /* Menú "más opciones" (⋮) del detalle de Chat Roal -- archivar/bloquear/eliminar */
+        .chatroal-more-menu-wrap { position: relative; }
+        .chatroal-more-menu {
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            z-index: 20;
+            background: #14161e;
+            border: 1px solid var(--admin-border);
+            border-radius: 10px;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+            display: flex;
+            flex-direction: column;
+            min-width: 160px;
+            overflow: hidden;
+        }
+        .chatroal-more-menu button {
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            color: #eef4ff;
+            text-align: left;
+            padding: 9px 14px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .chatroal-more-menu button:last-child { border-bottom: none; }
+        .chatroal-more-menu button:hover { background: rgba(255,122,26,0.12); }
+
         /* Burbujas de mensaje */
         .inbox-messages-scroll {
             flex: 1;

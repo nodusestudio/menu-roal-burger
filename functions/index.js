@@ -6,7 +6,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo, closeConversationWithMessage, archiveConversation, blockConversation, deleteConversation } = require('./agent/orchestrator');
 const { fetchAllSellableItems } = require('./agent/tools');
 const { buildDeliveredOrderWhatsAppMessage } = require('./agent/orderLogic');
 
@@ -304,10 +304,17 @@ exports.notifyNewAgentChat = onDocumentWritten(
 );
 
 // ─────────────────────────────────────────────────────────────
-// Aviso automático por WhatsApp cuando un pedido pasa a "entregado" (botón en el Kanban de
-// Pedidos, src/js/admin.js) -- antes ese mensaje SOLO se copiaba al portapapeles para que el
-// admin lo pegara a mano en WhatsApp; con volumen real, es fácil que se olvide. Dispara UNA vez
-// por pedido (solo en la transición, no en cada guardado posterior con status ya 'entregado').
+// Aviso automático cuando un pedido pasa a "entregado" (botón en el Kanban de Pedidos,
+// src/js/admin.js) -- antes ese mensaje SOLO se copiaba al portapapeles para que el admin lo
+// pegara a mano en WhatsApp; con volumen real, es fácil que se olvide. Dispara UNA vez por
+// pedido (solo en la transición, no en cada guardado posterior con status ya 'entregado').
+//
+// Si el pedido tiene conversationKey (vino del agente de IA), el aviso se manda POR ESE MISMO
+// CHAT -- se guarda en el historial de la conversación (así el cliente lo ve si reabre el chat
+// web, y Chat Roal lo muestra) y esa conversación se archiva porque el viaje ya terminó. El push
+// real a WhatsApp sigue pasando, pero a través del mismo mecanismo del chat, no por separado —
+// evita mandarlo dos veces. Si el pedido NO tiene conversationKey (POS, menú clásico), se manda
+// directo por WhatsApp como antes.
 // ─────────────────────────────────────────────────────────────
 exports.notifyOrderDelivered = onDocumentWritten(
     { document: 'pedidos/{orderId}', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
@@ -324,7 +331,17 @@ exports.notifyOrderDelivered = onDocumentWritten(
             const brandingDoc = await db.collection('configuracion').doc('config_landing').get();
             const restaurantName = String(brandingDoc.data()?.restaurantName || '').trim();
             const message = buildDeliveredOrderWhatsAppMessage(after, restaurantName);
-            await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), phoneDigits, message);
+
+            if (after.conversationKey) {
+                const closed = await closeConversationWithMessage(db, after.conversationKey, message);
+                if (closed?.channel === 'whatsapp' && closed.phone) {
+                    await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), closed.phone, message);
+                }
+                // Canal 'web': con guardarlo en el historial alcanza -- el widget lo recoge solo
+                // con el polling que ya tiene (ver agent-chat.js).
+            } else {
+                await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), phoneDigits, message);
+            }
         } catch (err) {
             console.error(`notifyOrderDelivered: fallo al notificar pedido ${event.params.orderId}:`, err);
         }
@@ -562,9 +579,24 @@ exports.agentChatAdminReply = onCall(
         const answerQuestion = request.data?.answerQuestion === true;
         const addNote = request.data?.addNote === true;
         const previewProduct = request.data?.previewProduct === true;
+        const archive = request.data?.archive === true;
+        const block = request.data?.block === true;
+        const del = request.data?.delete === true;
         const text = String(request.data?.text || '').trim();
 
         try {
+            if (archive) {
+                await archiveConversation(getFirestore(), conversationKey);
+                return { ok: true };
+            }
+            if (block) {
+                await blockConversation(getFirestore(), conversationKey);
+                return { ok: true };
+            }
+            if (del) {
+                await deleteConversation(getFirestore(), conversationKey);
+                return { ok: true };
+            }
             if (handback) {
                 await handbackToAgent(getFirestore(), conversationKey);
                 return { ok: true };

@@ -11459,6 +11459,14 @@ function renderChatRoalDetail() {
             <div class="inbox-detail-head-actions">
                 ${conv.humanControl ? '<button class="inbox-head-btn green" data-chatroal-action="take-order">📦 Tomar pedido ahora</button>' : ''}
                 ${conv.humanControl ? '<button class="inbox-head-btn blue" data-chatroal-action="handback">🤖 Devolver al agente</button>' : ''}
+                <div class="chatroal-more-menu-wrap">
+                    <button class="inbox-head-btn" type="button" id="chatRoalMoreBtn" title="Más opciones">⋮</button>
+                    <div class="chatroal-more-menu" id="chatRoalMoreMenu" hidden>
+                        <button type="button" data-chatroal-action="archive">🗄️ Archivar</button>
+                        <button type="button" data-chatroal-action="block">🚫 Bloquear</button>
+                        <button type="button" data-chatroal-action="delete-conversation">🗑️ Eliminar</button>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="chatroal-control-banner ${conv.humanControl ? 'is-you' : 'is-bot'}">
@@ -11512,6 +11520,14 @@ function renderChatRoalDetail() {
         _chatRoalPendingImageUrl = null;
         renderChatRoalDetail();
     });
+
+    const moreBtn = document.getElementById('chatRoalMoreBtn');
+    const moreMenu = document.getElementById('chatRoalMoreMenu');
+    moreBtn?.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (moreMenu) moreMenu.hidden = !moreMenu.hidden;
+    });
+    document.addEventListener('click', () => { if (moreMenu) moreMenu.hidden = true; }, { once: true });
 
     const productSearchEl = document.getElementById('chatRoalProductSearch');
     const productDropdownEl = document.getElementById('chatRoalProductDropdown');
@@ -11596,6 +11612,64 @@ document.addEventListener('click', async (event) => {
             await callable({ conversationKey: _chatRoalActiveId, handback: true });
         } catch (err) {
             showNotice(`Error: ${err.message || 'no se pudo devolver el control'}`, 'error');
+        } finally {
+            actionButton.disabled = false;
+        }
+        return;
+    }
+
+    if (action === 'archive') {
+        actionButton.disabled = true;
+        try {
+            await callable({ conversationKey: _chatRoalActiveId, archive: true });
+            showNotice('Conversación archivada.', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo archivar'}`, 'error');
+        } finally {
+            actionButton.disabled = false;
+        }
+        return;
+    }
+
+    if (action === 'block') {
+        const confirmed = await showConfirmModal({
+            icon: '🚫',
+            title: '¿Bloquear esta conversación?',
+            message: 'El agente va a dejar de responderle a este cliente por completo (sus mensajes se siguen guardando, pero nunca más obtiene respuesta automática). No es lo mismo que archivar.',
+            confirmText: 'Bloquear',
+            danger: true
+        });
+        if (!confirmed) return;
+        actionButton.disabled = true;
+        try {
+            await callable({ conversationKey: _chatRoalActiveId, block: true });
+            showNotice('Conversación bloqueada.', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo bloquear'}`, 'error');
+        } finally {
+            actionButton.disabled = false;
+        }
+        return;
+    }
+
+    if (action === 'delete-conversation') {
+        const confirmed = await showConfirmModal({
+            icon: '🗑️',
+            title: '¿Eliminar esta conversación para siempre?',
+            message: 'Se borra todo el historial de mensajes. Esto NO se puede deshacer -- si solo quieres sacarla de la vista, usa "Archivar" en vez de esto.',
+            confirmText: 'Eliminar',
+            danger: true
+        });
+        if (!confirmed) return;
+        const deletingId = _chatRoalActiveId;
+        actionButton.disabled = true;
+        try {
+            await callable({ conversationKey: deletingId, delete: true });
+            if (_chatRoalActiveId === deletingId) _chatRoalActiveId = null;
+            renderChatRoalDetail();
+            showNotice('Conversación eliminada.', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo eliminar'}`, 'error');
         } finally {
             actionButton.disabled = false;
         }

@@ -326,7 +326,8 @@ async function createAgentOrder(db, {
     scheduledDate,
     scheduledTime,
     scheduledLabel,
-    source
+    source,
+    conversationKey
 }) {
     const normalizedFulfillment = getCheckoutFulfillmentType(fulfillmentType);
     if (!normalizedFulfillment) {
@@ -409,6 +410,10 @@ async function createAgentOrder(db, {
         customerPhoneDigits,
         fulfillmentType: normalizedFulfillment,
         orderType,
+        // Referencia a agent_conversations/{conversationKey} -- así notifyOrderDelivered
+        // (functions/index.js) sabe si este pedido vino de una conversación con el agente y le
+        // manda el aviso de "salió de la cocina" por ese mismo chat en vez de solo por WhatsApp.
+        conversationKey: conversationKey || null,
         deliveryAddress: String(address || '').trim(),
         items: orderedItems,
         itemCount: orderedItems.length,
