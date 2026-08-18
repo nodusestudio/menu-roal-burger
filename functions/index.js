@@ -82,6 +82,42 @@ async function runFollowUpAndPush(conversationKey) {
     }
 }
 
+// Debounce de ráfagas de WhatsApp: un cliente que escribe "Hola" / "quiero una hamburguesa" /
+// "de pollo" en 3 mensajes seguidos hacía que el agente corriera 3 turnos completos por
+// separado (3 llamadas a Claude) en vez de uno solo. Cada mensaje entrante se encola en un doc
+// de Firestore y esta función espera un momento corto por si llegan más; solo la invocación
+// que sigue siendo "la más nueva" al terminar de esperar procesa el lote completo de una vez —
+// las demás (mensajes que quedaron en el medio de la ráfaga) se retiran sin llamar al agente.
+const WHATSAPP_DEBOUNCE_COLLECTION = 'agent_whatsapp_debounce';
+const WHATSAPP_DEBOUNCE_MS = 4000;
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function debounceAndClaimWhatsAppMessage(db, conversationKey, text, location) {
+    const ref = db.collection(WHATSAPP_DEBOUNCE_COLLECTION).doc(conversationKey);
+
+    const mySeq = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const data = snap.exists ? snap.data() : null;
+        const seq = Number(data?.seq || 0) + 1;
+        const texts = [...(data?.texts || []), text].filter(Boolean);
+        tx.set(ref, { seq, texts, location: location || data?.location || null });
+        return seq;
+    });
+
+    await sleep(WHATSAPP_DEBOUNCE_MS);
+
+    return db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const data = snap.exists ? snap.data() : null;
+        if (!data || data.seq !== mySeq) return null; // llegó un mensaje más nuevo, no me toca a mí
+        tx.set(ref, { seq: data.seq, texts: [], location: null });
+        return { texts: data.texts || [], location: data.location || null };
+    });
+}
+
 // ─────────────────────────────────────────────────────────────
 // Verificación reCAPTCHA v3 — valida el score antes del login admin
 // Configurar secret: firebase functions:secrets:set RECAPTCHA_SECRET
@@ -594,15 +630,24 @@ exports.ultramsgWebhook = onRequest(
                 return;
             }
 
+            const db = getFirestore();
+            const conversationKey = `wa_${phoneDigits}`;
+            const claimed = await debounceAndClaimWhatsAppMessage(db, conversationKey, text, location);
+            if (!claimed) {
+                res.status(200).send('queued');
+                return;
+            }
+
+            const combinedText = claimed.texts.join('\n').trim() || (claimed.location ? 'Compartí mi ubicación.' : text);
             const apiKey = ANTHROPIC_API_KEY.value();
             const result = await handleIncomingTurn({
-                db: getFirestore(),
+                db,
                 anthropicApiKey: apiKey,
                 channel: 'whatsapp',
-                conversationKey: `wa_${phoneDigits}`,
+                conversationKey,
                 phone: phoneDigits,
-                text: text || 'Compartí mi ubicación.',
-                location
+                text: combinedText || 'Compartí mi ubicación.',
+                location: claimed.location
             });
 
             const instanceId = ULTRAMSG_INSTANCE.value();
