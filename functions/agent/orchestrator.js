@@ -364,6 +364,26 @@ async function buildActiveInstructionsSystemBlock(db) {
     };
 }
 
+// Sin esto, CADA turno de la conversación y CADA vuelta del loop de tools (hasta 12 por turno)
+// reenviaban el historial completo a precio lleno -- Anthropic solo cachea lo que va HASTA un
+// bloque marcado con cache_control, y acá nunca se marcaba nada del lado de `messages` (solo el
+// system prompt lo tenía). Devuelve un array NUEVO con el marcador en el último bloque del
+// último mensaje -- nunca muta `messages`/`messagesToPersist` originales, así ese cache_control
+// no se cuela en lo que se guarda en Firestore ni se acumula turno tras turno hasta pasarse del
+// máximo de 4 breakpoints por request.
+function withCacheBreakpoint(messages) {
+    if (!messages.length) return messages;
+    const lastIdx = messages.length - 1;
+    const lastMsg = messages[lastIdx];
+    const blocks = Array.isArray(lastMsg?.content) ? lastMsg.content : null;
+    if (!blocks || !blocks.length) return messages;
+    const clonedBlocks = [
+        ...blocks.slice(0, -1),
+        { ...blocks[blocks.length - 1], cache_control: { type: 'ephemeral' } }
+    ];
+    return [...messages.slice(0, lastIdx), { ...lastMsg, content: clonedBlocks }];
+}
+
 // Loop de tool-use compartido por handleIncomingTurn (turno normal, con mensaje del cliente) y
 // runFollowUpTurn (turno "proactivo": el equipo respondió una ask_team_question y el agente
 // tiene que contestarle al cliente SIN que este haya escrito nada nuevo) — extraído para no
@@ -383,10 +403,13 @@ async function runAgentConversationLoop({ conversationKey, anthropicApiKey, stat
                 model: MODEL,
                 max_tokens: 2048,
                 thinking: { type: 'adaptive' },
-                output_config: { effort: 'medium' },
+                // 'low' en vez de 'medium': para un menú fijo con reglas simples no hace falta
+                // tanto "pensamiento" interno -- eso se cobra como tokens de salida aunque el
+                // cliente nunca lo vea, y es la otra pata grande del ahorro junto con la caché.
+                output_config: { effort: 'low' },
                 system: systemBlocks,
                 tools: AGENT_TOOL_DEFS,
-                messages
+                messages: withCacheBreakpoint(messages)
             });
 
             if (response.stop_reason === 'refusal') {

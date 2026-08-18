@@ -314,7 +314,12 @@ function buildAgentToolHandlers({ db, state }) {
                 const needle = normalizeText(search);
                 filtered = filtered.filter((p) => normalizeText(p.nombre).includes(needle));
             }
-            const results = filtered.slice(0, MAX_MENU_RESULTS);
+            // Sin "nota" cuando está vacía (la mayoría de los productos no tienen descripción
+            // cargada) -- este resultado queda pegado en el historial de la conversación para
+            // siempre, así que cada byte que se ahorra acá se repite en cada turno siguiente.
+            const results = filtered.slice(0, MAX_MENU_RESULTS).map((p) =>
+                p.nota ? p : { nombre: p.nombre, precio: p.precio, categoria: p.categoria, tipo: p.tipo }
+            );
             return JSON.stringify({ count: results.length, products: results });
         },
 
