@@ -18,7 +18,10 @@ const AGENT_INSTRUCTIONS_COLLECTION = 'agent_instructions';
 // tool use -- decision explicita del negocio para bajar el costo por cliente, no un descuido.
 const MODEL = 'claude-sonnet-5';
 const MAX_TURNS_PER_CONVERSATION = 40;
-const MAX_TOOL_LOOP_ITERATIONS = 12;
+// 8 en vez de 12: un pedido normal (consultar menú, agregar unos productos, resumen, datos del
+// cliente, confirmar) rara vez pasa de 6-7 vueltas -- si el modelo llega a 8 sin cerrar, algo
+// salió raro y es mejor cortar ahí (barato) que dejarlo seguir intentando hasta 12 (caro).
+const MAX_TOOL_LOOP_ITERATIONS = 8;
 const MAX_HISTORY_MESSAGES = 60;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutos
 const RATE_LIMIT_MAX_MESSAGES = 20;
@@ -377,9 +380,12 @@ function withCacheBreakpoint(messages) {
     const lastMsg = messages[lastIdx];
     const blocks = Array.isArray(lastMsg?.content) ? lastMsg.content : null;
     if (!blocks || !blocks.length) return messages;
+    // TTL de 1h también acá: un cliente real se toma su tiempo pensando el pedido -- con los 5
+    // min por defecto, cualquier pausa (justo lo que dispara el aviso de inactividad a los 5 min)
+    // ya hace perder la caché de todo el historial acumulado hasta ese momento.
     const clonedBlocks = [
         ...blocks.slice(0, -1),
-        { ...blocks[blocks.length - 1], cache_control: { type: 'ephemeral' } }
+        { ...blocks[blocks.length - 1], cache_control: { type: 'ephemeral', ttl: '1h' } }
     ];
     return [...messages.slice(0, lastIdx), { ...lastMsg, content: clonedBlocks }];
 }
@@ -497,7 +503,11 @@ async function runFollowUpTurn(db, anthropicApiKey, conversationKey) {
         return { reply: null, channel: state.channel, phone: state.phone };
     }
 
-    const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
+    // TTL de 1h (no los 5 min por defecto): este system prompt lo comparten TODAS las
+    // conversaciones -- con 5 min, cualquier hueco sin mensajes (normal fuera de horas pico)
+    // hace que la caché expire y el siguiente cliente pague el precio lleno de nuevo. El costo
+    // de escritura es el doble (2x vs 1.25x), pero se amortiza sobradamente con el volumen real.
+    const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }];
     const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
     if (instructionsBlock) systemBlocks.push(instructionsBlock);
 
@@ -595,7 +605,11 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     // poder mostrarle al admin lo que dijo el CLIENTE, no la respuesta del bot a su propio aviso.
     state.lastCustomerMessageText = truncatePreview(String(text || '').trim());
 
-    const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }];
+    // TTL de 1h (no los 5 min por defecto): este system prompt lo comparten TODAS las
+    // conversaciones -- con 5 min, cualquier hueco sin mensajes (normal fuera de horas pico)
+    // hace que la caché expire y el siguiente cliente pague el precio lleno de nuevo. El costo
+    // de escritura es el doble (2x vs 1.25x), pero se amortiza sobradamente con el volumen real.
+    const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }];
     const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
     if (instructionsBlock) systemBlocks.push(instructionsBlock);
     // Si ya hay una pregunta sin responder (ask_team_question), se lo recuerda en cada turno —
