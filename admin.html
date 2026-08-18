@@ -14967,14 +14967,15 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-    <!-- REACTIVADO 2026-08-18 con clave VAPID real configurada (FCM_VAPID_KEY en admin.js) --
-         antes estaba sacado porque con el push sin configurar, firebase.functions() intentaba
-         sacar un token de Messaging antes de CADA llamada a una Cloud Function y, si fallaba
-         (Registration failed - push service error), tumbaba la llamada completa, no solo la
-         parte de push. PROBAR EN VIVO que Chat Roal (enviar, devolver al agente, marcar como
-         visto) sigue funcionando después de desplegar -- si vuelve a fallar, comentar esta línea
-         de nuevo es el rollback inmediato. -->
-    <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
+    <!-- REVERTIDO 2026-08-18: se probó con clave VAPID real configurada y el problema se repitió
+         igual -- firebase.functions() sigue intentando sacar un token de Messaging antes de CADA
+         llamada a una Cloud Function, y esa parte falla (Registration failed - push service
+         error) y tumba la llamada completa (Chat Roal dejó de poder enviar mensajes). El VAPID
+         real NO fue suficiente para evitarlo -- este acoplamiento entre firebase.functions() y
+         firebase.messaging() parece ser un problema de fondo del SDK compat, no de configuración.
+         NO volver a agregar este script sin antes resolver esa causa de raíz (ej. cambiar a
+         Modular SDK, o aislar messaging en una pestaña/contexto separado del que usa Chat Roal). -->
+    <!-- <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script> -->
     <!-- Faltaba: sin esto, firebase.functions() no existe y Chat Roal (Devolver al agente,
          responder, marcar como visto) quedaba en un no-op silencioso -- el botón de enviar
          no hacía nada porque initFirebaseServices() devolvía functions:null. -->
