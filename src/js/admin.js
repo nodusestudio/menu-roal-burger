@@ -10858,7 +10858,7 @@ function toggleChatRoalSettingsPanel() {
 }
 
 function _instructionHorarioLabel(horario) {
-    if (!horario || horario.tipo === 'siempre') return 'Siempre activa';
+    if (!horario || horario.tipo === 'siempre') return 'Fija';
     if (horario.tipo === 'dias_horas') return `Hoy · ${horario.hora_inicio || ''} – ${horario.hora_fin || ''}`;
     return 'Configurado';
 }
@@ -10908,8 +10908,8 @@ function renderChatRoalSettingsPanel() {
             ${instructionsHtml}
             <button type="button" class="chatroal-instruction-add-btn" id="chatRoalAddInstructionBtn">+ Nueva instrucción</button>
             <div class="chatroal-instruction-form" id="chatRoalInstructionForm" hidden>
-                <textarea id="chatRoalInstructionText" rows="2" placeholder="Ej: Hoy de 4 a 5pm recomienda la Burger Ranchera si preguntan qué pedir."></textarea>
-                <label><input type="radio" name="instructionHorarioTipo" value="siempre" checked> Siempre activa</label>
+                <textarea id="chatRoalInstructionText" rows="2" placeholder="Ej: La adición de carne solo se ofrece de $7.000 (fija) — o: Hoy de 4 a 5pm recomienda la Burger Ranchera (por horario)."></textarea>
+                <label><input type="radio" name="instructionHorarioTipo" value="siempre" checked> Fija — una regla del negocio que no cambia (ej. precios, políticas)</label>
                 <label><input type="radio" name="instructionHorarioTipo" value="dias_horas"> Solo hoy, en un rango de horas</label>
                 <div id="chatRoalInstructionHoras" style="display:none;gap:8px;grid-template-columns:1fr 1fr;">
                     <input type="time" id="chatRoalInstructionHoraInicio" value="16:00">

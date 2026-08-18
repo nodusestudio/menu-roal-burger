@@ -350,27 +350,45 @@ function buildLocationNoteBlock(state, location) {
 }
 
 // Instrucciones operativas que el negocio carga desde Chat Roal (FODEXA) — reusa el mismo
-// shape de `horario` que combos_especiales (isComboActiveNow ya sabe filtrarlo), así que una
-// instrucción con horario "hoy de 4 a 5pm" deja de aplicar sola sin que nadie la borre. Se
-// arma como un bloque de `system` SEPARADO del prompt fijo (sin cache_control) para que un
-// cambio de instrucciones se refleje de inmediato, sin romper el cache del prompt grande.
-async function buildActiveInstructionsSystemBlock(db) {
+// shape de `horario` que combos_especiales (isComboActiveNow ya sabe filtrarlo). Se dividen en
+// dos bloques de `system`:
+// - Fijas (horario.tipo === 'siempre', ej. "la adición de carne solo se ofrece de $7.000"): no
+//   cambian de un turno a otro, así que SÍ llevan cache_control -- se cachean igual que el
+//   prompt grande y solo se pagan a precio lleno cuando el admin edita/agrega una.
+// - Temporales (horario con rango de días/horas, ej. "hoy de 4 a 5pm ofrece X"): pueden activarse
+//   o desactivarse solas de un turno a otro según la hora, así que van SIN cache_control para que
+//   el cambio se refleje de inmediato sin esperar a que expire una caché vieja.
+async function buildInstructionsSystemBlocks(db) {
     let snap;
     try {
         snap = await db.collection(AGENT_INSTRUCTIONS_COLLECTION).get();
     } catch (_e) {
-        return null;
+        return { fixedBlock: null, temporalBlock: null };
     }
     const active = snap.docs
         .map((d) => d.data())
-        .filter((d) => d.active !== false && orderLogic.isComboActiveNow(d.horario))
+        .filter((d) => d.active !== false && orderLogic.isComboActiveNow(d.horario));
+
+    const fixedTexts = active
+        .filter((d) => !d.horario || d.horario.tipo === 'siempre')
         .map((d) => String(d.text || '').trim())
         .filter(Boolean);
-    if (!active.length) return null;
-    return {
+    const temporalTexts = active
+        .filter((d) => d.horario && d.horario.tipo !== 'siempre')
+        .map((d) => String(d.text || '').trim())
+        .filter(Boolean);
+
+    const fixedBlock = fixedTexts.length ? {
         type: 'text',
-        text: `Instrucciones vigentes del negocio para ahora mismo (síguelas al pie de la letra, tienen prioridad sobre tus preferencias por defecto):\n${active.map((t) => `- ${t}`).join('\n')}`
-    };
+        text: `Reglas fijas del negocio (síguelas al pie de la letra, tienen prioridad sobre tus preferencias por defecto):\n${fixedTexts.map((t) => `- ${t}`).join('\n')}`,
+        cache_control: { type: 'ephemeral', ttl: '1h' }
+    } : null;
+    const temporalBlock = temporalTexts.length ? {
+        type: 'text',
+        text: `Instrucciones vigentes del negocio para ahora mismo (síguelas al pie de la letra, tienen prioridad sobre tus preferencias por defecto):\n${temporalTexts.map((t) => `- ${t}`).join('\n')}`
+    } : null;
+
+    return { fixedBlock, temporalBlock };
 }
 
 // Sin esto, CADA turno de la conversación y CADA vuelta del loop de tools (hasta 12 por turno)
@@ -523,8 +541,9 @@ async function runFollowUpTurn(db, anthropicApiKey, conversationKey) {
     // hace que la caché expire y el siguiente cliente pague el precio lleno de nuevo. El costo
     // de escritura es el doble (2x vs 1.25x), pero se amortiza sobradamente con el volumen real.
     const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }];
-    const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
-    if (instructionsBlock) systemBlocks.push(instructionsBlock);
+    const { fixedBlock, temporalBlock } = await buildInstructionsSystemBlocks(db);
+    if (fixedBlock) systemBlocks.push(fixedBlock);
+    if (temporalBlock) systemBlocks.push(temporalBlock);
 
     const { reply, images } = await runAgentConversationLoop({
         conversationKey, anthropicApiKey, state, ref, messages, messagesToPersist: [], systemBlocks
@@ -625,8 +644,9 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     // hace que la caché expire y el siguiente cliente pague el precio lleno de nuevo. El costo
     // de escritura es el doble (2x vs 1.25x), pero se amortiza sobradamente con el volumen real.
     const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }];
-    const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
-    if (instructionsBlock) systemBlocks.push(instructionsBlock);
+    const { fixedBlock, temporalBlock } = await buildInstructionsSystemBlocks(db);
+    if (fixedBlock) systemBlocks.push(fixedBlock);
+    if (temporalBlock) systemBlocks.push(temporalBlock);
     // Si ya hay una pregunta sin responder (ask_team_question), se lo recuerda en cada turno —
     // sin esto el modelo no tiene memoria de esto entre turnos y podía volver a preguntar lo
     // mismo o escalar innecesariamente mientras espera.
