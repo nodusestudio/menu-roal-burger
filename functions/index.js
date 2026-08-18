@@ -7,6 +7,7 @@ const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
 const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo } = require('./agent/orchestrator');
+const { fetchAllSellableItems } = require('./agent/tools');
 
 initializeApp();
 
@@ -582,6 +583,26 @@ exports.agentChatAdminReply = onCall(
             console.error('agentChatAdminReply error:', err);
             throw new HttpsError('internal', 'No se pudo enviar el mensaje.');
         }
+    }
+);
+
+// Menú completo (nombre/precio/categoría, SIN fotos) para el buscador de Chat Roal -- el admin
+// lo carga UNA vez al abrir el panel y filtra en el navegador mientras escribe, sin ida y vuelta
+// al servidor por cada letra. Reusa fetchAllSellableItems (functions/agent/tools.js) para que el
+// buscador nunca se desincronice de lo que el agente de IA realmente ve con get_menu.
+exports.chatRoalMenuList = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const uid = request.auth?.uid;
+        if (!uid) {
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+        }
+        const adminDoc = await getFirestore().collection('admins').doc(uid).get();
+        if (!adminDoc.exists) {
+            throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+        }
+        const items = await fetchAllSellableItems(getFirestore());
+        return { items: items.map((p) => ({ nombre: p.nombre, precio: p.precio, categoria: p.categoria })) };
     }
 );
 

@@ -8144,6 +8144,50 @@
         }
         .chatroal-canned-chip:hover { background: rgba(255,122,26,0.15); }
 
+        /* Buscador de producto con lista desplegable en vivo -- filtra sobre el menú cacheado
+           en el navegador (_chatRoalMenuCache), sin llamar al servidor por cada letra. */
+        .chatroal-product-search-wrap {
+            position: relative;
+            flex: 1;
+            min-width: 160px;
+        }
+        .chatroal-product-search-wrap input { width: 100%; }
+        .chatroal-product-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            z-index: 20;
+            background: #14161e;
+            border: 1px solid var(--admin-border);
+            border-radius: 10px;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+            max-height: 220px;
+            overflow-y: auto;
+        }
+        .chatroal-product-dropdown-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            width: 100%;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            color: #eef4ff;
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .chatroal-product-dropdown-item:last-child { border-bottom: none; }
+        .chatroal-product-dropdown-item:hover { background: rgba(255,122,26,0.15); }
+        .chatroal-product-dropdown-item span { color: var(--admin-muted); white-space: nowrap; }
+        .chatroal-product-dropdown-empty {
+            padding: 10px 12px;
+            font-size: 0.78rem;
+            color: var(--admin-muted);
+        }
+
         /* Panel derecho — detalle */
         .inbox-detail {
             display: flex;

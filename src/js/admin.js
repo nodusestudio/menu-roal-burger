@@ -10739,6 +10739,20 @@ let _chatRoalCannedMessages = [];
 // admin necesita VER antes de enviar (mensaje preestablecido o resultado del buscador de
 // producto), no que se mande directo al elegirlo.
 let _chatRoalPendingImageUrl = null;
+// Menú completo (nombre/precio/categoría, SIN fotos) cacheado en el navegador una sola vez al
+// abrir Chat Roal -- así el buscador filtra al instante mientras se escribe, sin ida y vuelta al
+// servidor por cada letra. null = todavía no cargó.
+let _chatRoalMenuCache = null;
+
+async function _loadChatRoalMenuCache() {
+    if (!firebaseFunctions) return;
+    try {
+        const result = await firebaseFunctions.httpsCallable('chatRoalMenuList')({});
+        _chatRoalMenuCache = Array.isArray(result.data?.items) ? result.data.items : [];
+    } catch (err) {
+        console.error('chatRoalMenuList error:', err);
+    }
+}
 
 function initChatRoal() {
     if (_chatRoalInitialized || !firebaseDb) return;
@@ -10775,6 +10789,8 @@ function initChatRoal() {
         renderChatRoalSettingsPanel();
         renderChatRoalDetail();
     }, (err) => console.error('agent_canned_messages onSnapshot error:', err));
+
+    _loadChatRoalMenuCache();
 
     _watchChatRoalUsageToday();
 
@@ -11324,6 +11340,29 @@ function openChatRoalDetail(conversationId) {
     renderChatRoalDetail();
 }
 
+// Se usa al elegir un producto del dropdown del buscador -- ya se sabe el nombre EXACTO (viene
+// de _chatRoalMenuCache), así que esta llamada solo busca la foto y arma el texto final; nunca
+// adivina cuál producto quiso decir el admin. Solo CARGA el resultado en la caja de respuesta,
+// no lo manda -- el envío real sigue pasando por el botón ➤ de siempre.
+async function _previewProductByName(exactName) {
+    if (!firebaseFunctions || !_chatRoalActiveId) return;
+    try {
+        const callable = firebaseFunctions.httpsCallable('agentChatAdminReply');
+        const result = await callable({ conversationKey: _chatRoalActiveId, previewProduct: true, productName: exactName });
+        const replyEl = document.getElementById('chatRoalReplyInput');
+        if (replyEl) replyEl.value = result.data?.text || '';
+        _chatRoalPendingImageUrl = result.data?.imageUrl || null;
+        const searchEl = document.getElementById('chatRoalProductSearch');
+        if (searchEl) searchEl.value = '';
+        const dropdown = document.getElementById('chatRoalProductDropdown');
+        if (dropdown) dropdown.hidden = true;
+        renderChatRoalDetail();
+        document.getElementById('chatRoalReplyInput')?.focus();
+    } catch (err) {
+        showNotice(`Error: ${err.message || 'no se pudo buscar'}`, 'error');
+    }
+}
+
 // SYNC: misma lógica de filtrado que getDisplayHistory en functions/agent/orchestrator.js —
 // solo bloques de texto visibles, sin tool_use/tool_result ni notas "[Sistema:".
 function _chatRoalMessageText(msg) {
@@ -11406,8 +11445,10 @@ function renderChatRoalDetail() {
             ${messagesHtml || '<p class="inbox-empty">Sin mensajes aún</p>'}
         </div>
         <div class="chatroal-quick-actions">
-            <input type="text" id="chatRoalProductSearch" placeholder="Buscar producto y cargar info + foto…">
-            <button type="button" class="chatroal-canned-chip" data-chatroal-action="preview-product">🔍 Buscar</button>
+            <div class="chatroal-product-search-wrap">
+                <input type="text" id="chatRoalProductSearch" placeholder="🔍 Buscar producto…" autocomplete="off">
+                <div class="chatroal-product-dropdown" id="chatRoalProductDropdown" hidden></div>
+            </div>
             ${cannedChipsHtml}
         </div>
         ${_chatRoalPendingImageUrl ? `
@@ -11433,6 +11474,30 @@ function renderChatRoalDetail() {
         renderChatRoalDetail();
     });
 
+    const productSearchEl = document.getElementById('chatRoalProductSearch');
+    const productDropdownEl = document.getElementById('chatRoalProductDropdown');
+    if (productSearchEl && productDropdownEl) {
+        const filterProducts = () => {
+            const q = productSearchEl.value.trim().toLowerCase();
+            if (q.length < 2 || !Array.isArray(_chatRoalMenuCache)) {
+                productDropdownEl.hidden = true;
+                productDropdownEl.innerHTML = '';
+                return;
+            }
+            const matches = _chatRoalMenuCache.filter((p) => String(p.nombre || '').toLowerCase().includes(q)).slice(0, 8);
+            productDropdownEl.innerHTML = matches.length
+                ? matches.map((p) => `<button type="button" class="chatroal-product-dropdown-item" data-product-pick="${escapeHtml(p.nombre)}">${escapeHtml(p.nombre)} <span>$${Number(p.precio || 0).toLocaleString('es-CO')}</span></button>`).join('')
+                : '<div class="chatroal-product-dropdown-empty">Sin resultados</div>';
+            productDropdownEl.hidden = false;
+        };
+        productSearchEl.addEventListener('input', filterProducts);
+        productSearchEl.addEventListener('focus', filterProducts);
+        // Delay para que el clic en un resultado registre ANTES de que el blur oculte la lista.
+        productSearchEl.addEventListener('blur', () => {
+            setTimeout(() => { productDropdownEl.hidden = true; }, 150);
+        });
+    }
+
     const scrollEl = detail.querySelector('#chatRoalMsgScroll');
     if (scrollEl) setTimeout(() => { scrollEl.scrollTop = scrollEl.scrollHeight; }, 50);
 }
@@ -11457,6 +11522,12 @@ document.addEventListener('click', async (event) => {
         return;
     }
 
+    const productPickBtn = target.closest('button[data-product-pick]');
+    if (productPickBtn instanceof HTMLButtonElement) {
+        await _previewProductByName(productPickBtn.dataset.productPick);
+        return;
+    }
+
     const actionButton = target.closest('button[data-chatroal-action]');
     if (!(actionButton instanceof HTMLButtonElement) || !_chatRoalActiveId || !firebaseFunctions) return;
 
@@ -11474,29 +11545,6 @@ document.addEventListener('click', async (event) => {
             showNotice('El agente está tomando el pedido…', 'ok');
         } catch (err) {
             showNotice(`Error: ${err.message || 'no se pudo tomar el pedido'}`, 'error');
-        } finally {
-            actionButton.disabled = false;
-        }
-        return;
-    }
-
-    if (action === 'preview-product') {
-        const searchEl = document.getElementById('chatRoalProductSearch');
-        const productName = searchEl ? searchEl.value.trim() : '';
-        if (!productName) { showNotice('Escribe el nombre del producto primero.', 'warn'); return; }
-        actionButton.disabled = true;
-        try {
-            const result = await callable({ conversationKey: _chatRoalActiveId, previewProduct: true, productName });
-            // Solo CARGA el resultado en la caja de respuesta -- no lo manda todavía, así el
-            // admin ve exactamente qué texto y qué foto va a recibir el cliente antes de enviar.
-            const replyEl = document.getElementById('chatRoalReplyInput');
-            if (replyEl) replyEl.value = result.data?.text || '';
-            _chatRoalPendingImageUrl = result.data?.imageUrl || null;
-            if (searchEl) searchEl.value = '';
-            renderChatRoalDetail();
-            document.getElementById('chatRoalReplyInput')?.focus();
-        } catch (err) {
-            showNotice(`Error: ${err.message || 'no se pudo buscar'}`, 'error');
         } finally {
             actionButton.disabled = false;
         }
