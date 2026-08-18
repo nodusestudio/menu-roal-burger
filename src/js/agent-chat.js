@@ -88,10 +88,21 @@
         return wrap;
     }
 
-    function appendMessage(container, role, text) {
+    function appendMessage(container, role, text, images) {
         const bubble = document.createElement('div');
         bubble.className = 'agent-chat-bubble ' + (role === 'user' ? 'agent-chat-bubble-user' : 'agent-chat-bubble-assistant');
-        bubble.textContent = text;
+        if (text) bubble.textContent = text;
+        if (Array.isArray(images)) {
+            images.forEach((url) => {
+                if (!url) return;
+                const img = document.createElement('img');
+                img.src = url;
+                img.alt = '';
+                img.loading = 'lazy';
+                img.className = 'agent-chat-bubble-image';
+                bubble.appendChild(img);
+            });
+        }
         container.appendChild(bubble);
         container.scrollTop = container.scrollHeight;
     }
@@ -130,7 +141,7 @@
                 const result = await callable({ sessionId });
                 const messages = (result.data && Array.isArray(result.data.messages)) ? result.data.messages : [];
                 if (messages.length) {
-                    messages.forEach((m) => appendMessage(messagesEl, m.role, m.text));
+                    messages.forEach((m) => appendMessage(messagesEl, m.role, m.text, m.images));
                     renderedMessageCount = messages.length;
                     return;
                 }
@@ -158,7 +169,7 @@
                 const result = await callable({ sessionId });
                 const messages = (result.data && Array.isArray(result.data.messages)) ? result.data.messages : [];
                 if (messages.length > renderedMessageCount) {
-                    messages.slice(renderedMessageCount).forEach((m) => appendMessage(messagesEl, m.role, m.text));
+                    messages.slice(renderedMessageCount).forEach((m) => appendMessage(messagesEl, m.role, m.text, m.images));
                     renderedMessageCount = messages.length;
                 }
             } catch (_err) {
@@ -222,8 +233,9 @@
                 const result = await callable(payload);
                 renderedMessageCount += 1; // el mensaje del cliente que se acaba de guardar
                 const reply = result.data && result.data.reply;
-                if (reply) {
-                    appendMessage(messagesEl, 'assistant', reply);
+                const images = (result.data && result.data.images) || [];
+                if (reply || images.length) {
+                    appendMessage(messagesEl, 'assistant', reply, images);
                     renderedMessageCount += 1;
                 }
                 // Si reply viene vacío (null) es porque un admin tomó el control de la

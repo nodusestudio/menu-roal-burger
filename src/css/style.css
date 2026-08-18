@@ -8803,6 +8803,14 @@ a,
     color: #fff7ef;
     border-bottom-right-radius: 4px;
 }
+.agent-chat-bubble-image {
+    display: block;
+    max-width: 100%;
+    width: 220px;
+    border-radius: 10px;
+    margin-top: 6px;
+}
+.agent-chat-bubble-image:first-child { margin-top: 0; }
 
 .agent-chat-typing {
     padding: 0 16px 6px;

@@ -193,6 +193,51 @@ function findProductByName(products, name) {
         || null;
 }
 
+// Búsqueda de foto SEPARADA de fetchAllSellableItems a propósito: esa función alimenta get_menu,
+// cuyo resultado se le manda a Claude y queda pegado en el historial para siempre — agregarle la
+// URL de la imagen a CADA item ahí infla ese payload sin necesidad, ya que Claude nunca necesita
+// "ver" la imagen, solo su URL para reenviarla por fuera de la conversación con el modelo. Por
+// eso esto vive en su propio handler, se busca solo cuando el agente realmente la pide.
+async function findProductImage(db, name) {
+    const needle = normalizeText(name);
+    if (!needle) return null;
+
+    const [productosSnap, bebidasSnap, combosSnap] = await Promise.all([
+        db.collection('productos').get(),
+        db.collection('bebidas').get(),
+        db.collection('combospacks').get()
+    ]);
+
+    for (const doc of productosSnap.docs) {
+        const p = doc.data();
+        if (String(p.estado || '').trim() === 'paused') continue;
+        const nombre = normalizeText(p.nombre);
+        if (nombre && (nombre.includes(needle) || needle.includes(nombre))) {
+            const url = String(p.image_url || p.imagen || '').trim();
+            if (url) return url;
+        }
+    }
+    for (const doc of bebidasSnap.docs) {
+        const raw = doc.data();
+        if (String(raw.estado || '').trim() === 'paused') continue;
+        const marca = normalizeText(raw.marca);
+        if (marca && (marca.includes(needle) || needle.includes(marca))) {
+            const url = String(raw.image_url || raw.imagen || '').trim();
+            if (url) return url;
+        }
+    }
+    for (const doc of combosSnap.docs) {
+        const c = doc.data();
+        if (String(c.estado || '').trim() === 'paused') continue;
+        const nombre = normalizeText(c.nombre);
+        if (nombre && (nombre.includes(needle) || needle.includes(nombre))) {
+            const url = String(c.image_url || c.imagen || '').trim();
+            if (url) return url;
+        }
+    }
+    return null;
+}
+
 // ── Definiciones de tools (JSON Schema, formato Anthropic) ──────────────────
 const AGENT_TOOL_DEFS = [
     {
@@ -280,6 +325,15 @@ const AGENT_TOOL_DEFS = [
         name: 'place_order',
         description: 'Confirma y crea el pedido real. Solo llámala cuando el carrito no esté vacío y ya tengas nombre, teléfono, tipo de entrega, dirección (si es domicilio) y método de pago.',
         input_schema: { type: 'object', properties: {} }
+    },
+    {
+        name: 'send_product_photo',
+        description: 'Comparte la foto REAL de un producto del menú (ya está cargada, no la inventas). Úsala en vez de intentar describir cómo se ve, qué trae o el tamaño de un producto cuando get_menu no tenga esa info en "nota" — una foto responde mejor que cualquier descripción de texto y evita que tengas que escalar la pregunta. No puedes ver la foto que mandas: después de llamar esto, dile al cliente brevemente que se la compartes, sin describir su contenido. Si no hay foto cargada para ese producto, dilo simple y sigue ayudando.',
+        input_schema: {
+            type: 'object',
+            properties: { productName: { type: 'string', description: 'Nombre del producto tal como aparece en get_menu.' } },
+            required: ['productName']
+        }
     },
     {
         name: 'escalate_to_human',
@@ -500,6 +554,19 @@ function buildAgentToolHandlers({ db, state }) {
             }
             state.pendingQuestion = { text, askedAt: Date.now() };
             return 'Pregunta enviada al equipo. Dile al cliente que esperas su confirmación y sigue ayudándolo con el resto si puedes mientras tanto.';
+        },
+
+        // No manda nada acá mismo -- solo deja la URL en `state.pendingImages` para que el
+        // orquestador la adjunte a la respuesta final del turno (web) o la empuje por fuera del
+        // chat con Claude (WhatsApp, vía UltraMsg). Así la imagen nunca entra al contexto del
+        // modelo ni se vuelve a mandar en turnos futuros.
+        send_product_photo: async ({ productName } = {}) => {
+            const name = String(productName || '').trim();
+            if (!name) return JSON.stringify({ error: 'productName es requerido.' });
+            const url = await findProductImage(db, name);
+            if (!url) return JSON.stringify({ error: `No hay foto cargada para "${name}". Dile al cliente que no tienes esa foto disponible y sigue ayudándolo.` });
+            state.pendingImages = [...(state.pendingImages || []), url];
+            return 'Foto encontrada y en camino. No la describas, el cliente ya la va a ver.';
         }
     };
 }

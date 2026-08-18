@@ -49,6 +49,18 @@ async function sendWhatsAppMessage(instanceId, token, phoneDigits, body) {
     });
 }
 
+// send_product_photo (functions/agent/tools.js) — imagen ya cargada en Firestore, se manda por
+// el endpoint de imágenes de UltraMsg (separado del de texto). Igual que con /messages/chat, no
+// se verificó el shape exacto contra el dashboard real de UltraMsg — probar con un envío real.
+async function sendWhatsAppImage(instanceId, token, phoneDigits, imageUrl) {
+    const waPhone = phoneDigits.startsWith('57') ? phoneDigits : `57${phoneDigits}`;
+    await fetch(`https://api.ultramsg.com/${instanceId}/messages/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, to: `+${waPhone}`, image: imageUrl })
+    });
+}
+
 // Corre el turno de seguimiento (el agente reacciona a la nota/respuesta que se acaba de
 // guardar) y empuja la respuesta si es WhatsApp. Se usa en las dos ramas de agentChatAdminReply
 // que dejan al agente "reaccionar solo" (answerQuestion y addNote) — nunca falla la acción del
@@ -57,8 +69,13 @@ async function sendWhatsAppMessage(instanceId, token, phoneDigits, body) {
 async function runFollowUpAndPush(conversationKey) {
     try {
         const followUp = await runFollowUpTurn(getFirestore(), ANTHROPIC_API_KEY.value(), conversationKey);
-        if (followUp.reply && followUp.channel === 'whatsapp' && followUp.phone) {
-            await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), followUp.phone, followUp.reply);
+        if (followUp.channel === 'whatsapp' && followUp.phone) {
+            const instanceId = ULTRAMSG_INSTANCE.value();
+            const token = ULTRAMSG_TOKEN.value();
+            if (followUp.reply) await sendWhatsAppMessage(instanceId, token, followUp.phone, followUp.reply);
+            for (const url of followUp.images || []) {
+                await sendWhatsAppImage(instanceId, token, followUp.phone, url);
+            }
         }
     } catch (followUpErr) {
         console.error('runFollowUpTurn/push error:', followUpErr);
@@ -588,7 +605,12 @@ exports.ultramsgWebhook = onRequest(
                 location
             });
 
-            await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), phoneDigits, result.reply);
+            const instanceId = ULTRAMSG_INSTANCE.value();
+            const token = ULTRAMSG_TOKEN.value();
+            await sendWhatsAppMessage(instanceId, token, phoneDigits, result.reply);
+            for (const url of result.images || []) {
+                await sendWhatsAppImage(instanceId, token, phoneDigits, url);
+            }
 
             res.status(200).send('ok');
         } catch (err) {

@@ -173,14 +173,18 @@ async function getDisplayHistory(db, conversationKey) {
             .filter((b) => b.type === 'text' && typeof b.text === 'string')
             .map((b) => b.text.trim())
             .filter((t) => t && !t.startsWith('[Sistema:'));
-        if (!textBlocks.length) continue;
-        messages.push({ role: data.role, text: textBlocks.join('\n') });
+        const images = Array.isArray(data.images) ? data.images : [];
+        if (!textBlocks.length && !images.length) continue;
+        messages.push({ role: data.role, text: textBlocks.join('\n'), ...(images.length ? { images } : {}) });
     }
     return messages;
 }
 
 async function loadHistory(ref) {
     const snap = await ref.collection('messages').orderBy('seq', 'desc').limit(MAX_HISTORY_MESSAGES).get();
+    // Ojo: solo {role, content} -- `images` (send_product_photo) queda afuera a propósito, para
+    // que una foto ya compartida no se le vuelva a mandar a Claude como contexto en turnos
+    // futuros (nunca la necesitó ver, solo reenviarla por fuera de la conversación con el modelo).
     return snap.docs.map((d) => d.data()).reverse().map((d) => ({ role: d.role, content: d.content }));
 }
 
@@ -191,7 +195,9 @@ async function persistNewMessages(ref, baseSeq, newMessages) {
     for (const message of newMessages) {
         seq += 1;
         const msgRef = ref.collection('messages').doc(String(seq).padStart(6, '0'));
-        batch.set(msgRef, { seq, role: message.role, content: message.content, createdAt: FieldValue.serverTimestamp() });
+        const doc = { seq, role: message.role, content: message.content, createdAt: FieldValue.serverTimestamp() };
+        if (Array.isArray(message.images) && message.images.length) doc.images = message.images;
+        batch.set(msgRef, doc);
     }
     await batch.commit();
     return seq;
@@ -401,6 +407,7 @@ async function runAgentConversationLoop({ conversationKey, anthropicApiKey, stat
     let finalReplyText = '';
     let hadError = false;
     let loopIterations = 0;
+    let finalAssistantMessage = null;
 
     try {
         for (let iteration = 0; iteration < MAX_TOOL_LOOP_ITERATIONS; iteration++) {
@@ -427,6 +434,7 @@ async function runAgentConversationLoop({ conversationKey, anthropicApiKey, stat
             const assistantMessage = { role: 'assistant', content: response.content };
             messages.push(assistantMessage);
             messagesToPersist.push(assistantMessage);
+            finalAssistantMessage = assistantMessage;
 
             const textBlocks = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
             if (textBlocks) finalReplyText = textBlocks;
@@ -473,6 +481,13 @@ async function runAgentConversationLoop({ conversationKey, anthropicApiKey, stat
         if (hadError) state.needsHuman = true;
     }
 
+    // send_product_photo (tools.js) solo deja la URL acá -- se la pega al último mensaje del
+    // asistente antes de persistir, así queda guardada junto a la respuesta que la anuncia, y
+    // se limpia de `state` para que no se vuelva a mandar en un turno futuro por error.
+    const images = Array.isArray(state.pendingImages) ? state.pendingImages : [];
+    if (images.length && finalAssistantMessage) finalAssistantMessage.images = images;
+    delete state.pendingImages;
+
     state.turnCount = Number(state.turnCount || 0) + 1;
     state.updatedAt = FieldValue.serverTimestamp();
     state.lastMessageText = truncatePreview(finalReplyText);
@@ -482,7 +497,7 @@ async function runAgentConversationLoop({ conversationKey, anthropicApiKey, stat
     state.messageCount = newSeq;
     await ref.set(state, { merge: true });
 
-    return { reply: finalReplyText, hadError };
+    return { reply: finalReplyText, hadError, images };
 }
 
 // Turno "proactivo": se dispara cuando el equipo responde una ask_team_question pendiente —
@@ -511,11 +526,11 @@ async function runFollowUpTurn(db, anthropicApiKey, conversationKey) {
     const instructionsBlock = await buildActiveInstructionsSystemBlock(db);
     if (instructionsBlock) systemBlocks.push(instructionsBlock);
 
-    const { reply } = await runAgentConversationLoop({
+    const { reply, images } = await runAgentConversationLoop({
         conversationKey, anthropicApiKey, state, ref, messages, messagesToPersist: [], systemBlocks
     });
 
-    return { reply, channel: state.channel, phone: state.phone };
+    return { reply, images, channel: state.channel, phone: state.phone };
 }
 
 /**
@@ -622,11 +637,11 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
         });
     }
 
-    const { reply: finalReplyText } = await runAgentConversationLoop({
+    const { reply: finalReplyText, images } = await runAgentConversationLoop({
         conversationKey, anthropicApiKey, state, ref, messages, messagesToPersist, systemBlocks
     });
 
-    return { reply: finalReplyText, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
+    return { reply: finalReplyText, images, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
 module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep };
