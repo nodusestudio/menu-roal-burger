@@ -6,7 +6,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -571,6 +571,28 @@ exports.chatRoalInactivitySweep = onSchedule(
             ));
         }
         console.log(`chatRoalInactivitySweep: ${warned} avisos, ${archived} archivadas.`);
+    }
+);
+
+// El aviso de gasto EN VIVO del panel de Chat Roal (src/js/admin.js, _watchChatRoalUsageToday)
+// solo dispara si el admin tiene FODEXA abierto en el navegador. Este barrido cubre el resto del
+// tiempo: si el gasto de hoy ya cruzó el umbral configurado, manda el mismo aviso por WhatsApp al
+// número que el admin dejó guardado (costAlertPhone en configuracion/chat_roal_config). Sin
+// número configurado, no hace nada (ver checkCostAlert en orchestrator.js).
+exports.chatRoalCostAlertSweep = onSchedule(
+    { schedule: 'every 10 minutes', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
+    async () => {
+        try {
+            const alert = await checkCostAlert(getFirestore());
+            if (alert) {
+                const instanceId = ULTRAMSG_INSTANCE.value();
+                const token = ULTRAMSG_TOKEN.value();
+                await sendWhatsAppMessage(instanceId, token, alert.phone, alert.text);
+                console.log(`chatRoalCostAlertSweep: aviso enviado a ${alert.phone}.`);
+            }
+        } catch (err) {
+            console.error('chatRoalCostAlertSweep error:', err);
+        }
     }
 );
 

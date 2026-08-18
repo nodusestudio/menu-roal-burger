@@ -341,6 +341,33 @@ async function runInactivitySweep(db) {
     return { warned, archived, toPushWhatsApp };
 }
 
+// Corre en chatRoalCostAlertSweep (functions/index.js, cada 10 min) -- el aviso EN VIVO del
+// panel de Chat Roal (src/js/admin.js) solo dispara si el admin tiene la pestaña abierta; esto
+// es el mismo aviso pero por WhatsApp, para cuando no la tiene. Si el gasto de hoy ya cruzó el
+// umbral configurado y todavía no se avisó (whatsappAlertSent en el doc de hoy), arma el texto a
+// mandar y deja la marca puesta -- no manda el WhatsApp acá mismo, eso lo hace el caller
+// (functions/index.js) con sendWhatsAppMessage, este módulo no conoce las credenciales de UltraMsg.
+async function checkCostAlert(db) {
+    const configSnap = await db.collection('configuracion').doc('chat_roal_config').get();
+    const config = configSnap.exists ? configSnap.data() : null;
+    const phone = String(config?.costAlertPhone || '').replace(/\D/g, '');
+    if (!phone) return null;
+    const threshold = Number(config?.costAlertThresholdUsd || 5);
+
+    const usageRef = db.collection(AGENT_USAGE_COLLECTION).doc(bogotaDateKey());
+    const usageSnap = await usageRef.get();
+    if (!usageSnap.exists) return null;
+    const usage = usageSnap.data();
+    const costUsd = Number(usage.estimatedCostUsd || 0);
+    if (costUsd < threshold || usage.whatsappAlertSent) return null;
+
+    await usageRef.set({ whatsappAlertSent: true }, { merge: true });
+    return {
+        phone,
+        text: `⚠️ ROAL BURGER — El gasto de hoy en el agente de IA ya superó $${threshold.toFixed(2)} USD (llevamos ~$${costUsd.toFixed(2)}). Revisa Chat Roal en el admin si quieres ver el detalle.`
+    };
+}
+
 function buildLocationNoteBlock(state, location) {
     if (!location || !Number.isFinite(Number(location.latitude)) || !Number.isFinite(Number(location.longitude))) {
         return null;
@@ -722,4 +749,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, images, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert };

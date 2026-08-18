@@ -1206,7 +1206,7 @@ const CHAT_ROAL_SOUND_PRESETS = {
     }
 };
 
-let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5 };
+let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5, costAlertPhone: '' };
 
 function playChatRoalSound(kind) {
     const presetId = kind === 'escalation' ? chatRoalConfigState.soundEscalation
@@ -10755,7 +10755,7 @@ function initChatRoal() {
         }, (err) => console.error('Chat Roal onSnapshot error:', err));
 
     firebaseDb.collection('configuracion').doc('chat_roal_config').onSnapshot((doc) => {
-        chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5, ...(doc.exists ? doc.data() : {}) };
+        chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5, costAlertPhone: '', ...(doc.exists ? doc.data() : {}) };
         renderChatRoalSettingsPanel();
     }, (err) => console.error('Chat Roal config onSnapshot error:', err));
 
@@ -10974,6 +10974,11 @@ function renderChatRoalSettingsPanel() {
                 <select id="chatRoalSoundCostAlert">${soundOptions}</select>
                 <button type="button" data-chatroal-test-sound="costAlert">▶ Probar</button>
             </div>
+            <div class="chatroal-sound-row">
+                <label for="chatRoalCostPhone">WhatsApp para avisarme si tengo FODEXA cerrado</label>
+                <input type="tel" id="chatRoalCostPhone" placeholder="Ej: 3001234567" value="${escapeHtml(chatRoalConfigState.costAlertPhone || '')}" style="width:140px;">
+            </div>
+            <p class="chatroal-usage-detail">Sin este número, el aviso solo funciona mientras tengas FODEXA abierto en el navegador.</p>
             <button type="button" class="chatroal-settings-save-btn" id="chatRoalSaveCostAlertBtn">Guardar aviso de gasto</button>
         </div>
         <div class="chatroal-settings-section">
@@ -11035,10 +11040,13 @@ function renderChatRoalSettingsPanel() {
     document.getElementById('chatRoalSaveCostAlertBtn')?.addEventListener('click', async () => {
         try {
             const thresholdInput = document.getElementById('chatRoalCostThreshold');
+            const phoneInput = document.getElementById('chatRoalCostPhone');
             const threshold = Math.max(0, Number(thresholdInput?.value) || 0);
+            const phone = String(phoneInput?.value || '').replace(/\D/g, '');
             await firebaseDb.collection('configuracion').doc('chat_roal_config').set({
                 costAlertThresholdUsd: threshold,
-                soundCostAlert: soundCostAlertSel.value
+                soundCostAlert: soundCostAlertSel.value,
+                costAlertPhone: phone
             }, { merge: true });
             showNotice('Aviso de gasto guardado.', 'ok');
         } catch (err) {
