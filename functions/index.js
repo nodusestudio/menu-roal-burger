@@ -192,9 +192,14 @@ exports.notifyNewOrder = onDocumentCreated(
         if (!tokens.length) return;
 
         const customerName = order.customerName || 'Cliente';
-        const orderType    = order.orderType === 'delivery'  ? '🛵 Domicilio' :
-                             order.orderType === 'mesa'      ? '🪑 Mesa'       :
-                             order.orderType === 'takeaway'  ? '🥡 Para recoger' : '';
+        // Comparaba solo contra 'delivery'/'takeaway', que nunca son los valores reales que
+        // guarda el sistema (orderType usa 'domicilio'/'retiro'; ver src/js/admin.js) -- la
+        // etiqueta nunca aparecía. Se revisan los dos campos, igual que ya hace el resto del
+        // admin (ej. src/js/admin.js línea ~16339).
+        const isDeliveryOrder = order.orderType === 'domicilio' || order.fulfillmentType === 'delivery';
+        const isMesaOrder = order.orderType === 'mesa' || order.fulfillmentType === 'mesa';
+        const isPickupOrder = order.orderType === 'retiro' || order.fulfillmentType === 'pickup';
+        const orderType = isDeliveryOrder ? '🛵 Domicilio' : isMesaOrder ? '🪑 Mesa' : isPickupOrder ? '🥡 Para recoger' : '';
         const total        = order.total ? ` — $${Number(order.total).toLocaleString('es-CO')}` : '';
         const orderId      = event.params.orderId;
 

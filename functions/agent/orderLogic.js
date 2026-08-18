@@ -392,6 +392,15 @@ async function createAgentOrder(db, {
         scheduledLabel
     });
 
+    // El resto del sistema (Kanban de Pedidos, Caja Diaria, notificaciones) espera `orderType`
+    // con estos 3 valores exactos -- normalizeOrder (src/js/admin.js) ya sabía traducir
+    // fulfillmentType como respaldo, así que esto nunca rompió nada visible, pero cualquier
+    // lectura que NO pase por ese respaldo (ej. notifyNewOrder en functions/index.js) se quedaba
+    // sin el dato. Se guardan los dos campos: fulfillmentType sigue existiendo porque
+    // script-v2.js (seguimiento público del pedido) lo lee directo.
+    const ORDER_TYPE_BY_FULFILLMENT = { delivery: 'domicilio', pickup: 'retiro', mesa: 'mesa' };
+    const orderType = ORDER_TYPE_BY_FULFILLMENT[normalizedFulfillment] || 'retiro';
+
     const orderRef = db.collection(ORDERS_COLLECTION).doc();
     const orderCode = await reserveNextOrderCode(db, orderRef, {
         status: 'pendiente',
@@ -399,6 +408,7 @@ async function createAgentOrder(db, {
         customerPhone: String(customerPhone || '').trim(),
         customerPhoneDigits,
         fulfillmentType: normalizedFulfillment,
+        orderType,
         deliveryAddress: String(address || '').trim(),
         items: orderedItems,
         itemCount: orderedItems.length,
