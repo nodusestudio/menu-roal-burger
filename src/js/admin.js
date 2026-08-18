@@ -10739,6 +10739,12 @@ let _chatRoalCannedMessages = [];
 // admin necesita VER antes de enviar (mensaje preestablecido o resultado del buscador de
 // producto), no que se mande directo al elegirlo.
 let _chatRoalPendingImageUrl = null;
+// Si el menú "⚙️ Más opciones" (archivar/bloquear/eliminar) está desplegado -- el panel se
+// vuelve a redibujar seguido (cualquier cambio en CUALQUIER conversación dispara
+// renderChatRoalDetail), y antes el HTML del menú traía "hidden" fijo en el texto de la
+// plantilla: cada redibujo lo volvía a cerrar de golpe, así que apenas se abría, un redibujo
+// casi inmediato lo cerraba de nuevo y parecía que el botón no hacía nada.
+let _chatRoalMoreMenuOpen = false;
 // Pestaña activa del panel de Configuración -- antes todo (costo, sonidos, instrucciones,
 // mensajes) era una sola lista larga con scroll; separado en pestañas para que cada cosa se
 // encuentre rápido.
@@ -11337,6 +11343,7 @@ function renderChatRoalList() {
 function openChatRoalDetail(conversationId) {
     _chatRoalActiveId = conversationId;
     _chatRoalPendingImageUrl = null;
+    _chatRoalMoreMenuOpen = false;
     document.querySelectorAll('#chatRoalList .inbox-thread-item').forEach((el) => {
         el.classList.toggle('is-active', el.dataset.conversationId === conversationId);
     });
@@ -11461,7 +11468,7 @@ function renderChatRoalDetail() {
                 ${conv.humanControl ? '<button class="inbox-head-btn blue" data-chatroal-action="handback">🤖 Devolver al agente</button>' : ''}
                 <div class="chatroal-more-menu-wrap">
                     <button class="inbox-head-btn" type="button" id="chatRoalMoreBtn" title="Archivar, bloquear o eliminar esta conversación">⚙️ Más opciones ▾</button>
-                    <div class="chatroal-more-menu" id="chatRoalMoreMenu" hidden>
+                    <div class="chatroal-more-menu" id="chatRoalMoreMenu" ${_chatRoalMoreMenuOpen ? '' : 'hidden'}>
                         <button type="button" data-chatroal-action="archive">🗄️ Archivar</button>
                         <button type="button" data-chatroal-action="block">🚫 Bloquear</button>
                         <button type="button" data-chatroal-action="delete-conversation">🗑️ Eliminar</button>
@@ -11523,8 +11530,9 @@ function renderChatRoalDetail() {
 
     document.getElementById('chatRoalMoreBtn')?.addEventListener('click', (ev) => {
         ev.stopPropagation();
+        _chatRoalMoreMenuOpen = !_chatRoalMoreMenuOpen;
         const menu = document.getElementById('chatRoalMoreMenu');
-        if (menu) menu.hidden = !menu.hidden;
+        if (menu) menu.hidden = !_chatRoalMoreMenuOpen;
     });
 
     // Enter para enviar en las tres cajas de texto (responder al cliente, instruir al agente,
@@ -11761,7 +11769,7 @@ document.addEventListener('click', (event) => {
     const btn = document.getElementById('chatRoalMoreBtn');
     const target = event.target;
     if (target === btn || (btn instanceof HTMLElement && btn.contains(target))) return;
-    if (menu.contains(target)) return;
+    _chatRoalMoreMenuOpen = false;
     menu.hidden = true;
 });
 
