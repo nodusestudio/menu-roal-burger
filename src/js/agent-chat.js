@@ -88,10 +88,27 @@
         return wrap;
     }
 
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // *negrita* estilo WhatsApp (asterisco simple, no ** de markdown normal) -- el prompt del
+    // agente ya usa esta misma convención para que las dos vías de salida (WhatsApp y este
+    // widget) se vean igual sin que el bot tenga que saber en cuál está. Escapa primero para que
+    // nada de lo que escriba el cliente o el bot pueda inyectar HTML.
+    function renderInlineMarkup(text) {
+        const escaped = escapeHtml(text).replace(/\*([^\n*]+)\*/g, '<strong>$1</strong>');
+        return escaped.replace(/\n/g, '<br>');
+    }
+
     function appendMessage(container, role, text, images) {
         const bubble = document.createElement('div');
         bubble.className = 'agent-chat-bubble ' + (role === 'user' ? 'agent-chat-bubble-user' : 'agent-chat-bubble-assistant');
-        if (text) bubble.textContent = text;
+        if (text) {
+            const textEl = document.createElement('div');
+            textEl.innerHTML = renderInlineMarkup(text);
+            bubble.appendChild(textEl);
+        }
         if (Array.isArray(images)) {
             images.forEach((url) => {
                 if (!url) return;
