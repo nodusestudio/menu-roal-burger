@@ -45,6 +45,13 @@ const NEEDS_HUMAN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutos
 const INACTIVITY_WARN_MS = 5 * 60 * 1000;
 const INACTIVITY_ARCHIVE_MS = 15 * 60 * 1000;
 const INACTIVITY_WARNING_TEXT = '¿Sigues ahí? 🙂 Aquí sigo atento para ayudarte a cerrar tu pedido cuando quieras continuar.';
+// Una conversación escalada (needs_human) que nadie toma se queda con status:'needs_human' PARA
+// SIEMPRE -- nada más la mueve de ahí (el auto-resumen del bot a los NEEDS_HUMAN_TIMEOUT_MS solo
+// dispara si el CLIENTE vuelve a escribir; si no escribe más, updatedAt queda congelado). Sin
+// esto, esas conversaciones inflaban el contador de "necesita atención" de Chat Roal para
+// siempre. No manda ningún aviso al cliente -- 24h de silencio total (no solo del negocio, del
+// cliente también) ya significa que probablemente siguió por otro lado.
+const NEEDS_HUMAN_ABANDONED_MS = 24 * 60 * 60 * 1000;
 
 const FALLBACK_REPLY = 'Tuvimos un problema técnico en este momento. Por favor escríbenos directo por WhatsApp o usa el menú web mientras lo solucionamos.';
 const RATE_LIMITED_REPLY = 'Vamos muy rápido 🙂 Espera un momento y vuelve a escribir.';
@@ -370,6 +377,21 @@ async function runInactivitySweep(db) {
         if (state.channel === 'whatsapp' && state.phone) {
             toPushWhatsApp.push({ phone: state.phone, text: INACTIVITY_WARNING_TEXT });
         }
+    }
+
+    // Conversaciones escaladas (needs_human) que nadie tomó ni respondió en 24h -- ver
+    // NEEDS_HUMAN_ABANDONED_MS. Consulta aparte porque status=='needs_human' es un estado
+    // totalmente distinto a 'active' (la de arriba nunca las toca).
+    const needsHumanSnap = await db.collection(CONVERSATIONS_COLLECTION).where('status', '==', 'needs_human').get();
+    for (const doc of needsHumanSnap.docs) {
+        const state = doc.data();
+        if (state.humanControl) continue; // un admin ya la tomó -- no es "abandonada"
+
+        const updatedMs = state.updatedAt?.toMillis ? state.updatedAt.toMillis() : 0;
+        if (!updatedMs || now - updatedMs < NEEDS_HUMAN_ABANDONED_MS) continue;
+
+        await doc.ref.set({ status: 'archived', archivedAt: FieldValue.serverTimestamp() }, { merge: true });
+        archived += 1;
     }
 
     return { warned, archived, toPushWhatsApp };
