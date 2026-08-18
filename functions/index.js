@@ -8,6 +8,7 @@ const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
 const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo } = require('./agent/orchestrator');
 const { fetchAllSellableItems } = require('./agent/tools');
+const { buildDeliveredOrderWhatsAppMessage } = require('./agent/orderLogic');
 
 initializeApp();
 
@@ -293,6 +294,34 @@ exports.notifyNewAgentChat = onDocumentWritten(
         });
         if (invalid.length) {
             await Promise.all(invalid.map((id) => db.collection(FCM_TOKENS_COLLECTION).doc(id).delete()));
+        }
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Aviso automático por WhatsApp cuando un pedido pasa a "entregado" (botón en el Kanban de
+// Pedidos, src/js/admin.js) -- antes ese mensaje SOLO se copiaba al portapapeles para que el
+// admin lo pegara a mano en WhatsApp; con volumen real, es fácil que se olvide. Dispara UNA vez
+// por pedido (solo en la transición, no en cada guardado posterior con status ya 'entregado').
+// ─────────────────────────────────────────────────────────────
+exports.notifyOrderDelivered = onDocumentWritten(
+    { document: 'pedidos/{orderId}', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
+    async (event) => {
+        const before = event.data?.before?.exists ? event.data.before.data() : null;
+        const after = event.data?.after?.exists ? event.data.after.data() : null;
+        if (!after || after.status !== 'entregado' || before?.status === 'entregado') return;
+
+        const phoneDigits = String(after.customerPhoneDigits || '').replace(/\D/g, '');
+        if (phoneDigits.length < 10) return;
+
+        try {
+            const db = getFirestore();
+            const brandingDoc = await db.collection('configuracion').doc('config_landing').get();
+            const restaurantName = String(brandingDoc.data()?.restaurantName || '').trim();
+            const message = buildDeliveredOrderWhatsAppMessage(after, restaurantName);
+            await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), phoneDigits, message);
+        } catch (err) {
+            console.error(`notifyOrderDelivered: fallo al notificar pedido ${event.params.orderId}:`, err);
         }
     }
 );

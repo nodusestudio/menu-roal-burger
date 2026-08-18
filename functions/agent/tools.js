@@ -545,7 +545,10 @@ function buildAgentToolHandlers({ db, state }) {
                 state.lastOrderId = result.id;
                 state.lastOrderCode = result.code;
                 state.draftCart = { items: [] };
-                return JSON.stringify({ success: true, code: result.code, total: result.total });
+                // confirmationMessage: texto EXACTO que el negocio quiere que reciba el cliente
+                // (armado por código en orderLogic.js, no redactado por el modelo) -- el prompt
+                // le dice al agente que lo copie tal cual, para que el formato nunca varíe.
+                return JSON.stringify({ success: true, code: result.code, total: result.total, confirmationMessage: result.customerConfirmationMessage });
             } catch (err) {
                 return JSON.stringify({ error: err.message || 'No se pudo crear el pedido.' });
             }

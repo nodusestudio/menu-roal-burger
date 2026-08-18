@@ -245,6 +245,42 @@ function formatCurrencyCOP(amount) {
     return `$${Math.round(Number(amount) || 0).toLocaleString('es-CO')}`;
 }
 
+// Sin config propia todavía -- si el negocio quiere ajustar esto sin tocar código, se puede
+// mover a un campo editable en `configuracion` más adelante.
+const ESTIMATED_PREP_MINUTES = 45;
+
+// Mensaje EXACTO que el cliente recibe apenas place_order tiene éxito -- formato pedido
+// explícitamente por el negocio (asteriscos = negrita estilo WhatsApp, mismo estilo que ya usa
+// el resto del agente). Se arma acá con código, no lo redacta el modelo, para que el formato
+// (negrita, emojis, orden de las secciones) sea SIEMPRE igual y nunca dependa de cómo el modelo
+// decida resumirlo ese turno.
+function buildAgentOrderConfirmationMessage({ code, items, fulfillmentType, paymentMethod, cashChangeRequired, cashTenderAmount, total }) {
+    const itemsLines = items.map((item) => `• ${item.quantity}x ${item.productName}`).join('\n');
+
+    const paymentLine = paymentMethod === 'efectivo'
+        ? (cashChangeRequired && cashTenderAmount > 0
+            ? `*Medio de pago:* Efectivo | Paga con ${formatCurrencyCOP(cashTenderAmount)} — Cambio ${formatCurrencyCOP(Math.max(0, cashTenderAmount - total))}`
+            : '*Medio de pago:* Efectivo | Lleva completo')
+        : `*Medio de pago:* ${paymentMethod}`;
+
+    const closingLine = fulfillmentType === 'delivery'
+        ? '¡Gracias por preferirnos! Pronto estará en tu puerta 🛵'
+        : fulfillmentType === 'mesa'
+            ? '¡Gracias por preferirnos! Ya te lo llevamos a tu mesa 🍽️'
+            : '¡Gracias por preferirnos! Te esperamos para que lo recojas 🏃';
+
+    return `Tu pedido *${code}* ya está en preparación en nuestra cocina 🍔🔥
+
+📋 *Tu pedido:*
+${itemsLines}
+
+💰 *Total a cobrar:* ${formatCurrencyCOP(total)}
+${paymentLine}
+🕐 *Tiempo estimado:* ~${ESTIMATED_PREP_MINUTES} min (trabajamos para que sea menos ⚡)
+
+${closingLine}`;
+}
+
 // Construye un resumen legible del pedido (equivalente simplificado de
 // buildCartCheckoutMessage, src/js/script-v2.js línea ~4520) para guardarlo en
 // `summaryMessage` y, en WhatsApp, confirmarle el pedido al cliente en el mismo chat.
@@ -413,7 +449,17 @@ async function createAgentOrder(db, {
         }
     }
 
-    return { id: orderRef.id, code: orderCode, customerName, total, summaryMessage };
+    const customerConfirmationMessage = buildAgentOrderConfirmationMessage({
+        code: orderCode,
+        items: orderedItems,
+        fulfillmentType: normalizedFulfillment,
+        paymentMethod: normalizedPaymentMethod,
+        cashChangeRequired: cashChangeRequiredBool,
+        cashTenderAmount: cashTenderAmountNum,
+        total
+    });
+
+    return { id: orderRef.id, code: orderCode, customerName, total, summaryMessage, customerConfirmationMessage };
 }
 
 // Versión simplificada de upsertClientProfile (src/js/script-v2.js línea ~1770) — mismo doc id
@@ -453,6 +499,29 @@ async function upsertAgentClientProfile(db, customerInfo, orderInfo) {
     });
 }
 
+// SYNC: misma función que buildDeliveredOrderMessage en src/js/admin.js (línea ~9395) -- ese
+// mensaje solo se copiaba al portapapeles para que el admin lo pegara a mano en WhatsApp. Esta
+// versión vive acá para que notifyOrderDelivered (functions/index.js) lo pueda mandar solo, sin
+// depender de que alguien se acuerde de pegarlo.
+function buildDeliveredOrderWhatsAppMessage(order, restaurantName) {
+    const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
+    return `¡Hola ${customerName}! 🍔🔥
+
+Tu pedido acaba de salir de nuestra cocina y ya está en manos del domiciliario 🛵💨
+
+¡Va en camino a tu ubicación! Pronto estará contigo 😊
+
+Gracias por preferirnos, eso nos motiva a darlo todo cada día 🙌
+
+📲 Síguenos y entérate de promos y novedades:
+🎵 tiktok.com/@roalburger
+📸 instagram.com/roalburger
+👍 facebook.com/roalburgerarmenia
+
+¡Buen provecho! 🔥
+${restaurantName || 'Roal Burger'}`;
+}
+
 module.exports = {
     getCheckoutFulfillmentType,
     isPointInPolygon,
@@ -464,6 +533,7 @@ module.exports = {
     buildScheduleFromConfigDoc,
     isComboActiveNow,
     createAgentOrder,
+    buildDeliveredOrderWhatsAppMessage,
     normalizeAddressText,
     addressMemoryKey,
     lookupRememberedDeliveryFee,
