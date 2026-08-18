@@ -11066,7 +11066,9 @@ function renderChatRoalSettingsPanel() {
             <div class="chatroal-instruction-form" id="chatRoalCannedForm" hidden>
                 <input type="text" id="chatRoalCannedLabel" placeholder="Nombre corto del botón (ej: Bienvenida, Pedido en camino, Datos de pago)">
                 <textarea id="chatRoalCannedText" rows="2" placeholder="Texto que se le manda al cliente…"></textarea>
-                <input type="text" id="chatRoalCannedImageUrl" placeholder="URL de imagen (opcional — ej. tu QR de pago ya subido)">
+                <label class="chatroal-file-label">📎 Imagen (opcional — ej. tu QR de pago)
+                    <input type="file" id="chatRoalCannedImageFile" accept="image/*">
+                </label>
                 <button type="button" class="chatroal-instruction-add-btn" id="chatRoalSaveCannedBtn">Guardar mensaje</button>
             </div>
         </div>
@@ -11185,11 +11187,16 @@ function renderChatRoalSettingsPanel() {
     document.getElementById('chatRoalSaveCannedBtn')?.addEventListener('click', async () => {
         const label = (document.getElementById('chatRoalCannedLabel')?.value || '').trim();
         const text = (document.getElementById('chatRoalCannedText')?.value || '').trim();
-        const imageUrl = (document.getElementById('chatRoalCannedImageUrl')?.value || '').trim();
+        const fileInput = document.getElementById('chatRoalCannedImageFile');
+        const file = fileInput?.files?.[0] || null;
         if (!label || !text) { showNotice('Escribe el nombre y el texto primero.', 'warn'); return; }
+
+        const saveBtn = document.getElementById('chatRoalSaveCannedBtn');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = file ? 'Subiendo imagen…' : 'Guardando…'; }
         try {
+            const imageUrl = file ? await uploadImageToFirebase(file, label) : null;
             await firebaseDb.collection('agent_canned_messages').add({
-                label, text, imageUrl: imageUrl || null,
+                label, text, imageUrl,
                 order: _chatRoalCannedMessages.length,
                 createdAt: firestoreNow()
             });
@@ -11198,6 +11205,8 @@ function renderChatRoalSettingsPanel() {
             if (form) form.hidden = true;
         } catch (err) {
             showNotice(`Error: ${err.message || 'no se pudo guardar'}`, 'error');
+        } finally {
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar mensaje'; }
         }
     });
 
