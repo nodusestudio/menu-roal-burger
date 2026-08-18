@@ -11210,7 +11210,11 @@ function renderChatRoalSettingsPanel() {
         const saveBtn = document.getElementById('chatRoalSaveCannedBtn');
         if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = file ? 'Subiendo imagen…' : 'Guardando…'; }
         try {
-            const imageUrl = file ? await uploadImageToFirebase(file, label) : null;
+            // resolveProductImageUpload (no uploadImageToFirebase directo) -- si Storage/CORS
+            // falla (bucket sin el origen de admin-roal.vercel.app autorizado, visto en vivo),
+            // cae solo a guardar la foto comprimida como data URL en vez de tumbar el guardado
+            // completo. Mismo mecanismo que ya usa Artículos para las fotos de producto.
+            const imageUrl = file ? await resolveProductImageUpload(file, label) : null;
             await firebaseDb.collection('agent_canned_messages').add({
                 label, text, imageUrl,
                 order: _chatRoalCannedMessages.length,
