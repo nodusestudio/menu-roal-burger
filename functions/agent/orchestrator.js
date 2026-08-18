@@ -260,14 +260,16 @@ async function appendAdminMessage(db, conversationKey, text, imageUrl) {
 // Buscador rápido de Chat Roal: el admin escribe el nombre de un producto (ej. "burger ranchera")
 // y esto arma el mismo texto+foto que mandaría el agente con send_product_photo, pero sin gastar
 // NINGÚN token -- es una búsqueda directa en Firestore, no pasa por Claude en ningún momento.
-async function sendAdminProductInfo(db, conversationKey, productName) {
+// SOLO devuelve el texto/foto -- no manda nada -- para que el admin lo revise en la caja de
+// respuesta antes de enviarlo (ver "necesito poder visualizar lo que voy a enviar").
+async function lookupProductInfo(db, productName) {
     const products = await fetchAllSellableItems(db);
     const product = findProductByName(products, productName);
     if (!product) throw new Error(`No encontré "${productName}" en el menú.`);
     const imageUrl = await findProductImage(db, product.nombre);
     const priceText = `$${Number(product.precio || 0).toLocaleString('es-CO')}`;
     const text = `*${product.nombre} — ${priceText}*${product.nota ? `\n${product.nota}` : ''}`;
-    return appendAdminMessage(db, conversationKey, text, imageUrl);
+    return { text, imageUrl };
 }
 
 async function handbackToAgent(db, conversationKey) {
@@ -801,4 +803,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, images, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, sendAdminProductInfo };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo };

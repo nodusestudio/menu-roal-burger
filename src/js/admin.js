@@ -10735,6 +10735,10 @@ let _chatRoalInitialized = false;
 
 let _chatRoalInstructions = [];
 let _chatRoalCannedMessages = [];
+// Foto que se va a mandar junto con el próximo mensaje manual -- separada del texto porque el
+// admin necesita VER antes de enviar (mensaje preestablecido o resultado del buscador de
+// producto), no que se mande directo al elegirlo.
+let _chatRoalPendingImageUrl = null;
 
 function initChatRoal() {
     if (_chatRoalInitialized || !firebaseDb) return;
@@ -11282,6 +11286,7 @@ function renderChatRoalList() {
 
 function openChatRoalDetail(conversationId) {
     _chatRoalActiveId = conversationId;
+    _chatRoalPendingImageUrl = null;
     document.querySelectorAll('#chatRoalList .inbox-thread-item').forEach((el) => {
         el.classList.toggle('is-active', el.dataset.conversationId === conversationId);
     });
@@ -11392,10 +11397,16 @@ function renderChatRoalDetail() {
             ${messagesHtml || '<p class="inbox-empty">Sin mensajes aún</p>'}
         </div>
         <div class="chatroal-quick-actions">
-            <input type="text" id="chatRoalProductSearch" placeholder="Buscar producto y mandar info + foto…">
-            <button type="button" class="chatroal-canned-chip" data-chatroal-action="send-product">🔍 Enviar</button>
+            <input type="text" id="chatRoalProductSearch" placeholder="Buscar producto y cargar info + foto…">
+            <button type="button" class="chatroal-canned-chip" data-chatroal-action="preview-product">🔍 Buscar</button>
             ${cannedChipsHtml}
         </div>
+        ${_chatRoalPendingImageUrl ? `
+        <div class="chatroal-pending-preview">
+            <img src="${escapeHtml(_chatRoalPendingImageUrl)}" alt="">
+            <span>Esta foto se manda junto con el mensaje</span>
+            <button type="button" id="chatRoalClearPendingImage">✕ Quitar foto</button>
+        </div>` : ''}
         <div class="inbox-reply-bar">
             <textarea class="inbox-reply-input" id="chatRoalReplyInput" placeholder="Escribe un mensaje…" rows="1"></textarea>
             <button class="inbox-reply-send" data-chatroal-action="send" title="Enviar">➤</button>
@@ -11406,6 +11417,11 @@ function renderChatRoalDetail() {
         if (!value) return;
         const el = document.getElementById(id);
         if (el) el.value = value;
+    });
+
+    document.getElementById('chatRoalClearPendingImage')?.addEventListener('click', () => {
+        _chatRoalPendingImageUrl = null;
+        renderChatRoalDetail();
     });
 
     const scrollEl = detail.querySelector('#chatRoalMsgScroll');
@@ -11419,20 +11435,16 @@ document.addEventListener('click', async (event) => {
     if (!(target instanceof Element)) return;
 
     const cannedBtn = target.closest('button[data-chatroal-canned]');
-    if (cannedBtn instanceof HTMLButtonElement && _chatRoalActiveId && firebaseFunctions) {
+    if (cannedBtn instanceof HTMLButtonElement && _chatRoalActiveId) {
         const canned = _chatRoalCannedMessages.find((m) => m.id === cannedBtn.dataset.chatroalCanned);
         if (!canned) return;
-        cannedBtn.disabled = true;
-        try {
-            await firebaseFunctions.httpsCallable('agentChatAdminReply')({
-                conversationKey: _chatRoalActiveId, text: canned.text, imageUrl: canned.imageUrl || null
-            });
-            showNotice(`«${canned.label || 'Mensaje'}» enviado.`, 'ok');
-        } catch (err) {
-            showNotice(`Error: ${err.message || 'no se pudo enviar'}`, 'error');
-        } finally {
-            cannedBtn.disabled = false;
-        }
+        // Carga el mensaje en la caja de respuesta en vez de mandarlo directo -- el admin lo ve,
+        // lo puede editar, y decide con el botón ➤ cuándo se manda de verdad.
+        const inputEl = document.getElementById('chatRoalReplyInput');
+        if (inputEl) inputEl.value = canned.text;
+        _chatRoalPendingImageUrl = canned.imageUrl || null;
+        renderChatRoalDetail();
+        document.getElementById('chatRoalReplyInput')?.focus();
         return;
     }
 
@@ -11459,17 +11471,23 @@ document.addEventListener('click', async (event) => {
         return;
     }
 
-    if (action === 'send-product') {
-        const inputEl = document.getElementById('chatRoalProductSearch');
-        const productName = inputEl ? inputEl.value.trim() : '';
+    if (action === 'preview-product') {
+        const searchEl = document.getElementById('chatRoalProductSearch');
+        const productName = searchEl ? searchEl.value.trim() : '';
         if (!productName) { showNotice('Escribe el nombre del producto primero.', 'warn'); return; }
         actionButton.disabled = true;
         try {
-            await callable({ conversationKey: _chatRoalActiveId, sendProductInfo: true, productName });
-            if (inputEl) inputEl.value = '';
-            showNotice('Info del producto enviada.', 'ok');
+            const result = await callable({ conversationKey: _chatRoalActiveId, previewProduct: true, productName });
+            // Solo CARGA el resultado en la caja de respuesta -- no lo manda todavía, así el
+            // admin ve exactamente qué texto y qué foto va a recibir el cliente antes de enviar.
+            const replyEl = document.getElementById('chatRoalReplyInput');
+            if (replyEl) replyEl.value = result.data?.text || '';
+            _chatRoalPendingImageUrl = result.data?.imageUrl || null;
+            if (searchEl) searchEl.value = '';
+            renderChatRoalDetail();
+            document.getElementById('chatRoalReplyInput')?.focus();
         } catch (err) {
-            showNotice(`Error: ${err.message || 'no se pudo enviar'}`, 'error');
+            showNotice(`Error: ${err.message || 'no se pudo buscar'}`, 'error');
         } finally {
             actionButton.disabled = false;
         }
@@ -11492,10 +11510,13 @@ document.addEventListener('click', async (event) => {
         const inputEl = document.getElementById('chatRoalReplyInput');
         const text = inputEl ? inputEl.value.trim() : '';
         if (!text) { showNotice('Escribe un mensaje primero.', 'warn'); return; }
+        const imageUrl = _chatRoalPendingImageUrl;
         actionButton.disabled = true;
         try {
-            await callable({ conversationKey: _chatRoalActiveId, text });
+            await callable({ conversationKey: _chatRoalActiveId, text, imageUrl });
             if (inputEl) inputEl.value = '';
+            _chatRoalPendingImageUrl = null;
+            renderChatRoalDetail();
         } catch (err) {
             showNotice(`Error: ${err.message || 'no se pudo enviar el mensaje'}`, 'error');
         } finally {

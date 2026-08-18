@@ -6,7 +6,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, sendAdminProductInfo } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -526,7 +526,7 @@ exports.agentChatAdminReply = onCall(
         const markSeen = request.data?.markSeen === true;
         const answerQuestion = request.data?.answerQuestion === true;
         const addNote = request.data?.addNote === true;
-        const sendProductInfo = request.data?.sendProductInfo === true;
+        const previewProduct = request.data?.previewProduct === true;
         const text = String(request.data?.text || '').trim();
 
         try {
@@ -556,19 +556,19 @@ exports.agentChatAdminReply = onCall(
                 await runFollowUpAndPush(conversationKey);
                 return { ok: true };
             }
-            if (sendProductInfo) {
+            if (previewProduct) {
                 const productName = String(request.data?.productName || '').trim();
                 if (!productName) {
                     throw new HttpsError('invalid-argument', 'productName requerido.');
                 }
-                let sent;
+                // Solo busca y devuelve texto+foto -- NO manda nada todavía. El admin lo revisa
+                // en la caja de respuesta y lo edita/borra si quiere antes de enviarlo de verdad.
                 try {
-                    sent = await sendAdminProductInfo(getFirestore(), conversationKey, productName);
+                    const info = await lookupProductInfo(getFirestore(), productName);
+                    return { ok: true, text: info.text, imageUrl: info.imageUrl };
                 } catch (lookupErr) {
                     throw new HttpsError('not-found', lookupErr.message || 'No se encontró el producto.');
                 }
-                await pushAdminReplyToWhatsApp(sent.channel, sent.phone, sent.text, sent.imageUrl);
-                return { ok: true };
             }
             if (!text || text.length > 2000) {
                 throw new HttpsError('invalid-argument', 'Mensaje invalido.');
