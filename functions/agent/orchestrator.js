@@ -13,10 +13,20 @@ const CONVERSATIONS_COLLECTION = 'agent_conversations';
 const RATE_LIMITS_COLLECTION = 'agent_rate_limits';
 const ORDERS_COLLECTION = 'pedidos';
 const AGENT_INSTRUCTIONS_COLLECTION = 'agent_instructions';
+const AGENT_USAGE_COLLECTION = 'agent_usage_daily';
 // Sonnet 5 en vez de Opus 5 a proposito: ~60% mas barato por token (precio de lanzamiento
 // vigente hasta el 31/ago/2026) y de sobra suficiente para tomar pedidos de un menu fijo con
 // tool use -- decision explicita del negocio para bajar el costo por cliente, no un descuido.
 const MODEL = 'claude-sonnet-5';
+// Precios de Sonnet 5 por millón de tokens (lanzamiento, vigentes SOLO hasta el 31/ago/2026 --
+// después suben a $3/$15 y estos 4 números quedan desactualizados, hay que actualizarlos acá).
+// Cache write/read son múltiplos del precio de entrada (ver prompt-caching): 2x para escritura
+// con TTL de 1h (el que usamos), 0.1x para lectura -- así se sacan de PRICE_INPUT_PER_MTOK
+// en vez de quedar como números sueltos que se puedan desincronizar.
+const PRICE_INPUT_PER_MTOK = 2;
+const PRICE_OUTPUT_PER_MTOK = 10;
+const PRICE_CACHE_WRITE_PER_MTOK = PRICE_INPUT_PER_MTOK * 2;
+const PRICE_CACHE_READ_PER_MTOK = PRICE_INPUT_PER_MTOK * 0.1;
 const MAX_TURNS_PER_CONVERSATION = 40;
 // 8 en vez de 12: un pedido normal (consultar menú, agregar unos productos, resumen, datos del
 // cliente, confirmar) rara vez pasa de 6-7 vueltas -- si el modelo llega a 8 sin cerrar, algo
@@ -391,6 +401,42 @@ async function buildInstructionsSystemBlocks(db) {
     return { fixedBlock, temporalBlock };
 }
 
+function bogotaDateKey(now = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+}
+
+// Antes no había forma de ver cuánto gasta el agente en la práctica -- solo el total agregado
+// de la consola de Anthropic, sin desglose ni forma de detectar a tiempo si algo se rompe (ej.
+// el cache dejó de pegar y cada turno se está cobrando a precio lleno sin que nadie lo note).
+// Un doc por día (agent_usage_daily/{YYYY-MM-DD}, hora Bogotá) con contadores acumulados via
+// FieldValue.increment -- no se guarda un doc por turno para no acumular miles de documentos
+// sueltos solo para ver un total.
+async function logAgentUsage(db, usage) {
+    const inputTokens = Number(usage?.input_tokens || 0);
+    const outputTokens = Number(usage?.output_tokens || 0);
+    const cacheCreationTokens = Number(usage?.cache_creation_input_tokens || 0);
+    const cacheReadTokens = Number(usage?.cache_read_input_tokens || 0);
+    const estimatedCostUsd =
+        (inputTokens / 1_000_000) * PRICE_INPUT_PER_MTOK +
+        (outputTokens / 1_000_000) * PRICE_OUTPUT_PER_MTOK +
+        (cacheCreationTokens / 1_000_000) * PRICE_CACHE_WRITE_PER_MTOK +
+        (cacheReadTokens / 1_000_000) * PRICE_CACHE_READ_PER_MTOK;
+
+    try {
+        const ref = db.collection(AGENT_USAGE_COLLECTION).doc(bogotaDateKey());
+        await ref.set({
+            turns: FieldValue.increment(1),
+            inputTokens: FieldValue.increment(inputTokens),
+            outputTokens: FieldValue.increment(outputTokens),
+            cacheCreationTokens: FieldValue.increment(cacheCreationTokens),
+            cacheReadTokens: FieldValue.increment(cacheReadTokens),
+            estimatedCostUsd: FieldValue.increment(estimatedCostUsd)
+        }, { merge: true });
+    } catch (_e) {
+        // No crítico -- nunca debe romper la respuesta al cliente por un fallo acá.
+    }
+}
+
 // Sin esto, CADA turno de la conversación y CADA vuelta del loop de tools (hasta 12 por turno)
 // reenviaban el historial completo a precio lleno -- Anthropic solo cachea lo que va HASTA un
 // bloque marcado con cache_control, y acá nunca se marcaba nada del lado de `messages` (solo el
@@ -426,6 +472,7 @@ async function runAgentConversationLoop({ conversationKey, anthropicApiKey, stat
     let hadError = false;
     let loopIterations = 0;
     let finalAssistantMessage = null;
+    const usageTotals = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
 
     try {
         for (let iteration = 0; iteration < MAX_TOOL_LOOP_ITERATIONS; iteration++) {
@@ -442,6 +489,13 @@ async function runAgentConversationLoop({ conversationKey, anthropicApiKey, stat
                 tools: AGENT_TOOL_DEFS,
                 messages: withCacheBreakpoint(messages)
             });
+
+            if (response.usage) {
+                usageTotals.input_tokens += Number(response.usage.input_tokens || 0);
+                usageTotals.output_tokens += Number(response.usage.output_tokens || 0);
+                usageTotals.cache_creation_input_tokens += Number(response.usage.cache_creation_input_tokens || 0);
+                usageTotals.cache_read_input_tokens += Number(response.usage.cache_read_input_tokens || 0);
+            }
 
             if (response.stop_reason === 'refusal') {
                 hadError = true;
@@ -497,6 +551,10 @@ async function runAgentConversationLoop({ conversationKey, anthropicApiKey, stat
     if (hadError || !finalReplyText) {
         finalReplyText = finalReplyText || FALLBACK_REPLY;
         if (hadError) state.needsHuman = true;
+    }
+
+    if (usageTotals.input_tokens || usageTotals.output_tokens || usageTotals.cache_creation_input_tokens || usageTotals.cache_read_input_tokens) {
+        await logAgentUsage(ref.firestore, usageTotals);
     }
 
     // send_product_photo (tools.js) solo deja la URL acá -- se la pega al último mensaje del

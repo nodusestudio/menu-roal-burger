@@ -124,6 +124,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Contadores diarios de uso/costo del agente (functions/agent/orchestrator.js,
+    // logAgentUsage) -- el admin los lee desde el panel de Chat Roal, solo el Admin SDK escribe.
+    match /agent_usage_daily/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // Instrucciones operativas que el admin escribe desde Chat Roal (ej. "hoy recomienda X") —
     // el agente las lee con el Admin SDK (ignora estas reglas), esto solo protege la UI.
     match /agent_instructions/{doc} {

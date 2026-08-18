@@ -10849,12 +10849,35 @@ function announceNewChatRoalConversations(conversations) {
 
 // ── Panel de configuración de Chat Roal (sonidos + instrucciones para el agente) ───────────
 let _instructionHorarioTipo = 'siempre';
+// Lee la misma colección que escribe functions/agent/orchestrator.js (logAgentUsage) -- así se
+// ve acá cuánto está gastando el agente de verdad, no solo el total agregado (y con retraso) de
+// la consola de Anthropic.
+const CHAT_ROAL_USAGE_COLLECTION = 'agent_usage_daily';
+let _chatRoalUsageToday = undefined; // undefined = sin cargar aún, null = cargado pero sin datos hoy
+
+function _bogotaDateKey(now = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+}
+
+async function _loadChatRoalUsageToday() {
+    if (!firebaseDb) return;
+    try {
+        const snap = await firebaseDb.collection(CHAT_ROAL_USAGE_COLLECTION).doc(_bogotaDateKey()).get();
+        _chatRoalUsageToday = snap.exists ? snap.data() : null;
+    } catch (_e) {
+        _chatRoalUsageToday = null;
+    }
+    renderChatRoalSettingsPanel();
+}
 
 function toggleChatRoalSettingsPanel() {
     const panel = document.getElementById('chatRoalSettingsPanel');
     if (!panel) return;
     panel.hidden = !panel.hidden;
-    if (!panel.hidden) renderChatRoalSettingsPanel();
+    if (!panel.hidden) {
+        renderChatRoalSettingsPanel();
+        _loadChatRoalUsageToday();
+    }
 }
 
 function _instructionHorarioLabel(horario) {
@@ -10883,7 +10906,27 @@ function renderChatRoalSettingsPanel() {
         `).join('')
         : '<p class="inbox-empty">Sin instrucciones guardadas</p>';
 
+    let usageHtml;
+    if (_chatRoalUsageToday === undefined) {
+        usageHtml = '<p class="inbox-empty">Cargando…</p>';
+    } else if (!_chatRoalUsageToday) {
+        usageHtml = '<p class="inbox-empty">Sin turnos del agente hoy todavía.</p>';
+    } else {
+        const u = _chatRoalUsageToday;
+        const totalTokens = Number(u.inputTokens || 0) + Number(u.cacheCreationTokens || 0) + Number(u.cacheReadTokens || 0);
+        const cachePct = totalTokens > 0 ? Math.round((Number(u.cacheReadTokens || 0) / totalTokens) * 100) : 0;
+        const costUsd = Number(u.estimatedCostUsd || 0);
+        usageHtml = `
+            <p><strong>${Number(u.turns || 0)}</strong> turnos hoy · <strong>~$${costUsd.toFixed(3)} USD</strong> estimado · <strong>${cachePct}%</strong> de los tokens vinieron de caché (barato)</p>
+            <p class="chatroal-usage-detail">Entrada: ${Number(u.inputTokens || 0).toLocaleString('es-CO')} · Salida: ${Number(u.outputTokens || 0).toLocaleString('es-CO')} · Caché escrita: ${Number(u.cacheCreationTokens || 0).toLocaleString('es-CO')} · Caché leída: ${Number(u.cacheReadTokens || 0).toLocaleString('es-CO')}</p>
+        `;
+    }
+
     panel.innerHTML = `
+        <div class="chatroal-settings-section">
+            <h3>💰 Costo del agente (hoy)</h3>
+            ${usageHtml}
+        </div>
         <div class="chatroal-settings-section">
             <h3>🔊 Sonidos de aviso</h3>
             <div class="chatroal-sound-row">
