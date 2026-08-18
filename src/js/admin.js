@@ -11460,7 +11460,7 @@ function renderChatRoalDetail() {
                 ${conv.humanControl ? '<button class="inbox-head-btn green" data-chatroal-action="take-order">📦 Tomar pedido ahora</button>' : ''}
                 ${conv.humanControl ? '<button class="inbox-head-btn blue" data-chatroal-action="handback">🤖 Devolver al agente</button>' : ''}
                 <div class="chatroal-more-menu-wrap">
-                    <button class="inbox-head-btn" type="button" id="chatRoalMoreBtn" title="Más opciones">⋮</button>
+                    <button class="inbox-head-btn" type="button" id="chatRoalMoreBtn" title="Archivar, bloquear o eliminar esta conversación">⚙️ Más opciones ▾</button>
                     <div class="chatroal-more-menu" id="chatRoalMoreMenu" hidden>
                         <button type="button" data-chatroal-action="archive">🗄️ Archivar</button>
                         <button type="button" data-chatroal-action="block">🚫 Bloquear</button>
