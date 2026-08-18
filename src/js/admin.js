@@ -11399,6 +11399,15 @@ function _chatRoalMessageText(msg) {
         .join('\n');
 }
 
+// SYNC: misma función que renderInlineMarkup en src/js/agent-chat.js -- Chat Roal mostraba el
+// texto crudo (escapeHtml sin más), así que los asteriscos de *negrita* y los saltos de línea
+// que el prompt le pide al agente quedaban como texto plano pegado en un bloque, aunque el
+// cliente SÍ los viera bien formateados en su chat. El admin necesita verlo igual de claro.
+function _chatRoalRenderInlineMarkup(text) {
+    const escaped = escapeHtml(text).replace(/\*([^\n*]+)\*/g, '<strong>$1</strong>');
+    return escaped.replace(/\n/g, '<br>');
+}
+
 function renderChatRoalDetail() {
     const detail = document.getElementById('chatRoalDetail');
     if (!detail) return;
@@ -11419,7 +11428,7 @@ function renderChatRoalDetail() {
         const imagesHtml = images.map((url) => `<img src="${escapeHtml(url)}" class="chatroal-bubble-image" alt="">`).join('');
         return `
             <div class="inbox-msg-group">
-                <div class="inbox-bubble ${isCustomer ? 'from-user' : 'from-admin'}">${text ? escapeHtml(text) : ''}${imagesHtml}</div>
+                <div class="inbox-bubble ${isCustomer ? 'from-user' : 'from-admin'}">${text ? _chatRoalRenderInlineMarkup(text) : ''}${imagesHtml}</div>
                 <span class="inbox-bubble-meta">${escapeHtml(_inboxFormatTime(msg.createdAt))}</span>
             </div>`;
     }).join('');
