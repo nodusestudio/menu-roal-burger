@@ -1206,7 +1206,7 @@ const CHAT_ROAL_SOUND_PRESETS = {
     }
 };
 
-let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5, costAlertPhone: '' };
+let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5, costAlertPhone: '', agentEnabled: true };
 
 function playChatRoalSound(kind) {
     const presetId = kind === 'escalation' ? chatRoalConfigState.soundEscalation
@@ -10734,6 +10734,7 @@ let _chatRoalMessages = [];
 let _chatRoalInitialized = false;
 
 let _chatRoalInstructions = [];
+let _chatRoalCannedMessages = [];
 
 function initChatRoal() {
     if (_chatRoalInitialized || !firebaseDb) return;
@@ -10755,14 +10756,21 @@ function initChatRoal() {
         }, (err) => console.error('Chat Roal onSnapshot error:', err));
 
     firebaseDb.collection('configuracion').doc('chat_roal_config').onSnapshot((doc) => {
-        chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5, costAlertPhone: '', ...(doc.exists ? doc.data() : {}) };
+        chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5, costAlertPhone: '', agentEnabled: true, ...(doc.exists ? doc.data() : {}) };
         renderChatRoalSettingsPanel();
+        _updateChatRoalAgentToggleUI();
     }, (err) => console.error('Chat Roal config onSnapshot error:', err));
 
     firebaseDb.collection('agent_instructions').orderBy('createdAt', 'desc').onSnapshot((snapshot) => {
         _chatRoalInstructions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         renderChatRoalSettingsPanel();
     }, (err) => console.error('agent_instructions onSnapshot error:', err));
+
+    firebaseDb.collection('agent_canned_messages').orderBy('order', 'asc').onSnapshot((snapshot) => {
+        _chatRoalCannedMessages = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        renderChatRoalSettingsPanel();
+        renderChatRoalDetail();
+    }, (err) => console.error('agent_canned_messages onSnapshot error:', err));
 
     _watchChatRoalUsageToday();
 
@@ -10772,6 +10780,25 @@ function initChatRoal() {
         _chatRoalShowArchived = !_chatRoalShowArchived;
         renderChatRoalList();
     });
+    document.getElementById('chatRoalAgentToggle')?.addEventListener('click', async () => {
+        const next = !chatRoalConfigState.agentEnabled;
+        try {
+            await firebaseDb.collection('configuracion').doc('chat_roal_config').set({ agentEnabled: next }, { merge: true });
+            showNotice(next ? 'Agente encendido — vuelve a responder solo.' : 'Agente apagado — los mensajes nuevos esperan a que tú los atiendas.', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo cambiar'}`, 'error');
+        }
+    });
+}
+
+// Botón grande y siempre visible en la cabecera de Chat Roal (no solo en Configuración) —
+// el punto de esto es poder apagarlo/prenderlo rápido sin tener que abrir el panel.
+function _updateChatRoalAgentToggleUI() {
+    const btn = document.getElementById('chatRoalAgentToggle');
+    if (!btn) return;
+    const on = chatRoalConfigState.agentEnabled !== false;
+    btn.textContent = on ? '🤖 Agente: ENCENDIDO' : '🔴 Agente: APAGADO';
+    btn.classList.toggle('is-off', !on);
 }
 
 // Mismo patrón que announceNewMessages/updateMessagesAttentionState (sonido + notificación
@@ -10945,6 +10972,19 @@ function renderChatRoalSettingsPanel() {
         `).join('')
         : '<p class="inbox-empty">Sin instrucciones guardadas</p>';
 
+    const cannedMessagesHtml = _chatRoalCannedMessages.length
+        ? _chatRoalCannedMessages.map((m) => `
+            <div class="chatroal-instruction-card">
+                <p><strong>${escapeHtml(m.label || '(sin nombre)')}</strong>${m.imageUrl ? ' 🖼️' : ''}</p>
+                <p class="chatroal-usage-detail">${escapeHtml((m.text || '').slice(0, 80))}${(m.text || '').length > 80 ? '…' : ''}</p>
+                <div class="chatroal-instruction-meta">
+                    <span></span>
+                    <button type="button" data-canned-delete="${escapeHtml(m.id)}">🗑 Eliminar</button>
+                </div>
+            </div>
+        `).join('')
+        : '<p class="inbox-empty">Sin mensajes guardados</p>';
+
     let usageHtml;
     if (_chatRoalUsageToday === undefined) {
         usageHtml = '<p class="inbox-empty">Cargando…</p>';
@@ -11013,6 +11053,17 @@ function renderChatRoalSettingsPanel() {
                     <input type="time" id="chatRoalInstructionHoraFin" value="17:00">
                 </div>
                 <button type="button" class="chatroal-instruction-add-btn" id="chatRoalSaveInstructionBtn">Guardar instrucción</button>
+            </div>
+        </div>
+        <div class="chatroal-settings-section">
+            <h3>💬 Mensajes preestablecidos</h3>
+            ${cannedMessagesHtml}
+            <button type="button" class="chatroal-instruction-add-btn" id="chatRoalAddCannedBtn">+ Nuevo mensaje</button>
+            <div class="chatroal-instruction-form" id="chatRoalCannedForm" hidden>
+                <input type="text" id="chatRoalCannedLabel" placeholder="Nombre corto del botón (ej: Bienvenida, Pedido en camino, Datos de pago)">
+                <textarea id="chatRoalCannedText" rows="2" placeholder="Texto que se le manda al cliente…"></textarea>
+                <input type="text" id="chatRoalCannedImageUrl" placeholder="URL de imagen (opcional — ej. tu QR de pago ya subido)">
+                <button type="button" class="chatroal-instruction-add-btn" id="chatRoalSaveCannedBtn">Guardar mensaje</button>
             </div>
         </div>
     `;
@@ -11116,6 +11167,41 @@ function renderChatRoalSettingsPanel() {
             try {
                 await firebaseDb.collection('agent_instructions').doc(btn.dataset.instructionDelete).delete();
                 showNotice('Instrucción eliminada.', 'ok');
+            } catch (err) {
+                showNotice(`Error: ${err.message || 'no se pudo eliminar'}`, 'error');
+            }
+        });
+    });
+
+    document.getElementById('chatRoalAddCannedBtn')?.addEventListener('click', () => {
+        const form = document.getElementById('chatRoalCannedForm');
+        if (form) form.hidden = !form.hidden;
+    });
+
+    document.getElementById('chatRoalSaveCannedBtn')?.addEventListener('click', async () => {
+        const label = (document.getElementById('chatRoalCannedLabel')?.value || '').trim();
+        const text = (document.getElementById('chatRoalCannedText')?.value || '').trim();
+        const imageUrl = (document.getElementById('chatRoalCannedImageUrl')?.value || '').trim();
+        if (!label || !text) { showNotice('Escribe el nombre y el texto primero.', 'warn'); return; }
+        try {
+            await firebaseDb.collection('agent_canned_messages').add({
+                label, text, imageUrl: imageUrl || null,
+                order: _chatRoalCannedMessages.length,
+                createdAt: firestoreNow()
+            });
+            showNotice('Mensaje guardado.', 'ok');
+            const form = document.getElementById('chatRoalCannedForm');
+            if (form) form.hidden = true;
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo guardar'}`, 'error');
+        }
+    });
+
+    panel.querySelectorAll('[data-canned-delete]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await firebaseDb.collection('agent_canned_messages').doc(btn.dataset.cannedDelete).delete();
+                showNotice('Mensaje eliminado.', 'ok');
             } catch (err) {
                 showNotice(`Error: ${err.message || 'no se pudo eliminar'}`, 'error');
             }
@@ -11249,11 +11335,13 @@ function renderChatRoalDetail() {
 
     const messagesHtml = _chatRoalMessages.map((msg) => {
         const text = _chatRoalMessageText(msg);
-        if (!text) return '';
+        const images = Array.isArray(msg.images) ? msg.images.filter(Boolean) : [];
+        if (!text && !images.length) return '';
         const isCustomer = msg.role === 'user';
+        const imagesHtml = images.map((url) => `<img src="${escapeHtml(url)}" class="chatroal-bubble-image" alt="">`).join('');
         return `
             <div class="inbox-msg-group">
-                <div class="inbox-bubble ${isCustomer ? 'from-user' : 'from-admin'}">${escapeHtml(text)}</div>
+                <div class="inbox-bubble ${isCustomer ? 'from-user' : 'from-admin'}">${text ? escapeHtml(text) : ''}${imagesHtml}</div>
                 <span class="inbox-bubble-meta">${escapeHtml(_inboxFormatTime(msg.createdAt))}</span>
             </div>`;
     }).join('');
@@ -11270,6 +11358,10 @@ function renderChatRoalDetail() {
         if (el) draftValues[id] = el.value;
     });
 
+    const cannedChipsHtml = _chatRoalCannedMessages.length
+        ? _chatRoalCannedMessages.map((m) => `<button type="button" class="chatroal-canned-chip" data-chatroal-canned="${escapeHtml(m.id)}" title="${escapeHtml(m.text)}">${escapeHtml(m.label || m.text.slice(0, 20))}</button>`).join('')
+        : '';
+
     detail.innerHTML = `
         <div class="inbox-detail-head">
             <div class="inbox-detail-avatar">${_inboxInitial(name)}</div>
@@ -11278,6 +11370,7 @@ function renderChatRoalDetail() {
                 <div class="inbox-detail-head-sub">${escapeHtml(phone)}${conv.channel ? ' · ' + escapeHtml(conv.channel === 'whatsapp' ? 'WhatsApp' : 'Web') : ''}</div>
             </div>
             <div class="inbox-detail-head-actions">
+                ${conv.humanControl ? '<button class="inbox-head-btn green" data-chatroal-action="take-order">📦 Tomar pedido ahora</button>' : ''}
                 ${conv.humanControl ? '<button class="inbox-head-btn blue" data-chatroal-action="handback">🤖 Devolver al agente</button>' : ''}
             </div>
         </div>
@@ -11297,6 +11390,11 @@ function renderChatRoalDetail() {
         </div>` : ''}
         <div class="inbox-messages-scroll" id="chatRoalMsgScroll">
             ${messagesHtml || '<p class="inbox-empty">Sin mensajes aún</p>'}
+        </div>
+        <div class="chatroal-quick-actions">
+            <input type="text" id="chatRoalProductSearch" placeholder="Buscar producto y mandar info + foto…">
+            <button type="button" class="chatroal-canned-chip" data-chatroal-action="send-product">🔍 Enviar</button>
+            ${cannedChipsHtml}
         </div>
         <div class="inbox-reply-bar">
             <textarea class="inbox-reply-input" id="chatRoalReplyInput" placeholder="Escribe un mensaje…" rows="1"></textarea>
@@ -11319,11 +11417,64 @@ function renderChatRoalDetail() {
 document.addEventListener('click', async (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+
+    const cannedBtn = target.closest('button[data-chatroal-canned]');
+    if (cannedBtn instanceof HTMLButtonElement && _chatRoalActiveId && firebaseFunctions) {
+        const canned = _chatRoalCannedMessages.find((m) => m.id === cannedBtn.dataset.chatroalCanned);
+        if (!canned) return;
+        cannedBtn.disabled = true;
+        try {
+            await firebaseFunctions.httpsCallable('agentChatAdminReply')({
+                conversationKey: _chatRoalActiveId, text: canned.text, imageUrl: canned.imageUrl || null
+            });
+            showNotice(`«${canned.label || 'Mensaje'}» enviado.`, 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo enviar'}`, 'error');
+        } finally {
+            cannedBtn.disabled = false;
+        }
+        return;
+    }
+
     const actionButton = target.closest('button[data-chatroal-action]');
     if (!(actionButton instanceof HTMLButtonElement) || !_chatRoalActiveId || !firebaseFunctions) return;
 
     const action = actionButton.dataset.chatroalAction;
     const callable = firebaseFunctions.httpsCallable('agentChatAdminReply');
+
+    if (action === 'take-order') {
+        actionButton.disabled = true;
+        try {
+            await callable({
+                conversationKey: _chatRoalActiveId,
+                addNote: true,
+                note: 'El cliente ya confirmó su pedido en esta conversación (revisa el historial completo). Arma el carrito con update_cart usando exactamente lo que se habló, completa los datos del cliente con set_customer_info, y llama a place_order ahora mismo — no vuelvas a preguntar nada que ya esté claro en el chat. Si falta algo puntual, pregúntaselo directo al cliente.'
+            });
+            showNotice('El agente está tomando el pedido…', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo tomar el pedido'}`, 'error');
+        } finally {
+            actionButton.disabled = false;
+        }
+        return;
+    }
+
+    if (action === 'send-product') {
+        const inputEl = document.getElementById('chatRoalProductSearch');
+        const productName = inputEl ? inputEl.value.trim() : '';
+        if (!productName) { showNotice('Escribe el nombre del producto primero.', 'warn'); return; }
+        actionButton.disabled = true;
+        try {
+            await callable({ conversationKey: _chatRoalActiveId, sendProductInfo: true, productName });
+            if (inputEl) inputEl.value = '';
+            showNotice('Info del producto enviada.', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo enviar'}`, 'error');
+        } finally {
+            actionButton.disabled = false;
+        }
+        return;
+    }
 
     if (action === 'handback') {
         actionButton.disabled = true;

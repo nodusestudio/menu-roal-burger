@@ -6,7 +6,7 @@ const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore }      = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
 const crypto                = require('crypto');
-const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert } = require('./agent/orchestrator');
+const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, sendAdminProductInfo } = require('./agent/orchestrator');
 
 initializeApp();
 
@@ -79,6 +79,23 @@ async function runFollowUpAndPush(conversationKey) {
         }
     } catch (followUpErr) {
         console.error('runFollowUpTurn/push error:', followUpErr);
+    }
+}
+
+// Empuja por WhatsApp lo que un admin acaba de escribir/mandar desde Chat Roal (respuesta
+// manual, o el buscador rápido de producto) -- appendAdminMessage/sendAdminProductInfo ya
+// guardaron el mensaje en Firestore antes de llamar esto, así que un fallo acá NUNCA se le
+// reporta como error al admin: su mensaje ya quedó guardado y visible en Chat Roal igual, y el
+// cliente de todas formas lo ve si es un chat web (esto es solo para el push activo a WhatsApp).
+async function pushAdminReplyToWhatsApp(channel, phone, text, imageUrl) {
+    if (channel !== 'whatsapp' || !phone) return;
+    try {
+        const instanceId = ULTRAMSG_INSTANCE.value();
+        const token = ULTRAMSG_TOKEN.value();
+        if (text) await sendWhatsAppMessage(instanceId, token, phone, text);
+        if (imageUrl) await sendWhatsAppImage(instanceId, token, phone, imageUrl);
+    } catch (err) {
+        console.error(`pushAdminReplyToWhatsApp: fallo al empujar a ${phone}:`, err);
     }
 }
 
@@ -509,6 +526,7 @@ exports.agentChatAdminReply = onCall(
         const markSeen = request.data?.markSeen === true;
         const answerQuestion = request.data?.answerQuestion === true;
         const addNote = request.data?.addNote === true;
+        const sendProductInfo = request.data?.sendProductInfo === true;
         const text = String(request.data?.text || '').trim();
 
         try {
@@ -538,10 +556,26 @@ exports.agentChatAdminReply = onCall(
                 await runFollowUpAndPush(conversationKey);
                 return { ok: true };
             }
+            if (sendProductInfo) {
+                const productName = String(request.data?.productName || '').trim();
+                if (!productName) {
+                    throw new HttpsError('invalid-argument', 'productName requerido.');
+                }
+                let sent;
+                try {
+                    sent = await sendAdminProductInfo(getFirestore(), conversationKey, productName);
+                } catch (lookupErr) {
+                    throw new HttpsError('not-found', lookupErr.message || 'No se encontró el producto.');
+                }
+                await pushAdminReplyToWhatsApp(sent.channel, sent.phone, sent.text, sent.imageUrl);
+                return { ok: true };
+            }
             if (!text || text.length > 2000) {
                 throw new HttpsError('invalid-argument', 'Mensaje invalido.');
             }
-            await appendAdminMessage(getFirestore(), conversationKey, text);
+            const imageUrl = String(request.data?.imageUrl || '').trim() || null;
+            const { channel, phone } = await appendAdminMessage(getFirestore(), conversationKey, text, imageUrl);
+            await pushAdminReplyToWhatsApp(channel, phone, text, imageUrl);
             return { ok: true };
         } catch (err) {
             if (err instanceof HttpsError) throw err;
@@ -674,7 +708,10 @@ exports.ultramsgWebhook = onRequest(
 
             const instanceId = ULTRAMSG_INSTANCE.value();
             const token = ULTRAMSG_TOKEN.value();
-            await sendWhatsAppMessage(instanceId, token, phoneDigits, result.reply);
+            // result.reply puede venir null (ej. humanControl:true, o agente apagado y el
+            // cliente ya había recibido el aviso una vez) -- sin este chequeo se mandaba
+            // "null" como mensaje de WhatsApp al cliente real.
+            if (result.reply) await sendWhatsAppMessage(instanceId, token, phoneDigits, result.reply);
             for (const url of result.images || []) {
                 await sendWhatsAppImage(instanceId, token, phoneDigits, url);
             }

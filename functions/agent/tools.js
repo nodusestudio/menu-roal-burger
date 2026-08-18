@@ -571,4 +571,4 @@ function buildAgentToolHandlers({ db, state }) {
     };
 }
 
-module.exports = { AGENT_TOOL_DEFS, buildAgentToolHandlers };
+module.exports = { AGENT_TOOL_DEFS, buildAgentToolHandlers, fetchAllSellableItems, findProductByName, findProductImage };

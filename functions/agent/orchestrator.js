@@ -5,7 +5,7 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const { FieldValue } = require('firebase-admin/firestore');
-const { AGENT_TOOL_DEFS, buildAgentToolHandlers } = require('./tools');
+const { AGENT_TOOL_DEFS, buildAgentToolHandlers, fetchAllSellableItems, findProductByName, findProductImage } = require('./tools');
 const { AGENT_SYSTEM_PROMPT } = require('./prompt');
 const orderLogic = require('./orderLogic');
 
@@ -49,6 +49,19 @@ const INACTIVITY_WARNING_TEXT = '¿Sigues ahí? 🙂 Aquí sigo atento para ayud
 const FALLBACK_REPLY = 'Tuvimos un problema técnico en este momento. Por favor escríbenos directo por WhatsApp o usa el menú web mientras lo solucionamos.';
 const RATE_LIMITED_REPLY = 'Vamos muy rápido 🙂 Espera un momento y vuelve a escribir.';
 const TURN_LIMIT_REPLY = 'Esta conversación ya lleva muchos mensajes. Un asesor humano te va a contactar para continuar con tu pedido.';
+// Se manda UNA sola vez por conversación (ver wasAlreadyWaiting en handleIncomingTurn) -- si el
+// cliente sigue escribiendo mientras el agente está apagado, no hace falta repetirle lo mismo en
+// cada mensaje.
+const AGENT_DISABLED_REPLY = 'En un momento te atendemos por acá mismo 🙂';
+
+// Interruptor global (configuracion/chat_roal_config.agentEnabled) -- cuando el admin lo apaga
+// desde Chat Roal porque va a atender los mensajes él mismo, NINGUNA conversación nueva ni en
+// curso gasta tokens: el mensaje del cliente se guarda esperando a un humano y NUNCA se llama a
+// Claude (ver el chequeo al inicio de handleIncomingTurn). Default ON si el doc no existe aún.
+async function isAgentGloballyEnabled(db) {
+    const doc = await db.collection('configuracion').doc('chat_roal_config').get();
+    return doc.exists ? doc.data()?.agentEnabled !== false : true;
+}
 
 async function checkRateLimit(db, key) {
     const ref = db.collection(RATE_LIMITS_COLLECTION).doc(key);
@@ -222,12 +235,17 @@ function truncatePreview(text) {
 // responda directo desde FODEXA — misma forma de mensaje que persistNewMessages guarda para
 // las respuestas del agente, así getDisplayHistory y el resto del historial no distinguen entre
 // una respuesta del bot y una del admin.
-async function appendAdminMessage(db, conversationKey, text) {
+// imageUrl es opcional (mensajes preestablecidos con foto, o el buscador rápido de productos en
+// Chat Roal) -- se guarda igual que las fotos que manda el agente (send_product_photo) para que
+// el historial y el widget web las rendericen igual. Devuelve channel/phone/imageUrl para que el
+// caller (functions/index.js) sepa si tiene que empujarlo por WhatsApp además de guardarlo.
+async function appendAdminMessage(db, conversationKey, text, imageUrl) {
     const ref = db.collection(CONVERSATIONS_COLLECTION).doc(conversationKey);
     const snap = await ref.get();
     if (!snap.exists) throw new Error(`Conversación no encontrada: ${conversationKey}`);
     const state = snap.data();
     const message = { role: 'assistant', content: [{ type: 'text', text }] };
+    if (imageUrl) message.images = [imageUrl];
     const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [message]);
     await ref.set({
         messageCount: newSeq,
@@ -236,6 +254,20 @@ async function appendAdminMessage(db, conversationKey, text) {
         lastMessageText: truncatePreview(text),
         updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
+    return { channel: state.channel, phone: state.phone, text, imageUrl: imageUrl || null };
+}
+
+// Buscador rápido de Chat Roal: el admin escribe el nombre de un producto (ej. "burger ranchera")
+// y esto arma el mismo texto+foto que mandaría el agente con send_product_photo, pero sin gastar
+// NINGÚN token -- es una búsqueda directa en Firestore, no pasa por Claude en ningún momento.
+async function sendAdminProductInfo(db, conversationKey, productName) {
+    const products = await fetchAllSellableItems(db);
+    const product = findProductByName(products, productName);
+    if (!product) throw new Error(`No encontré "${productName}" en el menú.`);
+    const imageUrl = await findProductImage(db, product.nombre);
+    const priceText = `$${Number(product.precio || 0).toLocaleString('es-CO')}`;
+    const text = `*${product.nombre} — ${priceText}*${product.nota ? `\n${product.nota}` : ''}`;
+    return appendAdminMessage(db, conversationKey, text, imageUrl);
 }
 
 async function handbackToAgent(db, conversationKey) {
@@ -659,6 +691,26 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
 
     const { ref, state, returningCustomerNote } = await loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId, customerProfile });
 
+    // Interruptor global apagado (isAgentGloballyEnabled) -- el admin va a atender él mismo por
+    // un rato, así que ni siquiera se intenta llamar a Claude. Va ANTES del chequeo de
+    // humanControl porque aplica a TODAS las conversaciones, no solo a la que ya estaba con un
+    // admin encima. wasAlreadyWaiting evita repetir el mismo mensaje enlatado en cada mensaje
+    // nuevo del cliente mientras sigue esperando.
+    if (!(await isAgentGloballyEnabled(db))) {
+        const wasAlreadyWaiting = state.needsHuman === true;
+        const userMessage = { role: 'user', content: [{ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' }] };
+        const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [userMessage]);
+        await ref.set({
+            messageCount: newSeq,
+            lastMessageText: truncatePreview(text),
+            lastCustomerMessageText: truncatePreview(text),
+            needsHuman: true,
+            inactivityWarnedAt: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        return { reply: wasAlreadyWaiting ? null : AGENT_DISABLED_REPLY };
+    }
+
     // Un admin ya tomó el control de esta conversación desde FODEXA (Chat Roal) — solo se
     // guarda el mensaje del cliente, sin gastar tokens ni dejar que el bot responda encima.
     // Va ANTES del chequeo de needs_human: si no, un cliente que sigue escribiendo después de
@@ -749,4 +801,4 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     return { reply: finalReplyText, images, orderCreated: state.lastOrderId ? { id: state.lastOrderId, code: state.lastOrderCode } : null };
 }
 
-module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert };
+module.exports = { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, sendAdminProductInfo };

@@ -137,6 +137,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Mensajes preestablecidos de Chat Roal (bienvenida, pedido en camino, datos de pago, etc.)
+    // -- solo el admin los crea/edita/borra desde el panel de configuración.
+    match /agent_canned_messages/{doc} {
+      allow read, write: if isAdmin();
+    }
+
     // Memoria de tarifas de domicilio por dirección de texto — compartida entre el POS
     // (src/js/admin.js) y el agente de IA. No tenía regla propia (fallaba en silencio para
     // el POS, el agente igual funciona vía Admin SDK).
