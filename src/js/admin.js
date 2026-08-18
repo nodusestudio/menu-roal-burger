@@ -1547,7 +1547,7 @@ function announceNewMessages(messages) {
 
 // Clave pública VAPID — obtenerla en Firebase Console → Project Settings →
 // Cloud Messaging → Web Push certificates → Generate key pair
-const FCM_VAPID_KEY = 'REEMPLAZAR_CON_TU_CLAVE_VAPID';
+const FCM_VAPID_KEY = 'BEmwEIZ8fBu_-EkBGGyJcna1PEBymg21_HVDbjgaF5Wp0MAcqdpUTfv3-uOT-b3qt3fT0_viBMmLi83FfxXqGT8';
 const FCM_TOKENS_COLLECTION = 'admin_fcm_tokens';
 
 async function requestAdminNotificationPermission() {
