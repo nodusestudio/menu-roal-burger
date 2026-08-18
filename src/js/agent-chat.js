@@ -215,6 +215,11 @@
             banner.hidden = true;
             if (!isDesktopLayout()) document.body.style.overflow = 'hidden';
             loadHistoryIfNeeded();
+            // Si el cliente cierra el chat y lo vuelve a abrir más tarde, loadHistoryIfNeeded ya
+            // no hace nada (historyLoaded quedó en true) -- sin este poll inmediato, una
+            // respuesta del admin mandada mientras el panel estaba cerrado solo aparecía hasta
+            // el próximo tick de 5s (o nunca, si el cliente vuelve a cerrar antes de que pase).
+            pollForNewMessages();
             startPolling();
             input.focus();
         }
@@ -228,6 +233,14 @@
 
         banner.addEventListener('click', openPanel);
         backBtn.addEventListener('click', closePanel);
+
+        // Los navegadores frenan los setInterval de pestañas en segundo plano (pueden pasar
+        // minutos entre ticks reales en vez de los 5s configurados) -- sin esto, un cliente que
+        // cambia de pestaña y vuelve no ve la respuesta del admin hasta mucho después de lo que
+        // parece razonable, aunque el poll técnicamente siga corriendo.
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && !panel.hidden) pollForNewMessages();
+        });
 
         async function sendMessage(text) {
             if (sending || !text.trim()) return;

@@ -12849,6 +12849,12 @@ function setupLiveFirebaseSync() {
                     await fetchOrders();
                     announceNewOrders(ordersState);
                     renderOrders();
+                    // Sin esto, Caja Diaria (pestaña Informes) se quedaba con los movimientos
+                    // congelados desde la última vez que cambió la jornada de ventas o un gasto
+                    // -- un pedido nuevo o marcado "entregado" refrescaba ordersState en memoria
+                    // pero nadie volvía a pintar la tabla de Caja Diaria con esos datos frescos
+                    // hasta que el admin le diera manualmente a "Actualizar".
+                    renderCajaDiaria();
                 }, 600),
                 onErr('pedidos')
             )
