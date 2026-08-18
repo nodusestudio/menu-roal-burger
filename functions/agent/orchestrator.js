@@ -13,7 +13,10 @@ const CONVERSATIONS_COLLECTION = 'agent_conversations';
 const RATE_LIMITS_COLLECTION = 'agent_rate_limits';
 const ORDERS_COLLECTION = 'pedidos';
 const AGENT_INSTRUCTIONS_COLLECTION = 'agent_instructions';
-const MODEL = 'claude-opus-5';
+// Sonnet 5 en vez de Opus 5 a proposito: ~60% mas barato por token (precio de lanzamiento
+// vigente hasta el 31/ago/2026) y de sobra suficiente para tomar pedidos de un menu fijo con
+// tool use -- decision explicita del negocio para bajar el costo por cliente, no un descuido.
+const MODEL = 'claude-sonnet-5';
 const MAX_TURNS_PER_CONVERSATION = 40;
 const MAX_TOOL_LOOP_ITERATIONS = 12;
 const MAX_HISTORY_MESSAGES = 60;
