@@ -7,7 +7,7 @@ try {
         apiKey: 'AIzaSyCinNZVhxL4ijOoZGsvoIvCgR7bHzsl668',
         authDomain: 'roal-burger-menu.firebaseapp.com',
         projectId: 'roal-burger-menu',
-        storageBucket: 'roal-burger-menu.appspot.com',
+        storageBucket: 'roal-burger-menu.firebasestorage.app',
         messagingSenderId: '659635134153',
         appId: '1:659635134153:web:b7056d7487c26127497718'
     });

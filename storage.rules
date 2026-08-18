@@ -1,0 +1,20 @@
+rules_version = '2';
+
+// Firebase Storage recien se habilito para este proyecto (antes no existia el bucket, por eso
+// las subidas de imagen fallaban con un error que se veia como CORS). Mismo criterio que
+// firestore.rules: lectura publica (son fotos de menu/productos/mensajes que se muestran en el
+// sitio publico y se mandan a clientes por WhatsApp), escritura solo para admins autenticados
+// (doc propio en /admins/{uid}, igual que el resto del panel admin).
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    }
+
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 10 * 1024 * 1024;
+    }
+  }
+}
