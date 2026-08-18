@@ -9392,13 +9392,28 @@ ${pagoLine}
 Quedo atento para poder procesar tu pedido.`;
 }
 
+// El texto de "salió de la cocina" hablaba SIEMPRE de domiciliario y "va en camino a tu
+// ubicación", sin importar el tipo de pedido -- para retiro/mesa eso no tiene sentido (no hay
+// domiciliario, no va a ningún lado). Antes esto lo copiaba un admin a mano y podía darse cuenta
+// y ajustarlo; ahora que notifyOrderDelivered (Cloud Functions) lo manda solo, tiene que ser
+// correcto de una para los tres tipos de pedido.
+function buildDeliveredOrderStatusLine(order) {
+    const isDomicilio = order.orderType === 'domicilio' || order.fulfillmentType === 'delivery';
+    const isMesa = order.orderType === 'mesa' || order.fulfillmentType === 'mesa';
+    if (isDomicilio) {
+        return 'Tu pedido acaba de salir de nuestra cocina y ya está en manos del domiciliario 🛵💨\n\n¡Va en camino a tu ubicación! Pronto estará contigo 😊';
+    }
+    if (isMesa) {
+        return 'Tu pedido ya está listo y va en camino a tu mesa 🍽️';
+    }
+    return 'Tu pedido ya está listo para que lo recojas en el local 🏃💨\n\n¡Te esperamos!';
+}
+
 function buildDeliveredOrderMessage(order) {
     const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
     return `¡Hola ${customerName}! 🍔🔥
 
-Tu pedido acaba de salir de nuestra cocina y ya está en manos del domiciliario 🛵💨
-
-¡Va en camino a tu ubicación! Pronto estará contigo 😊
+${buildDeliveredOrderStatusLine(order)}
 
 Gracias por preferirnos, eso nos motiva a darlo todo cada día 🙌
 

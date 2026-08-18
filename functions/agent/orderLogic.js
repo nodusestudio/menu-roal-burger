@@ -514,17 +514,31 @@ async function upsertAgentClientProfile(db, customerInfo, orderInfo) {
     });
 }
 
-// SYNC: misma función que buildDeliveredOrderMessage en src/js/admin.js (línea ~9395) -- ese
-// mensaje solo se copiaba al portapapeles para que el admin lo pegara a mano en WhatsApp. Esta
-// versión vive acá para que notifyOrderDelivered (functions/index.js) lo pueda mandar solo, sin
-// depender de que alguien se acuerde de pegarlo.
+// SYNC: mismas funciones que buildDeliveredOrderMessage/buildDeliveredOrderStatusLine en
+// src/js/admin.js (línea ~9395) -- ese mensaje solo se copiaba al portapapeles para que el admin
+// lo pegara a mano en WhatsApp. Esta versión vive acá para que notifyOrderDelivered
+// (functions/index.js) lo pueda mandar solo, sin depender de que alguien se acuerde de pegarlo.
+// Probado en vivo (18/ago/2026): el texto original hablaba SIEMPRE de domiciliario y "va en
+// camino a tu ubicación" sin importar el tipo de pedido -- para un pedido de retiro no tiene
+// sentido, y al mandarse solo (sin que un admin lo revise antes) el error llega directo al
+// cliente. Ahora varía según orderType/fulfillmentType, igual que en admin.js.
+function buildDeliveredOrderStatusLine(order) {
+    const isDomicilio = order.orderType === 'domicilio' || order.fulfillmentType === 'delivery';
+    const isMesa = order.orderType === 'mesa' || order.fulfillmentType === 'mesa';
+    if (isDomicilio) {
+        return 'Tu pedido acaba de salir de nuestra cocina y ya está en manos del domiciliario 🛵💨\n\n¡Va en camino a tu ubicación! Pronto estará contigo 😊';
+    }
+    if (isMesa) {
+        return 'Tu pedido ya está listo y va en camino a tu mesa 🍽️';
+    }
+    return 'Tu pedido ya está listo para que lo recojas en el local 🏃💨\n\n¡Te esperamos!';
+}
+
 function buildDeliveredOrderWhatsAppMessage(order, restaurantName) {
     const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
     return `¡Hola ${customerName}! 🍔🔥
 
-Tu pedido acaba de salir de nuestra cocina y ya está en manos del domiciliario 🛵💨
-
-¡Va en camino a tu ubicación! Pronto estará contigo 😊
+${buildDeliveredOrderStatusLine(order)}
 
 Gracias por preferirnos, eso nos motiva a darlo todo cada día 🙌
 
