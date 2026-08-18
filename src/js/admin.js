@@ -11521,13 +11521,11 @@ function renderChatRoalDetail() {
         renderChatRoalDetail();
     });
 
-    const moreBtn = document.getElementById('chatRoalMoreBtn');
-    const moreMenu = document.getElementById('chatRoalMoreMenu');
-    moreBtn?.addEventListener('click', (ev) => {
+    document.getElementById('chatRoalMoreBtn')?.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        if (moreMenu) moreMenu.hidden = !moreMenu.hidden;
+        const menu = document.getElementById('chatRoalMoreMenu');
+        if (menu) menu.hidden = !menu.hidden;
     });
-    document.addEventListener('click', () => { if (moreMenu) moreMenu.hidden = true; }, { once: true });
 
     // Enter para enviar en las tres cajas de texto (responder al cliente, instruir al agente,
     // responder su pregunta pendiente) -- antes solo el botón mandaba, así que había que soltar
@@ -11750,6 +11748,21 @@ document.addEventListener('click', async (event) => {
             actionButton.disabled = false;
         }
     }
+});
+
+// Cierra el menú "Más opciones" (⚙️) al hacer clic afuera -- UNA sola vez a nivel de módulo, no
+// dentro de renderChatRoalDetail: agregarlo ahí en cada render (con {once:true}) dejaba
+// referencias viejas apuntando a un <div> ya reemplazado por el siguiente render, así que a
+// veces el clic para "retraer" el menú no hacía nada. Acá se busca el nodo ACTUAL en el DOM en
+// cada clic, nunca una referencia guardada de antes.
+document.addEventListener('click', (event) => {
+    const menu = document.getElementById('chatRoalMoreMenu');
+    if (!menu || menu.hidden) return;
+    const btn = document.getElementById('chatRoalMoreBtn');
+    const target = event.target;
+    if (target === btn || (btn instanceof HTMLElement && btn.contains(target))) return;
+    if (menu.contains(target)) return;
+    menu.hidden = true;
 });
 
 function getFilteredClients() {
