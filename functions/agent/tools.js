@@ -356,9 +356,20 @@ const AGENT_TOOL_DEFS = [
 
 // ── Handlers ──────────────────────────────────────────────────────────────
 function buildAgentToolHandlers({ db, state }) {
+    // Memoizado POR TURNO (buildAgentToolHandlers se crea de cero en cada llamada a
+    // runAgentConversationLoop) -- antes get_menu y CADA update_cart volvían a traer el menú
+    // completo (5 consultas a Firestore c/u) por separado, así que un turno que agrega 3
+    // productos hacía hasta 4 fetches completos del menú en vez de 1 solo compartido. El menú no
+    // cambia a mitad de un turno, así que cachear acá es seguro.
+    let sellableItemsPromise = null;
+    const getSellableItems = () => {
+        if (!sellableItemsPromise) sellableItemsPromise = fetchAllSellableItems(db);
+        return sellableItemsPromise;
+    };
+
     return {
         get_menu: async ({ category, search } = {}) => {
-            const products = await fetchAllSellableItems(db);
+            const products = await getSellableItems();
             let filtered = products;
             if (category) {
                 const needle = normalizeText(category);
@@ -438,7 +449,7 @@ function buildAgentToolHandlers({ db, state }) {
                 return `"${productName}" quitado del carrito.`;
             }
 
-            const products = await fetchAllSellableItems(db);
+            const products = await getSellableItems();
             const product = findProductByName(products, productName);
             if (!product) {
                 return JSON.stringify({ error: `No encontré "${productName}" en el menú. Usa get_menu para ver los nombres exactos.` });

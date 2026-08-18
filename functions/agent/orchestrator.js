@@ -648,7 +648,10 @@ async function runFollowUpTurn(db, anthropicApiKey, conversationKey) {
     if (!snap.exists) throw new Error(`Conversación no encontrada: ${conversationKey}`);
     const state = snap.data();
 
-    const messages = await loadHistory(ref);
+    const [messages, instructionBlocks] = await Promise.all([
+        loadHistory(ref),
+        buildInstructionsSystemBlocks(db)
+    ]);
     if (!messages.length || messages[messages.length - 1].role !== 'user') {
         // No hay nada nuevo que contestar (ya se le respondió, o el historial no termina en un
         // mensaje sin responder) — no forzar una respuesta de la nada.
@@ -660,9 +663,18 @@ async function runFollowUpTurn(db, anthropicApiKey, conversationKey) {
     // hace que la caché expire y el siguiente cliente pague el precio lleno de nuevo. El costo
     // de escritura es el doble (2x vs 1.25x), pero se amortiza sobradamente con el volumen real.
     const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }];
-    const { fixedBlock, temporalBlock } = await buildInstructionsSystemBlocks(db);
+    const { fixedBlock, temporalBlock } = instructionBlocks;
     if (fixedBlock) systemBlocks.push(fixedBlock);
     if (temporalBlock) systemBlocks.push(temporalBlock);
+    // Mismo recordatorio que handleIncomingTurn -- sin esto, un addAdminNote sobre una
+    // conversación que TAMBIÉN tenía una ask_team_question pendiente (sin relación con la nota)
+    // podía hacer que el agente volviera a preguntar lo mismo o escalara de más.
+    if (state.pendingQuestion?.text) {
+        systemBlocks.push({
+            type: 'text',
+            text: `[Sistema: ya le preguntaste al equipo esto y todavía no responden: "${state.pendingQuestion.text}". No vuelvas a usar ask_team_question para lo mismo. Si el cliente pregunta por esto, dile que sigues esperando confirmación del equipo.]`
+        });
+    }
 
     const { reply, images } = await runAgentConversationLoop({
         conversationKey, anthropicApiKey, state, ref, messages, messagesToPersist: [], systemBlocks
@@ -686,19 +698,24 @@ async function runFollowUpTurn(db, anthropicApiKey, conversationKey) {
  */
 async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKey, phone, sessionId, text, location, customerProfile }) {
     const rateLimitKey = phone || sessionId || conversationKey;
-    const allowed = await checkRateLimit(db, rateLimitKey);
+    // En paralelo -- son dos lecturas de Firestore independientes entre sí (ninguna depende del
+    // resultado de la otra), así que esperarlas una después de la otra solo sumaba latencia
+    // muerta a CADA turno sin ninguna razón real.
+    const [allowed, agentEnabled] = await Promise.all([
+        checkRateLimit(db, rateLimitKey),
+        isAgentGloballyEnabled(db)
+    ]);
     if (!allowed) {
         return { reply: RATE_LIMITED_REPLY };
     }
 
     const { ref, state, returningCustomerNote } = await loadOrCreateConversation(db, conversationKey, { channel, phone, sessionId, customerProfile });
 
-    // Interruptor global apagado (isAgentGloballyEnabled) -- el admin va a atender él mismo por
-    // un rato, así que ni siquiera se intenta llamar a Claude. Va ANTES del chequeo de
-    // humanControl porque aplica a TODAS las conversaciones, no solo a la que ya estaba con un
-    // admin encima. wasAlreadyWaiting evita repetir el mismo mensaje enlatado en cada mensaje
-    // nuevo del cliente mientras sigue esperando.
-    if (!(await isAgentGloballyEnabled(db))) {
+    // Interruptor global apagado -- el admin va a atender él mismo por un rato, así que ni
+    // siquiera se intenta llamar a Claude. Va ANTES del chequeo de humanControl porque aplica a
+    // TODAS las conversaciones, no solo a la que ya estaba con un admin encima. wasAlreadyWaiting
+    // evita repetir el mismo mensaje enlatado en cada mensaje nuevo del cliente mientras espera.
+    if (!agentEnabled) {
         const wasAlreadyWaiting = state.needsHuman === true;
         const userMessage = { role: 'user', content: [{ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' }] };
         const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [userMessage]);
@@ -755,6 +772,13 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     state.inactivityWarnedAt = FieldValue.delete();
 
     if (Number(state.turnCount || 0) >= MAX_TURNS_PER_CONVERSATION) {
+        // Antes este mensaje del cliente se perdía por completo -- se cortaba acá sin guardarlo,
+        // así que ni el admin ni el historial se enteraban de qué fue lo último que escribió.
+        const userMessage = { role: 'user', content: [{ type: 'text', text: String(text || '').trim() || '(mensaje vacío)' }] };
+        const newSeq = await persistNewMessages(ref, Number(state.messageCount || 0), [userMessage]);
+        state.messageCount = newSeq;
+        state.lastMessageText = truncatePreview(text);
+        state.lastCustomerMessageText = truncatePreview(text);
         state.needsHuman = true;
         state.status = 'needs_human';
         state.updatedAt = FieldValue.serverTimestamp();
@@ -762,7 +786,14 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
         return { reply: TURN_LIMIT_REPLY };
     }
 
-    const history = await loadHistory(ref);
+    // loadHistory y buildInstructionsSystemBlocks son dos lecturas de Firestore totalmente
+    // independientes (historial de mensajes vs. colección de instrucciones) -- antes se esperaban
+    // una después de la otra sin necesidad, sumando latencia muerta a cada turno.
+    const [history, instructionBlocks] = await Promise.all([
+        loadHistory(ref),
+        buildInstructionsSystemBlocks(db)
+    ]);
+    const { fixedBlock, temporalBlock } = instructionBlocks;
 
     const userContentBlocks = [];
     if (returningCustomerNote) userContentBlocks.push({ type: 'text', text: returningCustomerNote });
@@ -783,7 +814,6 @@ async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKe
     // hace que la caché expire y el siguiente cliente pague el precio lleno de nuevo. El costo
     // de escritura es el doble (2x vs 1.25x), pero se amortiza sobradamente con el volumen real.
     const systemBlocks = [{ type: 'text', text: AGENT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }];
-    const { fixedBlock, temporalBlock } = await buildInstructionsSystemBlocks(db);
     if (fixedBlock) systemBlocks.push(fixedBlock);
     if (temporalBlock) systemBlocks.push(temporalBlock);
     // Si ya hay una pregunta sin responder (ask_team_question), se lo recuerda en cada turno —

@@ -673,6 +673,11 @@ exports.ultramsgWebhook = onRequest(
         // Responder rápido a UltraMsg y no bloquear su reintento; procesamos igual dentro del
         // mismo request (Cloud Functions no permite "responder y seguir trabajando" de forma
         // segura, así que devolvemos 200 al final del procesamiento).
+        // Declarado afuera del try para que el catch de abajo pueda usarlo -- si algo falla
+        // DESPUÉS de identificar al cliente (ej. handleIncomingTurn revienta por una excepción
+        // que ni su propio try/catch interno atrapó), antes el cliente se quedaba sin ninguna
+        // respuesta y sin saber que su mensaje se perdió.
+        let phoneDigits = '';
         try {
             const body = req.body || {};
             const eventType = body.event_type || body.eventType;
@@ -688,7 +693,7 @@ exports.ultramsgWebhook = onRequest(
             }
 
             const fromRaw = String(data.from || '');
-            const phoneDigits = fromRaw.replace(/@.*$/, '').replace(/\D/g, '');
+            phoneDigits = fromRaw.replace(/@.*$/, '').replace(/\D/g, '');
             if (phoneDigits.length < 10) {
                 res.status(200).send('ignored');
                 return;
@@ -740,6 +745,17 @@ exports.ultramsgWebhook = onRequest(
             res.status(200).send('ok');
         } catch (err) {
             console.error('ultramsgWebhook error:', err);
+            // Antes, un fallo acá (fuera del try/catch interno de handleIncomingTurn, ya bastante
+            // defensivo) dejaba al cliente sin ninguna respuesta y sin saber que su mensaje se
+            // perdió. Con el teléfono ya identificado, al menos se le avisa que hubo un problema.
+            if (phoneDigits) {
+                try {
+                    await sendWhatsAppMessage(ULTRAMSG_INSTANCE.value(), ULTRAMSG_TOKEN.value(), phoneDigits,
+                        'Tuvimos un problema técnico en este momento. Por favor escríbenos de nuevo en un momento o usa el menú web mientras lo solucionamos.');
+                } catch (_sendErr) {
+                    // No hay más que intentar acá.
+                }
+            }
             res.status(200).send('error-handled'); // 200 para que UltraMsg no reintente en loop
         }
     }
