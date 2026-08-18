@@ -11452,6 +11452,11 @@ function renderChatRoalDetail() {
                 ${conv.humanControl ? '<button class="inbox-head-btn blue" data-chatroal-action="handback">🤖 Devolver al agente</button>' : ''}
             </div>
         </div>
+        <div class="chatroal-control-banner ${conv.humanControl ? 'is-you' : 'is-bot'}">
+            ${conv.humanControl
+                ? '👤 <strong>La tienes tú</strong> — el agente NO va a responder acá hasta que apretés "Devolver al agente".'
+                : '🤖 <strong>La tiene el agente</strong> — te responde solo. Si escribís algo, pasa a ser tuya automáticamente.'}
+        </div>
         ${pendingQuestionText ? `
         <div class="chatroal-question-banner">
             <p>❓ El agente pregunta: <strong>${escapeHtml(pendingQuestionText)}</strong></p>

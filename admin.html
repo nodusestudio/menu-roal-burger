@@ -8033,6 +8033,27 @@
         @keyframes chatroalToastOut { to { opacity: 0; transform: translateX(24px); } }
 
         /* Banner de pregunta pendiente del agente (ask_team_question) dentro del detalle */
+        /* Quién tiene el control de la conversación ahora mismo -- antes solo se sabía por si
+           aparecían o no los botones "Tomar pedido"/"Devolver al agente", muy poco claro. */
+        .chatroal-control-banner {
+            margin: 10px 16px 0;
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            color: #fff;
+        }
+        .chatroal-control-banner strong { font-weight: 700; }
+        .chatroal-control-banner.is-you {
+            background: rgba(67, 192, 156, 0.14);
+            border: 1px solid rgba(67, 192, 156, 0.35);
+        }
+        .chatroal-control-banner.is-you strong { color: #43c09c; }
+        .chatroal-control-banner.is-bot {
+            background: rgba(95, 149, 234, 0.12);
+            border: 1px solid rgba(95, 149, 234, 0.3);
+        }
+        .chatroal-control-banner.is-bot strong { color: #5f95ea; }
+
         .chatroal-question-banner {
             margin: 12px 16px 0;
             padding: 12px 14px;
