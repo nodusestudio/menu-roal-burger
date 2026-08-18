@@ -11529,6 +11529,29 @@ function renderChatRoalDetail() {
     });
     document.addEventListener('click', () => { if (moreMenu) moreMenu.hidden = true; }, { once: true });
 
+    // Enter para enviar en las tres cajas de texto (responder al cliente, instruir al agente,
+    // responder su pregunta pendiente) -- antes solo el botón mandaba, así que había que soltar
+    // el teclado para hacer clic. Shift+Enter en la respuesta al cliente sigue bajando de línea
+    // (mensajes largos), las otras dos son de una sola línea.
+    document.getElementById('chatRoalReplyInput')?.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' && !ev.shiftKey) {
+            ev.preventDefault();
+            document.querySelector('button[data-chatroal-action="send"]')?.click();
+        }
+    });
+    document.getElementById('chatRoalNoteInput')?.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            document.querySelector('button[data-chatroal-action="add-note"]')?.click();
+        }
+    });
+    document.getElementById('chatRoalQuestionAnswer')?.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            document.querySelector('button[data-chatroal-action="answer-question"]')?.click();
+        }
+    });
+
     const productSearchEl = document.getElementById('chatRoalProductSearch');
     const productDropdownEl = document.getElementById('chatRoalProductDropdown');
     if (productSearchEl && productDropdownEl) {
@@ -11595,7 +11618,7 @@ document.addEventListener('click', async (event) => {
             await callable({
                 conversationKey: _chatRoalActiveId,
                 addNote: true,
-                note: 'El cliente ya confirmó su pedido en esta conversación (revisa el historial completo). Arma el carrito con update_cart usando exactamente lo que se habló, completa los datos del cliente con set_customer_info, y llama a place_order ahora mismo — no vuelvas a preguntar nada que ya esté claro en el chat. Si falta algo puntual, pregúntaselo directo al cliente.'
+                note: 'El cliente ya confirmó su pedido en esta conversación (revisa el historial completo). Arma el carrito con update_cart usando exactamente lo que se habló, completa los datos del cliente con set_customer_info, y llama a place_order ahora mismo — no vuelvas a preguntar nada que ya esté claro en el chat. Si falta algún dato puntual que no quedó claro, NO se lo preguntes al cliente — usa ask_team_question para pedírmelo a mí (el admin) y sigue en cuanto te confirme.'
             });
             showNotice('El agente está tomando el pedido…', 'ok');
         } catch (err) {
@@ -11702,6 +11725,7 @@ document.addEventListener('click', async (event) => {
         actionButton.disabled = true;
         try {
             await callable({ conversationKey: _chatRoalActiveId, answerQuestion: true, answer });
+            if (inputEl) inputEl.value = '';
             showNotice('Respuesta enviada al agente.', 'ok');
         } catch (err) {
             showNotice(`Error: ${err.message || 'no se pudo enviar la respuesta'}`, 'error');
