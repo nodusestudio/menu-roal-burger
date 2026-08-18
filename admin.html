@@ -7842,7 +7842,8 @@
             flex-wrap: wrap;
         }
         .chatroal-sound-row label { flex: 0 0 190px; font-size: 0.85rem; }
-        .chatroal-sound-row select {
+        .chatroal-sound-row select,
+        .chatroal-sound-row input[type="number"] {
             background: rgba(0,0,0,0.25);
             color: #fff;
             border: 1px solid var(--admin-border);
@@ -7963,6 +7964,8 @@
         .chatroal-msg-toast strong { font-size: 0.82rem; color: var(--admin-accent); }
         .chatroal-msg-toast p { margin: 0; font-size: 0.88rem; color: #fff; line-height: 1.35; }
         .chatroal-msg-toast--leaving { animation: chatroalToastOut 0.3s ease forwards; }
+        .chatroal-msg-toast--cost { border-color: rgba(255, 193, 7, 0.5); }
+        .chatroal-msg-toast--cost strong { color: #ffc107; }
         @keyframes chatroalToastIn { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
         @keyframes chatroalToastOut { to { opacity: 0; transform: translateX(24px); } }
 

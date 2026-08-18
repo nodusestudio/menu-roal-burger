@@ -1206,13 +1206,14 @@ const CHAT_ROAL_SOUND_PRESETS = {
     }
 };
 
-let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono' };
+let chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5 };
 
 function playChatRoalSound(kind) {
     const presetId = kind === 'escalation' ? chatRoalConfigState.soundEscalation
         : kind === 'eachMessage' ? chatRoalConfigState.soundEachMessage
+        : kind === 'costAlert' ? chatRoalConfigState.soundCostAlert
         : chatRoalConfigState.soundNewChat;
-    const fallbackId = kind === 'escalation' ? 'alerta' : kind === 'eachMessage' ? 'doble_tono' : 'ding';
+    const fallbackId = kind === 'escalation' ? 'alerta' : kind === 'eachMessage' ? 'doble_tono' : kind === 'costAlert' ? 'urgente' : 'ding';
     const preset = CHAT_ROAL_SOUND_PRESETS[presetId] || CHAT_ROAL_SOUND_PRESETS[fallbackId];
     return playAlertTonePattern(preset.steps);
 }
@@ -1242,6 +1243,35 @@ function showChatRoalMessageToast(name, text) {
         toast.classList.add('chatroal-msg-toast--leaving');
         setTimeout(() => toast.remove(), 300);
     }, 15000);
+}
+
+// Mismo patrón de toast que showChatRoalMessageToast, pero para el aviso de gasto diario alto
+// (ver listener en initChatRoal) -- al hacer clic abre Configuración en vez de una conversación,
+// y se queda 25s en vez de 15 porque esto amerita más atención que un mensaje normal.
+function showChatRoalCostAlertToast(costUsd, thresholdUsd) {
+    let stack = document.getElementById('chatRoalToastStack');
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'chatRoalToastStack';
+        document.body.appendChild(stack);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'chatroal-msg-toast chatroal-msg-toast--cost';
+    toast.innerHTML = `
+        <strong>💰 Gasto de IA alto hoy</strong>
+        <p>Ya llevamos ~$${costUsd.toFixed(2)} USD (tu aviso está en $${thresholdUsd.toFixed(2)}). Clic para ver el detalle.</p>
+    `;
+    toast.addEventListener('click', () => {
+        document.querySelector('.admin-accordion-trigger[data-accordion-target="chatroal"]')?.click();
+        const panel = document.getElementById('chatRoalSettingsPanel');
+        if (panel?.hidden) toggleChatRoalSettingsPanel();
+        toast.remove();
+    });
+    stack.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('chatroal-msg-toast--leaving');
+        setTimeout(() => toast.remove(), 300);
+    }, 25000);
 }
 
 function getCurrentAdminIdentity() {
@@ -10725,7 +10755,7 @@ function initChatRoal() {
         }, (err) => console.error('Chat Roal onSnapshot error:', err));
 
     firebaseDb.collection('configuracion').doc('chat_roal_config').onSnapshot((doc) => {
-        chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', ...(doc.exists ? doc.data() : {}) };
+        chatRoalConfigState = { soundNewChat: 'ding', soundEscalation: 'alerta', soundEachMessage: 'doble_tono', soundCostAlert: 'urgente', costAlertThresholdUsd: 5, ...(doc.exists ? doc.data() : {}) };
         renderChatRoalSettingsPanel();
     }, (err) => console.error('Chat Roal config onSnapshot error:', err));
 
@@ -10733,6 +10763,8 @@ function initChatRoal() {
         _chatRoalInstructions = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         renderChatRoalSettingsPanel();
     }, (err) => console.error('agent_instructions onSnapshot error:', err));
+
+    _watchChatRoalUsageToday();
 
     document.getElementById('chatRoalSearch')?.addEventListener('input', renderChatRoalList);
     document.getElementById('chatRoalSettingsBtn')?.addEventListener('click', toggleChatRoalSettingsPanel);
@@ -10854,30 +10886,37 @@ let _instructionHorarioTipo = 'siempre';
 // la consola de Anthropic.
 const CHAT_ROAL_USAGE_COLLECTION = 'agent_usage_daily';
 let _chatRoalUsageToday = undefined; // undefined = sin cargar aún, null = cargado pero sin datos hoy
+let _chatRoalCostAlertShownDate = null; // fecha (YYYY-MM-DD Bogotá) en que ya se avisó hoy, para no repetir el toast en cada turno nuevo
 
 function _bogotaDateKey(now = new Date()) {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
 
-async function _loadChatRoalUsageToday() {
+// Listener EN VIVO (no un fetch puntual al abrir Configuración) -- así el aviso de gasto alto
+// dispara aunque el admin no tenga abierto el panel de Chat Roal, igual que las demás alertas
+// (chat nuevo, escalación) que ya funcionan así mientras la pestaña de FODEXA esté abierta.
+function _watchChatRoalUsageToday() {
     if (!firebaseDb) return;
-    try {
-        const snap = await firebaseDb.collection(CHAT_ROAL_USAGE_COLLECTION).doc(_bogotaDateKey()).get();
+    firebaseDb.collection(CHAT_ROAL_USAGE_COLLECTION).doc(_bogotaDateKey()).onSnapshot((snap) => {
         _chatRoalUsageToday = snap.exists ? snap.data() : null;
-    } catch (_e) {
-        _chatRoalUsageToday = null;
-    }
-    renderChatRoalSettingsPanel();
+        renderChatRoalSettingsPanel();
+
+        const costUsd = Number(_chatRoalUsageToday?.estimatedCostUsd || 0);
+        const thresholdUsd = Number(chatRoalConfigState.costAlertThresholdUsd || 5);
+        const todayKey = _bogotaDateKey();
+        if (costUsd >= thresholdUsd && _chatRoalCostAlertShownDate !== todayKey) {
+            _chatRoalCostAlertShownDate = todayKey;
+            playChatRoalSound('costAlert');
+            showChatRoalCostAlertToast(costUsd, thresholdUsd);
+        }
+    }, (err) => console.error('agent_usage_daily onSnapshot error:', err));
 }
 
 function toggleChatRoalSettingsPanel() {
     const panel = document.getElementById('chatRoalSettingsPanel');
     if (!panel) return;
     panel.hidden = !panel.hidden;
-    if (!panel.hidden) {
-        renderChatRoalSettingsPanel();
-        _loadChatRoalUsageToday();
-    }
+    if (!panel.hidden) renderChatRoalSettingsPanel();
 }
 
 function _instructionHorarioLabel(horario) {
@@ -10926,6 +10965,16 @@ function renderChatRoalSettingsPanel() {
         <div class="chatroal-settings-section">
             <h3>💰 Costo del agente (hoy)</h3>
             ${usageHtml}
+            <div class="chatroal-sound-row">
+                <label for="chatRoalCostThreshold">Avisarme si el gasto de hoy supera (USD)</label>
+                <input type="number" id="chatRoalCostThreshold" min="0" step="0.5" value="${Number(chatRoalConfigState.costAlertThresholdUsd || 5)}" style="width:80px;">
+            </div>
+            <div class="chatroal-sound-row">
+                <label for="chatRoalSoundCostAlert">Sonido del aviso de gasto alto</label>
+                <select id="chatRoalSoundCostAlert">${soundOptions}</select>
+                <button type="button" data-chatroal-test-sound="costAlert">▶ Probar</button>
+            </div>
+            <button type="button" class="chatroal-settings-save-btn" id="chatRoalSaveCostAlertBtn">Guardar aviso de gasto</button>
         </div>
         <div class="chatroal-settings-section">
             <h3>🔊 Sonidos de aviso</h3>
@@ -10966,18 +11015,35 @@ function renderChatRoalSettingsPanel() {
     const soundNewChatSel = document.getElementById('chatRoalSoundNewChat');
     const soundEscalationSel = document.getElementById('chatRoalSoundEscalation');
     const soundEachMessageSel = document.getElementById('chatRoalSoundEachMessage');
+    const soundCostAlertSel = document.getElementById('chatRoalSoundCostAlert');
     if (soundNewChatSel) soundNewChatSel.value = chatRoalConfigState.soundNewChat;
     if (soundEscalationSel) soundEscalationSel.value = chatRoalConfigState.soundEscalation;
     if (soundEachMessageSel) soundEachMessageSel.value = chatRoalConfigState.soundEachMessage;
+    if (soundCostAlertSel) soundCostAlertSel.value = chatRoalConfigState.soundCostAlert;
 
     panel.querySelectorAll('[data-chatroal-test-sound]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const kind = btn.dataset.chatroalTestSound;
             const presetId = kind === 'escalation' ? soundEscalationSel.value
                 : kind === 'eachMessage' ? soundEachMessageSel.value
+                : kind === 'costAlert' ? soundCostAlertSel.value
                 : soundNewChatSel.value;
             playAlertTonePattern((CHAT_ROAL_SOUND_PRESETS[presetId] || CHAT_ROAL_SOUND_PRESETS.ding).steps);
         });
+    });
+
+    document.getElementById('chatRoalSaveCostAlertBtn')?.addEventListener('click', async () => {
+        try {
+            const thresholdInput = document.getElementById('chatRoalCostThreshold');
+            const threshold = Math.max(0, Number(thresholdInput?.value) || 0);
+            await firebaseDb.collection('configuracion').doc('chat_roal_config').set({
+                costAlertThresholdUsd: threshold,
+                soundCostAlert: soundCostAlertSel.value
+            }, { merge: true });
+            showNotice('Aviso de gasto guardado.', 'ok');
+        } catch (err) {
+            showNotice(`Error: ${err.message || 'no se pudo guardar'}`, 'error');
+        }
     });
 
     document.getElementById('chatRoalSaveSoundsBtn')?.addEventListener('click', async () => {
