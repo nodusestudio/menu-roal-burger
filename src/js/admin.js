@@ -10739,6 +10739,10 @@ let _chatRoalCannedMessages = [];
 // admin necesita VER antes de enviar (mensaje preestablecido o resultado del buscador de
 // producto), no que se mande directo al elegirlo.
 let _chatRoalPendingImageUrl = null;
+// Pestaña activa del panel de Configuración -- antes todo (costo, sonidos, instrucciones,
+// mensajes) era una sola lista larga con scroll; separado en pestañas para que cada cosa se
+// encuentre rápido.
+let _chatRoalSettingsTab = 'costo';
 // Menú completo (nombre/precio/categoría, SIN fotos) cacheado en el navegador una sola vez al
 // abrir Chat Roal -- así el buscador filtra al instante mientras se escribe, sin ida y vuelta al
 // servidor por cada letra. null = todavía no cargó.
@@ -11021,8 +11025,18 @@ function renderChatRoalSettingsPanel() {
         `;
     }
 
+    const tabs = [
+        { id: 'costo', label: '💰 Costo' },
+        { id: 'sonidos', label: '🔊 Sonidos' },
+        { id: 'instrucciones', label: '📋 Reglas del agente' },
+        { id: 'mensajes', label: '💬 Respuestas rápidas' }
+    ];
+    const tabsHtml = tabs.map((t) => `<button type="button" class="chatroal-tab-btn${_chatRoalSettingsTab === t.id ? ' active' : ''}" data-settings-tab="${t.id}">${t.label}</button>`).join('');
+    const hiddenUnless = (id) => (_chatRoalSettingsTab === id ? '' : 'hidden');
+
     panel.innerHTML = `
-        <div class="chatroal-settings-section">
+        <div class="chatroal-tabs">${tabsHtml}</div>
+        <div class="chatroal-settings-section" ${hiddenUnless('costo')}>
             <h3>💰 Costo del agente (hoy)</h3>
             ${usageHtml}
             <div class="chatroal-sound-row">
@@ -11041,7 +11055,7 @@ function renderChatRoalSettingsPanel() {
             <p class="chatroal-usage-detail">Sin este número, el aviso solo funciona mientras tengas FODEXA abierto en el navegador.</p>
             <button type="button" class="chatroal-settings-save-btn" id="chatRoalSaveCostAlertBtn">Guardar aviso de gasto</button>
         </div>
-        <div class="chatroal-settings-section">
+        <div class="chatroal-settings-section" ${hiddenUnless('sonidos')}>
             <h3>🔊 Sonidos de aviso</h3>
             <div class="chatroal-sound-row">
                 <label for="chatRoalSoundNewChat">Chat nuevo</label>
@@ -11060,7 +11074,7 @@ function renderChatRoalSettingsPanel() {
             </div>
             <button type="button" class="chatroal-settings-save-btn" id="chatRoalSaveSoundsBtn">Guardar sonidos</button>
         </div>
-        <div class="chatroal-settings-section">
+        <div class="chatroal-settings-section" ${hiddenUnless('instrucciones')}>
             <h3>📋 Instrucciones para el agente</h3>
             ${instructionsHtml}
             <button type="button" class="chatroal-instruction-add-btn" id="chatRoalAddInstructionBtn">+ Nueva instrucción</button>
@@ -11075,7 +11089,7 @@ function renderChatRoalSettingsPanel() {
                 <button type="button" class="chatroal-instruction-add-btn" id="chatRoalSaveInstructionBtn">Guardar instrucción</button>
             </div>
         </div>
-        <div class="chatroal-settings-section">
+        <div class="chatroal-settings-section" ${hiddenUnless('mensajes')}>
             <h3>💬 Mensajes preestablecidos</h3>
             ${cannedMessagesHtml}
             <button type="button" class="chatroal-instruction-add-btn" id="chatRoalAddCannedBtn">+ Nuevo mensaje</button>
@@ -11089,6 +11103,13 @@ function renderChatRoalSettingsPanel() {
             </div>
         </div>
     `;
+
+    panel.querySelectorAll('[data-settings-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            _chatRoalSettingsTab = btn.dataset.settingsTab;
+            renderChatRoalSettingsPanel();
+        });
+    });
 
     const soundNewChatSel = document.getElementById('chatRoalSoundNewChat');
     const soundEscalationSel = document.getElementById('chatRoalSoundEscalation');

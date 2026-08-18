@@ -7844,6 +7844,33 @@
             border: 1px solid var(--admin-border);
         }
         .chatroal-settings-panel[hidden] { display: none; }
+
+        .chatroal-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--admin-border);
+        }
+        .chatroal-tab-btn {
+            background: transparent;
+            color: var(--admin-muted);
+            border: 1px solid transparent;
+            border-radius: 8px 8px 0 0;
+            padding: 8px 14px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .chatroal-tab-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
+        .chatroal-tab-btn.active {
+            color: var(--admin-accent);
+            background: rgba(255,122,26,0.10);
+            border-color: var(--admin-border);
+            border-bottom-color: transparent;
+        }
+        .chatroal-settings-section[hidden] { display: none; }
+
         .chatroal-settings-section h3 {
             margin: 0 0 10px;
             font-size: 0.85rem;
