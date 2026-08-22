@@ -2086,6 +2086,17 @@ async function saveCustomerProfile(profileInput = {}) {
     const savedAddresses = normalizeCustomerSavedAddresses(profileInput.savedAddresses || previous.savedAddresses || [], String(profileInput.address || '').trim());
     const address = String(savedAddresses[0]?.address || '').trim();
 
+    // Direcciones sin GPS: se intenta ubicarlas por el texto (mismo geocodificador gratuito que
+    // ya usa el checkout) para poder calcular la zona/tarifa de domicilio despues sin pedirle
+    // nada mas al cliente. Nominatim pide max 1 solicitud/segundo — con el tope de 5 direcciones
+    // guardadas, una pequeña pausa entre cada una es suficiente y no se nota en el guardado.
+    for (const entry of savedAddresses) {
+        if (entry.latitude !== null || !entry.address) continue;
+        const geo = await _geocodeAddressText(entry.address).catch(() => null);
+        if (geo) { entry.latitude = geo.latitude; entry.longitude = geo.longitude; }
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+    }
+
     let passwordHash = String(previous.passwordHash || '').trim();
     const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
 
@@ -2224,7 +2235,6 @@ function closeCustomerRegisterModal() {
     closeCustomerConsentDocument();
     closeCustomerDeleteAccountModal();
     closeCustomerPasswordResetModal();
-    closeCustomerSavedAddressMapModal();
 
     if (!customerRegisterUI) {
         return;
@@ -2419,9 +2429,6 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
         hasPreviousConsent: hasConsent,
         consentViewed:      hasConsent,
         savedAddressesData: getCustomerSavedAddresses(profile),
-        selectedSavedAddressIndex: 0,
-        savedAddressMapModal: null,
-        savedAddressMapUI:   null,
         // form fields — poblados en _mountRegProfileStep
         name: null, registerPhone: null, registerPin: null,
         confirmPin: null, reviewConsentButton: null,
@@ -2508,12 +2515,10 @@ function _mountRegProfileStep() {
             return;
         }
         customerRegisterUI.savedAddressesData.push({ address: '', latitude: null, longitude: null, primary: false });
-        customerRegisterUI.selectedSavedAddressIndex = customerRegisterUI.savedAddressesData.length - 1;
         renderCustomerRegisterSavedAddresses();
     });
     customerRegisterUI.savedAddressesList?.addEventListener('input',  handleSavedAddressEditorInput);
     customerRegisterUI.savedAddressesList?.addEventListener('click',  handleSavedAddressEditorAction);
-    customerRegisterUI.savedAddressesList?.addEventListener('change', handleSavedAddressEditorChange);
 
     bindCustomerPinField(customerRegisterUI.registerPin);
     bindCustomerPinField(customerRegisterUI.confirmPin);
@@ -2521,7 +2526,6 @@ function _mountRegProfileStep() {
     attachPasswordToggle(customerRegisterUI.confirmPin);
     applyCustomerConsentState(hasPreviousConsent);
     renderCustomerRegisterSavedAddresses();
-    initializeCustomerSavedAddressMap();
     customerRegisterUI.name?.focus();
 }
 
@@ -2624,40 +2628,25 @@ function renderCustomerRegisterSavedAddresses() {
     const addresses = customerRegisterUI.savedAddressesData || [];
     if (addresses.length === 0) {
         customerRegisterUI.savedAddressesList.innerHTML = `
-            <p class="support-field-hint">No hay direcciones guardadas. Agrega una para asignar ubicaciones y seleccionar una principal.</p>
+            <p class="support-field-hint">No hay direcciones guardadas. Agrega una.</p>
         `;
-        updateCustomerSavedAddressMap(null, null);
         return;
     }
 
-    if (customerRegisterUI.selectedSavedAddressIndex < 0 || customerRegisterUI.selectedSavedAddressIndex >= addresses.length) {
-        customerRegisterUI.selectedSavedAddressIndex = 0;
-    }
-
     customerRegisterUI.savedAddressesList.innerHTML = addresses.map((entry, index) => {
-        const isSelected = index === customerRegisterUI.selectedSavedAddressIndex;
+        const hasLoc = entry.latitude !== null && entry.longitude !== null;
         return `
-            <div class="support-field support-address-entry ${isSelected ? 'is-active' : ''}" data-address-index="${index}">
-                <label class="support-check">
-                    <input type="radio" name="customerSavedAddressPrimary" value="${index}" ${entry.primary ? 'checked' : ''}>
-                    <span>Principal</span>
-                </label>
-                <input type="text" class="customerSavedAddressInput" data-address-index="${index}" value="${escapeHtml(entry.address || '')}" placeholder="Direccion completa">
-                <div class="support-field-actions">
-                    <button type="button" class="support-secondary-btn customerSavedAddressSelectButton customer-address-icon-btn" aria-label="Agrega tu ubicación actual a esta dirección" title="Agrega tu ubicación actual a esta dirección" data-address-index="${index}">🌍</button>
-                    <button type="button" class="support-secondary-btn customerSavedAddressRemoveButton customer-address-icon-btn" aria-label="Eliminar direccion" title="Eliminar direccion" data-address-index="${index}">✕</button>
+            <div class="support-address-entry-simple" data-address-index="${index}">
+                <input type="text" class="customerSavedAddressInput" data-address-index="${index}" value="${escapeHtml(entry.address || '')}" placeholder="Ej: Calle 5 #10-20, Barrio La Castellana">
+                <div class="support-address-simple-actions">
+                    <button type="button" class="customerSavedAddressLocationButton customer-address-icon-btn ${hasLoc ? 'is-set' : ''}" data-address-index="${index}">
+                        ${hasLoc ? '📍 Ubicación guardada' : '📍 Compartir ubicación actual'}
+                    </button>
+                    <button type="button" class="customerSavedAddressRemoveButton customer-address-icon-btn" aria-label="Eliminar dirección" title="Eliminar dirección" data-address-index="${index}">✕</button>
                 </div>
-                <p class="support-field-hint">Lat: ${entry.latitude !== null ? entry.latitude : '---'} | Lng: ${entry.longitude !== null ? entry.longitude : '---'}</p>
             </div>
         `;
     }).join('');
-
-    const selectedAddress = addresses[customerRegisterUI.selectedSavedAddressIndex];
-    if (selectedAddress?.latitude !== null && selectedAddress?.longitude !== null) {
-        updateCustomerSavedAddressMap(selectedAddress.latitude, selectedAddress.longitude);
-    } else {
-        updateCustomerSavedAddressMap(null, null);
-    }
 }
 
 function getCustomerSavedAddressesFromEditor() {
@@ -2671,80 +2660,6 @@ function getCustomerSavedAddressesFromEditor() {
 function getCustomerPrimarySavedAddressFromEditor() {
     const addresses = getCustomerSavedAddressesFromEditor();
     return addresses.find((entry) => entry.primary) || addresses[0] || null;
-}
-
-function createCustomerSavedAddressMapModal() {
-    closeCustomerSavedAddressMapModal();
-
-    if (!customerRegisterUI) {
-        return;
-    }
-
-    const mapModal = document.createElement('div');
-    mapModal.className = 'support-modal is-open';
-    mapModal.innerHTML = `
-        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Ubicación del pedido">
-            <button type="button" class="support-modal-close" aria-label="Cerrar mapa">&times;</button>
-            <p class="support-modal-kicker">Ubicación</p>
-            <h3 class="support-modal-title">Ancla tu ubicación actual</h3>
-            <p class="support-modal-text" id="customerMapStatusText">Usa el botón de abajo para capturar tu ubicación GPS.</p>
-            <div id="customerSavedAddressMapContainer" class="checkout-map-area" style="min-height:350px; margin:1rem 0;"></div>
-            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                <button type="button" class="support-secondary-btn" id="customerSavedAddressUseLocation">Capturar ubicacion GPS</button>
-                <button type="button" class="support-send-btn" id="customerSavedAddressConfirmLocation" style="display: none;">Confirmar y guardar</button>
-            </div>
-            <p class="support-field-hint">Verifica que el marcador esté en la ubicación correcta antes de guardar.</p>
-        </div>
-    `;
-
-    document.body.appendChild(mapModal);
-
-    customerRegisterUI.savedAddressMapModal = mapModal;
-    customerRegisterUI.savedAddressMapUI = {
-        modal: mapModal,
-        close: mapModal.querySelector('.support-modal-close'),
-        mapContainer: mapModal.querySelector('#customerSavedAddressMapContainer'),
-        statusText: mapModal.querySelector('#customerMapStatusText'),
-        useLocationButton: mapModal.querySelector('#customerSavedAddressUseLocation'),
-        confirmButton: mapModal.querySelector('#customerSavedAddressConfirmLocation'),
-        savedAddressMap: null,
-        capturedLatitude: null,
-        capturedLongitude: null
-    };
-
-    customerRegisterUI.savedAddressMapUI.close.addEventListener('click', closeCustomerSavedAddressMapModal);
-    customerRegisterUI.savedAddressMapUI.useLocationButton.addEventListener('click', handleSavedAddressUseLocation);
-    customerRegisterUI.savedAddressMapUI.confirmButton.addEventListener('click', handleConfirmSavedAddressLocation);
-
-    initializeCustomerSavedAddressMap();
-    syncBodyScrollLock();
-}
-
-function openCustomerSavedAddressMapPanel(index = null) {
-    if (!customerRegisterUI) {
-        return;
-    }
-
-    if (Number.isFinite(index) && customerRegisterUI.savedAddressesData[index]) {
-        customerRegisterUI.selectedSavedAddressIndex = index;
-    }
-
-    createCustomerSavedAddressMapModal();
-
-    if (customerRegisterUI.savedAddressMapUI?.savedAddressMap && typeof customerRegisterUI.savedAddressMapUI.savedAddressMap.invalidateSize === 'function') {
-        setTimeout(() => customerRegisterUI.savedAddressMapUI.savedAddressMap.invalidateSize(), 50);
-    }
-}
-
-function closeCustomerSavedAddressMapModal() {
-    if (!customerRegisterUI?.savedAddressMapModal) {
-        return;
-    }
-
-    customerRegisterUI.savedAddressMapModal.remove();
-    customerRegisterUI.savedAddressMapModal = null;
-    customerRegisterUI.savedAddressMapUI = null;
-    syncBodyScrollLock();
 }
 
 function handleSavedAddressEditorInput(event) {
@@ -2780,142 +2695,45 @@ function handleSavedAddressEditorAction(event) {
 
     if (button.classList.contains('customerSavedAddressRemoveButton')) {
         addresses.splice(index, 1);
-        if (customerRegisterUI.selectedSavedAddressIndex >= addresses.length) {
-            customerRegisterUI.selectedSavedAddressIndex = Math.max(0, addresses.length - 1);
-        }
         renderCustomerRegisterSavedAddresses();
         return;
     }
 
-    if (button.classList.contains('customerSavedAddressSelectButton')) {
-        openCustomerSavedAddressMapPanel(index);
+    if (button.classList.contains('customerSavedAddressLocationButton')) {
+        handleSavedAddressShareLocation(index);
         return;
     }
 }
 
-function handleSavedAddressEditorChange(event) {
-    if (!customerRegisterUI) {
+// Botón "Compartir ubicación actual" de una dirección guardada: captura el GPS del navegador
+// directo (sin mapa, sin modal) y lo guarda en esa entrada.
+function handleSavedAddressShareLocation(index) {
+    const addresses = customerRegisterUI?.savedAddressesData || [];
+    const entry = addresses[index];
+    if (!entry) return;
+
+    if (!navigator.geolocation) {
+        customerRegisterUI.feedback.textContent = 'Tu navegador no permite compartir ubicación.';
         return;
     }
 
-    const target = event.target;
-    if (target.name === 'customerSavedAddressPrimary') {
-        const index = Number(target.value);
-        const addresses = customerRegisterUI.savedAddressesData || [];
-        if (Number.isNaN(index) || !addresses[index]) {
-            return;
-        }
+    const btn = customerRegisterUI.savedAddressesList?.querySelector(`.customerSavedAddressLocationButton[data-address-index="${index}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Obteniendo ubicación...'; }
 
-        addresses.forEach((entry, entryIndex) => {
-            entry.primary = entryIndex === index;
-        });
-        customerRegisterUI.selectedSavedAddressIndex = index;
-        renderCustomerRegisterSavedAddresses();
-    }
-}
-
-async function initializeCustomerSavedAddressMap() {
-    if (!customerRegisterUI || !customerRegisterUI.savedAddressMapUI || !customerRegisterUI.savedAddressMapUI.mapContainer) {
-        return;
-    }
-    try { await _ensureLeaflet(); } catch (e) { return; }
-
-    const mapContainer = customerRegisterUI.savedAddressMapUI.mapContainer;
-    const map = L.map(mapContainer).setView([0, 0], 2);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
-    const marker = L.marker([0, 0], { draggable: false });
-    marker.addTo(map);
-    marker.remove();
-
-    map.on('click', (event) => {
-        setCustomerSavedAddressMapLocation(event.latlng.lat, event.latlng.lng);
-    });
-
-    customerRegisterUI.savedAddressMapUI.savedAddressMap = map;
-    customerRegisterUI.savedAddressMapUI.savedAddressMarker = marker;
-}
-
-function updateCustomerSavedAddressMap(latitude, longitude) {
-    if (!customerRegisterUI || !customerRegisterUI.savedAddressMapUI || !customerRegisterUI.savedAddressMapUI.savedAddressMap || !customerRegisterUI.savedAddressMapUI.savedAddressMarker) {
-        return;
-    }
-
-    const map = customerRegisterUI.savedAddressMapUI.savedAddressMap;
-    const marker = customerRegisterUI.savedAddressMapUI.savedAddressMarker;
-
-    if (latitude === null || longitude === null) {
-        marker.remove();
-        map.setView([0, 0], 2);
-        return;
-    }
-
-    marker.setLatLng([latitude, longitude]);
-    if (!map.hasLayer(marker)) {
-        marker.addTo(map);
-    }
-    map.flyTo([latitude, longitude], 16);
-}
-
-function setCustomerSavedAddressMapLocation(latitude, longitude) {
-    if (!customerRegisterUI) {
-        return;
-    }
-
-    const index = customerRegisterUI.selectedSavedAddressIndex;
-    const addresses = customerRegisterUI.savedAddressesData || [];
-    if (!addresses[index]) {
-        return;
-    }
-
-    addresses[index].latitude = Number.isFinite(Number(latitude)) ? Number(latitude) : null;
-    addresses[index].longitude = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
-    renderCustomerRegisterSavedAddresses();
-}
-
-function handleSavedAddressUseLocation() {
-    if (!customerRegisterUI || !navigator.geolocation) {
-        return;
-    }
-
-    navigator.geolocation.getCurrentPosition((position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        
-        customerRegisterUI.savedAddressMapUI.capturedLatitude = lat;
-        customerRegisterUI.savedAddressMapUI.capturedLongitude = lng;
-        
-        updateCustomerSavedAddressMap(lat, lng);
-        
-        customerRegisterUI.savedAddressMapUI.statusText.textContent = `✓ Ubicación capturada. Verifica que el marcador sea correcto y toca "Confirmar y guardar".`;
-        customerRegisterUI.savedAddressMapUI.useLocationButton.style.display = 'none';
-        customerRegisterUI.savedAddressMapUI.confirmButton.style.display = 'block';
-    }, (error) => {
-        customerRegisterUI.savedAddressMapUI.statusText.textContent = '❌ No se pudo obtener tu ubicación. Asegúrate de permitir el acceso al GPS.';
-    }, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-    });
-}
-
-function handleConfirmSavedAddressLocation() {
-    if (!customerRegisterUI || !customerRegisterUI.savedAddressMapUI) {
-        return;
-    }
-
-    const lat = customerRegisterUI.savedAddressMapUI.capturedLatitude;
-    const lng = customerRegisterUI.savedAddressMapUI.capturedLongitude;
-    
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        return;
-    }
-    
-    setCustomerSavedAddressMapLocation(lat, lng);
-    closeCustomerSavedAddressMapModal();
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            entry.latitude = position.coords.latitude;
+            entry.longitude = position.coords.longitude;
+            renderCustomerRegisterSavedAddresses();
+        },
+        () => {
+            if (btn) { btn.disabled = false; btn.textContent = '📍 Compartir ubicación actual'; }
+            if (customerRegisterUI?.feedback) {
+                customerRegisterUI.feedback.textContent = 'No pudimos obtener tu ubicación. Puedes intentar de nuevo o dejar la dirección solo con el texto.';
+            }
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+    );
 }
 
 function closeCustomerDeleteAccountModal() {
@@ -5588,11 +5406,11 @@ async function submitCheckoutInfo() {
     }
 }
 
-function geocodeAddress(addressText) {
-    if (!checkoutInfoUI) {
-        return Promise.resolve(null);
-    }
-
+// Consulta pura a Nominatim (OpenStreetMap) — sin efectos secundarios de checkout. La usan
+// geocodeAddress() (abajo, checkout), el guardado silencioso de direcciones sin GPS
+// (saveCustomerProfile) y el fallback de tarifa por texto cuando una dirección guardada no tiene
+// coordenadas (updateCheckoutInfoModalState).
+function _geocodeAddressText(addressText) {
     const address = String(addressText || '').trim();
     if (!address || address.length < 5) {
         return Promise.resolve(null);
@@ -5601,10 +5419,6 @@ function geocodeAddress(addressText) {
     // Agregar contexto de Armenia, Quindio para mejorar resultados
     const searchQuery = `${address}, Armenia, Quindio, Colombia`;
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`;
-
-    if (checkoutInfoUI.deliveryZoneStatus) {
-        checkoutInfoUI.deliveryZoneStatus.textContent = 'Cotizando valor de domicilio...';
-    }
 
     return fetch(url, {
         headers: {
@@ -5620,9 +5434,6 @@ function geocodeAddress(addressText) {
     })
     .then((data) => {
         if (!Array.isArray(data) || data.length === 0) {
-            if (checkoutInfoUI.deliveryZoneStatus) {
-                checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Arrastra el pin en el mapa de abajo hasta tu ubicación.';
-            }
             return null;
         }
 
@@ -5634,17 +5445,33 @@ function geocodeAddress(addressText) {
             return null;
         }
 
-        // Una vez tenemos coordenadas, actualizar ubicación, zona y confirmar
-        setCheckoutDeliveryLocation(latitude, longitude);
-        _confirmCheckoutDeliveryLocation();
-
         return { latitude, longitude, displayName: result.display_name };
     })
-    .catch(() => {
-        if (checkoutInfoUI.deliveryZoneStatus) {
-            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Arrastra el pin en el mapa de abajo hasta tu ubicación.';
+    .catch(() => null);
+}
+
+function geocodeAddress(addressText) {
+    if (!checkoutInfoUI) {
+        return Promise.resolve(null);
+    }
+
+    if (checkoutInfoUI.deliveryZoneStatus) {
+        checkoutInfoUI.deliveryZoneStatus.textContent = 'Cotizando valor de domicilio...';
+    }
+
+    return _geocodeAddressText(addressText).then((result) => {
+        if (!result) {
+            if (checkoutInfoUI.deliveryZoneStatus) {
+                checkoutInfoUI.deliveryZoneStatus.textContent = '📍 No reconocimos la dirección. Arrastra el pin en el mapa de abajo hasta tu ubicación.';
+            }
+            return null;
         }
-        return null;
+
+        // Una vez tenemos coordenadas, actualizar ubicación, zona y confirmar
+        setCheckoutDeliveryLocation(result.latitude, result.longitude);
+        _confirmCheckoutDeliveryLocation();
+
+        return result;
     });
 }
 
@@ -5743,7 +5570,9 @@ function updateCheckoutInfoModalState() {
     }
 
     if (usingSavedAddress && !addressHasLocation) {
-        // Dirección guardada SIN coordenadas: pedir que asigne ubicación
+        // Dirección guardada SIN coordenadas: antes de pedir que asigne ubicación a mano, se
+        // intenta adivinar la zona/tarifa a partir del texto (barrio/sector) con el mismo
+        // geocodificador gratuito que ya usa el checkout para direcciones escritas frescas.
         checkoutDeliveryLocation = null;
         checkoutDeliveryZone = null;
         checkoutDeliveryFeeAmount = 0;
@@ -5753,8 +5582,18 @@ function updateCheckoutInfoModalState() {
         checkoutInfoUI.deliveryLatitude = null;
         checkoutInfoUI.deliveryLongitude = null;
         if (checkoutInfoUI.deliveryZoneStatus) {
-            checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Usa el botón "Usar mi ubicación actual" o toca el mapa de abajo para colocar el pin en tu dirección.';
+            checkoutInfoUI.deliveryZoneStatus.textContent = 'Cotizando valor de domicilio por la dirección guardada...';
         }
+        const requestToken = (checkoutInfoUI._addressGeocodeToken = (checkoutInfoUI._addressGeocodeToken || 0) + 1);
+        _geocodeAddressText(selectedSavedAddressEntry.address).then((geo) => {
+            if (!checkoutInfoUI || checkoutInfoUI._addressGeocodeToken !== requestToken) return; // el cliente ya cambio de direccion
+            if (geo) {
+                setCheckoutDeliveryLocation(geo.latitude, geo.longitude);
+                _confirmCheckoutDeliveryLocation();
+            } else if (checkoutInfoUI.deliveryZoneStatus) {
+                checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Usa el botón "Usar mi ubicación actual" o toca el mapa de abajo para colocar el pin en tu dirección.';
+            }
+        });
     }
 
     // Recalcular deliveryFee y orderTotal después de actualizar checkoutDeliveryFeeAmount
@@ -13760,8 +13599,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('drawerPromoBtn')?.addEventListener('click', () => { closeSectionsDrawer(); openPromoCarouselScreen(); });
     document.getElementById('drawerAyudaBtn')?.addEventListener('click', () => { closeSectionsDrawer(); openAyudaScreen(); });
 
-    document.getElementById('combosCloseBtn')?.addEventListener('click', () => _exitScreen());
-    document.getElementById('promoCarouselCloseBtn')?.addEventListener('click', () => _exitScreen());
+    document.getElementById('combosCloseBtn')?.addEventListener('click', () => {
+        const screen = document.getElementById('combosScreen');
+        if (screen) screen.hidden = true;
+        _exitScreen();
+    });
+    document.getElementById('promoCarouselCloseBtn')?.addEventListener('click', () => {
+        const screen = document.getElementById('promoCarouselScreen');
+        if (screen) screen.hidden = true;
+        _exitScreen();
+    });
     document.getElementById('ncsCloseBtn')?.addEventListener('click', () => closeNavCategoriesScreen());
     document.getElementById('searchCloseBtn')?.addEventListener('click', () => closeSearchScreen());
     document.getElementById('promoCloseBtn')?.addEventListener('click', () => closePromoScreen());
@@ -13943,6 +13790,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!document.getElementById('searchScreen')?.hidden)        { closeSearchScreen();        return; }
                 if (!document.getElementById('navCategoriesScreen')?.hidden) { closeNavCategoriesScreen(); return; }
                 if (!document.getElementById('promoScreen')?.hidden)         { closePromoScreen();         return; }
+                if (!document.getElementById('ayudaScreen')?.hidden)         { closeAyudaScreen();         return; }
+                if (!document.getElementById('combosScreen')?.hidden) {
+                    document.getElementById('combosScreen').hidden = true;
+                    _exitScreen();
+                    return;
+                }
+                if (!document.getElementById('promoCarouselScreen')?.hidden) {
+                    document.getElementById('promoCarouselScreen').hidden = true;
+                    _exitScreen();
+                    return;
+                }
                 // El home viejo quedo retirado — el catalogo continuo (Menú) es la pantalla base ahora.
                 if (document.getElementById('menuCarouselScreen')?.hidden) openMenuCarouselScreen();
             } finally {
