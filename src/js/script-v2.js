@@ -2326,15 +2326,17 @@ function _buildRegOtpStepHTML(phone) {
         </div>`;
 }
 
-function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEditMode = false) {
+function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEditMode = false, addressesOnly = false) {
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
     const consentMarkup = `${escapeHtml(getCustomerConsentCopy())} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
     const pinLabel = isEditMode ? 'Contraseña de 6 dígitos' : 'Crea tu contraseña de 6 dígitos';
     const pinPlaceholder = isEditMode ? 'Deja en blanco para no cambiarla' : 'Solo números';
-    return `
-        <p class="support-modal-kicker">${isEditMode ? 'Mi cuenta' : 'Crear cuenta'}</p>
-        <h3 class="support-modal-title">${isEditMode ? 'Editar perfil' : '¿Cómo te llamamos?'}</h3>
-        ${!isEditMode ? _buildRegStepDots(3) : ''}
+    // Modo "Mis direcciones": mismo formulario de edicion de perfil, pero nombre/telefono/PIN/
+    // confirmar PIN/consentimiento quedan ocultos (no se quitan del DOM: sus valores ya vienen
+    // precargados del perfil activo, asi que submitCustomerProfileForm() los sigue leyendo igual
+    // y el guardado no cambia nada de eso) para que la tarea de agregar/editar una direccion no
+    // obligue a pasar por 4 campos que no tienen nada que ver.
+    const accountFieldsMarkup = `
         <label class="support-field">
             <span>Nombre</span>
             <input type="text" id="customerRegisterName" value="${escapeHtml(profile.customerName || '')}" placeholder="Escribe tu nombre" autocomplete="name">
@@ -2355,12 +2357,6 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
             <span>Confirmar contraseña</span>
             <input type="password" id="customerConfirmPin" inputmode="numeric" maxlength="6" placeholder="Repite la contraseña">
         </label>
-        <div class="support-field">
-            <span>Direcciones guardadas <small style="font-weight:400;opacity:0.7">(opcional)</small></span>
-            <div id="customerRegisterSavedAddressesList" class="support-address-list"></div>
-            <button type="button" class="support-secondary-btn" id="customerRegisterAddAddress">+ Agregar dirección</button>
-            <p class="support-field-hint">Toca el icono 🌍 para anclar tu GPS a esa dirección.</p>
-        </div>
         <div class="support-consent-box">
             <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Ver autorización de tratamiento de datos</button>
             <p class="support-field-hint" id="customerConsentStatus">${hasConsent ? 'Esta autorización ya fue registrada en tu perfil.' : 'Marca la casilla para aceptar la autorización y continuar.'}</p>
@@ -2368,7 +2364,18 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
         <label class="support-check" for="customerDataConsent">
             <input type="checkbox" id="customerDataConsent" ${hasConsent ? 'checked disabled' : ''}>
             <span>${consentMarkup}</span>
-        </label>
+        </label>`;
+    return `
+        <p class="support-modal-kicker">${addressesOnly ? 'Mi cuenta' : (isEditMode ? 'Mi cuenta' : 'Crear cuenta')}</p>
+        <h3 class="support-modal-title">${addressesOnly ? 'Mis direcciones' : (isEditMode ? 'Editar perfil' : '¿Cómo te llamamos?')}</h3>
+        ${!isEditMode ? _buildRegStepDots(3) : ''}
+        ${addressesOnly ? `<div hidden>${accountFieldsMarkup}</div>` : accountFieldsMarkup}
+        <div class="support-field">
+            <span>Direcciones guardadas ${addressesOnly ? '' : '<small style="font-weight:400;opacity:0.7">(opcional)</small>'}</span>
+            <div id="customerRegisterSavedAddressesList" class="support-address-list"></div>
+            <button type="button" class="support-secondary-btn" id="customerRegisterAddAddress">+ Agregar dirección</button>
+            <p class="support-field-hint">Toca el icono 🌍 para anclar tu GPS a esa dirección.</p>
+        </div>
         <button type="button" class="support-send-btn" id="customerRegisterSave">${saveLabel}</button>`;
 }
 
@@ -2378,6 +2385,8 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
     const saveLabel  = String(options.saveLabel || 'Crear cuenta').trim();
     // isEditMode = edición de perfil existente (no el flujo de nuevo registro)
     const isEditMode = Boolean(options.isEditMode || profile?.customerPhoneDigits);
+    // addressesOnly = variante liviana del mismo formulario, solo para "Mis direcciones"
+    const addressesOnly = Boolean(options.addressesOnly);
     const initialStep = isEditMode ? 'profile' : 'phone';
 
     const modal = document.createElement('div');
@@ -2402,6 +2411,7 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
         stepContent:  modal.querySelector('#regStepContent'),
         step:         initialStep,
         isEditMode,
+        addressesOnly,
         baseProfile:  profile,
         saveLabel,
         options,
@@ -2463,13 +2473,13 @@ function _renderRegStep() {
 
 function _mountRegProfileStep() {
     if (!customerRegisterUI) return;
-    const { stepContent, baseProfile, saveLabel, isEditMode } = customerRegisterUI;
+    const { stepContent, baseProfile, saveLabel, isEditMode, addressesOnly } = customerRegisterUI;
     // Incorporar teléfono verificado al perfil base para el formulario
     const profileForForm = {
         ...baseProfile,
         customerPhone: customerRegisterUI.pendingPhone || baseProfile.customerPhone || ''
     };
-    stepContent.innerHTML = _buildRegProfileStepHTML(profileForForm, saveLabel, isEditMode);
+    stepContent.innerHTML = _buildRegProfileStepHTML(profileForForm, saveLabel, isEditMode, addressesOnly);
 
     // Poblar referencias de campos
     customerRegisterUI.name               = stepContent.querySelector('#customerRegisterName');
@@ -3495,13 +3505,6 @@ function openCustomerAuthModal() {
         ? `
             <div class="cp-wrap" role="main" aria-label="Perfil de cuenta">
 
-                <!-- Tabs ocultos para mantener el sistema de activación JS -->
-                <div hidden aria-hidden="true" style="display:none!important">
-                    <button class="customer-profile-tab is-active" data-profile-tab="info" aria-selected="true">Info</button>
-                    <button class="customer-profile-tab" data-profile-tab="pedidos" aria-selected="false">Pedidos</button>
-                    <button class="customer-profile-tab" data-profile-tab="mensajes" aria-selected="false">Mensajes</button>
-                </div>
-
                 <!-- Panel principal: menú de cuenta -->
                 <div class="customer-profile-panel" data-profile-panel="info">
                     <!-- Hero -->
@@ -3708,9 +3711,20 @@ function openCustomerAuthModal() {
             isEditMode: true
         });
     };
+    // "Mis direcciones" abre el mismo formulario pero en modo liviano (solo direcciones) para no
+    // obligar a pasar por nombre/telefono/PIN cuando lo unico que se quiere es agregar/editar una
+    // direccion — ver _buildRegProfileStepHTML.
+    const openAddressesOnlyEditor = () => {
+        const currentProfile = activeCustomerProfile ? { ...activeCustomerProfile } : {};
+        openCustomerRegisterModal(currentProfile, {
+            saveLabel: 'Guardar direcciones',
+            isEditMode: true,
+            addressesOnly: true
+        });
+    };
     customerAuthUI.editProfileButton?.addEventListener('click', openEditProfile);
     customerAuthUI.editProfileButtonAlt?.addEventListener('click', openEditProfile);
-    customerAuthUI.reviewAddressesButton?.addEventListener('click', openEditProfile);
+    customerAuthUI.reviewAddressesButton?.addEventListener('click', openAddressesOnlyEditor);
     customerAuthUI.deleteAccountButton?.addEventListener('click', openCustomerDeleteAccountModal);
     customerAuthUI.sendMessageButton?.addEventListener('click', submitCustomerDirectMessage);
     customerAuthUI.ordersHistory?.addEventListener('click', (event) => {
@@ -13925,6 +13939,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     return;
                 }
+                if (!document.getElementById('perfilScreen')?.hidden)        { closeCustomerAuthModal();   return; }
                 if (!document.getElementById('searchScreen')?.hidden)        { closeSearchScreen();        return; }
                 if (!document.getElementById('navCategoriesScreen')?.hidden) { closeNavCategoriesScreen(); return; }
                 if (!document.getElementById('promoScreen')?.hidden)         { closePromoScreen();         return; }
