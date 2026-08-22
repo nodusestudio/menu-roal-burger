@@ -2361,8 +2361,20 @@ function _buildRegOtpStepHTML(phone) {
 function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEditMode = false, addressesOnly = false) {
     const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
     const consentMarkup = `${escapeHtml(getCustomerConsentCopy())} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
-    const pinLabel = isEditMode ? 'Contraseña de 6 dígitos' : 'Crea tu contraseña de 6 dígitos';
-    const pinPlaceholder = isEditMode ? 'Deja en blanco para no cambiarla' : 'Solo números';
+    // En "Editar perfil" el PIN queda detras de un boton "Actualizar contraseña" en vez de dos
+    // campos siempre abiertos — la mayoria de las veces que se edita el perfil no es para
+    // cambiar la contraseña, y mostrarla abierta (aunque sea vacia) se sentia como un campo de
+    // seguridad expuesto sin necesidad.
+    const pinFieldsMarkup = `
+        <label class="support-field">
+            <span>${isEditMode ? 'Nueva contraseña de 6 dígitos' : 'Crea tu contraseña de 6 dígitos'}</span>
+            <input type="password" id="customerRegisterPin" inputmode="numeric" maxlength="6" placeholder="Solo números">
+            <p class="support-field-hint">La usaras junto con tu WhatsApp para entrar a tu cuenta.</p>
+        </label>
+        <label class="support-field">
+            <span>Confirmar contraseña</span>
+            <input type="password" id="customerConfirmPin" inputmode="numeric" maxlength="6" placeholder="Repite la contraseña">
+        </label>`;
     // Modo "Mis direcciones": mismo formulario de edicion de perfil, pero nombre/telefono/PIN/
     // confirmar PIN/consentimiento quedan ocultos (no se quitan del DOM: sus valores ya vienen
     // precargados del perfil activo, asi que submitCustomerProfileForm() los sigue leyendo igual
@@ -2380,15 +2392,12 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
         </label>` : `
         <input type="hidden" id="customerRegisterPhone" value="${escapeHtml(profile.customerPhone || '')}">
         `}
-        <label class="support-field">
-            <span>${pinLabel}</span>
-            <input type="password" id="customerRegisterPin" inputmode="numeric" maxlength="6" placeholder="${pinPlaceholder}">
-            <p class="support-field-hint">La usaras junto con tu WhatsApp para entrar a tu cuenta.</p>
-        </label>
-        <label class="support-field">
-            <span>Confirmar contraseña</span>
-            <input type="password" id="customerConfirmPin" inputmode="numeric" maxlength="6" placeholder="Repite la contraseña">
-        </label>
+        ${isEditMode ? `
+        <div class="support-field" id="customerPinToggleWrap">
+            <button type="button" class="support-secondary-btn" id="customerPinToggleButton">🔒 Actualizar contraseña</button>
+        </div>
+        <div id="customerPinFieldsWrap" hidden>${pinFieldsMarkup}</div>
+        ` : pinFieldsMarkup}
         <div class="support-consent-box">
             <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Ver autorización de tratamiento de datos</button>
             <p class="support-field-hint" id="customerConsentStatus">${hasConsent ? 'Esta autorización ya fue registrada en tu perfil.' : 'Marca la casilla para aceptar la autorización y continuar.'}</p>
@@ -2523,6 +2532,13 @@ function _mountRegProfileStep() {
     customerRegisterUI.addAddressButton   = stepContent.querySelector('#customerRegisterAddAddress');
 
     const { hasPreviousConsent } = customerRegisterUI;
+
+    stepContent.querySelector('#customerPinToggleButton')?.addEventListener('click', () => {
+        stepContent.querySelector('#customerPinToggleWrap')?.setAttribute('hidden', '');
+        const fieldsWrap = stepContent.querySelector('#customerPinFieldsWrap');
+        fieldsWrap?.removeAttribute('hidden');
+        fieldsWrap?.querySelector('#customerRegisterPin')?.focus();
+    });
 
     customerRegisterUI.reviewConsentButton?.addEventListener('click', openCustomerConsentDocument);
     customerRegisterUI.consent?.addEventListener('change', () => {

@@ -2861,19 +2861,29 @@ body.has-guest-register-banner #ayudaScreen {
 
 .customer-profile-section-title {
     display: grid;
-    gap: 4px;
-    margin-top: 4px;
+    gap: 2px;
+    padding: 8px 12px;
+    margin: 14px 0 8px;
+    border-left: 3px solid #ff5200;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 0 8px 8px 0;
+}
+
+.customer-profile-section-title:first-child {
+    margin-top: 0;
 }
 
 .customer-profile-section-title strong {
     color: var(--text-primary);
     font-family: 'Oswald', sans-serif;
-    font-size: 1rem;
+    font-size: 0.92rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 .customer-profile-section-title span {
-    color: rgba(90, 58, 27, 0.78);
-    font-size: 0.86rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
 }
 
 .customer-profile-info-card {
@@ -3076,7 +3086,12 @@ body.has-guest-register-banner #ayudaScreen {
     }
 }
 
-.customer-order-history-list,
+.customer-order-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
 /* ===== CHAT PÚBLICO — Burbujas estilo DM ===== */
 .customer-chat-panel {
     display: flex;
