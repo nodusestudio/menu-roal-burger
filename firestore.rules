@@ -82,14 +82,60 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // Credenciales de cliente (passwordHash + passwordSalt) -- viven separadas de /clientes
+    // para que ninguna regla de esa coleccion pueda terminar exponiendolas por accidente.
+    // Solo las Cloud Functions (Admin SDK, se saltan estas reglas) las leen/escriben.
+    match /clientes_credenciales/{clientId} {
+      allow read, write: if false;
+    }
+
     match /clientes/{clientId} {
-      allow create: if true
+      function isOwner() {
+        return request.auth != null && request.auth.uid == clientId;
+      }
+      // Si ya existe un credencial (cuenta reclamada con PIN) para este telefono, un pedido de
+      // invitado con ese mismo numero SOLO puede sumar estadisticas de pedido -- nunca pisar el
+      // nombre/direccion/telefono que el dueno real ya configuro. Probado a mano: sin este
+      // chequeo, cualquiera podia sobrescribir el nombre de una cuenta ajena ya registrada
+      // "haciendo un pedido de invitado" con su numero, sin conocer su PIN.
+      function hasCredentials() {
+        return exists(/databases/$(database)/documents/clientes_credenciales/$(clientId));
+      }
+
+      // Invitado SIN cuenta reclamada todavia: el checkout (upsertClientProfile) puede crear y
+      // acumular nombre/direccion/estadisticas normalmente -- ya no incluye googleUid/googleEmail
+      // (el auto-vinculo de Google pendiente ahora escribe con el Admin SDK via
+      // linkPendingGoogleAfterOrder, no directo desde el navegador) ni credenciales (ya ni
+      // siquiera viven en este documento).
+      allow create: if !hasCredentials()
+        && request.resource.data.keys().hasOnly([
+          'customerName', 'customerPhone', 'customerPhoneDigits', 'address', 'savedAddresses',
+          'lastOrderCode', 'lastOrderId', 'lastOrderTotal', 'totalOrders', 'totalSpent',
+          'source', 'firstOrderAt', 'createdAt', 'updatedAt', 'lastOrderAt'
+        ])
         && request.resource.data.customerPhone is string
         && request.resource.data.customerPhone.size() > 0;
-      allow update: if true
-        && request.resource.data.customerPhone is string;
-      allow delete: if true;
-      allow read: if isAdmin() || clientId.matches('phone_[0-9]+');
+
+      allow update: if isAdmin()
+        || isOwner()
+        || (
+          !hasCredentials()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'customerName', 'customerPhone', 'customerPhoneDigits', 'address', 'savedAddresses',
+            'lastOrderCode', 'lastOrderId', 'lastOrderTotal', 'totalOrders', 'totalSpent',
+            'source', 'updatedAt', 'lastOrderAt'
+          ])
+        )
+        || (
+          hasCredentials()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lastOrderCode', 'lastOrderId', 'lastOrderTotal', 'totalOrders', 'totalSpent',
+            'updatedAt', 'lastOrderAt'
+          ])
+        );
+
+      allow delete: if isAdmin() || isOwner();
+      allow read: if isAdmin() || isOwner();
     }
 
     match /google_links/{googleUid} {

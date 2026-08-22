@@ -3,8 +3,9 @@ const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp }     = require('firebase-admin/app');
-const { getFirestore }      = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging }      = require('firebase-admin/messaging');
+const { getAuth }           = require('firebase-admin/auth');
 const crypto                = require('crypto');
 const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo, closeConversationWithMessage, archiveConversation, blockConversation, deleteConversation } = require('./agent/orchestrator');
 const { fetchAllSellableItems } = require('./agent/tools');
@@ -16,6 +17,9 @@ const FCM_TOKENS_COLLECTION         = 'admin_fcm_tokens';
 const PHONE_VERIFICATIONS_COLLECTION = 'phone_verifications';
 const OTP_EXPIRY_MS                 = 10 * 60 * 1000; // 10 minutos
 const OTP_MAX_ATTEMPTS              = 5;
+const CLIENTS_COLLECTION             = 'clientes';
+const CLIENT_CREDENTIALS_COLLECTION  = 'clientes_credenciales';
+const GOOGLE_LINKS_COLLECTION        = 'google_links';
 
 // Orígenes permitidos para llamadas a las Cloud Functions desde el navegador.
 // Solo estos dominios pueden invocar las funciones onCall desde un browser.
@@ -462,6 +466,421 @@ exports.verifyWhatsAppOtp = onCall(
         }
 
         await ref.update({ verified: true, verifiedAt: new Date() });
+
+        return { success: true };
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Sesion real de clientes (login/registro por telefono+PIN, Google)
+//
+// Antes, el login leia clientes/{id} completo (incluido passwordHash) directo desde el
+// navegador y comparaba el hash ahi mismo — cualquiera podia leer y descifrar el PIN de
+// cualquier cliente (el id del documento es predecible: "phone_" + telefono). Ahora las
+// credenciales viven solo en clientes_credenciales/{id} (regla: nadie las lee ni escribe
+// salvo estas funciones con el Admin SDK), y el login emite un Custom Token de Firebase
+// Auth (uid = el mismo clientId) para que el resto de la sesion (leer/editar su propio
+// perfil, vincular Google, etc.) se autorice con request.auth.uid == clientId, como
+// cualquier app con autenticacion real.
+// ─────────────────────────────────────────────────────────────
+
+const MAX_CUSTOMER_SAVED_ADDRESSES = 5;
+
+function normalizeCustomerPin(value) {
+    return String(value || '').replace(/\D+/g, '').slice(0, 6);
+}
+
+function isValidCustomerPin(value) {
+    return /^\d{6}$/.test(String(value || ''));
+}
+
+function buildClientId(phoneDigits) {
+    return `phone_${phoneDigits}`;
+}
+
+// Formato viejo (sin sal, el mismo para todos los clientes) — se sigue aceptando en el login
+// para migrar cuentas existentes de forma transparente, pero nunca se vuelve a escribir.
+function hashPinLegacy(pin) {
+    return crypto.createHash('sha256').update(`roalburger:${pin}`).digest('hex');
+}
+
+function generatePinSalt() {
+    return crypto.randomBytes(16).toString('hex');
+}
+
+function hashPinSalted(pin, salt) {
+    return crypto.createHash('sha256').update(`${salt}:${pin}`).digest('hex');
+}
+
+// Mismo criterio que normalizeCustomerSavedAddresses (script-v2.js) — se duplica aqui porque
+// las Cloud Functions no comparten módulo con el cliente.
+function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '') {
+    const normalizedAddresses = [];
+    const seen = new Set();
+    let primaryFound = false;
+
+    const appendAddressEntry = (entry) => {
+        const safeAddress = String((typeof entry === 'string' ? entry : (entry?.address || entry?.value || entry?.label)) || '').trim();
+        const normalizedKey = safeAddress.toLowerCase();
+        if (!safeAddress || seen.has(normalizedKey)) return;
+        seen.add(normalizedKey);
+        const latitude = Number.isFinite(Number(entry?.latitude)) ? Number(entry.latitude) : null;
+        const longitude = Number.isFinite(Number(entry?.longitude)) ? Number(entry.longitude) : null;
+        const primary = Boolean(entry?.primary);
+        if (primary) primaryFound = true;
+        normalizedAddresses.push({ address: safeAddress, latitude, longitude, primary });
+    };
+
+    if (Array.isArray(rawAddresses)) rawAddresses.forEach((entry) => appendAddressEntry(entry));
+    if (primaryAddress) appendAddressEntry({ address: primaryAddress, primary: true });
+    if (!primaryFound && normalizedAddresses.length > 0) normalizedAddresses[0].primary = true;
+
+    return normalizedAddresses.slice(0, MAX_CUSTOMER_SAVED_ADDRESSES);
+}
+
+// Mismo geocodificador gratuito (Nominatim/OSM) que ya usa el checkout — Node 22 trae fetch
+// nativo, no hace falta ninguna dependencia nueva.
+async function geocodeAddressText(addressText) {
+    const address = String(addressText || '').trim();
+    if (!address || address.length < 5) return null;
+    try {
+        const searchQuery = `${address}, Armenia, Quindio, Colombia`;
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`;
+        const response = await fetch(url, { headers: { 'Accept-Language': 'es', 'User-Agent': 'RoalBurgerApp/1.0' } });
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (!Array.isArray(data) || data.length === 0) return null;
+        const latitude = parseFloat(data[0].lat);
+        const longitude = parseFloat(data[0].lon);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+        return { latitude, longitude };
+    } catch (_) {
+        return null;
+    }
+}
+
+// Perfil seguro para mandar al navegador — nunca incluye passwordHash/passwordSalt (ya ni
+// siquiera viven en este documento, pero por si acaso nunca se reenvia el doc crudo).
+function sanitizeClientProfileForClient(clientId, data = {}, hasPassword = false) {
+    return {
+        id: clientId,
+        customerName: String(data.customerName || '').trim(),
+        customerPhone: String(data.customerPhone || '').trim(),
+        customerPhoneDigits: String(data.customerPhoneDigits || '').trim(),
+        address: String(data.address || '').trim(),
+        savedAddresses: Array.isArray(data.savedAddresses) ? data.savedAddresses : [],
+        hasPassword,
+        privacyConsentAccepted: Boolean(data.privacyConsentAccepted),
+        marketingConsentAccepted: Boolean(data.marketingConsentAccepted),
+        consentAcceptedAt: data.consentAcceptedAt || null,
+        consentVersion: String(data.consentVersion || '').trim(),
+        totalOrders: Number(data.totalOrders || 0),
+        totalSpent: Number(data.totalSpent || 0),
+        lastOrderCode: String(data.lastOrderCode || '').trim(),
+        lastOrderId: String(data.lastOrderId || '').trim(),
+        lastOrderTotal: Number(data.lastOrderTotal || 0),
+        googleUid: String(data.googleUid || '').trim(),
+        googleEmail: String(data.googleEmail || '').trim()
+    };
+}
+
+exports.customerLoginWithPin = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
+        const pin = normalizeCustomerPin(request.data?.pin);
+
+        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+        if (!isValidCustomerPin(pin)) throw new HttpsError('invalid-argument', 'La contrasena debe tener 6 digitos.');
+
+        const db = getFirestore();
+        const clientId = buildClientId(phoneDigits);
+        const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+        const credsRef = db.collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId);
+
+        const [clientSnap, credsSnap] = await Promise.all([clientRef.get(), credsRef.get()]);
+        if (!clientSnap.exists) {
+            return { profile: null };
+        }
+
+        const clientData = clientSnap.data();
+        const creds = credsSnap.exists ? credsSnap.data() : null;
+
+        // Sin credenciales (cuenta reiniciada por el admin, o migrada sin PIN todavia)
+        if (!creds?.passwordHash) {
+            throw new HttpsError('failed-precondition', 'Tu contrasena fue reiniciada. Crea una nueva para volver a entrar.', {
+                resetRequired: true,
+                profile: sanitizeClientProfileForClient(clientId, clientData, false)
+            });
+        }
+
+        let matches = false;
+        if (creds.passwordSalt) {
+            matches = creds.passwordHash === hashPinSalted(pin, creds.passwordSalt);
+        } else {
+            // Formato viejo sin sal — migracion perezosa si coincide
+            matches = creds.passwordHash === hashPinLegacy(pin);
+            if (matches) {
+                const newSalt = generatePinSalt();
+                await credsRef.set({
+                    passwordHash: hashPinSalted(pin, newSalt),
+                    passwordSalt: newSalt,
+                    updatedAt: FieldValue.serverTimestamp()
+                }, { merge: true });
+            }
+        }
+
+        if (!matches) {
+            throw new HttpsError('permission-denied', 'La contrasena no coincide con este perfil.');
+        }
+
+        const customToken = await getAuth().createCustomToken(clientId);
+        return { profile: sanitizeClientProfileForClient(clientId, clientData, true), customToken };
+    }
+);
+
+exports.customerRegisterOrUpdateProfile = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
+        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+
+        const customerName = String(request.data?.customerName || '').trim();
+        if (!customerName) throw new HttpsError('invalid-argument', 'Escribe tu nombre para guardar el perfil.');
+
+        const pin = normalizeCustomerPin(request.data?.pin);
+        const confirmPin = normalizeCustomerPin(request.data?.confirmPin);
+        const acceptedDataPolicy = Boolean(request.data?.acceptedDataPolicy);
+
+        const db = getFirestore();
+        const clientId = buildClientId(phoneDigits);
+        const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+        const credsRef = db.collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId);
+
+        const [clientSnap, credsSnap] = await Promise.all([clientRef.get(), credsRef.get()]);
+        const previous = clientSnap.exists ? clientSnap.data() : {};
+        const hadCredentials = credsSnap.exists && Boolean(credsSnap.data()?.passwordHash);
+
+        // Si ya existe una cuenta con credenciales para este telefono, solo su dueño (sesion
+        // valida, uid == clientId) puede editarla. Si no hay credenciales todavia (cuenta nueva
+        // o reiniciada), cualquiera con el telefono verificado por OTP en el paso anterior puede
+        // crearla/reclamarla — el cliente ya paso por sendWhatsAppOtp/verifyWhatsAppOtp antes de
+        // llegar aqui en el flujo de registro.
+        if (hadCredentials && request.auth?.uid !== clientId) {
+            throw new HttpsError('permission-denied', 'Ya existe una cuenta con ese numero. Inicia sesion para editarla.');
+        }
+
+        const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
+        if (!acceptedDataPolicy && !hasPreviousConsent) {
+            throw new HttpsError('failed-precondition', 'Debes aceptar el uso de tus datos para crear tu perfil.');
+        }
+
+        let savedAddresses = normalizeCustomerSavedAddresses(
+            Array.isArray(request.data?.savedAddresses) ? request.data.savedAddresses : (previous.savedAddresses || []),
+            String(request.data?.address || '').trim()
+        );
+
+        // Direcciones sin GPS: intento silencioso de geocodificarlas por texto (ver
+        // geocodeAddressText arriba) para poder calcular la zona/tarifa de domicilio despues.
+        for (const entry of savedAddresses) {
+            if (entry.latitude !== null || !entry.address) continue;
+            const geo = await geocodeAddressText(entry.address);
+            if (geo) { entry.latitude = geo.latitude; entry.longitude = geo.longitude; }
+            await new Promise((resolve) => setTimeout(resolve, 1100));
+        }
+
+        const address = String(savedAddresses[0]?.address || '').trim();
+        const customerPhone = String(request.data?.customerPhone || previous.customerPhone || '').trim();
+
+        // Credenciales: si mandaron PIN nuevo (o todavia no hay ninguna), se guarda con sal
+        // nueva; si dejaron el campo vacio y ya existia una, se conserva la actual sin tocar.
+        if (pin || confirmPin || !hadCredentials) {
+            if (!isValidCustomerPin(pin)) throw new HttpsError('invalid-argument', 'Crea una contrasena numerica de 6 digitos.');
+            if (pin !== confirmPin) throw new HttpsError('invalid-argument', 'La confirmacion de la contrasena no coincide.');
+            const salt = generatePinSalt();
+            await credsRef.set({
+                passwordHash: hashPinSalted(pin, salt),
+                passwordSalt: salt,
+                updatedAt: FieldValue.serverTimestamp()
+            }, { merge: true });
+        }
+
+        const nextClientData = {
+            customerName,
+            customerPhone,
+            customerPhoneDigits: phoneDigits,
+            address,
+            savedAddresses,
+            privacyConsentAccepted: acceptedDataPolicy || Boolean(previous.privacyConsentAccepted),
+            marketingConsentAccepted: acceptedDataPolicy || Boolean(previous.marketingConsentAccepted),
+            consentAcceptedAt: previous.consentAcceptedAt || FieldValue.serverTimestamp(),
+            // Mismo valor que CUSTOMER_CONSENT_VERSION en src/js/script-v2.js -- se duplica aqui
+            // porque las Cloud Functions no comparten modulo con el cliente.
+            consentVersion: acceptedDataPolicy ? '2026-06-05' : String(previous.consentVersion || '2026-06-05').trim(),
+            totalOrders: Number(previous.totalOrders || 0),
+            totalSpent: Number(previous.totalSpent || 0),
+            lastOrderCode: String(previous.lastOrderCode || '').trim(),
+            lastOrderId: String(previous.lastOrderId || '').trim(),
+            lastOrderTotal: Number(previous.lastOrderTotal || 0),
+            firstOrderAt: previous.firstOrderAt || null,
+            lastOrderAt: previous.lastOrderAt || null,
+            source: 'web_profile',
+            createdAt: previous.createdAt || FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp()
+        };
+        if (previous.googleUid) {
+            nextClientData.googleUid = previous.googleUid;
+            nextClientData.googleEmail = previous.googleEmail || '';
+        }
+
+        await clientRef.set(nextClientData, { merge: true });
+
+        const customToken = await getAuth().createCustomToken(clientId);
+        return { profile: sanitizeClientProfileForClient(clientId, nextClientData, true), customToken };
+    }
+);
+
+exports.checkPhoneRegistered = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
+        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+
+        const db = getFirestore();
+        const clientId = buildClientId(phoneDigits);
+        const [clientSnap, credsSnap] = await Promise.all([
+            db.collection(CLIENTS_COLLECTION).doc(clientId).get(),
+            db.collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId).get()
+        ]);
+
+        if (!clientSnap.exists) return { exists: false };
+
+        const data = clientSnap.data();
+        return {
+            exists: true,
+            id: clientId,
+            customerName: String(data.customerName || '').trim(),
+            customerPhone: String(data.customerPhone || '').trim(),
+            customerPhoneDigits: phoneDigits,
+            hasPassword: credsSnap.exists && Boolean(credsSnap.data()?.passwordHash)
+        };
+    }
+);
+
+exports.googleAuthLogin = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const googleUid = String(request.data?.googleUid || '').trim();
+        if (!googleUid) throw new HttpsError('invalid-argument', 'Falta la identidad de Google.');
+
+        const db = getFirestore();
+        const linkDoc = await db.collection(GOOGLE_LINKS_COLLECTION).doc(googleUid).get();
+        if (!linkDoc.exists) return { profile: null };
+
+        const clientId = String(linkDoc.data()?.clientId || '').trim();
+        if (!clientId) return { profile: null };
+
+        const clientSnap = await db.collection(CLIENTS_COLLECTION).doc(clientId).get();
+        if (!clientSnap.exists) return { profile: null };
+
+        const customToken = await getAuth().createCustomToken(clientId);
+        return { profile: sanitizeClientProfileForClient(clientId, clientSnap.data(), true), customToken };
+    }
+);
+
+exports.googleLinkAccount = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const callerClientId = String(request.auth?.uid || '').trim();
+        if (!callerClientId || !callerClientId.startsWith('phone_')) {
+            throw new HttpsError('unauthenticated', 'Inicia sesion con tu numero de WhatsApp antes de vincular Google.');
+        }
+
+        const googleUid = String(request.data?.googleUid || '').trim();
+        const googleEmail = String(request.data?.googleEmail || '').trim();
+        if (!googleUid) throw new HttpsError('invalid-argument', 'Falta la identidad de Google.');
+
+        const db = getFirestore();
+        const linkRef = db.collection(GOOGLE_LINKS_COLLECTION).doc(googleUid);
+        const existingLink = await linkRef.get();
+        if (existingLink.exists && existingLink.data()?.clientId !== callerClientId) {
+            throw new HttpsError('already-exists', 'Esa cuenta de Google ya esta vinculada a otro perfil.');
+        }
+
+        const clientRef = db.collection(CLIENTS_COLLECTION).doc(callerClientId);
+        const clientSnap = await clientRef.get();
+        if (!clientSnap.exists) throw new HttpsError('not-found', 'No encontramos tu perfil.');
+
+        const previousGoogleUid = String(clientSnap.data()?.googleUid || '').trim();
+        await clientRef.set({ googleUid, googleEmail, googleLinkedAt: FieldValue.serverTimestamp() }, { merge: true });
+        if (previousGoogleUid && previousGoogleUid !== googleUid) {
+            await db.collection(GOOGLE_LINKS_COLLECTION).doc(previousGoogleUid).delete().catch(() => {});
+        }
+        await linkRef.set({ clientId: callerClientId });
+
+        return { profile: sanitizeClientProfileForClient(callerClientId, { ...clientSnap.data(), googleUid, googleEmail }, true) };
+    }
+);
+
+// Se llama desde createOrderFromCart cuando el cliente entro con Google pero todavia no tenia
+// telefono conocido (pendingGoogleIdentity) — al confirmar su primer pedido ya sabemos el
+// telefono, y si esa cuenta no esta reclamada por nadie mas se vincula automaticamente. Antes
+// esto se decidia leyendo clientes/{id} directo desde el navegador (necesitaba leer si tenia
+// passwordHash) — ahora las credenciales ni siquiera viven ahi, asi que tiene que resolverse
+// aqui con el Admin SDK.
+exports.linkPendingGoogleAfterOrder = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
+        const googleUid = String(request.data?.googleUid || '').trim();
+        const googleEmail = String(request.data?.googleEmail || '').trim();
+        if (phoneDigits.length < 10 || !googleUid) {
+            return { linked: false };
+        }
+
+        const db = getFirestore();
+        const clientId = buildClientId(phoneDigits);
+        const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+        const credsRef = db.collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId);
+
+        const [clientSnap, credsSnap] = await Promise.all([clientRef.get(), credsRef.get()]);
+        const clientData = clientSnap.exists ? clientSnap.data() : {};
+        const alreadyClaimed = credsSnap.exists && Boolean(credsSnap.data()?.passwordHash);
+        const linkedToOther = Boolean(clientData.googleUid) && clientData.googleUid !== googleUid;
+
+        if (alreadyClaimed || linkedToOther) {
+            return { linked: false };
+        }
+
+        await clientRef.set({ googleUid, googleEmail, googleLinkedAt: FieldValue.serverTimestamp() }, { merge: true });
+        await db.collection(GOOGLE_LINKS_COLLECTION).doc(googleUid).set({ clientId });
+
+        const customToken = await getAuth().createCustomToken(clientId);
+        return {
+            linked: true,
+            customToken,
+            profile: sanitizeClientProfileForClient(clientId, { ...clientData, googleUid, googleEmail }, true)
+        };
+    }
+);
+
+// clientes_credenciales no es borrable desde el navegador (allow write: if false, ni siquiera
+// el dueno) -- si solo se borrara /clientes/{clientId}, el credencial viejo quedaria huerfano y
+// bloquearia un registro nuevo legitimo con el mismo telefono mas adelante (lo veria como "ya
+// existe una cuenta"). Esta funcion borra ambos documentos juntos.
+exports.deleteCustomerAccount = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const clientId = String(request.auth?.uid || '').trim();
+        if (!clientId || !clientId.startsWith('phone_')) {
+            throw new HttpsError('unauthenticated', 'Inicia sesion antes de eliminar tu cuenta.');
+        }
+
+        const db = getFirestore();
+        await Promise.all([
+            db.collection(CLIENTS_COLLECTION).doc(clientId).delete(),
+            db.collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId).delete()
+        ]);
 
         return { success: true };
     }

@@ -448,24 +448,6 @@ function getSelectedCheckoutSavedAddress() {
     return checkoutInfoUI.savedAddresses[idx] || null;
 }
 
-function isValidCustomerPin(value) {
-    return /^\d{6}$/.test(String(value || ''));
-}
-
-async function hashCustomerPin(pinValue) {
-    const pin = normalizeCustomerPin(pinValue);
-    if (!isValidCustomerPin(pin)) {
-        throw new Error('La contrasena debe tener exactamente 6 digitos.');
-    }
-
-    if (!window.crypto?.subtle || typeof TextEncoder === 'undefined') {
-        throw new Error('Tu navegador no permite validar la contrasena.');
-    }
-
-    const encoded = new TextEncoder().encode(`roalburger:${pin}`);
-    const digest = await window.crypto.subtle.digest('SHA-256', encoded);
-    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
 
 function normalizeCustomerProfile(raw = {}, fallbackId = '') {
     const customerPhone = String(raw.customerPhone || raw.phone || '').trim();
@@ -485,8 +467,9 @@ function normalizeCustomerProfile(raw = {}, fallbackId = '') {
         customerPhoneDigits,
         address,
         savedAddresses,
-        passwordHash: String(raw.passwordHash || '').trim(),
-        hasPassword: Boolean(raw.passwordHash),
+        // El PIN ya no viaja al navegador (vive en clientes_credenciales, solo Admin SDK) —
+        // las Cloud Functions devuelven `hasPassword` directo en vez de un hash para comparar.
+        hasPassword: Boolean(raw.hasPassword) || Boolean(raw.passwordHash),
         privacyConsentAccepted: Boolean(raw.privacyConsentAccepted),
         marketingConsentAccepted: Boolean(raw.marketingConsentAccepted),
         consentAcceptedAt: raw.consentAcceptedAt || null,
@@ -1813,103 +1796,96 @@ function buildClientDocumentId(customerInfo = {}) {
     return `client_${nameKey}_${addressKey}`.replace(/_+/g, '_');
 }
 
+// Ya no lee el documento antes de escribir (transaction.get): un invitado sin sesion no tiene
+// permiso de lectura sobre /clientes bajo las reglas nuevas (ver firestore.rules). En vez de
+// leer el total anterior para sumarle 1, se usa FieldValue.increment (atomico, no necesita
+// lectura previa). firstOrderAt/createdAt se fijan con un create() aparte que solo prospera la
+// primera vez (si el doc ya existe, create() falla y se ignora) — asi quedan fijos para siempre
+// sin tener que leer si ya existian.
 async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
     const clientId = buildClientDocumentId(customerInfo);
     const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+    const customerPhone = String(customerInfo.customerPhone || '').trim();
 
-    await db.runTransaction(async (transaction) => {
-        const snapshot = await transaction.get(clientRef);
-        const previous = snapshot.exists ? snapshot.data() : {};
-        const previousTotalOrders = Number(previous.totalOrders || 0);
-        const previousTotalSpent = Number(previous.totalSpent || 0);
-        const fallbackAddress = String(customerInfo.profileAddress || previous.address || customerInfo.deliveryAddress || (customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' : customerInfo.fulfillmentType === 'mesa' ? 'Come en el local' : 'Sin direccion registrada')).trim();
-        const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || previous.savedAddresses || [], fallbackAddress);
-        const resolvedAddress = String(savedAddresses[0]?.address || fallbackAddress).trim();
+    await clientRef.create({
+        customerPhone,
+        source: 'web',
+        firstOrderAt: getPublicServerTimestamp(),
+        createdAt: getPublicServerTimestamp()
+    }).catch(() => {});
 
-        transaction.set(clientRef, {
-            customerName: String(customerInfo.customerName || previous.customerName || '').trim(),
-            customerPhone: String(customerInfo.customerPhone || previous.customerPhone || '').trim(),
-            customerPhoneDigits: String(customerInfo.customerPhoneDigits || previous.customerPhoneDigits || '').replace(/\D+/g, ''),
-            address: resolvedAddress,
-            savedAddresses,
-            lastOrderCode: String(orderInfo.code || previous.lastOrderCode || '').trim(),
-            lastOrderId: String(orderInfo.id || previous.lastOrderId || '').trim(),
-            lastOrderTotal: Number(orderInfo.total || previous.lastOrderTotal || 0),
-            totalOrders: previousTotalOrders + 1,
-            totalSpent: previousTotalSpent + Number(orderInfo.total || 0),
-            source: 'web',
-            firstOrderAt: previous.firstOrderAt || getPublicServerTimestamp(),
-            createdAt: previous.createdAt || getPublicServerTimestamp(),
-            updatedAt: getPublicServerTimestamp(),
-            lastOrderAt: getPublicServerTimestamp()
-        }, { merge: true });
-    });
+    const fallbackAddress = String(customerInfo.profileAddress || customerInfo.deliveryAddress || (customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' : customerInfo.fulfillmentType === 'mesa' ? 'Come en el local' : 'Sin direccion registrada')).trim();
+    const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || [], fallbackAddress);
+    const resolvedAddress = String(savedAddresses[0]?.address || fallbackAddress).trim();
+
+    await clientRef.set({
+        customerName: String(customerInfo.customerName || '').trim(),
+        customerPhone,
+        customerPhoneDigits: String(customerInfo.customerPhoneDigits || '').replace(/\D+/g, ''),
+        address: resolvedAddress,
+        savedAddresses,
+        lastOrderCode: String(orderInfo.code || '').trim(),
+        lastOrderId: String(orderInfo.id || '').trim(),
+        lastOrderTotal: Number(orderInfo.total || 0),
+        totalOrders: firebase.firestore.FieldValue.increment(1),
+        totalSpent: firebase.firestore.FieldValue.increment(Number(orderInfo.total || 0)),
+        updatedAt: getPublicServerTimestamp(),
+        lastOrderAt: getPublicServerTimestamp()
+    }, { merge: true });
 }
 
+// El PIN ya no se lee ni se compara en el navegador: customerLoginWithPin (Cloud Function,
+// Admin SDK) es la unica que toca clientes_credenciales, y devuelve un Custom Token de Firebase
+// Auth (uid = clientId) que deja al navegador con una sesion real para el resto del recorrido.
 async function fetchClientProfileByPhone(phoneValue, pinValue = '') {
     const phoneDigits = normalizePhoneDigits(phoneValue);
     if (phoneDigits.length < 10) {
         throw new Error('Escribe un numero de WhatsApp valido.');
     }
 
-    const pinHash = await hashCustomerPin(pinValue);
+    const fn = getPublicFirebaseFunctions();
+    if (!fn) throw new Error('Servicio de inicio de sesion no disponible.');
 
-    const db = getPublicFirebaseDb();
-    const directRef = db.collection(CLIENTS_COLLECTION).doc(`phone_${phoneDigits}`);
-    const directSnapshot = await directRef.get();
-
-    if (directSnapshot.exists) {
-        const profile = normalizeCustomerProfile({ id: directSnapshot.id, ...directSnapshot.data() }, directSnapshot.id);
-        if (!profile?.passwordHash) {
-            const resetError = new Error('Tu contrasena fue reiniciada. Crea una nueva para volver a entrar.');
+    let result;
+    try {
+        result = await fn.httpsCallable('customerLoginWithPin')({ phone: phoneDigits, pin: normalizeCustomerPin(pinValue) });
+    } catch (error) {
+        if (error?.details?.resetRequired) {
+            const resetError = new Error(error.message || 'Tu contrasena fue reiniciada. Crea una nueva para volver a entrar.');
             resetError.code = 'PASSWORD_RESET_REQUIRED';
-            resetError.profile = profile;
+            resetError.profile = error.details.profile || null;
             throw resetError;
         }
-        if (profile.passwordHash !== pinHash) {
-            throw new Error('La contrasena no coincide con este perfil.');
-        }
-        return profile;
+        throw new Error(error?.message || 'No se pudo iniciar sesion.');
     }
 
-    const fallbackSnapshot = await db.collection(CLIENTS_COLLECTION)
-        .where('customerPhoneDigits', '==', phoneDigits)
-        .limit(1)
-        .get();
-
-    if (!fallbackSnapshot.empty) {
-        const doc = fallbackSnapshot.docs[0];
-        const profile = normalizeCustomerProfile({ id: doc.id, ...doc.data() }, doc.id);
-        if (!profile?.passwordHash) {
-            const resetError = new Error('Tu contrasena fue reiniciada. Crea una nueva para volver a entrar.');
-            resetError.code = 'PASSWORD_RESET_REQUIRED';
-            resetError.profile = profile;
-            throw resetError;
-        }
-        if (profile.passwordHash !== pinHash) {
-            throw new Error('La contrasena no coincide con este perfil.');
-        }
-        return profile;
+    if (!result?.data?.profile) {
+        return null;
     }
 
-    return null;
+    const auth = getPublicFirebaseAuth();
+    if (auth && result.data.customToken) {
+        await auth.signInWithCustomToken(result.data.customToken);
+    }
+
+    return normalizeCustomerProfile(result.data.profile, result.data.profile.id);
 }
 
 async function fetchClientProfileByGoogleUid(googleUid) {
     if (!googleUid) return null;
-    const db = getPublicFirebaseDb();
-    // No se puede hacer where('googleUid', '==', ...) sin sesion: las reglas de Firestore solo
-    // permiten leer /clientes por ID directo (phone_XXXXXXXXXX) a usuarios anonimos, y una query
-    // por campo no se puede verificar contra esa regla — Firestore la rechaza por completo
-    // ("Missing or insufficient permissions"), sin importar si de verdad hay un match.
-    // Por eso se mantiene este puntero aparte: doc ID = googleUid, lectura por ID sí es segura.
-    const linkDoc = await db.collection(GOOGLE_LINKS_COLLECTION).doc(googleUid).get();
-    if (!linkDoc.exists) return null;
-    const clientId = String(linkDoc.data()?.clientId || '').trim();
-    if (!clientId) return null;
-    const doc = await db.collection(CLIENTS_COLLECTION).doc(clientId).get();
-    if (!doc.exists) return null;
-    return normalizeCustomerProfile({ id: doc.id, ...doc.data() }, doc.id);
+    // /clientes ya no es legible sin sesion (ver firestore.rules) — googleAuthLogin (Cloud
+    // Function, Admin SDK) resuelve el puntero google_links -> clientes y devuelve, si hay
+    // match, un Custom Token que deja al navegador con una sesion real (uid == clientId).
+    const fn = getPublicFirebaseFunctions();
+    if (!fn) return null;
+    const result = await fn.httpsCallable('googleAuthLogin')({ googleUid });
+    if (!result?.data?.profile) return null;
+
+    const auth = getPublicFirebaseAuth();
+    if (auth && result.data.customToken) {
+        await auth.signInWithCustomToken(result.data.customToken);
+    }
+    return normalizeCustomerProfile(result.data.profile, result.data.profile.id);
 }
 
 // signInWithRedirect resulto no confiable en la practica: en toda una sesion de pruebas nunca
@@ -1929,22 +1905,31 @@ async function _signInWithGooglePopup() {
     return auth.signInWithPopup(provider);
 }
 
-// Escribe la vinculacion Google <-> cliente: el doc googleUid/googleEmail en clientes/{clientId}
-// y el puntero clientId en google_links/{googleUid} (usado por fetchClientProfileByGoogleUid para
-// buscar el perfil por Google sin sesion). Si habia un link con otro googleUid (cambio de cuenta
-// de Google, o primera vinculacion automatica en el checkout), el anterior se limpia para no
-// dejar punteros huerfanos.
-async function _writeGoogleLink(db, clientId, googleUid, googleEmail, previousGoogleUid = '') {
-    const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
-    await clientRef.set({
-        googleUid,
-        googleEmail,
-        googleLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-    if (previousGoogleUid && previousGoogleUid !== googleUid) {
-        await db.collection(GOOGLE_LINKS_COLLECTION).doc(previousGoogleUid).delete().catch(() => {});
+// Para "Vincular con Google" (ya logueado por telefono/PIN) NO se puede usar signInWithPopup: eso
+// reemplazaria la sesion activa (uid == phone_X) por una sesion nueva con el uid de Google, y
+// googleLinkAccount (Cloud Function) necesita justo esa sesion de telefono para autorizar la
+// vinculacion. currentUser.linkWithPopup mantiene la sesion de telefono intacta y solo agrega
+// Google como metodo de acceso adicional a ese mismo usuario.
+async function _linkGooglePopupToCurrentSession() {
+    const auth = getPublicFirebaseAuth();
+    if (!auth?.currentUser || typeof firebase?.auth?.GoogleAuthProvider !== 'function') {
+        throw new Error('Inicia sesion con tu numero de WhatsApp antes de vincular Google.');
     }
-    await db.collection(GOOGLE_LINKS_COLLECTION).doc(googleUid).set({ clientId });
+    const provider = new firebase.auth.GoogleAuthProvider();
+    let result;
+    try {
+        result = await auth.currentUser.linkWithPopup(provider);
+    } catch (error) {
+        if (error?.code === 'auth/credential-already-in-use') {
+            throw new Error('Esa cuenta de Google ya esta en uso con otra sesion. Cierra sesion ahi e intenta de nuevo.');
+        }
+        throw error;
+    }
+    const googleProviderData = result.user.providerData.find((p) => p.providerId === 'google.com');
+    return {
+        googleUid: googleProviderData?.uid || '',
+        googleEmail: googleProviderData?.email || result.additionalUserInfo?.profile?.email || ''
+    };
 }
 
 // Se llama al confirmar la vinculacion desde el perfil ("Vincular con Google").
@@ -1952,27 +1937,22 @@ async function linkGoogleAccount() {
     if (!activeCustomerProfile?.customerPhoneDigits) {
         throw new Error('Inicia sesion con tu numero de WhatsApp antes de vincular Google.');
     }
-    const result = await _signInWithGooglePopup();
-    const googleUid = result?.user?.uid || '';
+    const { googleUid, googleEmail } = await _linkGooglePopupToCurrentSession();
     if (!googleUid) return;
-    const googleEmail = result?.user?.email || '';
-    const auth = getPublicFirebaseAuth();
-    try { await auth.signOut(); } catch (_) {}
     await _completeGoogleLink(googleUid, googleEmail);
 }
 
+// googleLinkAccount (Cloud Function) exige una sesion real (request.auth.uid == clientId) para
+// vincular — la comprobacion de "esa cuenta de Google ya esta vinculada a otro perfil" y la
+// escritura ocurren ahi con el Admin SDK, ya no leyendo /clientes de otro cliente desde aqui.
 async function _completeGoogleLink(googleUid, googleEmail) {
     try {
-        const existing = await fetchClientProfileByGoogleUid(googleUid);
-        if (existing && existing.customerPhoneDigits !== activeCustomerProfile.customerPhoneDigits) {
-            throw new Error('Esa cuenta de Google ya esta vinculada a otro perfil.');
+        const fn = getPublicFirebaseFunctions();
+        if (!fn) throw new Error('Servicio no disponible.');
+        const result = await fn.httpsCallable('googleLinkAccount')({ googleUid, googleEmail });
+        if (result?.data?.profile) {
+            setActiveCustomerProfile(normalizeCustomerProfile(result.data.profile, result.data.profile.id));
         }
-
-        const db = getPublicFirebaseDb();
-        const clientId = `phone_${activeCustomerProfile.customerPhoneDigits}`;
-        await _writeGoogleLink(db, clientId, googleUid, googleEmail, activeCustomerProfile.googleUid || '');
-
-        setActiveCustomerProfile({ ...activeCustomerProfile, googleUid, googleEmail });
         openCustomerAuthModal();
     } catch (error) {
         openCustomerAuthModal();
@@ -2025,97 +2005,45 @@ async function _completeGoogleLogin(googleUid, googleEmail, googleName) {
     openCustomerAuthModal();
 }
 
+// customerRegisterOrUpdateProfile (Cloud Function) hace todo lo que antes hacia esta funcion
+// directo contra Firestore: valida, guarda el PIN con sal en clientes_credenciales (Admin SDK,
+// nunca visible desde el navegador), geocodifica direcciones sin GPS, y escribe el perfil. Si
+// ya existe una cuenta con PIN para ese telefono, exige que quien llama ya este autenticado
+// como esa cuenta (Custom Token de un login previo) — si no, la Cloud Function la rechaza.
 async function saveCustomerProfile(profileInput = {}) {
-    const db = getPublicFirebaseDb();
-    const customerName = String(profileInput.customerName || '').trim();
-    const customerPhone = String(profileInput.customerPhone || '').trim();
-    const customerPhoneDigits = normalizePhoneDigits(customerPhone);
-    const pinValue = normalizeCustomerPin(profileInput.pin || '');
-    const confirmPinValue = normalizeCustomerPin(profileInput.confirmPin || '');
-    const acceptedDataPolicy = Boolean(profileInput.acceptedDataPolicy);
-
-    if (!customerName) {
+    const customerPhoneDigits = normalizePhoneDigits(profileInput.customerPhone || '');
+    if (!String(profileInput.customerName || '').trim()) {
         throw new Error('Escribe tu nombre para guardar el perfil.');
     }
-
     if (customerPhoneDigits.length < 10) {
         throw new Error('Escribe un numero de WhatsApp valido.');
     }
 
-    const clientId = `phone_${customerPhoneDigits}`;
-    const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
-    const snapshot = await clientRef.get();
-    const previous = snapshot.exists ? snapshot.data() : {};
-    const savedAddresses = normalizeCustomerSavedAddresses(profileInput.savedAddresses || previous.savedAddresses || [], String(profileInput.address || '').trim());
-    const address = String(savedAddresses[0]?.address || '').trim();
+    const fn = getPublicFirebaseFunctions();
+    if (!fn) throw new Error('Servicio no disponible.');
 
-    // Direcciones sin GPS: se intenta ubicarlas por el texto (mismo geocodificador gratuito que
-    // ya usa el checkout) para poder calcular la zona/tarifa de domicilio despues sin pedirle
-    // nada mas al cliente. Nominatim pide max 1 solicitud/segundo — con el tope de 5 direcciones
-    // guardadas, una pequeña pausa entre cada una es suficiente y no se nota en el guardado.
-    for (const entry of savedAddresses) {
-        if (entry.latitude !== null || !entry.address) continue;
-        const geo = await _geocodeAddressText(entry.address).catch(() => null);
-        if (geo) { entry.latitude = geo.latitude; entry.longitude = geo.longitude; }
-        await new Promise((resolve) => setTimeout(resolve, 1100));
+    let result;
+    try {
+        result = await fn.httpsCallable('customerRegisterOrUpdateProfile')({
+            phone: customerPhoneDigits,
+            customerName: String(profileInput.customerName || '').trim(),
+            customerPhone: String(profileInput.customerPhone || '').trim(),
+            address: String(profileInput.address || '').trim(),
+            savedAddresses: profileInput.savedAddresses || [],
+            pin: normalizeCustomerPin(profileInput.pin || ''),
+            confirmPin: normalizeCustomerPin(profileInput.confirmPin || ''),
+            acceptedDataPolicy: Boolean(profileInput.acceptedDataPolicy)
+        });
+    } catch (error) {
+        throw new Error(error?.message || 'No se pudo guardar el perfil.');
     }
 
-    let passwordHash = String(previous.passwordHash || '').trim();
-    const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
-
-    if (!acceptedDataPolicy && !hasPreviousConsent) {
-        throw new Error(`Debes aceptar el uso de tus datos y el envio de promociones de ${_getRestaurantName()} para crear tu perfil.`);
+    const auth = getPublicFirebaseAuth();
+    if (auth && result?.data?.customToken) {
+        await auth.signInWithCustomToken(result.data.customToken);
     }
 
-    if (pinValue || confirmPinValue || !passwordHash) {
-        if (!isValidCustomerPin(pinValue)) {
-            throw new Error('Crea una contrasena numerica de 6 digitos.');
-        }
-
-        if (pinValue !== confirmPinValue) {
-            throw new Error('La confirmacion de la contrasena no coincide.');
-        }
-
-        passwordHash = await hashCustomerPin(pinValue);
-    }
-
-    await clientRef.set({
-        customerName,
-        customerPhone,
-        customerPhoneDigits,
-        address,
-        savedAddresses,
-        passwordHash,
-        privacyConsentAccepted: acceptedDataPolicy || Boolean(previous.privacyConsentAccepted),
-        marketingConsentAccepted: acceptedDataPolicy || Boolean(previous.marketingConsentAccepted),
-        consentAcceptedAt: previous.consentAcceptedAt || getPublicServerTimestamp(),
-        consentVersion: acceptedDataPolicy ? CUSTOMER_CONSENT_VERSION : String(previous.consentVersion || CUSTOMER_CONSENT_VERSION).trim(),
-        totalOrders: Number(previous.totalOrders || 0),
-        totalSpent: Number(previous.totalSpent || 0),
-        lastOrderCode: String(previous.lastOrderCode || '').trim(),
-        lastOrderId: String(previous.lastOrderId || '').trim(),
-        lastOrderTotal: Number(previous.lastOrderTotal || 0),
-        firstOrderAt: previous.firstOrderAt || null,
-        lastOrderAt: previous.lastOrderAt || null,
-        source: 'web_profile',
-        createdAt: previous.createdAt || getPublicServerTimestamp(),
-        updatedAt: getPublicServerTimestamp()
-    }, { merge: true });
-
-    return normalizeCustomerProfile({
-        id: clientId,
-        ...previous,
-        customerName,
-        customerPhone,
-        customerPhoneDigits,
-        address,
-        savedAddresses,
-        passwordHash,
-        privacyConsentAccepted: acceptedDataPolicy || Boolean(previous.privacyConsentAccepted),
-        marketingConsentAccepted: acceptedDataPolicy || Boolean(previous.marketingConsentAccepted),
-        consentAcceptedAt: previous.consentAcceptedAt || new Date(),
-        consentVersion: acceptedDataPolicy ? CUSTOMER_CONSENT_VERSION : String(previous.consentVersion || CUSTOMER_CONSENT_VERSION).trim()
-    }, clientId);
+    return normalizeCustomerProfile(result.data.profile, result.data.profile.id);
 }
 
 function closeCustomerAuthModal() {
@@ -2735,29 +2663,26 @@ function closeCustomerPasswordResetModal() {
     syncBodyScrollLock();
 }
 
+// /clientes ya no es legible sin sesion — checkPhoneRegistered (Cloud Function) solo devuelve
+// si existe cuenta con ese telefono y si ya tiene contrasena, nunca el perfil completo.
 async function fetchClientProfileForRecovery(phoneValue = '') {
     const phoneDigits = normalizePhoneDigits(phoneValue);
     if (phoneDigits.length < 10) {
         throw new Error('Escribe un numero de WhatsApp valido.');
     }
 
-    const db = getPublicFirebaseDb();
-    const directSnapshot = await db.collection(CLIENTS_COLLECTION).doc(`phone_${phoneDigits}`).get();
-    if (directSnapshot.exists) {
-        return normalizeCustomerProfile({ id: directSnapshot.id, ...directSnapshot.data() }, directSnapshot.id);
-    }
+    const fn = getPublicFirebaseFunctions();
+    if (!fn) return null;
+    const result = await fn.httpsCallable('checkPhoneRegistered')({ phone: phoneDigits });
+    if (!result?.data?.exists) return null;
 
-    const fallbackSnapshot = await db.collection(CLIENTS_COLLECTION)
-        .where('customerPhoneDigits', '==', phoneDigits)
-        .limit(1)
-        .get();
-
-    if (!fallbackSnapshot.empty) {
-        const doc = fallbackSnapshot.docs[0];
-        return normalizeCustomerProfile({ id: doc.id, ...doc.data() }, doc.id);
-    }
-
-    return null;
+    return normalizeCustomerProfile({
+        id: result.data.id,
+        customerName: result.data.customerName,
+        customerPhone: result.data.customerPhone,
+        customerPhoneDigits: result.data.customerPhoneDigits,
+        hasPassword: result.data.hasPassword
+    }, result.data.id);
 }
 
 async function submitCustomerNewPassword() {
@@ -2904,8 +2829,12 @@ async function submitCustomerDeleteAccountRequest() {
 
     try {
         await createCustomerDeleteAccountRequest(reasonValue, profile);
-        const db = getPublicFirebaseDb();
-        await db.collection(CLIENTS_COLLECTION).doc(`phone_${profile?.customerPhoneDigits || ''}`).delete();
+        // deleteCustomerAccount (Cloud Function) borra tanto /clientes como
+        // /clientes_credenciales -- esta ultima no se puede tocar directo desde el navegador
+        // bajo ninguna circunstancia (ver firestore.rules), asi que borrar solo el primero
+        // dejaria el credencial huerfano.
+        const fn = getPublicFirebaseFunctions();
+        if (fn) await fn.httpsCallable('deleteCustomerAccount')({});
         clearActiveCustomerProfile();
         closeCustomerDeleteAccountModal();
         closeCustomerAuthModal();
@@ -3105,18 +3034,19 @@ async function createCustomerPasswordResetRequest(phoneValue = '') {
 
     const db = getPublicFirebaseDb();
     const messageBody = buildCustomerPasswordResetMessage(customerPhone);
-    const existingProfile = await db.collection(CLIENTS_COLLECTION).doc(`phone_${customerPhoneDigits}`).get();
-    const profileData = existingProfile.exists ? existingProfile.data() : {};
+    // /clientes ya no es legible sin sesion — solo se pide el nombre para el mensaje via
+    // checkPhoneRegistered (Cloud Function), que nunca expone datos sensibles. La direccion ya
+    // no viaja aqui; el admin puede verla en su propio panel si hace falta.
+    const existingProfile = await fetchClientProfileForRecovery(customerPhone).catch(() => null);
 
     await db.collection(MESSAGES_COLLECTION).add({
         type: 'password_reset_request',
         status: 'pending',
         subject: 'Solicitud de reinicio de contrasena',
         body: messageBody,
-        customerName: String(profileData.customerName || '').trim() || 'Cliente sin nombre',
+        customerName: existingProfile?.customerName || 'Cliente sin nombre',
         customerPhone,
         customerPhoneDigits,
-        customerAddress: String(profileData.address || '').trim(),
         source: 'public_web',
         createdAt: getPublicServerTimestamp(),
         updatedAt: getPublicServerTimestamp()
@@ -3134,7 +3064,7 @@ async function requestCustomerPasswordReset() {
 
     try {
         const profile = await fetchClientProfileForRecovery(phoneValue);
-        if (profile && !profile.passwordHash) {
+        if (profile && !profile.hasPassword) {
             openCustomerPasswordResetModal(profile);
             feedbackTarget.textContent = 'Tu contrasena ya fue reiniciada. Crea una nueva para continuar.';
             return;
@@ -4710,26 +4640,24 @@ async function createOrderFromCart(customerInfo = {}) {
     } else if (!activeCustomerProfile && pendingGoogleIdentity) {
         // Identidad de Google pendiente (entro con Google antes de saber su telefono): se vincula
         // automaticamente SOLO si el numero que acaba de escribir en el checkout no es ya una
-        // cuenta reclamada por otra persona (tiene PIN) o vinculada a otra cuenta de Google —
-        // evita que alguien quede vinculado a la cuenta de otro por escribir un numero ajeno.
+        // cuenta reclamada por otra persona o vinculada a otra cuenta de Google — evita que
+        // alguien quede vinculado a la cuenta de otro por escribir un numero ajeno. Las
+        // credenciales ya no viven en /clientes (ver clientes_credenciales), asi que esta
+        // comprobacion tiene que resolverse en linkPendingGoogleAfterOrder (Admin SDK).
         // Nunca debe bloquear el pedido, que ya se guardo bien arriba, si algo aqui falla.
         try {
-            const clientId = buildClientDocumentId({ customerPhoneDigits });
-            const clientDoc = await db.collection(CLIENTS_COLLECTION).doc(clientId).get();
-            const clientData = clientDoc.exists ? clientDoc.data() : {};
-            const alreadyClaimed = Boolean(clientData.passwordHash);
-            const linkedToOther = Boolean(clientData.googleUid) && clientData.googleUid !== pendingGoogleIdentity.googleUid;
-            if (!alreadyClaimed && !linkedToOther) {
-                await _writeGoogleLink(db, clientId, pendingGoogleIdentity.googleUid, pendingGoogleIdentity.googleEmail, clientData.googleUid || '');
-                setActiveCustomerProfile({
-                    id: clientId,
-                    ...clientData,
-                    customerName,
-                    customerPhone,
-                    customerPhoneDigits,
-                    googleUid: pendingGoogleIdentity.googleUid,
-                    googleEmail: pendingGoogleIdentity.googleEmail
-                });
+            const fn = getPublicFirebaseFunctions();
+            const result = fn ? await fn.httpsCallable('linkPendingGoogleAfterOrder')({
+                phone: customerPhoneDigits,
+                googleUid: pendingGoogleIdentity.googleUid,
+                googleEmail: pendingGoogleIdentity.googleEmail
+            }) : null;
+            if (result?.data?.linked && result.data.profile) {
+                const auth = getPublicFirebaseAuth();
+                if (auth && result.data.customToken) {
+                    await auth.signInWithCustomToken(result.data.customToken);
+                }
+                setActiveCustomerProfile(normalizeCustomerProfile(result.data.profile, result.data.profile.id));
             }
         } catch (_googleLinkErr) {
             // Silently ignore — order was already saved successfully
@@ -13479,6 +13407,25 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('has-auth-nav');
     setActiveCustomerProfile(loadStoredCustomerProfile());
     pendingGoogleIdentity = loadStoredPendingGoogleIdentity();
+
+    // Sesiones guardadas en localStorage de antes de este cambio (o cuyo Custom Token ya no es
+    // valido) no tienen una sesion real de Firebase Auth detras — cualquier accion que dependa
+    // de request.auth.uid (editar perfil, agregar direccion, vincular/desvincular Google) fallaria
+    // en silencio con el perfil "fantasma" cacheado. Se revisa una sola vez el estado real de
+    // Firebase Auth al arrancar; si no coincide, se cierra la sesion cacheada para que el cliente
+    // vuelva a entrar con su PIN (sus datos siguen intactos en Firestore, es solo un re-login).
+    try {
+        const auth = getPublicFirebaseAuth();
+        if (auth && activeCustomerProfile?.customerPhoneDigits) {
+            const expectedUid = `phone_${activeCustomerProfile.customerPhoneDigits}`;
+            const unsubscribe = auth.onAuthStateChanged((user) => {
+                unsubscribe();
+                if (!user || user.uid !== expectedUid) {
+                    clearActiveCustomerProfile();
+                }
+            });
+        }
+    } catch (_) {}
 
     // Registrar visita al menú para métricas de tráfico
     try {
