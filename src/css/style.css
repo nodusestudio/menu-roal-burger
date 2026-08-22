@@ -2225,6 +2225,17 @@ body.has-guest-register-banner #ayudaScreen {
     gap: 14px;
 }
 
+/* #regStepContent (formulario de registro/editar perfil/mis direcciones) es un simple <div> sin
+   layout propio -- sin esto, todo su contenido (campos, boton de contraseña, casilla de
+   consentimiento, etc.) se apilaba con cero espacio entre elementos, solo separado por lo que
+   cada uno trajera de margen propio (nada, en la mayoria de los casos). Mismo gap que usa
+   .support-modal-card para sus propios hijos, para que se sienta como una sola columna continua. */
+#regStepContent {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
 .support-modal-close {
     position: absolute;
     top: 10px;

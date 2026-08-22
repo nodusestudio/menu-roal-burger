@@ -2307,12 +2307,24 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
     const addressesOnly = Boolean(options.addressesOnly);
     const initialStep = isEditMode ? 'profile' : 'phone';
 
+    // Si venimos de Cuenta (editar perfil / mis direcciones), el cierre se rotula igual que el
+    // resto de los paneles de Cuenta ("← Cuenta") en vez de una X generica -- antes este modal
+    // era la unica parte de toda la seccion que se cerraba con X mientras el resto (Mis pedidos,
+    // Mensajes) usa "volver". En el registro nuevo (sin Cuenta a la que volver todavia) se
+    // mantiene la X, que sigue siendo lo correcto ahi.
+    const closeButtonMarkup = (isEditMode || addressesOnly)
+        ? `<button type="button" class="cp-panel-back" id="customerRegisterClose" aria-label="Volver a Cuenta">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+            Cuenta
+        </button>`
+        : `<button type="button" class="support-modal-close" id="customerRegisterClose" aria-label="Cerrar registro">&times;</button>`;
+
     const modal = document.createElement('div');
     modal.id        = 'customerRegisterModal';
     modal.className = 'support-modal is-open';
     modal.innerHTML = `
         <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Crear cuenta">
-            <button type="button" class="support-modal-close" aria-label="Cerrar registro">&times;</button>
+            ${closeButtonMarkup}
             <div id="regStepContent"></div>
             <p class="support-feedback" id="customerAuthFeedback"></p>
         </div>
@@ -2324,7 +2336,7 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
 
     customerRegisterUI = {
         modal,
-        close:        modal.querySelector('.support-modal-close'),
+        close:        modal.querySelector('#customerRegisterClose'),
         feedback:     modal.querySelector('#customerAuthFeedback'),
         stepContent:  modal.querySelector('#regStepContent'),
         step:         initialStep,
@@ -3210,11 +3222,21 @@ async function submitCustomerProfileForm() {
 }
 
 function openCustomerAuthModal() {
-    closeCustomerAuthModal();
-
     const screen  = document.getElementById('perfilScreen');
     const contentEl = document.getElementById('perfilContent');
     if (!screen || !contentEl) return;
+
+    // Si la pantalla ya esta abierta (esta funcion tambien se usa para "refrescar" Cuenta tras
+    // guardar el perfil, vincular Google, etc.), no hay que cerrarla y volver a abrirla — eso
+    // dispara un history.back() (de _exitScreen, dentro de closeCustomerAuthModal) seguido
+    // inmediatamente de un history.pushState() (de _enterScreen) en la misma pasada, y esos dos
+    // cambios de historial en carrera podian desincronizar el boton atras (a veces hacia falta
+    // presionarlo dos veces, o de plano saltaba fuera de la app). Si ya esta abierta, solo se
+    // reconstruye el contenido en el lugar.
+    const alreadyOpen = !screen.hidden;
+    if (!alreadyOpen) {
+        closeCustomerAuthModal();
+    }
 
     const profile = activeCustomerProfile;
     const savedAddresses = getCustomerSavedAddresses(profile);
@@ -3224,7 +3246,9 @@ function openCustomerAuthModal() {
     const titleEl = document.getElementById('perfilScreenTitle');
     if (titleEl) titleEl.textContent = profile ? 'Cuenta' : 'Mi Perfil';
 
-    _enterScreen('perfilScreen');
+    if (!alreadyOpen) {
+        _enterScreen('perfilScreen');
+    }
     screen.hidden = false;
     screen.classList.add('is-open');
 
