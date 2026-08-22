@@ -1912,89 +1912,21 @@ async function fetchClientProfileByGoogleUid(googleUid) {
     return normalizeCustomerProfile({ id: doc.id, ...doc.data() }, doc.id);
 }
 
-// El popup de Google (signInWithPopup) resulto poco confiable en navegadores actuales (Chrome,
-// Edge y Brave por igual): el SDK de Firebase detecta el cierre del popup sondeando
-// `window.closed`, y las restricciones de Cross-Origin-Opener-Policy que ya aplican varios sitios
-// (incluido el propio accounts.google.com) bloquean ese sondeo, dejando el popup colgado sin
-// completar el login. La alternativa oficial de Google/Firebase para este caso es navegacion
-// completa (signInWithRedirect): se sale de la pagina a la pantalla de Google y se vuelve ya
-// autenticado, sin ventana emergente que pueda fallar.
-async function _startGoogleRedirect() {
+// signInWithRedirect resulto no confiable en la practica: en toda una sesion de pruebas nunca
+// completo el login ni una vez (escritorio, Safari normal, app instalada) — auth.getRedirectResult()
+// siempre volvia vacio, aparentemente porque el estado que Firebase necesita para reconocer el
+// regreso de Google no sobrevive el viaje de ida y vuelta completo entre dominios en estos
+// entornos. Popup evita ese problema de raiz: todo ocurre dentro de la misma pestaña/ejecucion,
+// sin depender de que el estado persista a traves de una navegacion completa. El COOP header
+// (Cross-Origin-Opener-Policy: same-origin-allow-popups, ver vercel.json) ya esta puesto para que
+// el sondeo interno de Firebase sobre el cierre del popup funcione en Chrome/Edge/Brave.
+async function _signInWithGooglePopup() {
     const auth = getPublicFirebaseAuth();
     if (!auth || typeof firebase?.auth?.GoogleAuthProvider !== 'function') {
         throw new Error('El inicio de sesion con Google no esta disponible en este momento.');
     }
     const provider = new firebase.auth.GoogleAuthProvider();
-    await auth.signInWithRedirect(provider);
-}
-
-// Se ejecuta una sola vez al cargar la pagina. Si el usuario acaba de volver de
-// signInWithRedirect, auth.getRedirectResult() devuelve el usuario de Google; si es una carga
-// normal (sin redireccion pendiente), devuelve un resultado vacio y esta funcion no hace nada.
-// Como el login con Google (boton "Continuar con Google", solo visible sin sesion) y vincular
-// Google (boton "Vincular con Google", solo visible con sesion activa) son mutuamente excluyentes
-// en la UI, `activeCustomerProfile` ya presente al volver es suficiente para saber cual de los
-// dos intentos era, sin necesidad de guardar una bandera aparte antes de salir de la pagina.
-async function _consumeGoogleRedirectResult() {
-    // Diagnostico temporal: localStorage sobrevive a la recarga/navegacion (a diferencia de la
-    // consola o del texto en pantalla), asi que deja ver que paso en el viaje de ida y vuelta a
-    // Google sin depender de configuracion de DevTools.
-    const debugMarker = localStorage.getItem('rb_google_debug');
-    if (debugMarker) localStorage.removeItem('rb_google_debug');
-
-    const auth = getPublicFirebaseAuth();
-    if (!auth) {
-        if (debugMarker) alert('[Diagnostico Google] Volviste de intentar el login, pero Firebase Auth no esta disponible en esta carga.');
-        return;
-    }
-
-    let result;
-    try {
-        result = await auth.getRedirectResult();
-    } catch (error) {
-        if (debugMarker) alert(`[Diagnostico Google] getRedirectResult() fallo: ${error.code || ''} ${error.message || error}`);
-        openCustomerAuthModal();
-        if (customerAuthUI?.feedback) {
-            customerAuthUI.feedback.textContent = error.message || 'No se pudo iniciar sesion con Google.';
-            customerAuthUI.feedback.className = 'support-feedback support-feedback--error';
-        }
-        return;
-    }
-
-    const googleUid = result?.user?.uid || '';
-    if (!googleUid) {
-        if (debugMarker) {
-            let dbNames = 'n/d';
-            try {
-                if (indexedDB.databases) {
-                    const dbs = await indexedDB.databases();
-                    dbNames = dbs.map((d) => d.name).join(', ') || '(ninguna)';
-                }
-            } catch (_) {}
-            alert(
-                '[Diagnostico Google] getRedirectResult() vacio.\n' +
-                'referrer: ' + (document.referrer || '(vacio)') + '\n' +
-                'href: ' + window.location.href + '\n' +
-                'indexedDB soportado: ' + (window.indexedDB ? 'si' : 'NO') + '\n' +
-                'bases indexedDB: ' + dbNames + '\n' +
-                'sessionStorage keys: ' + sessionStorage.length + '\n' +
-                'SW controlando esta pagina: ' + (navigator.serviceWorker?.controller ? 'si' : 'no') + '\n' +
-                'standalone (PWA instalada): ' + (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone ? 'si' : 'no')
-            );
-        }
-        return; // Carga normal, no veniamos de un redirect de Google
-    }
-    if (debugMarker) alert(`[Diagnostico Google] Exito: volviste con la cuenta ${result.user.email || result.user.uid}`);
-
-    const googleEmail = result?.user?.email || '';
-    const googleName = result?.user?.displayName || '';
-    try { await auth.signOut(); } catch (_) {}
-
-    if (activeCustomerProfile?.customerPhoneDigits) {
-        await _completeGoogleLink(googleUid, googleEmail);
-        return;
-    }
-    await _completeGoogleLogin(googleUid, googleEmail, googleName);
+    return auth.signInWithPopup(provider);
 }
 
 // Escribe la vinculacion Google <-> cliente: el doc googleUid/googleEmail en clientes/{clientId}
@@ -2015,14 +1947,18 @@ async function _writeGoogleLink(db, clientId, googleUid, googleEmail, previousGo
     await db.collection(GOOGLE_LINKS_COLLECTION).doc(googleUid).set({ clientId });
 }
 
-// Se llama al confirmar la vinculacion desde el perfil ("Vincular con Google"). Solo dispara la
-// redireccion — la vinculacion en si ocurre al volver, en _completeGoogleLink (ver
-// _consumeGoogleRedirectResult), porque signInWithRedirect saca al usuario de la pagina.
+// Se llama al confirmar la vinculacion desde el perfil ("Vincular con Google").
 async function linkGoogleAccount() {
     if (!activeCustomerProfile?.customerPhoneDigits) {
         throw new Error('Inicia sesion con tu numero de WhatsApp antes de vincular Google.');
     }
-    await _startGoogleRedirect();
+    const result = await _signInWithGooglePopup();
+    const googleUid = result?.user?.uid || '';
+    if (!googleUid) return;
+    const googleEmail = result?.user?.email || '';
+    const auth = getPublicFirebaseAuth();
+    try { await auth.signOut(); } catch (_) {}
+    await _completeGoogleLink(googleUid, googleEmail);
 }
 
 async function _completeGoogleLink(googleUid, googleEmail) {
@@ -2062,11 +1998,16 @@ async function unlinkGoogleAccount() {
     setActiveCustomerProfile({ ...activeCustomerProfile, googleUid: '', googleEmail: '' });
 }
 
-// Boton principal "Continuar con Google". Solo dispara la redireccion — el resultado (login
-// directo si ya existia, o identidad pendiente si es la primera vez) se resuelve al volver, en
-// _completeGoogleLogin (ver _consumeGoogleRedirectResult).
+// Boton principal "Continuar con Google".
 async function loginWithGoogle() {
-    await _startGoogleRedirect();
+    const result = await _signInWithGooglePopup();
+    const googleUid = result?.user?.uid || '';
+    if (!googleUid) return;
+    const googleEmail = result?.user?.email || '';
+    const googleName = result?.user?.displayName || '';
+    const auth = getPublicFirebaseAuth();
+    try { await auth.signOut(); } catch (_) {}
+    await _completeGoogleLogin(googleUid, googleEmail, googleName);
 }
 
 async function _completeGoogleLogin(googleUid, googleEmail, googleName) {
@@ -3593,25 +3534,14 @@ function openCustomerAuthModal() {
         const btn = customerAuthUI.googleLoginButton;
         const feedback = customerAuthUI.feedback;
         if (btn) { btn.disabled = true; }
-        // Diagnostico temporal: deja en pantalla, sin necesidad de DevTools, en que paso
-        // exactamente se traba el inicio de sesion con Google.
         if (feedback) {
-            feedback.textContent = 'Paso 1/3: revisando Firebase Auth...';
+            feedback.textContent = '';
             feedback.className = 'support-feedback';
         }
         try {
-            const auth = getPublicFirebaseAuth();
-            if (!auth || typeof firebase?.auth?.GoogleAuthProvider !== 'function') {
-                throw new Error('Paso 1 fallo: Firebase Auth no esta disponible.');
-            }
-            if (feedback) feedback.textContent = 'Paso 2/3: preparando redireccion...';
-            const provider = new firebase.auth.GoogleAuthProvider();
-            if (feedback) feedback.textContent = 'Paso 3/3: saliendo hacia Google...';
-            localStorage.setItem('rb_google_debug', String(Date.now()));
-            await auth.signInWithRedirect(provider);
-            if (feedback) feedback.textContent = 'signInWithRedirect no lanzo la navegacion (esto no deberia verse).';
+            await loginWithGoogle();
         } catch (error) {
-            console.error('[Google login] fallo signInWithRedirect:', error);
+            console.error('[Google login] fallo signInWithPopup:', error);
             if (feedback) {
                 feedback.textContent = `${error.code || ''} ${error.message || 'No se pudo iniciar sesion con Google.'}`.trim();
                 feedback.className = 'support-feedback support-feedback--error';
@@ -3638,8 +3568,6 @@ function openCustomerAuthModal() {
         }
         if (btn) { btn.disabled = true; }
         try {
-            // Dispara la redireccion a Google; la pagina se recarga al volver, asi que nada
-            // despues de este await llega a ejecutarse en el caso exitoso (ver _completeGoogleLink).
             await linkGoogleAccount();
         } catch (error) {
             if (feedback) {
@@ -13551,7 +13479,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('has-auth-nav');
     setActiveCustomerProfile(loadStoredCustomerProfile());
     pendingGoogleIdentity = loadStoredPendingGoogleIdentity();
-    _consumeGoogleRedirectResult().catch((error) => console.error('[Google login] fallo getRedirectResult:', error));
 
     // Registrar visita al menú para métricas de tráfico
     try {
