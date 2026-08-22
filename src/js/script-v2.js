@@ -1959,7 +1959,25 @@ async function _consumeGoogleRedirectResult() {
 
     const googleUid = result?.user?.uid || '';
     if (!googleUid) {
-        if (debugMarker) alert('[Diagnostico Google] Volviste de un intento de redirect, pero getRedirectResult() no trajo ningun usuario (vacio). Por eso no se completa el login.');
+        if (debugMarker) {
+            let dbNames = 'n/d';
+            try {
+                if (indexedDB.databases) {
+                    const dbs = await indexedDB.databases();
+                    dbNames = dbs.map((d) => d.name).join(', ') || '(ninguna)';
+                }
+            } catch (_) {}
+            alert(
+                '[Diagnostico Google] getRedirectResult() vacio.\n' +
+                'referrer: ' + (document.referrer || '(vacio)') + '\n' +
+                'href: ' + window.location.href + '\n' +
+                'indexedDB soportado: ' + (window.indexedDB ? 'si' : 'NO') + '\n' +
+                'bases indexedDB: ' + dbNames + '\n' +
+                'sessionStorage keys: ' + sessionStorage.length + '\n' +
+                'SW controlando esta pagina: ' + (navigator.serviceWorker?.controller ? 'si' : 'no') + '\n' +
+                'standalone (PWA instalada): ' + (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone ? 'si' : 'no')
+            );
+        }
         return; // Carga normal, no veniamos de un redirect de Google
     }
     if (debugMarker) alert(`[Diagnostico Google] Exito: volviste con la cuenta ${result.user.email || result.user.uid}`);
