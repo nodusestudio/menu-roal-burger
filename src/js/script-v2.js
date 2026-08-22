@@ -383,12 +383,16 @@ function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '')
         });
     };
 
-    if (primaryAddress) {
-        appendAddressEntry({ address: primaryAddress, primary: true });
-    }
-
+    // rawAddresses primero: si `primaryAddress` (texto suelto, sin coordenadas) coincide con una
+    // entrada real que ya trae latitude/longitude, debe ganar la entrada real — si se agregara
+    // primero el "stub" de primaryAddress, quedaria marcado como visto y la entrada real con
+    // coordenadas se descartaria por duplicada, perdiendo silenciosamente la ubicacion guardada.
     if (Array.isArray(rawAddresses)) {
         rawAddresses.forEach((entry) => appendAddressEntry(entry));
+    }
+
+    if (primaryAddress) {
+        appendAddressEntry({ address: primaryAddress, primary: true });
     }
 
     if (!primaryFound && normalizedAddresses.length > 0) {
