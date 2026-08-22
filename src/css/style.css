@@ -5813,7 +5813,9 @@ body.has-consent-doc-open .guest-register-banner {
 #ayudaScreen,
 #promoCarouselScreen,
 #menuCarouselScreen {
-    top: calc(52px + env(safe-area-inset-top, 0px));
+    /* Alto real de .top-action-bar: 38px de contenido + 10px de padding arriba y abajo = 58px
+       (antes tenia 52px, calculado mal, y dejaba un solape de unos px con la barra fija). */
+    top: calc(58px + env(safe-area-inset-top, 0px));
 }
 
 
