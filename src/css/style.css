@@ -4369,7 +4369,8 @@ body.has-consent-doc-open .guest-register-banner {
 .menu-carousel,
 .promo-carousel-track,
 .search-filter-cats,
-.search-filter-prices {
+.search-filter-prices,
+.catalog-chips-bar {
     -webkit-mask-image: linear-gradient(to right, #000 72%, transparent 100%);
     mask-image: linear-gradient(to right, #000 72%, transparent 100%);
 }
@@ -5813,9 +5814,12 @@ body.has-consent-doc-open .guest-register-banner {
 #ayudaScreen,
 #promoCarouselScreen,
 #menuCarouselScreen {
-    /* Alto real de .top-action-bar: 38px de contenido + 10px de padding arriba y abajo = 58px
-       (antes tenia 52px, calculado mal, y dejaba un solape de unos px con la barra fija). */
-    top: calc(58px + env(safe-area-inset-top, 0px));
+    /* Alto real de .top-action-bar: 38px de contenido + 10px de padding arriba y abajo = 58px.
+       !important porque cada una de estas pantallas tiene MAS ADELANTE en este mismo archivo su
+       propia regla individual "position:fixed; inset:0;" (p.ej. #menuCarouselScreen linea ~5990,
+       #combosScreen ~6124) que sobreescribe este "top" al ganar por orden de aparicion — sin
+       !important, esas reglas posteriores resetean el top de vuelta a 0. */
+    top: calc(58px + env(safe-area-inset-top, 0px)) !important;
 }
 
 
@@ -6069,7 +6073,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-weight: 900;
     letter-spacing: 0.03em;
     text-transform: uppercase;
-    color: #0f5c2e;
+    color: #4ade80;
     text-align: center;
     line-height: 1.1;
     margin-top: 2px;
@@ -6085,7 +6089,7 @@ body.has-consent-doc-open .guest-register-banner {
 
 .x2-carousel-orig {
     font-size: 0.85rem;
-    color: rgba(90, 50, 15, 0.45);
+    color: var(--text-secondary);
     text-decoration: line-through;
 }
 
@@ -6093,7 +6097,31 @@ body.has-consent-doc-open .guest-register-banner {
     font-family: 'Oswald', sans-serif;
     font-size: 1.1rem;
     font-weight: 700;
-    color: #0f5c2e;
+    color: #4ade80;
+}
+
+/* Tarjetas de promo 2x1/recomendado dentro del catalogo continuo (_makeProductPromo2x1Card,
+   _makeRecomendadoCard) usan .mobile-order-btn tal cual, sin pasar por el nuevo boton compacto
+   "+" — se le da su propia version compacta para que quepa en la columna angosta del grid, con
+   un color distinto (verde) para diferenciarlo de "agregar" ya que en realidad es "redimir cupon". */
+.catalog-section-grid .x2-carousel-title,
+.catalog-section-grid .x2-carousel-disc {
+    text-align: left;
+}
+
+.catalog-section-grid .x2-carousel-price-row {
+    justify-content: flex-start;
+}
+
+.catalog-section-grid .mobile-order-btn {
+    width: 100%;
+    height: 38px;
+    padding: 0 6px;
+    margin-top: 6px;
+    font-size: 11px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    box-shadow: none;
 }
 
 /* ── Pantalla Combos ──────────────────────────────────────────────── */
@@ -6132,7 +6160,11 @@ body.has-consent-doc-open .guest-register-banner {
    horizontal, reutilizando la misma tarjeta .product-card-mobile (ver _makeMenuCarouselCard). */
 .catalog-section-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* minmax(0, 1fr) en vez de 1fr: un track "1fr" a secas tiene un minimo implicito de "auto"
+       (el ancho minimo de su contenido), asi que si una tarjeta tiene contenido que no se
+       encoge (precio/boton en una sola linea) la columna crece mas alla de la mitad real del
+       contenedor y la tarjeta de la derecha termina saliendose de la pantalla. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 16px;
     padding: 4px 18px 8px;
 }
@@ -6140,6 +6172,7 @@ body.has-consent-doc-open .guest-register-banner {
 .catalog-section-grid .product-card-mobile {
     flex: unset;
     width: 100%;
+    min-width: 0;
     transition: transform 0.2s ease;
 }
 
@@ -6243,7 +6276,7 @@ body.has-consent-doc-open .guest-register-banner {
 /* La barra de chips y las secciones de categoría comparten scroll-margin-top para que el salto
    al tocar un chip no quede tapado por la barra pegajosa. */
 .combos-carousel-section {
-    scroll-margin-top: 56px;
+    scroll-margin-top: 42px;
 }
 
 .catalog-chips-bar {
@@ -6251,9 +6284,9 @@ body.has-consent-doc-open .guest-register-banner {
     top: 0;
     z-index: 9;
     display: flex;
-    gap: 8px;
+    gap: 6px;
     overflow-x: auto;
-    padding: 10px 16px;
+    padding: 6px 16px;
     background: var(--glass-bg);
     -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
@@ -6274,8 +6307,8 @@ body.has-consent-doc-open .guest-register-banner {
     color: var(--text-primary);
     font-family: 'Roboto', sans-serif;
     font-weight: 600;
-    font-size: 0.85rem;
-    padding: 8px 16px;
+    font-size: 0.78rem;
+    padding: 5px 13px;
     border-radius: 999px;
     white-space: nowrap;
     cursor: pointer;

@@ -11709,7 +11709,6 @@ function refreshCatalogScreenIfNeeded() {
 function openMenuCarouselScreen() {
     const screen = document.getElementById('menuCarouselScreen');
     if (!screen) return;
-    console.log('[Catalogo] openMenuCarouselScreen() — categorias:', (activeCategoryMeta || []).length, 'productos:', (latestProducts || []).length);
     _enterScreen('menuCarouselScreen');
     screen.hidden = false;
     screen.scrollTop = 0;
@@ -11791,7 +11790,6 @@ function renderMenuCarousels() {
 
     const cats = activeCategoryMeta || [];
     const allProds = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
-    console.log('[Catalogo] renderMenuCarousels() — cats:', cats.length, 'allProds:', allProds.length, cats.map(c => c.key));
 
     // Datos aún no llegaron → mostrar secciones skeleton
     if (!latestProducts.length) {
