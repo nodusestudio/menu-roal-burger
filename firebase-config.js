@@ -1,6 +1,6 @@
 window.FIREBASE_CONFIG = {
     apiKey: 'AIzaSyCinNZVhxL4ijOoZGsvoIvCgR7bHzsl668',
-    authDomain: 'roal-burger-menu.firebaseapp.com',
+    authDomain: 'auth.roalburger.com',
     projectId: 'roal-burger-menu',
     storageBucket: 'roal-burger-menu.firebasestorage.app',
     messagingSenderId: '659635134153',
@@ -27,7 +27,10 @@ function initFirebaseServices() {
 
     // Emuladores locales (solo cuando el sitio se sirve desde localhost/127.0.0.1, ej. con
     // `firebase emulators:start`) — nunca se activa en producción (roalburger.com / Vercel).
-    const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    // ?forceProd=1 en la URL permite probar en localhost contra los datos reales (solo lectura,
+    // util para ver el catalogo/productos reales sin tener que sembrar el emulador).
+    const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+        && !new URLSearchParams(window.location.search).has('forceProd');
     if (isLocalHost && !window._firebaseEmulatorsConnected) {
         window._firebaseEmulatorsConnected = true;
         try { firebase.firestore().useEmulator('localhost', 8080); } catch (_e) {}

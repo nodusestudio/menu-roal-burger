@@ -1,4 +1,5 @@
 .vercel
+.firebase/
 .env*.local
 node_modules/
 .venv/

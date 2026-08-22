@@ -15,6 +15,7 @@ const DELIVERY_FEE_AMOUNT = 6000;
 const PROMO_2X1_INCREMENTO_AMOUNT = 2000;
 const MAX_CUSTOMER_SAVED_ADDRESSES = 5;
 const CUSTOMER_PROFILE_STORAGE_KEY = 'roalburger-customer-profile-v1';
+const PENDING_GOOGLE_STORAGE_KEY = 'roalburger-pending-google-v1';
 const ALLOW_ORDERS_OUTSIDE_SCHEDULE_FOR_TESTS = false;
 const TEMP_CLOSURE_ACTIVE = false;
 const TEMP_CLOSURE_MESSAGE = 'Estamos cerrados momentáneamente por adecuaciones en el local. ¡Pronto volvemos con todo!';
@@ -295,6 +296,10 @@ function _popModalState() {
     }
 }
 let activeCustomerProfile = null;
+// Identidad de Google capturada antes de que el cliente tenga un documento clientes/phone_X
+// (primera visita, sin registro previo). Solo sirve para prellenar el nombre en el checkout y
+// para vincular Google automaticamente cuando el pedido se confirma (ver createOrderFromCart).
+let pendingGoogleIdentity = null;
 let customerAuthUI = null;
 let customerRegisterUI = null;
 let customerConsentDocumentUI = null;
@@ -514,6 +519,36 @@ function persistCustomerProfile(profile) {
     window.localStorage.setItem(CUSTOMER_PROFILE_STORAGE_KEY, JSON.stringify(profile));
 }
 
+function loadStoredPendingGoogleIdentity() {
+    try {
+        const raw = window.localStorage.getItem(PENDING_GOOGLE_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        const googleUid = String(parsed?.googleUid || '').trim();
+        if (!googleUid) return null;
+        return {
+            googleUid,
+            googleEmail: String(parsed?.googleEmail || '').trim(),
+            googleName: String(parsed?.googleName || '').trim()
+        };
+    } catch (error) {
+        return null;
+    }
+}
+
+function persistPendingGoogleIdentity(identity) {
+    if (!identity) {
+        window.localStorage.removeItem(PENDING_GOOGLE_STORAGE_KEY);
+        return;
+    }
+    window.localStorage.setItem(PENDING_GOOGLE_STORAGE_KEY, JSON.stringify(identity));
+}
+
+function clearPendingGoogleIdentity() {
+    pendingGoogleIdentity = null;
+    persistPendingGoogleIdentity(null);
+}
+
 function updateCustomerSessionUI() {
     const button = document.getElementById('customerSessionButton');
     const kicker = document.getElementById('customerSessionKicker');
@@ -539,10 +574,12 @@ function updateCustomerSessionUI() {
         button.classList.remove('is-authenticated');
         kicker.textContent = 'Mi cuenta';
         label.textContent = 'Iniciar sesion';
+        // Banner de "Descuentos exclusivos / Registrate" desactivado a pedido — se deja oculto
+        // siempre (antes se mostraba a cualquier invitado sin sesion).
         if (guestRegisterBanner instanceof HTMLElement) {
-            guestRegisterBanner.hidden = false;
+            guestRegisterBanner.hidden = true;
         }
-        document.body.classList.add('has-guest-register-banner');
+        document.body.classList.remove('has-guest-register-banner');
         document.body.classList.remove('has-auth-nav');
     }
 }
@@ -625,6 +662,10 @@ function setActiveCustomerProfile(profile) {
     persistCustomerProfile(activeCustomerProfile);
     if (activeCustomerProfile) {
         _applyServerSideCouponLocks(activeCustomerProfile);
+        // Cualquier sesion real (login por telefono/PIN, registro, Google ya vinculado) invalida
+        // una identidad de Google "pendiente" que hubiera quedado de una visita anterior — nunca
+        // debe intentar auto-vincularse a un pedido de otra persona en el mismo dispositivo.
+        clearPendingGoogleIdentity();
     }
     updateCustomerSessionUI();
     syncCustomerProfileRealtimeStreams();
@@ -638,6 +679,7 @@ function setActiveCustomerProfile(profile) {
 function clearActiveCustomerProfile() {
     activeCustomerProfile = null;
     persistCustomerProfile(null);
+    clearPendingGoogleIdentity();
     updateCustomerSessionUI();
     syncCustomerProfileRealtimeStreams();
     customerProfileOrdersState = [];
@@ -1866,52 +1908,121 @@ async function fetchClientProfileByGoogleUid(googleUid) {
     return normalizeCustomerProfile({ id: doc.id, ...doc.data() }, doc.id);
 }
 
-async function _signInWithGooglePopup() {
+// El popup de Google (signInWithPopup) resulto poco confiable en navegadores actuales (Chrome,
+// Edge y Brave por igual): el SDK de Firebase detecta el cierre del popup sondeando
+// `window.closed`, y las restricciones de Cross-Origin-Opener-Policy que ya aplican varios sitios
+// (incluido el propio accounts.google.com) bloquean ese sondeo, dejando el popup colgado sin
+// completar el login. La alternativa oficial de Google/Firebase para este caso es navegacion
+// completa (signInWithRedirect): se sale de la pagina a la pantalla de Google y se vuelve ya
+// autenticado, sin ventana emergente que pueda fallar.
+async function _startGoogleRedirect() {
     const auth = getPublicFirebaseAuth();
     if (!auth || typeof firebase?.auth?.GoogleAuthProvider !== 'function') {
         throw new Error('El inicio de sesion con Google no esta disponible en este momento.');
     }
     const provider = new firebase.auth.GoogleAuthProvider();
-    const result = await auth.signInWithPopup(provider);
-    const googleUid = result?.user?.uid || '';
-    const googleEmail = result?.user?.email || '';
-    try { await auth.signOut(); } catch (_) {}
-    if (!googleUid) {
-        throw new Error('No pudimos verificar tu cuenta de Google. Intenta de nuevo.');
-    }
-    return { googleUid, googleEmail };
+    await auth.signInWithRedirect(provider);
 }
 
-async function linkGoogleAccount() {
-    if (!activeCustomerProfile?.customerPhoneDigits) {
-        throw new Error('Inicia sesion con tu numero de WhatsApp antes de vincular Google.');
+// Se ejecuta una sola vez al cargar la pagina. Si el usuario acaba de volver de
+// signInWithRedirect, auth.getRedirectResult() devuelve el usuario de Google; si es una carga
+// normal (sin redireccion pendiente), devuelve un resultado vacio y esta funcion no hace nada.
+// Como el login con Google (boton "Continuar con Google", solo visible sin sesion) y vincular
+// Google (boton "Vincular con Google", solo visible con sesion activa) son mutuamente excluyentes
+// en la UI, `activeCustomerProfile` ya presente al volver es suficiente para saber cual de los
+// dos intentos era, sin necesidad de guardar una bandera aparte antes de salir de la pagina.
+async function _consumeGoogleRedirectResult() {
+    // Diagnostico temporal: localStorage sobrevive a la recarga/navegacion (a diferencia de la
+    // consola o del texto en pantalla), asi que deja ver que paso en el viaje de ida y vuelta a
+    // Google sin depender de configuracion de DevTools.
+    const debugMarker = localStorage.getItem('rb_google_debug');
+    if (debugMarker) localStorage.removeItem('rb_google_debug');
+
+    const auth = getPublicFirebaseAuth();
+    if (!auth) {
+        if (debugMarker) alert('[Diagnostico Google] Volviste de intentar el login, pero Firebase Auth no esta disponible en esta carga.');
+        return;
     }
 
-    const { googleUid, googleEmail } = await _signInWithGooglePopup();
-
-    const existing = await fetchClientProfileByGoogleUid(googleUid);
-    if (existing && existing.customerPhoneDigits !== activeCustomerProfile.customerPhoneDigits) {
-        throw new Error('Esa cuenta de Google ya esta vinculada a otro perfil.');
+    let result;
+    try {
+        result = await auth.getRedirectResult();
+    } catch (error) {
+        if (debugMarker) alert(`[Diagnostico Google] getRedirectResult() fallo: ${error.code || ''} ${error.message || error}`);
+        openCustomerAuthModal();
+        if (customerAuthUI?.feedback) {
+            customerAuthUI.feedback.textContent = error.message || 'No se pudo iniciar sesion con Google.';
+            customerAuthUI.feedback.className = 'support-feedback support-feedback--error';
+        }
+        return;
     }
 
-    const db = getPublicFirebaseDb();
-    const clientId = `phone_${activeCustomerProfile.customerPhoneDigits}`;
+    const googleUid = result?.user?.uid || '';
+    if (!googleUid) {
+        if (debugMarker) alert('[Diagnostico Google] Volviste de un intento de redirect, pero getRedirectResult() no trajo ningun usuario (vacio). Por eso no se completa el login.');
+        return; // Carga normal, no veniamos de un redirect de Google
+    }
+    if (debugMarker) alert(`[Diagnostico Google] Exito: volviste con la cuenta ${result.user.email || result.user.uid}`);
+
+    const googleEmail = result?.user?.email || '';
+    const googleName = result?.user?.displayName || '';
+    try { await auth.signOut(); } catch (_) {}
+
+    if (activeCustomerProfile?.customerPhoneDigits) {
+        await _completeGoogleLink(googleUid, googleEmail);
+        return;
+    }
+    await _completeGoogleLogin(googleUid, googleEmail, googleName);
+}
+
+// Escribe la vinculacion Google <-> cliente: el doc googleUid/googleEmail en clientes/{clientId}
+// y el puntero clientId en google_links/{googleUid} (usado por fetchClientProfileByGoogleUid para
+// buscar el perfil por Google sin sesion). Si habia un link con otro googleUid (cambio de cuenta
+// de Google, o primera vinculacion automatica en el checkout), el anterior se limpia para no
+// dejar punteros huerfanos.
+async function _writeGoogleLink(db, clientId, googleUid, googleEmail, previousGoogleUid = '') {
     const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
     await clientRef.set({
         googleUid,
         googleEmail,
         googleLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
-    // Puntero googleUid -> clientId para poder buscar el perfil por Google sin sesion (ver
-    // fetchClientProfileByGoogleUid). Si ya existia un link con otro googleUid (cambio de
-    // cuenta de Google), el anterior se limpia para no dejar punteros huerfanos.
-    if (activeCustomerProfile.googleUid && activeCustomerProfile.googleUid !== googleUid) {
-        await db.collection(GOOGLE_LINKS_COLLECTION).doc(activeCustomerProfile.googleUid).delete().catch(() => {});
+    if (previousGoogleUid && previousGoogleUid !== googleUid) {
+        await db.collection(GOOGLE_LINKS_COLLECTION).doc(previousGoogleUid).delete().catch(() => {});
     }
     await db.collection(GOOGLE_LINKS_COLLECTION).doc(googleUid).set({ clientId });
+}
 
-    setActiveCustomerProfile({ ...activeCustomerProfile, googleUid, googleEmail });
-    return googleEmail;
+// Se llama al confirmar la vinculacion desde el perfil ("Vincular con Google"). Solo dispara la
+// redireccion — la vinculacion en si ocurre al volver, en _completeGoogleLink (ver
+// _consumeGoogleRedirectResult), porque signInWithRedirect saca al usuario de la pagina.
+async function linkGoogleAccount() {
+    if (!activeCustomerProfile?.customerPhoneDigits) {
+        throw new Error('Inicia sesion con tu numero de WhatsApp antes de vincular Google.');
+    }
+    await _startGoogleRedirect();
+}
+
+async function _completeGoogleLink(googleUid, googleEmail) {
+    try {
+        const existing = await fetchClientProfileByGoogleUid(googleUid);
+        if (existing && existing.customerPhoneDigits !== activeCustomerProfile.customerPhoneDigits) {
+            throw new Error('Esa cuenta de Google ya esta vinculada a otro perfil.');
+        }
+
+        const db = getPublicFirebaseDb();
+        const clientId = `phone_${activeCustomerProfile.customerPhoneDigits}`;
+        await _writeGoogleLink(db, clientId, googleUid, googleEmail, activeCustomerProfile.googleUid || '');
+
+        setActiveCustomerProfile({ ...activeCustomerProfile, googleUid, googleEmail });
+        openCustomerAuthModal();
+    } catch (error) {
+        openCustomerAuthModal();
+        if (customerAuthUI?.feedback) {
+            customerAuthUI.feedback.textContent = error.message || 'No se pudo vincular la cuenta de Google.';
+            customerAuthUI.feedback.className = 'support-feedback support-feedback--error';
+        }
+    }
 }
 
 async function unlinkGoogleAccount() {
@@ -1929,16 +2040,26 @@ async function unlinkGoogleAccount() {
     setActiveCustomerProfile({ ...activeCustomerProfile, googleUid: '', googleEmail: '' });
 }
 
+// Boton principal "Continuar con Google". Solo dispara la redireccion — el resultado (login
+// directo si ya existia, o identidad pendiente si es la primera vez) se resuelve al volver, en
+// _completeGoogleLogin (ver _consumeGoogleRedirectResult).
 async function loginWithGoogle() {
-    const { googleUid } = await _signInWithGooglePopup();
+    await _startGoogleRedirect();
+}
+
+async function _completeGoogleLogin(googleUid, googleEmail, googleName) {
     const profile = await fetchClientProfileByGoogleUid(googleUid);
     if (!profile) {
-        const notFoundError = new Error('No encontramos una cuenta vinculada a este correo de Google. Registrate primero con tu numero de WhatsApp y luego vincula Google desde tu perfil.');
-        notFoundError.code = 'GOOGLE_ACCOUNT_NOT_LINKED';
-        throw notFoundError;
+        // Primera vez que este Google entra: todavia no hay clientes/phone_X (no sabemos el
+        // telefono). Se guarda como identidad "pendiente" para prellenar el checkout y vincular
+        // automaticamente en cuanto el pedido se confirme (ver createOrderFromCart).
+        pendingGoogleIdentity = { googleUid, googleEmail, googleName };
+        persistPendingGoogleIdentity(pendingGoogleIdentity);
+        openCustomerAuthModal();
+        return;
     }
     setActiveCustomerProfile(profile);
-    closeCustomerAuthModal();
+    openCustomerAuthModal();
 }
 
 async function saveCustomerProfile(profileInput = {}) {
@@ -3492,28 +3613,42 @@ function openCustomerAuthModal() {
         : `
             <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Iniciar sesion o registrarte">
                 <p class="support-modal-kicker">Mi cuenta</p>
-                <h3 class="support-modal-title">Inicia sesion</h3>
-                <p class="support-modal-text">Escribe tu numero de WhatsApp y tu contrasena de 6 digitos para abrir tu perfil.</p>
-                <label class="support-field">
-                    <span>Ingresar con WhatsApp</span>
-                    <input type="tel" id="customerLookupPhone" placeholder="Escribe tu numero de WhatsApp">
-                </label>
-                <label class="support-field">
-                    <span>Contrasena de 6 digitos</span>
-                    <input type="password" id="customerLookupPin" inputmode="numeric" maxlength="6" placeholder="Escribe tu contrasena">
-                </label>
+                ${pendingGoogleIdentity ? `
+                <h3 class="support-modal-title">¡Listo${pendingGoogleIdentity.googleName ? `, ${escapeHtml(pendingGoogleIdentity.googleName.split(' ')[0])}` : ''}!</h3>
+                <p class="support-modal-text">Ya puedes navegar y armar tu pedido. Te pediremos tu número de WhatsApp solo al confirmarlo, para avisarte cuando salga.</p>
                 <p class="support-feedback" id="customerAuthFeedback" role="alert" aria-live="polite"></p>
                 <div class="support-actions stack">
-                    <button type="button" class="support-send-btn" id="customerLookupButton">Entrar</button>
-                    <div class="support-actions split">
-                        <button type="button" class="support-secondary-btn" id="customerForgotPasswordButton">Olvido contrasena</button>
-                        <button type="button" class="support-secondary-btn" id="customerRegisterToggle">Registrarse</button>
-                    </div>
-                    <p class="support-modal-text" style="text-align:center;margin:0.4rem 0 0;opacity:.7;">o</p>
-                    <button type="button" class="support-secondary-btn" id="customerGoogleLoginButton" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+                    <button type="button" class="support-secondary-btn" id="customerShowPhoneLoginButton" style="opacity:.75;">¿Prefieres tu número de WhatsApp?</button>
+                    <button type="button" class="support-secondary-btn" id="customerCancelPendingGoogleButton" style="opacity:.6;">No era yo / usar otra cuenta</button>
+                </div>
+                ` : `
+                <h3 class="support-modal-title">Entra en un toque</h3>
+                <p class="support-modal-text">Continua con tu cuenta de Google, sin llenar formularios. Tu numero de WhatsApp solo se pide una vez, al confirmar tu primer pedido.</p>
+                <p class="support-feedback" id="customerAuthFeedback" role="alert" aria-live="polite"></p>
+                <div class="support-actions stack">
+                    <button type="button" class="support-send-btn" id="customerGoogleLoginButton" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;">
                         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.47c-.28 1.5-1.13 2.78-2.4 3.63v3.02h3.88c2.27-2.09 3.57-5.17 3.57-8.84z"/><path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.95-2.9l-3.88-3.02c-1.08.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.27v3.11C3.25 21.3 7.31 24 12 24z"/><path fill="#FBBC05" d="M5.27 14.27a7.2 7.2 0 010-4.54V6.62H1.27a12 12 0 000 10.76l4-3.11z"/><path fill="#EA4335" d="M12 4.77c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.27 6.62l4 3.11C6.22 6.88 8.87 4.77 12 4.77z"/></svg>
                         Continuar con Google
                     </button>
+                    <button type="button" class="support-secondary-btn" id="customerShowPhoneLoginButton" style="opacity:.75;">¿Prefieres tu número de WhatsApp?</button>
+                </div>
+                `}
+                <div id="customerPhoneLoginPanel" hidden>
+                    <label class="support-field">
+                        <span>Ingresar con WhatsApp</span>
+                        <input type="tel" id="customerLookupPhone" placeholder="Escribe tu numero de WhatsApp">
+                    </label>
+                    <label class="support-field">
+                        <span>Contrasena de 6 digitos</span>
+                        <input type="password" id="customerLookupPin" inputmode="numeric" maxlength="6" placeholder="Escribe tu contrasena">
+                    </label>
+                    <div class="support-actions stack">
+                        <button type="button" class="support-send-btn" id="customerLookupButton">Entrar</button>
+                        <div class="support-actions split">
+                            <button type="button" class="support-secondary-btn" id="customerForgotPasswordButton">Olvido contrasena</button>
+                            <button type="button" class="support-secondary-btn" id="customerRegisterToggle">Registrarse</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
@@ -3533,6 +3668,9 @@ function openCustomerAuthModal() {
         reviewAddressesButton: modal.querySelector('#customerReviewAddressesButton'),
         deleteAccountButton: modal.querySelector('#customerDeleteAccountButton'),
         googleLoginButton: modal.querySelector('#customerGoogleLoginButton'),
+        showPhoneLoginButton: modal.querySelector('#customerShowPhoneLoginButton'),
+        phoneLoginPanel: modal.querySelector('#customerPhoneLoginPanel'),
+        cancelPendingGoogleButton: modal.querySelector('#customerCancelPendingGoogleButton'),
         googleLinkButton: modal.querySelector('#customerGoogleLinkButton'),
         tabButtons: Array.from(modal.querySelectorAll('[data-profile-tab]')),
         tabPanels: Array.from(modal.querySelectorAll('[data-profile-panel]')),
@@ -3551,6 +3689,17 @@ function openCustomerAuthModal() {
     customerAuthUI.lookupButton?.addEventListener('click', submitCustomerLookup);
     customerAuthUI.forgotPasswordButton?.addEventListener('click', requestCustomerPasswordReset);
     customerAuthUI.registerToggle?.addEventListener('click', () => openCustomerRegisterModal({ customerPhone: customerAuthUI.lookupPhone?.value || '' }));
+    customerAuthUI.showPhoneLoginButton?.addEventListener('click', () => {
+        const panel = customerAuthUI.phoneLoginPanel;
+        const btn = customerAuthUI.showPhoneLoginButton;
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+        if (btn) btn.style.display = panel.hidden ? '' : 'none';
+    });
+    customerAuthUI.cancelPendingGoogleButton?.addEventListener('click', () => {
+        clearPendingGoogleIdentity();
+        openCustomerAuthModal();
+    });
     customerAuthUI.reviewConsentButton?.addEventListener('click', openCustomerConsentDocument);
     const openEditProfile = () => {
         const currentProfile = activeCustomerProfile ? { ...activeCustomerProfile } : {};
@@ -3574,11 +3723,27 @@ function openCustomerAuthModal() {
         const btn = customerAuthUI.googleLoginButton;
         const feedback = customerAuthUI.feedback;
         if (btn) { btn.disabled = true; }
+        // Diagnostico temporal: deja en pantalla, sin necesidad de DevTools, en que paso
+        // exactamente se traba el inicio de sesion con Google.
+        if (feedback) {
+            feedback.textContent = 'Paso 1/3: revisando Firebase Auth...';
+            feedback.className = 'support-feedback';
+        }
         try {
-            await loginWithGoogle();
+            const auth = getPublicFirebaseAuth();
+            if (!auth || typeof firebase?.auth?.GoogleAuthProvider !== 'function') {
+                throw new Error('Paso 1 fallo: Firebase Auth no esta disponible.');
+            }
+            if (feedback) feedback.textContent = 'Paso 2/3: preparando redireccion...';
+            const provider = new firebase.auth.GoogleAuthProvider();
+            if (feedback) feedback.textContent = 'Paso 3/3: saliendo hacia Google...';
+            localStorage.setItem('rb_google_debug', String(Date.now()));
+            await auth.signInWithRedirect(provider);
+            if (feedback) feedback.textContent = 'signInWithRedirect no lanzo la navegacion (esto no deberia verse).';
         } catch (error) {
+            console.error('[Google login] fallo signInWithRedirect:', error);
             if (feedback) {
-                feedback.textContent = error.message || 'No se pudo iniciar sesion con Google.';
+                feedback.textContent = `${error.code || ''} ${error.message || 'No se pudo iniciar sesion con Google.'}`.trim();
                 feedback.className = 'support-feedback support-feedback--error';
             }
         } finally {
@@ -3603,8 +3768,9 @@ function openCustomerAuthModal() {
         }
         if (btn) { btn.disabled = true; }
         try {
+            // Dispara la redireccion a Google; la pagina se recarga al volver, asi que nada
+            // despues de este await llega a ejecutarse en el caso exitoso (ver _completeGoogleLink).
             await linkGoogleAccount();
-            openCustomerAuthModal();
         } catch (error) {
             if (feedback) {
                 feedback.textContent = error.message || 'No se pudo vincular la cuenta de Google.';
@@ -4743,6 +4909,33 @@ async function createOrderFromCart(customerInfo = {}) {
             totalOrders: Number(activeCustomerProfile.totalOrders || 0) + 1,
             totalSpent: Number(activeCustomerProfile.totalSpent || 0) + total
         });
+    } else if (!activeCustomerProfile && pendingGoogleIdentity) {
+        // Identidad de Google pendiente (entro con Google antes de saber su telefono): se vincula
+        // automaticamente SOLO si el numero que acaba de escribir en el checkout no es ya una
+        // cuenta reclamada por otra persona (tiene PIN) o vinculada a otra cuenta de Google —
+        // evita que alguien quede vinculado a la cuenta de otro por escribir un numero ajeno.
+        // Nunca debe bloquear el pedido, que ya se guardo bien arriba, si algo aqui falla.
+        try {
+            const clientId = buildClientDocumentId({ customerPhoneDigits });
+            const clientDoc = await db.collection(CLIENTS_COLLECTION).doc(clientId).get();
+            const clientData = clientDoc.exists ? clientDoc.data() : {};
+            const alreadyClaimed = Boolean(clientData.passwordHash);
+            const linkedToOther = Boolean(clientData.googleUid) && clientData.googleUid !== pendingGoogleIdentity.googleUid;
+            if (!alreadyClaimed && !linkedToOther) {
+                await _writeGoogleLink(db, clientId, pendingGoogleIdentity.googleUid, pendingGoogleIdentity.googleEmail, clientData.googleUid || '');
+                setActiveCustomerProfile({
+                    id: clientId,
+                    ...clientData,
+                    customerName,
+                    customerPhone,
+                    customerPhoneDigits,
+                    googleUid: pendingGoogleIdentity.googleUid,
+                    googleEmail: pendingGoogleIdentity.googleEmail
+                });
+            }
+        } catch (_googleLinkErr) {
+            // Silently ignore — order was already saved successfully
+        }
     }
 
     return {
@@ -5689,7 +5882,7 @@ function openCheckoutInfoModal() {
             ${profile ? '' : `
             <label class="support-field">
                 <span>Nombre de quien recibe</span>
-                <input type="text" id="checkoutCustomerName" placeholder="Escribe el nombre">
+                <input type="text" id="checkoutCustomerName" placeholder="Escribe el nombre" value="${pendingGoogleIdentity?.googleName ? escapeHtml(pendingGoogleIdentity.googleName) : ''}">
             </label>`}
             <label class="support-field">
                 <span>Como deseas recibir tu pedido</span>
@@ -6086,6 +6279,12 @@ function renderCartUI() {
     if (cartUI.pill) {
         cartUI.pill.classList.toggle('is-visible', totalItems > 0);
     }
+    // Badge del icono de carrito en la barra superior (Fase 5, reemplaza la pildora flotante).
+    const topCartBadge = document.getElementById('topCartBadge');
+    if (topCartBadge) {
+        topCartBadge.textContent = String(totalItems);
+        topCartBadge.hidden = totalItems === 0;
+    }
     if (cartUI.pillLabel) {
         cartUI.pillLabel.textContent = `${totalItems} producto${totalItems === 1 ? '' : 's'}`;
     }
@@ -6479,7 +6678,9 @@ function initCartUI() {
         </span>
         <span class="cart-pill-total">$0</span>
     `;
-    document.body.appendChild(pill);
+    // La pildora flotante ya no se agrega al DOM (Fase 5: el contador de productos ahora vive en
+    // el icono de carrito de la barra superior, #topCartBadge) — se sigue construyendo el objeto
+    // "pill" y sus referencias por si algo mas los usa, pero nunca queda visible.
 
     const overlay = document.createElement('div');
     overlay.className = 'cart-overlay';
@@ -9693,6 +9894,7 @@ async function renderPublicFeaturedFromAdmin() {
             openPromoScreen();
         }
         renderHomeScreen();
+        refreshCatalogScreenIfNeeded();
     });
 
     categoriesUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('categorias'), (snapshot) => {
@@ -9736,6 +9938,7 @@ async function renderPublicFeaturedFromAdmin() {
         renderCategoryExplorer();
         updatePromoModalContent();
         renderHomeScreen();
+        refreshCatalogScreenIfNeeded();
     });
 
     buttonsUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('botones'), (snapshot) => {
@@ -9819,6 +10022,20 @@ function closeDrawerMenu() {
     if (overlay) {
         overlay.classList.remove('show');
     }
+}
+
+// Panel de secciones (Combos/Cupones/Ayuda) que abre el ☰ de la barra superior — reemplaza a la
+// barra inferior retirada. Calcado del mismo patron open/close de openDrawerMenu/closeDrawerMenu.
+function openSectionsDrawer() {
+    document.getElementById('sectionsDrawer')?.classList.add('open');
+    const overlay = document.getElementById('sectionsDrawerOverlay');
+    if (overlay) overlay.hidden = false;
+}
+
+function closeSectionsDrawer() {
+    document.getElementById('sectionsDrawer')?.classList.remove('open');
+    const overlay = document.getElementById('sectionsDrawerOverlay');
+    if (overlay) overlay.hidden = true;
 }
 
 function setupMenuNavigation() {
@@ -10476,10 +10693,11 @@ function maybeShowOpeningAd() {
     if (!_openingAdConfig.image_url) return;
     if (_openingAdSeenToday()) return;
 
-    const homeScreen = document.getElementById('homeScreen');
+    // El home viejo quedo retirado — el catalogo continuo (Menú) es la pantalla base ahora.
+    const menuScreen = document.getElementById('menuCarouselScreen');
     const splashEl = document.getElementById('splashScreen');
     const splashIsVisible = Boolean(splashEl && !splashEl.dataset.hidden);
-    if (splashIsVisible || !homeScreen || homeScreen.hidden) return;
+    if (splashIsVisible || !menuScreen || menuScreen.hidden) return;
 
     const overlay = document.getElementById('openingAdOverlay');
     const image = document.getElementById('openingAdImage');
@@ -11131,7 +11349,7 @@ document.addEventListener('click', (e) => {
 }, true);
 
 // ── Image Lightbox — overlay creado dinámicamente (sin depender de HTML/CSS externos) ─
-function openImageLightbox(src, alt) {
+function openImageLightbox(src, alt, extra) {
     const existing = document.getElementById('_roalLightbox');
     if (existing) existing.remove();
 
@@ -11145,7 +11363,7 @@ function openImageLightbox(src, alt) {
     img.src = src;
     img.alt = alt || '';
     img.draggable = false;
-    img.style.cssText = 'max-width:92vw;max-height:76vh;width:auto;height:auto;' +
+    img.style.cssText = 'max-width:92vw;max-height:66vh;width:auto;height:auto;' +
         'object-fit:contain;border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,0.65);' +
         'pointer-events:none;-webkit-user-select:none;user-select:none;display:block;';
 
@@ -11154,6 +11372,33 @@ function openImageLightbox(src, alt) {
     caption.style.cssText = 'color:rgba(255,255,255,0.88);font-family:Oswald,sans-serif;' +
         'font-size:0.95rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;' +
         'margin-top:14px;text-align:center;max-width:88vw;line-height:1.3;pointer-events:none;';
+
+    // Info adicional (descripcion, precio, boton de agregar) — mismo contenido de la tarjeta del
+    // catalogo, para que el visor ampliado no muestre solo la foto y el nombre.
+    let descEl = null;
+    let priceEl = null;
+    let addBtn = null;
+    if (extra?.description) {
+        descEl = document.createElement('p');
+        descEl.textContent = extra.description;
+        descEl.style.cssText = 'color:rgba(255,255,255,0.65);font-family:Roboto,sans-serif;' +
+            'font-size:0.85rem;line-height:1.4;margin-top:8px;text-align:center;max-width:88vw;pointer-events:none;';
+    }
+    if (extra?.price) {
+        priceEl = document.createElement('p');
+        priceEl.textContent = extra.price;
+        priceEl.style.cssText = 'color:#ff8c3c;font-family:Oswald,sans-serif;font-size:1.15rem;' +
+            'font-weight:700;margin-top:10px;text-align:center;pointer-events:none;';
+    }
+    if (typeof extra?.onAdd === 'function') {
+        addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.textContent = 'Agregar al carrito';
+        addBtn.style.cssText = 'margin-top:16px;padding:12px 32px;border:none;border-radius:999px;' +
+            'background:linear-gradient(135deg,#ff5200,#e83000);color:#fff;font-family:Oswald,sans-serif;' +
+            'font-size:0.95rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;' +
+            'cursor:pointer;-webkit-tap-highlight-color:transparent;';
+    }
 
     const closeBtn = document.createElement('button');
     closeBtn.innerHTML = '&#x2715;';
@@ -11166,10 +11411,22 @@ function openImageLightbox(src, alt) {
 
     ov.appendChild(img);
     ov.appendChild(caption);
+    if (descEl) ov.appendChild(descEl);
+    if (priceEl) ov.appendChild(priceEl);
+    if (addBtn) ov.appendChild(addBtn);
     ov.appendChild(closeBtn);
     document.body.appendChild(ov);
 
     const close = () => ov.remove();
+
+    if (addBtn) {
+        addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            extra.onAdd();
+            close();
+        });
+        addBtn.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+    }
 
     // Delay el handler de click para evitar que el click sintético de Android
     // (que se genera justo cuando el overlay aparece) lo cierre inmediatamente.
@@ -11190,7 +11447,7 @@ function openImageLightbox(src, alt) {
     document.addEventListener('keydown', onKey);
 }
 
-function _bindLightboxTap(wrapEl, imgEl) {
+function _bindLightboxTap(wrapEl, imgEl, extra) {
     wrapEl.style.cursor = 'zoom-in';
     let _sx = 0, _sy = 0, _tapped = false;
     wrapEl.addEventListener('touchstart', e => {
@@ -11203,12 +11460,12 @@ function _bindLightboxTap(wrapEl, imgEl) {
         if (dx < 12 && dy < 12) {
             _tapped = true;
             setTimeout(() => { _tapped = false; }, 600);
-            openImageLightbox(imgEl.src, imgEl.alt);
+            openImageLightbox(imgEl.src, imgEl.alt, extra);
         }
     }, { passive: true });
     wrapEl.addEventListener('click', () => {
         if (_tapped) return;
-        openImageLightbox(imgEl.src, imgEl.alt);
+        openImageLightbox(imgEl.src, imgEl.alt, extra);
     });
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -11438,18 +11695,33 @@ function renderCombosCarousels() {
 
 // ── Pantalla Menú con carruseles por categoría ──────────────────────────────
 
+// Los listeners de productos/categorias pueden actualizar despues de que el catalogo ya se
+// abrio (p. ej. la app ahora abre directo en Menú al cargar, antes de que Firestore responda) —
+// si la pantalla esta visible, se vuelve a pintar con los datos que acaban de llegar.
+function refreshCatalogScreenIfNeeded() {
+    const screen = document.getElementById('menuCarouselScreen');
+    if (!screen || screen.hidden) return;
+    renderCatalogChips();
+    renderMenuCarousels();
+    observeCatalogSections();
+}
+
 function openMenuCarouselScreen() {
     const screen = document.getElementById('menuCarouselScreen');
     if (!screen) return;
+    console.log('[Catalogo] openMenuCarouselScreen() — categorias:', (activeCategoryMeta || []).length, 'productos:', (latestProducts || []).length);
     _enterScreen('menuCarouselScreen');
     screen.hidden = false;
     screen.scrollTop = 0;
+    renderCatalogChips();
     renderMenuCarousels();
+    observeCatalogSections();
 }
 
 function _makeMenuCarouselCard(product) {
     const card = document.createElement('div');
     card.className = 'product-card-mobile';
+    card.dataset.productId = product.id || '';
 
     const wrap = document.createElement('div');
     wrap.className = 'card-image-wrapper';
@@ -11460,27 +11732,55 @@ function _makeMenuCarouselCard(product) {
     img.loading = 'lazy';
     img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
     wrap.appendChild(img);
-    _bindLightboxTap(wrap, img);
 
     const nameEl = document.createElement('p');
     nameEl.className = 'combo-card-name';
     nameEl.textContent = product.nombre || '';
+
+    // Misma descripcion que ya usa el agente de IA para describir el producto (functions/agent/
+    // tools.js, campo `descripcion`) — ahora tambien se muestra en la tarjeta del catalogo.
+    const description = String(product.descripcion || product.description || '').trim();
+    const descEl = document.createElement('p');
+    descEl.className = 'pcm-description';
+    descEl.textContent = description;
 
     const price = resolveProductDisplayPrice(product);
     const priceEl = document.createElement('p');
     priceEl.className = 'menu-carousel-card-price';
     priceEl.textContent = price ? '$' + price.toLocaleString('es-CO') : '';
 
+    const addToCart = () => startProductOrderFlow(product.nombre || '', product.categoria || '', 'menu-carousel-btn');
+
+    // El visor de imagen ampliada (lightbox) tambien muestra descripcion, precio y un boton de
+    // agregar — no solo la foto y el nombre — para que "ampliar" traiga toda la info consigo.
+    _bindLightboxTap(wrap, img, {
+        description: description || undefined,
+        price: price ? '$' + price.toLocaleString('es-CO') : undefined,
+        onAdd: addToCart
+    });
+
+    // Fila inferior tipo "apps de cadenas grandes": nombre+descripcion+precio agrupados a la
+    // izquierda, boton compacto de agregar a la derecha (en vez del boton ancho "Lo Quiero" de antes).
+    const infoText = document.createElement('div');
+    infoText.className = 'pcm-info-text';
+    infoText.appendChild(nameEl);
+    if (description) infoText.appendChild(descEl);
+    if (price) infoText.appendChild(priceEl);
+
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'mobile-order-btn';
-    btn.textContent = '¡Lo Quiero! 🔥';
-    btn.addEventListener('click', () => startProductOrderFlow(product.nombre || '', product.categoria || '', 'menu-carousel-btn'));
+    btn.className = 'pcm-add-btn';
+    btn.setAttribute('aria-label', 'Agregar ' + (product.nombre || 'producto'));
+    btn.textContent = '+';
+    btn.addEventListener('click', addToCart);
+
+    const infoRow = document.createElement('div');
+    infoRow.className = 'pcm-info-row';
+    infoRow.appendChild(infoText);
+    infoRow.appendChild(btn);
 
     card.appendChild(wrap);
-    card.appendChild(nameEl);
-    if (price) card.appendChild(priceEl);
-    card.appendChild(btn);
+    card.appendChild(infoRow);
     return card;
 }
 
@@ -11491,6 +11791,7 @@ function renderMenuCarousels() {
 
     const cats = activeCategoryMeta || [];
     const allProds = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
+    console.log('[Catalogo] renderMenuCarousels() — cats:', cats.length, 'allProds:', allProds.length, cats.map(c => c.key));
 
     // Datos aún no llegaron → mostrar secciones skeleton
     if (!latestProducts.length) {
@@ -11519,22 +11820,80 @@ function renderMenuCarousels() {
 
         const section = document.createElement('section');
         section.className = 'combos-carousel-section';
+        section.id = 'cat-section-' + cat.key;
 
         const title = document.createElement('h3');
         title.className = 'combos-section-title';
         title.textContent = cat.name;
 
-        const carousel = document.createElement('div');
-        carousel.className = 'mobile-carousel';
+        const grid = document.createElement('div');
+        grid.className = 'catalog-section-grid';
 
-        products.forEach(p => carousel.appendChild(p.promo2x1?.activo === true ? _makeProductPromo2x1Card(p) : _makeMenuCarouselCard(p)));
+        products.forEach(p => grid.appendChild(p.promo2x1?.activo === true ? _makeProductPromo2x1Card(p) : _makeMenuCarouselCard(p)));
 
         section.appendChild(title);
-        section.appendChild(carousel);
+        section.appendChild(grid);
         body.appendChild(section);
     });
 
     syncOrderingAvailabilityUI();
+}
+
+// Chips de categoria pegajosos arriba de #menuCarouselScreen: uno por cada categoria con
+// productos (mismo criterio que renderMenuCarousels), para saltar directo a su seccion.
+function renderCatalogChips() {
+    const bar = document.getElementById('catalogChipsBar');
+    if (!bar) return;
+    bar.innerHTML = '';
+
+    const cats = activeCategoryMeta || [];
+    const allProds = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
+
+    cats.forEach(cat => {
+        const hasProducts = allProds.some(p => normalizeCategoryKey(String(p.categoria || '')) === cat.key);
+        if (!hasProducts) return;
+
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'catalog-chip';
+        chip.textContent = cat.name;
+        chip.dataset.target = 'cat-section-' + cat.key;
+        chip.addEventListener('click', () => {
+            document.getElementById(chip.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        bar.appendChild(chip);
+    });
+}
+
+// Calco de setActiveMenuNavLink (usado en #menuModal) para el nuevo IntersectionObserver de
+// #menuCarouselScreen.
+function setActiveCatalogChip(targetId) {
+    document.querySelectorAll('.catalog-chip').forEach((chip) => {
+        chip.classList.toggle('is-active', chip.dataset.target === targetId);
+    });
+}
+
+// Resalta el chip de la categoria visible mientras se hace scroll por el catalogo continuo,
+// igual que el IntersectionObserver ya existente en openMenuModal() para #menuModal.
+let _catalogSectionsObserver = null;
+function observeCatalogSections() {
+    const screen = document.getElementById('menuCarouselScreen');
+    const sections = document.querySelectorAll('#menuCarouselBody > .combos-carousel-section');
+    if (!screen || !sections.length || !('IntersectionObserver' in window)) return;
+
+    if (_catalogSectionsObserver) _catalogSectionsObserver.disconnect();
+
+    _catalogSectionsObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            setActiveCatalogChip(entry.target.id);
+        });
+    }, {
+        root: screen,
+        threshold: 0.6
+    });
+
+    sections.forEach((section) => _catalogSectionsObserver.observe(section));
 }
 
 // ── Pantalla Promos con carruseles ──────────────────────────────────────────
@@ -12134,6 +12493,25 @@ function _scoreProduct(rawQ, p) {
     return score;
 }
 
+// Buscador en vivo de la barra superior: reutiliza el mismo scoring de renderSearchResults/
+// _scoreProduct (no se reescribe), pero en vez de pintar una grilla de resultados aparte, solo
+// devuelve el producto que mejor coincide para poder saltar directo a su tarjeta en el catalogo.
+function _findBestMatchingProduct(query) {
+    const q = String(query || '').trim();
+    if (q.length < 2) return null;
+    const pool = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
+    let best = null;
+    let bestScore = 0;
+    for (const p of pool) {
+        const score = _scoreProduct(q, p);
+        if (score > bestScore) {
+            bestScore = score;
+            best = p;
+        }
+    }
+    return bestScore >= 10 ? best : null;
+}
+
 function renderSearchResults(query) {
     const grid = document.getElementById('searchResultsGrid');
     if (!grid) return;
@@ -12277,17 +12655,16 @@ function _enterScreen(screenId) {
     }
 }
 
-// Si ya no hay ninguna pantalla secundaria visible, restaura el home y el topbar
+// Si ya no hay ninguna pantalla secundaria visible, restaura el catálogo continuo (Menú, la
+// pantalla base actual — el home viejo con carruseles cortos quedó retirado) y el topbar.
 function _exitScreen() {
     const anyOpen = _SECONDARY_SCREENS.some(id => {
+        if (id === 'menuCarouselScreen') return false; // es la pantalla base, no cuenta como "abierta encima"
         const el = document.getElementById(id);
         return el && !el.hidden;
     });
     if (!anyOpen) {
-        const hs = document.getElementById('homeScreen');
-        if (hs) { hs.hidden = false; renderHomeScreen(); }
-        setPublicTopbarVisible(true);
-        _setNavCurrent(null);
+        openMenuCarouselScreen(); // ya deja el topbar oculto y el nav marcado (ver _enterScreen)
         if (_screenHistoryPushed && !_closingByBackBtn) {
             _screenHistoryPushed = false;
             _skipNextPopstate = true;
@@ -12307,9 +12684,9 @@ function _exitScreen() {
 // Marca el ítem de la barra de navegación correspondiente a la pantalla activa
 function _setNavCurrent(screenId) {
     const navMap = {
-        navCategoriesScreen:  'bnavMenu',
-        categoryDetailScreen: 'bnavMenu',
-        menuCarouselScreen:   'bnavMenu',
+        navCategoriesScreen:  'bnavInicio',
+        categoryDetailScreen: 'bnavInicio',
+        menuCarouselScreen:   'bnavInicio',
         combosScreen:         'bnavCombos',
         promoScreen:          'bnavPromo',
         promoCarouselScreen:  'bnavPromo',
@@ -13284,6 +13661,8 @@ function showTempClosureBanner() {
 document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('has-auth-nav');
     setActiveCustomerProfile(loadStoredCustomerProfile());
+    pendingGoogleIdentity = loadStoredPendingGoogleIdentity();
+    _consumeGoogleRedirectResult().catch((error) => console.error('[Google login] fallo getRedirectResult:', error));
 
     // Registrar visita al menú para métricas de tráfico
     try {
@@ -13300,7 +13679,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const splashEl = document.getElementById('splashScreen');
         const splashIsVisible = Boolean(splashEl && !splashEl.dataset.hidden);
         if (_origHideSplash) _origHideSplash();
-        if (splashIsVisible) showHomeScreen();
+        // La app ahora abre directo en el catalogo continuo (pestaña Menú) en vez de Inicio.
+        if (splashIsVisible) openMenuCarouselScreen();
         maybeShowOpeningAd();
     };
 
@@ -13310,20 +13690,66 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
 
-    // Barra de navegación inferior — acciones
-    document.getElementById('bnavInicio')?.addEventListener('click', () => {
-        window.__roalHideSplash?.(); // oculta splash si todavía está visible
-        showHomeScreen();            // siempre navega al home (el wrapper no lo hace si splash ya cerró)
-    });
-    document.getElementById('bnavMenu')?.addEventListener('click', () => openMenuCarouselScreen());
-    document.getElementById('menuCarouselCloseBtn')?.addEventListener('click', () => _exitScreen());
-    document.getElementById('bnavCombos')?.addEventListener('click', () => openCombosScreen());
+    // Barra de navegación superior — acciones (reemplaza la barra inferior retirada)
+    document.getElementById('topProfileBtn')?.addEventListener('click', () => openCustomerAuthModal());
+    document.getElementById('topCartBtn')?.addEventListener('click', () => openCartDrawer());
+
+    // Buscador en vivo de la barra superior: al tocarlo se convierte en un input real; al
+    // escribir, salta directo a la tarjeta que mejor coincide dentro del catalogo (en vez de
+    // abrir una pantalla de resultados aparte).
+    (function setupTopSearchBar() {
+        const display = document.getElementById('topSearchDisplay');
+        const input = document.getElementById('topSearchInput');
+        const closeBtn = document.getElementById('topSearchClose');
+        if (!display || !input || !closeBtn) return;
+
+        const activate = () => {
+            display.hidden = true;
+            input.hidden = false;
+            closeBtn.hidden = false;
+            input.focus();
+        };
+        const deactivate = () => {
+            input.value = '';
+            input.hidden = true;
+            closeBtn.hidden = true;
+            display.hidden = false;
+        };
+
+        display.addEventListener('click', activate);
+        closeBtn.addEventListener('click', deactivate);
+
+        let _topSearchTimer = null;
+        input.addEventListener('input', (e) => {
+            clearTimeout(_topSearchTimer);
+            const query = e.target.value;
+            _topSearchTimer = setTimeout(() => {
+                const match = _findBestMatchingProduct(query);
+                if (!match) return;
+                if (document.getElementById('menuCarouselScreen')?.hidden) {
+                    openMenuCarouselScreen();
+                }
+                requestAnimationFrame(() => {
+                    const cardEl = document.querySelector(`[data-product-id="${match.id}"]`);
+                    if (!cardEl) return;
+                    cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    cardEl.classList.add('pcm-search-highlight');
+                    setTimeout(() => cardEl.classList.remove('pcm-search-highlight'), 1500);
+                });
+            }, 180);
+        });
+    })();
+
+    // Panel de secciones (☰): Combos, Cupones, Ayuda
+    document.getElementById('sectionsDrawerToggle')?.addEventListener('click', () => openSectionsDrawer());
+    document.getElementById('sectionsDrawerClose')?.addEventListener('click', () => closeSectionsDrawer());
+    document.getElementById('sectionsDrawerOverlay')?.addEventListener('click', () => closeSectionsDrawer());
+    document.getElementById('drawerCombosBtn')?.addEventListener('click', () => { closeSectionsDrawer(); openCombosScreen(); });
+    document.getElementById('drawerPromoBtn')?.addEventListener('click', () => { closeSectionsDrawer(); openPromoCarouselScreen(); });
+    document.getElementById('drawerAyudaBtn')?.addEventListener('click', () => { closeSectionsDrawer(); openAyudaScreen(); });
+
     document.getElementById('combosCloseBtn')?.addEventListener('click', () => _exitScreen());
-    document.getElementById('bnavPromo')?.addEventListener('click', () => openPromoCarouselScreen());
     document.getElementById('promoCarouselCloseBtn')?.addEventListener('click', () => _exitScreen());
-    document.getElementById('bnavBuscador')?.addEventListener('click', () => openSearchScreen());
-    document.getElementById('bnavPerfil')?.addEventListener('click', () => openCustomerAuthModal());
-    document.getElementById('bnavAyuda')?.addEventListener('click', () => openAyudaScreen());
     document.getElementById('ncsCloseBtn')?.addEventListener('click', () => closeNavCategoriesScreen());
     document.getElementById('searchCloseBtn')?.addEventListener('click', () => closeSearchScreen());
     document.getElementById('promoCloseBtn')?.addEventListener('click', () => closePromoScreen());
@@ -13504,7 +13930,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!document.getElementById('searchScreen')?.hidden)        { closeSearchScreen();        return; }
                 if (!document.getElementById('navCategoriesScreen')?.hidden) { closeNavCategoriesScreen(); return; }
                 if (!document.getElementById('promoScreen')?.hidden)         { closePromoScreen();         return; }
-                showHomeScreen();
+                // El home viejo quedo retirado — el catalogo continuo (Menú) es la pantalla base ahora.
+                if (document.getElementById('menuCarouselScreen')?.hidden) openMenuCarouselScreen();
             } finally {
                 _closingByBackBtn = false;
             }
@@ -13518,19 +13945,19 @@ document.addEventListener('DOMContentLoaded', () => {
             _lastHiddenAt = Date.now();
         } else if (document.visibilityState === 'visible') {
             const hiddenMs = Date.now() - _lastHiddenAt;
-            const homeScreen = document.getElementById('homeScreen');
-            // Si el homeScreen está oculto y la splash ya no existe, mostrarlo
-            // — pero solo si no hay ninguna pantalla secundaria abierta
-            if (homeScreen && homeScreen.hidden && !document.getElementById('splashScreen')) {
+            const menuScreen = document.getElementById('menuCarouselScreen');
+            // El home viejo quedo retirado (siempre oculto) — este chequeo ahora es sobre
+            // menuCarouselScreen, que es la pantalla base actual.
+            if (menuScreen && menuScreen.hidden && !document.getElementById('splashScreen')) {
                 const _secondaryIds = ['categoryDetailScreen', 'navCategoriesScreen', 'promoScreen', 'searchScreen'];
                 const _anySecondaryOpen = _secondaryIds.some(id => { const el = document.getElementById(id); return el && !el.hidden; });
-                if (!_anySecondaryOpen) showHomeScreen();
+                if (!_anySecondaryOpen) openMenuCarouselScreen();
                 return;
             }
-            // Si estuvo oculto más de 30 segundos, forzar re-render del home
+            // Si estuvo oculto más de 30 segundos, forzar re-render del catalogo
             if (_lastHiddenAt > 0 && hiddenMs > 30000) {
-                if (homeScreen && !homeScreen.hidden && homeScreen.style.display !== 'none') {
-                    renderHomeScreen();
+                if (menuScreen && !menuScreen.hidden && menuScreen.style.display !== 'none') {
+                    refreshCatalogScreenIfNeeded();
                 }
             }
         }

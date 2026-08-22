@@ -124,7 +124,12 @@
         container.scrollTop = container.scrollHeight;
     }
 
+    // Widget desactivado a pedido — el resto del archivo queda intacto para reactivarlo despues
+    // (solo quitar este early-return).
+    const AGENT_CHAT_WIDGET_DISABLED = true;
+
     function initAgentChat() {
+        if (AGENT_CHAT_WIDGET_DISABLED) return;
         if (document.getElementById('agentChatWidget')) return;
 
         const wrap = buildWidgetMarkup();

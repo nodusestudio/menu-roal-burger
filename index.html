@@ -376,16 +376,9 @@
         <div class="ncs-grid" id="ncsCategoriesGrid"></div>
     </div>
 
-    <!-- ===== PANTALLA MENÚ CARRUSELES ===== -->
+    <!-- ===== PANTALLA MENÚ CARRUSELES (ahora es la página de inicio) ===== -->
     <div id="menuCarouselScreen" hidden>
-        <div class="cds-header">
-            <button type="button" class="cds-back-btn" id="menuCarouselCloseBtn" aria-label="Volver">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
-                    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
-                </svg>
-            </button>
-            <h2 class="cds-title">MENÚ</h2>
-        </div>
+        <div class="catalog-chips-bar" id="catalogChipsBar"></div>
         <div class="combos-screen-body" id="menuCarouselBody"></div>
     </div>
 
@@ -515,86 +508,58 @@
     </div>
     <!-- ===== FIN CONFIRMACIÓN ===== -->
 
-    <!-- Barra de navegación inferior -->
-    <nav class="bottom-auth-nav" id="bottomAuthNav" aria-label="Navegacion principal">
-        <!-- Inicio -->
-        <button class="ban-item" type="button" id="bnavInicio" aria-label="Inicio">
-            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-            </svg>
-            <span class="ban-label">Inicio</span>
-            <div class="ban-tooltip">
-                <strong class="ban-tooltip-name">Inicio</strong>
-                <span class="ban-tooltip-desc">Volver a la pantalla principal</span>
-            </div>
+    <!-- Barra de navegación superior (reemplaza la barra inferior) -->
+    <header class="top-action-bar" id="topActionBar" aria-label="Navegacion principal">
+        <button type="button" class="top-action-btn" id="sectionsDrawerToggle" aria-label="Abrir menu de secciones">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24" aria-hidden="true"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>
         </button>
-        <!-- Menú -->
-        <button class="ban-item" type="button" id="bnavMenu" aria-label="Menu">
-            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/>
-            </svg>
-            <span class="ban-label">Menú</span>
-            <div class="ban-tooltip">
-                <strong class="ban-tooltip-name">Menu</strong>
-                <span class="ban-tooltip-desc">Explora nuestros productos</span>
-            </div>
-        </button>
-        <!-- Combos -->
-        <button class="ban-item" type="button" id="bnavCombos" aria-label="Combos">
-            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15 6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.38v-6.71L5 9.21v6.7zm14 0v-6.7l-6 3.37v6.71l6-3.38z"/>
-            </svg>
-            <span class="ban-label">Combos</span>
-            <div class="ban-tooltip">
-                <strong class="ban-tooltip-name">Combos</strong>
-                <span class="ban-tooltip-desc">Productos con papas y bebida</span>
-            </div>
-        </button>
-        <!-- Cupones -->
-        <button class="ban-item" type="button" id="bnavPromo" aria-label="Cupones">
-            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M20 6h-2.18c.07-.35.18-.68.18-1 0-1.66-1.34-3-3-3-.93 0-1.96.47-2.56 1.09L12 3.67l-.44-.58C10.96 2.47 9.93 2 9 2 7.34 2 6 3.34 6 5c0 .32.11.65.18 1H4c-1.11 0-2 .89-2 2v2c0 .56.45 1 1 1h18c.56 0 1-.44 1-1V8c0-1.11-.89-2-2-2zm-9.5-1c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5zm-3.5 0c0-.83.67-1.5 1.5-1.5S10 4.17 10 5c0 .83-.67 1.5-1.5 1.5S7 5.83 7 5zm13 16H4v-9h16v9zm-9-2h2v-4h-2v4z"/>
-            </svg>
-            <span class="ban-label">Cupones</span>
-            <div class="ban-tooltip">
-                <strong class="ban-tooltip-name">Cupones</strong>
-                <span class="ban-tooltip-desc">Descuentos exclusivos para ti</span>
-            </div>
-        </button>
-        <!-- Buscador -->
-        <button class="ban-item" type="button" id="bnavBuscador" aria-label="Buscar">
-            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-            </svg>
-            <span class="ban-label">Buscar</span>
-            <div class="ban-tooltip">
-                <strong class="ban-tooltip-name">Buscar</strong>
-                <span class="ban-tooltip-desc">Encuentra cualquier producto</span>
-            </div>
-        </button>
-        <!-- Perfil -->
-        <button class="ban-item" type="button" id="bnavPerfil" aria-label="Perfil">
-            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <div class="top-search-bar" id="topSearchBar">
+            <button type="button" class="top-search-display" id="topSearchDisplay" aria-label="Buscar en Roal">
+                <img src="isotipo.png" alt="" class="top-search-logo">
+                <span class="top-search-text">Buscar en Roal</span>
+                <svg class="top-search-icon" viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true">
+                    <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                </svg>
+            </button>
+            <input type="text" class="top-search-input" id="topSearchInput" placeholder="Buscar en Roal" autocomplete="off" hidden>
+            <button type="button" class="top-search-close" id="topSearchClose" aria-label="Cerrar busqueda" hidden>&times;</button>
+        </div>
+        <button type="button" class="top-action-btn" id="topProfileBtn" aria-label="Perfil">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
                 <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2zm0 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z"/>
             </svg>
-            <span class="ban-label">Perfil</span>
-            <div class="ban-tooltip">
-                <strong class="ban-tooltip-name">Perfil</strong>
-                <span class="ban-tooltip-desc">Tu cuenta y tus pedidos</span>
-            </div>
         </button>
-        <!-- Ayuda WhatsApp -->
-        <button type="button" class="ban-item ban-item--ayuda" id="bnavAyuda" aria-label="Ayuda por WhatsApp">
-            <svg class="ban-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <button type="button" class="top-action-btn top-cart-btn" id="topCartBtn" aria-label="Carrito">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12L8.1 13h7.45c.75 0 1.41-.41 1.75-1.03L20.55 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/>
+            </svg>
+            <span class="top-cart-badge" id="topCartBadge" hidden>0</span>
+        </button>
+    </header>
+
+    <!-- Panel lateral de secciones (Combos/Cupones/Ayuda), se abre con el ☰ de la barra superior -->
+    <div class="sections-drawer-overlay" id="sectionsDrawerOverlay" hidden></div>
+    <aside class="sections-drawer" id="sectionsDrawer" aria-label="Secciones">
+        <button type="button" class="sections-drawer-close" id="sectionsDrawerClose" aria-label="Cerrar">&times;</button>
+        <button type="button" class="sections-drawer-item" id="drawerCombosBtn">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                <path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15 6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.38v-6.71L5 9.21v6.7zm14 0v-6.7l-6 3.37v6.71l6-3.38z"/>
+            </svg>
+            <span>Combos</span>
+        </button>
+        <button type="button" class="sections-drawer-item" id="drawerPromoBtn">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
+                <path d="M20 6h-2.18c.07-.35.18-.68.18-1 0-1.66-1.34-3-3-3-.93 0-1.96.47-2.56 1.09L12 3.67l-.44-.58C10.96 2.47 9.93 2 9 2 7.34 2 6 3.34 6 5c0 .32.11.65.18 1H4c-1.11 0-2 .89-2 2v2c0 .56.45 1 1 1h18c.56 0 1-.44 1-1V8c0-1.11-.89-2-2-2zm-9.5-1c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5zm-3.5 0c0-.83.67-1.5 1.5-1.5S10 4.17 10 5c0 .83-.67 1.5-1.5 1.5S7 5.83 7 5zm13 16H4v-9h16v9zm-9-2h2v-4h-2v4z"/>
+            </svg>
+            <span>Cupones</span>
+        </button>
+        <button type="button" class="sections-drawer-item" id="drawerAyudaBtn">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22" aria-hidden="true">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.122 1.532 5.852L.057 23.269a.75.75 0 0 0 .921.921l5.444-1.484A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.694 9.694 0 0 1-4.964-1.362l-.355-.214-3.679 1.002 1.004-3.647-.233-.374A9.718 9.718 0 0 1 2.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/>
             </svg>
-            <span class="ban-label">Ayuda</span>
-            <div class="ban-tooltip">
-                <strong class="ban-tooltip-name">Ayuda</strong>
-                <span class="ban-tooltip-desc">Escríbenos por WhatsApp</span>
-            </div>
+            <span>Ayuda</span>
         </button>
-    </nav>
+    </aside>
 
     <!-- ===== PANTALLA PROMOCIONES ===== -->
     <div id="promoScreen" hidden>
@@ -754,7 +719,19 @@
     </div>
 
     <script>
-        if ('serviceWorker' in navigator) {
+        // En localhost el Service Worker solo estorba las pruebas: cachea versiones viejas de
+        // script-v2.js/style.css mientras iteramos, y una vez registrado queda pegado al origen
+        // sin importar que servidor lo sirva detras. Se desregistra cualquier instancia previa y
+        // nunca se vuelve a registrar aqui. Nunca afecta produccion (roalburger.com / Vercel).
+        const isLocalHostTesting = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+        if (isLocalHostTesting && 'serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then((regs) => {
+                regs.forEach((reg) => reg.unregister());
+            }).catch(() => {});
+            if (window.caches) {
+                caches.keys().then((keys) => keys.forEach((key) => caches.delete(key))).catch(() => {});
+            }
+        } else if ('serviceWorker' in navigator) {
             const hadController = Boolean(navigator.serviceWorker.controller);
             navigator.serviceWorker.register('./sw.js').then((reg) => {
                 reg.addEventListener('updatefound', () => {
