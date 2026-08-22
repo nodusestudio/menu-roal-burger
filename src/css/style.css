@@ -297,15 +297,6 @@ body::before {
     border: 1px solid rgba(180, 35, 24, 0.22);
 }
 
-/* Liquid glass utility for modern panels */
-.liquid-glass {
-    background: var(--glass-bg);
-    border: 1.5px solid var(--glass-border);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-}
-
 .glass-strong {
     background: rgba(255, 255, 255, 0.10);
     border: 1.5px solid rgba(255, 255, 255, 0.20);
@@ -1077,7 +1068,7 @@ body.is-offline #menuScreen {
     background: var(--glass-bg);
     border-radius: 18px;
     border: 1.5px solid var(--glass-border);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     padding: 18px 22px;
@@ -2750,15 +2741,20 @@ body.has-guest-register-banner #ayudaScreen {
 }
 
 .support-secondary-btn {
-    min-height: 52px;
+    min-height: 46px;
     width: 100%;
-    border: 1px solid rgba(90, 58, 27, 0.16);
+    border: 1.5px solid var(--glass-border);
     border-radius: 14px;
-    background: rgba(255, 251, 245, 0.92);
-    color: #3a2410;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
     font-family: 'Oswald', sans-serif;
-    font-size: 1rem;
+    font-size: 0.92rem;
     cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.support-secondary-btn:active {
+    background: rgba(255, 255, 255, 0.12);
 }
 
 .support-send-btn {

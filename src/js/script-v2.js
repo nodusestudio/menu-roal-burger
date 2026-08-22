@@ -2275,17 +2275,25 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
             <input type="checkbox" id="customerDataConsent" ${hasConsent ? 'checked disabled' : ''}>
             <span>${consentMarkup}</span>
         </label>`;
-    return `
-        <p class="support-modal-kicker">${addressesOnly ? 'Mi cuenta' : (isEditMode ? 'Mi cuenta' : 'Crear cuenta')}</p>
-        <h3 class="support-modal-title">${addressesOnly ? 'Mis direcciones' : (isEditMode ? 'Editar perfil' : '¿Cómo te llamamos?')}</h3>
-        ${!isEditMode ? _buildRegStepDots(3) : ''}
-        ${addressesOnly ? `<div hidden>${accountFieldsMarkup}</div>` : accountFieldsMarkup}
+    // El bloque de direcciones solo aparece en el registro inicial (para poder agregar una de
+    // una vez) y en el modo "Mis direcciones" -- en "Editar perfil" ya no se repite, porque
+    // "Mis direcciones" es ahora el unico lugar donde se gestionan (mostrarlas en los dos lados
+    // se sentia duplicado y desordenado).
+    const showAddresses = addressesOnly || !isEditMode;
+    const addressesMarkup = showAddresses ? `
         <div class="support-field">
             <span>Direcciones guardadas ${addressesOnly ? '' : '<small style="font-weight:400;opacity:0.7">(opcional)</small>'}</span>
             <div id="customerRegisterSavedAddressesList" class="support-address-list"></div>
             <button type="button" class="support-secondary-btn" id="customerRegisterAddAddress">+ Agregar dirección</button>
             <p class="support-field-hint">Toca el icono 🌍 para anclar tu GPS a esa dirección.</p>
         </div>
+    ` : '';
+    return `
+        <p class="support-modal-kicker">${addressesOnly ? 'Mi cuenta' : (isEditMode ? 'Mi cuenta' : 'Crear cuenta')}</p>
+        <h3 class="support-modal-title">${addressesOnly ? 'Mis direcciones' : (isEditMode ? 'Editar perfil' : '¿Cómo te llamamos?')}</h3>
+        ${!isEditMode ? _buildRegStepDots(3) : ''}
+        ${addressesOnly ? `<div hidden>${accountFieldsMarkup}</div>` : accountFieldsMarkup}
+        ${addressesMarkup}
         <button type="button" class="support-send-btn" id="customerRegisterSave">${saveLabel}</button>`;
 }
 
@@ -2528,7 +2536,11 @@ async function _handleRegOtpResend() {
 }
 
 function renderCustomerRegisterSavedAddresses() {
-    if (!customerRegisterUI) {
+    // En "Editar perfil" (isEditMode && !addressesOnly) el bloque de direcciones ya no existe
+    // en el DOM -- solo se muestra en el registro inicial y en "Mis direcciones" (ver
+    // _buildRegProfileStepHTML). Sin este chequeo, esta funcion truena al intentar setear
+    // innerHTML sobre un elemento que no esta.
+    if (!customerRegisterUI?.savedAddressesList) {
         return;
     }
 
