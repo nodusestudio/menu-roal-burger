@@ -9145,7 +9145,8 @@ a,
    busqueda" y el input realmente desaparezcan cuando el buscador no esta activo. */
 .top-search-close[hidden],
 .top-search-input[hidden],
-.top-search-display[hidden] {
+.top-search-display[hidden],
+.top-cart-badge[hidden] {
     display: none !important;
 }
 
