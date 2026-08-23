@@ -3,7 +3,6 @@
 const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
-const GOOGLE_LINKS_COLLECTION = 'google_links';
 const CUSTOMER_CONSENT_VERSION = '2026-06-05';
 function getCustomerConsentCopy() { return `He leido y acepto que ${_getRestaurantName()} use mis datos para gestionar mi cuenta, atender pedidos, contactarme por canales oficiales y enviarme promociones, novedades y publicidad propia.`; }
 const CUSTOMER_CONSENT_POLICY_URL = 'politica-datos.html';
@@ -1924,18 +1923,14 @@ async function _completeGoogleLink(googleUid, googleEmail) {
     }
 }
 
+// unlinkGoogleAccount (Cloud Function) exige sesion real (request.auth.uid == clientId) y hace
+// las dos escrituras (limpiar /clientes, borrar google_links) con el Admin SDK -- google_links
+// ya no acepta ninguna escritura directa del navegador (ver firestore.rules).
 async function unlinkGoogleAccount() {
     if (!activeCustomerProfile?.customerPhoneDigits) return;
-    const db = getPublicFirebaseDb();
-    const clientRef = db.collection(CLIENTS_COLLECTION).doc(`phone_${activeCustomerProfile.customerPhoneDigits}`);
-    const previousGoogleUid = activeCustomerProfile.googleUid || '';
-    await clientRef.set({
-        googleUid: firebase.firestore.FieldValue.delete(),
-        googleEmail: firebase.firestore.FieldValue.delete()
-    }, { merge: true });
-    if (previousGoogleUid) {
-        await db.collection(GOOGLE_LINKS_COLLECTION).doc(previousGoogleUid).delete().catch(() => {});
-    }
+    const fn = getPublicFirebaseFunctions();
+    if (!fn) throw new Error('Servicio no disponible.');
+    await fn.httpsCallable('unlinkGoogleAccount')({});
     setActiveCustomerProfile({ ...activeCustomerProfile, googleUid: '', googleEmail: '' });
 }
 

@@ -824,6 +824,36 @@ exports.googleLinkAccount = onCall(
     }
 );
 
+// Desvincula Google del perfil actual -- antes esto lo hacia el navegador escribiendo directo
+// a /clientes y borrando directo el doc de google_links (con `allow delete: if true`, sin
+// verificar dueño). Ahora exige sesion real (request.auth.uid == clientId), igual que
+// googleLinkAccount, y hace las dos escrituras con el Admin SDK.
+exports.unlinkGoogleAccount = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const clientId = String(request.auth?.uid || '').trim();
+        if (!clientId || !clientId.startsWith('phone_')) {
+            throw new HttpsError('unauthenticated', 'Inicia sesion antes de desvincular Google.');
+        }
+
+        const db = getFirestore();
+        const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+        const clientSnap = await clientRef.get();
+        const previousGoogleUid = String(clientSnap.exists ? clientSnap.data()?.googleUid || '' : '').trim();
+
+        await clientRef.set({
+            googleUid: FieldValue.delete(),
+            googleEmail: FieldValue.delete()
+        }, { merge: true });
+
+        if (previousGoogleUid) {
+            await db.collection(GOOGLE_LINKS_COLLECTION).doc(previousGoogleUid).delete().catch(() => {});
+        }
+
+        return { success: true };
+    }
+);
+
 // Se llama desde createOrderFromCart cuando el cliente entro con Google pero todavia no tenia
 // telefono conocido (pendingGoogleIdentity) — al confirmar su primer pedido ya sabemos el
 // telefono, y si esa cuenta no esta reclamada por nadie mas se vincula automaticamente. Antes

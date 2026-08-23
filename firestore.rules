@@ -146,12 +146,14 @@ service cloud.firestore {
       allow read: if isAdmin() || isOwner();
     }
 
+    // google_links mapea googleUid -> clientId; googleAuthLogin confia en ese mapeo para emitir
+    // una sesion real. Antes se podia escribir directo (solo se validaba la FORMA de clientId,
+    // no que quien escribe sea su dueno) -- cualquiera con su propia cuenta de Google real podia
+    // apuntar su propio googleUid al clientId de otra persona y tomar su cuenta por completo, sin
+    // necesitar su PIN. Ahora solo las Cloud Functions (Admin SDK: googleLinkAccount,
+    // unlinkGoogleAccount, linkPendingGoogleAfterOrder) leen/escriben esto.
     match /google_links/{googleUid} {
-      allow read: if true;
-      allow create, update: if true
-        && request.resource.data.clientId is string
-        && request.resource.data.clientId.matches('phone_[0-9]+');
-      allow delete: if true;
+      allow read, write: if false;
     }
 
     match /admin_fcm_tokens/{doc} {
