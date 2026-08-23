@@ -20,3 +20,5 @@ functions/.secret.local
 /tracking.js
 /agent-chat.js
 /style.css
+
+.vercel
