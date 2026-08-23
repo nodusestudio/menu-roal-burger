@@ -12293,16 +12293,19 @@ async function deleteClient(clientId) {
     await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).delete();
 }
 
+// adminResetClientCredentials (Cloud Function) borra el credencial real en
+// clientes_credenciales -- ese documento nunca fue escribible desde el navegador (ni por el
+// admin), asi que antes este boton escribia passwordHash:'' en clientes/{id}, un campo que ya
+// nadie lee desde que las credenciales se separaron. No resetear nada de verdad.
 async function resetClientPasswordByPhone(phoneDigits) {
     const normalizedPhone = normalizePhoneDigits(phoneDigits);
     if (!normalizedPhone) {
         throw new Error('No se encontro un numero valido para resetear la contrasena.');
     }
-
-    await firebaseDb.collection(CLIENTS_COLLECTION).doc(`phone_${normalizedPhone}`).set({
-        passwordHash: '',
-        updatedAt: firestoreNow()
-    }, { merge: true });
+    if (!firebaseFunctions) {
+        throw new Error('Servicio no disponible.');
+    }
+    await firebaseFunctions.httpsCallable('adminResetClientCredentials')({ phoneDigits: normalizedPhone });
 }
 
 function buildCustomerPasswordResetClipboardMessage(message = {}) {

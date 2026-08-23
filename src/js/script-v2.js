@@ -2674,6 +2674,10 @@ async function fetchClientProfileForRecovery(phoneValue = '') {
     }, result.data.id);
 }
 
+// customerRegisterOrUpdateProfile (Cloud Function) exige un OTP verificado y reciente para
+// reclamar credenciales nuevas (ver fix del hueco de toma de cuenta) -- este modal antes iba
+// directo al PIN sin ningun paso de verificacion, lo cual funcionaba porque el servidor tampoco
+// lo exigia. Ahora hace falta un paso de OTP real antes de dejar guardar la nueva contrasena.
 async function submitCustomerNewPassword() {
     if (!customerPasswordResetUI?.feedback) {
         return;
@@ -2702,6 +2706,101 @@ async function submitCustomerNewPassword() {
     }
 }
 
+async function _handleResetOtpVerify() {
+    if (!customerPasswordResetUI) return;
+    const { profile, otpInput, feedback } = customerPasswordResetUI;
+    const code = String(otpInput?.value || '').replace(/\D/g, '');
+    if (code.length !== 6) {
+        feedback.textContent = 'El código debe tener 6 dígitos.';
+        feedback.className = 'support-feedback support-feedback--error';
+        return;
+    }
+    const btn = customerPasswordResetUI.stepContent.querySelector('#resetOtpVerify');
+    if (btn) { btn.disabled = true; btn.textContent = 'Verificando…'; }
+    try {
+        await callVerifyWhatsAppOtp(profile.customerPhoneDigits, code);
+        customerPasswordResetUI.step = 'pin';
+        _renderResetStep();
+    } catch (err) {
+        feedback.textContent = err?.message || 'Código incorrecto. Intenta de nuevo.';
+        feedback.className = 'support-feedback support-feedback--error';
+        if (btn) { btn.disabled = false; btn.textContent = 'Verificar'; }
+        otpInput?.select();
+    }
+}
+
+async function _handleResetOtpResend() {
+    if (!customerPasswordResetUI) return;
+    const { profile, feedback } = customerPasswordResetUI;
+    const btn = customerPasswordResetUI.stepContent.querySelector('#resetOtpResend');
+    if (btn) { btn.disabled = true; btn.textContent = 'Reenviando…'; }
+    try {
+        await callSendWhatsAppOtp(profile.customerPhoneDigits);
+        feedback.textContent = 'Código reenviado. Revisa tu WhatsApp.';
+        feedback.className = 'support-feedback';
+    } catch (err) {
+        feedback.textContent = err?.message || 'No se pudo reenviar. Intenta de nuevo.';
+        feedback.className = 'support-feedback support-feedback--error';
+    }
+    if (btn) { btn.disabled = false; btn.textContent = '¿No llegó? Reenviar código'; }
+}
+
+function _renderResetStep() {
+    if (!customerPasswordResetUI) return;
+    const { step, stepContent, profile } = customerPasswordResetUI;
+
+    if (step === 'otp') {
+        stepContent.innerHTML = `
+            <p class="support-modal-kicker">Verificación</p>
+            <h3 class="support-modal-title">Tu contraseña fue reiniciada</h3>
+            <p class="support-modal-text">Te enviamos un código por WhatsApp al ${escapeHtml(profile.customerPhone || profile.customerPhoneDigits)}.</p>
+            <label class="support-field">
+                <span>Código de 6 dígitos</span>
+                <input type="text" id="resetOtpInput" inputmode="numeric" maxlength="6" placeholder="000000">
+            </label>
+            <p class="support-feedback" id="resetFeedback"></p>
+            <div class="support-actions split">
+                <button type="button" class="support-secondary-btn" id="resetOtpResend">¿No llegó? Reenviar código</button>
+                <button type="button" class="support-send-btn" id="resetOtpVerify">Verificar</button>
+            </div>
+        `;
+        customerPasswordResetUI.feedback = stepContent.querySelector('#resetFeedback');
+        customerPasswordResetUI.otpInput = stepContent.querySelector('#resetOtpInput');
+        stepContent.querySelector('#resetOtpVerify')?.addEventListener('click', _handleResetOtpVerify);
+        stepContent.querySelector('#resetOtpResend')?.addEventListener('click', _handleResetOtpResend);
+        customerPasswordResetUI.otpInput?.focus();
+    } else {
+        stepContent.innerHTML = `
+            <p class="support-modal-kicker">Nueva contraseña</p>
+            <h3 class="support-modal-title">Crea tu nueva contraseña</h3>
+            <p class="support-modal-text">Número verificado: ${escapeHtml(profile.customerPhone || profile.customerPhoneDigits)}.</p>
+            <label class="support-field">
+                <span>Nueva contraseña de 6 dígitos</span>
+                <input type="password" id="customerResetPin" inputmode="numeric" maxlength="6" placeholder="Crea tu nueva contraseña">
+            </label>
+            <label class="support-field">
+                <span>Confirmar nueva contraseña</span>
+                <input type="password" id="customerResetConfirmPin" inputmode="numeric" maxlength="6" placeholder="Confirma tu nueva contraseña">
+            </label>
+            <p class="support-feedback" id="resetFeedback"></p>
+            <div class="support-actions split">
+                <button type="button" class="support-secondary-btn" id="customerResetCancelButton">Cancelar</button>
+                <button type="button" class="support-send-btn" id="customerResetSaveButton">Guardar contraseña</button>
+            </div>
+        `;
+        customerPasswordResetUI.feedback = stepContent.querySelector('#resetFeedback');
+        customerPasswordResetUI.pin = stepContent.querySelector('#customerResetPin');
+        customerPasswordResetUI.confirmPin = stepContent.querySelector('#customerResetConfirmPin');
+        stepContent.querySelector('#customerResetCancelButton')?.addEventListener('click', closeCustomerPasswordResetModal);
+        stepContent.querySelector('#customerResetSaveButton')?.addEventListener('click', submitCustomerNewPassword);
+        bindCustomerPinField(customerPasswordResetUI.pin);
+        bindCustomerPinField(customerPasswordResetUI.confirmPin);
+        attachPasswordToggle(customerPasswordResetUI.pin);
+        attachPasswordToggle(customerPasswordResetUI.confirmPin);
+        customerPasswordResetUI.pin?.focus();
+    }
+}
+
 function openCustomerPasswordResetModal(profile = {}) {
     closeCustomerPasswordResetModal();
 
@@ -2717,26 +2816,7 @@ function openCustomerPasswordResetModal(profile = {}) {
     modal.innerHTML = `
         <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Crear nueva contrasena">
             <button type="button" class="support-modal-close" aria-label="Cerrar nueva contrasena">&times;</button>
-            <p class="support-modal-kicker">Nueva contrasena</p>
-            <h3 class="support-modal-title">Tu contrasena ya fue reiniciada</h3>
-            <p class="support-modal-text">Crea una nueva contrasena para volver a entrar con tu numero de WhatsApp.</p>
-            <label class="support-field">
-                <span>Numero de WhatsApp</span>
-                <input type="tel" id="customerResetPhone" value="${escapeHtml(resolvedProfile.customerPhone || resolvedProfile.customerPhoneDigits)}" readonly>
-            </label>
-            <label class="support-field">
-                <span>Nueva contrasena de 6 digitos</span>
-                <input type="password" id="customerResetPin" inputmode="numeric" maxlength="6" placeholder="Crea tu nueva contrasena">
-            </label>
-            <label class="support-field">
-                <span>Confirmar nueva contrasena</span>
-                <input type="password" id="customerResetConfirmPin" inputmode="numeric" maxlength="6" placeholder="Confirma tu nueva contrasena">
-            </label>
-            <p class="support-feedback" id="customerResetFeedback"></p>
-            <div class="support-actions split">
-                <button type="button" class="support-secondary-btn" id="customerResetCancelButton">Cancelar</button>
-                <button type="button" class="support-send-btn" id="customerResetSaveButton">Guardar contrasena</button>
-            </div>
+            <div id="resetStepContent"></div>
         </div>
     `;
 
@@ -2745,31 +2825,26 @@ function openCustomerPasswordResetModal(profile = {}) {
     customerPasswordResetUI = {
         modal,
         profile: resolvedProfile,
+        step: 'otp',
+        stepContent: modal.querySelector('#resetStepContent'),
         close: modal.querySelector('.support-modal-close'),
-        cancel: modal.querySelector('#customerResetCancelButton'),
-        save: modal.querySelector('#customerResetSaveButton'),
-        pin: modal.querySelector('#customerResetPin'),
-        confirmPin: modal.querySelector('#customerResetConfirmPin'),
-        feedback: modal.querySelector('#customerResetFeedback')
+        feedback: null, otpInput: null, pin: null, confirmPin: null
     };
 
     customerPasswordResetUI.close?.addEventListener('click', closeCustomerPasswordResetModal);
-    customerPasswordResetUI.cancel?.addEventListener('click', closeCustomerPasswordResetModal);
-    customerPasswordResetUI.save?.addEventListener('click', submitCustomerNewPassword);
-
-    bindCustomerPinField(customerPasswordResetUI.pin);
-    bindCustomerPinField(customerPasswordResetUI.confirmPin);
-    attachPasswordToggle(customerPasswordResetUI.pin);
-    attachPasswordToggle(customerPasswordResetUI.confirmPin);
-
     modal.addEventListener('click', (event) => {
         if (event.target === modal && _lastMousedownTarget === modal) {
             closeCustomerPasswordResetModal();
         }
     });
 
+    _renderResetStep();
     syncBodyScrollLock();
-    customerPasswordResetUI.pin?.focus();
+
+    // Ya sabemos el numero (viene de un intento de login fallido con resetRequired) -- se manda
+    // el primer codigo de una vez para no obligar a pulsar "reenviar" innecesariamente. El limite
+    // de frecuencia de sendWhatsAppOtp protege igual si el modal se reabre varias veces seguidas.
+    callSendWhatsAppOtp(resolvedProfile.customerPhoneDigits).catch(() => {});
 }
 
 async function createCustomerDeleteAccountRequest(reasonValue = '', profile = activeCustomerProfile) {

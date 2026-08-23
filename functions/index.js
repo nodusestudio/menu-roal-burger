@@ -1062,6 +1062,36 @@ exports.deleteCustomerAccount = onCall(
     }
 );
 
+// El boton "Reset contrasena" del panel admin escribia passwordHash:'' en clientes/{id} -- desde
+// que las credenciales viven en clientes_credenciales (allow read,write: if false, solo Admin
+// SDK) ese campo ya no se lee en ningun lado y el boton no reseteaba nada de verdad. Esta funcion
+// borra el credencial real: el cliente vuelve a "sin contrasena" y, al intentar entrar de nuevo,
+// customerLoginWithPin le devuelve resetRequired:true (ya lo hacia) para que cree una nueva --
+// ahora pasando primero por un OTP real (ver customerRegisterOrUpdateProfile).
+exports.adminResetClientCredentials = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const adminUid = request.auth?.uid;
+        if (!adminUid) {
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+        }
+        const adminDoc = await getFirestore().collection('admins').doc(adminUid).get();
+        if (!adminDoc.exists) {
+            throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+        }
+
+        const phoneDigits = String(request.data?.phoneDigits || '').replace(/\D/g, '');
+        if (phoneDigits.length < 10) {
+            throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+        }
+
+        const clientId = buildClientId(phoneDigits);
+        await getFirestore().collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId).delete();
+
+        return { success: true };
+    }
+);
+
 // ─────────────────────────────────────────────────────────────
 // Agente de IA — widget de chat en la web pública
 // Requiere secret: firebase functions:secrets:set ANTHROPIC_API_KEY
