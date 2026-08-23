@@ -22,7 +22,83 @@
     --text-secondary: #c9bfae;
     --glass-bg: rgba(255, 255, 255, 0.06);
     --glass-border: rgba(255, 255, 255, 0.14);
+    /* Radios de esquina -- formalizan los valores que ya se repetían de facto en todo el
+       archivo (ver bloque "SISTEMA DE DISEÑO" más abajo). Mismos números que ya estaban en uso;
+       introducirlos como token no cambia nada visualmente, solo les da un nombre para reusar. */
+    --radius-pill: 999px;
+    --radius-lg: 18px;
+    --radius-md: 14px;
+    --radius-sm: 12px;
+    --radius-xl: 26px;
 }
+
+/* ============================================================================
+   SISTEMA DE DISEÑO -- léase antes de escribir CSS nuevo en este archivo.
+   Objetivo: que cada pantalla/modal nuevo reuse lo que ya existe y probó
+   funcionar, en vez de improvisar un estilo propio (la causa de casi todos los
+   bugs visuales de inconsistencia encontrados en la auditoría de este proyecto).
+
+   TOKENS (:root, arriba)
+   - --text-primary / --text-secondary: color de texto en TODO el menú público
+     reskineado en oscuro (no landing, no admin). Casi nunca hace falta un hex
+     de texto suelto -- si un texto necesita otro tono, es --text-secondary.
+   - --glass-bg / --glass-border: fondo y borde de cualquier panel "vidrio".
+   - --radius-pill/-lg/-md/-sm/-xl: ver "Radios" más abajo.
+   - --brand-primary/-secondary/-accent: NO son parte de este reskin oscuro.
+     Son variables legacy de branding (landing + botones configurables desde
+     admin) que `applyBrandingConfig()` sobreescribe en runtime. No mezclar.
+
+   .liquid-glass (línea ~1067): EL panel base de todo el menú de cliente
+   (recibo de pedido, tarjetas de perfil, carrito, modales). Antes de crear un
+   `<div>` con su propio `background/border/blur`, usar esta clase.
+   Ojo: existe también `.category-chip` (singular, vidrio CLARO, grid de
+   categorías de home) -- es un componente legacy no relacionado con
+   `.catalog-chip` (plural, ver Chips abajo). No confundirlos.
+
+   MODAL SHELL: `.support-modal` > `.support-modal-card` + botón de cierre.
+   Dos patrones de cierre, ambos válidos, elegir según el contexto:
+   - `.support-modal-close` (X arriba a la derecha, círculo `--radius-pill`):
+     el default para modales de una sola pantalla (recibo, tienda cerrada,
+     reseteo de contraseña, borrar cuenta, consentimiento, método de pago,
+     confirmación de pedido, registro de promo, cupón por canal).
+   - `.cp-panel-back` ("← Cuenta"): SOLO para el flujo de perfil/cuenta
+     (`.cp-*`, registro/editar perfil, sub-paneles de perfil) -- son pantallas
+     con jerarquía ("volver" a la pantalla anterior, no "cerrar" del todo).
+     No mezclar los dos patrones en la misma familia de pantallas.
+
+   BOTONES
+   - `.support-secondary-btn`: botón secundario oscuro (dark tokens) dentro de
+     modales -- nunca fondo blanco/crema, eso rompe el modo oscuro.
+   - `.support-send-btn` / `.support-topic-btn` / `.support-link-chip`
+     (línea ~2287): familia de botones/acciones de modal, `--radius-md`.
+   - `.pcm-add-btn`, `.cp-menu-item`: botones de acción dentro del picker de
+     bebidas/acompañantes y de los ítems de menú del perfil, respectivamente.
+
+   FORMULARIOS: `.support-field` (wrapper) + su input/textarea/select, estado
+   de error y placeholder ya definidos -- usar esa estructura para cualquier
+   campo nuevo en vez de un `<input>` suelto.
+
+   CHIPS: `.catalog-chips-bar` / `.catalog-chip` / `.catalog-chip.is-active`
+   (línea ~6225) -- la barra de categorías del menú actual (oscura,
+   `--radius-pill`). Distinta de `.category-chip` legacy (ver arriba).
+
+   TÍTULOS DE SECCIÓN: `.combos-section-title` / `.customer-profile-section-title`
+   -- borde izquierdo naranja + fondo `rgba(0,0,0,0.35)` + `border-radius: 0 8px 8px 0`.
+   Usar este patrón para cualquier encabezado de sección nueva en el menú.
+
+   RADIOS (de facto antes de los tokens, ahora formalizados arriba):
+   --radius-pill (999px): pastillas/círculos -- chips, botones de cierre,
+     toggles. --radius-lg (18px): paneles tipo tarjeta (`.liquid-glass` y
+     similares). --radius-md (14px): botones de acción dentro de modales.
+     --radius-sm (12px): paneles anidados más chicos. --radius-xl (26px):
+     el modal-card principal (`.support-modal-card`), es el único que llega
+     a ese tamaño -- no usarlo para tarjetas comunes.
+
+   COLORES DE ESTADO: `.support-feedback` = ámbar neutro (`#a54800`, texto
+   informativo/kicker). Error = familia de rojos `#c02010`–`#dc2626` (no hay
+   un solo hex canónico, cualquiera de esa familia es válido). Éxito = verde
+   `#16a34a` / `rgba(22,163,74,...)`.
+   ============================================================================ */
 
 body {
     font-family: var(--landing-font-family);
@@ -1066,7 +1142,7 @@ body.is-offline #menuScreen {
 /* UNIVERSAL LIQUID GLASS BOX */
 .liquid-glass {
     background: var(--glass-bg);
-    border-radius: 18px;
+    border-radius: var(--radius-lg);
     border: 1.5px solid var(--glass-border);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
     backdrop-filter: blur(14px);
@@ -2219,7 +2295,7 @@ body.has-guest-register-banner #ayudaScreen {
     touch-action: pan-y;
     overscroll-behavior: contain;
     padding: 24px;
-    border-radius: 26px;
+    border-radius: var(--radius-xl);
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -2243,7 +2319,7 @@ body.has-guest-register-banner #ayudaScreen {
     width: 44px;
     height: 44px;
     border: none;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: rgba(90, 58, 27, 0.14);
     color: var(--text-primary);
     font-size: 1.6rem;
@@ -2288,7 +2364,7 @@ body.has-guest-register-banner #ayudaScreen {
 .support-send-btn,
 .support-link-chip {
     border: none;
-    border-radius: 14px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     text-decoration: none;
 }
@@ -6231,7 +6307,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-weight: 600;
     font-size: 0.78rem;
     padding: 5px 13px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     white-space: nowrap;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
