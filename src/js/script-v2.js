@@ -8,9 +8,6 @@ const CUSTOMER_CONSENT_VERSION = '2026-06-05';
 function getCustomerConsentCopy() { return `He leido y acepto que ${_getRestaurantName()} use mis datos para gestionar mi cuenta, atender pedidos, contactarme por canales oficiales y enviarme promociones, novedades y publicidad propia.`; }
 const CUSTOMER_CONSENT_POLICY_URL = 'politica-datos.html';
 const MESSAGES_COLLECTION = 'mensajes';
-const ORDER_SEQUENCE_DOC_ID = '_meta_order_sequence';
-const ORDER_CODE_PREFIX = 'RB';
-const ORDER_CODE_START = 2026;
 const DELIVERY_FEE_AMOUNT = 6000;
 const PROMO_2X1_INCREMENTO_AMOUNT = 2000;
 const MAX_CUSTOMER_SAVED_ADDRESSES = 5;
@@ -1073,42 +1070,6 @@ function getCheckoutOrderTotal(fulfillmentType) {
 
 function getCheckoutDiscountAmount() {
     return getCartDiscountTotalAmount();
-}
-
-function formatSequentialOrderCode(sequenceNumber) {
-    return `${ORDER_CODE_PREFIX}-${String(sequenceNumber).padStart(4, '0')}`;
-}
-
-async function reserveNextOrderCode(db, orderRef, payload) {
-    const sequenceRef = db.collection(ORDERS_COLLECTION).doc(ORDER_SEQUENCE_DOC_ID);
-    const fallbackCode = () => `${ORDER_CODE_PREFIX}-${String(Date.now() % 100000).padStart(5, '0')}`;
-    let reservedCode = '';
-
-    try {
-        const txPromise = db.runTransaction(async (transaction) => {
-            const sequenceSnapshot = await transaction.get(sequenceRef);
-            const currentSequence = Number(sequenceSnapshot.exists ? sequenceSnapshot.data()?.current : ORDER_CODE_START - 1);
-            const nextSequence = Number.isFinite(currentSequence)
-                ? Math.max(currentSequence + 1, ORDER_CODE_START)
-                : ORDER_CODE_START;
-            reservedCode = formatSequentialOrderCode(nextSequence);
-            transaction.set(sequenceRef, {
-                metaType: 'order_sequence',
-                current: nextSequence,
-                updatedAt: getPublicServerTimestamp()
-            }, { merge: true });
-            transaction.set(orderRef, { ...payload, code: reservedCode });
-        });
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
-        await Promise.race([txPromise, timeout]);
-        if (!reservedCode) reservedCode = fallbackCode();
-    } catch (_e) {
-        // Fallback: guardar el pedido con código por timestamp si Firestore falla (cuota/red)
-        reservedCode = fallbackCode();
-        await orderRef.set({ ...payload, code: reservedCode });
-    }
-
-    return reservedCode;
 }
 
 function getCurrentOrderingMinutes(now = new Date()) {
@@ -4548,43 +4509,25 @@ function buildCartOrderItems() {
 
 async function createOrderFromCart(customerInfo = {}) {
     const db = getPublicFirebaseDb();
-    const orderRef = db.collection(ORDERS_COLLECTION).doc();
     const items = buildCartOrderItems();
     const subtotal = getCartTotalAmount();
-    const totalItems = getCartProductCount();
     const customerName = String(customerInfo.name || '').trim();
     const fulfillmentType = getCheckoutFulfillmentType(customerInfo.fulfillmentType);
+    // Este total/tarifa/etc. calculado acá es solo para la UI optimista (recibo antes de que
+    // responda el servidor) y como referencia informativa (`clientReportedTotal`) — el precio
+    // que de verdad se cobra lo recalcula `submitPublicOrder` (functions/pricing.js) contra el
+    // catálogo real; el navegador ya no escribe /pedidos directo (ver firestore.rules).
     let deliveryFee = Number.isFinite(Number(customerInfo.deliveryFee)) ? Number(customerInfo.deliveryFee) : getCheckoutDeliveryFee(fulfillmentType);
-    // Recalcular y verificar tarifa (simulación server-side): si hay coordenadas, determinamos la zona esperada.
-    // OJO: Number(null) es 0, no NaN — Number.isFinite(Number(x)) por si solo NO distingue "sin
-    // coordenadas" de "coordenadas en (0,0)". Antes esto hacia que un pedido sin GPS (direccion
-    // que no geocodificó y el cliente nunca arrastró el pin) se "verificara" contra Null Island,
-    // no encontrara zona ahi, y pisara silenciosamente la tarifa ya calculada con la tarifa plana
-    // por defecto — cobrando de menos en direcciones reales de zonas mas caras.
     const deliveryLatitude = (customerInfo.deliveryLatitude !== null && customerInfo.deliveryLatitude !== undefined && Number.isFinite(Number(customerInfo.deliveryLatitude)))
         ? Number(customerInfo.deliveryLatitude) : null;
     const deliveryLongitude = (customerInfo.deliveryLongitude !== null && customerInfo.deliveryLongitude !== undefined && Number.isFinite(Number(customerInfo.deliveryLongitude)))
         ? Number(customerInfo.deliveryLongitude) : null;
-    let deliveryFeeVerified = false;
-    let deliveryFeeExpected = deliveryFee;
-    if (fulfillmentType === 'delivery' && deliveryLatitude !== null && deliveryLongitude !== null) {
-        const expectedZone = findDeliveryZoneForLocation({ latitude: deliveryLatitude, longitude: deliveryLongitude });
-        deliveryFeeExpected = expectedZone ? expectedZone.fee : DELIVERY_FEE_AMOUNT;
-        if (Number(deliveryFee) !== Number(deliveryFeeExpected)) {
-            // Sobre-escribir la tarifa con la esperada (calculada según zona GPS) para evitar manipulacion cliente
-            deliveryFee = Number(deliveryFeeExpected);
-        }
-        deliveryFeeVerified = true;
-    }
-
-    // Piso de seguridad: un pedido a domicilio nunca se guarda con tarifa $0, sin importar
-    // por qué llegó así (mapa nunca abierto, dirección sin GPS, zona no encontrada, etc.).
     if (fulfillmentType === 'delivery' && !(deliveryFee > 0)) {
         deliveryFee = DELIVERY_FEE_AMOUNT;
     }
 
     const promo2x1IncrementoFee = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
-    const total = subtotal + deliveryFee + promo2x1IncrementoFee;
+    const clientReportedTotal = subtotal + deliveryFee + promo2x1IncrementoFee;
     const deliveryAddress = String(customerInfo.address || '').trim();
     const customerPhone = String(customerInfo.phone || '').trim();
     const customerPhoneDigits = customerPhone.replace(/\D+/g, '');
@@ -4594,51 +4537,48 @@ async function createOrderFromCart(customerInfo = {}) {
     const profileAddress = String(customerInfo.profileAddress || '').trim();
     const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || [], profileAddress || deliveryAddress);
 
-    const orderCode = await reserveNextOrderCode(db, orderRef, {
-        status: 'pendiente',
-        customerName,
-        customerPhone,
-        customerPhoneDigits,
-        fulfillmentType,
-        deliveryAddress,
+    const fn = getPublicFirebaseFunctions();
+    if (!fn) {
+        throw new Error('No se pudo conectar con el servidor para confirmar el pedido. Intenta de nuevo.');
+    }
+    const submitResult = await fn.httpsCallable('submitPublicOrder')({
         items,
-        itemCount: items.length,
-        totalItems,
-        subtotal,
-        deliveryFee,
-        costoDomicilio: deliveryFee,
-        promo2x1IncrementoFee,
-        total,
-        paymentMethod,
-        cashChangeRequired,
-        cashTenderAmount: Number.isFinite(cashTenderAmount) ? cashTenderAmount : null,
-        deliveryZone: String(customerInfo.deliveryZone || '').trim() || null,
-        deliveryLatitude,
-        deliveryLongitude,
-        deliveryFeeVerified: Boolean(deliveryFeeVerified),
-        deliveryFeeExpected: Number.isFinite(Number(deliveryFeeExpected)) ? Number(deliveryFeeExpected) : 0,
-        deliveryFeeOverridden: Number.isFinite(Number(customerInfo.deliveryFee)) ? (Number(customerInfo.deliveryFee) !== Number(deliveryFee)) : false,
-        currency: 'COP',
-        source: 'web',
-        isScheduled: Boolean(customerInfo.isScheduled),
-        scheduledDate: customerInfo.isScheduled ? String(customerInfo.scheduledDate || '') : null,
-        scheduledTime: customerInfo.isScheduled ? String(customerInfo.scheduledTime || '') : null,
-        scheduledLabel: customerInfo.isScheduled ? String(customerInfo.scheduledLabel || '') : null,
-        createdAt: getPublicServerTimestamp(),
-        updatedAt: getPublicServerTimestamp(),
-        summaryMessage: buildCartCheckoutMessage({
+        customerInfo: {
             name: customerName,
-            fulfillmentType,
+            phone: customerPhone,
+            fulfillmentType: customerInfo.fulfillmentType,
             address: deliveryAddress,
             paymentMethod,
             cashChangeRequired,
             cashTenderAmount,
-            deliveryZone: customerInfo.deliveryZone || null,
             deliveryFee,
-            isScheduled: customerInfo.isScheduled,
-            scheduledLabel: customerInfo.scheduledLabel
-        })
+            deliveryLatitude,
+            deliveryLongitude,
+            deliveryZone: customerInfo.deliveryZone || null,
+            promo2x1IncrementoFee,
+            isScheduled: Boolean(customerInfo.isScheduled),
+            scheduledDate: customerInfo.isScheduled ? String(customerInfo.scheduledDate || '') : null,
+            scheduledTime: customerInfo.isScheduled ? String(customerInfo.scheduledTime || '') : null,
+            scheduledLabel: customerInfo.isScheduled ? String(customerInfo.scheduledLabel || '') : null,
+            summaryMessage: buildCartCheckoutMessage({
+                name: customerName,
+                fulfillmentType,
+                address: deliveryAddress,
+                paymentMethod,
+                cashChangeRequired,
+                cashTenderAmount,
+                deliveryZone: customerInfo.deliveryZone || null,
+                deliveryFee,
+                isScheduled: customerInfo.isScheduled,
+                scheduledLabel: customerInfo.scheduledLabel
+            }),
+            clientReportedTotal
+        }
     });
+
+    const orderRef = { id: submitResult.data.id };
+    const orderCode = submitResult.data.code;
+    const total = submitResult.data.total;
 
     // Profile update is non-critical: order is already saved; don't let quota/network errors here surface as order failure
     try {

@@ -9,7 +9,9 @@ const { getAuth }           = require('firebase-admin/auth');
 const crypto                = require('crypto');
 const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo, closeConversationWithMessage, archiveConversation, blockConversation, deleteConversation } = require('./agent/orchestrator');
 const { fetchAllSellableItems } = require('./agent/tools');
-const { buildDeliveredOrderWhatsAppMessage } = require('./agent/orderLogic');
+const orderLogic = require('./agent/orderLogic');
+const { buildDeliveredOrderWhatsAppMessage } = orderLogic;
+const pricing = require('./pricing');
 
 initializeApp();
 
@@ -861,6 +863,99 @@ exports.linkPendingGoogleAfterOrder = onCall(
             customToken,
             profile: sanitizeClientProfileForClient(clientId, { ...clientData, googleUid, googleEmail }, true)
         };
+    }
+);
+
+// Checkout web publico: crea el pedido con Admin SDK despues de recalcular el total contra el
+// catalogo real (functions/pricing.js) -- el navegador ya no escribe /pedidos directo (ver
+// firestore.rules, create de /pedidos rechaza source:'web'). Nunca rechaza el pedido por una
+// discrepancia de precio (decision explicita del negocio): siempre usa el precio "piso"
+// verificado, nunca menos, y deja un log si hay una diferencia grande para revision manual.
+exports.submitPublicOrder = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const items = Array.isArray(request.data?.items) ? request.data.items : [];
+        const customerInfo = request.data?.customerInfo || {};
+
+        if (!items.length) {
+            throw new HttpsError('invalid-argument', 'El carrito esta vacio.');
+        }
+        const customerName = String(customerInfo.name || '').trim();
+        if (!customerName || customerName.length > 120) {
+            throw new HttpsError('invalid-argument', 'Nombre de cliente invalido.');
+        }
+
+        const db = getFirestore();
+        const fulfillmentType = orderLogic.getCheckoutFulfillmentType(customerInfo.fulfillmentType);
+        const deliveryLatitude = Number.isFinite(Number(customerInfo.deliveryLatitude)) ? Number(customerInfo.deliveryLatitude) : null;
+        const deliveryLongitude = Number.isFinite(Number(customerInfo.deliveryLongitude)) ? Number(customerInfo.deliveryLongitude) : null;
+
+        const priced = await pricing.computeServerPricedOrder(db, {
+            items,
+            fulfillmentType,
+            deliveryLatitude,
+            deliveryLongitude,
+            deliveryFeeSubmitted: customerInfo.deliveryFee,
+            promo2x1IncrementoFeeExpected: customerInfo.promo2x1IncrementoFee
+        });
+
+        if (priced.mismatchDetected || priced.mismatchDetails.length) {
+            console.warn('[PRICE_MISMATCH]', {
+                phone: String(customerInfo.phone || '').replace(/\D/g, ''),
+                clientReportedTotal: Number(customerInfo.clientReportedTotal || 0),
+                serverTotal: priced.total,
+                details: priced.mismatchDetails
+            });
+        }
+
+        const customerPhone = String(customerInfo.phone || '').trim();
+        const customerPhoneDigits = customerPhone.replace(/\D+/g, '');
+        const deliveryAddress = String(customerInfo.address || '').trim();
+        const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
+        const cashChangeRequired = customerInfo.cashChangeRequired === true;
+        const cashTenderAmount = cashChangeRequired ? Number(customerInfo.cashTenderAmount || 0) : null;
+        const totalItems = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+        const orderRef = db.collection('pedidos').doc();
+        const orderCode = await orderLogic.reserveNextOrderCode(db, orderRef, {
+            status: 'pendiente',
+            customerName,
+            customerPhone,
+            customerPhoneDigits,
+            fulfillmentType,
+            deliveryAddress,
+            items: priced.items,
+            itemCount: priced.items.length,
+            totalItems,
+            subtotal: priced.subtotal,
+            deliveryFee: priced.deliveryFee,
+            costoDomicilio: priced.deliveryFee,
+            promo2x1IncrementoFee: priced.promo2x1IncrementoFee,
+            total: priced.total,
+            paymentMethod,
+            cashChangeRequired,
+            cashTenderAmount: Number.isFinite(cashTenderAmount) ? cashTenderAmount : null,
+            deliveryZone: String(customerInfo.deliveryZone || '').trim() || null,
+            deliveryLatitude,
+            deliveryLongitude,
+            deliveryFeeVerified: priced.deliveryFeeVerified,
+            deliveryFeeExpected: priced.deliveryFee,
+            deliveryFeeOverridden: Number.isFinite(Number(customerInfo.deliveryFee)) ? (Number(customerInfo.deliveryFee) !== Number(priced.deliveryFee)) : false,
+            currency: 'COP',
+            source: 'web',
+            isScheduled: Boolean(customerInfo.isScheduled),
+            scheduledDate: customerInfo.isScheduled ? String(customerInfo.scheduledDate || '') : null,
+            scheduledTime: customerInfo.isScheduled ? String(customerInfo.scheduledTime || '') : null,
+            scheduledLabel: customerInfo.isScheduled ? String(customerInfo.scheduledLabel || '') : null,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            summaryMessage: String(customerInfo.summaryMessage || ''),
+            clientReportedTotal: Number(customerInfo.clientReportedTotal || 0),
+            priceValidated: true,
+            priceMismatchDetected: Boolean(priced.mismatchDetected)
+        });
+
+        return { id: orderRef.id, code: orderCode, total: priced.total };
     }
 );
 
