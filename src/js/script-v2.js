@@ -2446,12 +2446,21 @@ async function _handleRegPhoneNext() {
         }
     } catch (_) {}
 
-    // Intentar enviar OTP; si falla por cualquier razón, avanzar directo al perfil
+    // El servidor (customerRegisterOrUpdateProfile) exige un OTP verificado para reclamar un
+    // numero sin cuenta todavia -- si el envio falla, ya no se puede saltar al perfil, porque
+    // el guardado final fallaria igual (y antes de este cambio, ni siquiera se validaba del
+    // lado del servidor: cualquiera podia reclamar un telefono ajeno sin haber recibido nada).
     if (btn) btn.textContent = 'Enviando código…';
-    let otpSent = false;
-    try { await callSendWhatsAppOtp(digits); otpSent = true; } catch (_) {}
+    try {
+        await callSendWhatsAppOtp(digits);
+    } catch (_) {
+        feedback.textContent = 'No pudimos enviarte el código por WhatsApp. Verifica el número e intenta de nuevo.';
+        feedback.className   = 'support-feedback support-feedback--error';
+        if (btn) { btn.disabled = false; btn.textContent = 'Continuar'; }
+        return;
+    }
     customerRegisterUI.pendingPhone = phone;
-    customerRegisterUI.step = otpSent ? 'otp' : 'profile';
+    customerRegisterUI.step = 'otp';
     _renderRegStep();
 }
 

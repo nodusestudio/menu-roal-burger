@@ -19,6 +19,7 @@ const FCM_TOKENS_COLLECTION         = 'admin_fcm_tokens';
 const PHONE_VERIFICATIONS_COLLECTION = 'phone_verifications';
 const OTP_EXPIRY_MS                 = 10 * 60 * 1000; // 10 minutos
 const OTP_MAX_ATTEMPTS              = 5;
+const OTP_VERIFICATION_MAX_AGE_MS   = 30 * 60 * 1000; // 30 minutos entre verificar el OTP y reclamar la cuenta
 const CLIENTS_COLLECTION             = 'clientes';
 const CLIENT_CREDENTIALS_COLLECTION  = 'clientes_credenciales';
 const GOOGLE_LINKS_COLLECTION        = 'google_links';
@@ -664,12 +665,31 @@ exports.customerRegisterOrUpdateProfile = onCall(
         const hadCredentials = credsSnap.exists && Boolean(credsSnap.data()?.passwordHash);
 
         // Si ya existe una cuenta con credenciales para este telefono, solo su dueño (sesion
-        // valida, uid == clientId) puede editarla. Si no hay credenciales todavia (cuenta nueva
-        // o reiniciada), cualquiera con el telefono verificado por OTP en el paso anterior puede
-        // crearla/reclamarla — el cliente ya paso por sendWhatsAppOtp/verifyWhatsAppOtp antes de
-        // llegar aqui en el flujo de registro.
+        // valida, uid == clientId) puede editarla.
         if (hadCredentials && request.auth?.uid !== clientId) {
             throw new HttpsError('permission-denied', 'Ya existe una cuenta con ese numero. Inicia sesion para editarla.');
+        }
+
+        // Si NO hay credenciales todavia (cuenta nueva o reiniciada), el comentario original de
+        // esta funcion decia "cualquiera con el telefono verificado por OTP puede reclamarla" --
+        // pero nunca se comprobaba de verdad: cualquiera podia llamar esta funcion directo con el
+        // telefono de otra persona, sin haber recibido ni escrito ningun codigo, y quedar como
+        // dueño de esa cuenta (toma de cuenta completa). Ahora se exige que
+        // phone_verifications/{clientId} este realmente verificado y reciente (verifyWhatsAppOtp
+        // lo marca `verified:true` solo si el codigo de 6 digitos coincidio) antes de crear
+        // credenciales nuevas para este telefono.
+        if (!hadCredentials) {
+            const verificationSnap = await db.collection(PHONE_VERIFICATIONS_COLLECTION).doc(clientId).get();
+            const verificationData = verificationSnap.exists ? verificationSnap.data() : null;
+            const verifiedAtMs = verificationData?.verifiedAt?.toMillis
+                ? verificationData.verifiedAt.toMillis()
+                : Number(verificationData?.verifiedAt) || 0;
+            const isVerified = Boolean(verificationData?.verified)
+                && verifiedAtMs > 0
+                && (Date.now() - verifiedAtMs) <= OTP_VERIFICATION_MAX_AGE_MS;
+            if (!isVerified) {
+                throw new HttpsError('failed-precondition', 'Verifica tu numero por WhatsApp antes de crear tu cuenta.');
+            }
         }
 
         const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
@@ -736,6 +756,13 @@ exports.customerRegisterOrUpdateProfile = onCall(
         }
 
         await clientRef.set(nextClientData, { merge: true });
+
+        if (!hadCredentials) {
+            // Invalidar la verificacion ya usada -- que quede "verified:true" para siempre no
+            // deberia importar (una segunda llamada ya encontraria hadCredentials=true y exigiria
+            // sesion real), pero cerrarlo es gratis y evita depender solo de esa otra capa.
+            await db.collection(PHONE_VERIFICATIONS_COLLECTION).doc(clientId).delete().catch(() => {});
+        }
 
         const customToken = await getAuth().createCustomToken(clientId);
         return { profile: sanitizeClientProfileForClient(clientId, nextClientData, true), customToken };
