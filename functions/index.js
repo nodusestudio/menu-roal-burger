@@ -20,6 +20,9 @@ const PHONE_VERIFICATIONS_COLLECTION = 'phone_verifications';
 const OTP_EXPIRY_MS                 = 10 * 60 * 1000; // 10 minutos
 const OTP_MAX_ATTEMPTS              = 5;
 const OTP_VERIFICATION_MAX_AGE_MS   = 30 * 60 * 1000; // 30 minutos entre verificar el OTP y reclamar la cuenta
+const OTP_RESEND_COOLDOWN_MS        = 60 * 1000; // 1 minuto entre envios al mismo numero
+const OTP_MAX_SENDS_PER_WINDOW      = 5; // maximo de codigos por numero en la ventana de abajo
+const OTP_SEND_WINDOW_MS            = 24 * 60 * 60 * 1000; // 24 horas
 const CLIENTS_COLLECTION             = 'clientes';
 const CLIENT_CREDENTIALS_COLLECTION  = 'clientes_credenciales';
 const GOOGLE_LINKS_COLLECTION        = 'google_links';
@@ -377,22 +380,43 @@ exports.sendWhatsAppOtp = onCall(
             throw new HttpsError('failed-precondition', 'Servicio de verificacion no configurado.');
         }
 
+        // Limite de frecuencia -- antes no habia ninguno: cualquiera podia pedir codigos sin
+        // parar para el mismo numero (o para numeros al azar), generando costo real por cada
+        // mensaje via UltraMsg y riesgo de que Meta suspenda la cuenta de WhatsApp Business por
+        // patron de abuso. Guardado en el mismo doc de phone_verifications, sin coleccion nueva.
+        const otpRef = getFirestore().collection(PHONE_VERIFICATIONS_COLLECTION).doc(`phone_${phone}`);
+        const existingSnap = await otpRef.get();
+        const existingData = existingSnap.exists ? existingSnap.data() : null;
+        const now = Date.now();
+
+        if (existingData?.lastSentAt && (now - existingData.lastSentAt) < OTP_RESEND_COOLDOWN_MS) {
+            const waitSeconds = Math.ceil((OTP_RESEND_COOLDOWN_MS - (now - existingData.lastSentAt)) / 1000);
+            throw new HttpsError('resource-exhausted', `Espera ${waitSeconds} segundos antes de pedir otro codigo.`);
+        }
+
+        const windowStillOpen = Boolean(existingData?.sendWindowStart) && (now - existingData.sendWindowStart) < OTP_SEND_WINDOW_MS;
+        const sendCount = windowStillOpen ? Number(existingData.sendCount || 0) + 1 : 1;
+        if (sendCount > OTP_MAX_SENDS_PER_WINDOW) {
+            throw new HttpsError('resource-exhausted', 'Demasiados codigos solicitados para este numero. Intenta mas tarde o escribenos por WhatsApp.');
+        }
+        const sendWindowStart = windowStillOpen ? existingData.sendWindowStart : now;
+
         // Generar OTP de 6 dígitos criptográficamente seguro
         const otp  = String(parseInt(crypto.randomBytes(3).toString('hex'), 16) % 900000 + 100000);
         const hash = crypto.createHash('sha256').update(otp + phone).digest('hex');
 
         // Guardar en Firestore (nunca el OTP crudo)
-        await getFirestore()
-            .collection(PHONE_VERIFICATIONS_COLLECTION)
-            .doc(`phone_${phone}`)
-            .set({
-                hash,
-                expiresAt:  Date.now() + OTP_EXPIRY_MS,
-                phone,
-                attempts:   0,
-                verified:   false,
-                createdAt:  new Date()
-            });
+        await otpRef.set({
+            hash,
+            expiresAt:  now + OTP_EXPIRY_MS,
+            phone,
+            attempts:   0,
+            verified:   false,
+            createdAt:  new Date(),
+            lastSentAt: now,
+            sendCount,
+            sendWindowStart
+        });
 
         // Normalizar número para WhatsApp Colombia
         const waPhone = phone.startsWith('57') ? phone : `57${phone}`;

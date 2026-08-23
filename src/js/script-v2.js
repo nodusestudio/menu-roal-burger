@@ -2453,8 +2453,8 @@ async function _handleRegPhoneNext() {
     if (btn) btn.textContent = 'Enviando código…';
     try {
         await callSendWhatsAppOtp(digits);
-    } catch (_) {
-        feedback.textContent = 'No pudimos enviarte el código por WhatsApp. Verifica el número e intenta de nuevo.';
+    } catch (err) {
+        feedback.textContent = err?.message || 'No pudimos enviarte el código por WhatsApp. Verifica el número e intenta de nuevo.';
         feedback.className   = 'support-feedback support-feedback--error';
         if (btn) { btn.disabled = false; btn.textContent = 'Continuar'; }
         return;
