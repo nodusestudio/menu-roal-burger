@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260824-1615">
+    <link rel="stylesheet" href="style.css?v=20260824-1637">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -2977,6 +2977,16 @@
             font-size: 0.86rem;
             border: 1px solid transparent;
             line-height: 1.4;
+        }
+
+        .modal-static-value {
+            margin: 0;
+            padding: 11px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.04);
+            color: #fff;
+            font-weight: 600;
         }
 
         .modal-feedback.show {
@@ -14658,6 +14668,34 @@
         </div>
     </div>
 
+    <!-- ── Modal: ajuste manual de puntos de lealtad ── -->
+    <div class="product-edit-modal" id="adjustPointsModal" aria-hidden="true">
+        <div class="product-edit-card">
+            <div class="product-edit-head">
+                <h3 id="adjustPointsTitle">Ajustar puntos</h3>
+                <button type="button" class="product-edit-close" id="adjustPointsCloseBtn">&times;</button>
+            </div>
+            <form id="adjustPointsForm" class="admin-form">
+                <div class="admin-field full">
+                    <label>Saldo disponible actual</label>
+                    <p id="adjustPointsCurrentBalance" class="modal-static-value">0 puntos</p>
+                </div>
+                <div class="admin-field full">
+                    <label for="adjustPointsDelta">Puntos a sumar (positivo) o restar (negativo)</label>
+                    <input type="number" id="adjustPointsDelta" name="adjustPointsDelta" step="1" placeholder="Ej: 50 o -50" required>
+                </div>
+                <div class="admin-field full">
+                    <label for="adjustPointsReason">Motivo del ajuste</label>
+                    <textarea id="adjustPointsReason" name="adjustPointsReason" rows="2" placeholder="Ej: compensacion por reclamo, correccion de error..." required></textarea>
+                </div>
+                <div class="admin-field full">
+                    <div id="adjustPointsFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
+                </div>
+                <button type="submit" class="admin-button" id="adjustPointsSaveBtn">Aplicar ajuste</button>
+            </form>
+        </div>
+    </div>
+
     <!-- ── Modal: Personalizar ticket antes de guardar ── -->
     <div id="posTicketSetupModal" hidden>
         <div class="pts-modal">
@@ -15047,8 +15085,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260824-1615"></script>
-    <script defer src="admin.js?v=20260824-1615"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260824-1637"></script>
+    <script defer src="admin.js?v=20260824-1637"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

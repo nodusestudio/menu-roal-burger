@@ -10500,6 +10500,7 @@ function renderClients() {
             <td>
                 <div class="client-actions">
                     <button type="button" class="client-action-btn" data-client-action="edit" data-client-id="${escapeHtml(client.id)}">Editar</button>
+                    <button type="button" class="client-action-btn" data-client-action="adjust-points" data-client-id="${escapeHtml(client.id)}">Ajustar puntos</button>
                     <button type="button" class="client-action-btn delete" data-client-action="delete" data-client-id="${escapeHtml(client.id)}">Eliminar</button>
                 </div>
             </td>
@@ -12124,6 +12125,84 @@ function openEditClientModal(client, focusField = 'customerName') {
         : clientEditNameInput;
     (_focusInput || clientEditNameInput)?.focus();
 }
+
+// ── Ajuste manual de puntos de lealtad (adminAdjustLoyaltyPoints, Cloud Function) ──────────
+let _adjustPointsClientId = null;
+
+function openAdjustPointsModal(client) {
+    const modal = document.getElementById('adjustPointsModal');
+    const balanceEl = document.getElementById('adjustPointsCurrentBalance');
+    const deltaInput = document.getElementById('adjustPointsDelta');
+    const reasonInput = document.getElementById('adjustPointsReason');
+    if (!modal || !client) return;
+
+    _adjustPointsClientId = client.id;
+    if (balanceEl) balanceEl.textContent = `${Number(client.puntosDisponibles || 0).toLocaleString('es-CO')} puntos`;
+    if (deltaInput) deltaInput.value = '';
+    if (reasonInput) reasonInput.value = '';
+    hideModalFeedback(document.getElementById('adjustPointsFeedback'));
+
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    deltaInput?.focus();
+}
+
+function closeAdjustPointsModal() {
+    const modal = document.getElementById('adjustPointsModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    _adjustPointsClientId = null;
+}
+
+document.getElementById('adjustPointsCloseBtn')?.addEventListener('click', closeAdjustPointsModal);
+document.getElementById('adjustPointsModal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'adjustPointsModal') closeAdjustPointsModal();
+});
+document.addEventListener('keydown', (event) => {
+    const modal = document.getElementById('adjustPointsModal');
+    if (event.key === 'Escape' && modal && modal.classList.contains('show')) {
+        closeAdjustPointsModal();
+    }
+});
+
+document.getElementById('adjustPointsForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const feedback = document.getElementById('adjustPointsFeedback');
+    const saveBtn = document.getElementById('adjustPointsSaveBtn');
+    const deltaInput = document.getElementById('adjustPointsDelta');
+    const reasonInput = document.getElementById('adjustPointsReason');
+    const clientId = _adjustPointsClientId;
+    if (!clientId) return;
+
+    const delta = Math.trunc(Number(deltaInput?.value));
+    if (!Number.isFinite(delta) || delta === 0) {
+        showModalFeedback(feedback, 'Escribe un numero de puntos distinto de cero.', 'error');
+        return;
+    }
+    const reason = String(reasonInput?.value || '').trim();
+    if (!reason) {
+        showModalFeedback(feedback, 'Escribe el motivo del ajuste.', 'error');
+        return;
+    }
+    if (!firebaseFunctions) {
+        showModalFeedback(feedback, 'Servicio no disponible.', 'error');
+        return;
+    }
+
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Aplicando...'; }
+    try {
+        await firebaseFunctions.httpsCallable('adminAdjustLoyaltyPoints')({ clientId, delta, reason });
+        await fetchClients({ force: true });
+        renderClients();
+        showNotice('Puntos ajustados correctamente.', 'ok');
+        closeAdjustPointsModal();
+    } catch (error) {
+        showModalFeedback(feedback, `No se pudo aplicar el ajuste: ${error.message || 'error inesperado.'}`, 'error');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Aplicar ajuste'; }
+    }
+});
 
 // ── Edición de nombre/teléfono/dirección directo desde el ticket ────────────
 let _clientEditSyncOrderId = null; // pedido a sincronizar tras guardar el cliente
@@ -16138,6 +16217,11 @@ if (clientsList) {
             return;
         }
 
+        if (action === 'adjust-points') {
+            openAdjustPointsModal(client);
+            return;
+        }
+
         if (action === 'delete') {
             const confirmed = await showConfirmModal({ title: `¿Eliminar el cliente ${client.customerName}?`, message: 'No se puede deshacer.', confirmText: 'Eliminar' });
             if (!confirmed) {
@@ -18780,6 +18864,152 @@ document.getElementById('gastoMonto')?.addEventListener('input', (e) => {
     _updateGastoConfirmState();
 });
 
+// ── Ticket de impresión al registrar un gasto ──────────────────────────────────────────────
+// Mismo patrón que el ticket de cierre de caja (buildCierreESCPOSData/_printCierreTicket) para
+// Bluetooth, pero el fallback de navegador usa el mismo mecanismo de auto-impresión de
+// openKitchenPrintTicket (misma pestaña, window.print() automático) en vez del popup con botón
+// manual -- el gasto debe generar su ticket solo, sin que el cajero tenga que ir a buscarlo.
+function _gastoCategoriaLabel(gasto) {
+    const cat = getCategoriasGastos().find((c) => c.id === gasto.categoria);
+    if (!cat) return gasto.categoria || 'Otros';
+    return cat.icon ? `${cat.icon} ${cat.nombre}` : cat.nombre;
+}
+
+function _gastoMetodoLabel(gasto) {
+    const m = getPaymentMethods().find((x) => x.id === gasto.paymentMethod);
+    return m ? m.label : (gasto.paymentMethod || 'Sin especificar');
+}
+
+function buildGastoTicketHtml(gasto) {
+    const restaurantName = escapeHtml(brandingState.restaurantName || 'Roal Burger');
+    const fechaMs = _tsMs(gasto.registradoAt) || Date.now();
+    const fecha = escapeHtml(formatOrderDate(fechaMs));
+    const hora = escapeHtml(formatOrderTime(fechaMs));
+
+    return `
+        <div class="ticket-paper-wrap">
+            <article class="ticket-paper" data-ticket-print-root="true">
+                <div class="ticket-brand">
+                    <div class="ticket-brand-name">${restaurantName}</div>
+                    <div class="ticket-brand-copy">Comprobante de gasto</div>
+                    <div class="ticket-order-meta">
+                        <span>${fecha}</span>
+                        <span>${hora}</span>
+                    </div>
+                </div>
+                <section class="ticket-section">
+                    <div class="ticket-section-title">Detalle del gasto</div>
+                    <div class="ticket-customer-card">
+                        <div class="ticket-customer-row">
+                            <span>Categoria</span>
+                            <span>${escapeHtml(_gastoCategoriaLabel(gasto))}</span>
+                        </div>
+                        ${gasto.subcategoria ? `
+                        <div class="ticket-customer-row">
+                            <span>Subcategoria</span>
+                            <span>${escapeHtml(gasto.subcategoria)}</span>
+                        </div>` : ''}
+                        <div class="ticket-customer-row">
+                            <span>Descripcion</span>
+                            <span>${escapeHtml(gasto.descripcion || 'Sin descripcion')}</span>
+                        </div>
+                        <div class="ticket-customer-row">
+                            <span>Metodo de pago</span>
+                            <span>${escapeHtml(_gastoMetodoLabel(gasto))}</span>
+                        </div>
+                    </div>
+                </section>
+                <div class="ticket-total">
+                    <div class="ticket-summary-line ticket-total-row is-grand-total">
+                        <span>Monto</span>
+                        <strong>${escapeHtml(formatMoney(Number(gasto.monto || 0)))}</strong>
+                    </div>
+                </div>
+                <div class="ticket-footer-copy">
+                    <span>DOCUMENTO INTERNO — NO FISCAL</span>
+                </div>
+            </article>
+        </div>`;
+}
+
+function buildGastoESCPOSData(gasto) {
+    const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
+    const COLS = 32;
+    const bytes = [];
+    const pb = (...a) => bytes.push(...a);
+    const { wl, wc, sep2 } = createEscPosLineBuilder(pb, COLS);
+
+    const fechaMs = _tsMs(gasto.registradoAt) || Date.now();
+
+    pb(ESC, 0x40);
+    pb(ESC, 0x61, 0x01, ESC, 0x45, 0x01, ESC, 0x21, 0x10);
+    wl(brandingState.restaurantName || 'ROAL BURGER');
+    pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
+    wl('Comprobante de Gasto');
+    pb(ESC, 0x61, 0x00);
+    sep2();
+
+    wc('Fecha', formatOrderDate(fechaMs));
+    wc('Hora', formatOrderTime(fechaMs));
+    wc('Categoria', _gastoCategoriaLabel(gasto));
+    if (gasto.subcategoria) wc('Subcategoria', gasto.subcategoria);
+    wl('Descripcion:');
+    wl('  ' + (gasto.descripcion || 'Sin descripcion'));
+    wc('Metodo de pago', _gastoMetodoLabel(gasto));
+
+    sep2();
+    pb(ESC, 0x45, 0x01, ESC, 0x21, 0x10);
+    wc('MONTO', formatMoney(Number(gasto.monto || 0)));
+    pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
+    sep2();
+
+    pb(ESC, 0x61, 0x01, LF);
+    wl('DOCUMENTO INTERNO - NO FISCAL');
+    pb(LF, LF, LF);
+    pb(GS, 0x56, 0x00);
+
+    return new Uint8Array(bytes);
+}
+
+async function printGastoViaBluetooth(gasto) {
+    const char = await _btEnsureConnected();
+    if (!char) return false;
+    const data = buildGastoESCPOSData(gasto);
+    const CHUNK = 20;
+    try {
+        for (let i = 0; i < data.length; i += CHUNK) {
+            await _btWriteChunk(char, data.slice(i, i + CHUNK));
+            await new Promise((r) => setTimeout(r, 80));
+        }
+        return true;
+    } catch (err) {
+        showNotice(`Error Bluetooth: ${err.message || 'desconocido'}. Imprimiendo por navegador...`, 'error');
+        return false;
+    }
+}
+
+function _printGastoBrowser(gasto) {
+    const printArea = document.getElementById('thermalPrintArea');
+    if (!printArea) { showNotice('Error interno: area de impresion no encontrada.', 'error'); return; }
+
+    printArea.innerHTML = buildGastoTicketHtml(gasto);
+    const cleanup = () => { printArea.innerHTML = ''; window.removeEventListener('afterprint', cleanup); };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(() => { window.print(); }, 150);
+}
+
+async function printGastoTicket(gasto) {
+    if (navigator.bluetooth) {
+        const char = await _btEnsureConnected();
+        if (!char && _btPrinterDevice) await _btAutoReconnect();
+    }
+    if (_btPrinterDevice) {
+        const ok = await printGastoViaBluetooth(gasto);
+        if (ok) { showNotice('Ticket de gasto enviado a la impresora Bluetooth.', 'ok'); return; }
+    }
+    _printGastoBrowser(gasto);
+}
+
 document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async () => {
     const descripcion = document.getElementById('gastoDescripcion')?.value?.trim() || '';
     const monto = Number((document.getElementById('gastoMonto')?.value || '').replace(/\./g, '') || 0);
@@ -18816,6 +19046,11 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
         }
         renderGastosInformes();
         showNotice('Gasto registrado.', 'ok');
+        // Un traslado entre metodos de pago no es un gasto real -- no genera ticket. Un fallo
+        // de impresion nunca debe afectar el gasto que ya se guardo arriba.
+        if (gasto.tipo !== 'traslado') {
+            printGastoTicket(gasto).catch(() => {});
+        }
     } catch (err) {
         showNotice('Error al registrar gasto: ' + (err.message || 'error'), 'error');
     } finally {

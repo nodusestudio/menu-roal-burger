@@ -1329,6 +1329,87 @@ exports.adminResetClientCredentials = onCall(
 );
 
 // ─────────────────────────────────────────────────────────────
+// Ajuste manual del saldo de puntos de lealtad desde el admin (corregir un error, compensar un
+// reclamo, etc.) -- puntosDisponibles/puntosAcumuladosTotal solo son escribibles por Admin SDK
+// (ver touchesLoyaltyPoints() en firestore.rules), así que esta es la ÚNICA vía para tocarlos a
+// mano fuera de los triggers automáticos (awardLoyaltyPoints / redeemLoyaltyPointsTransaction).
+//
+// Un ajuste POSITIVO cuenta como "ganado" -- suma a puntosAcumuladosTotal igual que si el cliente
+// lo hubiera comprado, porque es un puntos que de verdad se le está otorgando. Un ajuste NEGATIVO
+// (corregir un error, ej. se acreditó de más) solo baja puntosDisponibles -- el histórico de
+// "cuánto ganó en su vida" no se toca, para no falsear ese número por una corrección puntual.
+// Mismo espíritu "nunca rechazar" del resto del sistema de puntos: un ajuste negativo mayor al
+// saldo real se clampa a 0 en vez de fallar.
+async function adjustLoyaltyPointsTransaction(db, clientId, requestedDelta, adminUid, reason) {
+    const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+    const auditRef = db.collection('ajustes_puntos_lealtad').doc();
+
+    return db.runTransaction(async (transaction) => {
+        const clientSnap = await transaction.get(clientRef);
+        const previousBalance = clientSnap.exists ? Math.max(0, Number(clientSnap.data()?.puntosDisponibles) || 0) : 0;
+
+        const actualDelta = requestedDelta >= 0 ? requestedDelta : -Math.min(-requestedDelta, previousBalance);
+        const newBalance = previousBalance + actualDelta;
+
+        const update = { puntosDisponibles: FieldValue.increment(actualDelta) };
+        if (actualDelta > 0) {
+            update.puntosAcumuladosTotal = FieldValue.increment(actualDelta);
+        }
+        if (clientSnap.exists) {
+            transaction.update(clientRef, update);
+        } else {
+            transaction.set(clientRef, update, { merge: true });
+        }
+
+        transaction.set(auditRef, {
+            clientId,
+            adminUid,
+            requestedDelta,
+            delta: actualDelta,
+            reason,
+            previousBalance,
+            newBalance,
+            createdAt: FieldValue.serverTimestamp()
+        });
+
+        return { newBalance };
+    });
+}
+
+exports.adminAdjustLoyaltyPoints = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const adminUid = request.auth?.uid;
+        if (!adminUid) {
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+        }
+        const adminDoc = await getFirestore().collection('admins').doc(adminUid).get();
+        if (!adminDoc.exists) {
+            throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+        }
+
+        const clientId = String(request.data?.clientId || '').trim();
+        if (!clientId) {
+            throw new HttpsError('invalid-argument', 'Cliente invalido.');
+        }
+        const requestedDelta = Math.trunc(Number(request.data?.delta));
+        if (!Number.isFinite(requestedDelta) || requestedDelta === 0) {
+            throw new HttpsError('invalid-argument', 'El ajuste debe ser un numero distinto de cero.');
+        }
+        const reason = String(request.data?.reason || '').trim();
+        if (!reason) {
+            throw new HttpsError('invalid-argument', 'Escribe un motivo para el ajuste.');
+        }
+
+        const { newBalance } = await adjustLoyaltyPointsTransaction(getFirestore(), clientId, requestedDelta, adminUid, reason);
+        return { newBalance };
+    }
+);
+
+// Exportado solo para tests (tests/loyalty-points-adjustment.test.js).
+exports._adjustLoyaltyPointsTransaction = adjustLoyaltyPointsTransaction;
+
+// ─────────────────────────────────────────────────────────────
 // Agente de IA — widget de chat en la web pública
 // Requiere secret: firebase functions:secrets:set ANTHROPIC_API_KEY
 // ─────────────────────────────────────────────────────────────
