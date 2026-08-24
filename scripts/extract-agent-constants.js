@@ -10,6 +10,7 @@ const path = require('path');
 
 const SOURCE_FILE = path.join(__dirname, '..', 'src', 'js', 'script-v2.js');
 const OUTPUT_FILE = path.join(__dirname, '..', 'functions', 'agent', 'geofence-data.json');
+const ADMIN_FILE = path.join(__dirname, '..', 'src', 'js', 'admin.js');
 
 function extractLiteral(source, constName) {
     const marker = `const ${constName} = `;
@@ -37,6 +38,19 @@ function findStatementEnd(source, fromIndex) {
     throw new Error('No se encontró el fin del literal (";" a nivel 0).');
 }
 
+// Reemplaza el literal de un const existente en `source` por `newValueJs` (texto JS ya
+// serializado), preservando todo lo demás del archivo tal cual.
+function replaceLiteral(source, constName, newValueJs) {
+    const marker = `const ${constName} = `;
+    const start = source.indexOf(marker);
+    if (start === -1) {
+        throw new Error(`No se encontró "${marker}" en el archivo a actualizar.`);
+    }
+    const valueStart = start + marker.length;
+    const semicolonIndex = findStatementEnd(source, valueStart);
+    return source.slice(0, valueStart) + newValueJs + source.slice(semicolonIndex);
+}
+
 function main() {
     const source = fs.readFileSync(SOURCE_FILE, 'utf8');
 
@@ -53,6 +67,19 @@ function main() {
     fs.mkdirSync(path.dirname(OUTPUT_FILE), { recursive: true });
     fs.writeFileSync(OUTPUT_FILE, JSON.stringify(data, null, 2) + '\n', 'utf8');
     console.log(`Zonas de domicilio extraídas: ${data.DELIVERY_GEOFENCE_ZONES.length} zonas -> ${path.relative(process.cwd(), OUTPUT_FILE)}`);
+
+    // src/js/admin.js tenía su propia copia a mano de estas mismas zonas (ADMIN_DELIVERY_ZONES,
+    // sin el campo "color" que solo usa el mapa Leaflet del cliente) -- dos archivos con los
+    // mismos polígonos escritos por separado, sin ninguna fuente única de verdad: un cambio de
+    // tarifa hecho en uno no llegaba al otro. Ahora se deriva del mismo DELIVERY_GEOFENCE_ZONES
+    // en cada build, igual que ya se hacía para el agente.
+    const adminZones = data.DELIVERY_GEOFENCE_ZONES.map(({ name, fee, label, polygon }) => ({ name, fee, label, polygon }));
+    const adminSource = fs.readFileSync(ADMIN_FILE, 'utf8');
+    const adminSourceUpdated = replaceLiteral(adminSource, 'ADMIN_DELIVERY_ZONES', JSON.stringify(adminZones));
+    if (adminSourceUpdated !== adminSource) {
+        fs.writeFileSync(ADMIN_FILE, adminSourceUpdated, 'utf8');
+        console.log(`admin.js: ADMIN_DELIVERY_ZONES sincronizado (${adminZones.length} zonas).`);
+    }
 }
 
 main();
