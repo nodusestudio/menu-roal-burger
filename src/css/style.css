@@ -42,6 +42,11 @@
     --brand-orange-dark: #ff5a00;
     --brand-orange-light: #ff9944;
     --brand-orange-rgb: 255, 122, 0;
+    /* Fase 1b: rgba(255,96,0,*) es, con diferencia, el valor de naranja MAS repetido de todo el
+       archivo (48 apariciones, 17 alfas distintos) -- su propia familia bien establecida para
+       glows/pulsos/sombras, un triplete RGB distinto al solido --brand-orange-rgb (96 vs 122 en
+       el canal verde). Mismo criterio que la fase 1: coincidencia EXACTA, cero cambio visual. */
+    --brand-orange-glow-rgb: 255, 96, 0;
     --amber-muted: #a54800;
 }
 
@@ -233,7 +238,7 @@ body::before {
     height: 100%;
     background-image: 
         repeating-linear-gradient(90deg, rgba(255,255,255,.01) 0px, transparent 1px, transparent 3px, rgba(255,255,255,.01) 4px),
-        repeating-linear-gradient(0deg, rgba(255,96,0,.02) 0px, transparent 1px, transparent 3px, rgba(255,96,0,.02) 4px);
+        repeating-linear-gradient(0deg, rgba(var(--brand-orange-glow-rgb), .02) 0px, transparent 1px, transparent 3px, rgba(var(--brand-orange-glow-rgb), .02) 4px);
     pointer-events: none;
     z-index: 0;
 }
@@ -287,7 +292,7 @@ body::before {
     letter-spacing: 4px;
     margin-bottom: 20px;
     text-shadow: 
-        0 0 30px rgba(255, 96, 0, 0.8),
+        0 0 30px rgba(var(--brand-orange-glow-rgb), 0.8),
         0 4px 8px rgba(0, 0, 0, 0.9);
     line-height: 1;
 }
@@ -337,7 +342,7 @@ body::before {
 
 .btn-icon {
     font-size: 1.8rem;
-    filter: drop-shadow(0 0 8px rgba(255, 96, 0, 0.6));
+    filter: drop-shadow(0 0 8px rgba(var(--brand-orange-glow-rgb), 0.6));
 }
 
 .glass-shine-enter {
@@ -479,7 +484,7 @@ a.is-ordering-closed {
     border-color: rgba(255, 255, 255, 0.5);
     box-shadow: 
         0 15px 50px rgba(0, 0, 0, 0.5),
-        0 0 40px rgba(255, 96, 0, 0.4),
+        0 0 40px rgba(var(--brand-orange-glow-rgb), 0.4),
         inset 0 1px 0 rgba(255, 255, 255, 0.3);
     color: #ffffff;
 }
@@ -747,7 +752,7 @@ body.is-offline #menuScreen {
     letter-spacing: 3px;
     margin-bottom: 15px;
     text-shadow: 
-        0 0 20px rgba(255, 96, 0, 0.6),
+        0 0 20px rgba(var(--brand-orange-glow-rgb), 0.6),
         0 4px 8px rgba(0, 0, 0, 0.8),
         0 8px 16px rgba(0, 0, 0, 0.4);
     line-height: 1.1;
@@ -1020,7 +1025,7 @@ body.is-offline #menuScreen {
     height: auto;
     border-radius: 15px;
     overflow: hidden;
-    box-shadow: 0 15px 50px rgba(255, 96, 0, 0.3);
+    box-shadow: 0 15px 50px rgba(var(--brand-orange-glow-rgb), 0.3);
     margin-bottom: 30px;
     position: relative;
 }
@@ -1031,7 +1036,7 @@ body.is-offline #menuScreen {
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(255, 96, 0, 0.15) 0%, rgba(0, 0, 0, 0.25) 100%);
+    background: linear-gradient(135deg, rgba(var(--brand-orange-glow-rgb), 0.15) 0%, rgba(0, 0, 0, 0.25) 100%);
     z-index: 2;
 }
 
@@ -1220,14 +1225,14 @@ body.is-offline #menuScreen {
 }
 
 .category-chip:hover {
-    border-color: rgba(255, 96, 0, 0.5);
+    border-color: rgba(var(--brand-orange-glow-rgb), 0.5);
     background: rgba(255, 255, 255, 0.30);
     transform: translateY(-2px);
 }
 
 .category-chip.active {
-    border-color: rgba(255, 96, 0, 0.9);
-    background: linear-gradient(160deg, rgba(255, 96, 0, 0.18), rgba(255, 255, 255, 0.28));
+    border-color: rgba(var(--brand-orange-glow-rgb), 0.9);
+    background: linear-gradient(160deg, rgba(var(--brand-orange-glow-rgb), 0.18), rgba(255, 255, 255, 0.28));
 }
 
 .category-products-panel {
@@ -1247,15 +1252,15 @@ body.is-offline #menuScreen {
 
 @keyframes targetFocusPulse {
     0% {
-        box-shadow: 0 0 0 0 rgba(255, 96, 0, 0.75);
+        box-shadow: 0 0 0 0 rgba(var(--brand-orange-glow-rgb), 0.75);
         transform: scale(0.995);
     }
     60% {
-        box-shadow: 0 0 0 12px rgba(255, 96, 0, 0);
+        box-shadow: 0 0 0 12px rgba(var(--brand-orange-glow-rgb), 0);
         transform: scale(1);
     }
     100% {
-        box-shadow: 0 0 0 0 rgba(255, 96, 0, 0);
+        box-shadow: 0 0 0 0 rgba(var(--brand-orange-glow-rgb), 0);
     }
 }
 
@@ -1499,7 +1504,7 @@ body.is-offline #menuScreen {
 
 .menu-card:hover {
     transform: translateY(-8px) scale(1.04);
-    box-shadow: 0 20px 40px rgba(255, 96, 0, 0.4);
+    box-shadow: 0 20px 40px rgba(var(--brand-orange-glow-rgb), 0.4);
 }
 .menu-card:active {
     transform: scale(0.97);
@@ -1508,7 +1513,7 @@ body.is-offline #menuScreen {
 
 .menu-card.highlight {
     border-color: #FF6000;
-    box-shadow: 0 10px 30px rgba(255, 96, 0, 0.3);
+    box-shadow: 0 10px 30px rgba(var(--brand-orange-glow-rgb), 0.3);
 }
 
 .card-icon {
@@ -1576,7 +1581,7 @@ body.is-offline #menuScreen {
     align-items: center;
     justify-content: center;
     border-radius: 8px;
-    background: rgba(255, 96, 0, 0.14);
+    background: rgba(var(--brand-orange-glow-rgb), 0.14);
 }
 
 .info-text strong {
@@ -1639,7 +1644,7 @@ body.is-offline #menuScreen {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 96, 0, 0.1), transparent);
+    background: linear-gradient(90deg, transparent, rgba(var(--brand-orange-glow-rgb), 0.1), transparent);
     transition: left calc(0.6s * var(--landing-animation-speed)) ease;
 }
 
@@ -1651,9 +1656,9 @@ body.is-offline #menuScreen {
     background: var(--landing-button-border-color, var(--brand-primary));
     color: var(--text-primary);
     box-shadow: 
-        0 0 20px rgba(255, 96, 0, 0.5),
-        0 0 40px rgba(255, 96, 0, 0.3),
-        0 0 60px rgba(255, 96, 0, 0.1);
+        0 0 20px rgba(var(--brand-orange-glow-rgb), 0.5),
+        0 0 40px rgba(var(--brand-orange-glow-rgb), 0.3),
+        0 0 60px rgba(var(--brand-orange-glow-rgb), 0.1);
     transform: translateY(-3px);
 }
 
@@ -1695,7 +1700,7 @@ body.is-offline #menuScreen {
     border-width: 3px !important;
     /* solo transform — propiedad compositor, sin repaint */
     animation: constantGlow 2s ease-in-out infinite alternate !important;
-    box-shadow: 0 0 24px rgba(255, 96, 0, 0.55), 0 0 48px rgba(255, 96, 0, 0.25);
+    box-shadow: 0 0 24px rgba(var(--brand-orange-glow-rgb), 0.55), 0 0 48px rgba(var(--brand-orange-glow-rgb), 0.25);
     margin: 20px 0 !important;
 }
 
@@ -1724,13 +1729,13 @@ body.is-offline #menuScreen {
     border-width: 3px;
     font-size: 1.2rem;
     padding: 22px 30px;
-    box-shadow: 0 0 15px rgba(255, 96, 0, 0.4);
+    box-shadow: 0 0 15px rgba(var(--brand-orange-glow-rgb), 0.4);
 }
 
 .featured-button:hover {
     box-shadow: 
-        0 0 30px rgba(255, 96, 0, 0.6),
-        0 0 60px rgba(255, 96, 0, 0.3);
+        0 0 30px rgba(var(--brand-orange-glow-rgb), 0.6),
+        0 0 60px rgba(var(--brand-orange-glow-rgb), 0.3);
 }
 
 /* WhatsApp */
@@ -1806,7 +1811,7 @@ body.is-offline #menuScreen {
     color: #666;
     font-size: 0.9rem;
     margin-top: 40px;
-    border-top: 1px solid rgba(255, 96, 0, 0.2);
+    border-top: 1px solid rgba(var(--brand-orange-glow-rgb), 0.2);
     font-family: 'Oswald', sans-serif;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1967,9 +1972,9 @@ body.is-offline #menuScreen {
 }
 
 .close-button:hover {
-    background: rgba(255, 96, 0, 0.2);
+    background: rgba(var(--brand-orange-glow-rgb), 0.2);
     transform: scale(1.1);
-    box-shadow: 0 0 20px rgba(255, 96, 0, 0.5);
+    box-shadow: 0 0 20px rgba(var(--brand-orange-glow-rgb), 0.5);
 }
 
 .drawer-toggle {
@@ -2124,7 +2129,7 @@ body.is-offline #menuScreen {
     text-align: center;
     margin-top: 0;
     margin-bottom: 5px;
-    text-shadow: 0 0 12px rgba(255, 96, 0, 0.4);
+    text-shadow: 0 0 12px rgba(var(--brand-orange-glow-rgb), 0.4);
 }
 
 .menu-section {
@@ -2145,14 +2150,14 @@ body.is-offline #menuScreen {
     width: 100%;
     height: auto;
     border-radius: 15px;
-    box-shadow: 0 10px 30px rgba(255, 96, 0, 0.3);
+    box-shadow: 0 10px 30px rgba(var(--brand-orange-glow-rgb), 0.3);
     transition: transform 0.3s ease;
-    border: 2px solid rgba(255, 96, 0, 0.2);
+    border: 2px solid rgba(var(--brand-orange-glow-rgb), 0.2);
 }
 
 .menu-image:hover {
     transform: scale(1.02);
-    box-shadow: 0 15px 40px rgba(255, 96, 0, 0.5);
+    box-shadow: 0 15px 40px rgba(var(--brand-orange-glow-rgb), 0.5);
 }
 
 /* Animación de fade in */
@@ -2203,7 +2208,7 @@ body.is-offline #menuScreen {
     
     .menu-image {
         border-radius: 10px;
-        box-shadow: 0 8px 25px rgba(255, 96, 0, 0.3);
+        box-shadow: 0 8px 25px rgba(var(--brand-orange-glow-rgb), 0.3);
     }
 }
 
@@ -2464,7 +2469,7 @@ body.has-guest-register-banner #ayudaScreen {
 .support-field textarea:focus,
 .support-field select:focus {
     outline: none;
-    border-color: rgba(255, 96, 0, 0.75);
+    border-color: rgba(var(--brand-orange-glow-rgb), 0.75);
     box-shadow: 0 0 0 3px rgba(255, 146, 57, 0.12);
 }
 
@@ -3023,7 +3028,7 @@ body.has-guest-register-banner #ayudaScreen {
 }
 
 .customer-live-order-card {
-    background: linear-gradient(135deg, rgba(var(--brand-orange-rgb), 0.14), rgba(255, 96, 0, 0.06));
+    background: linear-gradient(135deg, rgba(var(--brand-orange-rgb), 0.14), rgba(var(--brand-orange-glow-rgb), 0.06));
 }
 
 .customer-order-history-card {
@@ -4346,7 +4351,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .featured-carousel-toggle {
-    border: 1px solid rgba(255, 96, 0, 0.45);
+    border: 1px solid rgba(var(--brand-orange-glow-rgb), 0.45);
     background: rgba(255, 255, 255, 0.15);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -4362,7 +4367,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .featured-carousel-toggle:hover {
-    background: rgba(255, 96, 0, 0.2);
+    background: rgba(var(--brand-orange-glow-rgb), 0.2);
     color: var(--text-primary);
     border-color: rgba(255, 133, 51, 0.8);
 }
@@ -4403,16 +4408,16 @@ body.has-consent-doc-open .guest-register-banner {
     aspect-ratio: 1/1;
     border-radius: 20px;
     overflow: hidden;
-    box-shadow: 0 8px 25px rgba(255, 96, 0, 0.3);
-    border: 2px solid rgba(255, 96, 0, 0.2);
+    box-shadow: 0 8px 25px rgba(var(--brand-orange-glow-rgb), 0.3);
+    border: 2px solid rgba(var(--brand-orange-glow-rgb), 0.2);
     transition: box-shadow 0.3s ease, border-color 0.3s ease;
     transform: translateZ(0);
     cursor: zoom-in;
 }
 
 .card-image-wrapper:hover {
-    box-shadow: 0 12px 35px rgba(255, 96, 0, 0.4);
-    border-color: rgba(255, 96, 0, 0.4);
+    box-shadow: 0 12px 35px rgba(var(--brand-orange-glow-rgb), 0.4);
+    border-color: rgba(var(--brand-orange-glow-rgb), 0.4);
 }
 
 .product-image-mobile {
@@ -4499,7 +4504,7 @@ body.has-consent-doc-open .guest-register-banner {
     
     .card-image-wrapper {
         border-radius: 15px;
-        box-shadow: 0 4px 14px rgba(255, 96, 0, 0.24);
+        box-shadow: 0 4px 14px rgba(var(--brand-orange-glow-rgb), 0.24);
         transition: box-shadow 0.2s ease, border-color 0.2s ease;
     }
 
@@ -4556,12 +4561,12 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .maps-btn:hover {
-    background: rgba(255, 96, 0, 0.25);
+    background: rgba(var(--brand-orange-glow-rgb), 0.25);
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
     text-decoration: none;
     color: var(--text-primary);
-    border-color: rgba(255, 96, 0, 0.5);
+    border-color: rgba(var(--brand-orange-glow-rgb), 0.5);
 }
 
 .maps-icon {
@@ -7700,11 +7705,11 @@ body.has-consent-doc-open .guest-register-banner {
           pueden quedarse "pegados" después del toque) */
     .menu-image:hover {
         transform: none;
-        box-shadow: 0 10px 30px rgba(255, 96, 0, 0.3);
+        box-shadow: 0 10px 30px rgba(var(--brand-orange-glow-rgb), 0.3);
     }
     .card-image-wrapper:hover {
-        box-shadow: 0 8px 25px rgba(255, 96, 0, 0.3);
-        border-color: rgba(255, 96, 0, 0.2);
+        box-shadow: 0 8px 25px rgba(var(--brand-orange-glow-rgb), 0.3);
+        border-color: rgba(var(--brand-orange-glow-rgb), 0.2);
     }
     .card-image-wrapper:hover .product-image-mobile {
         transform: none;
