@@ -8245,6 +8245,12 @@ function renderDynamicCategorySections() {
 
     const staticCategoryKeys = new Set(Object.values(SECTION_CATEGORY_KEYS).map((value) => normalizeCategoryKey(value)));
 
+    // DocumentFragment: arma las secciones de las ~10 categorías fuera del DOM y las inserta al
+    // container en UNA sola operación al final, en vez de un container.appendChild(section) por
+    // categoría (10 reflows en vez de 1). Medido en producción: la creación/inserción de los
+    // ~100+ nodos DOM (no los estilos ni las funciones auxiliares, ya perfilado) es el costo real.
+    const fragment = document.createDocumentFragment();
+
     const grouped = new Map();
     latestProducts.forEach((product) => {
         const nombre = product.nombre || product.name || 'Producto';
@@ -8376,8 +8382,10 @@ function renderDynamicCategorySections() {
                     section.appendChild(card);
                 });
             }
-            container.appendChild(section);
+            fragment.appendChild(section);
         });
+
+    container.appendChild(fragment);
 }
 
 function renderFeaturedCards(carousel, items) {
