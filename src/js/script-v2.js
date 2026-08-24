@@ -10910,13 +10910,6 @@ function openCategoryDetail(cat) {
     const grid   = document.getElementById('cdsProductsGrid');
     if (!screen || !title || !grid) return; // no ocultar home si faltan elementos
 
-    // Ocultar navCategoriesScreen si estaba visible (quedaría detrás al ser transparente)
-    const navScreen = document.getElementById('navCategoriesScreen');
-    if (navScreen) {
-        navScreen.dataset.hiddenByDetail = navScreen.hidden ? '0' : '1';
-        navScreen.hidden = true;
-    }
-
     _enterScreen('categoryDetailScreen');
 
     const catKey = cat.key || normalizeCategoryKey(cat.name);
@@ -10989,12 +10982,6 @@ function openCategoryDetail(cat) {
 function closeCategoryDetail() {
     const screen = document.getElementById('categoryDetailScreen');
     if (screen) screen.hidden = true;
-    // Restaurar navCategoriesScreen si estaba abierta antes de entrar al detalle
-    const navScreen = document.getElementById('navCategoriesScreen');
-    if (navScreen && navScreen.dataset.hiddenByDetail === '1') {
-        navScreen.hidden = false;
-        navScreen.removeAttribute('data-hidden-by-detail');
-    }
     _exitScreen();
 }
 
@@ -11810,10 +11797,6 @@ function _enterScreen(screenId) {
             }
         }
     });
-    // Si no abrimos el detalle de categoría, limpiar el tracking de navCategoriesScreen
-    if (screenId !== 'categoryDetailScreen') {
-        document.getElementById('navCategoriesScreen')?.removeAttribute('data-hidden-by-detail');
-    }
     const hs = document.getElementById('homeScreen');
     if (hs) hs.hidden = true;
     setPublicTopbarVisible(false);
@@ -13130,11 +13113,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Cierra de más anidado a menos anidado
                 if (!document.getElementById('categoryDetailScreen')?.hidden) {
                     closeCategoryDetail();
-                    // Si navCategoriesScreen fue restaurada, re-empujar estado para permitir otro «atrás»
-                    if (!document.getElementById('navCategoriesScreen')?.hidden) {
-                        history.pushState({ roalMenuScreen: true }, '');
-                        _screenHistoryPushed = true;
-                    }
                     return;
                 }
                 if (!document.getElementById('perfilScreen')?.hidden)        { closeCustomerAuthModal();   return; }
@@ -13169,7 +13147,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // El home viejo quedo retirado (siempre oculto) — este chequeo ahora es sobre
             // menuCarouselScreen, que es la pantalla base actual.
             if (menuScreen && menuScreen.hidden && !document.getElementById('splashScreen')) {
-                const _secondaryIds = ['categoryDetailScreen', 'navCategoriesScreen', 'promoScreen', 'searchScreen'];
+                const _secondaryIds = ['categoryDetailScreen', 'promoScreen'];
                 const _anySecondaryOpen = _secondaryIds.some(id => { const el = document.getElementById(id); return el && !el.hidden; });
                 if (!_anySecondaryOpen) openMenuCarouselScreen();
                 return;
