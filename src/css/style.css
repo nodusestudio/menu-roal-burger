@@ -30,6 +30,19 @@
     --radius-md: 14px;
     --radius-sm: 12px;
     --radius-xl: 26px;
+    /* Naranja de marca -- primer paso de la consolidación (auditoría: +100 valores hex/rgba de
+       naranja distintos en todo el archivo). Fase 1: solo se reemplazan las coincidencias EXACTAS
+       de estos 4 valores por su token -- cero cambio visual, elimina la redundancia real sin
+       tocar los casos donde un tono ligeramente distinto podría ser una elección deliberada
+       (stop de gradiente, sombra a mano). Consolidar esos casos ambiguos queda para otra pasada,
+       con revisión visual pantalla por pantalla. --amber-muted es semánticamente OTRA cosa (texto
+       ámbar sobre fondo claro, ya documentado en el código donde se usa) -- no se fusiona.
+       Ver [[project_auditoria_6_especialistas]]. */
+    --brand-orange: #ff7a00;
+    --brand-orange-dark: #ff5a00;
+    --brand-orange-light: #ff9944;
+    --brand-orange-rgb: 255, 122, 0;
+    --amber-muted: #a54800;
 }
 
 /* ============================================================================
@@ -94,7 +107,7 @@
      el modal-card principal (`.support-modal-card`), es el único que llega
      a ese tamaño -- no usarlo para tarjetas comunes.
 
-   COLORES DE ESTADO: `.support-feedback` = ámbar neutro (`#a54800`, texto
+   COLORES DE ESTADO: `.support-feedback` = ámbar neutro (`var(--amber-muted)`, texto
    informativo/kicker). Error = familia de rojos `#c02010`–`#dc2626` (no hay
    un solo hex canónico, cualquiera de esa familia es válido). Éxito = verde
    `#16a34a` / `rgba(22,163,74,...)`.
@@ -984,7 +997,7 @@ body.is-offline #menuScreen {
     font-weight: 700;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #a54800;
+    color: var(--amber-muted);
 }
 
 .public-session-btn.is-authenticated {
@@ -2337,7 +2350,7 @@ body.has-guest-register-banner #ayudaScreen {
     text-transform: uppercase;
     letter-spacing: 0.16em;
     font-size: 0.78rem;
-    color: #a54800;
+    color: var(--amber-muted);
 }
 
 .support-modal-title,
@@ -2375,7 +2388,7 @@ body.has-guest-register-banner #ayudaScreen {
 }
 
 .support-topic-btn.is-active {
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff;
 }
 
@@ -2414,7 +2427,7 @@ body.has-guest-register-banner #ayudaScreen {
 .support-category-chip {
     justify-content: center;
     min-height: 42px;
-    background: linear-gradient(135deg, rgba(255, 122, 0, 0.14), rgba(255, 90, 0, 0.18));
+    background: linear-gradient(135deg, rgba(var(--brand-orange-rgb), 0.14), rgba(255, 90, 0, 0.18));
     border: 1px solid rgba(165, 72, 0, 0.18);
 }
 
@@ -2458,7 +2471,7 @@ body.has-guest-register-banner #ayudaScreen {
 .support-category-chip {
     justify-content: center;
     min-height: 42px;
-    background: linear-gradient(135deg, rgba(255, 122, 0, 0.2), rgba(255, 90, 0, 0.24));
+    background: linear-gradient(135deg, rgba(var(--brand-orange-rgb), 0.2), rgba(255, 90, 0, 0.24));
     border: 1px solid rgba(165, 72, 0, 0.3);
     color: var(--text-primary);
 }
@@ -2510,7 +2523,7 @@ body.has-guest-register-banner #ayudaScreen {
 
 .support-feedback {
     min-height: 0;
-    color: #a54800;
+    color: var(--amber-muted);
     font-size: 0.92rem;
     transition: all 0.2s ease;
     border-radius: 10px;
@@ -2844,7 +2857,7 @@ body.has-guest-register-banner #ayudaScreen {
 .support-send-btn {
     min-height: 52px;
     width: 100%;
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff;
     font-family: 'Oswald', sans-serif;
     font-size: 1rem;
@@ -3010,7 +3023,7 @@ body.has-guest-register-banner #ayudaScreen {
 }
 
 .customer-live-order-card {
-    background: linear-gradient(135deg, rgba(255, 122, 0, 0.14), rgba(255, 96, 0, 0.06));
+    background: linear-gradient(135deg, rgba(var(--brand-orange-rgb), 0.14), rgba(255, 96, 0, 0.06));
 }
 
 .customer-order-history-card {
@@ -3149,7 +3162,7 @@ body.has-guest-register-banner #ayudaScreen {
     border-top: 1px dashed var(--glass-border);
 }
 .order-receipt-total-final strong {
-    color: #a54800;
+    color: var(--amber-muted);
 }
 
 @media print {
@@ -3491,7 +3504,7 @@ body.has-consent-doc-open .guest-register-banner {
     padding: 0 18px;
     border: none;
     border-radius: 999px;
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff7ef;
     display: inline-flex;
     align-items: center;
@@ -3508,7 +3521,7 @@ body.has-consent-doc-open .guest-register-banner {
     padding: 0 6px;
     border-radius: 999px;
     background: #fff7ef;
-    color: #a54800;
+    color: var(--amber-muted);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3541,7 +3554,7 @@ body.has-consent-doc-open .guest-register-banner {
     padding: 14px 18px;
     border: none;
     border-radius: 16px;
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff8ec;
     box-shadow: 0 14px 30px rgba(255, 90, 0, 0.38);
     font-family: 'Oswald', sans-serif;
@@ -5611,10 +5624,10 @@ body.has-consent-doc-open .guest-register-banner {
     font-size: 0.85rem;
     font-weight: 700;
     color: #fff;
-    background: #ff5a00;
+    background: var(--brand-orange-dark);
 }
 
-.promo-cc-badge--hot { background: linear-gradient(135deg, #ff7a00, #ff4f00); }
+.promo-cc-badge--hot { background: linear-gradient(135deg, var(--brand-orange), #ff4f00); }
 .promo-cc-badge--2x1 { background: linear-gradient(135deg, #7c3aed, #4f1d96); }
 
 .promo-cc-price-row {
@@ -5682,7 +5695,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .ce-carousel-badge {
-    background: linear-gradient(135deg, #ff7a00, #ff4f00);
+    background: linear-gradient(135deg, var(--brand-orange), #ff4f00);
     color: #fff;
     font-family: 'Oswald', sans-serif;
     font-size: 0.8rem;
@@ -5778,7 +5791,7 @@ body.has-consent-doc-open .guest-register-banner {
     position: absolute;
     top: 8px;
     right: 8px;
-    background: linear-gradient(135deg, #ff7a00, #e84800);
+    background: linear-gradient(135deg, var(--brand-orange), #e84800);
     color: #fff;
     font-family: 'Oswald', sans-serif;
     font-size: 0.72rem;
@@ -6285,7 +6298,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-size: 0.72rem;
     font-weight: 700;
     color: #fff;
-    background: linear-gradient(135deg, #ff7a00, #e84800);
+    background: linear-gradient(135deg, var(--brand-orange), #e84800);
     border-radius: 999px;
     padding: 3px 10px;
     letter-spacing: 0.04em;
@@ -7013,7 +7026,7 @@ body.has-consent-doc-open .guest-register-banner {
 .oc-wa-btn {
     width: 100%;
     padding: 14px;
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     border: none;
     border-radius: 14px;
     color: #fff;
@@ -7359,7 +7372,7 @@ body.has-consent-doc-open .guest-register-banner {
     width: 68px; height: 68px; flex-shrink: 0;
     border-radius: 50%;
     display: grid; place-items: center;
-    background: linear-gradient(135deg, #ff7a00, #ff4f00);
+    background: linear-gradient(135deg, var(--brand-orange), #ff4f00);
     color: #fff;
     box-shadow: 0 8px 22px rgba(255,90,0,0.28);
 }
@@ -7413,7 +7426,7 @@ body.has-consent-doc-open .guest-register-banner {
     display: inline-flex; align-items: center; gap: 5px;
     padding: 6px 0 14px;
     background: none; border: none; cursor: pointer;
-    color: #ff7a00;
+    color: var(--brand-orange);
     font-family: 'Oswald', sans-serif;
     font-size: 0.9rem; font-weight: 700; letter-spacing: 0.3px;
 }
@@ -8066,7 +8079,7 @@ a,
 }
 .opening-ad-cta {
     width: 100%; padding: 12px; border-radius: 12px; border: none;
-    background: linear-gradient(135deg,#ff7a00,#e05500);
+    background: linear-gradient(135deg,var(--brand-orange),#e05500);
     color: #fff; font-size: 0.95rem; font-weight: 800;
     letter-spacing: 0.5px; cursor: pointer; font-family: 'Oswald',sans-serif;
 }
@@ -8105,7 +8118,7 @@ a,
 }
 .pub-upgrade-close:hover { color: var(--text-primary); }
 .pub-upgrade-product-name {
-    display: block; font-size: 0.75rem; color: #ff9944; font-weight: 600; margin-top: 1px;
+    display: block; font-size: 0.75rem; color: var(--brand-orange-light); font-weight: 600; margin-top: 1px;
 }
 .pub-upgrade-body { flex: 1; overflow-y: auto; padding: 12px 14px; }
 .pub-upgrade-footer {
@@ -8119,11 +8132,11 @@ a,
     border-radius: 10px; padding: 8px 12px; font-size: 0.82rem;
     font-family: inherit; color: var(--text-primary); line-height: 1.4;
 }
-.pub-upgrade-comment:focus { border-color: #ff7a00; }
+.pub-upgrade-comment:focus { border-color: var(--brand-orange); }
 .pub-upgrade-comment::placeholder { color: var(--text-secondary); opacity: 0.7; }
 .pub-upgrade-add-btn {
     width: 100%; padding: 12px; border-radius: 12px; border: none;
-    background: linear-gradient(135deg,#ff7a00,#e05500);
+    background: linear-gradient(135deg,var(--brand-orange),#e05500);
     color: #fff; font-size: 0.95rem; font-weight: 800;
     letter-spacing: 0.5px; cursor: pointer; font-family: 'Oswald',sans-serif;
 }
@@ -8137,7 +8150,7 @@ a,
     text-align: center;
     transition: background 0.15s, border-color 0.15s;
 }
-.pub-cat-btn:hover { background: rgba(255,122,0,0.12); border-color: rgba(255,122,0,0.4); }
+.pub-cat-btn:hover { background: rgba(var(--brand-orange-rgb), 0.12); border-color: rgba(var(--brand-orange-rgb), 0.4); }
 .pub-cat-btn-label {
     font-size: 0.9rem; font-weight: 700;
     font-family: 'Oswald',sans-serif; letter-spacing: 0.3px;
@@ -8161,7 +8174,7 @@ a,
     border: 1px solid var(--glass-border);
 }
 .pub-extra-name { flex: 1; font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
-.pub-extra-price { color: #ff9944; font-weight: 700; font-size: 0.8rem; margin: 0 8px; }
+.pub-extra-price { color: var(--brand-orange-light); font-weight: 700; font-size: 0.8rem; margin: 0 8px; }
 .pub-extra-del { background: none; border: none; color: rgba(255,110,110,0.75); font-size: 1rem; cursor: pointer; }
 .pub-section-label {
     font-size: 0.62rem; font-weight: 700; letter-spacing: 0.6px;
@@ -8181,11 +8194,11 @@ a,
     transition: background 0.15s, border-color 0.15s;
     box-shadow: 0 1px 6px rgba(0,0,0,0.2);
 }
-.pub-upgrade-opt:hover { background: rgba(255,122,0,0.12); border-color: rgba(255,122,0,0.42); }
+.pub-upgrade-opt:hover { background: rgba(var(--brand-orange-rgb), 0.12); border-color: rgba(var(--brand-orange-rgb), 0.42); }
 .pub-upgrade-solo { background: rgba(255,255,255,0.05); border-style: dashed; }
 .pub-upgrade-opt-name { font-weight: 600; font-size: 0.93rem; display: block; color: var(--text-primary); }
 .pub-upgrade-opt-detail { font-size: 0.76rem; color: var(--text-secondary); display: block; margin-top: 2px; }
-.pub-upgrade-opt-price { font-weight: 700; font-size: 0.87rem; color: #ff9944; flex-shrink: 0; }
+.pub-upgrade-opt-price { font-weight: 700; font-size: 0.87rem; color: var(--brand-orange-light); flex-shrink: 0; }
 .pub-upgrade-opt-price.muted { color: var(--text-secondary); font-weight: 400; }
 .pub-upgrade-opt--combo { align-items: flex-start; }
 .pub-upgrade-opt-left { display: flex; flex-direction: column; flex: 1; }
@@ -8199,7 +8212,7 @@ a,
     transition: background 0.15s, border-color 0.15s;
     box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
-.pub-flavor-btn:hover { background: rgba(255,122,0,0.14); border-color: rgba(255,122,0,0.4); }
+.pub-flavor-btn:hover { background: rgba(var(--brand-orange-rgb), 0.14); border-color: rgba(var(--brand-orange-rgb), 0.4); }
 .pub-upgrade-back {
     display: flex; align-items: center; gap: 5px;
     background: none; border: none;
@@ -8269,7 +8282,7 @@ a,
     height: 52px;
     border: none;
     border-radius: 26px;
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff7ef;
     display: flex;
     align-items: center;
@@ -8390,7 +8403,7 @@ a,
 }
 .agent-chat-bubble-user {
     align-self: flex-end;
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff7ef;
     border-bottom-right-radius: 4px;
 }
@@ -8427,7 +8440,7 @@ a,
     border-radius: 50%;
     border: none;
     background: rgba(255, 255, 255, 0.6);
-    color: #a54800;
+    color: var(--amber-muted);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -8451,7 +8464,7 @@ a,
     height: 40px;
     border-radius: 50%;
     border: none;
-    background: linear-gradient(135deg, #ff7a00, #ff5a00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff7ef;
     display: inline-flex;
     align-items: center;
@@ -8708,7 +8721,7 @@ a,
    :focus) para que el anillo solo aparezca en navegacion por teclado, no en cada click/tap con
    mouse -- mismo criterio que ya usa .customer-order-history-card. */
 :is(button, a, input, select, textarea, [tabindex], [role="button"]):focus-visible {
-    outline: 2.5px solid #ff7a00;
+    outline: 2.5px solid var(--brand-orange);
     outline-offset: 2px;
     border-radius: 4px;
 }
