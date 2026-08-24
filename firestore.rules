@@ -105,7 +105,18 @@ service cloud.firestore {
           && request.resource.data.body.size() > 0
           && request.resource.data.body.size() <= 4000
         );
-      allow read, update, delete: if isAdmin();
+      // El cliente logueado lee sus propios mensajes (script-v2.js:774, query .where
+      // customerPhoneDigits == su numero -- el mismo campo que se chequea acá, asi que Firestore
+      // puede validar la query completa contra la regla). Antes read: if isAdmin() bloqueaba esto
+      // en silencio (el onSnapshot del cliente tiene un error handler vacio) -- el panel "mis
+      // mensajes" nunca mostraba nada.
+      allow read: if isAdmin()
+        || (
+          request.auth != null
+          && resource.data.customerPhoneDigits is string
+          && request.auth.uid == 'phone_' + resource.data.customerPhoneDigits
+        );
+      allow update, delete: if isAdmin();
     }
 
     // Credenciales de cliente (passwordHash + passwordSalt) -- viven separadas de /clientes
