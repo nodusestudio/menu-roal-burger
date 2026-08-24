@@ -18999,13 +18999,28 @@ function _printGastoBrowser(gasto) {
 }
 
 async function printGastoTicket(gasto) {
-    if (navigator.bluetooth) {
-        const char = await _btEnsureConnected();
-        if (!char && _btPrinterDevice) await _btAutoReconnect();
+    if (!navigator.bluetooth) {
+        showNotice('Este navegador no soporta impresion Bluetooth (usa Chrome o Brave). Se abrira el dialogo de impresion del navegador.', 'error');
+        _printGastoBrowser(gasto);
+        return;
     }
-    if (_btPrinterDevice) {
+
+    // Siempre intenta conectar antes de rendirse -- reconecta sola si ya hay un dispositivo
+    // autorizado; si no, abre el selector de Bluetooth para buscar/emparejar uno (mismo
+    // comportamiento que el boton "Buscar impresora" de Configuracion). connectBluetoothPrinter()
+    // ya avisa con el error+solucion concretos (Bluetooth apagado, sin adaptador, etc.) cuando
+    // la conexion realmente falla.
+    let char = await _btEnsureConnected();
+    if (!char) {
+        await connectBluetoothPrinter();
+        char = _btPrinterCharacteristic;
+    }
+
+    if (_btPrinterDevice && char) {
         const ok = await printGastoViaBluetooth(gasto);
         if (ok) { showNotice('Ticket de gasto enviado a la impresora Bluetooth.', 'ok'); return; }
+    } else {
+        showNotice('No se pudo conectar con la impresora Bluetooth. Se abrira el dialogo de impresion del navegador -- para imprimir por Bluetooth, activa el Bluetooth del dispositivo, enciende la impresora y vuelve a intentar (o empareja la impresora desde Configuracion).', 'error');
     }
     _printGastoBrowser(gasto);
 }
