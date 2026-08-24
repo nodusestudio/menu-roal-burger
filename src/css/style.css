@@ -47,6 +47,13 @@
        glows/pulsos/sombras, un triplete RGB distinto al solido --brand-orange-rgb (96 vs 122 en
        el canal verde). Mismo criterio que la fase 1: coincidencia EXACTA, cero cambio visual. */
     --brand-orange-glow-rgb: 255, 96, 0;
+    /* Fase 1c: mismos 3 valores, mismo criterio -- consistentemente usados con un rol propio
+       (no son variantes accidentales de --brand-orange), coincidencia EXACTA solamente. */
+    --brand-orange-red: #ff5200;       /* 14x: gradiente/acento "urgente" (título de sección, etc.) */
+    --brand-orange-red-dark: #ff2800;  /* 6x: stop oscuro mas comun de --brand-orange-red */
+    --price-orange: #ff6600;           /* 9x: color de precios/descuentos en texto */
+    --brand-orange-alt: #ff6000;       /* 7x: bordes/scrollbar/highlight -- venía en mayúscula y
+                                           minúscula mezcladas (#FF6000/#ff6000), ya normalizado */
     --amber-muted: #a54800;
 }
 
@@ -1293,7 +1300,7 @@ body.is-offline #menuScreen {
 
 .category-hero-order-btn {
     margin-top: 10px;
-    background: linear-gradient(135deg, #ff5200, #ff2800);
+    background: linear-gradient(135deg, var(--brand-orange-red), var(--brand-orange-red-dark));
     color: white;
     padding: 0 28px;
     text-decoration: none;
@@ -1464,7 +1471,7 @@ body.is-offline #menuScreen {
 }
 
 .menu-carousel::-webkit-scrollbar-thumb {
-    background: #FF6000;
+    background: var(--brand-orange-alt);
     border-radius: 3px;
 }
 
@@ -1491,7 +1498,7 @@ body.is-offline #menuScreen {
     left: -2px;
     right: -2px;
     bottom: -2px;
-    background: linear-gradient(45deg, #FF6000, transparent, #FF6000);
+    background: linear-gradient(45deg, var(--brand-orange-alt), transparent, var(--brand-orange-alt));
     border-radius: 15px;
     z-index: -1;
     opacity: 0;
@@ -1512,7 +1519,7 @@ body.is-offline #menuScreen {
 }
 
 .menu-card.highlight {
-    border-color: #FF6000;
+    border-color: var(--brand-orange-alt);
     box-shadow: 0 10px 30px rgba(var(--brand-orange-glow-rgb), 0.3);
 }
 
@@ -1534,7 +1541,7 @@ body.is-offline #menuScreen {
 .menu-card .price {
     font-family: 'Oswald', sans-serif;
     font-size: 1.8rem;
-    color: #FF6000;
+    color: var(--brand-orange-alt);
     font-weight: 700;
     margin-bottom: 8px;
 }
@@ -1955,7 +1962,7 @@ body.is-offline #menuScreen {
     position: fixed;
     top: 20px;
     right: 30px;
-    color: #ff6000;
+    color: var(--brand-orange-alt);
     font-size: 50px;
     font-weight: bold;
     cursor: pointer;
@@ -1968,7 +1975,7 @@ body.is-offline #menuScreen {
     align-items: center;
     justify-content: center;
     transition: background 0.2s ease, transform 0.2s ease;
-    border: 2px solid #ff6000;
+    border: 2px solid var(--brand-orange-alt);
 }
 
 .close-button:hover {
@@ -2962,7 +2969,7 @@ body.has-guest-register-banner #ayudaScreen {
     gap: 2px;
     padding: 8px 12px;
     margin: 14px 0 8px;
-    border-left: 3px solid #ff5200;
+    border-left: 3px solid var(--brand-orange-red);
     background: rgba(0, 0, 0, 0.35);
     border-radius: 0 8px 8px 0;
 }
@@ -4211,7 +4218,7 @@ body.has-consent-doc-open .guest-register-banner {
 .cie-save-btn {
     width: 100%;
     padding: 14px;
-    background: linear-gradient(135deg, #ff5200, #e83000);
+    background: linear-gradient(135deg, var(--brand-orange-red), #e83000);
     border: none;
     border-radius: 14px;
     color: #fff;
@@ -4434,7 +4441,7 @@ body.has-consent-doc-open .guest-register-banner {
 /* BOTÓN "LO QUIERO" */
 .mobile-order-btn {
     margin-top: 18px;
-    background: linear-gradient(135deg, #ff5200, #ff2800);
+    background: linear-gradient(135deg, var(--brand-orange-red), var(--brand-orange-red-dark));
     color: white;
     padding: 0 42px;
     text-decoration: none;
@@ -4863,7 +4870,7 @@ body.has-consent-doc-open .guest-register-banner {
     object-fit: contain;
     border-radius: 14px;
     border: 0;
-    background: #ff6600;
+    background: var(--price-orange);
     box-shadow: 0 10px 22px rgba(84, 54, 28, 0.18);
     margin-bottom: 0;
     padding: 8px;
@@ -5027,7 +5034,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .promo-btn-order {
-    background: linear-gradient(135deg, #ff5500, #ff2800);
+    background: linear-gradient(135deg, #ff5500, var(--brand-orange-red-dark));
     color: #fff;
     border: none;
     box-shadow: 0 10px 26px rgba(220, 50, 0, 0.55), 0 3px 8px rgba(180, 10, 0, 0.35);
@@ -5187,7 +5194,7 @@ body.has-consent-doc-open .guest-register-banner {
 
 .bebidas-modal-btn-primary {
     border: 1px solid rgba(255, 80, 0, 0.30);
-    background: linear-gradient(135deg, #ff5200, #ff2800);
+    background: linear-gradient(135deg, var(--brand-orange-red), var(--brand-orange-red-dark));
     color: #fff;
     box-shadow: 0 10px 28px rgba(220, 50, 0, 0.55), 0 3px 8px rgba(180, 10, 0, 0.35);
 }
@@ -5273,7 +5280,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .promo-reg-btn--register {
-    background: linear-gradient(135deg, #ff5200, #e83000);
+    background: linear-gradient(135deg, var(--brand-orange-red), #e83000);
     color: #ffffff;
     box-shadow: 0 8px 26px rgba(220, 55, 0, 0.58), 0 3px 8px rgba(180, 10, 0, 0.35);
 }
@@ -5655,7 +5662,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-family: 'Oswald', sans-serif;
     font-size: 1.15rem;
     font-weight: 700;
-    color: #ff6600;
+    color: var(--price-orange);
 }
 
 .promo-cc-desc {
@@ -5769,7 +5776,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-family: 'Oswald', sans-serif;
     font-size: 1.3rem;
     font-weight: 700;
-    color: #ff6600;
+    color: var(--price-orange);
 }
 
 #menuCarouselScreen {
@@ -5786,7 +5793,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-family: 'Oswald', sans-serif;
     font-size: 1.1rem;
     font-weight: 700;
-    color: #ff6600;
+    color: var(--price-orange);
     text-align: center;
 }
 
@@ -5827,7 +5834,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-family: 'Oswald', sans-serif;
     font-size: 1.1rem;
     font-weight: 700;
-    color: #ff6600;
+    color: var(--price-orange);
 }
 
 .x2-carousel-badge {
@@ -6008,7 +6015,7 @@ body.has-consent-doc-open .guest-register-banner {
 .catalog-section-grid .menu-carousel-card-price {
     font-size: 1rem;
     font-weight: 700;
-    color: #ff6600;
+    color: var(--price-orange);
     margin: 2px 0 0;
     text-align: left;
 }
@@ -6034,7 +6041,7 @@ body.has-consent-doc-open .guest-register-banner {
     border-radius: 12px;
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.08);
-    color: #ff5200;
+    color: var(--brand-orange-red);
     font-size: 1.3rem;
     font-weight: 600;
     line-height: 1;
@@ -6049,9 +6056,9 @@ body.has-consent-doc-open .guest-register-banner {
 
 .pcm-add-btn:active {
     transform: scale(0.92);
-    background: #ff5200;
+    background: var(--brand-orange-red);
     color: #fff;
-    border-color: #ff5200;
+    border-color: var(--brand-orange-red);
 }
 
 /* La barra de chips y las secciones de categoría comparten scroll-margin-top para que el salto
@@ -6098,7 +6105,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .catalog-chip.is-active {
-    background: linear-gradient(135deg, #ff5200, #ff2800);
+    background: linear-gradient(135deg, var(--brand-orange-red), var(--brand-orange-red-dark));
     border-color: transparent;
     color: #fff;
 }
@@ -6112,7 +6119,7 @@ body.has-consent-doc-open .guest-register-banner {
     text-transform: uppercase;
     padding: 10px 14px;
     margin: 0 18px 4px;
-    border-left: 3px solid #ff5200;
+    border-left: 3px solid var(--brand-orange-red);
     background: rgba(0, 0, 0, 0.35);
     border-radius: 0 8px 8px 0;
 }
@@ -6415,7 +6422,7 @@ body.has-consent-doc-open .guest-register-banner {
     margin-top: 4px;
     align-self: stretch;
     padding: 13px 22px;
-    background: linear-gradient(135deg, #ff5200, #ff2800);
+    background: linear-gradient(135deg, var(--brand-orange-red), var(--brand-orange-red-dark));
     border: none;
     border-radius: 999px;
     color: #fff;
@@ -6702,7 +6709,7 @@ body.has-consent-doc-open .guest-register-banner {
     margin-top: 14px;
     width: 100%;
     padding: 13px 22px;
-    background: linear-gradient(135deg, #ff5200, #ff2200);
+    background: linear-gradient(135deg, var(--brand-orange-red), #ff2200);
     border: none;
     border-radius: 999px;
     color: #fff;
@@ -7246,7 +7253,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-family: 'Oswald', sans-serif;
     font-size: 0.78rem;
     font-weight: 600;
-    color: #ff6600;
+    color: var(--price-orange);
     background: none;
     border: none;
     cursor: pointer;
@@ -7275,7 +7282,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-family: 'Oswald', sans-serif;
     font-size: 1rem;
     font-weight: 700;
-    color: #ff6600;
+    color: var(--price-orange);
     text-align: center;
 }
 
@@ -7717,7 +7724,7 @@ body.has-consent-doc-open .guest-register-banner {
     .mobile-order-btn:hover {
         transform: none;
         box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4);
-        background: #ff6600;
+        background: var(--price-orange);
     }
     .category-hero-order-btn:hover {
         transform: none;
@@ -8626,7 +8633,7 @@ a,
     height: 18px;
     padding: 0 4px;
     border-radius: 999px;
-    background: linear-gradient(135deg, #ff5200, #e83000);
+    background: linear-gradient(135deg, var(--brand-orange-red), #e83000);
     color: #fff;
     font-family: 'Roboto', sans-serif;
     font-size: 0.68rem;
