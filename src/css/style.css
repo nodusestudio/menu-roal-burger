@@ -3975,11 +3975,12 @@ body.has-consent-doc-open .guest-register-banner {
 
 .cart-continue-btn {
     flex: 1;
-    background: rgba(255, 247, 235, 0.92);
-    color: #3a2410;
+    background: var(--glass-bg);
+    border: 1.5px solid var(--glass-border);
+    color: var(--text-primary);
 }
 
-.cart-continue-btn:hover { filter: brightness(0.95); }
+.cart-continue-btn:hover { filter: brightness(1.15); }
 
 .cart-checkout-btn {
     flex: 2;
@@ -3992,8 +3993,9 @@ body.has-consent-doc-open .guest-register-banner {
 
 .cart-clear-btn {
     flex: 1;
-    background: rgba(255, 247, 235, 0.92);
-    color: #8b2020;
+    background: rgba(200, 32, 32, 0.14);
+    border: 1.5px solid rgba(220, 38, 38, 0.35);
+    color: #f4877d;
 }
 
 .cart-clear-btn:hover { filter: brightness(0.95); }
@@ -5526,242 +5528,19 @@ body.has-consent-doc-open .guest-register-banner {
 }
 /* ===== FIN PANTALLA DE INICIO ===== */
 
-/* ===== BARRA DE NAVEGACIÓN INFERIOR (USUARIOS AUTENTICADOS) ===== */
-
-.bottom-auth-nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    /* La barra crece para incluir el safe-area (home indicator Android/iPhone) */
-    height: calc(68px + env(safe-area-inset-bottom, 0px));
-    /* El padding empuja los iconos hacia arriba, fuera del safe-area */
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: var(--glass-bg);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
-    border-top: 1.5px solid var(--glass-border);
-    display: flex;
-    align-items: stretch;
-    /* Por encima de la pildora del carrito (z-index 9500): sus tooltips emergen hacia
-       arriba y quedaban tapados por la pildora cuando esta visible. */
-    z-index: 9600;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
-}
-
-.ban-item {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: rgba(243, 236, 224, 0.55);
-    position: relative;
-    transition: color 0.2s ease, background 0.2s ease;
-    padding: 6px 0 4px;
-    -webkit-tap-highlight-color: transparent;
-}
-
-.ban-item:hover,
-.ban-item.is-active {
-    color: rgba(200, 75, 0, 1);
-    background: rgba(240, 90, 20, 0.10);
-}
-
-.ban-icon {
-    width: 22px;
-    height: 22px;
-    flex-shrink: 0;
-    pointer-events: none;
-}
-
-.ban-label {
-    font-family: 'Oswald', sans-serif;
-    font-size: 0.6rem;
-    font-weight: 500;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    line-height: 1;
-    pointer-events: none;
-    color: inherit;
-}
-
-/* Tooltip flotante */
-.ban-tooltip {
-    position: absolute;
-    bottom: calc(100% + 12px);
-    left: 50%;
-    transform: translateX(-50%) translateY(8px);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.22s ease, transform 0.22s ease;
-    background: rgba(26, 8, 1, 0.97);
-    border: 1px solid rgba(190, 80, 24, 0.32);
-    border-radius: 10px;
-    padding: 10px 14px;
-    min-width: 154px;
-    text-align: center;
-    white-space: nowrap;
-    z-index: 1;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
-}
-
-/* Flecha del tooltip */
-.ban-tooltip::before {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border: 7px solid transparent;
-    border-top-color: rgba(190, 80, 24, 0.32);
-}
-.ban-tooltip::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    margin-top: -1px;
-    border: 6px solid transparent;
-    border-top-color: rgba(26, 8, 1, 0.97);
-}
-
-/* Mostrar en hover — desktop */
-@media (hover: hover) {
-    .ban-item:hover .ban-tooltip {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
-        pointer-events: auto;
-    }
-    .ban-item:first-child:hover .ban-tooltip {
-        transform: translateX(0) translateY(0);
-    }
-    .ban-item:last-child:hover .ban-tooltip {
-        transform: translateX(-100%) translateY(0) translateX(26px);
-    }
-}
-
-/* Mostrar en tap — móvil (.is-active vía JS) */
-.ban-item.is-active .ban-tooltip {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-    pointer-events: auto;
-}
-.ban-item:first-child.is-active .ban-tooltip {
-    transform: translateX(0) translateY(0);
-}
-.ban-item:last-child.is-active .ban-tooltip {
-    transform: translateX(-100%) translateY(0) translateX(26px);
-}
-
-/* Indicador de pantalla activa en el nav — barra naranja en la parte superior */
-.ban-item.is-current {
-    color: rgba(200, 75, 0, 1);
-}
-.ban-item.is-current::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 28px;
-    height: 3px;
-    border-radius: 0 0 4px 4px;
-    background: linear-gradient(90deg, #ff8c00, #ff6200);
-    box-shadow: 0 0 8px rgba(255, 140, 0, 0.6);
-}
-
-/* ── Botón Cupones: marco naranja en default, naranja sólido al estar activo ── */
-#bnavPromo {
-    position: relative;
-}
-
-#bnavPromo .ban-icon {
-    width: 22px;
-    height: 22px;
-}
-
-/* Activo: relleno naranja completo, sin borde separado */
-#bnavPromo.is-current {
-    color: #fff;
-    background: linear-gradient(145deg, #ff9d1a, #e85500);
-    border-color: transparent;
-    border-radius: 14px;
-    box-shadow:
-        0 4px 18px rgba(232, 85, 0, 0.55),
-        0 -1px 8px rgba(255, 140, 0, 0.30),
-        inset 0 1px 0 rgba(255, 220, 140, 0.30);
-    transform: translateY(-2px);
-}
-
-#bnavPromo.is-current .ban-icon {
-    width: 24px;
-    height: 24px;
-    color: #fff;
-}
-
-#bnavPromo.is-current .ban-label {
-    color: #fff;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-}
-
-#bnavPromo.is-current::before {
-    display: none;
-}
-
-/* Nombre del tooltip */
-.ban-tooltip-name {
-    display: block;
-    color: rgba(255, 210, 170, 1);
-    font-family: 'Oswald', sans-serif;
-    font-size: 0.88rem;
-    font-weight: 600;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    margin-bottom: 3px;
-}
-
-/* Descripción del tooltip */
-.ban-tooltip-desc {
-    display: block;
-    color: rgba(200, 150, 110, 0.85);
-    font-family: 'Roboto', sans-serif;
-    font-size: 0.74rem;
-    font-weight: 400;
-    line-height: 1.3;
-}
-
-/* Ajustes globales — barra inferior siempre activa */
-.cart-fab {
-    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
-}
-
-/* Topbar: ocultar botón de perfil y dejar solo el espacio mínimo */
+/* La barra de navegación inferior original (.bottom-auth-nav/.ban-item/#bnavPromo) fue
+   reemplazada por top-action-bar + sections-drawer y ya no existe en index.html -- confirmado
+   por grep, cero referencias. Esa sección completa (antes aquí) se eliminó como código muerto;
+   solo estas dos reglas seguían siendo necesarias (ocultan el topbar viejo, que sí sigue en el
+   DOM). Auditoría de diseño: la que reportó "Ayuda casi invisible" era .ban-item--ayuda, parte
+   de ese mismo código muerto — nunca se llegó a ver en pantalla.
+   Topbar: ocultar botón de perfil y dejar solo el espacio mínimo */
 #customerSessionButton { display: none !important; }
 #mainTopbar { display: none !important; }
-
-/* Ayuda en barra inferior — igual al resto del nav */
-.ban-item--ayuda {
-    text-decoration: none;
-    color: rgba(90, 50, 15, 0.60);
-}
-.ban-item--ayuda:hover,
-.ban-item--ayuda.is-active {
-    color: rgba(200, 75, 0, 1);
-    background: rgba(240, 90, 20, 0.10);
-}
 
 .featured-section {
     margin-bottom: 130px;
 }
-
-/* ===== FIN BARRA DE NAVEGACIÓN INFERIOR ===== */
 
 /* ===== SEGUNDA PANTALLA — HOME SCREEN ===== */
 
@@ -6036,7 +5815,7 @@ body.has-consent-doc-open .guest-register-banner {
 
 .rec-carousel-orig {
     font-size: 0.85rem;
-    color: rgba(90, 50, 15, 0.45);
+    color: var(--text-secondary);
     text-decoration: line-through;
 }
 
@@ -6223,9 +6002,9 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .catalog-section-grid .menu-carousel-card-price {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--text-secondary);
+    font-size: 1rem;
+    font-weight: 700;
+    color: #ff6600;
     margin: 2px 0 0;
     text-align: left;
 }
@@ -6246,9 +6025,9 @@ body.has-consent-doc-open .guest-register-banner {
 
 .pcm-add-btn {
     flex-shrink: 0;
-    width: 32px;
-    height: 32px;
-    border-radius: 9px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.08);
     color: #ff5200;
@@ -6347,7 +6126,7 @@ body.has-consent-doc-open .guest-register-banner {
 
 .combos-empty-msg {
     padding: 20px 18px;
-    color: rgba(90, 50, 15, 0.55);
+    color: var(--text-secondary);
     font-family: 'Oswald', sans-serif;
     font-size: 0.95rem;
 }
@@ -8175,8 +7954,6 @@ body.has-consent-doc-open .guest-register-banner {
     .support-modal-card {
         padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     }
-
-    /* .bottom-auth-nav ya incluye safe-area-inset en su height y padding-bottom base */
 }
 
 /* ===== FIN OPTIMIZACIÓN RESPONSIVA MÓVIL ===== */
@@ -8310,7 +8087,6 @@ button,
 a,
 [role="button"],
 [tabindex],
-.ban-item,
 .category-chip,
 .cp-menu-item,
 .menu-card,
@@ -8367,13 +8143,6 @@ a,
     transition-duration: 0.08s;
 }
 
-/* Items del nav inferior */
-.ban-item:active {
-    background: rgba(240, 90, 20, 0.22);
-    transform: scale(0.90);
-    transition-duration: 0.08s;
-}
-
 /* Botones de cierre */
 .drawer-close:active,
 .support-modal-close:active,
@@ -8411,7 +8180,6 @@ a,
 
 /* Forzar compositing layer en elementos animados críticos */
 .cart-fab,
-.bottom-auth-nav,
 .menu-drawer,
 .cart-drawer,
 .support-modal-card {
@@ -9117,8 +8885,8 @@ a,
 
 .top-action-btn {
     flex-shrink: 0;
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     border: none;
     background: rgba(255, 255, 255, 0.08);
@@ -9331,4 +9099,15 @@ a,
 
 .sections-drawer-item:active {
     background: rgba(255, 82, 0, 0.12);
+}
+
+/* Foco de teclado global -- la auditoria de diseño encontro que casi no habia ningun estilo de
+   foco visible en toda la hoja (una sola regla, mas 6 "outline: none" sin reemplazo), lo que
+   deja sin ninguna señal a quien navega con teclado/lector de pantalla. :focus-visible (no
+   :focus) para que el anillo solo aparezca en navegacion por teclado, no en cada click/tap con
+   mouse -- mismo criterio que ya usa .customer-order-history-card. */
+:is(button, a, input, select, textarea, [tabindex], [role="button"]):focus-visible {
+    outline: 2.5px solid #ff7a00;
+    outline-offset: 2px;
+    border-radius: 4px;
 }

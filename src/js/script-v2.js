@@ -5021,15 +5021,10 @@ async function initializeCheckoutDeliveryMap() {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    DELIVERY_GEOFENCE_ZONES.forEach((zone) => {
-        L.polygon(zone.polygon, {
-            color: zone.color,
-            fillColor: zone.color,
-            fillOpacity: 0.15,
-            weight: 2
-        }).addTo(map);
-    });
-
+    // Antes se dibujaban los poligonos de DELIVERY_GEOFENCE_ZONES sobre el mapa -- exponia al
+    // cliente el limite exacto de cada zona de tarifa (informacion interna del negocio), algo
+    // que ninguna app de delivery de referencia muestra. El calculo de tarifa por zona sigue
+    // igual (findDeliveryZoneForLocation, matematica pura, no depende de que se dibujen o no).
     const marker = L.marker(DELIVERY_CENTER_COORDINATES, {
         draggable: true,
         title: 'Arrastra para ajustar tu direccion'
