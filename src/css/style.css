@@ -42,6 +42,10 @@
     --brand-orange-dark: #ff5a00;
     --brand-orange-light: #ff9944;
     --brand-orange-rgb: 255, 122, 0;
+    /* Fase 2d (2026-08-24): companion rgb de --brand-orange-dark -- ya existía el hex pero faltaba
+       su variante rgb para las 5 rgba(255, 90, 0, X) sueltas que quedaban escritas a mano, mismo
+       criterio de siempre (coincidencia EXACTA, cero cambio visual). */
+    --brand-orange-dark-rgb: 255, 90, 0;
     /* Fase 1b: rgba(255,96,0,*) es, con diferencia, el valor de naranja MAS repetido de todo el
        archivo (48 apariciones, 17 alfas distintos) -- su propia familia bien establecida para
        glows/pulsos/sombras, un triplete RGB distinto al solido --brand-orange-rgb (96 vs 122 en
@@ -66,9 +70,16 @@
        gradiente) -- mismo criterio, coincidencia exacta. */
     --brand-orange-redorange: #ff4500;
     --brand-orange-redorange-rgb: 255, 69, 0;
+    /* Fase 2d: #ffb27d (2x, texto de acento en nav-link hover/título de sección, ambos ya usan
+       --brand-orange-redorange-rgb en el mismo contexto) -- coincidencia EXACTA. */
+    --brand-orange-redorange-light: #ffb27d;
     /* Fase 2c: #e02000(1x) y #e01e00(2x) son el mismo stop oscuro de --brand-orange-redorange
        en 3 gradientes distintos, con diff=2 entre si -- confirmado indistinguible con captura. */
     --brand-orange-redorange-dark: #e01e00;
+    /* Fase 2d: #e05500 (2x, stop oscuro del gradiente de los botones CTA "AGREGAR AL PEDIDO" del
+       anuncio de apertura y del sheet de upsell) -- coincidencia EXACTA, valor propio distinto de
+       --brand-orange-dark (#ff5a00, usado en otros gradientes/sombras del archivo). */
+    --brand-orange-cta-dark: #e05500;
     --amber-muted: #a54800;
 }
 
@@ -2111,7 +2122,7 @@ body.is-offline #menuScreen {
 
 .menu-nav-link:hover,
 .menu-nav-link.active {
-    color: #ffb27d;
+    color: var(--brand-orange-redorange-light);
     background: rgba(var(--brand-orange-redorange-rgb), 0.12);
     border-bottom-color: rgba(var(--brand-orange-redorange-rgb), 0.45);
 }
@@ -2161,7 +2172,7 @@ body.is-offline #menuScreen {
 
 .menu-section-title {
     font-family: 'Oswald', sans-serif;
-    color: #ffb27d;
+    color: var(--brand-orange-redorange-light);
     text-transform: uppercase;
     letter-spacing: 1px;
     margin: 0 0 10px;
@@ -2531,7 +2542,7 @@ body.has-guest-register-banner #ayudaScreen {
 .support-category-chip {
     justify-content: center;
     min-height: 42px;
-    background: linear-gradient(135deg, rgba(var(--brand-orange-rgb), 0.14), rgba(255, 90, 0, 0.18));
+    background: linear-gradient(135deg, rgba(var(--brand-orange-rgb), 0.14), rgba(var(--brand-orange-dark-rgb), 0.18));
     border: 1px solid rgba(165, 72, 0, 0.18);
 }
 
@@ -2575,7 +2586,7 @@ body.has-guest-register-banner #ayudaScreen {
 .support-category-chip {
     justify-content: center;
     min-height: 42px;
-    background: linear-gradient(135deg, rgba(var(--brand-orange-rgb), 0.2), rgba(255, 90, 0, 0.24));
+    background: linear-gradient(135deg, rgba(var(--brand-orange-rgb), 0.2), rgba(var(--brand-orange-dark-rgb), 0.24));
     border: 1px solid rgba(165, 72, 0, 0.3);
     color: var(--text-primary);
 }
@@ -3660,7 +3671,7 @@ body.has-consent-doc-open .guest-register-banner {
     border-radius: 16px;
     background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff8ec;
-    box-shadow: 0 14px 30px rgba(255, 90, 0, 0.38);
+    box-shadow: 0 14px 30px rgba(var(--brand-orange-dark-rgb), 0.38);
     font-family: 'Oswald', sans-serif;
     cursor: pointer;
     opacity: 0;
@@ -7143,13 +7154,13 @@ body.has-consent-doc-open .guest-register-banner {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    box-shadow: 0 4px 18px rgba(255, 90, 0, 0.35);
+    box-shadow: 0 4px 18px rgba(var(--brand-orange-dark-rgb), 0.35);
     transition: transform 0.15s, box-shadow 0.15s;
 }
 
 .oc-wa-btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 6px 22px rgba(255, 90, 0, 0.50);
+    box-shadow: 0 6px 22px rgba(var(--brand-orange-dark-rgb), 0.50);
 }
 
 .oc-menu-btn {
@@ -8200,7 +8211,7 @@ a,
 }
 .opening-ad-cta {
     width: 100%; padding: 12px; border-radius: 12px; border: none;
-    background: linear-gradient(135deg,var(--brand-orange),#e05500);
+    background: linear-gradient(135deg,var(--brand-orange),var(--brand-orange-cta-dark));
     color: #fff; font-size: 0.95rem; font-weight: 800;
     letter-spacing: 0.5px; cursor: pointer; font-family: 'Oswald',sans-serif;
 }
@@ -8257,7 +8268,7 @@ a,
 .pub-upgrade-comment::placeholder { color: var(--text-secondary); opacity: 0.7; }
 .pub-upgrade-add-btn {
     width: 100%; padding: 12px; border-radius: 12px; border: none;
-    background: linear-gradient(135deg,var(--brand-orange),#e05500);
+    background: linear-gradient(135deg,var(--brand-orange),var(--brand-orange-cta-dark));
     color: #fff; font-size: 0.95rem; font-weight: 800;
     letter-spacing: 0.5px; cursor: pointer; font-family: 'Oswald',sans-serif;
 }
