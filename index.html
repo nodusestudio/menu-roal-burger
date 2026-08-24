@@ -632,14 +632,18 @@
     </div>
     <!-- ===== FIN PANTALLA AYUDA ===== -->
 
-    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script src="tracking.js?v=20260817-1414"></script>
-    <script src="firebase-config.js"></script>
-    <script src="script-v2.js?v=20260823-1"></script>
-    <script src="agent-chat.js?v=20260817-1414"></script>
+    <!-- defer: deja que las SDK de Firebase + los locales se descarguen en paralelo en vez de
+         uno tras otro (eran 8 round-trips en serie antes de que script-v2.js siquiera empezara a
+         bajar); defer garantiza que igual se EJECUTEN en este mismo orden. Mismo patrón ya
+         probado en admin.html. -->
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+    <script defer src="tracking.js?v=20260817-1414"></script>
+    <script defer src="firebase-config.js"></script>
+    <script defer src="script-v2.js?v=20260823-1"></script>
+    <script defer src="agent-chat.js?v=20260817-1414"></script>
 
     <!-- ── Anuncio de apertura (promo destacada al abrir el menu) ── -->
     <div id="openingAdOverlay" class="opening-ad-overlay" hidden style="display:none;">
