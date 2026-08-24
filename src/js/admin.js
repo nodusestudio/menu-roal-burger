@@ -19025,6 +19025,43 @@ async function printGastoTicket(gasto) {
     _printGastoBrowser(gasto);
 }
 
+// ── Vista previa del ticket de gasto (ver antes de imprimir, o reimprimir uno ya registrado) ──
+let _gastoTicketPreviewData = null;
+
+function openGastoTicketPreview(gasto) {
+    const modal = document.getElementById('gastoTicketPreviewModal');
+    const body = document.getElementById('gastoTicketPreviewBody');
+    if (!modal || !body || !gasto) return;
+
+    _gastoTicketPreviewData = gasto;
+    body.innerHTML = buildGastoTicketHtml(gasto);
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeGastoTicketPreview() {
+    const modal = document.getElementById('gastoTicketPreviewModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+    _gastoTicketPreviewData = null;
+}
+
+document.getElementById('gastoTicketPreviewCloseBtn')?.addEventListener('click', closeGastoTicketPreview);
+document.getElementById('gastoTicketPreviewCloseBtn2')?.addEventListener('click', closeGastoTicketPreview);
+document.getElementById('gastoTicketPreviewModal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'gastoTicketPreviewModal') closeGastoTicketPreview();
+});
+document.addEventListener('keydown', (event) => {
+    const modal = document.getElementById('gastoTicketPreviewModal');
+    if (event.key === 'Escape' && modal && modal.classList.contains('show')) {
+        closeGastoTicketPreview();
+    }
+});
+document.getElementById('gastoTicketPreviewPrintBtn')?.addEventListener('click', () => {
+    if (_gastoTicketPreviewData) printGastoTicket(_gastoTicketPreviewData);
+});
+
 document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async () => {
     const descripcion = document.getElementById('gastoDescripcion')?.value?.trim() || '';
     const monto = Number((document.getElementById('gastoMonto')?.value || '').replace(/\./g, '') || 0);
@@ -19061,10 +19098,11 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
         }
         renderGastosInformes();
         showNotice('Gasto registrado.', 'ok');
-        // Un traslado entre metodos de pago no es un gasto real -- no genera ticket. Un fallo
-        // de impresion nunca debe afectar el gasto que ya se guardo arriba.
+        // Un traslado entre metodos de pago no es un gasto real -- no genera ticket. Se muestra
+        // la vista previa primero (con sus propios botones Imprimir/Cerrar) en vez de imprimir
+        // directo, para que el cajero pueda revisar el detalle antes de mandarlo a la impresora.
         if (gasto.tipo !== 'traslado') {
-            printGastoTicket(gasto).catch(() => {});
+            openGastoTicketPreview(gasto);
         }
     } catch (err) {
         showNotice('Error al registrar gasto: ' + (err.message || 'error'), 'error');
@@ -22495,7 +22533,10 @@ function renderGastosInformes() {
             <td>${escapeHtml(g.proveedor || '—')}</td>
             <td><span class="caja-method-badge">${method ? `${method.icon} ${escapeHtml(method.label)}` : escapeHtml(g.paymentMethod || '—')}</span></td>
             <td class="caja-cell-salida">${formatMoney(Number(g.monto || 0))}</td>
-            <td>${gastoId ? `<button type="button" class="mini-btn remove" data-gasto-informe-del="${gastoId}" title="Eliminar gasto" style="font-size:0.62rem;padding:1px 6px;">🗑️</button>` : ''}</td>
+            <td>
+                ${gastoId ? `<button type="button" class="mini-btn" data-gasto-informe-ticket="${gastoId}" title="Ver e imprimir ticket" style="font-size:0.62rem;padding:1px 6px;">🖨️</button>` : ''}
+                ${gastoId ? `<button type="button" class="mini-btn remove" data-gasto-informe-del="${gastoId}" title="Eliminar gasto" style="font-size:0.62rem;padding:1px 6px;">🗑️</button>` : ''}
+            </td>
         </tr>`;
     }).join('');
 
@@ -22532,9 +22573,17 @@ function renderGastosInformes() {
     if (!container.dataset.gastoDelListener) {
         container.dataset.gastoDelListener = '1';
         container.addEventListener('click', async (e) => {
+            const ticketBtn = e.target.closest('[data-gasto-informe-ticket]');
+            if (ticketBtn) {
+                const gasto = _gastosCajaState.find((g) => g.id === ticketBtn.dataset.gastoInformeTicket);
+                if (gasto) openGastoTicketPreview(gasto);
+                else showNotice('No se encontro el gasto seleccionado.', 'error');
+                return;
+            }
+
             const delBtn = e.target.closest('[data-gasto-informe-del]');
             if (!delBtn) return;
-            if (!(await showConfirmModal({ icon: '💸', title: '¿Eliminar este gasto?', confirmText: 'Eliminar' }))) return;
+            if (!(await showConfirmModal({ icon: '💸', title: '¿Eliminar este gasto?', message: 'No se puede deshacer.', confirmText: 'Eliminar' }))) return;
             try {
                 await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(delBtn.dataset.gastoInformeDel).delete();
                 showNotice('Gasto eliminado.', 'ok');
