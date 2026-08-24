@@ -361,6 +361,74 @@ exports.notifyOrderDelivered = onDocumentWritten(
 );
 
 // ─────────────────────────────────────────────────────────────
+// Acreditar puntos de lealtad cuando un pedido pasa a 'entregado'. Mismo patrón de trigger que
+// notifyOrderDelivered (mismo documento, misma condición de transición) -- este trigger es la
+// ÚNICA fuente de verdad que suma puntos, para no duplicar la lógica ya marcada como duplicada
+// (ver comentarios "SYNC" en functions/agent/orderLogic.js / src/js/script-v2.js) — no se toca
+// submitPublicOrder ni createAgentOrder para esto.
+//
+// Puntos = 1 por cada $1.000 COP de SUBTOTAL (nunca sobre el total -- el domicilio no debe
+// generar puntos). Todo corre dentro de una única transacción: relee el pedido por si el trigger
+// se reintenta (los triggers v2 pueden reintentar) y aborta sin escribir nada si pointsAwarded ya
+// es true, evitando doble acreditación.
+// ─────────────────────────────────────────────────────────────
+
+// Separada del trigger para poder testearla directo contra el emulador de Firestore sin
+// necesitar que el trigger de Cloud Functions dispare de verdad (ver tests/loyalty-points.test.js).
+async function awardLoyaltyPointsTransaction(db, orderId, phoneDigits, subtotal) {
+    const pointsEarned = Math.floor(Number(subtotal || 0) / 1000);
+    const orderRef = db.collection('pedidos').doc(orderId);
+    const clientRef = db.collection(CLIENTS_COLLECTION).doc(buildClientId(phoneDigits));
+
+    await db.runTransaction(async (transaction) => {
+        const orderSnap = await transaction.get(orderRef);
+        if (!orderSnap.exists || orderSnap.data()?.pointsAwarded === true) {
+            return;
+        }
+
+        const clientSnap = await transaction.get(clientRef);
+        const pointsUpdate = {
+            puntosDisponibles: FieldValue.increment(pointsEarned),
+            puntosAcumuladosTotal: FieldValue.increment(pointsEarned)
+        };
+        if (clientSnap.exists) {
+            transaction.update(clientRef, pointsUpdate);
+        } else {
+            // No debería pasar (clientes/{id} ya se crea en cada pedido), pero por seguridad
+            // no se rompe si el doc todavía no existe.
+            transaction.set(clientRef, pointsUpdate, { merge: true });
+        }
+
+        transaction.update(orderRef, {
+            pointsAwarded: true,
+            pointsEarned
+        });
+    });
+}
+
+exports.awardLoyaltyPoints = onDocumentWritten(
+    { document: 'pedidos/{orderId}', region: 'us-central1' },
+    async (event) => {
+        const before = event.data?.before?.exists ? event.data.before.data() : null;
+        const after = event.data?.after?.exists ? event.data.after.data() : null;
+        if (!after || after.status !== 'entregado' || before?.status === 'entregado') return;
+
+        const phoneDigits = String(after.customerPhoneDigits || '').replace(/\D/g, '');
+        if (phoneDigits.length < 10) return;
+
+        try {
+            const db = getFirestore();
+            await awardLoyaltyPointsTransaction(db, event.params.orderId, phoneDigits, Number(after.subtotal || 0));
+        } catch (err) {
+            console.error(`awardLoyaltyPoints: fallo al acreditar puntos para pedido ${event.params.orderId}:`, err);
+        }
+    }
+);
+
+// Exportado solo para tests (tests/loyalty-points.test.js) -- no se usa en producción directamente.
+exports._awardLoyaltyPointsTransaction = awardLoyaltyPointsTransaction;
+
+// ─────────────────────────────────────────────────────────────
 // Enviar OTP de verificación al WhatsApp del cliente
 // Requiere secrets: ULTRAMSG_INSTANCE y ULTRAMSG_TOKEN
 // Configurar: firebase functions:secrets:set ULTRAMSG_INSTANCE

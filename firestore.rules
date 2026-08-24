@@ -153,22 +153,35 @@ service cloud.firestore {
         && request.resource.data.customerPhone is string
         && request.resource.data.customerPhone.size() > 0;
 
-      allow update: if isAdmin()
-        || isOwner()
-        || (
-          !hasCredentials()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'customerName', 'customerPhone', 'customerPhoneDigits', 'address', 'savedAddresses',
-            'lastOrderCode', 'lastOrderId', 'lastOrderTotal', 'totalOrders', 'totalSpent',
-            'source', 'updatedAt', 'lastOrderAt'
-          ])
-        )
-        || (
-          hasCredentials()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'lastOrderCode', 'lastOrderId', 'lastOrderTotal', 'totalOrders', 'totalSpent',
-            'updatedAt', 'lastOrderAt'
-          ])
+      // puntosDisponibles/puntosAcumuladosTotal (acumulación de puntos de lealtad, ver
+      // functions/index.js: awardLoyaltyPoints) son de escritura EXCLUSIVA de Cloud Functions
+      // (Admin SDK, que de todas formas ignora estas reglas) -- ninguna rama de abajo, ni
+      // siquiera isAdmin()/isOwner(), puede tocarlos desde el navegador. Es la única forma de
+      // que la transacción del trigger siga siendo la fuente de verdad única de los puntos.
+      function touchesLoyaltyPoints() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['puntosDisponibles', 'puntosAcumuladosTotal']);
+      }
+
+      allow update: if !touchesLoyaltyPoints()
+        && (
+          isAdmin()
+          || isOwner()
+          || (
+            !hasCredentials()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'customerName', 'customerPhone', 'customerPhoneDigits', 'address', 'savedAddresses',
+              'lastOrderCode', 'lastOrderId', 'lastOrderTotal', 'totalOrders', 'totalSpent',
+              'source', 'updatedAt', 'lastOrderAt'
+            ])
+          )
+          || (
+            hasCredentials()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'lastOrderCode', 'lastOrderId', 'lastOrderTotal', 'totalOrders', 'totalSpent',
+              'updatedAt', 'lastOrderAt'
+            ])
+          )
         );
 
       allow delete: if isAdmin() || isOwner();

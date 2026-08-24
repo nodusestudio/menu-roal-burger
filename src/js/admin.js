@@ -2452,6 +2452,8 @@ async function fetchClients({ force = false } = {}) {
                 lastOrderTotal: Number(raw.lastOrderTotal || 0),
                 totalOrders: Number(raw.totalOrders || 0),
                 totalSpent: Number(raw.totalSpent || 0),
+                puntosDisponibles: Number(raw.puntosDisponibles || 0),
+                puntosAcumuladosTotal: Number(raw.puntosAcumuladosTotal || 0),
                 lastOrderAt: raw.lastOrderAt || raw.updatedAt || raw.createdAt || null,
                 createdAt: raw.createdAt || null,
                 updatedAt: raw.updatedAt || null,
@@ -10447,7 +10449,7 @@ function renderClients() {
     clientsList.innerHTML = '';
 
     if (!filteredClients.length) {
-        clientsList.innerHTML = '<tr><td class="client-empty-row" colspan="9">No hay clientes que coincidan con la busqueda actual.</td></tr>';
+        clientsList.innerHTML = '<tr><td class="client-empty-row" colspan="11">No hay clientes que coincidan con la busqueda actual.</td></tr>';
         _renderClientsPagination(0, 1);
         return;
     }
@@ -10482,6 +10484,8 @@ function renderClients() {
             <td>${escapeHtml(formatOrderDate(client.lastOrderAt))}</td>
             <td><span class="client-metric-chip">${escapeHtml(String(client.totalOrders))}</span></td>
             <td>${escapeHtml(formatMoney(client.totalSpent))}</td>
+            <td>${escapeHtml(client.puntosDisponibles.toLocaleString('es-CO'))}</td>
+            <td>${escapeHtml(client.puntosAcumuladosTotal.toLocaleString('es-CO'))}</td>
             <td>
                 <div class="client-name-cell">
                     <strong>${escapeHtml(client.lastOrderCode || 'Sin codigo')}</strong>
@@ -10501,7 +10505,7 @@ function renderClients() {
             const detailRow = document.createElement('tr');
             detailRow.className = 'client-address-detail-row';
             detailRow.innerHTML = `
-                <td colspan="9">
+                <td colspan="11">
                     <div class="client-address-detail-box">
                         <strong>Direcciones guardadas</strong>
                         <div class="client-address-detail-list">

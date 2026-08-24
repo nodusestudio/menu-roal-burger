@@ -63,3 +63,34 @@ test('c) sin autenticacion → get cierres_caja/doc-test debe fallar', async () 
     const anonDb = testEnv.unauthenticatedContext().firestore();
     await assertFails(anonDb.collection('cierres_caja').doc('doc-test').get());
 });
+
+// puntosDisponibles/puntosAcumuladosTotal (functions/index.js: awardLoyaltyPoints) deben ser de
+// escritura exclusiva de Cloud Functions (Admin SDK) -- ni el propio dueño ni un admin
+// autenticado por el SDK cliente pueden tocarlos directo, para que la transacción del trigger
+// siga siendo la única fuente de verdad de los puntos.
+test('d) dueño autenticado NO puede escribir puntosDisponibles en su propio doc', async () => {
+    const clientId = 'phone_3001234567';
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('clientes').doc(clientId).set({
+            customerName: 'Test', customerPhone: '3001234567', puntosDisponibles: 0
+        });
+    });
+
+    const ownerDb = testEnv.authenticatedContext(clientId).firestore();
+    await assertFails(ownerDb.collection('clientes').doc(clientId).update({ puntosDisponibles: 999999 }));
+});
+
+test('e) admin autenticado por el SDK cliente tampoco puede escribir puntosAcumuladosTotal', async () => {
+    const clientId = 'phone_3007654321';
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-test-uid-2').set({ seeded: true });
+        await context.firestore().collection('clientes').doc(clientId).set({
+            customerName: 'Test', customerPhone: '3007654321', puntosAcumuladosTotal: 0
+        });
+    });
+
+    const adminDb = testEnv.authenticatedContext('admin-test-uid-2').firestore();
+    await assertFails(adminDb.collection('clientes').doc(clientId).update({ puntosAcumuladosTotal: 999999 }));
+    // Confirma que la regla no rompió las escrituras de admin a otros campos del mismo doc.
+    await assertSucceeds(adminDb.collection('clientes').doc(clientId).update({ customerName: 'Editado por admin' }));
+});
