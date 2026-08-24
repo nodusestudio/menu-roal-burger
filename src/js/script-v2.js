@@ -297,6 +297,28 @@ function _popModalState() {
         history.back();
     }
 }
+
+// ── Pila genérica de modales para el botón atrás ──
+// Antes solo 4 modales (recibo, pago, carrito, sheet de upsell) empujaban historial -- todos los
+// demás (opciones de producto, cupones, cuenta de cliente) dejaban que el botón atrás de Android
+// sacara de la app en vez de cerrarlos. En vez de repetir el chequeo a mano en el popstate por
+// cada uno (~20 modales), cada open/close se registra acá una sola vez y el popstate solo
+// pregunta "¿hay algo en la pila?" -- ver _pushGenericModal/_popGenericModal.
+let _genericModalStack = [];
+
+function _pushGenericModal(closeFn) {
+    _pushModalState();
+    _genericModalStack.push(closeFn);
+}
+
+// Llamar siempre que el modal se cierre de verdad (por X, click afuera, guardado exitoso, o el
+// propio botón atrás) -- nunca solo condicionado a _closingByBackBtn, para que la pila no quede
+// con una referencia a un modal que ya no existe.
+function _popGenericModal(closeFn) {
+    const idx = _genericModalStack.lastIndexOf(closeFn);
+    if (idx !== -1) _genericModalStack.splice(idx, 1);
+    if (!_closingByBackBtn) _popModalState();
+}
 let activeCustomerProfile = null;
 // Identidad de Google capturada antes de que el cliente tenga un documento clientes/phone_X
 // (primera visita, sin registro previo). Solo sirve para prellenar el nombre en el checkout y
@@ -1206,9 +1228,11 @@ function showClosedScheduleConfirm(availability) {
 
         const finish = (result) => {
             modal.remove();
+            _popGenericModal(closeOnBack);
             syncBodyScrollLock();
             resolve(result);
         };
+        const closeOnBack = () => finish(false);
 
         modal.querySelector('.support-modal-close').addEventListener('click', () => finish(false));
         modal.querySelector('#closedScheduleCancelBtn').addEventListener('click', () => finish(false));
@@ -1216,6 +1240,7 @@ function showClosedScheduleConfirm(availability) {
         modal.addEventListener('click', (event) => {
             if (event.target === modal && _lastMousedownTarget === modal) finish(false);
         });
+        _pushGenericModal(closeOnBack);
     });
 }
 
@@ -2114,6 +2139,7 @@ function closeCustomerRegisterModal() {
 
     customerRegisterUI.modal.remove();
     customerRegisterUI = null;
+    _popGenericModal(closeCustomerRegisterModal);
     syncBodyScrollLock();
 }
 
@@ -2125,6 +2151,7 @@ function closeCustomerConsentDocument() {
     customerConsentDocumentUI.modal.remove();
     customerConsentDocumentUI = null;
     document.body.classList.remove('has-consent-doc-open');
+    _popGenericModal(closeCustomerConsentDocument);
     syncBodyScrollLock();
 }
 
@@ -2349,6 +2376,7 @@ function openCustomerRegisterModal(profile = {}, options = {}) {
 
     _renderRegStep();
     syncBodyScrollLock();
+    _pushGenericModal(closeCustomerRegisterModal);
 }
 
 function _renderRegStep() {
@@ -2670,6 +2698,7 @@ function closeCustomerDeleteAccountModal() {
 
     customerDeleteAccountUI.modal.remove();
     customerDeleteAccountUI = null;
+    _popGenericModal(closeCustomerDeleteAccountModal);
     syncBodyScrollLock();
 }
 
@@ -2680,6 +2709,7 @@ function closeCustomerPasswordResetModal() {
 
     customerPasswordResetUI.modal.remove();
     customerPasswordResetUI = null;
+    _popGenericModal(closeCustomerPasswordResetModal);
     syncBodyScrollLock();
 }
 
@@ -2871,6 +2901,7 @@ function openCustomerPasswordResetModal(profile = {}) {
 
     _renderResetStep();
     syncBodyScrollLock();
+    _pushGenericModal(closeCustomerPasswordResetModal);
 
     // Ya sabemos el numero (viene de un intento de login fallido con resetRequired) -- se manda
     // el primer codigo de una vez para no obligar a pulsar "reenviar" innecesariamente. El limite
@@ -2968,13 +2999,14 @@ function openAccountDeletionScheduledModal(deletionScheduledAt) {
         </div>
     `;
     document.body.appendChild(modal);
-    const close = () => { modal.remove(); syncBodyScrollLock(); };
+    const close = () => { modal.remove(); _popGenericModal(close); syncBodyScrollLock(); };
     modal.querySelector('.support-modal-close')?.addEventListener('click', close);
     modal.querySelector('#accountDeletionScheduledOkButton')?.addEventListener('click', close);
     modal.addEventListener('click', (event) => {
         if (event.target === modal && _lastMousedownTarget === modal) close();
     });
     syncBodyScrollLock();
+    _pushGenericModal(close);
 }
 
 // Se muestra cuando un cliente con una eliminacion pendiente (ver openAccountDeletionScheduledModal)
@@ -3004,7 +3036,7 @@ function openCancelAccountDeletionModal(deletionScheduledAt) {
         </div>
     `;
     document.body.appendChild(modal);
-    const close = () => { modal.remove(); syncBodyScrollLock(); };
+    const close = () => { modal.remove(); _popGenericModal(close); syncBodyScrollLock(); };
     const feedback = modal.querySelector('#cancelAccountDeletionFeedback');
     modal.querySelector('.support-modal-close')?.addEventListener('click', close);
     modal.querySelector('#cancelAccountDeletionDismissButton')?.addEventListener('click', close);
@@ -3028,6 +3060,7 @@ function openCancelAccountDeletionModal(deletionScheduledAt) {
         if (event.target === modal && _lastMousedownTarget === modal) close();
     });
     syncBodyScrollLock();
+    _pushGenericModal(close);
 }
 
 function openCustomerDeleteAccountModal() {
@@ -3088,6 +3121,7 @@ function openCustomerDeleteAccountModal() {
 
     syncBodyScrollLock();
     customerDeleteAccountUI.reason?.focus();
+    _pushGenericModal(closeCustomerDeleteAccountModal);
 }
 
 function activateCustomerProfileTab(tabKey = 'info') {
@@ -3154,6 +3188,7 @@ function openCustomerConsentDocument() {
     });
 
     syncBodyScrollLock();
+    _pushGenericModal(closeCustomerConsentDocument);
 }
 
 async function requestPublicNotificationPermission() {
@@ -3211,6 +3246,7 @@ function closePasswordResetRequestModal() {
     if (!customerResetRequestUI) return;
     customerResetRequestUI.modal.remove();
     customerResetRequestUI = null;
+    _popGenericModal(closePasswordResetRequestModal);
     syncBodyScrollLock();
 }
 
@@ -3298,6 +3334,7 @@ function openPasswordResetRequestModal(phoneDigits, onSuccess) {
     syncBodyScrollLock();
     customerResetRequestUI.otpInput?.focus();
     callSendWhatsAppOtp(phoneDigits).catch(() => {});
+    _pushGenericModal(closePasswordResetRequestModal);
 }
 
 async function requestCustomerPasswordReset() {
@@ -5038,6 +5075,7 @@ function closeCheckoutInfoModal() {
 
     checkoutInfoUI.modal.remove();
     checkoutInfoUI = null;
+    _popGenericModal(closeCheckoutInfoModal);
     syncBodyScrollLock();
 }
 
@@ -6054,6 +6092,7 @@ function openCheckoutInfoModal() {
     }
     updateCheckoutInfoModalState();
     (checkoutInfoUI.address || checkoutInfoUI.name)?.focus();
+    _pushGenericModal(closeCheckoutInfoModal);
 }
 
 function getProductToastCopy(categoryName, productName) {
@@ -6598,6 +6637,7 @@ function openCartItemEditor(itemKey) {
     // Cerrar
     const closeSheet = () => {
         sheet.classList.remove('is-open');
+        _popGenericModal(closeSheet);
         setTimeout(() => sheet.remove(), 280);
     };
     sheet.querySelector('#cieCloseBtn').addEventListener('click', closeSheet);
@@ -6614,6 +6654,7 @@ function openCartItemEditor(itemKey) {
         _saveCartItemEdit(itemKey, newComment, newAcompId, newAcompNombre, newAcompPrecio);
         closeSheet();
     });
+    _pushGenericModal(closeSheet);
 }
 
 function _saveCartItemEdit(itemKey, newComment, newAcompId, newAcompNombre, newAcompPrecio) {
@@ -6747,6 +6788,7 @@ function closeComboChoiceModal() {
     const modal = document.getElementById('combo-choice-modal');
     if (modal) {
         modal.remove();
+        _popGenericModal(closeComboChoiceModal);
     }
     document.body.style.overflow = 'auto';
 }
@@ -6901,6 +6943,7 @@ function openImageOptionModal(productName, categoryName, buttonId, extraOptions 
 
     document.body.style.overflow = 'hidden';
     document.body.appendChild(modal);
+    _pushGenericModal(closeComboChoiceModal);
 }
 
 function openProductCommentModal(productName, categoryName, buttonId, extraOptions = {}) {
@@ -7013,6 +7056,7 @@ function openProductCommentModal(productName, categoryName, buttonId, extraOptio
 
     document.body.style.overflow = 'hidden';
     document.body.appendChild(modal);
+    _pushGenericModal(closeComboChoiceModal);
 }
 
 function getEntradaOptions(productName) {
@@ -7257,6 +7301,7 @@ function openBebidasYAdicionalesOptionsModal(productName, categoryName, buttonId
 
     document.body.style.overflow = 'hidden';
     document.body.appendChild(modal);
+    _pushGenericModal(closeComboChoiceModal);
 }
 
 function openEntradasOptionsModal(productName, categoryName, buttonId, extraOptions = {}) {
@@ -7374,6 +7419,7 @@ function openEntradasOptionsModal(productName, categoryName, buttonId, extraOpti
 
     document.body.style.overflow = 'hidden';
     document.body.appendChild(modal);
+    _pushGenericModal(closeComboChoiceModal);
 }
 
 function openCombosMixtosModal(productName, categoryName, buttonId, extraOptions = {}) {
@@ -7521,6 +7567,7 @@ function openCombosMixtosModal(productName, categoryName, buttonId, extraOptions
 
     document.body.style.overflow = 'hidden';
     document.body.appendChild(modal);
+    _pushGenericModal(closeComboChoiceModal);
 }
 
 function openCombosConPapasModal(productName, categoryName, buttonId, extraOptions = {}) {
@@ -7798,6 +7845,7 @@ function openCombosConPapasModal(productName, categoryName, buttonId, extraOptio
 
     document.body.style.overflow = 'hidden';
     document.body.appendChild(modal);
+    _pushGenericModal(closeComboChoiceModal);
 }
 
 function openComboChoiceModal(productName, categoryName, buttonId, extraOptions = {}) {
@@ -8025,6 +8073,7 @@ function openComboChoiceModal(productName, categoryName, buttonId, extraOptions 
 
     document.body.style.overflow = 'hidden';
     document.body.appendChild(modal);
+    _pushGenericModal(closeComboChoiceModal);
 }
 
 function startProductOrderFlow(productName, categoryName, buttonId, extraOptions = {}) {
@@ -9652,6 +9701,8 @@ function openBebidaPublicPickerModal(bev) {
 
     renderPresChips();
 
+    const close = () => { overlay.remove(); _popGenericModal(close); };
+
     // Actions
     const actions = document.createElement('div');
     actions.className = 'bebidas-modal-actions';
@@ -9661,7 +9712,7 @@ function openBebidaPublicPickerModal(bev) {
     closeBtn.type = 'button';
     closeBtn.className = 'bebidas-modal-btn bebidas-modal-btn-secondary';
     closeBtn.textContent = 'Regresar';
-    closeBtn.addEventListener('click', () => overlay.remove());
+    closeBtn.addEventListener('click', close);
 
     const orderBtn = document.createElement('button');
     orderBtn.type = 'button';
@@ -9678,7 +9729,7 @@ function openBebidaPublicPickerModal(bev) {
             saborChips.addEventListener('animationend', () => saborChips.classList.remove('combo-sabor-shake'), { once: true });
             return;
         }
-        overlay.remove();
+        close();
         let itemName = bev.marca;
         if (selectedPres) itemName += ` ${selectedPres.nombre}`;
         if (selectedSabor) itemName += ` (${selectedSabor})`;
@@ -9698,10 +9749,11 @@ function openBebidaPublicPickerModal(bev) {
     overlay.appendChild(card);
 
     overlay.addEventListener('click', (e) => {
-        if (e.target === overlay && _lastMousedownTarget === overlay) overlay.remove();
+        if (e.target === overlay && _lastMousedownTarget === overlay) close();
     });
 
     document.body.appendChild(overlay);
+    _pushGenericModal(close);
 }
 
 // --- FUNCIÓN GLOBAL MODAL BEBIDAS ---
@@ -9728,13 +9780,13 @@ function abrirModalBebida(nombre, ruta, categoria, options = {}) {
     const actions = document.createElement('div');
     actions.className = 'bebidas-modal-actions';
 
+    const close = () => { modal.remove(); _popGenericModal(close); };
+
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
     closeButton.className = 'bebidas-modal-btn bebidas-modal-btn-secondary';
     closeButton.textContent = 'Regresar';
-    closeButton.addEventListener('click', () => {
-        modal.remove();
-    });
+    closeButton.addEventListener('click', close);
 
     const orderButton = document.createElement('button');
     const safeCategory = categoria || getSelectedCategoryName();
@@ -9751,7 +9803,7 @@ function abrirModalBebida(nombre, ruta, categoria, options = {}) {
             ? 'Seleccionar bebida'
             : 'Pedir este producto';
     orderButton.addEventListener('click', () => {
-        modal.remove();
+        close();
         startProductOrderFlow(nombre, safeCategory, buttonId, { imagePath: options.orderImagePath || ruta });
     });
 
@@ -9765,11 +9817,12 @@ function abrirModalBebida(nombre, ruta, categoria, options = {}) {
 
     modal.addEventListener('click', (event) => {
         if (event.target === modal && _lastMousedownTarget === modal) {
-            modal.remove();
+            close();
         }
     });
 
     document.body.appendChild(modal);
+    _pushGenericModal(close);
 }
 
 function focusMenuSection(targetSection, targetId) {
@@ -10031,12 +10084,16 @@ function openSectionsDrawer() {
     document.getElementById('sectionsDrawer')?.classList.add('open');
     const overlay = document.getElementById('sectionsDrawerOverlay');
     if (overlay) overlay.hidden = false;
+    _pushGenericModal(closeSectionsDrawer);
 }
 
 function closeSectionsDrawer() {
-    document.getElementById('sectionsDrawer')?.classList.remove('open');
+    const drawer = document.getElementById('sectionsDrawer');
+    const wasOpen = Boolean(drawer?.classList.contains('open'));
+    drawer?.classList.remove('open');
     const overlay = document.getElementById('sectionsDrawerOverlay');
     if (overlay) overlay.hidden = true;
+    if (wasOpen) _popGenericModal(closeSectionsDrawer);
 }
 
 function setupMenuNavigation() {
@@ -10154,6 +10211,7 @@ function openMenuModal() {
     modal.style.display = 'block';
     syncBodyScrollLock();
     updateDynamicWhatsAppLink(activeMenuSection);
+    _pushGenericModal(closeMenuModal);
 }
 
 function closeMenuModal() {
@@ -10162,9 +10220,11 @@ function closeMenuModal() {
         return;
     }
 
+    const wasOpen = modal.style.display !== 'none' && modal.style.display !== '';
     modal.style.display = 'none';
     closeDrawerMenu();
     syncBodyScrollLock();
+    if (wasOpen) _popGenericModal(closeMenuModal);
 }
 
 
@@ -10710,13 +10770,16 @@ function maybeShowOpeningAd() {
     overlay.style.display = 'flex';
     _openingAdShown = true;
     _markOpeningAdSeenToday();
+    _pushGenericModal(closeOpeningAd);
 }
 
 function closeOpeningAd() {
     const overlay = document.getElementById('openingAdOverlay');
     if (!overlay) return;
+    const wasOpen = !overlay.hidden;
     overlay.hidden = true;
     overlay.style.display = 'none';
+    if (wasOpen) _popGenericModal(closeOpeningAd);
 }
 
 // ===== COMBOS ESPECIALES (MENÚ PÚBLICO) =====
@@ -11420,7 +11483,7 @@ function openImageLightbox(src, alt, extra) {
     ov.appendChild(closeBtn);
     document.body.appendChild(ov);
 
-    const close = () => ov.remove();
+    const close = () => { ov.remove(); _popGenericModal(close); };
 
     if (addBtn) {
         addBtn.addEventListener('click', (e) => {
@@ -11448,6 +11511,7 @@ function openImageLightbox(src, alt, extra) {
 
     const onKey = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
     document.addEventListener('keydown', onKey);
+    _pushGenericModal(close);
 }
 
 function _bindLightboxTap(wrapEl, imgEl, extra) {
@@ -12767,11 +12831,12 @@ function openPromoRegistrationPrompt() {
         openCustomerRegisterModal();
     });
     document.getElementById('promoRegGuest')?.addEventListener('click', closePromoRegistrationPrompt);
+    _pushGenericModal(closePromoRegistrationPrompt);
 }
 
 function closePromoRegistrationPrompt() {
     const modal = document.getElementById('promoRegistrationPrompt');
-    if (modal) { modal.remove(); syncBodyScrollLock(); }
+    if (modal) { modal.remove(); syncBodyScrollLock(); _popGenericModal(closePromoRegistrationPrompt); }
 }
 
 // ── REDENCIÓN EN LOCAL — código temporal + modal ─────────────────────────────
@@ -12809,7 +12874,7 @@ function _openChannelModal({ couponId, couponTitle, couponMeta, redeemBtn, onDel
     document.body.appendChild(modal);
     syncBodyScrollLock();
 
-    const close = () => { modal.remove(); syncBodyScrollLock(); };
+    const close = () => { modal.remove(); _popGenericModal(close); syncBodyScrollLock(); };
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
     document.getElementById('cuponChClose')?.addEventListener('click', close);
 
@@ -12827,6 +12892,7 @@ function _openChannelModal({ couponId, couponTitle, couponMeta, redeemBtn, onDel
         close();
         _generarCodigoLocal(couponId, couponTitle, couponMeta, redeemBtn);
     });
+    _pushGenericModal(close);
 }
 
 async function _generarCodigoLocal(couponId, couponTitle, couponMeta, redeemBtn) {
@@ -12913,6 +12979,9 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
         clearInterval(pollRef);
         if (unsubSnap) { unsubSnap(); unsubSnap = null; }
         modal.remove();
+        // Referencia a closeAndDelete (no cleanup) porque es la que se registra en la pila del
+        // botón atrás -- ver push al final de esta función.
+        _popGenericModal(closeAndDelete);
         syncBodyScrollLock();
         if (deleteDoc) { try { docRef.delete(); } catch (_) {} }
     };
@@ -12962,6 +13031,7 @@ function _showCodigoLocalModal(code, couponTitle, expiresAt, docRef, couponId, r
     } catch (_) {}
 
     document.getElementById('cuponCodCancel')?.addEventListener('click', closeAndDelete);
+    _pushGenericModal(closeAndDelete);
 }
 
 function _playBellSound() {
@@ -13036,9 +13106,10 @@ function _showCuponRedimidoModal(couponTitle) {
         </div>`;
     document.body.appendChild(modal);
     syncBodyScrollLock();
-    const close = () => { modal.remove(); syncBodyScrollLock(); };
+    const close = () => { modal.remove(); _popGenericModal(close); syncBodyScrollLock(); };
     document.getElementById('cuponRedClose')?.addEventListener('click', close);
     setTimeout(close, 7000);
+    _pushGenericModal(close);
 }
 
 function orderDailyRecommendation() {
@@ -13138,6 +13209,8 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
+    const closeVarModal = () => { overlay.remove(); _popGenericModal(closeVarModal); };
+
     const grid = card.querySelector('#pubVarGrid');
     const saborSection = card.querySelector('#pubVarSaborSection');
     const saborGrid = card.querySelector('#pubVarSaborGrid');
@@ -13231,7 +13304,7 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
             ? ` + ${selectedVariante.bebida_nombre}${saboresLabel ? ` (${saboresLabel})` : ''}${cant > 1 ? ` ×${cant}` : ''}`
             : '';
         const fullComment = `${selectedVariante.nombre}${bebInfo}${comment ? ` | ${comment}` : ''}`;
-        overlay.remove();
+        closeVarModal();
         if (replaceItemKey) {
             shoppingCart = shoppingCart.filter((e) => e.itemKey !== replaceItemKey && e.parentKey !== replaceItemKey);
         }
@@ -13241,8 +13314,9 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
         );
     });
 
-    card.querySelector('#pubVarClose').addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    card.querySelector('#pubVarClose').addEventListener('click', closeVarModal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeVarModal(); });
+    _pushGenericModal(closeVarModal);
 }
 
 function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig, baseOptions, replaceItemKey = null) {
@@ -13328,11 +13402,13 @@ function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig
         saborGrid.appendChild(row);
     }
 
+    const closeBebModal = () => { overlay.remove(); _popGenericModal(closeBebModal); };
+
     confirmBtn.addEventListener('click', () => {
         const saborNote = selectedSabores.filter(Boolean).join(', ');
         const comment = `🥤 ${bebidaConfig.bebida_nombre}${saborNote ? ' — ' + saborNote : ''}`;
         const opts = Object.assign({}, baseOptions || {}, { upgradeHandled: true, comment });
-        overlay.remove();
+        closeBebModal();
         if (replaceItemKey) shoppingCart = shoppingCart.filter((i) => i.itemKey !== replaceItemKey);
         addItemToCart(productName, categoryName, opts, buttonId);
     });
@@ -13342,9 +13418,10 @@ function openPublicBebidaModal(productName, categoryName, buttonId, bebidaConfig
     card.appendChild(saborGrid);
     card.appendChild(confirmBtn);
     overlay.appendChild(card);
-    card.querySelector('#pubBebClose').addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    card.querySelector('#pubBebClose').addEventListener('click', closeBebModal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeBebModal(); });
     document.body.appendChild(overlay);
+    _pushGenericModal(closeBebModal);
 }
 
 // ── Public Upgrade Sheet ──────────────────────────────────────────────────
@@ -13935,6 +14012,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (paymentFlowUI) { closePaymentFlowModal(); return; }
                 const upgradeOverlay = document.getElementById('publicUpgradeOverlay');
                 if (upgradeOverlay && !upgradeOverlay.hidden) { closePublicUpgradeSheet(); return; }
+                if (_genericModalStack.length) { _genericModalStack[_genericModalStack.length - 1](); return; }
                 if (cartUI?.drawer.classList.contains('is-open')) { closeCartDrawer(); return; }
             } finally {
                 _closingByBackBtn = false;
