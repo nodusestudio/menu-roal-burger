@@ -4196,7 +4196,7 @@ body.has-consent-doc-open .guest-register-banner {
     font-family: 'Oswald', sans-serif;
     font-size: 0.78rem;
     font-weight: 600;
-    color: #ff9a50;
+    color: var(--brand-orange-light);
 }
 .cie-comment-ta {
     width: 100%;
@@ -5651,7 +5651,7 @@ body.has-consent-doc-open .guest-register-banner {
     background: var(--brand-orange-dark);
 }
 
-.promo-cc-badge--hot { background: linear-gradient(135deg, var(--brand-orange), #ff4f00); }
+.promo-cc-badge--hot { background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark)); }
 .promo-cc-badge--2x1 { background: linear-gradient(135deg, #7c3aed, #4f1d96); }
 
 .promo-cc-price-row {
@@ -5719,7 +5719,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .ce-carousel-badge {
-    background: linear-gradient(135deg, var(--brand-orange), #ff4f00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff;
     font-family: 'Oswald', sans-serif;
     font-size: 0.8rem;
@@ -7396,7 +7396,7 @@ body.has-consent-doc-open .guest-register-banner {
     width: 68px; height: 68px; flex-shrink: 0;
     border-radius: 50%;
     display: grid; place-items: center;
-    background: linear-gradient(135deg, var(--brand-orange), #ff4f00);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
     color: #fff;
     box-shadow: 0 8px 22px rgba(255,90,0,0.28);
 }
