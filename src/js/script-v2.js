@@ -8352,35 +8352,23 @@ function renderDynamicCategorySections() {
                     const rutaImagen = product.image_url || '';
 
                     const card = document.createElement('div');
-                    card.style.display = 'grid';
-                    card.style.gridTemplateColumns = '68px 1fr auto';
-                    card.style.gap = '10px';
-                    card.style.alignItems = 'center';
-                    card.style.padding = '10px';
-                    card.style.border = '1px solid rgba(255,255,255,0.12)';
-                    card.style.borderRadius = '10px';
-                    card.style.marginBottom = '10px';
-                    card.style.background = 'rgba(0,0,0,0.22)';
+                    card.className = 'dyn-cat-card';
 
                     const img = document.createElement('img');
+                    img.className = 'dyn-cat-card-img';
                     img.loading = 'lazy';
                     img.decoding = 'async';
                     img.src = normalizeImageAssetPath(rutaImagen) || _IMG_FINAL_FALLBACK;
                     img.alt = product.nombre;
                     img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
-                    img.style.width = '68px';
-                    img.style.height = '68px';
-                    img.style.objectFit = 'cover';
-                    img.style.borderRadius = '8px';
 
                     const name = document.createElement('div');
+                    name.className = 'dyn-cat-card-name';
                     name.textContent = product.nombre;
-                    name.style.fontWeight = '600';
 
                     const price = document.createElement('div');
+                    price.className = 'dyn-cat-card-price';
                     price.textContent = `$ ${resolveProductDisplayPrice(product).toLocaleString('es-CO')}`;
-                    price.style.color = 'var(--brand-secondary, #ffb27a)';
-                    price.style.fontWeight = '700';
 
                     card.appendChild(img);
                     card.appendChild(name);

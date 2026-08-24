@@ -2165,6 +2165,36 @@ body.is-offline #menuScreen {
     text-align: left;
 }
 
+/* Tarjeta de producto de .dynamic-category-section (renderDynamicCategorySections) -- antes
+   asignaba 15 propiedades de estilo individualmente por tarjeta en JS (card.style.X = Y), el
+   patron mas caro de recalcular para el navegador; medido en producción: ~66ms de los ~72ms
+   totales del listener de "productos" (el mas pesado del menú). Mover a clases CSS no cambia
+   cuándo se dispara el render, solo abarata cada render. */
+.dyn-cat-card {
+    display: grid;
+    grid-template-columns: 68px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    background: rgba(0,0,0,0.22);
+}
+.dyn-cat-card-img {
+    width: 68px;
+    height: 68px;
+    object-fit: cover;
+    border-radius: 8px;
+}
+.dyn-cat-card-name {
+    font-weight: 600;
+}
+.dyn-cat-card-price {
+    color: var(--brand-secondary, #ffb27a);
+    font-weight: 700;
+}
+
 .menu-image {
     width: 100%;
     height: auto;
