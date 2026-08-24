@@ -4478,7 +4478,7 @@ body.has-consent-doc-open .guest-register-banner {
 
 .mobile-order-btn:hover,
 .mobile-order-btn:active {
-    background: linear-gradient(135deg, #ff4400, #e02000);
+    background: linear-gradient(135deg, var(--brand-orange-redorange), #e02000);
     transform: translateY(-2px);
     box-shadow: 0 8px 30px rgba(255, 55, 0, 0.78), 0 3px 10px rgba(180, 10, 0, 0.50);
     text-decoration: none;
@@ -5046,14 +5046,14 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .promo-btn-order {
-    background: linear-gradient(135deg, #ff5500, var(--brand-orange-red-dark));
+    background: linear-gradient(135deg, var(--brand-orange-red), var(--brand-orange-red-dark));
     color: #fff;
     border: none;
     box-shadow: 0 10px 26px rgba(220, 50, 0, 0.55), 0 3px 8px rgba(180, 10, 0, 0.35);
 }
 
 .promo-btn-order:hover {
-    background: linear-gradient(135deg, #ff4400, #e01e00);
+    background: linear-gradient(135deg, var(--brand-orange-redorange), #e01e00);
     transform: translateY(-2px);
     box-shadow: 0 14px 32px rgba(220, 45, 0, 0.68), 0 4px 10px rgba(180, 10, 0, 0.45);
 }
@@ -5212,7 +5212,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .bebidas-modal-btn-primary:hover {
-    background: linear-gradient(135deg, #ff4400, #e01e00);
+    background: linear-gradient(135deg, var(--brand-orange-redorange), #e01e00);
     box-shadow: 0 14px 34px rgba(220, 45, 0, 0.68), 0 4px 10px rgba(180, 10, 0, 0.45);
 }
 
@@ -6721,7 +6721,7 @@ body.has-consent-doc-open .guest-register-banner {
     margin-top: 14px;
     width: 100%;
     padding: 13px 22px;
-    background: linear-gradient(135deg, var(--brand-orange-red), #ff2200);
+    background: linear-gradient(135deg, var(--brand-orange-red), var(--brand-orange-red-dark));
     border: none;
     border-radius: 999px;
     color: #fff;
@@ -6791,8 +6791,8 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .promo-carousel-dot.active {
-    background: #ff7200;
-    border-color: #ff7200;
+    background: var(--brand-orange);
+    border-color: var(--brand-orange);
     transform: scale(1.3);
 }
 /* ===== FIN CARRUSEL DE PROMOS ===== */
