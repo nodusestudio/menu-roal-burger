@@ -7943,24 +7943,6 @@ function startProductOrderFlow(productName, categoryName, buttonId, extraOptions
 let featuredCarouselAnimationFrame = null;
 let featuredCarouselLastTimestamp = 0;
 
-// Carrusel continuo del home screen
-let _homeComboRAF = null;
-let _homeComboLastTs = 0;
-let _homeComboEl = null;
-
-function _homeComboTick(ts) {
-    if (!_homeComboEl) return;
-    if (!_homeComboLastTs) _homeComboLastTs = ts;
-    const dt = Math.min((ts - _homeComboLastTs) / 1000, 0.1);
-    _homeComboLastTs = ts;
-    _homeComboEl.scrollLeft += 32 * dt;
-    const half = _homeComboEl.scrollWidth / 2;
-    if (half > 0 && _homeComboEl.scrollLeft >= half) {
-        _homeComboEl.scrollLeft -= half;
-    }
-    _homeComboRAF = requestAnimationFrame(_homeComboTick);
-}
-
 const DEFAULT_PUBLIC_BUTTONS = {
     'btn-menu': {
         id: 'btn-menu',
@@ -9598,7 +9580,6 @@ async function renderPublicFeaturedFromAdmin() {
             _promoModalPendingOpen = false;
             openPromoScreen();
         }
-        renderHomeScreen();
         refreshCatalogScreenIfNeeded();
     });
 
@@ -9642,7 +9623,6 @@ async function renderPublicFeaturedFromAdmin() {
         renderFeaturedCards(carousel);
         renderCategoryExplorer();
         updatePromoModalContent();
-        renderHomeScreen();
         refreshCatalogScreenIfNeeded();
     });
 
@@ -10577,276 +10557,9 @@ function escapeXml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ===== SEGUNDA PANTALLA: HOME SCREEN =====
-
 function setPublicTopbarVisible(visible) {
     const topbar = document.querySelector('.public-topbar');
     if (topbar) topbar.style.display = visible ? '' : 'none';
-}
-
-function showHomeScreen() {
-    _SECONDARY_SCREENS.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.hidden = true;
-    });
-    document.getElementById('navCategoriesScreen')?.removeAttribute('data-hidden-by-detail');
-    const hs = document.getElementById('homeScreen');
-    if (hs) { hs.hidden = false; renderHomeScreen(); }
-    setPublicTopbarVisible(true);
-    _setNavCurrent(null);
-    if (_screenHistoryPushed && !_closingByBackBtn) {
-        _screenHistoryPushed = false;
-        _skipNextPopstate = true;
-        history.back();
-    } else {
-        _screenHistoryPushed = false;
-    }
-}
-
-function renderHomeScreen() {
-    renderHomeRecBanner();
-    renderHomeComboCarousel();
-    renderHomeCategoryCards();
-}
-
-function renderHomeRecBanner() {
-    const img    = document.getElementById('homeRecImg');
-    const name   = document.getElementById('homeRecName');
-    const price  = document.getElementById('homeRecPrice');
-    const btn    = document.getElementById('homeRecBtn');
-    if (!img) return;
-
-    const imgWrap = img.closest('.home-rec-img-wrap');
-
-    const product = getRecommendedProductOfDay();
-    if (!product) {
-        if (name && name.textContent && name.textContent !== '...') return;
-        if (imgWrap) imgWrap.classList.add('skel-loading');
-        return;
-    }
-
-    if (imgWrap) imgWrap.classList.remove('skel-loading');
-    img.src = String(product.image_url || product.imageUrl || '');
-    img.alt = String(product.nombre || product.name || 'Recomendado del dia');
-    if (imgWrap && !imgWrap._lbBound) {
-        imgWrap.style.cursor = 'zoom-in';
-        _bindLightboxTap(imgWrap, img);
-        imgWrap._lbBound = true;
-    }
-    if (name)  name.textContent  = String(product.nombre || product.name || 'Recomendado del dia');
-    const origPriceEl = document.getElementById('homeRecOrigPrice');
-    if (price || origPriceEl) {
-        const raw = resolveProductDisplayPrice(product);
-        const discounted = Math.round(raw * 0.80);
-        if (price) price.textContent = `$${discounted.toLocaleString('es-CO')}`;
-        if (origPriceEl) origPriceEl.textContent = raw > discounted ? `$${raw.toLocaleString('es-CO')}` : '';
-    }
-    if (btn) {
-        const _hrId = 'rec_' + (product.id || product.nombre || 'dia');
-        btn.dataset.couponId = _hrId;
-        const _hrRem = _getRedeemRemaining(_hrId);
-        if (_hrRem > 0) {
-            _applyBtnLockUI(btn, _hrRem);
-        } else if (_softLockedCoupons.has(_hrId)) {
-            _softLockedCoupons.get(_hrId).btn = btn;
-            _applyBtnSoftLockUI(btn);
-        }
-        btn.onclick = () => {
-            if (!activeCustomerProfile) {
-                openPromoRegistrationPrompt();
-                return;
-            }
-            const _hrCouponTitle = String(product.nombre || product.name || 'Recomendado del Día');
-            _openChannelModal({
-                couponId: _hrId,
-                couponTitle: _hrCouponTitle,
-                couponMeta: { type: 'recomendado', productId: product.id, productNombre: product.nombre, discountRate: RECOMMENDED_DAY_DISCOUNT_RATE },
-                redeemBtn: btn,
-                onDelivery: () => {
-                    startProductOrderFlow(
-                        String(product.nombre || product.name || ''),
-                        String(product.categoria || product.category || ''),
-                        'home-rec-btn',
-                        {
-                            recommendedDiscount: true,
-                            discountRate: RECOMMENDED_DAY_DISCOUNT_RATE,
-                            imagePath: product.image_url
-                        }
-                    );
-                }
-            });
-        };
-    }
-}
-
-function renderHomeComboCarousel() {
-    const carousel = document.getElementById('home-combos-carousel');
-    if (!carousel) return;
-
-    if (_homeComboRAF) { cancelAnimationFrame(_homeComboRAF); _homeComboRAF = null; }
-    _homeComboEl = carousel;
-    _homeComboLastTs = 0;
-
-    const ITEMS = [
-        { nombre: 'Combo Burger Normal', image_url: 'losmaspedidos/comboburgernormal.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo Burger Papuda', image_url: 'losmaspedidos/comboburgerpapuda.webp', categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo Burger Super',  image_url: 'losmaspedidos/comboburgersuper.webp',  categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo Perro Normal',  image_url: 'losmaspedidos/comboperronormal.webp',  categoria: 'COMBOS CON PAPAS Y BEBIDA' },
-        { nombre: 'Combo De La Casa',    image_url: 'losmaspedidos/combodelacasa.webp',      categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Combo Emparejados',   image_url: 'losmaspedidos/comboemparejados.webp',   categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Combo Familiar 3',    image_url: 'losmaspedidos/combofamiliar3.webp',     categoria: 'COMBOS MIXTOS' },
-        { nombre: 'Combo Familiar 4',    image_url: 'losmaspedidos/combofamiliar4.webp',     categoria: 'COMBOS MIXTOS' }
-    ];
-
-    const makeCard = (item) => {
-        const card = document.createElement('div');
-        card.className = 'product-card-mobile';
-        const wrap = document.createElement('div');
-        wrap.className = 'card-image-wrapper';
-        const img = document.createElement('img');
-        img.className = 'product-image-mobile';
-        img.src = item.image_url;
-        img.alt = item.nombre;
-        img.loading = 'lazy';
-        wrap.appendChild(img);
-        _bindLightboxTap(wrap, img);
-        const btn = document.createElement('button');
-        btn.className = 'mobile-order-btn';
-        btn.type = 'button';
-        btn.textContent = '¡Lo Quiero!';
-        btn.addEventListener('click', () => startProductOrderFlow(item.nombre, item.categoria, 'home-combo-btn'));
-        card.appendChild(wrap);
-        card.appendChild(btn);
-        return card;
-    };
-
-    carousel.innerHTML = '';
-    ITEMS.forEach(it => carousel.appendChild(makeCard(it)));
-    ITEMS.forEach(it => carousel.appendChild(makeCard(it)));
-    carousel.scrollLeft = 0;
-    syncOrderingAvailabilityUI();
-
-    // Pause on touch
-    if (!carousel.dataset.homeScroll) {
-        carousel.addEventListener('touchstart', () => {
-            if (_homeComboRAF) { cancelAnimationFrame(_homeComboRAF); _homeComboRAF = null; }
-            _homeComboLastTs = 0;
-        }, { passive: true });
-        carousel.addEventListener('touchend', () => {
-            if (_homeComboEl && !_homeComboRAF) {
-                _homeComboLastTs = 0;
-                _homeComboRAF = requestAnimationFrame(_homeComboTick);
-            }
-        }, { passive: true });
-        carousel.dataset.homeScroll = '1';
-    }
-
-    setTimeout(() => {
-        if (_homeComboEl === carousel) _homeComboRAF = requestAnimationFrame(_homeComboTick);
-    }, 80);
-}
-
-function renderHomeCategoryCards() {
-    const container = document.getElementById('homeCategoriesGrid');
-    if (!container) return;
-
-    const categories = activeCategoryMeta;
-    if (!categories || categories.length === 0) {
-        if (!container.querySelector('.combos-carousel-section')) {
-            container.innerHTML = '<p class="home-loading-msg">Cargando categorías...</p>';
-        }
-        return;
-    }
-
-    const allProducts = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
-    const normKey = p => normalizeCategoryKey(String(p.categoria || ''));
-
-    container.innerHTML = '';
-    let sectionsAdded = 0;
-
-    categories.forEach(cat => {
-        const key = cat.key || normalizeCategoryKey(cat.name || '');
-        const products = allProducts.filter(p => normKey(p) === key);
-        if (!products.length) return;
-
-        const section = document.createElement('section');
-        section.className = 'combos-carousel-section';
-
-        // Header: título + "Ver todo"
-        const header = document.createElement('div');
-        header.className = 'home-cat-section-header';
-
-        const titleEl = document.createElement('h3');
-        titleEl.className = 'combos-section-title';
-        titleEl.textContent = cat.name;
-
-        const verTodoBtn = document.createElement('button');
-        verTodoBtn.type = 'button';
-        verTodoBtn.className = 'home-cat-all-btn';
-        verTodoBtn.textContent = 'Ver todo →';
-        verTodoBtn.addEventListener('click', () => openCategoryDetail(cat));
-
-        header.appendChild(titleEl);
-        header.appendChild(verTodoBtn);
-
-        // Carrusel de productos
-        const carousel = document.createElement('div');
-        carousel.className = 'mobile-carousel';
-
-        products.forEach(product => {
-            const card = document.createElement('div');
-            card.className = 'product-card-mobile';
-
-            const wrap = document.createElement('div');
-            wrap.className = 'card-image-wrapper';
-            const img = document.createElement('img');
-            img.className = 'product-image-mobile';
-            img.src = String(product.imagen_url || product.image_url || '').trim() || _IMG_FINAL_FALLBACK;
-            img.alt = product.nombre || '';
-            img.loading = 'lazy';
-            img.onerror = () => { img.src = _IMG_FINAL_FALLBACK; };
-            wrap.appendChild(img);
-            _bindLightboxTap(wrap, img);
-
-            const nameEl = document.createElement('p');
-            nameEl.className = 'card-product-name';
-            nameEl.textContent = product.nombre || '';
-
-            const priceRaw = resolveProductDisplayPrice(product);
-
-            card.appendChild(wrap);
-            card.appendChild(nameEl);
-
-            if (priceRaw) {
-                const priceEl = document.createElement('p');
-                priceEl.className = 'card-product-price';
-                priceEl.textContent = `$${Math.round(priceRaw).toLocaleString('es-CO')}`;
-                card.appendChild(priceEl);
-            }
-
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'mobile-order-btn';
-            btn.textContent = '¡Lo Quiero! 🔥';
-            btn.addEventListener('click', () => startProductOrderFlow(
-                product.nombre || '',
-                product.categoria || '',
-                'home-cat-carousel-btn'
-            ));
-            card.appendChild(btn);
-
-            carousel.appendChild(card);
-        });
-
-        section.appendChild(header);
-        section.appendChild(carousel);
-        container.appendChild(section);
-        sectionsAdded++;
-    });
-
-    if (sectionsAdded === 0) {
-        container.innerHTML = '<p class="home-loading-msg">Cargando productos...</p>';
-    }
 }
 
 // ── Redeem Effect — partículas + stamp + haptic ──────────────────────────────
@@ -13421,9 +13134,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch(e) {}
 
 
-    // Garantía: cualquier ruta que cierre el splash también muestra el homeScreen.
+    // Garantía: cualquier ruta que cierre el splash también abre el catálogo continuo.
     // El failsafe de 4s en el inline script re-lee window.__roalHideSplash, que ya es
-    // este wrapper, así que también llama showHomeScreen() en ese caso.
+    // este wrapper, así que también abre openMenuCarouselScreen() en ese caso.
     const _origHideSplash = window.__roalHideSplash;
     window.__roalHideSplash = function () {
         const splashEl = document.getElementById('splashScreen');
