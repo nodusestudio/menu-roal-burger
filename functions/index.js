@@ -27,6 +27,7 @@ const CLIENTS_COLLECTION             = 'clientes';
 const CLIENT_CREDENTIALS_COLLECTION  = 'clientes_credenciales';
 const GOOGLE_LINKS_COLLECTION        = 'google_links';
 const MESSAGES_COLLECTION            = 'mensajes';
+const ACCOUNT_DELETION_GRACE_MS      = 7 * 24 * 60 * 60 * 1000; // 7 dias antes de borrar de verdad
 
 // Orígenes permitidos para llamadas a las Cloud Functions desde el navegador.
 // Solo estos dominios pueden invocar las funciones onCall desde un browser.
@@ -608,7 +609,9 @@ function sanitizeClientProfileForClient(clientId, data = {}, hasPassword = false
         lastOrderId: String(data.lastOrderId || '').trim(),
         lastOrderTotal: Number(data.lastOrderTotal || 0),
         googleUid: String(data.googleUid || '').trim(),
-        googleEmail: String(data.googleEmail || '').trim()
+        googleEmail: String(data.googleEmail || '').trim(),
+        pendingDeletion: Boolean(data.pendingDeletion),
+        deletionScheduledAt: data.deletionScheduledAt || null
     };
 }
 
@@ -679,6 +682,13 @@ exports.customerRegisterOrUpdateProfile = onCall(
         const pin = normalizeCustomerPin(request.data?.pin);
         const confirmPin = normalizeCustomerPin(request.data?.confirmPin);
         const acceptedDataPolicy = Boolean(request.data?.acceptedDataPolicy);
+        // Casilla independiente y opcional -- antes se derivaba de acceptedDataPolicy (obligaba a
+        // aceptar publicidad para poder simplemente guardar el perfil). Flujos que no muestran
+        // esta casilla (ej. crear PIN nuevo tras un reset de admin) no mandan este campo -- se
+        // distingue "no lo mandaron" (preservar lo que ya habia) de "lo mandaron en false"
+        // (el cliente lo destildo a proposito, debe poder optar por salir).
+        const marketingConsentProvided = Object.prototype.hasOwnProperty.call(request.data || {}, 'acceptedMarketing');
+        const acceptedMarketing = Boolean(request.data?.acceptedMarketing);
 
         const db = getFirestore();
         const clientId = buildClientId(phoneDigits);
@@ -717,7 +727,9 @@ exports.customerRegisterOrUpdateProfile = onCall(
             }
         }
 
-        const hasPreviousConsent = Boolean(previous.privacyConsentAccepted) && Boolean(previous.marketingConsentAccepted);
+        // Solo el consentimiento obligatorio (datos operativos) bloquea el guardado -- el de
+        // marketing es opcional, nunca debe impedir que alguien simplemente guarde su perfil.
+        const hasPreviousConsent = Boolean(previous.privacyConsentAccepted);
         if (!acceptedDataPolicy && !hasPreviousConsent) {
             throw new HttpsError('failed-precondition', 'Debes aceptar el uso de tus datos para crear tu perfil.');
         }
@@ -759,7 +771,7 @@ exports.customerRegisterOrUpdateProfile = onCall(
             address,
             savedAddresses,
             privacyConsentAccepted: acceptedDataPolicy || Boolean(previous.privacyConsentAccepted),
-            marketingConsentAccepted: acceptedDataPolicy || Boolean(previous.marketingConsentAccepted),
+            marketingConsentAccepted: marketingConsentProvided ? acceptedMarketing : Boolean(previous.marketingConsentAccepted),
             consentAcceptedAt: previous.consentAcceptedAt || FieldValue.serverTimestamp(),
             // Mismo valor que CUSTOMER_CONSENT_VERSION en src/js/script-v2.js -- se duplica aqui
             // porque las Cloud Functions no comparten modulo con el cliente.
@@ -1116,10 +1128,13 @@ exports.submitPublicOrder = onCall(
     }
 );
 
-// clientes_credenciales no es borrable desde el navegador (allow write: if false, ni siquiera
-// el dueno) -- si solo se borrara /clientes/{clientId}, el credencial viejo quedaria huerfano y
-// bloquearia un registro nuevo legitimo con el mismo telefono mas adelante (lo veria como "ya
-// existe una cuenta"). Esta funcion borra ambos documentos juntos.
+// Antes esto borraba la cuenta al instante, sin ninguna ventana para arrepentirse -- ni el
+// propio cliente, tocando el boton por error o con un impulso momentaneo, podia deshacerlo. Ahora
+// marca la cuenta como "pendiente de eliminar" con una fecha (7 dias); las credenciales NO se
+// tocan, asi que el cliente puede seguir usando su cuenta normalmente durante la ventana de
+// gracia -- si vuelve a iniciar sesion, el cliente le ofrece cancelar la eliminacion
+// (cancelAccountDeletion). purgeExpiredAccountDeletions (barrido diario) hace el borrado real
+// de clientes + clientes_credenciales recien despues de que vence la ventana.
 exports.deleteCustomerAccount = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
@@ -1128,11 +1143,32 @@ exports.deleteCustomerAccount = onCall(
             throw new HttpsError('unauthenticated', 'Inicia sesion antes de eliminar tu cuenta.');
         }
 
-        const db = getFirestore();
-        await Promise.all([
-            db.collection(CLIENTS_COLLECTION).doc(clientId).delete(),
-            db.collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId).delete()
-        ]);
+        const deletionScheduledAt = new Date(Date.now() + ACCOUNT_DELETION_GRACE_MS);
+        await getFirestore().collection(CLIENTS_COLLECTION).doc(clientId).set({
+            pendingDeletion: true,
+            deletionRequestedAt: FieldValue.serverTimestamp(),
+            deletionScheduledAt
+        }, { merge: true });
+
+        return { success: true, deletionScheduledAt: deletionScheduledAt.toISOString() };
+    }
+);
+
+// Cancela una eliminacion pendiente -- se llama cuando el cliente vuelve a iniciar sesion antes
+// de que se cumplan los 7 dias y decide seguir usando su cuenta.
+exports.cancelAccountDeletion = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const clientId = String(request.auth?.uid || '').trim();
+        if (!clientId || !clientId.startsWith('phone_')) {
+            throw new HttpsError('unauthenticated', 'Inicia sesion antes de cancelar la eliminacion.');
+        }
+
+        await getFirestore().collection(CLIENTS_COLLECTION).doc(clientId).set({
+            pendingDeletion: false,
+            deletionRequestedAt: FieldValue.delete(),
+            deletionScheduledAt: FieldValue.delete()
+        }, { merge: true });
 
         return { success: true };
     }
@@ -1425,6 +1461,36 @@ exports.chatRoalCostAlertSweep = onSchedule(
         } catch (err) {
             console.error('chatRoalCostAlertSweep error:', err);
         }
+    }
+);
+
+// Borrado real de las cuentas cuya ventana de gracia de 7 dias ya vencio (ver
+// deleteCustomerAccount/cancelAccountDeletion) -- corre una vez al dia, nunca borra nada antes de
+// que se cumpla deletionScheduledAt.
+exports.purgeExpiredAccountDeletions = onSchedule(
+    { schedule: 'every 24 hours', region: 'us-central1' },
+    async () => {
+        const db = getFirestore();
+        // Solo el filtro de igualdad -- el de fecha se resuelve en memoria para no depender de un
+        // indice compuesto (pendingDeletion==true ya deberia ser un conjunto chico siempre).
+        const snap = await db.collection(CLIENTS_COLLECTION).where('pendingDeletion', '==', true).get();
+        const now = Date.now();
+        const expired = snap.docs.filter((doc) => {
+            const scheduled = doc.data()?.deletionScheduledAt;
+            const scheduledMs = scheduled?.toMillis ? scheduled.toMillis() : new Date(scheduled).getTime();
+            return Number.isFinite(scheduledMs) && scheduledMs <= now;
+        });
+
+        if (!expired.length) {
+            console.log('purgeExpiredAccountDeletions: nada que borrar.');
+            return;
+        }
+
+        await Promise.all(expired.map((doc) => Promise.all([
+            doc.ref.delete(),
+            db.collection(CLIENT_CREDENTIALS_COLLECTION).doc(doc.id).delete().catch(() => {})
+        ])));
+        console.log(`purgeExpiredAccountDeletions: ${expired.length} cuenta(s) borrada(s).`);
     }
 );
 

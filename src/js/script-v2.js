@@ -4,7 +4,13 @@ const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
 const CUSTOMER_CONSENT_VERSION = '2026-06-05';
-function getCustomerConsentCopy() { return `He leido y acepto que ${_getRestaurantName()} use mis datos para gestionar mi cuenta, atender pedidos, contactarme por canales oficiales y enviarme promociones, novedades y publicidad propia.`; }
+// Antes un solo checkbox empaquetaba autorizacion de datos operativos + publicidad -- el cliente
+// no podia aceptar lo primero (necesario para simplemente hacer un pedido) sin aceptar tambien
+// recibir promociones. Ahora son dos casillas independientes: esta (datos operativos) sigue
+// siendo obligatoria para guardar el perfil; getCustomerMarketingConsentCopy() es opcional y
+// arranca destildada en cuentas nuevas.
+function getCustomerConsentCopy() { return `He leido y acepto que ${_getRestaurantName()} use mis datos para gestionar mi cuenta, atender mis pedidos y contactarme por canales oficiales.`; }
+function getCustomerMarketingConsentCopy() { return `Quiero recibir promociones, novedades y publicidad de ${_getRestaurantName()} por WhatsApp y otros canales.`; }
 const CUSTOMER_CONSENT_POLICY_URL = 'politica-datos.html';
 const MESSAGES_COLLECTION = 'mensajes';
 const DELIVERY_FEE_AMOUNT = 6000;
@@ -476,7 +482,9 @@ function normalizeCustomerProfile(raw = {}, fallbackId = '') {
         lastOrderId: String(raw.lastOrderId || '').trim(),
         lastOrderTotal: Number(raw.lastOrderTotal || 0),
         googleUid: String(raw.googleUid || '').trim(),
-        googleEmail: String(raw.googleEmail || '').trim()
+        googleEmail: String(raw.googleEmail || '').trim(),
+        pendingDeletion: Boolean(raw.pendingDeletion),
+        deletionScheduledAt: raw.deletionScheduledAt || null
     };
 }
 
@@ -1386,6 +1394,18 @@ function showOrderConfirmScreen(orderData = {}) {
     if (ocScheduleRow) ocScheduleRow.style.display = isScheduledOrder ? '' : 'none';
     if (ocScheduleValue) ocScheduleValue.textContent = isScheduledOrder ? String(orderData.scheduledLabel) : '';
 
+    // Tiempo estimado -- antes no se mostraba en ningun punto del flujo (CASH_PAYMENT_
+    // CONFIRMATION_MESSAGE tenia el dato pero nunca se usaba en ningun lado). La incertidumbre de
+    // "no se cuanto falta" genera mas ansiedad que la espera misma. No aplica en pedidos
+    // programados (ya muestran su propia hora) ni en mesa (el cliente ya esta en el local).
+    const ocEtaRow = document.getElementById('ocEtaRow');
+    const ocEtaValue = document.getElementById('ocEtaValue');
+    const ftForEta = String(orderData.fulfillmentType || '').toLowerCase();
+    const isDineIn = ftForEta === 'mesa' || ftForEta === 'dine_in';
+    const showEta = !isScheduledOrder && !isDineIn;
+    if (ocEtaRow) ocEtaRow.style.display = showEta ? '' : 'none';
+    if (ocEtaValue) ocEtaValue.textContent = showEta ? '50 min aproximadamente' : '';
+
     // Cliente
     const ocName = document.getElementById('ocCustomerName');
     if (ocName) ocName.textContent = String(orderData.customerName || '—');
@@ -1988,7 +2008,12 @@ async function saveCustomerProfile(profileInput = {}) {
             savedAddresses: profileInput.savedAddresses || [],
             pin: normalizeCustomerPin(profileInput.pin || ''),
             confirmPin: normalizeCustomerPin(profileInput.confirmPin || ''),
-            acceptedDataPolicy: Boolean(profileInput.acceptedDataPolicy)
+            acceptedDataPolicy: Boolean(profileInput.acceptedDataPolicy),
+            // Se manda tal cual (puede ser undefined) -- flujos que no muestran la casilla de
+            // marketing (ej. submitCustomerNewPassword) no deben mandar nada aqui, para que el
+            // servidor sepa que no hay que tocar el valor ya guardado (ver hasOwnProperty en
+            // customerRegisterOrUpdateProfile).
+            acceptedMarketing: profileInput.acceptedMarketing
         });
     } catch (error) {
         throw new Error(error?.message || 'No se pudo guardar el perfil.');
@@ -2184,7 +2209,8 @@ function _buildRegOtpStepHTML(phone) {
 }
 
 function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEditMode = false, addressesOnly = false) {
-    const hasConsent = Boolean(profile.privacyConsentAccepted) && Boolean(profile.marketingConsentAccepted);
+    const hasConsent = Boolean(profile.privacyConsentAccepted);
+    const hasMarketingConsent = Boolean(profile.marketingConsentAccepted);
     const consentMarkup = `${escapeHtml(getCustomerConsentCopy())} <a href="${CUSTOMER_CONSENT_POLICY_URL}" target="_blank" rel="noopener noreferrer">Ver politica de tratamiento de datos personales</a>.`;
     // En "Editar perfil" el PIN queda detras de un boton "Actualizar contraseña" en vez de dos
     // campos siempre abiertos — la mayoria de las veces que se edita el perfil no es para
@@ -2230,6 +2256,10 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
         <label class="support-check" for="customerDataConsent">
             <input type="checkbox" id="customerDataConsent" ${hasConsent ? 'checked disabled' : ''}>
             <span>${consentMarkup}</span>
+        </label>
+        <label class="support-check" for="customerMarketingConsent">
+            <input type="checkbox" id="customerMarketingConsent" ${hasMarketingConsent ? 'checked' : ''}>
+            <span>${escapeHtml(getCustomerMarketingConsentCopy())} (opcional)</span>
         </label>`;
     // El bloque de direcciones solo aparece en el registro inicial (para poder agregar una de
     // una vez) y en el modo "Mis direcciones" -- en "Editar perfil" ya no se repite, porque
@@ -2372,6 +2402,7 @@ function _mountRegProfileStep() {
     customerRegisterUI.reviewConsentButton = stepContent.querySelector('#customerReviewConsentButton');
     customerRegisterUI.consentStatus      = stepContent.querySelector('#customerConsentStatus');
     customerRegisterUI.consent            = stepContent.querySelector('#customerDataConsent');
+    customerRegisterUI.marketingConsent   = stepContent.querySelector('#customerMarketingConsent');
     customerRegisterUI.save               = stepContent.querySelector('#customerRegisterSave');
     customerRegisterUI.savedAddressesList = stepContent.querySelector('#customerRegisterSavedAddressesList');
     customerRegisterUI.addAddressButton   = stepContent.querySelector('#customerRegisterAddAddress');
@@ -2893,19 +2924,110 @@ async function submitCustomerDeleteAccountRequest() {
 
     try {
         await createCustomerDeleteAccountRequest(reasonValue, profile);
-        // deleteCustomerAccount (Cloud Function) borra tanto /clientes como
-        // /clientes_credenciales -- esta ultima no se puede tocar directo desde el navegador
-        // bajo ninguna circunstancia (ver firestore.rules), asi que borrar solo el primero
-        // dejaria el credencial huerfano.
+        // deleteCustomerAccount (Cloud Function) ya no borra nada al instante -- marca la cuenta
+        // "pendiente de eliminar" con una ventana de gracia de 7 dias (ver la funcion en
+        // functions/index.js). Las credenciales quedan intactas: si el cliente vuelve a iniciar
+        // sesion antes de esa fecha, submitCustomerLookup le ofrece cancelar la eliminacion.
         const fn = getPublicFirebaseFunctions();
-        if (fn) await fn.httpsCallable('deleteCustomerAccount')({});
+        let deletionScheduledAt = null;
+        if (fn) {
+            const result = await fn.httpsCallable('deleteCustomerAccount')({});
+            deletionScheduledAt = result?.data?.deletionScheduledAt || null;
+        }
         clearActiveCustomerProfile();
         closeCustomerDeleteAccountModal();
         closeCustomerAuthModal();
-        window.alert(`Tu cuenta fue eliminada y la solicitud quedo registrada en ${_getRestaurantName()}.`);
+        openAccountDeletionScheduledModal(deletionScheduledAt);
     } catch (error) {
         customerDeleteAccountUI.feedback.textContent = error.message || 'No se pudo eliminar la cuenta.';
     }
+}
+
+// Reemplaza el alert() nativo del navegador que se mostraba antes en este mismo punto -- el
+// unico lugar de todo el flujo de cliente que no usaba un modal propio, justo en el momento mas
+// sensible (confirmar que la cuenta se va a eliminar).
+function openAccountDeletionScheduledModal(deletionScheduledAt) {
+    const modal = document.createElement('div');
+    modal.id = 'accountDeletionScheduledModal';
+    modal.className = 'support-modal is-open';
+    const dateText = (() => {
+        const d = deletionScheduledAt ? new Date(deletionScheduledAt) : null;
+        return d && !Number.isNaN(d.getTime())
+            ? d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
+            : 'en 7 dias';
+    })();
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Eliminacion programada">
+            <button type="button" class="support-modal-close" aria-label="Cerrar">&times;</button>
+            <p class="support-modal-kicker">Solicitud registrada</p>
+            <h3 class="support-modal-title">Tu cuenta se eliminará el ${escapeHtml(dateText)}</h3>
+            <p class="support-modal-text">Si cambias de opinión, solo tenés que iniciar sesión de nuevo con tu número de WhatsApp antes de esa fecha y te ofrecemos cancelar la eliminación.</p>
+            <div class="support-actions">
+                <button type="button" class="support-send-btn" id="accountDeletionScheduledOkButton">Entendido</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    const close = () => { modal.remove(); syncBodyScrollLock(); };
+    modal.querySelector('.support-modal-close')?.addEventListener('click', close);
+    modal.querySelector('#accountDeletionScheduledOkButton')?.addEventListener('click', close);
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal && _lastMousedownTarget === modal) close();
+    });
+    syncBodyScrollLock();
+}
+
+// Se muestra cuando un cliente con una eliminacion pendiente (ver openAccountDeletionScheduledModal)
+// vuelve a iniciar sesion dentro de la ventana de gracia de 7 dias -- le ofrece cancelarla y
+// seguir usando su cuenta normalmente.
+function openCancelAccountDeletionModal(deletionScheduledAt) {
+    const modal = document.createElement('div');
+    modal.id = 'cancelAccountDeletionModal';
+    modal.className = 'support-modal is-open';
+    const dateText = (() => {
+        const d = deletionScheduledAt ? new Date(deletionScheduledAt) : null;
+        return d && !Number.isNaN(d.getTime())
+            ? d.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })
+            : 'en unos dias';
+    })();
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Cancelar eliminacion de cuenta">
+            <button type="button" class="support-modal-close" aria-label="Cerrar">&times;</button>
+            <p class="support-modal-kicker">Cuenta pendiente de eliminar</p>
+            <h3 class="support-modal-title">Tu cuenta se eliminará el ${escapeHtml(dateText)}</h3>
+            <p class="support-modal-text">Pediste eliminar tu cuenta hace poco. Si cambiaste de opinión, podés cancelar la eliminación y seguir usándola con normalidad.</p>
+            <p class="support-feedback" id="cancelAccountDeletionFeedback"></p>
+            <div class="support-actions split">
+                <button type="button" class="support-secondary-btn" id="cancelAccountDeletionDismissButton">Dejarla eliminarse</button>
+                <button type="button" class="support-send-btn" id="cancelAccountDeletionConfirmButton">Cancelar eliminación</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    const close = () => { modal.remove(); syncBodyScrollLock(); };
+    const feedback = modal.querySelector('#cancelAccountDeletionFeedback');
+    modal.querySelector('.support-modal-close')?.addEventListener('click', close);
+    modal.querySelector('#cancelAccountDeletionDismissButton')?.addEventListener('click', close);
+    modal.querySelector('#cancelAccountDeletionConfirmButton')?.addEventListener('click', async () => {
+        try {
+            const fn = getPublicFirebaseFunctions();
+            if (!fn) throw new Error('Servicio no disponible.');
+            await fn.httpsCallable('cancelAccountDeletion')({});
+            if (activeCustomerProfile) {
+                setActiveCustomerProfile({ ...activeCustomerProfile, pendingDeletion: false, deletionScheduledAt: null });
+            }
+            close();
+        } catch (error) {
+            if (feedback) {
+                feedback.textContent = error?.message || 'No se pudo cancelar la eliminación.';
+                feedback.className = 'support-feedback support-feedback--error';
+            }
+        }
+    });
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal && _lastMousedownTarget === modal) close();
+    });
+    syncBodyScrollLock();
 }
 
 function openCustomerDeleteAccountModal() {
@@ -3262,6 +3384,9 @@ async function submitCustomerLookup() {
         }
         setActiveCustomerProfile(profile);
         closeCustomerAuthModal();
+        if (profile.pendingDeletion) {
+            openCancelAccountDeletionModal(profile.deletionScheduledAt);
+        }
     } catch (error) {
         if (error?.code === 'PASSWORD_RESET_REQUIRED') {
             if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
@@ -3303,6 +3428,9 @@ async function submitCustomerProfileForm() {
     const pinValue = String(formUI.registerPin?.value || '').trim();
     const confirmPinValue = String(formUI.confirmPin?.value || '').trim();
     const acceptedDataPolicy = Boolean(formUI.consent?.checked);
+    // Casilla independiente y opcional -- ya no se deriva de acceptedDataPolicy (antes ambas
+    // viajaban juntas, obligando a aceptar publicidad para poder simplemente guardar el perfil).
+    const acceptedMarketing = Boolean(formUI.marketingConsent?.checked);
 
     formUI.feedback.textContent = '';
 
@@ -3314,7 +3442,8 @@ async function submitCustomerProfileForm() {
             savedAddresses: savedAddressesValue,
             pin: pinValue,
             confirmPin: confirmPinValue,
-            acceptedDataPolicy
+            acceptedDataPolicy,
+            acceptedMarketing
         });
 
         setActiveCustomerProfile(profile);
