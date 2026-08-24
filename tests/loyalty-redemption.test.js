@@ -52,14 +52,17 @@ afterAll(async () => {
 // Item que no matchea ningún catálogo/tabla conocida -- resolveServerLineFloor devuelve null,
 // así que computeServerPricedOrder confía en el unitPrice del cliente para el subtotal (mismo
 // camino "UNRESOLVED" que ya usa el resto del validador de precios). Evita tener que sembrar un
-// catálogo real solo para probar la matemática de los puntos.
-function buildUnresolvedItem(unitPrice, quantity = 1) {
+// catálogo real solo para probar la matemática de los puntos. categoryName por defecto es una de
+// las categorías elegibles para canje (PERROS CALIENTES) -- los tests de la restricción de
+// categoría pasan explícitamente una no elegible.
+function buildUnresolvedItem(unitPrice, quantity = 1, overrides = {}) {
     return {
         productName: 'Producto de prueba que no existe en catalogo',
-        categoryName: 'Categoria de prueba inexistente',
+        categoryName: 'PERROS CALIENTES',
         unitPrice,
         quantity,
-        orderOptions: {}
+        orderOptions: {},
+        ...overrides
     };
 }
 
@@ -110,6 +113,50 @@ test('computeServerPricedOrder: sin puntos solicitados, no descuenta nada', asyn
     assert.equal(priced.pointsRedeemed, 0);
     assert.equal(priced.pointsDiscountAmount, 0);
     assert.equal(priced.total, 25000);
+});
+
+test('computeServerPricedOrder: bebidas/adicionales NO son elegibles para canje (aunque sí suman al subtotal)', async () => {
+    const priced = await pricing.computeServerPricedOrder(db, {
+        items: [buildUnresolvedItem(25000, 1, { categoryName: 'BEBIDAS Y ADICIONALES' })],
+        fulfillmentType: 'pickup',
+        clientId: TEST_CLIENT_ID,
+        pointsToRedeemRequested: 300
+    });
+    assert.equal(priced.pointsRedeemed, 0, 'no hay subtotal elegible, no se puede canjear nada');
+    assert.equal(priced.pointsDiscountAmount, 0);
+    assert.equal(priced.total, 25000, 'el subtotal total sigue intacto, solo no admite canje');
+});
+
+test('computeServerPricedOrder: combos y promociones no aplican aunque la categoría sea elegible', async () => {
+    const priced = await pricing.computeServerPricedOrder(db, {
+        items: [
+            buildUnresolvedItem(20000, 1, { categoryName: 'BURGER CLASICAS', orderOptions: { type: 'combo' } }),
+            buildUnresolvedItem(15000, 1, { categoryName: 'PEPITOS VENEZOLANOS', orderOptions: { recommendedDiscount: true } }),
+            buildUnresolvedItem(10000, 1, { isComboEspecial: true, categoryName: 'PERROS CALIENTES' })
+        ],
+        fulfillmentType: 'pickup',
+        clientId: TEST_CLIENT_ID,
+        pointsToRedeemRequested: 300
+    });
+    assert.equal(priced.pointsRedeemed, 0, 'combo/promo/combo especial no cuentan para el tope de canje');
+});
+
+test('computeServerPricedOrder: solo la parte elegible del carrito cuenta para el tope de canje', async () => {
+    const priced = await pricing.computeServerPricedOrder(db, {
+        items: [
+            buildUnresolvedItem(2000, 1, { categoryName: 'SALCHIPAPAS' }), // elegible: 2.000
+            buildUnresolvedItem(23000, 1, { categoryName: 'BEBIDAS' }) // no elegible: 23.000
+        ],
+        fulfillmentType: 'pickup',
+        clientId: TEST_CLIENT_ID,
+        pointsToRedeemRequested: 300 // pide más de lo que el subtotal elegible permite
+    });
+    // Subtotal total = 25.000 (alcanzaría para 300 puntos y el saldo de 500 también alcanzaría),
+    // pero solo 2.000 son elegibles -> tope real de 200 puntos, mucho más restrictivo que ambos.
+    assert.equal(priced.loyaltyEligibleSubtotal, 2000);
+    assert.equal(priced.pointsRedeemed, 200);
+    assert.equal(priced.pointsDiscountAmount, 2000);
+    assert.equal(priced.total, 25000 - 2000);
 });
 
 test('_redeemLoyaltyPointsTransaction: descuenta el saldo real tras crear el pedido', async () => {

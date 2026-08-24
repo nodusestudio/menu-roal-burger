@@ -565,6 +565,25 @@ function clearPendingGoogleIdentity() {
     persistPendingGoogleIdentity(null);
 }
 
+const LOYALTY_BANNER_DISMISSED_KEY = 'rb_loyalty_banner_dismissed_v1';
+
+// Banner no invasivo (no fixed/sticky, dentro del flujo normal de la página) avisando que se
+// pueden acumular puntos -- se puede cerrar y queda cerrado para siempre en este dispositivo.
+function initLoyaltyPointsBanner() {
+    const banner = document.getElementById('loyaltyPointsBanner');
+    if (!banner) return;
+    try {
+        if (window.localStorage.getItem(LOYALTY_BANNER_DISMISSED_KEY) === '1') {
+            return;
+        }
+    } catch (_) {}
+    banner.hidden = false;
+    document.getElementById('loyaltyPointsBannerClose')?.addEventListener('click', () => {
+        banner.hidden = true;
+        try { window.localStorage.setItem(LOYALTY_BANNER_DISMISSED_KEY, '1'); } catch (_) {}
+    });
+}
+
 function updateCustomerSessionUI() {
     const button = document.getElementById('customerSessionButton');
     const kicker = document.getElementById('customerSessionKicker');
@@ -1107,12 +1126,36 @@ function getCheckoutDiscountAmount() {
 // SYNC: functions/pricing.js LOYALTY_POINT_VALUE_COP — 100 puntos = $1.000 COP.
 const LOYALTY_POINT_VALUE_COP = 10;
 
+// Los puntos solo se pueden CANJEAR en estas categorías (a pedido del negocio) -- combos,
+// promociones (Recomendado del día/cupones) y el resto de categorías no aplican. No afecta cómo
+// se GANAN los puntos, solo contra qué parte del subtotal se puede aplicar el descuento del canje.
+// SYNC: functions/pricing.js isLoyaltyEligibleItem / LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS
+const LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS = ['burger premium', 'burger clasicas', 'pepitos venezolanos', 'perros calientes', 'salchipapa'];
+function isLoyaltyEligibleCartItem(item) {
+    const categoryKey = normalizeCategoryKey(item?.categoryName);
+    const categoryEligible = LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS.some((kw) => categoryKey.includes(kw));
+    if (!categoryEligible) return false;
+    if (item?.isComboEspecial) return false;
+    const orderOptions = normalizeOrderOptions(item?.orderOptions);
+    if (orderOptions.type === 'combo') return false;
+    if (orderOptions.recommendedDiscount) return false;
+    if (orderOptions.couponId) return false;
+    return true;
+}
+
+function getLoyaltyEligibleCartSubtotal() {
+    return shoppingCart.reduce((total, item) => {
+        if (!isLoyaltyEligibleCartItem(item)) return total;
+        return total + getCartItemUnitPrice(item) * Number(item.quantity || 0);
+    }, 0);
+}
+
 // Tope client-side, solo para feedback inmediato en el checkout -- el servidor (pricing.js:
 // computeServerPricedOrder) es la autoridad real y re-clampa contra el saldo fresco.
 function getCheckoutMaxRedeemablePoints() {
     const available = Math.max(0, Number(activeCustomerProfile?.puntosDisponibles) || 0);
-    const maxBySubtotal = Math.floor(getCartTotalAmount() / LOYALTY_POINT_VALUE_COP);
-    return Math.max(0, Math.min(available, maxBySubtotal));
+    const maxByEligibleSubtotal = Math.floor(getLoyaltyEligibleCartSubtotal() / LOYALTY_POINT_VALUE_COP);
+    return Math.max(0, Math.min(available, maxByEligibleSubtotal));
 }
 
 function getCheckoutPointsDiscountAmount() {
@@ -3565,7 +3608,7 @@ function openCustomerAuthModal() {
                         <div class="cp-hero-info">
                             <span class="cp-hero-name">${_name}</span>
                             ${_phone ? `<span class="cp-hero-phone">${_phone}</span>` : ''}
-                            ${Number(profile?.puntosDisponibles) > 0 ? `<span class="cp-hero-points">${Number(profile.puntosDisponibles).toLocaleString('es-CO')} puntos disponibles</span>` : ''}
+                            <span class="cp-hero-points">${Math.max(0, Number(profile?.puntosDisponibles) || 0).toLocaleString('es-CO')} puntos disponibles</span>
                         </div>
                     </div>
 
@@ -5864,7 +5907,7 @@ function updateCheckoutInfoModalState() {
         }
     }
     if (checkoutInfoUI.pointsHint) {
-        checkoutInfoUI.pointsHint.textContent = `Tienes ${maxRedeemablePoints.toLocaleString('es-CO')} puntos disponibles para usar (${formatCurrency(maxRedeemablePoints * LOYALTY_POINT_VALUE_COP)}).`;
+        checkoutInfoUI.pointsHint.textContent = `Tienes ${maxRedeemablePoints.toLocaleString('es-CO')} puntos disponibles para usar (${formatCurrency(maxRedeemablePoints * LOYALTY_POINT_VALUE_COP)}). Solo aplican en hamburguesas, perros calientes, pepitos y salchipapas — combos y promociones no aplican.`;
     }
     const pointsDiscountAmount = getCheckoutPointsDiscountAmount();
     if (checkoutInfoUI.pointsDiscountRow && checkoutInfoUI.pointsDiscountValue) {
@@ -12877,6 +12920,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => window.__roalHideSplash?.(), 1500);
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
     document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
+    initLoyaltyPointsBanner();
 
     // Barra de navegación superior — acciones (reemplaza la barra inferior retirada)
     document.getElementById('topProfileBtn')?.addEventListener('click', () => openCustomerAuthModal());

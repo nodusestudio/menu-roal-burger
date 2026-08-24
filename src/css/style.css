@@ -2330,6 +2330,53 @@ body.has-guest-register-banner .public-topbar {
     top: calc(48px + env(safe-area-inset-top, 0px));
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Banner no invasivo de puntos de lealtad -- en el flujo normal de la
+   página (no fixed/sticky), fácil de ignorar o cerrar.
+   ══════════════════════════════════════════════════════════════ */
+.loyalty-points-banner {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    margin: 14px 16px;
+    padding: 12px 14px;
+    border-radius: 16px;
+}
+.loyalty-points-banner[hidden] {
+    display: none !important;
+}
+.loyalty-points-banner-icon {
+    font-size: 1.4rem;
+    line-height: 1;
+}
+.loyalty-points-banner-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+.loyalty-points-banner-copy strong {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    letter-spacing: 0.2px;
+}
+.loyalty-points-banner-copy span {
+    font-size: 0.8rem;
+    line-height: 1.35;
+    color: var(--text-secondary);
+}
+.loyalty-points-banner-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.3rem;
+    line-height: 1;
+    padding: 4px 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
 body.has-guest-register-banner #homeScreen,
 body.has-guest-register-banner #promoScreen,
 body.has-guest-register-banner #combosScreen,

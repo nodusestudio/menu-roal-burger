@@ -218,6 +218,25 @@ function isEnforcedCouponId(couponId) {
     return id.length > 0 && ENFORCED_COUPON_PREFIXES.some((p) => id.startsWith(p));
 }
 
+// Los puntos de lealtad solo se pueden CANJEAR en estas categorías (a pedido explícito del
+// negocio) -- combos, promociones (Recomendado del día/cupones) y el resto de categorías
+// (bebidas, adicionales, entradas, salsas) no aplican. Esto NO afecta cómo se GANAN los puntos
+// (eso sigue siendo 1pt/$1.000 de subtotal total, ver awardLoyaltyPoints en index.js) -- solo
+// limita contra qué parte del subtotal se puede aplicar el DESCUENTO del canje.
+// SYNC: src/js/script-v2.js isLoyaltyEligibleCartItem
+const LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS = ['burger premium', 'burger clasicas', 'pepitos venezolanos', 'perros calientes', 'salchipapa'];
+function isLoyaltyEligibleItem(item) {
+    const categoryKey = normalizeCategoryKey(item?.categoryName);
+    const categoryEligible = LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS.some((kw) => categoryKey.includes(kw));
+    if (!categoryEligible) return false;
+    if (item?.isComboEspecial) return false;
+    const orderOptions = item?.orderOptions || {};
+    if (orderOptions.type === 'combo') return false;
+    if (orderOptions.recommendedDiscount) return false;
+    if (orderOptions.couponId) return false;
+    return true;
+}
+
 function isCouponLockActive(lock) {
     if (!lock) return false;
     const expiresAtMs = lock.expiresAt?.toMillis ? lock.expiresAt.toMillis() : new Date(lock.expiresAt).getTime();
@@ -326,6 +345,7 @@ async function computeServerPricedOrder(db, {
         .filter((c) => c.nombre && c.precio > 0);
 
     let subtotal = 0;
+    let loyaltyEligibleSubtotal = 0;
     let mismatchDetected = false;
     let mismatchDetails = [];
     const newlyRedeemedCouponIds = new Set();
@@ -359,6 +379,9 @@ async function computeServerPricedOrder(db, {
         }
 
         subtotal += finalUnitPrice * quantity;
+        if (isLoyaltyEligibleItem(item)) {
+            loyaltyEligibleSubtotal += finalUnitPrice * quantity;
+        }
         return {
             ...item,
             unitPrice: finalUnitPrice,
@@ -396,13 +419,14 @@ async function computeServerPricedOrder(db, {
 
     // Canje de puntos de lealtad: nunca se rechaza una solicitud fuera de rango, se clampa contra
     // la fuente de verdad del servidor (mismo espíritu que resolveServerLineFloor) -- el tope es
-    // el saldo real disponible Y el subtotal (el domicilio nunca se paga con puntos, simétrico con
-    // que los puntos tampoco se ganan sobre el domicilio, ver awardLoyaltyPoints en index.js).
-    const maxPointsBySubtotal = Math.floor(subtotal / LOYALTY_POINT_VALUE_COP);
+    // el saldo real disponible Y el subtotal ELEGIBLE (solo hamburguesas/perros/pepitos/
+    // salchipapas en su forma regular -- combos, promociones y el resto de categorías no aplican;
+    // el domicilio tampoco se paga nunca con puntos).
+    const maxPointsByEligibleSubtotal = Math.floor(loyaltyEligibleSubtotal / LOYALTY_POINT_VALUE_COP);
     const pointsRedeemed = Math.max(0, Math.min(
         Math.floor(Number(pointsToRedeemRequested) || 0),
         puntosDisponibles,
-        maxPointsBySubtotal
+        maxPointsByEligibleSubtotal
     ));
     const pointsDiscountAmount = pointsRedeemed * LOYALTY_POINT_VALUE_COP;
 
@@ -416,6 +440,7 @@ async function computeServerPricedOrder(db, {
         promo2x1IncrementoFee,
         pointsRedeemed,
         pointsDiscountAmount,
+        loyaltyEligibleSubtotal,
         total,
         mismatchDetected,
         mismatchDetails,
@@ -425,5 +450,6 @@ async function computeServerPricedOrder(db, {
 
 module.exports = {
     computeServerPricedOrder,
-    LOYALTY_POINT_VALUE_COP
+    LOYALTY_POINT_VALUE_COP,
+    isLoyaltyEligibleItem
 };
