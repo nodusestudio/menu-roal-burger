@@ -4107,7 +4107,13 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         promo2x1: orderOptions.promo2x1 === true,
         promo2x1Incremento: orderOptions.promo2x1Incremento === true,
         comboGroupId: String(orderOptions.comboGroupId || '').trim(),
-        isComboChild: orderOptions.isComboChild === true
+        isComboChild: orderOptions.isComboChild === true,
+        // Identifica que linea vino de un boton "Redimir cupon" (mismo id que dataset.couponId:
+        // desc_/2x1_/2x1p_/ce_ + id de la promo) -- submitPublicOrder lo usa para exigir el
+        // bloqueo real de 24h server-side en vez de confiar solo en localStorage (ver
+        // _RDM_LOCK_PREFIX). Solo se aplica hoy para desc_/ce_ (descuento real); 2x1 no tiene
+        // una fórmula de precio propia que se pueda verificar asi.
+        couponId: String(orderOptions.couponId || '').trim()
     };
 }
 
@@ -6053,7 +6059,8 @@ function addComboEspecialToCart(combo, prods) {
             type: 'solo',
             promoLabel: combo.titulo,
             staticPrice: precioCombo,
-            allowClosedOrder: true
+            allowClosedOrder: true,
+            couponId: combo.id ? `ce_${combo.id}` : ''
         })
     });
     saveCartState();
@@ -10362,7 +10369,8 @@ function renderExtraPromoCards() {
                         type: 'solo',
                         imagePath: img,
                         recommendedDiscount: rate > 0,
-                        discountRate: rate
+                        discountRate: rate,
+                        couponId: btn.dataset.couponId
                     }, `btn-promo-extra-${promo.id}`);
                 }
             });
@@ -10690,7 +10698,8 @@ function renderCombosEspeciales() {
                     upgradeHandled: true,
                     promoLabel: comboLabel,
                     comboGroupId,
-                    isComboChild: isChild
+                    isComboChild: isChild,
+                    couponId: comboOrderBtn.dataset.couponId
                 });
                 const firstProd = activeProds[0];
                 const parentOpts = { ...mkOpts(false), imagePath: firstProd.image_url || _IMG_FINAL_FALLBACK };

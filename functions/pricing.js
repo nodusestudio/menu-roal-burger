@@ -207,6 +207,34 @@ function applyServerDiscount(price, orderOptions) {
     return Math.round(Number(price || 0) * (1 - RECOMMENDED_DAY_DISCOUNT_RATE));
 }
 
+// Prefijos de couponId (ver script-v2.js normalizeOrderOptions) que sí tienen un descuento real
+// verificable en precio -- 2x1 (2x1_/2x1p_) no entra: no reduce ningun numero, cobra el precio
+// normal de 1 unidad y la "unidad extra gratis" es una promesa operativa que le llega a cocina
+// por el mensaje de WhatsApp, no algo que este validador de precios pueda tocar.
+const ENFORCED_COUPON_PREFIXES = ['desc_', 'ce_'];
+function isEnforcedCouponId(couponId) {
+    const id = String(couponId || '');
+    return id.length > 0 && ENFORCED_COUPON_PREFIXES.some((p) => id.startsWith(p));
+}
+
+function isCouponLockActive(lock) {
+    if (!lock) return false;
+    const expiresAtMs = lock.expiresAt?.toMillis ? lock.expiresAt.toMillis() : new Date(lock.expiresAt).getTime();
+    return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
+}
+
+// El bloqueo de "un cupon cada 24h" antes vivia solo en localStorage (_RDM_LOCK_PREFIX,
+// script-v2.js) -- el servidor recien se enteraba cuando el ADMIN procesaba el pedido anterior a
+// mano, nunca en el momento de redimir. Cualquiera que cerrara sesion/borrara datos del navegador
+// podia volver a redimir el mismo cupon sin esperar. Como redimir ya exige sesion real
+// (activeCustomerProfile), reusamos el mismo campo que ya escribe el admin
+// (clientes/{id}.cupones_bloqueados) para chequear Y fijar el bloqueo aqui mismo.
+async function fetchCouponLocks(db, clientId) {
+    if (!clientId) return {};
+    const snap = await db.collection('clientes').doc(clientId).get();
+    return snap.exists ? (snap.data()?.cupones_bloqueados || {}) : {};
+}
+
 // Precio "piso" verificado de una línea del carrito — no incluye extras de upgrade (bebida/
 // acompañante/combo-pack agregados desde el sheet de upsell), porque el navegador los suma al
 // unitPrice ANTES de guardar el carrito y no deja rastro de cuál fue ni cuánto costaba (ver
@@ -214,17 +242,23 @@ function applyServerDiscount(price, orderOptions) {
 // Por eso el precio final de la línea es max(unitPrice del cliente, este piso): nunca se cobra
 // de menos de lo que el catálogo real dice que vale la línea sin extras, pero un extra legítimo
 // (que sube el precio, nunca lo baja) se sigue respetando tal cual.
-function resolveServerLineFloor(item, catalog, combosEspeciales) {
+//
+// forceNoDiscount: true cuando el couponId de esta linea ya esta bloqueado (redimido hace menos
+// de 24h) -- el piso pasa a ser el precio SIN el descuento del cupon, ignorando cualquier
+// discountRate/precio_combo que traiga.
+function resolveServerLineFloor(item, catalog, combosEspeciales, forceNoDiscount = false) {
     const productName = String(item?.productName || '');
     const categoryName = String(item?.categoryName || '');
-    const orderOptions = item?.orderOptions || {};
+    const orderOptions = forceNoDiscount
+        ? { ...(item?.orderOptions || {}), recommendedDiscount: false }
+        : (item?.orderOptions || {});
 
     // Combo especial: nunca confiar en orderOptions.staticPrice (lo pone el cliente) — buscar el
     // doc real de combos_especiales por título.
     if (item?.isComboEspecial) {
         const match = findProductByName(combosEspeciales, productName);
-        if (match) return Number(match.precio) || 0;
-        return null; // no matcheó ningún combo especial activo — línea sin piso verificable
+        if (!match) return null; // no matcheó ningún combo especial activo — línea sin piso verificable
+        return forceNoDiscount ? (Number(match.precioOriginal) || Number(match.precio) || 0) : (Number(match.precio) || 0);
     }
 
     const manualImagePrice = resolveManualImagePrice(orderOptions);
@@ -259,26 +293,36 @@ async function computeServerPricedOrder(db, {
     deliveryLatitude,
     deliveryLongitude,
     deliveryFeeSubmitted,
-    promo2x1IncrementoFeeExpected
+    promo2x1IncrementoFeeExpected,
+    clientId
 }) {
-    const [catalog, combosEspecialesSnapshot] = await Promise.all([
+    const [catalog, combosEspecialesSnapshot, couponLocks] = await Promise.all([
         fetchAllSellableItems(db),
-        db.collection('combos_especiales').get()
+        db.collection('combos_especiales').get(),
+        fetchCouponLocks(db, clientId)
     ]);
 
     const combosEspeciales = combosEspecialesSnapshot.docs
         .map((doc) => ({ id: doc.id, ...doc.data() }))
         .filter((c) => c.activo !== false && orderLogic.isComboActiveNow(c.horario))
-        .map((c) => ({ nombre: String(c.titulo || '').trim(), precio: Number(c.precio_combo || c.precio_original) || 0 }))
+        .map((c) => ({
+            nombre: String(c.titulo || '').trim(),
+            precio: Number(c.precio_combo || c.precio_original) || 0,
+            precioOriginal: Number(c.precio_original) || Number(c.precio_combo) || 0
+        }))
         .filter((c) => c.nombre && c.precio > 0);
 
     let subtotal = 0;
     let mismatchDetected = false;
     let mismatchDetails = [];
+    const newlyRedeemedCouponIds = new Set();
     const pricedItems = (Array.isArray(items) ? items : []).map((item) => {
         const quantity = Math.max(0, Number(item.quantity || 0));
         const clientUnitPrice = Number(item.unitPrice || 0);
-        const floor = resolveServerLineFloor(item, catalog, combosEspeciales);
+        const couponId = String(item?.orderOptions?.couponId || '');
+        const enforceCoupon = isEnforcedCouponId(couponId);
+        const couponLocked = enforceCoupon && isCouponLockActive(couponLocks[couponId]);
+        const floor = resolveServerLineFloor(item, catalog, combosEspeciales, couponLocked);
 
         let finalUnitPrice;
         if (floor === null) {
@@ -290,8 +334,15 @@ async function computeServerPricedOrder(db, {
             finalUnitPrice = Math.max(clientUnitPrice, floor);
             if (finalUnitPrice !== clientUnitPrice && Math.abs(finalUnitPrice - clientUnitPrice) > MISMATCH_LOG_TOLERANCE) {
                 mismatchDetected = true;
-                mismatchDetails.push({ type: 'BELOW_FLOOR', productName: item.productName, categoryName: item.categoryName, clientUnitPrice, floor });
+                mismatchDetails.push({
+                    type: couponLocked ? 'COUPON_ALREADY_REDEEMED' : 'BELOW_FLOOR',
+                    productName: item.productName, categoryName: item.categoryName, clientUnitPrice, floor, couponId: couponId || undefined
+                });
             }
+        }
+
+        if (enforceCoupon && !couponLocked) {
+            newlyRedeemedCouponIds.add(couponId);
         }
 
         subtotal += finalUnitPrice * quantity;
@@ -340,7 +391,8 @@ async function computeServerPricedOrder(db, {
         promo2x1IncrementoFee,
         total,
         mismatchDetected,
-        mismatchDetails
+        mismatchDetails,
+        newlyRedeemedCouponIds: Array.from(newlyRedeemedCouponIds)
     };
 }
 

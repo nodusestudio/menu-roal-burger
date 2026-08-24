@@ -1027,6 +1027,12 @@ exports.submitPublicOrder = onCall(
         const fulfillmentType = orderLogic.getCheckoutFulfillmentType(customerInfo.fulfillmentType);
         const deliveryLatitude = Number.isFinite(Number(customerInfo.deliveryLatitude)) ? Number(customerInfo.deliveryLatitude) : null;
         const deliveryLongitude = Number.isFinite(Number(customerInfo.deliveryLongitude)) ? Number(customerInfo.deliveryLongitude) : null;
+        const customerPhone = String(customerInfo.phone || '').trim();
+        const customerPhoneDigits = customerPhone.replace(/\D+/g, '');
+        // Redimir un cupon (Recomendado del dia / combo especial) ya exige sesion real desde el
+        // cliente (activeCustomerProfile) -- usamos ese mismo uid, no lo que mande el payload,
+        // para chequear/fijar el bloqueo de 24h server-side (ver isEnforcedCouponId en pricing.js).
+        const clientId = request.auth?.uid || null;
 
         const priced = await pricing.computeServerPricedOrder(db, {
             items,
@@ -1034,20 +1040,19 @@ exports.submitPublicOrder = onCall(
             deliveryLatitude,
             deliveryLongitude,
             deliveryFeeSubmitted: customerInfo.deliveryFee,
-            promo2x1IncrementoFeeExpected: customerInfo.promo2x1IncrementoFee
+            promo2x1IncrementoFeeExpected: customerInfo.promo2x1IncrementoFee,
+            clientId
         });
 
         if (priced.mismatchDetected || priced.mismatchDetails.length) {
             console.warn('[PRICE_MISMATCH]', {
-                phone: String(customerInfo.phone || '').replace(/\D/g, ''),
+                phone: customerPhoneDigits,
                 clientReportedTotal: Number(customerInfo.clientReportedTotal || 0),
                 serverTotal: priced.total,
                 details: priced.mismatchDetails
             });
         }
 
-        const customerPhone = String(customerInfo.phone || '').trim();
-        const customerPhoneDigits = customerPhone.replace(/\D+/g, '');
         const deliveryAddress = String(customerInfo.address || '').trim();
         const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
         const cashChangeRequired = customerInfo.cashChangeRequired === true;
@@ -1092,6 +1097,20 @@ exports.submitPublicOrder = onCall(
             priceValidated: true,
             priceMismatchDetected: Boolean(priced.mismatchDetected)
         });
+
+        // Fijar el bloqueo de 24h de los cupones recien redimidos en este pedido -- mismo campo
+        // que ya escribe el admin a mano (clientes/{id}.cupones_bloqueados), pero ahora lo hace el
+        // servidor en el momento exacto de redimir, no despues de que alguien procese el pedido.
+        if (clientId && priced.newlyRedeemedCouponIds.length) {
+            const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            const cuponesBloqueados = {};
+            priced.newlyRedeemedCouponIds.forEach((couponId) => {
+                cuponesBloqueados[couponId] = { redeemedAt: FieldValue.serverTimestamp(), expiresAt };
+            });
+            await db.collection(CLIENTS_COLLECTION).doc(clientId)
+                .set({ cupones_bloqueados: cuponesBloqueados }, { merge: true })
+                .catch(() => {});
+        }
 
         return { id: orderRef.id, code: orderCode, total: priced.total };
     }
