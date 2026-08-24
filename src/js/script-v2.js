@@ -252,6 +252,10 @@ let buttonsUnsubscribe = null;
 let brandingUnsubscribe = null;
 let _publicBrandingConfig = { restaurantName: 'Roal Burger' };
 let recomendadoOverrideUnsubscribe = null;
+let promocionesUnsubscribe = null;
+let combosEspecialesListenerUnsubscribe = null;
+let promos2x1Unsubscribe = null;
+let openingAdUnsubscribe = null;
 let latestProducts = [];
 let activeCategories = null;
 let activeCategoryMeta = [];
@@ -9660,6 +9664,21 @@ function _liveOrOnceSnapshot(ref, onData) {
     });
 }
 
+// productos y categorias son 2 listeners independientes que llegan casi al mismo tiempo en cada
+// carga de página (mismo round-trip de red) -- sin esto, cada uno dispara por su cuenta el
+// renderizado completo del menú (renderDynamicCategorySections/renderFeaturedCards, el costo más
+// pesado del archivo, ya perfilado en ~66-70ms), duplicando el trabajo para cada visitante. Mismo
+// patrón de debounce de 60ms ya usado en renderCategoryExplorer (línea ~9223) para el mismo
+// problema -- coalesce ambos disparos en un solo render.
+let _menuRenderDebounceTimer = null;
+function _scheduleFullMenuRerender(carousel) {
+    clearTimeout(_menuRenderDebounceTimer);
+    _menuRenderDebounceTimer = setTimeout(() => {
+        renderDynamicCategorySections();
+        renderFeaturedCards(carousel);
+    }, 60);
+}
+
 async function renderPublicFeaturedFromAdmin() {
     const carousel = document.getElementById('featured-carousel-dynamic');
     if (!carousel) {
@@ -9684,8 +9703,7 @@ async function renderPublicFeaturedFromAdmin() {
     featuredProductsUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('productos'), (snapshot) => {
         latestProducts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         _promoProductsReady = true;
-        renderDynamicCategorySections();
-        renderFeaturedCards(carousel);
+        _scheduleFullMenuRerender(carousel);
         renderCategoryExplorer();
         updatePromoModalContent();
         renderExtraPromoCards();
@@ -9733,8 +9751,7 @@ async function renderPublicFeaturedFromAdmin() {
         activeCategoryMeta = active;
         activeCategories = new Set(active.map((item) => item.key));
         applyCategoryVisibility();
-        renderDynamicCategorySections();
-        renderFeaturedCards(carousel);
+        _scheduleFullMenuRerender(carousel);
         renderCategoryExplorer();
         updatePromoModalContent();
         refreshCatalogScreenIfNeeded();
@@ -9757,7 +9774,7 @@ async function renderPublicFeaturedFromAdmin() {
         if (_promoProductsReady) updatePromoModalContent();
     });
 
-    _liveOrOnceSnapshot(firebaseDb.collection('promociones'), (snap) => {
+    promocionesUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('promociones'), (snap) => {
         _promosData = snap.docs
             .map((doc) => ({ id: doc.id, ...doc.data() }))
             .filter((p) => p.activo !== false)
@@ -9765,7 +9782,7 @@ async function renderPublicFeaturedFromAdmin() {
         renderExtraPromoCards();
     });
 
-    _liveOrOnceSnapshot(firebaseDb.collection('combos_especiales'), (snap) => {
+    combosEspecialesListenerUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('combos_especiales'), (snap) => {
         _combosEspecialesData = snap.docs
             .map((doc) => ({ id: doc.id, ...doc.data() }))
             .filter((c) => c.activo !== false)
@@ -9773,7 +9790,7 @@ async function renderPublicFeaturedFromAdmin() {
         renderCombosEspeciales();
     });
 
-    _liveOrOnceSnapshot(firebaseDb.collection('promos_2x1'), (snap) => {
+    promos2x1Unsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('promos_2x1'), (snap) => {
         _promos2x1Data = snap.docs
             .map((doc) => ({ id: doc.id, ...doc.data() }))
             .filter((p) => p.activo !== false)
@@ -9781,7 +9798,7 @@ async function renderPublicFeaturedFromAdmin() {
         render2x1Cards();
     });
 
-    _liveOrOnceSnapshot(firebaseDb.collection('configuracion').doc('anuncio_apertura'), (doc) => {
+    openingAdUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('configuracion').doc('anuncio_apertura'), (doc) => {
         _openingAdConfig = doc.exists ? doc.data() : null;
         maybeShowOpeningAd();
     });
@@ -12298,6 +12315,11 @@ window.addEventListener('beforeunload', () => {
     if (typeof categoriesUnsubscribe === 'function') categoriesUnsubscribe();
     if (typeof buttonsUnsubscribe === 'function') buttonsUnsubscribe();
     if (typeof brandingUnsubscribe === 'function') brandingUnsubscribe();
+    if (typeof recomendadoOverrideUnsubscribe === 'function') recomendadoOverrideUnsubscribe();
+    if (typeof promocionesUnsubscribe === 'function') promocionesUnsubscribe();
+    if (typeof combosEspecialesListenerUnsubscribe === 'function') combosEspecialesListenerUnsubscribe();
+    if (typeof promos2x1Unsubscribe === 'function') promos2x1Unsubscribe();
+    if (typeof openingAdUnsubscribe === 'function') openingAdUnsubscribe();
     unsubscribeCustomerProfileStreams();
 });
 
