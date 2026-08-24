@@ -1130,10 +1130,6 @@ function getOrderingAvailability(now = new Date()) {
     };
 }
 
-function canPlaceOrdersNow() {
-    return getOrderingAvailability().isOpen;
-}
-
 // ── Pedidos programados (fuera de horario) ──────────────────────────────────
 // El menú público recibe pedidos las 24 horas: si el negocio está cerrado, en vez de
 // bloquear el checkout se le ofrece al cliente programar la entrega para un horario en el
@@ -3910,7 +3906,6 @@ function getSelectedCategoryName() {
 }
 
 const COMBO_EXTRA_PRICE = 7000;
-const COMBO_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_SMALL_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_LARGE_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana', 'Naranja', 'Uva', 'Toronja', 'Pepsi Original'];
 const RECOMMENDED_DAY_FALLBACK_PRODUCT = {
@@ -7848,234 +7843,6 @@ function openCombosConPapasModal(productName, categoryName, buttonId, extraOptio
     _pushGenericModal(closeComboChoiceModal);
 }
 
-function openComboChoiceModal(productName, categoryName, buttonId, extraOptions = {}) {
-    closeComboChoiceModal();
-    const buttonCopy = getComboButtonCopy(categoryName);
-
-    const modal = document.createElement('div');
-    modal.id = 'combo-choice-modal';
-    modal.style.position = 'fixed';
-    modal.style.inset = '0';
-    modal.style.zIndex = '100001';
-    modal.style.display = 'flex';
-    modal.style.alignItems = 'center';
-    modal.style.justifyContent = 'center';
-    modal.style.padding = '20px';
-    modal.style.background = 'rgba(31, 18, 10, 0.76)';
-    modal.style.backdropFilter = 'blur(8px)';
-    modal.style.webkitBackdropFilter = 'blur(8px)';
-
-    const card = document.createElement('div');
-    card.style.width = 'min(92vw, 430px)';
-    card.style.position = 'relative';
-    card.style.padding = '22px';
-    card.style.borderRadius = '20px';
-    card.style.background = 'linear-gradient(180deg, rgba(255,248,236,0.98), rgba(245,221,188,0.92))';
-    card.style.boxShadow = '0 20px 48px rgba(67, 37, 23, 0.28)';
-    card.style.border = '1px solid rgba(255, 180, 108, 0.55)';
-    card.style.display = 'flex';
-    card.style.flexDirection = 'column';
-    card.style.gap = '14px';
-
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.textContent = '×';
-    closeButton.setAttribute('aria-label', 'Cerrar seleccion de combo');
-    closeButton.style.position = 'absolute';
-    closeButton.style.top = '10px';
-    closeButton.style.right = '10px';
-    closeButton.style.width = '38px';
-    closeButton.style.height = '38px';
-    closeButton.style.border = 'none';
-    closeButton.style.borderRadius = '999px';
-    closeButton.style.background = 'rgba(90, 58, 27, 0.14)';
-    closeButton.style.color = '#5a3a1b';
-    closeButton.style.fontSize = '1.7rem';
-    closeButton.style.cursor = 'pointer';
-    closeButton.addEventListener('click', closeComboChoiceModal);
-
-    const title = document.createElement('h3');
-    title.textContent = productName;
-    title.style.margin = '0';
-    title.style.textAlign = 'center';
-    title.style.fontFamily = 'Oswald, sans-serif';
-    title.style.fontSize = '1.85rem';
-    title.style.lineHeight = '1';
-    title.style.textTransform = 'uppercase';
-    title.style.color = '#5a3a1b';
-
-    const category = document.createElement('p');
-    category.textContent = categoryName;
-    category.style.margin = '-4px 0 0';
-    category.style.textAlign = 'center';
-    category.style.fontFamily = 'Oswald, sans-serif';
-    category.style.fontSize = '0.95rem';
-    category.style.letterSpacing = '0.08em';
-    category.style.textTransform = 'uppercase';
-    category.style.color = '#8b5527';
-
-    const description = document.createElement('p');
-    description.textContent = `Quieres este producto en combo por $${COMBO_EXTRA_PRICE.toLocaleString('es-CO')} adicional? Incluye 75 gr de papas a la francesa y una gaseosa de 250 ml.`;
-    description.style.margin = '0';
-    description.style.textAlign = 'center';
-    description.style.lineHeight = '1.45';
-    description.style.color = '#4f311d';
-
-    const actionRow = document.createElement('div');
-    actionRow.style.display = 'grid';
-    actionRow.style.gridTemplateColumns = '1fr 1fr';
-    actionRow.style.gap = '12px';
-
-    const commentField = createOrderCommentField();
-
-    const soloButton = document.createElement('button');
-    soloButton.type = 'button';
-    soloButton.textContent = buttonCopy.solo;
-    soloButton.style.minHeight = '52px';
-    soloButton.style.borderRadius = '14px';
-    soloButton.style.border = '1px solid rgba(140, 90, 44, 0.24)';
-    soloButton.style.background = 'rgba(255, 247, 235, 0.92)';
-    soloButton.style.color = '#5a3a1b';
-    soloButton.style.fontFamily = 'Oswald, sans-serif';
-    soloButton.style.fontSize = '1.02rem';
-    soloButton.style.cursor = 'pointer';
-    soloButton.addEventListener('click', () => {
-        closeComboChoiceModal();
-        addItemToCart(productName, categoryName, {
-            ...extraOptions,
-            type: 'solo',
-            comment: commentField.textarea.value
-        }, buttonId);
-    });
-
-    const comboButton = document.createElement('button');
-    comboButton.type = 'button';
-    comboButton.textContent = buttonCopy.combo;
-    comboButton.style.minHeight = '52px';
-    comboButton.style.borderRadius = '14px';
-    comboButton.style.border = 'none';
-    comboButton.style.background = 'linear-gradient(135deg, #ff7a00, #ff5a00)';
-    comboButton.style.color = '#fff7ef';
-    comboButton.style.fontFamily = 'Oswald, sans-serif';
-    comboButton.style.fontSize = '1.02rem';
-    comboButton.style.cursor = 'pointer';
-
-    actionRow.appendChild(soloButton);
-    actionRow.appendChild(comboButton);
-
-    const comboPanel = document.createElement('div');
-    comboPanel.hidden = true;
-    comboPanel.style.display = 'none';
-    comboPanel.style.flexDirection = 'column';
-    comboPanel.style.gap = '10px';
-    comboPanel.style.padding = '14px';
-    comboPanel.style.borderRadius = '16px';
-    comboPanel.style.background = 'rgba(255, 253, 248, 0.7)';
-    comboPanel.style.border = '1px solid rgba(140, 90, 44, 0.16)';
-
-    const comboLabel = document.createElement('label');
-    comboLabel.textContent = 'Selecciona el sabor de la bebida';
-    comboLabel.style.color = '#5a3a1b';
-    comboLabel.style.fontFamily = 'Oswald, sans-serif';
-    comboLabel.style.fontSize = '0.98rem';
-
-    const comboSelect = document.createElement('select');
-    comboSelect.style.minHeight = '48px';
-    comboSelect.style.padding = '0 14px';
-    comboSelect.style.borderRadius = '12px';
-    comboSelect.style.border = '1px solid rgba(140, 90, 44, 0.24)';
-    comboSelect.style.background = '#fffdfa';
-    comboSelect.style.color = '#4f311d';
-    comboSelect.style.fontSize = '0.98rem';
-
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Elige una bebida';
-    comboSelect.appendChild(placeholder);
-
-    COMBO_DRINK_OPTIONS.forEach((drinkName) => {
-        const option = document.createElement('option');
-        option.value = drinkName;
-        option.textContent = drinkName;
-        comboSelect.appendChild(option);
-    });
-
-    const comboHelp = document.createElement('p');
-    comboHelp.textContent = 'Incluye 75 gr de papas a la francesa y una gaseosa de 250 ml.';
-    comboHelp.style.margin = '0';
-    comboHelp.style.textAlign = 'center';
-    comboHelp.style.lineHeight = '1.45';
-    comboHelp.style.color = '#4f311d';
-
-    const comboConfirm = document.createElement('button');
-    comboConfirm.type = 'button';
-    comboConfirm.textContent = 'Enviar a mi carrito';
-    comboConfirm.disabled = true;
-    comboConfirm.style.minHeight = '52px';
-    comboConfirm.style.borderRadius = '14px';
-    comboConfirm.style.border = 'none';
-    comboConfirm.style.background = 'linear-gradient(135deg, #ff7a00, #ff5a00)';
-    comboConfirm.style.color = '#fff7ef';
-    comboConfirm.style.fontFamily = 'Oswald, sans-serif';
-    comboConfirm.style.fontSize = '1.02rem';
-    comboConfirm.style.cursor = 'pointer';
-    comboConfirm.style.opacity = '0.5';
-
-    comboSelect.addEventListener('change', () => {
-        const enabled = Boolean(comboSelect.value);
-        comboConfirm.disabled = !enabled;
-        comboConfirm.style.opacity = enabled ? '1' : '0.5';
-    });
-
-    comboButton.addEventListener('click', () => {
-        comboPanel.hidden = false;
-        comboPanel.style.display = 'flex';
-        comboSelect.focus();
-    });
-
-    comboConfirm.addEventListener('click', () => {
-        if (!comboSelect.value) {
-            return;
-        }
-        closeComboChoiceModal();
-        addItemToCart(productName, categoryName, {
-            ...extraOptions,
-            type: 'combo',
-            drink: comboSelect.value,
-            comment: commentField.textarea.value
-        }, buttonId);
-    });
-
-    comboPanel.appendChild(comboLabel);
-    comboPanel.appendChild(comboSelect);
-    comboPanel.appendChild(comboHelp);
-    comboPanel.appendChild(commentField.wrap);
-    comboPanel.appendChild(comboConfirm);
-
-    modal.addEventListener('click', (event) => {
-        if (event.target === modal && _lastMousedownTarget === modal) {
-            closeComboChoiceModal();
-        }
-    });
-
-    card.appendChild(closeButton);
-    card.appendChild(title);
-    card.appendChild(category);
-    card.appendChild(description);
-    card.appendChild(commentField.wrap);
-    card.appendChild(actionRow);
-    card.appendChild(comboPanel);
-    modal.appendChild(card);
-
-    if (window.innerWidth <= 480) {
-        actionRow.style.gridTemplateColumns = '1fr';
-    }
-
-    document.body.style.overflow = 'hidden';
-    document.body.appendChild(modal);
-    _pushGenericModal(closeComboChoiceModal);
-}
-
 function startProductOrderFlow(productName, categoryName, buttonId, extraOptions = {}) {
     _hapticTap();
 
@@ -8380,22 +8147,9 @@ function shouldHideProductByName(name) {
     return HIDDEN_PRODUCT_NAME_PARTS.some((part) => key.includes(part));
 }
 
-function shouldHideCategoryList(category) {
-    const key = normalizeCategoryKey(category?.key || category?.name || '');
-    return key === 'bebidas y adicionales' || key === 'adicionales';
-}
-
 function resolveProductImage(product) {
     const remote = String(product?.image_url || '').trim();
     return remote || _IMG_FINAL_FALLBACK;
-}
-
-function resolveCategoryImage(categoryName) {
-    const remoteCategory = (Array.isArray(activeCategoryMeta) ? activeCategoryMeta : [])
-        .concat(Array.isArray(allCategoryMeta) ? allCategoryMeta : [])
-        .find((category) => normalizeCategoryKey(category?.name) === normalizeCategoryKey(categoryName));
-    const remoteImage = String(remoteCategory?.image_url || '').trim();
-    return remoteImage || _IMG_FINAL_FALLBACK;
 }
 
 function isCategoryAllowed(categoryName) {
@@ -8603,109 +8357,6 @@ function renderDynamicCategorySections() {
             else if ((catNormalizada.includes("PERROS") || catNormalizada.includes("PERRO")) && !catNormalizada.includes("SALCHIPAPA")) {
                 // Aquí va el renderizado de perros calientes, si existe
                 // ...
-            }
-            // Modal para galería de bebidas/adicionales
-            function openBebidasModal(imgSrc, title) {
-                // Eliminar modal previo si existe
-                const prev = document.getElementById('bebidas-modal');
-                if (prev) prev.remove();
-
-                const modalBg = document.createElement('div');
-                modalBg.id = 'bebidas-modal';
-                modalBg.style.position = 'fixed';
-                modalBg.style.top = '0';
-                modalBg.style.left = '0';
-                modalBg.style.width = '100vw';
-                modalBg.style.height = '100vh';
-                modalBg.style.background = 'rgba(0,0,0,0.97)';
-                modalBg.style.display = 'flex';
-                modalBg.style.alignItems = 'center';
-                modalBg.style.justifyContent = 'center';
-                modalBg.style.zIndex = '99999';
-                modalBg.style.width = '100vw';
-                modalBg.style.height = '100vh';
-                modalBg.style.top = '0';
-                modalBg.style.left = '0';
-                modalBg.style.position = 'fixed';
-
-                const modalContent = document.createElement('div');
-                modalContent.style.background = 'rgba(20,20,20,0.98)';
-                modalContent.style.borderRadius = '16px';
-                modalContent.style.padding = '24px 18px 18px 18px';
-                modalContent.style.display = 'flex';
-                modalContent.style.flexDirection = 'column';
-                modalContent.style.alignItems = 'center';
-                modalContent.style.maxWidth = '95vw';
-                modalContent.style.maxHeight = '90vh';
-                modalContent.style.boxShadow = '0 4px 32px 0 rgba(0,0,0,0.25)';
-
-                const img = document.createElement('img');
-                img.src = normalizeImageAssetPath(imgSrc);
-                img.alt = title;
-                img.style.maxWidth = '80vw';
-                img.style.maxHeight = '55vh';
-                img.style.borderRadius = '12px';
-                img.style.marginBottom = '18px';
-                img.style.boxShadow = '0 2px 12px 0 rgba(0,0,0,0.18)';
-
-                const titleDiv = document.createElement('div');
-                titleDiv.textContent = title;
-                titleDiv.style.fontWeight = '700';
-                titleDiv.style.fontSize = '1.25rem';
-                titleDiv.style.color = '#fff';
-                titleDiv.style.marginBottom = '18px';
-                titleDiv.style.textAlign = 'center';
-
-                // Botones
-                const btnsRow = document.createElement('div');
-                btnsRow.style.display = 'flex';
-                btnsRow.style.gap = '18px';
-                btnsRow.style.marginTop = '8px';
-
-                // Botón Regresar
-                const closeBtn = document.createElement('button');
-                closeBtn.textContent = 'Regresar';
-                closeBtn.style.background = '#222';
-                closeBtn.style.color = '#fff';
-                closeBtn.style.fontWeight = '600';
-                closeBtn.style.fontSize = '1rem';
-                closeBtn.style.border = 'none';
-                closeBtn.style.borderRadius = '8px';
-                closeBtn.style.padding = '10px 22px';
-                closeBtn.style.cursor = 'pointer';
-                closeBtn.style.boxShadow = '0 1px 4px 0 rgba(0,0,0,0.10)';
-                closeBtn.onclick = () => {
-                    modalBg.remove();
-                };
-
-                // Botón Pedir este producto
-                const pedirBtn = document.createElement('button');
-                const buttonId = `btn-gallery-${normalizeAssetLookup(title)}`;
-                pedirBtn.type = 'button';
-                pedirBtn.textContent = 'Pedir este producto';
-                pedirBtn.style.background = '#ff6000';
-                pedirBtn.style.color = '#fff';
-                pedirBtn.style.fontWeight = '700';
-                pedirBtn.style.fontSize = '1rem';
-                pedirBtn.style.border = 'none';
-                pedirBtn.style.borderRadius = '8px';
-                pedirBtn.style.padding = '10px 22px';
-                pedirBtn.style.cursor = 'pointer';
-                pedirBtn.style.boxShadow = '0 1px 4px 0 rgba(0,0,0,0.10)';
-                pedirBtn.addEventListener('click', () => {
-                    modalBg.remove();
-                    startProductOrderFlow(title, getSelectedCategoryName(), buttonId);
-                });
-
-                btnsRow.appendChild(closeBtn);
-                btnsRow.appendChild(pedirBtn);
-
-                modalContent.appendChild(img);
-                modalContent.appendChild(titleDiv);
-                modalContent.appendChild(btnsRow);
-                modalBg.appendChild(modalContent);
-
-                document.body.appendChild(modalBg);
             }
             // ...resto de categorías normales...
             if (!visibleProducts.length) {
@@ -10054,17 +9705,6 @@ function setActiveMenuNavLink(targetId) {
         const isActive = link.dataset.target === targetId;
         link.classList.toggle('active', isActive);
     });
-}
-
-function openDrawerMenu() {
-    const drawer = document.getElementById('menuDrawer');
-    const overlay = document.getElementById('drawerOverlay');
-    if (drawer) {
-        drawer.classList.add('open');
-    }
-    if (overlay) {
-        overlay.classList.add('show');
-    }
 }
 
 function closeDrawerMenu() {
