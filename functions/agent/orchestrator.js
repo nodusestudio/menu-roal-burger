@@ -35,6 +35,13 @@ const MAX_TOOL_LOOP_ITERATIONS = 8;
 const MAX_HISTORY_MESSAGES = 60;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutos
 const RATE_LIMIT_MAX_MESSAGES = 20;
+// Limite adicional por IP para el canal web -- ahi la unica clave disponible antes de esto era
+// el sessionId, que genera y controla el propio navegador (localStorage): un script que manda un
+// sessionId nuevo en cada llamada nunca chocaba con el limite de arriba, gastando tokens de Claude
+// sin techo real. El de por-IP no se puede rotar tan barato. El techo es mas alto que el de por-
+// sesion porque una sola IP (wifi compartido, NAT de oficina) puede representar varias personas
+// reales a la vez.
+const RATE_LIMIT_MAX_MESSAGES_PER_IP = 60;
 // Si escaló a needs_human y ningún admin tomó el control (humanControl) en este lapso, se le
 // devuelve el control al bot solo -- sin esto, una conversación quedaba respondiendo el mismo
 // mensaje enlatado para siempre si nadie de FODEXA llegaba a contestar.
@@ -70,7 +77,7 @@ async function isAgentGloballyEnabled(db) {
     return doc.exists ? doc.data()?.agentEnabled !== false : true;
 }
 
-async function checkRateLimit(db, key) {
+async function checkRateLimit(db, key, maxMessages = RATE_LIMIT_MAX_MESSAGES) {
     const ref = db.collection(RATE_LIMITS_COLLECTION).doc(key);
     const now = Date.now();
     return db.runTransaction(async (tx) => {
@@ -82,7 +89,7 @@ async function checkRateLimit(db, key) {
         }
         const nextCount = Number(data.count || 0) + 1;
         tx.set(ref, { windowStart: data.windowStart, count: nextCount }, { merge: true });
-        return nextCount <= RATE_LIMIT_MAX_MESSAGES;
+        return nextCount <= maxMessages;
     });
 }
 
@@ -766,17 +773,26 @@ async function runFollowUpTurn(db, anthropicApiKey, conversationKey) {
  * @param {string} params.text
  * @param {{latitude:number, longitude:number}} [params.location]
  * @param {{customerName?:string, customerPhone?:string, address?:string, lastOrderId?:string, totalOrders?:number}} [params.customerProfile]
+ * @param {string} [params.clientIp] - solo canal web sin telefono conocido: ver RATE_LIMIT_MAX_MESSAGES_PER_IP
  */
-async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKey, phone, sessionId, text, location, customerProfile }) {
+async function handleIncomingTurn({ db, anthropicApiKey, channel, conversationKey, phone, sessionId, text, location, customerProfile, clientIp }) {
     const rateLimitKey = phone || sessionId || conversationKey;
-    // En paralelo -- son dos lecturas de Firestore independientes entre sí (ninguna depende del
+    // En paralelo -- son lecturas de Firestore independientes entre sí (ninguna depende del
     // resultado de la otra), así que esperarlas una después de la otra solo sumaba latencia
     // muerta a CADA turno sin ninguna razón real.
-    const [allowed, agentEnabled] = await Promise.all([
+    const checks = [
         checkRateLimit(db, rateLimitKey),
         isAgentGloballyEnabled(db)
-    ]);
-    if (!allowed) {
+    ];
+    // Sin telefono conocido (web, cliente no logueado) el rateLimitKey de arriba es el sessionId
+    // que el propio navegador genera y controla -- sin este segundo chequeo por IP, un script
+    // que manda un sessionId nuevo en cada llamada nunca chocaba con ningun limite.
+    const checkIp = !phone && Boolean(clientIp);
+    if (checkIp) {
+        checks.push(checkRateLimit(db, `ip_${clientIp}`, RATE_LIMIT_MAX_MESSAGES_PER_IP));
+    }
+    const [allowed, agentEnabled, ipAllowed] = await Promise.all(checks);
+    if (!allowed || (checkIp && !ipAllowed)) {
         return { reply: RATE_LIMITED_REPLY };
     }
 

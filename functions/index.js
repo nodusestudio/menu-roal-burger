@@ -26,6 +26,7 @@ const OTP_SEND_WINDOW_MS            = 24 * 60 * 60 * 1000; // 24 horas
 const CLIENTS_COLLECTION             = 'clientes';
 const CLIENT_CREDENTIALS_COLLECTION  = 'clientes_credenciales';
 const GOOGLE_LINKS_COLLECTION        = 'google_links';
+const MESSAGES_COLLECTION            = 'mensajes';
 
 // Orígenes permitidos para llamadas a las Cloud Functions desde el navegador.
 // Solo estos dominios pueden invocar las funciones onCall desde un browser.
@@ -808,15 +809,71 @@ exports.checkPhoneRegistered = onCall(
 
         if (!clientSnap.exists) return { exists: false };
 
+        // customerName NO va en la respuesta -- sin autenticacion ni verificacion de dueno,
+        // devolver el nombre real de cualquier telefono consultado permite enumerar clientes
+        // (barrer numeros al azar y averiguar quien es cliente y como se llama). Ningun flujo
+        // del cliente muestra ese nombre hoy; submitPasswordResetRequest (el unico lugar que
+        // antes lo usaba) ya lo lee directo con el Admin SDK, no a traves de esta funcion.
         const data = clientSnap.data();
         return {
             exists: true,
             id: clientId,
-            customerName: String(data.customerName || '').trim(),
             customerPhone: String(data.customerPhone || '').trim(),
             customerPhoneDigits: phoneDigits,
             hasPassword: credsSnap.exists && Boolean(credsSnap.data()?.passwordHash)
         };
+    }
+);
+
+// Reemplaza la escritura directa del navegador a /mensajes para el tipo 'password_reset_request'
+// (firestore.rules ya no permite crear ese tipo desde el cliente). Antes cualquiera podia pedirle
+// al admin "resetear la contrasena" de un numero ajeno sin haber demostrado ser su dueno, y el
+// nombre real que el admin veia en el mensaje (antes obtenido de checkPhoneRegistered, sin
+// autenticacion) hacia la suplantacion creible -- combinado con el reset ahora funcional
+// (adminResetClientCredentials), esto habria sido una via real de toma de cuenta por ingenieria
+// social. Exige el mismo OTP verificado y reciente que ya exige customerRegisterOrUpdateProfile.
+exports.submitPasswordResetRequest = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
+        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+
+        const db = getFirestore();
+        const clientId = buildClientId(phoneDigits);
+
+        const verificationSnap = await db.collection(PHONE_VERIFICATIONS_COLLECTION).doc(clientId).get();
+        const verificationData = verificationSnap.exists ? verificationSnap.data() : null;
+        const verifiedAtMs = verificationData?.verifiedAt?.toMillis
+            ? verificationData.verifiedAt.toMillis()
+            : Number(verificationData?.verifiedAt) || 0;
+        const isVerified = Boolean(verificationData?.verified)
+            && verifiedAtMs > 0
+            && (Date.now() - verifiedAtMs) <= OTP_VERIFICATION_MAX_AGE_MS;
+        if (!isVerified) {
+            throw new HttpsError('failed-precondition', 'Verifica tu numero por WhatsApp antes de solicitar el reinicio.');
+        }
+
+        const clientSnap = await db.collection(CLIENTS_COLLECTION).doc(clientId).get();
+        const customerName = clientSnap.exists ? String(clientSnap.data()?.customerName || '').trim() : '';
+        const customerPhone = clientSnap.exists ? String(clientSnap.data()?.customerPhone || '').trim() : '';
+
+        await db.collection(MESSAGES_COLLECTION).add({
+            type: 'password_reset_request',
+            status: 'pending',
+            subject: 'Solicitud de reinicio de contrasena',
+            body: [
+                'El cliente verifico su numero por WhatsApp (codigo OTP) y solicito reiniciar su contrasena.',
+                `Numero: ${customerPhone || phoneDigits}`
+            ].join('\n'),
+            customerName: customerName || 'Cliente sin nombre',
+            customerPhone: customerPhone || phoneDigits,
+            customerPhoneDigits: phoneDigits,
+            source: 'public_web',
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp()
+        });
+
+        return { success: true };
     }
 );
 
@@ -1132,6 +1189,15 @@ exports.agentChatWeb = onCall(
             throw new HttpsError('failed-precondition', 'Agente no configurado.');
         }
 
+        // IP real del navegador -- ver RATE_LIMIT_MAX_MESSAGES_PER_IP en orchestrator.js. Cloud
+        // Functions v2 onCall expone el request Express subyacente en rawRequest; x-forwarded-for
+        // trae la IP del cliente cuando pasa por el proxy de Google Front End.
+        const clientIp = String(
+            request.rawRequest?.headers?.['x-forwarded-for']?.split(',')[0]?.trim()
+            || request.rawRequest?.ip
+            || ''
+        ).trim();
+
         try {
             const result = await handleIncomingTurn({
                 db: getFirestore(),
@@ -1143,7 +1209,8 @@ exports.agentChatWeb = onCall(
                 location: (location && Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude)))
                     ? { latitude: Number(location.latitude), longitude: Number(location.longitude) }
                     : undefined,
-                customerProfile: sanitizeCustomerProfile(request.data?.customerProfile)
+                customerProfile: sanitizeCustomerProfile(request.data?.customerProfile),
+                clientIp
             });
             return result;
         } catch (err) {

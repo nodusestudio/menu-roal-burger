@@ -3078,43 +3078,104 @@ async function requestPublicNotificationPermission() {
     }
 }
 
-function buildCustomerPasswordResetMessage(phoneValue = '') {
-    const phoneDigits = normalizePhoneDigits(phoneValue);
-    const restaurantName = _getRestaurantName();
-    return [
-        `Hola, ${restaurantName}. Olvide la contrasena de mi perfil en la app.`,
-        phoneDigits ? `Mi numero de WhatsApp registrado es: ${phoneDigits}` : 'Necesito ayuda para recuperar el acceso a mi cuenta.',
-        'Por favor ayudame a restablecer el acceso. Gracias.'
-    ].join('\n');
+// submitPasswordResetRequest (Cloud Function) exige un OTP verificado y reciente antes de crear
+// el mensaje para el admin -- firestore.rules ya no permite que el navegador cree directo un
+// mensaje de tipo 'password_reset_request'. Antes cualquiera podia pedir el reinicio de la
+// cuenta de otra persona sin demostrar ser su dueno (y el nombre real que veia el admin, sacado
+// de checkPhoneRegistered sin autenticacion, hacia la solicitud falsa creible).
+let customerResetRequestUI = null;
+
+function closePasswordResetRequestModal() {
+    if (!customerResetRequestUI) return;
+    customerResetRequestUI.modal.remove();
+    customerResetRequestUI = null;
+    syncBodyScrollLock();
 }
 
-async function createCustomerPasswordResetRequest(phoneValue = '') {
-    const customerPhone = String(phoneValue || '').trim();
-    const customerPhoneDigits = normalizePhoneDigits(customerPhone);
+function openPasswordResetRequestModal(phoneDigits, onSuccess) {
+    closePasswordResetRequestModal();
 
-    if (customerPhoneDigits.length < 10) {
-        throw new Error('Escribe tu numero de WhatsApp para solicitar el reinicio.');
-    }
+    const modal = document.createElement('div');
+    modal.id = 'customerResetRequestModal';
+    modal.className = 'support-modal is-open';
+    modal.innerHTML = `
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Verificar numero">
+            <button type="button" class="support-modal-close" aria-label="Cerrar">&times;</button>
+            <p class="support-modal-kicker">Verificación</p>
+            <h3 class="support-modal-title">Confirma que el número es tuyo</h3>
+            <p class="support-modal-text">Te enviamos un código por WhatsApp para avisarle al restaurante que de verdad quieres reiniciar esta cuenta.</p>
+            <label class="support-field">
+                <span>Código de 6 dígitos</span>
+                <input type="text" id="resetRequestOtpInput" inputmode="numeric" maxlength="6" placeholder="000000">
+            </label>
+            <p class="support-feedback" id="resetRequestFeedback"></p>
+            <div class="support-actions split">
+                <button type="button" class="support-secondary-btn" id="resetRequestOtpResend">¿No llegó? Reenviar código</button>
+                <button type="button" class="support-send-btn" id="resetRequestOtpVerify">Verificar y enviar</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
 
-    const db = getPublicFirebaseDb();
-    const messageBody = buildCustomerPasswordResetMessage(customerPhone);
-    // /clientes ya no es legible sin sesion — solo se pide el nombre para el mensaje via
-    // checkPhoneRegistered (Cloud Function), que nunca expone datos sensibles. La direccion ya
-    // no viaja aqui; el admin puede verla en su propio panel si hace falta.
-    const existingProfile = await fetchClientProfileForRecovery(customerPhone).catch(() => null);
+    customerResetRequestUI = {
+        modal,
+        close: modal.querySelector('.support-modal-close'),
+        feedback: modal.querySelector('#resetRequestFeedback'),
+        otpInput: modal.querySelector('#resetRequestOtpInput'),
+        verifyBtn: modal.querySelector('#resetRequestOtpVerify'),
+        resendBtn: modal.querySelector('#resetRequestOtpResend')
+    };
 
-    await db.collection(MESSAGES_COLLECTION).add({
-        type: 'password_reset_request',
-        status: 'pending',
-        subject: 'Solicitud de reinicio de contrasena',
-        body: messageBody,
-        customerName: existingProfile?.customerName || 'Cliente sin nombre',
-        customerPhone,
-        customerPhoneDigits,
-        source: 'public_web',
-        createdAt: getPublicServerTimestamp(),
-        updatedAt: getPublicServerTimestamp()
+    customerResetRequestUI.close.addEventListener('click', closePasswordResetRequestModal);
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal && _lastMousedownTarget === modal) closePasswordResetRequestModal();
     });
+
+    customerResetRequestUI.verifyBtn.addEventListener('click', async () => {
+        const { feedback, otpInput, verifyBtn } = customerResetRequestUI;
+        const code = String(otpInput?.value || '').replace(/\D/g, '');
+        if (code.length !== 6) {
+            feedback.textContent = 'El código debe tener 6 dígitos.';
+            feedback.className = 'support-feedback support-feedback--error';
+            return;
+        }
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = 'Verificando…';
+        try {
+            await callVerifyWhatsAppOtp(phoneDigits, code);
+            const fn = getPublicFirebaseFunctions();
+            if (!fn) throw new Error('Servicio no disponible.');
+            await fn.httpsCallable('submitPasswordResetRequest')({ phone: phoneDigits });
+            closePasswordResetRequestModal();
+            if (typeof onSuccess === 'function') onSuccess();
+        } catch (err) {
+            feedback.textContent = err?.message || 'Código incorrecto. Intenta de nuevo.';
+            feedback.className = 'support-feedback support-feedback--error';
+            verifyBtn.disabled = false;
+            verifyBtn.textContent = 'Verificar y enviar';
+            otpInput?.select();
+        }
+    });
+
+    customerResetRequestUI.resendBtn.addEventListener('click', async () => {
+        const { feedback, resendBtn } = customerResetRequestUI;
+        resendBtn.disabled = true;
+        resendBtn.textContent = 'Reenviando…';
+        try {
+            await callSendWhatsAppOtp(phoneDigits);
+            feedback.textContent = 'Código reenviado. Revisa tu WhatsApp.';
+            feedback.className = 'support-feedback';
+        } catch (err) {
+            feedback.textContent = err?.message || 'No se pudo reenviar. Intenta de nuevo.';
+            feedback.className = 'support-feedback support-feedback--error';
+        }
+        resendBtn.disabled = false;
+        resendBtn.textContent = '¿No llegó? Reenviar código';
+    });
+
+    syncBodyScrollLock();
+    customerResetRequestUI.otpInput?.focus();
+    callSendWhatsAppOtp(phoneDigits).catch(() => {});
 }
 
 async function requestCustomerPasswordReset() {
@@ -3124,7 +3185,13 @@ async function requestCustomerPasswordReset() {
 
     const feedbackTarget = customerAuthUI?.feedback || customerRegisterUI?.feedback;
     const phoneValue = String(customerAuthUI?.lookupPhone?.value || customerRegisterUI?.registerPhone?.value || customerAuthUI?.registerPhone?.value || '').trim();
+    const phoneDigits = normalizePhoneDigits(phoneValue);
     feedbackTarget.textContent = '';
+
+    if (phoneDigits.length < 10) {
+        feedbackTarget.textContent = 'Escribe tu numero de WhatsApp para solicitar el reinicio.';
+        return;
+    }
 
     try {
         const profile = await fetchClientProfileForRecovery(phoneValue);
@@ -3134,8 +3201,9 @@ async function requestCustomerPasswordReset() {
             return;
         }
 
-        await createCustomerPasswordResetRequest(phoneValue);
-        feedbackTarget.textContent = 'Tu solicitud fue enviada al admin. En breve te contactaremos para reiniciar la contrasena.';
+        openPasswordResetRequestModal(phoneDigits, () => {
+            feedbackTarget.textContent = 'Tu solicitud fue enviada al admin. En breve te contactaremos para reiniciar la contrasena.';
+        });
     } catch (error) {
         feedbackTarget.textContent = error.message || 'No se pudo enviar la solicitud.';
     }

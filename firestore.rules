@@ -85,8 +85,26 @@ service cloud.firestore {
         && request.resource.data.current is int;
     }
 
+    // Antes cualquiera podia crear cualquier mensaje (allow create: if true), incluido
+    // 'password_reset_request' haciendose pasar por el telefono/nombre de otro cliente -- ese
+    // mensaje es justo lo que hace creible una solicitud falsa de "resetear mi cuenta" ante el
+    // admin. 'password_reset_request' ahora solo lo crea submitPasswordResetRequest (Admin SDK,
+    // exige OTP verificado) — el navegador ya no puede crear ese tipo directo. Los otros dos
+    // tipos que SI siguen escribiendose desde el navegador (mensaje directo del perfil, solicitud
+    // de borrar cuenta) ya solo se llaman con una sesion real activa, asi que se exige que
+    // request.auth.uid coincida con el clientId del telefono que el mensaje dice ser -- nadie
+    // puede mandar un mensaje a nombre de un telefono que no es el suyo.
     match /mensajes/{doc} {
-      allow create: if true;
+      allow create: if isAdmin()
+        || (
+          request.auth != null
+          && request.resource.data.type in ['customer_direct_message', 'account_delete_request']
+          && request.resource.data.customerPhoneDigits is string
+          && request.auth.uid == 'phone_' + request.resource.data.customerPhoneDigits
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 4000
+        );
       allow read, update, delete: if isAdmin();
     }
 
