@@ -94,3 +94,33 @@ test('e) admin autenticado por el SDK cliente tampoco puede escribir puntosAcumu
     // Confirma que la regla no rompió las escrituras de admin a otros campos del mismo doc.
     await assertSucceeds(adminDb.collection('clientes').doc(clientId).update({ customerName: 'Editado por admin' }));
 });
+
+// ajustes_puntos_lealtad (auditoria de adminAdjustLoyaltyPoints, ver functions/index.js) --
+// solo lectura para admins (para el historial de ajustes en el panel), escritura EXCLUSIVA
+// del Admin SDK dentro de la Cloud Function -- ni siquiera un admin autenticado por el SDK
+// cliente puede escribir ahi directo.
+test('f) admin puede leer ajustes_puntos_lealtad, pero un cliente sin sesion de admin no', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-test-uid-3').set({ seeded: true });
+        await context.firestore().collection('ajustes_puntos_lealtad').doc('ajuste-test').set({
+            clientId: 'phone_3001112222', delta: 50, reason: 'Test'
+        });
+    });
+
+    const adminDb = testEnv.authenticatedContext('admin-test-uid-3').firestore();
+    await assertSucceeds(adminDb.collection('ajustes_puntos_lealtad').where('clientId', '==', 'phone_3001112222').get());
+
+    const clienteDb = testEnv.authenticatedContext('cliente-test-uid-2').firestore();
+    await assertFails(clienteDb.collection('ajustes_puntos_lealtad').doc('ajuste-test').get());
+});
+
+test('g) ni siquiera un admin autenticado por el SDK cliente puede escribir en ajustes_puntos_lealtad', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-test-uid-4').set({ seeded: true });
+    });
+
+    const adminDb = testEnv.authenticatedContext('admin-test-uid-4').firestore();
+    await assertFails(adminDb.collection('ajustes_puntos_lealtad').doc('ajuste-test-2').set({
+        clientId: 'phone_3009998888', delta: 999999, reason: 'Intento desde el cliente'
+    }));
+});

@@ -10501,6 +10501,7 @@ function renderClients() {
                 <div class="client-actions">
                     <button type="button" class="client-action-btn" data-client-action="edit" data-client-id="${escapeHtml(client.id)}">Editar</button>
                     <button type="button" class="client-action-btn" data-client-action="adjust-points" data-client-id="${escapeHtml(client.id)}">Ajustar puntos</button>
+                    <button type="button" class="client-action-btn" data-client-action="points-history" data-client-id="${escapeHtml(client.id)}">Historial de ajustes</button>
                     <button type="button" class="client-action-btn delete" data-client-action="delete" data-client-id="${escapeHtml(client.id)}">Eliminar</button>
                 </div>
             </td>
@@ -12201,6 +12202,71 @@ document.getElementById('adjustPointsForm')?.addEventListener('submit', async (e
         showModalFeedback(feedback, `No se pudo aplicar el ajuste: ${error.message || 'error inesperado.'}`, 'error');
     } finally {
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Aplicar ajuste'; }
+    }
+});
+
+// ── Historial de ajustes manuales de puntos (colección ajustes_puntos_lealtad) ────────────
+async function openAdjustPointsHistoryModal(client) {
+    const modal = document.getElementById('adjustPointsHistoryModal');
+    const title = document.getElementById('adjustPointsHistoryTitle');
+    const body = document.getElementById('adjustPointsHistoryBody');
+    if (!modal || !body || !client) return;
+
+    if (title) title.textContent = `Historial de ajustes — ${client.customerName || client.id}`;
+    body.innerHTML = '<p style="color:var(--admin-muted);">Cargando...</p>';
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+
+    try {
+        // Solo filtro de igualdad (sin orderBy en la consulta) para no necesitar un indice
+        // compuesto -- se ordena en memoria, la lista es chica (ajustes manuales, no pedidos).
+        const snap = await firebaseDb.collection('ajustes_puntos_lealtad').where('clientId', '==', client.id).get();
+        const ajustes = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => _tsMs(b.createdAt) - _tsMs(a.createdAt));
+
+        if (!ajustes.length) {
+            body.innerHTML = '<p style="color:var(--admin-muted);">Este cliente no tiene ajustes manuales registrados.</p>';
+            return;
+        }
+
+        body.innerHTML = `<div class="ah-list">${ajustes.map((a) => {
+            const ms = _tsMs(a.createdAt);
+            const fecha = ms ? new Date(ms).toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Fecha desconocida';
+            const delta = Number(a.delta || 0);
+            const positivo = delta > 0;
+            const adminLabel = a.adminUid && a.adminUid === firebaseAuth?.currentUser?.uid
+                ? (firebaseAuth.currentUser.email || 'Tú')
+                : `Admin (${String(a.adminUid || 'desconocido').slice(0, 8)}…)`;
+            return `<div class="ah-item">
+                <div class="ah-item-top">
+                    <span class="ah-item-date">${escapeHtml(fecha)}</span>
+                    <strong class="ah-item-delta" style="color:${positivo ? '#6ee7b7' : '#fca5a5'};">${positivo ? '+' : ''}${delta.toLocaleString('es-CO')} pts</strong>
+                </div>
+                <div class="ah-item-reason">${escapeHtml(a.reason || 'Sin motivo registrado')}</div>
+                <div class="ah-item-meta">${escapeHtml(adminLabel)} · Saldo: ${Number(a.previousBalance || 0).toLocaleString('es-CO')} → ${Number(a.newBalance || 0).toLocaleString('es-CO')}</div>
+            </div>`;
+        }).join('')}</div>`;
+    } catch (error) {
+        body.innerHTML = `<p style="color:#fca5a5;">Error al cargar el historial: ${escapeHtml(error.message || 'error inesperado')}</p>`;
+    }
+}
+
+function closeAdjustPointsHistoryModal() {
+    const modal = document.getElementById('adjustPointsHistoryModal');
+    if (!modal) return;
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+document.getElementById('adjustPointsHistoryCloseBtn')?.addEventListener('click', closeAdjustPointsHistoryModal);
+document.getElementById('adjustPointsHistoryModal')?.addEventListener('click', (event) => {
+    if (event.target.id === 'adjustPointsHistoryModal') closeAdjustPointsHistoryModal();
+});
+document.addEventListener('keydown', (event) => {
+    const modal = document.getElementById('adjustPointsHistoryModal');
+    if (event.key === 'Escape' && modal && modal.classList.contains('show')) {
+        closeAdjustPointsHistoryModal();
     }
 });
 
@@ -16219,6 +16285,11 @@ if (clientsList) {
 
         if (action === 'adjust-points') {
             openAdjustPointsModal(client);
+            return;
+        }
+
+        if (action === 'points-history') {
+            openAdjustPointsHistoryModal(client);
             return;
         }
 

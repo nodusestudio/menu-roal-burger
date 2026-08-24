@@ -299,6 +299,13 @@ service cloud.firestore {
     match /gastos_caja/{doc} {
       allow read, write: if isAdmin();
     }
+    // Auditoria de adminAdjustLoyaltyPoints (functions/index.js) -- solo lectura desde el admin
+    // (para el historial de ajustes por cliente); la escritura es EXCLUSIVA del Admin SDK dentro
+    // de esa Cloud Function, nunca desde el navegador (ni siquiera un admin autenticado).
+    match /ajustes_puntos_lealtad/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
     match /proveedores/{doc} {
       allow read, write: if isAdmin();
     }
