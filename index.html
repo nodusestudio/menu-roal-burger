@@ -33,7 +33,9 @@
     <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com">
     <link rel="dns-prefetch" href="https://securetoken.googleapis.com">
     <link rel="dns-prefetch" href="https://unpkg.com">
-    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto:wght@300;400;500;700&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet"></noscript>
     
     <!-- ===== CONFIGURACIÓN DE ANÁLISIS Y MÉTRICAS ===== -->
     <!-- Google Analytics 4 (GA4) -->
@@ -76,7 +78,10 @@
 
     <!-- ===== PANTALLA DE INICIO ===== -->
     <div id="splashScreen">
-        <img src="./isotipo.png" alt="ROAL BURGER" class="splash-logo" draggable="false" decoding="async">
+        <picture>
+            <source srcset="./isotipo.webp" type="image/webp">
+            <img src="./isotipo.png" alt="ROAL BURGER" class="splash-logo" draggable="false" decoding="async">
+        </picture>
         <span class="splash-brand">ROAL BURGER</span>
         <span class="splash-tagline">Comida Rapida con Acento Venezolano</span>
         <div class="splash-actions" id="splashActions">
@@ -194,7 +199,10 @@
                 <section class="liquid-glass shortcut-section" aria-label="Descargar acceso directo">
                     <h2 class="section-title social-title">ACCESO RAPIDO</h2>
                     <button type="button" class="maps-btn shortcut-install-btn" id="installShortcutButton">
-                        <img src="isotipo.png" alt="ROAL BURGER" class="shortcut-install-icon">
+                        <picture>
+                            <source srcset="isotipo.webp" type="image/webp">
+                            <img src="isotipo.png" alt="ROAL BURGER" class="shortcut-install-icon">
+                        </picture>
                         <span id="installShortcutButtonText">Descargar acceso directo</span>
                     </button>
                     <p class="shortcut-install-hint" id="installShortcutHint" hidden></p>
@@ -436,7 +444,10 @@
         <div class="oc-inner">
             <div class="oc-header">
                 <div class="oc-logo-circle">
-                    <img src="isotipo.png" alt="ROAL BURGER" class="oc-logo">
+                    <picture>
+                        <source srcset="isotipo.webp" type="image/webp">
+                        <img src="isotipo.png" alt="ROAL BURGER" class="oc-logo">
+                    </picture>
                 </div>
                 <h1 class="oc-title">¡PEDIDO<br>RECIBIDO!</h1>
                 <p class="oc-subtitle" id="ocSubtitle">Tu orden ya está en camino al restaurante</p>
@@ -515,7 +526,10 @@
         </button>
         <div class="top-search-bar" id="topSearchBar">
             <button type="button" class="top-search-display" id="topSearchDisplay" aria-label="Buscar en Roal">
-                <img src="isotipo.png" alt="" class="top-search-logo">
+                <picture>
+                    <source srcset="isotipo.webp" type="image/webp">
+                    <img src="isotipo.png" alt="" class="top-search-logo">
+                </picture>
                 <span class="top-search-text">Buscar en Roal</span>
                 <svg class="top-search-icon" viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true">
                     <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
@@ -668,7 +682,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script src="tracking.js?v=20260817-1414"></script>
     <script src="firebase-config.js"></script>
@@ -707,7 +720,10 @@
     <div id="pwaInstallOverlay" class="pwa-install-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="pwaInstallTitle">
         <div class="pwa-install-sheet">
             <div class="pwa-install-handle"></div>
-            <img src="isotipo.png" alt="" class="pwa-install-appicon" aria-hidden="true">
+            <picture>
+                <source srcset="isotipo.webp" type="image/webp">
+                <img src="isotipo.png" alt="" class="pwa-install-appicon" aria-hidden="true">
+            </picture>
             <p class="support-modal-kicker pwa-install-kicker">ACCESO RAPIDO</p>
             <h2 class="support-modal-title pwa-install-title" id="pwaInstallTitle">¿Agregar al inicio?</h2>
             <p class="support-modal-text pwa-install-desc">Sigue estos 2 pasos y tendrás el menú siempre a la mano, como una app.</p>
