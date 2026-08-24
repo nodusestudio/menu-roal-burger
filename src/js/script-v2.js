@@ -244,6 +244,7 @@ let checkoutDeliveryFeePending = false;
 let checkoutIsScheduled = false;
 let checkoutScheduledDate = '';
 let checkoutScheduledTime = '';
+let checkoutPointsToRedeem = 0; // cuántos puntos de lealtad el cliente eligió canjear en este checkout
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
 let categoriesUnsubscribe = null;
@@ -500,6 +501,8 @@ function normalizeCustomerProfile(raw = {}, fallbackId = '') {
         consentVersion: String(raw.consentVersion || '').trim(),
         totalOrders: Number(raw.totalOrders || 0),
         totalSpent: Number(raw.totalSpent || 0),
+        puntosDisponibles: Math.max(0, Number(raw.puntosDisponibles) || 0),
+        puntosAcumuladosTotal: Math.max(0, Number(raw.puntosAcumuladosTotal) || 0),
         lastOrderCode: String(raw.lastOrderCode || '').trim(),
         lastOrderId: String(raw.lastOrderId || '').trim(),
         lastOrderTotal: Number(raw.lastOrderTotal || 0),
@@ -1094,11 +1097,27 @@ function getCheckoutPromo2x1IncrementoFee(fulfillmentType) {
 }
 
 function getCheckoutOrderTotal(fulfillmentType) {
-    return getCartTotalAmount() + getCheckoutDeliveryFee(fulfillmentType) + getCheckoutPromo2x1IncrementoFee(fulfillmentType);
+    return getCartTotalAmount() + getCheckoutDeliveryFee(fulfillmentType) + getCheckoutPromo2x1IncrementoFee(fulfillmentType) - getCheckoutPointsDiscountAmount();
 }
 
 function getCheckoutDiscountAmount() {
     return getCartDiscountTotalAmount();
+}
+
+// SYNC: functions/pricing.js LOYALTY_POINT_VALUE_COP — 100 puntos = $1.000 COP.
+const LOYALTY_POINT_VALUE_COP = 10;
+
+// Tope client-side, solo para feedback inmediato en el checkout -- el servidor (pricing.js:
+// computeServerPricedOrder) es la autoridad real y re-clampa contra el saldo fresco.
+function getCheckoutMaxRedeemablePoints() {
+    const available = Math.max(0, Number(activeCustomerProfile?.puntosDisponibles) || 0);
+    const maxBySubtotal = Math.floor(getCartTotalAmount() / LOYALTY_POINT_VALUE_COP);
+    return Math.max(0, Math.min(available, maxBySubtotal));
+}
+
+function getCheckoutPointsDiscountAmount() {
+    const clamped = Math.max(0, Math.min(Math.floor(checkoutPointsToRedeem || 0), getCheckoutMaxRedeemablePoints()));
+    return clamped * LOYALTY_POINT_VALUE_COP;
 }
 
 function getCurrentOrderingMinutes(now = new Date()) {
@@ -3546,6 +3565,7 @@ function openCustomerAuthModal() {
                         <div class="cp-hero-info">
                             <span class="cp-hero-name">${_name}</span>
                             ${_phone ? `<span class="cp-hero-phone">${_phone}</span>` : ''}
+                            ${Number(profile?.puntosDisponibles) > 0 ? `<span class="cp-hero-points">${Number(profile.puntosDisponibles).toLocaleString('es-CO')} puntos disponibles</span>` : ''}
                         </div>
                     </div>
 
@@ -4733,7 +4753,9 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
     const cashChangeRequired = customerInfo.cashChangeRequired === true;
     const cashTenderAmount = Number(customerInfo.cashTenderAmount || 0);
-    const orderTotal = getCartTotalAmount() + deliveryFee + incrementoFee;
+    const pointsToRedeem = Math.max(0, Math.floor(Number(customerInfo.pointsToRedeem) || 0));
+    const pointsDiscountAmount = Number.isFinite(Number(customerInfo.pointsDiscountAmount)) ? Number(customerInfo.pointsDiscountAmount) : pointsToRedeem * LOYALTY_POINT_VALUE_COP;
+    const orderTotal = getCartTotalAmount() + deliveryFee + incrementoFee - pointsDiscountAmount;
     const lines = shoppingCart.map((item, index) => {
         const details = [
             `${index + 1}. ${item.productName} x${item.quantity}`,
@@ -4772,9 +4794,10 @@ function buildCartCheckoutMessage(customerInfo = {}) {
         : '';
     const incrementoLine = incrementoFee > 0 ? `\nIncremento 2x1 (para llevar/domicilio): ${formatCurrency(incrementoFee)}` : '';
     const totalDisplay = fulfillmentType === 'delivery' && customerInfo.deliveryFeePending
-        ? `${formatCurrency(getCartTotalAmount() + incrementoFee)} + domicilio por confirmar`
+        ? `${formatCurrency(getCartTotalAmount() + incrementoFee - pointsDiscountAmount)} + domicilio por confirmar`
         : formatCurrency(orderTotal);
-    return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nSubtotal: ${formatCurrency(getCartTotalAmount())}${discountAmount > 0 ? `\nDescuento: ${formatCurrency(discountAmount)}` : ''}${domicilioLine}${incrementoLine}\nTotal: ${totalDisplay}`;
+    const pointsLine = pointsDiscountAmount > 0 ? `\nPuntos usados: ${pointsToRedeem.toLocaleString('es-CO')} (${formatCurrency(pointsDiscountAmount)})` : '';
+    return `${header}\n${customerDetails.join('\n')}${customerDetails.length ? '\n' : ''}\n${lines.join('\n\n')}\n\nTotal items: ${getCartProductCount()}\nSubtotal: ${formatCurrency(getCartTotalAmount())}${discountAmount > 0 ? `\nDescuento: ${formatCurrency(discountAmount)}` : ''}${domicilioLine}${incrementoLine}${pointsLine}\nTotal: ${totalDisplay}`;
 }
 
 // Firestore rechaza un documento entero si pasa 1MiB. Las fotos normales de producto son
@@ -4841,7 +4864,11 @@ async function createOrderFromCart(customerInfo = {}) {
     }
 
     const promo2x1IncrementoFee = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
-    const clientReportedTotal = subtotal + deliveryFee + promo2x1IncrementoFee;
+    // Clampado local solo para la UI optimista/el mensaje de WhatsApp -- el servidor
+    // (pricing.js: computeServerPricedOrder) es la autoridad real, releyendo el saldo fresco.
+    const pointsToRedeem = Math.max(0, Math.min(Math.floor(Number(customerInfo.pointsToRedeem) || 0), getCheckoutMaxRedeemablePoints()));
+    const pointsDiscountAmount = pointsToRedeem * LOYALTY_POINT_VALUE_COP;
+    const clientReportedTotal = subtotal + deliveryFee + promo2x1IncrementoFee - pointsDiscountAmount;
     const deliveryAddress = String(customerInfo.address || '').trim();
     const customerPhone = String(customerInfo.phone || '').trim();
     const customerPhoneDigits = customerPhone.replace(/\D+/g, '');
@@ -4870,6 +4897,7 @@ async function createOrderFromCart(customerInfo = {}) {
             deliveryLongitude,
             deliveryZone: customerInfo.deliveryZone || null,
             promo2x1IncrementoFee,
+            pointsToRedeem,
             isScheduled: Boolean(customerInfo.isScheduled),
             scheduledDate: customerInfo.isScheduled ? String(customerInfo.scheduledDate || '') : null,
             scheduledTime: customerInfo.isScheduled ? String(customerInfo.scheduledTime || '') : null,
@@ -4884,7 +4912,9 @@ async function createOrderFromCart(customerInfo = {}) {
                 deliveryZone: customerInfo.deliveryZone || null,
                 deliveryFee,
                 isScheduled: customerInfo.isScheduled,
-                scheduledLabel: customerInfo.scheduledLabel
+                scheduledLabel: customerInfo.scheduledLabel,
+                pointsToRedeem,
+                pointsDiscountAmount
             }),
             clientReportedTotal
         }
@@ -5561,7 +5591,8 @@ async function submitCheckoutInfo() {
             isScheduled: checkoutIsScheduled,
             scheduledDate: checkoutIsScheduled ? checkoutScheduledDate : '',
             scheduledTime: checkoutIsScheduled ? checkoutScheduledTime : '',
-            scheduledLabel: checkoutIsScheduled ? scheduledLabel : ''
+            scheduledLabel: checkoutIsScheduled ? scheduledLabel : '',
+            pointsToRedeem: Math.max(0, Math.min(Math.floor(checkoutPointsToRedeem || 0), getCheckoutMaxRedeemablePoints()))
         };
 
         if (profile && shouldSaveNewAddress) {
@@ -5819,6 +5850,28 @@ function updateCheckoutInfoModalState() {
         checkoutInfoUI.discountValue.textContent = formatCurrency(discountAmount);
     }
 
+    const maxRedeemablePoints = getCheckoutMaxRedeemablePoints();
+    if (checkoutInfoUI.pointsField) {
+        checkoutInfoUI.pointsField.hidden = maxRedeemablePoints <= 0;
+    }
+    if (checkoutInfoUI.pointsInput) {
+        if (checkoutPointsToRedeem > maxRedeemablePoints) {
+            checkoutPointsToRedeem = maxRedeemablePoints;
+        }
+        checkoutInfoUI.pointsInput.max = String(maxRedeemablePoints);
+        if (document.activeElement !== checkoutInfoUI.pointsInput) {
+            checkoutInfoUI.pointsInput.value = checkoutPointsToRedeem > 0 ? String(checkoutPointsToRedeem) : '';
+        }
+    }
+    if (checkoutInfoUI.pointsHint) {
+        checkoutInfoUI.pointsHint.textContent = `Tienes ${maxRedeemablePoints.toLocaleString('es-CO')} puntos disponibles para usar (${formatCurrency(maxRedeemablePoints * LOYALTY_POINT_VALUE_COP)}).`;
+    }
+    const pointsDiscountAmount = getCheckoutPointsDiscountAmount();
+    if (checkoutInfoUI.pointsDiscountRow && checkoutInfoUI.pointsDiscountValue) {
+        checkoutInfoUI.pointsDiscountRow.hidden = pointsDiscountAmount <= 0;
+        checkoutInfoUI.pointsDiscountValue.textContent = formatCurrency(pointsDiscountAmount);
+    }
+
     if (checkoutInfoUI.orderTotalValue) {
         const incrementoFeeForDisplay = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
         let displayTotal;
@@ -5830,6 +5883,7 @@ function updateCheckoutInfoModalState() {
             const feeForDisplay = checkoutDeliveryLocationConfirmed ? deliveryFee : DELIVERY_FEE_AMOUNT;
             displayTotal = getCartTotalAmount() + feeForDisplay + incrementoFeeForDisplay;
         }
+        displayTotal -= pointsDiscountAmount;
         checkoutInfoUI.orderTotalValue.textContent = formatCurrency(displayTotal);
     }
 }
@@ -5886,6 +5940,7 @@ function openCheckoutInfoModal() {
     checkoutDeliveryLocation = null;
     checkoutDeliveryLocationConfirmed = false;
     checkoutDeliveryFeePending = false;
+    checkoutPointsToRedeem = 0;
 
     const profile = activeCustomerProfile;
     const savedAddresses = profile ? getCustomerSavedAddresses(profile) : [];
@@ -5976,6 +6031,13 @@ function openCheckoutInfoModal() {
                 <span>Telefono</span>
                 <input type="tel" id="checkoutCustomerPhone" placeholder="Escribe el telefono de contacto">
             </label>`}
+            <div class="checkout-points-field" id="checkoutPointsField" hidden>
+                <label class="support-field">
+                    <span>¿Cuántos puntos quieres usar?</span>
+                    <input type="number" id="checkoutPointsInput" min="0" step="1" placeholder="0">
+                </label>
+                <p class="checkout-points-hint" id="checkoutPointsHint"></p>
+            </div>
             <div class="customer-profile-summary customer-profile-summary-grid checkout-summary-grid">
                 <div id="checkoutDeliveryFeeRow" hidden>
                     <span>Costo de envío</span>
@@ -5984,6 +6046,10 @@ function openCheckoutInfoModal() {
                 <div id="checkoutDiscountRow" hidden>
                     <span>Descuento</span>
                     <strong id="checkoutDiscountValue">${formatCurrency(getCheckoutDiscountAmount())}</strong>
+                </div>
+                <div id="checkoutPointsDiscountRow" hidden>
+                    <span>Descuento por puntos</span>
+                    <strong id="checkoutPointsDiscountValue">${formatCurrency(0)}</strong>
                 </div>
                 <div>
                     <span>Total</span>
@@ -6028,6 +6094,11 @@ function openCheckoutInfoModal() {
         deliveryFeeValue: modal.querySelector('#checkoutDeliveryFeeValue'),
         discountRow: modal.querySelector('#checkoutDiscountRow'),
         discountValue: modal.querySelector('#checkoutDiscountValue'),
+        pointsField: modal.querySelector('#checkoutPointsField'),
+        pointsInput: modal.querySelector('#checkoutPointsInput'),
+        pointsHint: modal.querySelector('#checkoutPointsHint'),
+        pointsDiscountRow: modal.querySelector('#checkoutPointsDiscountRow'),
+        pointsDiscountValue: modal.querySelector('#checkoutPointsDiscountValue'),
         orderTotalValue: modal.querySelector('#checkoutOrderTotalValue'),
         feedback: modal.querySelector('#checkoutInfoFeedback'),
         send: modal.querySelector('#checkoutSubmitButton'),
@@ -6070,6 +6141,10 @@ function openCheckoutInfoModal() {
             checkoutInfoUI.setPrimaryField.style.display =
                 checkoutInfoUI.saveAddressToggle.checked && canShowPrimary ? '' : 'none';
         }
+    });
+    checkoutInfoUI.pointsInput?.addEventListener('input', () => {
+        checkoutPointsToRedeem = Math.max(0, Math.floor(Number(checkoutInfoUI.pointsInput.value) || 0));
+        updateCheckoutInfoModalState();
     });
 
     modal.addEventListener('click', (event) => {

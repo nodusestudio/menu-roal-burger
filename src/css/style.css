@@ -7440,6 +7440,11 @@ body.has-consent-doc-open .guest-register-banner {
     color: var(--text-primary); letter-spacing: 0.3px;
 }
 .cp-hero-phone { font-size: 0.82rem; color: var(--text-secondary); }
+.cp-hero-points {
+    font-size: 0.78rem; font-weight: 600;
+    color: var(--brand-orange);
+    margin-top: 2px;
+}
 
 .cp-menu-card { border-radius: 22px; overflow: hidden; }
 
@@ -7975,6 +7980,18 @@ a,
     height: 2px;
     background: rgba(255,255,255,0.18);
     border-radius: 1px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CHECKOUT — canje de puntos de lealtad
+   ══════════════════════════════════════════════════════════════ */
+.checkout-points-field {
+    margin: 0.25rem 0 0.75rem;
+}
+.checkout-points-hint {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0.3rem 0 0;
 }
 
 /* ══════════════════════════════════════════════════════════════

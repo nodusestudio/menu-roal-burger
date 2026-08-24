@@ -21,6 +21,7 @@ const orderLogic = require('./agent/orderLogic');
 
 const MISMATCH_LOG_TOLERANCE = 50; // COP — por debajo de esto, solo redondeos, no se loguea
 const RECOMMENDED_DAY_DISCOUNT_RATE = 0.2; // SYNC: script-v2.js:3648
+const LOYALTY_POINT_VALUE_COP = 10; // 100 puntos = $1.000 COP — tasa de canje de puntos de lealtad
 
 // SYNC: script-v2.js:8091-8097
 function normalizeCategoryKey(value) {
@@ -235,6 +236,16 @@ async function fetchCouponLocks(db, clientId) {
     return snap.exists ? (snap.data()?.cupones_bloqueados || {}) : {};
 }
 
+// Misma lectura de clientes/{clientId} que fetchCouponLocks, pero para el saldo de puntos de
+// lealtad -- se separa en su propia función (en vez de fusionar ambas en un solo fetch) para no
+// tocar la firma/comportamiento ya probado de fetchCouponLocks; Firestore igual deduplica lecturas
+// concurrentes del mismo doc dentro de un único Promise.all.
+async function fetchLoyaltyPointsBalance(db, clientId) {
+    if (!clientId) return 0;
+    const snap = await db.collection('clientes').doc(clientId).get();
+    return snap.exists ? Math.max(0, Number(snap.data()?.puntosDisponibles) || 0) : 0;
+}
+
 // Precio "piso" verificado de una línea del carrito — no incluye extras de upgrade (bebida/
 // acompañante/combo-pack agregados desde el sheet de upsell), porque el navegador los suma al
 // unitPrice ANTES de guardar el carrito y no deja rastro de cuál fue ni cuánto costaba (ver
@@ -294,12 +305,14 @@ async function computeServerPricedOrder(db, {
     deliveryLongitude,
     deliveryFeeSubmitted,
     promo2x1IncrementoFeeExpected,
-    clientId
+    clientId,
+    pointsToRedeemRequested
 }) {
-    const [catalog, combosEspecialesSnapshot, couponLocks] = await Promise.all([
+    const [catalog, combosEspecialesSnapshot, couponLocks, puntosDisponibles] = await Promise.all([
         fetchAllSellableItems(db),
         db.collection('combos_especiales').get(),
-        fetchCouponLocks(db, clientId)
+        fetchCouponLocks(db, clientId),
+        fetchLoyaltyPointsBalance(db, clientId)
     ]);
 
     const combosEspeciales = combosEspecialesSnapshot.docs
@@ -381,7 +394,19 @@ async function computeServerPricedOrder(db, {
     // Cargo de empaque del 2x1: constante fija conocida, no depende de ningún catálogo.
     const promo2x1IncrementoFee = Number(promo2x1IncrementoFeeExpected || 0);
 
-    const total = subtotal + deliveryFee + promo2x1IncrementoFee;
+    // Canje de puntos de lealtad: nunca se rechaza una solicitud fuera de rango, se clampa contra
+    // la fuente de verdad del servidor (mismo espíritu que resolveServerLineFloor) -- el tope es
+    // el saldo real disponible Y el subtotal (el domicilio nunca se paga con puntos, simétrico con
+    // que los puntos tampoco se ganan sobre el domicilio, ver awardLoyaltyPoints en index.js).
+    const maxPointsBySubtotal = Math.floor(subtotal / LOYALTY_POINT_VALUE_COP);
+    const pointsRedeemed = Math.max(0, Math.min(
+        Math.floor(Number(pointsToRedeemRequested) || 0),
+        puntosDisponibles,
+        maxPointsBySubtotal
+    ));
+    const pointsDiscountAmount = pointsRedeemed * LOYALTY_POINT_VALUE_COP;
+
+    const total = subtotal + deliveryFee + promo2x1IncrementoFee - pointsDiscountAmount;
 
     return {
         items: pricedItems,
@@ -389,6 +414,8 @@ async function computeServerPricedOrder(db, {
         deliveryFee,
         deliveryFeeVerified,
         promo2x1IncrementoFee,
+        pointsRedeemed,
+        pointsDiscountAmount,
         total,
         mismatchDetected,
         mismatchDetails,
@@ -397,5 +424,6 @@ async function computeServerPricedOrder(db, {
 }
 
 module.exports = {
-    computeServerPricedOrder
+    computeServerPricedOrder,
+    LOYALTY_POINT_VALUE_COP
 };

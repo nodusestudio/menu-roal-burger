@@ -9748,6 +9748,11 @@ function buildThermalTicketMarkup(order, options = {}) {
                         <span>Incremento empaque 2×1</span>
                         <strong>${escapeHtml(formatMoney(Number(order.promo2x1IncrementoFee)))}</strong>
                     </div>` : ''}
+                    ${Number(order.pointsRedeemed || 0) > 0 ? `
+                    <div class="ticket-summary-line ticket-total-row ticket-discount-row">
+                        <span>⭐ Puntos usados (${escapeHtml(String(Number(order.pointsRedeemed).toLocaleString('es-CO')))})</span>
+                        <strong style="color:#1a7a42;">-${escapeHtml(formatMoney(Number(order.pointsDiscountAmount || 0)))}</strong>
+                    </div>` : ''}
                     ${order.orderType === 'domicilio' ? `
                     <div class="ticket-summary-line ticket-total-row">
                         <span>Domicilio${order.source === 'web' ? (order.deliveryFeeVerified === true
@@ -12686,6 +12691,7 @@ function buildESCPOSData(order) {
     // ── TOTALES ─────────────────────────────────────────────────────────────
     wc('  Subtotal', formatMoney(order.subtotal || 0));
     if (Number(order.promo2x1IncrementoFee || 0) > 0) wc('  Incremento 2x1', formatMoney(Number(order.promo2x1IncrementoFee)));
+    if (Number(order.pointsRedeemed || 0) > 0) wc(`  Puntos usados (${order.pointsRedeemed})`, `-${formatMoney(Number(order.pointsDiscountAmount || 0))}`);
     if (order.orderType === 'domicilio') wc('  Domicilio', formatMoney(order.deliveryFee || 0));
     sep();
     pb(ESC, 0x45, 0x01, ESC, 0x21, 0x10);       // negrita + doble alto

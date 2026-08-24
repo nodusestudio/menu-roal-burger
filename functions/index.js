@@ -429,6 +429,44 @@ exports.awardLoyaltyPoints = onDocumentWritten(
 exports._awardLoyaltyPointsTransaction = awardLoyaltyPointsTransaction;
 
 // ─────────────────────────────────────────────────────────────
+// Descontar los puntos redimidos en un pedido recién creado (ver submitPublicOrder / pricing.js:
+// computeServerPricedOrder). A diferencia del acreditado de arriba (disparado por un trigger que
+// puede reintentar), esto se llama una sola vez, justo después de crear el pedido -- pero como el
+// número ya calculado en `pointsToRedeem` viene del pricing (que leyó el saldo ANTES de crear el
+// pedido), acá se relee el saldo fresco dentro de la transacción y se re-clampa, por si otro
+// pedido del mismo cliente alcanzó a descontar puntos en el medio -- así el saldo nunca queda
+// negativo aunque dos checkouts casi simultáneos hayan pasado el pricing con el mismo saldo. Si el
+// monto real descontado termina siendo distinto del planeado, se corrige también en el pedido para
+// que quede fiel a lo que de verdad se cobró.
+async function redeemLoyaltyPointsTransaction(db, orderId, clientId, pointsToRedeem) {
+    const orderRef = db.collection('pedidos').doc(orderId);
+    const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+
+    await db.runTransaction(async (transaction) => {
+        const clientSnap = await transaction.get(clientRef);
+        const freshBalance = clientSnap.exists ? Math.max(0, Number(clientSnap.data()?.puntosDisponibles) || 0) : 0;
+        const actualRedeemed = Math.max(0, Math.min(pointsToRedeem, freshBalance));
+        if (actualRedeemed <= 0) {
+            return;
+        }
+
+        transaction.update(clientRef, {
+            puntosDisponibles: FieldValue.increment(-actualRedeemed)
+        });
+
+        if (actualRedeemed !== pointsToRedeem) {
+            transaction.update(orderRef, {
+                pointsRedeemed: actualRedeemed,
+                pointsDiscountAmount: actualRedeemed * pricing.LOYALTY_POINT_VALUE_COP
+            });
+        }
+    });
+}
+
+// Exportado solo para tests (tests/loyalty-redemption.test.js).
+exports._redeemLoyaltyPointsTransaction = redeemLoyaltyPointsTransaction;
+
+// ─────────────────────────────────────────────────────────────
 // Enviar OTP de verificación al WhatsApp del cliente
 // Requiere secrets: ULTRAMSG_INSTANCE y ULTRAMSG_TOKEN
 // Configurar: firebase functions:secrets:set ULTRAMSG_INSTANCE
@@ -673,6 +711,8 @@ function sanitizeClientProfileForClient(clientId, data = {}, hasPassword = false
         consentVersion: String(data.consentVersion || '').trim(),
         totalOrders: Number(data.totalOrders || 0),
         totalSpent: Number(data.totalSpent || 0),
+        puntosDisponibles: Math.max(0, Number(data.puntosDisponibles) || 0),
+        puntosAcumuladosTotal: Math.max(0, Number(data.puntosAcumuladosTotal) || 0),
         lastOrderCode: String(data.lastOrderCode || '').trim(),
         lastOrderId: String(data.lastOrderId || '').trim(),
         lastOrderTotal: Number(data.lastOrderTotal || 0),
@@ -1121,7 +1161,8 @@ exports.submitPublicOrder = onCall(
             deliveryLongitude,
             deliveryFeeSubmitted: customerInfo.deliveryFee,
             promo2x1IncrementoFeeExpected: customerInfo.promo2x1IncrementoFee,
-            clientId
+            clientId,
+            pointsToRedeemRequested: customerInfo.pointsToRedeem
         });
 
         if (priced.mismatchDetected || priced.mismatchDetails.length) {
@@ -1155,6 +1196,8 @@ exports.submitPublicOrder = onCall(
             costoDomicilio: priced.deliveryFee,
             promo2x1IncrementoFee: priced.promo2x1IncrementoFee,
             total: priced.total,
+            pointsRedeemed: priced.pointsRedeemed,
+            pointsDiscountAmount: priced.pointsDiscountAmount,
             paymentMethod,
             cashChangeRequired,
             cashTenderAmount: Number.isFinite(cashTenderAmount) ? cashTenderAmount : null,
@@ -1190,6 +1233,19 @@ exports.submitPublicOrder = onCall(
             await db.collection(CLIENTS_COLLECTION).doc(clientId)
                 .set({ cupones_bloqueados: cuponesBloqueados }, { merge: true })
                 .catch(() => {});
+        }
+
+        // Deducir los puntos redimidos. A diferencia del bloqueo de cupones de arriba (best-effort,
+        // silencioso), esto es dinero -- usa una transacción real que relee el saldo fresco (ver
+        // redeemLoyaltyPointsTransaction) para no dejar el saldo negativo si dos checkouts del mismo
+        // cliente casi simultáneos alcanzan a pasar el pricing con el mismo saldo. Un fallo acá
+        // jamás debe tumbar ni revertir el pedido que ya se guardó arriba.
+        if (clientId && priced.pointsRedeemed > 0) {
+            try {
+                await redeemLoyaltyPointsTransaction(db, orderRef.id, clientId, priced.pointsRedeemed);
+            } catch (err) {
+                console.error(`submitPublicOrder: fallo al descontar puntos redimidos para pedido ${orderRef.id}:`, err);
+            }
         }
 
         return { id: orderRef.id, code: orderCode, total: priced.total };
