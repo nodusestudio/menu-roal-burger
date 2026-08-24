@@ -66,6 +66,9 @@
        gradiente) -- mismo criterio, coincidencia exacta. */
     --brand-orange-redorange: #ff4500;
     --brand-orange-redorange-rgb: 255, 69, 0;
+    /* Fase 2c: #e02000(1x) y #e01e00(2x) son el mismo stop oscuro de --brand-orange-redorange
+       en 3 gradientes distintos, con diff=2 entre si -- confirmado indistinguible con captura. */
+    --brand-orange-redorange-dark: #e01e00;
     --amber-muted: #a54800;
 }
 
@@ -4508,7 +4511,7 @@ body.has-consent-doc-open .guest-register-banner {
 
 .mobile-order-btn:hover,
 .mobile-order-btn:active {
-    background: linear-gradient(135deg, var(--brand-orange-redorange), #e02000);
+    background: linear-gradient(135deg, var(--brand-orange-redorange), var(--brand-orange-redorange-dark));
     transform: translateY(-2px);
     box-shadow: 0 8px 30px rgba(255, 55, 0, 0.78), 0 3px 10px rgba(180, 10, 0, 0.50);
     text-decoration: none;
@@ -5083,7 +5086,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .promo-btn-order:hover {
-    background: linear-gradient(135deg, var(--brand-orange-redorange), #e01e00);
+    background: linear-gradient(135deg, var(--brand-orange-redorange), var(--brand-orange-redorange-dark));
     transform: translateY(-2px);
     box-shadow: 0 14px 32px rgba(220, 45, 0, 0.68), 0 4px 10px rgba(180, 10, 0, 0.45);
 }
@@ -5242,7 +5245,7 @@ body.has-consent-doc-open .guest-register-banner {
 }
 
 .bebidas-modal-btn-primary:hover {
-    background: linear-gradient(135deg, var(--brand-orange-redorange), #e01e00);
+    background: linear-gradient(135deg, var(--brand-orange-redorange), var(--brand-orange-redorange-dark));
     box-shadow: 0 14px 34px rgba(220, 45, 0, 0.68), 0 4px 10px rgba(180, 10, 0, 0.45);
 }
 
