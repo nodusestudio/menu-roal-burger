@@ -282,7 +282,7 @@ let _skipNextPopstate  = false;
 let _closingByBackBtn  = false;
 
 // ── Gestión centralizada de pantallas secundarias ──
-const _SECONDARY_SCREENS = ['promoScreen', 'categoryDetailScreen', 'perfilScreen', 'ayudaScreen', 'combosScreen', 'menuCarouselScreen', 'promoCarouselScreen'];
+const _SECONDARY_SCREENS = ['promoScreen', 'perfilScreen', 'ayudaScreen', 'combosScreen', 'menuCarouselScreen', 'promoCarouselScreen'];
 let _screenHistoryPushed = false;
 
 function _pushModalState() {
@@ -10904,87 +10904,6 @@ function _bindLightboxTap(wrapEl, imgEl, extra) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-function openCategoryDetail(cat) {
-    const screen = document.getElementById('categoryDetailScreen');
-    const title  = document.getElementById('cdsTitle');
-    const grid   = document.getElementById('cdsProductsGrid');
-    if (!screen || !title || !grid) return; // no ocultar home si faltan elementos
-
-    _enterScreen('categoryDetailScreen');
-
-    const catKey = cat.key || normalizeCategoryKey(cat.name);
-    title.textContent = cat.name;
-    const products = latestProducts
-        .filter(p => normalizeCategoryKey(String(p.categoria || p.category || '')) === catKey
-                  && String(p.estado || '').trim() !== 'paused')
-        .sort((a, b) => {
-            const oa = a.order ?? 9999;
-            const ob = b.order ?? 9999;
-            if (oa !== ob) return oa - ob;
-            return String(a.nombre || a.name || '').localeCompare(String(b.nombre || b.name || ''), 'es');
-        });
-
-    if (products.length === 0) {
-        grid.innerHTML = '<p class="cds-empty-msg">No hay productos disponibles en esta categoria.</p>';
-    } else {
-        grid.innerHTML = '';
-        products.forEach((product, idx) => {
-            const nombre = String(product.nombre || product.name || 'Producto').trim();
-            const precio = resolveProductDisplayPrice(product);
-            const imgSrc = String(product.image_url || product.imageUrl || '') || _IMG_FINAL_FALLBACK;
-            const btnId  = `btn-cds-${idx}`;
-
-            const card = document.createElement('div');
-            card.className = 'cds-product-card';
-
-            const imgWrap = document.createElement('div');
-            imgWrap.className = 'cds-product-img-wrap';
-            const imgEl = document.createElement('img');
-            imgEl.className = 'cds-product-img';
-            imgEl.src = imgSrc;
-            imgEl.alt = nombre;
-            imgEl.loading = 'lazy';
-            imgEl.onerror = () => { imgEl.src = _IMG_FINAL_FALLBACK; };
-            imgEl.addEventListener('click', () => startProductOrderFlow(nombre, cat.name, btnId));
-            imgWrap.appendChild(imgEl);
-
-            const info = document.createElement('div');
-            info.className = 'cds-product-info';
-
-            const nameEl = document.createElement('span');
-            nameEl.className = 'cds-product-name';
-            nameEl.textContent = nombre;
-
-            const priceEl = document.createElement('span');
-            priceEl.className = 'cds-product-price';
-            priceEl.textContent = `$${precio.toLocaleString('es-CO')}`;
-            info.appendChild(nameEl);
-            info.appendChild(priceEl);
-
-            const orderBtn = document.createElement('button');
-            orderBtn.type = 'button';
-            orderBtn.id = btnId;
-            orderBtn.className = 'cds-product-btn';
-            orderBtn.textContent = '¡Lo Quiero!';
-            orderBtn.addEventListener('click', () => startProductOrderFlow(nombre, cat.name, btnId));
-            info.appendChild(orderBtn);
-
-            card.appendChild(imgWrap);
-            card.appendChild(info);
-            grid.appendChild(card);
-        });
-    }
-
-    screen.hidden = false;
-    screen.scrollTop = 0;
-}
-
-function closeCategoryDetail() {
-    const screen = document.getElementById('categoryDetailScreen');
-    if (screen) screen.hidden = true;
-    _exitScreen();
-}
-
 // ===== FIN HOME SCREEN =====
 
 // ── Pantalla de Combos con dos carruseles ────────────────────────────────────
@@ -11854,7 +11773,6 @@ function _exitScreen() {
 // Marca el ítem de la barra de navegación correspondiente a la pantalla activa
 function _setNavCurrent(screenId) {
     const navMap = {
-        categoryDetailScreen: 'bnavInicio',
         menuCarouselScreen:   'bnavInicio',
         combosScreen:         'bnavCombos',
         promoScreen:          'bnavPromo',
@@ -12989,9 +12907,6 @@ document.addEventListener('DOMContentLoaded', () => {
         window.__roalHideSplash?.();
     });
 
-    // Botón volver en pantalla detalle de categoría
-    document.getElementById('cdsBackBtn')?.addEventListener('click', () => closeCategoryDetail());
-
     // Diferir carga de fondos pesados (fondo.png 3.9 MB + fondo-vertical.png 3 MB)
     // hasta que la página sea interactiva — ahorra ancho de banda en carga inicial.
     const _triggerBgLoad = () => document.body.classList.add('bg-loaded');
@@ -13106,15 +13021,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 _closingByBackBtn = false;
             }
         } else if (_screenHistoryPushed) {
-            // Pantallas de menú (promos, detalle de categoría, cuenta, ayuda, combos)
+            // Pantallas de menú (promos, cuenta, ayuda, combos)
             _screenHistoryPushed = false;
             _closingByBackBtn = true;
             try {
                 // Cierra de más anidado a menos anidado
-                if (!document.getElementById('categoryDetailScreen')?.hidden) {
-                    closeCategoryDetail();
-                    return;
-                }
                 if (!document.getElementById('perfilScreen')?.hidden)        { closeCustomerAuthModal();   return; }
                 if (!document.getElementById('promoScreen')?.hidden)         { closePromoScreen();         return; }
                 if (!document.getElementById('ayudaScreen')?.hidden)         { closeAyudaScreen();         return; }
@@ -13147,7 +13058,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // El home viejo quedo retirado (siempre oculto) — este chequeo ahora es sobre
             // menuCarouselScreen, que es la pantalla base actual.
             if (menuScreen && menuScreen.hidden && !document.getElementById('splashScreen')) {
-                const _secondaryIds = ['categoryDetailScreen', 'promoScreen'];
+                const _secondaryIds = ['promoScreen'];
                 const _anySecondaryOpen = _secondaryIds.some(id => { const el = document.getElementById(id); return el && !el.hidden; });
                 if (!_anySecondaryOpen) openMenuCarouselScreen();
                 return;

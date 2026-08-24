@@ -2261,7 +2261,6 @@ body.has-guest-register-banner .public-topbar {
 }
 
 body.has-guest-register-banner #homeScreen,
-body.has-guest-register-banner #categoryDetailScreen,
 body.has-guest-register-banner #promoScreen,
 body.has-guest-register-banner #combosScreen,
 body.has-guest-register-banner #perfilScreen,
@@ -5542,7 +5541,6 @@ body.has-consent-doc-open .guest-register-banner {
 
 /* Garantía: hidden siempre oculta las pantallas aunque otra regla CSS fije display */
 #homeScreen[hidden],
-#categoryDetailScreen[hidden],
 #promoScreen[hidden],
 #combosScreen[hidden],
 #menuCarouselScreen[hidden],
@@ -5560,7 +5558,6 @@ body.has-consent-doc-open .guest-register-banner {
       (intersección pan-x ∩ pan-y = ninguno), y el navegador ya resuelve
       correctamente a qué eje pertenece cada gesto de forma nativa. ── */
 #homeScreen,
-#categoryDetailScreen,
 #promoScreen,
 #combosScreen,
 #perfilScreen,
@@ -5574,7 +5571,6 @@ body.has-consent-doc-open .guest-register-banner {
 /* Fase 4: la barra superior fija reemplaza la barra inferior — todas las pantallas bajan su
    "top" para no quedar tapadas por ella (mismo mecanismo que ya usaba el banner de invitado
    mas arriba, ahora aplicado siempre en vez de condicionado a una clase del body). */
-#categoryDetailScreen,
 #promoScreen,
 #combosScreen,
 #perfilScreen,
@@ -7267,22 +7263,6 @@ body.has-consent-doc-open .guest-register-banner {
 
 /* ===== FIN HOME SCREEN ===== */
 
-/* ===== PANTALLA DETALLE DE CATEGORÍA ===== */
-
-#categoryDetailScreen {
-    position: fixed;
-    inset: 0;
-    z-index: 503;
-    background: transparent;
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
-    padding-top: 0;
-}
-
-#categoryDetailScreen:not([hidden]) {
-    animation: screenFadeIn 0.18s ease;
-}
-
 @keyframes screenFadeIn {
     from { opacity: 0; transform: translateY(12px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -7336,108 +7316,6 @@ body.has-consent-doc-open .guest-register-banner {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-
-/* Grid de productos en el detalle */
-.cds-products-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    padding: 16px 16px 140px;
-    max-width: 600px;
-    margin: 0 auto;
-}
-
-.cds-products-grid {
-    padding-bottom: 130px;
-}
-
-.cds-empty-msg {
-    grid-column: 1 / -1;
-    text-align: center;
-    color: rgba(80, 45, 12, 0.5);
-    font-family: 'Roboto', sans-serif;
-    font-size: 0.9rem;
-    padding: 32px 0;
-}
-
-/* Tarjeta de producto en el detalle */
-.cds-product-card {
-    border-radius: 14px;
-    overflow: hidden;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-    display: flex;
-    flex-direction: column;
-}
-
-.cds-product-img-wrap {
-    aspect-ratio: 1;
-    overflow: hidden;
-    background: rgba(180, 120, 60, 0.07);
-}
-
-.cds-product-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    cursor: pointer;
-    transition: transform 0.22s ease;
-}
-
-.cds-product-img:hover {
-    transform: scale(1.06);
-}
-
-.cds-product-info {
-    padding: 10px 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex: 1;
-}
-
-.cds-product-name {
-    font-family: 'Oswald', sans-serif;
-    font-size: 0.86rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    line-height: 1.25;
-}
-
-.cds-product-price {
-    font-family: 'Roboto', sans-serif;
-    font-size: 0.78rem;
-    color: var(--text-secondary);
-}
-
-.cds-product-btn {
-    margin-top: auto;
-    width: 100%;
-    padding: 8px 0;
-    border: none;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #ff5200, #e83000);
-    color: #fff;
-    font-family: 'Oswald', sans-serif;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    cursor: pointer;
-    transition: transform 0.14s, box-shadow 0.14s;
-    box-shadow: 0 3px 14px rgba(240, 60, 0, 0.55);
-    -webkit-tap-highlight-color: transparent;
-}
-
-.cds-product-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 5px 18px rgba(230, 50, 0, 0.68);
-}
-
-/* ===== FIN PANTALLA DETALLE ===== */
 
 /* ===== PANTALLA PERFIL ===== */
 #perfilScreen {
@@ -8340,11 +8218,6 @@ a,
     .combo-order-btn,
     .pub-upgrade-add-btn {
         min-height: 48px;
-    }
-    /* Botón "¡Lo Quiero!" en tarjetas de categoría */
-    .cds-product-btn {
-        min-height: 44px;
-        padding: 10px 0;
     }
 }
 
