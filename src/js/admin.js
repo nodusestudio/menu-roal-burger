@@ -19415,8 +19415,9 @@ function renderCajaDiaria() {
             const subStr = g.subcategoria ? ` · ${escapeHtml(g.subcategoria)}` : '';
             const descStr = g.descripcion ? ` · ${escapeHtml(g.descripcion)}` : '';
             const gastoId = escapeHtml(g.id || '');
-            const gastoDelBtn = gastoId ? `<button type="button" class="mini-btn remove" data-gasto-del="${gastoId}" title="Eliminar gasto" style="font-size:0.62rem;padding:0px 5px;margin-left:6px;">🗑️</button>` : '';
-            const gastoDesc = `<span class="caja-cell-salida">💸 Gasto${catStr}</span>${subStr}${descStr}${gastoDelBtn}`;
+            const gastoTicketBtn = gastoId ? `<button type="button" class="mini-btn" data-gasto-ticket="${gastoId}" title="Ver e imprimir ticket" style="font-size:0.62rem;padding:0px 5px;margin-left:6px;">🖨️</button>` : '';
+            const gastoDelBtn = gastoId ? `<button type="button" class="mini-btn remove" data-gasto-del="${gastoId}" title="Eliminar gasto" style="font-size:0.62rem;padding:0px 5px;margin-left:2px;">🗑️</button>` : '';
+            const gastoDesc = `<span class="caja-cell-salida">💸 Gasto${catStr}</span>${subStr}${descStr}${gastoTicketBtn}${gastoDelBtn}`;
 
             rows.push(`<tr>
                 <td class="col-left" style="color:#fca5a5;">${hora}</td>
@@ -19460,9 +19461,16 @@ function renderCajaDiaria() {
     if (!bodyEl.dataset.gastoDelListener) {
         bodyEl.dataset.gastoDelListener = '1';
         bodyEl.addEventListener('click', async (e) => {
+            const ticketBtn = e.target.closest('[data-gasto-ticket]');
+            if (ticketBtn) {
+                const gasto = _gastosCajaState.find((g) => g.id === ticketBtn.dataset.gastoTicket);
+                if (gasto) openGastoTicketPreview(gasto);
+                else showNotice('No se encontro el gasto seleccionado.', 'error');
+                return;
+            }
             const delBtn = e.target.closest('[data-gasto-del]');
             if (!delBtn) return;
-            if (!(await showConfirmModal({ icon: '💸', title: '¿Eliminar este gasto?', confirmText: 'Eliminar' }))) return;
+            if (!(await showConfirmModal({ icon: '💸', title: '¿Eliminar este gasto?', message: 'No se puede deshacer.', confirmText: 'Eliminar' }))) return;
             try {
                 await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(delBtn.dataset.gastoDel).delete();
                 showNotice('Gasto eliminado.', 'ok');
@@ -21027,9 +21035,14 @@ async function renderLibroCierres() {
                         const desc = parts.map(escapeHtml).join(' · ');
                         const hora = item._ts ? new Date(item._ts).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
                         const mObj = methods.find((m) => m.id === item.paymentMethod);
+                        const gid = escapeHtml(item.id || '');
                         return `<div class="ht-line">
                             <span>${desc}${hora ? ` <span class="ht-muted">· ${hora}</span>` : ''}${mObj ? ` <span class="ht-muted">${mObj.icon}</span>` : ''}</span>
-                            <span class="ht-egr">−${formatMoney(Number(item.monto || 0))}</span>
+                            <span class="ht-egr">
+                                −${formatMoney(Number(item.monto || 0))}
+                                ${gid ? `<button type="button" class="mini-btn" data-gasto-hist-ticket="${gid}" title="Ver e imprimir ticket" style="font-size:0.62rem;padding:1px 6px;margin-left:6px;">🖨️</button>` : ''}
+                                ${gid ? `<button type="button" class="mini-btn remove" data-gasto-hist-del="${gid}" title="Eliminar gasto" style="font-size:0.62rem;padding:1px 6px;">🗑️</button>` : ''}
+                            </span>
                         </div>`;
                     }).join('');
                     return `<div class="ht-card ht-card-egr">
@@ -21111,6 +21124,36 @@ async function renderLibroCierres() {
                         const snap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(tid).get();
                         if (snap.exists) openTrasladoModal(snap.data(), tid);
                     } catch (_) { showNotice('Error al cargar traslado.', 'error'); }
+                }
+            });
+        }
+
+        // Listeners delegados para ver ticket/eliminar un gasto desde el detalle diario
+        if (!tbody.dataset.gastoHistListener) {
+            tbody.dataset.gastoHistListener = '1';
+            tbody.addEventListener('click', async (e) => {
+                const ticketBtn = e.target.closest('[data-gasto-hist-ticket]');
+                if (ticketBtn) {
+                    // Lectura directa (no cache en memoria) -- esta vista puede mostrar gastos
+                    // externos fuera del rango de los 500 mas recientes que carga _gastosCajaState.
+                    try {
+                        const snap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(ticketBtn.dataset.gastoHistTicket).get();
+                        if (snap.exists) openGastoTicketPreview({ id: snap.id, ...snap.data() });
+                        else showNotice('No se encontro el gasto seleccionado.', 'error');
+                    } catch (_) { showNotice('Error al cargar el gasto.', 'error'); }
+                    return;
+                }
+                const delBtn = e.target.closest('[data-gasto-hist-del]');
+                if (delBtn) {
+                    if (!(await showConfirmModal({ icon: '💸', title: '¿Eliminar este gasto?', message: 'No se puede deshacer.', confirmText: 'Eliminar' }))) return;
+                    try {
+                        await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(delBtn.dataset.gastoHistDel).delete();
+                        showNotice('Gasto eliminado.', 'ok');
+                        await renderLibroCierres();
+                        await loadGastosCaja();
+                        renderCajaDiaria();
+                        renderGastosInformes();
+                    } catch (_) { showNotice('Error al eliminar el gasto.', 'error'); }
                 }
             });
         }
