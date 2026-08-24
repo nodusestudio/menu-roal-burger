@@ -617,7 +617,7 @@ function showWelcomeGreeting(profile) {
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
     `;
-    toast.innerHTML = `${randomEmoji} ${greeting}, <strong>${firstName}</strong>! Bienvenido a ROAL BURGER ${randomEmoji}`;
+    toast.innerHTML = `${randomEmoji} ${greeting}, <strong>${escapeHtml(firstName)}</strong>! Bienvenido a ROAL BURGER ${randomEmoji}`;
 
     document.body.appendChild(toast);
 
@@ -6095,7 +6095,7 @@ function showCartAddedToast(categoryName, productName) {
         document.body.appendChild(toast);
     }
 
-    toast.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;color:#ff9d1a"><polyline points="20 6 9 17 4 12"/></svg><span>${toastCopy.article} <b>${safeProductName}</b> ${toastCopy.adjective} al carrito</span>`;
+    toast.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;color:#ff9d1a"><polyline points="20 6 9 17 4 12"/></svg><span>${toastCopy.article} <b>${escapeHtml(safeProductName)}</b> ${toastCopy.adjective} al carrito</span>`;
     toast.classList.add('is-visible');
 
     if (cartToastTimeout) {
@@ -6542,7 +6542,7 @@ function openCartItemEditor(itemKey) {
     sheet.innerHTML = `
         <div class="cie-sheet">
             <div class="cie-header">
-                <span class="cie-product-name">${String(item.productName || '').split('+')[0].trim()}</span>
+                <span class="cie-product-name">${escapeHtml(String(item.productName || '').split('+')[0].trim())}</span>
                 <button type="button" class="cie-close-btn" id="cieCloseBtn">✕</button>
             </div>
             <div class="cie-body">
@@ -6558,8 +6558,8 @@ function openCartItemEditor(itemKey) {
                         ${acompOptions.map(o => {
                             const sel = currentUpgradeNote && currentUpgradeNote.toLowerCase().includes(String(o.nombre || '').toLowerCase());
                             return `<label class="cie-acomp-item ${sel ? 'is-selected' : ''}">
-                                <input type="radio" name="cieAcomp" value="${o.id}" data-nombre="${o.nombre}" data-precio="${o.precio || 0}" ${sel ? 'checked' : ''}>
-                                <span class="cie-acomp-name">${o.nombre}</span>
+                                <input type="radio" name="cieAcomp" value="${o.id}" data-nombre="${escapeHtml(o.nombre)}" data-precio="${o.precio || 0}" ${sel ? 'checked' : ''}>
+                                <span class="cie-acomp-name">${escapeHtml(o.nombre)}</span>
                                 <span class="cie-acomp-price">${Number(o.precio || 0) > 0 ? '+' + formatCurrency(Number(o.precio)) : 'Incluido'}</span>
                             </label>`;
                         }).join('')}
@@ -6567,7 +6567,7 @@ function openCartItemEditor(itemKey) {
                 </div>` : ''}
                 <div class="cie-section">
                     <p class="cie-section-label">Nota para cocina <span style="font-weight:400;opacity:0.6;">(opcional)</span></p>
-                    <textarea id="cieCommentTA" class="cie-comment-ta" maxlength="120" placeholder="Ej: sin cebolla, extra picante, bien cocido…">${currentComment}</textarea>
+                    <textarea id="cieCommentTA" class="cie-comment-ta" maxlength="120" placeholder="Ej: sin cebolla, extra picante, bien cocido…">${escapeHtml(currentComment)}</textarea>
                     <p class="cie-char-count" id="cieCharCount">${currentComment.length}/120</p>
                 </div>
             </div>
@@ -10450,12 +10450,12 @@ function renderExtraPromoCards() {
 
         section.innerHTML = `
             <div class="home-rec-top-bar">
-                <span class="home-rec-kicker">${kicker}</span>
-                <span class="home-rec-discount-badge">${badge}</span>
+                <span class="home-rec-kicker">${escapeHtml(kicker)}</span>
+                <span class="home-rec-discount-badge">${escapeHtml(badge)}</span>
             </div>
             <div class="home-rec-content">
                 <div class="home-rec-img-wrap">
-                    <img class="home-rec-img" src="${img}" alt="${nombre}" loading="lazy" onerror="this.src='/isotipo.png'">
+                    <img class="home-rec-img" src="${img}" alt="${escapeHtml(nombre)}" loading="lazy" onerror="this.src='/isotipo.png'">
                 </div>
                 <div class="home-rec-body">
                     <strong class="home-rec-name"></strong>
@@ -10540,12 +10540,12 @@ function render2x1Cards() {
 
         section.innerHTML = `
             <div class="home-rec-top-bar">
-                <span class="home-rec-kicker">${kicker}</span>
+                <span class="home-rec-kicker">${escapeHtml(kicker)}</span>
                 <span class="home-rec-discount-badge promo-2x1-badge">2×1</span>
             </div>
             <div class="home-rec-content">
                 <div class="home-rec-img-wrap">
-                    <img class="home-rec-img" src="${img}" alt="${nombre}" loading="lazy" onerror="this.src='/isotipo.png'">
+                    <img class="home-rec-img" src="${img}" alt="${escapeHtml(nombre)}" loading="lazy" onerror="this.src='/isotipo.png'">
                 </div>
                 <div class="home-rec-body">
                     <strong class="home-rec-name"></strong>
@@ -12554,8 +12554,8 @@ function renderSearchResults(query) {
 
     if (scored.length === 0) {
         const msg = q
-            ? `No encontramos &ldquo;<strong>${q.replace(/</g, '&lt;')}</strong>&rdquo;${_searchActiveCat ? ` en <strong>${_searchActiveCat}</strong>` : ''} en nuestro menú.`
-            : `Sin productos${_searchActiveCat ? ` en <strong>${_searchActiveCat}</strong>` : ''} para el precio seleccionado.`;
+            ? `No encontramos &ldquo;<strong>${escapeHtml(q)}</strong>&rdquo;${_searchActiveCat ? ` en <strong>${escapeHtml(_searchActiveCat)}</strong>` : ''} en nuestro menú.`
+            : `Sin productos${_searchActiveCat ? ` en <strong>${escapeHtml(_searchActiveCat)}</strong>` : ''} para el precio seleccionado.`;
         grid.innerHTML = `<p class="search-hint-msg">${msg}</p>`;
         return;
     }
@@ -13121,8 +13121,8 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
     card.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
             <div>
-                <div style="font-family:'Oswald',sans-serif;font-size:1.05rem;font-weight:700;color:#fff7ef;letter-spacing:.3px;">${productName}</div>
-                <div style="font-size:0.72rem;color:rgba(255,200,130,0.6);margin-top:2px;">${categoryName}</div>
+                <div style="font-family:'Oswald',sans-serif;font-size:1.05rem;font-weight:700;color:#fff7ef;letter-spacing:.3px;">${escapeHtml(productName)}</div>
+                <div style="font-size:0.72rem;color:rgba(255,200,130,0.6);margin-top:2px;">${escapeHtml(categoryName)}</div>
             </div>
             <button id="pubVarClose" style="background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:28px;height:28px;color:#fff;cursor:pointer;font-size:1rem;flex-shrink:0;">×</button>
         </div>
@@ -13206,9 +13206,9 @@ function openPublicVariantesModal(productName, categoryName, buttonId, variantes
         btn.type = 'button';
         btn.style.cssText = 'padding:13px 10px;border-radius:14px;border:1.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:#fff7ef;cursor:pointer;text-align:center;line-height:1.4;transition:all .15s;';
         const bebLine = v.con_bebida && v.bebida_nombre
-            ? `<span style="display:block;font-size:0.7rem;color:rgba(255,200,130,0.55);margin-top:3px;">🥤 ${v.bebida_nombre}${v.cantidad_bebidas > 1 ? ` ×${v.cantidad_bebidas}` : ''}</span>`
+            ? `<span style="display:block;font-size:0.7rem;color:rgba(255,200,130,0.55);margin-top:3px;">🥤 ${escapeHtml(v.bebida_nombre)}${v.cantidad_bebidas > 1 ? ` ×${v.cantidad_bebidas}` : ''}</span>`
             : '';
-        btn.innerHTML = `<strong style="display:block;font-family:'Oswald',sans-serif;font-size:0.9rem;">${v.nombre || 'Opción'}</strong><span style="color:#ff9944;font-weight:700;font-size:0.88rem;">$${Number(v.precio || 0).toLocaleString('es-CO')}</span>${bebLine}`;
+        btn.innerHTML = `<strong style="display:block;font-family:'Oswald',sans-serif;font-size:0.9rem;">${escapeHtml(v.nombre || 'Opción')}</strong><span style="color:#ff9944;font-weight:700;font-size:0.88rem;">$${Number(v.precio || 0).toLocaleString('es-CO')}</span>${bebLine}`;
         btn.addEventListener('click', () => {
             selectedVariante = v;
             selectedSabores = [];
@@ -13401,7 +13401,7 @@ function _pubUpgRenderExtrasList() {
     return `<div class="pub-extras-list">
         ${extras.map((e, i) => `
         <div class="pub-extra-row">
-            <span class="pub-extra-name">${e.name}</span>
+            <span class="pub-extra-name">${escapeHtml(e.name)}</span>
             <span class="pub-extra-price">+$${Number(e.price || 0).toLocaleString('es-CO')}</span>
             <button type="button" class="pub-extra-del" data-idx="${i}">✕</button>
         </div>`).join('')}
@@ -13457,8 +13457,8 @@ function _renderPublicUpgradeCombos() {
                 return `
                 <button type="button" class="pub-upgrade-opt pub-upgrade-opt--combo" data-combo-id="${c.id}">
                     <span class="pub-upgrade-opt-left">
-                        <span class="pub-upgrade-opt-name">${c.nombre}</span>
-                        ${meta ? `<span class="pub-upgrade-opt-meta">${meta}</span>` : ''}
+                        <span class="pub-upgrade-opt-name">${escapeHtml(c.nombre)}</span>
+                        ${meta ? `<span class="pub-upgrade-opt-meta">${escapeHtml(meta)}</span>` : ''}
                     </span>
                     <span class="pub-upgrade-opt-price">+$${Number(c.valor || 0).toLocaleString('es-CO')}</span>
                 </button>`;
@@ -13490,8 +13490,8 @@ function _renderPublicUpgradeComboSabor(combo, sabores) {
     body.innerHTML = `
         <div class="pub-upgrade-opts">
             ${sabores.map((s) => `
-            <button type="button" class="pub-upgrade-opt pub-upgrade-opt--combo" data-sabor="${s}">
-                <span class="pub-upgrade-opt-name">${s}</span>
+            <button type="button" class="pub-upgrade-opt pub-upgrade-opt--combo" data-sabor="${escapeHtml(s)}">
+                <span class="pub-upgrade-opt-name">${escapeHtml(s)}</span>
             </button>`).join('')}
         </div>
         <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
@@ -13516,7 +13516,7 @@ function _renderPublicUpgradeAdicionales() {
         <div class="pub-upgrade-opts">
             ${items.map((a) => `
             <button type="button" class="pub-upgrade-opt" data-acomp-id="${a.id}">
-                <span class="pub-upgrade-opt-name">${a.nombre}${a.cantidad ? ` (${a.cantidad})` : ''}</span>
+                <span class="pub-upgrade-opt-name">${escapeHtml(a.nombre)}${a.cantidad ? ` (${escapeHtml(String(a.cantidad))})` : ''}</span>
                 <span class="pub-upgrade-opt-price">+$${Number(a.precio || 0).toLocaleString('es-CO')}</span>
             </button>`).join('')}
         </div>
@@ -13542,7 +13542,7 @@ function _renderPublicUpgradeBebidas() {
         <div class="pub-upgrade-opts">
             ${items.map((b) => `
             <button type="button" class="pub-upgrade-opt" data-beb-id="${b.id}">
-                <span class="pub-upgrade-opt-name">${b.marca}</span>
+                <span class="pub-upgrade-opt-name">${escapeHtml(b.marca)}</span>
                 <span class="pub-upgrade-opt-price">${b.presentaciones.length === 1 ? `+$${b.presentaciones[0].precio.toLocaleString('es-CO')}` : 'Ver opciones'}</span>
             </button>`).join('')}
         </div>
@@ -13571,7 +13571,7 @@ function _renderPublicUpgradeBebidaPresentaciones(bebida) {
         <div class="pub-upgrade-opts">
             ${bebida.presentaciones.map((p) => `
             <button type="button" class="pub-upgrade-opt" data-pres-id="${p.id}">
-                <span class="pub-upgrade-opt-name">${p.nombre}</span>
+                <span class="pub-upgrade-opt-name">${escapeHtml(p.nombre)}</span>
                 <span class="pub-upgrade-opt-price">+$${Number(p.precio || 0).toLocaleString('es-CO')}</span>
             </button>`).join('')}
         </div>
@@ -13596,7 +13596,7 @@ function _renderPublicUpgradeBebidaSabores(bebida, presentacion) {
     body.innerHTML = `
         <div class="pub-flavors-grid">
             ${presentacion.sabores.map((s) => `
-            <button type="button" class="pub-flavor-btn" data-sabor="${s}">${s}</button>`).join('')}
+            <button type="button" class="pub-flavor-btn" data-sabor="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
         </div>
         <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
     body.querySelectorAll('.pub-flavor-btn').forEach((btn) => {
