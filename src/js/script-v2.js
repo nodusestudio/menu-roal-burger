@@ -282,7 +282,7 @@ let _skipNextPopstate  = false;
 let _closingByBackBtn  = false;
 
 // ── Gestión centralizada de pantallas secundarias ──
-const _SECONDARY_SCREENS = ['searchScreen', 'navCategoriesScreen', 'promoScreen', 'categoryDetailScreen', 'perfilScreen', 'ayudaScreen', 'combosScreen', 'menuCarouselScreen', 'promoCarouselScreen'];
+const _SECONDARY_SCREENS = ['promoScreen', 'categoryDetailScreen', 'perfilScreen', 'ayudaScreen', 'combosScreen', 'menuCarouselScreen', 'promoCarouselScreen'];
 let _screenHistoryPushed = false;
 
 function _pushModalState() {
@@ -11000,54 +11000,6 @@ function closeCategoryDetail() {
 
 // ===== FIN HOME SCREEN =====
 
-function openNavCategoriesScreen(title, filterFn) {
-    const screen  = document.getElementById('navCategoriesScreen');
-    const titleEl = document.getElementById('ncsTitle');
-    const grid    = document.getElementById('ncsCategoriesGrid');
-    if (!screen || !titleEl || !grid) return; // no ocultar home si faltan elementos
-
-    _enterScreen('navCategoriesScreen');
-
-    titleEl.textContent = title;
-
-    const categories = filterFn
-        ? (activeCategoryMeta || []).filter(filterFn)
-        : (activeCategoryMeta || []);
-
-    grid.innerHTML = '';
-    if (categories.length === 0) {
-        grid.innerHTML = '<p class="home-loading-msg">No hay categorias disponibles.</p>';
-    } else {
-        categories.forEach(cat => {
-            const card = document.createElement('button');
-            card.type = 'button';
-            card.className = 'home-cat-card';
-            const imgEl = document.createElement('img');
-            imgEl.className = 'home-cat-img';
-            imgEl.src = cat.image_url || _IMG_FINAL_FALLBACK;
-            imgEl.alt = cat.name;
-            imgEl.loading = 'lazy';
-            imgEl.onerror = () => { imgEl.src = _IMG_FINAL_FALLBACK; };
-            const labelEl = document.createElement('span');
-            labelEl.className = 'home-cat-label';
-            labelEl.textContent = cat.name;
-            card.appendChild(imgEl);
-            card.appendChild(labelEl);
-            card.addEventListener('click', () => openCategoryDetail(cat));
-            grid.appendChild(card);
-        });
-    }
-
-    screen.hidden = false;
-    screen.scrollTop = 0;
-}
-
-function closeNavCategoriesScreen() {
-    const screen = document.getElementById('navCategoriesScreen');
-    if (screen) screen.hidden = true;
-    _exitScreen();
-}
-
 // ── Pantalla de Combos con dos carruseles ────────────────────────────────────
 
 function openCombosScreen() {
@@ -11740,106 +11692,6 @@ function renderPromoCarousels() {
     syncOrderingAvailabilityUI();
 }
 
-// Estado de filtros de búsqueda
-let _searchActiveCat = null;
-let _searchPricePreset = 'all'; // 'all' | '15000' | '30000' | '99999'
-
-function _getSearchPriceBounds() {
-    switch (_searchPricePreset) {
-        case '15000': return { min: 0,     max: 15000 };
-        case '30000': return { min: 15000, max: 30000 };
-        case '99999': return { min: 30000, max: Infinity };
-        default:      return { min: 0,     max: Infinity };
-    }
-}
-
-function _populateSearchCategoryChips() {
-    const container = document.getElementById('searchFilterCats');
-    if (!container) return;
-
-    const cats = [...new Set((latestProducts || [])
-        .filter(p => String(p.estado || '').trim() !== 'paused')
-        .map(p => String(p.categoria || '').trim())
-        .filter(Boolean)
-    )].sort((a, b) => a.localeCompare(b, 'es'));
-
-    container.innerHTML = '';
-
-    const allChip = document.createElement('button');
-    allChip.type = 'button';
-    allChip.className = 'search-cat-chip' + (_searchActiveCat === null ? ' active' : '');
-    allChip.textContent = 'Todas';
-    allChip.addEventListener('click', () => {
-        _searchActiveCat = null;
-        _applySearchFilters();
-    });
-    container.appendChild(allChip);
-
-    cats.forEach(cat => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'search-cat-chip' + (_searchActiveCat === cat ? ' active' : '');
-        chip.textContent = cat;
-        chip.addEventListener('click', () => {
-            _searchActiveCat = _searchActiveCat === cat ? null : cat;
-            _applySearchFilters();
-        });
-        container.appendChild(chip);
-    });
-}
-
-function _applySearchFilters() {
-    // Actualiza estado visual de chips de categoría
-    document.querySelectorAll('#searchFilterCats .search-cat-chip').forEach(chip => {
-        const isAll = chip.textContent === 'Todas';
-        chip.classList.toggle('active', isAll ? _searchActiveCat === null : chip.textContent === _searchActiveCat);
-    });
-    // Actualiza estado visual de botones de precio
-    document.querySelectorAll('#searchFilterPrices .search-price-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.price === _searchPricePreset);
-    });
-    const q = document.getElementById('searchInput')?.value || '';
-    renderSearchResults(q);
-}
-
-function openSearchScreen() {
-    const screen = document.getElementById('searchScreen');
-    if (!screen || !screen.hidden) return; // no-op si ya está abierto
-
-    _searchActiveCat = null;
-    _searchPricePreset = 'all';
-    _enterScreen('searchScreen');
-    screen.hidden = false;
-    screen.scrollTop = 0;
-
-    _populateSearchCategoryChips();
-
-    // Listeners de precio (una sola vez por apertura usando delegación)
-    const pricesEl = document.getElementById('searchFilterPrices');
-    if (pricesEl && !pricesEl._roalBound) {
-        pricesEl._roalBound = true;
-        pricesEl.addEventListener('click', e => {
-            const btn = e.target.closest('.search-price-btn');
-            if (!btn) return;
-            _searchPricePreset = btn.dataset.price;
-            _applySearchFilters();
-        });
-    }
-
-    const input = document.getElementById('searchInput');
-    if (input) {
-        input.value = '';
-        renderSearchResults('');
-        setTimeout(() => input.focus(), 150);
-    }
-}
-
-function closeSearchScreen() {
-    const screen = document.getElementById('searchScreen');
-    if (screen) screen.hidden = true;
-    _exitScreen();
-}
-
 // ── Buscador inteligente: normalización, sinónimos y coincidencia difusa ──
 function _searchNorm(s) {
     return String(s || '').toLowerCase()
@@ -11925,9 +11777,9 @@ function _scoreProduct(rawQ, p) {
     return score;
 }
 
-// Buscador en vivo de la barra superior: reutiliza el mismo scoring de renderSearchResults/
-// _scoreProduct (no se reescribe), pero en vez de pintar una grilla de resultados aparte, solo
-// devuelve el producto que mejor coincide para poder saltar directo a su tarjeta en el catalogo.
+// Buscador en vivo de la barra superior: reutiliza el mismo scoring (_scoreProduct) que usaba
+// el buscador de pantalla completa ya retirado, pero en vez de pintar una grilla de resultados
+// aparte, solo devuelve el producto que mejor coincide para saltar directo a su tarjeta en el catalogo.
 function _findBestMatchingProduct(query) {
     const q = String(query || '').trim();
     if (q.length < 2) return null;
@@ -11942,103 +11794,6 @@ function _findBestMatchingProduct(query) {
         }
     }
     return bestScore >= 10 ? best : null;
-}
-
-function renderSearchResults(query) {
-    const grid = document.getElementById('searchResultsGrid');
-    if (!grid) return;
-
-    const q = query.trim();
-    const hasFilters = _searchActiveCat !== null || _searchPricePreset !== 'all';
-    const { min: priceMin, max: priceMax } = _getSearchPriceBounds();
-
-    if (!q && !hasFilters) {
-        grid.innerHTML = '<p class="search-hint-msg">Escribe el nombre de un producto o usa los filtros para explorar el menú.</p>';
-        return;
-    }
-
-    // Filtrar por categoría y precio
-    let pool = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
-    if (_searchActiveCat !== null) {
-        pool = pool.filter(p => String(p.categoria || '').trim() === _searchActiveCat);
-    }
-    if (priceMin > 0 || priceMax < Infinity) {
-        pool = pool.filter(p => {
-            const price = resolveProductDisplayPrice(p);
-            return price >= priceMin && price <= priceMax;
-        });
-    }
-
-    let scored;
-    if (q) {
-        scored = pool
-            .map(p => ({ p, score: _scoreProduct(q, p) }))
-            .filter(({ score }) => score > 0)
-            .sort((a, b) => b.score - a.score ||
-                String(a.p.nombre || '').localeCompare(String(b.p.nombre || ''), 'es'));
-    } else {
-        // Solo filtros, sin texto: mostrar todos los del pool ordenados por nombre
-        scored = pool
-            .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'))
-            .map(p => ({ p, score: 1 }));
-    }
-
-    if (scored.length === 0) {
-        const msg = q
-            ? `No encontramos &ldquo;<strong>${escapeHtml(q)}</strong>&rdquo;${_searchActiveCat ? ` en <strong>${escapeHtml(_searchActiveCat)}</strong>` : ''} en nuestro menú.`
-            : `Sin productos${_searchActiveCat ? ` en <strong>${escapeHtml(_searchActiveCat)}</strong>` : ''} para el precio seleccionado.`;
-        grid.innerHTML = `<p class="search-hint-msg">${msg}</p>`;
-        return;
-    }
-
-    grid.innerHTML = '';
-    scored.forEach(({ p }) => {
-        const card = document.createElement('div');
-        card.className = 'cds-product-card';
-
-        const imgWrap = document.createElement('div');
-        imgWrap.className = 'cds-product-img-wrap';
-        const img = document.createElement('img');
-        img.className = 'cds-product-img';
-        img.src = String(p.image_url || p.imageUrl || '');
-        img.alt = String(p.nombre || '');
-        img.loading = 'lazy';
-        img.onerror = () => { imgWrap.style.display = 'none'; };
-        imgWrap.appendChild(img);
-
-        const info = document.createElement('div');
-        info.className = 'cds-product-info';
-
-        const badge = document.createElement('span');
-        badge.className = 'search-cat-badge';
-        badge.textContent = String(p.categoria || '');
-
-        const name = document.createElement('span');
-        name.className = 'cds-product-name';
-        name.textContent = String(p.nombre || '');
-
-        const raw = resolveProductDisplayPrice(p);
-        const price = document.createElement('span');
-        price.className = 'cds-product-price';
-        price.textContent = '$' + raw.toLocaleString('es-CO');
-
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'cds-product-btn';
-        btn.textContent = 'Pedir';
-        btn.addEventListener('click', () => {
-            if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
-            startProductOrderFlow(String(p.nombre || ''), String(p.categoria || ''), 'search-result-btn');
-        });
-
-        info.appendChild(badge);
-        info.appendChild(name);
-        info.appendChild(price);
-        info.appendChild(btn);
-        card.appendChild(imgWrap);
-        card.appendChild(info);
-        grid.appendChild(card);
-    });
 }
 
 // Oculta home y TODAS las demás pantallas secundarias, marca el nav activo y empuja historial
@@ -12116,13 +11871,11 @@ function _exitScreen() {
 // Marca el ítem de la barra de navegación correspondiente a la pantalla activa
 function _setNavCurrent(screenId) {
     const navMap = {
-        navCategoriesScreen:  'bnavInicio',
         categoryDetailScreen: 'bnavInicio',
         menuCarouselScreen:   'bnavInicio',
         combosScreen:         'bnavCombos',
         promoScreen:          'bnavPromo',
         promoCarouselScreen:  'bnavPromo',
-        searchScreen:         'bnavBuscador',
         perfilScreen:         'bnavPerfil',
         ayudaScreen:          'bnavAyuda',
     };
@@ -13221,8 +12974,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (screen) screen.hidden = true;
         _exitScreen();
     });
-    document.getElementById('ncsCloseBtn')?.addEventListener('click', () => closeNavCategoriesScreen());
-    document.getElementById('searchCloseBtn')?.addEventListener('click', () => closeSearchScreen());
     document.getElementById('promoCloseBtn')?.addEventListener('click', () => closePromoScreen());
     document.getElementById('perfilCloseBtn')?.addEventListener('click', () => closeCustomerAuthModal());
     document.getElementById('ayudaCloseBtn')?.addEventListener('click', () => closeAyudaScreen());
@@ -13245,19 +12996,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (feedback) { feedback.textContent = '¡Mensaje enviado! Será atendido a la brevedad posible.'; feedback.hidden = false; }
         setTimeout(() => closeAyudaScreen(), 3000);
     });
-    let _searchTimer = null;
-    document.getElementById('searchInput')?.addEventListener('input', e => {
-        clearTimeout(_searchTimer);
-        _searchTimer = setTimeout(() => renderSearchResults(e.target.value), 180);
-    });
-    // Android: el teclado virtual tarda ~300ms en abrirse tras el focus.
-    // scrollIntoView después de ese delay garantiza que el input quede visible.
-    if (/android/i.test(navigator.userAgent)) {
-        document.getElementById('searchInput')?.addEventListener('focus', () => {
-            setTimeout(() => document.getElementById('searchInput')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 320);
-        });
-    }
-
     // Botones de la pantalla splash (fallback manual si el auto-dismiss es lento)
     document.getElementById('splashContinueBtn')?.addEventListener('click', () => {
         document.activeElement?.blur();
@@ -13385,7 +13123,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 _closingByBackBtn = false;
             }
         } else if (_screenHistoryPushed) {
-            // Pantallas de menú (búsqueda, categorías, promos, detalle)
+            // Pantallas de menú (promos, detalle de categoría, cuenta, ayuda, combos)
             _screenHistoryPushed = false;
             _closingByBackBtn = true;
             try {
@@ -13400,8 +13138,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 if (!document.getElementById('perfilScreen')?.hidden)        { closeCustomerAuthModal();   return; }
-                if (!document.getElementById('searchScreen')?.hidden)        { closeSearchScreen();        return; }
-                if (!document.getElementById('navCategoriesScreen')?.hidden) { closeNavCategoriesScreen(); return; }
                 if (!document.getElementById('promoScreen')?.hidden)         { closePromoScreen();         return; }
                 if (!document.getElementById('ayudaScreen')?.hidden)         { closeAyudaScreen();         return; }
                 if (!document.getElementById('combosScreen')?.hidden) {
