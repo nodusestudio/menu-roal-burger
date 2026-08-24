@@ -9707,15 +9707,29 @@ function setActiveMenuNavLink(targetId) {
     });
 }
 
+function openDrawerMenu() {
+    const drawer = document.getElementById('menuDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    if (drawer) {
+        drawer.classList.add('open');
+    }
+    if (overlay) {
+        overlay.classList.add('show');
+    }
+    _pushGenericModal(closeDrawerMenu);
+}
+
 function closeDrawerMenu() {
     const drawer = document.getElementById('menuDrawer');
     const overlay = document.getElementById('drawerOverlay');
+    const wasOpen = Boolean(drawer?.classList.contains('open'));
     if (drawer) {
         drawer.classList.remove('open');
     }
     if (overlay) {
         overlay.classList.remove('show');
     }
+    if (wasOpen) _popGenericModal(closeDrawerMenu);
 }
 
 // Panel de secciones (Combos/Cupones/Ayuda) que abre el ☰ de la barra superior — reemplaza a la
