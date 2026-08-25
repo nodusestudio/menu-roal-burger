@@ -39,6 +39,20 @@ function initFirebaseServices() {
 
     const db = firebase.firestore();
 
+    // Bug real de compatibilidad Safari/WebKit con este SDK (confirmado 2026-08-25, celular real):
+    // el canal de transporte streaming por defecto puede tardar 30+ segundos en conectar en
+    // Safari (en Chrome conecta casi al instante) -- el menu publico quedaba trabado en los
+    // esqueletos de carga sin ningun error. Se probaron 2 arreglos: experimentalAutoDetectLongPolling
+    // bajo el tiempo a ~15s (sigue intentando streaming primero antes de cambiar), mientras que
+    // experimentalForceLongPolling (forzarlo directo, sin detectar) bajo a ~2.3s -- se eligio este
+    // ultimo. Debe llamarse ANTES de cualquier otra operacion sobre esta instancia
+    // (settings/enablePersistence incluidos), por eso va primero y con guarda para no llamarse dos
+    // veces si esta funcion se invoca mas de una vez en la misma pagina.
+    if (!window._firestoreSettingsApplied) {
+        window._firestoreSettingsApplied = true;
+        try { db.settings({ experimentalForceLongPolling: true }); } catch (_e) {}
+    }
+
     // Persistencia offline solo en el menu publico (no en admin).
     // En admin siempre se necesitan datos frescos y la persistencia
     // puede generar conflictos de lock entre pestañas.

@@ -9704,10 +9704,33 @@ function ensureLandingGoogleFont(fontFamily) {
 // en blanco para siempre — sin reintento ni mensaje, el cliente solo veía el fondo. Ante un
 // error de conexión se hace una lectura única (.get(), HTTPS normal en vez de WebChannel
 // persistente) para que el contenido igual cargue aunque el realtime no logre conectar.
+//
+// Encontrado 2026-08-25: en Safari/WebKit real (celular) el canal WebChannel responde 200 OK
+// a nivel de red pero el callback de datos JAMAS se dispara -- ni onData ni el error de abajo,
+// se queda colgado para siempre sin ningun aviso. El error-callback no alcanza a cubrir este
+// caso porque no hay ningun error, solo silencio. Se agrega un timeout: si a los 6s no llego
+// ningun snapshot real, se fuerza el mismo fallback de lectura unica (.get()) igual que ante un
+// error explicito -- cubre tanto "el canal murio con error" como "el canal nunca respondio nada".
 function _liveOrOnceSnapshot(ref, onData) {
-    return ref.onSnapshot(onData, () => {
-        ref.get().then(onData).catch(() => {});
+    let received = false;
+    const wrappedOnData = (snapshot) => {
+        received = true;
+        clearTimeout(stallTimer);
+        onData(snapshot);
+    };
+    const stallTimer = setTimeout(() => {
+        if (!received) {
+            ref.get().then(wrappedOnData).catch(() => {});
+        }
+    }, 6000);
+    const unsubscribe = ref.onSnapshot(wrappedOnData, () => {
+        clearTimeout(stallTimer);
+        ref.get().then(wrappedOnData).catch(() => {});
     });
+    return () => {
+        clearTimeout(stallTimer);
+        unsubscribe();
+    };
 }
 
 // productos y categorias son 2 listeners independientes que llegan casi al mismo tiempo en cada
