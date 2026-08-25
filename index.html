@@ -25,7 +25,7 @@
     <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="manifest" href="site.webmanifest">
     <link rel="preload" as="image" href="portada.webp?v=20260615" type="image/webp" fetchpriority="high">
-    <link rel="stylesheet" href="style.css?v=20260824-1918">
+    <link rel="stylesheet" href="style.css?v=20260824-1948">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -260,14 +260,6 @@
         <div class="mobile-carousel" id="featured-carousel-dynamic"></div>
         <div id="categoryGrid"></div>
         <div id="categoryProductsPanel"></div>
-        <section class="loyalty-points-banner liquid-glass" id="loyaltyPointsBanner" hidden aria-label="Acumula puntos de lealtad">
-            <span class="loyalty-points-banner-icon" aria-hidden="true">⭐</span>
-            <div class="loyalty-points-banner-copy">
-                <strong>Acumula puntos con cada pedido</strong>
-                <span>Gana puntos en todo tu pedido y canjéalos por descuentos en hamburguesas, perros calientes, pepitos y salchipapas.</span>
-            </div>
-            <button type="button" class="loyalty-points-banner-close" id="loyaltyPointsBannerClose" aria-label="Cerrar aviso">&times;</button>
-        </section>
     </div>
 
     <section class="guest-register-banner" id="guestRegisterBanner" hidden aria-label="Registrate para descuentos exclusivos">
@@ -368,6 +360,17 @@
     <!-- ===== PANTALLA MENÚ CARRUSELES (ahora es la página de inicio) ===== -->
     <div id="menuCarouselScreen" hidden>
         <div class="catalog-chips-bar" id="catalogChipsBar"></div>
+        <section class="loyalty-points-banner liquid-glass" id="loyaltyPointsBanner" hidden aria-label="Acumula puntos de lealtad">
+            <span class="loyalty-points-banner-icon" aria-hidden="true">⭐</span>
+            <div class="loyalty-points-banner-copy">
+                <strong>Acumula puntos con cada pedido</strong>
+                <span>Gana puntos en todo tu pedido y canjéalos por descuentos en hamburguesas, perros calientes, pepitos y salchipapas.</span>
+            </div>
+            <button type="button" class="loyalty-points-banner-close" id="loyaltyPointsBannerClose" aria-label="Cerrar aviso">&times;</button>
+        </section>
+        <!-- menuCarouselBody se reconstruye entero (innerHTML='') en cada render -- el banner
+             tiene que vivir FUERA de él (como hermano) para no desaparecer cada vez que el
+             catálogo se vuelve a pintar. -->
         <div class="combos-screen-body" id="menuCarouselBody"></div>
     </div>
 
@@ -652,10 +655,10 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script defer src="tracking.js?v=20260824-1918"></script>
+    <script defer src="tracking.js?v=20260824-1948"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="script-v2.js?v=20260824-1918"></script>
-    <script defer src="agent-chat.js?v=20260824-1918"></script>
+    <script defer src="script-v2.js?v=20260824-1948"></script>
+    <script defer src="agent-chat.js?v=20260824-1948"></script>
 
     <!-- ── Anuncio de apertura (promo destacada al abrir el menu) ── -->
     <div id="openingAdOverlay" class="opening-ad-overlay" hidden style="display:none;">
