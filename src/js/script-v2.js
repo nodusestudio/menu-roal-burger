@@ -572,19 +572,21 @@ function clearPendingGoogleIdentity() {
 const LOYALTY_BANNER_DISMISSED_KEY = 'rb_loyalty_banner_dismissed_v1';
 
 // Banner no invasivo (no fixed/sticky, dentro del flujo normal de la página) avisando que se
-// pueden acumular puntos -- se puede cerrar y queda cerrado para siempre en este dispositivo.
+// pueden acumular puntos -- se puede cerrar, y vuelve a aparecer en la proxima sesion (pestaña
+// nueva o navegador reabierto). sessionStorage en vez de localStorage a proposito: cerrarlo no
+// debe ser "para siempre" en el dispositivo, solo por esta visita.
 function initLoyaltyPointsBanner() {
     const banner = document.getElementById('loyaltyPointsBanner');
     if (!banner) return;
     try {
-        if (window.localStorage.getItem(LOYALTY_BANNER_DISMISSED_KEY) === '1') {
+        if (window.sessionStorage.getItem(LOYALTY_BANNER_DISMISSED_KEY) === '1') {
             return;
         }
     } catch (_) {}
     banner.hidden = false;
     document.getElementById('loyaltyPointsBannerClose')?.addEventListener('click', () => {
         banner.hidden = true;
-        try { window.localStorage.setItem(LOYALTY_BANNER_DISMISSED_KEY, '1'); } catch (_) {}
+        try { window.sessionStorage.setItem(LOYALTY_BANNER_DISMISSED_KEY, '1'); } catch (_) {}
     });
 }
 
