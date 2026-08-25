@@ -9724,10 +9724,13 @@ function _scheduleFullMenuRerender(carousel) {
 }
 
 async function renderPublicFeaturedFromAdmin() {
+    // #featured-carousel-dynamic se borro (era el carrusel del #main-menu muerto, ver limpieza
+    // del 2026-08-24) -- "carousel" puede quedar null a proposito de aca en adelante.
+    // renderFeaturedCards ya tolera un carousel null (guard agregado en esa misma limpieza), asi
+    // que NO hay que cortar la funcion entera aca: esta funcion engancha los 4 listeners reales
+    // del menu publico (productos/categorias/botones/branding) -- cortar temprano por un elemento
+    // visual muerto dejaba el catalogo entero sin cargar nunca (bug real encontrado 2026-08-25).
     const carousel = document.getElementById('featured-carousel-dynamic');
-    if (!carousel) {
-        return;
-    }
 
     if (typeof initFirebaseServices !== 'function') {
         return;
