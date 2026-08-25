@@ -8535,6 +8535,7 @@ function renderDynamicCategorySections() {
 }
 
 function renderFeaturedCards(carousel, items) {
+        if (!carousel) return;
         // Si no se pasan items, usar productos con es_destacado:true de Firestore
         let effectiveItems = items;
         if (!Array.isArray(effectiveItems) || !effectiveItems.length) {
