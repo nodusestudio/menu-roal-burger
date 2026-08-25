@@ -411,7 +411,10 @@ exports.awardLoyaltyPoints = onDocumentWritten(
     async (event) => {
         const before = event.data?.before?.exists ? event.data.before.data() : null;
         const after = event.data?.after?.exists ? event.data.after.data() : null;
-        if (!after || after.status !== 'entregado' || before?.status === 'entregado') return;
+        // anularOrder() (ver admin.js) marca un pedido pendiente como anulado escribiendo
+        // { anulado: true, status: 'entregado' } en la MISMA actualización -- sin este chequeo,
+        // cancelar un pedido que nunca se entregó de verdad le acreditaba puntos igual.
+        if (!after || after.status !== 'entregado' || before?.status === 'entregado' || after.anulado === true) return;
 
         const phoneDigits = String(after.customerPhoneDigits || '').replace(/\D/g, '');
         if (phoneDigits.length < 10) return;
@@ -477,6 +480,118 @@ async function redeemLoyaltyPointsTransaction(db, orderId, clientId, pointsToRed
 
 // Exportado solo para tests (tests/loyalty-redemption.test.js).
 exports._redeemLoyaltyPointsTransaction = redeemLoyaltyPointsTransaction;
+
+// ─────────────────────────────────────────────────────────────
+// Revertir puntos (ganados y/o canjeados) cuando un pedido se cancela. Cancelar hoy NO es un
+// status nuevo -- es un flag `anulado:true` (ver anularOrder en admin.js) para pedidos que aun no
+// se entregaban, o un borrado completo del documento (ver deleteOrder en admin.js) para pedidos
+// que ya estaban en 'entregado'. Por eso el marcador de idempotencia NO puede vivir en un campo
+// del propio pedido (en el caso de borrado ya no queda documento) -- vive en su propia colección.
+//
+// Puntos GANADOS: se resta de puntosDisponibles Y puntosAcumuladosTotal -- a diferencia del
+// ajuste manual negativo del admin (que nunca toca el histórico), acá el pedido nunca debió
+// generar esos puntos, así que se le quita del histórico tal cual, no es una corrección de algo
+// legítimo. Se clampa contra el saldo real disponible (nunca lo deja negativo si el cliente ya
+// gastó esos puntos en otro pedido mientras tanto).
+//
+// Puntos CANJEADOS: se devuelven a puntosDisponibles del cliente que los canjeó de verdad
+// (orderData.pointsRedeemedClientId, guardado en el momento del canje -- puede no ser el mismo
+// clientes/{id} que buildClientId(customerPhoneDigits), si el pedido se hizo a nombre de otra
+// persona estando logueado). Fallback a ese cálculo solo para pedidos viejos sin ese campo.
+async function reverseLoyaltyPointsTransaction(db, orderId, orderData) {
+    const pointsEarned = orderData?.pointsAwarded === true ? Math.max(0, Number(orderData.pointsEarned) || 0) : 0;
+    const pointsRedeemed = Math.max(0, Number(orderData?.pointsRedeemed) || 0);
+    if (pointsEarned <= 0 && pointsRedeemed <= 0) {
+        return { pointsEarnedReversed: 0, pointsRedeemedRefunded: 0 };
+    }
+
+    const phoneDigits = String(orderData?.customerPhoneDigits || '').replace(/\D/g, '');
+    const earnedClientId = pointsEarned > 0 && phoneDigits.length >= 10 ? buildClientId(phoneDigits) : null;
+    const redeemedClientId = pointsRedeemed > 0
+        ? (orderData?.pointsRedeemedClientId || earnedClientId)
+        : null;
+
+    const markerRef = db.collection('puntos_reversiones').doc(orderId);
+
+    return db.runTransaction(async (transaction) => {
+        const markerSnap = await transaction.get(markerRef);
+        if (markerSnap.exists) {
+            return { pointsEarnedReversed: 0, pointsRedeemedRefunded: 0 }; // ya se revirtio antes
+        }
+
+        const clientIds = [...new Set([earnedClientId, redeemedClientId].filter(Boolean))];
+        const clientRefs = {};
+        const clientSnaps = {};
+        for (const cid of clientIds) {
+            clientRefs[cid] = db.collection(CLIENTS_COLLECTION).doc(cid);
+            clientSnaps[cid] = await transaction.get(clientRefs[cid]);
+        }
+
+        let actualEarnedReversed = 0;
+        if (earnedClientId && pointsEarned > 0) {
+            const snap = clientSnaps[earnedClientId];
+            const currentAvailable = snap?.exists ? Math.max(0, Number(snap.data()?.puntosDisponibles) || 0) : 0;
+            const currentAcumulado = snap?.exists ? Math.max(0, Number(snap.data()?.puntosAcumuladosTotal) || 0) : 0;
+            const disponiblesReversal = Math.min(pointsEarned, currentAvailable);
+            const acumuladoReversal = Math.min(pointsEarned, currentAcumulado);
+            if (disponiblesReversal > 0 || acumuladoReversal > 0) {
+                const update = {};
+                if (disponiblesReversal > 0) update.puntosDisponibles = FieldValue.increment(-disponiblesReversal);
+                if (acumuladoReversal > 0) update.puntosAcumuladosTotal = FieldValue.increment(-acumuladoReversal);
+                transaction.update(clientRefs[earnedClientId], update);
+            }
+            actualEarnedReversed = pointsEarned;
+        }
+
+        let actualRedeemedRefunded = 0;
+        if (redeemedClientId && pointsRedeemed > 0) {
+            const update = { puntosDisponibles: FieldValue.increment(pointsRedeemed) };
+            if (clientSnaps[redeemedClientId]?.exists) {
+                transaction.update(clientRefs[redeemedClientId], update);
+            } else {
+                transaction.set(clientRefs[redeemedClientId], update, { merge: true });
+            }
+            actualRedeemedRefunded = pointsRedeemed;
+        }
+
+        transaction.set(markerRef, {
+            orderId,
+            pointsEarnedReversed: actualEarnedReversed,
+            pointsRedeemedRefunded: actualRedeemedRefunded,
+            earnedClientId,
+            redeemedClientId,
+            reversedAt: FieldValue.serverTimestamp()
+        });
+
+        return { pointsEarnedReversed: actualEarnedReversed, pointsRedeemedRefunded: actualRedeemedRefunded };
+    });
+}
+
+exports.reverseLoyaltyPointsOnCancellation = onDocumentWritten(
+    { document: 'pedidos/{orderId}', region: 'us-central1' },
+    async (event) => {
+        const before = event.data?.before?.exists ? event.data.before.data() : null;
+        const after = event.data?.after?.exists ? event.data.after.data() : null;
+
+        // Caso 1: se anuló sin borrarse (anularOrder) -- el documento sigue existiendo.
+        const becameAnulado = Boolean(after && after.anulado === true && before?.anulado !== true);
+        // Caso 2: se borró de verdad (deleteOrder, solo pasa con pedidos ya 'entregado') -- no
+        // queda documento, hay que usar los últimos datos conocidos (`before`).
+        const wasDeleted = Boolean(before && !after);
+
+        if (!becameAnulado && !wasDeleted) return;
+
+        const data = after || before;
+        try {
+            await reverseLoyaltyPointsTransaction(getFirestore(), event.params.orderId, data);
+        } catch (err) {
+            console.error(`reverseLoyaltyPointsOnCancellation: fallo al revertir puntos para pedido ${event.params.orderId}:`, err);
+        }
+    }
+);
+
+// Exportado solo para tests (tests/loyalty-cancellation.test.js).
+exports._reverseLoyaltyPointsTransaction = reverseLoyaltyPointsTransaction;
 
 // ─────────────────────────────────────────────────────────────
 // Enviar OTP de verificación al WhatsApp del cliente
@@ -1136,6 +1251,34 @@ exports.linkPendingGoogleAfterOrder = onCall(
     }
 );
 
+// Reclama (o detecta) el slot de idempotencia de un clientRequestId -- separada de
+// submitPublicOrder para poder testearla directo contra el emulador sin pasar por el wrapper
+// onCall (que exige un request HTTP real, no invocable a mano en un test). Devuelve un `orderRef`
+// listo para usar (determinista si vino clientRequestId, al azar si no) y si la solicitud es un
+// duplicado de una ya reclamada.
+async function claimOrderRequestSlot(db, clientRequestId) {
+    if (!clientRequestId) {
+        return { orderRef: db.collection('pedidos').doc(), isDuplicate: false, existingData: null };
+    }
+
+    const orderRef = db.collection('pedidos').doc(`req_${clientRequestId}`);
+    let isDuplicate = false;
+    let existingData = null;
+    await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(orderRef);
+        if (snap.exists) {
+            isDuplicate = true;
+            existingData = snap.data();
+            return;
+        }
+        transaction.set(orderRef, { _claimed: true, createdAt: FieldValue.serverTimestamp() });
+    });
+    return { orderRef, isDuplicate, existingData };
+}
+
+// Exportado solo para tests (tests/duplicate-order-protection.test.js).
+exports._claimOrderRequestSlot = claimOrderRequestSlot;
+
 // Checkout web publico: crea el pedido con Admin SDK despues de recalcular el total contra el
 // catalogo real (functions/pricing.js) -- el navegador ya no escribe /pedidos directo (ver
 // firestore.rules, create de /pedidos rechaza source:'web'). Nunca rechaza el pedido por una
@@ -1166,6 +1309,30 @@ exports.submitPublicOrder = onCall(
         // para chequear/fijar el bloqueo de 24h server-side (ver isEnforcedCouponId en pricing.js).
         const clientId = request.auth?.uid || null;
 
+        // Proteccion contra pedidos duplicados (reintento de red, doble clic): el cliente manda
+        // un clientRequestId generado UNA vez por intento de checkout (ver openPaymentFlowModal en
+        // script-v2.js), usado como ID DETERMINISTA del documento en vez de uno al azar. Ver
+        // claimOrderRequestSlot: reclama ese ID antes de cualquier trabajo caro (pricing, canje de
+        // puntos) -- si ya estaba reclamado, esta es la MISMA solicitud reintentada, no un pedido
+        // nuevo. No se toca reserveNextOrderCode (compartida con createAgentOrder, el agente de
+        // WhatsApp) -- esta proteccion es especifica del checkout web.
+        const clientRequestId = String(customerInfo.clientRequestId || '').trim().slice(0, 100);
+        const { orderRef, isDuplicate, existingData } = await claimOrderRequestSlot(db, clientRequestId);
+        if (isDuplicate) {
+            if (!existingData.code) {
+                // La otra solicitud (el primer intento) todavia esta en curso -- no hay datos
+                // completos todavia para devolver. Pedirle al cliente que espere en vez de
+                // arriesgarse a devolver un resultado a medio armar.
+                throw new HttpsError('already-exists', 'Tu pedido ya se esta procesando, espera un momento.');
+            }
+            return {
+                id: orderRef.id,
+                code: existingData.code,
+                total: existingData.total,
+                pointsRedeemed: existingData.pointsRedeemed || 0
+            };
+        }
+
         const priced = await pricing.computeServerPricedOrder(db, {
             items,
             fulfillmentType,
@@ -1192,7 +1359,8 @@ exports.submitPublicOrder = onCall(
         const cashTenderAmount = cashChangeRequired ? Number(customerInfo.cashTenderAmount || 0) : null;
         const totalItems = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
-        const orderRef = db.collection('pedidos').doc();
+        // orderRef ya se resolvió arriba (determinista si vino clientRequestId, al azar si no) --
+        // reserveNextOrderCode sobreescribe el placeholder `_claimed` con los datos reales.
         const orderCode = await orderLogic.reserveNextOrderCode(db, orderRef, {
             status: 'pendiente',
             customerName,
@@ -1210,6 +1378,11 @@ exports.submitPublicOrder = onCall(
             total: priced.total,
             pointsRedeemed: priced.pointsRedeemed,
             pointsDiscountAmount: priced.pointsDiscountAmount,
+            // Guarda el cliente REAL que canjeó los puntos (no siempre coincide con
+            // buildClientId(customerPhoneDigits) -- un cliente logueado puede pedir a nombre de
+            // otro teléfono) para que una reversa futura (ver reverseLoyaltyPointsTransaction)
+            // nunca tenga que adivinar a quién devolverle el saldo.
+            pointsRedeemedClientId: priced.pointsRedeemed > 0 ? clientId : null,
             paymentMethod,
             cashChangeRequired,
             cashTenderAmount: Number.isFinite(cashTenderAmount) ? cashTenderAmount : null,

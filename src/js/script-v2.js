@@ -4962,6 +4962,7 @@ async function createOrderFromCart(customerInfo = {}) {
             deliveryZone: customerInfo.deliveryZone || null,
             promo2x1IncrementoFee,
             pointsToRedeem,
+            clientRequestId: String(customerInfo.clientRequestId || ''),
             isScheduled: Boolean(customerInfo.isScheduled),
             scheduledDate: customerInfo.isScheduled ? String(customerInfo.scheduledDate || '') : null,
             scheduledTime: customerInfo.isScheduled ? String(customerInfo.scheduledTime || '') : null,
@@ -5453,9 +5454,15 @@ async function submitPaymentFlow() {
         });
     } catch (error) {
         const isNetworkOrQuota = /quota|network|offline|failed to fetch|unavailable/i.test(error.message || '');
-        paymentFlowUI.feedback.textContent = isNetworkOrQuota
-            ? 'No se pudo conectar al servidor. Verifica tu conexión e intenta de nuevo.'
-            : `No se pudo enviar el pedido: ${error.message || 'error inesperado.'}`;
+        // El servidor detecto que este MISMO intento de checkout (mismo clientRequestId) ya se
+        // esta procesando en paralelo (ver submitPublicOrder) -- no es un error de verdad, solo
+        // hay que esperar a que termine, no reintentar de inmediato.
+        const isAlreadyProcessing = String(error.code || '').includes('already-exists');
+        paymentFlowUI.feedback.textContent = isAlreadyProcessing
+            ? 'Tu pedido ya se esta procesando, espera un momento antes de volver a intentar.'
+            : isNetworkOrQuota
+                ? 'No se pudo conectar al servidor. Verifica tu conexión e intenta de nuevo.'
+                : `No se pudo enviar el pedido: ${error.message || 'error inesperado.'}`;
         paymentFlowUI.send.disabled = false;
         paymentFlowUI.send.textContent = 'Confirmar pedido';
     }
@@ -5463,6 +5470,18 @@ async function submitPaymentFlow() {
 
 function openPaymentFlowModal(orderData) {
     closePaymentFlowModal();
+
+    // Un solo clientRequestId por intento de checkout -- se genera acá (al abrir el modal de
+    // pago) y NO se vuelve a generar si el cliente reintenta tocando "Confirmar pedido" de nuevo
+    // dentro del MISMO modal ya abierto (submitPaymentFlow reusa este mismo orderData). El
+    // servidor (submitPublicOrder) usa este id para detectar un reintento y devolver el pedido
+    // ya creado en vez de duplicarlo. Mismo patrón crypto.randomUUID()+fallback ya usado en
+    // admin.js (_meseroFormSave).
+    if (orderData && !orderData.clientRequestId) {
+        orderData.clientRequestId = window.crypto?.randomUUID
+            ? window.crypto.randomUUID()
+            : `req_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
 
     const total = Number(orderData?.total || 0);
     const _pmList = _customerPaymentMethods?.length ? _customerPaymentMethods : [
