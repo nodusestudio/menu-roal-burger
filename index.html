@@ -2,6 +2,14 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <script>
+        // Red de seguridad: el rewrite de vercel.json condicionado por host (admin-roal.vercel.app
+        // -> /admin.html) dejo de aplicarse para el path "/" -- este index.html (el del menu
+        // publico) quedo sirviendose ahi por error. Este chequeo es sincrono y corre ANTES de
+        // cualquier otra cosa para evitar el flash del menu equivocado; para cualquier otro host
+        // (roalburger.com, clientes reales) esta condicion nunca es verdadera, cero impacto.
+        if (location.hostname === 'admin-roal.vercel.app') { location.replace('/admin.html'); }
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ROAL BURGER</title>
     <meta name="description" content="ROAL BURGER: menu digital, pedidos por WhatsApp y redes oficiales.">
