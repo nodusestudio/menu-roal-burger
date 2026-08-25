@@ -10193,9 +10193,16 @@ function renderOrders() {
             section.dataset.processedSection = column.key;
             section.hidden = !isExpanded;
             section.style.display = isExpanded ? '' : 'none';
-            processedOrders.forEach((order) => {
-                section.appendChild(createOrderCard(order));
-            });
+            // Construir las tarjetas de "Procesados" solo si el acordeon esta abierto -- son la
+            // mayoria de los pedidos del dia (crecen sin limite desde que se abrio caja) y en el
+            // caso comun (acordeon cerrado, invisible) reconstruirlas en cada accion del cajero es
+            // trabajo de DOM desechado. El toggle del acordeon (ordersActionRoot, mas abajo) llama
+            // a renderOrders() de nuevo al expandir para poblarlas recien ahi.
+            if (isExpanded) {
+                processedOrders.forEach((order) => {
+                    section.appendChild(createOrderCard(order));
+                });
+            }
             column.container.appendChild(section);
         }
     });
@@ -16555,21 +16562,20 @@ if (ordersActionRoot) {
         const processedToggle = target.closest('[data-processed-col]');
         if (processedToggle instanceof HTMLButtonElement) {
             const colKey = processedToggle.dataset.processedCol;
-            const section = ordersBoard.querySelector(`[data-processed-section="${colKey}"]`);
             if (_processedAccordionExpanded.has(colKey)) {
                 _processedAccordionExpanded.delete(colKey);
                 processedToggle.classList.remove('is-open');
+                const section = ordersBoard.querySelector(`[data-processed-section="${colKey}"]`);
                 if (section) {
                     section.hidden = true;
                     section.style.display = 'none';
                 }
             } else {
+                // renderOrders() ya no construye las tarjetas de "Procesados" mientras el
+                // acordeon esta cerrado (ver renderOrders) -- al expandir hay que volver a
+                // llamarla para que de verdad las pueble, no solo mostrar la seccion vacia.
                 _processedAccordionExpanded.add(colKey);
-                processedToggle.classList.add('is-open');
-                if (section) {
-                    section.hidden = false;
-                    section.style.display = '';
-                }
+                renderOrders();
             }
             return;
         }
