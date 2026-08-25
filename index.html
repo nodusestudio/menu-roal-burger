@@ -25,7 +25,7 @@
     <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="manifest" href="site.webmanifest">
     <link rel="preload" as="image" href="portada.webp?v=20260615" type="image/webp" fetchpriority="high">
-    <link rel="stylesheet" href="style.css?v=20260824-1806">
+    <link rel="stylesheet" href="style.css?v=20260824-1918">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -264,7 +264,7 @@
             <span class="loyalty-points-banner-icon" aria-hidden="true">⭐</span>
             <div class="loyalty-points-banner-copy">
                 <strong>Acumula puntos con cada pedido</strong>
-                <span>Suma puntos en hamburguesas, perros calientes, pepitos y salchipapas — canjéalos por descuentos en tu próximo pedido.</span>
+                <span>Gana puntos en todo tu pedido y canjéalos por descuentos en hamburguesas, perros calientes, pepitos y salchipapas.</span>
             </div>
             <button type="button" class="loyalty-points-banner-close" id="loyaltyPointsBannerClose" aria-label="Cerrar aviso">&times;</button>
         </section>
@@ -424,6 +424,10 @@
                 <div class="oc-total-row" id="ocDeliveryRow">
                     <span>Domicilio</span>
                     <strong id="ocDeliveryFee"></strong>
+                </div>
+                <div class="oc-total-row" id="ocPointsDiscountRow" style="display:none;">
+                    <span>Descuento por puntos</span>
+                    <strong id="ocPointsDiscountValue"></strong>
                 </div>
                 <div class="oc-total-row oc-total-final">
                     <span>Total a pagar</span>
@@ -648,10 +652,10 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script defer src="tracking.js?v=20260824-1806"></script>
+    <script defer src="tracking.js?v=20260824-1918"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="script-v2.js?v=20260824-1806"></script>
-    <script defer src="agent-chat.js?v=20260824-1806"></script>
+    <script defer src="script-v2.js?v=20260824-1918"></script>
+    <script defer src="agent-chat.js?v=20260824-1918"></script>
 
     <!-- ── Anuncio de apertura (promo destacada al abrir el menu) ── -->
     <div id="openingAdOverlay" class="opening-ad-overlay" hidden style="display:none;">

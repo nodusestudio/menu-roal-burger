@@ -1133,7 +1133,15 @@ const LOYALTY_POINT_VALUE_COP = 10;
 // Los puntos solo se pueden CANJEAR en estas categorías (a pedido del negocio) -- combos,
 // promociones (Recomendado del día/cupones) y el resto de categorías no aplican. No afecta cómo
 // se GANAN los puntos, solo contra qué parte del subtotal se puede aplicar el descuento del canje.
-// SYNC: functions/pricing.js isLoyaltyEligibleItem / LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS
+// SYNC (parcial, a propósito): mismas keywords que functions/pricing.js
+// LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS, pero la verificación NO es idéntica -- esta versión
+// cliente solo da un hint inmediato en la UI y confía en item.categoryName (el dato real que
+// ya viene del catálogo cargado en el navegador para armar el carrito). El servidor
+// (pricing.js: isLoyaltyEligibleItem) NUNCA confía en ese campo -- verifica siempre contra el
+// catálogo real (findProductByName), precisamente porque un cliente modificado a mano podría
+// mandar cualquier categoryName. Si alguien manipula esto en su propio navegador, lo único que
+// logra es ver un tope de canje más alto en la UI que el servidor luego recorta -- nunca gastar
+// de más de lo que su saldo real permite.
 const LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS = ['burger premium', 'burger clasicas', 'pepitos venezolanos', 'perros calientes', 'salchipapa'];
 function isLoyaltyEligibleCartItem(item) {
     const categoryKey = normalizeCategoryKey(item?.categoryName);
@@ -1550,6 +1558,15 @@ function showOrderConfirmScreen(orderData = {}) {
     const ocDel = document.getElementById('ocDeliveryFee');
     if (ocDelRow) ocDelRow.style.display = isPickup ? 'none' : '';
     if (ocDel) ocDel.textContent = deliveryFee > 0 ? fmt(deliveryFee) : 'Gratis';
+
+    // Sin esta línea, subtotal + domicilio no coincidía con el total cuando se usaban puntos --
+    // el cliente veía una resta que no cuadraba, sin ninguna explicación en esta pantalla (el
+    // checkout, el mensaje de WhatsApp y el ticket impreso sí la mostraban).
+    const ocPointsDiscountRow = document.getElementById('ocPointsDiscountRow');
+    const ocPointsDiscountValue = document.getElementById('ocPointsDiscountValue');
+    const pointsDiscountAmount = Number(orderData.pointsDiscountAmount || 0);
+    if (ocPointsDiscountRow) ocPointsDiscountRow.style.display = pointsDiscountAmount > 0 ? '' : 'none';
+    if (ocPointsDiscountValue) ocPointsDiscountValue.textContent = fmt(pointsDiscountAmount);
 
     const ocTotal = document.getElementById('ocTotal');
     if (ocTotal) ocTotal.textContent = fmt(total);
@@ -4970,6 +4987,10 @@ async function createOrderFromCart(customerInfo = {}) {
     const orderRef = { id: submitResult.data.id };
     const orderCode = submitResult.data.code;
     const total = submitResult.data.total;
+    // El servidor es quien decide cuántos puntos se descontaron DE VERDAD (puede ser menos de lo
+    // pedido si el saldo cambió entre medio) -- se usa este valor, no el `pointsToRedeem` local,
+    // para que el saldo que se muestra en el perfil quede exacto y no optimista.
+    const actualPointsRedeemed = Math.max(0, Number(submitResult.data.pointsRedeemed) || 0);
 
     // Profile update is non-critical: order is already saved; don't let quota/network errors here surface as order failure
     try {
@@ -5002,7 +5023,8 @@ async function createOrderFromCart(customerInfo = {}) {
             lastOrderId: orderRef.id,
             lastOrderTotal: total,
             totalOrders: Number(activeCustomerProfile.totalOrders || 0) + 1,
-            totalSpent: Number(activeCustomerProfile.totalSpent || 0) + total
+            totalSpent: Number(activeCustomerProfile.totalSpent || 0) + total,
+            puntosDisponibles: Math.max(0, Number(activeCustomerProfile.puntosDisponibles || 0) - actualPointsRedeemed)
         });
     } else if (!activeCustomerProfile && pendingGoogleIdentity) {
         // Identidad de Google pendiente (entro con Google antes de saber su telefono): se vincula
@@ -5035,7 +5057,9 @@ async function createOrderFromCart(customerInfo = {}) {
         id: orderRef.id,
         code: orderCode,
         customerName,
-        total
+        total,
+        pointsRedeemed: actualPointsRedeemed,
+        pointsDiscountAmount: actualPointsRedeemed * LOYALTY_POINT_VALUE_COP
     };
 }
 

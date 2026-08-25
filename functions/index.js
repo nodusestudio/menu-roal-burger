@@ -442,24 +442,36 @@ async function redeemLoyaltyPointsTransaction(db, orderId, clientId, pointsToRed
     const orderRef = db.collection('pedidos').doc(orderId);
     const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
 
-    await db.runTransaction(async (transaction) => {
-        const clientSnap = await transaction.get(clientRef);
+    return db.runTransaction(async (transaction) => {
+        const [orderSnap, clientSnap] = await Promise.all([
+            transaction.get(orderRef),
+            transaction.get(clientRef)
+        ]);
         const freshBalance = clientSnap.exists ? Math.max(0, Number(clientSnap.data()?.puntosDisponibles) || 0) : 0;
         const actualRedeemed = Math.max(0, Math.min(pointsToRedeem, freshBalance));
-        if (actualRedeemed <= 0) {
-            return;
-        }
 
-        transaction.update(clientRef, {
-            puntosDisponibles: FieldValue.increment(-actualRedeemed)
-        });
-
-        if (actualRedeemed !== pointsToRedeem) {
-            transaction.update(orderRef, {
-                pointsRedeemed: actualRedeemed,
-                pointsDiscountAmount: actualRedeemed * pricing.LOYALTY_POINT_VALUE_COP
+        if (actualRedeemed > 0) {
+            transaction.update(clientRef, {
+                puntosDisponibles: FieldValue.increment(-actualRedeemed)
             });
         }
+
+        // El pedido ya se creó con `total` calculado asumiendo el descuento COMPLETO planeado
+        // (pricing.js). Si el saldo real solo alcanza para descontar menos (o nada, por una
+        // carrera entre dos checkouts casi simultáneos del mismo cliente que pasaron el pricing
+        // con el mismo saldo), hay que devolverle al total la diferencia que ya no se pudo
+        // aplicar de verdad -- si no, el cliente terminaría pagando de menos de lo que corresponde.
+        const shortfallPoints = pointsToRedeem - actualRedeemed;
+        const shortfallAmount = shortfallPoints > 0 ? shortfallPoints * pricing.LOYALTY_POINT_VALUE_COP : 0;
+        if (shortfallPoints > 0 && orderSnap.exists) {
+            transaction.update(orderRef, {
+                pointsRedeemed: actualRedeemed,
+                pointsDiscountAmount: actualRedeemed * pricing.LOYALTY_POINT_VALUE_COP,
+                total: FieldValue.increment(shortfallAmount)
+            });
+        }
+
+        return { actualRedeemed, shortfallAmount };
     });
 }
 
@@ -1239,16 +1251,36 @@ exports.submitPublicOrder = onCall(
         // silencioso), esto es dinero -- usa una transacción real que relee el saldo fresco (ver
         // redeemLoyaltyPointsTransaction) para no dejar el saldo negativo si dos checkouts del mismo
         // cliente casi simultáneos alcanzan a pasar el pricing con el mismo saldo. Un fallo acá
-        // jamás debe tumbar ni revertir el pedido que ya se guardó arriba.
+        // jamás debe tumbar el pedido que ya se guardó arriba, pero SI debe corregir el total si el
+        // descuento aplicado termina siendo distinto (o nulo) del planeado -- si no, el pedido
+        // queda cobrando de menos por un descuento que nunca se aplicó de verdad.
+        let finalTotal = priced.total;
+        let finalPointsRedeemed = priced.pointsRedeemed;
         if (clientId && priced.pointsRedeemed > 0) {
             try {
-                await redeemLoyaltyPointsTransaction(db, orderRef.id, clientId, priced.pointsRedeemed);
+                const { actualRedeemed, shortfallAmount } = await redeemLoyaltyPointsTransaction(db, orderRef.id, clientId, priced.pointsRedeemed);
+                finalTotal += shortfallAmount;
+                finalPointsRedeemed = actualRedeemed;
             } catch (err) {
                 console.error(`submitPublicOrder: fallo al descontar puntos redimidos para pedido ${orderRef.id}:`, err);
+                // La transacción de canje falló por completo (no solo se recortó) -- lo más
+                // seguro es asumir que NO se descontó ningún punto de verdad y revertir el pedido
+                // al precio completo, sin el descuento que nunca llegó a aplicarse.
+                try {
+                    finalTotal = priced.total + priced.pointsDiscountAmount;
+                    finalPointsRedeemed = 0;
+                    await orderRef.update({
+                        pointsRedeemed: 0,
+                        pointsDiscountAmount: 0,
+                        total: finalTotal
+                    });
+                } catch (revertErr) {
+                    console.error(`submitPublicOrder: fallo tambien al revertir el descuento de puntos para pedido ${orderRef.id}:`, revertErr);
+                }
             }
         }
 
-        return { id: orderRef.id, code: orderCode, total: priced.total };
+        return { id: orderRef.id, code: orderCode, total: finalTotal, pointsRedeemed: finalPointsRedeemed };
     }
 );
 

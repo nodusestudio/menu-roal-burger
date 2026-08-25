@@ -225,16 +225,25 @@ function isEnforcedCouponId(couponId) {
 // limita contra qué parte del subtotal se puede aplicar el DESCUENTO del canje.
 // SYNC: src/js/script-v2.js isLoyaltyEligibleCartItem
 const LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS = ['burger premium', 'burger clasicas', 'pepitos venezolanos', 'perros calientes', 'salchipapa'];
-function isLoyaltyEligibleItem(item) {
-    const categoryKey = normalizeCategoryKey(item?.categoryName);
-    const categoryEligible = LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS.some((kw) => categoryKey.includes(kw));
-    if (!categoryEligible) return false;
+// La categoría se verifica SIEMPRE contra el catálogo real (catalogMatch.categoria, ya sabido
+// por el servidor vía findProductByName) -- NUNCA contra item.categoryName, que lo manda el
+// navegador sin ninguna verificación (a diferencia del piso de precio, acá no hay un max() que
+// proteja: confiar en el string del cliente dejaría que cualquiera reclasifique un producto
+// cualquiera como "elegible" y gaste sus puntos donde el negocio explícitamente no quiere).
+// Si el producto no matchea ningún ítem real del catálogo, se trata como NO elegible por
+// defecto (fail-safe): el peor caso es que un producto legítimo no pueda usarse para canjear,
+// nunca que se abra un hueco para aplicar el descuento sobre productos que no califican.
+function isLoyaltyEligibleItem(item, catalog) {
     if (item?.isComboEspecial) return false;
     const orderOptions = item?.orderOptions || {};
     if (orderOptions.type === 'combo') return false;
     if (orderOptions.recommendedDiscount) return false;
     if (orderOptions.couponId) return false;
-    return true;
+
+    const catalogMatch = findProductByName(catalog, String(item?.productName || ''));
+    if (!catalogMatch) return false;
+    const categoryKey = normalizeCategoryKey(catalogMatch.categoria);
+    return LOYALTY_REDEEMABLE_CATEGORY_KEYWORDS.some((kw) => categoryKey.includes(kw));
 }
 
 function isCouponLockActive(lock) {
@@ -379,7 +388,7 @@ async function computeServerPricedOrder(db, {
         }
 
         subtotal += finalUnitPrice * quantity;
-        if (isLoyaltyEligibleItem(item)) {
+        if (isLoyaltyEligibleItem(item, catalog)) {
             loyaltyEligibleSubtotal += finalUnitPrice * quantity;
         }
         return {

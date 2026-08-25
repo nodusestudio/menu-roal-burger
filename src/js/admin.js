@@ -18935,11 +18935,13 @@ document.getElementById('gastoMonto')?.addEventListener('input', (e) => {
     _updateGastoConfirmState();
 });
 
-// ── Ticket de impresión al registrar un gasto ──────────────────────────────────────────────
+// ── Ticket de impresión de un gasto ────────────────────────────────────────────────────────
 // Mismo patrón que el ticket de cierre de caja (buildCierreESCPOSData/_printCierreTicket) para
 // Bluetooth, pero el fallback de navegador usa el mismo mecanismo de auto-impresión de
 // openKitchenPrintTicket (misma pestaña, window.print() automático) en vez del popup con botón
-// manual -- el gasto debe generar su ticket solo, sin que el cajero tenga que ir a buscarlo.
+// manual. Esta función (printGastoTicket) se llama solo desde el botón "Imprimir" de la vista
+// previa (openGastoTicketPreview) -- al registrar un gasto ya NO se imprime directo, se muestra
+// la vista previa primero (a pedido del usuario, ver commit cc3c89a).
 function _gastoCategoriaLabel(gasto) {
     const cat = getCategoriasGastos().find((c) => c.id === gasto.categoria);
     if (!cat) return gasto.categoria || 'Otros';
@@ -19547,6 +19549,11 @@ function renderCajaDiaria() {
                 showNotice('Gasto eliminado.', 'ok');
                 await loadGastosCaja();
                 renderCajaDiaria();
+                // El mismo gasto también puede verse en Informes → Gastos e Historial de Cajas --
+                // refrescar las 3 vistas para que ninguna quede con una copia fantasma hasta que
+                // el admin recargue o cambie de pestaña a mano.
+                renderGastosInformes();
+                await renderLibroCierres();
             } catch (_) { showNotice('Error al eliminar el gasto.', 'error'); }
         });
     }
@@ -22703,6 +22710,11 @@ function renderGastosInformes() {
                 showNotice('Gasto eliminado.', 'ok');
                 await loadGastosCaja();
                 renderGastosInformes();
+                // El mismo gasto también puede verse en Caja Diaria e Historial de Cajas --
+                // refrescar las 3 vistas para que ninguna quede con una copia fantasma hasta que
+                // el admin recargue o cambie de pestaña a mano.
+                renderCajaDiaria();
+                await renderLibroCierres();
             } catch (_) { showNotice('Error al eliminar el gasto.', 'error'); }
         });
     }
