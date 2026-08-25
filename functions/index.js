@@ -1339,7 +1339,6 @@ exports.submitPublicOrder = onCall(
             deliveryLatitude,
             deliveryLongitude,
             deliveryFeeSubmitted: customerInfo.deliveryFee,
-            promo2x1IncrementoFeeExpected: customerInfo.promo2x1IncrementoFee,
             clientId,
             pointsToRedeemRequested: customerInfo.pointsToRedeem
         });

@@ -199,6 +199,7 @@ function resolveCombosMixtosPrice(productName, categoryName) {
 }
 
 const COMBO_EXTRA_PRICE = 7000; // SYNC: script-v2.js:3638
+const PROMO_2X1_INCREMENTO_AMOUNT = 2000; // SYNC: script-v2.js:17
 
 // Aplica el descuento de "Recomendado del día" usando SIEMPRE la constante del servidor — nunca
 // el discountRate que venga del cliente, para no permitir que alguien se auto-asigne un
@@ -332,7 +333,6 @@ async function computeServerPricedOrder(db, {
     deliveryLatitude,
     deliveryLongitude,
     deliveryFeeSubmitted,
-    promo2x1IncrementoFeeExpected,
     clientId,
     pointsToRedeemRequested
 }) {
@@ -423,8 +423,19 @@ async function computeServerPricedOrder(db, {
         deliveryFee = 0;
     }
 
-    // Cargo de empaque del 2x1: constante fija conocida, no depende de ningún catálogo.
-    const promo2x1IncrementoFee = Number(promo2x1IncrementoFeeExpected || 0);
+    // Cargo de empaque del 2x1: antes confiaba en promo2x1IncrementoFeeExpected, un número suelto
+    // mandado por el cliente sin ninguna relación con el carrito real (ni piso ni verificación —
+    // a diferencia de cada otra línea de precio de este archivo, podía ser cualquier valor,
+    // incluso negativo, y restar del total libremente). Ahora se deriva 100% server-side de los
+    // ítems ya validados arriba, mismo cálculo que getCheckoutPromo2x1IncrementoFee en
+    // script-v2.js: $2.000 por unidad de cada línea marcada promo2x1Incremento, solo si el pedido
+    // es para recoger o a domicilio (comer en el local no paga empaque extra).
+    const promo2x1IncrementoFee = (fulfillmentType === 'pickup' || fulfillmentType === 'delivery')
+        ? pricedItems.reduce((sum, item) => {
+            const flagged = item?.orderOptions?.promo2x1Incremento === true;
+            return sum + (flagged ? PROMO_2X1_INCREMENTO_AMOUNT * Math.max(0, Number(item.quantity || 0)) : 0);
+        }, 0)
+        : 0;
 
     // Canje de puntos de lealtad: nunca se rechaza una solicitud fuera de rango, se clampa contra
     // la fuente de verdad del servidor (mismo espíritu que resolveServerLineFloor) -- el tope es
