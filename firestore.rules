@@ -7,6 +7,19 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    // El modo mesero (admin.html?mesero=<token>) tiene sesion real de Firebase Auth desde
+    // mintMeseroSessionToken (functions/index.js): custom token con claims {mesero:true,
+    // meseroToken:<token>}. Se verifica tambien que el link siga existiendo (mismo espiritu que
+    // isAdmin(), que resuelve contra Firestore en cada evaluacion) para que revocar un link
+    // borrando meseros/{token} tenga efecto inmediato, sin esperar a que expire un token ya
+    // emitido.
+    function isMeseroToken(meseroId) {
+      return request.auth != null
+        && request.auth.token.mesero == true
+        && request.auth.token.meseroToken == meseroId
+        && exists(/databases/$(database)/documents/meseros/$(meseroId));
+    }
+
     match /configuracion/{doc} {
       allow read: if true;
       allow write: if isAdmin();
@@ -57,7 +70,15 @@ service cloud.firestore {
       // /pedidos directo desde el navegador haciendose pasar por ese canal (con un total
       // inventado). El POS del local / meseros (source:'admin_pos') y cualquier otro origen
       // siguen escribiendo igual que siempre, sin ningun cambio de comportamiento.
-      allow create: if true
+      // create/update/delete exigen isAdmin() (POS con sesion real) O isMeseroToken() (mesero con
+      // su custom token) -- antes de esto, la rama de mesero solo miraba que el pedido YA tuviera
+      // un meseroId no vacio, sin verificar que quien escribe fuera de verdad el dueno de ese
+      // meseroId. Como `pedidos` es de lectura publica (necesario para el tablero del mesero y el
+      // tracking de pedido del cliente), cualquiera podia listar la coleccion, copiar el meseroId
+      // de un pedido real, y editarlo/borrarlo sin ninguna credencial.
+      allow create: if (isAdmin()
+          || (request.resource.data.meseroId is string && request.resource.data.meseroId.size() > 0
+              && isMeseroToken(request.resource.data.meseroId)))
         && request.resource.data.items is list
         && request.resource.data.items.size() > 0
         && request.resource.data.total is number
@@ -67,11 +88,11 @@ service cloud.firestore {
         && request.resource.data.customerName.size() <= 120
         && request.resource.data.source != 'web';
       allow update: if isAdmin()
-        || (resource.data.meseroId is string && resource.data.meseroId.size() > 0
+        || (isMeseroToken(resource.data.meseroId)
             && resource.data.paymentMethod == 'pendiente'
             && request.resource.data.meseroId == resource.data.meseroId);
       allow delete: if isAdmin()
-        || (resource.data.meseroId is string && resource.data.meseroId.size() > 0
+        || (isMeseroToken(resource.data.meseroId)
             && resource.data.paymentMethod == 'pendiente');
     }
 
@@ -258,8 +279,14 @@ service cloud.firestore {
         && request.resource.data.code is string
         && request.resource.data.code.size() == 6
         && request.resource.data.status == 'pending';
-      allow read:   if true;
-      allow delete: if true;
+      // Antes "read"/"delete" eran publicos sin ningun filtro -- permitia listar TODOS los
+      // codigos pendientes (con userName incluido) y borrar el de cualquier cliente sin
+      // autenticacion. El unico uso real del lado cliente es: el cliente crea el suyo (create,
+      // sin cambios) y el POS del admin busca UNO por su codigo exacto (get, admin.js:3662) --
+      // ninguno de los dos necesita listar la coleccion ni borrar nada sin sesion de admin.
+      allow get:    if true;
+      allow list:   if isAdmin();
+      allow delete: if isAdmin();
       allow update: if isAdmin();
     }
 
@@ -267,21 +294,25 @@ service cloud.firestore {
       allow get: if true;
       allow list: if isAdmin();
       allow update: if isAdmin()
-        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentSessionId']);
+        || (isMeseroToken(token)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentSessionId']));
       allow create, delete: if isAdmin();
     }
 
     match /mesero_sesiones/{sessionId} {
       allow get: if true;
       allow list: if isAdmin();
-      allow create: if true
-        && request.resource.data.meseroId is string
-        && request.resource.data.meseroId.size() > 0
-        && request.resource.data.abiertoAt != null
-        && request.resource.data.cerradoAt == null;
-      allow update: if request.resource.data.meseroId == resource.data.meseroId
-        && request.resource.data.abiertoAt == resource.data.abiertoAt
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cerradoAt']);
+      allow create: if isAdmin()
+        || (request.resource.data.meseroId is string
+            && request.resource.data.meseroId.size() > 0
+            && isMeseroToken(request.resource.data.meseroId)
+            && request.resource.data.abiertoAt != null
+            && request.resource.data.cerradoAt == null);
+      allow update: if isAdmin()
+        || (isMeseroToken(resource.data.meseroId)
+            && request.resource.data.meseroId == resource.data.meseroId
+            && request.resource.data.abiertoAt == resource.data.abiertoAt
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cerradoAt']));
     }
 
     match /resumen_ventas/{doc} {

@@ -8498,6 +8498,11 @@ function renderMetricasProductos(period) {
     // Agregar por producto
     const map = new Map();
     for (const order of _metricsOrdersOrFallback()) {
+        // Solo ventas reales: excluye anulados/voided y pedidos que nunca llegaron a pagarse
+        // (mismo criterio que ya usa renderCajaDiaria) -- sin esto, un pedido anulado seguía
+        // sumando al ranking de "más vendidos" y a los ingresos del catálogo para siempre.
+        if (order.voided || order.anulado) continue;
+        if (!order.paymentMethod || order.paymentMethod === 'pendiente') continue;
         const ts = order.createdAt
             ? (typeof order.createdAt.toDate === 'function' ? order.createdAt.toDate() : new Date(order.createdAt))
             : null;
@@ -8687,7 +8692,14 @@ function renderMetricsPos() {
     const list = document.getElementById('metricsPosList');
     if (!list) return;
 
-    const posOrders  = _metricsOrdersOrFallback().filter(o => o.isAdminOrder || o.source === 'admin_pos');
+    // Solo ventas reales: excluye anulados/voided y pedidos que nunca llegaron a pagarse (mismo
+    // criterio que renderCajaDiaria) -- sin esto, "Ingresos"/"Ticket promedio" del POS incluían
+    // pedidos anulados o todavia pendientes de cobro.
+    const posOrders  = _metricsOrdersOrFallback().filter(o =>
+        (o.isAdminOrder || o.source === 'admin_pos')
+        && !o.voided && !o.anulado
+        && o.paymentMethod && o.paymentMethod !== 'pendiente'
+    );
     const posClients = (clientsState || []).slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
     const totalRev   = posOrders.reduce((s, o) => s + Number(o.total || 0), 0);
@@ -16522,30 +16534,46 @@ if (clientEditForm) {
         }
 
         try {
-            const clientId = activeClientEditId || buildAdminClientDocumentId({
-                customerName,
-                customerPhone,
-                address
-            });
-            const currentClient = clientsState.find((client) => client.id === clientId);
+            // El ID del documento es phone_<digitos> -- si el telefono cambio, el ID nuevo es
+            // DISTINTO del original. Antes esto dejaba el doc viejo intacto bajo el ID viejo y
+            // solo actualizaba un puñado de campos ahi mismo: el cliente quedaba bifurcado (la
+            // proxima vez que pidiera con el telefono nuevo, el sistema lo trataba como cliente
+            // nuevo, perdiendo puntosDisponibles/puntosAcumuladosTotal/historial). Se lee el doc
+            // viejo completo (no solo lo que haya en clientsState, que puede estar desactualizado)
+            // y se migra entero al ID nuevo antes de borrar el viejo.
+            const oldClientId = activeClientEditId || null;
+            const newClientId = buildAdminClientDocumentId({ customerName, customerPhone, address });
+            const phoneChanged = Boolean(oldClientId && newClientId !== oldClientId);
+            const clientId = oldClientId && !phoneChanged ? oldClientId : newClientId;
+
+            let baseData = {};
+            if (oldClientId) {
+                const oldSnap = await firebaseDb.collection(CLIENTS_COLLECTION).doc(oldClientId).get();
+                baseData = oldSnap.exists ? oldSnap.data() : {};
+            }
 
             await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
+                ...baseData,
                 customerName,
                 customerPhone,
                 customerPhoneDigits,
                 address: savedAddresses[0] || address,
                 savedAddresses,
-                totalOrders: Number(currentClient?.totalOrders || 0),
-                totalSpent: Number(currentClient?.totalSpent || 0),
-                lastOrderCode: String(currentClient?.lastOrderCode || '').trim(),
-                lastOrderId: String(currentClient?.lastOrderId || '').trim(),
-                lastOrderTotal: Number(currentClient?.lastOrderTotal || 0),
-                firstOrderAt: currentClient?.firstOrderAt || firestoreNow(),
-                lastOrderAt: currentClient?.lastOrderAt || null,
-                source: activeClientEditId ? (currentClient?.source || 'admin_panel') : 'admin_panel',
-                createdAt: currentClient?.createdAt || firestoreNow(),
+                totalOrders: Number(baseData?.totalOrders || 0),
+                totalSpent: Number(baseData?.totalSpent || 0),
+                lastOrderCode: String(baseData?.lastOrderCode || '').trim(),
+                lastOrderId: String(baseData?.lastOrderId || '').trim(),
+                lastOrderTotal: Number(baseData?.lastOrderTotal || 0),
+                firstOrderAt: baseData?.firstOrderAt || firestoreNow(),
+                lastOrderAt: baseData?.lastOrderAt || null,
+                source: oldClientId ? (baseData?.source || 'admin_panel') : 'admin_panel',
+                createdAt: baseData?.createdAt || firestoreNow(),
                 updatedAt: firestoreNow()
             }, { merge: true });
+
+            if (phoneChanged) {
+                await firebaseDb.collection(CLIENTS_COLLECTION).doc(oldClientId).delete();
+            }
 
             if (_clientEditSyncOrderId && _clientEditSyncField) {
                 const _syncValues = { customerName, customerPhone, deliveryAddress: savedAddresses[0] || address };
@@ -17846,12 +17874,17 @@ async function initMeseroMode(token) {
         const services = initFirebaseServices();
         firebaseDb = services.db;
         firebaseStorage = services.storage;
-        // Sin firebaseAuth: el modo mesero nunca inicia sesión de Firebase.
+        firebaseAuth = services.auth;
+        firebaseFunctions = services.functions;
 
         // Validar el token EN PARALELO con el catálogo (no esperar el round-trip del token
-        // antes de arrancar las descargas) — se ahorra una vuelta completa de red.
-        const [snap] = await Promise.all([
+        // antes de arrancar las descargas) — se ahorra una vuelta completa de red. Tambien se
+        // pide de una vez el custom token de sesion (mintMeseroSessionToken) -- si el token no
+        // existe, la Cloud Function tira not-found y el Promise.all entero rechaza, cayendo en
+        // el catch de abajo igual que antes (mismo comportamiento visible para un link invalido).
+        const [snap, mintResult] = await Promise.all([
             firebaseDb.collection(MESEROS_COLLECTION).doc(token).get(),
+            firebaseFunctions.httpsCallable('mintMeseroSessionToken')({ token }),
             fetchCategories(),
             fetchProducts(),
             fetchBebidas(),
@@ -17864,6 +17897,14 @@ async function initMeseroMode(token) {
             _showMeseroInvalidScreen();
             return;
         }
+
+        // Sesion REAL de Firebase Auth para este mesero especifico (custom token con claims
+        // {mesero:true, meseroToken:token}) -- antes el modo mesero nunca iniciaba sesion, y
+        // firestore.rules no tenia forma de verificar quien escribia de verdad. Se remintea en
+        // cada carga de pagina (el modo mesero no persiste nada en localStorage, todo se
+        // reconstruye desde Firestore mas abajo) -- cubre tambien el caso de una tablet
+        // compartida entre varios meseros con links distintos.
+        await firebaseAuth.signInWithCustomToken(mintResult.data.customToken);
 
         const data = snap.data() || {};
         _meseroSession = {

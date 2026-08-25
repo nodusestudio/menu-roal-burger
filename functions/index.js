@@ -27,6 +27,7 @@ const CLIENTS_COLLECTION             = 'clientes';
 const CLIENT_CREDENTIALS_COLLECTION  = 'clientes_credenciales';
 const GOOGLE_LINKS_COLLECTION        = 'google_links';
 const MESSAGES_COLLECTION            = 'mensajes';
+const MESEROS_COLLECTION             = 'meseros';
 const ACCOUNT_DELETION_GRACE_MS      = 7 * 24 * 60 * 60 * 1000; // 7 dias antes de borrar de verdad
 
 // Orígenes permitidos para llamadas a las Cloud Functions desde el navegador.
@@ -904,6 +905,32 @@ exports.customerLoginWithPin = onCall(
         return { profile: sanitizeClientProfileForClient(clientId, clientData, true), customToken };
     }
 );
+
+// El modo mesero (admin.html?mesero=<token>) nunca tuvo sesion real de Firebase Auth -- era un
+// modelo de "link con capacidad", y firestore.rules no podia verificar la posesion de ese token
+// (solo miraba que el pedido ya tuviera un meseroId no vacio). Esta funcion le da al mesero una
+// identidad real (custom token con claims) para que las reglas puedan comprobar de verdad "sos VOS
+// el dueno de este meseroId" en vez de confiar en un string plano que la lectura publica de
+// `pedidos` ya expone igual.
+async function _mintMeseroCustomToken(db, token) {
+    const snap = await db.collection(MESEROS_COLLECTION).doc(token).get();
+    if (!snap.exists) {
+        throw new HttpsError('not-found', 'Link de mesero invalido.');
+    }
+    const uid = `mesero_${token}`;
+    return getAuth().createCustomToken(uid, { mesero: true, meseroToken: token });
+}
+
+exports.mintMeseroSessionToken = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const token = String(request.data?.token || '').trim();
+        if (!token) throw new HttpsError('invalid-argument', 'Falta el token de mesero.');
+        const customToken = await _mintMeseroCustomToken(getFirestore(), token);
+        return { customToken };
+    }
+);
+exports._mintMeseroCustomToken = _mintMeseroCustomToken;
 
 exports.customerRegisterOrUpdateProfile = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },

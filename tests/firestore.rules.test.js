@@ -124,3 +124,93 @@ test('g) ni siquiera un admin autenticado por el SDK cliente puede escribir en a
         clientId: 'phone_3009998888', delta: 999999, reason: 'Intento desde el cliente'
     }));
 });
+
+// El modo mesero (admin.html?mesero=<token>) ahora tiene sesion real de Firebase Auth via
+// mintMeseroSessionToken (functions/index.js) -- custom token con claims {mesero:true,
+// meseroToken:<token>}, verificado por isMeseroToken() en firestore.rules. Antes de este arreglo
+// (auditoria de seguridad del admin, 2026-08-25), la rama de mesero de pedidos/meseros/
+// mesero_sesiones solo miraba que el documento YA tuviera un meseroId no vacio, sin verificar que
+// quien escribe sea de verdad el dueño de ese meseroId -- cualquiera SIN NINGUNA autenticacion
+// podia editar/borrar el pedido de otro mesero con solo conocer su meseroId (expuesto igual por
+// la lectura publica de `pedidos`). `authenticatedContext(uid, tokenOptions)` simula el segundo
+// argumento de custom claims que ya soporta la libreria pero que ningun test anterior usaba.
+
+test('h) mesero con claims correctos puede editar/borrar SU PROPIO pedido pendiente', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('meseros').doc('tok-a').set({ nombre: 'Ana' });
+        await context.firestore().collection('pedidos').doc('pedido-tok-a').set({
+            meseroId: 'tok-a', paymentMethod: 'pendiente', items: [{ a: 1 }], total: 1000
+        });
+    });
+
+    const meseroDb = testEnv.authenticatedContext('mesero_tok-a', { mesero: true, meseroToken: 'tok-a' }).firestore();
+    await assertSucceeds(meseroDb.collection('pedidos').doc('pedido-tok-a').update({ meseroId: 'tok-a', total: 2000 }));
+    await assertSucceeds(meseroDb.collection('pedidos').doc('pedido-tok-a').delete());
+});
+
+test('i) SEGURIDAD: un mesero NO puede editar/borrar el pedido de OTRO mesero (impersonacion)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('meseros').doc('tok-a').set({ nombre: 'Ana' });
+        await context.firestore().collection('meseros').doc('tok-b').set({ nombre: 'Beto' });
+        await context.firestore().collection('pedidos').doc('pedido-tok-b').set({
+            meseroId: 'tok-b', paymentMethod: 'pendiente', items: [{ a: 1 }], total: 1000
+        });
+    });
+
+    const meseroADb = testEnv.authenticatedContext('mesero_tok-a', { mesero: true, meseroToken: 'tok-a' }).firestore();
+    await assertFails(meseroADb.collection('pedidos').doc('pedido-tok-b').update({ meseroId: 'tok-b', total: 2000 }));
+    await assertFails(meseroADb.collection('pedidos').doc('pedido-tok-b').delete());
+});
+
+test('j) SEGURIDAD: sin ninguna autenticacion ya no se puede crear/editar/borrar un pedido (el hueco que este arreglo cierra)', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('meseros').doc('tok-c').set({ nombre: 'Caro' });
+        await context.firestore().collection('pedidos').doc('pedido-tok-c').set({
+            meseroId: 'tok-c', paymentMethod: 'pendiente', items: [{ a: 1 }], total: 1000
+        });
+    });
+
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(anonDb.collection('pedidos').doc('pedido-nuevo').set({
+        items: [{ a: 1 }], total: 5000, customerName: 'Cliente Falso', source: 'admin_pos'
+    }));
+    await assertFails(anonDb.collection('pedidos').doc('pedido-tok-c').update({ meseroId: 'tok-c', total: 999 }));
+    await assertFails(anonDb.collection('pedidos').doc('pedido-tok-c').delete());
+});
+
+test('k) admin sigue pudiendo crear/editar/borrar pedidos sin cambios', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-test-uid-5').set({ seeded: true });
+        await context.firestore().collection('pedidos').doc('pedido-admin').set({
+            paymentMethod: 'pendiente', items: [{ a: 1 }], total: 1000
+        });
+    });
+
+    const adminDb = testEnv.authenticatedContext('admin-test-uid-5').firestore();
+    await assertSucceeds(adminDb.collection('pedidos').doc('pedido-nuevo-admin').set({
+        items: [{ a: 1 }], total: 5000, customerName: 'Cliente Real', source: 'admin_pos'
+    }));
+    await assertSucceeds(adminDb.collection('pedidos').doc('pedido-admin').update({ total: 2000 }));
+    await assertSucceeds(adminDb.collection('pedidos').doc('pedido-admin').delete());
+});
+
+test('l) SEGURIDAD: mismo cierre de impersonacion en meseros/{token} y mesero_sesiones', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('meseros').doc('tok-d').set({ nombre: 'Dario', currentSessionId: null });
+        await context.firestore().collection('meseros').doc('tok-e').set({ nombre: 'Eva', currentSessionId: null });
+    });
+
+    const meseroDDb = testEnv.authenticatedContext('mesero_tok-d', { mesero: true, meseroToken: 'tok-d' }).firestore();
+    await assertSucceeds(meseroDDb.collection('meseros').doc('tok-d').update({ currentSessionId: 'sesion-1' }));
+    await assertFails(meseroDDb.collection('meseros').doc('tok-e').update({ currentSessionId: 'sesion-hackeada' }));
+
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(anonDb.collection('meseros').doc('tok-d').update({ currentSessionId: 'sesion-anonima' }));
+
+    await assertFails(meseroDDb.collection('mesero_sesiones').doc('sesion-falsa').set({
+        meseroId: 'tok-e', abiertoAt: new Date(), cerradoAt: null
+    }));
+    await assertSucceeds(meseroDDb.collection('mesero_sesiones').doc('sesion-1').set({
+        meseroId: 'tok-d', abiertoAt: new Date(), cerradoAt: null
+    }));
+});
