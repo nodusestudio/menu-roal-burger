@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260825-1314">
+    <link rel="stylesheet" href="style.css?v=20260825-1554">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -12983,7 +12983,7 @@
 
                     <!-- ── Panel: Recomendado del Día ── -->
                     <div class="menu-inner-panel" data-menu-panel="recomendado" role="tabpanel" hidden style="display:none;">
-                        <div style="padding: 16px 0;">
+                        <article class="admin-card">
                             <p class="admin-hint">El recomendado aparece en el menu publico al abrir la app. Puedes dejarlo en automatico (un producto diferente cada dia) o fijar siempre el mismo.</p>
                             <div class="admin-field full" style="margin-top:16px;">
                                 <label>Modo de seleccion</label>
@@ -13009,7 +13009,7 @@
                             </div>
                             <div class="recomendado-current-box" id="recomendadoCurrentBox" hidden></div>
                             <button type="button" class="admin-button" id="saveRecomendadoDiaBtn" style="margin-top:18px;" disabled>Guardar</button>
-                        </div>
+                        </article>
                     </div>
 
                     <!-- ── Panel: Bebidas ── -->
@@ -13182,6 +13182,7 @@
                                                 <button type="button" class="informes-action-btn" id="refreshCajaDiariaBtn">↺ Actualizar</button>
                                                 <button type="button" id="gastosBtn" class="informes-action-btn informes-action-btn--danger">💸 Gastos</button>
                                                 <button type="button" id="cerrarCajaBtn" style="font-size:0.78rem;padding:4px 14px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔒 Cerrar Caja</button>
+                                                <button type="button" class="card-collapse-btn" data-collapse-target="card-caja-diaria" aria-expanded="true">Retraer</button>
                                             </div>
                                         </div>
                                         <div class="card-body" id="card-caja-diaria" style="padding:0;">
@@ -13569,6 +13570,7 @@
                             <article class="admin-card">
                                 <div class="card-head">
                                     <h2>Tipos de Pago</h2>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-metodos-pago" aria-expanded="true">Retraer</button>
                                 </div>
                                 <div class="card-body" id="card-metodos-pago">
                                     <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
@@ -13585,8 +13587,11 @@
                         <div class="menu-inner-panel" data-section-panel="meseros" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
                             <article class="admin-card">
                                 <div class="card-head">
-                                    <h2>Meseros</h2>
-                                    <button type="button" class="section-action-btn primary" id="addMeseroBtn">+ Agregar mesero</button>
+                                    <div style="display:flex;align-items:center;gap:12px;">
+                                        <h2>Meseros</h2>
+                                        <button type="button" class="section-action-btn primary" id="addMeseroBtn">+ Agregar mesero</button>
+                                    </div>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-meseros" aria-expanded="true">Retraer</button>
                                 </div>
                                 <div class="card-body" id="card-meseros">
                                     <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
@@ -15163,8 +15168,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260825-1314"></script>
-    <script defer src="admin.js?v=20260825-1314"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260825-1554"></script>
+    <script defer src="admin.js?v=20260825-1554"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

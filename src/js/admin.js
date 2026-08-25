@@ -170,7 +170,7 @@ const OPENING_AD_DOC_ID = 'anuncio_apertura';
 const PROMOCIONES_COLLECTION = 'promociones';
 const COMBOS_ESPECIALES_COLLECTION = 'combos_especiales';
 const PROMOS_2X1_COLLECTION = 'promos_2x1';
-const PROMO_2X1_INCREMENTO_AMOUNT = 2000;
+const PROMO_2X1_INCREMENTO_AMOUNT = 2000; // SYNC: script-v2.js:17, functions/pricing.js
 const UPGRADES_CONFIG_DOC_ID = 'acompañamientos';
 const DEFAULT_HORARIO = {
     aperturaHora: 16, aperturaMinuto: 0,
@@ -1734,14 +1734,13 @@ function setupAccordion() {
 }
 
 function setupCardCollapse() {
+    // Antes, alwaysExpandedTargets se armaba juntando el propio data-collapse-target de CADA
+    // boton -- por construccion, el target de un boton siempre esta en ese mismo set, asi que
+    // TODO boton quedaba marcado "Siempre visible" (oculto, click sin efecto). Ningun panel se
+    // podia retraer de verdad, ni siquiera Recepcion de Pedidos. Ahora todos los paneles con
+    // data-collapse-target son colapsables de verdad y empiezan retraidos.
     const buttons = document.querySelectorAll('.card-collapse-btn');
-    const alwaysExpandedTargets = new Set(
-        Array.from(buttons)
-            .map((button) => String(button.dataset.collapseTarget || '').trim())
-            .filter(Boolean)
-    );
 
-    // Start with all panels collapsed so users explicitly expand what they need.
     buttons.forEach((button) => {
         const targetId = button.dataset.collapseTarget;
         if (!targetId) {
@@ -1750,14 +1749,6 @@ function setupCardCollapse() {
 
         const body = document.getElementById(targetId);
         if (!body) {
-            return;
-        }
-
-        if (alwaysExpandedTargets.has(targetId)) {
-            body.classList.remove('collapsed');
-            button.textContent = 'Siempre visible';
-            button.setAttribute('aria-expanded', 'true');
-            button.hidden = true;
             return;
         }
 
@@ -1770,10 +1761,6 @@ function setupCardCollapse() {
         button.addEventListener('click', () => {
             const targetId = button.dataset.collapseTarget;
             if (!targetId) {
-                return;
-            }
-
-            if (alwaysExpandedTargets.has(targetId)) {
                 return;
             }
 
@@ -3788,10 +3775,14 @@ function renderPosPromocionesPanel(grid) {
     if (descSection) { wrap.appendChild(descSection); hasAny = true; }
 
     // ── 3. 2×1 ───────────────────────────────────────────────────────────────
+    // Un producto puede estar configurado a la vez en promos_2x1 (banner curado) Y con su propio
+    // promo2x1.activo (ficha del producto) -- sin este Set, aparecia dos veces como boton rapido.
     const dosX1Btns = [];
+    const dosX1ProductIds = new Set();
     promos2x1State.filter((p) => p.activo !== false && p.producto_id).forEach((promo) => {
         const prod = productsState.find((p) => p.id === promo.producto_id);
         if (!prod) return;
+        dosX1ProductIds.add(prod.id);
         const price = Number(prod.precio || 0);
         dosX1Btns.push(makeBtn({
             badgeText: '2×1', badgeColor: '#1a7a42',
@@ -3807,7 +3798,7 @@ function renderPosPromocionesPanel(grid) {
             }
         }));
     });
-    productsState.filter((p) => p.promo2x1?.activo === true).forEach((prod) => {
+    productsState.filter((p) => p.promo2x1?.activo === true && !dosX1ProductIds.has(p.id)).forEach((prod) => {
         const price = Number(prod.precio || 0);
         dosX1Btns.push(makeBtn({
             badgeText: '2×1', badgeColor: '#1a7a42',
@@ -4064,6 +4055,12 @@ function renderBebidasPanel() {
     if (!container) return;
     container.innerHTML = '';
 
+    // Mismo wrapper admin-card que ya usan sus paneles hermanos (Acompañantes, Combos/Packs) --
+    // sin esto quedaba con fondo plano/transparente en vez del glassmorphism consistente del
+    // resto de pestañas de "Menú".
+    const wrapper = document.createElement('article');
+    wrapper.className = 'admin-card';
+
     const toolbar = document.createElement('div');
     toolbar.className = 'section-toolbar';
     const addBtn = document.createElement('button');
@@ -4072,13 +4069,14 @@ function renderBebidasPanel() {
     addBtn.textContent = '+ Crear bebida';
     addBtn.addEventListener('click', () => openBebidaModal());
     toolbar.appendChild(addBtn);
-    container.appendChild(toolbar);
+    wrapper.appendChild(toolbar);
 
     if (!bebidasState.length) {
         const empty = document.createElement('div');
         empty.className = 'bebidas-panel-empty';
         empty.innerHTML = '<p>🥤</p><p>No hay bebidas configuradas. Crea la primera.</p>';
-        container.appendChild(empty);
+        wrapper.appendChild(empty);
+        container.appendChild(wrapper);
         return;
     }
 
@@ -4186,7 +4184,8 @@ function renderBebidasPanel() {
         list.appendChild(card);
     });
 
-    container.appendChild(list);
+    wrapper.appendChild(list);
+    container.appendChild(wrapper);
 }
 
 // ─────────────────────────────────────────
@@ -6956,49 +6955,6 @@ async function seedDataIfNeeded() {
     }
 }
 
-async function syncPublicCatalogToFirestore() {
-    if (!firebaseDb) {
-        throw new Error('Firestore no esta listo en el panel.');
-    }
-
-    const now = firestoreNow();
-    const existingCategories = new Map(categoriesState.map((category) => [category.id, category]));
-    const existingProducts = new Map(productsState.map((product) => [product.id, product]));
-    const batch = firebaseDb.batch();
-
-    PUBLIC_CATEGORY_CATALOG.forEach((category) => {
-        const current = existingCategories.get(category.id);
-        const ref = firebaseDb.collection('categorias').doc(category.id);
-
-        batch.set(ref, {
-            name: category.name,
-            image_url: category.image_url || '',
-            active: current ? current.active !== false : category.active,
-            created_at: current?.created_at || now,
-            updated_at: now
-        }, { merge: true });
-    });
-
-    PUBLIC_PRODUCT_CATALOG.forEach((product) => {
-        const current = existingProducts.get(product.id);
-        const ref = firebaseDb.collection('productos').doc(product.id);
-
-        batch.set(ref, {
-            nombre: product.nombre,
-            precio: product.precio,
-            categoria: product.categoria,
-            estado: current?.estado === 'paused' ? 'paused' : product.estado,
-            es_destacado: current?.es_destacado === true || product.es_destacado === true,
-            image_url: product.image_url,
-            source: 'public_catalog',
-            created_at: current?.created_at || now,
-            updated_at: now
-        }, { merge: true });
-    });
-
-    await batch.commit();
-}
-
 function renderEditProductCategorySelect(selectedCategoryName) {
     if (!editProductCategorySelect) {
         return;
@@ -9045,18 +9001,6 @@ function formatLiveDuration(value) {
 
     const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
 
-    function getTimestampMillis(value) {
-        if (!value) {
-            return 0;
-        }
-
-        if (typeof value.toMillis === 'function') {
-            return value.toMillis();
-        }
-
-        const parsed = new Date(value).getTime();
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
         return 'hace 0s';
     }
@@ -17614,28 +17558,28 @@ if (authForgotBtn) {
         const email = String(authUsernameInput?.value || '').trim();
 
         if (!firebaseAuth) {
-            window.alert('Firebase Auth no esta disponible en este momento.');
+            showNotice('Firebase Auth no esta disponible en este momento.', 'error');
             return;
         }
 
         if (!email) {
-            window.alert('Ingresa primero el correo administrador para enviar el enlace de recuperacion.');
+            showNotice('Ingresa primero el correo administrador para enviar el enlace de recuperacion.', 'error');
             authUsernameInput?.focus();
             return;
         }
 
         try {
             await firebaseAuth.sendPasswordResetEmail(email);
-            window.alert('Se envio un correo de recuperacion si la cuenta existe en Firebase Auth.');
+            showNotice('Se envio un correo de recuperacion si la cuenta existe en Firebase Auth.', 'ok');
         } catch (error) {
-            window.alert(`No se pudo enviar el correo de recuperacion: ${error.message || 'error inesperado.'}`);
+            showNotice(`No se pudo enviar el correo de recuperacion: ${error.message || 'error inesperado.'}`, 'error');
         }
     });
 }
 
 if (authRegisterBtn) {
     authRegisterBtn.addEventListener('click', () => {
-        window.alert('El alta de administradores debe hacerse desde Firebase Console o una herramienta interna segura.');
+        showNotice('El alta de administradores debe hacerse desde Firebase Console o una herramienta interna segura.', 'warn');
     });
 }
 
@@ -17647,8 +17591,6 @@ if (adminSignOutBtn) {
 
         try {
             await firebaseAuth.signOut();
-            document.body.classList.add('admin-locked');
-            document.body.classList.remove('admin-unlocked');
 
             if (authPasswordInput) {
                 authPasswordInput.value = '';
@@ -17659,8 +17601,14 @@ if (adminSignOutBtn) {
                 authError.textContent = '';
             }
 
-            authUsernameInput?.focus();
             showNotice('Sesion cerrada.', 'ok');
+
+            // ensureAdminAuth() ya muestra el candado de login y espera un submit real -- antes,
+            // finishUnlock() (dentro de ensureAdminAuth) sacaba el listener del submit para
+            // siempre en el PRIMER login exitoso de la pestaña, asi que "Cerrar sesion" mostraba
+            // el formulario de nuevo pero reloguear no hacia nada (submit sin ningun listener).
+            // Llamarla de nuevo aca reengancha un listener nuevo; se limpia solo al lograr login.
+            await ensureAdminAuth();
         } catch (error) {
             showNotice(`No se pudo cerrar sesion: ${error.message || 'error inesperado.'}`, 'error');
         }
