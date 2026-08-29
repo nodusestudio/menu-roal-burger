@@ -332,15 +332,17 @@ async function computeServerPricedOrder(db, {
     fulfillmentType,
     deliveryLatitude,
     deliveryLongitude,
+    deliveryAddress,
     deliveryFeeSubmitted,
     clientId,
     pointsToRedeemRequested
 }) {
-    const [catalog, combosEspecialesSnapshot, couponLocks, puntosDisponibles] = await Promise.all([
+    const [catalog, combosEspecialesSnapshot, couponLocks, puntosDisponibles, barriosEspeciales] = await Promise.all([
         fetchAllSellableItems(db),
         db.collection('combos_especiales').get(),
         fetchCouponLocks(db, clientId),
-        fetchLoyaltyPointsBalance(db, clientId)
+        fetchLoyaltyPointsBalance(db, clientId),
+        orderLogic.loadBarriosEspeciales(db)
     ]);
 
     const combosEspeciales = combosEspecialesSnapshot.docs
@@ -423,6 +425,22 @@ async function computeServerPricedOrder(db, {
         deliveryFee = 0;
     }
 
+    // Barrio especial (domiciliario no entra): tarifa fija, GANA sobre la de zona/GPS. La
+    // confirmación de "salir a recibir" la exige submitPublicOrder (index.js), no acá.
+    let barrioEspecial = null;
+    if (fulfillmentType === 'delivery') {
+        const barrio = orderLogic.findBarrioEspecial(deliveryAddress, barriosEspeciales);
+        if (barrio) {
+            if (Number(deliveryFee) !== Number(barrio.tarifa)) {
+                mismatchDetected = true;
+                mismatchDetails.push({ type: 'DELIVERY_FEE', reason: 'BARRIO_ESPECIAL', barrio: barrio.nombre, clientFee: Number(deliveryFeeSubmitted || 0), expectedFee: barrio.tarifa });
+            }
+            deliveryFee = barrio.tarifa;
+            deliveryFeeVerified = true;
+            barrioEspecial = barrio.nombre;
+        }
+    }
+
     // Cargo de empaque del 2x1: antes confiaba en promo2x1IncrementoFeeExpected, un número suelto
     // mandado por el cliente sin ninguna relación con el carrito real (ni piso ni verificación —
     // a diferencia de cada otra línea de precio de este archivo, podía ser cualquier valor,
@@ -457,6 +475,7 @@ async function computeServerPricedOrder(db, {
         subtotal,
         deliveryFee,
         deliveryFeeVerified,
+        barrioEspecial,
         promo2x1IncrementoFee,
         pointsRedeemed,
         pointsDiscountAmount,

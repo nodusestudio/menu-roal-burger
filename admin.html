@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260828-1926">
+    <link rel="stylesheet" href="style.css?v=20260828-2141">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -13398,6 +13398,10 @@
                             <span class="menu-inner-tab-icon">💳</span>
                             <span>Tipos de Pago</span>
                         </button>
+                        <button class="menu-inner-tab" data-section-tab="barrios_especiales" data-section-scope="configuracion" role="tab" aria-selected="false">
+                            <span class="menu-inner-tab-icon">🛵</span>
+                            <span>Barrios especiales</span>
+                        </button>
                         <button class="menu-inner-tab" data-section-tab="meseros" data-section-scope="configuracion" role="tab" aria-selected="false">
                             <span class="menu-inner-tab-icon">🧑‍🍳</span>
                             <span>Meseros</span>
@@ -13577,6 +13581,24 @@
                                         Configura los métodos de pago disponibles al cobrar y en el menú del cliente. Puedes activar/desactivar, editar o eliminar cada uno, elegir si aparece en el POS, en el menú o en ambos, y agregar nuevos.
                                     </p>
                                     <div id="paymentConfigPanel">
+                                        <!-- renderizado por JS -->
+                                    </div>
+                                </div>
+                            </article>
+                        </div>
+
+                        <!-- Panel: Barrios especiales (domiciliario no entra) -->
+                        <div class="menu-inner-panel" data-section-panel="barrios_especiales" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Barrios especiales</h2>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-barrios-especiales" aria-expanded="true">Retraer</button>
+                                </div>
+                                <div class="card-body" id="card-barrios-especiales">
+                                    <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
+                                        Barrios a los que el domiciliario NO entra. Cuando la dirección de un pedido a domicilio menciona uno de estos barrios, el menú le cobra la tarifa fija que pongas acá (gana sobre la calculada por GPS) y le pide al cliente que confirme que puede salir a un punto acordado a recibir el pedido. Si no confirma, el pedido no se procesa.
+                                    </p>
+                                    <div id="barriosEspecialesPanel">
                                         <!-- renderizado por JS -->
                                     </div>
                                 </div>
@@ -15168,8 +15190,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260828-1926"></script>
-    <script defer src="admin.js?v=20260828-1926"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260828-2141"></script>
+    <script defer src="admin.js?v=20260828-2141"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

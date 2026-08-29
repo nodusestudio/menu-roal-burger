@@ -44,6 +44,28 @@ function referenceFormatSequentialOrderCode(sequenceNumber) {
     return `RB-${String(sequenceNumber).padStart(4, '0')}`;
 }
 
+// SYNC: src/js/script-v2.js función normalizeBarrioText / findBarrioEspecial (~línea 1118)
+function referenceNormalizeBarrioText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+}
+function referenceFindBarrioEspecial(addressText, barrios = []) {
+    const haystack = referenceNormalizeBarrioText(addressText);
+    if (!haystack || !Array.isArray(barrios)) return null;
+    for (const barrio of barrios) {
+        if (!barrio || barrio.activo === false) continue;
+        const needle = referenceNormalizeBarrioText(barrio.nombre);
+        if (needle && haystack.includes(needle)) {
+            return { nombre: String(barrio.nombre || '').trim(), tarifa: Math.max(0, Number(barrio.tarifa) || 0) };
+        }
+    }
+    return null;
+}
+
 test('getCheckoutFulfillmentType — paridad', () => {
     const cases = ['pickup', 'delivery', 'mesa', 'dine_in', 'DELIVERY', '  pickup  ', 'invalido', '', null, undefined];
     for (const value of cases) {
@@ -97,6 +119,33 @@ test('DELIVERY_GEOFENCE_ZONES — extracción coherente con script-v2.js', () =>
     // Punto de referencia dentro de la zona "amarilla" (ver src/js/script-v2.js línea ~34-59).
     const zone = orderLogic.findDeliveryZoneForLocation({ latitude: 4.5419, longitude: -75.6835 });
     assert.equal(zone?.name, 'amarilla');
+});
+
+test('findBarrioEspecial — paridad (tildes, ruido alrededor, activo:false)', () => {
+    const barrios = [
+        { nombre: 'Cañas Gordas', tarifa: 7000, activo: true },
+        { nombre: 'La Isabela', tarifa: 9000 }, // sin activo -> se trata como activo
+        { nombre: 'El Bosque', tarifa: 5000, activo: false }
+    ];
+    const cases = [
+        'vivo en el barrio CAÑAS GORDAS mz 4 casa 12',
+        'canas gordas',
+        '  la  isabela , torre 3 ',
+        'el bosque, apto 201', // inactivo -> null
+        'otro barrio cualquiera',
+        '',
+        null
+    ];
+    for (const addr of cases) {
+        assert.deepEqual(
+            orderLogic.findBarrioEspecial(addr, barrios),
+            referenceFindBarrioEspecial(addr, barrios),
+            `Diverge para addr=${JSON.stringify(addr)}`
+        );
+    }
+    // Sanidad: los dos primeros SÍ matchean, el del inactivo NO.
+    assert.equal(orderLogic.findBarrioEspecial('canas gordas', barrios)?.tarifa, 7000);
+    assert.equal(orderLogic.findBarrioEspecial('el bosque', barrios), null);
 });
 
 test('createAgentOrder — valida antes de tocar Firestore', async () => {

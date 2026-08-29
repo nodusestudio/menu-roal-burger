@@ -62,6 +62,45 @@ function findDeliveryZoneForLocation(location = {}) {
     return DELIVERY_GEOFENCE_ZONES.find((zone) => isPointInPolygon(point, zone.polygon)) || null;
 }
 
+// ── Barrios especiales (domiciliario no entra) ───────────────────────────────
+// Lista editable desde el admin (configuracion/barrios_especiales). Cuando la dirección de un
+// pedido a domicilio menciona uno de estos barrios: tarifa fija (gana sobre la de zona/GPS) y
+// el cliente debe confirmar que puede salir a recibir el pedido en un punto acordado.
+// SYNC: src/js/script-v2.js — mismas dos funciones (ver tests/agent-order-logic-parity.test.js).
+const BARRIOS_ESPECIALES_DOC = 'barrios_especiales';
+
+function normalizeBarrioText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+}
+
+function findBarrioEspecial(addressText, barrios = []) {
+    const haystack = normalizeBarrioText(addressText);
+    if (!haystack || !Array.isArray(barrios)) return null;
+    for (const barrio of barrios) {
+        if (!barrio || barrio.activo === false) continue;
+        const needle = normalizeBarrioText(barrio.nombre);
+        if (needle && haystack.includes(needle)) {
+            return { nombre: String(barrio.nombre || '').trim(), tarifa: Math.max(0, Number(barrio.tarifa) || 0) };
+        }
+    }
+    return null;
+}
+
+async function loadBarriosEspeciales(db) {
+    try {
+        const doc = await db.collection('configuracion').doc(BARRIOS_ESPECIALES_DOC).get();
+        const list = doc.exists ? doc.data()?.barrios : null;
+        return Array.isArray(list) ? list : [];
+    } catch (_) {
+        return [];
+    }
+}
+
 // ── Código secuencial de pedido ──────────────────────────────────────────────
 // SYNC: src/js/script-v2.js función formatSequentialOrderCode (línea ~1049)
 function formatSequentialOrderCode(sequenceNumber) {
@@ -284,7 +323,7 @@ ${closingLine}`;
 // Construye un resumen legible del pedido (equivalente simplificado de
 // buildCartCheckoutMessage, src/js/script-v2.js línea ~4520) para guardarlo en
 // `summaryMessage` y, en WhatsApp, confirmarle el pedido al cliente en el mismo chat.
-function buildAgentOrderSummaryMessage({ items, customerName, fulfillmentType, address, paymentMethod, cashChangeRequired, cashTenderAmount, deliveryZoneLabel, deliveryFee, subtotal, total, isScheduled, scheduledLabel }) {
+function buildAgentOrderSummaryMessage({ items, customerName, fulfillmentType, address, paymentMethod, cashChangeRequired, cashTenderAmount, deliveryZoneLabel, barrioEspecial, deliveryFee, subtotal, total, isScheduled, scheduledLabel }) {
     const lines = items.map((item, index) => {
         const details = [`${index + 1}. ${item.productName} x${item.quantity}`, `   Categoria: ${item.categoryName}`];
         if (item.note) details.push(`   Nota: ${item.note}`);
@@ -297,6 +336,7 @@ function buildAgentOrderSummaryMessage({ items, customerName, fulfillmentType, a
         `Entrega: ${fulfillmentLabel}`,
         address ? `Direccion: ${address}` : '',
         deliveryZoneLabel ? `Zona: ${deliveryZoneLabel}` : '',
+        barrioEspecial ? `⚠️ Barrio ${barrioEspecial} — el cliente sale a recibir` : '',
         isScheduled && scheduledLabel ? `Programado para: ${scheduledLabel}` : '',
         paymentMethod === 'efectivo'
             ? `Pago: Efectivo${cashChangeRequired && cashTenderAmount > 0 ? ` | Paga con: ${formatCurrencyCOP(cashTenderAmount)}` : ' | Lleva completo'}`
@@ -322,6 +362,7 @@ async function createAgentOrder(db, {
     cashTenderAmount,
     deliveryLatitude,
     deliveryLongitude,
+    salirARecibirConfirmado,
     isScheduled,
     scheduledDate,
     scheduledTime,
@@ -342,6 +383,7 @@ async function createAgentOrder(db, {
 
     let deliveryFee = 0;
     let deliveryZone = null;
+    let barrioEspecial = null;
     const lat = Number.isFinite(Number(deliveryLatitude)) ? Number(deliveryLatitude) : null;
     const lng = Number.isFinite(Number(deliveryLongitude)) ? Number(deliveryLongitude) : null;
 
@@ -353,6 +395,17 @@ async function createAgentOrder(db, {
         } else {
             // Piso de seguridad: nunca $0 en domicilio, igual que createOrderFromCart.
             deliveryFee = DELIVERY_FEE_AMOUNT;
+        }
+
+        // Barrio especial: el domiciliario no entra. Tarifa fija (gana sobre la de zona/GPS) y
+        // el cliente debe haber confirmado que puede salir a recibir. Se corta la creación si no.
+        const barrio = findBarrioEspecial(address, await loadBarriosEspeciales(db));
+        if (barrio) {
+            if (salirARecibirConfirmado !== true) {
+                throw new Error(`El domiciliario no entra a ${barrio.nombre}. Antes de crear el pedido el cliente debe confirmar que puede salir a recibirlo en un punto acordado. La tarifa de domicilio a ese barrio es fija: ${formatCurrencyCOP(barrio.tarifa)}.`);
+            }
+            deliveryFee = barrio.tarifa;
+            barrioEspecial = barrio.nombre;
         }
     }
 
@@ -386,6 +439,7 @@ async function createAgentOrder(db, {
         cashChangeRequired: cashChangeRequiredBool,
         cashTenderAmount: cashTenderAmountNum,
         deliveryZoneLabel: deliveryZone,
+        barrioEspecial,
         deliveryFee,
         subtotal,
         total,
@@ -427,6 +481,8 @@ async function createAgentOrder(db, {
         cashChangeRequired: cashChangeRequiredBool,
         cashTenderAmount: Number.isFinite(cashTenderAmountNum) ? cashTenderAmountNum : null,
         deliveryZone,
+        barrioEspecial,
+        salirARecibirConfirmado: barrioEspecial ? true : false,
         deliveryLatitude: lat,
         deliveryLongitude: lng,
         deliveryFeeVerified: normalizedFulfillment === 'delivery' && lat !== null && lng !== null,
@@ -555,6 +611,9 @@ module.exports = {
     getCheckoutFulfillmentType,
     isPointInPolygon,
     findDeliveryZoneForLocation,
+    normalizeBarrioText,
+    findBarrioEspecial,
+    loadBarriosEspeciales,
     formatSequentialOrderCode,
     reserveNextOrderCode,
     getCurrentOrderingMinutes,

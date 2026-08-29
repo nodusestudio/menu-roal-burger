@@ -314,6 +314,7 @@ const AGENT_TOOL_DEFS = [
                 paymentMethod: { type: 'string' },
                 cashChangeRequired: { type: 'boolean' },
                 cashTenderAmount: { type: 'number' },
+                salirARecibirConfirmado: { type: 'boolean', description: 'Marca true SOLO cuando el cliente confirmó explícitamente que puede salir a un punto acordado a recibir el pedido (barrios a los que el domiciliario no entra).' },
                 isScheduled: { type: 'boolean' },
                 scheduledDate: { type: 'string', description: 'YYYY-MM-DD' },
                 scheduledTime: { type: 'string', description: 'HH:MM' },
@@ -500,6 +501,31 @@ function buildAgentToolHandlers({ db, state, conversationKey }) {
 
         set_customer_info: async (input = {}) => {
             state.customerInfo = { ...(state.customerInfo || {}), ...input };
+
+            // Barrio especial: si la dirección cae en uno, fijar la tarifa (gana sobre la de
+            // zona) y avisar al modelo que el cliente debe confirmar que puede salir a recibir.
+            const address = state.customerInfo.address;
+            if (address && state.customerInfo.fulfillmentType === 'delivery') {
+                const barrio = orderLogic.findBarrioEspecial(address, await orderLogic.loadBarriosEspeciales(db));
+                if (barrio) {
+                    state.customerInfo.barrioEspecial = barrio.nombre;
+                    state.customerInfo.deliveryFee = barrio.tarifa;
+                    state.customerInfo.deliveryZone = null;
+                    if (input.salirARecibirConfirmado !== true && state.customerInfo.salirARecibirConfirmado !== true) {
+                        return JSON.stringify({
+                            ok: true,
+                            barrioEspecial: barrio.nombre,
+                            deliveryFee: barrio.tarifa,
+                            requiereSalirARecibir: true,
+                            aviso: `${barrio.nombre} es un barrio al que el domiciliario NO entra. La tarifa de domicilio es fija: $${barrio.tarifa.toLocaleString('es-CO')}. Dile al cliente que debe salir a un punto acordado a recibir el pedido y pídele que confirme. Solo cuando confirme, llama set_customer_info con salirARecibirConfirmado: true. No uses place_order antes de eso.`
+                        });
+                    }
+                } else if (state.customerInfo.barrioEspecial) {
+                    // Cambió a una dirección que ya no es de barrio especial.
+                    state.customerInfo.barrioEspecial = null;
+                    state.customerInfo.salirARecibirConfirmado = false;
+                }
+            }
             return 'Datos del cliente actualizados.';
         },
 
@@ -520,6 +546,15 @@ function buildAgentToolHandlers({ db, state, conversationKey }) {
             if (!info.fulfillmentType) return JSON.stringify({ error: 'Falta el tipo de entrega (pickup, delivery o mesa).' });
             if (info.fulfillmentType === 'delivery' && !info.address) return JSON.stringify({ error: 'Falta la dirección de domicilio.' });
             if (!info.paymentMethod) return JSON.stringify({ error: 'Falta el método de pago.' });
+
+            // Barrio especial: no crear el pedido hasta que el cliente confirme que puede salir
+            // a recibir (el domiciliario no entra al barrio).
+            if (info.fulfillmentType === 'delivery' && info.address) {
+                const barrio = orderLogic.findBarrioEspecial(info.address, await orderLogic.loadBarriosEspeciales(db));
+                if (barrio && info.salirARecibirConfirmado !== true) {
+                    return JSON.stringify({ error: `${barrio.nombre}: el domiciliario no entra al barrio. Primero dile al cliente que la tarifa de domicilio es fija ($${barrio.tarifa.toLocaleString('es-CO')}) y que debe salir a un punto acordado a recibir el pedido. Cuando confirme, llama set_customer_info con salirARecibirConfirmado: true y recién ahí place_order.` });
+                }
+            }
 
             if (!info.isScheduled) {
                 const doc = await db.collection('configuracion').doc('config_horario').get();
@@ -542,6 +577,7 @@ function buildAgentToolHandlers({ db, state, conversationKey }) {
                     cashTenderAmount: info.cashTenderAmount,
                     deliveryLatitude: info.deliveryLatitude,
                     deliveryLongitude: info.deliveryLongitude,
+                    salirARecibirConfirmado: info.salirARecibirConfirmado === true,
                     isScheduled: info.isScheduled,
                     scheduledDate: info.scheduledDate,
                     scheduledTime: info.scheduledTime,

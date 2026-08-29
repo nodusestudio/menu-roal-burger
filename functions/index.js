@@ -1398,15 +1398,26 @@ exports.submitPublicOrder = onCall(
             };
         }
 
+        const deliveryAddress = String(customerInfo.address || '').trim();
+
         const priced = await pricing.computeServerPricedOrder(db, {
             items,
             fulfillmentType,
             deliveryLatitude,
             deliveryLongitude,
+            deliveryAddress,
             deliveryFeeSubmitted: customerInfo.deliveryFee,
             clientId,
             pointsToRedeemRequested: customerInfo.pointsToRedeem
         });
+
+        // Barrio especial (domiciliario no entra): no se puede procesar el pedido a domicilio si
+        // el cliente no confirmó que puede salir a recibirlo en un punto acordado. El checkout ya
+        // lo bloquea con un checkbox; esto es el candado server-side (a prueba de saltarse el front).
+        if (priced.barrioEspecial && customerInfo.salirARecibirConfirmado !== true) {
+            throw new HttpsError('failed-precondition',
+                `Para pedidos a domicilio en ${priced.barrioEspecial} necesitamos que confirmes que puedes salir a un punto acordado a recibir el pedido (el domiciliario no entra al barrio).`);
+        }
 
         if (priced.mismatchDetected || priced.mismatchDetails.length) {
             console.warn('[PRICE_MISMATCH]', {
@@ -1417,7 +1428,6 @@ exports.submitPublicOrder = onCall(
             });
         }
 
-        const deliveryAddress = String(customerInfo.address || '').trim();
         const paymentMethod = String(customerInfo.paymentMethod || '').trim().toLowerCase();
         const cashChangeRequired = customerInfo.cashChangeRequired === true;
         const cashTenderAmount = cashChangeRequired ? Number(customerInfo.cashTenderAmount || 0) : null;
@@ -1451,6 +1461,8 @@ exports.submitPublicOrder = onCall(
             cashChangeRequired,
             cashTenderAmount: Number.isFinite(cashTenderAmount) ? cashTenderAmount : null,
             deliveryZone: String(customerInfo.deliveryZone || '').trim() || null,
+            barrioEspecial: priced.barrioEspecial || null,
+            salirARecibirConfirmado: priced.barrioEspecial ? true : false,
             deliveryLatitude,
             deliveryLongitude,
             deliveryFeeVerified: priced.deliveryFeeVerified,

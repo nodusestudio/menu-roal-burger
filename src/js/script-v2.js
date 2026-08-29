@@ -1110,6 +1110,33 @@ function findDeliveryZoneForLocation(location = {}) {
     return DELIVERY_GEOFENCE_ZONES.find((zone) => isPointInPolygon(point, zone.polygon)) || null;
 }
 
+// ── Barrios especiales (domiciliario no entra) ───────────────────────────────
+// Lista editable desde el admin (configuracion/barrios_especiales). Cuando la dirección de un
+// pedido a domicilio menciona uno de estos barrios: tarifa fija (gana sobre la de zona/GPS) y
+// el cliente debe confirmar que puede salir a recibir el pedido en un punto acordado.
+// SYNC: functions/agent/orderLogic.js — mismas dos funciones (ver tests/agent-order-logic-parity.test.js).
+function normalizeBarrioText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+}
+
+function findBarrioEspecial(addressText, barrios = []) {
+    const haystack = normalizeBarrioText(addressText);
+    if (!haystack || !Array.isArray(barrios)) return null;
+    for (const barrio of barrios) {
+        if (!barrio || barrio.activo === false) continue;
+        const needle = normalizeBarrioText(barrio.nombre);
+        if (needle && haystack.includes(needle)) {
+            return { nombre: String(barrio.nombre || '').trim(), tarifa: Math.max(0, Number(barrio.tarifa) || 0) };
+        }
+    }
+    return null;
+}
+
 function getCheckoutDeliveryFee(fulfillmentType) {
     return getCheckoutFulfillmentType(fulfillmentType) === 'delivery'
         ? Math.max(0, Number.isFinite(checkoutDeliveryFeeAmount) ? checkoutDeliveryFeeAmount : 0)
@@ -1852,6 +1879,22 @@ async function loadCustomerPaymentMethods() {
             ];
         }
     } catch (_) {}
+}
+
+// Barrios a los que el domiciliario no entra (configuracion/barrios_especiales, editable desde
+// el admin). Cuando la dirección de un pedido a domicilio menciona uno, tarifa fija + el cliente
+// debe confirmar que sale a recibir (ver updateCheckoutInfoModalState / submitCheckoutInfo).
+let _barriosEspeciales = [];
+
+async function loadBarriosEspeciales() {
+    try {
+        const db = getPublicFirebaseDb();
+        const doc = await db.collection('configuracion').doc('barrios_especiales').get();
+        const list = doc.exists && Array.isArray(doc.data()?.barrios) ? doc.data().barrios : [];
+        _barriosEspeciales = list;
+    } catch (_) {
+        _barriosEspeciales = [];
+    }
 }
 
 function _getPublicCategoryData(categoryName) {
@@ -4970,6 +5013,7 @@ async function createOrderFromCart(customerInfo = {}) {
             deliveryLatitude,
             deliveryLongitude,
             deliveryZone: customerInfo.deliveryZone || null,
+            salirARecibirConfirmado: customerInfo.salirARecibirConfirmado === true,
             promo2x1IncrementoFee,
             pointsToRedeem,
             clientRequestId: String(customerInfo.clientRequestId || ''),
@@ -5653,6 +5697,17 @@ async function submitCheckoutInfo() {
         checkoutDeliveryLocationConfirmed = true;
     }
 
+    // Barrio especial: sin la confirmación de "salgo a recibir" no se puede procesar el pedido
+    // (el servidor lo vuelve a validar en submitPublicOrder).
+    const barrioEspecial = fulfillmentType === 'delivery'
+        ? findBarrioEspecial(deliveryAddress, _barriosEspeciales)
+        : null;
+    if (barrioEspecial && !checkoutInfoUI.salirARecibir?.checked) {
+        checkoutInfoUI.feedback.textContent = `Para pedidos a ${barrioEspecial.nombre} debes confirmar que puedes salir a un punto acordado a recibir el pedido.`;
+        checkoutInfoUI.salirARecibir?.focus();
+        return;
+    }
+
     if (phoneDigits.length < 10) {
         checkoutInfoUI.feedback.textContent = 'Escribe un telefono valido para confirmar el pedido.';
         checkoutInfoUI.phone?.focus();
@@ -5684,10 +5739,12 @@ async function submitCheckoutInfo() {
                 ? appendCustomerSavedAddress(savedAddresses, newSavedAddressEntry)
                 : savedAddresses,
             deliveryZone: checkoutInfoUI.deliveryZone || null,
+            barrioEspecial: barrioEspecial ? barrioEspecial.nombre : null,
+            salirARecibirConfirmado: barrioEspecial ? Boolean(checkoutInfoUI.salirARecibir?.checked) : false,
             deliveryLatitude: checkoutInfoUI.deliveryLatitude || null,
             deliveryLongitude: checkoutInfoUI.deliveryLongitude || null,
-            deliveryFee: getCheckoutDeliveryFee(fulfillmentType),
-            deliveryFeePending: fulfillmentType === 'delivery' ? checkoutDeliveryFeePending : false,
+            deliveryFee: barrioEspecial ? barrioEspecial.tarifa : getCheckoutDeliveryFee(fulfillmentType),
+            deliveryFeePending: fulfillmentType === 'delivery' && !barrioEspecial ? checkoutDeliveryFeePending : false,
             isScheduled: checkoutIsScheduled,
             scheduledDate: checkoutIsScheduled ? checkoutScheduledDate : '',
             scheduledTime: checkoutIsScheduled ? checkoutScheduledTime : '',
@@ -5798,6 +5855,11 @@ function handleCheckoutAddressInput() {
     }
 
     const address = String(checkoutInfoUI.address?.value || '').trim();
+
+    // Barrio especial: la advertencia + checkbox de "salgo a recibir" debe aparecer apenas el
+    // cliente escribe el nombre del barrio, sin esperar al geocoding.
+    updateCheckoutInfoModalState();
+
     if (address.length < 8) {
         return;
     }
@@ -5905,6 +5967,27 @@ function updateCheckoutInfoModalState() {
                 checkoutInfoUI.deliveryZoneStatus.textContent = '📍 Usa el botón "Usar mi ubicación actual" o toca el mapa de abajo para colocar el pin en tu dirección.';
             }
         });
+    }
+
+    // Barrio especial (domiciliario no entra): si la dirección menciona uno, tarifa fija (gana
+    // sobre la de zona/GPS) y hay que mostrar la advertencia + checkbox de "salgo a recibir".
+    const currentAddrText = requiresAddress
+        ? (usingSavedAddress ? String(selectedSavedAddressEntry?.address || '') : String(checkoutInfoUI.address?.value || ''))
+        : '';
+    const barrioEspecial = requiresAddress ? findBarrioEspecial(currentAddrText, _barriosEspeciales) : null;
+    checkoutInfoUI._barrioEspecial = barrioEspecial;
+    if (barrioEspecial) {
+        checkoutDeliveryFeeAmount = barrioEspecial.tarifa;
+        checkoutDeliveryFeePending = false;
+        checkoutDeliveryLocationConfirmed = true;
+    }
+    if (checkoutInfoUI.barrioWarning) {
+        checkoutInfoUI.barrioWarning.hidden = !barrioEspecial;
+        if (barrioEspecial && checkoutInfoUI.barrioWarningText) {
+            checkoutInfoUI.barrioWarningText.textContent =
+                `⚠️ El domiciliario no entra a ${barrioEspecial.nombre}. El domicilio a ese barrio cuesta ${formatCurrency(barrioEspecial.tarifa)} y tienes que salir a un punto acordado a recibir el pedido.`;
+        }
+        if (!barrioEspecial && checkoutInfoUI.salirARecibir) checkoutInfoUI.salirARecibir.checked = false;
     }
 
     // Recalcular deliveryFee y orderTotal después de actualizar checkoutDeliveryFeeAmount
@@ -6126,6 +6209,13 @@ function openCheckoutInfoModal() {
                 </div>
                 <div id="deliveryMap" class="checkout-map-area"></div>
             </div>
+            <div id="checkoutBarrioWarning" class="checkout-barrio-warning" hidden>
+                <p class="checkout-barrio-warning-text" id="checkoutBarrioWarningText"></p>
+                <label class="support-check">
+                    <input type="checkbox" id="checkoutSalirARecibir">
+                    <span>Confirmo que puedo salir a un punto acordado a recibir el pedido.</span>
+                </label>
+            </div>
             ${profile ? '' : `
             <label class="support-field">
                 <span>Telefono</span>
@@ -6192,6 +6282,9 @@ function openCheckoutInfoModal() {
         requestQuoteButton: modal.querySelector('#checkoutRequestQuoteButton'),
         deliveryFeeRow: modal.querySelector('#checkoutDeliveryFeeRow'),
         deliveryFeeValue: modal.querySelector('#checkoutDeliveryFeeValue'),
+        barrioWarning: modal.querySelector('#checkoutBarrioWarning'),
+        barrioWarningText: modal.querySelector('#checkoutBarrioWarningText'),
+        salirARecibir: modal.querySelector('#checkoutSalirARecibir'),
         discountRow: modal.querySelector('#checkoutDiscountRow'),
         discountValue: modal.querySelector('#checkoutDiscountValue'),
         pointsField: modal.querySelector('#checkoutPointsField'),
@@ -6245,6 +6338,9 @@ function openCheckoutInfoModal() {
     checkoutInfoUI.pointsInput?.addEventListener('input', () => {
         checkoutPointsToRedeem = Math.max(0, Math.floor(Number(checkoutInfoUI.pointsInput.value) || 0));
         updateCheckoutInfoModalState();
+    });
+    checkoutInfoUI.salirARecibir?.addEventListener('change', () => {
+        if (checkoutInfoUI.feedback) checkoutInfoUI.feedback.textContent = '';
     });
 
     modal.addEventListener('click', (event) => {
@@ -13183,6 +13279,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAcompanantesPublic();
     loadCombosPackPublic();
     loadCustomerPaymentMethods();
+    loadBarriosEspeciales();
 
     // ── Detector de conexión offline / online ──────────────────────────────
     (function _setupOfflineBanner() {

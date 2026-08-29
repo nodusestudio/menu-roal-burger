@@ -2268,6 +2268,8 @@ function normalizeOrder(raw) {
         paymentSplit: Array.isArray(raw.paymentSplit) ? raw.paymentSplit : null,
         meseroId: String(raw.meseroId || '').trim() || null,
         meseroName: String(raw.meseroName || '').trim() || null,
+        barrioEspecial: String(raw.barrioEspecial || '').trim() || null,
+        salirARecibirConfirmado: raw.salirARecibirConfirmado === true,
     };
 }
 
@@ -9522,11 +9524,14 @@ function buildThermalTicketMarkup(order, options = {}) {
         ? (order.cashChangeAmount != null ? Number(order.cashChangeAmount) : (cashGiven > totalAmount ? cashGiven - totalAmount : null))
         : null;
 
-    const addressLines = order.orderType === 'domicilio'
+    const barrioEspecialLine = order.barrioEspecial
+        ? `<div class="ticket-address-text" style="color:#f59e0b;font-weight:700;">⚠️ Barrio ${escapeHtml(order.barrioEspecial)} — el domiciliario no entra, el cliente SALE A RECIBIR</div>`
+        : '';
+    const addressLines = barrioEspecialLine + (order.orderType === 'domicilio'
         ? `<div class="ticket-address-text">${buildTicketEditFieldButton(order, 'deliveryAddress', order.deliveryAddress || 'Sin direccion registrada', printMode)}</div>`
         : buildTicketAddressLines(order)
             .map((line) => `<div class="ticket-address-text">${escapeHtml(line)}</div>`)
-            .join('');
+            .join(''));
 
     const ticketDiscountTotal = (order.items || []).reduce((sum, item) => {
         const orig = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
@@ -12785,6 +12790,9 @@ function buildESCPOSData(order) {
     if (order.orderType === 'domicilio' && order.deliveryAddress) {
         ww(order.deliveryAddress, '  Dir    : ');
     }
+    if (order.barrioEspecial) {
+        ww(`Barrio ${order.barrioEspecial} - NO ENTRA EL DOMI, CLIENTE SALE A RECIBIR`, '  !! ');
+    }
     sep2();
 
     // ── PRODUCTOS ───────────────────────────────────────────────────────────
@@ -16017,6 +16025,7 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
         // Auto-cargar al abrir pestañas de Configuración
         if (scope === 'configuracion') {
             if (target === 'categorias_gastos') loadCategoriasGastos().then(renderCategoriasGastosPanel);
+            if (target === 'barrios_especiales') loadBarriosEspeciales().then(renderBarriosEspecialesPanel);
         }
     });
 });
@@ -18612,6 +18621,147 @@ async function _pmSaveAndRefresh(methods, successMsg) {
     } catch (e) {
         showNotice('Error al guardar: ' + (e.message || 'error'), 'error');
     }
+}
+
+// ── Barrios especiales (domiciliario no entra) ───────────────────────────────
+// Lista editable: nombre + tarifa fija de domicilio. El menú público y el agente la leen de
+// configuracion/barrios_especiales (mismo patrón doc-único-con-array que metodos_pago).
+const BARRIOS_ESPECIALES_DOC_ID = 'barrios_especiales';
+let _barriosEspeciales = [];
+
+async function loadBarriosEspeciales() {
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(BARRIOS_ESPECIALES_DOC_ID).get();
+        const list = doc.exists && Array.isArray(doc.data()?.barrios) ? doc.data().barrios : [];
+        _barriosEspeciales = list.map((b) => ({
+            nombre: String(b?.nombre || '').trim(),
+            tarifa: Math.max(0, Math.round(Number(b?.tarifa) || 0)),
+            activo: b?.activo !== false
+        })).filter((b) => b.nombre);
+    } catch (_) {
+        _barriosEspeciales = [];
+    }
+    return _barriosEspeciales;
+}
+
+async function saveBarriosEspeciales(barrios) {
+    await firebaseDb.collection(CONFIG_COLLECTION).doc(BARRIOS_ESPECIALES_DOC_ID).set({ barrios });
+    _barriosEspeciales = barrios;
+}
+
+async function _beSaveAndRefresh(barrios, successMsg) {
+    try {
+        await saveBarriosEspeciales(barrios);
+        renderBarriosEspecialesPanel();
+        if (successMsg) showNotice(successMsg, 'ok');
+    } catch (e) {
+        showNotice('Error al guardar: ' + (e.message || 'error'), 'error');
+    }
+}
+
+function renderBarriosEspecialesPanel() {
+    const panel = document.getElementById('barriosEspecialesPanel');
+    if (!panel) return;
+    const barrios = _barriosEspeciales;
+    panel.innerHTML = `
+        <div class="pm-list" id="beList">
+            ${barrios.length ? barrios.map((b, i) => `
+                <div class="pm-method-card" data-be-idx="${i}">
+                    <div class="pm-method-header">
+                        <span class="pm-method-name">
+                            <span class="pm-method-icon">🛵</span>${escapeHtml(b.nombre)}
+                            <span class="pm-subs-badges"><span class="pm-sub-badge">${escapeHtml(formatMoney(b.tarifa))}</span></span>
+                        </span>
+                        <div class="pm-method-actions">
+                            <label class="pm-toggle" title="${b.activo ? 'Activo' : 'Inactivo'}">
+                                <input type="checkbox" data-be-toggle="${i}" ${b.activo ? 'checked' : ''}>
+                                <span class="pm-toggle-slider"></span>
+                            </label>
+                            <button type="button" class="pm-icon-btn" data-be-edit="${i}" title="Editar">✏️</button>
+                            <button type="button" class="pm-icon-btn pm-icon-btn--del" data-be-delete="${i}" title="Eliminar">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('') : '<p style="font-size:0.82rem;color:var(--admin-muted);margin:0;">Aún no hay barrios especiales.</p>'}
+        </div>
+        <div class="pm-method-form-wrap" id="beFormWrap" hidden>
+            <div class="pm-method-form">
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Nombre del barrio</label>
+                    <input type="text" id="beFormNombre" class="pm-form-input" placeholder="ej: Cañas Gordas" maxlength="60">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Tarifa fija de domicilio</label>
+                    <input type="number" id="beFormTarifa" class="pm-form-input" placeholder="7000" min="0" step="500">
+                </div>
+                <div class="pm-form-actions">
+                    <button type="button" class="admin-button" id="beFormSaveBtn" style="grid-column:auto;">Guardar</button>
+                    <button type="button" class="ghost-button" id="beFormCancelBtn">Cancelar</button>
+                </div>
+            </div>
+        </div>
+        <button type="button" class="ghost-button" id="beAddBtn" style="margin-top:14px;width:100%;">+ Agregar barrio</button>
+    `;
+
+    panel.querySelectorAll('[data-be-toggle]').forEach((cb) => {
+        cb.addEventListener('change', async () => {
+            const idx = Number(cb.dataset.beToggle);
+            const updated = _barriosEspeciales.map((b, i) => i === idx ? { ...b, activo: cb.checked } : b);
+            await _beSaveAndRefresh(updated, `Barrio ${cb.checked ? 'activado' : 'desactivado'}.`);
+        });
+    });
+    panel.querySelectorAll('[data-be-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => _beOpenForm(Number(btn.dataset.beEdit)));
+    });
+    panel.querySelectorAll('[data-be-delete]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const idx = Number(btn.dataset.beDelete);
+            const b = _barriosEspeciales[idx];
+            if (!b) return;
+            if (!(await showConfirmModal({ title: `¿Eliminar el barrio "${b.nombre}"?`, confirmText: 'Eliminar' }))) return;
+            await _beSaveAndRefresh(_barriosEspeciales.filter((_, i) => i !== idx), `Barrio "${b.nombre}" eliminado.`);
+        });
+    });
+    panel.querySelector('#beAddBtn')?.addEventListener('click', () => _beOpenForm(null));
+    panel.querySelector('#beFormSaveBtn')?.addEventListener('click', _beFormSave);
+    panel.querySelector('#beFormCancelBtn')?.addEventListener('click', () => {
+        document.getElementById('beFormWrap')?.setAttribute('hidden', '');
+        _beEditingIdx = null;
+    });
+}
+
+let _beEditingIdx = null;
+function _beOpenForm(idx) {
+    _beEditingIdx = Number.isInteger(idx) ? idx : null;
+    const wrap = document.getElementById('beFormWrap');
+    if (!wrap) return;
+    const nombreInput = document.getElementById('beFormNombre');
+    const tarifaInput = document.getElementById('beFormTarifa');
+    const b = _beEditingIdx !== null ? _barriosEspeciales[_beEditingIdx] : null;
+    if (nombreInput) nombreInput.value = b ? b.nombre : '';
+    if (tarifaInput) tarifaInput.value = b ? b.tarifa : '';
+    wrap.removeAttribute('hidden');
+    nombreInput?.focus();
+}
+
+async function _beFormSave() {
+    const nombre = document.getElementById('beFormNombre')?.value?.trim();
+    const tarifa = Math.max(0, Math.round(Number(document.getElementById('beFormTarifa')?.value) || 0));
+    if (!nombre) { showNotice('El nombre del barrio es requerido.', 'error'); return; }
+    if (!(tarifa > 0)) { showNotice('La tarifa debe ser mayor a 0.', 'error'); return; }
+
+    const clash = _barriosEspeciales.some((b, i) => i !== _beEditingIdx && b.nombre.toLowerCase() === nombre.toLowerCase());
+    if (clash) { showNotice('Ya existe un barrio con ese nombre.', 'error'); return; }
+
+    let updated;
+    if (_beEditingIdx !== null) {
+        updated = _barriosEspeciales.map((b, i) => i === _beEditingIdx ? { ...b, nombre, tarifa } : b);
+    } else {
+        updated = [..._barriosEspeciales, { nombre, tarifa, activo: true }];
+    }
+    document.getElementById('beFormWrap')?.setAttribute('hidden', '');
+    _beEditingIdx = null;
+    await _beSaveAndRefresh(updated, 'Barrio guardado.');
 }
 
 // ── Categorías de Gastos ──────────────────────────────────────────────────────
