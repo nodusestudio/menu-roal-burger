@@ -9,6 +9,7 @@ const { getAuth }           = require('firebase-admin/auth');
 const crypto                = require('crypto');
 const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo, closeConversationWithMessage, archiveConversation, blockConversation, deleteConversation } = require('./agent/orchestrator');
 const { fetchAllSellableItems } = require('./agent/tools');
+const { buildWhatsAppOrderDraft } = require('./agent/whatsappOrderParser');
 const orderLogic = require('./agent/orderLogic');
 const { buildDeliveredOrderWhatsAppMessage } = orderLogic;
 const pricing = require('./pricing');
@@ -1689,6 +1690,127 @@ exports.adminAdjustLoyaltyPoints = onCall(
 
 // Exportado solo para tests (tests/loyalty-points-adjustment.test.js).
 exports._adjustLoyaltyPointsTransaction = adjustLoyaltyPointsTransaction;
+
+// ─────────────────────────────────────────────────────────────
+// FODEXA POS — "Pegar pedido de WhatsApp"
+// Dos callables, ambos SOLO para admins (doc en `admins/{uid}`, mismo criterio que
+// agentChatAdminReply):
+//   1. parseWhatsAppOrderDraft(rawText): manda el texto crudo de un chat de WhatsApp a Claude
+//      (claude-haiku-4-5, EXTRACCIÓN pura — nunca inventa un producto/precio/dato), resuelve los
+//      productos contra el menú real con matching difuso y devuelve un BORRADOR editable. NO
+//      crea nada.
+//   2. createManualWhatsAppOrder(draft revisado): recibe lo que el cajero ya editó y crea el
+//      pedido real reusando orderLogic.createAgentOrder — la MISMA función que Reina en
+//      place_order — con source 'admin-manual-whatsapp'. Si createAgentOrder falla (tienda
+//      cerrada, barrio especial sin confirmar, etc.) el mensaje se pasa TAL CUAL al frontend.
+// Requiere secret: ANTHROPIC_API_KEY (solo el paso 1 llama al modelo).
+// ─────────────────────────────────────────────────────────────
+async function ensureAdminCaller(request) {
+    const uid = request.auth?.uid;
+    if (!uid) {
+        throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+    }
+    const adminDoc = await getFirestore().collection('admins').doc(uid).get();
+    if (!adminDoc.exists) {
+        throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+    }
+    return uid;
+}
+
+exports.parseWhatsAppOrderDraft = onCall(
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], cors: ALLOWED_ORIGINS },
+    async (request) => {
+        await ensureAdminCaller(request);
+
+        const rawText = String(request.data?.rawText || '').trim();
+        if (!rawText) {
+            throw new HttpsError('invalid-argument', 'Pega el texto de la conversacion de WhatsApp.');
+        }
+        if (rawText.length > 8000) {
+            throw new HttpsError('invalid-argument', 'El texto es demasiado largo (maximo 8000 caracteres).');
+        }
+        const apiKey = ANTHROPIC_API_KEY.value();
+        if (!apiKey) {
+            throw new HttpsError('failed-precondition', 'Agente no configurado.');
+        }
+
+        try {
+            const draft = await buildWhatsAppOrderDraft(getFirestore(), apiKey, rawText);
+            return { draft };
+        } catch (err) {
+            if (err instanceof HttpsError) throw err;
+            console.error('parseWhatsAppOrderDraft error:', err);
+            throw new HttpsError('internal', err.message || 'No se pudo procesar el texto.');
+        }
+    }
+);
+
+exports.createManualWhatsAppOrder = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        await ensureAdminCaller(request);
+
+        const data = request.data || {};
+        const rawItems = Array.isArray(data.items) ? data.items : [];
+        if (!rawItems.length) {
+            throw new HttpsError('invalid-argument', 'El pedido no tiene productos.');
+        }
+
+        // Se normaliza acá solo la forma (tipos/limpieza). La validación de negocio de verdad
+        // (tipo de entrega válido, carrito no vacío, barrio especial, etc.) la hace
+        // createAgentOrder — no se duplica, es la misma que corre para Reina.
+        const items = rawItems.map((it) => ({
+            productName: String(it.productName || '').trim(),
+            categoryName: String(it.categoryName || it.categoria || '').trim(),
+            quantity: Math.max(1, Math.trunc(Number(it.quantity) || 1)),
+            unitPrice: Math.max(0, Number(it.unitPrice) || 0),
+            note: String(it.note || '').trim()
+        })).filter((it) => it.productName && it.unitPrice > 0);
+
+        if (!items.length) {
+            throw new HttpsError('invalid-argument', 'Ningun producto quedo con nombre y precio validos. Revisa los items marcados en rojo.');
+        }
+
+        // Mismo chequeo de horario que hace el handler place_order de Reina antes de llamar a
+        // createAgentOrder (createAgentOrder por sí sola NO valida horario). Para un pedido
+        // fuera de horario que el cajero quiera crear igual, está el POS normal.
+        try {
+            const horarioDoc = await getFirestore().collection('configuracion').doc('config_horario').get();
+            const schedule = orderLogic.buildScheduleFromConfigDoc(horarioDoc.exists ? horarioDoc.data() : null);
+            const availability = orderLogic.getOrderingAvailability(schedule);
+            if (!availability.isOpen) {
+                throw new HttpsError('failed-precondition', `Ahora mismo la tienda esta cerrada para pedidos (${availability.scheduleLabel}). Para crear el pedido igual, usa el POS normal.`);
+            }
+        } catch (err) {
+            if (err instanceof HttpsError) throw err;
+            // Si la lectura del horario falla, no bloqueamos la creación por eso.
+            console.warn('createManualWhatsAppOrder: no se pudo leer el horario, se continua:', err?.message || err);
+        }
+
+        try {
+            const result = await orderLogic.createAgentOrder(getFirestore(), {
+                items,
+                customerName: String(data.customerName || '').trim(),
+                customerPhone: String(data.customerPhone || '').trim(),
+                fulfillmentType: String(data.fulfillmentType || '').trim(),
+                address: String(data.address || '').trim(),
+                paymentMethod: String(data.paymentMethod || '').trim(),
+                cashChangeRequired: data.cashChangeRequired === true,
+                cashTenderAmount: Number.isFinite(Number(data.cashTenderAmount)) ? Number(data.cashTenderAmount) : null,
+                deliveryLatitude: Number.isFinite(Number(data.deliveryLatitude)) ? Number(data.deliveryLatitude) : null,
+                deliveryLongitude: Number.isFinite(Number(data.deliveryLongitude)) ? Number(data.deliveryLongitude) : null,
+                salirARecibirConfirmado: data.salirARecibirConfirmado === true,
+                source: 'admin-manual-whatsapp'
+            });
+            return { ok: true, code: result.code, id: result.id, total: result.total };
+        } catch (err) {
+            // El texto de createAgentOrder (ej. "El domiciliario no entra a Cañas Gordas…") se
+            // pasa tal cual: el frontend lo muestra en el modal SIN perder lo que el cajero editó.
+            console.error('createManualWhatsAppOrder error:', err);
+            throw new HttpsError('failed-precondition', err.message || 'No se pudo crear el pedido.');
+        }
+    }
+);
 
 // ─────────────────────────────────────────────────────────────
 // Agente de IA — widget de chat en la web pública

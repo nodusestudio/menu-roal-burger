@@ -6157,6 +6157,130 @@
             padding-top: 4px;
         }
 
+        /* ── "Pegar pedido de WhatsApp" (POS) ───────────────────────────────── */
+        .wapaste-card { width: min(560px, 94vw); }
+        .wapaste-textarea {
+            width: 100%;
+            min-height: 220px;
+            resize: vertical;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
+            padding: 10px 12px;
+            color: #eef4ff;
+            font-size: 0.85rem;
+            font-family: 'Space Grotesk', monospace;
+            line-height: 1.45;
+            box-sizing: border-box;
+        }
+        .wapaste-textarea:focus { outline: none; border-color: rgba(255,122,26,0.5); }
+        .wapaste-field-label {
+            display: block;
+            font-size: 0.7rem;
+            color: rgba(200,220,255,0.6);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin: 8px 0 4px;
+            font-weight: 700;
+        }
+        .wapaste-input, .wapaste-select {
+            width: 100%;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            padding: 8px 11px;
+            color: #eef4ff;
+            font-size: 0.85rem;
+            font-family: 'Space Grotesk', sans-serif;
+            box-sizing: border-box;
+        }
+        .wapaste-input:focus, .wapaste-select:focus { outline: none; border-color: rgba(255,122,26,0.5); }
+        .wapaste-select option { background: #0e1422; }
+        .wapaste-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .wapaste-client-hint {
+            font-size: 0.75rem;
+            color: #8ee6a8;
+            margin: 4px 0 0;
+        }
+        .wapaste-items { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+        .wapaste-item {
+            display: grid;
+            grid-template-columns: 54px 1fr auto;
+            gap: 8px;
+            align-items: center;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 10px;
+            padding: 8px;
+        }
+        .wapaste-item.is-unmatched {
+            border-color: rgba(255,92,92,0.65);
+            background: rgba(255,92,92,0.10);
+        }
+        .wapaste-item-guess {
+            grid-column: 1 / -1;
+            font-size: 0.72rem;
+            color: rgba(200,220,255,0.55);
+        }
+        .wapaste-item.is-unmatched .wapaste-item-guess { color: #ff9c9c; }
+        .wapaste-item-qty { width: 54px; text-align: center; padding: 8px 4px; }
+        .wapaste-item-price { font-size: 0.82rem; color: #ffdca7; white-space: nowrap; }
+        .wapaste-item-del {
+            border: none;
+            background: rgba(255,255,255,0.08);
+            color: #ff9c9c;
+            width: 26px; height: 26px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .wapaste-item-note {
+            grid-column: 1 / -1;
+            font-size: 0.82rem;
+            padding: 6px 9px;
+        }
+        .wapaste-add-item-btn {
+            align-self: flex-start;
+            background: rgba(255,255,255,0.08);
+            border: 1px dashed rgba(255,255,255,0.2);
+            color: rgba(220,235,255,0.8);
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .wapaste-total-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.12);
+            font-size: 1rem;
+            font-weight: 700;
+            color: #ffdca7;
+        }
+        .wapaste-error {
+            background: rgba(255,92,92,0.14);
+            border: 1px solid rgba(255,92,92,0.5);
+            color: #ffc9c9;
+            border-radius: 8px;
+            padding: 9px 11px;
+            font-size: 0.82rem;
+            margin-top: 8px;
+            white-space: pre-wrap;
+        }
+        .wapaste-unmatched-warn {
+            background: rgba(255,176,32,0.12);
+            border: 1px solid rgba(255,176,32,0.45);
+            color: #ffd9a0;
+            border-radius: 8px;
+            padding: 8px 11px;
+            font-size: 0.8rem;
+            margin-top: 8px;
+        }
+
         .pos-right-panel {
             display: flex;
             flex-direction: column;
@@ -14250,6 +14374,7 @@
 
             <div class="pos-searchbar">
                 <input type="text" id="posProductSearch" class="pos-product-search" placeholder="🔍 Buscar producto por nombre..." autocomplete="off">
+                <button type="button" class="pos-cart-action-btn" id="posPasteWhatsAppBtn" title="Crear un pedido pegando el texto de una conversación de WhatsApp">📋 Pegar pedido de WhatsApp</button>
                 <button type="button" class="pos-cart-action-btn" id="posCobroExtraBtn" title="Agregar un cobro extra al ticket">➕ Cobro extra</button>
                 <button type="button" class="pos-cart-action-btn" id="posDescuentoBtn" title="Aplicar un descuento al ticket">🏷 Descuento</button>
                 <div class="pos-action-popover" id="posCobroExtraPopover" hidden></div>

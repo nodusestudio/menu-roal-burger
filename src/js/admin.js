@@ -3168,6 +3168,353 @@ document.addEventListener('click', (e) => {
     _closePosActionPopovers();
 });
 
+// ══════════ "Pegar pedido de WhatsApp" (POS) ══════════
+// Botón de la barra del POS -> modal con textarea -> Cloud Function parseWhatsAppOrderDraft
+// (Claude EXTRAE lo que el texto dice, nunca inventa; el matching contra el menú real marca en
+// rojo lo que no reconoció) -> pantalla de revisión EDITABLE -> Cloud Function
+// createManualWhatsAppOrder (crea el pedido real vía orderLogic.createAgentOrder, la misma que
+// usa Reina). NADA toca Firestore hasta "Confirmar y crear pedido". Si createAgentOrder falla,
+// el error se muestra en el modal SIN perder lo que el cajero ya editó.
+let _waDraftState = null;
+
+function _waCloseModal() {
+    document.getElementById('waPasteOverlay')?.remove();
+    _waDraftState = null;
+}
+
+function openWhatsAppPasteModal() {
+    _closePosActionPopovers();
+    _waCloseModal();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'combo-modal-overlay';
+    overlay.id = 'waPasteOverlay';
+    overlay.innerHTML = `
+        <div class="combo-modal-card wapaste-card">
+            <div class="combo-modal-header">
+                <div>
+                    <h4>📋 Pegar pedido de WhatsApp</h4>
+                    <p class="combo-modal-subtitle">Pega el texto de la conversación y se arma el borrador. Nada se guarda hasta que lo confirmes.</p>
+                </div>
+                <button type="button" class="combo-modal-close-x" aria-label="Cerrar">&times;</button>
+            </div>
+            <textarea class="wapaste-textarea" id="waPasteText" placeholder="Ej:&#10;Hola, quiero 2 burger ranchera y una coca cola de litro&#10;Es para domicilio, calle 10 # 5-20 barrio centro&#10;Pago con 100 en efectivo&#10;Soy Juan, 3001234567"></textarea>
+            <div class="wapaste-error" id="waPasteErr" hidden></div>
+            <div class="combo-modal-footer">
+                <button type="button" class="combo-modal-cancel-btn" id="waPasteCancel">Cancelar</button>
+                <button type="button" class="combo-modal-confirm-btn" id="waPasteProcess">Procesar</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('.combo-modal-close-x').addEventListener('click', _waCloseModal);
+    overlay.querySelector('#waPasteCancel').addEventListener('click', _waCloseModal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) _waCloseModal(); });
+    overlay.querySelector('#waPasteProcess').addEventListener('click', _waProcessPastedText);
+    setTimeout(() => overlay.querySelector('#waPasteText')?.focus(), 50);
+}
+
+async function _waProcessPastedText() {
+    const overlay = document.getElementById('waPasteOverlay');
+    if (!overlay) return;
+    const textEl = overlay.querySelector('#waPasteText');
+    const errEl = overlay.querySelector('#waPasteErr');
+    const btn = overlay.querySelector('#waPasteProcess');
+    const rawText = String(textEl.value || '').trim();
+    errEl.hidden = true;
+
+    if (rawText.length < 4) {
+        errEl.textContent = 'Pega primero el texto de la conversación.';
+        errEl.hidden = false;
+        return;
+    }
+    if (!firebaseFunctions) {
+        errEl.textContent = 'No hay conexión con el servidor. Recarga la página e intenta de nuevo.';
+        errEl.hidden = false;
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Procesando…';
+    try {
+        const res = await firebaseFunctions.httpsCallable('parseWhatsAppOrderDraft')({ rawText });
+        const draft = res && res.data && res.data.draft;
+        if (!draft) throw new Error('Respuesta vacía del servidor.');
+        _waRenderReview(draft);
+    } catch (err) {
+        errEl.textContent = (err && err.message) ? err.message : 'No se pudo procesar el texto.';
+        errEl.hidden = false;
+        btn.disabled = false;
+        btn.textContent = 'Procesar';
+    }
+}
+
+function _waRenderReview(draft) {
+    const overlay = document.getElementById('waPasteOverlay');
+    if (!overlay) return;
+
+    _waDraftState = {
+        menu: Array.isArray(draft.menu) ? draft.menu : [],
+        customerName: draft.customerName || '',
+        customerPhone: draft.customerPhone || '',
+        matchedClient: draft.matchedClient || null,
+        fulfillmentType: draft.fulfillmentType || '',
+        address: draft.address || '',
+        paymentMethod: draft.paymentMethod || '',
+        cashTenderAmount: draft.cashTenderAmount || '',
+        notes: draft.notes || '',
+        items: (Array.isArray(draft.items) ? draft.items : []).map((it) => ({
+            productNameGuess: it.productNameGuess || '',
+            quantity: Number(it.quantity) > 0 ? Math.trunc(Number(it.quantity)) : 1,
+            note: it.note || '',
+            unmatched: it.unmatched === true || !it.productName,
+            productName: it.unmatched ? '' : (it.productName || ''),
+            unitPrice: it.unmatched ? 0 : (Number(it.unitPrice) || 0),
+            categoryName: it.categoryName || ''
+        }))
+    };
+
+    const card = overlay.querySelector('.combo-modal-card');
+    const client = _waDraftState.matchedClient;
+    const clientHint = client
+        ? `<p class="wapaste-client-hint">✓ Cliente en la base: ${escapeHtml(client.customerName || 'sin nombre')} · ${Number(client.totalOrders || 0)} pedido(s)${client.address ? ' · ' + escapeHtml(client.address) : ''}</p>`
+        : '';
+
+    card.innerHTML = `
+      <div class="combo-modal-header">
+        <div>
+            <h4>Revisar y confirmar</h4>
+            <p class="combo-modal-subtitle">Corrige lo que haga falta. Los productos en rojo no se reconocieron: elige el correcto del menú o quítalos.</p>
+        </div>
+        <button type="button" class="combo-modal-close-x" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <label class="wapaste-field-label">Cliente</label>
+      <div class="wapaste-row2">
+        <input class="wapaste-input" id="waCliName" placeholder="Nombre" value="${escapeHtml(_waDraftState.customerName)}">
+        <input class="wapaste-input" id="waCliPhone" placeholder="Teléfono" value="${escapeHtml(_waDraftState.customerPhone)}">
+      </div>
+      ${clientHint}
+
+      <label class="wapaste-field-label">Productos</label>
+      <div class="wapaste-items" id="waItems"></div>
+      <button type="button" class="wapaste-add-item-btn" id="waAddItem">+ Agregar producto del menú</button>
+
+      <label class="wapaste-field-label">Entrega</label>
+      <select class="wapaste-select" id="waFulfill">
+        <option value="">— Elegir —</option>
+        <option value="pickup">Recoger en el local</option>
+        <option value="delivery">Domicilio</option>
+        <option value="mesa">Comer en el local (mesa)</option>
+      </select>
+      <div id="waAddrWrap"${_waDraftState.fulfillmentType === 'delivery' ? '' : ' hidden'}>
+        <label class="wapaste-field-label">Dirección</label>
+        <input class="wapaste-input" id="waAddr" placeholder="Dirección de domicilio" value="${escapeHtml(_waDraftState.address)}">
+      </div>
+
+      <label class="wapaste-field-label">Pago</label>
+      <div class="wapaste-row2">
+        <input class="wapaste-input" id="waPay" placeholder="efectivo, transferencia…" value="${escapeHtml(_waDraftState.paymentMethod)}">
+        <input class="wapaste-input" id="waCash" type="number" min="0" placeholder="Paga con (efectivo)" value="${escapeHtml(String(_waDraftState.cashTenderAmount || ''))}">
+      </div>
+
+      <label class="wapaste-field-label">Notas del pedido</label>
+      <input class="wapaste-input" id="waNotes" placeholder="Aclaraciones (opcional)" value="${escapeHtml(_waDraftState.notes)}">
+
+      <div class="wapaste-total-row"><span>Subtotal productos</span><span id="waTotal">$ 0</span></div>
+      <div class="wapaste-unmatched-warn" id="waUnmatchedWarn" hidden>Hay productos sin reconocer. Elige el producto del menú o quítalos antes de crear el pedido.</div>
+      <div class="wapaste-error" id="waReviewErr" hidden></div>
+
+      <div class="combo-modal-footer">
+        <button type="button" class="combo-modal-cancel-btn" id="waBack">Volver</button>
+        <button type="button" class="combo-modal-confirm-btn" id="waConfirm">Confirmar y crear pedido</button>
+      </div>`;
+
+    card.querySelector('.combo-modal-close-x').addEventListener('click', _waCloseModal);
+    card.querySelector('#waBack').addEventListener('click', openWhatsAppPasteModal);
+    card.querySelector('#waConfirm').addEventListener('click', _waSubmitOrder);
+    card.querySelector('#waAddItem').addEventListener('click', () => {
+        _waDraftState.items.push({ productNameGuess: '', quantity: 1, note: '', unmatched: true, productName: '', unitPrice: 0, categoryName: '' });
+        _waRenderItems();
+    });
+
+    const fulfillSel = card.querySelector('#waFulfill');
+    fulfillSel.value = _waDraftState.fulfillmentType || '';
+    fulfillSel.addEventListener('change', () => {
+        _waDraftState.fulfillmentType = fulfillSel.value;
+        card.querySelector('#waAddrWrap').hidden = fulfillSel.value !== 'delivery';
+    });
+
+    const bind = (id, key) => {
+        const el = card.querySelector(id);
+        if (el) el.addEventListener('input', () => { _waDraftState[key] = el.value; });
+    };
+    bind('#waCliName', 'customerName');
+    bind('#waCliPhone', 'customerPhone');
+    bind('#waAddr', 'address');
+    bind('#waPay', 'paymentMethod');
+    bind('#waCash', 'cashTenderAmount');
+    bind('#waNotes', 'notes');
+
+    _waRenderItems();
+}
+
+function _waRenderItems() {
+    const wrap = document.getElementById('waItems');
+    if (!wrap || !_waDraftState) return;
+    wrap.innerHTML = '';
+
+    _waDraftState.items.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'wapaste-item' + (item.unmatched || !item.productName ? ' is-unmatched' : '');
+
+        const guess = item.productNameGuess
+            ? `<div class="wapaste-item-guess">Cliente escribió: “${escapeHtml(item.productNameGuess)}”</div>`
+            : '';
+
+        const opts = ['<option value="">— Elegir producto del menú —</option>']
+            .concat(_waDraftState.menu.map((m, mi) => {
+                const sel = (item.productName && m.nombre === item.productName) ? ' selected' : '';
+                return `<option value="${mi}"${sel}>${escapeHtml(m.nombre)} — ${formatMoney(m.precio)}</option>`;
+            }))
+            .join('');
+
+        row.innerHTML = `
+            ${guess}
+            <input class="wapaste-input wapaste-item-qty" type="number" min="1" value="${Number(item.quantity) || 1}" data-idx="${idx}" data-role="qty">
+            <select class="wapaste-select" data-idx="${idx}" data-role="prod">${opts}</select>
+            <span class="wapaste-item-price" data-idx="${idx}" data-role="price">${formatMoney((Number(item.unitPrice) || 0) * (Number(item.quantity) || 1))}</span>
+            <input class="wapaste-input wapaste-item-note" placeholder="Nota (sin cebolla, sabor…)" value="${escapeHtml(item.note || '')}" data-idx="${idx}" data-role="note">
+            <button type="button" class="wapaste-item-del" data-idx="${idx}" data-role="del" title="Quitar">&#128465;</button>`;
+        wrap.appendChild(row);
+    });
+
+    wrap.querySelectorAll('[data-role="qty"]').forEach((el) => el.addEventListener('input', () => {
+        _waDraftState.items[Number(el.dataset.idx)].quantity = Math.max(1, Math.trunc(Number(el.value) || 1));
+        _waRecalc();
+    }));
+    wrap.querySelectorAll('[data-role="prod"]').forEach((el) => el.addEventListener('change', () => {
+        const i = Number(el.dataset.idx);
+        if (el.value === '') {
+            _waDraftState.items[i].unmatched = true;
+            _waDraftState.items[i].productName = '';
+            _waDraftState.items[i].unitPrice = 0;
+            _waDraftState.items[i].categoryName = '';
+        } else {
+            const m = _waDraftState.menu[Number(el.value)];
+            _waDraftState.items[i].unmatched = false;
+            _waDraftState.items[i].productName = m.nombre;
+            _waDraftState.items[i].unitPrice = Number(m.precio) || 0;
+            _waDraftState.items[i].categoryName = m.categoria || '';
+        }
+        _waRenderItems();
+    }));
+    wrap.querySelectorAll('[data-role="note"]').forEach((el) => el.addEventListener('input', () => {
+        _waDraftState.items[Number(el.dataset.idx)].note = el.value;
+    }));
+    wrap.querySelectorAll('[data-role="del"]').forEach((el) => el.addEventListener('click', () => {
+        _waDraftState.items.splice(Number(el.dataset.idx), 1);
+        _waRenderItems();
+    }));
+
+    _waRecalc();
+}
+
+function _waRecalc() {
+    if (!_waDraftState) return;
+    const total = _waDraftState.items.reduce((s, it) => s + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 1), 0);
+    const totalEl = document.getElementById('waTotal');
+    if (totalEl) totalEl.textContent = formatMoney(total);
+    document.querySelectorAll('#waItems [data-role="price"]').forEach((el) => {
+        const it = _waDraftState.items[Number(el.dataset.idx)];
+        if (it) el.textContent = formatMoney((Number(it.unitPrice) || 0) * (Number(it.quantity) || 1));
+    });
+    const warn = document.getElementById('waUnmatchedWarn');
+    if (warn) warn.hidden = !_waDraftState.items.some((it) => it.unmatched || !it.productName);
+}
+
+function _waShowReviewError(msg) {
+    const errEl = document.querySelector('#waPasteOverlay #waReviewErr');
+    if (errEl) {
+        errEl.textContent = msg;
+        errEl.hidden = false;
+        errEl.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+async function _waSubmitOrder() {
+    if (!_waDraftState) return;
+    const card = document.querySelector('#waPasteOverlay .combo-modal-card');
+    const btn = card ? card.querySelector('#waConfirm') : null;
+    const errEl = card ? card.querySelector('#waReviewErr') : null;
+    if (errEl) errEl.hidden = true;
+
+    if (_waDraftState.items.some((it) => !it.productName || Number(it.unitPrice) <= 0)) {
+        _waShowReviewError('Hay productos sin reconocer. Elige el producto del menú o quítalos antes de continuar.');
+        return;
+    }
+    const items = _waDraftState.items.filter((it) => it.productName && Number(it.unitPrice) > 0);
+    if (!items.length) {
+        _waShowReviewError('Agrega al menos un producto (con nombre y precio del menú).');
+        return;
+    }
+    if (!_waDraftState.fulfillmentType) {
+        _waShowReviewError('Elige el tipo de entrega.');
+        return;
+    }
+    if (_waDraftState.fulfillmentType === 'delivery' && !String(_waDraftState.address || '').trim()) {
+        _waShowReviewError('Falta la dirección de domicilio.');
+        return;
+    }
+    if (!String(_waDraftState.paymentMethod || '').trim()) {
+        _waShowReviewError('Falta el método de pago.');
+        return;
+    }
+    if (!firebaseFunctions) {
+        _waShowReviewError('No hay conexión con el servidor. Recarga la página.');
+        return;
+    }
+
+    const pay = String(_waDraftState.paymentMethod || '').trim().toLowerCase();
+    const cash = Number(_waDraftState.cashTenderAmount);
+    const payload = {
+        items: items.map((it) => ({
+            productName: it.productName,
+            categoryName: it.categoryName || '',
+            quantity: Math.max(1, Math.trunc(Number(it.quantity) || 1)),
+            unitPrice: Number(it.unitPrice) || 0,
+            note: it.note || ''
+        })),
+        customerName: String(_waDraftState.customerName || '').trim(),
+        customerPhone: String(_waDraftState.customerPhone || '').trim(),
+        fulfillmentType: _waDraftState.fulfillmentType,
+        address: String(_waDraftState.address || '').trim(),
+        paymentMethod: pay,
+        cashChangeRequired: pay === 'efectivo' && Number.isFinite(cash) && cash > 0,
+        cashTenderAmount: Number.isFinite(cash) && cash > 0 ? cash : null
+    };
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Creando…'; }
+    try {
+        const res = await firebaseFunctions.httpsCallable('createManualWhatsAppOrder')(payload);
+        const code = (res && res.data && res.data.code) ? res.data.code : '';
+        _waCloseModal();
+        showNotice(`Pedido ${code} creado y enviado a recepción.`, 'ok');
+        if (typeof renderOrders === 'function') renderOrders();
+    } catch (err) {
+        // El mensaje viene de createAgentOrder tal cual (tienda cerrada, barrio especial, etc.);
+        // el modal y todo lo editado siguen en pantalla.
+        _waShowReviewError((err && err.message) ? err.message : 'No se pudo crear el pedido.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Confirmar y crear pedido'; }
+    }
+}
+
+document.getElementById('posPasteWhatsAppBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _closePosActionPopovers();
+    openWhatsAppPasteModal();
+});
+
 function renderPosAcompanantesNewPanel(grid) {
     grid.innerHTML = '';
     const activos = acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos);
