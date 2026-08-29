@@ -17,7 +17,7 @@ const assert = require('node:assert/strict');
 const FUNCTIONS_DIR = path.join(__dirname, '..', 'functions');
 
 const { getFirestore } = require(require.resolve('firebase-admin/firestore', { paths: [FUNCTIONS_DIR] }));
-const { _reverseLoyaltyPointsTransaction } = require(path.join(FUNCTIONS_DIR, 'index.js'));
+const { _reverseLoyaltyPointsTransaction, _handleOrderCancellationEvent } = require(path.join(FUNCTIONS_DIR, 'index.js'));
 
 const TEST_PHONE = '3005551234';
 const TEST_CLIENT_ID = `phone_${TEST_PHONE}`;
@@ -39,6 +39,7 @@ beforeEach(async () => {
     });
     await db.collection('clientes').doc(OTHER_CLIENT_ID).delete().catch(() => {});
     await db.collection('puntos_reversiones').doc(TEST_ORDER_ID).delete().catch(() => {});
+    await db.collection('pedidos_archivados').doc(TEST_ORDER_ID).delete().catch(() => {});
 });
 
 afterAll(async () => {
@@ -46,6 +47,7 @@ afterAll(async () => {
     await db.collection('clientes').doc(OTHER_CLIENT_ID).delete().catch(() => {});
     await db.collection('pedidos').doc(TEST_ORDER_ID).delete().catch(() => {});
     await db.collection('puntos_reversiones').doc(TEST_ORDER_ID).delete().catch(() => {});
+    await db.collection('pedidos_archivados').doc(TEST_ORDER_ID).delete().catch(() => {});
 });
 
 test('reverseLoyaltyPointsTransaction: revierte puntos GANADOS de disponible Y de historico', async () => {
@@ -125,6 +127,57 @@ test('reverseLoyaltyPointsTransaction: sin puntos ganados ni canjeados, no hace 
     const result = await _reverseLoyaltyPointsTransaction(db, TEST_ORDER_ID, { customerPhoneDigits: TEST_PHONE });
     assert.equal(result.pointsEarnedReversed, 0);
     assert.equal(result.pointsRedeemedRefunded, 0);
+});
+
+// ── handleOrderCancellationEvent: la decisión del trigger reverseLoyaltyPointsOnCancellation ──
+// Clave: distinguir un BORRADO real (deleteOrder -> revertir) de un MOVIMIENTO a archivo
+// (cerrarCaja hace set(pedidos_archivados/{id}) + delete(pedidos/{id}) -> NO revertir; si no,
+// cerrar caja le quitaba los puntos a todos los pedidos entregados del día).
+
+test('handleOrderCancellationEvent: borrado con copia archivada presente = movimiento, NO revierte', async () => {
+    const orderData = { customerPhoneDigits: TEST_PHONE, pointsAwarded: true, pointsEarned: 25 };
+    // cerrarCaja ya escribió la copia archivada en el mismo batch que el delete.
+    await db.collection('pedidos_archivados').doc(TEST_ORDER_ID).set({ ...orderData, archivedAt: new Date() });
+
+    const res = await _handleOrderCancellationEvent(db, TEST_ORDER_ID, orderData, null);
+    assert.equal(res.reversed, false);
+    assert.equal(res.reason, 'archived-move');
+
+    const clientSnap = await db.collection('clientes').doc(TEST_CLIENT_ID).get();
+    assert.equal(clientSnap.data().puntosDisponibles, 100, 'cerrar caja no le toca los puntos');
+    assert.equal(clientSnap.data().puntosAcumuladosTotal, 400);
+});
+
+test('handleOrderCancellationEvent: borrado SIN copia archivada = borrado real, revierte', async () => {
+    const orderData = { customerPhoneDigits: TEST_PHONE, pointsAwarded: true, pointsEarned: 25 };
+    const res = await _handleOrderCancellationEvent(db, TEST_ORDER_ID, orderData, null);
+    assert.equal(res.reversed, true);
+    assert.equal(res.reason, 'deleted');
+
+    const clientSnap = await db.collection('clientes').doc(TEST_CLIENT_ID).get();
+    assert.equal(clientSnap.data().puntosDisponibles, 75, '100 - 25');
+});
+
+test('handleOrderCancellationEvent: transicion a anulado revierte (documento sigue existiendo)', async () => {
+    const before = { customerPhoneDigits: TEST_PHONE, pointsAwarded: true, pointsEarned: 25, anulado: false };
+    const after = { ...before, anulado: true };
+    const res = await _handleOrderCancellationEvent(db, TEST_ORDER_ID, before, after);
+    assert.equal(res.reversed, true);
+    assert.equal(res.reason, 'anulado');
+
+    const clientSnap = await db.collection('clientes').doc(TEST_CLIENT_ID).get();
+    assert.equal(clientSnap.data().puntosDisponibles, 75);
+});
+
+test('handleOrderCancellationEvent: una edición cualquiera (no borrado, no anulado) no hace nada', async () => {
+    const before = { customerPhoneDigits: TEST_PHONE, pointsAwarded: true, pointsEarned: 25 };
+    const after = { ...before, customerName: 'nombre nuevo' };
+    const res = await _handleOrderCancellationEvent(db, TEST_ORDER_ID, before, after);
+    assert.equal(res.reversed, false);
+    assert.equal(res.reason, 'no-op');
+
+    const clientSnap = await db.collection('clientes').doc(TEST_CLIENT_ID).get();
+    assert.equal(clientSnap.data().puntosDisponibles, 100);
 });
 
 test('reverseLoyaltyPointsTransaction: revierte AMBOS (ganado y canjeado) en un mismo pedido', async () => {

@@ -1,4 +1,4 @@
-const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentWritten, onDocumentDeleted } = require('firebase-functions/v2/firestore');
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
@@ -317,10 +317,12 @@ exports.notifyNewAgentChat = onDocumentWritten(
 );
 
 // ─────────────────────────────────────────────────────────────
-// Aviso automático cuando un pedido pasa a "entregado" (botón en el Kanban de Pedidos,
-// src/js/admin.js) -- antes ese mensaje SOLO se copiaba al portapapeles para que el admin lo
-// pegara a mano en WhatsApp; con volumen real, es fácil que se olvide. Dispara UNA vez por
-// pedido (solo en la transición, no en cada guardado posterior con status ya 'entregado').
+// Aviso automático de despacho ("tu pedido va en camino"). Dispara cuando el pedido pasa a
+// "enviado" -- es decir, cuando el cajero toca "Entregado" en el Kanban de Pedidos
+// (src/js/admin.js), que es el momento real en que el pedido sale del local. El paso posterior
+// a "entregado" definitivo lo hace solo el barrido sweepEnviadoToEntregado 20 min después y NO
+// vuelve a notificar. Antes este mensaje SOLO se copiaba al portapapeles y era fácil que el
+// admin se olvidara. Dispara UNA vez por pedido (solo en la transición a 'enviado').
 //
 // Si el pedido tiene conversationKey (vino del agente de IA), el aviso se manda POR ESE MISMO
 // CHAT -- se guarda en el historial de la conversación (así el cliente lo ve si reabre el chat
@@ -334,7 +336,7 @@ exports.notifyOrderDelivered = onDocumentWritten(
     async (event) => {
         const before = event.data?.before?.exists ? event.data.before.data() : null;
         const after = event.data?.after?.exists ? event.data.after.data() : null;
-        if (!after || after.status !== 'entregado' || before?.status === 'entregado') return;
+        if (!after || after.status !== 'enviado' || before?.status === 'enviado') return;
 
         const phoneDigits = String(after.customerPhoneDigits || '').replace(/\D/g, '');
         if (phoneDigits.length < 10) return;
@@ -362,9 +364,10 @@ exports.notifyOrderDelivered = onDocumentWritten(
 );
 
 // ─────────────────────────────────────────────────────────────
-// Acreditar puntos de lealtad cuando un pedido pasa a 'entregado'. Mismo patrón de trigger que
-// notifyOrderDelivered (mismo documento, misma condición de transición) -- este trigger es la
-// ÚNICA fuente de verdad que suma puntos, para no duplicar la lógica ya marcada como duplicada
+// Acreditar puntos de lealtad cuando un pedido pasa a 'entregado'. OJO: 'entregado' ya NO lo
+// escribe el cajero -- el cajero deja el pedido en 'enviado' y el barrido sweepEnviadoToEntregado
+// lo cierra ~20 min después. Es ese barrido el que dispara este trigger. Sigue siendo la ÚNICA
+// fuente de verdad que suma puntos, para no duplicar la lógica ya marcada como duplicada
 // (ver comentarios "SYNC" en functions/agent/orderLogic.js / src/js/script-v2.js) — no se toca
 // submitPublicOrder ni createAgentOrder para esto.
 //
@@ -568,31 +571,66 @@ async function reverseLoyaltyPointsTransaction(db, orderId, orderData) {
     });
 }
 
+// Decide si un evento de escritura sobre pedidos/{orderId} debe revertir puntos, y en tal caso
+// lo hace. Extraída del trigger para testearla directo contra el emulador de Firestore (ver
+// tests/loyalty-cancellation.test.js) -- el trigger real de Cloud Functions no es invocable a
+// mano en un test. `before`/`after` son los datos del pedido antes/después (null si no existía).
+async function handleOrderCancellationEvent(db, orderId, before, after) {
+    // Caso 1: se anuló sin borrarse (anularOrder) -- el documento sigue existiendo.
+    const becameAnulado = Boolean(after && after.anulado === true && before?.anulado !== true);
+    // Caso 2: se borró de verdad (deleteOrder) -- no queda documento, hay que usar `before`.
+    const wasDeleted = Boolean(before && !after);
+
+    if (!becameAnulado && !wasDeleted) return { reversed: false, reason: 'no-op' };
+
+    // cerrarCaja() (admin.js) ARCHIVA los pedidos de la jornada haciendo, en un mismo batch,
+    // set(pedidos_archivados/{id}) + delete(pedidos/{id}). Ese delete cae también acá como
+    // `wasDeleted` -- sin este chequeo, cerrar caja le revertía los puntos a TODOS los pedidos
+    // entregados del día. Si existe la copia archivada, fue un movimiento, no un borrado real:
+    // no se revierte nada. El borrado manual de verdad (deleteOrder) borra de AMBAS colecciones,
+    // y si el pedido ya estaba archivado lo cubre reverseLoyaltyPointsOnArchivedDeletion.
+    if (wasDeleted) {
+        const archivedSnap = await db.collection('pedidos_archivados').doc(orderId).get();
+        if (archivedSnap.exists) return { reversed: false, reason: 'archived-move' };
+    }
+
+    const result = await reverseLoyaltyPointsTransaction(db, orderId, after || before);
+    return { reversed: true, reason: becameAnulado ? 'anulado' : 'deleted', ...result };
+}
+
 exports.reverseLoyaltyPointsOnCancellation = onDocumentWritten(
     { document: 'pedidos/{orderId}', region: 'us-central1' },
     async (event) => {
         const before = event.data?.before?.exists ? event.data.before.data() : null;
         const after = event.data?.after?.exists ? event.data.after.data() : null;
-
-        // Caso 1: se anuló sin borrarse (anularOrder) -- el documento sigue existiendo.
-        const becameAnulado = Boolean(after && after.anulado === true && before?.anulado !== true);
-        // Caso 2: se borró de verdad (deleteOrder, solo pasa con pedidos ya 'entregado') -- no
-        // queda documento, hay que usar los últimos datos conocidos (`before`).
-        const wasDeleted = Boolean(before && !after);
-
-        if (!becameAnulado && !wasDeleted) return;
-
-        const data = after || before;
         try {
-            await reverseLoyaltyPointsTransaction(getFirestore(), event.params.orderId, data);
+            await handleOrderCancellationEvent(getFirestore(), event.params.orderId, before, after);
         } catch (err) {
             console.error(`reverseLoyaltyPointsOnCancellation: fallo al revertir puntos para pedido ${event.params.orderId}:`, err);
         }
     }
 );
 
+// Borrado manual de un pedido que YA había sido archivado al cerrar caja (deleteOrder en admin.js
+// borra de `pedidos` y de `pedidos_archivados`). El trigger de arriba no lo cubre porque para ese
+// pedido ya no queda nada en `pedidos`. Mismo reverseLoyaltyPointsTransaction, mismo marcador de
+// idempotencia `puntos_reversiones/{orderId}` -- seguro aunque en algún caso raro disparen los dos.
+exports.reverseLoyaltyPointsOnArchivedDeletion = onDocumentDeleted(
+    { document: 'pedidos_archivados/{orderId}', region: 'us-central1' },
+    async (event) => {
+        const data = event.data?.exists ? event.data.data() : null;
+        if (!data) return;
+        try {
+            await reverseLoyaltyPointsTransaction(getFirestore(), event.params.orderId, data);
+        } catch (err) {
+            console.error(`reverseLoyaltyPointsOnArchivedDeletion: fallo al revertir puntos para pedido ${event.params.orderId}:`, err);
+        }
+    }
+);
+
 // Exportado solo para tests (tests/loyalty-cancellation.test.js).
 exports._reverseLoyaltyPointsTransaction = reverseLoyaltyPointsTransaction;
+exports._handleOrderCancellationEvent = handleOrderCancellationEvent;
 
 // ─────────────────────────────────────────────────────────────
 // Enviar OTP de verificación al WhatsApp del cliente
@@ -1929,6 +1967,57 @@ exports.purgeExpiredAccountDeletions = onSchedule(
         console.log(`purgeExpiredAccountDeletions: ${expired.length} cuenta(s) borrada(s).`);
     }
 );
+
+// ─────────────────────────────────────────────────────────────
+// El cajero cierra el pedido dejándolo en 'enviado' (momento real del despacho, dispara el
+// WhatsApp "va en camino"). Este barrido lo pasa a 'entregado' definitivo ~20 min después: es
+// ese cambio el que dispara awardLoyaltyPoints y baja el pedido al historial del cliente. Para
+// el cajero el pedido ya está cerrado desde 'enviado'; para el cliente sigue "en camino" hasta
+// que corre esto.
+// ─────────────────────────────────────────────────────────────
+const ENVIADO_TO_ENTREGADO_MS = 20 * 60 * 1000;
+
+// Separada del trigger para testearla directo contra el emulador (ver tests/enviado-sweep.test.js).
+// `nowMs` inyectable solo para los tests; en producción es Date.now().
+async function sweepEnviadoOrders(db, nowMs = Date.now()) {
+    // Solo el filtro de igualdad -- la fecha se resuelve en memoria para no depender de un
+    // índice compuesto (mismo patrón que purgeExpiredAccountDeletions). El conjunto de
+    // pedidos 'enviado' siempre es chico: solo los de la ventana de ~20 min.
+    const snap = await db.collection('pedidos').where('status', '==', 'enviado').get();
+    const cutoff = nowMs - ENVIADO_TO_ENTREGADO_MS;
+    const due = snap.docs.filter((doc) => {
+        const t = doc.data()?.enviadoAt;
+        const ms = t?.toMillis ? t.toMillis() : new Date(t).getTime();
+        return Number.isFinite(ms) && ms <= cutoff;
+    });
+
+    if (!due.length) return 0;
+
+    const CHUNK = 400;
+    for (let i = 0; i < due.length; i += CHUNK) {
+        const batch = db.batch();
+        due.slice(i, i + CHUNK).forEach((doc) => {
+            batch.update(doc.ref, {
+                status: 'entregado',
+                entregadoAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp()
+            });
+        });
+        await batch.commit();
+    }
+    return due.length;
+}
+
+exports.sweepEnviadoToEntregado = onSchedule(
+    { schedule: 'every 5 minutes', region: 'us-central1' },
+    async () => {
+        const closed = await sweepEnviadoOrders(getFirestore());
+        console.log(`sweepEnviadoToEntregado: ${closed} pedido(s) cerrados a 'entregado'.`);
+    }
+);
+
+// Exportada solo para tests (tests/enviado-sweep.test.js).
+exports._sweepEnviadoOrders = sweepEnviadoOrders;
 
 // ─────────────────────────────────────────────────────────────
 // Agente de IA — webhook entrante de WhatsApp (UltraMsg)

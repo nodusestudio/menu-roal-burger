@@ -2207,6 +2207,10 @@ function normalizeOrder(raw) {
         status = 'camino';
     } else if (rawStatus === 'servido') {
         status = 'servido';
+    } else if (rawStatus === 'enviado' || rawStatus === 'en_envio') {
+        // Estado intermedio: el cajero ya cerró el pedido (despachado), pero el paso a
+        // 'entregado' definitivo lo hace el barrido sweepEnviadoToEntregado ~20 min después.
+        status = 'enviado';
     } else if (rawStatus === 'entregado' || rawStatus === 'cancelado') {
         status = 'entregado';
     }
@@ -2362,7 +2366,7 @@ function _ordersCutoff() {
     return d;
 }
 
-const _ACTIVE_STATUSES = ['pendiente', 'en_preparacion', 'listo', 'listo_recoger', 'esperando_domiciliario', 'en_camino'];
+const _ACTIVE_STATUSES = ['pendiente', 'en_preparacion', 'listo', 'listo_recoger', 'esperando_domiciliario', 'en_camino', 'enviado'];
 
 async function fetchOrders() {
     // Consulta principal: últimos 30 días con createdAt Timestamp correcto
@@ -6795,7 +6799,7 @@ function openChangeMesaModal(orderId) {
 
     // Mesas ocupadas por otros pedidos activos (excluyendo este mismo pedido)
     const allOccupied = new Set((ordersState || [])
-        .filter((o) => o.orderType === 'mesa' && o.mesaNumber && o.id !== orderId && !['entregado', 'cancelado'].includes(o.status))
+        .filter((o) => o.orderType === 'mesa' && o.mesaNumber && o.id !== orderId && !['entregado', 'enviado', 'cancelado'].includes(o.status))
         .map((o) => Number(o.mesaNumber)));
 
     modal.querySelectorAll('.chm-mesa-btn').forEach((btn) => {
@@ -9058,11 +9062,23 @@ function getOrderStatusMeta(status) {
             return { label: 'En camino', className: 'processing' };
         case 'servido':
             return { label: 'Servido', className: 'ready-pickup' };
+        case 'enviado':
+            return { label: 'Enviado', className: 'success' };
         case 'entregado':
             return { label: 'Entregado', className: 'success' };
         default:
             return { label: 'Nuevo', className: 'pending' };
     }
+}
+
+// Para el admin, un pedido 'enviado' (despachado por el cajero, todavía en la ventana de 20 min
+// antes de que el barrido lo pase a 'entregado') YA está cerrado: tarjeta compacta, columna
+// Procesados, sin botones de acción, mesa liberada. El cliente en cambio lo sigue viendo "en
+// camino" hasta que pasa a 'entregado'. Usar este helper en vez de comparar contra 'entregado'
+// a secas para no dejar pedidos 'enviado' colgados como activos en el panel.
+function isOrderClosed(order) {
+    const s = order && order.status;
+    return s === 'entregado' || s === 'enviado';
 }
 
 function getOrderColumnKey(order) {
@@ -9745,7 +9761,7 @@ function buildThermalTicketMarkup(order, options = {}) {
             </article>
             ${printMode ? '' : (() => {
                 const _isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
-                const _isEntregado = order.status === 'entregado';
+                const _isEntregado = isOrderClosed(order);
                 const _hasType = !!order.orderType;
                 // Cobrar: se deshabilita en cuanto el pedido queda pagado o entregado.
                 // Para corregir el método de pago de un pedido ya pagado, usar "Editar método de pago".
@@ -9909,7 +9925,7 @@ function createOrderCard(order) {
         card.classList.add('mesero-not-owner');
     }
 
-    if (order.status === 'entregado') {
+    if (isOrderClosed(order)) {
         card.classList.add('kanban-order-card-compact');
         const isAnulado = order.anulado === true || order.voided === true;
         if (isAnulado) card.classList.add('kanban-order-card--anulado');
@@ -9952,16 +9968,16 @@ function createOrderCard(order) {
     const isPickupOrder = order.orderType === 'retiro';
     const isMesaOrder = order.orderType === 'mesa';
     const showReceiveAction = isUnreadOrder;
-    const showPickupReadyAction = !isUnreadOrder && isPickupOrder && order.status !== 'listo_recoger' && order.status !== 'entregado';
-    const showDeliveredAction = !isMesaOrder && !isDeliveryOrder && !isUnreadOrder && order.status !== 'entregado';
-    const showDeleteAction = order.status !== 'entregado';
+    const showPickupReadyAction = !isUnreadOrder && isPickupOrder && order.status !== 'listo_recoger' && !isOrderClosed(order);
+    const showDeliveredAction = !isMesaOrder && !isDeliveryOrder && !isUnreadOrder && !isOrderClosed(order);
+    const showDeleteAction = !isOrderClosed(order);
     const showViewTicketAction = isMobileAdminViewport();
     const isPosAdminOrder = order.isAdminOrder || order.source === 'admin_pos';
     const showEditPosAction = isPosAdminOrder && order.status === 'pendiente';
 
     let actionsMarkup = '';
 
-    if (isMesaOrder && order.status !== 'entregado') {
+    if (isMesaOrder && !isOrderClosed(order)) {
         // Layout mesa: [ Servido/Cobrar | 💰? ⇄? ]
         const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
         const isServido = order.status === 'servido';
@@ -9976,7 +9992,7 @@ function createOrderCard(order) {
             <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
             <div class="koa-mesa-icons">${cobrarMesaBtn}${cambiarMesaBtn}</div>
         </div>`;
-    } else if (isDeliveryOrder && order.status !== 'entregado') {
+    } else if (isDeliveryOrder && !isOrderClosed(order)) {
         // Layout domicilio: [ Pedir domiciliario → Entregado | 💰? ]
         const canRequestCourier = order.status !== 'esperando_domiciliario' && order.status !== 'camino';
         const mainLabel = canRequestCourier ? 'Pedir domiciliario' : 'Entregado';
@@ -9990,7 +10006,7 @@ function createOrderCard(order) {
             <button type="button" class="order-action-btn ${mainClass} koa-mesa-main" data-order-card-action="${mainAction}" data-order-id="${order.id}">${mainLabel}</button>
             <div class="koa-mesa-icons">${cobrarBtn}</div>
         </div>`;
-    } else if (isPickupOrder && order.status !== 'entregado') {
+    } else if (isPickupOrder && !isOrderClosed(order)) {
         // Layout para recoger: [ Listo → Entregado | 💰? ]
         const isReady = order.status === 'listo_recoger';
         const mainLabel = isReady ? 'Entregado' : 'Listo';
@@ -10027,7 +10043,7 @@ function createOrderCard(order) {
         : '';
 
     let courierChip = '';
-    if (isDeliveryOrder && order.status !== 'entregado' && !isAnuladoActive) {
+    if (isDeliveryOrder && !isOrderClosed(order) && !isAnuladoActive) {
         const courierCalled = !!order.courierRequestedAt;
         const isTransit = order.status === 'en_camino';
         if (!courierCalled) {
@@ -10045,7 +10061,7 @@ function createOrderCard(order) {
     // Chip de liquidación: cuánto cobrar o pagar al domiciliario
     let paymentChip = '';
     const payMethod = String(order.paymentMethod || 'pendiente').toLowerCase();
-    if (isDeliveryOrder && !isAnuladoActive && order.status !== 'entregado' && payMethod !== 'pendiente') {
+    if (isDeliveryOrder && !isAnuladoActive && !isOrderClosed(order) && payMethod !== 'pendiente') {
         const dFee = Number(order.deliveryFee || 0);
         const orderTotal = getOrderDisplayTotal(order);
 
@@ -10143,12 +10159,12 @@ function renderOrders() {
     });
 
     Object.values(columns).forEach((column) => {
-        const activeOrders    = column.items.filter((o) => o.status !== 'entregado');
+        const activeOrders    = column.items.filter((o) => !isOrderClosed(o));
         const processedOrders = column.items.filter((o) => {
-            if (o.status !== 'entregado') return false;
+            if (!isOrderClosed(o)) return false;
             if (o.voided || o.anulado) return false; // anulados solo visibles en Informes/Tickets
             if (!cajaAperturaAt) return true;
-            const ts = o.deliveredAt || o.paidAt;
+            const ts = o.deliveredAt || o.enviadoAt || o.paidAt;
             const ms = _tsMs(ts);
             return ms >= cajaAperturaAt;
         });
@@ -15008,7 +15024,7 @@ function _ptsMarkOccupiedMesas() {
     // sobre un pedido de mesa ya guardado, su propia mesa aparecía marcada como "en uso".
     const currentOrderId = _editingOrderData?.id || _editingItemsOnlyOrderId || null;
     const allOccupied = [...new Set((ordersState || [])
-        .filter((o) => o.orderType === 'mesa' && o.mesaNumber && o.id !== currentOrderId && !['entregado', 'cancelado'].includes(o.status))
+        .filter((o) => o.orderType === 'mesa' && o.mesaNumber && o.id !== currentOrderId && !['entregado', 'enviado', 'cancelado'].includes(o.status))
         .map((o) => Number(o.mesaNumber)))];
     document.querySelectorAll('.pts-mesa-btn').forEach((btn) => {
         const num = Number(btn.dataset.ptsMesa);
@@ -16664,7 +16680,9 @@ if (ordersActionRoot) {
                     // Si ya fue cobrado con un método principal conocido, cerrar directo sin volver a cobrar
                     const _knownMethodIds = getPaymentMethods().map((m) => m.id);
                     if (order.paymentMethod && order.paymentMethod !== 'pendiente' && _knownMethodIds.includes(order.paymentMethod)) {
-                        await updateOrder(orderId, { status: 'entregado', deliveredAt: firestoreNow() });
+                        // El cajero cierra el pedido -> 'enviado' (despachado). El barrido
+                        // sweepEnviadoToEntregado lo pasa a 'entregado' definitivo ~20 min después.
+                        await updateOrder(orderId, { status: 'enviado', enviadoAt: firestoreNow(), deliveredAt: firestoreNow() });
                         await reloadDataAndRender();
                         showNotice('Pedido cerrado.', 'ok');
                         closeMobileTicketPanel({ clearSelection: true });
@@ -16701,7 +16719,7 @@ if (ordersActionRoot) {
                 if (nextStatus === 'eliminar') {
                     if (!_meseroCheckOwnOrder(order)) return;
                     try {
-                        if (order.status === 'entregado') {
+                        if (isOrderClosed(order)) {
                             // Orden ya procesada: eliminar permanentemente del sistema
                             const confirmed = await showConfirmModal({ title: `¿Eliminar definitivamente el pedido #${order.code}?`, message: 'No se puede deshacer.', confirmText: 'Eliminar' });
                             if (!confirmed) return;
@@ -16782,7 +16800,10 @@ if (ordersActionRoot) {
                 }
 
                 const copied = await copyTextToClipboard(buildDeliveredOrderMessage(order));
-                await updateOrder(orderId, { status: nextStatus, deliveredAt: firestoreNow(), paidAt: firestoreNow(), ...deliveredPaymentUpdate });
+                // El cajero cierra el pedido -> 'enviado' (despachado; dispara el WhatsApp "va en
+                // camino"). El barrido sweepEnviadoToEntregado lo pasa a 'entregado' definitivo
+                // ~20 min después, y ese cambio es el que acredita los puntos de lealtad.
+                await updateOrder(orderId, { status: 'enviado', enviadoAt: firestoreNow(), deliveredAt: firestoreNow(), paidAt: firestoreNow(), ...deliveredPaymentUpdate });
                 showNotice(
                     copied
                         ? 'Mensaje de pedido entregado copiado y pedido cerrado.'
@@ -18042,9 +18063,11 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
         };
 
         if (receiveOrder === 'mesa') {
-            await updateOrder(order.id, { status: 'entregado', deliveredAt: firestoreNow(), ...paymentUpdate });
-            _patchLocalOrder({ status: 'entregado' });
-            await _promptPrintReceiptAfterCharge({ ...order, ...paymentFieldsForLocalState, status: 'entregado' });
+            // Cerrar el pedido -> 'enviado' (despachado). sweepEnviadoToEntregado lo pasa a
+            // 'entregado' definitivo ~20 min después (y ahí se acreditan los puntos).
+            await updateOrder(order.id, { status: 'enviado', enviadoAt: firestoreNow(), deliveredAt: firestoreNow(), ...paymentUpdate });
+            _patchLocalOrder({ status: 'enviado' });
+            await _promptPrintReceiptAfterCharge({ ...order, ...paymentFieldsForLocalState, status: 'enviado' });
             await reloadDataAndRender();
             // Ocultar el ticket al cobrar en escritorio también — antes solo se cerraba en
             // móvil (isMobileAdminViewport) y en desktop el panel quedaba abierto mostrando

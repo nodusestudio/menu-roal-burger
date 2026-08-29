@@ -767,6 +767,12 @@ function getPublicOrderStatusMeta(status = '', fulfillmentType = '') {
             return { label: 'Esperando domiciliario', detail: 'Tu pedido esta listo y esperando repartidor.', className: 'waiting' };
         case 'camino':
             return { label: 'En camino', detail: 'Tu pedido va en camino.', className: 'on-route' };
+        case 'enviado':
+            // Estado intermedio: el restaurante ya despachó el pedido. Pasa solo a 'entregado'
+            // ~20 min después (barrido sweepEnviadoToEntregado en functions/index.js).
+            return fulfillmentType === 'pickup'
+                ? { label: 'Casi listo', detail: 'Tu pedido esta por quedar listo.', className: 'on-route' }
+                : { label: 'Enviado', detail: 'Tu pedido ya salio hacia tu direccion.', className: 'on-route' };
         case 'listo_recoger':
             return { label: 'Pedido listo', detail: 'Tu pedido ya esta listo para recoger.', className: 'ready' };
         case 'entregado':
@@ -1351,6 +1357,7 @@ const ORDER_STATUS_MESSAGES = {
     esperando_domiciliario: { icon: '✅', text: '¡Listo! Buscando domiciliario para tu pedido.' },
     listo_recoger:          { icon: '✅', text: '¡Tu pedido está listo! Puedes venir a recogerlo.' },
     camino:                 { icon: '🛵', text: '¡Tu pedido está en camino! Ya casi llega.' },
+    enviado:                { icon: '🛵', text: '¡Tu pedido ya salió! Ya casi llega.' },
     entregado:              { icon: '🎉', text: '¡Pedido entregado! Buen provecho 🍔' },
     cancelado:              { icon: '❌', text: 'Tu pedido fue cancelado. Contáctanos por WhatsApp.' },
 };
@@ -1450,6 +1457,7 @@ function subscribeToOrderStatusUpdates(orderId, orderCode) {
             else if (rawStatus === 'listo_recoger' || rawStatus === 'pedido_listo') status = 'listo_recoger';
             else if (rawStatus === 'preparacion' || rawStatus === 'confirmado' || rawStatus === 'cocina') status = 'preparacion';
             else if (rawStatus === 'camino' || rawStatus === 'en_camino') status = 'camino';
+            else if (rawStatus === 'enviado' || rawStatus === 'en_envio') status = 'enviado';
             else if (rawStatus === 'entregado') status = 'entregado';
             else if (rawStatus === 'cancelado') status = 'cancelado';
 
