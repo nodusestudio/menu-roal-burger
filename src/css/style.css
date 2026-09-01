@@ -8878,3 +8878,47 @@ a,
     outline-offset: 2px;
     border-radius: 4px;
 }
+
+/* ============================================================================
+   RED DE SEGURIDAD — GPUs viejas / equipos de gama baja
+   El backdrop-filter apilado (decenas de capas en esta hoja) es de lo más caro
+   que existe para una GPU vieja de Android: puede dejar los paneles pintados en
+   negro o directamente tumbar el render de la pestaña (síntoma real reportado:
+   el menú en negro, con solo la barra superior visible). Dos redes independientes:
+
+     1) @supports not (...): navegadores SIN soporte de backdrop-filter (Firefox
+        viejo, Chrome < 76, WebViews antiguos) → los "vidrios" pasan a un fondo
+        más opaco para seguir siendo legibles sin el desenfoque.
+     2) html.low-fx: se marca desde index.html cuando navigator.deviceMemory <= 2.
+        Ahí se APAGA todo el backdrop-filter (quitar el desenfoque nunca rompe
+        layout ni oculta contenido) y se sube la opacidad de los paneles.
+
+   El fondo de respaldo es blanco translúcido (no un color sólido) para que
+   funcione igual sobre las secciones oscuras y sobre las de fondo crema. ==== */
+@supports not ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))) {
+    :root {
+        --glass-bg: rgba(255, 255, 255, 0.50);
+    }
+    .liquid-glass,
+    .glass-strong,
+    .card-pequena,
+    .btn-type-glass {
+        background-color: rgba(255, 255, 255, 0.62) !important;
+    }
+}
+
+html.low-fx *,
+html.low-fx *::before,
+html.low-fx *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+html.low-fx {
+    --glass-bg: rgba(255, 255, 255, 0.50);
+}
+html.low-fx .liquid-glass,
+html.low-fx .glass-strong,
+html.low-fx .card-pequena,
+html.low-fx .btn-type-glass {
+    background-color: rgba(255, 255, 255, 0.60) !important;
+}

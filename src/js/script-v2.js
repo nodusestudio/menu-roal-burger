@@ -13439,6 +13439,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener('touchend',    () => { _ct = null; }, { passive: true });
         document.addEventListener('touchcancel', () => { _ct = null; }, { passive: true });
     }
+
+    // Señal para la red de seguridad de arranque de index.html: si llegamos hasta aquí, el
+    // bundle parseó y su init síncrono corrió sin lanzar — no hay pantalla negra que rescatar.
+    window.__roalBooted = true;
+    try { if (typeof window.__roalCancelBootWatchdog === 'function') window.__roalCancelBootWatchdog(); } catch (_e) {}
 });
 
 /* ===== PANTALLA AYUDA / CONTACTO WHATSAPP ===== */

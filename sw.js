@@ -1,6 +1,6 @@
 // Service Worker — ROAL BURGER
 // Bump CACHE_VER en cada deploy para invalidar caches viejos
-const CACHE_VER    = 'rb-20260828-2141';
+const CACHE_VER    = 'rb-20260901-1842';
 const STATIC_CACHE = `${CACHE_VER}-static`;
 const IMG_CACHE    = `${CACHE_VER}-img`;
 
@@ -18,12 +18,14 @@ const PRECACHE_OWN = [
     '/portada.png',
 ];
 
-// SDKs de Firebase — version fija en URL, ideal para cache-first
+// SDKs de Firebase — version fija en URL, ideal para cache-first.
+// OJO: deben ser exactamente las mismas URLs que carga index.html (10.12.5), si no el
+// cache-first nunca acierta y un cliente sin red se queda sin poder inicializar Firebase.
 const PRECACHE_SDK = [
-    'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
-    'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js',
-    'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js',
-    'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js',
 ];
 
 // ── Install ──────────────────────────────────────────────────────────────────
@@ -31,13 +33,14 @@ self.addEventListener('install', (event) => {
     event.waitUntil(
         Promise.all([
             caches.open(STATIC_CACHE).then((cache) =>
-                // addAll aborta si alguno falla — usar allSettled como fallback
+                // addAll aborta si alguno falla — reintento tolerante uno por uno.
+                // Promise.all + .catch() por item (no allSettled: no existe en WebViews viejos).
                 cache.addAll(PRECACHE_OWN).catch(() =>
-                    Promise.allSettled(PRECACHE_OWN.map((u) => cache.add(u).catch(() => {})))
+                    Promise.all(PRECACHE_OWN.map((u) => cache.add(u).catch(() => {})))
                 )
             ),
             caches.open(STATIC_CACHE).then((cache) =>
-                Promise.allSettled(PRECACHE_SDK.map((u) => cache.add(u).catch(() => {})))
+                Promise.all(PRECACHE_SDK.map((u) => cache.add(u).catch(() => {})))
             ),
         ])
     );
@@ -99,10 +102,13 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // JS, CSS, manifests — stale-while-revalidate
-    // Responde al instante desde cache, actualiza en segundo plano
+    // JS, CSS, manifests — network-first con fallback a cache.
+    // Antes era stale-while-revalidate: si el cache llegaba a guardar un script-v2.js
+    // a medio bajar (red que se corta), lo servía roto de forma instantánea en cada
+    // carga y solo se corregía en la SIGUIENTE — el cliente veía el menú en negro.
+    // network-first: si hay red, siempre el bundle bueno y fresco; sin red, el cacheado.
     if (/\.(js|css|webmanifest|woff2?)(\?.*)?$/.test(path)) {
-        event.respondWith(staleWhileRevalidate(STATIC_CACHE, req));
+        event.respondWith(networkFirst(STATIC_CACHE, req));
         return;
     }
 });
@@ -134,19 +140,9 @@ async function networkFirst(cacheName, req) {
     }
 }
 
-async function staleWhileRevalidate(cacheName, req) {
-    const cache  = await caches.open(cacheName);
-    const cached = await cache.match(req);
-    const update = fetch(req).then((res) => {
-        if (res.ok) cache.put(req, res.clone());
-        return res;
-    }).catch(() => null);
-    return cached || update;
-}
-
 // ── Mensaje desde la página: forzar activación inmediata ────────────────────
 self.addEventListener('message', (event) => {
-    if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+    if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 // ── Notificaciones push ──────────────────────────────────────────────────────

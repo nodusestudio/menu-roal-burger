@@ -10,6 +10,18 @@
         // (roalburger.com, clientes reales) esta condicion nunca es verdadera, cero impacto.
         if (location.hostname === 'admin-roal.vercel.app') { location.replace('/admin.html'); }
     </script>
+    <script>
+        // Equipos de gama baja: el backdrop-filter apilado (decenas de capas en style.css) puede
+        // dejar los paneles en negro o tumbar el render en GPUs viejas de Android. Con <=2 GB de
+        // RAM reportada se apaga TODO el blur (ver "html.low-fx" en style.css). Conservador:
+        // si el navegador no reporta deviceMemory, no se toca nada.
+        try {
+            var _dm = navigator.deviceMemory;
+            if (typeof _dm === 'number' && _dm > 0 && _dm <= 2) {
+                document.documentElement.classList.add('low-fx');
+            }
+        } catch (e) {}
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>ROAL BURGER</title>
     <meta name="description" content="ROAL BURGER: menu digital, pedidos por WhatsApp y redes oficiales.">
@@ -33,7 +45,7 @@
     <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="manifest" href="site.webmanifest">
     <link rel="preload" as="image" href="portada.webp?v=20260615" type="image/webp" fetchpriority="high">
-    <link rel="stylesheet" href="style.css?v=20260828-2141">
+    <link rel="stylesheet" href="style.css?v=20260901-1842">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -57,7 +69,10 @@
     
     <!-- ===== FIN CONFIGURACIÓN DE ANALYTICS ===== -->
 </head>
-<body>
+<body data-theme="fodexa">
+    <!-- data-theme="fodexa" estático: es el tema por defecto que aplica el JS (normalizeBranding).
+         Puesto también en el HTML para que, si script-v2.js no llega a ejecutar (navegador viejo,
+         bundle roto en caché), el fondo se vea como la marca y no como una pantalla negra. -->
     <!-- Contenido estático para crawlers/verificadores que no ejecutan JavaScript (ej. revisión
          de cumplimiento de Meta para WhatsApp Business) — el resto del sitio es una SPA que
          carga el menú real desde Firestore, invisible para un bot sin JS. -->
@@ -657,10 +672,10 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script defer src="tracking.js?v=20260828-2141"></script>
+    <script defer src="tracking.js?v=20260901-1842"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="script-v2.js?v=20260828-2141"></script>
-    <script defer src="agent-chat.js?v=20260828-2141"></script>
+    <script defer src="script-v2.js?v=20260901-1842"></script>
+    <script defer src="agent-chat.js?v=20260901-1842"></script>
 
     <!-- ── Anuncio de apertura (promo destacada al abrir el menu) ── -->
     <div id="openingAdOverlay" class="opening-ad-overlay" hidden style="display:none;">
@@ -738,6 +753,84 @@
                 if (hadController) window.location.reload();
             });
         }
+    </script>
+
+    <!-- ===== RED DE SEGURIDAD DE ARRANQUE =====
+         Si script-v2.js no llega a ejecutar (navegador viejo que no parsea la sintaxis del
+         bundle, bundle roto servido desde caché, error fatal en el init), el cliente veía la
+         barra superior estática sobre un vacío negro, sin ninguna pista ni forma de salir.
+         Este bloque es JS clásico y autónomo (sin sintaxis moderna, sin depender de style.css):
+         si a los 9 s el menú no arrancó, muestra una pantalla de marca con "Reintentar" y
+         "Borrar datos y recargar" (des-registra el Service Worker + limpia caches). -->
+    <div id="bootFailOverlay" hidden>
+        <div class="bootfail-card">
+            <img src="isotipo.png" alt="ROAL BURGER" width="72" height="72" class="bootfail-logo">
+            <h2>No pudimos cargar el menú</h2>
+            <p>Puede ser tu conexión, o una versión vieja guardada en el teléfono.</p>
+            <button type="button" id="bootFailRetry">Reintentar</button>
+            <button type="button" id="bootFailReset">Borrar datos y recargar</button>
+            <p class="bootfail-hint">Si sigue igual, revisa tu conexión a internet.</p>
+        </div>
+    </div>
+    <style>
+        #bootFailOverlay{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:24px;background:#f3e9d8;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+        #bootFailOverlay[hidden]{display:none}
+        #bootFailOverlay .bootfail-card{max-width:340px;width:100%;text-align:center;color:#2a1b12}
+        #bootFailOverlay .bootfail-logo{border-radius:16px;margin-bottom:16px}
+        #bootFailOverlay h2{font-size:20px;margin:0 0 8px;font-weight:700}
+        #bootFailOverlay p{font-size:14px;line-height:1.5;margin:0 0 16px;color:#5a4636}
+        #bootFailOverlay button{display:block;width:100%;margin:8px 0;padding:13px 16px;font-size:15px;font-weight:600;border-radius:12px;border:0;cursor:pointer;-webkit-appearance:none}
+        #bootFailOverlay #bootFailRetry{background:#f65102;color:#fff}
+        #bootFailOverlay #bootFailReset{background:transparent;color:#2a1b12;border:1.5px solid rgba(42,27,18,.3)}
+        #bootFailOverlay .bootfail-hint{font-size:12px;color:#8a7259;margin:14px 0 0}
+    </style>
+    <script>
+        (function () {
+            function booted() {
+                if (window.__roalBooted === true) return true;
+                var s = document.getElementById('menuCarouselScreen');
+                return !!(s && !s.hasAttribute('hidden'));
+            }
+            var shown = false;
+            function showFail() {
+                if (shown || booted()) return;
+                shown = true;
+                var o = document.getElementById('bootFailOverlay');
+                if (o) o.hidden = false;
+            }
+            var slowTimer = setTimeout(showFail, 9000);
+            window.__roalCancelBootWatchdog = function () { shown = true; clearTimeout(slowTimer); };
+            // Error fatal de un bundle (p.ej. SyntaxError al parsear en un navegador viejo):
+            // si el menú no arrancó, no esperamos los 9 s completos.
+            window.addEventListener('error', function (ev) {
+                var t = ev && ev.target;
+                if (t && (t.tagName === 'IMG' || t.tagName === 'LINK' || t.tagName === 'SOURCE')) return;
+                if (!booted()) setTimeout(showFail, 2500);
+            }, true);
+            document.addEventListener('DOMContentLoaded', function () {
+                var retry = document.getElementById('bootFailRetry');
+                var reset = document.getElementById('bootFailReset');
+                if (retry) retry.addEventListener('click', function () { location.reload(); });
+                if (reset) reset.addEventListener('click', function () {
+                    var done = function () { location.reload(); };
+                    try {
+                        var jobs = [];
+                        if ('serviceWorker' in navigator) {
+                            jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+                                return Promise.all(rs.map(function (r) { return r.unregister(); }));
+                            }).catch(function () {}));
+                        }
+                        if (window.caches) {
+                            jobs.push(caches.keys().then(function (ks) {
+                                return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+                            }).catch(function () {}));
+                        }
+                        if (jobs.length) { Promise.all(jobs).then(done, done); setTimeout(done, 3000); }
+                        else done();
+                    } catch (e) { done(); }
+                });
+            });
+        })();
     </script>
 </body>
 </html>

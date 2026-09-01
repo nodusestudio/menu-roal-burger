@@ -3,14 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "node scripts/bump-version.js && node scripts/build-images.js && node scripts/extract-agent-constants.js && terser src/js/script-v2.js -o script-v2.js -c passes=2 -m && terser src/js/admin.js -o admin.js -c passes=2 -m && terser src/js/tracking.js -o tracking.js -c -m && terser src/js/agent-chat.js -o agent-chat.js -c passes=2 -m && cleancss -o style.css src/css/style.css",
+    "build": "node scripts/bump-version.js && node scripts/build-images.js && node scripts/extract-agent-constants.js && esbuild src/js/script-v2.js --minify --target=es2017 --legal-comments=none --outfile=script-v2.js && esbuild src/js/admin.js --minify --target=es2017 --legal-comments=none --outfile=admin.js && esbuild src/js/tracking.js --minify --target=es2017 --legal-comments=none --outfile=tracking.js && esbuild src/js/agent-chat.js --minify --target=es2017 --legal-comments=none --outfile=agent-chat.js && cleancss -o style.css src/css/style.css",
     "dev": "node scripts/bump-version.js && node scripts/extract-agent-constants.js && node -e \"[['src/js/admin.js','admin.js'],['src/js/script-v2.js','script-v2.js'],['src/css/style.css','style.css'],['src/js/tracking.js','tracking.js'],['src/js/agent-chat.js','agent-chat.js']].forEach(([s,d])=>{require('fs').copyFileSync(s,d);console.log('copied',s,'->', d)})\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
     "clean-css-cli": "^5.6.3",
+    "esbuild": "^0.25.0",
     "playwright": "^1.62.1",
-    "sharp": "^0.35.1",
-    "terser": "^5.31.6"
+    "sharp": "^0.35.1"
   }
 }
