@@ -2360,6 +2360,214 @@ async function fetchHorarioConfig() {
     } catch (_) {
         horarioState = { ...DEFAULT_HORARIO };
     }
+    horarioState.cierresProgramados = _normalizeCierresProgramados(horarioState.cierresProgramados);
+    // Borrar del servidor los cierres cuya fecha de fin ya pasó ("al terminar desaparece").
+    const hoy = _bogotaDateKey();
+    const vigentes = horarioState.cierresProgramados.filter((c) => c.fechaFin >= hoy);
+    if (vigentes.length !== horarioState.cierresProgramados.length) {
+        horarioState.cierresProgramados = vigentes;
+        try {
+            await firebaseDb.collection(CONFIG_COLLECTION).doc(HORARIO_DOC_ID).set({ cierresProgramados: vigentes }, { merge: true });
+        } catch (_) {}
+    }
+}
+
+// ── Cierres programados ──────────────────────────────────────────────────────
+// Lista guardada en configuracion/config_horario campo `cierresProgramados`. La leen el menú
+// público (script-v2.js) y el agente de WhatsApp (functions/agent/orderLogic.js) — SYNC.
+function _normalizeCierresProgramados(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .map((c) => {
+            const todoElDia = c?.todoElDia !== false;
+            return {
+                id: String(c?.id || `cp_${Date.now()}_${Math.random().toString(36).slice(2)}`),
+                fechaInicio: String(c?.fechaInicio || '').slice(0, 10),
+                fechaFin: String(c?.fechaFin || c?.fechaInicio || '').slice(0, 10),
+                todoElDia,
+                desde: todoElDia ? null : String(c?.desde || '00:00').slice(0, 5),
+                hasta: todoElDia ? null : String(c?.hasta || '23:59').slice(0, 5),
+                motivo: String(c?.motivo || '').trim()
+            };
+        })
+        .filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.fechaInicio) && /^\d{4}-\d{2}-\d{2}$/.test(c.fechaFin) && c.fechaFin >= c.fechaInicio)
+        .sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
+}
+
+async function _cpSaveAndRefresh(lista, successMsg) {
+    const normal = _normalizeCierresProgramados(lista);
+    try {
+        await firebaseDb.collection(CONFIG_COLLECTION).doc(HORARIO_DOC_ID).set({ cierresProgramados: normal }, { merge: true });
+        horarioState.cierresProgramados = normal;
+        renderCierresProgramados();
+        if (successMsg) showNotice(successMsg, 'ok');
+    } catch (e) {
+        showNotice('No se pudo guardar el cierre: ' + (e.message || 'error inesperado.'), 'error');
+    }
+}
+
+function _cierreProgramadoActivoAhora(c) {
+    const hoy = _bogotaDateKey();
+    if (hoy < c.fechaInicio || hoy > c.fechaFin) return false;
+    if (c.todoElDia) return true;
+    const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+    const nowMin = Number(p.find((x) => x.type === 'hour')?.value || 0) * 60 + Number(p.find((x) => x.type === 'minute')?.value || 0);
+    const [ih, im] = String(c.desde || '00:00').split(':').map(Number);
+    const [fh, fm] = String(c.hasta || '23:59').split(':').map(Number);
+    return nowMin >= (ih || 0) * 60 + (im || 0) && nowMin < (fh || 0) * 60 + (fm || 0);
+}
+
+function _cpFmtFecha(str) {
+    const [y, m, d] = String(str || '').split('-').map(Number);
+    if (!y || !m || !d) return str || '';
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${d} ${meses[m - 1] || ''} ${y}`;
+}
+
+function _cpRangoLabel(c) {
+    const base = c.fechaInicio === c.fechaFin
+        ? _cpFmtFecha(c.fechaInicio)
+        : `${_cpFmtFecha(c.fechaInicio)} → ${_cpFmtFecha(c.fechaFin)}`;
+    return c.todoElDia ? `${base} · todo el día` : `${base} · ${c.desde}–${c.hasta}`;
+}
+
+let _cpEditingId = null;
+
+function renderCierresProgramados() {
+    const panel = document.getElementById('cierresProgramadosPanel');
+    if (!panel) return;
+    const lista = _normalizeCierresProgramados(horarioState.cierresProgramados);
+    horarioState.cierresProgramados = lista;
+    const hoy = _bogotaDateKey();
+
+    panel.innerHTML = `
+        <div class="pm-list" id="cpList">
+            ${lista.length ? lista.map((c) => {
+                const activo = _cierreProgramadoActivoAhora(c);
+                const futuro = c.fechaInicio > hoy;
+                const estado = activo
+                    ? '<span class="pm-sub-badge" style="background:rgba(255,107,107,0.22);color:#ff9b9b;">🔴 Cerrado ahora</span>'
+                    : (futuro ? '<span class="pm-sub-badge">📅 Programado</span>' : '<span class="pm-sub-badge">⏳ En curso</span>');
+                return `
+                <div class="pm-method-card" data-cp-id="${escapeHtml(c.id)}">
+                    <div class="pm-method-header">
+                        <span class="pm-method-name">
+                            <span class="pm-method-icon">🚫</span>${escapeHtml(_cpRangoLabel(c))}
+                            <span class="pm-subs-badges">${estado}</span>
+                        </span>
+                        <div class="pm-method-actions">
+                            <button type="button" class="pm-icon-btn" data-cp-edit="${escapeHtml(c.id)}" title="Editar">✏️</button>
+                            <button type="button" class="pm-icon-btn pm-icon-btn--del" data-cp-delete="${escapeHtml(c.id)}" title="Eliminar">🗑️</button>
+                        </div>
+                    </div>
+                    ${c.motivo ? `<p style="margin:6px 0 0;font-size:0.8rem;color:var(--admin-muted);">💬 ${escapeHtml(c.motivo)}</p>` : ''}
+                </div>`;
+            }).join('') : '<p style="font-size:0.82rem;color:var(--admin-muted);margin:0;">No hay cierres programados.</p>'}
+        </div>
+        <div class="pm-method-form-wrap" id="cpFormWrap" hidden>
+            <div class="pm-method-form">
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Desde (fecha)</label>
+                    <input type="date" id="cpFormInicio" class="pm-form-input" min="${hoy}">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Hasta (fecha)</label>
+                    <input type="date" id="cpFormFin" class="pm-form-input" min="${hoy}">
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" id="cpFormTodoDia" checked> Cerrar el día completo
+                    </label>
+                </div>
+                <div class="pm-form-row" id="cpFormFranja" hidden style="gap:8px;">
+                    <div style="flex:1;">
+                        <label class="pm-form-label">Cerrado desde</label>
+                        <input type="time" id="cpFormDesde" class="pm-form-input" value="12:00">
+                    </div>
+                    <div style="flex:1;">
+                        <label class="pm-form-label">Cerrado hasta</label>
+                        <input type="time" id="cpFormHasta" class="pm-form-input" value="18:00">
+                    </div>
+                </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">Mensaje para el cliente (opcional)</label>
+                    <input type="text" id="cpFormMotivo" class="pm-form-input" placeholder="ej: Cerrado por festivo. Volvemos mañana." maxlength="140">
+                </div>
+                <div class="pm-form-actions">
+                    <button type="button" class="admin-button" id="cpFormSaveBtn" style="grid-column:auto;">Guardar</button>
+                    <button type="button" class="ghost-button" id="cpFormCancelBtn">Cancelar</button>
+                </div>
+            </div>
+        </div>
+        <button type="button" class="ghost-button" id="cpAddBtn" style="margin-top:14px;width:100%;">+ Programar cierre</button>
+    `;
+
+    panel.querySelectorAll('[data-cp-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => _cpOpenForm(btn.dataset.cpEdit));
+    });
+    panel.querySelectorAll('[data-cp-delete]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const c = lista.find((x) => x.id === btn.dataset.cpDelete);
+            if (!c) return;
+            if (!(await showConfirmModal({ title: `¿Eliminar el cierre del ${_cpRangoLabel(c)}?`, confirmText: 'Eliminar' }))) return;
+            await _cpSaveAndRefresh(lista.filter((x) => x.id !== c.id), 'Cierre eliminado.');
+        });
+    });
+    panel.querySelector('#cpAddBtn')?.addEventListener('click', () => _cpOpenForm(null));
+    panel.querySelector('#cpFormTodoDia')?.addEventListener('change', (e) => {
+        const fr = document.getElementById('cpFormFranja');
+        if (fr) fr.hidden = e.target.checked;
+    });
+    panel.querySelector('#cpFormSaveBtn')?.addEventListener('click', _cpFormSave);
+    panel.querySelector('#cpFormCancelBtn')?.addEventListener('click', () => {
+        document.getElementById('cpFormWrap')?.setAttribute('hidden', '');
+        _cpEditingId = null;
+    });
+}
+
+function _cpOpenForm(id) {
+    _cpEditingId = id || null;
+    const wrap = document.getElementById('cpFormWrap');
+    if (!wrap) return;
+    const c = _cpEditingId ? (horarioState.cierresProgramados || []).find((x) => x.id === _cpEditingId) : null;
+    const hoy = _bogotaDateKey();
+    document.getElementById('cpFormInicio').value = c ? c.fechaInicio : hoy;
+    document.getElementById('cpFormFin').value = c ? c.fechaFin : hoy;
+    document.getElementById('cpFormTodoDia').checked = c ? c.todoElDia : true;
+    document.getElementById('cpFormDesde').value = c && c.desde ? c.desde : '12:00';
+    document.getElementById('cpFormHasta').value = c && c.hasta ? c.hasta : '18:00';
+    document.getElementById('cpFormMotivo').value = c ? c.motivo : '';
+    document.getElementById('cpFormFranja').hidden = c ? c.todoElDia : true;
+    wrap.removeAttribute('hidden');
+    document.getElementById('cpFormInicio')?.focus();
+}
+
+async function _cpFormSave() {
+    const fechaInicio = document.getElementById('cpFormInicio')?.value || '';
+    let fechaFin = document.getElementById('cpFormFin')?.value || fechaInicio;
+    const todoElDia = document.getElementById('cpFormTodoDia')?.checked !== false;
+    const desde = document.getElementById('cpFormDesde')?.value || '00:00';
+    const hasta = document.getElementById('cpFormHasta')?.value || '23:59';
+    const motivo = String(document.getElementById('cpFormMotivo')?.value || '').trim();
+    const hoy = _bogotaDateKey();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaInicio)) { showNotice('Elige la fecha de inicio del cierre.', 'error'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaFin)) fechaFin = fechaInicio;
+    if (fechaFin < fechaInicio) { showNotice('La fecha de fin no puede ser anterior a la de inicio.', 'error'); return; }
+    if (fechaFin < hoy) { showNotice('Ese cierre ya está en el pasado.', 'error'); return; }
+    if (!todoElDia && hasta <= desde) { showNotice('La hora de fin debe ser posterior a la de inicio.', 'error'); return; }
+
+    const entrada = {
+        id: _cpEditingId || `cp_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        fechaInicio, fechaFin, todoElDia,
+        desde: todoElDia ? null : desde,
+        hasta: todoElDia ? null : hasta,
+        motivo
+    };
+    const base = (horarioState.cierresProgramados || []).filter((x) => x.id !== entrada.id);
+    document.getElementById('cpFormWrap')?.setAttribute('hidden', '');
+    _cpEditingId = null;
+    await _cpSaveAndRefresh([...base, entrada], 'Cierre programado guardado.');
 }
 
 function _ordersCutoff() {
@@ -14954,6 +15162,7 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
     renderButtonsList();
     renderBrandingForm();
     renderHorarioForm();
+    renderCierresProgramados();
     renderRecomendadoDiaPanel();
     renderOpeningAdPanel();
     renderCuponesUnified();
@@ -16373,6 +16582,7 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
         if (scope === 'configuracion') {
             if (target === 'categorias_gastos') loadCategoriasGastos().then(renderCategoriasGastosPanel);
             if (target === 'barrios_especiales') loadBarriosEspeciales().then(renderBarriosEspecialesPanel);
+            if (target === 'horario') fetchHorarioConfig().then(() => { renderHorarioForm(); renderCierresProgramados(); });
         }
     });
 });

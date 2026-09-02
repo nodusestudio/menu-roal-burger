@@ -31,6 +31,10 @@ let ORDERING_SCHEDULE = {
     openMessage: 'Abierto ahora. Ya puedes hacer tu pedido.',
     closedMessage: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.'
 };
+// Cierres programados para fechas puntuales (feriados, vacaciones, etc.). Se cargan de
+// configuracion/config_horario campo `cierresProgramados`. SYNC: functions/agent/orderLogic.js.
+let SCHEDULED_CLOSURES = [];
+const SCHEDULED_CLOSURE_DEFAULT_MESSAGE = 'Hoy el restaurante permanece cerrado. ¡Pronto volvemos a atenderte!';
 const TRANSFER_PAYMENT_CONFIRMATION_MESSAGE = 'En un momento uno de nuestros asesores se comunicara contigo por WhatsApp para pasarte la informacion de la cuenta.';
 const CASH_PAYMENT_CONFIRMATION_MESSAGE = 'Tu pedido ya fue enviado al restaurante, manejamos un tiempo de entrega de 50 min aproximadamente, uno de nuestros asesores se comunicara contigo a la brevedad posible para confirmar el pedido.';
 const DELIVERY_CENTER_COORDINATES = [4.5419, -75.6835];
@@ -1222,9 +1226,55 @@ function getCurrentOrderingMinutes(now = new Date()) {
     return (hour * 60) + minute;
 }
 
+// SYNC: functions/agent/orderLogic.js parseCierresProgramados.
+function parseCierresProgramados(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .map((c) => {
+            const todoElDia = c?.todoElDia !== false;
+            return {
+                id: String(c?.id || ''),
+                fechaInicio: String(c?.fechaInicio || '').slice(0, 10),
+                fechaFin: String(c?.fechaFin || c?.fechaInicio || '').slice(0, 10),
+                todoElDia,
+                desde: todoElDia ? null : String(c?.desde || '00:00').slice(0, 5),
+                hasta: todoElDia ? null : String(c?.hasta || '23:59').slice(0, 5),
+                motivo: String(c?.motivo || '').trim()
+            };
+        })
+        .filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.fechaInicio) && /^\d{4}-\d{2}-\d{2}$/.test(c.fechaFin));
+}
+
+// SYNC: functions/agent/orderLogic.js getActiveScheduledClosure. Devuelve el cierre activo
+// ahora mismo (según hora Colombia) o null.
+function getActiveScheduledClosure(now = new Date()) {
+    if (!SCHEDULED_CLOSURES.length) return null;
+    const todayStr = getTodayDateStringInScheduleTZ(now);
+    const nowMin = getCurrentOrderingMinutes(now);
+    for (const c of SCHEDULED_CLOSURES) {
+        if (todayStr < c.fechaInicio || todayStr > c.fechaFin) continue;
+        if (c.todoElDia) return c;
+        const [ih, im] = String(c.desde || '00:00').split(':').map(Number);
+        const [fh, fm] = String(c.hasta || '23:59').split(':').map(Number);
+        const ini = (ih || 0) * 60 + (im || 0);
+        const fin = (fh || 0) * 60 + (fm || 0);
+        if (nowMin >= ini && nowMin < fin) return c;
+    }
+    return null;
+}
+
 function getOrderingAvailability(now = new Date()) {
     if (TEMP_CLOSURE_ACTIVE) {
         return { isOpen: false, scheduleLabel: ORDERING_SCHEDULE.label, statusLabel: TEMP_CLOSURE_MESSAGE };
+    }
+    const closure = getActiveScheduledClosure(now);
+    if (closure) {
+        return {
+            isOpen: false,
+            scheduleLabel: ORDERING_SCHEDULE.label,
+            statusLabel: closure.motivo || SCHEDULED_CLOSURE_DEFAULT_MESSAGE,
+            isScheduledClosure: true
+        };
     }
     const currentMinutes = getCurrentOrderingMinutes(now);
     const isWithinSchedule = currentMinutes >= ORDERING_SCHEDULE.startMinutes && currentMinutes < ORDERING_SCHEDULE.endMinutes;
@@ -1287,6 +1337,20 @@ function validateScheduledOrderSelection(dateStr, timeStr) {
     }
     if (dateStr === todayStr && chosenMinutes <= getCurrentOrderingMinutes()) {
         return 'Elige una hora más adelante, esa ya pasó.';
+    }
+
+    // Cierres programados: no aceptar pedidos para un día (o franja) que el negocio marcó cerrado.
+    const closureConflict = SCHEDULED_CLOSURES.find((c) => {
+        if (dateStr < c.fechaInicio || dateStr > c.fechaFin) return false;
+        if (c.todoElDia) return true;
+        const [ih, im] = String(c.desde || '00:00').split(':').map(Number);
+        const [fh, fm] = String(c.hasta || '23:59').split(':').map(Number);
+        return chosenMinutes >= (ih || 0) * 60 + (im || 0) && chosenMinutes < (fh || 0) * 60 + (fm || 0);
+    });
+    if (closureConflict) {
+        return closureConflict.motivo
+            ? `Ese día estaremos cerrados: ${closureConflict.motivo} Elige otra fecha, por favor.`
+            : 'Ese día el restaurante estará cerrado. Elige otra fecha, por favor.';
     }
 
     return '';
@@ -1861,6 +1925,8 @@ async function loadHorarioConfig() {
             label: String(d.etiquetaHorario || ORDERING_SCHEDULE.label),
             closedMessage: String(d.mensajeCierre || ORDERING_SCHEDULE.closedMessage)
         };
+        const hoyStr = getTodayDateStringInScheduleTZ();
+        SCHEDULED_CLOSURES = parseCierresProgramados(d.cierresProgramados).filter((c) => c.fechaFin >= hoyStr);
         syncOrderingAvailabilityUI();
     } catch (_) {}
 }

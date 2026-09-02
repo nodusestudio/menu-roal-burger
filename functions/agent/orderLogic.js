@@ -154,11 +154,66 @@ function getCurrentOrderingMinutes(timeZone, now = new Date()) {
     return (hour * 60) + minute;
 }
 
+// ── Cierres programados ─────────────────────────────────────────────────────
+// SYNC: src/js/script-v2.js (getActiveScheduledClosure) + src/js/admin.js
+// (_cierreProgramadoActivoAhora). Lista guardada en configuracion/config_horario campo
+// `cierresProgramados`: [{ id, fechaInicio, fechaFin, todoElDia, desde, hasta, motivo }].
+// Un cierre "vencido" (fechaFin < hoy) se ignora acá y el admin lo borra al abrir la pestaña.
+const SCHEDULED_CLOSURE_DEFAULT_MESSAGE = 'Hoy el restaurante permanece cerrado. ¡Pronto volvemos a atenderte!';
+
+function parseCierresProgramados(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .map((c) => {
+            const todoElDia = c?.todoElDia !== false;
+            return {
+                id: String(c?.id || ''),
+                fechaInicio: String(c?.fechaInicio || '').slice(0, 10),
+                fechaFin: String(c?.fechaFin || c?.fechaInicio || '').slice(0, 10),
+                todoElDia,
+                desde: todoElDia ? null : String(c?.desde || '00:00').slice(0, 5),
+                hasta: todoElDia ? null : String(c?.hasta || '23:59').slice(0, 5),
+                motivo: String(c?.motivo || '').trim()
+            };
+        })
+        .filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.fechaInicio) && /^\d{4}-\d{2}-\d{2}$/.test(c.fechaFin));
+}
+
+function getActiveScheduledClosure(list, timeZone = 'America/Bogota', now = new Date()) {
+    const cierres = Array.isArray(list) ? list : [];
+    if (!cierres.length) return null;
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+    const y = parts.find((p) => p.type === 'year')?.value || '1970';
+    const mo = parts.find((p) => p.type === 'month')?.value || '01';
+    const da = parts.find((p) => p.type === 'day')?.value || '01';
+    const todayStr = `${y}-${mo}-${da}`;
+    const nowMin = getCurrentOrderingMinutes(timeZone, now);
+    for (const c of cierres) {
+        if (todayStr < c.fechaInicio || todayStr > c.fechaFin) continue;
+        if (c.todoElDia) return c;
+        const [ih, im] = String(c.desde || '00:00').split(':').map(Number);
+        const [fh, fm] = String(c.hasta || '23:59').split(':').map(Number);
+        const ini = (ih || 0) * 60 + (im || 0);
+        const fin = (fh || 0) * 60 + (fm || 0);
+        if (nowMin >= ini && nowMin < fin) return c;
+    }
+    return null;
+}
+
 // SYNC: src/js/script-v2.js función getOrderingAvailability (línea ~1097) + loadHorarioConfig
 // (línea ~1697). `schedule` viene de leer configuracion/config_horario en Firestore (ver tools.js).
 function getOrderingAvailability(schedule, now = new Date()) {
     if (TEMP_CLOSURE_ACTIVE) {
         return { isOpen: false, scheduleLabel: schedule.label, statusLabel: TEMP_CLOSURE_MESSAGE };
+    }
+    const closure = getActiveScheduledClosure(schedule.cierresProgramados, schedule.timeZone, now);
+    if (closure) {
+        return {
+            isOpen: false,
+            scheduleLabel: schedule.label,
+            statusLabel: closure.motivo || SCHEDULED_CLOSURE_DEFAULT_MESSAGE,
+            scheduledClosure: true
+        };
     }
     const currentMinutes = getCurrentOrderingMinutes(schedule.timeZone, now);
     const isOpen = currentMinutes >= schedule.startMinutes && currentMinutes < schedule.endMinutes;
@@ -189,7 +244,8 @@ function buildScheduleFromConfigDoc(configData) {
         endMinutes,
         label: `Todos los días: ${fmt(startMinutes)} a ${fmt(endMinutes)}`,
         openMessage: 'Abierto ahora. Ya puedes hacer tu pedido.',
-        closedMessage: `Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de ${fmt(startMinutes)} a ${fmt(endMinutes)}.`
+        closedMessage: `Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de ${fmt(startMinutes)} a ${fmt(endMinutes)}.`,
+        cierresProgramados: parseCierresProgramados(d.cierresProgramados)
     };
 }
 
@@ -618,6 +674,8 @@ module.exports = {
     reserveNextOrderCode,
     getCurrentOrderingMinutes,
     getOrderingAvailability,
+    getActiveScheduledClosure,
+    parseCierresProgramados,
     buildScheduleFromConfigDoc,
     isComboActiveNow,
     createAgentOrder,

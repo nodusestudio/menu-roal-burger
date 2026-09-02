@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260901-1842">
+    <link rel="stylesheet" href="style.css?v=20260901-2024">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -13691,6 +13691,23 @@
                                     </form>
                                 </div>
                             </article>
+
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Cierres programados</h2>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-cierres-programados" aria-expanded="true">Retraer</button>
+                                </div>
+                                <div class="card-body" id="card-cierres-programados">
+                                    <p class="card-desc">
+                                        Programa días o rangos de fechas en que el negocio no toma pedidos (feriados, vacaciones, mantenimiento).
+                                        Durante un cierre, el menú público y el asistente de WhatsApp muestran cerrado y no dejan pedir. Cada
+                                        cierre se borra solo cuando pasa su fecha de fin.
+                                    </p>
+                                    <div id="cierresProgramadosPanel">
+                                        <!-- renderizado por JS -->
+                                    </div>
+                                </div>
+                            </article>
                         </div>
 
                         <!-- Panel: Tipos de Pago -->
@@ -15315,8 +15332,8 @@
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260901-1842"></script>
-    <script defer src="admin.js?v=20260901-1842"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20260901-2024"></script>
+    <script defer src="admin.js?v=20260901-2024"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

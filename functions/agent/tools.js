@@ -561,7 +561,8 @@ function buildAgentToolHandlers({ db, state, conversationKey }) {
                 const schedule = orderLogic.buildScheduleFromConfigDoc(doc.exists ? doc.data() : null);
                 const availability = orderLogic.getOrderingAvailability(schedule);
                 if (!availability.isOpen) {
-                    return JSON.stringify({ error: `Estamos cerrados ahora mismo (${availability.scheduleLabel}). Ofrece programar el pedido (isScheduled) o avisa que reintente en el horario de atención.` });
+                    const motivo = availability.scheduledClosure ? availability.statusLabel : `Estamos cerrados ahora mismo (${availability.scheduleLabel}).`;
+                    return JSON.stringify({ error: `${motivo} Ofrece programar el pedido (isScheduled) o avisa que reintente cuando volvamos a abrir.` });
                 }
             }
 
