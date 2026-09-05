@@ -19603,6 +19603,54 @@ function _updateGastoConfirmState() {
     btn.disabled = !(monto > 0 && _gastoSelectedMethod);
 }
 
+// Chips de subcategoría del paso 2 del modal de gasto — ordenadas alfabéticamente y con la
+// activa marcada. Se reutiliza al agregar una subcategoría nueva desde el propio modal.
+function _renderGastoSubChips(cat) {
+    const grid = document.getElementById('gastoSubGrid');
+    if (!grid) return;
+    const subs = [...(cat?.subs || [])].sort((a, b) => String(a).localeCompare(String(b), 'es', { sensitivity: 'base' }));
+    if (!subs.length) {
+        grid.innerHTML = '<span class="gasto-sub-empty">Sin subcategorías. Usa "+ Nueva" para agregar.</span>';
+        return;
+    }
+    grid.innerHTML = subs.map((s) =>
+        `<button type="button" class="gasto-sub-chip${s === _gastoSubcategoria ? ' active' : ''}" data-gasto-sub="${escapeHtml(s)}">${escapeHtml(s)}</button>`
+    ).join('');
+}
+
+// Agrega una subcategoría a la categoría actual del modal de gasto y la deja seleccionada.
+async function _addGastoSubcategoria() {
+    const input = document.getElementById('gastoSubAddInput');
+    const confirmBtn = document.getElementById('gastoSubAddConfirm');
+    const value = String(input?.value || '').trim();
+    if (!value) { input?.focus(); return; }
+    const cat = _categoriasGastosState.find((c) => c.id === _gastoCategoriaId);
+    if (!cat) { showNotice('Elige una categoría primero.', 'error'); return; }
+    if ((cat.subs || []).some((s) => s.toLowerCase() === value.toLowerCase())) {
+        _gastoSubcategoria = (cat.subs || []).find((s) => s.toLowerCase() === value.toLowerCase());
+        document.getElementById('gastoSubAddRow')?.setAttribute('hidden', '');
+        if (input) input.value = '';
+        _renderGastoSubChips(cat);
+        return;
+    }
+    cat.subs = [...(cat.subs || []), value];
+    if (confirmBtn) confirmBtn.disabled = true;
+    try {
+        await saveCategoriasGastos();
+    } catch (_) {
+        cat.subs = cat.subs.filter((s) => s !== value);
+        showNotice('No se pudo guardar la subcategoría.', 'error');
+        if (confirmBtn) confirmBtn.disabled = false;
+        return;
+    }
+    if (confirmBtn) confirmBtn.disabled = false;
+    _gastoSubcategoria = value;
+    document.getElementById('gastoSubAddRow')?.setAttribute('hidden', '');
+    if (input) input.value = '';
+    _renderGastoSubChips(cat);
+    if (typeof renderCategoriasGastosPanel === 'function') { try { renderCategoriasGastosPanel(); } catch (_) {} }
+}
+
 function _gastoShowStep1() {
     const title   = document.getElementById('gastoModalTitle');
     const backBtn = document.getElementById('gastoBackBtn');
@@ -19643,18 +19691,14 @@ function _gastoShowStep2(catId) {
     if (step2)   step2.removeAttribute('hidden');
     if (regBtn)  regBtn.removeAttribute('hidden');
 
-    const subSection = document.getElementById('gastoSubSection');
-    const subGrid = document.getElementById('gastoSubGrid');
-    if (subSection && subGrid) {
-        if (cat.subs && cat.subs.length > 0) {
-            subGrid.innerHTML = cat.subs.map((s) =>
-                `<button type="button" class="gasto-sub-chip" data-gasto-sub="${escapeHtml(s)}">${escapeHtml(s)}</button>`
-            ).join('');
-            subSection.removeAttribute('hidden');
-        } else {
-            subSection.setAttribute('hidden', '');
-        }
-    }
+    // La sección de subcategorías siempre está visible (aunque la categoría no tenga ninguna):
+    // así el botón "+ Nueva" está disponible para agregarlas desde acá mismo.
+    document.getElementById('gastoSubSection')?.removeAttribute('hidden');
+    const addRow = document.getElementById('gastoSubAddRow');
+    if (addRow) addRow.setAttribute('hidden', '');
+    const addInput = document.getElementById('gastoSubAddInput');
+    if (addInput) addInput.value = '';
+    _renderGastoSubChips(cat);
 
     const descEl   = document.getElementById('gastoDescripcion');
     const montoEl  = document.getElementById('gastoMonto');
@@ -19808,11 +19852,31 @@ document.getElementById('gastoModal')?.addEventListener('click', (e) => {
 
     const subBtn = e.target.closest('[data-gasto-sub]');
     if (subBtn) {
+        const alreadyActive = subBtn.classList.contains('active');
         document.querySelectorAll('[data-gasto-sub]').forEach((b) => b.classList.remove('active'));
-        subBtn.classList.add('active');
-        _gastoSubcategoria = subBtn.dataset.gastoSub;
+        // Segundo toque en la misma chip = deseleccionar (la subcategoría es opcional).
+        if (alreadyActive) { _gastoSubcategoria = null; }
+        else { subBtn.classList.add('active'); _gastoSubcategoria = subBtn.dataset.gastoSub; }
         return;
     }
+
+    // "+ Nueva" — mostrar/ocultar la fila para escribir una subcategoría nueva
+    if (e.target.closest('#gastoSubAddToggle')) {
+        const row = document.getElementById('gastoSubAddRow');
+        if (row) {
+            const willShow = row.hasAttribute('hidden');
+            row.toggleAttribute('hidden', !willShow);
+            if (willShow) document.getElementById('gastoSubAddInput')?.focus();
+        }
+        return;
+    }
+    if (e.target.closest('#gastoSubAddCancel')) {
+        document.getElementById('gastoSubAddRow')?.setAttribute('hidden', '');
+        const i = document.getElementById('gastoSubAddInput');
+        if (i) i.value = '';
+        return;
+    }
+    if (e.target.closest('#gastoSubAddConfirm')) { _addGastoSubcategoria(); return; }
 
     const backBtn = e.target.closest('#gastoBackBtn');
     if (backBtn) { _gastoShowStep1(); return; }
@@ -19824,6 +19888,13 @@ document.getElementById('gastoModal')?.addEventListener('click', (e) => {
         _gastoSelectedMethod = methodBtn.dataset.gastoMethod;
         _updateGastoConfirmState();
         return;
+    }
+});
+
+document.getElementById('gastoModal')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target && e.target.id === 'gastoSubAddInput') {
+        e.preventDefault();
+        _addGastoSubcategoria();
     }
 });
 

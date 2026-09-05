@@ -11755,12 +11755,43 @@
         .gasto-cat-btn:hover { background: rgba(255,255,255,0.13); border-color: rgba(255,255,255,0.28); }
         .gasto-cat-btn.active { background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.55); color: #fca5a5; }
         .gasto-cat-icon { font-size: 1.6rem; line-height: 1; }
-        .dpm-sub-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--admin-muted); margin: 0 0 6px; }
-        .gasto-sub-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+        .dpm-sub-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--admin-muted); margin: 0; }
+        .dpm-sub-optional { text-transform: none; letter-spacing: 0; opacity: 0.6; font-weight: 400; }
+        .dpm-sub-label-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+        .gasto-sub-addbtn {
+            flex-shrink: 0; padding: 4px 12px; border-radius: 20px;
+            background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.4);
+            color: #fca5a5; font-size: 0.74rem; font-weight: 700; cursor: pointer; transition: background 0.12s;
+        }
+        .gasto-sub-addbtn:hover { background: rgba(239,68,68,0.24); }
+        .gasto-sub-addrow { display: flex; gap: 6px; margin-bottom: 8px; }
+        .gasto-sub-addrow[hidden] { display: none; }
+        .gasto-sub-addrow input {
+            flex: 1; min-width: 0; padding: 7px 11px; border-radius: 9px;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.18);
+            color: var(--admin-text); font-size: 0.82rem; outline: none;
+        }
+        .gasto-sub-addrow input:focus { border-color: rgba(239,68,68,0.6); }
+        .gasto-sub-addconfirm {
+            flex-shrink: 0; padding: 7px 14px; border-radius: 9px; border: none;
+            background: #ef4444; color: #fff; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+        }
+        .gasto-sub-addcancel {
+            flex-shrink: 0; width: 32px; border-radius: 9px;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+            color: var(--admin-muted); font-size: 0.85rem; cursor: pointer;
+        }
+        .gasto-sub-chips {
+            display: flex; flex-wrap: wrap; gap: 6px;
+            max-height: 132px; overflow-y: auto;
+            padding: 8px; border: 1px solid rgba(255,255,255,0.09);
+            border-radius: 10px; background: rgba(0,0,0,0.14);
+        }
+        .gasto-sub-empty { font-size: 0.78rem; color: var(--admin-muted); padding: 2px 4px; }
         .gasto-sub-chip {
-            padding: 5px 14px; background: rgba(255,255,255,0.08);
+            padding: 4px 12px; background: rgba(255,255,255,0.08);
             border: 1px solid rgba(255,255,255,0.15); border-radius: 20px;
-            color: var(--admin-text); font-size: 0.78rem; cursor: pointer; transition: background 0.12s;
+            color: var(--admin-text); font-size: 0.76rem; cursor: pointer; transition: background 0.12s;
         }
         .gasto-sub-chip:hover { background: rgba(255,255,255,0.16); }
         .gasto-sub-chip.active { background: rgba(239,68,68,0.25); border-color: rgba(239,68,68,0.6); color: #fca5a5; }
@@ -15400,7 +15431,15 @@
             <!-- Paso 2: subcategoría + formulario -->
             <div id="gastoStep2" class="dpm-unified-body" hidden>
                 <div id="gastoSubSection" hidden style="margin-bottom:14px;">
-                    <p class="dpm-sub-label">Subcategoría</p>
+                    <div class="dpm-sub-label-row">
+                        <p class="dpm-sub-label">Subcategoría <span class="dpm-sub-optional">(opcional)</span></p>
+                        <button type="button" id="gastoSubAddToggle" class="gasto-sub-addbtn">+ Nueva</button>
+                    </div>
+                    <div id="gastoSubAddRow" class="gasto-sub-addrow" hidden>
+                        <input type="text" id="gastoSubAddInput" placeholder="Nombre de la subcategoría…" maxlength="40" autocomplete="off">
+                        <button type="button" id="gastoSubAddConfirm" class="gasto-sub-addconfirm">Agregar</button>
+                        <button type="button" id="gastoSubAddCancel" class="gasto-sub-addcancel" aria-label="Cancelar">✕</button>
+                    </div>
                     <div class="gasto-sub-chips" id="gastoSubGrid"></div>
                 </div>
                 <div class="gasto-form">
