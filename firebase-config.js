@@ -31,12 +31,6 @@ function initFirebaseServices() {
     // util para ver el catalogo/productos reales sin tener que sembrar el emulador).
     const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
         && !new URLSearchParams(window.location.search).has('forceProd');
-    if (isLocalHost && !window._firebaseEmulatorsConnected) {
-        window._firebaseEmulatorsConnected = true;
-        try { firebase.firestore().useEmulator('localhost', 8080); } catch (_e) {}
-        try { if (typeof firebase.functions === 'function') firebase.functions().useEmulator('localhost', 5001); } catch (_e) {}
-    }
-
     const db = firebase.firestore();
 
     // Bug real de compatibilidad Safari/WebKit con este SDK (confirmado 2026-08-25, celular real):
@@ -51,6 +45,16 @@ function initFirebaseServices() {
     if (!window._firestoreSettingsApplied) {
         window._firestoreSettingsApplied = true;
         try { db.settings({ experimentalForceLongPolling: true }); } catch (_e) {}
+    }
+
+    // Emuladores locales — DESPUES de db.settings(): en este SDK compat, llamar settings()
+    // luego de useEmulator() pisa el host/ssl del emulador y vuelve a produccion. El orden
+    // correcto es settings() -> useEmulator(). Solo se activa en localhost/127.0.0.1 (nunca
+    // en roalburger.com / Vercel). ?forceProd=1 lo salta para probar contra datos reales.
+    if (isLocalHost && !window._firebaseEmulatorsConnected) {
+        window._firebaseEmulatorsConnected = true;
+        try { db.useEmulator('localhost', 8080); } catch (_e) {}
+        try { if (typeof firebase.functions === 'function') firebase.functions().useEmulator('localhost', 5001); } catch (_e) {}
     }
 
     // Persistencia offline solo en el menu publico (no en admin).
