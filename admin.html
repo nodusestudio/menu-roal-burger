@@ -2143,80 +2143,120 @@
             color: #6eefaa;
         }
 
-        /* Carrusel de mensajes rápidos al cliente (arriba del ticket) */
-        .ticket-msg-carousel {
-            display: flex;
-            gap: 8px;
-            overflow-x: auto;
-            padding: 4px 2px 8px;
-            margin: 0 -2px;
-            scroll-snap-type: x proximity;
-            -webkit-overflow-scrolling: touch;
+        /* Menú hamburguesa de "Mensajes al cliente" en la esquina superior del ticket */
+        .ticket-msg-menu {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 12;
         }
 
-        .ticket-msg-carousel::-webkit-scrollbar { height: 5px; }
-        .ticket-msg-carousel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
-
-        .ticket-msg-card {
-            flex: 0 0 auto;
-            width: 175px;
-            scroll-snap-align: start;
-            display: flex;
-            flex-direction: column;
-            gap: 7px;
-            padding: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.04);
-        }
-
-        .ticket-msg-card-title {
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 0.82rem;
-            font-weight: 700;
-            color: var(--ticket-text, #e9edf5);
-            letter-spacing: 0.2px;
-        }
-
-        .ticket-msg-card-actions {
-            display: flex;
-            gap: 6px;
-        }
-
-        .ticket-msg-btn {
-            flex: 1 1 0;
+        .ticket-msg-menu-toggle {
+            width: 30px;
+            height: 30px;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 4px;
-            padding: 7px 6px;
             border: 1px solid rgba(255, 255, 255, 0.16);
-            border-radius: 9px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--ticket-text, #e9edf5);
+            font-size: 0.95rem;
+            line-height: 1;
+            cursor: pointer;
+            transition: background 0.18s, border-color 0.18s;
+        }
+
+        .ticket-msg-menu-toggle:hover,
+        .ticket-msg-menu-toggle[aria-expanded="true"] {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .ticket-msg-menu-panel {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            width: 232px;
+            padding: 8px;
+            display: grid;
+            gap: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 12px;
+            background: #1b2332;
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+        }
+
+        .ticket-msg-menu-panel[hidden] {
+            display: none;
+        }
+
+        .ticket-msg-menu-head {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--ticket-subtle, #8fa0b9);
+            padding: 2px 4px 4px;
+        }
+
+        .ticket-msg-menu-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 4px 6px 6px;
+            border-radius: 8px;
+        }
+
+        .ticket-msg-menu-row:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .ticket-msg-menu-label {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--ticket-text, #e9edf5);
+        }
+
+        .ticket-msg-menu-actions {
+            display: flex;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+
+        .ticket-msg-menu-btn {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 8px;
             background: rgba(255, 255, 255, 0.06);
             color: var(--ticket-text, #e9edf5);
             text-decoration: none;
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 0.76rem;
-            font-weight: 600;
+            font-size: 0.85rem;
+            line-height: 1;
             cursor: pointer;
             transition: background 0.18s, border-color 0.18s, color 0.18s;
         }
 
-        .ticket-msg-btn:hover {
-            background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(255, 255, 255, 0.28);
+        .ticket-msg-menu-btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.3);
         }
 
-        .ticket-msg-btn-wa {
+        .ticket-msg-menu-btn-wa {
             background: rgba(37, 211, 102, 0.13);
-            border-color: rgba(37, 211, 102, 0.30);
-            color: #4ade80;
+            border-color: rgba(37, 211, 102, 0.3);
         }
 
-        .ticket-msg-btn-wa:hover {
-            background: rgba(37, 211, 102, 0.22);
-            border-color: rgba(37, 211, 102, 0.48);
-            color: #6eefaa;
+        .ticket-msg-menu-btn-wa:hover {
+            background: rgba(37, 211, 102, 0.24);
+            border-color: rgba(37, 211, 102, 0.5);
         }
 
         .ticket-footer-copy {

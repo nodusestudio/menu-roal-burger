@@ -10110,28 +10110,30 @@ function openOrderContactCard(orderId) {
 
 function buildThermalTicketMarkup(order, options = {}) {
     const printMode = options.printMode === true;
-    // Carrusel de mensajes rápidos al cliente (arriba del ticket): Confirmación / En preparación
-    // / Entregado. Cada tarjeta ofrece "Copiar" y, si hay teléfono, "WhatsApp".
+    // Menú de mensajes rápidos al cliente: botón hamburguesa en la esquina superior del ticket
+    // que despliega Confirmación / En preparación / Entregado, cada uno con "Copiar" y (si hay
+    // teléfono) "WhatsApp". El toggle lo maneja un listener a nivel document (data-ticket-msg-*).
     const _waDigits = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D+/g, '');
     const _quickMsgs = [
         { key: 'confirmacion', icon: '✅', label: 'Confirmación', text: buildOrderConfirmationMessage(order) },
         { key: 'preparacion', icon: '👨‍🍳', label: 'En preparación', text: buildOrderWhatsAppMessage(order, { includeItems: false }) },
         { key: 'entregado', icon: '🛵', label: 'Entregado', text: buildDeliveredOrderMessage(order) },
     ];
-    const _quickMsgCarousel = printMode ? '' : `
-                <section class="ticket-section ticket-msg-carousel-section">
-                    <div class="ticket-section-title">Mensajes rápidos al cliente</div>
-                    <div class="ticket-msg-carousel">
+    const _quickMsgMenu = printMode ? '' : `
+                <div class="ticket-msg-menu" data-ticket-msg-menu>
+                    <button type="button" class="ticket-msg-menu-toggle" data-ticket-msg-toggle aria-haspopup="true" aria-expanded="false" title="Mensajes al cliente">☰</button>
+                    <div class="ticket-msg-menu-panel" hidden>
+                        <div class="ticket-msg-menu-head">Mensajes al cliente</div>
                         ${_quickMsgs.map((m) => `
-                        <div class="ticket-msg-card">
-                            <span class="ticket-msg-card-title">${m.icon} ${escapeHtml(m.label)}</span>
-                            <div class="ticket-msg-card-actions">
-                                <button type="button" class="ticket-msg-btn" data-wa-copy="${escapeHtml(m.text)}" title="Copiar el mensaje de ${escapeHtml(m.label)}">📋 Copiar</button>
-                                ${_waDigits ? `<a class="ticket-msg-btn ticket-msg-btn-wa" href="https://wa.me/${_waDigits}?text=${encodeURIComponent(m.text)}" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>` : ''}
-                            </div>
+                        <div class="ticket-msg-menu-row">
+                            <span class="ticket-msg-menu-label">${m.icon} ${escapeHtml(m.label)}</span>
+                            <span class="ticket-msg-menu-actions">
+                                <button type="button" class="ticket-msg-menu-btn" data-wa-copy="${escapeHtml(m.text)}" title="Copiar ${escapeHtml(m.label)}">📋</button>
+                                ${_waDigits ? `<a class="ticket-msg-menu-btn ticket-msg-menu-btn-wa" href="https://wa.me/${_waDigits}?text=${encodeURIComponent(m.text)}" target="_blank" rel="noopener noreferrer" title="Enviar ${escapeHtml(m.label)} por WhatsApp">💬</a>` : ''}
+                            </span>
                         </div>`).join('')}
                     </div>
-                </section>`;
+                </div>`;
     const statusMeta = getOrderStatusMeta(order.status);
     const totalAmount = getOrderDisplayTotal(order);
     const deliveryText = formatMoney(order.deliveryFee != null ? order.deliveryFee : 0);
@@ -10266,6 +10268,7 @@ function buildThermalTicketMarkup(order, options = {}) {
     return `
         <div class="ticket-paper-wrap${_ticketNotOwner ? ' mesero-not-owner' : ''}">
             <article class="ticket-paper" data-ticket-print-root="true">
+                ${_quickMsgMenu}
                 <div class="ticket-brand">
                     <div class="ticket-brand-name">${restaurantName}</div>
                     <div class="ticket-brand-copy">Ticket de recepcion</div>
@@ -10281,7 +10284,6 @@ function buildThermalTicketMarkup(order, options = {}) {
 
                 ${_ticketScheduleBanner}
                 ${_ticketPromoBanner}
-                ${_quickMsgCarousel}
 
                 <section class="ticket-section">
                     <div class="ticket-section-title">Cliente</div>
@@ -17468,6 +17470,28 @@ if (ordersActionRoot) {
         }
     });
 }
+
+// Menú hamburguesa de "Mensajes al cliente" del ticket (en el panel POS y en la vista previa).
+// Un solo listener a nivel document: abre/cierra el desplegable y lo cierra al hacer clic afuera.
+document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const toggle = target.closest('[data-ticket-msg-toggle]');
+    document.querySelectorAll('.ticket-msg-menu-panel:not([hidden])').forEach((panel) => {
+        const menu = panel.closest('[data-ticket-msg-menu]');
+        if (menu && menu.contains(target) && (toggle || target.closest('.ticket-msg-menu-panel'))) return;
+        panel.hidden = true;
+        menu?.querySelector('[data-ticket-msg-toggle]')?.setAttribute('aria-expanded', 'false');
+    });
+    if (toggle) {
+        const panel = toggle.parentElement?.querySelector('.ticket-msg-menu-panel');
+        if (panel) {
+            const willOpen = panel.hidden;
+            panel.hidden = !willOpen;
+            toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        }
+    }
+});
 
 if (orderTicketPanel) {
     orderTicketPanel.addEventListener('click', async (event) => {
