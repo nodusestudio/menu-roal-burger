@@ -9678,6 +9678,15 @@ function isOrderClosed(order) {
     return s === 'entregado' || s === 'enviado';
 }
 
+// Un pedido ya cobrado (o cerrado) queda bloqueado para toda edición: no se pueden agregar/
+// editar productos ni datos del cliente ni cambiar la mesa. Solo se permite corregir el medio
+// de pago ("Editar medio de pago") y acciones que no tocan el pedido (agregar contacto).
+function isOrderLockedForEdit(order) {
+    if (!order) return false;
+    const m = String(order.paymentMethod || '').toLowerCase();
+    return (!!m && m !== 'pendiente') || isOrderClosed(order);
+}
+
 function getOrderColumnKey(order) {
     if (order.orderType === 'mesa') return 'mesa';
     return order.orderType === 'domicilio' ? 'delivery' : 'takeaway';
@@ -10161,7 +10170,10 @@ function buildThermalTicketMarkup(order, options = {}) {
         { key: 'preparacion', icon: '👨‍🍳', label: 'En preparación', text: buildOrderWhatsAppMessage(order, { includeItems: false }) },
         { key: 'entregado', icon: '🛵', label: 'Entregado', text: buildDeliveredOrderMessage(order) },
     ];
-    const _editRows = [
+    const _locked = isOrderLockedForEdit(order);
+    const _paidHasType = !!order.orderType && !!order.paymentMethod && order.paymentMethod !== 'pendiente';
+    // Acciones de edición del pedido: se ocultan si el pedido ya está cobrado/cerrado.
+    const _editRows = _locked ? [] : [
         { icon: '➕', label: 'Agregar productos', action: 'edit-items' },
         { icon: '✏️', label: 'Editar un producto', action: 'edit-items' },
         { icon: '👤', label: 'Editar nombre del cliente', action: 'edit-field', field: 'customerName' },
@@ -10172,9 +10184,17 @@ function buildThermalTicketMarkup(order, options = {}) {
         ...(order.orderType === 'mesa'
             ? [{ icon: '⇄', label: 'Cambiar mesa', action: 'cambiar_mesa' }]
             : []),
+    ];
+    // Siempre disponibles: corregir el medio de pago (solo si ya está pagado) y agregar contacto.
+    const _alwaysRows = [
+        ...(_paidHasType ? [{ icon: '💳', label: 'Editar medio de pago', action: 'editar_pago' }] : []),
         { icon: '👥', label: 'Agregar contacto', action: 'contact' },
     ];
     const _oid = escapeHtml(order.id);
+    const _renderMenuItem = (r) => `
+                        <button type="button" class="ticket-msg-menu-item" data-order-ticket-action="${r.action}" data-order-id="${_oid}"${r.field ? ` data-edit-field="${r.field}"` : ''}>
+                            ${r.icon} ${escapeHtml(r.label)}
+                        </button>`;
     const _quickMsgMenu = printMode ? '' : `
                 <div class="ticket-msg-menu" data-ticket-msg-menu>
                     <button type="button" class="ticket-msg-menu-toggle" data-ticket-msg-toggle aria-haspopup="true" aria-expanded="false" title="Acciones del pedido">☰</button>
@@ -10189,10 +10209,9 @@ function buildThermalTicketMarkup(order, options = {}) {
                             </span>
                         </div>`).join('')}
                         <div class="ticket-msg-menu-head">Edición</div>
-                        ${_editRows.map((r) => `
-                        <button type="button" class="ticket-msg-menu-item" data-order-ticket-action="${r.action}" data-order-id="${_oid}"${r.field ? ` data-edit-field="${r.field}"` : ''}>
-                            ${r.icon} ${escapeHtml(r.label)}
-                        </button>`).join('')}
+                        ${_locked ? '<div class="ticket-msg-menu-note">🔒 Pedido cobrado — edición bloqueada</div>' : ''}
+                        ${_editRows.map(_renderMenuItem).join('')}
+                        ${_alwaysRows.map(_renderMenuItem).join('')}
                     </div>
                 </div>`;
     const statusMeta = getOrderStatusMeta(order.status);
@@ -10214,7 +10233,7 @@ function buildThermalTicketMarkup(order, options = {}) {
         ? `<div class="ticket-address-text" style="color:#f59e0b;font-weight:700;">⚠️ Barrio ${escapeHtml(order.barrioEspecial)} — el domiciliario no entra, el cliente SALE A RECIBIR</div>`
         : '';
     const addressLines = barrioEspecialLine + (order.orderType === 'domicilio'
-        ? `<div class="ticket-address-text">${buildTicketEditFieldButton(order, 'deliveryAddress', order.deliveryAddress || 'Sin direccion registrada', printMode)}</div>`
+        ? `<div class="ticket-address-text">${buildTicketEditFieldButton(order, 'deliveryAddress', order.deliveryAddress || 'Sin direccion registrada', printMode || _locked)}</div>`
         : buildTicketAddressLines(order)
             .map((line) => `<div class="ticket-address-text">${escapeHtml(line)}</div>`)
             .join(''));
@@ -10245,7 +10264,7 @@ function buildThermalTicketMarkup(order, options = {}) {
 
         const itemNameBlock = `<strong>${escapeHtml(`${item.quantity} x ${item.productName}`)}</strong>
                     ${detailParts.map((p) => `<span class="ticket-line-meta">${escapeHtml(p)}</span>`).join('')}`;
-        const itemNameCell = printMode
+        const itemNameCell = (printMode || _locked)
             ? itemNameBlock
             : `<button type="button" class="ticket-copy-btn" style="display:block;width:100%;" data-order-ticket-action="edit-items" data-order-id="${escapeHtml(order.id)}" title="Editar productos del pedido">${itemNameBlock}</button>`;
 
@@ -10349,11 +10368,11 @@ function buildThermalTicketMarkup(order, options = {}) {
                 <section class="ticket-section">
                     <div class="ticket-section-title">Cliente</div>
                     <div class="ticket-customer-card">
-                        ${buildTicketEditFieldButton(order, 'customerName', getOrderDisplayCustomerName(order), printMode, { className: 'ticket-copy-btn-name' })}
-                        ${printMode ? '' : `<button type="button" class="ticket-editpago-link" data-order-ticket-action="cambiar_cliente" data-order-id="${escapeHtml(order.id)}">🔁 Cambiar cliente</button>`}
+                        ${buildTicketEditFieldButton(order, 'customerName', getOrderDisplayCustomerName(order), printMode || _locked, { className: 'ticket-copy-btn-name' })}
+                        ${(printMode || _locked) ? '' : `<button type="button" class="ticket-editpago-link" data-order-ticket-action="cambiar_cliente" data-order-id="${escapeHtml(order.id)}">🔁 Cambiar cliente</button>`}
                         <div class="ticket-customer-row">
                             <span>Telefono</span>
-                            ${buildTicketEditFieldButton(order, 'customerPhone', order.customerPhone || 'No registrado', printMode, { className: 'ticket-copy-btn-inline' })}
+                            ${buildTicketEditFieldButton(order, 'customerPhone', order.customerPhone || 'No registrado', printMode || _locked, { className: 'ticket-copy-btn-inline' })}
                         </div>
                         <div class="ticket-customer-row">
                             <span>Tipo</span>
@@ -10460,20 +10479,16 @@ function buildThermalTicketMarkup(order, options = {}) {
                         : !_hasType
                             ? 'Asigna tipo de pedido (mesa / recoger / domicilio) primero'
                             : 'Cobrar este pedido';
-                // "Editar pago": disponible cuando ya hay método registrado (incluso en pedidos entregados)
-                const _editPagoBtn = (_isPaid && _hasType)
-                    ? `<button type="button" class="ticket-editpago-link" data-order-ticket-action="editar_pago" data-order-id="${order.id}" title="Corregir el método de pago sin cambiar el estado del pedido">✏️ Editar método de pago</button>`
-                    : '';
                 // Solo en modo mesero, y solo en un pedido propio aun pendiente de cobro.
                 const _meseroDeleteBtn = (_meseroSession && !_isPaid)
                     ? `<button type="button" class="ticket-action-btn" data-order-ticket-action="eliminar" data-order-id="${order.id}" title="Eliminar este pedido">🗑 Eliminar</button>`
                     : '';
-                // "Agregar contacto" y "Cambiar mesa" viven ahora en el menú ☰ (sección Edición).
+                // "Editar medio de pago", "Agregar contacto" y "Cambiar mesa" viven ahora en el
+                // menú ☰ (sección Edición).
                 return `
-                <div class="ticket-print-row${_editPagoBtn ? ' ticket-print-row--has-edit' : ''}">
+                <div class="ticket-print-row">
                     <button type="button" class="ticket-print-btn ticket-action-btn" data-order-ticket-action="print" data-order-id="${order.id}">Imprimir</button>
                     <button type="button" class="ticket-cobrar-btn ticket-action-btn" data-order-ticket-action="cobrar" data-order-id="${order.id}" ${_cobrarDisabled} title="${_cobrarTitle}">💰 Cobrar</button>
-                    ${_editPagoBtn}
                     ${_meseroDeleteBtn}
                 </div>`;
             })()}
@@ -10527,10 +10542,10 @@ function renderOrderTicket(order, options = {}) {
     const ticketPaper = orderTicketBody.querySelector('.ticket-paper');
     if (ticketPaper) {
         ticketPaper.style.position = 'relative';
+        // El ✎ de editar productos se movió al menú ☰ (sección Edición). Queda solo 🗑.
         const floatDiv = document.createElement('div');
         floatDiv.className = 'ticket-float-actions';
-        floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-edit-btn" data-order-ticket-action="edit-items" title="Editar productos del pedido">✎</button>`;
-        floatDiv.innerHTML += `<button type="button" class="tpv-action-btn tpv-delete-btn" data-order-ticket-action="eliminar" title="Eliminar pedido">🗑</button>`;
+        floatDiv.innerHTML = `<button type="button" class="tpv-action-btn tpv-delete-btn" data-order-ticket-action="eliminar" title="Eliminar pedido">🗑</button>`;
         ticketPaper.appendChild(floatDiv);
     }
 
@@ -17578,6 +17593,18 @@ if (orderTicketPanel) {
             return;
         }
 
+        // Un pedido cobrado/cerrado no se puede editar (productos, cliente, mesa). "Editar medio
+        // de pago" y "Agregar contacto" sí siguen permitidos.
+        const _LOCKED_ACTIONS = ['edit-items', 'edit-field', 'cambiar_cliente', 'cambiar_mesa'];
+        if (_LOCKED_ACTIONS.includes(actionButton.dataset.orderTicketAction)) {
+            const _lockedId = String(actionButton.dataset.orderId || '').trim() || selectedOrderId;
+            const _lockedOrder = ordersState.find(o => o.id === _lockedId);
+            if (isOrderLockedForEdit(_lockedOrder)) {
+                showNotice('El pedido ya está cobrado — no se puede editar.', 'error');
+                return;
+            }
+        }
+
         if (actionButton.dataset.orderTicketAction === 'edit-field') {
             const targetOrderId = String(actionButton.dataset.orderId || '').trim();
             const field = String(actionButton.dataset.editField || '').trim();
@@ -22929,6 +22956,10 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', async (
     if (btn) {
         const action = btn.dataset.orderTicketAction;
         const order = _ticketPreviewCurrentOrder;
+        if (['edit-items', 'edit-field', 'cambiar_cliente', 'cambiar_mesa'].includes(action) && isOrderLockedForEdit(order)) {
+            showNotice('El pedido ya está cobrado — no se puede editar.', 'error');
+            return;
+        }
         if (action === 'print') {
             const orderId = String(btn.dataset.orderId || '').trim();
             if (orderId) {
