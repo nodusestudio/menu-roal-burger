@@ -2143,6 +2143,82 @@
             color: #6eefaa;
         }
 
+        /* Carrusel de mensajes rápidos al cliente (arriba del ticket) */
+        .ticket-msg-carousel {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding: 4px 2px 8px;
+            margin: 0 -2px;
+            scroll-snap-type: x proximity;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .ticket-msg-carousel::-webkit-scrollbar { height: 5px; }
+        .ticket-msg-carousel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
+
+        .ticket-msg-card {
+            flex: 0 0 auto;
+            width: 175px;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            padding: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .ticket-msg-card-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--ticket-text, #e9edf5);
+            letter-spacing: 0.2px;
+        }
+
+        .ticket-msg-card-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .ticket-msg-btn {
+            flex: 1 1 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 7px 6px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            border-radius: 9px;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--ticket-text, #e9edf5);
+            text-decoration: none;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.76rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.18s, border-color 0.18s, color 0.18s;
+        }
+
+        .ticket-msg-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.28);
+        }
+
+        .ticket-msg-btn-wa {
+            background: rgba(37, 211, 102, 0.13);
+            border-color: rgba(37, 211, 102, 0.30);
+            color: #4ade80;
+        }
+
+        .ticket-msg-btn-wa:hover {
+            background: rgba(37, 211, 102, 0.22);
+            border-color: rgba(37, 211, 102, 0.48);
+            color: #6eefaa;
+        }
+
         .ticket-footer-copy {
             padding-top: 12px;
             border-top: 1px dashed var(--ticket-line);

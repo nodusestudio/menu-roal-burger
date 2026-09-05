@@ -9697,17 +9697,25 @@ async function ensureActiveSalesDay() {
     return true;
 }
 
-function buildOrderWhatsAppMessage(order) {
+// options.includeItems === false → omite el bloque "📋 Tu pedido" (se usa en el carrusel del
+// ticket para el botón "En preparación", donde los productos ya se confirmaron con el mensaje
+// de "Confirmación"). Por defecto incluye los productos (comportamiento histórico).
+function buildOrderWhatsAppMessage(order, options = {}) {
+    const includeItems = options.includeItems !== false;
     const nombre = order.customerName || 'Cliente';
     const codigo = order.code || '';
-    const lineas = _groupOrderItemsForDisplay(order.items).map(i => {
-        const qty = Number(i.quantity || 1);
-        const name = i.productName || i.name || '';
-        const detalles = [String(i.optionLabel || '').trim()];
-        if (i.note && i.note !== i.optionLabel) detalles.push(`Nota: ${String(i.note).trim()}`);
-        const detalleTexto = detalles.filter(Boolean).join(' | ');
-        return detalleTexto ? `• ${qty}x ${name}\n   ↳ ${detalleTexto}` : `• ${qty}x ${name}`;
-    }).join('\n');
+    let itemsBlock = '';
+    if (includeItems) {
+        const lineas = _groupOrderItemsForDisplay(order.items).map(i => {
+            const qty = Number(i.quantity || 1);
+            const name = i.productName || i.name || '';
+            const detalles = [String(i.optionLabel || '').trim()];
+            if (i.note && i.note !== i.optionLabel) detalles.push(`Nota: ${String(i.note).trim()}`);
+            const detalleTexto = detalles.filter(Boolean).join(' | ');
+            return detalleTexto ? `• ${qty}x ${name}\n   ↳ ${detalleTexto}` : `• ${qty}x ${name}`;
+        }).join('\n');
+        itemsBlock = `\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}`;
+    }
     const total = formatMoney(Number(order.total || order.subtotal || 0));
     const method = String(order.paymentMethod || 'pendiente').toLowerCase();
     const isPaid = method && method !== 'pendiente' && method !== 'efectivo';
@@ -9726,7 +9734,48 @@ function buildOrderWhatsAppMessage(order) {
         ? '¡Gracias por preferirnos! En unos 25 min ya puedes pasar por tu pedido 🥡'
         : '¡Gracias por preferirnos! Pronto estará en tu puerta 🛵';
 
-    return `¡Hola ${nombre}! 👋\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n💰 *${paymentLine}*\n${tiempoLine}\n\n${cierre}`;
+    return `¡Hola ${nombre}! 👋\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥${itemsBlock}\n\n💰 *${paymentLine}*\n${tiempoLine}\n\n${cierre}`;
+}
+
+// Mensaje #1 del carrusel del ticket: detalle COMPLETO del pedido (productos + notas,
+// descuentos, puntos, domicilio, total, dirección y medio de pago) para que el cliente
+// confirme que todo está bien ANTES de mandarlo a cocina.
+function buildOrderConfirmationMessage(order) {
+    const nombre = String(order.customerName || 'Cliente').trim() || 'Cliente';
+    const codigo = order.code || '';
+    const lineas = _groupOrderItemsForDisplay(order.items).map(i => {
+        const qty = Number(i.quantity || 1);
+        const name = i.productName || i.name || '';
+        const precio = formatMoney(Number(i.subtotal || 0));
+        const detalles = [String(i.optionLabel || '').trim()];
+        if (i.note && i.note !== i.optionLabel) detalles.push(`Nota: ${String(i.note).trim()}`);
+        const detalleTexto = detalles.filter(Boolean).join(' | ');
+        const linea = `• ${qty}x ${name} — ${Number(i.subtotal || 0) === 0 ? 'GRATIS' : precio}`;
+        return detalleTexto ? `${linea}\n   ↳ ${detalleTexto}` : linea;
+    }).join('\n');
+
+    const ahorroPromos = (order.items || []).reduce((s, it) => {
+        const orig = it.originalUnitPrice != null ? Number(it.originalUnitPrice) : null;
+        return (orig !== null && orig > Number(it.unitPrice || 0))
+            ? s + (orig - Number(it.unitPrice || 0)) * Number(it.quantity || 1)
+            : s;
+    }, 0);
+
+    const resumen = [`Subtotal: ${formatMoney(Number(order.subtotal || 0))}`];
+    if (ahorroPromos > 0) resumen.push(`🎉 Ahorro en promos: -${formatMoney(ahorroPromos)}`);
+    if (Number(order.promo2x1IncrementoFee || 0) > 0) resumen.push(`Incremento empaque 2×1: ${formatMoney(Number(order.promo2x1IncrementoFee))}`);
+    if (Number(order.pointsRedeemed || 0) > 0) resumen.push(`⭐ Puntos usados (${Number(order.pointsRedeemed).toLocaleString('es-CO')}): -${formatMoney(Number(order.pointsDiscountAmount || 0))}`);
+    if (order.orderType === 'domicilio') resumen.push(`🛵 Domicilio: ${formatMoney(Number(order.deliveryFee || 0))}`);
+    resumen.push(`*Total: ${formatMoney(getOrderDisplayTotal(order))}*`);
+
+    const entregaLinea = order.orderType === 'domicilio'
+        ? `📍 *Entrega a domicilio:* ${String(order.deliveryAddress || 'sin dirección registrada').trim()}`
+        : order.orderType === 'mesa'
+            ? `🍽️ *En el local${order.mesaNumber ? ` — Mesa ${order.mesaNumber}` : ''}*`
+            : '🥡 *Para recoger en el local*';
+    const pagoLinea = `💳 *Medio de pago:* ${getOrderPaymentLabel(order)}`;
+
+    return `¡Hola ${nombre}! 👋 Recibimos tu pedido *${codigo}*.\nAntes de mandarlo a cocina, confírmanos que todo esté correcto por favor 🙏\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n🧾 *Resumen:*\n${resumen.join('\n')}\n\n${entregaLinea}\n${pagoLinea}\n\n¿Está todo bien? Respóndenos *SÍ* para enviarlo a cocina ✅`;
 }
 
 function buildOrderWhatsAppLink(order) {
@@ -10061,9 +10110,28 @@ function openOrderContactCard(orderId) {
 
 function buildThermalTicketMarkup(order, options = {}) {
     const printMode = options.printMode === true;
-    const whatsappLink = buildOrderWhatsAppLink(order);
-    const whatsappMsg  = order.customerPhone ? buildOrderWhatsAppMessage(order) : '';
-    const _isMobile    = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    // Carrusel de mensajes rápidos al cliente (arriba del ticket): Confirmación / En preparación
+    // / Entregado. Cada tarjeta ofrece "Copiar" y, si hay teléfono, "WhatsApp".
+    const _waDigits = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D+/g, '');
+    const _quickMsgs = [
+        { key: 'confirmacion', icon: '✅', label: 'Confirmación', text: buildOrderConfirmationMessage(order) },
+        { key: 'preparacion', icon: '👨‍🍳', label: 'En preparación', text: buildOrderWhatsAppMessage(order, { includeItems: false }) },
+        { key: 'entregado', icon: '🛵', label: 'Entregado', text: buildDeliveredOrderMessage(order) },
+    ];
+    const _quickMsgCarousel = printMode ? '' : `
+                <section class="ticket-section ticket-msg-carousel-section">
+                    <div class="ticket-section-title">Mensajes rápidos al cliente</div>
+                    <div class="ticket-msg-carousel">
+                        ${_quickMsgs.map((m) => `
+                        <div class="ticket-msg-card">
+                            <span class="ticket-msg-card-title">${m.icon} ${escapeHtml(m.label)}</span>
+                            <div class="ticket-msg-card-actions">
+                                <button type="button" class="ticket-msg-btn" data-wa-copy="${escapeHtml(m.text)}" title="Copiar el mensaje de ${escapeHtml(m.label)}">📋 Copiar</button>
+                                ${_waDigits ? `<a class="ticket-msg-btn ticket-msg-btn-wa" href="https://wa.me/${_waDigits}?text=${encodeURIComponent(m.text)}" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>` : ''}
+                            </div>
+                        </div>`).join('')}
+                    </div>
+                </section>`;
     const statusMeta = getOrderStatusMeta(order.status);
     const totalAmount = getOrderDisplayTotal(order);
     const deliveryText = formatMoney(order.deliveryFee != null ? order.deliveryFee : 0);
@@ -10213,6 +10281,7 @@ function buildThermalTicketMarkup(order, options = {}) {
 
                 ${_ticketScheduleBanner}
                 ${_ticketPromoBanner}
+                ${_quickMsgCarousel}
 
                 <section class="ticket-section">
                     <div class="ticket-section-title">Cliente</div>
@@ -10244,11 +10313,6 @@ function buildThermalTicketMarkup(order, options = {}) {
                     <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion de entrega' : order.orderType === 'mesa' ? (order.mesaNumber ? `Mesa ${order.mesaNumber}` : '⚠️ Sin mesa asignada') : 'Retiro en local'}</div>
                     <div class="ticket-address-block">
                         ${addressLines}
-                        ${whatsappMsg ? (
-                            _isMobile
-                                ? `<a class="ticket-wa-btn" href="${whatsappLink}" target="_blank" rel="noopener noreferrer">💬 Abrir WhatsApp</a>`
-                                : `<button type="button" class="ticket-wa-btn" data-wa-copy="${escapeHtml(whatsappMsg)}">📋 Copiar mensaje</button>`
-                        ) : ''}
                     </div>
                 </section>
 
@@ -22766,6 +22830,15 @@ function closeTicketPreviewModal() {
 
 document.getElementById('ticketPreviewCloseBtn')?.addEventListener('click', closeTicketPreviewModal);
 document.getElementById('ticketPreviewModal')?.addEventListener('click', async (e) => {
+    const waCopyBtn = e.target.closest('button[data-wa-copy]');
+    if (waCopyBtn) {
+        const msg = String(waCopyBtn.dataset.waCopy || '').trim();
+        if (msg) {
+            await copyTextToClipboard(msg);
+            showNotice('Mensaje copiado — pégalo en WhatsApp 💬', 'ok');
+        }
+        return;
+    }
     const btn = e.target.closest('button[data-order-ticket-action]');
     if (btn) {
         const action = btn.dataset.orderTicketAction;
