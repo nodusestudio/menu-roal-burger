@@ -10150,18 +10150,30 @@ function openOrderContactCard(orderId) {
 
 function buildThermalTicketMarkup(order, options = {}) {
     const printMode = options.printMode === true;
-    // Menú de mensajes rápidos al cliente: botón hamburguesa en la esquina superior del ticket
-    // que despliega Confirmación / En preparación / Entregado, cada uno con "Copiar" y (si hay
-    // teléfono) "WhatsApp". El toggle lo maneja un listener a nivel document (data-ticket-msg-*).
+    // Menú hamburguesa en la esquina superior del ticket con dos secciones:
+    //  · Mensajes al cliente — Confirmación / En preparación / Entregado (Copiar + WhatsApp).
+    //  · Edición — atajos que abren en el acto el editor de productos o de un dato del cliente
+    //    (data-order-ticket-action, lo maneja el listener de #orderTicketPanel / vista previa).
+    // El toggle/cierre lo maneja un listener a nivel document (data-ticket-msg-*).
     const _waDigits = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D+/g, '');
     const _quickMsgs = [
         { key: 'confirmacion', icon: '✅', label: 'Confirmación', text: buildOrderConfirmationMessage(order) },
         { key: 'preparacion', icon: '👨‍🍳', label: 'En preparación', text: buildOrderWhatsAppMessage(order, { includeItems: false }) },
         { key: 'entregado', icon: '🛵', label: 'Entregado', text: buildDeliveredOrderMessage(order) },
     ];
+    const _editRows = [
+        { icon: '➕', label: 'Agregar productos', action: 'edit-items' },
+        { icon: '✏️', label: 'Editar un producto', action: 'edit-items' },
+        { icon: '👤', label: 'Editar nombre del cliente', action: 'edit-field', field: 'customerName' },
+        { icon: '📞', label: 'Editar teléfono', action: 'edit-field', field: 'customerPhone' },
+        ...(order.orderType === 'domicilio'
+            ? [{ icon: '📍', label: 'Editar dirección', action: 'edit-field', field: 'deliveryAddress' }]
+            : []),
+    ];
+    const _oid = escapeHtml(order.id);
     const _quickMsgMenu = printMode ? '' : `
                 <div class="ticket-msg-menu" data-ticket-msg-menu>
-                    <button type="button" class="ticket-msg-menu-toggle" data-ticket-msg-toggle aria-haspopup="true" aria-expanded="false" title="Mensajes al cliente">☰</button>
+                    <button type="button" class="ticket-msg-menu-toggle" data-ticket-msg-toggle aria-haspopup="true" aria-expanded="false" title="Acciones del pedido">☰</button>
                     <div class="ticket-msg-menu-panel" hidden>
                         <div class="ticket-msg-menu-head">Mensajes al cliente</div>
                         ${_quickMsgs.map((m) => `
@@ -10172,6 +10184,11 @@ function buildThermalTicketMarkup(order, options = {}) {
                                 ${_waDigits ? `<a class="ticket-msg-menu-btn ticket-msg-menu-btn-wa" href="https://wa.me/${_waDigits}?text=${encodeURIComponent(m.text)}" target="_blank" rel="noopener noreferrer" title="Enviar ${escapeHtml(m.label)} por WhatsApp">💬</a>` : ''}
                             </span>
                         </div>`).join('')}
+                        <div class="ticket-msg-menu-head">Edición</div>
+                        ${_editRows.map((r) => `
+                        <button type="button" class="ticket-msg-menu-item" data-order-ticket-action="${r.action}" data-order-id="${_oid}"${r.field ? ` data-edit-field="${r.field}"` : ''}>
+                            ${r.icon} ${escapeHtml(r.label)}
+                        </button>`).join('')}
                     </div>
                 </div>`;
     const statusMeta = getOrderStatusMeta(order.status);
@@ -17517,9 +17534,14 @@ document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     const toggle = target.closest('[data-ticket-msg-toggle]');
+    // Solo se mantiene abierto al tocar el propio toggle o un botón "Copiar" (para luego poder
+    // tocar WhatsApp). Cualquier otra cosa —atajo de edición, enlace de WhatsApp, clic afuera—
+    // lo cierra.
+    const keepOpen = target.closest('[data-wa-copy]');
     document.querySelectorAll('.ticket-msg-menu-panel:not([hidden])').forEach((panel) => {
         const menu = panel.closest('[data-ticket-msg-menu]');
-        if (menu && menu.contains(target) && (toggle || target.closest('.ticket-msg-menu-panel'))) return;
+        if (toggle && menu && menu.contains(target)) return;
+        if (keepOpen && panel.contains(target)) return;
         panel.hidden = true;
         menu?.querySelector('[data-ticket-msg-toggle]')?.setAttribute('aria-expanded', 'false');
     });
