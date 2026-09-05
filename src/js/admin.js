@@ -10169,6 +10169,10 @@ function buildThermalTicketMarkup(order, options = {}) {
         ...(order.orderType === 'domicilio'
             ? [{ icon: '📍', label: 'Editar dirección', action: 'edit-field', field: 'deliveryAddress' }]
             : []),
+        ...(order.orderType === 'mesa'
+            ? [{ icon: '⇄', label: 'Cambiar mesa', action: 'cambiar_mesa' }]
+            : []),
+        { icon: '👥', label: 'Agregar contacto', action: 'contact' },
     ];
     const _oid = escapeHtml(order.id);
     const _quickMsgMenu = printMode ? '' : `
@@ -10460,19 +10464,15 @@ function buildThermalTicketMarkup(order, options = {}) {
                 const _editPagoBtn = (_isPaid && _hasType)
                     ? `<button type="button" class="ticket-editpago-link" data-order-ticket-action="editar_pago" data-order-id="${order.id}" title="Corregir el método de pago sin cambiar el estado del pedido">✏️ Editar método de pago</button>`
                     : '';
-                const _cambiarMesaBtn = order.orderType === 'mesa'
-                    ? `<button type="button" class="ticket-action-btn" data-order-ticket-action="cambiar_mesa" data-order-id="${order.id}" title="Mover este pedido a otra mesa">⇄ Cambiar mesa</button>`
-                    : '';
                 // Solo en modo mesero, y solo en un pedido propio aun pendiente de cobro.
                 const _meseroDeleteBtn = (_meseroSession && !_isPaid)
                     ? `<button type="button" class="ticket-action-btn" data-order-ticket-action="eliminar" data-order-id="${order.id}" title="Eliminar este pedido">🗑 Eliminar</button>`
                     : '';
+                // "Agregar contacto" y "Cambiar mesa" viven ahora en el menú ☰ (sección Edición).
                 return `
                 <div class="ticket-print-row${_editPagoBtn ? ' ticket-print-row--has-edit' : ''}">
                     <button type="button" class="ticket-print-btn ticket-action-btn" data-order-ticket-action="print" data-order-id="${order.id}">Imprimir</button>
                     <button type="button" class="ticket-cobrar-btn ticket-action-btn" data-order-ticket-action="cobrar" data-order-id="${order.id}" ${_cobrarDisabled} title="${_cobrarTitle}">💰 Cobrar</button>
-                    <button type="button" class="ticket-contact-btn ticket-action-btn" data-order-ticket-action="contact" data-order-id="${order.id}">Agregar contacto</button>
-                    ${_cambiarMesaBtn}
                     ${_editPagoBtn}
                     ${_meseroDeleteBtn}
                 </div>`;
@@ -22946,6 +22946,9 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', async (
                 openOrderContactCard(orderId);
                 showNotice(isMobileContactImportContext() ? 'Abriendo el contacto del cliente.' : 'Contacto descargado en formato VCF.', 'ok');
             }
+        } else if (action === 'cambiar_mesa') {
+            const orderId = String(btn.dataset.orderId || '').trim();
+            if (orderId) { closeTicketPreviewModal(); openChangeMesaModal(orderId); }
         } else if (action === 'editar_pos' && order) {
             closeTicketPreviewModal();
             editAdminPosOrder(order);
