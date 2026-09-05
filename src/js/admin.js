@@ -1023,6 +1023,40 @@ function getSafeCustomerAnnouncementName(value) {
     return normalized || 'cliente sin nombre';
 }
 
+// Un pedido de mostrador sin nombre real de cliente se guardaba/mostraba/anunciaba como
+// "Pedido Admin". Para el usuario eso es "pedido administrativo" y no debe decirse ni escribirse:
+// un pedido para llevar debe llamarse "Pedido para llevar" (o "a domicilio" / la mesa).
+function isPlaceholderCustomerName(value) {
+    const n = String(value || '').trim().toLowerCase();
+    return !n || n === 'pedido admin' || n === 'pedido administrativo'
+        || n === 'cliente' || n === 'cliente sin nombre' || n === 'nuevo pedido';
+}
+
+// Nombre a MOSTRAR para un pedido (cae a una etiqueta por tipo cuando no hay nombre real).
+function getOrderDisplayCustomerName(order) {
+    const raw = String(order && order.customerName || '').trim();
+    if (!isPlaceholderCustomerName(raw)) return raw;
+    if (order && order.orderType === 'mesa') return order.mesaNumber ? `Mesa ${order.mesaNumber}` : 'Pedido en mesa';
+    if (order && order.orderType === 'domicilio') return 'Pedido a domicilio';
+    return 'Pedido para llevar';
+}
+
+// Nombre para el saludo de un mensaje al cliente: '' si no hay nombre real (evita
+// "¡Hola Pedido Admin!" / "¡Hola Pedido para llevar!" en los mensajes del ticket).
+function getOrderGreetingName(order) {
+    const raw = String(order && order.customerName || '').trim();
+    return isPlaceholderCustomerName(raw) ? '' : raw;
+}
+
+// Frase a DECIR por voz al entrar un pedido nuevo.
+function buildOrderAnnouncementPhrase(order) {
+    const raw = String(order && order.customerName || '').trim();
+    if (!isPlaceholderCustomerName(raw)) return `Nuevo pedido de ${getSafeCustomerAnnouncementName(raw)}`;
+    if (order && order.orderType === 'domicilio') return 'Nuevo pedido a domicilio';
+    if (order && order.orderType === 'mesa') return order.mesaNumber ? `Nuevo pedido para la mesa ${order.mesaNumber}` : 'Nuevo pedido en mesa';
+    return 'Nuevo pedido para llevar';
+}
+
 function getOrderBellAudioContext() {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) {
@@ -1284,12 +1318,16 @@ function getCurrentAdminIdentity() {
     return rawInput || 'admin';
 }
 
-function speakOrderAnnouncement(customerName) {
+function speakOrderAnnouncement(order) {
     if (!('speechSynthesis' in window) || typeof window.SpeechSynthesisUtterance !== 'function') {
         return;
     }
 
-    const utterance = new window.SpeechSynthesisUtterance(`Nuevo pedido de ${getSafeCustomerAnnouncementName(customerName)}`);
+    // Acepta el pedido completo o (retrocompat) solo el nombre.
+    const phrase = (order && typeof order === 'object')
+        ? buildOrderAnnouncementPhrase(order)
+        : `Nuevo pedido de ${getSafeCustomerAnnouncementName(order)}`;
+    const utterance = new window.SpeechSynthesisUtterance(phrase);
     utterance.lang = 'es-CO';
     utterance.rate = 0.96;
     utterance.pitch = 1;
@@ -1359,9 +1397,9 @@ function announceNewOrders(orders) {
         .slice()
         .reverse()
         .forEach((order) => {
-            speakOrderAnnouncement(order.customerName);
+            speakOrderAnnouncement(order);
             notifyNewOrder(order);
-            showNotice(`Nuevo pedido de ${order.customerName || 'cliente'}.`, 'ok');
+            showNotice(`${buildOrderAnnouncementPhrase(order)}.`, 'ok');
         });
 }
 
@@ -1460,7 +1498,7 @@ function notifyNewOrder(order) {
     }
 
     const notification = new Notification(`Nuevo pedido en ${brandingState.restaurantName || 'Roal Burger'}`, {
-        body: `${order.customerName || 'Cliente'} | ${getOrderTypeLabel(order)} | ${formatMoney(getOrderDisplayTotal(order))}`,
+        body: `${getOrderDisplayCustomerName(order)} | ${getOrderTypeLabel(order)} | ${formatMoney(getOrderDisplayTotal(order))}`,
         icon: 'isotipo.png',
         badge: 'isotipo.png',
         tag: `roal-order-${order.id}`,
@@ -6985,7 +7023,9 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
 
     const saveBtn = document.getElementById('posDrawerSaveBtn');
     const mesaNumber = config.mesaNumber || editData?.mesaNumber || null;
-    const defaultName = orderType === 'mesa' && mesaNumber ? `Mesa ${mesaNumber}` : 'Pedido Admin';
+    const defaultName = orderType === 'mesa'
+        ? (mesaNumber ? `Mesa ${mesaNumber}` : 'Pedido en mesa')
+        : orderType === 'domicilio' ? 'Pedido a domicilio' : 'Pedido para llevar';
     // Si el nombre que traiamos era el auto-generado "Mesa N" de una mesa distinta a la
     // actual (ej. se cambio de mesa desde "Personalizar ticket" sin retipear el nombre),
     // no lo arrastremos: recalcular el default para que quede "Mesa 8" y no "Mesa 7".
@@ -9702,7 +9742,7 @@ async function ensureActiveSalesDay() {
 // de "Confirmación"). Por defecto incluye los productos (comportamiento histórico).
 function buildOrderWhatsAppMessage(order, options = {}) {
     const includeItems = options.includeItems !== false;
-    const nombre = order.customerName || 'Cliente';
+    const saludo = getOrderGreetingName(order) ? `¡Hola ${getOrderGreetingName(order)}! 👋` : '¡Hola! 👋';
     const codigo = order.code || '';
     let itemsBlock = '';
     if (includeItems) {
@@ -9734,14 +9774,14 @@ function buildOrderWhatsAppMessage(order, options = {}) {
         ? '¡Gracias por preferirnos! En unos 25 min ya puedes pasar por tu pedido 🥡'
         : '¡Gracias por preferirnos! Pronto estará en tu puerta 🛵';
 
-    return `¡Hola ${nombre}! 👋\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥${itemsBlock}\n\n💰 *${paymentLine}*\n${tiempoLine}\n\n${cierre}`;
+    return `${saludo}\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥${itemsBlock}\n\n💰 *${paymentLine}*\n${tiempoLine}\n\n${cierre}`;
 }
 
 // Mensaje #1 del carrusel del ticket: detalle COMPLETO del pedido (productos + notas,
 // descuentos, puntos, domicilio, total, dirección y medio de pago) para que el cliente
 // confirme que todo está bien ANTES de mandarlo a cocina.
 function buildOrderConfirmationMessage(order) {
-    const nombre = String(order.customerName || 'Cliente').trim() || 'Cliente';
+    const saludo = getOrderGreetingName(order) ? `¡Hola ${getOrderGreetingName(order)}! 👋` : '¡Hola! 👋';
     const codigo = order.code || '';
     const lineas = _groupOrderItemsForDisplay(order.items).map(i => {
         const qty = Number(i.quantity || 1);
@@ -9775,7 +9815,7 @@ function buildOrderConfirmationMessage(order) {
             : '🥡 *Para recoger en el local*';
     const pagoLinea = `💳 *Medio de pago:* ${getOrderPaymentLabel(order)}`;
 
-    return `¡Hola ${nombre}! 👋 Recibimos tu pedido *${codigo}*.\nAntes de mandarlo a cocina, confírmanos que todo esté correcto por favor 🙏\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n🧾 *Resumen:*\n${resumen.join('\n')}\n\n${entregaLinea}\n${pagoLinea}\n\n¿Está todo bien? Respóndenos *SÍ* para enviarlo a cocina ✅`;
+    return `${saludo} Recibimos tu pedido *${codigo}*.\nAntes de mandarlo a cocina, confírmanos que todo esté correcto por favor 🙏\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n🧾 *Resumen:*\n${resumen.join('\n')}\n\n${entregaLinea}\n${pagoLinea}\n\n¿Está todo bien? Respóndenos *SÍ* para enviarlo a cocina ✅`;
 }
 
 function buildOrderWhatsAppLink(order) {
@@ -9990,8 +10030,8 @@ function buildDeliveredOrderStatusLine(order) {
 }
 
 function buildDeliveredOrderMessage(order) {
-    const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
-    return `¡Hola ${customerName}! 🍔🔥
+    const g = getOrderGreetingName(order);
+    return `${g ? `¡Hola ${g}! 🍔🔥` : '¡Hola! 🍔🔥'}
 
 ${buildDeliveredOrderStatusLine(order)}
 
@@ -10007,8 +10047,8 @@ ${brandingState.restaurantName || 'Roal Burger'}`;
 }
 
 function buildPickupReadyMessage(order) {
-    const customerName = String(order.customerName || 'cliente').trim() || 'cliente';
-    return `Hola ${customerName} tu pedido ya se encuentra listo para recoger.`;
+    const g = getOrderGreetingName(order);
+    return `${g ? `Hola ${g}, ` : 'Hola, '}tu pedido ya se encuentra listo para recoger.`;
 }
 
 function buildTicketAddressLines(order) {
@@ -10288,7 +10328,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                 <section class="ticket-section">
                     <div class="ticket-section-title">Cliente</div>
                     <div class="ticket-customer-card">
-                        ${buildTicketEditFieldButton(order, 'customerName', order.customerName || 'Cliente sin nombre', printMode, { className: 'ticket-copy-btn-name' })}
+                        ${buildTicketEditFieldButton(order, 'customerName', getOrderDisplayCustomerName(order), printMode, { className: 'ticket-copy-btn-name' })}
                         ${printMode ? '' : `<button type="button" class="ticket-editpago-link" data-order-ticket-action="cambiar_cliente" data-order-id="${escapeHtml(order.id)}">🔁 Cambiar cliente</button>`}
                         <div class="ticket-customer-row">
                             <span>Telefono</span>
@@ -10558,7 +10598,7 @@ function createOrderCard(order) {
         card.innerHTML = `
             <div class="koc-compact-main">
                 <div class="koc-compact-info">
-                    <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
+                    <span class="koc-name">${escapeHtml(getOrderDisplayCustomerName(order))}</span>
                     <span class="koc-code">#${escapeHtml(order.code)}</span>
                 </div>
                 <div class="koc-compact-right">
@@ -10726,7 +10766,7 @@ function createOrderCard(order) {
         ${courierChip}
         ${paymentChip}
         <div class="koc-body">
-            <span class="koc-name">${escapeHtml(order.customerName || 'Sin nombre')}</span>
+            <span class="koc-name">${escapeHtml(getOrderDisplayCustomerName(order))}</span>
             <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
         </div>
         ${deliveryRow}
