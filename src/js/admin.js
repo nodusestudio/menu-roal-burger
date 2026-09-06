@@ -7067,9 +7067,17 @@ async function saveOrderEnEspera() {
         // Refresco rápido del tablero (solo pedidos), sin recargar todo el catálogo — el
         // listener realtime igual lo confirma en ~600 ms.
         try { await fetchOrders(); renderOrders(); } catch (_) {}
-        showNotice(`Pedido de ${client.customerName} guardado en espera. Complétalo cuando tenga el pedido.`, 'ok');
+        // Cerrar el POS y volver al tablero, igual que al guardar un pedido normal.
+        closeInternalOrderModal(true);
         const drawer = document.getElementById('posCartDrawer');
         if (drawer && !isPosDesktop()) drawer.hidden = true;
+        if (isMobileAdminViewport()) {
+            const _laneMap = { mesa: 'mesa', domicilio: 'domicilios', retiro: 'recoger' };
+            activeMobileOrdersLane = _laneMap[cfg.orderType] || 'recoger';
+            applyMobileOrdersLane();
+            closeMobileTicketPanel({ clearSelection: true });
+        }
+        showNotice(`Pedido de ${client.customerName} guardado en espera. Complétalo cuando tenga el pedido.`, 'ok');
     } catch (e) {
         showNotice(`No se pudo guardar en espera: ${e.message || 'error inesperado.'}`, 'error');
     } finally {
@@ -7250,10 +7258,12 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
             closeMobileTicketPanel({ clearSelection: true });
         }
         if (_wasEnEspera) {
-            // Se completó un pedido que estaba en espera → tratarlo como uno recién entrado.
+            // Se completó un pedido que estaba en espera → tratarlo como uno recién entrado
+            // (campana + voz + notificación + vibración), igual que announceNewOrders.
             showNotice(`Pedido de ${customerName} completado y enviado a cocina.`, 'ok');
             try { speakOrderAnnouncement(orderDoc); } catch (_) {}
             try { notifyNewOrder(orderDoc); } catch (_) {}
+            try { if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]); } catch (_) {}
         } else if (isEditing) {
             const editLabel = customerName !== defaultName ? customerName : getOrderTypeLabel({ orderType, mesaNumber });
             showNotice(`Pedido de ${editLabel} modificado.`, 'ok');
