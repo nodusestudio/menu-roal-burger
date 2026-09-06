@@ -20280,7 +20280,12 @@ document.addEventListener('keydown', (event) => {
     }
 });
 document.getElementById('gastoTicketPreviewPrintBtn')?.addEventListener('click', () => {
-    if (_gastoTicketPreviewData) printGastoTicket(_gastoTicketPreviewData);
+    const data = _gastoTicketPreviewData;
+    if (!data) return;
+    // El modal se cierra de una; la impresión (Bluetooth o diálogo del navegador) sigue en
+    // segundo plano usando `data`, no depende de que el modal siga abierto.
+    closeGastoTicketPreview();
+    printGastoTicket(data);
 });
 
 document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async () => {
