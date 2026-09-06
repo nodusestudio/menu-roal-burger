@@ -192,6 +192,15 @@ test('k) admin sigue pudiendo crear/editar/borrar pedidos sin cambios', async ()
     }));
     await assertSucceeds(adminDb.collection('pedidos').doc('pedido-admin').update({ total: 2000 }));
     await assertSucceeds(adminDb.collection('pedidos').doc('pedido-admin').delete());
+
+    // Pedido "en espera": solo cliente, items vacío y total 0 — permitido.
+    await assertSucceeds(adminDb.collection('pedidos').doc('pedido-espera').set({
+        items: [], total: 0, status: 'en_espera', customerName: 'Mónica Rojas', source: 'admin_pos'
+    }));
+    // Pedido normal (sin status en_espera) con items vacío / total 0 — sigue bloqueado.
+    await assertFails(adminDb.collection('pedidos').doc('pedido-vacio').set({
+        items: [], total: 0, customerName: 'X', source: 'admin_pos'
+    }));
 });
 
 test('l) SEGURIDAD: mismo cierre de impersonacion en meseros/{token} y mesero_sesiones', async () => {

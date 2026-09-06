@@ -7029,6 +7029,10 @@ async function saveOrderEnEspera() {
             paymentMethod: 'pendiente',
             cajero: _cajaAperturaBy || '',
             voidedItems: [],
+            ...(_meseroSession ? {
+                meseroId: _meseroSession.id,
+                meseroName: `${_meseroSession.nombre} ${_meseroSession.apellido}`.trim()
+            } : {}),
             createdAt: firestoreNow(),
             updatedAt: firestoreNow()
         });
