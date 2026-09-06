@@ -6984,6 +6984,20 @@ function _posCurrentClient() {
     return name ? { customerName: name, customerPhone: String(src?.customerPhone || '').trim() } : null;
 }
 
+// Config del ticket en construcción (tipo/mesa/dirección/tarifa) para el guardado "en espera".
+function _posCurrentTicketConfig() {
+    const src = posTicketConfig || _posEditPrefill || {};
+    const orderType = ['domicilio', 'retiro', 'mesa'].includes(src.orderType) ? src.orderType : null;
+    const feeNum = Number(src.deliveryFee);
+    return {
+        orderType,
+        mesaNumber: orderType === 'mesa' ? (src.mesaNumber || null) : null,
+        pickupMode: orderType === 'retiro' ? (src.pickupMode || 'llego') : null,
+        deliveryAddress: orderType === 'domicilio' ? String(src.deliveryAddress || '').trim() : '',
+        deliveryFee: orderType === 'domicilio' && Number.isFinite(feeNum) && feeNum >= 0 ? feeNum : null
+    };
+}
+
 // El botón GUARDAR del carrito: si el carrito está vacío pero ya hay un cliente asignado y no se
 // está editando otro pedido, se convierte en "Guardar en espera".
 function _updatePosSaveBtnLabel() {
@@ -7002,6 +7016,7 @@ async function saveOrderEnEspera() {
         showNotice('Primero asigna un cliente (botón "✎ Info").', 'error');
         return;
     }
+    const cfg = _posCurrentTicketConfig();
     const btn = document.getElementById('posDrawerSaveBtn');
     if (btn) btn.disabled = true;
     try {
@@ -7015,10 +7030,12 @@ async function saveOrderEnEspera() {
             customerPhone: phone,
             customerPhoneDigits: (typeof normalizePhoneDigits === 'function') ? normalizePhoneDigits(phone) : phone,
             customerAddress: '',
-            deliveryAddress: '',
-            deliveryFee: null,
-            orderType: null,
-            mesaNumber: null,
+            // Se conserva el tipo/dirección/tarifa que el cajero ya eligió en "✎ Info".
+            deliveryAddress: cfg.deliveryAddress,
+            deliveryFee: cfg.deliveryFee,
+            orderType: cfg.orderType,
+            mesaNumber: cfg.mesaNumber,
+            ...(cfg.pickupMode ? { pickupMode: cfg.pickupMode } : {}),
             source: 'admin_pos',
             isAdminOrder: true,
             status: 'en_espera',
@@ -9789,6 +9806,11 @@ function isOrderLockedForEdit(order) {
 }
 
 function getOrderColumnKey(order) {
+    // Un pedido "en espera" se muestra como tarjeta "Completar", nunca en el mapa de mesas:
+    // domicilio va a la columna Domicilios, todo lo demás (retiro / mesa / sin tipo) a Para llevar.
+    if (order.status === 'en_espera') {
+        return order.orderType === 'domicilio' ? 'delivery' : 'takeaway';
+    }
     if (order.orderType === 'mesa') return 'mesa';
     return order.orderType === 'domicilio' ? 'delivery' : 'takeaway';
 }
@@ -10754,6 +10776,11 @@ function createOrderCard(order) {
 
     if (order.status === 'en_espera') {
         card.classList.add('kanban-order-card--espera', 'is-attention');
+        const tipoTxt = order.orderType === 'domicilio' ? '🛵 Domicilio'
+            : order.orderType === 'mesa' ? (order.mesaNumber ? `🍽️ Mesa ${order.mesaNumber}` : '🍽️ Mesa')
+            : order.orderType === 'retiro' ? '🥡 Para llevar' : 'Sin tipo';
+        const dirTxt = order.orderType === 'domicilio' && order.deliveryAddress
+            ? `<div class="koc-espera-hint">📍 ${escapeHtml(order.deliveryAddress)}</div>` : '';
         card.innerHTML = `
             <div class="koc-espera">
                 <div class="koc-espera-top">
@@ -10761,7 +10788,8 @@ function createOrderCard(order) {
                     <span class="koc-code">#${escapeHtml(order.code)}</span>
                     <button type="button" class="koc-compact-del" data-order-card-action="eliminar" data-order-id="${escapeHtml(order.id)}" title="Eliminar">&#128465;</button>
                 </div>
-                <div class="koc-espera-hint">⏳ Esperando el pedido del cliente${order.customerPhone ? ' · ' + escapeHtml(order.customerPhone) : ''}</div>
+                <div class="koc-espera-hint">⏳ Esperando el pedido · ${escapeHtml(tipoTxt)}${order.customerPhone ? ' · ' + escapeHtml(order.customerPhone) : ''}</div>
+                ${dirTxt}
                 <button type="button" class="order-action-btn koc-espera-complete" data-order-card-action="completar_espera" data-order-id="${escapeHtml(order.id)}">✏️ Completar pedido</button>
             </div>`;
         return card;
