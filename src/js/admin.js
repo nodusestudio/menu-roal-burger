@@ -10185,14 +10185,21 @@ function buildThermalTicketMarkup(order, options = {}) {
             ? [{ icon: '⇄', label: 'Cambiar mesa', action: 'cambiar_mesa' }]
             : []),
     ];
-    // Siempre disponibles: corregir el medio de pago (solo si ya está pagado) y agregar contacto.
+    // Siempre disponibles (aunque el pedido esté cobrado): pedir domiciliario, corregir el medio
+    // de pago y agregar contacto.
+    const _canRequestCourier = order.orderType === 'domicilio'
+        && order.status !== 'esperando_domiciliario' && order.status !== 'camino'
+        && !isOrderClosed(order);
     const _alwaysRows = [
+        ...(_canRequestCourier ? [{ icon: '🛵', label: 'Pedir domiciliario', cardAction: 'esperando_domiciliario' }] : []),
         ...(_paidHasType ? [{ icon: '💳', label: 'Editar medio de pago', action: 'editar_pago' }] : []),
         { icon: '👥', label: 'Agregar contacto', action: 'contact' },
     ];
     const _oid = escapeHtml(order.id);
+    // `action` → data-order-ticket-action (listener de #orderTicketPanel / vista previa).
+    // `cardAction` → data-order-card-action (listener a nivel document del tablero de pedidos).
     const _renderMenuItem = (r) => `
-                        <button type="button" class="ticket-msg-menu-item" data-order-ticket-action="${r.action}" data-order-id="${_oid}"${r.field ? ` data-edit-field="${r.field}"` : ''}>
+                        <button type="button" class="ticket-msg-menu-item" data-order-id="${_oid}"${r.action ? ` data-order-ticket-action="${r.action}"` : ''}${r.cardAction ? ` data-order-card-action="${r.cardAction}"` : ''}${r.field ? ` data-edit-field="${r.field}"` : ''}>
                             ${r.icon} ${escapeHtml(r.label)}
                         </button>`;
     const _quickMsgMenu = printMode ? '' : `
