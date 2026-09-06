@@ -15995,9 +15995,11 @@ function _ptsFillClientAddress(client) {
     }
 
     // Aplica una entrada: rellena el input bloqueado y sugiere/detecta tarifa
-    function _applyEntry(entry) {
+    async function _applyEntry(entry) {
         _ptsLockAddrInput(entry.text);
         _ptsToggleFeeWrap(true);
+        // Una tarifa recordada de >=2 pedidos a esta dirección manda sobre la zona.
+        if (await _ptsApplyRememberedFee(entry.text)) return;
         // Si tenemos coordenadas exactas, detectar zona sin geocodificar
         if (entry.lat !== null && entry.lon !== null) {
             const zone = _adminDetectZone(entry.lat, entry.lon);
@@ -16293,11 +16295,38 @@ function _ptsSetZoneBadge(text, color) {
     badge.style.display = 'block';
 }
 
+// Un valor recordado se considera confiable (y gana sobre la zona) cuando la dirección ya se
+// cobró así al menos 2 veces — un solo uso podría ser un typo del cajero.
+const DELIVERY_FEE_MEMORY_MIN_USES = 2;
+
+// Si esta dirección ya tiene una tarifa recordada de >=2 pedidos, la aplica al campo y avisa.
+// Devuelve true si la aplicó (para que el llamador no siga con la detección por zona).
+async function _ptsApplyRememberedFee(addressText) {
+    try {
+        const remembered = await _lookupRememberedDeliveryFee(addressText);
+        if (!remembered || !remembered.fee) return false;
+        if (Number(remembered.vecesUsado || 0) < DELIVERY_FEE_MEMORY_MIN_USES) return false;
+        const feeInput = document.getElementById('ptsDeliveryFee');
+        if (feeInput && (!feeInput.value || Number(feeInput.value) === 0)) feeInput.value = remembered.fee;
+        _ptsSetZoneBadge(
+            `📍 $${Number(remembered.fee).toLocaleString('es-CO')} — el que sueles cobrar aquí (${remembered.vecesUsado}×)`,
+            '#6ee7b7'
+        );
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
 async function _ptsSuggestDeliveryFee(addressText) {
     const val = String(addressText || '').trim();
     if (val.length < 4) { _ptsClearZoneBadge(); return; }
 
     _ptsSetZoneBadge('🔍 Calculando tarifa...', '#aaa');
+
+    // Primero: ¿ya cobramos un domicilio a esta dirección varias veces? Ese valor real manda
+    // sobre la zona estimada (un solo uso no, por si fue un typo — ver DELIVERY_FEE_MEMORY_MIN_USES).
+    if (await _ptsApplyRememberedFee(val)) return;
 
     // El polígono de zonas es la referencia autoritativa (la misma que usa el menú
     // público) y se consulta primero. El precio "recordado" de pedidos anteriores a esta
