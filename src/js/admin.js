@@ -7064,7 +7064,9 @@ async function saveOrderEnEspera() {
         renderPosTotals();
         renderPosBottomBar();
         _updatePosSaveBtnLabel();
-        await reloadDataAndRender();
+        // Refresco rápido del tablero (solo pedidos), sin recargar todo el catálogo — el
+        // listener realtime igual lo confirma en ~600 ms.
+        try { await fetchOrders(); renderOrders(); } catch (_) {}
         showNotice(`Pedido de ${client.customerName} guardado en espera. Complétalo cuando tenga el pedido.`, 'ok');
         const drawer = document.getElementById('posCartDrawer');
         if (drawer && !isPosDesktop()) drawer.hidden = true;
