@@ -1361,6 +1361,9 @@ function announceNewOrders(orders) {
     const DIEZ_MIN = 10 * 60 * 1000;
     const newOrders = orders.filter((order) => {
         if (knownOrderIds.has(order.id)) return false;
+        // Un pedido "en espera" lo crea el propio cajero como marcador — no es un pedido
+        // entrante, así que no dispara campana/notificación/auto-selección.
+        if (order.status === 'en_espera') return false;
         const createdMs = order.createdAt?.toMillis?.() || Number(order.createdAt || 0);
         return createdMs > 0 && (Date.now() - createdMs) < DIEZ_MIN;
     });
@@ -2235,7 +2238,10 @@ function normalizeOrder(raw) {
     const total = Number.isFinite(rawTotal) ? rawTotal : (deliveryFee !== null ? subtotal + deliveryFee : null);
     const rawStatus = String(raw.status || '').trim().toLowerCase();
     let status = 'pendiente';
-    if (rawStatus === 'esperando_domiciliario' || rawStatus === 'esperando domiciliario') {
+    if (rawStatus === 'en_espera' || rawStatus === 'en espera') {
+        // Pedido apartado con solo el cliente — falta que el cliente pase el pedido completo.
+        status = 'en_espera';
+    } else if (rawStatus === 'esperando_domiciliario' || rawStatus === 'esperando domiciliario') {
         status = 'esperando_domiciliario';
     } else if (rawStatus === 'listo_recoger' || rawStatus === 'pedido_listo' || rawStatus === 'pedido listo' || rawStatus === 'listo para recoger') {
         status = 'listo_recoger';
@@ -2614,7 +2620,7 @@ function _ordersCutoff() {
     return d;
 }
 
-const _ACTIVE_STATUSES = ['pendiente', 'en_preparacion', 'listo', 'listo_recoger', 'esperando_domiciliario', 'en_camino', 'enviado'];
+const _ACTIVE_STATUSES = ['en_espera', 'pendiente', 'en_preparacion', 'listo', 'listo_recoger', 'esperando_domiciliario', 'en_camino', 'enviado'];
 
 async function fetchOrders() {
     // Consulta principal: últimos 30 días con createdAt Timestamp correcto
@@ -6361,6 +6367,7 @@ function updatePosItemRow(itemKey) {
 }
 
 function renderPosOrderItems() {
+    if (typeof _updatePosSaveBtnLabel === 'function') _updatePosSaveBtnLabel();
     const itemsContainer = document.getElementById('internalOrderItemsSummary');
     if (!itemsContainer) {
         return;
@@ -6970,6 +6977,83 @@ async function _upsertClientStatsFromPosOrder(orderDoc) {
     }
 }
 
+// Cliente asignado al carrito del POS (vía "✎ Info" / Personalizar ticket), si lo hay.
+function _posCurrentClient() {
+    const src = posTicketConfig || _posEditPrefill;
+    const name = String(src?.customerName || '').trim();
+    return name ? { customerName: name, customerPhone: String(src?.customerPhone || '').trim() } : null;
+}
+
+// El botón GUARDAR del carrito: si el carrito está vacío pero ya hay un cliente asignado y no se
+// está editando otro pedido, se convierte en "Guardar en espera".
+function _updatePosSaveBtnLabel() {
+    const btn = document.getElementById('posDrawerSaveBtn');
+    if (!btn) return;
+    const canEspera = !internalOrderItems.length && !!_posCurrentClient()
+        && !_editingItemsOnlyOrderId && !_editingOrderData;
+    btn.textContent = canEspera ? '⏳ GUARDAR EN ESPERA' : 'GUARDAR';
+    btn.classList.toggle('pos-save-order-btn--espera', canEspera);
+}
+
+// Guarda un pedido "en espera": solo con el cliente, sin tipo ni productos. Se completa después.
+async function saveOrderEnEspera() {
+    const client = _posCurrentClient();
+    if (!client) {
+        showNotice('Primero asigna un cliente (botón "✎ Info").', 'error');
+        return;
+    }
+    const btn = document.getElementById('posDrawerSaveBtn');
+    if (btn) btn.disabled = true;
+    try {
+        const orderId = firebaseDb.collection(ORDERS_COLLECTION).doc().id;
+        const code = await getNextAdminOrderCode();
+        const phone = client.customerPhone;
+        await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set({
+            id: orderId,
+            code,
+            customerName: client.customerName,
+            customerPhone: phone,
+            customerPhoneDigits: (typeof normalizePhoneDigits === 'function') ? normalizePhoneDigits(phone) : phone,
+            customerAddress: '',
+            deliveryAddress: '',
+            deliveryFee: null,
+            orderType: null,
+            mesaNumber: null,
+            source: 'admin_pos',
+            isAdminOrder: true,
+            status: 'en_espera',
+            items: [],
+            itemCount: 0,
+            subtotal: 0,
+            total: 0,
+            paymentMethod: 'pendiente',
+            cajero: _cajaAperturaBy || '',
+            voidedItems: [],
+            createdAt: firestoreNow(),
+            updatedAt: firestoreNow()
+        });
+
+        internalOrderItems = [];
+        posTicketConfig = null;
+        _posEditPrefill = null;
+        const labelEl = document.getElementById('posActiveTicketLabel');
+        if (labelEl) labelEl.textContent = '';
+        renderPosOrderItems();
+        renderPosCartTicketInfo();
+        renderPosTotals();
+        renderPosBottomBar();
+        _updatePosSaveBtnLabel();
+        await reloadDataAndRender();
+        showNotice(`Pedido de ${client.customerName} guardado en espera. Complétalo cuando tenga el pedido.`, 'ok');
+        const drawer = document.getElementById('posCartDrawer');
+        if (drawer && !isPosDesktop()) drawer.hidden = true;
+    } catch (e) {
+        showNotice(`No se pudo guardar en espera: ${e.message || 'error inesperado.'}`, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
 async function saveAdminOrderQuick(config = {}, opts = {}) {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
@@ -6991,6 +7075,8 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
 
     const isEditing = _editingOrderData !== null;
     const editData = _editingOrderData;
+    // "Completar" un pedido que estaba en espera = pasa a pendiente y se comporta como recién entrado.
+    const _wasEnEspera = isEditing && editData?.status === 'en_espera';
 
     // Si se edita un pedido que YA tenía un pago real registrado y se quitaron ítems del
     // carrito respecto al original, exigir un motivo y dejar auditoría (quién, cuándo, por qué).
@@ -7039,7 +7125,11 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
 
         const orderId = isEditing ? editData.id : firebaseDb.collection(ORDERS_COLLECTION).doc().id;
         const orderCode = isEditing ? editData.code : await getNextAdminOrderCode();
-        const orderStatus = isEditing ? editData.status : 'pendiente';
+        // Completar un pedido que estaba "en espera" (solo cliente) lo pasa a 'pendiente', igual
+        // que un pedido nuevo (suena la campana, entra a cocina, etc.).
+        const orderStatus = isEditing
+            ? (editData.status === 'en_espera' ? 'pendiente' : editData.status)
+            : 'pendiente';
         const deliveryFeeVal = config.deliveryFee !== undefined && config.deliveryFee !== null
             ? Number(config.deliveryFee)
             : (editData?.deliveryFee != null ? Number(editData.deliveryFee) : 0);
@@ -7136,7 +7226,12 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
             applyMobileOrdersLane();
             closeMobileTicketPanel({ clearSelection: true });
         }
-        if (isEditing) {
+        if (_wasEnEspera) {
+            // Se completó un pedido que estaba en espera → tratarlo como uno recién entrado.
+            showNotice(`Pedido de ${customerName} completado y enviado a cocina.`, 'ok');
+            try { speakOrderAnnouncement(orderDoc); } catch (_) {}
+            try { notifyNewOrder(orderDoc); } catch (_) {}
+        } else if (isEditing) {
             const editLabel = customerName !== defaultName ? customerName : getOrderTypeLabel({ orderType, mesaNumber });
             showNotice(`Pedido de ${editLabel} modificado.`, 'ok');
             if ('speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function') {
@@ -9649,6 +9744,8 @@ function formatOrderDate(value) {
 
 function getOrderStatusMeta(status) {
     switch (status) {
+        case 'en_espera':
+            return { label: '⏳ En espera', className: 'pending' };
         case 'esperando_domiciliario':
             return { label: 'Esperando domiciliario', className: 'awaiting-delivery' };
         case 'listo_recoger':
@@ -10651,6 +10748,21 @@ function createOrderCard(order) {
         return card;
     }
 
+    if (order.status === 'en_espera') {
+        card.classList.add('kanban-order-card--espera', 'is-attention');
+        card.innerHTML = `
+            <div class="koc-espera">
+                <div class="koc-espera-top">
+                    <span class="koc-name">${escapeHtml(getOrderDisplayCustomerName(order))}</span>
+                    <span class="koc-code">#${escapeHtml(order.code)}</span>
+                    <button type="button" class="koc-compact-del" data-order-card-action="eliminar" data-order-id="${escapeHtml(order.id)}" title="Eliminar">&#128465;</button>
+                </div>
+                <div class="koc-espera-hint">⏳ Esperando el pedido del cliente${order.customerPhone ? ' · ' + escapeHtml(order.customerPhone) : ''}</div>
+                <button type="button" class="order-action-btn koc-espera-complete" data-order-card-action="completar_espera" data-order-id="${escapeHtml(order.id)}">✏️ Completar pedido</button>
+            </div>`;
+        return card;
+    }
+
     const typeClass = order.orderType === 'domicilio' ? 'koc-type--domicilio'
         : order.orderType === 'mesa' ? 'koc-type--mesa' : 'koc-type--retiro';
 
@@ -10891,7 +11003,21 @@ function renderOrders() {
             renderKanbanEmptyState(column.container);
         }
 
-        activeOrders.forEach((order) => {
+        // Pedidos "en espera" (solo cliente, falta el pedido) — grupo fijado arriba de la columna.
+        const esperaOrders = activeOrders.filter((o) => o.status === 'en_espera');
+        const activeReady   = activeOrders.filter((o) => o.status !== 'en_espera');
+        if (esperaOrders.length) {
+            const grp = document.createElement('div');
+            grp.className = 'kanban-espera-group';
+            const head = document.createElement('div');
+            head.className = 'kanban-espera-head';
+            head.textContent = `⏳ En espera (${esperaOrders.length}) · falta el pedido del cliente`;
+            grp.appendChild(head);
+            esperaOrders.forEach((order) => grp.appendChild(createOrderCard(order)));
+            column.container.appendChild(grp);
+        }
+
+        activeReady.forEach((order) => {
             column.container.appendChild(createOrderCard(order));
         });
 
@@ -15659,6 +15785,11 @@ document.getElementById('posCartBackdrop')?.addEventListener('click', () => {
 // GUARDAR PEDIDO desde el drawer → usa config guardada o abre modal
 document.getElementById('posDrawerSaveBtn')?.addEventListener('click', () => {
     if (!internalOrderItems.length) {
+        // Carrito vacío pero con cliente asignado → guardar "en espera" (se completa después).
+        if (!_editingItemsOnlyOrderId && !_editingOrderData && _posCurrentClient()) {
+            saveOrderEnEspera();
+            return;
+        }
         showNotice('Agrega al menos un producto al pedido.', 'error');
         return;
     }
@@ -15685,6 +15816,7 @@ let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin 
 let _ptsCobrarAfterSave = false; // true = este guardado viene de COBRAR sin tipo asignado aún: abrir el modal de pago apenas se confirme el tipo
 
 function renderPosCartTicketInfo() {
+    if (typeof _updatePosSaveBtnLabel === 'function') _updatePosSaveBtnLabel();
     const el = document.getElementById('posCartTicketInfo');
     if (!el) return;
     // Al editar un pedido existente, posTicketConfig se deja en null a propósito (el modal de
@@ -17372,6 +17504,13 @@ if (ordersActionRoot) {
 
             const order = ordersState.find((entry) => entry.id === orderId);
             if (!order) {
+                return;
+            }
+
+            // Completar un pedido "en espera": abrir el editor POS para elegir tipo y agregar
+            // productos. Al guardar pasa a 'pendiente' (ver orderStatus en el guardado POS).
+            if (nextStatus === 'completar_espera') {
+                editAdminPosOrder(order);
                 return;
             }
 

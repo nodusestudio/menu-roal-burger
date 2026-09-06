@@ -5219,10 +5219,44 @@
         }
         .pos-save-order-btn:hover { filter: brightness(1.15); }
         .pos-save-order-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .pos-save-order-btn--espera { background: linear-gradient(90deg, #f59e0b, #d97706) !important; color: #1a1206 !important; }
 
         /* ── Kanban: pedido creado desde admin POS ── */
         .kanban-order-card--admin {
             border-left: 3px solid var(--admin-accent);
+        }
+
+        /* ── Pedidos "en espera" (solo cliente, falta el pedido) ── */
+        .kanban-espera-group {
+            border: 1px dashed rgba(245, 158, 11, 0.45);
+            border-radius: 12px;
+            background: rgba(245, 158, 11, 0.06);
+            padding: 8px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .kanban-espera-head {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #f59e0b;
+        }
+        .kanban-order-card--espera {
+            border-left: 3px solid #f59e0b;
+            background: rgba(245, 158, 11, 0.05);
+        }
+        .koc-espera { display: flex; flex-direction: column; gap: 8px; padding: 4px 2px; }
+        .koc-espera-top { display: flex; align-items: center; gap: 8px; }
+        .koc-espera-top .koc-name { flex: 1; font-weight: 700; font-size: 0.9rem; }
+        .koc-espera-hint { font-size: 0.76rem; color: var(--admin-muted, #94a3b8); }
+        .koc-espera-complete {
+            width: 100%;
+            background: #f59e0b;
+            color: #1a1206;
+            font-weight: 700;
         }
         .kanban-order-card--admin .koc-code::after {
             content: ' · POS';
