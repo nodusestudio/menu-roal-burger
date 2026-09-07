@@ -666,6 +666,7 @@ function getClientAddrChips() {
 }
 
 let _mobToastTimer = null;
+let _noticeTimer = null;
 function _bindOverlayClose(overlay, closeFn) {
     let _downOnOverlay = false;
     overlay.addEventListener('mousedown', (e) => { _downOnOverlay = e.target === overlay; });
@@ -792,11 +793,14 @@ function _createComboModalShell({ titleHtml, subtitleHtml = '', zIndex = null } 
 }
 
 function showNotice(text, type = 'ok') {
-    if (!notice) {
-        return;
+    if (notice) {
+        notice.textContent = text;
+        notice.className = `notice show ${type}`;
+        // Antes el aviso del escritorio quedaba pegado para siempre (solo lo tapaba el
+        // siguiente showNotice). Ahora se oculta solo: los errores duran un poco más.
+        if (_noticeTimer) clearTimeout(_noticeTimer);
+        _noticeTimer = setTimeout(hideNotice, type === 'error' ? 8000 : 5000);
     }
-    notice.textContent = text;
-    notice.className = `notice show ${type}`;
 
     if (isMobileAdminViewport()) {
         let toast = document.getElementById('adminMobileToast');
@@ -815,12 +819,15 @@ function showNotice(text, type = 'ok') {
 }
 
 function hideNotice() {
+    if (_noticeTimer) { clearTimeout(_noticeTimer); _noticeTimer = null; }
     if (!notice) {
         return;
     }
     notice.className = 'notice';
     notice.textContent = '';
 }
+// Clic en el aviso = cerrarlo al instante.
+if (notice) notice.addEventListener('click', hideNotice);
 
 function showClipboardToast(message = 'Copiado') {
     let toast = document.getElementById('clipboardToast');
@@ -1407,7 +1414,10 @@ function announceNewOrders(orders) {
 }
 
 function getUnreadOrders() {
-    return ordersState.filter((order) => order.status === 'pendiente' && !viewedOrderIds.has(order.id));
+    // "Leído" = abierto en el ticket en ESTE equipo (viewedOrderIds) o en cualquier otro
+    // (viewedByAdmin, sincronizado por Firestore).
+    return ordersState.filter((order) => order.status === 'pendiente'
+        && !order.viewedByAdmin && !viewedOrderIds.has(order.id));
 }
 
 function updateAdminDocumentTitle(unreadCount = getUnreadOrders().length) {
@@ -2298,6 +2308,9 @@ function normalizeOrder(raw) {
         fulfillmentType: String(raw.fulfillmentType || '').trim().toLowerCase(),
         mesaNumber: raw.mesaNumber ? Number(raw.mesaNumber) : null,
         status,
+        // Un pedido "leído" (abierto en el ticket) por cualquier equipo — para que el aviso de
+        // pedido nuevo se apague también en las otras pantallas del admin.
+        viewedByAdmin: raw.viewedByAdmin === true,
         summaryMessage: String(raw.summaryMessage || '').trim(),
         courierRequestedAt: raw.courierRequestedAt || raw.courier_requested_at || null,
         readyForPickupAt: raw.readyForPickupAt || raw.ready_for_pickup_at || null,
@@ -10673,10 +10686,15 @@ function renderOrderTicket(order, options = {}) {
     }
     _ticketRenderKey = renderKey;
 
-    // Marcar como leído: deja de tintiliar el botón POS aunque siga pendiente
+    // Marcar como leído: deja de tintiliar el botón POS aunque siga pendiente. Además se
+    // persiste `viewedByAdmin` en el pedido para que el aviso se apague también en las otras
+    // pantallas del admin abiertas en otros equipos.
     if (order.status === 'pendiente' && !viewedOrderIds.has(order.id)) {
         viewedOrderIds.add(order.id);
         updateOrdersAttentionState();
+        if (!order.viewedByAdmin) {
+            updateOrder(order.id, { viewedByAdmin: true }).catch(() => {});
+        }
     }
 
     orderTicketBody.innerHTML = buildThermalTicketMarkup(order);
