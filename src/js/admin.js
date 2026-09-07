@@ -11222,12 +11222,19 @@ function renderSalesDayBanner() {
     }
 }
 
+// Ingresos por método de un cierre (BRUTO, antes de egresos). Los cierres viejos guardaban
+// esto en `methodTotals`; los nuevos lo tienen en `ingresosMethod` (methodTotals pasó a ser el
+// saldo NETO por método). Mismo fallback que usa el panel Historial (renderLibroCierres).
+function _cierreIngresosMethod(c) {
+    return c.ingresosMethod || c.methodTotals || {};
+}
+
 // Si algún cierre exportado tiene plata guardada bajo un método de pago que ya no existe
 // en Configuración (p. ej. se eliminó "Transferencia"), ese monto se agrupa en una columna
-// "Otro" — antes se descartaba en silencio y el Excel/PDF no cuadraba contra el total neto.
+// "Otro" — antes se descartaba en silencio y el Excel/PDF no cuadraba contra el total.
 function _cierresExportHasOtro(cierres) {
     const methodKeys = getPaymentMethods().map((m) => m.id);
-    return cierres.some((c) => Object.keys(c.methodTotals || {}).some((k) => !methodKeys.includes(k)));
+    return cierres.some((c) => Object.keys(_cierreIngresosMethod(c)).some((k) => !methodKeys.includes(k)));
 }
 
 function getCierresExportColumns(cierres = []) {
@@ -11236,6 +11243,7 @@ function getCierresExportColumns(cierres = []) {
         { key: 'fecha', label: 'Fecha cierre' },
         ...methods.map((m) => ({ key: `metodo_${m.id}`, label: m.label })),
         ..._cierresExportHasOtro(cierres) ? [{ key: 'otro', label: 'Otro (método eliminado)' }] : [],
+        { key: 'total_bruto', label: 'Total bruto' },
         { key: 'egresos', label: 'Egresos' },
         { key: 'total_neto', label: 'Total neto' }
     ];
@@ -11245,12 +11253,16 @@ function buildCierresExportRows(cierres) {
     const methods = getPaymentMethods();
     const methodKeys = methods.map((m) => m.id);
     return cierres.map((c) => {
-        const methodTotals = c.methodTotals || {};
+        // Columnas por método = ingresos BRUTOS. Así: suma(métodos) + otro = Total bruto,
+        // y Total bruto − Egresos = Total neto (todo verificable a ojo en el Excel).
+        const iM = _cierreIngresosMethod(c);
         const row = { fecha: formatExportDate(c.closedAt) };
-        methods.forEach((m) => { row[`metodo_${m.id}`] = Number(methodTotals[m.id] || 0); });
-        row.otro = Object.entries(methodTotals).reduce((acc, [k, v]) => methodKeys.includes(k) ? acc : acc + Number(v || 0), 0);
+        methods.forEach((m) => { row[`metodo_${m.id}`] = Number(iM[m.id] || 0); });
+        row.otro = Object.entries(iM).reduce((acc, [k, v]) => methodKeys.includes(k) ? acc : acc + Number(v || 0), 0);
+        const bruto = Number(c.ingresosTotal ?? c.grandTotal ?? 0);
+        row.total_bruto = bruto;
         row.egresos = Number(c.gastosTotal || 0);
-        row.total_neto = Number(c.grandTotal || 0);
+        row.total_neto = Number(c.grandTotal ?? (bruto - row.egresos));
         return row;
     });
 }
@@ -22110,7 +22122,7 @@ async function renderLibroCierres() {
                 ${methods.map((m) => `<th>${m.icon} ${escapeHtml(m.label)}</th>`).join('')}
                 ${hasOtro ? '<th title="Métodos de pago que ya no existen en Configuración (p. ej. Transferencia eliminada)">🧾 Otro</th>' : ''}
                 <th style="color:#fca5a5;">💸 Egresos</th>
-                <th>Total neto</th>
+                <th title="Fila 'Ingresos': bruto del día · fila con egresos y fila TOTALES: neto (bruto − egresos)">Total</th>
                 <th style="text-align:center;"></th>
             </tr>`;
         }
