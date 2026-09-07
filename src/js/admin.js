@@ -13293,6 +13293,15 @@ document.getElementById('orderFieldEditForm')?.addEventListener('submit', async 
         await updateOrder(orderId, updates);
         showNotice(`${ORDER_FIELD_EDIT_LABELS[field] || 'Dato'} actualizado.`, 'ok');
         closeOrderFieldEditModal();
+        // Refrescar el ticket abierto de una (no esperar los ~600 ms del listener).
+        if (selectedOrderId === orderId) {
+            try {
+                await fetchOrders();
+                renderOrders();
+                const _o = ordersState.find((o) => o.id === orderId);
+                if (_o) renderOrderTicket(_o, { force: true });
+            } catch (_) {}
+        }
     } catch (error) {
         showModalFeedback(feedback, `No se pudo guardar: ${error.message || 'error inesperado.'}`, 'error');
     } finally {
@@ -17416,6 +17425,10 @@ if (clientEditForm) {
             clientEditSaveBtn.textContent = 'Guardando...';
         }
 
+        // Si esta edición vino del ☰ de un ticket, al terminar hay que volver al tablero de
+        // pedidos con ESE ticket abierto (en vez de quedarse en el panel de Clientes).
+        const _returnToOrderTicketId = _clientEditSyncOrderId || null;
+
         try {
             // El ID del documento es phone_<digitos> -- si el telefono cambio, el ID nuevo es
             // DISTINTO del original. Antes esto dejaba el doc viejo intacto bajo el ID viejo y
@@ -17471,6 +17484,14 @@ if (clientEditForm) {
             await fetchClients({ force: true });
             await reloadDataAndRender();
             closeClientEditModal();
+
+            if (_returnToOrderTicketId) {
+                document.querySelector('[data-accordion-target="pedidos"]')?.click();
+                selectedOrderId = _returnToOrderTicketId;
+                renderOrders();
+                const _ord = ordersState.find((o) => o.id === _returnToOrderTicketId);
+                if (_ord) renderOrderTicket(_ord, { openMobile: isMobileAdminViewport(), force: true });
+            }
             showNotice(activeClientEditId ? 'Cliente actualizado correctamente.' : 'Cliente creado correctamente.', 'ok');
         } catch (error) {
             showModalFeedback(clientEditFeedback, `No se pudo guardar el cliente: ${error.message || 'error inesperado.'}`, 'error');
