@@ -645,14 +645,14 @@ exports.sendWhatsAppOtp = onCall(
         const phone = String(request.data?.phone || '').replace(/\D/g, '');
 
         if (phone.length < 10) {
-            throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+            throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
         }
 
         const instanceId = ULTRAMSG_INSTANCE.value();
         const token      = ULTRAMSG_TOKEN.value();
 
         if (!instanceId || !token) {
-            throw new HttpsError('failed-precondition', 'Servicio de verificacion no configurado.');
+            throw new HttpsError('failed-precondition', 'Servicio de verificación no configurado.');
         }
 
         // Limite de frecuencia -- antes no habia ninguno: cualquiera podia pedir codigos sin
@@ -672,7 +672,7 @@ exports.sendWhatsAppOtp = onCall(
         const windowStillOpen = Boolean(existingData?.sendWindowStart) && (now - existingData.sendWindowStart) < OTP_SEND_WINDOW_MS;
         const sendCount = windowStillOpen ? Number(existingData.sendCount || 0) + 1 : 1;
         if (sendCount > OTP_MAX_SENDS_PER_WINDOW) {
-            throw new HttpsError('resource-exhausted', 'Demasiados codigos solicitados para este numero. Intenta mas tarde o escribenos por WhatsApp.');
+            throw new HttpsError('resource-exhausted', 'Demasiados códigos solicitados para este número. Intenta más tarde o escríbenos por WhatsApp.');
         }
         const sendWindowStart = windowStillOpen ? existingData.sendWindowStart : now;
 
@@ -709,7 +709,7 @@ exports.sendWhatsAppOtp = onCall(
         if (!resp.ok) {
             throw new HttpsError(
                 'internal',
-                'No se pudo enviar el mensaje. Verifica que el numero sea correcto y este activo en WhatsApp.'
+                'No se pudo enviar el mensaje. Verifica que el número sea correcto y esté activo en WhatsApp.'
             );
         }
 
@@ -727,10 +727,10 @@ exports.verifyWhatsAppOtp = onCall(
         const code  = String(request.data?.code  || '').replace(/\D/g, '');
 
         if (phone.length < 10) {
-            throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+            throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
         }
         if (code.length !== 6) {
-            throw new HttpsError('invalid-argument', 'El codigo debe tener 6 digitos.');
+            throw new HttpsError('invalid-argument', 'El código debe tener 6 dígitos.');
         }
 
         const db  = getFirestore();
@@ -738,19 +738,19 @@ exports.verifyWhatsAppOtp = onCall(
         const doc = await ref.get();
 
         if (!doc.exists) {
-            throw new HttpsError('not-found', 'No hay un codigo activo para este numero. Solicita uno nuevo.');
+            throw new HttpsError('not-found', 'No hay un código activo para este número. Solicita uno nuevo.');
         }
 
         const data = doc.data();
 
         if (Date.now() > data.expiresAt) {
-            throw new HttpsError('deadline-exceeded', 'El codigo expiro. Solicita uno nuevo.');
+            throw new HttpsError('deadline-exceeded', 'El código expiró. Solicita uno nuevo.');
         }
 
         if ((data.attempts || 0) >= OTP_MAX_ATTEMPTS) {
             throw new HttpsError(
                 'resource-exhausted',
-                'Demasiados intentos fallidos. Solicita un nuevo codigo.'
+                'Demasiados intentos fallidos. Solicita un nuevo código.'
             );
         }
 
@@ -763,7 +763,7 @@ exports.verifyWhatsAppOtp = onCall(
                 'permission-denied',
                 remaining > 0
                     ? `Codigo incorrecto. Te quedan ${remaining} intento(s).`
-                    : 'Codigo incorrecto. Solicita un nuevo codigo.'
+                    : 'Código incorrecto. Solicita un nuevo código.'
             );
         }
 
@@ -896,8 +896,8 @@ exports.customerLoginWithPin = onCall(
         const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
         const pin = normalizeCustomerPin(request.data?.pin);
 
-        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
-        if (!isValidCustomerPin(pin)) throw new HttpsError('invalid-argument', 'La contrasena debe tener 6 digitos.');
+        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
+        if (!isValidCustomerPin(pin)) throw new HttpsError('invalid-argument', 'La contraseña debe tener 6 dígitos.');
 
         const db = getFirestore();
         const clientId = buildClientId(phoneDigits);
@@ -914,7 +914,7 @@ exports.customerLoginWithPin = onCall(
 
         // Sin credenciales (cuenta reiniciada por el admin, o migrada sin PIN todavia)
         if (!creds?.passwordHash) {
-            throw new HttpsError('failed-precondition', 'Tu contrasena fue reiniciada. Crea una nueva para volver a entrar.', {
+            throw new HttpsError('failed-precondition', 'Tu contraseña fue reiniciada. Crea una nueva para volver a entrar.', {
                 resetRequired: true,
                 profile: sanitizeClientProfileForClient(clientId, clientData, false)
             });
@@ -937,7 +937,7 @@ exports.customerLoginWithPin = onCall(
         }
 
         if (!matches) {
-            throw new HttpsError('permission-denied', 'La contrasena no coincide con este perfil.');
+            throw new HttpsError('permission-denied', 'La contraseña no coincide con este perfil.');
         }
 
         const customToken = await getAuth().createCustomToken(clientId);
@@ -954,7 +954,7 @@ exports.customerLoginWithPin = onCall(
 async function _mintMeseroCustomToken(db, token) {
     const snap = await db.collection(MESEROS_COLLECTION).doc(token).get();
     if (!snap.exists) {
-        throw new HttpsError('not-found', 'Link de mesero invalido.');
+        throw new HttpsError('not-found', 'Link de mesero inválido.');
     }
     const uid = `mesero_${token}`;
     return getAuth().createCustomToken(uid, { mesero: true, meseroToken: token });
@@ -975,7 +975,7 @@ exports.customerRegisterOrUpdateProfile = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
         const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
 
         const customerName = String(request.data?.customerName || '').trim();
         if (!customerName) throw new HttpsError('invalid-argument', 'Escribe tu nombre para guardar el perfil.');
@@ -1003,7 +1003,7 @@ exports.customerRegisterOrUpdateProfile = onCall(
         // Si ya existe una cuenta con credenciales para este telefono, solo su dueño (sesion
         // valida, uid == clientId) puede editarla.
         if (hadCredentials && request.auth?.uid !== clientId) {
-            throw new HttpsError('permission-denied', 'Ya existe una cuenta con ese numero. Inicia sesion para editarla.');
+            throw new HttpsError('permission-denied', 'Ya existe una cuenta con ese número. Inicia sesión para editarla.');
         }
 
         // Si NO hay credenciales todavia (cuenta nueva o reiniciada), el comentario original de
@@ -1024,7 +1024,7 @@ exports.customerRegisterOrUpdateProfile = onCall(
                 && verifiedAtMs > 0
                 && (Date.now() - verifiedAtMs) <= OTP_VERIFICATION_MAX_AGE_MS;
             if (!isVerified) {
-                throw new HttpsError('failed-precondition', 'Verifica tu numero por WhatsApp antes de crear tu cuenta.');
+                throw new HttpsError('failed-precondition', 'Verifica tu número por WhatsApp antes de crear tu cuenta.');
             }
         }
 
@@ -1055,8 +1055,8 @@ exports.customerRegisterOrUpdateProfile = onCall(
         // Credenciales: si mandaron PIN nuevo (o todavia no hay ninguna), se guarda con sal
         // nueva; si dejaron el campo vacio y ya existia una, se conserva la actual sin tocar.
         if (pin || confirmPin || !hadCredentials) {
-            if (!isValidCustomerPin(pin)) throw new HttpsError('invalid-argument', 'Crea una contrasena numerica de 6 digitos.');
-            if (pin !== confirmPin) throw new HttpsError('invalid-argument', 'La confirmacion de la contrasena no coincide.');
+            if (!isValidCustomerPin(pin)) throw new HttpsError('invalid-argument', 'Crea una contraseña numérica de 6 dígitos.');
+            if (pin !== confirmPin) throw new HttpsError('invalid-argument', 'La confirmación de la contraseña no coincide.');
             const salt = generatePinSalt();
             await credsRef.set({
                 passwordHash: hashPinSalted(pin, salt),
@@ -1111,7 +1111,7 @@ exports.checkPhoneRegistered = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
         const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
 
         const db = getFirestore();
         const clientId = buildClientId(phoneDigits);
@@ -1149,7 +1149,7 @@ exports.submitPasswordResetRequest = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
         const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
 
         const db = getFirestore();
         const clientId = buildClientId(phoneDigits);
@@ -1163,7 +1163,7 @@ exports.submitPasswordResetRequest = onCall(
             && verifiedAtMs > 0
             && (Date.now() - verifiedAtMs) <= OTP_VERIFICATION_MAX_AGE_MS;
         if (!isVerified) {
-            throw new HttpsError('failed-precondition', 'Verifica tu numero por WhatsApp antes de solicitar el reinicio.');
+            throw new HttpsError('failed-precondition', 'Verifica tu número por WhatsApp antes de solicitar el reinicio.');
         }
 
         const clientSnap = await db.collection(CLIENTS_COLLECTION).doc(clientId).get();
@@ -1173,9 +1173,9 @@ exports.submitPasswordResetRequest = onCall(
         await db.collection(MESSAGES_COLLECTION).add({
             type: 'password_reset_request',
             status: 'pending',
-            subject: 'Solicitud de reinicio de contrasena',
+            subject: 'Solicitud de reinicio de contraseña',
             body: [
-                'El cliente verifico su numero por WhatsApp (codigo OTP) y solicito reiniciar su contrasena.',
+                'El cliente verificó su número por WhatsApp (código OTP) y solicitó reiniciar su contraseña.',
                 `Numero: ${customerPhone || phoneDigits}`
             ].join('\n'),
             customerName: customerName || 'Cliente sin nombre',
@@ -1600,7 +1600,7 @@ exports.adminResetClientCredentials = onCall(
 
         const phoneDigits = String(request.data?.phoneDigits || '').replace(/\D/g, '');
         if (phoneDigits.length < 10) {
-            throw new HttpsError('invalid-argument', 'Numero de telefono invalido.');
+            throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
         }
 
         const clientId = buildClientId(phoneDigits);

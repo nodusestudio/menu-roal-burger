@@ -13520,7 +13520,7 @@ function buildCustomerPasswordResetClipboardMessage(message = {}) {
     const customerPhone = String(message.customerPhone || message.customerPhoneDigits || '').trim();
     return [
         `Hola ${customerName}, tu contrasena de ${brandingState.restaurantName || 'Roal Burger'} ya fue restablecida.`,
-        `Vuelve a pulsar "Olvido contrasena" e ingresa nuevamente tu numero de WhatsApp ${customerPhone}.`,
+        `Vuelve a pulsar "Olvidé contraseña" e ingresa nuevamente tu número de WhatsApp ${customerPhone}.`,
         'La app te mostrara la pantalla para crear tu nueva contrasena.'
     ].join('\n');
 }

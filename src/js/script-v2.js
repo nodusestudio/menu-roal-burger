@@ -618,7 +618,7 @@ function updateCustomerSessionUI() {
     } else {
         button.classList.remove('is-authenticated');
         kicker.textContent = 'Mi cuenta';
-        label.textContent = 'Iniciar sesion';
+        label.textContent = 'Iniciar sesión';
         // Banner de "Descuentos exclusivos / Registrate" desactivado a pedido — se deja oculto
         // siempre (antes se mostraba a cualquier invitado sin sesion).
         if (guestRegisterBanner instanceof HTMLElement) {
@@ -2043,23 +2043,23 @@ async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
 async function fetchClientProfileByPhone(phoneValue, pinValue = '') {
     const phoneDigits = normalizePhoneDigits(phoneValue);
     if (phoneDigits.length < 10) {
-        throw new Error('Escribe un numero de WhatsApp valido.');
+        throw new Error('Escribe un número de WhatsApp válido.');
     }
 
     const fn = getPublicFirebaseFunctions();
-    if (!fn) throw new Error('Servicio de inicio de sesion no disponible.');
+    if (!fn) throw new Error('Servicio de inicio de sesión no disponible.');
 
     let result;
     try {
         result = await fn.httpsCallable('customerLoginWithPin')({ phone: phoneDigits, pin: normalizeCustomerPin(pinValue) });
     } catch (error) {
         if (error?.details?.resetRequired) {
-            const resetError = new Error(error.message || 'Tu contrasena fue reiniciada. Crea una nueva para volver a entrar.');
+            const resetError = new Error(error.message || 'Tu contraseña fue reiniciada. Crea una nueva para volver a entrar.');
             resetError.code = 'PASSWORD_RESET_REQUIRED';
             resetError.profile = error.details.profile || null;
             throw resetError;
         }
-        throw new Error(error?.message || 'No se pudo iniciar sesion.');
+        throw new Error(error?.message || 'No se pudo iniciar sesión.');
     }
 
     if (!result?.data?.profile) {
@@ -2102,7 +2102,7 @@ async function fetchClientProfileByGoogleUid(googleUid) {
 async function _signInWithGooglePopup() {
     const auth = getPublicFirebaseAuth();
     if (!auth || typeof firebase?.auth?.GoogleAuthProvider !== 'function') {
-        throw new Error('El inicio de sesion con Google no esta disponible en este momento.');
+        throw new Error('El inicio de sesión con Google no está disponible en este momento.');
     }
     const provider = new firebase.auth.GoogleAuthProvider();
     return auth.signInWithPopup(provider);
@@ -2116,7 +2116,7 @@ async function _signInWithGooglePopup() {
 async function _linkGooglePopupToCurrentSession() {
     const auth = getPublicFirebaseAuth();
     if (!auth?.currentUser || typeof firebase?.auth?.GoogleAuthProvider !== 'function') {
-        throw new Error('Inicia sesion con tu numero de WhatsApp antes de vincular Google.');
+        throw new Error('Inicia sesión con tu número de WhatsApp antes de vincular Google.');
     }
     const provider = new firebase.auth.GoogleAuthProvider();
     let result;
@@ -2124,7 +2124,7 @@ async function _linkGooglePopupToCurrentSession() {
         result = await auth.currentUser.linkWithPopup(provider);
     } catch (error) {
         if (error?.code === 'auth/credential-already-in-use') {
-            throw new Error('Esa cuenta de Google ya esta en uso con otra sesion. Cierra sesion ahi e intenta de nuevo.');
+            throw new Error('Esa cuenta de Google ya está en uso con otra sesión. Cierra sesión ahí e intenta de nuevo.');
         }
         throw error;
     }
@@ -2138,7 +2138,7 @@ async function _linkGooglePopupToCurrentSession() {
 // Se llama al confirmar la vinculacion desde el perfil ("Vincular con Google").
 async function linkGoogleAccount() {
     if (!activeCustomerProfile?.customerPhoneDigits) {
-        throw new Error('Inicia sesion con tu numero de WhatsApp antes de vincular Google.');
+        throw new Error('Inicia sesión con tu número de WhatsApp antes de vincular Google.');
     }
     const { googleUid, googleEmail } = await _linkGooglePopupToCurrentSession();
     if (!googleUid) return;
@@ -2215,7 +2215,7 @@ async function saveCustomerProfile(profileInput = {}) {
         throw new Error('Escribe tu nombre para guardar el perfil.');
     }
     if (customerPhoneDigits.length < 10) {
-        throw new Error('Escribe un numero de WhatsApp valido.');
+        throw new Error('Escribe un número de WhatsApp válido.');
     }
 
     const fn = getPublicFirebaseFunctions();
@@ -2299,7 +2299,7 @@ function attachPasswordToggle(input) {
     const toggleButton = document.createElement('button');
     toggleButton.type = 'button';
     toggleButton.className = 'support-password-toggle';
-    toggleButton.setAttribute('aria-label', 'Mostrar contrasena');
+    toggleButton.setAttribute('aria-label', 'Mostrar contraseña');
     toggleButton.innerHTML = getPasswordToggleIcon(false);
 
     toggleButton.addEventListener('click', () => {
@@ -2307,7 +2307,7 @@ function attachPasswordToggle(input) {
         input.type = isPassword ? 'text' : 'password';
         toggleButton.classList.toggle('is-visible', isPassword);
         toggleButton.innerHTML = getPasswordToggleIcon(isPassword);
-        toggleButton.setAttribute('aria-label', isPassword ? 'Ocultar contrasena' : 'Mostrar contrasena');
+        toggleButton.setAttribute('aria-label', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
     });
 
     wrapper.appendChild(toggleButton);
@@ -2445,7 +2445,7 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
         <label class="support-field">
             <span>${isEditMode ? 'Nueva contraseña de 6 dígitos' : 'Crea tu contraseña de 6 dígitos'}</span>
             <input type="password" id="customerRegisterPin" inputmode="numeric" maxlength="6" placeholder="Solo números">
-            <p class="support-field-hint">La usaras junto con tu WhatsApp para entrar a tu cuenta.</p>
+            <p class="support-field-hint">La usarás junto con tu WhatsApp para entrar a tu cuenta.</p>
         </label>
         <label class="support-field">
             <span>Confirmar contraseña</span>
@@ -2916,7 +2916,7 @@ function closeCustomerPasswordResetModal() {
 async function fetchClientProfileForRecovery(phoneValue = '') {
     const phoneDigits = normalizePhoneDigits(phoneValue);
     if (phoneDigits.length < 10) {
-        throw new Error('Escribe un numero de WhatsApp valido.');
+        throw new Error('Escribe un número de WhatsApp válido.');
     }
 
     const fn = getPublicFirebaseFunctions();
@@ -2961,7 +2961,7 @@ async function submitCustomerNewPassword() {
         closeCustomerPasswordResetModal();
         closeCustomerAuthModal();
     } catch (error) {
-        customerPasswordResetUI.feedback.textContent = error.message || 'No se pudo actualizar la contrasena.';
+        customerPasswordResetUI.feedback.textContent = error.message || 'No se pudo actualizar la contraseña.';
     }
 }
 
@@ -3073,8 +3073,8 @@ function openCustomerPasswordResetModal(profile = {}) {
     modal.className = 'support-modal';
     modal.classList.add('is-open');
     modal.innerHTML = `
-        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Crear nueva contrasena">
-            <button type="button" class="support-modal-close" aria-label="Cerrar nueva contrasena">&times;</button>
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Crear nueva contraseña">
+            <button type="button" class="support-modal-close" aria-label="Cerrar nueva contraseña">&times;</button>
             <div id="resetStepContent"></div>
         </div>
     `;
@@ -3110,12 +3110,12 @@ function openCustomerPasswordResetModal(profile = {}) {
 async function createCustomerDeleteAccountRequest(reasonValue = '', profile = activeCustomerProfile) {
     const resolvedProfile = normalizeCustomerProfile(profile || activeCustomerProfile || {});
     if (!resolvedProfile?.customerPhoneDigits) {
-        throw new Error('No encontramos un perfil valido para eliminar.');
+        throw new Error('No encontramos un perfil válido para eliminar.');
     }
 
     const reason = String(reasonValue || '').trim();
     if (reason.length < 10) {
-        throw new Error('Cuéntanos brevemente por que deseas eliminar la cuenta.');
+        throw new Error('Cuéntanos brevemente por qué deseas eliminar la cuenta.');
     }
 
     const db = getPublicFirebaseDb();
@@ -3278,7 +3278,7 @@ function openCustomerDeleteAccountModal() {
             <button type="button" class="support-modal-close" aria-label="Cerrar eliminacion de cuenta">&times;</button>
             <p class="support-modal-kicker">Eliminar cuenta</p>
             <h3 class="support-modal-title">Antes de eliminar tu cuenta</h3>
-            <p class="support-modal-text">Cuéntanos por que deseas eliminarla. Esta informacion llegara al centro de mensajes del admin.</p>
+            <p class="support-modal-text">Cuéntanos por qué deseas eliminarla. Esta información llegará al centro de mensajes del admin.</p>
             <div class="customer-profile-summary">
                 <strong>${escapeHtml(profile.customerName)}</strong>
                 <span>WhatsApp: ${escapeHtml(profile.customerPhone)}</span>
@@ -3286,7 +3286,7 @@ function openCustomerDeleteAccountModal() {
             </div>
             <label class="support-field">
                 <span>Motivo de eliminacion</span>
-                <textarea id="customerDeleteReason" rows="5" placeholder="Cuéntanos por que deseas eliminar tu cuenta"></textarea>
+                <textarea id="customerDeleteReason" rows="5" placeholder="Cuéntanos por qué deseas eliminar tu cuenta"></textarea>
             </label>
             <p class="support-feedback" id="customerDeleteFeedback"></p>
             <div class="support-actions split">
@@ -3455,7 +3455,7 @@ function openPasswordResetRequestModal(phoneDigits, onSuccess) {
     modal.id = 'customerResetRequestModal';
     modal.className = 'support-modal is-open';
     modal.innerHTML = `
-        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Verificar numero">
+        <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Verificar número">
             <button type="button" class="support-modal-close" aria-label="Cerrar">&times;</button>
             <p class="support-modal-kicker">Verificación</p>
             <h3 class="support-modal-title">Confirma que el número es tuyo</h3>
@@ -3546,7 +3546,7 @@ async function requestCustomerPasswordReset() {
     feedbackTarget.textContent = '';
 
     if (phoneDigits.length < 10) {
-        feedbackTarget.textContent = 'Escribe tu numero de WhatsApp para solicitar el reinicio.';
+        feedbackTarget.textContent = 'Escribe tu número de WhatsApp para solicitar el reinicio.';
         return;
     }
 
@@ -3554,12 +3554,12 @@ async function requestCustomerPasswordReset() {
         const profile = await fetchClientProfileForRecovery(phoneValue);
         if (profile && !profile.hasPassword) {
             openCustomerPasswordResetModal(profile);
-            feedbackTarget.textContent = 'Tu contrasena ya fue reiniciada. Crea una nueva para continuar.';
+            feedbackTarget.textContent = 'Tu contraseña ya fue reiniciada. Crea una nueva para continuar.';
             return;
         }
 
         openPasswordResetRequestModal(phoneDigits, () => {
-            feedbackTarget.textContent = 'Tu solicitud fue enviada al admin. En breve te contactaremos para reiniciar la contrasena.';
+            feedbackTarget.textContent = 'Tu solicitud fue enviada al admin. En breve te contactaremos para reiniciar la contraseña.';
         });
     } catch (error) {
         feedbackTarget.textContent = error.message || 'No se pudo enviar la solicitud.';
@@ -3600,11 +3600,11 @@ async function submitCustomerLookup() {
     // Validación local inmediata (evita round-trip al servidor)
     const phoneDigits = phoneValue.replace(/\D/g, '');
     if (phoneDigits.length < 10) {
-        _showError('Escribe un numero de WhatsApp valido (minimo 10 digitos).', phoneField);
+        _showError('Escribe un número de WhatsApp válido (mínimo 10 dígitos).', phoneField);
         return;
     }
     if (!pinValue) {
-        _showError('Escribe tu contrasena de 6 digitos.', pinField);
+        _showError('Escribe tu contraseña de 6 dígitos.', pinField);
         return;
     }
 
@@ -3614,7 +3614,7 @@ async function submitCustomerLookup() {
     try {
         const profile = await fetchClientProfileByPhone(phoneValue, pinValue);
         if (!profile) {
-            _showError('No encontramos una cuenta con ese numero. Si no tienes cuenta, pulsa Registrarse.', phoneField);
+            _showError('No encontramos una cuenta con ese número. Si no tienes cuenta, pulsa Registrarse.', phoneField);
             return;
         }
         setActiveCustomerProfile(profile);
@@ -3627,7 +3627,7 @@ async function submitCustomerLookup() {
             if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
             openCustomerPasswordResetModal(error.profile || { customerPhone: phoneValue });
             if (customerAuthUI?.feedback) {
-                customerAuthUI.feedback.textContent = error.message || 'Debes crear una nueva contrasena para continuar.';
+                customerAuthUI.feedback.textContent = error.message || 'Debes crear una nueva contraseña para continuar.';
                 customerAuthUI.feedback.className = 'support-feedback support-feedback--error';
             }
             return;
@@ -3822,7 +3822,7 @@ function openCustomerAuthModal() {
                     <div id="customerOrdersCurrent"></div>
                     <div class="customer-profile-section-title">
                         <strong>Historial de pedidos</strong>
-                        <span>Aqui ves todos tus pedidos con el detalle principal.</span>
+                        <span>Aquí ves todos tus pedidos con el detalle principal.</span>
                     </div>
                     <div class="customer-order-history-list" id="customerOrdersHistory"></div>
                 </div>
@@ -3850,7 +3850,7 @@ function openCustomerAuthModal() {
             </div>
         `
         : `
-            <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Iniciar sesion o registrarte">
+            <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Iniciar sesión o registrarte">
                 <p class="support-modal-kicker">Mi cuenta</p>
                 ${pendingGoogleIdentity ? `
                 <h3 class="support-modal-title">¡Listo${pendingGoogleIdentity.googleName ? `, ${escapeHtml(pendingGoogleIdentity.googleName.split(' ')[0])}` : ''}!</h3>
@@ -3862,7 +3862,7 @@ function openCustomerAuthModal() {
                 </div>
                 ` : `
                 <h3 class="support-modal-title">Entra en un toque</h3>
-                <p class="support-modal-text">Continua con tu cuenta de Google, sin llenar formularios. Tu numero de WhatsApp solo se pide una vez, al confirmar tu primer pedido.</p>
+                <p class="support-modal-text">Continúa con tu cuenta de Google, sin llenar formularios. Tu número de WhatsApp solo se pide una vez, al confirmar tu primer pedido.</p>
                 <p class="support-feedback" id="customerAuthFeedback" role="alert" aria-live="polite"></p>
                 <div class="support-actions stack">
                     <button type="button" class="support-send-btn" id="customerGoogleLoginButton" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;">
@@ -3875,16 +3875,16 @@ function openCustomerAuthModal() {
                 <div id="customerPhoneLoginPanel" hidden>
                     <label class="support-field">
                         <span>Ingresar con WhatsApp</span>
-                        <input type="tel" id="customerLookupPhone" placeholder="Escribe tu numero de WhatsApp">
+                        <input type="tel" id="customerLookupPhone" placeholder="Escribe tu número de WhatsApp">
                     </label>
                     <label class="support-field">
-                        <span>Contrasena de 6 digitos</span>
-                        <input type="password" id="customerLookupPin" inputmode="numeric" maxlength="6" placeholder="Escribe tu contrasena">
+                        <span>Contraseña de 6 dígitos</span>
+                        <input type="password" id="customerLookupPin" inputmode="numeric" maxlength="6" placeholder="Escribe tu contraseña">
                     </label>
                     <div class="support-actions stack">
                         <button type="button" class="support-send-btn" id="customerLookupButton">Entrar</button>
                         <div class="support-actions split">
-                            <button type="button" class="support-secondary-btn" id="customerForgotPasswordButton">Olvido contrasena</button>
+                            <button type="button" class="support-secondary-btn" id="customerForgotPasswordButton">Olvidé contraseña</button>
                             <button type="button" class="support-secondary-btn" id="customerRegisterToggle">Registrarse</button>
                         </div>
                     </div>
@@ -3982,7 +3982,7 @@ function openCustomerAuthModal() {
         } catch (error) {
             console.error('[Google login] fallo signInWithPopup:', error);
             if (feedback) {
-                feedback.textContent = `${error.code || ''} ${error.message || 'No se pudo iniciar sesion con Google.'}`.trim();
+                feedback.textContent = `${error.code || ''} ${error.message || 'No se pudo iniciar sesión con Google.'}`.trim();
                 feedback.className = 'support-feedback support-feedback--error';
             }
         } finally {
