@@ -11391,21 +11391,52 @@ function exportCierresHistorial(format) {
     const formatKey = String(format || 'csv').trim().toLowerCase();
     const fromLabel = String(document.getElementById('cierresDateFrom')?.value || '').trim();
     const toLabel = String(document.getElementById('cierresDateTo')?.value || '').trim();
-    const subtitle = fromLabel || toLabel
+
+    // Gastos externos (tipo:'externo') registrados en un día que NO tiene ningún cierre dentro
+    // del rango exportado: no se pueden atribuir a ninguna fila de cierre, así que en vez de
+    // desaparecer del export van como filas propias "Gastos sin cierre asociado" (una por día).
+    // Así SÍ suman en la fila de TOTALES y la columna "Resultado neto real" sigue cuadrando
+    // celda por celda contra el total. Se acotan al mismo rango de fechas que los cierres.
+    const _localDayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const _diasConCierre = new Set(cierres.map((c) => _tsMs(c.closedAt)).filter(Boolean).map(_localDayKey));
+    const _huerfanosPorDia = {};
+    (_gastosExternosState || []).forEach((g) => {
+        const ms = _tsMs(g.registradoAt);
+        if (!ms || !inRange(ms)) return;
+        const dk = _localDayKey(ms);
+        if (_diasConCierre.has(dk)) return;
+        _huerfanosPorDia[dk] = (_huerfanosPorDia[dk] || 0) + Number(g.monto || 0);
+    });
+    const orphanRows = Object.keys(_huerfanosPorDia).sort().reverse().map((dk) => {
+        const monto = _huerfanosPorDia[dk];
+        const row = {};
+        headers.forEach((key) => { row[key] = 0; });
+        row.fecha = `${dk} — Gastos sin cierre asociado`;
+        row.gastos_externos_dia = monto;
+        row.resultado_neto_real = -monto;
+        return row;
+    });
+    const allRows = [...rows, ...orphanRows];
+
+    const subtitleBase = fromLabel || toLabel
         ? `Periodo filtrado: ${fromLabel || 'inicio'} a ${toLabel || 'hoy'}.`
         : 'Periodo: todos los cierres registrados.';
+    const subtitle = orphanRows.length
+        ? `${subtitleBase} Incluye ${orphanRows.length} fila(s) "Gastos sin cierre asociado" por gastos externos en días sin cierre.`
+        : subtitleBase;
 
     // Fila de totales del rango exportado (antes no había ninguna). "fecha" hace de etiqueta;
     // el resto de columnas numéricas se suman tal cual — incluye "Resultado neto real", que
-    // suma exacto porque los gastos externos del día se atribuyen a un solo cierre por día.
+    // suma exacto porque los gastos externos del día se atribuyen a un solo cierre por día
+    // (o a una fila "Gastos sin cierre asociado" si ese día no tuvo cierre).
     const totalsRow = { fecha: 'TOTALES' };
     headers.forEach((key) => {
         if (key === 'fecha') return;
-        totalsRow[key] = rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
+        totalsRow[key] = allRows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
     });
 
     if (formatKey === 'pdf') {
-        const printableHtml = buildClientExportHtmlDocument(rows, columns, {
+        const printableHtml = buildClientExportHtmlDocument(allRows, columns, {
             title: 'Historial de cajas',
             subtitle: `${subtitle} "Resultado neto real" = Total neto de caja − gastos externos del mismo día. Usa Guardar como PDF en la ventana de impresion.`,
             footRow: totalsRow
@@ -11417,7 +11448,7 @@ function exportCierresHistorial(format) {
 
     const csvContent = [
         headerLabels.join(','),
-        ...rows.map((row) => headers.map((header) => {
+        ...allRows.map((row) => headers.map((header) => {
             const rawValue = String(row[header] ?? '');
             return `"${rawValue.replace(/"/g, '""')}"`;
         }).join(',')),
