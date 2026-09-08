@@ -1761,6 +1761,7 @@ function setupAccordion() {
 
         if (target === 'metricas') {
             _ensureMetricsOrdersLoaded();
+            _ensureMetricsClientsLoaded();
         }
 
         if (target === 'chatroal') {
@@ -9056,7 +9057,10 @@ async function _loadMetricsOrders({ force = false } = {}) {
         .orderBy('createdAt', 'desc')
         .get()
         .then((snap) => snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() })))
-        .catch(() => []);
+        .catch((err) => {
+            console.error(`[Métricas] Falló la consulta de pedidos en ${collectionName}:`, (err && (err.code || err.message)) || err);
+            return [];
+        });
     const [activeOrders, archivedOrders] = await Promise.all([
         rangeQuery(ORDERS_COLLECTION),
         rangeQuery(ORDERS_ARCHIVE_COLLECTION)
@@ -9074,16 +9078,47 @@ async function _loadMetricsOrders({ force = false } = {}) {
 // Dispara la carga (si hace falta) y re-renderiza las 3 vistas de Métricas cuando llega.
 // Mientras tanto, cada render usa ordersState como respaldo (ver _metricsOrdersOrFallback)
 // para no dejar la pantalla en blanco durante el primer fetch.
+let _metricsOrdersLoadNoticeAt = 0;
 function _ensureMetricsOrdersLoaded() {
     _loadMetricsOrders().then(() => {
         renderMetricasProductos();
         renderMetricsPos();
         renderMetricsUsers();
-    }).catch(() => {});
+    }).catch((err) => {
+        console.error('[Métricas] Error al cargar/procesar pedidos:', (err && (err.code || err.message)) || err);
+        if (Date.now() - _metricsOrdersLoadNoticeAt > 30000) {
+            _metricsOrdersLoadNoticeAt = Date.now();
+            showNotice('No se pudieron actualizar las métricas de pedidos. Reintenta abriendo la pestaña de nuevo.', 'error');
+        }
+    });
+}
+
+// Equivalente a _ensureMetricsOrdersLoaded() pero para clientsState. renderMetricsUsers()
+// deriva TODO de clientsState; renderMetricsPos() lo usa para "Clientes únicos". fetchClients()
+// respeta su propio cache de 60 s, así que llamarlo al abrir la pestaña no re-consulta de más.
+let _metricsClientsLoadNoticeAt = 0;
+function _ensureMetricsClientsLoaded() {
+    fetchClients().then(() => {
+        renderMetricsUsers();
+        renderMetricsPos();
+    }).catch((err) => {
+        console.error('[Métricas] No se pudieron cargar los clientes:', (err && (err.code || err.message)) || err);
+        if (Date.now() - _metricsClientsLoadNoticeAt > 30000) {
+            _metricsClientsLoadNoticeAt = Date.now();
+            showNotice('No se pudieron actualizar los clientes de Métricas. Reintenta abriendo la pestaña de nuevo.', 'error');
+        }
+    });
 }
 
 function _metricsOrdersOrFallback() {
     return _metricsOrdersState.length ? _metricsOrdersState : (ordersState || []);
+}
+
+// Pinta "· actualizado hace X" junto a un título de Métricas (loadedAtMs epoch; 0 = sin cargar).
+function _setMetricsFreshness(elId, loadedAtMs) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.textContent = loadedAtMs ? `· actualizado ${formatElapsedTime(loadedAtMs)}` : '· sin cargar';
 }
 
 // ── helper: mini bar chart ─────────────────────────────────────────────────
@@ -9278,6 +9313,8 @@ function renderMetricsUsers() {
     const list = document.getElementById('metricsUsersList');
     if (!list) return;
 
+    _setMetricsFreshness('appSummaryFresh', _clientsLastFetchedAt);
+
     const users = (clientsState || [])
         .filter(c => Boolean(c.passwordHash))
         .slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
@@ -9399,6 +9436,8 @@ function _renderMetricsUserRows(users) {
 function renderMetricsPos() {
     const list = document.getElementById('metricsPosList');
     if (!list) return;
+
+    _setMetricsFreshness('posSummaryFresh', _metricsOrdersLoadedAt);
 
     // Solo ventas reales: excluye anulados/voided y pedidos que nunca llegaron a pagarse (mismo
     // criterio que renderCajaDiaria) -- sin esto, "Ingresos"/"Ticket promedio" del POS incluían
@@ -16939,6 +16978,7 @@ document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
         if (tab === 'app')       { renderMetricsUsers(); renderMetricasTrafico(); }
         if (tab === 'productos') { _traficoDetach(); renderMetricasProductos(); }
         _ensureMetricsOrdersLoaded();
+        if (tab === 'app' || tab === 'pos') _ensureMetricsClientsLoaded();
     });
 });
 
