@@ -770,6 +770,8 @@
             <button type="button" id="bootFailRetry">Reintentar</button>
             <button type="button" id="bootFailReset">Borrar datos y recargar</button>
             <p class="bootfail-hint">Si sigue igual, revisa tu conexión a internet.</p>
+            <div id="bootFailDiag" hidden></div>
+            <button type="button" id="bootFailCopy" hidden>Copiar detalle para soporte</button>
         </div>
     </div>
     <style>
@@ -783,6 +785,10 @@
         #bootFailOverlay #bootFailRetry{background:#f65102;color:#fff}
         #bootFailOverlay #bootFailReset{background:transparent;color:#2a1b12;border:1.5px solid rgba(42,27,18,.3)}
         #bootFailOverlay .bootfail-hint{font-size:12px;color:#8a7259;margin:14px 0 0}
+        #bootFailOverlay #bootFailDiag{margin:14px 0 0;padding:10px;border-radius:10px;background:rgba(42,27,18,.06);border:1px solid rgba(42,27,18,.15);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.45;color:#5a4636;text-align:left;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto;-webkit-user-select:text;user-select:text}
+        #bootFailOverlay #bootFailDiag[hidden]{display:none}
+        #bootFailOverlay #bootFailCopy{background:transparent;color:#5a4636;border:1.5px solid rgba(42,27,18,.25);font-size:13px;padding:10px 16px}
+        #bootFailOverlay #bootFailCopy[hidden]{display:none}
     </style>
     <script>
         (function () {
@@ -792,11 +798,56 @@
                 return !!(s && !s.hasAttribute('hidden'));
             }
             var shown = false;
+
+            // Detalle del fallo de arranque: se acumula acá, se muestra en la pantalla de
+            // error (para que quien tenga el teléfono en la mano lo lea / copie) y se guarda
+            // en localStorage bajo 'roal_boot_err' para revisarlo después aunque recargue.
+            var errs = [];
+            window.__roalBootErrors = errs;
+
+            function pushErr(rec) {
+                try {
+                    rec.t = new Date().toISOString();
+                    errs.push(rec);
+                    if (errs.length > 6) errs.shift();
+                    try { localStorage.setItem('roal_boot_err', JSON.stringify(errs)); } catch (e) {}
+                    try { if (window.console && console.error) console.error('[bootfail]', rec); } catch (e) {}
+                } catch (e) {}
+                if (shown) renderDiag();
+            }
+
+            function fmtErr(r) {
+                if (r.kind === 'resource') return 'No se pudo cargar: ' + (r.src || '(recurso)');
+                if (r.kind === 'promise')  return 'Promesa rechazada: ' + (r.msg || '(sin mensaje)') + (r.stack ? '\n' + r.stack : '');
+                var where = r.src ? (r.src + (r.line ? ':' + r.line : '') + (r.col ? ':' + r.col : '')) : '';
+                return (r.msg || 'Error') + (where ? '\n  en ' + where : '') + (r.stack ? '\n' + r.stack : '');
+            }
+
+            function renderDiag() {
+                var d = document.getElementById('bootFailDiag');
+                var c = document.getElementById('bootFailCopy');
+                if (!d) return;
+                var txt;
+                if (errs.length) {
+                    var recent = [];
+                    for (var i = Math.max(0, errs.length - 3); i < errs.length; i++) recent.push(fmtErr(errs[i]));
+                    txt = recent.join('\n\n') + '\n\n— ' + (navigator.userAgent || '');
+                } else {
+                    txt = 'El menú no respondió a tiempo y no se capturó ningún error de JavaScript.\n'
+                        + 'Probable: descarga interrumpida o una versión vieja guardada en caché.\n\n— '
+                        + (navigator.userAgent || '');
+                }
+                d.textContent = txt;
+                d.hidden = false;
+                if (c) c.hidden = false;
+            }
+
             function showFail() {
                 if (shown || booted()) return;
                 shown = true;
                 var o = document.getElementById('bootFailOverlay');
                 if (o) o.hidden = false;
+                renderDiag();
             }
             var slowTimer = setTimeout(showFail, 9000);
             window.__roalCancelBootWatchdog = function () { shown = true; clearTimeout(slowTimer); };
@@ -804,13 +855,72 @@
             // si el menú no arrancó, no esperamos los 9 s completos.
             window.addEventListener('error', function (ev) {
                 var t = ev && ev.target;
-                if (t && (t.tagName === 'IMG' || t.tagName === 'LINK' || t.tagName === 'SOURCE')) return;
+                // Fallo de carga de un recurso (script/css/img): ev es un Event, no ErrorEvent.
+                if (t && t !== window && t.tagName && (t.src || t.href)) {
+                    var tag = t.tagName;
+                    if (tag === 'IMG' || tag === 'LINK' || tag === 'SOURCE') return; // no bloquean el arranque
+                    pushErr({ kind: 'resource', src: String(t.src || t.href), tag: tag });
+                    if (!booted()) setTimeout(showFail, 2500);
+                    return;
+                }
+                // Excepción de JavaScript.
+                pushErr({
+                    kind: 'error',
+                    msg: (ev && ev.message) ? String(ev.message) : 'Error desconocido',
+                    src: (ev && ev.filename) ? String(ev.filename) : '',
+                    line: (ev && ev.lineno) ? ev.lineno : 0,
+                    col: (ev && ev.colno) ? ev.colno : 0,
+                    stack: (ev && ev.error && ev.error.stack) ? String(ev.error.stack).slice(0, 1200) : ''
+                });
                 if (!booted()) setTimeout(showFail, 2500);
             }, true);
+            window.addEventListener('unhandledrejection', function (ev) {
+                var r = ev && ev.reason;
+                var msg = '';
+                try {
+                    msg = (r && r.message) ? r.message : (typeof r === 'string' ? r : JSON.stringify(r));
+                } catch (e) { msg = String(r); }
+                pushErr({
+                    kind: 'promise',
+                    msg: String(msg).slice(0, 800),
+                    stack: (r && r.stack) ? String(r.stack).slice(0, 1200) : ''
+                });
+                // Una promesa rechazada sola no prueba que el arranque murió; no forzamos el
+                // overlay, pero queda registrada por si el watchdog de 9 s termina disparando.
+            });
             document.addEventListener('DOMContentLoaded', function () {
                 var retry = document.getElementById('bootFailRetry');
                 var reset = document.getElementById('bootFailReset');
+                var copy  = document.getElementById('bootFailCopy');
                 if (retry) retry.addEventListener('click', function () { location.reload(); });
+                function selectDiag() {
+                    var d = document.getElementById('bootFailDiag');
+                    if (!d) return;
+                    try {
+                        var rng = document.createRange();
+                        rng.selectNodeContents(d);
+                        var sel = window.getSelection();
+                        sel.removeAllRanges();
+                        sel.addRange(rng);
+                        try { document.execCommand('copy'); } catch (e) {}
+                        if (copy) copy.textContent = 'Seleccionado — mantené presionado y "Copiar"';
+                    } catch (e) {}
+                }
+                if (copy) copy.addEventListener('click', function () {
+                    var d = document.getElementById('bootFailDiag');
+                    var txt = d ? d.textContent : '';
+                    var ok = function () {
+                        copy.textContent = 'Copiado ✓';
+                        setTimeout(function () { copy.textContent = 'Copiar detalle para soporte'; }, 2000);
+                    };
+                    try {
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(txt).then(ok, selectDiag);
+                            return;
+                        }
+                    } catch (e) {}
+                    selectDiag();
+                });
                 if (reset) reset.addEventListener('click', function () {
                     var done = function () { location.reload(); };
                     try {
