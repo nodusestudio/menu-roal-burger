@@ -9980,7 +9980,18 @@ function buildOrderConfirmationMessage(order) {
         : order.orderType === 'mesa'
             ? `🍽️ *En el local${order.mesaNumber ? ` — Mesa ${order.mesaNumber}` : ''}*`
             : '🥡 *Para recoger en el local*';
-    const pagoLinea = `💳 *Medio de pago:* ${getOrderPaymentLabel(order)}`;
+    // Este mensaje se manda antes de cocina, cuando muchas veces el pago aún no está definido:
+    // se le pregunta al cliente en vez de afirmarlo. Si ya eligió efectivo pero falta el monto,
+    // se pide con cuánto paga. Si ya está todo definido, se muestra tal cual.
+    const _pm = String(order.paymentMethod || '').toLowerCase();
+    let pagoLinea;
+    if (!_pm || _pm === 'pendiente') {
+        pagoLinea = '💳 *¿Cómo vas a pagar?* Efectivo o transferencia. Si es en efectivo, dinos con cuánto pagas para tenerte el cambio listo.';
+    } else if (_pm === 'efectivo' && !(Number(order.cashTenderAmount) > 0)) {
+        pagoLinea = '💵 *Pago en efectivo.* ¿Con cuánto pagas? Así te tenemos el cambio listo.';
+    } else {
+        pagoLinea = `💳 *Medio de pago:* ${getOrderPaymentLabel(order)}`;
+    }
 
     return `${saludo} Recibimos tu pedido *${codigo}*.\nAntes de mandarlo a cocina, confírmanos que todo esté correcto por favor 🙏\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n🧾 *Resumen:*\n${resumen.join('\n')}\n\n${entregaLinea}\n${pagoLinea}\n\n¿Está todo bien? Respóndenos *SÍ* para enviarlo a cocina ✅`;
 }
