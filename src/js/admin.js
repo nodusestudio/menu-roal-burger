@@ -4693,11 +4693,10 @@ function renderBebidasPanel() {
     if (!container) return;
     container.innerHTML = '';
 
-    // Mismo wrapper admin-card que ya usan sus paneles hermanos (Acompañantes, Combos/Packs) --
-    // sin esto quedaba con fondo plano/transparente en vez del glassmorphism consistente del
-    // resto de pestañas de "Menú".
-    const wrapper = document.createElement('article');
-    wrapper.className = 'admin-card';
+    // El wrapper .admin-card + card-head/card-body con el título "Bebidas" ahora es estático
+    // en admin.html (mismo patrón que Cupones). Este render solo llena el #bebidasTabPanel
+    // que vive dentro del card-body.
+    const wrapper = container;
 
     const toolbar = document.createElement('div');
     toolbar.className = 'section-toolbar';
@@ -4714,7 +4713,6 @@ function renderBebidasPanel() {
         empty.className = 'bebidas-panel-empty';
         empty.innerHTML = '<p>🥤</p><p>No hay bebidas configuradas. Crea la primera.</p>';
         wrapper.appendChild(empty);
-        container.appendChild(wrapper);
         return;
     }
 
@@ -4823,7 +4821,6 @@ function renderBebidasPanel() {
     });
 
     wrapper.appendChild(list);
-    container.appendChild(wrapper);
 }
 
 // ─────────────────────────────────────────
@@ -4878,8 +4875,10 @@ function renderAcompanantesPanel() {
     if (!container) return;
 
     container.innerHTML = '';
-    const wrapper = document.createElement('article');
-    wrapper.className = 'admin-card';
+    // El wrapper .admin-card + card-head/card-body con el título "Acompañantes" ahora es
+    // estático en admin.html (mismo patrón que Cupones); este render llena el
+    // #acompanantesTabPanel de adentro.
+    const wrapper = container;
 
     const toolbar = document.createElement('div');
     toolbar.className = 'acomp-panel-toolbar';
@@ -4984,7 +4983,6 @@ function renderAcompanantesPanel() {
 
     wrapper.appendChild(toolbar);
     wrapper.appendChild(list);
-    container.appendChild(wrapper);
 }
 
 function openAcompananteModal(acomp = null) {
@@ -5242,8 +5240,9 @@ function renderCombosPackPanel() {
     if (!container) return;
 
     container.innerHTML = '';
-    const wrapper = document.createElement('article');
-    wrapper.className = 'admin-card';
+    // El wrapper .admin-card + card-head/card-body con el título "Combos" ahora es estático
+    // en admin.html (mismo patrón que Cupones); este render llena el #combosPacksTabPanel.
+    const wrapper = container;
 
     const toolbar = document.createElement('div');
     toolbar.className = 'acomp-panel-toolbar';
@@ -5343,7 +5342,6 @@ function renderCombosPackPanel() {
 
     wrapper.appendChild(toolbar);
     wrapper.appendChild(list);
-    container.appendChild(wrapper);
 }
 
 function openComboPackModal(combo = null) {
