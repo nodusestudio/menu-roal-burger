@@ -11305,13 +11305,41 @@ function getCierresExportColumns(cierres = []) {
         ..._cierresExportHasOtro(cierres) ? [{ key: 'otro', label: 'Otro (método eliminado)' }] : [],
         { key: 'total_bruto', label: 'Total bruto' },
         { key: 'egresos', label: 'Egresos' },
-        { key: 'total_neto', label: 'Total neto' }
+        // Renombrada de "Total neto" para no confundirla con "Resultado neto real":
+        // esta sigue siendo el neto del cierre (ingresos − egresos del propio cierre).
+        { key: 'total_neto', label: 'Total neto de caja' },
+        { key: 'gastos_externos_dia', label: 'Gastos externos del día' },
+        { key: 'resultado_neto_real', label: 'Resultado neto real' }
     ];
 }
 
 function buildCierresExportRows(cierres) {
     const methods = getPaymentMethods();
     const methodKeys = methods.map((m) => m.id);
+
+    // "Resultado neto real" = Total neto de caja − gastos externos del MISMO día
+    // (colección de gastos, tipo:'externo', ya cargados en _gastosExternosState). Es el
+    // mismo neteo que hace el panel en vivo (renderLibroCierres agrupa por día); acá el
+    // export es por cierre, así que el gasto del día se atribuye al ÚLTIMO cierre de ese
+    // día (el que cierra la jornada, mayor closedAt) y los cierres anteriores del mismo
+    // día quedan en 0. Así la columna suma exacto contra la fila de TOTALES del export.
+    const _localDayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const gastosPorDia = {};
+    (_gastosExternosState || []).forEach((g) => {
+        const ms = _tsMs(g.registradoAt);
+        if (!ms) return;
+        const dk = _localDayKey(ms);
+        gastosPorDia[dk] = (gastosPorDia[dk] || 0) + Number(g.monto || 0);
+    });
+    const maxClosedMsPorDia = {};
+    cierres.forEach((c) => {
+        const ms = _tsMs(c.closedAt);
+        if (!ms) return;
+        const dk = _localDayKey(ms);
+        if (ms > (maxClosedMsPorDia[dk] || 0)) maxClosedMsPorDia[dk] = ms;
+    });
+    const _diaReclamado = new Set();
+
     return cierres.map((c) => {
         // Columnas por método = ingresos BRUTOS. Así: suma(métodos) + otro = Total bruto,
         // y Total bruto − Egresos = Total neto (todo verificable a ojo en el Excel).
@@ -11323,6 +11351,16 @@ function buildCierresExportRows(cierres) {
         row.total_bruto = bruto;
         row.egresos = Number(c.gastosTotal || 0);
         row.total_neto = Number(c.grandTotal ?? (bruto - row.egresos));
+
+        const cMs = _tsMs(c.closedAt);
+        const dk = cMs ? _localDayKey(cMs) : null;
+        let gastosDia = 0;
+        if (dk && !_diaReclamado.has(dk) && cMs === maxClosedMsPorDia[dk]) {
+            gastosDia = gastosPorDia[dk] || 0;
+            _diaReclamado.add(dk);
+        }
+        row.gastos_externos_dia = gastosDia;
+        row.resultado_neto_real = row.total_neto - gastosDia;
         return row;
     });
 }
@@ -11357,10 +11395,20 @@ function exportCierresHistorial(format) {
         ? `Periodo filtrado: ${fromLabel || 'inicio'} a ${toLabel || 'hoy'}.`
         : 'Periodo: todos los cierres registrados.';
 
+    // Fila de totales del rango exportado (antes no había ninguna). "fecha" hace de etiqueta;
+    // el resto de columnas numéricas se suman tal cual — incluye "Resultado neto real", que
+    // suma exacto porque los gastos externos del día se atribuyen a un solo cierre por día.
+    const totalsRow = { fecha: 'TOTALES' };
+    headers.forEach((key) => {
+        if (key === 'fecha') return;
+        totalsRow[key] = rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
+    });
+
     if (formatKey === 'pdf') {
         const printableHtml = buildClientExportHtmlDocument(rows, columns, {
             title: 'Historial de cajas',
-            subtitle: `${subtitle} Usa Guardar como PDF en la ventana de impresion.`
+            subtitle: `${subtitle} "Resultado neto real" = Total neto de caja − gastos externos del mismo día. Usa Guardar como PDF en la ventana de impresion.`,
+            footRow: totalsRow
         });
         printClientExportPdf(printableHtml);
         showNotice(`Vista lista para exportar ${rows.length} cierres en PDF.`, 'ok');
@@ -11372,7 +11420,8 @@ function exportCierresHistorial(format) {
         ...rows.map((row) => headers.map((header) => {
             const rawValue = String(row[header] ?? '');
             return `"${rawValue.replace(/"/g, '""')}"`;
-        }).join(','))
+        }).join(',')),
+        headers.map((header) => `"${String(totalsRow[header] ?? '').replace(/"/g, '""')}"`).join(',')
     ].join('\r\n');
 
     downloadExportFile(`historial-cajas-${stamp}.csv`, csvContent, 'text/csv;charset=utf-8');
@@ -12855,6 +12904,11 @@ function buildClientExportHtmlDocument(rows, columns, options = {}) {
     const tableRows = rows.map((row) => `
             <tr>${columns.map((column) => `<td>${escapeHtml(String(row[column.key] ?? ''))}</td>`).join('')}</tr>
         `).join('');
+    // Fila de totales opcional (hoy solo la usa el export de Historial de Cajas). Sin
+    // footRow, el resto de exports quedan exactamente igual que antes.
+    const footHtml = options.footRow
+        ? `<tfoot><tr>${columns.map((column) => `<th style="text-align:left;background:#e5e7eb;">${escapeHtml(String(options.footRow[column.key] ?? ''))}</th>`).join('')}</tr></tfoot>`
+        : '';
 
     return `<!doctype html>
 <html lang="es">
@@ -12883,6 +12937,7 @@ function buildClientExportHtmlDocument(rows, columns, options = {}) {
     <table>
         <thead><tr>${columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join('')}</tr></thead>
         <tbody>${tableRows}</tbody>
+        ${footHtml}
     </table>
 </body>
 </html>`;
