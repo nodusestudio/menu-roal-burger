@@ -576,6 +576,12 @@ let _comboDiasSeleccionados = [];
 let _comboHorarioTipo = 'siempre';
 let _cuponCreatingType = null; // null | 'selector' | 'descuento' | '2x1' | 'combo'
 
+// ── Reporte "📊 Canjes" de la pestaña Cupones — SOLO LECTURA ──
+let _cuponesCanjesRaw = null;           // [{ couponTitle, redeemedMs }] de codigos_cupon status:'used'
+let _cuponesCanjesLoadedAt = 0;
+let _cuponesCanjesPeriod = 'all';       // all | month | week | today
+const _CUPONES_CANJES_TTL_MS = 60 * 1000;
+
 // ── Bluetooth printer state ──
 let _btPrinterDevice = null;
 let _btPrinterCharacteristic = null;
@@ -9117,6 +9123,18 @@ function _orderTs(o) {
     return o.createdAt.seconds ? o.createdAt.seconds * 1000 : Number(o.createdAt);
 }
 
+// Inicio (00:00) del período en curso — lo usa el filtro de "Productos" (renderMetricasProductos)
+// y el reporte "📊 Canjes" de Cupones. 'today' = hoy · 'week' = desde el domingo · 'month' =
+// desde el día 1 · 'all'/vacío = sin corte (null). Misma lógica que ya tenía el startOf local.
+function _metricsPeriodStart(unit, now = new Date()) {
+    if (!unit || unit === 'all') return null;
+    const d = new Date(now);
+    if (unit === 'today')      { d.setHours(0, 0, 0, 0); }
+    else if (unit === 'week')  { d.setDate(d.getDate() - d.getDay()); d.setHours(0, 0, 0, 0); }
+    else if (unit === 'month') { d.setDate(1); d.setHours(0, 0, 0, 0); }
+    return d;
+}
+
 let _traficoUnsubscribe = null;
 
 function _traficoDetach() {
@@ -9182,16 +9200,8 @@ function renderMetricasProductos(period) {
     const ranking = document.getElementById('prodMetricsRanking');
     if (!ranking) return;
 
-    // Límite temporal según período
-    const now = new Date();
-    const startOf = (unit) => {
-        const d = new Date(now);
-        if (unit === 'today') { d.setHours(0, 0, 0, 0); }
-        else if (unit === 'week') { d.setDate(d.getDate() - d.getDay()); d.setHours(0, 0, 0, 0); }
-        else if (unit === 'month') { d.setDate(1); d.setHours(0, 0, 0, 0); }
-        return d;
-    };
-    const cutoff = _prodMetricsPeriod !== 'all' ? startOf(_prodMetricsPeriod) : null;
+    // Límite temporal según período (helper compartido con el reporte de Canjes)
+    const cutoff = _metricsPeriodStart(_prodMetricsPeriod);
 
     // Agregar por producto
     const map = new Map();
@@ -14637,6 +14647,82 @@ function renderOpeningAdPanel() {
     };
 }
 
+// Trae codigos_cupon con status:'used' (query de solo lectura, índice automático de 'status',
+// sin índice compuesto). Agrupación y filtro por fecha se hacen en el cliente. Cache corta
+// para no re-consultar al cambiar de período o al re-renderizar el panel.
+async function _loadCuponesCanjes({ force = false } = {}) {
+    if (!force && _cuponesCanjesRaw && (Date.now() - _cuponesCanjesLoadedAt) < _CUPONES_CANJES_TTL_MS) {
+        return _cuponesCanjesRaw;
+    }
+    try {
+        const snap = await firebaseDb.collection('codigos_cupon').where('status', '==', 'used').get();
+        _cuponesCanjesRaw = snap.docs.map((d) => {
+            const x = d.data() || {};
+            const r = x.redeemedAt;
+            const ms = r && typeof r.toMillis === 'function' ? r.toMillis()
+                : (r && r.seconds ? r.seconds * 1000 : Number(r) || 0);
+            const title = String(x.couponTitle || '').trim() || 'Sin título';
+            return { couponTitle: title, redeemedMs: ms };
+        });
+        _cuponesCanjesLoadedAt = Date.now();
+    } catch (err) {
+        console.warn('[ADMIN] No se pudo cargar canjes de cupones:', err.code || err.message);
+        _cuponesCanjesRaw = _cuponesCanjesRaw || [];
+    }
+    return _cuponesCanjesRaw;
+}
+
+function _buildCuponesCanjesSectionHTML() {
+    const periods = [
+        { k: 'all', l: 'Todo' }, { k: 'month', l: 'Este mes' },
+        { k: 'week', l: 'Esta semana' }, { k: 'today', l: 'Hoy' },
+    ];
+    return `
+        <div class="cupones-canjes-section" style="margin-top:24px;">
+            <div class="met-section-title">📊 Canjes</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px;">
+                ${periods.map((p) => `<button type="button" class="prod-period-btn cupones-canjes-period-btn${p.k === _cuponesCanjesPeriod ? ' active' : ''}" data-canjes-period="${p.k}">${p.l}</button>`).join('')}
+            </div>
+            <div id="cuponesCanjesBody"></div>
+        </div>`;
+}
+
+// Agrupa por couponTitle los canjes (status:'used') del período elegido y pinta la tabla.
+async function renderCuponesCanjes(period) {
+    if (period !== undefined) _cuponesCanjesPeriod = period;
+    const body = document.getElementById('cuponesCanjesBody');
+    if (!body) return;
+    document.querySelectorAll('.cupones-canjes-period-btn').forEach((b) =>
+        b.classList.toggle('active', b.dataset.canjesPeriod === _cuponesCanjesPeriod));
+
+    body.innerHTML = '<p class="admin-hint" style="text-align:center;padding:12px 0;">Cargando…</p>';
+    const rows = await _loadCuponesCanjes();
+    const bodyNow = document.getElementById('cuponesCanjesBody');
+    if (!bodyNow) return; // el panel se re-renderizó mientras cargaba
+
+    const cutoff = _metricsPeriodStart(_cuponesCanjesPeriod);
+    const cutoffMs = cutoff ? cutoff.getTime() : 0;
+    const counts = new Map();
+    let total = 0;
+    for (const r of rows) {
+        if (cutoffMs && !(r.redeemedMs >= cutoffMs)) continue;
+        counts.set(r.couponTitle, (counts.get(r.couponTitle) || 0) + 1);
+        total++;
+    }
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+
+    if (!sorted.length) {
+        bodyNow.innerHTML = '<p class="admin-hint" style="text-align:center;padding:12px 0;">Sin canjes en este período.</p>';
+        return;
+    }
+    bodyNow.innerHTML = `
+        <table class="cupones-canjes-table">
+            <thead><tr><th>Cupón</th><th style="text-align:right;">N° de canjes</th></tr></thead>
+            <tbody>${sorted.map(([t, n]) => `<tr><td>${escapeHtml(t)}</td><td style="text-align:right;font-weight:700;">${n}</td></tr>`).join('')}</tbody>
+            <tfoot><tr><td>Total</td><td style="text-align:right;font-weight:700;">${total}</td></tr></tfoot>
+        </table>`;
+}
+
 function renderCuponesUnified() {
     const container = document.getElementById('cuponesUnifiedPanel');
     if (!container) return;
@@ -14670,11 +14756,12 @@ function renderCuponesUnified() {
         : '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin cupones aún. Usa el botón de arriba para crear uno.</p>';
 
     container.innerHTML = `
-        <div style="padding:16px 0;">
+        <div>
             ${topHTML}
             <div class="promo-admin-list" id="cuponesUnifiedList" style="margin-top:18px;">
                 ${listHTML}
             </div>
+            ${(!isFormOpen && _cuponCreatingType === null) ? _buildCuponesCanjesSectionHTML() : ''}
         </div>`;
 
     // ── Add button
@@ -14682,6 +14769,14 @@ function renderCuponesUnified() {
         _cuponCreatingType = 'selector';
         renderCuponesUnified();
     });
+
+    // ── 📊 Canjes (solo lectura) — no interfiere con el flujo de crear/editar cupones
+    if (document.getElementById('cuponesCanjesBody')) {
+        container.querySelectorAll('.cupones-canjes-period-btn').forEach((btn) => {
+            btn.addEventListener('click', () => renderCuponesCanjes(btn.dataset.canjesPeriod));
+        });
+        renderCuponesCanjes(_cuponesCanjesPeriod);
+    }
 
     // ── Type selector
     container.querySelectorAll('[data-cupon-type]').forEach((card) => {

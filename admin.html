@@ -3272,6 +3272,18 @@
             background: rgba(255,122,26,0.18); border-color: rgba(255,122,26,0.4);
             color: #ffb07a;
         }
+        /* ── Tabla del reporte "📊 Canjes" (pestaña Cupones) ── */
+        .cupones-canjes-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .cupones-canjes-table th {
+            text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
+            color: var(--admin-muted); padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.12);
+        }
+        .cupones-canjes-table td {
+            padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); color: var(--admin-text);
+        }
+        .cupones-canjes-table tfoot td {
+            border-top: 1px solid rgba(255,255,255,0.12); border-bottom: none; color: var(--admin-muted);
+        }
         /* ── Ranking de productos ── */
         .prod-rank-list { display: grid; gap: 10px; }
         .prod-rank-item {
@@ -7479,7 +7491,25 @@
         .cupon-type-card strong { font-size: 0.82rem; font-family: 'Oswald', sans-serif; letter-spacing: 0.05em; text-transform: uppercase; }
         .cupon-type-card small { font-size: 0.69rem; color: var(--admin-muted, #888); line-height: 1.3; }
 
-        .cupon-unified-item { margin-bottom: 6px; }
+        /* Cada cupón de la lista con el mismo lenguaje visual que .category-product-item
+           (pestaña Categorías): borde, radio y fondo translúcido. El badge de tipo queda
+           como chip; la .promo-admin-card interna pierde borde/fondo/padding para no
+           duplicar la tarjeta. El espaciado entre ítems ya lo da .promo-admin-list (gap:10px). */
+        .cupon-unified-item {
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 14px 16px;
+        }
+        .cupon-unified-item .cupon-type-label {
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .cupon-unified-item .promo-admin-card {
+            border: none;
+            background: transparent;
+            padding: 0;
+        }
         .cupon-type-label {
             display: inline-block;
             font-size: 0.64rem;
@@ -13321,7 +13351,14 @@
                                 <button type="button" class="admin-button" id="openingAdSaveBtn">Guardar anuncio</button>
                             </div>
                         </article>
-                        <div id="cuponesUnifiedPanel"></div>
+                        <article class="admin-card">
+                            <div class="card-head">
+                                <h2>Cupones</h2>
+                            </div>
+                            <div class="card-body">
+                                <div id="cuponesUnifiedPanel"></div>
+                            </div>
+                        </article>
                     </div>
 
                     <!-- ── Panel: Recomendado del Día ── -->
