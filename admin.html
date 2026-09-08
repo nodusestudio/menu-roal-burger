@@ -13248,6 +13248,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="chatroal"><span class="nav-icon">📲</span><span>Chat Roal</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="finanzas"><span class="nav-icon">💰</span><span>Finanzas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
         </nav>
 
@@ -14613,6 +14614,51 @@
                         <div id="prodMetricsRanking"></div>
                     </article>
                 </div>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="finanzas">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" data-section-save="finanzas">Actualizar</button>
+                </div>
+
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>💰 Costos Fijos Mensuales</h2>
+                        <button type="button" class="section-action-btn primary" id="addCostoFijoBtn">+ Nuevo costo</button>
+                    </div>
+                    <div class="card-body">
+                        <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 16px;line-height:1.5;">
+                            Gastos que se repiten todos los meses (arriendo, servicios, nómina…). Alimentan el cálculo del mínimo viable de abajo.
+                        </p>
+                        <div id="newCostoFijoFormWrap" style="display:none;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+                            <input type="text" id="newCostoFijoNombre" class="cat-new-input-name" placeholder="Nombre (ej. Arriendo)" maxlength="40">
+                            <input type="text" inputmode="numeric" id="newCostoFijoMonto" class="cat-new-input-name" placeholder="Monto mensual" style="max-width:150px;">
+                            <button type="button" id="newCostoFijoSaveBtn" class="cat-new-save-btn">Agregar</button>
+                            <button type="button" id="newCostoFijoCancelBtn" class="pm-icon-btn">Cancelar</button>
+                        </div>
+                        <div id="costosFijosPanelWrap"><!-- render JS --></div>
+                    </div>
+                </article>
+
+                <article class="admin-card">
+                    <div class="card-head"><h2>Margen Mínimo Objetivo</h2></div>
+                    <div class="card-body">
+                        <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 12px;line-height:1.5;">
+                            Porcentaje de cada venta que queda después de los costos variables (insumos, empaques…). Se usa para calcular cuánto hay que vender al mes para cubrir los costos fijos.
+                        </p>
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <input type="text" inputmode="numeric" id="margenMinimoInput" maxlength="4" style="max-width:90px;font-size:1.1rem;font-weight:700;text-align:right;">
+                            <span style="font-size:1.1rem;font-weight:700;">%</span>
+                            <button type="button" id="margenMinimoSaveBtn" class="cat-new-save-btn">Guardar</button>
+                            <span id="margenActualizadoLbl" style="font-size:0.78rem;color:var(--admin-muted);"></span>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="admin-card">
+                    <div class="card-head"><h2>Este mes, en vivo</h2></div>
+                    <div class="card-body" id="finanzasEnVivoBody"><!-- render JS --></div>
+                </article>
             </div>
         </section>
     </main>

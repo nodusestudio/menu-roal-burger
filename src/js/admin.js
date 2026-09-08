@@ -1720,10 +1720,11 @@ function setupAccordion() {
         clientes: ['clientes'],
         mensajes: ['mensajes'],
         chatroal: ['chatroal'],
-        metricas: ['metricas']
+        metricas: ['metricas'],
+        finanzas: ['finanzas']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -1762,6 +1763,10 @@ function setupAccordion() {
         if (target === 'metricas') {
             _ensureMetricsOrdersLoaded();
             _ensureMetricsClientsLoaded();
+        }
+
+        if (target === 'finanzas') {
+            _ensureFinanzasLoaded();
         }
 
         if (target === 'chatroal') {
@@ -1850,6 +1855,14 @@ function setupSectionSaveButtons() {
         if (section === 'metricas') {
             await reloadDataAndRender();
             showNotice('Métricas actualizadas.', 'ok');
+        }
+
+        if (section === 'finanzas') {
+            try {
+                await Promise.all([loadFinanzasConfig(), loadCierresCaja()]);
+            } catch (_) {}
+            renderFinanzasPanel();
+            showNotice('Finanzas actualizado.', 'ok');
         }
     });
 }
@@ -24076,6 +24089,280 @@ document.getElementById('newCatGastoSaveBtn')?.addEventListener('click', async (
 document.getElementById('newCatGastoCancelBtn')?.addEventListener('click', () => {
     const formWrap = document.getElementById('newCatGastoFormWrap');
     if (formWrap) formWrap.style.display = 'none';
+});
+
+// ── Finanzas — panel de control (costos fijos + margen + resultado del mes) ────
+// Panel de CONFIGURACIÓN, no de operación: solo edita costos fijos / margen y
+// muestra números calculados. No registra pedidos, gastos ni cupones.
+const FINANZAS_CONFIG_DOC_ID = 'costos_fijos';
+const DEFAULT_COSTOS_FIJOS = [
+    { id: 'arriendo',  nombre: 'Arriendo',  monto: 800000 },
+    { id: 'servicios', nombre: 'Servicios', monto: 800000 },
+    { id: 'nomina',    nombre: 'Nómina',    monto: 6000000 },
+];
+const DEFAULT_MARGEN_MINIMO = 40;
+let _finanzasConfig = {
+    items: DEFAULT_COSTOS_FIJOS.map((c) => ({ ...c })),
+    margenMinimo: DEFAULT_MARGEN_MINIMO,
+    margenActualizadoAt: null,
+};
+let _finanzasPanelBound = false;
+
+async function loadFinanzasConfig() {
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(FINANZAS_CONFIG_DOC_ID).get();
+        if (doc.exists) {
+            const d = doc.data() || {};
+            if (Array.isArray(d.items)) {
+                _finanzasConfig.items = d.items.map((i) => ({
+                    id: String(i.id || `c_${Date.now()}`),
+                    nombre: String(i.nombre || ''),
+                    monto: Number(i.monto || 0),
+                }));
+            }
+            if (d.margenMinimo != null && Number.isFinite(Number(d.margenMinimo))) {
+                _finanzasConfig.margenMinimo = Number(d.margenMinimo);
+            }
+            if (d.margenActualizadoAt) _finanzasConfig.margenActualizadoAt = d.margenActualizadoAt;
+        }
+    } catch (_) {}
+}
+
+async function saveFinanzasConfig({ touchMargen = false } = {}) {
+    const payload = {
+        items: _finanzasConfig.items.map((i) => ({ id: i.id, nombre: i.nombre, monto: Number(i.monto || 0) })),
+        margenMinimo: Number(_finanzasConfig.margenMinimo || 0),
+    };
+    if (touchMargen) {
+        payload.margenActualizadoAt = firestoreNow();
+        _finanzasConfig.margenActualizadoAt = payload.margenActualizadoAt;
+    }
+    await firebaseDb.collection(CONFIG_COLLECTION).doc(FINANZAS_CONFIG_DOC_ID).set(payload, { merge: true });
+}
+
+// Ventas brutas y Resultado Neto Real del mes en curso. MISMA fuente de datos y misma
+// fórmula por cierre que el export de Historial de Cajas (buildCierresExportRows):
+//   bruto  = c.ingresosTotal ?? c.grandTotal ?? 0
+//   neto   = c.grandTotal ?? (bruto − c.gastosTotal)
+// El "Resultado neto real" del export, sumado para un mes, equivale a
+//   Σ(neto de cierres del mes) − Σ(gastos externos del mes)
+// — la atribución por día y las filas "Gastos sin cierre asociado" son solo la
+// presentación por-fila del export y no cambian ese total. Por eso acá se calcula
+// directo desde _cierresCajaState y _gastosExternosState sin tocar el código del export.
+function _finanzasVentasNetoMesEnVivo() {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+    const inMonth = (ms) => ms >= monthStart && ms < monthEnd;
+
+    let ventasMes = 0;
+    let netoCierres = 0;
+    (_cierresCajaState || []).forEach((c) => {
+        const ms = _tsMs(c.closedAt);
+        if (!ms || !inMonth(ms)) return;
+        const bruto = Number(c.ingresosTotal ?? c.grandTotal ?? 0);
+        ventasMes += bruto;
+        netoCierres += Number(c.grandTotal ?? (bruto - Number(c.gastosTotal || 0)));
+    });
+    let gastosExternosMes = 0;
+    (_gastosExternosState || []).forEach((g) => {
+        const ms = _tsMs(g.registradoAt);
+        if (!ms || !inMonth(ms)) return;
+        gastosExternosMes += Number(g.monto || 0);
+    });
+    return { ventasMes, resultadoNetoMes: netoCierres - gastosExternosMes };
+}
+
+function _finanzasFechaCorta(ts) {
+    const ms = _tsMs(ts);
+    if (!ms) return null;
+    return new Date(ms).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function _finanzasCostosFijosTotal() {
+    return (_finanzasConfig.items || []).reduce((s, i) => s + Number(i.monto || 0), 0);
+}
+
+function renderCostosFijosPanel() {
+    const wrap = document.getElementById('costosFijosPanelWrap');
+    if (!wrap) return;
+    const items = _finanzasConfig.items || [];
+    const total = _finanzasCostosFijosTotal();
+
+    wrap.innerHTML = (items.map((it) => `
+        <div class="costo-fijo-row" data-costo-id="${escapeHtml(it.id)}" style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08);">
+            <input type="text" class="costo-fijo-nombre cat-new-input-name" value="${escapeHtml(it.nombre)}" maxlength="40" style="flex:1;min-width:120px;">
+            <input type="text" inputmode="numeric" class="costo-fijo-monto cat-new-input-name" value="${Number(it.monto || 0)}" style="max-width:140px;text-align:right;">
+            <button type="button" class="pm-icon-btn pm-icon-btn--del" data-costo-del="${escapeHtml(it.id)}" title="Eliminar costo">🗑</button>
+        </div>`).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay costos fijos. Agrega uno nuevo.</p>`)
+        + `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;font-weight:800;font-size:0.95rem;">
+            <span>Total costos fijos</span><span>${formatMoney(total)}</span>
+        </div>`;
+
+    if (!_finanzasPanelBound) {
+        _finanzasPanelBound = true;
+
+        wrap.addEventListener('change', async (e) => {
+            const row = e.target.closest('.costo-fijo-row');
+            if (!row) return;
+            const id = row.dataset.costoId;
+            const item = _finanzasConfig.items.find((i) => i.id === id);
+            if (!item) return;
+            if (e.target.classList.contains('costo-fijo-nombre')) {
+                item.nombre = String(e.target.value || '').trim();
+            } else if (e.target.classList.contains('costo-fijo-monto')) {
+                item.monto = Number(String(e.target.value || '').replace(/[^\d]/g, '')) || 0;
+            }
+            try {
+                await saveFinanzasConfig();
+                renderCostosFijosPanel();
+                renderFinanzasEnVivo();
+            } catch (_) { showNotice('Error al guardar el costo fijo.', 'error'); }
+        });
+
+        wrap.addEventListener('click', async (e) => {
+            const del = e.target.closest('[data-costo-del]');
+            if (!del) return;
+            const id = del.dataset.costoDel;
+            const item = _finanzasConfig.items.find((i) => i.id === id);
+            if (!(await showConfirmModal({ title: `¿Eliminar "${item?.nombre || 'este costo'}"?`, confirmText: 'Eliminar' }))) return;
+            _finanzasConfig.items = _finanzasConfig.items.filter((i) => i.id !== id);
+            try {
+                await saveFinanzasConfig();
+                renderCostosFijosPanel();
+                renderFinanzasEnVivo();
+                showNotice('Costo fijo eliminado.', 'ok');
+            } catch (_) { showNotice('Error al guardar.', 'error'); }
+        });
+    }
+}
+
+function renderMargenMinimo() {
+    const input = document.getElementById('margenMinimoInput');
+    const lbl = document.getElementById('margenActualizadoLbl');
+    if (input && document.activeElement !== input) input.value = String(_finanzasConfig.margenMinimo || 0);
+    if (lbl) {
+        const f = _finanzasFechaCorta(_finanzasConfig.margenActualizadoAt);
+        lbl.textContent = f ? `Actualizado: ${f}` : 'Actualizado: nunca (valor inicial)';
+    }
+}
+
+function renderFinanzasEnVivo() {
+    const body = document.getElementById('finanzasEnVivoBody');
+    if (!body) return;
+
+    const costosFijos = _finanzasCostosFijosTotal();
+    const margen = Number(_finanzasConfig.margenMinimo || 0);
+    const minimoViable = margen > 0 ? costosFijos / (margen / 100) : 0;
+    const { ventasMes, resultadoNetoMes } = _finanzasVentasNetoMesEnVivo();
+    const avance = minimoViable > 0 ? Math.round((ventasMes / minimoViable) * 100) : 0;
+    const barPct = Math.min(100, Math.max(0, avance));
+    const netoColor = resultadoNetoMes >= 0 ? '#6ee7b7' : '#fca5a5';
+    const mesLbl = new Date().toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+
+    body.innerHTML = `
+        <div style="display:grid;gap:10px;font-size:0.92rem;">
+            <div style="display:flex;justify-content:space-between;gap:12px;">
+                <span style="color:var(--admin-muted);">Suma de costos fijos</span>
+                <strong>${formatMoney(costosFijos)}</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;">
+                <span style="color:var(--admin-muted);">Mínimo viable</span>
+                <span><strong>${formatMoney(minimoViable)}</strong>
+                    <span style="color:var(--admin-muted);font-size:0.8rem;">= ${formatMoney(costosFijos)} ÷ ${margen}%</span></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;">
+                <span style="color:var(--admin-muted);">Ventas reales de ${escapeHtml(mesLbl)}</span>
+                <span><strong>${formatMoney(ventasMes)}</strong>
+                    <span style="color:var(--admin-muted);font-size:0.8rem;">solo jornadas cerradas</span></span>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:12px;">
+                <span style="color:var(--admin-muted);">Resultado neto real acumulado</span>
+                <strong style="color:${netoColor};">${resultadoNetoMes < 0 ? '−' : ''}${formatMoney(Math.abs(resultadoNetoMes))}</strong>
+            </div>
+        </div>
+        <div style="margin-top:16px;">
+            <div style="height:14px;background:rgba(255,255,255,0.08);border-radius:7px;overflow:hidden;">
+                <div style="height:100%;width:${barPct}%;background:var(--admin-accent,#ff9540);border-radius:7px;"></div>
+            </div>
+            <p style="margin:8px 0 0;font-weight:700;">Llevas ${avance}% del mínimo viable este mes</p>
+        </div>`;
+}
+
+function renderFinanzasPanel() {
+    renderCostosFijosPanel();
+    renderMargenMinimo();
+    renderFinanzasEnVivo();
+}
+
+let _finanzasEverLoaded = false;
+async function _ensureFinanzasLoaded() {
+    renderFinanzasPanel(); // pinta de inmediato con lo que haya en memoria (defaults la 1ª vez)
+    try {
+        await Promise.all([
+            _finanzasEverLoaded ? Promise.resolve() : loadFinanzasConfig(),
+            loadCierresCaja(),
+        ]);
+        _finanzasEverLoaded = true;
+    } catch (_) {}
+    renderFinanzasPanel();
+}
+
+document.getElementById('addCostoFijoBtn')?.addEventListener('click', () => {
+    const formWrap = document.getElementById('newCostoFijoFormWrap');
+    if (!formWrap) return;
+    formWrap.style.display = 'flex';
+    document.getElementById('newCostoFijoNombre')?.focus();
+});
+
+document.getElementById('newCostoFijoSaveBtn')?.addEventListener('click', async () => {
+    const nameEl = document.getElementById('newCostoFijoNombre');
+    const montoEl = document.getElementById('newCostoFijoMonto');
+    const nombre = nameEl?.value?.trim() || '';
+    const monto = Number(String(montoEl?.value || '').replace(/[^\d]/g, '')) || 0;
+    if (!nombre) { showNotice('Escribe un nombre para el costo fijo.', 'error'); return; }
+    const id = nombre.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') + '_' + Date.now();
+    _finanzasConfig.items = [..._finanzasConfig.items, { id, nombre, monto }];
+    try {
+        await saveFinanzasConfig();
+    } catch (_) {
+        _finanzasConfig.items = _finanzasConfig.items.filter((i) => i.id !== id);
+        showNotice('Error al guardar el costo fijo.', 'error');
+        return;
+    }
+    if (nameEl) nameEl.value = '';
+    if (montoEl) montoEl.value = '';
+    const formWrap = document.getElementById('newCostoFijoFormWrap');
+    if (formWrap) formWrap.style.display = 'none';
+    renderCostosFijosPanel();
+    renderFinanzasEnVivo();
+    showNotice('Costo fijo agregado.', 'ok');
+});
+
+document.getElementById('newCostoFijoCancelBtn')?.addEventListener('click', () => {
+    const formWrap = document.getElementById('newCostoFijoFormWrap');
+    if (formWrap) formWrap.style.display = 'none';
+});
+
+document.getElementById('margenMinimoSaveBtn')?.addEventListener('click', async () => {
+    const input = document.getElementById('margenMinimoInput');
+    const val = Number(String(input?.value || '').replace(/[^\d]/g, ''));
+    if (!Number.isFinite(val) || val <= 0 || val > 100) {
+        showNotice('El margen debe ser un número entre 1 y 100.', 'error');
+        return;
+    }
+    const prev = _finanzasConfig.margenMinimo;
+    _finanzasConfig.margenMinimo = val;
+    try {
+        await saveFinanzasConfig({ touchMargen: true });
+    } catch (_) {
+        _finanzasConfig.margenMinimo = prev;
+        showNotice('Error al guardar el margen.', 'error');
+        return;
+    }
+    renderMargenMinimo();
+    renderFinanzasEnVivo();
+    showNotice('Margen mínimo actualizado.', 'ok');
 });
 
 // ── Gastos — Informes ─────────────────────────────────────────────────────────
