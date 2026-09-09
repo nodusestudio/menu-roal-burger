@@ -438,6 +438,8 @@ const PosCart = {
         const promo2x1 = opts.promo2x1 === true;
         const promo2x1Incremento = opts.promo2x1Incremento === true;
         const initialQuantity = Math.max(1, Number(opts.initialQuantity) || 1);
+        // Nombre de quien autorizó un descuento / cobro extra (gate de PIN de supervisor).
+        const aplicadoPor = String(opts.aplicadoPor || '').trim();
 
         // itemKey determinístico por (productId + nota) → ítems con misma nota se fusionan.
         // opts.forcedKey fuerza una clave única (ej. items con combo) para evitar fusión.
@@ -463,6 +465,7 @@ const PosCart = {
             promoLabel,
             promo2x1,
             promo2x1Incremento,
+            aplicadoPor: aplicadoPor || null,
             parentKey: opts.parentKey || null
         };
         internalOrderItems.push(item);
@@ -545,6 +548,7 @@ const PosCart = {
             quantity: Number(item.quantity || 0),
             unitPrice: Number(item.unitPrice || 0),
             subtotal: Number(item.subtotal || 0),
+            ...(item.aplicadoPor ? { aplicadoPor: item.aplicadoPor } : {}),
             ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel, promo2x1Incremento: item.promo2x1Incremento === true } } : {})
         }));
     }
@@ -3435,6 +3439,9 @@ function _togglePosActionPopover(popoverId, renderFn) {
     const willOpen = popover.hasAttribute('hidden');
     _closePosActionPopovers();
     if (willOpen) {
+        // Precarga el PIN de supervisor para que el gate de "Agregar al ticket" no dependa
+        // de haber abierto antes Configuración → Seguridad (el handler igual hace await si hace falta).
+        if (_supervisorPin === undefined) loadSupervisorPin();
         renderFn(popover);
         popover.removeAttribute('hidden');
     }
@@ -4070,6 +4077,14 @@ function renderPosCobroExtraPanel(grid) {
                 <label for="cobroExtraMonto">Monto $</label>
                 <input id="cobroExtraMonto" type="number" placeholder="0" min="0" step="100" inputmode="numeric">
             </div>
+            <div class="pos-cobro-extra-field">
+                <label for="cobroExtraPin">PIN de supervisor</label>
+                <input id="cobroExtraPin" type="password" inputmode="numeric" maxlength="4" placeholder="4 dígitos" autocomplete="off">
+            </div>
+            <div class="pos-cobro-extra-field">
+                <label for="cobroExtraAplicadoPor">Aplicado por</label>
+                <input id="cobroExtraAplicadoPor" type="text" placeholder="Quién autoriza" maxlength="40" autocomplete="off">
+            </div>
         </div>
         <div class="pos-cobro-extra-presets">
             ${PRESETS.map((v) => `<button type="button" class="pos-cobro-preset-btn" data-value="${v}">${formatMoney(v)}</button>`).join('')}
@@ -4088,11 +4103,14 @@ function renderPosCobroExtraPanel(grid) {
     });
 
     // Agregar al ticket
-    wrap.querySelector('#cobroExtraAddBtn').addEventListener('click', () => {
+    wrap.querySelector('#cobroExtraAddBtn').addEventListener('click', async () => {
         const conceptoInput = wrap.querySelector('#cobroExtraConcepto');
         const montoInput    = wrap.querySelector('#cobroExtraMonto');
+        const pinInput      = wrap.querySelector('#cobroExtraPin');
+        const aplicadoPorInput = wrap.querySelector('#cobroExtraAplicadoPor');
         const concepto = String(conceptoInput?.value || '').trim() || 'Cobro extra';
         const monto    = Number(montoInput?.value || 0);
+        const aplicadoPor = String(aplicadoPorInput?.value || '').trim();
 
         if (!monto || monto <= 0) {
             montoInput?.focus();
@@ -4100,9 +4118,22 @@ function renderPosCobroExtraPanel(grid) {
             return;
         }
 
+        // Gate de supervisor — validación solo en cliente (disuasivo interno). No se limpian
+        // los campos ni se cierra el popover si falla, para no obligar a reescribir todo.
+        if (_supervisorPin === undefined) await loadSupervisorPin();
+        if (!_supervisorPin) {
+            showNotice('Configura un PIN de supervisor primero (Configuración → Seguridad).', 'error');
+            return;
+        }
+        if (String(pinInput?.value || '').replace(/\D/g, '') !== _supervisorPin) {
+            pinInput?.focus();
+            showNotice('PIN de supervisor incorrecto.', 'error');
+            return;
+        }
+
         // El monto va en el productId (no solo el concepto) para que dos cobros con el mismo
         // concepto pero distinto monto no se fusionen en una sola fila con el monto del primero.
-        addProductToPosOrder(`cobro-extra::${concepto}::${monto}`, concepto, monto, '', null);
+        addProductToPosOrder(`cobro-extra::${concepto}::${monto}`, concepto, monto, '', null, { aplicadoPor });
         showNotice(`${concepto} — ${formatMoney(monto)} agregado al ticket.`, 'ok');
 
         _closePosActionPopovers();
@@ -4139,6 +4170,14 @@ function renderPosDescuentoPanel(grid) {
                 <label for="descuentoMonto">Monto a descontar $</label>
                 <input id="descuentoMonto" type="number" placeholder="0" min="0" step="100" inputmode="numeric">
             </div>
+            <div class="pos-cobro-extra-field">
+                <label for="descuentoPin">PIN de supervisor</label>
+                <input id="descuentoPin" type="password" inputmode="numeric" maxlength="4" placeholder="4 dígitos" autocomplete="off">
+            </div>
+            <div class="pos-cobro-extra-field">
+                <label for="descuentoAplicadoPor">Aplicado por</label>
+                <input id="descuentoAplicadoPor" type="text" placeholder="Quién autoriza" maxlength="40" autocomplete="off">
+            </div>
         </div>
         <div class="pos-cobro-extra-presets">
             ${PRESETS.map((v) => `<button type="button" class="pos-cobro-preset-btn pos-desc-preset-btn" data-value="${v}">${formatMoney(v)}</button>`).join('')}
@@ -4155,11 +4194,14 @@ function renderPosDescuentoPanel(grid) {
         });
     });
 
-    wrap.querySelector('#descuentoAddBtn').addEventListener('click', () => {
+    wrap.querySelector('#descuentoAddBtn').addEventListener('click', async () => {
         const conceptoInput = wrap.querySelector('#descuentoConcepto');
         const montoInput    = wrap.querySelector('#descuentoMonto');
+        const pinInput      = wrap.querySelector('#descuentoPin');
+        const aplicadoPorInput = wrap.querySelector('#descuentoAplicadoPor');
         const concepto = String(conceptoInput?.value || '').trim() || 'Descuento';
         const monto    = Number(montoInput?.value || 0);
+        const aplicadoPor = String(aplicadoPorInput?.value || '').trim();
 
         if (!monto || monto <= 0) {
             montoInput?.focus();
@@ -4167,9 +4209,22 @@ function renderPosDescuentoPanel(grid) {
             return;
         }
 
+        // Gate de supervisor — validación solo en cliente (disuasivo interno). No se limpian
+        // los campos ni se cierra el popover si falla, para no obligar a reescribir todo.
+        if (_supervisorPin === undefined) await loadSupervisorPin();
+        if (!_supervisorPin) {
+            showNotice('Configura un PIN de supervisor primero (Configuración → Seguridad).', 'error');
+            return;
+        }
+        if (String(pinInput?.value || '').replace(/\D/g, '') !== _supervisorPin) {
+            pinInput?.focus();
+            showNotice('PIN de supervisor incorrecto.', 'error');
+            return;
+        }
+
         // Precio negativo = descuento. El monto va en el productId para que dos descuentos con
         // el mismo concepto pero distinto monto no se fusionen en una sola fila (ver cobro extra).
-        addProductToPosOrder(`descuento::${concepto}::${monto}`, concepto, -monto, '', null);
+        addProductToPosOrder(`descuento::${concepto}::${monto}`, concepto, -monto, '', null, { aplicadoPor });
         showNotice(`${concepto} — -${formatMoney(monto)} aplicado al ticket.`, 'ok');
 
         _closePosActionPopovers();
@@ -7341,7 +7396,8 @@ async function editAdminPosOrder(order) {
             // Sin esto, al reabrir un pedido guardado para editarlo (ej. para cambiar
             // domicilio ↔ para llevar) se perdía el +$2.000 de empaque de los 2x1: quedaba
             // undefined y PosCart.getPromo2x1IncrementoFee() lo trataba como "sin incremento".
-            promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true
+            promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true,
+            aplicadoPor: item.aplicadoPor || null
         }));
 
         _editingOrderData = {
@@ -7421,7 +7477,8 @@ function openOrderItemsEditor(order) {
             subtotal: Number(item.subtotal || 0),
             promoLabel: String(item.orderOptions?.promoLabel || item.promoLabel || ''),
             promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true,
-            promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true
+            promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true,
+            aplicadoPor: item.aplicadoPor || null
         }));
 
         _editingOrderData = null;
@@ -17215,6 +17272,7 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
             if (target === 'categorias_gastos') loadCategoriasGastos().then(renderCategoriasGastosPanel);
             if (target === 'barrios_especiales') loadBarriosEspeciales().then(renderBarriosEspecialesPanel);
             if (target === 'horario') fetchHorarioConfig().then(() => { renderHorarioForm(); renderCierresProgramados(); });
+            if (target === 'seguridad') loadSupervisorPin().then(renderSupervisorPinField);
         }
     });
 });
@@ -18752,6 +18810,62 @@ document.getElementById('bizChangePasswordBtn')?.addEventListener('click', async
         showPassStatus(msg, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Actualizar contraseña'; }
+    }
+});
+
+// ── PIN de Supervisor (POS: gate de descuentos y cobros extra) ────────────────
+// Disuasivo interno: se valida SOLO en el cliente (acordado así, no es defensa
+// contra ataques externos). Se guarda en configuracion/supervisor_pin con el
+// mismo patrón get/set + merge:true que costos_fijos.
+const SUPERVISOR_PIN_DOC_ID = 'supervisor_pin';
+// undefined = nunca se intentó cargar · null = cargado, sin PIN configurado · string = PIN de 4 dígitos
+let _supervisorPin;
+
+async function loadSupervisorPin() {
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(SUPERVISOR_PIN_DOC_ID).get();
+        const raw = doc.exists ? String(doc.data()?.pin || '').trim() : '';
+        _supervisorPin = /^\d{4}$/.test(raw) ? raw : null;
+    } catch (_) {
+        _supervisorPin = null;
+    }
+}
+
+function renderSupervisorPinField() {
+    const input = document.getElementById('supervisorPinInput');
+    if (!input) return;
+    if (document.activeElement !== input) input.value = _supervisorPin || '';
+    input.placeholder = _supervisorPin ? '••••' : '0000 (sin configurar)';
+}
+
+document.getElementById('supervisorPinSaveBtn')?.addEventListener('click', async () => {
+    const input = document.getElementById('supervisorPinInput');
+    const statusEl = document.getElementById('supervisorPinStatus');
+    const btn = document.getElementById('supervisorPinSaveBtn');
+    const show = (msg, type) => {
+        if (!statusEl) return;
+        statusEl.textContent = msg;
+        statusEl.className = `biz-pass-status ${type}`;
+        statusEl.hidden = false;
+    };
+    const val = String(input?.value || '').replace(/\D/g, '');
+    if (!/^\d{4}$/.test(val)) { show('El PIN debe ser exactamente 4 dígitos.', 'error'); input?.focus(); return; }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+    const prev = _supervisorPin;
+    _supervisorPin = val;
+    try {
+        await firebaseDb.collection(CONFIG_COLLECTION).doc(SUPERVISOR_PIN_DOC_ID).set(
+            { pin: val, updatedAt: firestoreNow() },
+            { merge: true }
+        );
+        show('PIN de supervisor actualizado.', 'ok');
+        renderSupervisorPinField();
+    } catch (err) {
+        _supervisorPin = prev;
+        show(`Error al guardar: ${err.message || 'intenta de nuevo.'}`, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Guardar PIN'; }
     }
 });
 
