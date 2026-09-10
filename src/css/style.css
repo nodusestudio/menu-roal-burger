@@ -2569,6 +2569,16 @@ body.has-guest-register-banner #ayudaScreen {
     box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 
+/* El desplegable nativo del <select> lo pinta el sistema operativo sobre fondo CLARO,
+   no el tema oscuro del modal. Sin esto las <option> heredan color:var(--text-primary)
+   (crema #f3ece0) y quedan crema-sobre-blanco = ilegibles ("en gris"). Esto solo afecta
+   a la lista ABIERTA; el control cerrado sigue usando el color/fondo de arriba y se ve
+   igual sobre el vidrio del modal. */
+.support-field select option {
+    color: #1f1a15;
+    background-color: #fdfbf7;
+}
+
 .support-field input::placeholder,
 .support-field textarea::placeholder {
     color: var(--text-secondary);
