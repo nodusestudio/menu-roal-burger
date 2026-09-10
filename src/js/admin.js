@@ -3439,9 +3439,6 @@ function _togglePosActionPopover(popoverId, renderFn) {
     const willOpen = popover.hasAttribute('hidden');
     _closePosActionPopovers();
     if (willOpen) {
-        // Precarga el PIN de supervisor para que el gate de "Agregar al ticket" no dependa
-        // de haber abierto antes Configuración → Seguridad (el handler igual hace await si hace falta).
-        if (_supervisorPin === undefined) loadSupervisorPin();
         renderFn(popover);
         popover.removeAttribute('hidden');
     }
@@ -4118,14 +4115,31 @@ function renderPosCobroExtraPanel(grid) {
             return;
         }
 
-        // Gate de supervisor — validación solo en cliente (disuasivo interno). No se limpian
-        // los campos ni se cierra el popover si falla, para no obligar a reescribir todo.
-        if (_supervisorPin === undefined) await loadSupervisorPin();
-        if (!_supervisorPin) {
+        // Gate de supervisor — el PIN real vive solo en el servidor; el intento se verifica
+        // vía verifySupervisorPin (Cloud Function). No se limpian los campos ni se cierra el
+        // popover si falla, para no obligar a reescribir todo.
+        const pin = String(pinInput?.value || '').replace(/\D/g, '');
+        if (!/^\d{4}$/.test(pin)) {
+            pinInput?.focus();
+            showNotice('Ingresa el PIN de supervisor (4 dígitos).', 'error');
+            return;
+        }
+        if (!firebaseFunctions) {
+            showNotice('Servicio no disponible. Recarga la página.', 'error');
+            return;
+        }
+        let _pinCheck;
+        try {
+            _pinCheck = await firebaseFunctions.httpsCallable('verifySupervisorPin')({ pin });
+        } catch (_) {
+            showNotice('No se pudo verificar el PIN. Revisa la conexión e intenta de nuevo.', 'error');
+            return;
+        }
+        if (_pinCheck?.data?.configured === false) {
             showNotice('Configura un PIN de supervisor primero (Configuración → Seguridad).', 'error');
             return;
         }
-        if (String(pinInput?.value || '').replace(/\D/g, '') !== _supervisorPin) {
+        if (_pinCheck?.data?.valid !== true) {
             pinInput?.focus();
             showNotice('PIN de supervisor incorrecto.', 'error');
             return;
@@ -4209,14 +4223,31 @@ function renderPosDescuentoPanel(grid) {
             return;
         }
 
-        // Gate de supervisor — validación solo en cliente (disuasivo interno). No se limpian
-        // los campos ni se cierra el popover si falla, para no obligar a reescribir todo.
-        if (_supervisorPin === undefined) await loadSupervisorPin();
-        if (!_supervisorPin) {
+        // Gate de supervisor — el PIN real vive solo en el servidor; el intento se verifica
+        // vía verifySupervisorPin (Cloud Function). No se limpian los campos ni se cierra el
+        // popover si falla, para no obligar a reescribir todo.
+        const pin = String(pinInput?.value || '').replace(/\D/g, '');
+        if (!/^\d{4}$/.test(pin)) {
+            pinInput?.focus();
+            showNotice('Ingresa el PIN de supervisor (4 dígitos).', 'error');
+            return;
+        }
+        if (!firebaseFunctions) {
+            showNotice('Servicio no disponible. Recarga la página.', 'error');
+            return;
+        }
+        let _pinCheck;
+        try {
+            _pinCheck = await firebaseFunctions.httpsCallable('verifySupervisorPin')({ pin });
+        } catch (_) {
+            showNotice('No se pudo verificar el PIN. Revisa la conexión e intenta de nuevo.', 'error');
+            return;
+        }
+        if (_pinCheck?.data?.configured === false) {
             showNotice('Configura un PIN de supervisor primero (Configuración → Seguridad).', 'error');
             return;
         }
-        if (String(pinInput?.value || '').replace(/\D/g, '') !== _supervisorPin) {
+        if (_pinCheck?.data?.valid !== true) {
             pinInput?.focus();
             showNotice('PIN de supervisor incorrecto.', 'error');
             return;
@@ -18814,28 +18845,34 @@ document.getElementById('bizChangePasswordBtn')?.addEventListener('click', async
 });
 
 // ── PIN de Supervisor (POS: gate de descuentos y cobros extra) ────────────────
-// Disuasivo interno: se valida SOLO en el cliente (acordado así, no es defensa
-// contra ataques externos). Se guarda en configuracion/supervisor_pin con el
-// mismo patrón get/set + merge:true que costos_fijos.
+// El PIN real vive SOLO en el servidor: configuracion/supervisor_pin ya no es
+// legible desde el cliente (firestore.rules). El cliente solo sabe si HAY un PIN
+// configurado (getSupervisorPinStatus) y verifica los intentos contra el server
+// (verifySupervisorPin). La escritura ("Guardar PIN") sigue siendo un set() de
+// admin, igual que antes.
 const SUPERVISOR_PIN_DOC_ID = 'supervisor_pin';
-// undefined = nunca se intentó cargar · null = cargado, sin PIN configurado · string = PIN de 4 dígitos
-let _supervisorPin;
+// undefined = nunca se cargó · true/false = si hay un PIN configurado. El valor real
+// NUNCA está presente en el cliente.
+let _supervisorPinConfigured;
 
 async function loadSupervisorPin() {
+    if (!firebaseFunctions) { _supervisorPinConfigured = false; return; }
     try {
-        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(SUPERVISOR_PIN_DOC_ID).get();
-        const raw = doc.exists ? String(doc.data()?.pin || '').trim() : '';
-        _supervisorPin = /^\d{4}$/.test(raw) ? raw : null;
+        const res = await firebaseFunctions.httpsCallable('getSupervisorPinStatus')({});
+        _supervisorPinConfigured = res?.data?.configured === true;
     } catch (_) {
-        _supervisorPin = null;
+        _supervisorPinConfigured = false;
     }
 }
 
 function renderSupervisorPinField() {
     const input = document.getElementById('supervisorPinInput');
     if (!input) return;
-    if (document.activeElement !== input) input.value = _supervisorPin || '';
-    input.placeholder = _supervisorPin ? '••••' : '0000 (sin configurar)';
+    // El campo siempre arranca vacío — el PIN real ya no se trae al cliente.
+    if (document.activeElement !== input) input.value = '';
+    input.placeholder = _supervisorPinConfigured
+        ? '•••• (configurado — escribe uno nuevo para cambiarlo)'
+        : '0000 (sin configurar)';
 }
 
 document.getElementById('supervisorPinSaveBtn')?.addEventListener('click', async () => {
@@ -18852,17 +18889,16 @@ document.getElementById('supervisorPinSaveBtn')?.addEventListener('click', async
     if (!/^\d{4}$/.test(val)) { show('El PIN debe ser exactamente 4 dígitos.', 'error'); input?.focus(); return; }
 
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
-    const prev = _supervisorPin;
-    _supervisorPin = val;
     try {
         await firebaseDb.collection(CONFIG_COLLECTION).doc(SUPERVISOR_PIN_DOC_ID).set(
             { pin: val, updatedAt: firestoreNow() },
             { merge: true }
         );
+        _supervisorPinConfigured = true;
+        if (input) input.value = '';
         show('PIN de supervisor actualizado.', 'ok');
         renderSupervisorPinField();
     } catch (err) {
-        _supervisorPin = prev;
         show(`Error al guardar: ${err.message || 'intenta de nuevo.'}`, 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Guardar PIN'; }
