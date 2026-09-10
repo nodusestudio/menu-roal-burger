@@ -11374,6 +11374,15 @@ function refreshCatalogScreenIfNeeded() {
 function openMenuCarouselScreen() {
     const screen = document.getElementById('menuCarouselScreen');
     if (!screen) return;
+    // Entrar al menú (carga inicial, botón atrás, nav "Inicio") siempre muestra el
+    // catálogo completo: se descarta cualquier búsqueda activa y se colapsa el input.
+    _catalogSearchQuery = '';
+    const _si = document.getElementById('topSearchInput');
+    const _sc = document.getElementById('topSearchClose');
+    const _sd = document.getElementById('topSearchDisplay');
+    if (_si) { _si.value = ''; _si.hidden = true; }
+    if (_sc) _sc.hidden = true;
+    if (_sd) _sd.hidden = false;
     _enterScreen('menuCarouselScreen');
     screen.hidden = false;
     screen.scrollTop = 0;
@@ -11475,10 +11484,35 @@ function renderMenuCarousels() {
         return;
     }
 
+    // Búsqueda activa (>=2 chars) → filtrar a las coincidencias y ordenarlas por score
+    // dentro de cada sección. La franja de estado y la visibilidad de los chips se
+    // actualizan acá mismo. Con 0-1 chars, searchRes queda null y se pinta todo.
+    const searchRes = _catalogSearchActive() ? _catalogSearchScores(_catalogSearchQuery.trim()) : null;
+    _updateCatalogSearchUI(searchRes ? searchRes.total : 0);
+
+    if (searchRes && searchRes.total === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'catalog-search-empty liquid-glass';
+        empty.innerHTML =
+            '<p class="cse-icon" aria-hidden="true">🔍</p>' +
+            `<p class="cse-title">Sin resultados para «${escapeXml(_catalogSearchQuery.trim())}»</p>` +
+            '<p class="cse-hint">Probá con otra palabra.</p>' +
+            '<button type="button" class="cse-btn" id="catalogSearchEmptyBtn">Ver todo el menú</button>';
+        body.appendChild(empty);
+        document.getElementById('catalogSearchEmptyBtn')?.addEventListener('click', _clearCatalogSearch);
+        syncOrderingAvailabilityUI();
+        return;
+    }
+
     cats.forEach(cat => {
-        const products = allProds.filter(p =>
+        let products = allProds.filter(p =>
             normalizeCategoryKey(String(p.categoria || '')) === cat.key
         );
+        if (searchRes) {
+            products = products
+                .filter(p => searchRes.scores.has(p.id))
+                .sort((a, b) => searchRes.scores.get(b.id) - searchRes.scores.get(a.id));
+        }
         if (!products.length) return;
 
         const section = document.createElement('section');
@@ -11498,6 +11532,16 @@ function renderMenuCarousels() {
         section.appendChild(grid);
         body.appendChild(section);
     });
+
+    // Pulso breve sobre la mejor coincidencia para que el ojo aterrice.
+    if (searchRes && searchRes.bestId) {
+        requestAnimationFrame(() => {
+            const cardEl = body.querySelector(`[data-product-id="${searchRes.bestId}"]`);
+            if (!cardEl) return;
+            cardEl.classList.add('pcm-search-highlight');
+            setTimeout(() => cardEl.classList.remove('pcm-search-highlight'), 1500);
+        });
+    }
 
     syncOrderingAvailabilityUI();
 }
@@ -12056,23 +12100,67 @@ function _scoreProduct(rawQ, p) {
     return score;
 }
 
-// Buscador en vivo de la barra superior: reutiliza el mismo scoring (_scoreProduct) que usaba
-// el buscador de pantalla completa ya retirado, pero en vez de pintar una grilla de resultados
-// aparte, solo devuelve el producto que mejor coincide para saltar directo a su tarjeta en el catalogo.
-function _findBestMatchingProduct(query) {
-    const q = String(query || '').trim();
-    if (q.length < 2) return null;
-    const pool = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
-    let best = null;
+// ── Búsqueda en la barra superior: filtra el catálogo continuo EN EL LUGAR ───────
+// Antes solo "saltaba al mejor" (buscador de pantalla completa retirado). Ahora el
+// catálogo (#menuCarouselBody) se re-pinta mostrando TODAS las coincidencias,
+// agrupadas por su categoría, ordenadas por score dentro de cada sección. Reutiliza
+// _scoreProduct y el mismo umbral (>=10) que usaba el "salto al mejor". Con la query
+// en 0-1 caracteres el filtro NO se activa (evita ruido con una sola letra).
+const _CATALOG_SEARCH_MIN_SCORE = 10;
+let _catalogSearchQuery = '';
+
+function _catalogSearchActive() {
+    return _catalogSearchQuery.trim().length >= 2;
+}
+
+// { scores: Map(id -> score), total, bestId } de los productos que superan el umbral.
+function _catalogSearchScores(rawQ) {
+    const scores = new Map();
+    let bestId = null;
     let bestScore = 0;
+    const pool = (latestProducts || []).filter(p => String(p.estado || '').trim() !== 'paused');
     for (const p of pool) {
-        const score = _scoreProduct(q, p);
-        if (score > bestScore) {
-            bestScore = score;
-            best = p;
+        const s = _scoreProduct(rawQ, p);
+        if (s >= _CATALOG_SEARCH_MIN_SCORE) {
+            scores.set(p.id, s);
+            if (s > bestScore) { bestScore = s; bestId = p.id; }
         }
     }
-    return bestScore >= 10 ? best : null;
+    return { scores, total: scores.size, bestId };
+}
+
+// Franja de estado bajo la barra de chips + visibilidad de los chips según haya búsqueda.
+function _updateCatalogSearchUI(total) {
+    const chipsBar = document.getElementById('catalogChipsBar');
+    const statusEl = document.getElementById('catalogSearchStatus');
+    const active = _catalogSearchActive();
+    if (chipsBar) chipsBar.hidden = active;
+    if (!statusEl) return;
+    if (!active) { statusEl.hidden = true; statusEl.innerHTML = ''; return; }
+    const q = _catalogSearchQuery.trim();
+    const label = total === 1 ? '1 resultado' : `${total} resultados`;
+    statusEl.innerHTML =
+        `<span class="cs-status-text">«${escapeXml(q)}» — ${label}</span>` +
+        `<button type="button" class="cs-clear-btn" id="catalogSearchClearBtn">Ver todo</button>`;
+    statusEl.hidden = false;
+    document.getElementById('catalogSearchClearBtn')?.addEventListener('click', _clearCatalogSearch);
+}
+
+// Vuelve al catálogo completo: limpia la query, colapsa el input de la barra superior,
+// re-pinta y sube al tope. Lo llaman el ✕, "Ver todo" y "Ver todo el menú".
+function _clearCatalogSearch() {
+    _catalogSearchQuery = '';
+    const input = document.getElementById('topSearchInput');
+    const closeBtn = document.getElementById('topSearchClose');
+    const display = document.getElementById('topSearchDisplay');
+    if (input) { input.value = ''; input.hidden = true; }
+    if (closeBtn) closeBtn.hidden = true;
+    if (display) display.hidden = false;
+    renderCatalogChips();
+    renderMenuCarousels();
+    observeCatalogSections();
+    const screen = document.getElementById('menuCarouselScreen');
+    if (screen) screen.scrollTop = 0;
 }
 
 // Oculta home y TODAS las demás pantallas secundarias, marca el nav activo y empuja historial
@@ -13190,9 +13278,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('topProfileBtn')?.addEventListener('click', () => openCustomerAuthModal());
     document.getElementById('topCartBtn')?.addEventListener('click', () => openCartDrawer());
 
-    // Buscador en vivo de la barra superior: al tocarlo se convierte en un input real; al
-    // escribir, salta directo a la tarjeta que mejor coincide dentro del catalogo (en vez de
-    // abrir una pantalla de resultados aparte).
+    // Buscador en vivo de la barra superior: al tocarlo se convierte en un input real;
+    // al escribir (>=2 chars) filtra el catálogo continuo EN EL LUGAR mostrando todas
+    // las coincidencias (ver renderMenuCarousels / _catalogSearch*).
     (function setupTopSearchBar() {
         const display = document.getElementById('topSearchDisplay');
         const input = document.getElementById('topSearchInput');
@@ -13205,33 +13293,23 @@ document.addEventListener('DOMContentLoaded', () => {
             closeBtn.hidden = false;
             input.focus();
         };
-        const deactivate = () => {
-            input.value = '';
-            input.hidden = true;
-            closeBtn.hidden = true;
-            display.hidden = false;
-        };
 
         display.addEventListener('click', activate);
-        closeBtn.addEventListener('click', deactivate);
+        // El ✕ limpia la búsqueda y vuelve al catálogo completo (colapsa el input,
+        // re-pinta, sube al tope) — ver _clearCatalogSearch.
+        closeBtn.addEventListener('click', _clearCatalogSearch);
 
         let _topSearchTimer = null;
         input.addEventListener('input', (e) => {
             clearTimeout(_topSearchTimer);
             const query = e.target.value;
             _topSearchTimer = setTimeout(() => {
-                const match = _findBestMatchingProduct(query);
-                if (!match) return;
-                if (document.getElementById('menuCarouselScreen')?.hidden) {
-                    openMenuCarouselScreen();
-                }
-                requestAnimationFrame(() => {
-                    const cardEl = document.querySelector(`[data-product-id="${match.id}"]`);
-                    if (!cardEl) return;
-                    cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    cardEl.classList.add('pcm-search-highlight');
-                    setTimeout(() => cardEl.classList.remove('pcm-search-highlight'), 1500);
-                });
+                _catalogSearchQuery = query;
+                const screen = document.getElementById('menuCarouselScreen');
+                if (screen && screen.hidden) screen.hidden = false; // defensivo: el input solo se ve en el catálogo
+                renderMenuCarousels();                 // filtra, o re-pinta completo si <2 chars
+                if (!_catalogSearchActive()) observeCatalogSections(); // re-activar highlight de chips al volver a todo
+                if (screen) screen.scrollTop = 0;
             }, 180);
         });
     })();
