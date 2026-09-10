@@ -24288,8 +24288,8 @@ async function saveFinanzasConfig({ touchMargen = false } = {}) {
     await firebaseDb.collection(CONFIG_COLLECTION).doc(FINANZAS_CONFIG_DOC_ID).set(payload, { merge: true });
 }
 
-// Ventas brutas y Resultado Neto Real del mes en curso. MISMA fuente de datos y misma
-// fórmula por cierre que el export de Historial de Cajas (buildCierresExportRows):
+// Ventas brutas + descomposición del resultado del mes en curso. MISMA fuente de datos y
+// misma fórmula por cierre que el export de Historial de Cajas (buildCierresExportRows):
 //   bruto  = c.ingresosTotal ?? c.grandTotal ?? 0
 //   neto   = c.grandTotal ?? (bruto − c.gastosTotal)
 // El "Resultado neto real" del export, sumado para un mes, equivale a
@@ -24297,6 +24297,14 @@ async function saveFinanzasConfig({ touchMargen = false } = {}) {
 // — la atribución por día y las filas "Gastos sin cierre asociado" son solo la
 // presentación por-fila del export y no cambian ese total. Por eso acá se calcula
 // directo desde _cierresCajaState y _gastosExternosState sin tocar el código del export.
+//
+// Los gastos externos con categoría "Retiro Socio" se separan del resto: NO son un gasto
+// operativo, son plata que el dueño se saca. Se descompone en:
+//   resultadoAntesDeRetiro = Σ(neto de cierres) − Σ(gastos operativos)   ← cómo le va al negocio
+//   retiroSocioMes         = Σ(gastos externos categoría "Retiro Socio")
+//   resultadoNetoFinal     = resultadoAntesDeRetiro − retiroSocioMes     ← == "Resultado neto real" de antes
+// Si la categoría "Retiro Socio" no existe todavía, retiroSocioMes = 0 y todo colapsa al
+// comportamiento anterior (resultadoNetoFinal == resultadoAntesDeRetiro == el neto de siempre).
 function _finanzasVentasNetoMesEnVivo() {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -24312,13 +24320,27 @@ function _finanzasVentasNetoMesEnVivo() {
         ventasMes += bruto;
         netoCierres += Number(c.grandTotal ?? (bruto - Number(c.gastosTotal || 0)));
     });
-    let gastosExternosMes = 0;
+
+    // id de la categoría "Retiro Socio" (comparación case-insensitive por si la escribieron
+    // distinto). Si no existe, retiroCatId = null y ningún gasto se cuenta como retiro.
+    const _retiroCat = (_categoriasGastosState || []).find(
+        (c) => String(c.nombre || '').trim().toLowerCase() === 'retiro socio'
+    );
+    const retiroCatId = _retiroCat ? _retiroCat.id : null;
+
+    let retiroSocioMes = 0;
+    let gastosOperativosMes = 0;
     (_gastosExternosState || []).forEach((g) => {
         const ms = _tsMs(g.registradoAt);
         if (!ms || !inMonth(ms)) return;
-        gastosExternosMes += Number(g.monto || 0);
+        const monto = Number(g.monto || 0);
+        if (retiroCatId && g.categoria === retiroCatId) retiroSocioMes += monto;
+        else gastosOperativosMes += monto;
     });
-    return { ventasMes, resultadoNetoMes: netoCierres - gastosExternosMes };
+
+    const resultadoAntesDeRetiro = netoCierres - gastosOperativosMes;
+    const resultadoNetoFinal = resultadoAntesDeRetiro - retiroSocioMes;
+    return { ventasMes, resultadoAntesDeRetiro, retiroSocioMes, resultadoNetoFinal };
 }
 
 function _finanzasFechaCorta(ts) {
@@ -24402,10 +24424,11 @@ function renderFinanzasEnVivo() {
     const costosFijos = _finanzasCostosFijosTotal();
     const margen = Number(_finanzasConfig.margenMinimo || 0);
     const minimoViable = margen > 0 ? costosFijos / (margen / 100) : 0;
-    const { ventasMes, resultadoNetoMes } = _finanzasVentasNetoMesEnVivo();
+    const { ventasMes, resultadoAntesDeRetiro, retiroSocioMes, resultadoNetoFinal } = _finanzasVentasNetoMesEnVivo();
     const avance = minimoViable > 0 ? Math.round((ventasMes / minimoViable) * 100) : 0;
     const barPct = Math.min(100, Math.max(0, avance));
-    const netoColor = resultadoNetoMes >= 0 ? '#6ee7b7' : '#fca5a5';
+    const antesColor = resultadoAntesDeRetiro >= 0 ? '#6ee7b7' : '#fca5a5';
+    const finalColor = resultadoNetoFinal >= 0 ? '#6ee7b7' : '#fca5a5';
     const mesLbl = new Date().toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
 
     body.innerHTML = `
@@ -24424,9 +24447,18 @@ function renderFinanzasEnVivo() {
                 <span><strong>${formatMoney(ventasMes)}</strong>
                     <span style="color:var(--admin-muted);font-size:0.8rem;">solo jornadas cerradas</span></span>
             </div>
-            <div style="display:flex;justify-content:space-between;gap:12px;">
-                <span style="color:var(--admin-muted);">Resultado neto real acumulado</span>
-                <strong style="color:${netoColor};">${resultadoNetoMes < 0 ? '−' : ''}${formatMoney(Math.abs(resultadoNetoMes))}</strong>
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding-top:8px;border-top:1px solid rgba(255,255,255,0.1);margin-top:4px;">
+                <span style="font-weight:700;">Resultado antes de Retiro Socio
+                    <span style="color:var(--admin-muted);font-size:0.72rem;font-weight:400;">para decidir sueldo</span></span>
+                <strong style="color:${antesColor};font-size:1.15rem;">${resultadoAntesDeRetiro < 0 ? '−' : ''}${formatMoney(Math.abs(resultadoAntesDeRetiro))}</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:12px;font-size:0.82rem;">
+                <span style="color:var(--admin-muted);">Retiro Socio del mes</span>
+                <span style="color:var(--admin-muted);">${retiroSocioMes > 0 ? '−' : ''}${formatMoney(retiroSocioMes)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:12px;font-size:0.82rem;">
+                <span style="color:var(--admin-muted);">Resultado Neto Final</span>
+                <span style="color:${finalColor};opacity:0.9;">${resultadoNetoFinal < 0 ? '−' : ''}${formatMoney(Math.abs(resultadoNetoFinal))}</span>
             </div>
         </div>
         <div style="margin-top:16px;">
@@ -24449,6 +24481,7 @@ async function _ensureFinanzasLoaded() {
     try {
         await Promise.all([
             _finanzasEverLoaded ? Promise.resolve() : loadFinanzasConfig(),
+            _finanzasEverLoaded ? Promise.resolve() : loadCategoriasGastos(), // para separar "Retiro Socio"
             loadCierresCaja(),
         ]);
         _finanzasEverLoaded = true;
