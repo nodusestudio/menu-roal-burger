@@ -11566,6 +11566,11 @@ function renderCatalogChips() {
         chip.textContent = cat.name;
         chip.dataset.target = 'cat-section-' + cat.key;
         chip.addEventListener('click', () => {
+            // Resaltar al instante en vez de esperar a que el IntersectionObserver (threshold
+            // 0.6) reaccione — durante un scroll suave puede no disparar limpio y el resaltado
+            // se quedaba pegado en la categoría anterior. El observer sigue igual para el
+            // scroll orgánico.
+            setActiveCatalogChip(chip.dataset.target);
             document.getElementById(chip.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
         bar.appendChild(chip);
