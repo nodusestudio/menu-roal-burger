@@ -24298,13 +24298,15 @@ async function saveFinanzasConfig({ touchMargen = false } = {}) {
 // presentación por-fila del export y no cambian ese total. Por eso acá se calcula
 // directo desde _cierresCajaState y _gastosExternosState sin tocar el código del export.
 //
-// Los gastos externos con categoría "Retiro Socio" se separan del resto: NO son un gasto
-// operativo, son plata que el dueño se saca. Se descompone en:
+// Los gastos externos de "Retiro Socio" se separan del resto: NO son un gasto operativo,
+// son plata que el dueño se saca. Se descompone en:
 //   resultadoAntesDeRetiro = Σ(neto de cierres) − Σ(gastos operativos)   ← cómo le va al negocio
-//   retiroSocioMes         = Σ(gastos externos categoría "Retiro Socio")
+//   retiroSocioMes         = Σ(gastos externos de "Retiro Socio")
 //   resultadoNetoFinal     = resultadoAntesDeRetiro − retiroSocioMes     ← == "Resultado neto real" de antes
-// Si la categoría "Retiro Socio" no existe todavía, retiroSocioMes = 0 y todo colapsa al
-// comportamiento anterior (resultadoNetoFinal == resultadoAntesDeRetiro == el neto de siempre).
+// "Retiro Socio" puede estar como SUBCATEGORÍA (en prod vive dentro de "Salarios", junto a
+// nombres de empleados) o como categoría de primer nivel; se prueba en ese orden. Si no
+// existe de ninguna forma, retiroSocioMes = 0 y todo colapsa al comportamiento anterior
+// (resultadoNetoFinal == resultadoAntesDeRetiro == el neto de siempre).
 function _finanzasVentasNetoMesEnVivo() {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -24321,12 +24323,21 @@ function _finanzasVentasNetoMesEnVivo() {
         netoCierres += Number(c.grandTotal ?? (bruto - Number(c.gastosTotal || 0)));
     });
 
-    // id de la categoría "Retiro Socio" (comparación case-insensitive por si la escribieron
-    // distinto). Si no existe, retiroCatId = null y ningún gasto se cuenta como retiro.
-    const _retiroCat = (_categoriasGastosState || []).find(
-        (c) => String(c.nombre || '').trim().toLowerCase() === 'retiro socio'
-    );
-    const retiroCatId = _retiroCat ? _retiroCat.id : null;
+    // Localizar "Retiro Socio" (comparación case-insensitive + trim). Primero como
+    // subcategoría dentro de CUALQUIER categoría; si no, como categoría de primer nivel.
+    const _norm = (s) => String(s || '').trim().toLowerCase();
+    let retiroMode = null;      // 'sub' | 'cat' | null
+    let retiroCatId = null;     // id de la categoría (la PADRE si es 'sub', la propia si es 'cat')
+    let retiroSubName = null;   // nombre exacto de la subcategoría, tal como está guardado
+    for (const c of (_categoriasGastosState || [])) {
+        const sub = (c.subs || []).find((s) => _norm(s) === 'retiro socio');
+        if (sub != null) { retiroMode = 'sub'; retiroCatId = c.id; retiroSubName = sub; break; }
+    }
+    if (!retiroMode) {
+        const catL1 = (_categoriasGastosState || []).find((c) => _norm(c.nombre) === 'retiro socio');
+        if (catL1) { retiroMode = 'cat'; retiroCatId = catL1.id; }
+    }
+    void retiroSubName; // guardado por el spec (trazabilidad); la clasificación compara contra el literal normalizado
 
     let retiroSocioMes = 0;
     let gastosOperativosMes = 0;
@@ -24334,7 +24345,12 @@ function _finanzasVentasNetoMesEnVivo() {
         const ms = _tsMs(g.registradoAt);
         if (!ms || !inMonth(ms)) return;
         const monto = Number(g.monto || 0);
-        if (retiroCatId && g.categoria === retiroCatId) retiroSocioMes += monto;
+        const esRetiro = retiroMode === 'sub'
+            ? (g.categoria === retiroCatId && _norm(g.subcategoria) === 'retiro socio')
+            : retiroMode === 'cat'
+                ? (g.categoria === retiroCatId)
+                : false;
+        if (esRetiro) retiroSocioMes += monto;
         else gastosOperativosMes += monto;
     });
 
