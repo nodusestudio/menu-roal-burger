@@ -1611,6 +1611,59 @@ exports.adminResetClientCredentials = onCall(
 );
 
 // ─────────────────────────────────────────────────────────────
+// PIN de supervisor del POS (gate de descuentos / cobros extra). El valor vive en
+// configuracion/supervisor_pin, que YA NO es legible desde el cliente (ver
+// firestore.rules) — solo el Admin SDK lo lee, aquí. La escritura ("Guardar PIN"
+// desde Configuración) sigue haciéndose desde el cliente con isAdmin().
+// Mismo patrón de autorización que adminResetClientCredentials: sesión válida +
+// documento en la colección admins.
+// ─────────────────────────────────────────────────────────────
+async function _readSupervisorPin() {
+    const snap = await getFirestore().collection('configuracion').doc('supervisor_pin').get();
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const pin = String(data.pin || '').trim();
+    const configured = /^\d{4}$/.test(pin);
+    return { configured, pin: configured ? pin : null, updatedAt: data.updatedAt || null };
+}
+
+exports.verifySupervisorPin = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const adminUid = request.auth?.uid;
+        if (!adminUid) {
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+        }
+        const adminDoc = await getFirestore().collection('admins').doc(adminUid).get();
+        if (!adminDoc.exists) {
+            throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+        }
+
+        const { configured, pin } = await _readSupervisorPin();
+        const candidate = String(request.data?.pin || '').replace(/\D/g, '');
+        // Nunca se devuelve el PIN real. `configured:false` deja que el cliente muestre
+        // "configura un PIN primero" en vez de "PIN incorrecto".
+        return { configured, valid: configured && candidate === pin };
+    }
+);
+
+exports.getSupervisorPinStatus = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const adminUid = request.auth?.uid;
+        if (!adminUid) {
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+        }
+        const adminDoc = await getFirestore().collection('admins').doc(adminUid).get();
+        if (!adminDoc.exists) {
+            throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+        }
+
+        const { configured, updatedAt } = await _readSupervisorPin();
+        return { configured, updatedAt };
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
 // Ajuste manual del saldo de puntos de lealtad desde el admin (corregir un error, compensar un
 // reclamo, etc.) -- puntosDisponibles/puntosAcumuladosTotal solo son escribibles por Admin SDK
 // (ver touchesLoyaltyPoints() en firestore.rules), así que esta es la ÚNICA vía para tocarlos a

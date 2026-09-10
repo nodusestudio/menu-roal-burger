@@ -223,3 +223,25 @@ test('l) SEGURIDAD: mismo cierre de impersonacion en meseros/{token} y mesero_se
         meseroId: 'tok-d', abiertoAt: new Date(), cerradoAt: null
     }));
 });
+
+test('m) SEGURIDAD: configuracion/supervisor_pin no es legible por nadie (ni admin); el resto de configuracion/* sigue publico', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-test-uid').set({ seeded: true });
+        await context.firestore().collection('configuracion').doc('supervisor_pin').set({ pin: '1234' });
+        await context.firestore().collection('configuracion').doc('config_horario').set({ abierto: true });
+    });
+
+    const adminDb = testEnv.authenticatedContext('admin-test-uid').firestore();
+    const anonDb  = testEnv.unauthenticatedContext().firestore();
+
+    // El PIN real no lo lee nadie desde el cliente — el wildcard lo excluye y el bloque
+    // especifico lo niega. Solo el Admin SDK (verifySupervisorPin / getSupervisorPinStatus).
+    await assertFails(anonDb.collection('configuracion').doc('supervisor_pin').get());
+    await assertFails(adminDb.collection('configuracion').doc('supervisor_pin').get());
+
+    // El resto de configuracion/* sigue siendo de lectura publica (el menu lo necesita).
+    await assertSucceeds(anonDb.collection('configuracion').doc('config_horario').get());
+
+    // El admin sigue pudiendo escribir el PIN ("Guardar PIN" desde Configuracion).
+    await assertSucceeds(adminDb.collection('configuracion').doc('supervisor_pin').set({ pin: '5678', updatedAt: new Date() }));
+});

@@ -20,8 +20,18 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/meseros/$(meseroId));
     }
 
+    // El PIN de supervisor del POS NUNCA se lee desde el cliente: solo el Admin SDK,
+    // vía verifySupervisorPin / getSupervisorPinStatus (functions/index.js). En Firestore
+    // las reglas son ADITIVAS -- un match especifico no revoca lo que concede uno mas
+    // amplio -- asi que este bloque por si solo no basta: hay que EXCLUIR el doc del
+    // wildcard de abajo (allow read: if doc != 'supervisor_pin'). La escritura ("Guardar
+    // PIN" desde Configuracion) sigue siendo un set() de admin, sin cambios.
+    match /configuracion/supervisor_pin {
+      allow read: if false;
+      allow write: if isAdmin();
+    }
     match /configuracion/{doc} {
-      allow read: if true;
+      allow read: if doc != 'supervisor_pin';
       allow write: if isAdmin();
     }
     match /categorias/{doc} {
