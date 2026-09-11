@@ -2661,9 +2661,13 @@ body.has-guest-register-banner #ayudaScreen {
     font-weight: 600;
 }
 .support-feedback--error:not(:empty) {
-    background: rgba(200, 40, 20, 0.09);
-    border-color: rgba(200, 40, 20, 0.28);
-    color: #c02010;
+    /* Sobre el vidrio OSCURO del modal (.support-modal-card.liquid-glass) el rojo tenía que
+       ser claro para leerse — #c02010 quedaba apagado. En el fallback de gama baja el vidrio
+       pasa a blanco translúcido; ahí se restaura el rojo oscuro (ver bloques @supports not
+       (...) y html.low-fx más abajo). */
+    background: rgba(214, 58, 42, 0.20);
+    border-color: rgba(255, 122, 107, 0.55);
+    color: #ff8f82;
 }
 .support-feedback--success:not(:empty) {
     background: rgba(22, 163, 74, 0.10);
@@ -8995,6 +8999,12 @@ a,
     .btn-type-glass {
         background-color: rgba(255, 255, 255, 0.62) !important;
     }
+    /* Acá el "vidrio" es blanco translúcido → el rojo claro no se leería. Rojo oscuro. */
+    .support-feedback--error:not(:empty) {
+        background: rgba(200, 40, 20, 0.09);
+        border-color: rgba(200, 40, 20, 0.3);
+        color: #b91c1c;
+    }
 }
 
 html.low-fx *,
@@ -9011,4 +9021,10 @@ html.low-fx .glass-strong,
 html.low-fx .card-pequena,
 html.low-fx .btn-type-glass {
     background-color: rgba(255, 255, 255, 0.60) !important;
+}
+/* Igual que en @supports not (...): el vidrio pasa a blanco → rojo oscuro para el error. */
+html.low-fx .support-feedback--error:not(:empty) {
+    background: rgba(200, 40, 20, 0.09);
+    border-color: rgba(200, 40, 20, 0.3);
+    color: #b91c1c;
 }

@@ -3577,11 +3577,15 @@ async function requestCustomerPasswordReset() {
 }
 
 async function submitCustomerLookup() {
-    if (!customerAuthUI?.lookupPhone || !customerAuthUI?.lookupPin || !customerAuthUI?.feedback) {
+    if (!customerAuthUI?.lookupPhone || !customerAuthUI?.lookupPin) {
         return;
     }
 
-    const feedback   = customerAuthUI.feedback;
+    // Feedback DEDICADO del login por teléfono (junto al botón "Entrar"). El
+    // #customerAuthFeedback compartido queda arriba, junto a la sección de Google, lejos
+    // de este formulario. Fallback al compartido por si el elemento nuevo no está.
+    const feedback   = customerAuthUI.lookupFeedback || customerAuthUI.feedback;
+    if (!feedback) return;
     const btn        = customerAuthUI.lookupButton;
     const phoneField = customerAuthUI.lookupPhone;
     const pinField   = customerAuthUI.lookupPin;
@@ -3636,10 +3640,8 @@ async function submitCustomerLookup() {
         if (error?.code === 'PASSWORD_RESET_REQUIRED') {
             if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
             openCustomerPasswordResetModal(error.profile || { customerPhone: phoneValue });
-            if (customerAuthUI?.feedback) {
-                customerAuthUI.feedback.textContent = error.message || 'Debes crear una nueva contraseña para continuar.';
-                customerAuthUI.feedback.className = 'support-feedback support-feedback--error';
-            }
+            feedback.textContent = error.message || 'Debes crear una nueva contraseña para continuar.';
+            feedback.className = 'support-feedback support-feedback--error';
             return;
         }
         const errMsg = String(error.message || '');
@@ -3891,6 +3893,10 @@ function openCustomerAuthModal() {
                         <span>Contraseña de 6 dígitos</span>
                         <input type="password" id="customerLookupPin" inputmode="numeric" maxlength="6" placeholder="Escribe tu contraseña">
                     </label>
+                    <!-- Feedback DEDICADO del login por teléfono, junto al botón "Entrar". El
+                         #customerAuthFeedback de arriba es compartido con los flujos de Google
+                         (login/vincular/desvincular) y queda lejos de este formulario. -->
+                    <p class="support-feedback" id="customerLookupFeedback" role="alert" aria-live="polite"></p>
                     <div class="support-actions stack">
                         <button type="button" class="support-send-btn" id="customerLookupButton">Entrar</button>
                         <div class="support-actions split">
@@ -3906,6 +3912,7 @@ function openCustomerAuthModal() {
         modal: screen,
         close: null,
         feedback: modal.querySelector('#customerAuthFeedback'),
+        lookupFeedback: modal.querySelector('#customerLookupFeedback'),
         lookupPhone: modal.querySelector('#customerLookupPhone'),
         lookupPin: modal.querySelector('#customerLookupPin'),
         lookupButton: modal.querySelector('#customerLookupButton'),
