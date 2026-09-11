@@ -206,7 +206,11 @@ async function lookupClientByPhone(db, phoneDigits) {
             address: String(d.address || '').trim(),
             totalOrders: Number(d.totalOrders || 0),
             totalSpent: Number(d.totalSpent || 0),
-            lastOrderCode: String(d.lastOrderCode || '').trim()
+            lastOrderCode: String(d.lastOrderCode || '').trim(),
+            // Para precargar el saldo en la pantalla de revisión del canje de puntos (ver
+            // createManualWhatsAppOrder / _waRenderReview, admin.js) sin un viaje extra a
+            // Firestore -- mismo doc que ya se está leyendo acá.
+            puntosDisponibles: Math.max(0, Number(d.puntosDisponibles) || 0)
         };
     } catch (_e) {
         return null; // No crítico: si falla la búsqueda, se sigue sin precarga.

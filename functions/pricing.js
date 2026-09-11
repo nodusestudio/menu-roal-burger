@@ -327,6 +327,19 @@ function resolveServerLineFloor(item, catalog, combosEspeciales, forceNoDiscount
     return null; // no se pudo verificar — ver política de "unresolved" en computeServerPricedOrder
 }
 
+// Extraído de computeServerPricedOrder para poder reusarlo desde createManualWhatsAppOrder (ver
+// computeLoyaltyRedemptionForItems abajo) sin duplicar el clamp -- misma fórmula, sin cambio de
+// comportamiento acá (ver esa función para el porqué de la extracción).
+function clampLoyaltyRedemption({ pointsToRedeemRequested, puntosDisponibles, loyaltyEligibleSubtotal }) {
+    const maxPointsByEligibleSubtotal = Math.floor(Number(loyaltyEligibleSubtotal || 0) / LOYALTY_POINT_VALUE_COP);
+    const pointsRedeemed = Math.max(0, Math.min(
+        Math.floor(Number(pointsToRedeemRequested) || 0),
+        Math.max(0, Number(puntosDisponibles) || 0),
+        maxPointsByEligibleSubtotal
+    ));
+    return { pointsRedeemed, pointsDiscountAmount: pointsRedeemed * LOYALTY_POINT_VALUE_COP };
+}
+
 async function computeServerPricedOrder(db, {
     items,
     fulfillmentType,
@@ -460,13 +473,11 @@ async function computeServerPricedOrder(db, {
     // el saldo real disponible Y el subtotal ELEGIBLE (solo hamburguesas/perros/pepitos/
     // salchipapas en su forma regular -- combos, promociones y el resto de categorías no aplican;
     // el domicilio tampoco se paga nunca con puntos).
-    const maxPointsByEligibleSubtotal = Math.floor(loyaltyEligibleSubtotal / LOYALTY_POINT_VALUE_COP);
-    const pointsRedeemed = Math.max(0, Math.min(
-        Math.floor(Number(pointsToRedeemRequested) || 0),
+    const { pointsRedeemed, pointsDiscountAmount } = clampLoyaltyRedemption({
+        pointsToRedeemRequested,
         puntosDisponibles,
-        maxPointsByEligibleSubtotal
-    ));
-    const pointsDiscountAmount = pointsRedeemed * LOYALTY_POINT_VALUE_COP;
+        loyaltyEligibleSubtotal
+    });
 
     const total = subtotal + deliveryFee + promo2x1IncrementoFee - pointsDiscountAmount;
 
@@ -487,8 +498,42 @@ async function computeServerPricedOrder(db, {
     };
 }
 
+// Mismo cálculo de canje de puntos que computeServerPricedOrder (mismas reglas: elegibilidad por
+// categoría vía isLoyaltyEligibleItem contra el catálogo real, tope por saldo real, tope por
+// subtotal elegible), pero para un llamador que NO pasa por todo el motor de precio del checkout
+// web -- createManualWhatsAppOrder (functions/index.js), donde los items ya vienen con unitPrice
+// puesto por el cajero (no hay piso de catálogo que verificar, ni combos/cupones/descuentos que
+// resolver). Vive acá y no en orderLogic.js porque isLoyaltyEligibleItem necesita
+// fetchAllSellableItems/findProductByName de agent/tools.js -- y agent/tools.js ya hace
+// require('./orderLogic'), así que orderLogic.js NO puede importar agent/tools.js de vuelta sin
+// crear un ciclo (agent/tools.js se cargaría a medio terminar desde orderLogic.js en el orden real
+// de carga de index.js, dejando esas dos funciones undefined para siempre).
+async function computeLoyaltyRedemptionForItems(db, { items, clientId, pointsToRedeemRequested }) {
+    const [catalog, puntosDisponibles] = await Promise.all([
+        fetchAllSellableItems(db),
+        fetchLoyaltyPointsBalance(db, clientId)
+    ]);
+
+    let loyaltyEligibleSubtotal = 0;
+    (Array.isArray(items) ? items : []).forEach((item) => {
+        if (isLoyaltyEligibleItem(item, catalog)) {
+            loyaltyEligibleSubtotal += Number(item.unitPrice || 0) * Math.max(0, Number(item.quantity || 0));
+        }
+    });
+
+    const { pointsRedeemed, pointsDiscountAmount } = clampLoyaltyRedemption({
+        pointsToRedeemRequested,
+        puntosDisponibles,
+        loyaltyEligibleSubtotal
+    });
+
+    return { pointsRedeemed, pointsDiscountAmount, loyaltyEligibleSubtotal, puntosDisponibles };
+}
+
 module.exports = {
     computeServerPricedOrder,
+    computeLoyaltyRedemptionForItems,
+    fetchLoyaltyPointsBalance,
     LOYALTY_POINT_VALUE_COP,
     isLoyaltyEligibleItem
 };

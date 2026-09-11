@@ -3555,6 +3555,13 @@ function _waRenderReview(draft) {
         paymentMethod: draft.paymentMethod || '',
         cashTenderAmount: draft.cashTenderAmount || '',
         notes: draft.notes || '',
+        // Canje de puntos de lealtad -- mismas reglas que el checkout web (elegibilidad por
+        // categoría, tope por saldo real, tope por subtotal elegible), clampeadas server-side en
+        // createManualWhatsAppOrder. El input acá es solo UX: el `max` es una guía visual, no una
+        // validación real -- el servidor es quien de verdad manda, igual que en el checkout.
+        pointsToRedeem: 0,
+        loyaltyBalanceKnown: Boolean(draft.matchedClient),
+        loyaltyBalance: Number(draft?.matchedClient?.puntosDisponibles || 0),
         items: (Array.isArray(draft.items) ? draft.items : []).map((it) => ({
             productNameGuess: it.productNameGuess || '',
             quantity: Number(it.quantity) > 0 ? Math.trunc(Number(it.quantity)) : 1,
@@ -3587,6 +3594,12 @@ function _waRenderReview(draft) {
         <input class="wapaste-input" id="waCliPhone" placeholder="Teléfono" value="${escapeHtml(_waDraftState.customerPhone)}">
       </div>
       ${clientHint}
+
+      <label class="wapaste-field-label">Puntos de lealtad</label>
+      <p class="wapaste-loyalty-balance" id="waLoyaltyBalance"></p>
+      <div class="wapaste-row2">
+        <input class="wapaste-input" id="waPointsRedeem" type="number" min="0" step="1" placeholder="Puntos a canjear" value="${_waDraftState.pointsToRedeem || ''}">
+      </div>
 
       <label class="wapaste-field-label">Productos</label>
       <div class="wapaste-items" id="waItems"></div>
@@ -3648,7 +3661,62 @@ function _waRenderReview(draft) {
     bind('#waCash', 'cashTenderAmount');
     bind('#waNotes', 'notes');
 
+    // Al cambiar el teléfono a mano (blur/change, no cada tecla) se relee el saldo real -- si
+    // vino ya identificado desde el texto pegado (matchedClient), el saldo inicial ya está seteado
+    // arriba y esto solo lo confirma/corrige si el cajero lo edita.
+    const phoneEl = card.querySelector('#waCliPhone');
+    if (phoneEl) phoneEl.addEventListener('change', () => _waLookupClientLoyalty(phoneEl.value));
+
+    const pointsEl = card.querySelector('#waPointsRedeem');
+    if (pointsEl) pointsEl.addEventListener('input', () => {
+        _waDraftState.pointsToRedeem = Math.max(0, Math.trunc(Number(pointsEl.value) || 0));
+    });
+
+    _waRenderLoyaltyBalance();
     _waRenderItems();
+}
+
+// Refleja _waDraftState.loyaltyBalance(Known) en el texto de ayuda y el tope visual del input --
+// el tope real (saldo Y subtotal elegible) lo aplica el servidor en createManualWhatsAppOrder, acá
+// es solo para que el cajero no escriba a ciegas un número absurdo.
+function _waRenderLoyaltyBalance() {
+    const el = document.querySelector('#waPasteOverlay #waLoyaltyBalance');
+    const input = document.querySelector('#waPasteOverlay #waPointsRedeem');
+    if (!el || !_waDraftState) return;
+    if (_waDraftState.loyaltyBalanceKnown) {
+        el.textContent = _waDraftState.loyaltyBalance > 0
+            ? `Saldo disponible: ${_waDraftState.loyaltyBalance} pts`
+            : 'Este cliente no tiene puntos disponibles.';
+        if (input) input.max = String(_waDraftState.loyaltyBalance);
+    } else {
+        el.textContent = 'Escribe el teléfono para ver el saldo de puntos del cliente.';
+        if (input) input.removeAttribute('max');
+    }
+}
+
+async function _waLookupClientLoyalty(rawPhone) {
+    const phoneDigits = String(rawPhone || '').replace(/\D+/g, '');
+    if (!_waDraftState || phoneDigits.length < 10 || !firebaseFunctions) {
+        if (_waDraftState) {
+            _waDraftState.loyaltyBalanceKnown = false;
+            _waDraftState.loyaltyBalance = 0;
+            _waRenderLoyaltyBalance();
+        }
+        return;
+    }
+    try {
+        const res = await firebaseFunctions.httpsCallable('getClientLoyaltyInfo')({ phone: phoneDigits });
+        if (!_waDraftState) return; // el modal se cerró mientras esperábamos la respuesta
+        _waDraftState.loyaltyBalanceKnown = res?.data?.exists === true;
+        _waDraftState.loyaltyBalance = Number(res?.data?.puntosDisponibles || 0);
+    } catch (_err) {
+        // No crítico: el cajero puede seguir sin ver el saldo; el servidor igual clampa al crear.
+        if (_waDraftState) {
+            _waDraftState.loyaltyBalanceKnown = false;
+            _waDraftState.loyaltyBalance = 0;
+        }
+    }
+    _waRenderLoyaltyBalance();
 }
 
 function _waRenderItems() {
@@ -3783,15 +3851,21 @@ async function _waSubmitOrder() {
         address: String(_waDraftState.address || '').trim(),
         paymentMethod: pay,
         cashChangeRequired: pay === 'efectivo' && Number.isFinite(cash) && cash > 0,
-        cashTenderAmount: Number.isFinite(cash) && cash > 0 ? cash : null
+        cashTenderAmount: Number.isFinite(cash) && cash > 0 ? cash : null,
+        pointsToRedeem: Math.max(0, Math.trunc(Number(_waDraftState.pointsToRedeem) || 0))
     };
 
     if (btn) { btn.disabled = true; btn.textContent = 'Creando…'; }
     try {
         const res = await firebaseFunctions.httpsCallable('createManualWhatsAppOrder')(payload);
         const code = (res && res.data && res.data.code) ? res.data.code : '';
+        // pointsRedeemed es el número YA clampeado server-side -- puede ser menor al pedido si el
+        // saldo/subtotal elegible no alcanzaba, igual que en el checkout web.
+        const redeemedPts = Number(res?.data?.pointsRedeemed || 0);
+        const totalMsg = Number.isFinite(Number(res?.data?.total)) ? ` Total: ${formatMoney(Number(res.data.total))}.` : '';
+        const pointsMsg = redeemedPts > 0 ? ` Puntos canjeados: ${redeemedPts}.` : '';
         _waCloseModal();
-        showNotice(`Pedido ${code} creado y enviado a recepción.`, 'ok');
+        showNotice(`Pedido ${code} creado y enviado a recepción.${totalMsg}${pointsMsg}`, 'ok');
         if (typeof renderOrders === 'function') renderOrders();
     } catch (err) {
         // El mensaje viene de createAgentOrder tal cual (tienda cerrada, barrio especial, etc.);

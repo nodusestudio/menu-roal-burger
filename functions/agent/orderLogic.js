@@ -424,7 +424,15 @@ async function createAgentOrder(db, {
     scheduledTime,
     scheduledLabel,
     source,
-    conversationKey
+    conversationKey,
+    // Canje de puntos de lealtad -- SOLO usado hoy por createManualWhatsAppOrder (functions/
+    // index.js), que ya los calculó y clampeó con pricing.computeLoyaltyRedemptionForItems ANTES
+    // de llamar acá (mismas reglas que el checkout web -- ver esa función para el porqué de no
+    // duplicar el cálculo acá). Reina (place_order) no manda estos 3 campos, así que quedan en su
+    // default y el pedido se crea exactamente igual que antes -- este flujo NO cambia para ella.
+    pointsRedeemed: pointsRedeemedInput,
+    pointsDiscountAmount: pointsDiscountAmountInput,
+    pointsRedeemedClientId
 }) {
     const normalizedFulfillment = getCheckoutFulfillmentType(fulfillmentType);
     if (!normalizedFulfillment) {
@@ -465,7 +473,12 @@ async function createAgentOrder(db, {
         }
     }
 
-    const total = subtotal + deliveryFee;
+    // Ya vienen clampeados por el llamador (ver nota arriba) -- acá solo se normaliza el tipo y se
+    // aplica, nunca se reclampa ni se reinterpreta.
+    const pointsRedeemed = Math.max(0, Math.trunc(Number(pointsRedeemedInput) || 0));
+    const pointsDiscountAmount = pointsRedeemed > 0 ? Math.max(0, Number(pointsDiscountAmountInput) || 0) : 0;
+
+    const total = subtotal + deliveryFee - pointsDiscountAmount;
     const customerPhoneDigits = String(customerPhone || '').replace(/\D+/g, '');
     const normalizedPaymentMethod = String(paymentMethod || '').trim().toLowerCase();
     const cashChangeRequiredBool = cashChangeRequired === true;
@@ -532,6 +545,11 @@ async function createAgentOrder(db, {
         deliveryFee,
         costoDomicilio: deliveryFee,
         promo2x1IncrementoFee: 0,
+        // Mismos nombres de campo que submitPublicOrder (index.js) -- así awardLoyaltyPoints y
+        // reverseLoyaltyPointsTransaction (cancelación) funcionan sin cambios para este flujo.
+        pointsRedeemed,
+        pointsDiscountAmount,
+        pointsRedeemedClientId: pointsRedeemed > 0 ? (pointsRedeemedClientId || null) : null,
         total,
         paymentMethod: normalizedPaymentMethod,
         cashChangeRequired: cashChangeRequiredBool,

@@ -1838,6 +1838,25 @@ exports.createManualWhatsAppOrder = onCall(
             throw new HttpsError('invalid-argument', 'Ningun producto quedo con nombre y precio validos. Revisa los items marcados en rojo.');
         }
 
+        // Canje de puntos de lealtad -- mismas reglas que el checkout web (ver
+        // pricing.computeLoyaltyRedemptionForItems para el porqué de calcularlo acá y no dentro
+        // de createAgentOrder). Sin teléfono válido no hay a quién identificar, así que no se
+        // intenta canjear nada (igual que un checkout sin sesión).
+        const customerPhoneDigits = String(data.customerPhone || '').replace(/\D+/g, '');
+        const loyaltyClientId = customerPhoneDigits.length >= 10 ? buildClientId(customerPhoneDigits) : null;
+        const pointsToRedeemRequested = Math.max(0, Math.trunc(Number(data.pointsToRedeem) || 0));
+        let pointsRedeemed = 0;
+        let pointsDiscountAmount = 0;
+        if (loyaltyClientId && pointsToRedeemRequested > 0) {
+            const redemption = await pricing.computeLoyaltyRedemptionForItems(getFirestore(), {
+                items,
+                clientId: loyaltyClientId,
+                pointsToRedeemRequested
+            });
+            pointsRedeemed = redemption.pointsRedeemed;
+            pointsDiscountAmount = redemption.pointsDiscountAmount;
+        }
+
         // Mismo chequeo de horario que hace el handler place_order de Reina antes de llamar a
         // createAgentOrder (createAgentOrder por sí sola NO valida horario). Para un pedido
         // fuera de horario que el cajero quiera crear igual, está el POS normal.
@@ -1867,15 +1886,73 @@ exports.createManualWhatsAppOrder = onCall(
                 deliveryLatitude: Number.isFinite(Number(data.deliveryLatitude)) ? Number(data.deliveryLatitude) : null,
                 deliveryLongitude: Number.isFinite(Number(data.deliveryLongitude)) ? Number(data.deliveryLongitude) : null,
                 salirARecibirConfirmado: data.salirARecibirConfirmado === true,
-                source: 'admin-manual-whatsapp'
+                source: 'admin-manual-whatsapp',
+                pointsRedeemed,
+                pointsDiscountAmount,
+                pointsRedeemedClientId: pointsRedeemed > 0 ? loyaltyClientId : null
             });
-            return { ok: true, code: result.code, id: result.id, total: result.total };
+
+            // Descontar de verdad el saldo -- mismo patrón que submitPublicOrder (relee el saldo
+            // fresco dentro de una transacción por si otro pedido del mismo cliente descontó
+            // puntos en el medio, y corrige el total si el descuento real terminó siendo distinto
+            // del planeado). Reusa la función ya existente, no se duplica.
+            let finalTotal = result.total;
+            let finalPointsRedeemed = pointsRedeemed;
+            if (loyaltyClientId && pointsRedeemed > 0) {
+                try {
+                    const { actualRedeemed, shortfallAmount } = await redeemLoyaltyPointsTransaction(getFirestore(), result.id, loyaltyClientId, pointsRedeemed);
+                    finalTotal += shortfallAmount;
+                    finalPointsRedeemed = actualRedeemed;
+                } catch (redeemErr) {
+                    console.error(`createManualWhatsAppOrder: fallo al descontar puntos redimidos para pedido ${result.id}:`, redeemErr);
+                    try {
+                        finalTotal = result.total + pointsDiscountAmount;
+                        finalPointsRedeemed = 0;
+                        await getFirestore().collection('pedidos').doc(result.id).update({
+                            pointsRedeemed: 0,
+                            pointsDiscountAmount: 0,
+                            total: finalTotal
+                        });
+                    } catch (revertErr) {
+                        console.error(`createManualWhatsAppOrder: fallo tambien al revertir el descuento de puntos para pedido ${result.id}:`, revertErr);
+                    }
+                }
+            }
+
+            return { ok: true, code: result.code, id: result.id, total: finalTotal, pointsRedeemed: finalPointsRedeemed };
         } catch (err) {
             // El texto de createAgentOrder (ej. "El domiciliario no entra a Cañas Gordas…") se
             // pasa tal cual: el frontend lo muestra en el modal SIN perder lo que el cajero editó.
             console.error('createManualWhatsAppOrder error:', err);
             throw new HttpsError('failed-precondition', err.message || 'No se pudo crear el pedido.');
         }
+    }
+);
+
+// Saldo real de puntos de un cliente por teléfono, para la pantalla de revisión de "Pegar pedido
+// de WhatsApp" cuando el cajero escribe/corrige el teléfono a mano (si el teléfono ya venía en el
+// texto pegado, el saldo llega gratis con el draft -- ver lookupClientByPhone,
+// agent/whatsappOrderParser.js). Admin-only (a diferencia de checkPhoneRegistered, que es público
+// y a propósito NO devuelve saldo ni nombre para no permitir enumerar clientes).
+exports.getClientLoyaltyInfo = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        await ensureAdminCaller(request);
+
+        const phoneDigits = String(request.data?.phone || '').replace(/\D+/g, '');
+        if (phoneDigits.length < 10) {
+            throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
+        }
+
+        const clientId = buildClientId(phoneDigits);
+        const clientSnap = await getFirestore().collection(CLIENTS_COLLECTION).doc(clientId).get();
+        if (!clientSnap.exists) {
+            return { exists: false, puntosDisponibles: 0 };
+        }
+        return {
+            exists: true,
+            puntosDisponibles: Math.max(0, Number(clientSnap.data()?.puntosDisponibles) || 0)
+        };
     }
 );
 
