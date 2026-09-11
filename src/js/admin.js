@@ -9916,6 +9916,7 @@ function formatOrderTime(value) {
     }
 
     return new Intl.DateTimeFormat('es-CO', {
+        timeZone: 'America/Bogota',
         hour: '2-digit',
         minute: '2-digit'
     }).format(date);

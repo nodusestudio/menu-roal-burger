@@ -755,6 +755,7 @@ function formatProfileDateTime(value) {
     }
 
     return new Intl.DateTimeFormat('es-CO', {
+        timeZone: 'America/Bogota',
         dateStyle: 'medium',
         timeStyle: 'short'
     }).format(new Date(millis));
