@@ -3541,12 +3541,22 @@ async function requestCustomerPasswordReset() {
     }
 
     const feedbackTarget = customerAuthUI?.feedback || customerRegisterUI?.feedback;
-    const phoneValue = String(customerAuthUI?.lookupPhone?.value || customerRegisterUI?.registerPhone?.value || customerAuthUI?.registerPhone?.value || '').trim();
+    const phoneInput = customerAuthUI?.lookupPhone || customerRegisterUI?.registerPhone || customerAuthUI?.registerPhone;
+    const phoneValue = String(phoneInput?.value || '').trim();
     const phoneDigits = normalizePhoneDigits(phoneValue);
     feedbackTarget.textContent = '';
+    phoneInput?.closest('.support-field')?.classList.remove('support-field--error');
 
     if (phoneDigits.length < 10) {
         feedbackTarget.textContent = 'Escribe tu número de WhatsApp para solicitar el reinicio.';
+        // El mensaje se pinta en #customerAuthFeedback, arriba de la sección de Google y lejos
+        // del botón — solo con eso el cliente no entiende que debe llenar el teléfono y volver
+        // a tocar "Olvidé contraseña". Llevarlo directo al input: scroll + foco + borde rojo.
+        if (phoneInput) {
+            phoneInput.closest('.support-field')?.classList.add('support-field--error');
+            phoneInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            phoneInput.focus({ preventScroll: true }); // preventScroll: no pelear con el scroll suave
+        }
         return;
     }
 
