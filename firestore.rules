@@ -303,12 +303,22 @@ service cloud.firestore {
     }
 
     match /meseros/{token} {
-      allow get: if true;
+      allow get: if true;   // el modo mesero valida el link SIN sesión — este doc no lleva secretos
       allow list: if isAdmin();
       allow update: if isAdmin()
         || (isMeseroToken(token)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentSessionId']));
       allow create, delete: if isAdmin();
+    }
+
+    // PIN del mesero (2º factor para abrir turno). Vive separado de /meseros porque ese doc
+    // es de lectura pública (allow get: if true) — acá el PIN nunca sale del servidor: solo la
+    // Cloud Function mintMeseroSessionToken lo lee (Admin SDK, se salta estas reglas). El admin
+    // lo escribe al crear/editar el mesero; /meseros/{token}.pinSet (público) solo dice SI hay
+    // uno configurado, nunca el valor. Mismo patrón que clientes_credenciales / supervisor_pin.
+    match /meseros_credenciales/{token} {
+      allow read:  if false;
+      allow write: if isAdmin();
     }
 
     match /mesero_sesiones/{sessionId} {

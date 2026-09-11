@@ -188,6 +188,9 @@ const CLIENTS_COLLECTION = 'clientes';
 const MESSAGES_COLLECTION = 'mensajes';
 // El ID del documento ES el token del enlace (ver firestore.rules: get permitido, list bloqueado).
 const MESEROS_COLLECTION = 'meseros';
+// PIN del mesero (2º factor para abrir turno). Colección aparte porque /meseros/{token} es de
+// lectura pública; acá read está bloqueado (solo la Cloud Function lo lee con Admin SDK).
+const MESEROS_CREDENCIALES_COLLECTION = 'meseros_credenciales';
 // Historial de turnos (abrió/cerró sesión) de cada mesero — ID autogenerado.
 const MESERO_SESIONES_COLLECTION = 'mesero_sesiones';
 // Sesión activa de mesero cuando admin.html se abre con ?mesero=<token> — null en uso normal de admin.
@@ -19159,20 +19162,73 @@ function _todayLocalDateString() {
 }
 
 // Candado de "Abrir sesión": se muestra hasta que el mesero toca el botón — no ve Recepción
-// ni puede crear pedidos antes de eso.
-function _showMeseroWelcomeScreen() {
+// ni puede crear pedidos antes de eso. Acá también se pide el PIN (2º factor) y se establece
+// la sesión real de Firebase Auth (mintMeseroSessionToken → signInWithCustomToken): el modo
+// mesero no persiste nada, así que cada carga de página vuelve a pasar por este candado.
+//   resumeSessionId != null  → hay un turno abierto que quedó (pestaña cerrada sin "Cerrar"):
+//                              se reanuda sin crear un mesero_sesiones nuevo.
+function _showMeseroWelcomeScreen(resumeSessionId = null) {
     document.body.classList.add('mesero-mode', 'mesero-mode-gate');
     const el = document.getElementById('meseroWelcomeScreen');
     const greetEl = document.getElementById('meseroWelcomeGreeting');
+    const subEl = document.getElementById('meseroWelcomeSub');
+    const pinField = document.getElementById('meseroPinField');
+    const pinInput = document.getElementById('meseroPinInput');
     if (greetEl) greetEl.textContent = `${_getGreeting()}, ${_meseroSession.nombre}`;
+
+    const hasPin = _meseroSession.hasPin === true;
+    const openLabel = resumeSessionId ? '🟢 Reanudar turno' : '🟢 Abrir sesión';
+    if (subEl) {
+        subEl.textContent = hasPin
+            ? 'Ingresa tu PIN para abrir tu sesión y empezar a tomar pedidos.'
+            : 'Toca para abrir tu sesión y empezar a tomar pedidos.';
+    }
+    if (pinField) pinField.hidden = !hasPin;
+    if (pinInput) pinInput.value = '';
     if (el) el.hidden = false;
 
     const btn = document.getElementById('meseroOpenSessionBtn');
-    if (btn) {
-        btn.onclick = async () => {
-            btn.disabled = true;
-            btn.textContent = 'Abriendo...';
-            try {
+    if (!btn) return;
+    btn.disabled = false;
+    btn.textContent = openLabel;
+
+    btn.onclick = async () => {
+        const pin = hasPin ? String(pinInput?.value || '').replace(/\D/g, '') : '';
+        if (hasPin && pin.length !== 4) {
+            btn.textContent = 'Ingresa tu PIN de 4 dígitos';
+            pinInput?.focus();
+            return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Abriendo...';
+
+        // 1) Custom token + sesión real de Firebase Auth. Si el PIN no coincide, la Cloud
+        //    Function tira permission-denied — se muestra en el botón y NO se avanza.
+        try {
+            const mintResult = await firebaseFunctions.httpsCallable('mintMeseroSessionToken')({
+                token: _meseroSession.id,
+                pin
+            });
+            await firebaseAuth.signInWithCustomToken(mintResult.data.customToken);
+        } catch (error) {
+            if (error?.code === 'permission-denied' || /PIN incorrecto/i.test(error?.message || '')) {
+                btn.textContent = '❌ PIN incorrecto';
+                btn.disabled = false;
+                pinInput?.focus();
+                pinInput?.select();
+                return;
+            }
+            console.error('[Mesero] Error al abrir sesión:', error);
+            showNotice('No se pudo abrir la sesión. Intenta de nuevo.', 'error');
+            btn.disabled = false;
+            btn.textContent = openLabel;
+            return;
+        }
+
+        // 2) Ya autenticado: reanudar el turno abierto, o crear uno nuevo.
+        try {
+            let sessionId = resumeSessionId;
+            if (!sessionId) {
                 const meseroName = `${_meseroSession.nombre} ${_meseroSession.apellido}`.trim();
                 const sessionRef = await firebaseDb.collection(MESERO_SESIONES_COLLECTION).add({
                     meseroId: _meseroSession.id,
@@ -19183,17 +19239,18 @@ function _showMeseroWelcomeScreen() {
                 });
                 await firebaseDb.collection(MESEROS_COLLECTION).doc(_meseroSession.id)
                     .update({ currentSessionId: sessionRef.id });
-                if (el) el.hidden = true;
-                document.body.classList.remove('mesero-mode-gate');
-                await _meseroEnterWorkspace(sessionRef.id);
-            } catch (error) {
-                console.error('[Mesero] Error al abrir sesión:', error);
-                showNotice('No se pudo abrir la sesión. Intenta de nuevo.', 'error');
-                btn.disabled = false;
-                btn.textContent = '🟢 Abrir sesión';
+                sessionId = sessionRef.id;
             }
-        };
-    }
+            if (el) el.hidden = true;
+            document.body.classList.remove('mesero-mode-gate');
+            await _meseroEnterWorkspace(sessionId);
+        } catch (error) {
+            console.error('[Mesero] Error al abrir sesión:', error);
+            showNotice('No se pudo abrir la sesión. Intenta de nuevo.', 'error');
+            btn.disabled = false;
+            btn.textContent = openLabel;
+        }
+    };
 }
 
 async function _meseroCloseSession() {
@@ -19258,14 +19315,13 @@ async function initMeseroMode(token) {
         firebaseAuth = services.auth;
         firebaseFunctions = services.functions;
 
-        // Validar el token EN PARALELO con el catálogo (no esperar el round-trip del token
-        // antes de arrancar las descargas) — se ahorra una vuelta completa de red. Tambien se
-        // pide de una vez el custom token de sesion (mintMeseroSessionToken) -- si el token no
-        // existe, la Cloud Function tira not-found y el Promise.all entero rechaza, cayendo en
-        // el catch de abajo igual que antes (mismo comportamiento visible para un link invalido).
-        const [snap, mintResult] = await Promise.all([
+        // Validar el token EN PARALELO con el catálogo — se ahorra una vuelta de red. El
+        // mint del custom token + signInWithCustomToken YA NO van acá: el 2º factor (PIN) se
+        // pide en la pantalla de bienvenida y la sesión de Firebase Auth se establece recién
+        // al tocar "Abrir sesión" (ver _showMeseroWelcomeScreen). Acá solo se lee el doc del
+        // mesero (lectura pública, sin sesión) para el nombre y para saber SI tiene PIN.
+        const [snap] = await Promise.all([
             firebaseDb.collection(MESEROS_COLLECTION).doc(token).get(),
-            firebaseFunctions.httpsCallable('mintMeseroSessionToken')({ token }),
             fetchCategories(),
             fetchProducts(),
             fetchBebidas(),
@@ -19279,32 +19335,26 @@ async function initMeseroMode(token) {
             return;
         }
 
-        // Sesion REAL de Firebase Auth para este mesero especifico (custom token con claims
-        // {mesero:true, meseroToken:token}) -- antes el modo mesero nunca iniciaba sesion, y
-        // firestore.rules no tenia forma de verificar quien escribia de verdad. Se remintea en
-        // cada carga de pagina (el modo mesero no persiste nada en localStorage, todo se
-        // reconstruye desde Firestore mas abajo) -- cubre tambien el caso de una tablet
-        // compartida entre varios meseros con links distintos.
-        await firebaseAuth.signInWithCustomToken(mintResult.data.customToken);
-
         const data = snap.data() || {};
         _meseroSession = {
             id: token,
             nombre: String(data.nombre || '').trim(),
-            apellido: String(data.apellido || '').trim()
+            apellido: String(data.apellido || '').trim(),
+            hasPin: data.pinSet === true
         };
 
-        // ¿Ya tenía un turno abierto (cerró la pestaña sin tocar "Cerrar sesión")? Si sí, entra
-        // directo sin volver a preguntar; si no, muestra el candado de "Abrir sesión".
+        // ¿Ya tenía un turno abierto (cerró la pestaña sin tocar "Cerrar sesión")? Si sí, se
+        // reanuda ese turno — pero igual pasa por el candado (necesita re-mintear la sesión de
+        // Firebase Auth, y si tiene PIN hay que volver a pedirlo). Si no, abre uno nuevo.
+        let resumeSessionId = null;
         const currentSessionId = String(data.currentSessionId || '').trim();
         if (currentSessionId) {
             const sessSnap = await firebaseDb.collection(MESERO_SESIONES_COLLECTION).doc(currentSessionId).get();
             if (sessSnap.exists && !sessSnap.data().cerradoAt) {
-                await _meseroEnterWorkspace(currentSessionId);
-                return;
+                resumeSessionId = currentSessionId;
             }
         }
-        _showMeseroWelcomeScreen();
+        _showMeseroWelcomeScreen(resumeSessionId);
     } catch (error) {
         console.error('[Mesero] Error al iniciar modo mesero:', error);
         _showMeseroInvalidScreen();
@@ -23946,6 +23996,7 @@ function renderMeserosPanel() {
                 <button type="button" class="mesero-action-btn" data-mesero-copy="${escapeHtml(m.token)}">📋 Copiar enlace</button>
                 <button type="button" class="mesero-action-btn mesero-action-btn--wa" data-mesero-wa="${escapeHtml(m.token)}">💬 WhatsApp</button>
                 <button type="button" class="mesero-action-btn" data-mesero-historial="${escapeHtml(m.token)}">🕒 Historial</button>
+                <button type="button" class="mesero-action-btn" data-mesero-pin="${escapeHtml(m.token)}">🔑 ${m.pinSet ? 'Cambiar PIN' : 'Asignar PIN'}</button>
                 <button type="button" class="mesero-action-btn mesero-action-btn--del" data-mesero-del="${escapeHtml(m.token)}">🗑 Eliminar acceso</button>
             </div>
             <div class="mesero-history-wrap" data-mesero-history-wrap="${escapeHtml(m.token)}" hidden></div>
@@ -23984,6 +24035,34 @@ function renderMeserosPanel() {
     });
     wrap.querySelectorAll('[data-mesero-historial]').forEach((btn) => {
         btn.addEventListener('click', () => _toggleMeseroHistorial(btn.dataset.meseroHistorial));
+    });
+    wrap.querySelectorAll('[data-mesero-pin]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const token = btn.dataset.meseroPin;
+            const m = _meserosState.find((x) => x.token === token);
+            const nombre = `${m?.nombre || ''} ${m?.apellido || ''}`.trim() || 'este mesero';
+            const raw = await showPromptModal({
+                icon: '🔑',
+                title: `PIN de ${nombre}`,
+                message: m?.pinSet
+                    ? 'Escribe un PIN nuevo de 4 dígitos (reemplaza el actual).'
+                    : 'Asigna un PIN de 4 dígitos para que pueda abrir turno.',
+                placeholder: '4 dígitos',
+                confirmText: 'Guardar PIN'
+            });
+            if (raw == null) return;
+            const pin = String(raw).replace(/\D/g, '');
+            if (pin.length !== 4) { showNotice('El PIN debe ser exactamente 4 dígitos.', 'error'); return; }
+            try {
+                await firebaseDb.collection(MESEROS_CREDENCIALES_COLLECTION).doc(token).set({ pin, updatedAt: firestoreNow() });
+                await firebaseDb.collection(MESEROS_COLLECTION).doc(token).set({ pinSet: true }, { merge: true });
+                await loadMeseros();
+                renderMeserosPanel();
+                showNotice('PIN actualizado.', 'ok');
+            } catch (err) {
+                showNotice(`Error al guardar el PIN: ${err.message || 'error inesperado.'}`, 'error');
+            }
+        });
     });
 }
 
@@ -24038,6 +24117,10 @@ function _meseroOpenForm() {
                     <label class="pm-form-label">Celular *</label>
                     <input class="pm-form-input" id="meseroFormCelular" type="tel" maxlength="20" placeholder="Ej: 3001234567">
                 </div>
+                <div class="pm-form-row">
+                    <label class="pm-form-label">PIN (4 dígitos) *</label>
+                    <input class="pm-form-input" id="meseroFormPin" type="text" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="Ej: 4821">
+                </div>
                 <div class="pm-form-actions">
                     <button type="button" class="admin-button" id="meseroFormSaveBtn">Crear mesero</button>
                     <button type="button" class="pm-icon-btn" id="meseroFormCancelBtn">Cancelar</button>
@@ -24056,13 +24139,22 @@ async function _meseroFormSave() {
     const nombre = document.getElementById('meseroFormNombre')?.value.trim() || '';
     const apellido = document.getElementById('meseroFormApellido')?.value.trim() || '';
     const celular = document.getElementById('meseroFormCelular')?.value.trim() || '';
+    const pin = String(document.getElementById('meseroFormPin')?.value || '').replace(/\D/g, '');
     if (!nombre || !apellido || !celular) { showNotice('Nombre, apellido y celular son requeridos.', 'error'); return; }
+    if (pin.length !== 4) { showNotice('El PIN debe ser exactamente 4 dígitos.', 'error'); return; }
     const btn = document.getElementById('meseroFormSaveBtn');
     if (btn) { btn.disabled = true; btn.textContent = 'Creando...'; }
     try {
         const token = window.crypto?.randomUUID ? window.crypto.randomUUID() : `mesero_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        // El PIN va en meseros_credenciales/{token} (no legible desde el cliente); en /meseros/{token}
+        // solo queda pinSet:true (público) para que el modo mesero sepa que hay que pedirlo.
+        await firebaseDb.collection(MESEROS_CREDENCIALES_COLLECTION).doc(token).set({
+            pin,
+            updatedAt: firestoreNow()
+        });
         await firebaseDb.collection(MESEROS_COLLECTION).doc(token).set({
             nombre, apellido, celular,
+            pinSet: true,
             createdAt: firestoreNow()
         });
         await loadMeseros();

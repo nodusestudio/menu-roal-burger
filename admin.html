@@ -4233,6 +4233,19 @@
         .mesero-open-session-btn {
             margin-top: 10px; min-height: 48px; padding: 0 28px; font-size: 0.9rem;
         }
+        .mesero-pin-field {
+            display: flex; flex-direction: column; gap: 6px; margin-top: 8px; align-items: center;
+        }
+        .mesero-pin-field[hidden] { display: none !important; }
+        .mesero-pin-field span {
+            font-size: 0.78rem; color: rgba(238,244,255,0.7); text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .mesero-pin-field input {
+            width: 130px; text-align: center; letter-spacing: 0.5em; font-size: 1.2rem; font-weight: 700;
+            padding: 10px 12px; border-radius: 10px;
+            background: rgba(255,255,255,0.06); border: 1.5px solid rgba(255,255,255,0.16); color: #fff;
+        }
+        .mesero-pin-field input:focus { outline: none; border-color: rgba(110,231,183,0.7); }
 
         .koc-mesero-tag {
             display: inline-flex; align-items: center; gap: 4px;
@@ -15642,6 +15655,10 @@
         <div class="mesero-invalid-icon">👋</div>
         <h1 id="meseroWelcomeGreeting">Hola</h1>
         <p id="meseroWelcomeSub">Toca para abrir tu sesión y empezar a tomar pedidos.</p>
+        <label id="meseroPinField" class="mesero-pin-field" hidden>
+            <span>PIN de 4 dígitos</span>
+            <input type="password" id="meseroPinInput" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+        </label>
         <button type="button" id="meseroOpenSessionBtn" class="nuevo-ticket-btn mesero-open-session-btn">
             🟢 Abrir sesión
         </button>

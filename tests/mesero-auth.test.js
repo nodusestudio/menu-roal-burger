@@ -18,6 +18,7 @@ const { getFirestore } = require(require.resolve('firebase-admin/firestore', { p
 const { _mintMeseroCustomToken } = require(path.join(FUNCTIONS_DIR, 'index.js'));
 
 const TEST_TOKEN = 'mesero-auth-test-token';
+const PIN_TOKEN = 'mesero-auth-test-pin-token';
 
 let db;
 
@@ -27,6 +28,8 @@ before(() => {
 
 afterAll(async () => {
     await db.collection('meseros').doc(TEST_TOKEN).delete().catch(() => {});
+    await db.collection('meseros').doc(PIN_TOKEN).delete().catch(() => {});
+    await db.collection('meseros_credenciales').doc(PIN_TOKEN).delete().catch(() => {});
 });
 
 // Un custom token de Firebase es un JWT (header.payload.signature). No hace falta agregar una
@@ -57,4 +60,44 @@ test('_mintMeseroCustomToken: token real devuelve un custom token con los claims
     assert.equal(payload.uid, `mesero_${TEST_TOKEN}`);
     assert.equal(payload.claims.mesero, true);
     assert.equal(payload.claims.meseroToken, TEST_TOKEN);
+});
+
+test('_mintMeseroCustomToken: mesero SIN pin configurado (retrocompat) mintea sin pedir nada', async () => {
+    await db.collection('meseros').doc(TEST_TOKEN).set({ nombre: 'Test', apellido: 'Mesero' });
+    // sin doc en meseros_credenciales
+    const customToken = await _mintMeseroCustomToken(db, TEST_TOKEN); // sin pin
+    assert.equal(typeof customToken, 'string');
+    assert.equal(customToken.split('.').length, 3);
+});
+
+test('_mintMeseroCustomToken: mesero CON pin -> pin incorrecto o faltante tira permission-denied', async () => {
+    await db.collection('meseros').doc(PIN_TOKEN).set({ nombre: 'Pia', apellido: 'Test', pinSet: true });
+    await db.collection('meseros_credenciales').doc(PIN_TOKEN).set({ pin: '4821' });
+
+    await assert.rejects(
+        () => _mintMeseroCustomToken(db, PIN_TOKEN, '0000'),
+        (err) => { assert.equal(err.code, 'permission-denied'); return true; }
+    );
+    await assert.rejects(
+        () => _mintMeseroCustomToken(db, PIN_TOKEN),          // sin pin
+        (err) => { assert.equal(err.code, 'permission-denied'); return true; }
+    );
+    await assert.rejects(
+        () => _mintMeseroCustomToken(db, PIN_TOKEN, '482'),   // 3 dígitos
+        (err) => { assert.equal(err.code, 'permission-denied'); return true; }
+    );
+});
+
+test('_mintMeseroCustomToken: mesero CON pin -> pin correcto mintea el custom token', async () => {
+    await db.collection('meseros').doc(PIN_TOKEN).set({ nombre: 'Pia', apellido: 'Test', pinSet: true });
+    await db.collection('meseros_credenciales').doc(PIN_TOKEN).set({ pin: '4821' });
+
+    const customToken = await _mintMeseroCustomToken(db, PIN_TOKEN, '4821');
+    const payload = decodeJwtPayload(customToken);
+    assert.equal(payload.uid, `mesero_${PIN_TOKEN}`);
+    assert.equal(payload.claims.meseroToken, PIN_TOKEN);
+
+    // Tolerante a que lo manden con separadores ("4-8-2-1", "48 21").
+    const customToken2 = await _mintMeseroCustomToken(db, PIN_TOKEN, '48-21');
+    assert.equal(customToken2.split('.').length, 3);
 });

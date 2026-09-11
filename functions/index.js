@@ -29,6 +29,7 @@ const CLIENT_CREDENTIALS_COLLECTION  = 'clientes_credenciales';
 const GOOGLE_LINKS_COLLECTION        = 'google_links';
 const MESSAGES_COLLECTION            = 'mensajes';
 const MESEROS_COLLECTION             = 'meseros';
+const MESEROS_CREDENTIALS_COLLECTION = 'meseros_credenciales';
 const ACCOUNT_DELETION_GRACE_MS      = 7 * 24 * 60 * 60 * 1000; // 7 dias antes de borrar de verdad
 
 // Orígenes permitidos para llamadas a las Cloud Functions desde el navegador.
@@ -951,11 +952,24 @@ exports.customerLoginWithPin = onCall(
 // identidad real (custom token con claims) para que las reglas puedan comprobar de verdad "sos VOS
 // el dueno de este meseroId" en vez de confiar en un string plano que la lectura publica de
 // `pedidos` ya expone igual.
-async function _mintMeseroCustomToken(db, token) {
+async function _mintMeseroCustomToken(db, token, pin) {
     const snap = await db.collection(MESEROS_COLLECTION).doc(token).get();
     if (!snap.exists) {
         throw new HttpsError('not-found', 'Link de mesero inválido.');
     }
+
+    // 2º factor: PIN de 4 dígitos requerido para abrir turno. Vive en meseros_credenciales/{token}
+    // (no legible desde el cliente). Retrocompat: un mesero creado antes de este cambio no tiene
+    // credencial — no se valida nada y sigue de largo, igual que antes.
+    const credSnap = await db.collection(MESEROS_CREDENTIALS_COLLECTION).doc(token).get();
+    const savedPin = credSnap.exists ? String(credSnap.data().pin || '').replace(/\D/g, '') : '';
+    if (savedPin) {
+        const givenPin = String(pin || '').replace(/\D/g, '').slice(0, 4);
+        if (givenPin !== savedPin) {
+            throw new HttpsError('permission-denied', 'PIN incorrecto.');
+        }
+    }
+
     const uid = `mesero_${token}`;
     return getAuth().createCustomToken(uid, { mesero: true, meseroToken: token });
 }
@@ -965,7 +979,7 @@ exports.mintMeseroSessionToken = onCall(
     async (request) => {
         const token = String(request.data?.token || '').trim();
         if (!token) throw new HttpsError('invalid-argument', 'Falta el token de mesero.');
-        const customToken = await _mintMeseroCustomToken(getFirestore(), token);
+        const customToken = await _mintMeseroCustomToken(getFirestore(), token, request.data?.pin);
         return { customToken };
     }
 );

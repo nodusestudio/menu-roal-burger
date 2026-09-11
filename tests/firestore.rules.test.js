@@ -245,3 +245,29 @@ test('m) SEGURIDAD: configuracion/supervisor_pin no es legible por nadie (ni adm
     // El admin sigue pudiendo escribir el PIN ("Guardar PIN" desde Configuracion).
     await assertSucceeds(adminDb.collection('configuracion').doc('supervisor_pin').set({ pin: '5678', updatedAt: new Date() }));
 });
+
+test('n) SEGURIDAD: meseros_credenciales/{token} no es legible por nadie (ni admin); solo el admin lo escribe', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-test-uid').set({ seeded: true });
+        await context.firestore().collection('meseros').doc('tok-p').set({ nombre: 'Pia', pinSet: true });
+        await context.firestore().collection('meseros_credenciales').doc('tok-p').set({ pin: '4321' });
+    });
+
+    const adminDb = testEnv.authenticatedContext('admin-test-uid').firestore();
+    const anonDb  = testEnv.unauthenticatedContext().firestore();
+    const meseroDb = testEnv.authenticatedContext('mesero_tok-p', { mesero: true, meseroToken: 'tok-p' }).firestore();
+
+    // El PIN del mesero solo lo lee la Cloud Function (Admin SDK). Nadie desde el cliente.
+    await assertFails(anonDb.collection('meseros_credenciales').doc('tok-p').get());
+    await assertFails(adminDb.collection('meseros_credenciales').doc('tok-p').get());
+    await assertFails(meseroDb.collection('meseros_credenciales').doc('tok-p').get());
+
+    // El mesero NO puede escribir su propio credencial (ni tocar pinSet en /meseros).
+    await assertFails(meseroDb.collection('meseros_credenciales').doc('tok-p').set({ pin: '0000' }));
+
+    // El admin sí lo escribe (al crear / editar el mesero).
+    await assertSucceeds(adminDb.collection('meseros_credenciales').doc('tok-p').set({ pin: '9999', updatedAt: new Date() }));
+
+    // El doc público del mesero sigue siendo legible sin sesión (validación del link).
+    await assertSucceeds(anonDb.collection('meseros').doc('tok-p').get());
+});
