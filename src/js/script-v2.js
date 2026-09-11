@@ -340,6 +340,7 @@ let customerDeleteAccountUI = null;
 let customerPasswordResetUI = null;
 let customerOrdersUnsubscribe = null;
 let customerMessagesUnsubscribe = null;
+let customerClientDocUnsubscribe = null;
 let orderReceiptUI = null;
 let customerProfileOrdersState = [];
 let customerProfileMessagesState = [];
@@ -796,8 +797,12 @@ function unsubscribeCustomerProfileStreams() {
     if (typeof customerMessagesUnsubscribe === 'function') {
         customerMessagesUnsubscribe();
     }
+    if (typeof customerClientDocUnsubscribe === 'function') {
+        customerClientDocUnsubscribe();
+    }
     customerOrdersUnsubscribe = null;
     customerMessagesUnsubscribe = null;
+    customerClientDocUnsubscribe = null;
 }
 
 function syncCustomerProfileRealtimeStreams() {
@@ -839,6 +844,31 @@ function syncCustomerProfileRealtimeStreams() {
         }, () => undefined) : null;
 
     customerOrdersUnsubscribe = () => { unsubDigits(); if (unsubPhone) unsubPhone(); };
+
+    // Puntos de lealtad: se acreditan/descuentan en segundo plano (Cloud Functions), sin que el
+    // navegador haga ninguna escritura -- sin este listener, activeCustomerProfile.puntosDisponibles
+    // quedaba fijo en lo que se leyó al iniciar sesión hasta el próximo login (bug reportado
+    // 2026-09-11: un pedido se entregó y acreditó puntos en Firestore, pero el perfil abierto
+    // seguía mostrando 0). Solo se sincronizan los 2 campos de puntos -- el resto del perfil
+    // (nombre, dirección, etc.) se sigue actualizando únicamente vía los flujos explícitos de
+    // guardado, para no pisar una edición en curso con un snapshot a mitad de escribir.
+    customerClientDocUnsubscribe = db.collection(CLIENTS_COLLECTION).doc(`phone_${phoneDigits}`)
+        .onSnapshot((snap) => {
+            if (!snap.exists || !activeCustomerProfile) return;
+            const data = snap.data() || {};
+            const freshAvailable = Math.max(0, Number(data.puntosDisponibles) || 0);
+            const freshTotal = Math.max(0, Number(data.puntosAcumuladosTotal) || 0);
+            if (activeCustomerProfile.puntosDisponibles === freshAvailable && activeCustomerProfile.puntosAcumuladosTotal === freshTotal) {
+                return;
+            }
+            activeCustomerProfile.puntosDisponibles = freshAvailable;
+            activeCustomerProfile.puntosAcumuladosTotal = freshTotal;
+            persistCustomerProfile(activeCustomerProfile);
+            const heroPointsEl = document.querySelector('#perfilContent .cp-hero-points');
+            if (heroPointsEl) {
+                heroPointsEl.textContent = `${freshAvailable.toLocaleString('es-CO')} puntos disponibles`;
+            }
+        }, () => undefined);
 
     customerMessagesUnsubscribe = db.collection(MESSAGES_COLLECTION)
         .where('customerPhoneDigits', '==', phoneDigits)
