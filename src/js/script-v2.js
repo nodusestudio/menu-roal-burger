@@ -3135,7 +3135,15 @@ function openCustomerPasswordResetModal(profile = {}) {
     // Ya sabemos el numero (viene de un intento de login fallido con resetRequired) -- se manda
     // el primer codigo de una vez para no obligar a pulsar "reenviar" innecesariamente. El limite
     // de frecuencia de sendWhatsAppOtp protege igual si el modal se reabre varias veces seguidas.
-    callSendWhatsAppOtp(resolvedProfile.customerPhoneDigits).catch(() => {});
+    // Si este envio falla (UltraMsg caido, numero invalido, etc.) hay que avisarle al cliente en
+    // el momento -- antes el catch quedaba vacio y el modal seguia diciendo "Te enviamos un
+    // codigo" aunque nunca hubiera salido nada.
+    callSendWhatsAppOtp(resolvedProfile.customerPhoneDigits).catch((err) => {
+        if (customerPasswordResetUI?.step === 'otp' && customerPasswordResetUI.feedback) {
+            customerPasswordResetUI.feedback.textContent = err?.message || 'No se pudo enviar el código. Pulsa "Reenviar código".';
+            customerPasswordResetUI.feedback.className = 'support-feedback support-feedback--error';
+        }
+    });
 }
 
 async function createCustomerDeleteAccountRequest(reasonValue = '', profile = activeCustomerProfile) {
@@ -3562,7 +3570,14 @@ function openPasswordResetRequestModal(phoneDigits, onSuccess) {
 
     syncBodyScrollLock();
     customerResetRequestUI.otpInput?.focus();
-    callSendWhatsAppOtp(phoneDigits).catch(() => {});
+    // Mismo caso que en openCustomerPasswordResetModal: si el envio automatico falla hay que
+    // mostrarlo ya, no dejar que el cliente espere un codigo que nunca salio.
+    callSendWhatsAppOtp(phoneDigits).catch((err) => {
+        if (customerResetRequestUI?.feedback) {
+            customerResetRequestUI.feedback.textContent = err?.message || 'No se pudo enviar el código. Pulsa "Reenviar código".';
+            customerResetRequestUI.feedback.className = 'support-feedback support-feedback--error';
+        }
+    });
     _pushGenericModal(closePasswordResetRequestModal);
 }
 

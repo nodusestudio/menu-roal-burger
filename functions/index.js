@@ -697,15 +697,24 @@ exports.sendWhatsAppOtp = onCall(
         // Normalizar número para WhatsApp Colombia
         const waPhone = phone.startsWith('57') ? phone : `57${phone}`;
 
-        const resp = await fetch(`https://api.ultramsg.com/${instanceId}/messages/chat`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                token,
-                to:   `+${waPhone}`,
-                body: `🍔 *ROAL BURGER*\n\nTu código de verificación es:\n\n*${otp}*\n\nVálido por 10 minutos. No lo compartas con nadie.`
-            })
-        });
+        // fetch() puede lanzar (timeout, instancia de UltraMsg desconectada, DNS, etc.) ademas de
+        // simplemente responder con !ok -- sin este try/catch esa excepcion cruda escapaba sin
+        // convertirse en HttpsError y el cliente recibia el mensaje generico "internal" de
+        // Firebase Functions en vez de un texto en español.
+        let resp;
+        try {
+            resp = await fetch(`https://api.ultramsg.com/${instanceId}/messages/chat`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token,
+                    to:   `+${waPhone}`,
+                    body: `🍔 *ROAL BURGER*\n\nTu código de verificación es:\n\n*${otp}*\n\nVálido por 10 minutos. No lo compartas con nadie.`
+                })
+            });
+        } catch (fetchError) {
+            throw new HttpsError('internal', 'No se pudo enviar el mensaje por WhatsApp. Intenta de nuevo en un momento.');
+        }
 
         if (!resp.ok) {
             throw new HttpsError(
