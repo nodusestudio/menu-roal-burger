@@ -713,10 +713,16 @@ exports.sendWhatsAppOtp = onCall(
                 })
             });
         } catch (fetchError) {
+            console.error('sendWhatsAppOtp: fetch a UltraMsg fallo', fetchError?.message || fetchError);
             throw new HttpsError('internal', 'No se pudo enviar el mensaje por WhatsApp. Intenta de nuevo en un momento.');
         }
 
         if (!resp.ok) {
+            // Logueamos el body de UltraMsg (nunca el token) para poder ver la causa real -- sin
+            // esto solo veiamos "no se pudo enviar" y no habia forma de saber si era instancia
+            // desconectada, numero invalido, token vencido o sin creditos.
+            const errorBody = await resp.text().catch(() => '');
+            console.error('sendWhatsAppOtp: UltraMsg respondio con error', resp.status, errorBody);
             throw new HttpsError(
                 'internal',
                 'No se pudo enviar el mensaje. Verifica que el número sea correcto y esté activo en WhatsApp.'
