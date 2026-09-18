@@ -1036,9 +1036,6 @@ exports.customerRegisterOrUpdateProfile = onCall(
         const phoneDigits = normalizeColombianPhoneDigits(request.data?.phone);
         if (!isValidColombianMobile(phoneDigits)) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
 
-        const customerName = String(request.data?.customerName || '').trim();
-        if (!customerName) throw new HttpsError('invalid-argument', 'Escribe tu nombre para guardar el perfil.');
-
         const pin = normalizeCustomerPin(request.data?.pin);
         const confirmPin = normalizeCustomerPin(request.data?.confirmPin);
         const acceptedDataPolicy = Boolean(request.data?.acceptedDataPolicy);
@@ -1058,6 +1055,15 @@ exports.customerRegisterOrUpdateProfile = onCall(
         const [clientSnap, credsSnap] = await Promise.all([clientRef.get(), credsRef.get()]);
         const previous = clientSnap.exists ? clientSnap.data() : {};
         const hadCredentials = credsSnap.exists && Boolean(credsSnap.data()?.passwordHash);
+
+        // checkPhoneRegistered (a proposito) nunca devuelve el nombre real del cliente -- sin
+        // autenticacion, hacerlo permitiria enumerar clientes leyendo el nombre de cualquier
+        // telefono. Eso significa que el flujo de "olvide mi contrasena" (que usa esa funcion
+        // para saber si ya existe cuenta) nunca tiene el nombre para reenviarlo aqui. Sin este
+        // fallback, crear la nueva clave fallaba siempre con "Escribe tu nombre" -- se conserva
+        // el nombre que ya tenia guardado el cliente cuando no llega uno nuevo.
+        const customerName = String(request.data?.customerName || '').trim() || String(previous.customerName || '').trim();
+        if (!customerName) throw new HttpsError('invalid-argument', 'Escribe tu nombre para guardar el perfil.');
 
         // Si ya existe una cuenta con credenciales para este telefono, solo su dueño (sesion
         // valida, uid == clientId) puede editarla.
