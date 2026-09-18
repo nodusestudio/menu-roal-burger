@@ -14377,7 +14377,11 @@ function setupLiveFirebaseSync() {
             )
     );
 
-    // Mensajes: últimos 200, ordenados por fecha
+    // Mensajes: últimos 200, ordenados por fecha. announceNewMessages (sonido + Notification del
+    // navegador, mismo patrón que announceNewOrders para pedidos) antes solo corría una vez al
+    // cargar el panel -- con UltraMsg caído, "Reset contraseña" pasó a ser la única vía para que
+    // un cliente recupere su cuenta, así que necesita el mismo aviso en vivo que un pedido nuevo,
+    // no solo actualizar la bandeja en silencio.
     liveSubscriptions.push(
         firebaseDb.collection(MESSAGES_COLLECTION)
             .orderBy('createdAt', 'desc')
@@ -14386,7 +14390,7 @@ function setupLiveFirebaseSync() {
                 _makeDebouncedHandler(async () => {
                     await fetchMessages();
                     renderMessages();
-                    updateMessagesAttentionState();
+                    announceNewMessages(messagesState);
                 }, 700),
                 onErr('mensajes')
             )

@@ -1805,6 +1805,14 @@ function getPublicFirebaseAuth() {
     return publicFirebaseAuthInstance;
 }
 
+// Flag temporal: UltraMsg (proveedor de WhatsApp) esta suspendido por falta de pago, asi que el
+// envio de OTP no funciona -- mostrarle el paso al cliente solo hace que espere un codigo que
+// nunca llega. Mientras se resuelve, los flujos de abajo (registro de contrasena olvidada) saltan
+// directo a la verificacion manual por el admin (ver 'Mensajes' en el panel admin + Backend en
+// functions/index.js: adminResetClientCredentials / RESET_AUTHORIZED_MAX_AGE_MS). El codigo de
+// OTP no se borro: poner esto en true reactiva el flujo automatico sin tocar nada mas.
+const OTP_DELIVERY_ENABLED = false;
+
 async function callSendWhatsAppOtp(phoneDigits) {
     const fn = getPublicFirebaseFunctions();
     if (!fn) throw new Error('Servicio de verificacion no disponible.');
@@ -3063,7 +3071,7 @@ function _renderResetStep() {
         stepContent.innerHTML = `
             <p class="support-modal-kicker">Nueva contraseña</p>
             <h3 class="support-modal-title">Crea tu nueva contraseña</h3>
-            <p class="support-modal-text">Número verificado: ${escapeHtml(profile.customerPhone || profile.customerPhoneDigits)}.</p>
+            <p class="support-modal-text">${OTP_DELIVERY_ENABLED ? 'Número verificado' : 'Cuenta verificada por el restaurante'}: ${escapeHtml(profile.customerPhone || profile.customerPhoneDigits)}.</p>
             <label class="support-field">
                 <span>Nueva contraseña de 6 dígitos</span>
                 <input type="password" id="customerResetPin" inputmode="numeric" maxlength="6" placeholder="Crea tu nueva contraseña">
@@ -3115,7 +3123,10 @@ function openCustomerPasswordResetModal(profile = {}) {
     customerPasswordResetUI = {
         modal,
         profile: resolvedProfile,
-        step: 'otp',
+        // Sin OTP_DELIVERY_ENABLED no tiene sentido mostrar el paso de codigo -- nunca va a
+        // llegar. Se salta directo a crear la nueva clave (el admin ya verifico a este cliente a
+        // mano antes de resetearlo, ver adminResetClientCredentials).
+        step: OTP_DELIVERY_ENABLED ? 'otp' : 'pin',
         stepContent: modal.querySelector('#resetStepContent'),
         close: modal.querySelector('.support-modal-close'),
         feedback: null, otpInput: null, pin: null, confirmPin: null
@@ -3132,18 +3143,20 @@ function openCustomerPasswordResetModal(profile = {}) {
     syncBodyScrollLock();
     _pushGenericModal(closeCustomerPasswordResetModal);
 
-    // Ya sabemos el numero (viene de un intento de login fallido con resetRequired) -- se manda
-    // el primer codigo de una vez para no obligar a pulsar "reenviar" innecesariamente. El limite
-    // de frecuencia de sendWhatsAppOtp protege igual si el modal se reabre varias veces seguidas.
-    // Si este envio falla (UltraMsg caido, numero invalido, etc.) hay que avisarle al cliente en
-    // el momento -- antes el catch quedaba vacio y el modal seguia diciendo "Te enviamos un
-    // codigo" aunque nunca hubiera salido nada.
-    callSendWhatsAppOtp(resolvedProfile.customerPhoneDigits).catch((err) => {
-        if (customerPasswordResetUI?.step === 'otp' && customerPasswordResetUI.feedback) {
-            customerPasswordResetUI.feedback.textContent = err?.message || 'No se pudo enviar el código. Pulsa "Reenviar código".';
-            customerPasswordResetUI.feedback.className = 'support-feedback support-feedback--error';
-        }
-    });
+    if (OTP_DELIVERY_ENABLED) {
+        // Ya sabemos el numero (viene de un intento de login fallido con resetRequired) -- se
+        // manda el primer codigo de una vez para no obligar a pulsar "reenviar" innecesariamente.
+        // El limite de frecuencia de sendWhatsAppOtp protege igual si el modal se reabre varias
+        // veces seguidas. Si este envio falla hay que avisarle al cliente en el momento -- antes
+        // el catch quedaba vacio y el modal seguia diciendo "Te enviamos un codigo" aunque nunca
+        // hubiera salido nada.
+        callSendWhatsAppOtp(resolvedProfile.customerPhoneDigits).catch((err) => {
+            if (customerPasswordResetUI?.step === 'otp' && customerPasswordResetUI.feedback) {
+                customerPasswordResetUI.feedback.textContent = err?.message || 'No se pudo enviar el código. Pulsa "Reenviar código".';
+                customerPasswordResetUI.feedback.className = 'support-feedback support-feedback--error';
+            }
+        });
+    }
 }
 
 async function createCustomerDeleteAccountRequest(reasonValue = '', profile = activeCustomerProfile) {
@@ -3614,9 +3627,19 @@ async function requestCustomerPasswordReset() {
             return;
         }
 
-        openPasswordResetRequestModal(phoneDigits, () => {
-            feedbackTarget.textContent = 'Tu solicitud fue enviada al admin. En breve te contactaremos para reiniciar la contraseña.';
-        });
+        if (OTP_DELIVERY_ENABLED) {
+            openPasswordResetRequestModal(phoneDigits, () => {
+                feedbackTarget.textContent = 'Tu solicitud fue enviada al admin. En breve te contactaremos para reiniciar la contraseña.';
+            });
+        } else {
+            // Sin OTP no tiene sentido pedirle un codigo que nunca va a llegar -- la solicitud se
+            // manda directo al admin (panel Mensajes), que verifica al cliente a mano por WhatsApp
+            // antes de resetear (ver submitPasswordResetRequest en functions/index.js).
+            const fn = getPublicFirebaseFunctions();
+            if (!fn) throw new Error('Servicio no disponible.');
+            await fn.httpsCallable('submitPasswordResetRequest')({ phone: phoneDigits });
+            feedbackTarget.textContent = 'Tu solicitud fue enviada. En breve te contactaremos por WhatsApp para reiniciar tu contraseña.';
+        }
     } catch (error) {
         feedbackTarget.textContent = error.message || 'No se pudo enviar la solicitud.';
     }

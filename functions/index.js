@@ -21,6 +21,13 @@ const PHONE_VERIFICATIONS_COLLECTION = 'phone_verifications';
 const OTP_EXPIRY_MS                 = 10 * 60 * 1000; // 10 minutos
 const OTP_MAX_ATTEMPTS              = 5;
 const OTP_VERIFICATION_MAX_AGE_MS   = 30 * 60 * 1000; // 30 minutos entre verificar el OTP y reclamar la cuenta
+// Mientras UltraMsg (proveedor de WhatsApp) este suspendido, el OTP no se puede enviar. Este es
+// el bypass alterno: cuando un admin resetea las credenciales de un cliente a mano (tras
+// verificarlo el mismo, ej. por el WhatsApp normal del restaurante), adminResetClientCredentials
+// deja resetAuthorizedAt en clientes_credenciales/{id} -- customerRegisterOrUpdateProfile lo
+// acepta como prueba de identidad equivalente al OTP durante esta ventana, para que el cliente
+// pueda crear su nueva contrasena sin necesitar un codigo que nunca va a llegar.
+const RESET_AUTHORIZED_MAX_AGE_MS   = 7 * 24 * 60 * 60 * 1000; // 7 dias para volver y crear la nueva clave
 const OTP_RESEND_COOLDOWN_MS        = 60 * 1000; // 1 minuto entre envios al mismo numero
 const OTP_MAX_SENDS_PER_WINDOW      = 5; // maximo de codigos por numero en la ventana de abajo
 const OTP_SEND_WINDOW_MS            = 24 * 60 * 60 * 1000; // 24 horas
@@ -1043,6 +1050,7 @@ exports.customerRegisterOrUpdateProfile = onCall(
         // phone_verifications/{clientId} este realmente verificado y reciente (verifyWhatsAppOtp
         // lo marca `verified:true` solo si el codigo de 6 digitos coincidio) antes de crear
         // credenciales nuevas para este telefono.
+        let usedResetAuthorization = false;
         if (!hadCredentials) {
             const verificationSnap = await db.collection(PHONE_VERIFICATIONS_COLLECTION).doc(clientId).get();
             const verificationData = verificationSnap.exists ? verificationSnap.data() : null;
@@ -1052,9 +1060,19 @@ exports.customerRegisterOrUpdateProfile = onCall(
             const isVerified = Boolean(verificationData?.verified)
                 && verifiedAtMs > 0
                 && (Date.now() - verifiedAtMs) <= OTP_VERIFICATION_MAX_AGE_MS;
-            if (!isVerified) {
+
+            // Bypass mientras el OTP por WhatsApp no funciona (ver RESET_AUTHORIZED_MAX_AGE_MS) --
+            // solo cuenta si un admin de verdad reseteo este numero a mano.
+            const resetAuthorizedAtMs = credsSnap.data()?.resetAuthorizedAt?.toMillis
+                ? credsSnap.data().resetAuthorizedAt.toMillis()
+                : Number(credsSnap.data()?.resetAuthorizedAt) || 0;
+            const isResetAuthorized = resetAuthorizedAtMs > 0
+                && (Date.now() - resetAuthorizedAtMs) <= RESET_AUTHORIZED_MAX_AGE_MS;
+
+            if (!isVerified && !isResetAuthorized) {
                 throw new HttpsError('failed-precondition', 'Verifica tu número por WhatsApp antes de crear tu cuenta.');
             }
+            usedResetAuthorization = !isVerified && isResetAuthorized;
         }
 
         // Solo el consentimiento obligatorio (datos operativos) bloquea el guardado -- el de
@@ -1090,7 +1108,11 @@ exports.customerRegisterOrUpdateProfile = onCall(
             await credsRef.set({
                 passwordHash: hashPinSalted(pin, salt),
                 passwordSalt: salt,
-                updatedAt: FieldValue.serverTimestamp()
+                updatedAt: FieldValue.serverTimestamp(),
+                // Un solo uso, igual que el OTP: que quede vigente despues de reclamar la cuenta
+                // dejaria la ventana de bypass abierta de nuevo si alguna vez se borran las
+                // credenciales por otra via.
+                ...(usedResetAuthorization ? { resetAuthorizedAt: FieldValue.delete() } : {})
             }, { merge: true });
         }
 
@@ -1173,7 +1195,14 @@ exports.checkPhoneRegistered = onCall(
 // nombre real que el admin veia en el mensaje (antes obtenido de checkPhoneRegistered, sin
 // autenticacion) hacia la suplantacion creible -- combinado con el reset ahora funcional
 // (adminResetClientCredentials), esto habria sido una via real de toma de cuenta por ingenieria
-// social. Exige el mismo OTP verificado y reciente que ya exige customerRegisterOrUpdateProfile.
+// social.
+//
+// El OTP obligatorio se desactivo temporalmente (UltraMsg suspendido por falta de pago, ver
+// RESET_AUTHORIZED_MAX_AGE_MS) -- mientras tanto, la verificacion de identidad la hace el admin a
+// mano (ej. por el WhatsApp normal del restaurante) antes de tocar "Reset" en el panel, no esta
+// funcion. Por eso solo se acepta si el numero ya es cliente registrado (limita el abuso a
+// molestar clientes existentes, no permite spamear numeros al azar) y el mensaje deja explicito
+// que no paso por OTP, para que el admin sepa que debe confirmar antes de resetear.
 exports.submitPasswordResetRequest = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
@@ -1183,28 +1212,19 @@ exports.submitPasswordResetRequest = onCall(
         const db = getFirestore();
         const clientId = buildClientId(phoneDigits);
 
-        const verificationSnap = await db.collection(PHONE_VERIFICATIONS_COLLECTION).doc(clientId).get();
-        const verificationData = verificationSnap.exists ? verificationSnap.data() : null;
-        const verifiedAtMs = verificationData?.verifiedAt?.toMillis
-            ? verificationData.verifiedAt.toMillis()
-            : Number(verificationData?.verifiedAt) || 0;
-        const isVerified = Boolean(verificationData?.verified)
-            && verifiedAtMs > 0
-            && (Date.now() - verifiedAtMs) <= OTP_VERIFICATION_MAX_AGE_MS;
-        if (!isVerified) {
-            throw new HttpsError('failed-precondition', 'Verifica tu número por WhatsApp antes de solicitar el reinicio.');
-        }
-
         const clientSnap = await db.collection(CLIENTS_COLLECTION).doc(clientId).get();
-        const customerName = clientSnap.exists ? String(clientSnap.data()?.customerName || '').trim() : '';
-        const customerPhone = clientSnap.exists ? String(clientSnap.data()?.customerPhone || '').trim() : '';
+        if (!clientSnap.exists) {
+            throw new HttpsError('not-found', 'No encontramos una cuenta con ese número.');
+        }
+        const customerName = String(clientSnap.data()?.customerName || '').trim();
+        const customerPhone = String(clientSnap.data()?.customerPhone || '').trim();
 
         await db.collection(MESSAGES_COLLECTION).add({
             type: 'password_reset_request',
             status: 'pending',
             subject: 'Solicitud de reinicio de contraseña',
             body: [
-                'El cliente verificó su número por WhatsApp (código OTP) y solicitó reiniciar su contraseña.',
+                '⚠️ SIN VERIFICAR POR OTP (WhatsApp automático suspendido) — confirma con el cliente por WhatsApp antes de resetear.',
                 `Numero: ${customerPhone || phoneDigits}`
             ].join('\n'),
             customerName: customerName || 'Cliente sin nombre',
@@ -1633,7 +1653,14 @@ exports.adminResetClientCredentials = onCall(
         }
 
         const clientId = buildClientId(phoneDigits);
-        await getFirestore().collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId).delete();
+        // set() sin merge reemplaza el documento entero -- borra passwordHash/passwordSalt (igual
+        // que el delete() de antes, fuerza PASSWORD_RESET_REQUIRED en el proximo login) y deja
+        // resetAuthorizedAt como prueba de que un admin verifico a este cliente a mano. Ver
+        // RESET_AUTHORIZED_MAX_AGE_MS: customerRegisterOrUpdateProfile lo acepta como sustituto
+        // del OTP mientras UltraMsg no pueda enviar codigos.
+        await getFirestore().collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId).set({
+            resetAuthorizedAt: FieldValue.serverTimestamp()
+        });
 
         return { success: true };
     }
