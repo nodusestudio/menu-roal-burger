@@ -1239,6 +1239,79 @@ exports.submitPasswordResetRequest = onCall(
     }
 );
 
+// Version "cuenta nueva" de submitPasswordResetRequest, para el mismo escenario (OTP caido):
+// un telefono SIN cuenta todavia no puede reclamar una via customerRegisterOrUpdateProfile
+// (exige OTP verificado o resetAuthorizedAt, ver RESET_AUTHORIZED_MAX_AGE_MS), asi que en su
+// lugar avisa al admin en la bandeja de Mensajes para que confirme al cliente a mano y despues
+// llame a adminAuthorizeNewAccount.
+exports.submitNewAccountRequest = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
+        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
+        const customerName = String(request.data?.customerName || '').trim();
+
+        const db = getFirestore();
+        const clientId = buildClientId(phoneDigits);
+        const credsSnap = await db.collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId).get();
+        if (credsSnap.exists && credsSnap.data()?.passwordHash) {
+            throw new HttpsError('already-exists', 'Ya existe una cuenta con ese número. Inicia sesión.');
+        }
+
+        await db.collection(MESSAGES_COLLECTION).add({
+            type: 'new_account_request',
+            status: 'pending',
+            subject: 'Solicitud de cuenta nueva',
+            body: [
+                '⚠️ SIN VERIFICAR POR OTP (WhatsApp automático suspendido) — confirma con el cliente por WhatsApp antes de aprobar.',
+                `Numero: ${phoneDigits}`
+            ].join('\n'),
+            customerName: customerName || 'Cliente sin nombre',
+            customerPhone: phoneDigits,
+            customerPhoneDigits: phoneDigits,
+            source: 'public_web',
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp()
+        });
+
+        return { success: true };
+    }
+);
+
+// Autoriza a un telefono sin cuenta a terminar su registro sin OTP -- deja la misma marca
+// resetAuthorizedAt que adminResetClientCredentials (customerRegisterOrUpdateProfile ya la
+// acepta como sustituto del OTP para reclamar una cuenta nueva, ver RESET_AUTHORIZED_MAX_AGE_MS).
+// No crea la cuenta de una vez: el cliente todavia tiene que volver a la app y completar su
+// perfil (nombre, PIN, direccion) el mismo.
+exports.adminAuthorizeNewAccount = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const adminUid = request.auth?.uid;
+        if (!adminUid) {
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+        }
+        const adminDoc = await getFirestore().collection('admins').doc(adminUid).get();
+        if (!adminDoc.exists) {
+            throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+        }
+
+        const phoneDigits = String(request.data?.phoneDigits || '').replace(/\D/g, '');
+        if (phoneDigits.length < 10) {
+            throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
+        }
+
+        const clientId = buildClientId(phoneDigits);
+        const credsRef = getFirestore().collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId);
+        const snap = await credsRef.get();
+        if (snap.exists && snap.data()?.passwordHash) {
+            throw new HttpsError('already-exists', 'Ese número ya tiene una cuenta con contraseña.');
+        }
+        await credsRef.set({ resetAuthorizedAt: FieldValue.serverTimestamp() }, { merge: true });
+
+        return { success: true };
+    }
+);
+
 exports.googleAuthLogin = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {

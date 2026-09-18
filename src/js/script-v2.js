@@ -2278,7 +2278,14 @@ async function saveCustomerProfile(profileInput = {}) {
             acceptedMarketing: profileInput.acceptedMarketing
         });
     } catch (error) {
-        throw new Error(error?.message || 'No se pudo guardar el perfil.');
+        const wrapped = new Error(error?.message || 'No se pudo guardar el perfil.');
+        // Marca distintiva para que submitCustomerProfileForm pueda ofrecer el registro manual
+        // en vez de mostrar este error tal cual -- ver customerRegisterOrUpdateProfile en
+        // functions/index.js, el unico lugar que lanza este mensaje exacto.
+        if (String(error?.message || '').includes('Verifica tu número por WhatsApp antes de crear tu cuenta')) {
+            wrapped.code = 'ACCOUNT_NOT_AUTHORIZED';
+        }
+        throw wrapped;
     }
 
     const auth = getPublicFirebaseAuth();
@@ -2443,7 +2450,7 @@ function _buildRegPhoneStepHTML(prefillPhone = '') {
     return `
         <p class="support-modal-kicker">Crear cuenta</p>
         <h3 class="support-modal-title">¿Cuál es tu WhatsApp?</h3>
-        <p class="support-modal-text">Te enviaremos un código para verificar que el número te pertenece.</p>
+        <p class="support-modal-text">${OTP_DELIVERY_ENABLED ? 'Te enviaremos un código para verificar que el número te pertenece.' : 'Vamos a confirmar tu número por WhatsApp antes de activar tu cuenta.'}</p>
         ${_buildRegStepDots(1)}
         <label class="support-field" id="regPhoneField">
             <span>Número de WhatsApp</span>
@@ -2746,6 +2753,17 @@ async function _handleRegPhoneNext() {
     // numero sin cuenta todavia -- si el envio falla, ya no se puede saltar al perfil, porque
     // el guardado final fallaria igual (y antes de este cambio, ni siquiera se validaba del
     // lado del servidor: cualquiera podia reclamar un telefono ajeno sin haber recibido nada).
+    if (!OTP_DELIVERY_ENABLED) {
+        // Sin OTP: pasar directo al formulario de perfil. Si el numero no fue autorizado antes
+        // por el admin, submitCustomerProfileForm lo detecta al guardar (ACCOUNT_NOT_AUTHORIZED)
+        // y manda la solicitud manual en su lugar, sin que el cliente tenga que saberlo de
+        // antemano.
+        customerRegisterUI.pendingPhone = phone;
+        customerRegisterUI.step = 'profile';
+        _renderRegStep();
+        return;
+    }
+
     if (btn) btn.textContent = 'Enviando código…';
     try {
         await callSendWhatsAppOtp(digits);
@@ -3770,6 +3788,24 @@ async function submitCustomerProfileForm() {
             closeCustomerAuthModal();
         }
     } catch (error) {
+        // Cuenta nueva sin OTP disponible (ver OTP_DELIVERY_ENABLED) y todavia sin autorizar por
+        // el admin -- en vez de mostrar el error crudo, se manda la solicitud para que el admin
+        // la vea en Mensajes (mismo patron que el reinicio de contraseña) y confirme al cliente
+        // por WhatsApp antes de aprobarlo.
+        if (!wasEditMode && error?.code === 'ACCOUNT_NOT_AUTHORIZED') {
+            try {
+                const fn = getPublicFirebaseFunctions();
+                if (!fn) throw new Error('Servicio no disponible.');
+                await fn.httpsCallable('submitNewAccountRequest')({
+                    phone: normalizePhoneDigits(phoneValue),
+                    customerName: nameValue
+                });
+                formUI.feedback.textContent = 'Recibimos tus datos. Te contactaremos por WhatsApp para confirmar y activar tu cuenta.';
+            } catch (reqError) {
+                formUI.feedback.textContent = reqError.message || 'No se pudo enviar tu solicitud. Intenta de nuevo.';
+            }
+            return;
+        }
         formUI.feedback.textContent = error.message || 'No se pudo guardar el perfil.';
     }
 }

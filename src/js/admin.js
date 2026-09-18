@@ -11758,6 +11758,7 @@ let _inboxActiveId = null;
 function _inboxGetTypeLabel(type) {
     const map = {
         password_reset_request: '🔑 Reset contraseña',
+        new_account_request: '🆕 Cuenta nueva',
         customer_direct_message: '💬 Mensaje directo',
         admin_direct_message: '💬 Mensaje directo (admin)',
         admin_direct_reply: '↩️ Respuesta admin',
@@ -11900,6 +11901,8 @@ function openInboxDetail(threadKey, scroll = true) {
     const lastMsg = thread.lastMessage;
     const lastResetMsg = [...thread.messages].reverse().find(m => m.type === 'password_reset_request');
     const canResetPassword = Boolean(lastResetMsg && thread.customerPhoneDigits);
+    const lastNewAccountMsg = [...thread.messages].reverse().find(m => m.type === 'new_account_request');
+    const canApproveNewAccount = Boolean(lastNewAccountMsg && thread.customerPhoneDigits);
     const canReply = Boolean(thread.customerPhoneDigits) && lastMsg.type !== 'admin_direct_reply';
     const canWhatsApp = Boolean(thread.customerPhoneDigits);
 
@@ -11934,6 +11937,7 @@ function openInboxDetail(threadKey, scroll = true) {
             <div class="inbox-detail-head-actions">
                 ${canWhatsApp ? `<button class="inbox-head-btn blue" data-message-action="whatsapp" data-message-id="${escapeHtml(lastMsg.id)}">📲 WhatsApp</button>` : ''}
                 ${canResetPassword ? `<button class="inbox-head-btn blue" data-message-action="reset-password" data-message-id="${escapeHtml(lastResetMsg.id)}">🔑 Reset</button>` : ''}
+                ${canApproveNewAccount ? `<button class="inbox-head-btn blue" data-message-action="approve-new-account" data-message-id="${escapeHtml(lastNewAccountMsg.id)}">🆕 Aprobar cuenta</button>` : ''}
                 <button class="inbox-head-btn red" data-message-action="delete-thread" data-thread-key="${escapeHtml(threadKey)}">🗑 Eliminar conversación</button>
             </div>
         </div>
@@ -17767,6 +17771,33 @@ document.addEventListener('click', async (event) => {
             showNotice('Contrasena reseteada. El cliente ya puede crear una nueva.', 'ok');
         } catch (error) {
             showNotice(`No se pudo resetear la contrasena: ${error.message || 'error inesperado.'}`, 'error');
+        }
+        return;
+    }
+
+    // Mismo patron que 'reset-password' pero para telefonos que todavia no tienen cuenta -- ver
+    // adminAuthorizeNewAccount (deja resetAuthorizedAt sin crear la cuenta de una vez: el cliente
+    // vuelve a la app y completa su perfil el mismo).
+    if (action === 'approve-new-account') {
+        const confirmed = await showConfirmModal({ icon: '🆕', title: `¿Aprobar la cuenta nueva de ${message.customerName}?`, message: 'Confirma primero por WhatsApp que el numero es realmente suyo. El cliente podra volver a la app y terminar su registro.', confirmText: 'Aprobar' });
+        if (!confirmed) return;
+        try {
+            const adminIdentity = getCurrentAdminIdentity();
+            if (!firebaseFunctions) throw new Error('Servicio no disponible.');
+            await firebaseFunctions.httpsCallable('adminAuthorizeNewAccount')({ phoneDigits: normalizePhoneDigits(message.customerPhoneDigits) });
+            let copied = false;
+            try {
+                copied = await copyTextToClipboard([
+                    `Hola ${message.customerName || 'cliente'}, ya confirmamos tu numero en ${brandingState.restaurantName || 'Roal Burger'}.`,
+                    'Vuelve a la app, toca "Registrarme" e ingresa nuevamente tu numero de WhatsApp.',
+                    'Esta vez si te va a dejar completar tu perfil y crear tu contrasena.'
+                ].join('\n'));
+            } catch (_) {}
+            await updateMessageRequest(messageId, { status: 'resolved', resolvedAt: firestoreNow(), resolvedBy: adminIdentity, adminAction: 'new_account_approved' });
+            if (copied) showClipboardToast('Mensaje de aprobacion copiado');
+            showNotice('Cuenta aprobada. El cliente ya puede completar su registro.', 'ok');
+        } catch (error) {
+            showNotice(`No se pudo aprobar la cuenta: ${error.message || 'error inesperado.'}`, 'error');
         }
         return;
     }
