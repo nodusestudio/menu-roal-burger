@@ -3072,6 +3072,23 @@ async function submitCustomerNewPassword() {
         closeCustomerPasswordResetModal();
         closeCustomerAuthModal();
     } catch (error) {
+        // Este modal se abre asumiendo que ya hay una autorizacion vigente (reset reciente del
+        // admin), pero eso no es cierto para una cuenta que quedo sin contrasena por otro motivo
+        // (migracion vieja, o una autorizacion que ya vencio a los 7 dias) -- sin este respaldo el
+        // cliente quedaba atascado viendo un error tecnico sin ninguna salida. Se manda la
+        // solicitud al admin en su lugar, igual que "Olvidé contraseña" para una cuenta con clave.
+        if (error?.code === 'ACCOUNT_NOT_AUTHORIZED') {
+            try {
+                const fn = getPublicFirebaseFunctions();
+                if (!fn) throw new Error('Servicio no disponible.');
+                await fn.httpsCallable('submitPasswordResetRequest')({ phone: profile?.customerPhoneDigits });
+                customerPasswordResetUI.feedback.textContent = 'Necesitamos que confirmemos tu identidad primero. Ya avisamos — te contactaremos por WhatsApp para activarte el acceso.';
+                customerPasswordResetUI.feedback.className = 'support-feedback';
+            } catch (reqError) {
+                customerPasswordResetUI.feedback.textContent = reqError.message || 'No se pudo enviar tu solicitud. Intenta de nuevo.';
+            }
+            return;
+        }
         customerPasswordResetUI.feedback.textContent = error.message || 'No se pudo actualizar la contraseña.';
     }
 }
