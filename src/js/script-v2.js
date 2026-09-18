@@ -2447,15 +2447,27 @@ function _buildRegStepDots(current) {
 }
 
 function _buildRegPhoneStepHTML(prefillPhone = '') {
+    // Google entra sin OTP (linkPendingGoogleAfterOrder vincula el telefono recien al confirmar
+    // el primer pedido, no aqui) -- es la via automatica que sigue funcionando igual con
+    // OTP_DELIVERY_ENABLED en false, asi que se ofrece primero. "o con tu WhatsApp" sigue siendo
+    // manual (con o sin OTP) para quien prefiera no usar Google.
     return `
         <p class="support-modal-kicker">Crear cuenta</p>
-        <h3 class="support-modal-title">¿Cuál es tu WhatsApp?</h3>
-        <p class="support-modal-text">${OTP_DELIVERY_ENABLED ? 'Te enviaremos un código para verificar que el número te pertenece.' : 'Vamos a confirmar tu número por WhatsApp antes de activar tu cuenta.'}</p>
+        <h3 class="support-modal-title">Empecemos</h3>
+        <p class="support-modal-text">La forma más rápida es con tu cuenta de Google, sin formularios.</p>
         ${_buildRegStepDots(1)}
+        <div class="support-actions stack">
+            <button type="button" class="support-send-btn" id="regGoogleContinue" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.47c-.28 1.5-1.13 2.78-2.4 3.63v3.02h3.88c2.27-2.09 3.57-5.17 3.57-8.84z"/><path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.95-2.9l-3.88-3.02c-1.08.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.27v3.11C3.25 21.3 7.31 24 12 24z"/><path fill="#FBBC05" d="M5.27 14.27a7.2 7.2 0 010-4.54V6.62H1.27a12 12 0 000 10.76l4-3.11z"/><path fill="#EA4335" d="M12 4.77c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0 7.31 0 3.25 2.7 1.27 6.62l4 3.11C6.22 6.88 8.87 4.77 12 4.77z"/></svg>
+                Continuar con Google
+            </button>
+        </div>
+        <p class="support-field-hint" style="text-align:center;">o con tu número de WhatsApp</p>
         <label class="support-field" id="regPhoneField">
             <span>Número de WhatsApp</span>
             <input type="tel" id="regPhoneInput" placeholder="+57 300 000 0000" inputmode="tel" autocomplete="tel" value="${escapeHtml(prefillPhone)}">
         </label>
+        <p class="support-feedback" id="regGoogleFeedback"></p>
         <div class="support-actions">
             <button type="button" class="support-send-btn" id="regPhoneNext">Continuar</button>
         </div>`;
@@ -2638,6 +2650,7 @@ function _renderRegStep() {
         const _go = () => _handleRegPhoneNext();
         next?.addEventListener('click', _go);
         input?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); _go(); } });
+        stepContent.querySelector('#regGoogleContinue')?.addEventListener('click', _handleRegGoogleContinue);
 
     } else if (step === 'otp') {
         stepContent.innerHTML = _buildRegOtpStepHTML(customerRegisterUI.pendingPhone);
@@ -2713,6 +2726,26 @@ function _mountRegProfileStep() {
     applyCustomerConsentState(hasPreviousConsent);
     renderCustomerRegisterSavedAddresses();
     customerRegisterUI.name?.focus();
+}
+
+// "Continuar con Google" desde el registro nuevo -- reusa loginWithGoogle (el mismo boton que
+// ya existe en el login) en vez de duplicar la logica de popup/identidad pendiente. Nunca pasa
+// por OTP: el telefono se pide recien al confirmar el primer pedido (linkPendingGoogleAfterOrder,
+// ver createOrderFromCart), asi que sigue funcionando igual con OTP_DELIVERY_ENABLED en false.
+async function _handleRegGoogleContinue() {
+    const btn = customerRegisterUI?.stepContent.querySelector('#regGoogleContinue');
+    const feedback = customerRegisterUI?.stepContent.querySelector('#regGoogleFeedback');
+    if (btn) { btn.disabled = true; }
+    try {
+        await loginWithGoogle();
+        closeCustomerRegisterModal();
+    } catch (err) {
+        if (feedback) {
+            feedback.textContent = err?.message || 'No se pudo continuar con Google.';
+            feedback.className = 'support-feedback support-feedback--error';
+        }
+        if (btn) { btn.disabled = false; }
+    }
 }
 
 async function _handleRegPhoneNext() {
