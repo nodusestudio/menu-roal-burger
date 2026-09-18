@@ -355,7 +355,25 @@ function escapeHtml(value) {
 }
 
 function normalizePhoneDigits(value) {
-    return String(value || '').replace(/\D+/g, '');
+    const digits = String(value || '').replace(/\D+/g, '');
+    // El placeholder del campo de telefono ("+57 300 000 0000") invita a escribir el indicativo
+    // de pais -- sin quitarlo aqui, "+57 300 1234567" y "300 1234567" quedaban como dos numeros
+    // distintos para el backend (mismo bug que corrige normalizeColombianPhoneDigits en
+    // functions/index.js). Se quita el "57" solo cuando sobran exactamente esos 2 digitos y lo
+    // que queda es un celular valido (empieza en 3).
+    if (digits.length === 12 && digits.startsWith('573')) {
+        return digits.slice(2);
+    }
+    return digits;
+}
+
+// Celular colombiano valido: exactamente 10 digitos y siempre empieza en 3 (300-350 aprox) --
+// "0000000000" o un fijo de 10 digitos pasaban el viejo chequeo generico de "al menos 10
+// digitos" sin ser un celular real capaz de recibir WhatsApp. Mismo criterio que
+// isValidColombianMobile en functions/index.js (la autoridad real; esto es solo feedback
+// inmediato antes del round-trip al servidor).
+function isValidColombianMobile(digits) {
+    return /^3\d{9}$/.test(String(digits || ''));
 }
 
 let _leafletPromise = null;
@@ -2081,7 +2099,7 @@ async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
 // Auth (uid = clientId) que deja al navegador con una sesion real para el resto del recorrido.
 async function fetchClientProfileByPhone(phoneValue, pinValue = '') {
     const phoneDigits = normalizePhoneDigits(phoneValue);
-    if (phoneDigits.length < 10) {
+    if (!isValidColombianMobile(phoneDigits)) {
         throw new Error('Escribe un número de WhatsApp válido.');
     }
 
@@ -2753,10 +2771,10 @@ async function _handleRegPhoneNext() {
     const { feedback } = customerRegisterUI;
     const input  = customerRegisterUI.stepContent.querySelector('#regPhoneInput');
     const phone  = String(input?.value || '').trim();
-    const digits = phone.replace(/\D/g, '');
+    const digits = normalizePhoneDigits(phone);
 
-    if (digits.length < 10) {
-        feedback.textContent = 'Escribe tu número de WhatsApp (mínimo 10 dígitos).';
+    if (!isValidColombianMobile(digits)) {
+        feedback.textContent = 'Escribe un número de celular colombiano válido (10 dígitos, empieza en 3).';
         feedback.className   = 'support-feedback support-feedback--error';
         input?.focus();
         return;
@@ -3005,7 +3023,7 @@ function closeCustomerPasswordResetModal() {
 // si existe cuenta con ese telefono y si ya tiene contrasena, nunca el perfil completo.
 async function fetchClientProfileForRecovery(phoneValue = '') {
     const phoneDigits = normalizePhoneDigits(phoneValue);
-    if (phoneDigits.length < 10) {
+    if (!isValidColombianMobile(phoneDigits)) {
         throw new Error('Escribe un número de WhatsApp válido.');
     }
 
@@ -3657,7 +3675,7 @@ async function requestCustomerPasswordReset() {
     feedbackTarget.textContent = '';
     phoneInput?.closest('.support-field')?.classList.remove('support-field--error');
 
-    if (phoneDigits.length < 10) {
+    if (!isValidColombianMobile(phoneDigits)) {
         feedbackTarget.textContent = 'Escribe tu número de WhatsApp para solicitar el reinicio.';
         // El mensaje se pinta en #customerAuthFeedback, arriba de la sección de Google y lejos
         // del botón — solo con eso el cliente no entiende que debe llenar el teléfono y volver
@@ -3732,9 +3750,9 @@ async function submitCustomerLookup() {
     };
 
     // Validación local inmediata (evita round-trip al servidor)
-    const phoneDigits = phoneValue.replace(/\D/g, '');
-    if (phoneDigits.length < 10) {
-        _showError('Escribe un número de WhatsApp válido (mínimo 10 dígitos).', phoneField);
+    const phoneDigits = normalizePhoneDigits(phoneValue);
+    if (!isValidColombianMobile(phoneDigits)) {
+        _showError('Escribe un número de celular colombiano válido (10 dígitos, empieza en 3).', phoneField);
         return;
     }
     if (!pinValue) {
@@ -5929,8 +5947,8 @@ async function submitCheckoutInfo() {
         return;
     }
 
-    if (phoneDigits.length < 10) {
-        checkoutInfoUI.feedback.textContent = 'Escribe un telefono valido para confirmar el pedido.';
+    if (!isValidColombianMobile(phoneDigits)) {
+        checkoutInfoUI.feedback.textContent = 'Escribe un número de celular colombiano válido (10 dígitos, empieza en 3).';
         checkoutInfoUI.phone?.focus();
         return;
     }

@@ -39,6 +39,29 @@ const MESEROS_COLLECTION             = 'meseros';
 const MESEROS_CREDENTIALS_COLLECTION = 'meseros_credenciales';
 const ACCOUNT_DELETION_GRACE_MS      = 7 * 24 * 60 * 60 * 1000; // 7 dias antes de borrar de verdad
 
+// El placeholder del campo de telefono en el registro ("+57 300 000 0000") invita a escribir el
+// indicativo de pais, pero clientId siempre fue `phone_${phoneDigits}` sin normalizar eso -- sin
+// esto, "+57 300 1234567" y "300 1234567" generaban DOS clientId distintos para el mismo numero
+// real (phone_573001234567 vs phone_3001234567), duplicando la cuenta. Se quita el "57" solo
+// cuando sobran exactamente esos 2 digitos y lo que queda es un celular valido.
+function normalizeColombianPhoneDigits(raw) {
+    const digits = String(raw || '').replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('57') && digits[2] === '3') {
+        return digits.slice(2);
+    }
+    return digits;
+}
+
+// Celular colombiano valido: exactamente 10 digitos y siempre empieza en 3 (300-350 aprox, todos
+// los rangos moviles vigentes) -- un fijo (empieza en 1/4/5/6/7/8, con o sin indicativo) o
+// cualquier otra cadena de 10 digitos (ej. "0000000000", un numero a medio escribir con ceros a
+// la izquierda) pasaba el viejo chequeo generico de "al menos 10 digitos" sin ser un celular real
+// capaz de recibir WhatsApp. Se espera que digits ya haya pasado por
+// normalizeColombianPhoneDigits (o el normalizePhoneDigits del cliente, que hace lo mismo).
+function isValidColombianMobile(digits) {
+    return /^3\d{9}$/.test(String(digits || ''));
+}
+
 // Orígenes permitidos para llamadas a las Cloud Functions desde el navegador.
 // Solo estos dominios pueden invocar las funciones onCall desde un browser.
 const ALLOWED_ORIGINS = [
@@ -650,9 +673,9 @@ exports._handleOrderCancellationEvent = handleOrderCancellationEvent;
 exports.sendWhatsAppOtp = onCall(
     { region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN], cors: ALLOWED_ORIGINS },
     async (request) => {
-        const phone = String(request.data?.phone || '').replace(/\D/g, '');
+        const phone = normalizeColombianPhoneDigits(request.data?.phone);
 
-        if (phone.length < 10) {
+        if (!isValidColombianMobile(phone)) {
             throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
         }
 
@@ -746,10 +769,10 @@ exports.sendWhatsAppOtp = onCall(
 exports.verifyWhatsAppOtp = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
-        const phone = String(request.data?.phone || '').replace(/\D/g, '');
+        const phone = normalizeColombianPhoneDigits(request.data?.phone);
         const code  = String(request.data?.code  || '').replace(/\D/g, '');
 
-        if (phone.length < 10) {
+        if (!isValidColombianMobile(phone)) {
             throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
         }
         if (code.length !== 6) {
@@ -916,10 +939,10 @@ function sanitizeClientProfileForClient(clientId, data = {}, hasPassword = false
 exports.customerLoginWithPin = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
-        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
+        const phoneDigits = normalizeColombianPhoneDigits(request.data?.phone);
         const pin = normalizeCustomerPin(request.data?.pin);
 
-        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
+        if (!isValidColombianMobile(phoneDigits)) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
         if (!isValidCustomerPin(pin)) throw new HttpsError('invalid-argument', 'La contraseña debe tener 6 dígitos.');
 
         const db = getFirestore();
@@ -1010,8 +1033,8 @@ exports._mintMeseroCustomToken = _mintMeseroCustomToken;
 exports.customerRegisterOrUpdateProfile = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
-        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
+        const phoneDigits = normalizeColombianPhoneDigits(request.data?.phone);
+        if (!isValidColombianMobile(phoneDigits)) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
 
         const customerName = String(request.data?.customerName || '').trim();
         if (!customerName) throw new HttpsError('invalid-argument', 'Escribe tu nombre para guardar el perfil.');
@@ -1170,8 +1193,8 @@ exports.customerRegisterOrUpdateProfile = onCall(
 exports.checkPhoneRegistered = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
-        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
+        const phoneDigits = normalizeColombianPhoneDigits(request.data?.phone);
+        if (!isValidColombianMobile(phoneDigits)) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
 
         const db = getFirestore();
         const clientId = buildClientId(phoneDigits);
@@ -1215,8 +1238,8 @@ exports.checkPhoneRegistered = onCall(
 exports.submitPasswordResetRequest = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
-        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
+        const phoneDigits = normalizeColombianPhoneDigits(request.data?.phone);
+        if (!isValidColombianMobile(phoneDigits)) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
 
         const db = getFirestore();
         const clientId = buildClientId(phoneDigits);
@@ -1256,8 +1279,8 @@ exports.submitPasswordResetRequest = onCall(
 exports.submitNewAccountRequest = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
-        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
+        const phoneDigits = normalizeColombianPhoneDigits(request.data?.phone);
+        if (!isValidColombianMobile(phoneDigits)) throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
         const customerName = String(request.data?.customerName || '').trim();
 
         const db = getFirestore();
@@ -1304,8 +1327,8 @@ exports.adminAuthorizeNewAccount = onCall(
             throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
         }
 
-        const phoneDigits = String(request.data?.phoneDigits || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) {
+        const phoneDigits = normalizeColombianPhoneDigits(request.data?.phoneDigits);
+        if (!isValidColombianMobile(phoneDigits)) {
             throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
         }
 
@@ -1415,10 +1438,10 @@ exports.unlinkGoogleAccount = onCall(
 exports.linkPendingGoogleAfterOrder = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
-        const phoneDigits = String(request.data?.phone || '').replace(/\D/g, '');
+        const phoneDigits = normalizeColombianPhoneDigits(request.data?.phone);
         const googleUid = String(request.data?.googleUid || '').trim();
         const googleEmail = String(request.data?.googleEmail || '').trim();
-        if (phoneDigits.length < 10 || !googleUid) {
+        if (!isValidColombianMobile(phoneDigits) || !googleUid) {
             return { linked: false };
         }
 
@@ -1729,8 +1752,8 @@ exports.adminResetClientCredentials = onCall(
             throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
         }
 
-        const phoneDigits = String(request.data?.phoneDigits || '').replace(/\D/g, '');
-        if (phoneDigits.length < 10) {
+        const phoneDigits = normalizeColombianPhoneDigits(request.data?.phoneDigits);
+        if (!isValidColombianMobile(phoneDigits)) {
             throw new HttpsError('invalid-argument', 'Número de teléfono inválido.');
         }
 
