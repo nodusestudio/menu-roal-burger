@@ -1051,7 +1051,16 @@ exports.customerRegisterOrUpdateProfile = onCall(
         // lo marca `verified:true` solo si el codigo de 6 digitos coincidio) antes de crear
         // credenciales nuevas para este telefono.
         let usedResetAuthorization = false;
-        if (!hadCredentials) {
+        // Reclamar credenciales para un telefono que NUNCA tuvo cuenta (sin clientes/{id}) es un
+        // registro nuevo de verdad: no hay nada de valor que tomar (ni historial, ni puntos, ni
+        // direccion guardada), asi que no exige verificacion -- igual que cualquier app de pedidos
+        // por WhatsApp, la comprobacion real pasa despues, cuando el pedido se confirma por ese
+        // mismo numero (si no es el dueño, no puede recibirlo). El riesgo real esta en el otro
+        // caso: un telefono que YA es cliente (clientSnap.exists) pero se quedo sin passwordHash
+        // -- sea porque un admin lo reseteo o porque es una cuenta vieja migrada sin PIN -- ahi si
+        // hay historial/puntos/direccion reales que alguien podria tomar, y eso si exige probar
+        // que es el dueño (OTP o el bypass resetAuthorizedAt de un admin que ya lo verifico).
+        if (!hadCredentials && clientSnap.exists) {
             const verificationSnap = await db.collection(PHONE_VERIFICATIONS_COLLECTION).doc(clientId).get();
             const verificationData = verificationSnap.exists ? verificationSnap.data() : null;
             const verifiedAtMs = verificationData?.verifiedAt?.toMillis
