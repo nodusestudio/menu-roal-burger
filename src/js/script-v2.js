@@ -2128,7 +2128,11 @@ async function fetchClientProfileByPhone(phoneValue, pinValue = '') {
         await auth.signInWithCustomToken(result.data.customToken);
     }
 
-    return normalizeCustomerProfile(result.data.profile, result.data.profile.id);
+    const profile = normalizeCustomerProfile(result.data.profile, result.data.profile.id);
+    // Entro con la contrasena provisional que genero adminResetClientCredentials -- submitCustomerLookup
+    // usa esto para forzar la pantalla de crear clave nueva antes de dejarlo seguir.
+    profile.mustChangePassword = Boolean(result.data.mustChangePassword);
+    return profile;
 }
 
 async function fetchClientProfileByGoogleUid(googleUid) {
@@ -3011,8 +3015,17 @@ function closeCustomerDeleteAccountModal() {
     syncBodyScrollLock();
 }
 
-function closeCustomerPasswordResetModal() {
+// force=true es la unica forma de cerrar este modal cuando es obligatorio (contrasena
+// provisional sin cambiar todavia) -- lo pasa explicitamente submitCustomerNewPassword tras
+// guardar una clave real. Sin este guard, cualquiera de las vias normales de cerrar un modal (X,
+// click afuera, boton atras del telefono via _genericModalStack, o el cierre en cascada de
+// closeCustomerAuthModal/closeCustomerRegisterModal) dejaba al cliente con sesion activa pero
+// todavia con la clave provisional, sin haber pasado por la pantalla obligatoria.
+function closeCustomerPasswordResetModal(force = false) {
     if (!customerPasswordResetUI) {
+        return;
+    }
+    if (customerPasswordResetUI.mandatory && !force) {
         return;
     }
 
@@ -3069,7 +3082,10 @@ async function submitCustomerNewPassword() {
         });
 
         setActiveCustomerProfile(savedProfile);
-        closeCustomerPasswordResetModal();
+        // force=true: si este modal era obligatorio (contrasena provisional), ya se guardo una
+        // clave real -- customerRegisterOrUpdateProfile ya limpio mustChangePassword del lado del
+        // servidor, asi que aqui es seguro cerrarlo de una vez sin esperar a que el guard lo deje.
+        closeCustomerPasswordResetModal(true);
         closeCustomerAuthModal();
     } catch (error) {
         // Este modal se abre asumiendo que ya hay una autorizacion vigente (reset reciente del
@@ -3157,10 +3173,14 @@ function _renderResetStep() {
         stepContent.querySelector('#resetOtpResend')?.addEventListener('click', _handleResetOtpResend);
         customerPasswordResetUI.otpInput?.focus();
     } else {
+        const { mandatory } = customerPasswordResetUI;
+        const introText = mandatory
+            ? 'Entraste con una contraseña provisional de un solo uso. Crea tu contraseña definitiva para continuar.'
+            : `${OTP_DELIVERY_ENABLED ? 'Número verificado' : 'Cuenta verificada por el restaurante'}: ${escapeHtml(profile.customerPhone || profile.customerPhoneDigits)}.`;
         stepContent.innerHTML = `
             <p class="support-modal-kicker">Nueva contraseña</p>
             <h3 class="support-modal-title">Crea tu nueva contraseña</h3>
-            <p class="support-modal-text">${OTP_DELIVERY_ENABLED ? 'Número verificado' : 'Cuenta verificada por el restaurante'}: ${escapeHtml(profile.customerPhone || profile.customerPhoneDigits)}.</p>
+            <p class="support-modal-text">${introText}</p>
             <label class="support-field">
                 <span>Nueva contraseña de 6 dígitos</span>
                 <input type="password" id="customerResetPin" inputmode="numeric" maxlength="6" placeholder="Crea tu nueva contraseña">
@@ -3171,14 +3191,14 @@ function _renderResetStep() {
             </label>
             <p class="support-feedback" id="resetFeedback"></p>
             <div class="support-actions split">
-                <button type="button" class="support-secondary-btn" id="customerResetCancelButton">Cancelar</button>
+                ${mandatory ? '' : '<button type="button" class="support-secondary-btn" id="customerResetCancelButton">Cancelar</button>'}
                 <button type="button" class="support-send-btn" id="customerResetSaveButton">Guardar contraseña</button>
             </div>
         `;
         customerPasswordResetUI.feedback = stepContent.querySelector('#resetFeedback');
         customerPasswordResetUI.pin = stepContent.querySelector('#customerResetPin');
         customerPasswordResetUI.confirmPin = stepContent.querySelector('#customerResetConfirmPin');
-        stepContent.querySelector('#customerResetCancelButton')?.addEventListener('click', closeCustomerPasswordResetModal);
+        stepContent.querySelector('#customerResetCancelButton')?.addEventListener('click', () => closeCustomerPasswordResetModal());
         stepContent.querySelector('#customerResetSaveButton')?.addEventListener('click', submitCustomerNewPassword);
         bindCustomerPinField(customerPasswordResetUI.pin);
         bindCustomerPinField(customerPasswordResetUI.confirmPin);
@@ -3188,13 +3208,15 @@ function _renderResetStep() {
     }
 }
 
-function openCustomerPasswordResetModal(profile = {}) {
-    closeCustomerPasswordResetModal();
+function openCustomerPasswordResetModal(profile = {}, options = {}) {
+    closeCustomerPasswordResetModal(true);
 
     const resolvedProfile = normalizeCustomerProfile(profile, String(profile.id || ''));
     if (!resolvedProfile?.customerPhoneDigits) {
         return;
     }
+
+    const mandatory = Boolean(options.mandatory);
 
     const modal = document.createElement('div');
     modal.id = 'customerPasswordResetModal';
@@ -3202,7 +3224,7 @@ function openCustomerPasswordResetModal(profile = {}) {
     modal.classList.add('is-open');
     modal.innerHTML = `
         <div class="support-modal-card liquid-glass" role="dialog" aria-modal="true" aria-label="Crear nueva contraseña">
-            <button type="button" class="support-modal-close" aria-label="Cerrar nueva contraseña">&times;</button>
+            <button type="button" class="support-modal-close" aria-label="Cerrar nueva contraseña" ${mandatory ? 'hidden' : ''}>&times;</button>
             <div id="resetStepContent"></div>
         </div>
     `;
@@ -3212,6 +3234,10 @@ function openCustomerPasswordResetModal(profile = {}) {
     customerPasswordResetUI = {
         modal,
         profile: resolvedProfile,
+        // Contrasena provisional (adminResetClientCredentials) usada para entrar -- no se puede
+        // cerrar este modal ni salir de el sin guardar una clave real primero (ver el guard en
+        // closeCustomerPasswordResetModal).
+        mandatory,
         // Sin OTP_DELIVERY_ENABLED no tiene sentido mostrar el paso de codigo -- nunca va a
         // llegar. Se salta directo a crear la nueva clave (el admin ya verifico a este cliente a
         // mano antes de resetearlo, ver adminResetClientCredentials).
@@ -3221,7 +3247,11 @@ function openCustomerPasswordResetModal(profile = {}) {
         feedback: null, otpInput: null, pin: null, confirmPin: null
     };
 
-    customerPasswordResetUI.close?.addEventListener('click', closeCustomerPasswordResetModal);
+    // Envuelto en una funcion sin argumentos a proposito: addEventListener le pasaria el Event
+    // como primer parametro, y closeCustomerPasswordResetModal(event) tomaria ese Event (siempre
+    // truthy) como el "force" que se salta el guard obligatorio -- cerraria igual aunque
+    // mandatory sea true. Mismo motivo para el listener de click afuera, de abajo.
+    customerPasswordResetUI.close?.addEventListener('click', () => closeCustomerPasswordResetModal());
     modal.addEventListener('click', (event) => {
         if (event.target === modal && _lastMousedownTarget === modal) {
             closeCustomerPasswordResetModal();
@@ -3791,6 +3821,13 @@ async function submitCustomerLookup() {
         }
         setActiveCustomerProfile(profile);
         closeCustomerAuthModal();
+        if (profile.mustChangePassword) {
+            // Entro con la contrasena provisional del admin -- sesion ya activa (acceso
+            // automatico), pero no puede seguir usando la cuenta sin crear una clave real
+            // primero (obligatorio: el modal no se puede cerrar hasta guardar una nueva).
+            openCustomerPasswordResetModal(profile, { mandatory: true });
+            return;
+        }
         if (profile.pendingDeletion) {
             openCancelAccountDeletionModal(profile.deletionScheduledAt);
         }

@@ -13670,10 +13670,11 @@ async function deleteClient(clientId) {
     await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).delete();
 }
 
-// adminResetClientCredentials (Cloud Function) borra el credencial real en
-// clientes_credenciales -- ese documento nunca fue escribible desde el navegador (ni por el
-// admin), asi que antes este boton escribia passwordHash:'' en clientes/{id}, un campo que ya
-// nadie lee desde que las credenciales se separaron. No resetear nada de verdad.
+// adminResetClientCredentials (Cloud Function) genera una contrasena PROVISIONAL de un solo uso
+// (6 digitos) y la devuelve en texto plano -- es la unica vez que existe sin hashear, hay que
+// capturarla aqui mismo para poder copiarla en el mensaje de WhatsApp. El cliente entra con ella
+// como con cualquier contrasena normal, y el propio login lo obliga a cambiarla de una
+// (mustChangePassword, ver customerLoginWithPin).
 async function resetClientPasswordByPhone(phoneDigits) {
     const normalizedPhone = normalizePhoneDigits(phoneDigits);
     if (!normalizedPhone) {
@@ -13682,16 +13683,17 @@ async function resetClientPasswordByPhone(phoneDigits) {
     if (!firebaseFunctions) {
         throw new Error('Servicio no disponible.');
     }
-    await firebaseFunctions.httpsCallable('adminResetClientCredentials')({ phoneDigits: normalizedPhone });
+    const result = await firebaseFunctions.httpsCallable('adminResetClientCredentials')({ phoneDigits: normalizedPhone });
+    return String(result?.data?.provisionalPin || '');
 }
 
-function buildCustomerPasswordResetClipboardMessage(message = {}) {
+function buildCustomerPasswordResetClipboardMessage(message = {}, provisionalPin = '') {
     const customerName = String(message.customerName || 'cliente').trim();
-    const customerPhone = String(message.customerPhone || message.customerPhoneDigits || '').trim();
     return [
-        `Hola ${customerName}, tu contrasena de ${brandingState.restaurantName || 'Roal Burger'} ya fue restablecida.`,
-        `Vuelve a pulsar "Olvidé contraseña" e ingresa nuevamente tu número de WhatsApp ${customerPhone}.`,
-        'La app te mostrara la pantalla para crear tu nueva contrasena.'
+        `Hola ${customerName}, tu contrasena de ${brandingState.restaurantName || 'Roal Burger'} fue reiniciada.`,
+        `Tu contrasena provisional es: ${provisionalPin}`,
+        'Entra con tu número de WhatsApp y esa contraseña -- la app te va a pedir crear una nueva de una vez.',
+        'Esta contraseña es de un solo uso, no la compartas con nadie mas.'
     ].join('\n');
 }
 
@@ -17759,16 +17761,18 @@ document.addEventListener('click', async (event) => {
     }
 
     if (action === 'reset-password') {
-        const confirmed = await showConfirmModal({ icon: '🔑', title: `¿Resetear la contraseña de ${message.customerName}?`, message: 'El cliente deberá crear una nueva contraseña al volver a entrar.', confirmText: 'Resetear' });
+        const confirmed = await showConfirmModal({ icon: '🔑', title: `¿Resetear la contraseña de ${message.customerName}?`, message: 'Se genera una contraseña provisional de un solo uso para que el cliente entre y le pidamos crear una nueva de una vez.', confirmText: 'Resetear' });
         if (!confirmed) return;
         try {
             const adminIdentity = getCurrentAdminIdentity();
-            await resetClientPasswordByPhone(message.customerPhoneDigits);
+            const provisionalPin = await resetClientPasswordByPhone(message.customerPhoneDigits);
             let copied = false;
-            try { copied = await copyTextToClipboard(buildCustomerPasswordResetClipboardMessage(message)); } catch (_) {}
+            try { copied = await copyTextToClipboard(buildCustomerPasswordResetClipboardMessage(message, provisionalPin)); } catch (_) {}
             await updateMessageRequest(messageId, { status: 'resolved', resolvedAt: firestoreNow(), resolvedBy: adminIdentity, adminAction: 'password_reset_completed' });
             if (copied) showClipboardToast('Mensaje de restablecimiento copiado');
-            showNotice('Contrasena reseteada. El cliente ya puede crear una nueva.', 'ok');
+            // El PIN solo existe en texto plano en esta respuesta -- si el portapapeles fallo, esta
+            // es la unica oportunidad de verlo, asi que va tambien en el aviso por si acaso.
+            showNotice(`Contraseña provisional: ${provisionalPin}. El cliente entra con ella y debe cambiarla de una.`, 'ok');
         } catch (error) {
             showNotice(`No se pudo resetear la contrasena: ${error.message || 'error inesperado.'}`, 'error');
         }

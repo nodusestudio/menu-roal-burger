@@ -987,7 +987,14 @@ exports.customerLoginWithPin = onCall(
         }
 
         const customToken = await getAuth().createCustomToken(clientId);
-        return { profile: sanitizeClientProfileForClient(clientId, clientData, true), customToken };
+        return {
+            profile: sanitizeClientProfileForClient(clientId, clientData, true),
+            customToken,
+            // Contrasena provisional (adminResetClientCredentials) -- el cliente entra normal,
+            // pero el navegador debe forzar la pantalla de crear clave nueva antes de dejarlo
+            // seguir. Ver limpieza de esta bandera en customerRegisterOrUpdateProfile.
+            mustChangePassword: Boolean(creds.mustChangePassword)
+        };
     }
 );
 
@@ -1150,7 +1157,10 @@ exports.customerRegisterOrUpdateProfile = onCall(
                 // Un solo uso, igual que el OTP: que quede vigente despues de reclamar la cuenta
                 // dejaria la ventana de bypass abierta de nuevo si alguna vez se borran las
                 // credenciales por otra via.
-                ...(usedResetAuthorization ? { resetAuthorizedAt: FieldValue.delete() } : {})
+                ...(usedResetAuthorization ? { resetAuthorizedAt: FieldValue.delete() } : {}),
+                // Contrasena provisional ya reemplazada por una real -- se acabo la obligacion de
+                // cambiarla (ver mustChangePassword en adminResetClientCredentials/customerLoginWithPin).
+                mustChangePassword: FieldValue.delete()
             }, { merge: true });
         }
 
@@ -1740,12 +1750,15 @@ exports.cancelAccountDeletion = onCall(
     }
 );
 
-// El boton "Reset contrasena" del panel admin escribia passwordHash:'' en clientes/{id} -- desde
-// que las credenciales viven en clientes_credenciales (allow read,write: if false, solo Admin
-// SDK) ese campo ya no se lee en ningun lado y el boton no reseteaba nada de verdad. Esta funcion
-// borra el credencial real: el cliente vuelve a "sin contrasena" y, al intentar entrar de nuevo,
-// customerLoginWithPin le devuelve resetRequired:true (ya lo hacia) para que cree una nueva --
-// ahora pasando primero por un OTP real (ver customerRegisterOrUpdateProfile).
+// El boton "Reset contrasena" del panel admin borraba las credenciales y dejaba al cliente en un
+// estado "sin contrasena" -- tenia que entrar a la app, pedir el reinicio de nuevo, y en el medio
+// dependia de un bypass (resetAuthorizedAt) para poder crear la clave sin OTP. Ahora en vez de
+// borrar nada, genera una CONTRASENA PROVISIONAL de un solo uso (6 digitos, mismo formato que
+// cualquier PIN) que el cliente usa para entrar de una -- customerLoginWithPin ya la acepta como
+// cualquier otra, y devuelve mustChangePassword:true para forzar la pantalla de "crea tu nueva
+// contrasena" antes de dejarlo usar la cuenta con normalidad. El texto plano solo existe en esta
+// respuesta (una vez) para que el admin lo copie y se lo mande por WhatsApp -- nunca se guarda sin
+// hashear.
 exports.adminResetClientCredentials = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
@@ -1764,16 +1777,19 @@ exports.adminResetClientCredentials = onCall(
         }
 
         const clientId = buildClientId(phoneDigits);
-        // set() sin merge reemplaza el documento entero -- borra passwordHash/passwordSalt (igual
-        // que el delete() de antes, fuerza PASSWORD_RESET_REQUIRED en el proximo login) y deja
-        // resetAuthorizedAt como prueba de que un admin verifico a este cliente a mano. Ver
-        // RESET_AUTHORIZED_MAX_AGE_MS: customerRegisterOrUpdateProfile lo acepta como sustituto
-        // del OTP mientras UltraMsg no pueda enviar codigos.
+        // Mismo generador criptografico que el OTP de WhatsApp (crypto.randomBytes, no Math.random).
+        const provisionalPin = String(parseInt(crypto.randomBytes(3).toString('hex'), 16) % 900000 + 100000);
+        const salt = generatePinSalt();
+        // set() sin merge reemplaza el documento entero -- limpia cualquier resetAuthorizedAt
+        // viejo de paso, ya no hace falta con este mecanismo.
         await getFirestore().collection(CLIENT_CREDENTIALS_COLLECTION).doc(clientId).set({
-            resetAuthorizedAt: FieldValue.serverTimestamp()
+            passwordHash: hashPinSalted(provisionalPin, salt),
+            passwordSalt: salt,
+            mustChangePassword: true,
+            updatedAt: FieldValue.serverTimestamp()
         });
 
-        return { success: true };
+        return { success: true, provisionalPin };
     }
 );
 
