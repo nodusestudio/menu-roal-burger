@@ -2268,9 +2268,12 @@ async function _completeGoogleLogin(googleUid, googleEmail, googleName) {
 // como esa cuenta (Custom Token de un login previo) — si no, la Cloud Function la rechaza.
 async function saveCustomerProfile(profileInput = {}) {
     const customerPhoneDigits = normalizePhoneDigits(profileInput.customerPhone || '');
-    if (!String(profileInput.customerName || '').trim()) {
-        throw new Error('Escribe tu nombre para guardar el perfil.');
-    }
+    // El nombre NO se valida aqui -- submitCustomerNewPassword (crear clave tras un reset) llama
+    // esta funcion sin nombre a proposito: checkPhoneRegistered nunca lo devuelve (evita enumerar
+    // clientes sin autenticacion), asi que ese flujo no tiene forma de reenviarlo. Con el chequeo
+    // aqui, "Guardar" fallaba siempre en el cliente sin ni siquiera llamar al servidor. El
+    // servidor (customerRegisterOrUpdateProfile) sigue exigiendolo cuando de verdad hace falta
+    // (cuenta nueva sin nombre previo guardado) y ese mensaje llega igual al catch de abajo.
     if (customerPhoneDigits.length < 10) {
         throw new Error('Escribe un número de WhatsApp válido.');
     }
