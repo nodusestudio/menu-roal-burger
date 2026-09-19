@@ -10313,6 +10313,12 @@ function _groupOrderItemsForDisplay(items) {
         result.push(group);
         (childOrderByParentSig.get(sig) || []).forEach((csig) => result.push(childGroups.get(csig)));
     }
+    // Hijos huérfanos (su padre no está en el pedido — dato antiguo/incompleto): se agregan al
+    // final como líneas propias. Nunca se debe perder un producto del ticket.
+    for (const [parentSig, sigs] of childOrderByParentSig) {
+        if (parentGroups.has(parentSig)) continue;
+        sigs.forEach((csig) => result.push({ ...childGroups.get(csig), parentItemKey: null }));
+    }
     return result;
 }
 
@@ -14025,11 +14031,14 @@ function buildESCPOSData(order) {
     wl('  Nombre : ' + (order.customerName || 'N/A'));
     if (order.customerPhone) wl('  Tel    : ' + order.customerPhone);
     wl('  Tipo   : ' + getOrderTypeLabel(order));
-    if (order.orderType === 'domicilio' && order.deliveryAddress) {
-        ww(order.deliveryAddress, '  Dir    : ');
+    if (order.orderType === 'domicilio') {
+        ww(order.deliveryAddress || 'SIN DIRECCION REGISTRADA', '  Dir    : ');
     }
     if (order.barrioEspecial) {
         ww(`Barrio ${order.barrioEspecial} - NO ENTRA EL DOMI, CLIENTE SALE A RECIBIR`, '  !! ');
+    }
+    if (order.isScheduled && order.scheduledLabel) {
+        ww(`PEDIDO PROGRAMADO - Entregar: ${order.scheduledLabel}`, '  ** ');
     }
     sep2();
 
@@ -14044,7 +14053,8 @@ function buildESCPOSData(order) {
     for (const item of _groupOrderItemsForDisplay(order.items || [])) {
         if (item.parentItemKey) {
             ww(`  > ${item.quantity}x ${item.productName}`, '       ');
-            if (item.note) ww('    ' + item.note, '       ');
+            if (item.optionLabel) ww('> ' + item.optionLabel, '         ');
+            if (item.note && item.note !== item.optionLabel) ww('    ' + item.note, '         ');
             continue;
         }
         const qty = String(item.quantity).padStart(2);
@@ -14264,10 +14274,11 @@ function buildKitchenTicketHtml(order) {
         ? `MESA ${order.mesaNumber || '?'}`
         : order.orderType === 'domicilio' ? 'DOMICILIO' : 'RECOGER';
 
+    // La dirección se imprime SIEMPRE completa (el CSS ya la envuelve en varias líneas).
+    // Nunca recortarla: un domiciliario sin la dirección entera no puede entregar.
     const _rawAddr    = String(order.deliveryAddress || '').trim();
-    const _shortAddr  = _rawAddr.length > 55 ? _rawAddr.slice(0, 52) + '…' : _rawAddr;
     const addressLine = (order.orderType === 'domicilio' && _rawAddr)
-        ? `<div class="k-address" title="${escapeHtml(_rawAddr)}">${escapeHtml(_shortAddr)}</div>`
+        ? `<div class="k-address">${escapeHtml(_rawAddr)}</div>`
         : '';
 
     // Un combo/adición vinculado a un producto (parentItemKey) debe imprimirse anidado bajo
@@ -14289,7 +14300,7 @@ function buildKitchenTicketHtml(order) {
         const children = childrenOf(item.itemKey);
         const childrenHtml = children.length
             ? `<div class="k-sub-items">${children.map((c) => `
-                <div class="k-sub-item">↳ ${escapeHtml(String(c.quantity))}x ${escapeHtml(c.productName)}${c.note ? ` <span class="k-sub-note">— ${escapeHtml(c.note)}</span>` : ''}</div>
+                <div class="k-sub-item">↳ ${escapeHtml(String(c.quantity))}x ${escapeHtml(c.productName)}${c.optionLabel ? ` <span class="k-sub-note">— ${escapeHtml(c.optionLabel)}</span>` : ''}${c.note && c.note !== c.optionLabel ? ` <span class="k-sub-note">— ${escapeHtml(c.note)}</span>` : ''}</div>
             `).join('')}</div>`
             : '';
         return `<div class="k-product">
