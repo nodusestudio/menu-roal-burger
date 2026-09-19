@@ -14060,7 +14060,7 @@ function buildESCPOSData(order) {
 
     // ── TOTALES ─────────────────────────────────────────────────────────────
     wc('  Subtotal', formatMoney(order.subtotal || 0));
-    if (Number(order.promo2x1IncrementoFee || 0) > 0) wc('  Incremento 2x1', formatMoney(Number(order.promo2x1IncrementoFee)));
+    if (Number(order.promo2x1IncrementoFee || 0) > 0) wc('  Incremento empaque 2x1', formatMoney(Number(order.promo2x1IncrementoFee)));
     if (Number(order.pointsRedeemed || 0) > 0) wc(`  Puntos usados (${order.pointsRedeemed})`, `-${formatMoney(Number(order.pointsDiscountAmount || 0))}`);
     if (order.orderType === 'domicilio') wc('  Domicilio', formatMoney(order.deliveryFee || 0));
     sep();
