@@ -1761,7 +1761,39 @@ function buildWhatsAppOrderConfirmationText(orderData = {}) {
         ? `\n🗓️ Entrega programada: ${orderData.scheduledLabel}`
         : '';
 
-    return `¡Hola, ${restaurantName}! 🍔\n\nAcabo de hacer mi pedido desde la app. Aquí los detalles:\n\n📦 Pedido: ${orderCode}\n👤 Nombre: ${customerName}\n💰 Total: ${total}${scheduleLine}\n\nQuedo pendiente de la confirmación. ¡Muchas gracias!`;
+    // Que diga de una vez que esta pidiendo -- antes el mensaje solo traia el codigo, y quien
+    // atendia por WhatsApp tenia que ir a buscar el pedido en el panel para saber que pidio.
+    const items = Array.isArray(orderData.items) ? orderData.items : [];
+    const itemsLines = items.map((item) => {
+        const optLabel = item.optionLabel ? ` (${item.optionLabel})` : '';
+        return `• ${item.quantity}x ${item.productName || '—'}${optLabel} — ${formatCurrency(item.subtotal || 0)}`;
+    }).join('\n');
+    const itemsBlock = itemsLines ? `\n\n🍽️ Pedido:\n${itemsLines}` : '';
+
+    // Medio de pago -- en efectivo dice con cuanto paga (para que ya sepan si hay que alistar
+    // cambio), y en cualquier medio electronico pide los datos de una vez en el mismo mensaje, en
+    // vez de que sea un mensaje aparte despues.
+    const pm = String(orderData.paymentMethod || '').trim().toLowerCase();
+    const pmLabels = { efectivo: 'Efectivo', transferencia: 'Transferencia', nequi: 'Nequi', bancolombia: 'Bancolombia', daviplata: 'Daviplata', tarjeta: 'Tarjeta' };
+    const pmLabel = pmLabels[pm] || String(orderData.paymentMethod || '').trim();
+
+    // Solo los medios que de verdad son una transferencia piden los datos aqui -- "tarjeta" se
+    // cobra con datafono en la entrega, no necesita que le compartan ninguna cuenta.
+    const isTransferLike = ['transferencia', 'nequi', 'bancolombia', 'daviplata'].includes(pm);
+
+    let paymentLine = '';
+    if (pm === 'efectivo') {
+        const tenderAmount = Number(orderData.cashTenderAmount || 0);
+        paymentLine = orderData.cashChangeRequired && tenderAmount > 0
+            ? `\n💵 Pago en efectivo con ${formatCurrency(tenderAmount)} (necesito cambio).`
+            : '\n💵 Pago en efectivo, con el monto exacto.';
+    } else if (isTransferLike) {
+        paymentLine = `\n💳 Pago por ${pmLabel}. ¿Me comparten los datos para hacer la transferencia?`;
+    } else if (pmLabel) {
+        paymentLine = `\n💳 Medio de pago: ${pmLabel}.`;
+    }
+
+    return `¡Hola, ${restaurantName}! 🍔\n\nAcabo de hacer mi pedido desde la app. Aquí los detalles:\n\n📦 Pedido: ${orderCode}\n👤 Nombre: ${customerName}${itemsBlock}${paymentLine}\n💰 Total: ${total}${scheduleLine}\n\nQuedo pendiente de la confirmación. ¡Muchas gracias!`;
 }
 
 function openOrderConfirmationWhatsApp(orderData = {}) {
@@ -5799,6 +5831,8 @@ async function submitPaymentFlow() {
             fulfillmentType: capturedOrderData.fulfillmentType || '',
             address: capturedOrderData.address || '',
             paymentMethod,
+            cashChangeRequired: paymentMethod === 'efectivo' ? cashChoice === 'cambio' : false,
+            cashTenderAmount: paymentMethod === 'efectivo' && cashChoice === 'cambio' ? tenderAmount : null,
             isScheduled: Boolean(capturedOrderData.isScheduled),
             scheduledLabel: capturedOrderData.scheduledLabel || ''
         });
