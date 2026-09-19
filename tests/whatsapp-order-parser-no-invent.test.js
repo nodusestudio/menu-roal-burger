@@ -100,6 +100,25 @@ test('menú vacío: todo queda unmatched (nunca revienta, nunca inventa)', () =>
     assert.ok(!('unitPrice' in resolved[0]));
 });
 
+// El parser jamás sabe calcular el precio real de un 2x1 (ver PROMO_MENTION_REGEX en el propio
+// archivo) -- si el texto lo menciona, el item debe quedar marcado bien visible para que el
+// cajero lo corrija con el flujo real de "Agregar productos" antes de confirmar, en vez de salir
+// silenciosamente al precio completo (el bug real que reportó un cliente: RB-3070).
+test('una mención de 2x1 queda marcada en la nota para revisión manual', () => {
+    const resolved = resolveDraftItemsAgainstMenu([
+        { productNameGuess: 'Burger Ranchera', quantity: 1, note: 'con la promo 2x1 porfa' },
+        { productNameGuess: 'Perro Especial 2x1', quantity: 1 },
+        { productNameGuess: 'coca cola', quantity: 1, note: 'dos por uno' },
+        { productNameGuess: 'Papas Francesas', quantity: 1, note: 'sin sal' }
+    ], MENU);
+
+    assert.match(resolved[0].note, /2x1|promo/i);
+    assert.match(resolved[1].note, /2x1|promo/i);
+    assert.match(resolved[2].note, /2x1|promo/i);
+    // Un item sin mención de 2x1 no debe salir marcado (ni con nota inventada de la nada).
+    assert.equal(resolved[3].note, 'sin sal');
+});
+
 test('entradas inválidas no rompen ni inventan', () => {
     assert.deepEqual(resolveDraftItemsAgainstMenu(null, MENU), []);
     assert.deepEqual(resolveDraftItemsAgainstMenu(undefined, MENU), []);

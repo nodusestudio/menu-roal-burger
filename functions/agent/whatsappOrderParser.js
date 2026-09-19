@@ -27,6 +27,20 @@ const PARSER_MODEL = 'claude-haiku-4-5';
 // el cajero) antes que forzar un match dudoso y colar un producto/precio equivocado.
 const MATCH_ACCEPT_THRESHOLD = 0.6;
 
+// Este parser NUNCA sabe calcular el precio real de un 2x1 (depende de que promo/producto exacto
+// aplica, ver PosCart en admin.js) -- igual que Reina (el agente en vivo, ver agent/prompt.js) le
+// dice al cliente que esa promo puntual solo esta en el menu web. Si el texto pegado menciona un
+// 2x1, el item se resuelve igual contra el menu (para que el cajero no tenga que escribirlo de
+// cero) pero con una nota bien visible para que lo arregle desde "Agregar productos" -- ahi si se
+// calcula el precio y el cargo de empaque correctos -- antes de mandar la confirmacion al
+// cliente. Sin este aviso, el pedido salia con el precio completo y sin ningun rastro del 2x1.
+const PROMO_MENTION_REGEX = /\b2\s*[x×]\s*1\b|\bdos\s*por\s*uno\b/i;
+const PROMO_MENTION_WARNING = '⚠️ Cliente mencionó 2x1/promo — verificar y aplicarla desde "Agregar productos" antes de confirmar';
+
+function flagUnsupportedPromoMention(text) {
+    return PROMO_MENTION_REGEX.test(String(text || '')) ? PROMO_MENTION_WARNING : '';
+}
+
 const PARSE_SYSTEM_PROMPT = `Eres un extractor de datos. Recibes el texto CRUDO de una conversación de WhatsApp entre un cliente y una hamburguesería y devuelves ÚNICAMENTE un objeto JSON (sin texto antes ni después, sin bloques de código, sin markdown) con esta forma EXACTA:
 
 {
@@ -123,7 +137,11 @@ function resolveDraftItemsAgainstMenu(draftItems, menuItems) {
         const productNameGuess = String((raw && (raw.productNameGuess ?? raw.productName)) || '').trim();
         const qty = Math.trunc(Number(raw && raw.quantity));
         const quantity = Number.isFinite(qty) && qty > 0 ? qty : 1;
-        const note = String((raw && raw.note) || '').trim();
+        const rawNote = String((raw && raw.note) || '').trim();
+        // La mencion puede caer en cualquiera de los dos campos (ej. "Pepito 2x1" como nombre, o
+        // "en promo 2x1" como nota) segun como Claude haya repartido el texto -- se revisan ambos.
+        const promoWarning = flagUnsupportedPromoMention(productNameGuess) || flagUnsupportedPromoMention(rawNote);
+        const note = promoWarning ? [promoWarning, rawNote].filter(Boolean).join(' — ') : rawNote;
         const base = { productNameGuess, quantity, note };
 
         const guessNorm = normalizeMatchText(productNameGuess);
