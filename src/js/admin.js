@@ -18268,14 +18268,13 @@ document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     const toggle = target.closest('[data-ticket-msg-toggle]');
-    // Solo se mantiene abierto al tocar el propio toggle o un botón "Copiar" (para luego poder
-    // tocar WhatsApp). Cualquier otra cosa —atajo de edición, enlace de WhatsApp, clic afuera—
-    // lo cierra.
-    const keepOpen = target.closest('[data-wa-copy]');
+    // Se mantiene abierto solo al tocar el propio toggle -- cualquier otra cosa (copiar un
+    // mensaje, atajo de edicion, enlace de WhatsApp, clic afuera) lo cierra. Antes "Copiar"
+    // quedaba abierto a proposito para poder tocar WhatsApp justo despues, pero en la practica
+    // tapaba el ticket y habia que cerrarlo a mano cada vez.
     document.querySelectorAll('.ticket-msg-menu-panel:not([hidden])').forEach((panel) => {
         const menu = panel.closest('[data-ticket-msg-menu]');
         if (toggle && menu && menu.contains(target)) return;
-        if (keepOpen && panel.contains(target)) return;
         panel.hidden = true;
         menu?.querySelector('[data-ticket-msg-toggle]')?.setAttribute('aria-expanded', 'false');
     });
