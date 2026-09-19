@@ -16,6 +16,9 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 const { fetchAllSellableItems } = require('./tools');
+// Misma fuente que usa createAgentOrder (orderLogic.js) para marcar menciones de 2x1 -- una sola
+// definicion para los dos caminos (este parser Y el agente en vivo), sin duplicar el regex.
+const { flagUnsupportedPromoMention } = require('./orderLogic');
 
 // claude-haiku-4-5: esto es una extracción de campos de un texto corto, no necesita el modelo
 // grande ni "pensamiento" — es la llamada más barata posible. (Haiku 4.5 no acepta
@@ -26,20 +29,6 @@ const PARSER_MODEL = 'claude-haiku-4-5';
 // puntaje. Puesto a propósito del lado exigente: preferimos marcar unmatched (rojo, lo corrige
 // el cajero) antes que forzar un match dudoso y colar un producto/precio equivocado.
 const MATCH_ACCEPT_THRESHOLD = 0.6;
-
-// Este parser NUNCA sabe calcular el precio real de un 2x1 (depende de que promo/producto exacto
-// aplica, ver PosCart en admin.js) -- igual que Reina (el agente en vivo, ver agent/prompt.js) le
-// dice al cliente que esa promo puntual solo esta en el menu web. Si el texto pegado menciona un
-// 2x1, el item se resuelve igual contra el menu (para que el cajero no tenga que escribirlo de
-// cero) pero con una nota bien visible para que lo arregle desde "Agregar productos" -- ahi si se
-// calcula el precio y el cargo de empaque correctos -- antes de mandar la confirmacion al
-// cliente. Sin este aviso, el pedido salia con el precio completo y sin ningun rastro del 2x1.
-const PROMO_MENTION_REGEX = /\b2\s*[x×]\s*1\b|\bdos\s*por\s*uno\b/i;
-const PROMO_MENTION_WARNING = '⚠️ Cliente mencionó 2x1/promo — verificar y aplicarla desde "Agregar productos" antes de confirmar';
-
-function flagUnsupportedPromoMention(text) {
-    return PROMO_MENTION_REGEX.test(String(text || '')) ? PROMO_MENTION_WARNING : '';
-}
 
 const PARSE_SYSTEM_PROMPT = `Eres un extractor de datos. Recibes el texto CRUDO de una conversación de WhatsApp entre un cliente y una hamburguesería y devuelves ÚNICAMENTE un objeto JSON (sin texto antes ni después, sin bloques de código, sin markdown) con esta forma EXACTA:
 

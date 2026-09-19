@@ -26,6 +26,20 @@ const TEMP_CLOSURE_MESSAGE = 'Estamos cerrados momentáneamente por adecuaciones
 const DELIVERY_FEE_AMOUNT = geofence.DELIVERY_FEE_AMOUNT;
 const DELIVERY_GEOFENCE_ZONES = geofence.DELIVERY_GEOFENCE_ZONES;
 
+// Ni Reina (el agente en vivo, ver prompt.js) ni el parser de "Pegar pedido de WhatsApp"
+// (whatsappOrderParser.js) saben calcular el precio real de un 2x1 -- depende de que
+// promo/producto exacto aplica (ver PosCart.getPromo2x1IncrementoFee en admin.js), y Reina puede
+// no seguir la instruccion del prompt de igual forma (paso real: pedido RB-3074, creado con "2x1"
+// como nota suelta, precio completo y sin el cargo de empaque). Se marca aca, en el punto de
+// creacion que comparten los dos caminos, para no depender solo de que el modelo obedezca el
+// prompt -- el cajero lo ve en el ticket y lo corrige con "Agregar productos" antes de confirmar.
+const PROMO_MENTION_REGEX = /\b2\s*[x×]\s*1\b|\bdos\s*por\s*uno\b/i;
+const PROMO_MENTION_WARNING = '⚠️ Cliente mencionó 2x1/promo — verificar y aplicarla desde "Agregar productos" antes de confirmar';
+
+function flagUnsupportedPromoMention(text) {
+    return PROMO_MENTION_REGEX.test(String(text || '')) ? PROMO_MENTION_WARNING : '';
+}
+
 // ── Tipo de pedido ───────────────────────────────────────────────────────────
 // SYNC: src/js/script-v2.js función getCheckoutFulfillmentType (línea ~992)
 function getCheckoutFulfillmentType(value) {
@@ -484,20 +498,32 @@ async function createAgentOrder(db, {
     const cashChangeRequiredBool = cashChangeRequired === true;
     const cashTenderAmountNum = cashChangeRequiredBool ? Number(cashTenderAmount || 0) : null;
 
-    const orderedItems = items.map((item, index) => ({
-        index: index + 1,
-        itemKey: `agent_${index + 1}_${String(item.productName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-        productName: String(item.productName || '').trim(),
-        categoryName: String(item.categoryName || '').trim(),
-        quantity: Number(item.quantity || 0),
-        unitPrice: Number(item.unitPrice || 0),
-        originalUnitPrice: null,
-        subtotal: Number(item.unitPrice || 0) * Number(item.quantity || 0),
-        discountAmount: null,
-        optionLabel: String(item.optionLabel || '').trim(),
-        note: String(item.note || '').trim(),
-        orderOptions: {}
-    }));
+    const orderedItems = items.map((item, index) => {
+        const productName = String(item.productName || '').trim();
+        const optionLabel = String(item.optionLabel || '').trim();
+        const rawNote = String(item.note || '').trim();
+        // La mencion puede caer en cualquiera de los tres campos segun de donde venga el item
+        // (nombre tal como lo escribio el cliente, opcion, o nota) -- se revisan los tres.
+        const promoWarning = flagUnsupportedPromoMention(productName)
+            || flagUnsupportedPromoMention(optionLabel)
+            || flagUnsupportedPromoMention(rawNote);
+        const note = promoWarning ? [promoWarning, rawNote].filter(Boolean).join(' — ') : rawNote;
+
+        return {
+            index: index + 1,
+            itemKey: `agent_${index + 1}_${productName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+            productName,
+            categoryName: String(item.categoryName || '').trim(),
+            quantity: Number(item.quantity || 0),
+            unitPrice: Number(item.unitPrice || 0),
+            originalUnitPrice: null,
+            subtotal: Number(item.unitPrice || 0) * Number(item.quantity || 0),
+            discountAmount: null,
+            optionLabel,
+            note,
+            orderOptions: {}
+        };
+    });
 
     const summaryMessage = buildAgentOrderSummaryMessage({
         items: orderedItems,
@@ -697,6 +723,7 @@ module.exports = {
     buildScheduleFromConfigDoc,
     isComboActiveNow,
     createAgentOrder,
+    flagUnsupportedPromoMention,
     buildDeliveredOrderWhatsAppMessage,
     normalizeAddressText,
     addressMemoryKey,
