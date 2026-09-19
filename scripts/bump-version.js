@@ -40,6 +40,15 @@ adminHtml = adminHtml.replace(
     `admin.js?v=${stamp}`
 );
 
+// firebase-config.js?v=... -- sin esto, un cambio en este archivo (ej. una guarda nueva contra
+// un SDK que no cargo) quedaba pegado para siempre en el navegador de quien ya lo tuviera en
+// cache: es un .js suelto con Cache-Control immutable de 1 año (ver vercel.json) y sin ?v= la URL
+// nunca cambiaba entre despliegues, asi que el navegador jamas volvia a pedirlo.
+adminHtml = adminHtml.replace(
+    /firebase-config\.js(\?v=[\w-]+)?(?=")/g,
+    `firebase-config.js?v=${stamp}`
+);
+
 // src/js/caja/calculos.js?v=... (módulo de lógica de Caja, se sirve tal cual sin minificar)
 adminHtml = adminHtml.replace(
     /caja\/calculos\.js\?v=[\w-]+/g,
@@ -53,7 +62,7 @@ adminHtml = adminHtml.replace(
 );
 
 fs.writeFileSync(adminHtmlPath, adminHtml, 'utf8');
-console.log(`[bump] admin.html   → admin.js?v=${stamp}  style.css?v=${stamp}`);
+console.log(`[bump] admin.html   → admin.js?v=${stamp}  firebase-config.js?v=${stamp}  style.css?v=${stamp}`);
 
 // ── 3. index.html — ?v= en script-v2.js, tracking.js y style.css ─────────────
 const indexHtmlPath = path.join(ROOT, 'index.html');
@@ -72,9 +81,13 @@ indexHtml = indexHtml.replace(
     `agent-chat.js?v=${stamp}`
 );
 indexHtml = indexHtml.replace(
+    /firebase-config\.js(\?v=[\w-]+)?(?=")/g,
+    `firebase-config.js?v=${stamp}`
+);
+indexHtml = indexHtml.replace(
     /href="style\.css(\?v=[\w-]+)?"/g,
     `href="style.css?v=${stamp}"`
 );
 
 fs.writeFileSync(indexHtmlPath, indexHtml, 'utf8');
-console.log(`[bump] index.html   → script-v2.js?v=${stamp}  tracking.js?v=${stamp}  agent-chat.js?v=${stamp}  style.css?v=${stamp}`);
+console.log(`[bump] index.html   → script-v2.js?v=${stamp}  tracking.js?v=${stamp}  agent-chat.js?v=${stamp}  firebase-config.js?v=${stamp}  style.css?v=${stamp}`);
