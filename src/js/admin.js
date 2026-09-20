@@ -10650,24 +10650,29 @@ function buildThermalTicketMarkup(order, options = {}) {
         const origSubtotal = hasItemDiscount ? origUnit * Number(item.quantity || 1) : null;
         const subtotal = Number(item.subtotal || 0);
 
+        // Un combo/adicional/bebida vinculado a un producto (parentItemKey) va anidado bajo él.
+        const isChild = !!item.parentItemKey;
+        // Las notas de bebida empiezan con 🥤 (marca — sabor): se rotulan "Bebida:" en vez de "Nota:".
+        const _noteIsBeb = /^\s*🥤/u.test(item.note || '');
+        const _noteText = String(item.note || '').replace(/^[\s🥤]+/u, '').trim();
         const detailParts = [
-            item.categoryName,
+            isChild ? '' : item.categoryName,
             item.optionLabel,
-            item.note && item.note !== item.optionLabel ? `Nota: ${item.note}` : '',
+            item.note && item.note !== item.optionLabel ? `${_noteIsBeb ? 'Bebida' : 'Nota'}: ${_noteIsBeb ? _noteText : item.note}` : '',
         ].filter(Boolean);
 
         const priceCell = hasItemDiscount
             ? `<s style="color:#aaa;font-size:0.78em;">${escapeHtml(formatMoney(origSubtotal))}</s><br><strong>${subtotal === 0 ? 'GRATIS' : escapeHtml(formatMoney(subtotal))}</strong>`
             : escapeHtml(formatMoney(subtotal));
 
-        const itemNameBlock = `<strong>${escapeHtml(`${item.quantity} x ${item.productName}`)}</strong>
+        const itemNameBlock = `<strong>${escapeHtml(`${isChild ? '+ ' : ''}${item.quantity} x ${item.productName}`)}</strong>
                     ${detailParts.map((p) => `<span class="ticket-line-meta">${escapeHtml(p)}</span>`).join('')}`;
         const itemNameCell = (printMode || _locked)
             ? itemNameBlock
             : `<button type="button" class="ticket-copy-btn" style="display:block;width:100%;" data-order-ticket-action="edit-items" data-order-id="${escapeHtml(order.id)}" title="Editar productos del pedido">${itemNameBlock}</button>`;
 
         return `
-            <tr>
+            <tr${isChild ? ' class="ticket-row-child"' : ''}>
                 <td>
                     ${itemNameCell}
                 </td>
@@ -10776,10 +10781,10 @@ function buildThermalTicketMarkup(order, options = {}) {
                             <span>Tipo</span>
                             <span>${escapeHtml(getOrderTypeLabel(order))}</span>
                         </div>
-                        <div class="ticket-customer-row">
+                        ${printMode ? '' : `<div class="ticket-customer-row">
                             <span>Estado</span>
                             <span class="state-pill ${escapeHtml(statusMeta.className)}">${escapeHtml(statusMeta.label)}</span>
-                        </div>
+                        </div>`}
                         <div class="ticket-customer-row">
                             <span>Pago</span>
                             <span>${(!printMode && _ticketPaymentMethod && _ticketPaymentMethod !== 'pendiente')
@@ -14190,39 +14195,52 @@ async function openOrderPrintTicket(orderId) {
     closeMobileTicketPanel({ clearSelection: true });
 }
 
-function _printOrderViaBrowser(order) {
+// Documento HTML autónomo del ticket de recepción para imprimir desde el navegador.
+// El ancho NO se fija en mm: el ticket ocupa el ancho imprimible real del papel (58 mm ≈ 48 mm
+// útiles, 80 mm ≈ 72 mm útiles). Con un ancho fijo, cualquier impresora cuya área imprimible
+// sea menor corta el borde derecho (dirección, precios). Todo el texto envuelve, nada se recorta.
+function buildOrderPrintDocumentHtml(order) {
     const markup = buildThermalTicketMarkup(order, { printMode: true });
 
     // CSS inline completo para que el documento sea autónomo (PrintHand no ejecuta JS ni carga hojas externas)
     const css = [
         '*{box-sizing:border-box;margin:0;padding:0}',
-        '@page{size:58mm auto;margin:2mm 3mm}',
-        'html,body{width:58mm;max-width:58mm;margin:0;padding:0;background:#fff;color:#000;font-family:"Courier New",Courier,monospace;font-size:9pt;line-height:1.35}',
-        '.ticket-paper-wrap,.ticket-paper{width:52mm;margin:0 auto;background:#fff;color:#000;font-family:"Courier New",Courier,monospace;font-size:9pt;line-height:1.35;overflow:visible}',
+        '@page{margin:2mm 3mm}',
+        'html,body{width:100%;margin:0;padding:0;background:#fff;color:#000;font-family:"Courier New",Courier,monospace;font-size:9pt;line-height:1.35}',
+        'body{max-width:80mm;margin:0 auto}',
+        '.ticket-paper-wrap,.ticket-paper{display:block;width:100%;max-width:100%;margin:0 auto;background:#fff;color:#000;font-family:"Courier New",Courier,monospace;font-size:9pt;line-height:1.35;overflow:visible;overflow-wrap:anywhere;word-break:break-word}',
         '.ticket-brand{text-align:center;padding-bottom:4px;border-bottom:1px dashed #000;margin-bottom:5px}',
         '.ticket-brand-name{font-size:13pt;font-weight:700;letter-spacing:1px;text-transform:uppercase;line-height:1.2;color:#000}',
-        '.ticket-brand-copy{font-size:7.5pt;color:#444}',
-        '.ticket-order-meta{display:flex;justify-content:space-between;font-size:7.5pt;color:#444;margin-bottom:3px}',
-        '.ticket-section{margin-top:5px;padding-top:5px;border-top:1px dashed #ccc;page-break-inside:avoid}',
-        '.ticket-section-title{font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;margin-bottom:3px}',
-        '.ticket-customer-card{font-size:8pt}',
-        '.ticket-customer-row{display:flex;justify-content:space-between;gap:4px;font-size:8pt;margin-bottom:1px}',
+        '.ticket-brand-copy{font-size:7.5pt;color:#000}',
+        '.ticket-order-meta{display:flex;justify-content:space-between;gap:4px;font-size:7.5pt;color:#000;margin-bottom:3px}',
+        '.ticket-section{margin-top:5px;padding-top:5px;border-top:1px dashed #000}',
+        '.ticket-section-title{font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#000;margin-bottom:3px}',
+        '.ticket-customer-card{display:block;font-size:8pt}',
+        '.ticket-customer-row{display:flex;justify-content:space-between;align-items:flex-start;gap:4px;font-size:8pt;margin-bottom:1px}',
+        '.ticket-customer-row>span{min-width:0}',
+        '.ticket-customer-row>span:last-child{text-align:right;max-width:70%}',
         '.ticket-copy-btn-name{font-size:8.5pt;font-weight:700;display:block;margin-bottom:2px}',
         '.ticket-copy-btn-inline{font-size:8pt}',
         '.ticket-copy-btn{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:default;display:inline}',
         '.ticket-address-block{font-size:8pt}',
-        '.ticket-address-text{white-space:normal;word-break:break-word;overflow-wrap:break-word;font-size:8pt}',
+        '.ticket-address-text{display:block;white-space:normal;word-break:break-word;overflow-wrap:anywhere;font-size:8pt;font-weight:700}',
         '.ticket-table{width:100%;border-collapse:collapse;font-size:8.5pt}',
         '.ticket-table th{font-size:7pt;text-transform:uppercase;font-weight:700;text-align:left;border-bottom:1px solid #000;padding-bottom:2px}',
         '.ticket-table th:last-child,.ticket-table td:last-child{text-align:right}',
-        '.ticket-table td{padding:1px 0;vertical-align:top}',
+        '.ticket-table td{padding:2px 0;vertical-align:top;border-bottom:1px dashed #000}',
+        '.ticket-table tr{break-inside:avoid;page-break-inside:avoid}',
+        '.ticket-table td:first-child{width:100%;overflow-wrap:anywhere;word-break:break-word}',
+        '.ticket-table td:last-child{width:1%;white-space:nowrap;padding-left:4px}',
         '.ticket-table td strong{display:block}',
-        '.ticket-line-meta{display:block;font-size:7.5pt;color:#555;padding-left:4px}',
-        '.ticket-total{margin-top:5px;padding-top:5px;border-top:1px dashed #ccc}',
+        // Combos / adicionales / bebidas: anidados bajo su producto, con sangría y barra lateral.
+        '.ticket-table tr.ticket-row-child td:first-child{padding-left:3mm;border-left:1px solid #000}',
+        '.ticket-table tr.ticket-row-child td{font-size:8pt;border-bottom-style:dotted}',
+        '.ticket-line-meta{display:block;font-size:7.5pt;color:#000;padding-left:4px}',
+        '.ticket-total{display:block;margin-top:5px;padding-top:5px;border-top:1px dashed #000}',
         '.ticket-summary-line,.ticket-total-row{display:flex;justify-content:space-between;font-size:8.5pt;gap:4px;color:#000}',
         '.ticket-total-row.is-grand-total{font-size:11pt;font-weight:700;border-top:1px solid #000;padding-top:3px;margin-top:2px}',
-        '.ticket-footer-copy{margin-top:6px;padding-top:5px;border-top:1px dashed #ccc;text-align:center;font-size:7.5pt;color:#444;line-height:1.4;display:flex;flex-direction:column;gap:1px}',
-        '.ticket-promo-banner{display:flex;align-items:flex-start;gap:6px;margin:4px 0;padding:4px 6px;border:1px dashed #888;font-size:7.5pt}',
+        '.ticket-footer-copy{margin-top:6px;padding-top:5px;border-top:1px dashed #000;text-align:center;font-size:7.5pt;color:#000;line-height:1.4;display:flex;flex-direction:column;gap:1px}',
+        '.ticket-promo-banner{display:flex;align-items:flex-start;gap:6px;margin:4px 0;padding:4px 6px;border:1px dashed #000;font-size:7.5pt}',
         '.ticket-promo-title{font-weight:700;font-size:7pt;text-transform:uppercase}',
         '.ticket-promo-label{font-size:7.5pt}',
         '.ticket-print-row,.ticket-print-btn,.ticket-action-btn,.ticket-cobrar-btn,.ticket-contact-btn,.ticket-wa-btn,.ticket-kitchen-btn,.ticket-bt-bar,.state-pill{display:none!important}',
@@ -14230,7 +14248,7 @@ function _printOrderViaBrowser(order) {
         '@media print{._ph-btn{display:none!important}}',
     ].join('');
 
-    const html = '<!DOCTYPE html><html lang="es"><head>' +
+    return '<!DOCTYPE html><html lang="es"><head>' +
         '<meta charset="UTF-8">' +
         '<meta name="viewport" content="width=device-width,initial-scale=1">' +
         '<title>Ticket #' + (order.code || '') + '</title>' +
@@ -14242,6 +14260,11 @@ function _printOrderViaBrowser(order) {
         '<p style="text-align:center;font-size:11px;color:#888;margin-top:8px;">Verifica el ticket y toca el boton para imprimir</p>' +
         '</div>' +
         '</body></html>';
+}
+
+function _printOrderViaBrowser(order) {
+    const markup = buildThermalTicketMarkup(order, { printMode: true });
+    const html = buildOrderPrintDocumentHtml(order);
 
     showNotice('Selecciona tu impresora en el dialogo de Chrome.', 'ok');
 

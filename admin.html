@@ -2017,6 +2017,11 @@
             overflow-wrap: anywhere;
         }
 
+        .ticket-table tr.ticket-row-child td:first-child {
+            padding-left: 14px;
+            border-left: 2px solid rgba(255, 140, 58, 0.55);
+        }
+
         .ticket-table {
             width: 100%;
             border-collapse: collapse;
@@ -12912,25 +12917,26 @@
             }
 
             @page {
-                size: 58mm auto;
                 margin: 2mm 3mm;
             }
 
             * { forced-color-adjust: none; box-sizing: border-box; }
 
-            /* Forzar ancho de página a 58mm en navegadores móviles que ignoran @page */
+            /* Ancho fluido: el ticket ocupa el ancho imprimible REAL del papel (58 mm ≈ 48 útiles,
+               80 mm ≈ 72 útiles). Un ancho fijo en mm corta el borde derecho (dirección, precios). */
             html, body {
-                width: 58mm !important;
-                max-width: 58mm !important;
-                margin: 0 !important;
+                width: 100% !important;
+                max-width: 80mm !important;
+                margin: 0 auto !important;
                 padding: 0 !important;
             }
 
             /* ── Base del ticket ── */
             .ticket-paper-wrap,
             .ticket-paper {
-                width: 52mm !important;
-                max-width: 52mm !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow-wrap: anywhere;
                 margin: 0 auto !important;
                 background: #ffffff !important;
                 color: #000000 !important;
@@ -13042,6 +13048,9 @@
                 color: #000000 !important;
             }
             .ticket-table td:last-child { text-align: right; white-space: nowrap; }
+            .ticket-table tr { break-inside: avoid; page-break-inside: avoid; }
+            .ticket-table tr.ticket-row-child td:first-child { padding-left: 3mm !important; border-left: 1px solid #000; }
+            .ticket-table tr.ticket-row-child td { font-size: 8pt !important; }
             .ticket-line-meta {
                 display: block !important;
                 font-size: 8pt !important;
