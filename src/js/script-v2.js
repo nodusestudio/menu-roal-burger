@@ -7202,7 +7202,7 @@ function openCartItemEditor(itemKey) {
                 </div>` : ''}
                 <div class="cie-section">
                     <p class="cie-section-label">Nota para cocina <span style="font-weight:400;opacity:0.6;">(opcional)</span></p>
-                    <textarea id="cieCommentTA" class="cie-comment-ta" maxlength="120" placeholder="Ej: sin cebolla, extra picante, bien cocido…">${escapeHtml(currentComment)}</textarea>
+                    <textarea id="cieCommentTA" class="cie-comment-ta" maxlength="400" placeholder="Ej: sin cebolla, extra picante, bien cocido…">${escapeHtml(currentComment)}</textarea>
                     <p class="cie-char-count" id="cieCharCount">${currentComment.length}/120</p>
                 </div>
             </div>

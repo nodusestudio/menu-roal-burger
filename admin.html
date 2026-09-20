@@ -4737,7 +4737,7 @@
         .pos-cart-ticket-info[hidden] { display: none; }
         .pos-ticket-info-row {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 6px;
             font-family: 'Space Grotesk', sans-serif;
             font-size: 0.75rem;
@@ -4752,6 +4752,8 @@
         .pos-ticket-info-value {
             color: #ffb07a;
             font-weight: 600;
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
         .pos-drawer-body { flex: 1; overflow-y: auto; min-height: 0; }
         .pos-drawer-body .pos-items-list { padding: 12px 12px 4px; }
@@ -15357,7 +15359,7 @@
                     <button type="button" class="pts-tab pts-tab-new" data-pts-tab="new">👤 Nuevo</button>
                 </div>
                 <div class="pts-client-panel" id="ptsPanelQuick" hidden>
-                    <input type="text" class="pts-input" id="ptsQuickName" placeholder="Nombre provisional..." autocomplete="off" maxlength="60">
+                    <input type="text" class="pts-input" id="ptsQuickName" placeholder="Nombre provisional..." autocomplete="off" maxlength="120">
                     <input type="text" class="pts-input" id="ptsQuickPhone" placeholder="Teléfono (opcional)" autocomplete="off" maxlength="20" style="margin-top:6px;">
                 </div>
                 <div class="pts-client-panel" id="ptsPanelSearch" hidden>
@@ -15375,9 +15377,9 @@
                         <span class="pts-new-client-icon">👤</span>
                         <span class="pts-new-client-header-text">Crear nuevo cliente</span>
                     </div>
-                    <input type="text" class="pts-input" id="ptsNewTabName" placeholder="Nombre *" autocomplete="off" maxlength="60">
+                    <input type="text" class="pts-input" id="ptsNewTabName" placeholder="Nombre *" autocomplete="off" maxlength="120">
                     <input type="tel" class="pts-input" id="ptsNewTabPhone" placeholder="Teléfono *" autocomplete="off" maxlength="20">
-                    <input type="text" class="pts-input" id="ptsNewTabAddr" placeholder="Dirección (opcional)" autocomplete="off" maxlength="120">
+                    <input type="text" class="pts-input" id="ptsNewTabAddr" placeholder="Dirección (opcional)" autocomplete="off" maxlength="400">
                     <button type="button" class="pts-new-client-save" id="ptsNewTabSaveBtn">Guardar y seleccionar</button>
                 </div>
             </div>
@@ -15387,7 +15389,7 @@
                 <!-- Picker de múltiples direcciones guardadas -->
                 <div class="pts-addr-picker" id="ptsAddressPicker" hidden></div>
                 <!-- Input de dirección -->
-                <input type="text" class="pts-input" id="ptsDeliveryAddress" placeholder="📍 Dirección de entrega..." autocomplete="off" maxlength="120">
+                <input type="text" class="pts-input" id="ptsDeliveryAddress" placeholder="📍 Dirección de entrega..." autocomplete="off" maxlength="400">
                 <!-- Acciones sobre dirección guardada (solo con cliente BUSCAR) -->
                 <div class="pts-addr-actions" id="ptsAddrActions" hidden>
                     <button type="button" class="pts-addr-act-btn" id="ptsEditAddrBtn">✏️ Editar</button>

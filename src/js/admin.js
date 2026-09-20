@@ -6486,7 +6486,7 @@ function _openPosNoteModal(item, itemKey, container) {
     modal.innerHTML = `
         <div class="pos-note-modal-box">
             <p class="pos-note-modal-title">Nota para <strong>${escapeHtml(item.productName)}</strong></p>
-            <textarea class="pos-note-modal-input" maxlength="120" placeholder="Ej: sin cebolla, extra picante…">${escapeHtml(item.note || '')}</textarea>
+            <textarea class="pos-note-modal-input" maxlength="400" placeholder="Ej: sin cebolla, extra picante…">${escapeHtml(item.note || '')}</textarea>
             <div class="pos-note-modal-actions">
                 <button type="button" class="pos-note-cancel-btn">Cancelar</button>
                 <button type="button" class="pos-note-save-btn">Guardar</button>
