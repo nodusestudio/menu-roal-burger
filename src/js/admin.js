@@ -539,6 +539,14 @@ const PosCart = {
     // parentItemKey viaja para que impresión/kitchen puedan reconstruir qué extra
     // pertenece a qué producto (antes se perdía: solo vivía como parentKey en el carrito).
     toOrderPayload() {
+        // Conserva los orderOptions originales de un ítem cargado desde un pedido existente
+        // (imagePath, tipo, cupón...) y le suma/actualiza la marca de promo 2x1.
+        const orderOptionsOf = (item) => {
+            if (item.promoLabel) {
+                return { ...(item.origOrderOptions || {}), promoLabel: item.promoLabel, promo2x1Incremento: item.promo2x1Incremento === true };
+            }
+            return item.origOrderOptions || null;
+        };
         return internalOrderItems.map((item, index) => ({
             index: index + 1,
             itemKey: item.itemKey,
@@ -546,13 +554,14 @@ const PosCart = {
             productId: item.productId,
             productName: item.productName,
             categoryName: item.categoryName,
-            optionLabel: item.note || '',
+            // optionLabelOrig: combo/bebida/sabor de un pedido web o de agente (ver _orderItemToPosCartItem).
+            optionLabel: item.optionLabelOrig || item.note || '',
             note: item.note || '',
             quantity: Number(item.quantity || 0),
             unitPrice: Number(item.unitPrice || 0),
             subtotal: Number(item.subtotal || 0),
             ...(item.aplicadoPor ? { aplicadoPor: item.aplicadoPor } : {}),
-            ...(item.promoLabel ? { orderOptions: { promoLabel: item.promoLabel, promo2x1Incremento: item.promo2x1Incremento === true } } : {})
+            ...(orderOptionsOf(item) ? { orderOptions: orderOptionsOf(item) } : {})
         }));
     }
 };
@@ -6618,9 +6627,10 @@ function renderPosOrderItems() {
                 </div>
             </div>`;
         }
-        const noteHTML = item.promoLabel
+        const noteHTML = (item.promoLabel
             ? `<span class="pos-item-promo-badge">🏷 ${escapeHtml(item.promoLabel)}</span>`
-            : (item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : '');
+            : (item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : ''))
+            + (item.optionLabelOrig ? `<span class="pos-item-note">${escapeHtml(item.optionLabelOrig)}</span>` : '');
         return `<div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
             <div class="pos-item-name">
                 ${escapeHtml(item.productName)}
@@ -7509,29 +7519,43 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
     }
 }
 
+// Convierte un ítem guardado en un pedido (POS, menú web o agente) al formato del carrito del POS.
+// Los pedidos de la web/agente traen `optionLabel` (combo, bebida, sabor...) DISTINTO de `note`
+// (el comentario del cliente). El carrito solo tiene un campo de nota, así que ese optionLabel
+// se guarda aparte (optionLabelOrig) y se reescribe tal cual en toOrderPayload; si no, editar
+// el pedido borraba el combo/sabor. Igual con orderOptions (imagePath, tipo, cupón...).
+function _orderItemToPosCartItem(item) {
+    const optionLabel = String(item.optionLabel || '').trim();
+    const noteRaw = String(item.note || '').trim();
+    const hasSeparateOption = !!optionLabel && optionLabel !== noteRaw;
+    return {
+        itemKey: item.itemKey || `${item.productId || 'p'}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        // Sin esto, todo item vuelve a quedar como "principal" al reabrir el pedido —
+        // los extras de un combo aparecían sueltos, separados de su producto base.
+        parentKey: item.parentItemKey || null,
+        productId: String(item.productId || ''),
+        productName: String(item.productName || ''),
+        categoryName: String(item.categoryName || ''),
+        note: hasSeparateOption ? noteRaw : (noteRaw || optionLabel),
+        optionLabelOrig: hasSeparateOption ? optionLabel : null,
+        origOrderOptions: item.orderOptions && typeof item.orderOptions === 'object' ? item.orderOptions : null,
+        quantity: Number(item.quantity || 1),
+        unitPrice: Number(item.unitPrice || 0),
+        originalUnitPrice: item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null,
+        subtotal: Number(item.subtotal || 0),
+        promoLabel: String(item.orderOptions?.promoLabel || item.promoLabel || ''),
+        promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true,
+        // Sin esto, al reabrir un pedido guardado para editarlo (ej. para cambiar
+        // domicilio ↔ para llevar) se perdía el +$2.000 de empaque de los 2x1: quedaba
+        // undefined y PosCart.getPromo2x1IncrementoFee() lo trataba como "sin incremento".
+        promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true,
+        aplicadoPor: item.aplicadoPor || null
+    };
+}
+
 async function editAdminPosOrder(order) {
     try {
-        const posItems = (order.items || []).map((item) => ({
-            itemKey: item.itemKey || `${item.productId || 'p'}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            // Sin esto, todo item vuelve a quedar como "principal" al reabrir el pedido —
-            // los extras de un combo aparecían sueltos, separados de su producto base.
-            parentKey: item.parentItemKey || null,
-            productId: String(item.productId || ''),
-            productName: String(item.productName || ''),
-            categoryName: String(item.categoryName || ''),
-            note: String(item.note || item.optionLabel || ''),
-            quantity: Number(item.quantity || 1),
-            unitPrice: Number(item.unitPrice || 0),
-            originalUnitPrice: item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null,
-            subtotal: Number(item.subtotal || 0),
-            promoLabel: String(item.orderOptions?.promoLabel || item.promoLabel || ''),
-            promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true,
-            // Sin esto, al reabrir un pedido guardado para editarlo (ej. para cambiar
-            // domicilio ↔ para llevar) se perdía el +$2.000 de empaque de los 2x1: quedaba
-            // undefined y PosCart.getPromo2x1IncrementoFee() lo trataba como "sin incremento".
-            promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true,
-            aplicadoPor: item.aplicadoPor || null
-        }));
+        const posItems = (order.items || []).map(_orderItemToPosCartItem);
 
         _editingOrderData = {
             id: order.id,
@@ -7595,24 +7619,7 @@ async function editAdminPosOrder(order) {
 // status, paidAt, voided, source, etc.
 function openOrderItemsEditor(order) {
     try {
-        const posItems = (order.items || []).map((item) => ({
-            itemKey: item.itemKey || `${item.productId || 'p'}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            // Sin esto, todo item vuelve a quedar como "principal" al reabrir el pedido —
-            // los extras de un combo aparecían sueltos, separados de su producto base.
-            parentKey: item.parentItemKey || null,
-            productId: String(item.productId || ''),
-            productName: String(item.productName || ''),
-            categoryName: String(item.categoryName || ''),
-            note: String(item.note || item.optionLabel || ''),
-            quantity: Number(item.quantity || 1),
-            unitPrice: Number(item.unitPrice || 0),
-            originalUnitPrice: item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null,
-            subtotal: Number(item.subtotal || 0),
-            promoLabel: String(item.orderOptions?.promoLabel || item.promoLabel || ''),
-            promo2x1: item.orderOptions?.promo2x1 === true || item.promo2x1 === true,
-            promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true,
-            aplicadoPor: item.aplicadoPor || null
-        }));
+        const posItems = (order.items || []).map(_orderItemToPosCartItem);
 
         _editingOrderData = null;
         _editingItemsOnlyOrderId = order.id;
@@ -7670,7 +7677,10 @@ async function saveOrderItemsEdit() {
         ? Number(posTicketConfig?.deliveryFee ?? order?.deliveryFee ?? 0)
         : 0;
     const promo2x1IncrementoFee = PosCart.getPromo2x1IncrementoFee(orderType);
-    const total = (orderType === 'domicilio' ? subtotal + deliveryFee : subtotal) + promo2x1IncrementoFee;
+    // Un pedido web con puntos canjeados guarda pointsDiscountAmount: al recalcular el total tras
+    // editar los productos hay que seguir restándolo (si no, el cliente pagaría de más).
+    const pointsDiscountAmount = Number(order?.pointsDiscountAmount || 0);
+    const total = Math.max(0, (orderType === 'domicilio' ? subtotal + deliveryFee : subtotal) + promo2x1IncrementoFee - pointsDiscountAmount);
     const infoFields = posTicketConfig ? {
         orderType,
         customerName: String(posTicketConfig.customerName || order?.customerName || '').trim(),
@@ -10077,8 +10087,16 @@ function isOrderClosed(order) {
 // de pago ("Editar medio de pago") y acciones que no tocan el pedido (agregar contacto).
 function isOrderLockedForEdit(order) {
     if (!order) return false;
+    if (isOrderClosed(order)) return true;
+    // Cobrado de verdad: el cajero registró el pago (paidAt).
+    if (order.paidAt) return true;
     const m = String(order.paymentMethod || '').toLowerCase();
-    return (!!m && m !== 'pendiente') || isOrderClosed(order);
+    if (!m || m === 'pendiente') return false;
+    // Pedidos del menú web / agente / pegados de WhatsApp llegan con el medio de pago que el
+    // CLIENTE eligió al pedir (efectivo, transferencia...) pero sin cobrar todavía — el cobro se
+    // registra al entregar. Antes ese medio los marcaba como "cobrados" y quedaban bloqueados
+    // para editar. Solo los pedidos del POS traen el medio de pago ya cobrado.
+    return order.isAdminOrder === true || order.source === 'admin_pos';
 }
 
 function getOrderColumnKey(order) {
@@ -23906,7 +23924,13 @@ function openTicketPreviewModal(order) {
         else voidBadge.setAttribute('hidden', '');
     }
     const isPosOrder = order.isAdminOrder || order.source === 'admin_pos';
-    if (editBtn) editBtn.hidden = !isPosOrder;
+    if (editBtn) {
+        // Pedido del POS: editor completo. Pedido de la web/agente: editor seguro de productos
+        // (no reescribe el documento), y solo si aún no está cobrado/cerrado.
+        editBtn.dataset.orderTicketAction = isPosOrder ? 'editar_pos' : 'edit-items';
+        editBtn.title = isPosOrder ? 'Editar pedido' : 'Editar productos del pedido';
+        editBtn.hidden = isPosOrder ? false : isOrderLockedForEdit(order);
+    }
     if (delBtn) delBtn.hidden = false;
     modal.removeAttribute('hidden');
 }
