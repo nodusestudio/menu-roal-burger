@@ -10087,15 +10087,19 @@ function isOrderClosed(order) {
 // de pago ("Editar medio de pago") y acciones que no tocan el pedido (agregar contacto).
 function isOrderLockedForEdit(order) {
     if (!order) return false;
-    if (isOrderClosed(order)) return true;
-    // Cobrado de verdad: el cajero registró el pago (paidAt).
-    if (order.paidAt) return true;
+    return isOrderClosed(order) || isOrderPaid(order);
+}
+
+// Pedido REALMENTE cobrado. Tener un medio de pago NO basta: en un pedido del menú web / agente /
+// pegado de WhatsApp, el cliente ELIGE el medio al pedir (efectivo, transferencia...) y eso solo
+// deja el medio definido en el ticket — el cobro real lo registra el cajero desde el admin
+// (paidAt). En el POS el medio de pago solo se asigna al cobrar, así que ahí sí basta con tenerlo.
+function isOrderPaid(order) {
+    if (!order) return false;
     const m = String(order.paymentMethod || '').toLowerCase();
     if (!m || m === 'pendiente') return false;
-    // Pedidos del menú web / agente / pegados de WhatsApp llegan con el medio de pago que el
-    // CLIENTE eligió al pedir (efectivo, transferencia...) pero sin cobrar todavía — el cobro se
-    // registra al entregar. Antes ese medio los marcaba como "cobrados" y quedaban bloqueados
-    // para editar. Solo los pedidos del POS traen el medio de pago ya cobrado.
+    if (order.paidAt) return true;
+    if (isOrderClosed(order)) return true; // entregado/enviado: se cobró al cerrarlo
     return order.isAdminOrder === true || order.source === 'admin_pos';
 }
 
@@ -10734,6 +10738,7 @@ function buildThermalTicketMarkup(order, options = {}) {
 
     // Build payment rows for totals section
     const _ticketPaymentMethod = String(order.paymentMethod || '').toLowerCase();
+    const _orderPaid = isOrderPaid(order);
     let _ticketPaymentRows = '';
     if (_ticketPaymentMethod === 'efectivo') {
         if (cashGiven > 0) {
@@ -10756,9 +10761,10 @@ function buildThermalTicketMarkup(order, options = {}) {
                     </div>`;
         }
     } else if (_ticketPaymentMethod && _ticketPaymentMethod !== 'pendiente' && _ticketPaymentMethod !== 'split') {
+        // Medio elegido por el cliente pero aún sin cobrar: se muestra definido, NO como pagado.
         _ticketPaymentRows = `
-                    <div class="ticket-summary-line ticket-total-row ticket-paid-row">
-                        <span>✓ Pagado</span>
+                    <div class="ticket-summary-line ticket-total-row${_orderPaid ? ' ticket-paid-row' : ''}">
+                        <span>${_orderPaid ? '✓ Pagado' : 'Por cobrar'}</span>
                         <strong>${escapeHtml(paymentMethod)}</strong>
                     </div>`;
     }
@@ -10767,8 +10773,9 @@ function buildThermalTicketMarkup(order, options = {}) {
     let _ticketPagoRowDetail = '';
     if (_ticketPaymentMethod === 'split' && paymentDetail) {
         _ticketPagoRowDetail = `<span class="ticket-line-meta">${escapeHtml(paymentDetail)}</span>`;
-    } else if (_ticketPaymentMethod && _ticketPaymentMethod !== 'pendiente' && _ticketPaymentMethod !== 'efectivo') {
-        _ticketPagoRowDetail = `<span class="ticket-line-meta">✓ Pagado</span>`;
+    } else if (_ticketPaymentMethod && _ticketPaymentMethod !== 'pendiente') {
+        const _detailText = !_orderPaid ? 'Por cobrar' : (_ticketPaymentMethod === 'efectivo' ? '' : '✓ Pagado');
+        _ticketPagoRowDetail = _detailText ? `<span class="ticket-line-meta">${_detailText}</span>` : '';
     }
 
     const _ticketPromoTags = _getOrderPromoTags(order);
@@ -10912,7 +10919,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                 </div>
             </article>
             ${printMode ? '' : (() => {
-                const _isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+                const _isPaid = isOrderPaid(order);
                 const _isEntregado = isOrderClosed(order);
                 const _hasType = !!order.orderType;
                 // Cobrar: se deshabilita en cuanto el pedido queda pagado o entregado.
@@ -11149,7 +11156,7 @@ function createOrderCard(order) {
 
     if (isMesaOrder && !isOrderClosed(order)) {
         // Layout mesa: [ Servido/Cobrar | 💰? ⇄? ]
-        const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+        const isPaid = isOrderPaid(order);
         const isServido = order.status === 'servido';
         const mainLabel = isServido ? (isPaid ? 'Entregado' : '💰 Cobrar') : (order.status === 'pendiente' ? 'Servido' : 'Servido');
         const mainAction = isServido ? (isPaid ? 'entregado' : 'cobrar_mesa') : 'servido';
@@ -11168,7 +11175,7 @@ function createOrderCard(order) {
         const mainLabel = canRequestCourier ? 'Pedir domiciliario' : 'Entregado';
         const mainAction = canRequestCourier ? 'esperando_domiciliario' : 'entregado';
         const mainClass = canRequestCourier ? '' : 'order-action-btn-delivered';
-        const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+        const isPaid = isOrderPaid(order);
         const cobrarBtn = !isPaid
             ? `<button type="button" class="order-action-btn order-action-btn-receive koa-icon-btn" data-order-card-action="cobrar_domicilio" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
             : '';
@@ -11182,7 +11189,7 @@ function createOrderCard(order) {
         const mainLabel = isReady ? 'Entregado' : 'Listo';
         const mainAction = isReady ? 'entregado' : 'listo_recoger';
         const mainClass = isReady ? 'order-action-btn-delivered' : 'order-action-btn-ready';
-        const isPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+        const isPaid = isOrderPaid(order);
         const cobrarRetiroBtn = !isPaid
             ? `<button type="button" class="order-action-btn order-action-btn-receive koa-icon-btn" data-order-card-action="cobrar_retiro" data-order-id="${order.id}" title="Cobrar pedido">💰</button>`
             : '';
@@ -11432,7 +11439,7 @@ function renderSalesDayBanner() {
     const aperturaHoy = cajaAperturaAt && aperturaHoyStr === todayStr;
     const paidOrders = ordersState.filter((o) => {
         if (o.voided || o.anulado) return false;
-        if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+        if (!isOrderPaid(o)) return false;
         const paidMs = _tsMs(o.paidAt);
         if (!paidMs) return false;
         const _paidDate = new Date(paidMs);
@@ -14146,6 +14153,7 @@ function buildESCPOSData(order) {
         }
     } else if (order.paymentMethod === 'efectivo') {
         wl('  Metodo  : Efectivo');
+        if (!isOrderPaid(order)) { pb(ESC, 0x45, 0x01); wl('  ** POR COBRAR **'); pb(ESC, 0x45, 0x00); }
         if (_cashGiven > 0) {
             wc('  Recibe', formatMoney(_cashGiven));
             wc('  Cambio', _changeAmt > 0 ? formatMoney(_changeAmt) : 'Exacto');
@@ -14153,7 +14161,7 @@ function buildESCPOSData(order) {
     } else {
         wl('  Metodo  : ' + _payMethod);
         if (order.paymentMethod && order.paymentMethod !== 'pendiente') {
-            pb(ESC, 0x45, 0x01); wl('  ** PAGADO **'); pb(ESC, 0x45, 0x00);
+            pb(ESC, 0x45, 0x01); wl(isOrderPaid(order) ? '  ** PAGADO **' : '  ** POR COBRAR **'); pb(ESC, 0x45, 0x00);
         }
     }
     sep2();
@@ -18188,7 +18196,7 @@ if (ordersActionRoot) {
                 if (nextStatus === 'cobrar_mesa') {
                     // Si ya fue cobrado con un método principal conocido, cerrar directo sin volver a cobrar
                     const _knownMethodIds = getPaymentMethods().map((m) => m.id);
-                    if (order.paymentMethod && order.paymentMethod !== 'pendiente' && _knownMethodIds.includes(order.paymentMethod)) {
+                    if (isOrderPaid(order) && _knownMethodIds.includes(order.paymentMethod)) {
                         // El cajero cierra el pedido -> 'enviado' (despachado). El barrido
                         // sweepEnviadoToEntregado lo pasa a 'entregado' definitivo ~20 min después.
                         await updateOrder(orderId, { status: 'enviado', enviadoAt: firestoreNow(), deliveredAt: firestoreNow() });
@@ -18291,7 +18299,7 @@ if (ordersActionRoot) {
                     return;
                 }
 
-                if (nextStatus === 'entregado' && (!order.paymentMethod || order.paymentMethod === 'pendiente')) {
+                if (nextStatus === 'entregado' && !isOrderPaid(order)) {
                     const isDomicilio = order.orderType === 'domicilio';
                     openDeliveryPaymentModal(order, isDomicilio ? false : 'mesa');
                     actionButton.disabled = false;
@@ -19707,7 +19715,12 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
         // paymentUpdate trae paidAt como FieldValue.serverTimestamp() (un sentinela, no un
         // Timestamp real) — no puede meterse tal cual en ordersState sin romper cualquier
         // código que intente leer .toMillis() de ahí antes de que llegue el reload.
-        const { paidAt: _omitPaidAt, ...paymentFieldsForLocalState } = paymentUpdate;
+        const { paidAt: _omitPaidAt, ...paymentFieldsNoSentinel } = paymentUpdate;
+        // paidAt local = ahora (número): así isOrderPaid() ya ve el pedido como cobrado al imprimir
+        // el recibo, antes de que llegue el reload (un pedido web solo se considera cobrado con paidAt).
+        const paymentFieldsForLocalState = 'paidAt' in paymentUpdate
+            ? { ...paymentFieldsNoSentinel, paidAt: Date.now() }
+            : paymentFieldsNoSentinel;
 
         // Refleja el pago en el estado local YA, antes de esperar el reload/render (que
         // puede tardar varios segundos) — así el ticket se imprime con el método de pago
@@ -19744,7 +19757,7 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
         } else {
             // Si ya tenía un método de pago real, esto es una corrección (editar_pago), no un
             // primer registro — el aviso lo refleja para no confundir al cajero.
-            const wasAlreadyPaid = order.paymentMethod && order.paymentMethod !== 'pendiente';
+            const wasAlreadyPaid = isOrderPaid(order);
             await updateOrder(order.id, paymentUpdate);
             _patchLocalOrder();
             if (!wasAlreadyPaid) {
@@ -21163,7 +21176,7 @@ function renderCajaDiaria() {
 
     // Filtrar cobros de la jornada actual; usa deliveredAt como fallback de timestamp
     const allPaid = ordersState.filter((o) => {
-        if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+        if (!isOrderPaid(o)) return false;
         const ts = o.paidAt || o.deliveredAt || o.createdAt;
         const paidMs = _tsMs(ts);
         if (!paidMs) return false;
@@ -21804,7 +21817,7 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         // Re-derivar pedidos pagados de la jornada cerrada para eliminar los procesados
         const _todayStr2 = new Date().toISOString().split('T')[0];
         const paid = ordersState.filter((o) => {
-            if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+            if (!isOrderPaid(o)) return false;
             const ts = o.paidAt || o.deliveredAt || o.createdAt;
             const ms = _tsMs(ts);
             if (!ms) return false;
@@ -21977,7 +21990,7 @@ async function cerrarCaja() {
 
         // Mismo filtro que renderCajaDiaria; usa deliveredAt como fallback de timestamp
         const paid = ordersState.filter((o) => {
-            if (!o.paymentMethod || o.paymentMethod === 'pendiente') return false;
+            if (!isOrderPaid(o)) return false;
             const ts = o.paidAt || o.deliveredAt || o.createdAt;
             const ms = _tsMs(ts);
             if (!ms) return false;
@@ -23793,7 +23806,7 @@ async function loadTicketsReport(fromDate, toDate) {
         const msOf = (o) => _tsMs(o.createdAt);
         return msOf(b) - msOf(a);
     });
-    _ticketsData = orders.filter((o) => o.paymentMethod && o.paymentMethod !== 'pendiente');
+    _ticketsData = orders.filter((o) => isOrderPaid(o));
     return _ticketsData;
 }
 
