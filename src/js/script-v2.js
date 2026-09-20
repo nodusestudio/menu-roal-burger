@@ -10914,7 +10914,8 @@ function render2x1Cards() {
                         type: 'solo',
                         imagePath: img,
                         promoLabel: `PROMO 2×1 — ${promo.kicker || nombre} (incluye 2)`,
-                        promo2x1: true
+                        promo2x1: true,
+                        promo2x1Incremento: promo.incremento === true || product.promo2x1?.incremento === true
                     }, `btn-2x1-${promo.id}`, 1);
                 }
             });
@@ -12259,7 +12260,8 @@ function renderPromoCarousels() {
                             type: 'solo',
                             imagePath: product.image_url,
                             promoLabel: `PROMO 2×1 — ${promo.kicker || product.nombre} (incluye 2)`,
-                            promo2x1: true
+                            promo2x1: true,
+                            promo2x1Incremento: promo.incremento === true || product.promo2x1?.incremento === true
                         }, `carousel-2x1-${promo.id}`, 1);
                     }
                 });

@@ -4594,6 +4594,7 @@ function renderPosPromocionesPanel(grid) {
                 addProductToPosOrder(prod.id, prod.nombre, price, '2×1', null, {
                     promoLabel: `PROMO 2×1 — ${promo.kicker || prod.nombre} (incluye 2)`,
                     promo2x1: true,
+                    promo2x1Incremento: promo.incremento === true || prod.promo2x1?.incremento === true,
                     initialQuantity: 1
                 });
             }
@@ -4672,7 +4673,13 @@ async function _posConfirmarCupon(docRef, data) {
         addProductToPosOrder(
             meta.productId || '', meta.productNombre || data.couponTitle || 'Producto',
             price, '2×1 (cupón)', null,
-            { promoLabel: `PROMO 2×1 — ${meta.productNombre} (incluye 2)`, promo2x1: true, initialQuantity: 1 }
+            {
+                promoLabel: `PROMO 2×1 — ${meta.productNombre} (incluye 2)`,
+                promo2x1: true,
+                // Sin esta marca el cupón nunca sumaba el +$2.000 de empaque para llevar/domicilio.
+                promo2x1Incremento: prod?.promo2x1?.incremento === true,
+                initialQuantity: 1
+            }
         );
     } else if (meta.type === 'combo') {
         const comboFromState = combosEspecialesState.find((c) => c.id === meta.comboId);
