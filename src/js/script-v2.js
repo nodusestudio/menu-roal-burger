@@ -4492,6 +4492,19 @@ function isMobileDevice() {
     return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 }
 
+// true cuando la página corre como app instalada (PWA en pantalla de inicio: el manifest usa
+// display:standalone) y no en una pestaña del navegador. Ahí ofrecer "Descargar app" no tiene sentido.
+function isRunningAsInstalledApp() {
+    try {
+        if (window.matchMedia) {
+            const modes = ['standalone', 'fullscreen', 'minimal-ui'];
+            if (modes.some((mode) => window.matchMedia(`(display-mode: ${mode})`).matches)) return true;
+        }
+    } catch (_) { /* matchMedia no disponible */ }
+    if (window.navigator.standalone === true) return true; // iOS: agregada a pantalla de inicio
+    return String(document.referrer || '').startsWith('android-app://'); // Android (TWA)
+}
+
 function isIOSDevice() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
@@ -12551,22 +12564,29 @@ function openPromoRegistrationPrompt() {
     const existing = document.getElementById('promoRegistrationPrompt');
     if (existing) existing.remove();
 
+    // "Descargar app" solo tiene sentido si el cliente está en la web (navegador); dentro de la
+    // app instalada ya la tiene.
+    const canOfferDownload = !isRunningAsInstalledApp();
+
     const modal = document.createElement('div');
     modal.id = 'promoRegistrationPrompt';
     modal.className = 'support-modal is-open';
     modal.innerHTML = `
-        <div class="support-modal-card liquid-glass promo-reg-card" role="dialog" aria-modal="true" aria-label="Registrate para promos exclusivas">
+        <div class="support-modal-card liquid-glass promo-reg-card" role="dialog" aria-modal="true" aria-label="Inicia sesión para promos exclusivas">
             <button type="button" class="support-modal-close" id="promoRegClose" aria-label="Cerrar">&times;</button>
             <p class="support-modal-kicker">Promos exclusivas</p>
             <h3 class="support-modal-title">Esta oferta es solo para miembros</h3>
-            <p class="support-modal-text">Para disfrutar de <strong>esta y todas nuestras promos exclusivas</strong> necesitas tener cuenta en la app de ${escapeHtml(_getRestaurantName())}. ¡Tambien puedes descargarla directo en tu dispositivo!</p>
+            <p class="support-modal-text">Para disfrutar de <strong>esta y todas nuestras promos exclusivas</strong> inicia sesión con tu cuenta de ${escapeHtml(_getRestaurantName())}.${canOfferDownload ? ' ¡También puedes descargar la app directo en tu dispositivo!' : ''}</p>
             <div class="promo-reg-actions">
-                <button type="button" class="promo-reg-btn promo-reg-btn--download" id="promoRegDownload">
+                <button type="button" class="promo-reg-btn promo-reg-btn--register" id="promoRegLogin">
+                    <span class="promo-reg-btn-icon">&#10140;</span> Iniciar sesión
+                </button>
+                <button type="button" class="promo-reg-btn promo-reg-btn--signup" id="promoRegRegister">
+                    ¿No tienes usuario? Regístrate
+                </button>
+                ${canOfferDownload ? `<button type="button" class="promo-reg-btn promo-reg-btn--download" id="promoRegDownload">
                     <span class="promo-reg-btn-icon">&#8659;</span> Descargar app
-                </button>
-                <button type="button" class="promo-reg-btn promo-reg-btn--register" id="promoRegRegister">
-                    <span class="promo-reg-btn-icon">&#9788;</span> Registrarse
-                </button>
+                </button>` : ''}
                 <button type="button" class="promo-reg-btn promo-reg-btn--guest" id="promoRegGuest">
                     Continuar como visitante
                 </button>
@@ -12579,6 +12599,12 @@ function openPromoRegistrationPrompt() {
     modal.addEventListener('click', (e) => { if (e.target === modal) closePromoRegistrationPrompt(); });
     document.getElementById('promoRegClose')?.addEventListener('click', closePromoRegistrationPrompt);
     document.getElementById('promoRegDownload')?.addEventListener('click', () => { handleShortcutInstall(); });
+    // Quien ya tiene cuenta pero no inició sesión NO debe verse forzado a registrarse de nuevo:
+    // primero "Iniciar sesión"; registrarse queda como segunda opción para quien no tiene usuario.
+    document.getElementById('promoRegLogin')?.addEventListener('click', () => {
+        closePromoRegistrationPrompt();
+        openCustomerAuthModal();
+    });
     document.getElementById('promoRegRegister')?.addEventListener('click', () => {
         closePromoRegistrationPrompt();
         openCustomerRegisterModal();
@@ -13542,7 +13568,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1 500 ms de animación de marca antes de entrar al menú.
     setTimeout(() => window.__roalHideSplash?.(), 1500);
     document.getElementById('customerSessionButton')?.addEventListener('click', openCustomerAuthModal);
-    document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerRegisterModal());
+    // El banner ofrecía solo "Registrarme": quien ya tiene cuenta y no inició sesión quedaba forzado a
+    // registrarse de nuevo. Ahora abre "Mi cuenta" (iniciar sesión primero, con opción de registrarse).
+    document.getElementById('guestRegisterBannerBtn')?.addEventListener('click', () => openCustomerAuthModal());
     initLoyaltyPointsBanner();
 
     // Barra de navegación superior — acciones (reemplaza la barra inferior retirada)

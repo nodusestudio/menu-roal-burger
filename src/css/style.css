@@ -5405,6 +5405,18 @@ body.has-consent-doc-open .guest-register-banner {
     box-shadow: 0 12px 32px rgba(220, 50, 0, 0.70), 0 4px 10px rgba(180, 10, 0, 0.45);
 }
 
+/* Segunda opción: "¿No tienes usuario? Regístrate" — contorno, para que "Iniciar sesión" sea la principal */
+.promo-reg-btn--signup {
+    background: transparent;
+    color: #ffffff;
+    border: 1.5px solid rgba(255, 255, 255, 0.42) !important;
+    font-weight: 600;
+}
+.promo-reg-btn--signup:hover {
+    border-color: rgba(255, 255, 255, 0.7) !important;
+    background: rgba(255, 255, 255, 0.08);
+}
+
 .promo-reg-btn--guest {
     background: transparent;
     color: rgba(255, 255, 255, 0.45);
