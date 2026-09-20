@@ -2359,7 +2359,7 @@ function normalizeOrder(raw) {
         barrioEspecial: String(raw.barrioEspecial || '').trim() || null,
         salirARecibirConfirmado: raw.salirARecibirConfirmado === true,
         // Campos que el ticket / la edición de pedidos leen pero que normalizeOrder descartaba, por
-        // lo que NUNCA llegaban (el ticket no mostraba el "Incremento empaque 2×1", los puntos
+        // lo que NUNCA llegaban (el ticket no mostraba el "Empaque 2×1", los puntos
         // usados, el pedido programado ni los productos anulados; editar un pedido borraba los
         // anulados y el cajero). Si se agrega un campo nuevo que el ticket lea, va acá también.
         promo2x1IncrementoFee: Number(raw.promo2x1IncrementoFee || 0) || 0,
@@ -10211,7 +10211,7 @@ function buildOrderConfirmationMessage(order) {
 
     const resumen = [`Subtotal: ${formatMoney(Number(order.subtotal || 0))}`];
     if (ahorroPromos > 0) resumen.push(`🎉 Ahorro en promos: -${formatMoney(ahorroPromos)}`);
-    if (Number(order.promo2x1IncrementoFee || 0) > 0) resumen.push(`Incremento empaque 2×1: ${formatMoney(Number(order.promo2x1IncrementoFee))}`);
+    if (Number(order.promo2x1IncrementoFee || 0) > 0) resumen.push(`Empaque 2×1: ${formatMoney(Number(order.promo2x1IncrementoFee))}`);
     if (Number(order.pointsRedeemed || 0) > 0) resumen.push(`⭐ Puntos usados (${Number(order.pointsRedeemed).toLocaleString('es-CO')}): -${formatMoney(Number(order.pointsDiscountAmount || 0))}`);
     if (order.orderType === 'domicilio') resumen.push(`🛵 Domicilio: ${formatMoney(Number(order.deliveryFee || 0))}`);
     resumen.push(`*Total: ${formatMoney(getOrderDisplayTotal(order))}*`);
@@ -10851,7 +10851,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                     </div>` : ''}
                     ${Number(order.promo2x1IncrementoFee || 0) > 0 ? `
                     <div class="ticket-summary-line ticket-total-row">
-                        <span>Incremento empaque 2×1</span>
+                        <span>Empaque 2×1</span>
                         <strong>${escapeHtml(formatMoney(Number(order.promo2x1IncrementoFee)))}</strong>
                     </div>` : ''}
                     ${Number(order.pointsRedeemed || 0) > 0 ? `
@@ -14100,7 +14100,7 @@ function buildESCPOSData(order) {
 
     // ── TOTALES ─────────────────────────────────────────────────────────────
     wc('  Subtotal', formatMoney(order.subtotal || 0));
-    if (Number(order.promo2x1IncrementoFee || 0) > 0) wc('  Incremento empaque 2x1', formatMoney(Number(order.promo2x1IncrementoFee)));
+    if (Number(order.promo2x1IncrementoFee || 0) > 0) wc('  Empaque 2x1', formatMoney(Number(order.promo2x1IncrementoFee)));
     if (Number(order.pointsRedeemed || 0) > 0) wc(`  Puntos usados (${order.pointsRedeemed})`, `-${formatMoney(Number(order.pointsDiscountAmount || 0))}`);
     if (order.orderType === 'domicilio') wc('  Domicilio', formatMoney(order.deliveryFee || 0));
     sep();

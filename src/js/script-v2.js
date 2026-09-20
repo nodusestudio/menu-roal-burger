@@ -4797,7 +4797,7 @@ function getWhatsAppOrderDetail(categoryName, orderOptions = { type: 'solo' }) {
     }
 
     if (normalized.promo2x1Incremento) {
-        parts.push(`Incremento empaque 2x1 (llevar/domicilio): +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)}`);
+        parts.push(`Empaque 2×1 (llevar/domicilio): +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)}`);
     }
 
     return parts.join(' | ');
@@ -5237,7 +5237,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const domicilioLine = fulfillmentType === 'delivery'
         ? (customerInfo.deliveryFeePending ? '\nDomicilio: Por confirmar (asesor contactará)' : `\nDomicilio: ${formatCurrency(deliveryFee)}`)
         : '';
-    const incrementoLine = incrementoFee > 0 ? `\nIncremento empaque 2x1 (para llevar/domicilio): ${formatCurrency(incrementoFee)}` : '';
+    const incrementoLine = incrementoFee > 0 ? `\nEmpaque 2×1: ${formatCurrency(incrementoFee)}` : '';
     const totalDisplay = fulfillmentType === 'delivery' && customerInfo.deliveryFeePending
         ? `${formatCurrency(getCartTotalAmount() + incrementoFee - pointsDiscountAmount)} + domicilio por confirmar`
         : formatCurrency(orderTotal);
