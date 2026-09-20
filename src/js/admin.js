@@ -2246,7 +2246,11 @@ function normalizeOrderItem(raw, index = 0) {
         subtotal: Number(raw.subtotal ?? ((Number(raw.quantity || 0)) * Number(raw.unitPrice ?? raw.precio ?? 0))),
         optionLabel: String(raw.optionLabel || '').trim(),
         note: String(raw.note || raw.comment || '').trim(),
-        orderOptions: raw.orderOptions || null
+        orderOptions: raw.orderOptions || null,
+        // Sin estos dos, el ticket nunca mostraba el ahorro/tachado de un descuento y al editar
+        // un pedido se perdía quién autorizó un descuento / cobro extra.
+        originalUnitPrice: raw.originalUnitPrice != null && Number.isFinite(Number(raw.originalUnitPrice)) ? Number(raw.originalUnitPrice) : null,
+        aplicadoPor: raw.aplicadoPor ? String(raw.aplicadoPor) : null
     };
 }
 
@@ -2354,6 +2358,20 @@ function normalizeOrder(raw) {
         meseroName: String(raw.meseroName || '').trim() || null,
         barrioEspecial: String(raw.barrioEspecial || '').trim() || null,
         salirARecibirConfirmado: raw.salirARecibirConfirmado === true,
+        // Campos que el ticket / la edición de pedidos leen pero que normalizeOrder descartaba, por
+        // lo que NUNCA llegaban (el ticket no mostraba el "Incremento empaque 2×1", los puntos
+        // usados, el pedido programado ni los productos anulados; editar un pedido borraba los
+        // anulados y el cajero). Si se agrega un campo nuevo que el ticket lea, va acá también.
+        promo2x1IncrementoFee: Number(raw.promo2x1IncrementoFee || 0) || 0,
+        pointsRedeemed: Number(raw.pointsRedeemed || 0) || 0,
+        pointsDiscountAmount: Number(raw.pointsDiscountAmount || 0) || 0,
+        isScheduled: raw.isScheduled === true,
+        scheduledDate: raw.scheduledDate || null,
+        scheduledTime: raw.scheduledTime || null,
+        scheduledLabel: raw.scheduledLabel ? String(raw.scheduledLabel) : null,
+        voidedItems: Array.isArray(raw.voidedItems) ? raw.voidedItems : [],
+        cajero: String(raw.cajero || '').trim(),
+        deliveryFeeVerified: raw.deliveryFeeVerified === true,
     };
 }
 
