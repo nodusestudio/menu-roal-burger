@@ -14281,6 +14281,13 @@ function buildKitchenTicketHtml(order) {
         ? `<div class="k-address">${escapeHtml(_rawAddr)}</div>`
         : '';
 
+    // Nombre y teléfono del cliente, completos (mismos datos que el ticket de recepción).
+    const _custName  = String(getOrderDisplayCustomerName(order) || '').trim();
+    const _custPhone = String(order.customerPhone || '').trim();
+    const customerLine = (_custName || _custPhone)
+        ? `<div class="k-customer">${_custName ? `<div class="k-customer-name">${escapeHtml(_custName)}</div>` : ''}${_custPhone ? `<div class="k-customer-phone">Tel: ${escapeHtml(_custPhone)}</div>` : ''}</div>`
+        : '';
+
     // Un combo/adición vinculado a un producto (parentItemKey) debe imprimirse anidado bajo
     // ese producto, igual que se ve en el carrito del POS — si no, cocina no sabe a qué
     // hamburguesa pertenece el combo o la adición y quedan como líneas sueltas sin relación.
@@ -14319,6 +14326,7 @@ function buildKitchenTicketHtml(order) {
                 </div>
                 <div class="k-type-badge">${escapeHtml(orderTypeLabel)}</div>
                 ${(order.isScheduled && order.scheduledLabel) ? `<div class="k-type-badge" style="background:#2f6fdd;">📅 PROGRAMADO: ${escapeHtml(order.scheduledLabel)}</div>` : ''}
+                ${customerLine}
                 ${addressLine}
                 <div class="k-products">${products}</div>
                 <div class="k-footer">— Ticket de Cocina —</div>
