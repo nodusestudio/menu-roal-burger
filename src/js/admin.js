@@ -11446,8 +11446,14 @@ function renderSalesDayBanner() {
         .filter((o) => o.orderType === 'domicilio' && Number(o.deliveryFee) > 0)
         .reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
 
+    // El estado del banner sale de la CAJA real (cajaAperturaAt), no de salesDayState: tras cerrar
+    // la caja, salesDayState se vuelve a abrir solo al sincronizar (ensureActiveSalesDay) con la
+    // fecha de ese momento, así que al día siguiente parecía "una jornada sin cerrar" aunque la
+    // caja estuviera cerrada o recién abierta.
+    const cajaAbierta = cajaAperturaAt > 0;
+
     if (salesDayStatusLabel) {
-        salesDayStatusLabel.textContent = (aperturaHoy || salesDayState?.openedAt) ? 'Jornada activa' : 'Jornada en preparacion';
+        salesDayStatusLabel.textContent = cajaAbierta ? 'Jornada activa' : 'Caja cerrada';
     }
 
     if (salesDayStatusMeta) {
@@ -11455,18 +11461,13 @@ function renderSalesDayBanner() {
             // Caja abierta hoy → mostrar hora exacta de apertura física
             salesDayStatusMeta.textContent = `Apertura: ${formatDateTime(cajaAperturaAt)}`;
             salesDayStatusMeta.style.color = '';
-        } else if (salesDayState?.openedAt) {
-            const _openedD = new Date(
-                salesDayState.openedAt?.toMillis ? salesDayState.openedAt.toMillis() : Number(salesDayState.openedAt)
-            );
-            const openedDate = `${_openedD.getFullYear()}-${String(_openedD.getMonth()+1).padStart(2,'0')}-${String(_openedD.getDate()).padStart(2,'0')}`;
-            const esJornadaAnterior = openedDate && openedDate !== todayStr;
-            salesDayStatusMeta.textContent = esJornadaAnterior
-                ? `⚠️ Jornada sin cerrar desde ${formatDateTime(salesDayState.openedAt)} — cierra y reabre la caja`
-                : `Apertura: ${formatDateTime(salesDayState.openedAt)}`;
-            salesDayStatusMeta.style.color = esJornadaAnterior ? '#fbbf24' : '';
+        } else if (cajaAbierta) {
+            // Caja abierta desde un día anterior: se olvidó cerrarla. Este es el único caso real
+            // de "jornada sin cerrar".
+            salesDayStatusMeta.textContent = `⚠️ Jornada sin cerrar desde ${formatDateTime(cajaAperturaAt)} — cierra y reabre la caja`;
+            salesDayStatusMeta.style.color = '#fbbf24';
         } else {
-            salesDayStatusMeta.textContent = 'Se abrira automaticamente al sincronizar.';
+            salesDayStatusMeta.textContent = 'Abre la caja para iniciar la jornada.';
             salesDayStatusMeta.style.color = '';
         }
     }
@@ -22399,6 +22400,11 @@ function _updateCajaEstadoUI() {
     } else {
         if (blocker) blocker.remove();
     }
+
+    // Abrir/cerrar la caja (o un cambio desde otro dispositivo) también cambia el banner de
+    // "Jornada": antes solo se repintaba con el siguiente renderOrders(), y al abrir la caja
+    // seguía mostrando el aviso amarillo de la jornada anterior.
+    renderSalesDayBanner();
 }
 
 // ── Buscador de precio de domicilio (admin toolbar) ───────────────────────────
