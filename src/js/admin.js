@@ -22681,11 +22681,19 @@ async function loadCierresCaja() {
     // Fuente única para Historial de Cajas y Libro Contable: ambos leen de aquí en vez de
     // repetir cada uno su propia consulta con su propio filtro.
     try {
+        // OJO: estos saldos se calculan SUMANDO todos los gastos externos y traslados de la
+        // historia (no quedan "horneados" en ningún cierre). Antes esta consulta traía solo los
+        // últimos 500 documentos de gastos_caja de TODOS los tipos (también los gastos de caja de
+        // cada jornada), así que cada gasto nuevo empujaba uno viejo fuera de la ventana y su
+        // monto dejaba de restarse: los saldos por método subían solos (p. ej. "aparecieron"
+        // $200.000 en Nequi) y Egresos bajaba. Ahora se piden solo externos y traslados, TODOS,
+        // sin límite (filtro de un solo campo con "in": no requiere índice compuesto).
         const gSnap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
-            .orderBy('registradoAt', 'desc')
-            .limit(500)
+            .where('tipo', 'in', ['externo', 'traslado'])
             .get();
-        const _gDocs = gSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const _gDocs = gSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => _tsMs(b.registradoAt) - _tsMs(a.registradoAt));
         _gastosExternosState = _gDocs.filter((g) => g.tipo === 'externo');
         _trasladosState = _gDocs.filter((g) => g.tipo === 'traslado');
     } catch (_) {
