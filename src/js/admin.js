@@ -20671,7 +20671,8 @@ function openTrasladoModal(existingData = null, existingId = null) {
     if (existing) existing.remove();
 
     const isEdit = Boolean(existingData && existingId);
-    const methods = getPaymentMethods();
+    // "Otro" = saldo de métodos de pago que ya no existen: también se puede mover desde/hacia él.
+    const methods = [...getPaymentMethods(), OTRO_PAYMENT_METHOD];
     const optHtml = methods.map((m) =>
         `<option value="${escapeHtml(m.id)}" style="background:#14172a;color:#fff;">${m.icon} ${escapeHtml(m.label)}</option>`
     ).join('');
@@ -21219,7 +21220,8 @@ function renderCajaDiaria() {
             return Array.isArray(o.paymentSplit) && o.paymentSplit.some((s) => !methodKeys.includes(s.method));
         }
         return !methodKeys.includes(o.paymentMethod);
-    }) || allGastos.some((g) => !methodKeys.includes(g.paymentMethod)); // gasto anotado contra "Otro"
+    }) || allGastos.some((g) => !methodKeys.includes(g.paymentMethod)) // gasto anotado contra "Otro"
+        || allTraslados.some((t) => !methodKeys.includes(t.methodFrom) || !methodKeys.includes(t.methodTo)); // traslado desde/hacia "Otro"
     const totalCols = 2 + methodKeys.length + (hasUnmatched ? 1 : 0) + 1;
 
     if (allPaid.length === 0 && allGastos.length === 0 && allTraslados.length === 0) {
@@ -21418,13 +21420,13 @@ function renderCajaDiaria() {
             const t = entry.data;
             const hora = formatOrderTime(t.registradoAt);
             const amt = Number(t.monto || 0);
-            const fromM = methods.find((m) => m.id === t.methodFrom);
-            const toM   = methods.find((m) => m.id === t.methodTo);
+            const fromM = findPaymentMethodOrOtro(t.methodFrom);
+            const toM   = findPaymentMethodOrOtro(t.methodTo);
             const fromLabel = fromM ? `${fromM.icon} ${fromM.label}` : (t.methodFrom || '?');
             const toLabel   = toM   ? `${toM.icon} ${toM.label}`     : (t.methodTo   || '?');
 
-            if (methodKeys.includes(t.methodFrom)) sumMethod[t.methodFrom] -= amt;
-            if (methodKeys.includes(t.methodTo))   sumMethod[t.methodTo]   += amt;
+            if (methodKeys.includes(t.methodFrom)) sumMethod[t.methodFrom] -= amt; else sumOtro -= amt;
+            if (methodKeys.includes(t.methodTo))   sumMethod[t.methodTo]   += amt; else sumOtro += amt;
             // grandTotal no cambia (traslado interno)
 
             const mTrasladoCells = _renderMethodCells(methodKeys, 'caja-cell-traslado', (k) => {
@@ -21432,7 +21434,11 @@ function renderCajaDiaria() {
                 if (k === t.methodTo)   return `+${formatMoney(amt)}`;
                 return '';
             });
-            const otroTrasladoCell = _renderOtroCell(hasUnmatched, '');
+            // Movimiento neto sobre la columna "Otro" (métodos desconocidos / "Otro" explícito).
+            const otroDelta = (methodKeys.includes(t.methodFrom) ? 0 : -amt) + (methodKeys.includes(t.methodTo) ? 0 : amt);
+            const otroTrasladoCell = _renderOtroCell(hasUnmatched, otroDelta !== 0
+                ? `<td class="caja-cell-traslado">${otroDelta < 0 ? '−' : '+'}${formatMoney(Math.abs(otroDelta))}</td>`
+                : '');
 
             rows.push(`<tr style="background:rgba(99,102,241,0.06);border-left:3px solid rgba(99,102,241,0.3);">
                 <td class="col-left" style="color:#a5b4fc;">${hora}</td>
@@ -21475,7 +21481,7 @@ function renderCajaDiaria() {
 
     // Saldo neto por método de la jornada abierta — lo usa el modal de Traslado para saber
     // cuánta plata hay disponible para mover ahora mismo (ver _cajaDiariaSumMethod arriba).
-    _cajaDiariaSumMethod = { ...sumMethod };
+    _cajaDiariaSumMethod = { ...sumMethod, [OTRO_PAYMENT_METHOD.id]: sumOtro };
 
     // Totales al pie
     if (footEl) {
@@ -21897,7 +21903,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
     const ingresosRows = allMethodIds
         .filter((k) => k !== 'split' && Number(ingresosMethod[k] || 0) > 0)
         .map((k) => {
-            const m = getPaymentMethods().find((x) => x.id === k) || { icon: '', label: k };
+            const m = findPaymentMethodOrOtro(k) || { icon: '', label: k };
             return ROW(`  ${m.icon} ${m.label}`, formatMoney(Number(ingresosMethod[k])), '#6ee7b7');
         }).join('');
 
@@ -21918,7 +21924,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
         const gas = Number(gastosMethod[k]   || 0);
         const net = ing - gas;
         if (ing === 0 && gas === 0) return '';
-        const m = getPaymentMethods().find((x) => x.id === k) || { icon: '', label: k };
+        const m = findPaymentMethodOrOtro(k) || { icon: '', label: k };
         const netColor = net >= 0 ? '#f0ead8' : '#fca5a5';
         let detail = '';
         if (gas > 0) {
@@ -22635,16 +22641,22 @@ function _trasladoEnCierreCerrado(t, cierresList) {
 
 function _computeHistoricoSumMethod() {
     const methodKeys = getPaymentMethods().map((m) => m.id);
+    const OTRO = OTRO_PAYMENT_METHOD.id;
     const sum = {};
     methodKeys.forEach((k) => { sum[k] = 0; });
+    // Saldo "Otro": todo lo guardado bajo métodos que ya no existen en Configuración (más los
+    // gastos y traslados anotados contra "Otro"). Es lo que el modal de Traslado ofrece mover.
+    sum[OTRO] = 0;
+    const addTo = (k, delta) => { if (methodKeys.includes(k)) sum[k] += delta; else if (k) sum[OTRO] += delta; };
     _cierresCajaState.forEach((c) => {
         const nM = c.methodTotals || {};
         methodKeys.forEach((k) => { sum[k] += Number(nM[k] || 0); });
+        Object.entries(nM).forEach(([k, v]) => { if (!methodKeys.includes(k)) sum[OTRO] += Number(v || 0); });
     });
     _gastosExternosState.forEach((g) => {
         const mk = g.paymentMethod;
         const amt = Number(g.monto || 0);
-        if (mk && amt && methodKeys.includes(mk)) sum[mk] -= amt;
+        if (mk && amt) addTo(mk, -amt);
     });
     _trasladosState.forEach((t) => {
         if (_trasladoEnCierreCerrado(t, _cierresCajaState)) return;
@@ -22652,8 +22664,8 @@ function _computeHistoricoSumMethod() {
         const tms = _tsMs(t.registradoAt);
         if (cajaAperturaAt && tms >= cajaAperturaAt) return;
         const amt = Number(t.monto || 0);
-        if (methodKeys.includes(t.methodFrom)) sum[t.methodFrom] -= amt;
-        if (methodKeys.includes(t.methodTo))   sum[t.methodTo]   += amt;
+        addTo(t.methodFrom, -amt);
+        addTo(t.methodTo, amt);
     });
     return sum;
 }
@@ -22783,6 +22795,9 @@ async function renderLibroCierres() {
             Object.keys(c.methodTotals || {}).forEach((k) => { if (!methodKeys.includes(k)) _otroKeys.add(k); });
         });
         gastosExternos.forEach((g) => { if (g.paymentMethod && !methodKeys.includes(g.paymentMethod)) _otroKeys.add(g.paymentMethod); });
+        trasladosHistorial.forEach((t) => {
+            [t.methodFrom, t.methodTo].forEach((k) => { if (k && !methodKeys.includes(k)) _otroKeys.add(k); });
+        });
         const hasOtro = _otroKeys.size > 0;
         totalCols = 2 + methodKeys.length + (hasOtro ? 1 : 0) + 3;
 
@@ -22928,8 +22943,8 @@ async function renderLibroCierres() {
                 // del cierre (ver cerrarCaja()) — contarlo aquí también lo duplicaría.
                 if (_trasladoEnCierreCerrado(t, _cierresCajaState)) return;
                 const tAmt = Number(t.monto || 0);
-                if (methodKeys.includes(t.methodFrom)) sumTotals[t.methodFrom] = (sumTotals[t.methodFrom] || 0) - tAmt;
-                if (methodKeys.includes(t.methodTo))   sumTotals[t.methodTo]   = (sumTotals[t.methodTo]   || 0) + tAmt;
+                if (methodKeys.includes(t.methodFrom)) sumTotals[t.methodFrom] = (sumTotals[t.methodFrom] || 0) - tAmt; else if (t.methodFrom) sumOtro -= tAmt;
+                if (methodKeys.includes(t.methodTo))   sumTotals[t.methodTo]   = (sumTotals[t.methodTo]   || 0) + tAmt; else if (t.methodTo) sumOtro += tAmt;
             }
         });
 
@@ -23052,8 +23067,8 @@ async function renderLibroCierres() {
                 if (entry._tipo === 'traslado') {
                     const t    = entry._data;
                     const hora = entry._ms ? new Date(entry._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
-                    const fM   = methods.find((m) => m.id === t.methodFrom);
-                    const tM   = methods.find((m) => m.id === t.methodTo);
+                    const fM   = findPaymentMethodOrOtro(t.methodFrom);
+                    const tM   = findPaymentMethodOrOtro(t.methodTo);
                     const fromLbl = fM ? `${fM.icon} ${escapeHtml(fM.label)}` : escapeHtml(t.methodFrom || '?');
                     const toLbl   = tM ? `${tM.icon} ${escapeHtml(tM.label)}` : escapeHtml(t.methodTo   || '?');
                     const amt  = Number(t.monto || 0);
@@ -23406,8 +23421,8 @@ function _renderLcTable() {
             ...dg.traslados.map((t) => {
                 const hora = new Date(t._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
                 const methods = getPaymentMethods();
-                const fM = methods.find((m) => m.id === t.methodFrom);
-                const tM = methods.find((m) => m.id === t.methodTo);
+                const fM = findPaymentMethodOrOtro(t.methodFrom);
+                const tM = findPaymentMethodOrOtro(t.methodTo);
                 const fromLbl = fM ? `${fM.icon} ${escapeHtml(fM.label)}` : escapeHtml(t.methodFrom || '?');
                 const toLbl   = tM ? `${tM.icon} ${escapeHtml(tM.label)}` : escapeHtml(t.methodTo   || '?');
                 return `<tr class="lc-det-row" data-gid="${gid}" style="display:none;background:rgba(99,102,241,0.05);font-size:0.82rem;">
@@ -23535,7 +23550,7 @@ function _openCierreDetalleModal(c) {
         const gas = Number(gastosMethod[k]   || 0);
         const net = ing - gas;
         if (ing === 0 && gas === 0) return '';
-        const m = methods.find((x) => x.id === k) || { icon: '', label: k };
+        const m = findPaymentMethodOrOtro(k) || { icon: '', label: k };
         const netColor = net > 0 ? '#6ee7b7' : net < 0 ? '#fca5a5' : 'rgba(255,255,255,0.4)';
         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-radius:8px;margin-bottom:3px;background:rgba(255,255,255,0.03);">
             <span style="font-size:0.82rem;color:rgba(255,255,255,0.6);">${m.icon ? m.icon + ' ' : ''}${escapeHtml(m.label)}</span>
