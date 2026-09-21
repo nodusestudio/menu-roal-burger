@@ -19607,6 +19607,16 @@ function getEnabledPaymentMethods() {
     return getPaymentMethods().filter((m) => m.enabled !== false && m.visibility !== 'menu');
 }
 
+// "Otro": saldo de métodos de pago que ya no existen en Configuración (p. ej. se eliminó
+// "Transferencia"). Caja Diaria, cierres e Historial ya lo agrupan en una columna "Otro"; esta
+// entrada permite además ANOTAR un gasto contra ese saldo (paymentMethod === 'otro').
+const OTRO_PAYMENT_METHOD = { id: 'otro', label: 'Otro', icon: '🧾' };
+
+// Igual que buscar en getPaymentMethods() pero reconoce también el método sintético "otro".
+function findPaymentMethodOrOtro(id) {
+    return getPaymentMethods().find((m) => m.id === id) || (id === OTRO_PAYMENT_METHOD.id ? OTRO_PAYMENT_METHOD : undefined);
+}
+
 function _normalizePaymentMethodId(rawId) {
     if (!rawId) return rawId;
     // "transferencia" generica (elegida desde el menu publico, antes de que el cajero
@@ -20513,8 +20523,10 @@ async function saveGasto(gasto) {
 function renderGastoMethodButtons() {
     const grid = document.getElementById('gastoMethodsGrid');
     if (!grid) return;
-    grid.innerHTML = getEnabledPaymentMethods().map((m) =>
-        `<button type="button" class="dpm-method-btn" data-gasto-method="${m.id}">
+    // Se agrega "Otro" al final: sin esta opción no había cómo descontar un gasto del dinero que
+    // quedó en el saldo "Otro" (métodos de pago eliminados de Configuración).
+    grid.innerHTML = [...getEnabledPaymentMethods(), OTRO_PAYMENT_METHOD].map((m) =>
+        `<button type="button" class="dpm-method-btn" data-gasto-method="${m.id}"${m.id === OTRO_PAYMENT_METHOD.id ? ' title="Saldo de métodos de pago anteriores que ya no existen en Configuración"' : ''}>
             <span class="dpm-method-icon">${m.icon}</span>
             <span>${m.label}</span>
         </button>`
@@ -20847,7 +20859,7 @@ function _gastoCategoriaLabel(gasto) {
 }
 
 function _gastoMetodoLabel(gasto) {
-    const m = getPaymentMethods().find((x) => x.id === gasto.paymentMethod);
+    const m = findPaymentMethodOrOtro(gasto.paymentMethod);
     return m ? m.label : (gasto.paymentMethod || 'Sin especificar');
 }
 
@@ -21207,7 +21219,7 @@ function renderCajaDiaria() {
             return Array.isArray(o.paymentSplit) && o.paymentSplit.some((s) => !methodKeys.includes(s.method));
         }
         return !methodKeys.includes(o.paymentMethod);
-    });
+    }) || allGastos.some((g) => !methodKeys.includes(g.paymentMethod)); // gasto anotado contra "Otro"
     const totalCols = 2 + methodKeys.length + (hasUnmatched ? 1 : 0) + 1;
 
     if (allPaid.length === 0 && allGastos.length === 0 && allTraslados.length === 0) {
@@ -21646,7 +21658,7 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
         pb(ESC, 0x45, 0x01); wl('GASTOS'); pb(ESC, 0x45, 0x00);
         sep();
         gastosDetalle.forEach((g) => {
-            const m = getPaymentMethods().find((x) => x.id === g.paymentMethod);
+            const m = findPaymentMethodOrOtro(g.paymentMethod);
             const desc = [g.proveedor, g.descripcion].filter(Boolean).join(' ');
             wc('  ' + _escNormalize(desc || 'Gasto'), '-' + formatMoney(Number(g.monto || 0)));
             if (m) wl('    ' + m.label);
@@ -21891,7 +21903,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
 
     // ── EGRESOS detalle
     const egresosRows = gastosDetalle.map((g) => {
-        const m = getPaymentMethods().find((x) => x.id === g.paymentMethod) || { icon: '', label: g.paymentMethod || '' };
+        const m = findPaymentMethodOrOtro(g.paymentMethod) || { icon: '', label: g.paymentMethod || '' };
         const desc = [g.proveedor, g.descripcion].filter(Boolean).join(' · ') || 'Gasto';
         return `<tr>
             <td style="padding:2px 0 0;">${S('  ' + escapeHtml(desc))}<br>
@@ -23495,7 +23507,7 @@ function _openCierreDetalleModal(c) {
     // Sección EGRESOS
     const gasRows = gastosDetalle.length
         ? gastosDetalle.map((g) => {
-            const mG = methods.find((m) => m.id === g.paymentMethod) || { icon: '', label: g.paymentMethod || '' };
+            const mG = findPaymentMethodOrOtro(g.paymentMethod) || { icon: '', label: g.paymentMethod || '' };
             const catObj = getCategoriasGastos().find((cat) => cat.id === g.categoria);
             const catIcon = catObj ? catObj.icon : '💸';
             const catLabel = (catObj ? catObj.nombre : (g.categoria || 'Gasto')) + (g.subcategoria ? ' · ' + g.subcategoria : '');
@@ -24939,7 +24951,7 @@ function renderGastosInformes() {
         const ms = _tsMs(g.registradoAt);
         const fecha = ms ? new Date(ms).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
         const cat = cats.find((c) => c.id === g.categoria);
-        const method = methods.find((m) => m.id === g.paymentMethod);
+        const method = findPaymentMethodOrOtro(g.paymentMethod);
         const gastoId = escapeHtml(g.id || '');
         return `<tr>
             <td>${fecha}</td>
