@@ -304,6 +304,7 @@ const createProductPriceInput = document.getElementById('createProductPrice');
 const createProductCategorySelect = document.getElementById('createProductCategory');
 const createProductStateSelect = document.getElementById('createProductState');
 const createProductFeaturedSelect = document.getElementById('createProductFeatured');
+const createProductDescriptionInput = document.getElementById('createProductDescription');
 const createProductImageFileInput = document.getElementById('createProductImageFile');
 const productCreateSaveBtn = document.getElementById('productCreateSaveBtn');
 const productCreateFeedback = document.getElementById('productCreateFeedback');
@@ -317,6 +318,7 @@ const editProductPriceInput = document.getElementById('editProductPrice');
 const editProductCategorySelect = document.getElementById('editProductCategory');
 const editProductStateSelect = document.getElementById('editProductState');
 const editProductFeaturedSelect = document.getElementById('editProductFeatured');
+const editProductDescriptionInput = document.getElementById('editProductDescription');
 const editProductImageFileInput = document.getElementById('editProductImageFile');
 const productEditSaveBtn = document.getElementById('productEditSaveBtn');
 
@@ -7982,6 +7984,7 @@ function closeProductCreateModal() {
     productCreateModal.classList.remove('show');
     productCreateModal.setAttribute('aria-hidden', 'true');
     productCreateForm.reset();
+    if (createProductDescriptionInput) createProductDescriptionInput.value = '';
     hideModalFeedback(productCreateFeedback);
 
     if (productCreateSaveBtn) {
@@ -8122,6 +8125,7 @@ function openProductEditModal(product, categoryId) {
     renderEditProductCategorySelect(product.categoria);
     editProductStateSelect.value = product.estado === 'paused' ? 'paused' : 'active';
     editProductFeaturedSelect.value = product.es_destacado ? 'true' : 'false';
+    if (editProductDescriptionInput) editProductDescriptionInput.value = product.descripcion || '';
 
     // Resetear estado de imagen y mostrar la actual
     _editProductImgUrl      = '';
@@ -18573,6 +18577,7 @@ if (productCreateForm) {
         const categoria = String(createProductCategorySelect?.value || '').trim();
         const estado = createProductStateSelect?.value === 'paused' ? 'paused' : 'active';
         const esDestacado = createProductFeaturedSelect?.value === 'true';
+        const descripcion = String(createProductDescriptionInput?.value || '').trim();
         const hasImageFile = (createProductImageFileInput?.files?.length ?? 0) > 0;
 
         if (!categoriesState.length) {
@@ -18633,6 +18638,7 @@ if (productCreateForm) {
                 categoria,
                 estado,
                 es_destacado: esDestacado,
+                descripcion,
                 image_url: finalImageUrl,
                 source: 'admin_panel',
                 created_at: firestoreNow(),
@@ -18673,6 +18679,7 @@ if (productEditForm) {
         const categoria = String(editProductCategorySelect?.value || '').trim();
         const estado = editProductStateSelect?.value === 'paused' ? 'paused' : 'active';
         const esDestacado = editProductFeaturedSelect?.value === 'true';
+        const descripcion = String(editProductDescriptionInput?.value || '').trim();
         const hasImageFile = (editProductImageFileInput?.files?.length ?? 0) > 0;
 
         const acompActivo = editProductAcompActivo ? editProductAcompActivo.checked : false;
@@ -18720,6 +18727,7 @@ if (productEditForm) {
                 categoria,
                 estado,
                 es_destacado: esDestacado,
+                descripcion,
                 image_url: finalImageUrl,
                 acompanantes,
                 promo2x1: {
