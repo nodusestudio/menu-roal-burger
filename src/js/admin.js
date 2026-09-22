@@ -14519,6 +14519,10 @@ function setupLiveFirebaseSync() {
     // Caja Chica: sincroniza el conteo de billetes/monedas entre dispositivos en vivo.
     liveSubscriptions.push(
         firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(CC_DOC_ID).onSnapshot((doc) => {
+            // El eco de nuestro propio guardado (hasPendingWrites) llega casi al instante de
+            // cada tecla -- aplicarlo aquí reconstruía la grilla en pleno tabulador/escritura.
+            // Ya tenemos ese estado en memoria (lo acabamos de escribir), así que se ignora.
+            if (doc.metadata.hasPendingWrites) return;
             const incoming = doc.exists ? doc.data() : {};
             const changed = JSON.stringify({ billetes: _ccBilletes, monedas: _ccMonedas, guardadosBilletes: _ccGuardadosBilletes, guardadasMonedas: _ccGuardadasMonedas })
                 !== JSON.stringify({ billetes: incoming.billetes || {}, monedas: incoming.monedas || {}, guardadosBilletes: Number(incoming.guardadosBilletes || 0), guardadasMonedas: Number(incoming.guardadasMonedas || 0) });
@@ -14526,12 +14530,14 @@ function setupLiveFirebaseSync() {
             _ccApplyData(incoming);
             const modalOpen = !document.getElementById('cajaChicaModal')?.hasAttribute('hidden');
             if (modalOpen) {
-                _ccRenderGrid('ccBilletesGrid', CC_BILLETES, _ccBilletes);
-                _ccRenderGrid('ccMonedasGrid',  CC_MONEDAS,  _ccMonedas);
+                // Nunca se toca una casilla que el cajero tiene enfocada en este momento (edición
+                // en otro dispositivo mientras este sigue contando) -- solo se actualizan las demás.
+                _ccPatchGrid('ccBilletesGrid', CC_BILLETES, _ccBilletes);
+                _ccPatchGrid('ccMonedasGrid',  CC_MONEDAS,  _ccMonedas);
                 const gbEl = document.getElementById('ccGuardadosBilletes');
                 const gmEl = document.getElementById('ccGuardadasMonedas');
-                if (gbEl) gbEl.value = _ccGuardadosBilletes > 0 ? _ccGuardadosBilletes : '';
-                if (gmEl) gmEl.value = _ccGuardadasMonedas  > 0 ? _ccGuardadasMonedas  : '';
+                if (gbEl && gbEl !== document.activeElement) gbEl.value = _ccGuardadosBilletes > 0 ? _ccGuardadosBilletes : '';
+                if (gmEl && gmEl !== document.activeElement) gmEl.value = _ccGuardadasMonedas  > 0 ? _ccGuardadasMonedas  : '';
             }
             _ccRefreshTotals();
         }, onErr('caja-chica'))
@@ -19606,6 +19612,34 @@ const DPM_DEFAULT_METHODS = [
 
 let _paymentMethods = [];
 
+// Nombres ya usados para "¿Quién abre la caja?" -- ver _acLoadNombresUsados / _acSaveNombreUsado.
+const CAJA_NOMBRES_DOC_ID = 'caja_nombres_usados';
+let _acNombresUsados = [];
+
+// Mayúscula inicial en cada palabra ("juan carlos" -> "Juan Carlos"), preservando tildes/ñ.
+function _capitalizeWords(str) {
+    return String(str || '').replace(/(^|\s)(\p{L})/gu, (_, sep, letter) => sep + letter.toUpperCase());
+}
+
+async function _acLoadNombresUsados() {
+    if (!firebaseDb) return;
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_NOMBRES_DOC_ID).get();
+        _acNombresUsados = Array.isArray(doc.data()?.nombres) ? doc.data().nombres : [];
+    } catch (_) { /* sin conexion: se sigue sin sugerencias */ }
+}
+
+// Guarda el nombre al frente de la lista (más reciente primero), sin duplicados, tope 20.
+async function _acSaveNombreUsado(nombre) {
+    if (!firebaseDb || !nombre) return;
+    const key = (n) => n.trim().toLowerCase();
+    _acNombresUsados = [nombre, ..._acNombresUsados.filter((n) => key(n) !== key(nombre))].slice(0, 20);
+    try {
+        await firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_NOMBRES_DOC_ID)
+            .set({ nombres: _acNombresUsados, updated_at: firestoreNow() });
+    } catch (_) { /* no bloquea la apertura de caja si esto falla */ }
+}
+
 function getPaymentMethods() {
     return _paymentMethods.length ? _paymentMethods : DPM_DEFAULT_METHODS;
 }
@@ -22339,6 +22373,7 @@ async function _showAbrirCajaModal() {
         }
     }
     const savedTotal = _ccTotal();
+    await _acLoadNombresUsados();
 
     const now = new Date();
     const fechaStr = now.toLocaleString('es-CO', {
@@ -22361,8 +22396,9 @@ async function _showAbrirCajaModal() {
             </div>
 
             <label style="display:block;color:rgba(255,255,255,0.65);font-size:0.82rem;margin-bottom:5px;">👤 ¿Quién abre la caja?</label>
-            <input id="_acNombreInput" type="text" placeholder="Nombre del responsable" autocomplete="off"
+            <input id="_acNombreInput" type="text" placeholder="Nombre del responsable" autocomplete="off" list="_acNombreDatalist"
                 style="width:100%;box-sizing:border-box;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.18);border-radius:10px;color:#fff;padding:10px 12px;font-size:0.9rem;margin-bottom:1.1rem;outline:none;">
+            <datalist id="_acNombreDatalist">${_acNombresUsados.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>
 
             <div id="_acStep1">
                 <div style="background:rgba(243,197,106,0.08);border:1px solid rgba(243,197,106,0.25);border-radius:12px;padding:0.9rem 1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
@@ -22448,6 +22484,18 @@ async function _showAbrirCajaModal() {
         if (el) el.textContent = formatMoney(_acTotal2());
     }
 
+    document.getElementById('_acNombreInput')?.addEventListener('input', (e) => {
+        const inp = e.target;
+        const before = inp.value;
+        const after = _capitalizeWords(before);
+        if (after === before) return;
+        const pos = inp.selectionStart;
+        inp.value = after;
+        // Solo cambian las letras que arrancan palabra (1 caracter cada una), así que la
+        // longitud total no varía y el cursor puede quedarse donde estaba.
+        try { inp.setSelectionRange(pos, pos); } catch (_) { /* input no soporta selección */ }
+    });
+
     function _acValidateNombre() {
         const inp = document.getElementById('_acNombreInput');
         const nombre = (inp?.value || '').trim();
@@ -22458,7 +22506,7 @@ async function _showAbrirCajaModal() {
             return '';
         }
         if (inp) inp.style.borderColor = 'rgba(255,255,255,0.18)';
-        return nombre;
+        return _capitalizeWords(nombre);
     }
 
     function _acConfirm2(fondoUsado, recounted) {
@@ -22479,6 +22527,7 @@ async function _showAbrirCajaModal() {
             _ccRefreshTotals();
         }
         saveCajaAperturaToFirestore(ts, { aperturaBy: nombre, fondoInicial: fondoUsado, cerrada: false });
+        _acSaveNombreUsado(nombre);
         overlay.remove();
         renderCajaDiaria();
         _updateCajaEstadoUI();
@@ -25311,6 +25360,23 @@ function _ccRenderGrid(containerId, denoms, state) {
             <span class="cc-denom-sub${sub > 0 ? ' has-value' : ''}" data-cc-sub="${d}">${sub > 0 ? formatMoney(sub) : '—'}</span>
         </div>`;
     }).join('');
+}
+
+// Actualiza los valores de la grilla sin reconstruir el DOM (no rompe el Tab ni el foco).
+// Si la grilla aún no se pintó (containerId vacío) hace el primer render completo.
+function _ccPatchGrid(containerId, denoms, state) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (!el.children.length) { _ccRenderGrid(containerId, denoms, state); return; }
+    denoms.forEach((d) => {
+        const input = el.querySelector(`[data-cc-denom="${d}"]`);
+        if (!input || input === document.activeElement) return; // no pisar lo que se está escribiendo
+        const count = Number(state[d] || 0);
+        input.value = count > 0 ? count : '';
+        const sub = d * count;
+        const subEl = el.querySelector(`[data-cc-sub="${d}"]`);
+        if (subEl) { subEl.textContent = sub > 0 ? formatMoney(sub) : '—'; subEl.classList.toggle('has-value', sub > 0); }
+    });
 }
 
 function _ccRefreshTotals() {
