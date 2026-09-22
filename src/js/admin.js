@@ -20478,7 +20478,7 @@ let _gastoFromHistorial = false;
 function _splitGastosDeJornada() {
     const todayStr = new Date().toISOString().split('T')[0];
     const deLaJornada = _gastosCajaState.filter((g) => {
-        if (g.tipo === 'externo') return false;
+        if (g.tipo === 'externo' || g.tipo === 'ajuste') return false;
         const ms = _tsMs(g.registradoAt);
         if (cajaAperturaAt) return ms >= cajaAperturaAt;
         return new Date(ms).toISOString().split('T')[0] === todayStr;
@@ -20779,6 +20779,118 @@ document.getElementById('gastosInformesNewBtn')?.addEventListener('click', () =>
     openGastoModal();
 });
 document.getElementById('trasladoHistorialBtn')?.addEventListener('click', openTrasladoModal);
+
+// ── Ajustar saldos (Historial de Cajas) ──────────────────────────────────────────────────
+// El saldo de cada método se calcula sumando cierres, gastos externos y traslados; el sistema no
+// sabe con cuánto dinero se empezó ni conoce aportes/retiros que nunca se registraron, así que
+// puede no coincidir con lo que realmente hay. Este ajuste guarda SOLO la diferencia (real −
+// calculado) como un movimiento tipo 'ajuste': cambia los saldos por método pero NO cuenta como
+// ingreso ni como gasto (no toca ventas, egresos, cierres ni Finanzas). Se puede eliminar.
+async function openAjusteSaldosModal() {
+    document.getElementById('ajusteSaldosModal')?.remove();
+    try { await loadCierresCaja(); } catch (_) { showNotice('No se pudieron cargar los saldos.', 'error'); return; }
+    // Mismo cálculo que las tarjetas del Historial sin filtro de fechas.
+    const calc = _computeHistoricoSumMethod(true);
+    const methods = [...getPaymentMethods(), OTRO_PAYMENT_METHOD];
+    const fmtSigned = (v) => `${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}`;
+    const inputStyle = 'width:120px;background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:7px 9px;font-size:0.88rem;text-align:right;outline:none;';
+
+    const rowsHtml = methods.map((m) => {
+        const c = Number(calc[m.id] || 0);
+        const color = c > 0 ? '#6ee7b7' : c < 0 ? '#fca5a5' : 'rgba(255,255,255,0.45)';
+        return `<div style="display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div>
+                <div style="font-size:0.88rem;font-weight:700;color:#fff;">${m.icon} ${escapeHtml(m.label)}</div>
+                <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);">Sistema: <span style="color:${color};font-weight:700;">${c === 0 ? '$0' : fmtSigned(c)}</span></div>
+            </div>
+            <input type="text" inputmode="numeric" placeholder="Saldo real" autocomplete="off" data-ajuste-method="${escapeHtml(m.id)}" style="${inputStyle}">
+            <div></div>
+            <div data-ajuste-delta="${escapeHtml(m.id)}" style="font-size:0.72rem;text-align:right;min-height:1em;color:rgba(255,255,255,0.4);"></div>
+        </div>`;
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'ajusteSaldosModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.innerHTML = `<div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.5rem;max-width:440px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.65);position:relative;">
+        <button type="button" id="ajusteSaldosClose" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;" aria-label="Cerrar">×</button>
+        <h3 style="margin:0 0 6px;font-size:1rem;font-weight:700;color:#fff;">⚖️ Ajustar saldos</h3>
+        <p style="margin:0 0 10px;font-size:0.78rem;line-height:1.45;color:rgba(255,255,255,0.55);">Escribe cuánto hay <strong>realmente</strong> en cada cuenta. Solo se guarda la diferencia como un ajuste: <strong>no cuenta como ingreso ni como gasto</strong>. Deja vacío lo que no quieras cambiar.</p>
+        ${cajaAperturaAt ? '<p style="margin:0 0 10px;font-size:0.74rem;line-height:1.4;color:#fbbf24;">La caja de hoy está abierta: sus movimientos aún no están en estos saldos y se sumarán al cerrarla. Escribe el saldo real sin contarlos.</p>' : ''}
+        ${rowsHtml}
+        <label style="display:block;margin-top:12px;font-size:0.78rem;color:rgba(255,255,255,0.5);">Nota (opcional)</label>
+        <input id="ajusteSaldosNota" type="text" maxlength="200" placeholder="Ej: saldos iniciales / conteo del 21 de septiembre" autocomplete="off" style="width:100%;margin-top:4px;background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;box-sizing:border-box;">
+        <button type="button" id="ajusteSaldosConfirm" style="margin-top:14px;width:100%;padding:10px;background:rgba(99,102,241,0.22);color:#a5b4fc;border:1px solid rgba(99,102,241,0.45);border-radius:10px;font-size:0.88rem;font-weight:700;cursor:pointer;">Guardar ajuste</button>
+    </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    document.getElementById('ajusteSaldosClose')?.addEventListener('click', close);
+    _bindOverlayClose(overlay, close);
+
+    const readReal = (id) => {
+        const el = overlay.querySelector(`[data-ajuste-method="${CSS.escape(id)}"]`);
+        const raw = (el?.value || '').replace(/\D/g, '');
+        return raw === '' ? null : parseInt(raw, 10);
+    };
+    overlay.addEventListener('input', (e) => {
+        const input = e.target.closest('[data-ajuste-method]');
+        if (!input) return;
+        const raw = input.value.replace(/\D/g, '');
+        input.value = raw === '' ? '' : parseInt(raw, 10).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        const id = input.dataset.ajusteMethod;
+        const real = readReal(id);
+        const out = overlay.querySelector(`[data-ajuste-delta="${CSS.escape(id)}"]`);
+        if (!out) return;
+        if (real === null) { out.textContent = ''; return; }
+        const delta = real - Number(calc[id] || 0);
+        out.style.color = delta > 0 ? '#6ee7b7' : delta < 0 ? '#fca5a5' : 'rgba(255,255,255,0.4)';
+        out.textContent = delta === 0 ? 'Sin diferencia' : `Ajuste: ${delta > 0 ? '+' : '−'}${formatMoney(Math.abs(delta))}`;
+    });
+
+    document.getElementById('ajusteSaldosConfirm')?.addEventListener('click', async () => {
+        const porMetodo = {}, saldoAntes = {}, saldoDespues = {};
+        methods.forEach((m) => {
+            const real = readReal(m.id);
+            if (real === null) return;
+            const before = Number(calc[m.id] || 0);
+            const delta = real - before;
+            if (delta === 0) return;
+            porMetodo[m.id] = delta;
+            saldoAntes[m.id] = before;
+            saldoDespues[m.id] = real;
+        });
+        if (!Object.keys(porMetodo).length) { showNotice('No hay diferencias para ajustar.', 'error'); return; }
+        const resumen = methods.filter((m) => porMetodo[m.id] !== undefined)
+            .map((m) => `${m.label}: ${fmtSigned(saldoAntes[m.id])} → ${fmtSigned(saldoDespues[m.id])}`).join(' · ');
+        if (!(await showConfirmModal({ icon: '⚖️', title: '¿Guardar el ajuste de saldos?', message: resumen, confirmText: 'Guardar ajuste', danger: false }))) return;
+        const btn = document.getElementById('ajusteSaldosConfirm');
+        if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+        try {
+            let creadoPor = '';
+            try { creadoPor = firebase.auth().currentUser?.email || ''; } catch (_) { /* sin auth disponible */ }
+            const id = `ajuste_${Date.now()}`;
+            await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(id).set({
+                id,
+                tipo: 'ajuste',
+                monto: 0, // defensa: si algún consumidor ignorara el tipo, no suma nada
+                porMetodo,
+                saldoAntes,
+                saldoDespues,
+                nota: (document.getElementById('ajusteSaldosNota')?.value || '').trim(),
+                creadoPor,
+                registradoAt: firestoreNow(),
+            });
+            close();
+            showNotice('Saldos ajustados.', 'ok');
+            await renderLibroCierres();
+        } catch (err) {
+            showNotice('No se pudo guardar el ajuste: ' + (err.message || 'error'), 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Guardar ajuste'; }
+        }
+    });
+}
+document.getElementById('ajusteSaldosBtn')?.addEventListener('click', openAjusteSaldosModal);
 document.getElementById('gastoCancelBtn')?.addEventListener('click', closeGastoModal);
 document.getElementById('gastoModal')?.addEventListener('click', (e) => {
     if (e.target === document.getElementById('gastoModal')) closeGastoModal();
@@ -22611,6 +22723,7 @@ async function _rememberDeliveryFee(addressText, fee) {
 let _cierresCajaState = [];
 let _gastosExternosState = []; // gastos tipo:'externo' añadidos desde el historial
 let _trasladosState = []; // tipo:'traslado' — misma consulta que gastos externos, fuente única
+let _ajustesSaldoState = []; // tipo:'ajuste' — diferencia entre el saldo calculado y el real (ver openAjusteSaldosModal)
 
 // Saldo histórico acumulado por método (todos los cierres ya cerrados + gastos externos +
 // traslados aún no absorbidos por un cierre), sin importar el filtro de fecha activo en
@@ -22639,7 +22752,9 @@ function _trasladoEnCierreCerrado(t, cierresList) {
     });
 }
 
-function _computeHistoricoSumMethod() {
+// includeOpenJornada: por defecto los traslados de la jornada abierta se excluyen (ya cuentan en
+// Caja Diaria); el modal "Ajustar saldos" los incluye para coincidir con las tarjetas del Historial.
+function _computeHistoricoSumMethod(includeOpenJornada = false) {
     const methodKeys = getPaymentMethods().map((m) => m.id);
     const OTRO = OTRO_PAYMENT_METHOD.id;
     const sum = {};
@@ -22662,10 +22777,14 @@ function _computeHistoricoSumMethod() {
         if (_trasladoEnCierreCerrado(t, _cierresCajaState)) return;
         // Traslado de la jornada de hoy aún abierta: ya está contado en _cajaDiariaSumMethod.
         const tms = _tsMs(t.registradoAt);
-        if (cajaAperturaAt && tms >= cajaAperturaAt) return;
+        if (!includeOpenJornada && cajaAperturaAt && tms >= cajaAperturaAt) return;
         const amt = Number(t.monto || 0);
         addTo(t.methodFrom, -amt);
         addTo(t.methodTo, amt);
+    });
+    // Ajustes de saldo: diferencia por método registrada a mano (no es ingreso ni gasto).
+    _ajustesSaldoState.forEach((a) => {
+        Object.entries(a.porMetodo || {}).forEach(([k, v]) => addTo(k, Number(v || 0)));
     });
     return sum;
 }
@@ -22689,16 +22808,18 @@ async function loadCierresCaja() {
         // $200.000 en Nequi) y Egresos bajaba. Ahora se piden solo externos y traslados, TODOS,
         // sin límite (filtro de un solo campo con "in": no requiere índice compuesto).
         const gSnap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
-            .where('tipo', 'in', ['externo', 'traslado'])
+            .where('tipo', 'in', ['externo', 'traslado', 'ajuste'])
             .get();
         const _gDocs = gSnap.docs
             .map((d) => ({ id: d.id, ...d.data() }))
             .sort((a, b) => _tsMs(b.registradoAt) - _tsMs(a.registradoAt));
         _gastosExternosState = _gDocs.filter((g) => g.tipo === 'externo');
         _trasladosState = _gDocs.filter((g) => g.tipo === 'traslado');
+        _ajustesSaldoState = _gDocs.filter((g) => g.tipo === 'ajuste');
     } catch (_) {
         _gastosExternosState = [];
         _trasladosState = [];
+        _ajustesSaldoState = [];
     }
 
     _historicoSumMethod = _computeHistoricoSumMethod();
@@ -22789,6 +22910,7 @@ async function renderLibroCierres() {
         // sin repetirla aquí (antes Historial de Cajas la volvía a pedir por su cuenta).
         let gastosExternos     = [..._gastosExternosState];
         let trasladosHistorial = [..._trasladosState];
+        let ajustesHistorial   = [..._ajustesSaldoState];
 
         // Cierres/gastos guardados con un método de pago que ya no existe en Configuración
         // (p. ej. se eliminó "Transferencia") no deben perderse silenciosamente — antes los
@@ -22805,6 +22927,9 @@ async function renderLibroCierres() {
         gastosExternos.forEach((g) => { if (g.paymentMethod && !methodKeys.includes(g.paymentMethod)) _otroKeys.add(g.paymentMethod); });
         trasladosHistorial.forEach((t) => {
             [t.methodFrom, t.methodTo].forEach((k) => { if (k && !methodKeys.includes(k)) _otroKeys.add(k); });
+        });
+        ajustesHistorial.forEach((a) => {
+            Object.entries(a.porMetodo || {}).forEach(([k, v]) => { if (Number(v || 0) && !methodKeys.includes(k)) _otroKeys.add(k); });
         });
         const hasOtro = _otroKeys.size > 0;
         totalCols = 2 + methodKeys.length + (hasOtro ? 1 : 0) + 3;
@@ -22835,8 +22960,9 @@ async function renderLibroCierres() {
             cierres = cierres.filter((c) => _inRange(_tsMs(c.closedAt)));
             gastosExternos = gastosExternos.filter((g) => _inRange(_tsMs(g.registradoAt)));
             trasladosHistorial = trasladosHistorial.filter((t) => _inRange(_tsMs(t.registradoAt)));
+            ajustesHistorial = ajustesHistorial.filter((a) => _inRange(_tsMs(a.registradoAt)));
         }
-        if (!cierres.length && !gastosExternos.length && !trasladosHistorial.length) {
+        if (!cierres.length && !gastosExternos.length && !trasladosHistorial.length && !ajustesHistorial.length) {
             const emptyMsg = (from || to)
                 ? 'Sin movimientos en el rango de fechas seleccionado.'
                 : 'No hay cierres de caja registrados.';
@@ -22886,6 +23012,7 @@ async function renderLibroCierres() {
                 const ms = _tsMs(t.registradoAt);
                 return { _tipo: 'traslado', _ts: ms, _data: t };
             }),
+            ...ajustesHistorial.map((a) => ({ _tipo: 'ajuste', _ts: _tsMs(a.registradoAt), _data: a })),
         ].sort((a, b) => {
             const tsA = a._tipo === 'cierre' ? (_tsMs(a.closedAt)) : a._ts;
             const tsB = b._tipo === 'cierre' ? (_tsMs(b.closedAt)) : b._ts;
@@ -22953,6 +23080,14 @@ async function renderLibroCierres() {
                 const tAmt = Number(t.monto || 0);
                 if (methodKeys.includes(t.methodFrom)) sumTotals[t.methodFrom] = (sumTotals[t.methodFrom] || 0) - tAmt; else if (t.methodFrom) sumOtro -= tAmt;
                 if (methodKeys.includes(t.methodTo))   sumTotals[t.methodTo]   = (sumTotals[t.methodTo]   || 0) + tAmt; else if (t.methodTo) sumOtro += tAmt;
+            } else if (entry._tipo === 'ajuste') {
+                // Ajuste de saldo: mueve el saldo por método (y el Total Neto, que aquí es el saldo
+                // total) pero NO cuenta como ingreso ni como egreso.
+                Object.entries(entry._data.porMetodo || {}).forEach(([k, v]) => {
+                    const n = Number(v || 0);
+                    if (methodKeys.includes(k)) sumTotals[k] = (sumTotals[k] || 0) + n; else sumOtro += n;
+                    grandSumTotal += n;
+                });
             }
         });
 
@@ -23072,6 +23207,28 @@ async function renderLibroCierres() {
                         <div class="ht-line ht-sep"><span>Total gastos externos</span><span class="ht-egr">−${formatMoney(entry._totalAmt)}</span></div>
                     </div>`;
                 }
+                if (entry._tipo === 'ajuste') {
+                    const a    = entry._data;
+                    const hora = entry._ms ? new Date(entry._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+                    const pm   = a.porMetodo || {};
+                    const lines = [...methods, OTRO_PAYMENT_METHOD]
+                        .filter((m) => Number(pm[m.id] || 0) !== 0)
+                        .map((m) => {
+                            const v = Number(pm[m.id]);
+                            return `<div class="ht-line"><span>${m.icon} ${escapeHtml(m.label)}</span><span class="${v > 0 ? 'ht-ing' : 'ht-egr'}">${v > 0 ? '+' : '−'}${formatMoney(Math.abs(v))}</span></div>`;
+                        }).join('');
+                    const aid  = escapeHtml(a.id || '');
+                    return `<div class="ht-card ht-card-tras">
+                        <div class="ht-card-hdr">⚖️ Ajuste de saldos${hora ? ' · ' + hora : ''}
+                            <span style="float:right;white-space:nowrap;">
+                                <button type="button" class="mini-btn remove" data-ajuste-del="${aid}" title="Eliminar este ajuste" style="font-size:0.65rem;padding:1px 6px;">🗑️</button>
+                            </span>
+                        </div>
+                        ${lines}
+                        ${a.nota ? `<div class="ht-line"><span class="ht-muted">${escapeHtml(a.nota)}</span></div>` : ''}
+                        <div class="ht-line"><span class="ht-muted">No cuenta como ingreso ni gasto${a.creadoPor ? ' · ' + escapeHtml(a.creadoPor) : ''}</span></div>
+                    </div>`;
+                }
                 if (entry._tipo === 'traslado') {
                     const t    = entry._data;
                     const hora = entry._ms ? new Date(entry._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -23146,6 +23303,21 @@ async function renderLibroCierres() {
                         if (snap.exists) openTrasladoModal(snap.data(), tid);
                     } catch (_) { showNotice('Error al cargar traslado.', 'error'); }
                 }
+            });
+        }
+
+        // Listener delegado para eliminar un ajuste de saldos
+        if (!tbody.dataset.ajusteListener) {
+            tbody.dataset.ajusteListener = '1';
+            tbody.addEventListener('click', async (e) => {
+                const delBtn = e.target.closest('[data-ajuste-del]');
+                if (!delBtn) return;
+                if (!(await showConfirmModal({ icon: '⚖️', title: '¿Eliminar este ajuste de saldos?', message: 'Los saldos vuelven a calcularse sin este ajuste.', confirmText: 'Eliminar' }))) return;
+                try {
+                    await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(delBtn.dataset.ajusteDel).delete();
+                    showNotice('Ajuste eliminado.', 'ok');
+                    await renderLibroCierres();
+                } catch (_) { showNotice('Error al eliminar el ajuste.', 'error'); }
             });
         }
 
@@ -23234,7 +23406,7 @@ async function renderLibroCierres() {
 
             const ntColor = grandSumTotal >= 0 ? '#ff9540' : '#fca5a5';
             const chipNet = `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,149,64,0.07);border:1px solid rgba(255,149,64,0.22);border-radius:10px;min-width:110px;">
-                <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">💰 Total Neto</span>
+                <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">💰 Total Neto${ajustesHistorial.length ? ' <span title="Incluye ajustes de saldo (no son ingresos ni gastos)">⚖️</span>' : ''}</span>
                 <span style="font-size:1rem;font-weight:700;color:${ntColor};">${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</span>
             </div>`;
 
@@ -24922,7 +25094,7 @@ function renderGastosInformes() {
 
     // Los traslados entre métodos de pago no son un gasto real (la plata no sale del
     // negocio, solo cambia de método) — no deben contarse en este reporte.
-    let gastos = _gastosCajaState.filter((g) => g.tipo !== 'traslado');
+    let gastos = _gastosCajaState.filter((g) => g.tipo !== 'traslado' && g.tipo !== 'ajuste');
 
     if (desdeVal) {
         const desdeMs = new Date(desdeVal + 'T00:00:00').getTime();
