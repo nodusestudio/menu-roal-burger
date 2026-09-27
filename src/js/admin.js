@@ -1606,6 +1606,12 @@ function announceNewMessages(messages) {
     knownMessageIds = currentMessageIds;
     updateMessagesAttentionState();
 
+    // Si otro admin ya resolvió una solicitud de reinicio, su aviso emergente se quita solo.
+    document.querySelectorAll('.chatroal-msg-toast--reset[data-message-id]').forEach((toast) => {
+        const message = messages.find((entry) => entry.id === toast.dataset.messageId);
+        if (!message || message.status === 'resolved') toast.remove();
+    });
+
     if (!newMessages.length) {
         return;
     }
@@ -1614,10 +1620,55 @@ function announceNewMessages(messages) {
         .slice()
         .reverse()
         .forEach((message) => {
-            playMessageAlertTone();
             notifyNewMessage(message);
+            if (message.type === 'password_reset_request') {
+                // Reinicio de contraseña = cliente bloqueado sin poder pedir: alarma fuerte
+                // (dos veces) + aviso emergente que se queda hasta que el admin lo atienda.
+                playAlertTonePattern(CHAT_ROAL_SOUND_PRESETS.alarma_max.steps)
+                    .then(() => playAlertTonePattern(CHAT_ROAL_SOUND_PRESETS.alarma_max.steps));
+                showPasswordResetRequestToast(message);
+                return;
+            }
+            playMessageAlertTone();
             showNotice(`Nuevo mensaje de ${message.customerName}.`, 'ok');
         });
+}
+
+// Mismo contenedor apilable que los avisos de Chat Roal, pero NO se autodestruye: se queda
+// hasta que el admin lo cierre, abra Mensajes o la solicitud quede resuelta (announceNewMessages).
+function showPasswordResetRequestToast(message) {
+    let stack = document.getElementById('chatRoalToastStack');
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'chatRoalToastStack';
+        document.body.appendChild(stack);
+    }
+    stack.querySelector(`.chatroal-msg-toast--reset[data-message-id="${CSS.escape(message.id)}"]`)?.remove();
+
+    const createdAt = message.createdAt && typeof message.createdAt.toDate === 'function' ? message.createdAt.toDate() : new Date();
+    const timeLabel = createdAt.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+
+    const toast = document.createElement('div');
+    toast.className = 'chatroal-msg-toast chatroal-msg-toast--reset';
+    toast.dataset.messageId = message.id;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <button type="button" class="chatroal-msg-toast__close" aria-label="Cerrar aviso">✕</button>
+        <strong>🔑 Solicitud de reinicio de contraseña</strong>
+        <p class="chatroal-msg-toast__name">${escapeHtml(message.customerName)}</p>
+        <p>📱 ${escapeHtml(message.customerPhone)} · ${escapeHtml(timeLabel)}</p>
+        <p class="chatroal-msg-toast__hint">Confirma con el cliente por WhatsApp antes de resetear. Clic para abrir Mensajes.</p>
+    `;
+    toast.querySelector('.chatroal-msg-toast__close').addEventListener('click', (event) => {
+        event.stopPropagation();
+        toast.remove();
+    });
+    toast.addEventListener('click', () => {
+        window.focus();
+        document.querySelector('.admin-accordion-trigger[data-accordion-target="mensajes"]')?.click();
+        toast.remove();
+    });
+    stack.appendChild(toast);
 }
 
 // Clave pública VAPID — obtenerla en Firebase Console → Project Settings →

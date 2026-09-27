@@ -8454,6 +8454,30 @@
         .chatroal-msg-toast--leaving { animation: chatroalToastOut 0.3s ease forwards; }
         .chatroal-msg-toast--cost { border-color: rgba(255, 193, 7, 0.5); }
         .chatroal-msg-toast--cost strong { color: #ffc107; }
+        /* Reinicio de contraseña: persistente (no se autodestruye) y más llamativo */
+        .chatroal-msg-toast--reset {
+            position: relative;
+            border: 1.5px solid rgba(255, 82, 82, 0.7);
+            padding-right: 36px;
+            animation: chatroalToastIn 0.25s ease, chatroalResetPulse 1.6s ease-in-out 0.25s 4;
+        }
+        .chatroal-msg-toast--reset strong { color: #ff6b6b; font-size: 0.86rem; }
+        .chatroal-msg-toast--reset .chatroal-msg-toast__name { font-size: 1.05rem; font-weight: 700; }
+        .chatroal-msg-toast--reset .chatroal-msg-toast__hint { font-size: 0.78rem; color: rgba(255,255,255,0.65); }
+        .chatroal-msg-toast__close {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 24px;
+            height: 24px;
+            border: 0;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+        @keyframes chatroalResetPulse { 50% { box-shadow: 0 0 0 6px rgba(255, 82, 82, 0.35), 0 12px 32px rgba(0,0,0,0.45); } }
         @keyframes chatroalToastIn { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
         @keyframes chatroalToastOut { to { opacity: 0; transform: translateX(24px); } }
 
