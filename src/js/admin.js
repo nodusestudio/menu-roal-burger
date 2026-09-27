@@ -11374,6 +11374,38 @@ function renderMesaMap(container, mesaOrders) {
     }).join('');
 }
 
+function appendProcessedAccordion(container, columnKey, processedOrders) {
+    if (!processedOrders.length) return;
+    const isExpanded = _processedAccordionExpanded.has(columnKey);
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'kanban-processed-toggle' + (isExpanded ? ' is-open' : '');
+    toggle.dataset.processedCol = columnKey;
+    toggle.innerHTML = `
+        <span class="kanban-processed-count-badge">${processedOrders.length}</span>
+        <span>Procesados</span>
+        <span class="kanban-processed-arrow">▼</span>`;
+    container.appendChild(toggle);
+
+    const section = document.createElement('div');
+    section.className = 'kanban-processed-section';
+    section.dataset.processedSection = columnKey;
+    section.hidden = !isExpanded;
+    section.style.display = isExpanded ? '' : 'none';
+    // Construir las tarjetas de "Procesados" solo si el acordeon esta abierto -- son la
+    // mayoria de los pedidos del dia (crecen sin limite desde que se abrio caja) y en el
+    // caso comun (acordeon cerrado, invisible) reconstruirlas en cada accion del cajero es
+    // trabajo de DOM desechado. El toggle del acordeon (ordersActionRoot, mas abajo) llama
+    // a renderOrders() de nuevo al expandir para poblarlas recien ahi.
+    if (isExpanded) {
+        processedOrders.forEach((order) => {
+            section.appendChild(createOrderCard(order));
+        });
+    }
+    container.appendChild(section);
+}
+
 function renderOrders() {
     if (!ordersBoard) {
         return;
@@ -11408,7 +11440,10 @@ function renderOrders() {
         if (!column.container) return;
 
         if (column.key === 'mesa') {
+            // Mapa de mesas arriba + mismo acordeón "Procesados" que Domicilios/Para llevar
+            // (antes las mesas ya cobradas no quedaban a mano para reimprimir o eliminar).
             renderMesaMap(column.container, activeOrders);
+            appendProcessedAccordion(column.container, column.key, processedOrders);
             return;
         }
 
@@ -11437,36 +11472,7 @@ function renderOrders() {
         });
 
         // Acordeon de procesados — siempre al fondo
-        if (processedOrders.length > 0) {
-            const isExpanded = _processedAccordionExpanded.has(column.key);
-
-            const toggle = document.createElement('button');
-            toggle.type = 'button';
-            toggle.className = 'kanban-processed-toggle' + (isExpanded ? ' is-open' : '');
-            toggle.dataset.processedCol = column.key;
-            toggle.innerHTML = `
-                <span class="kanban-processed-count-badge">${processedOrders.length}</span>
-                <span>Procesados</span>
-                <span class="kanban-processed-arrow">▼</span>`;
-            column.container.appendChild(toggle);
-
-            const section = document.createElement('div');
-            section.className = 'kanban-processed-section';
-            section.dataset.processedSection = column.key;
-            section.hidden = !isExpanded;
-            section.style.display = isExpanded ? '' : 'none';
-            // Construir las tarjetas de "Procesados" solo si el acordeon esta abierto -- son la
-            // mayoria de los pedidos del dia (crecen sin limite desde que se abrio caja) y en el
-            // caso comun (acordeon cerrado, invisible) reconstruirlas en cada accion del cajero es
-            // trabajo de DOM desechado. El toggle del acordeon (ordersActionRoot, mas abajo) llama
-            // a renderOrders() de nuevo al expandir para poblarlas recien ahi.
-            if (isExpanded) {
-                processedOrders.forEach((order) => {
-                    section.appendChild(createOrderCard(order));
-                });
-            }
-            column.container.appendChild(section);
-        }
+        appendProcessedAccordion(column.container, column.key, processedOrders);
     });
 
     const selectedOrder = ordersState.find((order) => order.id === selectedOrderId) || null;

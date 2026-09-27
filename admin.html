@@ -722,6 +722,9 @@
             gap: 10px;
             min-width: 0;
         }
+        /* Acordeón "Procesados" debajo del mapa: ocupa todo el ancho de la grilla */
+        .mesa-map > .kanban-processed-toggle,
+        .mesa-map > .kanban-processed-section { grid-column: 1 / -1; }
         .mesa-map-tile {
             aspect-ratio: 1;
             border-radius: 14px;
