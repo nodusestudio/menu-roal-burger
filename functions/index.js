@@ -2587,10 +2587,7 @@ exports.canjearCuponPana = onCall(
     async (request) => {
         const db = getFirestore();
         const caller = await cuponPana.ensureAdminOrMeseroCaller(db, request);
-        return cuponPana.canjearCuponPanaTransaction(db, request.data?.codigo, {
-            uid: caller.uid,
-            extrasIds: request.data?.extrasIds
-        });
+        return cuponPana.canjearCuponPanaTransaction(db, request.data?.codigo, { uid: caller.uid });
     }
 );
 

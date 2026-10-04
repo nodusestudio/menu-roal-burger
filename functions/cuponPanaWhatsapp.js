@@ -79,7 +79,7 @@ function buildCuponActivoText(cupon, campana) {
         ...(campana.notaCocina ? [`🧂 ${campana.notaCocina}`] : []),
         `📅 Válido: ${formatDiasValidos(campana.diasValidos)}${fin ? `, hasta el ${fin.d}/${fin.m}` : ''}`,
         '',
-        'Condiciones: una vez por persona, presenta el código en caja o al pedir por WhatsApp, no acumulable, el refill de gaseosa es solo para consumo en el local y está sujeto a cupos.',
+        'Condiciones: una vez por persona, presenta el código en caja o al pedir por WhatsApp, no acumulable y sujeto a cupos.',
         '',
         `Para pedir escríbenos aquí 👉 ${pedir}`
     ].join('\n');

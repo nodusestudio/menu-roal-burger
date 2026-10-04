@@ -4783,26 +4783,19 @@ async function _posMostrarCuponPana(code, resultDiv, codeInput) {
     }
 
     const comp = (c.composicion || []).map((p) => escapeHtml(_cpanaRenglonTexto(p))).join(' + ');
-    const extrasHTML = (c.extrasLocal || []).map((e) => `
-        <label class="pos-cupon-pana-extra">
-            <input type="checkbox" value="${escapeHtml(e.id)}">
-            <span>${escapeHtml(e.nombre)} <strong>+${formatMoney(e.precio)}</strong></span>
-        </label>`).join('');
     resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--ok">
         <span class="pos-cupon-result-title">✅ Fuera del Menú — ${escapeHtml(c.titulo)} · ${formatMoney(c.precio)}</span>
         <span class="pos-cupon-result-sub">${quien}</span>
         ${eleccion ? `<span class="pos-cupon-result-sub">${eleccion}</span>` : ''}
         ${comp ? `<span class="pos-cupon-result-sub">🍔 ${comp}</span>` : ''}
-        ${extrasHTML ? `<div class="pos-cupon-pana-extras">${extrasHTML}</div>` : ''}
         <button type="button" class="pos-cupon-confirm-btn" id="posCuponConfirmBtn">Agregar al ticket →</button>
     </div>`;
     const confirmBtn = resultDiv.querySelector('#posCuponConfirmBtn');
     confirmBtn?.addEventListener('click', async () => {
-        const extrasIds = Array.from(resultDiv.querySelectorAll('.pos-cupon-pana-extra input:checked')).map((i) => i.value);
         confirmBtn.disabled = true;
         confirmBtn.textContent = 'Procesando…';
         try {
-            const out = (await firebaseFunctions.httpsCallable('canjearCuponPana')({ codigo: c.codigo, extrasIds })).data;
+            const out = (await firebaseFunctions.httpsCallable('canjearCuponPana')({ codigo: c.codigo })).data;
             await _posConfirmarCupon(null, { couponMeta: out.couponMeta, couponTitle: out.couponMeta?.titulo });
             codeInput.value = '';
             resultDiv.innerHTML = '';
@@ -4817,8 +4810,7 @@ async function _posMostrarCuponPana(code, resultDiv, codeInput) {
 }
 
 // Línea de Fuera del Menú: mismo formato que un combo especial (lista de contenido en el POS) y
-// las selecciones del cliente + la nota fija dentro de la nota, que es lo que imprime el ticket de cocina. El refill (u otro extra
-// del local) entra como línea hija con el precio que devolvió el servidor.
+// las selecciones del cliente + la nota fija dentro de la nota, que es lo que imprime el ticket de cocina.
 function _posAgregarLineaCuponPana(meta) {
     const precio = Number(meta.precio || 0);
     const comboItems = (meta.composicion || []).map(_cpanaRenglonTexto).filter(Boolean);
@@ -4842,12 +4834,6 @@ function _posAgregarLineaCuponPana(meta) {
         // Viaja en orderOptions del pedido guardado: deja la traza código → pedido.
         origOrderOptions: { cuponPanaCodigo: meta.codigo, cuponPanaCampanaId: meta.campanaId },
         parentKey: null
-    });
-    (meta.extras || []).forEach((e) => {
-        PosCart.addItem(`pana-extra-${e.id}`, e.nombre, Number(e.precio || 0), 'Fuera del Menú · solo en el local', null, {
-            forcedKey: `${itemKey}::${e.id}`,
-            parentKey: itemKey
-        });
     });
     renderPosOrderItems();
     renderPosTotals();
@@ -26260,7 +26246,6 @@ const CUPON_PANA_PUBLIC_BASE_URL = 'https://roalburger.com/cupon?k=';
 const CUPON_PANA_DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const CUPON_PANA_DEFAULTS = {
     gruposOpciones: [{ id: 'extra', nombre: 'Extra a elegir', opciones: ['Maíz', 'Maduro', 'Pepinillo'], requerido: true }],
-    extrasLocal: [{ id: 'refill', nombre: 'Gaseosa ilimitada (solo en local)', precio: 5000 }],
     diasValidos: [1, 2, 4],
     waNumeroPrincipal: '573144689509'
 };
@@ -26806,19 +26791,6 @@ function _cpanaAddGrupoRow(grupo = { id: '', nombre: '', opciones: [], requerido
     list.appendChild(row);
 }
 
-function _cpanaAddExtraRow(extra = { id: '', nombre: '', precio: '' }) {
-    const list = document.getElementById('cpanaExtrasList');
-    if (!list) return;
-    const row = document.createElement('div');
-    row.className = 'cpana-extra-row';
-    row.innerHTML = `
-        <input type="text" class="cpana-extra-id" placeholder="id (ej. refill)" maxlength="30" value="${escapeHtml(extra.id)}" style="max-width:130px;">
-        <input type="text" class="cpana-extra-nombre" placeholder="Nombre visible" maxlength="60" value="${escapeHtml(extra.nombre)}">
-        <input type="text" inputmode="numeric" class="cpana-extra-precio" placeholder="Precio" value="${escapeHtml(extra.precio)}" style="max-width:110px;">
-        <button type="button" class="pm-icon-btn" data-cpana-extra-del>Quitar</button>`;
-    list.appendChild(row);
-}
-
 function openCuponPanaEditor(campanaId = null) {
     const card = document.getElementById('cpanaEditorCard');
     if (!card) return;
@@ -26864,8 +26836,6 @@ function openCuponPanaEditor(campanaId = null) {
     _cpanaComposicion = (c?.composicion || []).map((p) => ({ productoId: p.productoId, nombre: p.nombre, cantidad: Number(p.cantidad || 1), ...(p.variante ? { variante: p.variante } : {}) }));
     _cpanaRenderComposicion();
 
-    document.getElementById('cpanaExtrasList').innerHTML = '';
-    (c ? (c.extrasLocal || []) : CUPON_PANA_DEFAULTS.extrasLocal).forEach((e) => _cpanaAddExtraRow(e));
 
     card.hidden = false;
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -26873,11 +26843,6 @@ function openCuponPanaEditor(campanaId = null) {
 
 function _cpanaReadForm() {
     const val = (id) => String(document.getElementById(id)?.value || '').trim();
-    const extras = Array.from(document.querySelectorAll('#cpanaExtrasList .cpana-extra-row')).map((row) => ({
-        id: row.querySelector('.cpana-extra-id').value.trim(),
-        nombre: row.querySelector('.cpana-extra-nombre').value.trim(),
-        precio: Number(String(row.querySelector('.cpana-extra-precio').value).replace(/\D/g, '') || 0)
-    })).filter((e) => e.id || e.nombre);
     return {
         campanaId: val('cpanaId'),
         campana: {
@@ -26895,7 +26860,6 @@ function _cpanaReadForm() {
             })).filter((g) => g.nombre || g.opciones.length),
             notaCocina: val('cpanaNotaCocina'),
             temporada: val('cpanaTemporada'),
-            extrasLocal: extras,
             cuposTotales: Number(val('cpanaCupos') || 0),
             diasValidos: Array.from(document.querySelectorAll('#cpanaDias input:checked')).map((i) => Number(i.value)),
             fechaInicio: val('cpanaInicio'),
@@ -26943,7 +26907,6 @@ document.getElementById('cpanaNewBtn')?.addEventListener('click', () => openCupo
 document.getElementById('cpanaEditorCloseBtn')?.addEventListener('click', () => { document.getElementById('cpanaEditorCard').hidden = true; });
 document.getElementById('cpanaForm')?.addEventListener('submit', _cpanaGuardar);
 document.getElementById('cpanaDeleteBtn')?.addEventListener('click', _cpanaEliminar);
-document.getElementById('cpanaExtraAddBtn')?.addEventListener('click', () => _cpanaAddExtraRow());
 document.getElementById('cpanaGrupoAddBtn')?.addEventListener('click', () => _cpanaAddGrupoRow());
 document.getElementById('cpanaExportBtn')?.addEventListener('click', _cpanaExportCsv);
 document.getElementById('cpanaMetricasSelect')?.addEventListener('change', (e) => {
@@ -26995,7 +26958,6 @@ document.querySelector('[data-tab-panel="cuponpana"]')?.addEventListener('click'
         _cpanaComposicion.splice(Number(t.dataset.cpanaCompDel), 1);
         _cpanaRenderComposicion();
     }
-    if (t.hasAttribute('data-cpana-extra-del')) t.closest('.cpana-extra-row')?.remove();
 });
 
 const _meseroLinkToken = new URLSearchParams(window.location.search).get('mesero');

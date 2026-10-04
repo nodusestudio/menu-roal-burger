@@ -29,7 +29,7 @@ let sent;
 function campana(overrides = {}) {
     return {
         titulo: 'Combo Pana WA', composicion: [{ productoId: 'x', nombre: 'Burger Pana', cantidad: 1 }],
-        precio: 19900, toppingsOpciones: ['Maduro'], extrasLocal: [], cuposTotales: 10, cuposEmitidos: 0,
+        precio: 19900, toppingsOpciones: ['Maduro'], cuposTotales: 10, cuposEmitidos: 0,
         diasValidos: [1, 2, 4],
         fechaInicio: Timestamp.fromMillis(cp.bogotaDateKeyToMs('2026-10-01')),
         fechaFin: Timestamp.fromMillis(cp.bogotaDateKeyToMs('2026-10-31', true)),

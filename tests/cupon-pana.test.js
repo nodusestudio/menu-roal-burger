@@ -36,7 +36,6 @@ function baseCampana(overrides = {}) {
         composicion: [{ productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 1 }],
         precio: 19900,
         toppingsOpciones: ['Maíz dulce', 'Pepinillo', 'Maduro'],
-        extrasLocal: [{ id: 'refill', nombre: 'Gaseosa ilimitada (solo en local)', precio: 5000 }],
         cuposTotales: 10,
         cuposEmitidos: 0,
         diasValidos: [1, 2, 4],
@@ -264,12 +263,13 @@ test('canjear: cupón "emitido" en campaña con requiereActivacionWA → rechazo
     assert.equal((await cp.validarCuponPana(db, codigo, LUNES)).canjeable, true);
 });
 
-test('canjear: devuelve couponMeta con precio del servidor, topping y SOLO los extras pedidos', async () => {
+test('canjear: devuelve couponMeta con precio del servidor y topping (sin extras: se eliminaron)', async () => {
     const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
-    const r = await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x', extrasIds: ['refill', 'inventado'] }, LUNES);
+    const r = await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, LUNES);
     assert.equal(r.couponMeta.precio, 19900);
     assert.equal(r.couponMeta.topping, 'Maduro');
-    assert.deepEqual(r.couponMeta.extras, [{ id: 'refill', nombre: 'Gaseosa ilimitada (solo en local)', precio: 5000 }]);
+    assert.equal('extras' in r.couponMeta, false);
+    assert.equal('extrasDisponibles' in r.couponMeta, false);
     assert.equal(r.couponMeta.composicion[0].nombre, 'Burger Pana');
 
     const cupon = (await db.collection('cupones_pana').doc(codigo).get()).data();
@@ -307,7 +307,6 @@ function payloadCampana(overrides = {}) {
         titulo: 'Campaña Nueva', palabraClave: 'PANA', descripcion: 'desc', imagenUrl: '',
         composicion: [{ productoId: 'seed-burger-pana', nombre: 'nombre del navegador', cantidad: 1 }],
         precio: 19900, toppingsOpciones: ['Maduro', 'Maduro', 'Pepinillo'],
-        extrasLocal: [{ id: 'refill', nombre: 'Gaseosa ilimitada', precio: 5000 }],
         cuposTotales: 50, diasValidos: [4, 1, 2], fechaInicio: '2026-10-05', fechaFin: '2026-10-11',
         activa: true, requiereActivacionWA: false, waNumeroPrincipal: '573144689509', waNumeroCupones: '',
         ...overrides
@@ -695,4 +694,34 @@ test('composición: un id que no está en ninguna de las 4 colecciones sigue sie
     await expectHttpsError(cp.guardarCampanaPana(db, {
         campanaId: 'COMPMALA', esNueva: true, campana: payloadCampana({ composicion: [{ productoId: 'no-existe-en-nada', cantidad: 1 }] })
     }, 'admin-x', LUNES), 'invalid-argument', /no existe en el catálogo/);
+});
+
+// ── Extras en el local (refill) eliminados ───────────────────────────────────
+
+test('extras eliminados: una campaña VIEJA con extrasLocal sigue cargando y canjeando (y el campo se ignora)', async () => {
+    // Datos tal como quedaron guardados antes de eliminar la función: campaña con extrasLocal y
+    // un cupón ya canjeado una vez con extrasElegidos.
+    const viejo = { id: 'refill', nombre: 'Gaseosa ilimitada (solo en local)', precio: 5000 };
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({ extrasLocal: [viejo] });
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await db.collection('cupones_pana').doc(codigo).update({ extrasElegidos: ['refill'] });
+
+    const pub = cp.buildCampanaPublica((await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data());
+    assert.equal('extrasLocal' in pub, false);
+
+    const v = await cp.validarCuponPana(db, codigo, LUNES);
+    assert.equal(v.canjeable, true);
+    assert.equal('extrasLocal' in v.cupon, false);
+
+    // Un POS con el admin.js viejo en caché todavía podría mandar extrasIds: se ignora sin error.
+    const r = await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x', extrasIds: ['refill'] }, LUNES);
+    assert.equal(r.couponMeta.precio, 19900);
+    assert.equal('extras' in r.couponMeta, false);
+    assert.equal((await db.collection('cupones_pana').doc(codigo).get()).data().estado, 'canjeado');
+
+    // Duplicar no la copia, y guardarla desde el panel (aunque el payload la traiga) la descarta.
+    const dup = await cp.guardarCampanaPana(db, { accion: 'duplicar', campanaId: CAMPANA_ID }, 'admin-x', LUNES);
+    assert.equal('extrasLocal' in (await db.collection('cupones_campanas').doc(dup.campanaId).get()).data(), false);
+    await cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ extrasLocal: [viejo] }) }, 'admin-x', LUNES);
+    assert.equal('extrasLocal' in (await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data(), false);
 });

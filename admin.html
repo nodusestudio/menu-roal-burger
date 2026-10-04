@@ -5134,15 +5134,6 @@
         }
         .pos-cupon-confirm-btn:hover { background: rgba(30,130,70,0.75); }
         .pos-cupon-confirm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-        /* Extras del Cupón Pana (ej. refill solo en local) — precio viene del servidor */
-        .pos-cupon-pana-extras { display: grid; gap: 6px; margin: 2px 0 10px; }
-        .pos-cupon-pana-extra {
-            display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: rgba(255,255,255,0.82);
-            padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.05); cursor: pointer;
-        }
-        .pos-cupon-pana-extra input { width: 16px; height: 16px; accent-color: #50c878; }
-        .pos-cupon-pana-extra strong { color: #90eda5; }
-
         /* ── Panel Cupón Pana ── */
         .cpana-select, #cpanaCompProducto {
             border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75);
@@ -5166,8 +5157,6 @@
             background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: #eef4ff; font-size: 0.8rem;
         }
         .cpana-dias input { width: auto; accent-color: var(--admin-accent); }
-        .cpana-extra-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-        .cpana-extra-row input { flex: 1 1 120px; }
         .cpana-toggles { gap: 10px; }
         .cpana-toggle {
             display: flex !important; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; cursor: pointer;
@@ -14938,11 +14927,6 @@
                             <div class="admin-field full">
                                 <label for="cpanaNotaCocina">Nota fija para cocina (sale en la landing y en el ticket)</label>
                                 <input type="text" id="cpanaNotaCocina" maxlength="120" placeholder="Salsa de la casa: tártara">
-                            </div>
-                            <div class="admin-field full">
-                                <label>Extras solo en el local (opcional)</label>
-                                <div id="cpanaExtrasList" style="display:grid;gap:6px;"></div>
-                                <button type="button" class="pm-icon-btn" id="cpanaExtraAddBtn" style="justify-self:start;align-self:flex-start;">+ Agregar extra</button>
                             </div>
                             <div class="admin-field">
                                 <label for="cpanaCupos">Cupos totales</label>

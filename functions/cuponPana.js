@@ -311,7 +311,6 @@ function buildCampanaPublica(c) {
         composicion: (c.composicion || []).map((p) => ({ nombre: String(p.nombre || ''), cantidad: Number(p.cantidad || 1) })),
         gruposOpciones: gruposDeCampana(c),
         notaCocina: String(c.notaCocina || ''),
-        extrasLocal: (c.extrasLocal || []).map((e) => ({ id: String(e.id || ''), nombre: String(e.nombre || ''), precio: Number(e.precio || 0) })),
         diasValidos: Array.isArray(c.diasValidos) ? c.diasValidos.map(Number) : [],
         fechaInicio: c.fechaInicio || null,
         fechaFin: c.fechaFin || null,
@@ -527,7 +526,6 @@ function buildCuponPosView(cupon, campana) {
             productoId: String(p.productoId || ''), nombre: String(p.nombre || ''), cantidad: Number(p.cantidad || 1),
             variante: String(p.variante || '')
         })),
-        extrasLocal: (campana?.extrasLocal || []).map((e) => ({ id: String(e.id), nombre: String(e.nombre), precio: Number(e.precio || 0) })),
         diasValidos: campana?.diasValidos || [],
         diasValidosTexto: formatDiasValidos(campana?.diasValidos || []),
         canjeadoAt: toMs(cupon.canjeadoAt)
@@ -558,11 +556,12 @@ async function validarCuponPana(db, codigoRaw, nowMs = Date.now()) {
 // Re-valida TODO dentro de la transacción (el estado pudo cambiar entre "Validar" y "Agregar al
 // ticket", o dos cajas pueden estar canjeando el mismo código a la vez: solo una gana). Devuelve
 // el couponMeta con el precio del SERVIDOR -- el POS no recalcula nada, solo lo pinta.
-async function canjearCuponPanaTransaction(db, codigoRaw, { uid, extrasIds = [] } = {}, nowMs = Date.now()) {
+// Los "extras en el local" (refill) se eliminaron: si una campaña o cupón viejo todavía trae
+// extrasLocal/extrasElegidos, simplemente se ignoran.
+async function canjearCuponPanaTransaction(db, codigoRaw, { uid } = {}, nowMs = Date.now()) {
     const codigo = normalizeCodigo(codigoRaw);
     if (!isValidCodigo(codigo)) throw new HttpsError('not-found', MOTIVOS.no_existe);
     const cuponRef = db.collection(CUPONES_PANA_COLLECTION).doc(codigo);
-    const wantedExtras = Array.isArray(extrasIds) ? extrasIds.map(String).slice(0, 10) : [];
 
     return db.runTransaction(async (tx) => {
         const cuponSnap = await tx.get(cuponRef);
@@ -574,16 +573,10 @@ async function canjearCuponPanaTransaction(db, codigoRaw, { uid, extrasIds = [] 
         const motivo = evaluarCanjeable(cupon, campana, nowMs);
         if (motivo) throw new HttpsError('failed-precondition', MOTIVOS[motivo], { motivo });
 
-        const extrasDisponibles = (campana.extrasLocal || []).map((e) => ({
-            id: String(e.id), nombre: String(e.nombre), precio: Number(e.precio || 0)
-        }));
-        const extras = extrasDisponibles.filter((e) => wantedExtras.includes(e.id));
-
         tx.update(cuponRef, {
             estado: ESTADOS.CANJEADO,
             canjeadoAt: Timestamp.fromMillis(nowMs),
             canjeadoPor: String(uid || ''),
-            extrasElegidos: extras.map((e) => e.id),
             // Bitácora del cupón: cada canje y cada reversa quedan registrados, con quién y cuándo.
             // Timestamp concreto (no serverTimestamp): Firestore no admite serverTimestamp dentro
             // de un arreglo.
@@ -603,9 +596,7 @@ async function canjearCuponPanaTransaction(db, codigoRaw, { uid, extrasIds = [] 
                 selecciones: view.selecciones,
                 notaCocina: view.notaCocina,
                 nombre: view.nombre,
-                igHandle: view.igHandle,
-                extras,
-                extrasDisponibles
+                igHandle: view.igHandle
             }
         };
     });
@@ -745,18 +736,6 @@ async function validateCampanaPayload(db, raw) {
         gruposOpciones.push({ id, nombre: nombreGrupo, opciones, requerido: g?.requerido !== false });
     }
 
-    const extrasLocal = [];
-    for (const e of (Array.isArray(c.extrasLocal) ? c.extrasLocal : []).slice(0, 5)) {
-        const id = String(e?.id || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 30);
-        const nombre = cleanText(e?.nombre, 60);
-        const precioExtra = Number(e?.precio);
-        if (!id || !nombre || !Number.isInteger(precioExtra) || precioExtra < 0 || precioExtra > 1000000) {
-            throw new HttpsError('invalid-argument', 'Extra del local inválido (id, nombre y precio entero).');
-        }
-        if (extrasLocal.some((x) => x.id === id)) throw new HttpsError('invalid-argument', `Extra repetido: ${id}.`);
-        extrasLocal.push({ id, nombre, precio: precioExtra });
-    }
-
     const diasValidos = [...new Set((Array.isArray(c.diasValidos) ? c.diasValidos : []).map(Number))]
         .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort();
     if (!diasValidos.length) throw new HttpsError('invalid-argument', 'Elige al menos un día válido.');
@@ -792,7 +771,6 @@ async function validateCampanaPayload(db, raw) {
         composicion,
         precio,
         gruposOpciones,
-        extrasLocal,
         cuposTotales,
         diasValidos,
         fechaInicio: Timestamp.fromMillis(inicioMs),
@@ -900,7 +878,6 @@ async function duplicarCampana(db, origenRef, nuevoIdRaw, adminUid, nowMs) {
         composicion: origen.composicion || [],
         precio: Number(origen.precio || 0),
         gruposOpciones: gruposDeCampana(origen),
-        extrasLocal: origen.extrasLocal || [],
         cuposTotales: Number(origen.cuposTotales || 0),
         cuposEmitidos: 0,
         agotadaAt: null,

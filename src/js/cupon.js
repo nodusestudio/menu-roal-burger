@@ -28,7 +28,6 @@ const CONDICIONES = [
     'Una vez por persona.',
     'Presenta el código en caja o al pedir por WhatsApp.',
     'No acumulable con otras promociones.',
-    'El refill de gaseosa es solo para consumo en el local.',
     'Sujeto a cupos disponibles.'
 ];
 
