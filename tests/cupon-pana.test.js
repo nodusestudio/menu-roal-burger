@@ -168,8 +168,8 @@ test('emitir: misma cuenta de Instagram con OTRO teléfono → "Esta cuenta ya r
     assert.equal((await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data().cuposEmitidos, 1);
 });
 
-test('emitir: topping fuera de las opciones → invalid-argument', async () => {
-    await expectHttpsError(cp.emitirCuponPanaTransaction(db, emitInput({ topping: 'Caviar' }), LUNES), 'invalid-argument', /Toque Pana/);
+test('emitir: topping (formato viejo) fuera de las opciones → invalid-argument', async () => {
+    await expectHttpsError(cp.emitirCuponPanaTransaction(db, emitInput({ topping: 'Caviar' }), LUNES), 'invalid-argument', /no está disponible en "Extra"/);
 });
 
 test('emitir: sin consentimiento de datos → rechazo antes de tocar Firestore', () => {
@@ -318,7 +318,7 @@ test('guardarCampanaPana: crea, normaliza (nombre del catálogo, fechas Bogotá)
     await cp.guardarCampanaPana(db, { campanaId: 'NUEVA1', esNueva: true, campana: payloadCampana() }, 'admin-x', LUNES);
     const c = (await db.collection('cupones_campanas').doc('NUEVA1').get()).data();
     assert.equal(c.composicion[0].nombre, 'Burger Pana');
-    assert.deepEqual(c.toppingsOpciones, ['Maduro', 'Pepinillo']);
+    assert.deepEqual(c.gruposOpciones, [{ id: 'extra', nombre: 'Extra', opciones: ['Maduro', 'Pepinillo'], requerido: true }]); // toppingsOpciones viejo → grupo "Extra"
     assert.deepEqual(c.diasValidos, [1, 2, 4]);
     assert.equal(c.cuposEmitidos, 0);
     assert.equal(cp.bogotaParts(c.fechaFin.toMillis()).dateKey, '2026-10-11');
@@ -477,4 +477,136 @@ test('reversa: CONCURRENCIA — dos reversas simultáneas del mismo canje → ex
     assert.equal(results.find((r) => r.status === 'rejected').reason.code, 'failed-precondition');
     const cupon = (await db.collection('cupones_pana').doc(codigo).get()).data();
     assert.equal(cupon.historial.filter((h) => h.accion === 'revertir_canje').length, 1);
+});
+
+// ── Grupos de opciones (reemplazan el topping único) ─────────────────────────
+
+const GRUPOS_DOS = [
+    { id: 'extra', nombre: 'Extra a elegir', opciones: ['Maíz', 'Maduro', 'Pepinillo'], requerido: true },
+    { id: 'bebida', nombre: 'Bebida', opciones: ['Coca-Cola', 'Kola Román'], requerido: true },
+    { id: 'picante', nombre: 'Picante', opciones: ['Sí', 'No'], requerido: false }
+];
+
+async function usarGrupos() {
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({
+        gruposOpciones: GRUPOS_DOS, toppingsOpciones: null, notaCocina: 'Salsa de la casa: tártara'
+    });
+}
+
+test('grupos: emisión válida guarda selecciones, detalle con nombres y topping de compatibilidad', async () => {
+    await usarGrupos();
+    const r = await cp.emitirCuponPanaTransaction(db, emitInput({ topping: '', selecciones: { extra: 'Maíz', bebida: 'Kola Román' } }), LUNES);
+    assert.deepEqual(r.selecciones, [{ grupo: 'Extra a elegir', opcion: 'Maíz' }, { grupo: 'Bebida', opcion: 'Kola Román' }]);
+    assert.equal(r.campana.notaCocina, 'Salsa de la casa: tártara');
+    const cupon = (await db.collection('cupones_pana').doc(r.codigo).get()).data();
+    assert.deepEqual(cupon.selecciones, { extra: 'Maíz', bebida: 'Kola Román' });
+    assert.equal(cupon.topping, 'Maíz · Kola Román');
+
+    const v = await cp.validarCuponPana(db, r.codigo, LUNES);
+    assert.deepEqual(v.cupon.selecciones, r.selecciones);
+    assert.equal(v.cupon.notaCocina, 'Salsa de la casa: tártara');
+    const c = await cp.canjearCuponPanaTransaction(db, r.codigo, { uid: 'admin-x' }, LUNES);
+    assert.deepEqual(c.couponMeta.selecciones, r.selecciones);
+    assert.equal(c.couponMeta.notaCocina, 'Salsa de la casa: tártara');
+});
+
+test('grupos: falta un grupo REQUERIDO → rechazo (y no gasta cupo)', async () => {
+    await usarGrupos();
+    await expectHttpsError(
+        cp.emitirCuponPanaTransaction(db, emitInput({ topping: '', selecciones: { extra: 'Maíz' } }), LUNES),
+        'invalid-argument', /Elige una opción en "Bebida"/
+    );
+    assert.equal((await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data().cuposEmitidos, 0);
+});
+
+test('grupos: opción inválida (o inventada en un grupo opcional) → rechazo', async () => {
+    await usarGrupos();
+    await expectHttpsError(
+        cp.emitirCuponPanaTransaction(db, emitInput({ topping: '', selecciones: { extra: 'Caviar', bebida: 'Coca-Cola' } }), LUNES),
+        'invalid-argument', /"Caviar" no está disponible en "Extra a elegir"/
+    );
+    await expectHttpsError(
+        cp.emitirCuponPanaTransaction(db, emitInput({ topping: '', selecciones: { extra: 'Maíz', bebida: 'Coca-Cola', picante: 'Mucho' } }), LUNES),
+        'invalid-argument', /Picante/
+    );
+});
+
+test('grupos: campaña VIEJA con toppingsOpciones sigue funcionando como grupo "Extra"', async () => {
+    // baseCampana() solo tiene toppingsOpciones, igual que la campaña TEST ya creada en producción.
+    const r = await cp.emitirCuponPanaTransaction(db, emitInput({ topping: '', selecciones: { extra: 'Pepinillo' } }), LUNES);
+    assert.deepEqual(r.selecciones, [{ grupo: 'Extra', opcion: 'Pepinillo' }]);
+    // Y un cliente con el cupon.js viejo en caché (manda "topping") también.
+    const r2 = await cp.emitirCuponPanaTransaction(db, emitInput({ telefono: '3105550000', igHandle: 'pana_viejo', topping: 'Maduro' }), LUNES);
+    assert.deepEqual(r2.selecciones, [{ grupo: 'Extra', opcion: 'Maduro' }]);
+    // Un cupón emitido ANTES de los grupos (sin seleccionesDetalle) se sigue mostrando.
+    await db.collection('cupones_pana').doc('VXEJH2').set({ codigo: 'VXEJH2', campanaId: CAMPANA_ID, estado: 'activo', topping: 'Maduro', nombre: 'Viejo' });
+    const v = await cp.validarCuponPana(db, 'VXEJH2', LUNES);
+    assert.equal(v.canjeable, true);
+    assert.deepEqual(v.cupon.selecciones, [{ grupo: 'Extra', opcion: 'Maduro' }]);
+    const pub = cp.buildCampanaPublica(baseCampana());
+    assert.deepEqual(pub.gruposOpciones, [{ id: 'extra', nombre: 'Extra', opciones: ['Maíz dulce', 'Pepinillo', 'Maduro'], requerido: true }]);
+});
+
+test('grupos: el panel valida grupos (vacíos, repetidos) y convierte toppingsOpciones viejos', async () => {
+    await expectHttpsError(cp.guardarCampanaPana(db, {
+        campanaId: 'GRP1', esNueva: true,
+        campana: payloadCampana({ toppingsOpciones: [], gruposOpciones: [{ nombre: 'Salsa', opciones: [] }] })
+    }, 'admin-x', LUNES), 'invalid-argument', /entre 1 y/);
+    await expectHttpsError(cp.guardarCampanaPana(db, {
+        campanaId: 'GRP1', esNueva: true,
+        campana: payloadCampana({ gruposOpciones: [{ nombre: 'Salsa', opciones: ['A'] }, { nombre: 'salsa', opciones: ['B'] }] })
+    }, 'admin-x', LUNES), 'invalid-argument', /repetido/);
+    await cp.guardarCampanaPana(db, {
+        campanaId: 'GRP1', esNueva: true,
+        campana: payloadCampana({ gruposOpciones: [{ nombre: 'Extra a elegir', opciones: ['Maíz', 'Maíz', 'Maduro'] }], notaCocina: 'Salsa de la casa: tártara', temporada: 'T01 · La Burda' })
+    }, 'admin-x', LUNES);
+    const c = (await db.collection('cupones_campanas').doc('GRP1').get()).data();
+    assert.deepEqual(c.gruposOpciones, [{ id: 'extra_a_elegir', nombre: 'Extra a elegir', opciones: ['Maíz', 'Maduro'], requerido: true }]);
+    assert.equal(c.notaCocina, 'Salsa de la casa: tártara');
+    assert.equal(c.temporada, 'T01 · La Burda');
+    await cp.guardarCampanaPana(db, { campanaId: 'GRP2', esNueva: true, campana: payloadCampana() }, 'admin-x', LUNES);
+    assert.equal((await db.collection('cupones_campanas').doc('GRP2').get()).data().gruposOpciones[0].nombre, 'Extra');
+    await expectHttpsError(cp.guardarCampanaPana(db, { campanaId: 'GRP3', esNueva: true, campana: payloadCampana({ palabraClave: '' }) }, 'admin-x', LUNES),
+        'invalid-argument', /palabra clave/);
+});
+
+// ── agotadaAt (alimenta el semáforo) ──
+
+test('emitir: el último cupo guarda agotadaAt una sola vez, y guardar la campaña lo conserva', async () => {
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({ cuposTotales: 2 });
+    await cp.emitirCuponPanaTransaction(db, emitInput({ telefono: '3001000011', igHandle: 'a_1' }), LUNES);
+    assert.equal((await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data().agotadaAt, undefined);
+    await cp.emitirCuponPanaTransaction(db, emitInput({ telefono: '3001000012', igHandle: 'a_2' }), LUNES + HOUR);
+    const camp = (await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data();
+    assert.equal(camp.agotadaAt.toMillis(), LUNES + HOUR);
+    await cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ cuposTotales: 5 }) }, 'admin-x', LUNES + 2 * HOUR);
+    assert.equal((await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data().agotadaAt.toMillis(), LUNES + HOUR);
+});
+
+// ── Duplicar ──
+
+test('duplicar: la copia sale inactiva, 0 cupos, sin palabra clave ni fechas, con la temporada', async () => {
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({
+        cuposEmitidos: 7, agotadaAt: Timestamp.fromMillis(LUNES), temporada: 'T01 · La Burda',
+        notaCocina: 'Salsa de la casa: tártara', gruposOpciones: GRUPOS_DOS
+    });
+    const r = await cp.guardarCampanaPana(db, { accion: 'duplicar', campanaId: CAMPANA_ID }, 'admin-x', LUNES);
+    assert.equal(r.campanaId, `${CAMPANA_ID}-C2`);
+    const copia = (await db.collection('cupones_campanas').doc(r.campanaId).get()).data();
+    assert.equal(copia.activa, false);
+    assert.equal(copia.cuposEmitidos, 0);
+    assert.equal(copia.agotadaAt, null);
+    assert.equal(copia.palabraClave, '');
+    assert.equal(copia.fechaInicio, null);
+    assert.equal(copia.fechaFin, null);
+    assert.equal(copia.titulo, 'Combo Pana Test (copia)');
+    assert.equal(copia.temporada, 'T01 · La Burda');
+    assert.equal(copia.notaCocina, 'Salsa de la casa: tártara');
+    assert.deepEqual(copia.gruposOpciones, GRUPOS_DOS);
+    assert.equal(copia.precio, 19900);
+    // La copia no recibe tráfico: está inactiva.
+    await expectHttpsError(cp.emitirCuponPanaTransaction(db, emitInput({ campanaId: r.campanaId }), LUNES), 'failed-precondition', /no está activa/);
+    // Un segundo duplicado toma el siguiente ID libre; con ID explícito repetido, error.
+    assert.equal((await cp.guardarCampanaPana(db, { accion: 'duplicar', campanaId: CAMPANA_ID }, 'admin-x', LUNES)).campanaId, `${CAMPANA_ID}-C3`);
+    await expectHttpsError(cp.guardarCampanaPana(db, { accion: 'duplicar', campanaId: CAMPANA_ID, nuevoId: `${CAMPANA_ID}-C2` }, 'admin-x', LUNES), 'already-exists');
 });

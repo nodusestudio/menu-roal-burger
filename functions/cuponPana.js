@@ -1,7 +1,10 @@
 'use strict';
 
 // ─────────────────────────────────────────────────────────────
-// CUPÓN PANA — cupones semanales exclusivos para seguidores de Instagram.
+// FUERA DEL MENÚ (antes "Cupón Pana") — cupones semanales exclusivos para seguidores de Instagram.
+// Los identificadores internos (cuponPana*, cupones_pana, …) conservan el nombre viejo a
+// propósito: renombrarlos obligaría a migrar colecciones y funciones ya desplegadas sin ningún
+// beneficio para el cliente, que nunca los ve. Solo cambia el texto visible.
 //
 // Mecánica: post en Instagram → el usuario comenta la palabra clave → InstantDM (externo) le
 // manda por DM el link roalburger.com/cupon?k=<campanaId> → en esa landing (cupon.html) deja sus
@@ -175,6 +178,66 @@ function cuposRestantesDe(campana) {
     return Math.max(0, Number(campana.cuposTotales || 0) - Number(campana.cuposEmitidos || 0));
 }
 
+// ── Grupos de opciones ("Extra a elegir", "Salsa", …) ──────────────────────────
+
+const MAX_GRUPOS = 6;
+const MAX_OPCIONES_POR_GRUPO = 10;
+const GRUPO_LEGACY_ID = 'extra';
+
+function slugId(value, max = 30) {
+    return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, max);
+}
+
+// Fuente única de los grupos de una campaña. Las campañas creadas antes de los grupos solo
+// tienen toppingsOpciones (un "Toque" único): se tratan como UN grupo "Extra" requerido, así la
+// campaña TEST y los cupones ya emitidos siguen funcionando sin migrar nada.
+function gruposDeCampana(campana) {
+    const c = campana || {};
+    if (Array.isArray(c.gruposOpciones) && c.gruposOpciones.length) {
+        return c.gruposOpciones.map((g) => ({
+            id: String(g.id || ''),
+            nombre: String(g.nombre || ''),
+            opciones: Array.isArray(g.opciones) ? g.opciones.map(String) : [],
+            requerido: g.requerido !== false
+        })).filter((g) => g.id && g.opciones.length);
+    }
+    const legacy = Array.isArray(c.toppingsOpciones) ? c.toppingsOpciones.map(String).filter(Boolean) : [];
+    return legacy.length ? [{ id: GRUPO_LEGACY_ID, nombre: 'Extra', opciones: legacy, requerido: true }] : [];
+}
+
+// Valida lo que eligió el cliente contra los grupos REALES de la campaña (nunca contra lo que
+// mande el navegador). Devuelve el mapa limpio y el detalle [{grupoId, grupo, opcion}] en el
+// orden de los grupos. toppingLegacy: el campo "topping" del formato viejo, que va al primer grupo.
+function resolverSelecciones(grupos, selecciones, toppingLegacy = '') {
+    const elegidas = { ...(selecciones || {}) };
+    if (toppingLegacy && grupos.length && !elegidas[grupos[0].id]) elegidas[grupos[0].id] = toppingLegacy;
+    const mapa = {};
+    const detalle = [];
+    for (const g of grupos) {
+        const opcion = String(elegidas[g.id] || '').trim();
+        if (!opcion) {
+            if (g.requerido) throw new HttpsError('invalid-argument', `Elige una opción en "${g.nombre}".`);
+            continue;
+        }
+        if (!g.opciones.includes(opcion)) {
+            throw new HttpsError('invalid-argument', `La opción "${opcion}" no está disponible en "${g.nombre}".`);
+        }
+        mapa[g.id] = opcion;
+        detalle.push({ grupoId: g.id, grupo: g.nombre, opcion });
+    }
+    return { mapa, detalle };
+}
+
+// Para mostrar (POS, ticket, panel, WhatsApp): la foto que se guardó al emitir; un cupón viejo
+// solo tiene "topping" y se muestra como el grupo "Extra".
+function describirSelecciones(cupon) {
+    if (Array.isArray(cupon?.seleccionesDetalle) && cupon.seleccionesDetalle.length) {
+        return cupon.seleccionesDetalle.map((d) => ({ grupo: String(d.grupo || d.grupoId || ''), opcion: String(d.opcion || '') }));
+    }
+    return cupon?.topping ? [{ grupo: 'Extra', opcion: String(cupon.topping) }] : [];
+}
+
 // ── Rate limit (mismo patrón que orchestrator.js: checkRateLimit) ──────────────
 
 async function checkRateLimit(db, key, maxHits, nowMs = Date.now()) {
@@ -241,7 +304,8 @@ function buildCampanaPublica(c) {
         imagenUrl: String(c.imagenUrl || ''),
         precio: Number(c.precio || 0),
         composicion: (c.composicion || []).map((p) => ({ nombre: String(p.nombre || ''), cantidad: Number(p.cantidad || 1) })),
-        toppingsOpciones: Array.isArray(c.toppingsOpciones) ? c.toppingsOpciones.map(String) : [],
+        gruposOpciones: gruposDeCampana(c),
+        notaCocina: String(c.notaCocina || ''),
         extrasLocal: (c.extrasLocal || []).map((e) => ({ id: String(e.id || ''), nombre: String(e.nombre || ''), precio: Number(e.precio || 0) })),
         diasValidos: Array.isArray(c.diasValidos) ? c.diasValidos.map(Number) : [],
         fechaInicio: c.fechaInicio || null,
@@ -276,19 +340,29 @@ function validateEmitInput(raw) {
     const nombre = normalizeNombre(data.nombre);
     const telefono = normalizeColombianPhoneDigits(data.telefono);
     const igHandle = normalizeIgHandle(data.igHandle);
-    const topping = String(data.topping || '').trim();
+    // Formato nuevo: selecciones { grupoId: opcion }. "topping" queda solo para un cliente con el
+    // cupon.js viejo en caché (se asigna al primer grupo). Se validan contra la campaña en la
+    // transacción, que es donde están los grupos reales.
+    const selecciones = {};
+    if (data.selecciones && typeof data.selecciones === 'object' && !Array.isArray(data.selecciones)) {
+        Object.entries(data.selecciones).slice(0, MAX_GRUPOS + 4).forEach(([k, v]) => {
+            const key = String(k).slice(0, 30);
+            const val = String(v ?? '').trim().slice(0, 60);
+            if (key && val) selecciones[key] = val;
+        });
+    }
+    const topping = String(data.topping || '').trim().slice(0, 60);
     const fuente = String(data.fuente || '').trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '').slice(0, 40) || 'instagram';
 
     if (!isValidCampanaId(campanaId)) throw new HttpsError('invalid-argument', 'Campaña inválida.');
     if (nombre.length < 2 || nombre.length > 40) throw new HttpsError('invalid-argument', 'Escribe tu nombre (2 a 40 caracteres).');
     if (!isValidColombianMobile(telefono)) throw new HttpsError('invalid-argument', 'Escribe un celular colombiano válido (10 dígitos, empieza en 3).');
     if (!isValidIgHandle(igHandle)) throw new HttpsError('invalid-argument', 'Escribe tu usuario de Instagram válido (ej. @tu.usuario).');
-    if (!topping) throw new HttpsError('invalid-argument', 'Elige tu Toque Pana.');
     // Habeas data (Ley 1581 de 2012): sin autorización expresa no se guarda ningún dato.
     if (data.aceptaDatos !== true) throw new HttpsError('invalid-argument', 'Debes autorizar el tratamiento de tus datos para recibir el cupón.');
 
     return {
-        campanaId, nombre, telefono, igHandle, topping, fuente,
+        campanaId, nombre, telefono, igHandle, topping, selecciones, fuente,
         aceptaMarketing: data.aceptaMarketing === true
     };
 }
@@ -299,10 +373,12 @@ function buildEmitResponse(campana, cupon, yaExistia) {
         estado: cupon.estado,
         nombre: cupon.nombre,
         topping: cupon.topping,
+        selecciones: describirSelecciones(cupon),
         yaExistia: yaExistia === true,
         campana: {
             titulo: String(campana.titulo || ''),
             precio: Number(campana.precio || 0),
+            notaCocina: String(campana.notaCocina || ''),
             diasValidos: Array.isArray(campana.diasValidos) ? campana.diasValidos : [],
             fechaInicio: toMs(campana.fechaInicio),
             fechaFin: toMs(campana.fechaFin),
@@ -348,8 +424,7 @@ async function emitirCuponPanaTransaction(db, input, nowMs = Date.now()) {
         if (campana.activa !== true) throw new HttpsError('failed-precondition', 'Esta campaña no está activa.');
         const finMs = toMs(campana.fechaFin);
         if (finMs !== null && nowMs > finMs) throw new HttpsError('failed-precondition', 'Esta campaña ya terminó.');
-        const toppings = Array.isArray(campana.toppingsOpciones) ? campana.toppingsOpciones : [];
-        if (!toppings.includes(input.topping)) throw new HttpsError('invalid-argument', 'Ese Toque Pana no está disponible.');
+        const { mapa: selecciones, detalle: seleccionesDetalle } = resolverSelecciones(gruposDeCampana(campana), input.selecciones, input.topping);
         if (cuposRestantesDe(campana) <= 0) throw new HttpsError('resource-exhausted', 'Se acabaron los cupones de esta semana.');
 
         // El código no puede chocar con uno de cupones_pana NI con uno de codigos_cupon: el POS
@@ -374,7 +449,11 @@ async function emitirCuponPanaTransaction(db, input, nowMs = Date.now()) {
             nombre: input.nombre,
             telefono,
             igHandle,
-            topping: input.topping,
+            selecciones,
+            // Foto con los NOMBRES de los grupos al momento de emitir: si el admin renombra o
+            // borra un grupo después, el cupón y el ticket siguen diciendo lo que el cliente eligió.
+            seleccionesDetalle,
+            topping: seleccionesDetalle.map((d) => d.opcion).join(' · '), // compatibilidad
             estado,
             consentimientoDatos: { aceptado: true, version: CONSENTIMIENTO_DATOS_VERSION, at: now },
             consentimientoMarketing: input.aceptaMarketing === true,
@@ -391,7 +470,11 @@ async function emitirCuponPanaTransaction(db, input, nowMs = Date.now()) {
 
         tx.create(phoneIdxRef, { campanaId, codigo, telefono, igHandle, tipo: 'telefono', creadoAt: now });
         tx.create(igIdxRef, { campanaId, codigo, telefono, igHandle, tipo: 'ig', creadoAt: now });
-        tx.update(campRef, { cuposEmitidos });
+        const campUpdate = { cuposEmitidos };
+        // Momento exacto en que se agotó: alimenta el semáforo de temporadas del panel ("¿se agotó
+        // antes del jueves?"). Solo la primera vez -- si luego suben los cupos, sigue valiendo.
+        if (cuposEmitidos >= Number(campana.cuposTotales || 0) && !campana.agotadaAt) campUpdate.agotadaAt = now;
+        tx.update(campRef, campUpdate);
         tx.set(pubRef, { cuposRestantes: Math.max(0, Number(campana.cuposTotales || 0) - cuposEmitidos) }, { merge: true });
         tx.create(db.collection(CUPONES_PANA_COLLECTION).doc(codigo), cupon);
 
@@ -428,6 +511,8 @@ function buildCuponPosView(cupon, campana) {
         nombre: cupon.nombre || '',
         igHandle: cupon.igHandle || '',
         topping: cupon.topping || '',
+        selecciones: describirSelecciones(cupon),
+        notaCocina: String(campana?.notaCocina || ''),
         estado: cupon.estado,
         campanaId: cupon.campanaId,
         titulo: String(campana?.titulo || ''),
@@ -508,6 +593,8 @@ async function canjearCuponPanaTransaction(db, codigoRaw, { uid, extrasIds = [] 
                 precio: view.precio,
                 composicion: view.composicion,
                 topping: view.topping,
+                selecciones: view.selecciones,
+                notaCocina: view.notaCocina,
                 nombre: view.nombre,
                 igHandle: view.igHandle,
                 extras,
@@ -591,6 +678,10 @@ async function validateCampanaPayload(db, raw) {
     const c = raw || {};
     const titulo = cleanText(c.titulo, 60);
     if (titulo.length < 2) throw new HttpsError('invalid-argument', 'El título es obligatorio.');
+    // La palabra clave es la que se publica en el post y se configura en InstantDM: una campaña
+    // sin ella no tiene cómo recibir tráfico (y una copia recién duplicada la trae vacía a propósito).
+    const palabraClave = cleanText(c.palabraClave, 40);
+    if (!palabraClave) throw new HttpsError('invalid-argument', 'La palabra clave es obligatoria.');
 
     const precio = toPositiveInt(c.precio);
     if (!precio || precio > 1000000) throw new HttpsError('invalid-argument', 'Precio inválido (entero en COP, mayor a 0).');
@@ -616,9 +707,27 @@ async function validateCampanaPayload(db, raw) {
         composicion.push({ productoId, nombre: cleanText(d.nombre || d.titulo || item.nombre, 80), cantidad });
     }
 
-    const toppingsOpciones = [...new Set((Array.isArray(c.toppingsOpciones) ? c.toppingsOpciones : [])
-        .map((t) => cleanText(t, 30)).filter(Boolean))].slice(0, 8);
-    if (!toppingsOpciones.length) throw new HttpsError('invalid-argument', 'Agrega al menos una opción de Toque Pana.');
+    // Panel nuevo manda gruposOpciones; uno viejo (o un payload a mano) puede mandar solo
+    // toppingsOpciones: se convierte al grupo "Extra" para no perder nada.
+    const gruposRaw = Array.isArray(c.gruposOpciones) && c.gruposOpciones.length
+        ? c.gruposOpciones
+        : (Array.isArray(c.toppingsOpciones) && c.toppingsOpciones.length
+            ? [{ id: GRUPO_LEGACY_ID, nombre: 'Extra', opciones: c.toppingsOpciones, requerido: true }]
+            : []);
+    if (!gruposRaw.length) throw new HttpsError('invalid-argument', 'Agrega al menos un grupo de opciones.');
+    if (gruposRaw.length > MAX_GRUPOS) throw new HttpsError('invalid-argument', `Máximo ${MAX_GRUPOS} grupos de opciones.`);
+    const gruposOpciones = [];
+    for (const g of gruposRaw) {
+        const nombreGrupo = cleanText(g?.nombre, 30);
+        const id = slugId(g?.id || nombreGrupo);
+        const opciones = [...new Set((Array.isArray(g?.opciones) ? g.opciones : []).map((o) => cleanText(o, 30)).filter(Boolean))];
+        if (!nombreGrupo || !id) throw new HttpsError('invalid-argument', 'Cada grupo de opciones necesita un nombre.');
+        if (!opciones.length || opciones.length > MAX_OPCIONES_POR_GRUPO) {
+            throw new HttpsError('invalid-argument', `El grupo "${nombreGrupo}" debe tener entre 1 y ${MAX_OPCIONES_POR_GRUPO} opciones.`);
+        }
+        if (gruposOpciones.some((x) => x.id === id)) throw new HttpsError('invalid-argument', `Grupo repetido: "${nombreGrupo}".`);
+        gruposOpciones.push({ id, nombre: nombreGrupo, opciones, requerido: g?.requerido !== false });
+    }
 
     const extrasLocal = [];
     for (const e of (Array.isArray(c.extrasLocal) ? c.extrasLocal : []).slice(0, 5)) {
@@ -659,12 +768,14 @@ async function validateCampanaPayload(db, raw) {
 
     return {
         titulo,
-        palabraClave: cleanText(c.palabraClave, 40),
+        palabraClave,
+        temporada: cleanText(c.temporada, 40),
         descripcion: cleanText(c.descripcion, 300),
+        notaCocina: cleanText(c.notaCocina, 120),
         imagenUrl,
         composicion,
         precio,
-        toppingsOpciones,
+        gruposOpciones,
         extrasLocal,
         cuposTotales,
         diasValidos,
@@ -717,6 +828,10 @@ async function guardarCampanaPana(db, data, adminUid, nowMs = Date.now()) {
         return { ok: true, campanaId, eliminada: true };
     }
 
+    if (accion === 'duplicar') {
+        return duplicarCampana(db, ref, data?.nuevoId, adminUid, nowMs);
+    }
+
     if (accion !== 'guardar') throw new HttpsError('invalid-argument', 'Acción inválida.');
     const campana = await validateCampanaPayload(db, data?.campana);
     const esNueva = data?.esNueva === true;
@@ -735,12 +850,69 @@ async function guardarCampanaPana(db, data, adminUid, nowMs = Date.now()) {
             ...campana,
             slug: campanaId,
             cuposEmitidos, // nunca desde el panel: solo la transacción de emisión lo mueve
+            agotadaAt: prev.agotadaAt || null, // lo pone la emisión; el panel no lo toca
             creadaAt: prev.creadaAt || now,
             actualizadaAt: now,
             actualizadaPor: adminUid
         });
     });
     return { ok: true, campanaId };
+}
+
+// Copia una campaña para la semana siguiente. Copia todo MENOS lo que no puede heredarse:
+// id nuevo, 0 cupos emitidos, inactiva, sin fechas ni palabra clave (cada post semanal tiene la
+// suya, y guardarCampanaPana las exige antes de poder guardarla). Conserva la temporada.
+async function duplicarCampana(db, origenRef, nuevoIdRaw, adminUid, nowMs) {
+    const origenSnap = await origenRef.get();
+    if (!origenSnap.exists) throw new HttpsError('not-found', 'La campaña a duplicar no existe.');
+    const origen = origenSnap.data();
+
+    let nuevoId = String(nuevoIdRaw || '').trim();
+    if (nuevoId && !isValidCampanaId(nuevoId)) {
+        throw new HttpsError('invalid-argument', 'ID de la copia inválido (2-40 letras, números, - o _).');
+    }
+    const candidatos = nuevoId ? [nuevoId] : Array.from({ length: 20 }, (_, i) => `${origenRef.id.slice(0, 34)}-C${i + 2}`);
+
+    const now = Timestamp.fromMillis(nowMs);
+    const copia = {
+        titulo: `${String(origen.titulo || '').slice(0, 52)} (copia)`,
+        palabraClave: '',
+        temporada: String(origen.temporada || ''),
+        descripcion: String(origen.descripcion || ''),
+        notaCocina: String(origen.notaCocina || ''),
+        imagenUrl: String(origen.imagenUrl || ''),
+        composicion: origen.composicion || [],
+        precio: Number(origen.precio || 0),
+        gruposOpciones: gruposDeCampana(origen),
+        extrasLocal: origen.extrasLocal || [],
+        cuposTotales: Number(origen.cuposTotales || 0),
+        cuposEmitidos: 0,
+        agotadaAt: null,
+        diasValidos: origen.diasValidos || [],
+        fechaInicio: null,
+        fechaFin: null,
+        activa: false,
+        requiereActivacionWA: origen.requiereActivacionWA === true,
+        waNumeroPrincipal: String(origen.waNumeroPrincipal || ''),
+        waNumeroCupones: String(origen.waNumeroCupones || ''),
+        duplicadaDe: origenRef.id,
+        creadaAt: now,
+        actualizadaAt: now,
+        actualizadaPor: adminUid
+    };
+
+    for (const id of candidatos) {
+        const ref = db.collection(CUPONES_CAMPANAS_COLLECTION).doc(id);
+        try {
+            await ref.create({ ...copia, slug: id });
+            return { ok: true, campanaId: id, duplicadaDe: origenRef.id };
+        } catch (err) {
+            const existe = err?.code === 6 || /already exists/i.test(String(err?.message || ''));
+            if (!existe) throw err;
+            if (nuevoId) throw new HttpsError('already-exists', `Ya existe una campaña con el ID "${id}".`);
+        }
+    }
+    throw new HttpsError('aborted', 'No se encontró un ID libre para la copia: indícalo a mano.');
 }
 
 // ── Vencimiento diario ───────────────────────────────────────────────────────
@@ -795,6 +967,9 @@ module.exports = {
     buildCampanaPublica,
     syncCampanaPublica,
     validateEmitInput,
+    gruposDeCampana,
+    resolverSelecciones,
+    describirSelecciones,
     emitirCuponPanaTransaction,
     evaluarCanjeable,
     validarCuponPana,

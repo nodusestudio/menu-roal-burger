@@ -1,7 +1,7 @@
 'use strict';
 
 // ─────────────────────────────────────────────────────────────
-// CUPÓN PANA — FASE 2: activación y recordatorios por el número de WhatsApp DEDICADO a cupones
+// FUERA DEL MENÚ (identificadores internos: "cupón pana") — FASE 2: activación y recordatorios por el número de WhatsApp DEDICADO a cupones
 // (WhatsApp Cloud API de Meta, no UltraMsg).
 //
 // ESTADO: escrito y testeado (tests/cupon-pana-whatsapp.test.js), NO desplegado. Las funciones
@@ -19,7 +19,7 @@ const { Timestamp } = require('firebase-admin/firestore');
 const { normalizeColombianPhoneDigits } = require('./phoneUtils');
 const cuponPana = require('./cuponPana');
 
-const { CUPONES_CAMPANAS_COLLECTION, CUPONES_PANA_COLLECTION, ESTADOS, bogotaParts, toMs, formatDiasValidos, waMeLink } = cuponPana;
+const { CUPONES_CAMPANAS_COLLECTION, CUPONES_PANA_COLLECTION, ESTADOS, bogotaParts, toMs, formatDiasValidos, waMeLink, describirSelecciones } = cuponPana;
 
 // Idempotencia del webhook: Meta reintenta (y a veces duplica) entregas. Cada message.id
 // procesado deja un doc aquí con `expiraAt` -- hay que activar la política TTL de Firestore sobre
@@ -71,11 +71,12 @@ function buildCuponActivoText(cupon, campana) {
     const fin = finMs ? bogotaParts(finMs) : null;
     const pedir = waMeLink(campana.waNumeroPrincipal, `Hola ROAL 👋 Tengo el cupón ${cupon.codigo} (${campana.titulo}) y quiero pedir`);
     return [
-        `¡Listo, ${cupon.nombre}! 🔥 Tu Cupón Pana quedó ACTIVO.`,
+        `¡Listo, ${cupon.nombre}! 🔥 Tu cupón Fuera del Menú quedó ACTIVO.`,
         '',
         `🎟️ Código: *${cupon.codigo}*`,
         `🍔 ${campana.titulo}${contenido ? ` (${contenido})` : ''} — ${formatCop(campana.precio)}`,
-        `✨ Toque Pana: ${cupon.topping}`,
+        ...describirSelecciones(cupon).map((d) => `✨ ${d.grupo}: ${d.opcion}`),
+        ...(campana.notaCocina ? [`🧂 ${campana.notaCocina}`] : []),
         `📅 Válido: ${formatDiasValidos(campana.diasValidos)}${fin ? `, hasta el ${fin.d}/${fin.m}` : ''}`,
         '',
         'Condiciones: una vez por persona, presenta el código en caja o al pedir por WhatsApp, no acumulable, el refill de gaseosa es solo para consumo en el local y está sujeto a cupos.',
@@ -91,14 +92,14 @@ function buildTelefonoNoCoincideText() {
 function buildRespuestaGenericaText(waNumeroPrincipal) {
     const pedir = waMeLink(waNumeroPrincipal || '573144689509', 'Hola ROAL 👋 quiero pedir');
     return [
-        '¡Epa, pana! 👋 Este número es solo para activar cupones.',
+        '¡Epa! 👋 Este número es solo para activar cupones de Fuera del Menú.',
         `Para pedir escríbenos al WhatsApp principal 👉 ${pedir}`,
         `o mira el menú en ${MENU_URL}`
     ].join('\n');
 }
 
 function buildEstadoFinalText(cupon) {
-    if (cupon.estado === ESTADOS.CANJEADO) return `Tu cupón ${cupon.codigo} ya fue canjeado. ¡Gracias por venir, pana! 🧡`;
+    if (cupon.estado === ESTADOS.CANJEADO) return `Tu cupón ${cupon.codigo} ya fue canjeado. ¡Gracias por venir! 🧡`;
     return `Tu cupón ${cupon.codigo} ya venció 😕 Síguenos en Instagram: cada semana sale uno nuevo.`;
 }
 
@@ -260,7 +261,7 @@ function debeRecordarHoy(campana, nowMs) {
 }
 
 function buildRecordatorioText(cupon, campana) {
-    return `¡Epa, ${cupon.nombre}! 👋 Te recordamos tu Cupón Pana *${cupon.codigo}* (${campana.titulo}). ` +
+    return `¡Epa, ${cupon.nombre}! 👋 Te recordamos tu cupón Fuera del Menú *${cupon.codigo}* (${campana.titulo}). ` +
         `Válido: ${formatDiasValidos(campana.diasValidos)}. Preséntalo en caja o pide por WhatsApp 👉 ` +
         waMeLink(campana.waNumeroPrincipal, `Hola ROAL 👋 Tengo el cupón ${cupon.codigo} (${campana.titulo}) y quiero pedir`);
 }
