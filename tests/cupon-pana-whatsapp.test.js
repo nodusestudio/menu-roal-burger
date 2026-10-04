@@ -131,7 +131,7 @@ test('webhook: código + mismo teléfono → pasa a "activo", responde con el cu
     assert.equal(sent.length, 1);
     assert.equal(sent[0].phone, '573001112233');
     assert.ok(sent[0].text.includes(codigo));
-    assert.ok(sent[0].text.includes('wa.me/573144689509'));
+    assert.ok(sent[0].text.includes('api.whatsapp.com/send?phone=573144689509'));
     assert.ok(sent[0].text.includes('lunes, martes y jueves'));
 });
 
@@ -167,7 +167,7 @@ test('webhook: cualquier otro mensaje → respuesta fija con el WhatsApp princip
         { id: 'wamid.gen', from: '573001112233', type: 'text', text: { body: 'quiero pedir una hamburguesa' } }
     ])), res, deps());
     assert.equal(res.payload.results[0].accion, 'generica');
-    assert.ok(sent[0].text.includes('wa.me/573144689509'));
+    assert.ok(sent[0].text.includes('api.whatsapp.com/send?phone=573144689509'));
     assert.ok(sent[0].text.includes('roalburger.com'));
 });
 
@@ -230,4 +230,22 @@ test('recordatorio: ignora campañas sin activación por WhatsApp y cupones aún
     const r = await wa.enviarRecordatoriosCuponesPana({ db, nowMs: domingo, sendText: async () => calls.push(1), sendTemplate: async () => calls.push(1) });
     assert.equal(r.texto + r.plantilla, 0);
     assert.equal(calls.length, 0);
+});
+
+test('extractor: toma el código de la línea "Código:" aunque el mensaje tenga otras palabras de 6 letras', async () => {
+    // Un cupón "señuelo" cuyo código es una palabra que también aparece en el mensaje (el nombre).
+    await db.collection('cupones_pana').doc('MARTHA').set({ codigo: 'MARTHA', campanaId: CAMPANA_ID, estado: 'emitido', telefono: '3110000000', nombre: 'Otra persona' });
+    const { codigo } = await emitir();
+    const cupon = (await db.collection('cupones_pana').doc(codigo).get()).data();
+    const msg = cp.buildMensajeWhatsApp({ ...campana(), titulo: 'BURGER' }, { ...cupon, nombre: 'MARTHA' });
+    assert.deepEqual(wa.extractCodeCandidates(msg), [codigo]);
+    // Sin la línea "Código:" (escrito a mano) se sigue usando la búsqueda de 6 caracteres.
+    assert.deepEqual(wa.extractCodeCandidates(`hola BUENAS ${codigo}`), ['BUENAS', codigo]);
+    assert.deepEqual(wa.extractCodeCandidates(`mi codigo: ${codigo.toLowerCase()}`), [codigo]);
+    // Y de punta a punta: el webhook activa EL cupón de la línea "Código:", no el señuelo.
+    const res = fakeRes();
+    await wa.handleWaCuponesWebhook(signedReq(waBody([{ id: 'wamid.msgcompleto', from: '573001112233', type: 'text', text: { body: msg } }])), res, deps());
+    assert.equal(res.payload.results[0].accion, 'activado');
+    assert.equal((await db.collection('cupones_pana').doc(codigo).get()).data().estado, 'activo');
+    assert.equal((await db.collection('cupones_pana').doc('MARTHA').get()).data().estado, 'emitido');
 });

@@ -19,7 +19,7 @@ const { Timestamp } = require('firebase-admin/firestore');
 const { normalizeColombianPhoneDigits } = require('./phoneUtils');
 const cuponPana = require('./cuponPana');
 
-const { CUPONES_CAMPANAS_COLLECTION, CUPONES_PANA_COLLECTION, ESTADOS, bogotaParts, toMs, formatDiasValidos, waMeLink, describirSelecciones } = cuponPana;
+const { CUPONES_CAMPANAS_COLLECTION, CUPONES_PANA_COLLECTION, ESTADOS, bogotaParts, toMs, formatDiasValidos, waMeLink, describirSelecciones, buildMensajeWhatsApp } = cuponPana;
 
 // Idempotencia del webhook: Meta reintenta (y a veces duplica) entregas. Cada message.id
 // procesado deja un doc aquí con `expiraAt` -- hay que activar la política TTL de Firestore sobre
@@ -52,11 +52,16 @@ function isValidMetaSignature(rawBody, signatureHeader, appSecret) {
 
 // ── Textos ───────────────────────────────────────────────────────────────────
 
-// Todas las palabras de 6 caracteres del alfabeto de códigos. Un saludo como "BUENAS" también
-// encaja en el alfabeto, por eso se devuelven TODOS los candidatos y el que manda es el que
-// existe de verdad en cupones_pana (ver resolverCodigoDelMensaje).
+// Primero la línea "Código: XXXXXX" del mensaje prellenado (buildMensajeWhatsApp): ese mensaje
+// trae muchas otras palabras de 6 letras (combo, nombre, opciones…) que podrían existir como
+// código de OTRO cupón. Solo si no hay esa línea (el cliente escribió a mano) se usan todas las
+// palabras de 6 caracteres del alfabeto; un saludo como "BUENAS" también encaja, por eso se
+// devuelven TODOS los candidatos y manda el que existe de verdad en cupones_pana
+// (ver resolverCodigoDelMensaje).
 function extractCodeCandidates(text) {
     const upper = String(text || '').toUpperCase();
+    const linea = upper.match(/C[ÓO]DIGO\s*:\s*\*?([A-HJ-NP-Z2-9]{6})(?![A-Z0-9])/);
+    if (linea) return [linea[1]];
     const matches = upper.match(/(?<![A-Z0-9])[A-HJ-NP-Z2-9]{6}(?![A-Z0-9])/g) || [];
     return [...new Set(matches)].slice(0, MAX_CODE_CANDIDATES);
 }
@@ -69,7 +74,7 @@ function buildCuponActivoText(cupon, campana) {
     const contenido = (campana.composicion || []).map((p) => `${p.cantidad > 1 ? `${p.cantidad}x ` : ''}${p.nombre}${p.variante ? ` (${p.variante})` : ''}`).join(' + ');
     const finMs = toMs(campana.fechaFin);
     const fin = finMs ? bogotaParts(finMs) : null;
-    const pedir = waMeLink(campana.waNumeroPrincipal, `Hola ROAL 👋 Tengo el cupón ${cupon.codigo} (${campana.titulo}) y quiero pedir`);
+    const pedir = waMeLink(campana.waNumeroPrincipal, buildMensajeWhatsApp(campana, cupon));
     return [
         `¡Listo, ${cupon.nombre}! 🔥 Tu cupón Fuera del Menú quedó ACTIVO.`,
         '',
@@ -263,7 +268,7 @@ function debeRecordarHoy(campana, nowMs) {
 function buildRecordatorioText(cupon, campana) {
     return `¡Epa, ${cupon.nombre}! 👋 Te recordamos tu cupón Fuera del Menú *${cupon.codigo}* (${campana.titulo}). ` +
         `Válido: ${formatDiasValidos(campana.diasValidos)}. Preséntalo en caja o pide por WhatsApp 👉 ` +
-        waMeLink(campana.waNumeroPrincipal, `Hola ROAL 👋 Tengo el cupón ${cupon.codigo} (${campana.titulo}) y quiero pedir`);
+        waMeLink(campana.waNumeroPrincipal, buildMensajeWhatsApp(campana, cupon));
 }
 
 /**

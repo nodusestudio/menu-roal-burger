@@ -167,16 +167,59 @@ function igIndexId(campanaId, igHandle) {
     return `${campanaId}_ig_${igHandle}`;
 }
 
+// Enlace directo a api.whatsapp.com/send, NO a wa.me: wa.me redirige a api.whatsapp.com y en
+// esa redirección convierte los emojis de 4 bytes (👋 🎟️ 🍔 …) en "�" -- comprobado en escritorio
+// y con user agent de iPhone (el navegador interno de Instagram, de donde llegan los clientes,
+// también sigue la redirección). El enlace directo los conserva intactos. (Nombre de la función
+// sin cambiar para no tocar a quienes la usan.)
 function waMeLink(numero, texto) {
     const digits = String(numero || '').replace(/\D/g, '');
-    return `https://wa.me/${digits}?text=${encodeURIComponent(texto)}`;
+    return `https://api.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(texto)}`;
 }
 
-function buildWaLink(campana, codigo) {
-    if (campana.requiereActivacionWA === true) {
-        return waMeLink(campana.waNumeroCupones, `Hola ROAL, activo mi cupón ${codigo}`);
-    }
-    return waMeLink(campana.waNumeroPrincipal, `Hola ROAL 👋 Tengo el cupón ${codigo} (${campana.titulo}) y quiero pedir`);
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+// "$31.900": puntos de mil a mano (no toLocaleString) para no depender de los datos de idioma
+// que traiga el runtime.
+function formatCop(n) {
+    return '$' + String(Math.round(Number(n || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+// "2× Burger Normal (Mediana · 2 carnes)" -- mismo formato que el ticket, el panel y la landing.
+function renglonTexto(p) {
+    const cant = Number(p?.cantidad || 1);
+    return `${cant > 1 ? `${cant}× ` : ''}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
+}
+
+// Mensaje prellenado de WhatsApp. Quien atiende el chat debe saber, sin abrir el panel, qué combo
+// es, qué eligió el cliente, a nombre de quién y hasta cuándo vale. Es el MISMO texto en los dos
+// modos (activación por el número de cupones o pedido directo al principal): solo cambia el
+// número. La línea "Código:" es la que el bot de la fase 2 lee primero.
+function buildMensajeWhatsApp(campana, cupon) {
+    const c = campana || {};
+    const incluye = (c.composicion || []).map(renglonTexto).filter(Boolean).join(' + ');
+    const elegido = describirSelecciones(cupon).map((d) => `${d.grupo}: ${d.opcion}`).join(' · ');
+    const finMs = toMs(c.fechaFin);
+    const fin = finMs !== null ? bogotaParts(finMs) : null;
+    const dias = formatDiasValidos(c.diasValidos || []);
+    const vigencia = [dias, fin ? `hasta el ${fin.d} de ${MESES[fin.m - 1]}` : ''].filter(Boolean).join(' ');
+    return [
+        'Hola ROAL 👋 Quiero usar mi cupón Fuera del Menú',
+        `🎟️ Código: ${cupon.codigo}`,
+        `🍔 Combo: ${c.titulo || ''} — ${formatCop(c.precio)}`,
+        incluye ? `📦 Incluye: ${incluye}` : null,
+        elegido ? `✨ ${elegido}` : null, // sin grupos: se omite la línea
+        `👤 ${cupon.nombre || ''}${cupon.igHandle ? ` · IG @${cupon.igHandle}` : ''}`,
+        vigencia ? `📅 Válido: ${vigencia}` : null,
+        'Lo quiero para: recoger / comer en el local / domicilio'
+    ].filter((l) => l !== null).join('\n');
+}
+
+// Número de destino según la fase: con activación por WhatsApp va al número de cupones (el bot
+// lo activa y responde); si no, directo al WhatsApp principal.
+function buildWaLink(campana, cupon) {
+    const numero = campana.requiereActivacionWA === true ? campana.waNumeroCupones : campana.waNumeroPrincipal;
+    return waMeLink(numero, buildMensajeWhatsApp(campana, cupon));
 }
 
 function cuposRestantesDe(campana) {
@@ -400,7 +443,7 @@ function buildEmitResponse(campana, cupon, yaExistia) {
             fechaFin: toMs(campana.fechaFin),
             requiereActivacionWA: campana.requiereActivacionWA === true
         },
-        waLink: buildWaLink(campana, cupon.codigo)
+        waLink: buildWaLink(campana, cupon)
     };
 }
 
@@ -762,7 +805,7 @@ async function validateCampanaPayload(db, raw) {
     if (!/^573\d{9}$/.test(waNumeroPrincipal)) throw new HttpsError('invalid-argument', 'WhatsApp principal inválido (formato 573XXXXXXXXX).');
     if (waNumeroCupones && !/^57\d{10}$/.test(waNumeroCupones)) throw new HttpsError('invalid-argument', 'WhatsApp de cupones inválido (formato 57XXXXXXXXXX).');
     const requiereActivacionWA = c.requiereActivacionWA === true;
-    // Sin número de cupones, el botón "Activar por WhatsApp" de la landing apuntaría a wa.me/
+    // Sin número de cupones, el botón "Activar por WhatsApp" de la landing apuntaría a un WhatsApp
     // vacío y ningún cupón se podría activar nunca.
     if (requiereActivacionWA && !waNumeroCupones) {
         throw new HttpsError('invalid-argument', 'Para exigir activación por WhatsApp primero configura el número de cupones.');
@@ -966,6 +1009,8 @@ module.exports = {
     isValidIgHandle,
     waMeLink,
     buildWaLink,
+    buildMensajeWhatsApp,
+    renglonTexto,
     checkRateLimit,
     ensureAdminOrMeseroCaller,
     ensureAdmin,

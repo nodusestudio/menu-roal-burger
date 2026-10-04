@@ -358,7 +358,9 @@ function qrSvg(text) {
 function renderCupon(r) {
     const c = r.campana || {};
     const pendienteActivar = r.estado === 'emitido' && c.requiereActivacionWA;
-    const waLabel = pendienteActivar ? 'ACTIVAR POR WHATSAPP' : 'PEDIR POR WHATSAPP';
+    // Mismo mensaje completo en los dos modos (buildMensajeWhatsApp en el servidor); con
+    // activación por WhatsApp el enlace va al número de cupones, que activa y toma el pedido.
+    const waLabel = c.requiereActivacionWA ? 'ACTIVAR Y PEDIR POR WHATSAPP' : 'PEDIR POR WHATSAPP';
     setView(`
         ${r.yaExistia ? '<p class="cp-banner">Ya tenías tu cupón 😉 Aquí está otra vez.</p>' : '<p class="cp-banner">¡Listo! 🎉 Este es tu cupón.</p>'}
         <article class="cp-ticket" id="cpTicket">

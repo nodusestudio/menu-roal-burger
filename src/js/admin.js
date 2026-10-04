@@ -26455,7 +26455,8 @@ function _cpanaRecordatorioLink(c, camp) {
     const msg = `¡Epa, ${c.nombre}! 👋 Te recordamos tu cupón Fuera del Menú ${c.codigo} (${camp.titulo}). `
         + `Es válido ${_cpanaDiasTexto(camp.diasValidos)} hasta el ${_cpanaDateKey(camp.fechaFin)}. `
         + 'Preséntalo en caja o pídelo por aquí 🍔';
-    return `https://wa.me/57${tel}?text=${encodeURIComponent(msg)}`;
+    // api.whatsapp.com/send y no wa.me: la redirección de wa.me rompe los emojis (ver waMeLink en functions/cuponPana.js).
+    return `https://api.whatsapp.com/send?phone=57${tel}&text=${encodeURIComponent(msg)}`;
 }
 
 function _cpanaRenderPendientes(camp, cupones) {
@@ -26884,21 +26885,77 @@ function _cpanaReadForm() {
     };
 }
 
+// Nombre de cada campo obligatorio tal como se le dice al usuario ("Falta la fecha de inicio").
+const _CPANA_CAMPOS = {
+    cpanaId: 'el ID de la campaña',
+    cpanaTitulo: 'el título',
+    cpanaPalabra: 'la palabra clave',
+    cpanaPrecio: 'el precio',
+    cpanaCupos: 'los cupos totales',
+    cpanaInicio: 'la fecha de inicio',
+    cpanaFin: 'la fecha final'
+};
+
+// Primer problema del formulario, en el orden en que aparece en pantalla: lo que el navegador
+// sabe validar (required, min/max) y lo que no (composición, grupos, días), que de todas formas
+// el servidor rechazaría con un mensaje menos claro.
+function _cpanaPrimerError() {
+    const form = document.getElementById('cpanaForm');
+    const invalido = Array.from(form.querySelectorAll('input, select, textarea')).find((el) => !el.disabled && !el.checkValidity());
+    const problemas = [];
+    if (invalido) {
+        const nombre = _CPANA_CAMPOS[invalido.id] || 'un campo obligatorio';
+        problemas.push({ el: invalido, msg: invalido.validity.valueMissing ? `Falta ${nombre}` : `Revisa ${nombre}` });
+    }
+    if (!_cpanaComposicion.length) {
+        problemas.push({ el: document.getElementById('cpanaCompProducto'), msg: 'Falta la composición: agrega al menos un producto' });
+    }
+    const gruposValidos = Array.from(document.querySelectorAll('#cpanaGruposList .cpana-grupo-row'))
+        .filter((row) => row.querySelector('.cpana-grupo-nombre').value.trim() && row.querySelector('.cpana-grupo-opciones').value.trim());
+    if (!gruposValidos.length) {
+        problemas.push({ el: document.querySelector('#cpanaGruposList .cpana-grupo-nombre') || document.getElementById('cpanaGrupoAddBtn'), msg: 'Falta un grupo de opciones con nombre y opciones' });
+    }
+    if (!document.querySelector('#cpanaDias input:checked')) {
+        problemas.push({ el: document.querySelector('#cpanaDias input'), msg: 'Falta elegir al menos un día válido' });
+    }
+    // El primero según su posición en el formulario (lo que el usuario encuentra primero al bajar).
+    problemas.sort((a, b) => (a.el && b.el && (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1));
+    return problemas[0] || null;
+}
+
+function _cpanaBotonesGuardar(guardando) {
+    [['cpanaSaveBtn', 'Guardar campaña'], ['cpanaSaveTopBtn', 'Guardar']].forEach(([id, texto]) => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        b.disabled = guardando;
+        b.textContent = guardando ? 'Guardando…' : texto;
+    });
+}
+
+// Un solo manejador para los dos botones (el del encabezado envía el mismo formulario).
 async function _cpanaGuardar(e) {
     e.preventDefault();
-    const btn = document.getElementById('cpanaSaveBtn');
+    const error = _cpanaPrimerError();
+    if (error) {
+        if (error.el) {
+            error.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => error.el.focus({ preventScroll: true }), 350);
+        }
+        showNotice(error.msg, 'error');
+        return;
+    }
     const { campanaId, campana } = _cpanaReadForm();
-    btn.disabled = true;
+    _cpanaBotonesGuardar(true);
     try {
         await firebaseFunctions.httpsCallable('guardarCampanaPana')({ accion: 'guardar', campanaId, esNueva: !_cpanaEditingId, campana });
-        showNotice(`Campaña "${campana.titulo}" guardada.`, 'ok');
+        showNotice('Campaña guardada', 'ok');
         _cpanaSelectedMetricas = campanaId;
         document.getElementById('cpanaEditorCard').hidden = true;
         await loadCuponPanaCampanas();
     } catch (err) {
         showNotice(err?.message || 'No se pudo guardar la campaña.', 'error');
     } finally {
-        btn.disabled = false;
+        _cpanaBotonesGuardar(false);
     }
 }
 

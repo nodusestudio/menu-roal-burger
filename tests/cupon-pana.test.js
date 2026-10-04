@@ -103,7 +103,7 @@ test('emitir: crea el cupón activo (fase manual), los dos candados y descuenta 
     assert.match(r.codigo, /^[A-HJ-NP-Z2-9]{6}$/);
     assert.equal(r.estado, 'activo');
     assert.equal(r.yaExistia, false);
-    assert.match(r.waLink, /^https:\/\/wa\.me\/573144689509\?text=/);
+    assert.match(r.waLink, /^https:\/\/api\.whatsapp\.com\/send\?phone=573144689509&text=/);
     assert.ok(decodeURIComponent(r.waLink).includes(r.codigo));
 
     const cupon = (await db.collection('cupones_pana').doc(r.codigo).get()).data();
@@ -122,8 +122,8 @@ test('emitir: con requiereActivacionWA el estado inicial es "emitido" y el link 
     await db.collection('cupones_campanas').doc(CAMPANA_ID).update({ requiereActivacionWA: true, waNumeroCupones: '573009998877' });
     const r = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
     assert.equal(r.estado, 'emitido');
-    assert.match(r.waLink, /^https:\/\/wa\.me\/573009998877\?text=/);
-    assert.ok(decodeURIComponent(r.waLink).includes(`activo mi cupón ${r.codigo}`));
+    assert.match(r.waLink, /^https:\/\/api\.whatsapp\.com\/send\?phone=573009998877&text=/);
+    assert.ok(decodeURIComponent(r.waLink).includes(`🎟️ Código: ${r.codigo}`));
 });
 
 test('emitir: cupo agotado → resource-exhausted y no crea nada', async () => {
@@ -753,4 +753,64 @@ test('vista pública: una campaña SIN variante se ve exactamente igual que ante
     assert.deepEqual(pub.composicion, [{ nombre: 'Burger Pana', cantidad: 1 }]);
     assert.equal('variante' in pub.composicion[0], false);
     assert.equal('productoId' in pub.composicion[0], false);
+});
+
+// ── Mensaje prellenado de WhatsApp completo ──────────────────────────────────
+
+test('whatsapp: el mensaje trae código, combo, precio, composición con variante, selecciones, nombre, IG y vigencia', async () => {
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({
+        titulo: 'La Burda', precio: 31900,
+        composicion: [
+            { productoId: 'seed-burger-pana', nombre: 'Burger Normal', cantidad: 2, variante: 'Mediana · 2 carnes' },
+            { productoId: 'p2', nombre: 'Papas', cantidad: 1, variante: 'pequeña' },
+            { productoId: 'p3', nombre: 'Postobón', cantidad: 1, variante: '1000 ml' }
+        ],
+        gruposOpciones: [
+            { id: 'extra', nombre: 'Extra a elegir', opciones: ['Maíz', 'Maduro'], requerido: true },
+            { id: 'salsa', nombre: 'Salsa', opciones: ['Tártara', 'Rosada'], requerido: true }
+        ],
+        toppingsOpciones: null,
+        fechaFin: Timestamp.fromMillis(cp.bogotaDateKeyToMs('2026-10-15', true))
+    });
+    const r = await cp.emitirCuponPanaTransaction(db, emitInput({ topping: '', selecciones: { extra: 'Maduro', salsa: 'Tártara' } }), LUNES);
+    assert.match(r.waLink, /^https:\/\/api\.whatsapp\.com\/send\?phone=573144689509&text=/);
+    const msg = decodeURIComponent(r.waLink.split('&text=')[1]);
+    assert.equal(msg, [
+        'Hola ROAL 👋 Quiero usar mi cupón Fuera del Menú',
+        `🎟️ Código: ${r.codigo}`,
+        '🍔 Combo: La Burda — $31.900',
+        '📦 Incluye: 2× Burger Normal (Mediana · 2 carnes) + Papas (pequeña) + Postobón (1000 ml)',
+        '✨ Extra a elegir: Maduro · Salsa: Tártara',
+        '👤 Pana Prueba · IG @pana.prueba',
+        '📅 Válido: lunes, martes y jueves hasta el 15 de octubre',
+        'Lo quiero para: recoger / comer en el local / domicilio'
+    ].join('\n'));
+    // El enlace codifica TODO el mensaje (nada queda cortado en "?text=").
+    assert.equal(encodeURIComponent(msg), r.waLink.split('&text=')[1]);
+});
+
+test('whatsapp: el mismo mensaje en los dos modos (solo cambia el número)', async () => {
+    const r1 = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    const sinWA = cp.buildWaLink(baseCampana(), (await db.collection('cupones_pana').doc(r1.codigo).get()).data());
+    const conWA = cp.buildWaLink(baseCampana({ requiereActivacionWA: true, waNumeroCupones: '573009998877' }), (await db.collection('cupones_pana').doc(r1.codigo).get()).data());
+    assert.match(sinWA, /^https:\/\/api\.whatsapp\.com\/send\?phone=573144689509&text=/);
+    assert.match(conWA, /^https:\/\/api\.whatsapp\.com\/send\?phone=573009998877&text=/);
+    assert.equal(sinWA.split('&text=')[1], conWA.split('&text=')[1]);
+});
+
+test('whatsapp: una campaña SIN grupos omite la línea de selecciones', () => {
+    const msg = cp.buildMensajeWhatsApp(
+        { titulo: 'Combo Simple', precio: 15000, composicion: [{ nombre: 'Perro', cantidad: 1 }], diasValidos: [1] },
+        { codigo: 'ABCD23', nombre: 'Ana', igHandle: 'ana' }
+    );
+    assert.equal(msg.includes('✨'), false);
+    assert.deepEqual(msg.split('\n'), [
+        'Hola ROAL 👋 Quiero usar mi cupón Fuera del Menú',
+        '🎟️ Código: ABCD23',
+        '🍔 Combo: Combo Simple — $15.000',
+        '📦 Incluye: Perro',
+        '👤 Ana · IG @ana',
+        '📅 Válido: lunes',
+        'Lo quiero para: recoger / comer en el local / domicilio'
+    ]);
 });

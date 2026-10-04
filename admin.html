@@ -5210,6 +5210,24 @@
         .cpana-temp-aviso { font-size: 0.78rem; font-weight: 700; color: #ffb48f; }
         .cpana-badge--warn { background: rgba(251,191,36,0.16); color: #fcd34d; }
         .cpana-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+        .cpana-editor-head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        /* Barra de acciones del editor siempre a la vista al hacer scroll en el formulario largo. */
+        .cpana-actions-bar {
+            position: sticky; bottom: 0; z-index: 6;
+            flex-direction: row !important; gap: 10px; flex-wrap: wrap; align-items: center;
+            margin: 6px -10px 0; padding: 12px 10px; border-radius: 14px;
+            background: var(--admin-bg-elev, #151922); border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 -10px 24px rgba(0,0,0,0.35);
+        }
+        /* El sticky se anula si un contenedor padre recorta (overflow hidden/auto). La tarjeta del
+           editor no es plegable, así que su .card-body no necesita recortar. */
+        #cpanaEditorCard > .card-body { overflow: visible; }
+        /* En móvil, .admin-page/.admin-shell tienen overflow-x:hidden (sin scroll horizontal), lo que
+           también anula el sticky. "clip" oculta el desborde igual pero no crea contenedor de scroll.
+           Solo con la pestaña Fuera del Menú activa: no cambia el comportamiento de los sticky del POS
+           (pestañas de pedidos, encabezado del ticket), que viven en otros paneles. */
+        body:has(.admin-tab-panel[data-tab-panel="cuponpana"].active) .admin-page,
+        body:has(.admin-tab-panel[data-tab-panel="cuponpana"].active) .admin-shell { overflow-x: clip; }
         .cpana-tab {
             background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: var(--admin-muted);
             border-radius: 999px; padding: 7px 14px; font-family: 'Oswald', sans-serif; font-size: 0.85rem; cursor: pointer;
@@ -14873,10 +14891,14 @@
                 <article class="admin-card" id="cpanaEditorCard" hidden>
                     <div class="card-head">
                         <h2 id="cpanaEditorTitle">Nueva campaña</h2>
-                        <button type="button" class="pm-icon-btn" id="cpanaEditorCloseBtn">Cerrar</button>
+                        <div class="cpana-editor-head-actions">
+                            <!-- Envía el MISMO formulario (form="cpanaForm"): una sola lógica de guardado. -->
+                            <button type="submit" form="cpanaForm" class="section-action-btn primary" id="cpanaSaveTopBtn">Guardar</button>
+                            <button type="button" class="pm-icon-btn" id="cpanaEditorCloseBtn">Cerrar</button>
+                        </div>
                     </div>
                     <div class="card-body">
-                        <form class="admin-form" id="cpanaForm" autocomplete="off">
+                        <form class="admin-form" id="cpanaForm" autocomplete="off" novalidate>
                             <div class="admin-field">
                                 <label for="cpanaId">ID de la campaña (va en el link, no se puede cambiar)</label>
                                 <input type="text" id="cpanaId" maxlength="40" placeholder="ej. SEMANA41" required>
@@ -14956,7 +14978,7 @@
                                 <label class="cpana-toggle"><input type="checkbox" id="cpanaActiva"> <span><strong>Campaña activa</strong> — la landing acepta reclamos y el POS canjea</span></label>
                                 <label class="cpana-toggle cpana-toggle--wa"><input type="checkbox" id="cpanaRequiereWA"> <span><strong>Exigir activación por WhatsApp</strong> — el cupón nace "emitido" y solo se canjea después de activarlo desde el número de cupones (fase 2)</span></label>
                             </div>
-                            <div class="admin-field full" style="flex-direction:row;gap:10px;flex-wrap:wrap;">
+                            <div class="admin-field full cpana-actions-bar">
                                 <button type="submit" class="section-action-btn primary" id="cpanaSaveBtn">Guardar campaña</button>
                                 <button type="button" class="pm-icon-btn" id="cpanaDeleteBtn" hidden>Eliminar</button>
                             </div>
