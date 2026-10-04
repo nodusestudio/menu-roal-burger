@@ -392,3 +392,89 @@ test('helpers: días válidos en español y fechas en Bogotá', () => {
     assert.equal(cp.bogotaParts(LUNES).dow, 1);
     assert.equal(cp.bogotaParts(cp.bogotaDateKeyToMs('2026-10-07')).dateKey, '2026-10-07');
 });
+
+// ── Reversa de canje (revertirCanjeCuponPana) ────────────────────────────────
+
+test('reversa: un mesero NO puede revertir (ensureAdmin rechaza la sesión de mesero)', async () => {
+    await db.collection('meseros').doc('tok-rev').set({ nombre: 'Mesero Test' });
+    const meseroRequest = { auth: { uid: 'mesero_tok-rev', token: { mesero: true, meseroToken: 'tok-rev' } } };
+    await expectHttpsError(cp.ensureAdmin(db, meseroRequest), 'permission-denied');
+    // Aun si alguien creara admins/mesero_tok-rev, la sesión de mesero sigue rechazada.
+    await db.collection('admins').doc('mesero_tok-rev').set({ seeded: true });
+    await expectHttpsError(cp.ensureAdmin(db, meseroRequest), 'permission-denied');
+    await db.collection('admins').doc('mesero_tok-rev').delete();
+    await db.collection('meseros').doc('tok-rev').delete();
+});
+
+test('reversa: un canje de AYER (Bogotá) no se puede revertir', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, LUNES);
+    const martes = LUNES + 24 * HOUR;
+    await expectHttpsError(
+        cp.revertirCanjeCuponPanaTransaction(db, codigo, { uid: 'admin-x', motivo: 'Ticket cancelado' }, martes),
+        'failed-precondition', /hecho hoy/
+    );
+    // Lunes 11:59 pm sigue siendo el mismo día en Bogotá aunque en UTC ya sea martes.
+    const lunesNoche = cp.bogotaDateKeyToMs('2026-10-05') + 23 * HOUR + 59 * 60 * 1000;
+    assert.equal(new Date(lunesNoche).getUTCDay(), 2);
+    const r = await cp.revertirCanjeCuponPanaTransaction(db, codigo, { uid: 'admin-x', motivo: 'Ticket cancelado' }, lunesNoche);
+    assert.equal(r.estado, 'activo');
+});
+
+test('reversa: sin motivo o con motivo fuera de 5-120 caracteres → rechazo y el cupón sigue canjeado', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, LUNES);
+    for (const motivo of [undefined, '', '   ', 'abcd', 'x'.repeat(121)]) {
+        await expectHttpsError(cp.revertirCanjeCuponPanaTransaction(db, codigo, { uid: 'admin-x', motivo }, LUNES), 'invalid-argument', /motivo/);
+    }
+    assert.equal((await db.collection('cupones_pana').doc(codigo).get()).data().estado, 'canjeado');
+});
+
+test('reversa: válida → vuelve a "activo" con auditoría, cupos intactos, y luego se puede canjear de nuevo', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'caja-1' }, LUNES);
+    const cuposAntes = (await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data().cuposEmitidos;
+
+    await cp.revertirCanjeCuponPanaTransaction(db, codigo, { uid: 'admin-x', motivo: '  Cliente canceló   el pedido ' }, LUNES + HOUR);
+    let cupon = (await db.collection('cupones_pana').doc(codigo).get()).data();
+    assert.equal(cupon.estado, 'activo');
+    assert.equal(cupon.canjeadoAt, null);
+    assert.equal(cupon.canjeadoPor, null);
+    assert.equal(cupon.historial.length, 2);
+    assert.deepEqual({ ...cupon.historial[0], at: cupon.historial[0].at.toMillis() }, { accion: 'canje', uid: 'caja-1', at: LUNES });
+    const rev = cupon.historial[1];
+    assert.equal(rev.accion, 'revertir_canje');
+    assert.equal(rev.uid, 'admin-x');
+    assert.equal(rev.motivo, 'Cliente canceló el pedido');
+    assert.equal(rev.canjeadoPorAnterior, 'caja-1');
+    assert.equal(rev.at.toMillis(), LUNES + HOUR);
+    assert.equal((await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data().cuposEmitidos, cuposAntes);
+    assert.equal((await cp.validarCuponPana(db, codigo, LUNES + HOUR)).canjeable, true);
+
+    await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'caja-2' }, LUNES + 2 * HOUR);
+    cupon = (await db.collection('cupones_pana').doc(codigo).get()).data();
+    assert.equal(cupon.estado, 'canjeado');
+    assert.equal(cupon.canjeadoPor, 'caja-2');
+    assert.deepEqual(cupon.historial.map((h) => h.accion), ['canje', 'revertir_canje', 'canje']);
+});
+
+test('reversa: un cupón que no está canjeado o de campaña vencida no se revierte', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await expectHttpsError(cp.revertirCanjeCuponPanaTransaction(db, codigo, { uid: 'admin-x', motivo: 'Prueba de error' }, LUNES), 'failed-precondition', /no está canjeado/);
+    await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, LUNES);
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({ fechaFin: Timestamp.fromMillis(LUNES + HOUR) });
+    await expectHttpsError(cp.revertirCanjeCuponPanaTransaction(db, codigo, { uid: 'admin-x', motivo: 'Prueba de error' }, LUNES + 2 * HOUR), 'failed-precondition', /venció/);
+});
+
+test('reversa: CONCURRENCIA — dos reversas simultáneas del mismo canje → exactamente 1 éxito', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'caja-1' }, LUNES);
+    const results = await Promise.allSettled([
+        cp.revertirCanjeCuponPanaTransaction(db, codigo, { uid: 'admin-1', motivo: 'Ticket cancelado A' }, LUNES + HOUR),
+        cp.revertirCanjeCuponPanaTransaction(db, codigo, { uid: 'admin-2', motivo: 'Ticket cancelado B' }, LUNES + HOUR)
+    ]);
+    assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+    assert.equal(results.find((r) => r.status === 'rejected').reason.code, 'failed-precondition');
+    const cupon = (await db.collection('cupones_pana').doc(codigo).get()).data();
+    assert.equal(cupon.historial.filter((h) => h.accion === 'revertir_canje').length, 1);
+});

@@ -221,6 +221,10 @@ async function ensureAdminOrMeseroCaller(db, request) {
 async function ensureAdmin(db, request) {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+    // Rechazo explícito de la sesión de mesero, sin depender de que su uid (mesero_<token>)
+    // nunca llegue a existir en admins/: lo que se protege aquí (campañas, reversas de canje) es
+    // solo para administradores.
+    if (request.auth.token?.mesero === true) throw new HttpsError('permission-denied', 'Solo un administrador puede hacer esto.');
     const adminDoc = await db.collection(ADMINS_COLLECTION).doc(uid).get();
     if (!adminDoc.exists) throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
     return uid;
@@ -487,7 +491,11 @@ async function canjearCuponPanaTransaction(db, codigoRaw, { uid, extrasIds = [] 
             estado: ESTADOS.CANJEADO,
             canjeadoAt: Timestamp.fromMillis(nowMs),
             canjeadoPor: String(uid || ''),
-            extrasElegidos: extras.map((e) => e.id)
+            extrasElegidos: extras.map((e) => e.id),
+            // Bitácora del cupón: cada canje y cada reversa quedan registrados, con quién y cuándo.
+            // Timestamp concreto (no serverTimestamp): Firestore no admite serverTimestamp dentro
+            // de un arreglo.
+            historial: FieldValue.arrayUnion({ accion: 'canje', uid: String(uid || ''), at: Timestamp.fromMillis(nowMs) })
         });
 
         const view = buildCuponPosView(cupon, campana);
@@ -506,6 +514,63 @@ async function canjearCuponPanaTransaction(db, codigoRaw, { uid, extrasIds = [] 
                 extrasDisponibles
             }
         };
+    });
+}
+
+// ── Reversa de canje (solo admin) ────────────────────────────────────────────
+
+const REVERSA_MOTIVO_MIN = 5;
+const REVERSA_MOTIVO_MAX = 120;
+
+// canjearCuponPana marca el cupón ANTES de que se guarde el pedido; si el cajero cancela el
+// ticket o se equivocó de código, el cupón quedaba quemado sin salida. Esta reversa lo devuelve a
+// "activo" con una auditoría completa en historial[]. Límites a propósito estrechos:
+//   - solo el MISMO día (Bogotá) del canje: corregir un error de caja, no reabrir cupones viejos;
+//   - campaña no vencida: un cupón reactivado fuera de fechas no se podría usar de todas formas;
+//   - los cupos NO se tocan: la emisión ya contó este cupón, la reversa no crea uno nuevo.
+async function revertirCanjeCuponPanaTransaction(db, codigoRaw, { uid, motivo } = {}, nowMs = Date.now()) {
+    const codigo = normalizeCodigo(codigoRaw);
+    const motivoLimpio = String(motivo || '').replace(/\s+/g, ' ').trim();
+    if (motivoLimpio.length < REVERSA_MOTIVO_MIN || motivoLimpio.length > REVERSA_MOTIVO_MAX) {
+        throw new HttpsError('invalid-argument', `Escribe el motivo de la reversa (${REVERSA_MOTIVO_MIN} a ${REVERSA_MOTIVO_MAX} caracteres).`);
+    }
+    if (!isValidCodigo(codigo)) throw new HttpsError('not-found', MOTIVOS.no_existe);
+    const cuponRef = db.collection(CUPONES_PANA_COLLECTION).doc(codigo);
+
+    return db.runTransaction(async (tx) => {
+        const cuponSnap = await tx.get(cuponRef);
+        if (!cuponSnap.exists) throw new HttpsError('not-found', MOTIVOS.no_existe);
+        const cupon = cuponSnap.data();
+        const campSnap = await tx.get(db.collection(CUPONES_CAMPANAS_COLLECTION).doc(cupon.campanaId));
+        const campana = campSnap.exists ? campSnap.data() : null;
+
+        // Con dos admins revirtiendo a la vez, el perdedor reintenta, ve "activo" y cae aquí.
+        if (cupon.estado !== ESTADOS.CANJEADO) {
+            throw new HttpsError('failed-precondition', 'Este cupón no está canjeado: no hay canje que revertir.');
+        }
+        const canjeMs = toMs(cupon.canjeadoAt);
+        if (canjeMs === null || bogotaParts(canjeMs).dateKey !== bogotaParts(nowMs).dateKey) {
+            throw new HttpsError('failed-precondition', 'Solo se puede revertir un canje hecho hoy.');
+        }
+        const finMs = toMs(campana?.fechaFin);
+        if (!campana || (finMs !== null && nowMs > finMs)) {
+            throw new HttpsError('failed-precondition', 'La campaña de este cupón ya venció: no se puede revertir.');
+        }
+
+        const at = Timestamp.fromMillis(nowMs);
+        tx.update(cuponRef, {
+            estado: ESTADOS.ACTIVO,
+            canjeadoAt: null,
+            canjeadoPor: null,
+            historial: FieldValue.arrayUnion({
+                accion: 'revertir_canje',
+                uid: String(uid || ''),
+                motivo: motivoLimpio,
+                at,
+                canjeadoPorAnterior: String(cupon.canjeadoPor || '')
+            })
+        });
+        return { ok: true, codigo, estado: ESTADOS.ACTIVO };
     });
 }
 
@@ -734,6 +799,7 @@ module.exports = {
     evaluarCanjeable,
     validarCuponPana,
     canjearCuponPanaTransaction,
+    revertirCanjeCuponPanaTransaction,
     validateCampanaPayload,
     guardarCampanaPana,
     vencerCuponesPana

@@ -5197,6 +5197,16 @@
         .cpana-table th { text-align: left; font-weight: 600; color: var(--admin-muted); padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); white-space: nowrap; }
         .cpana-table td { padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
         .cpana-recordado { color: #7ee0c2; font-weight: 600; }
+        .cpana-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+        .cpana-tab {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: var(--admin-muted);
+            border-radius: 999px; padding: 7px 14px; font-family: 'Oswald', sans-serif; font-size: 0.85rem; cursor: pointer;
+        }
+        .cpana-tab.active { background: var(--admin-accent-soft); border-color: rgba(255,123,69,0.45); color: #fff; }
+        .cpana-hist { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 0.72rem; color: var(--admin-muted); min-width: 180px; }
+        .cpana-hist li { line-height: 1.35; }
+        .cpana-hist .cpana-hist--rev { color: #ffb48f; }
+        .cpana-revert-btn { border-color: rgba(255,120,120,0.45) !important; color: #ffb3b3 !important; }
 
         /* ── Tarjeta de producto POS: imagen + label externo ── */
         .pos-product-card {
@@ -14941,10 +14951,14 @@
 
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>⏳ Activos sin canjear</h2>
+                        <div class="cpana-tabs" role="tablist">
+                            <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-cpana-tab="activos">⏳ Activos sin canjear</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-cpana-tab="hoy">✅ Canjeados hoy</button>
+                        </div>
                         <button type="button" class="section-action-btn" id="cpanaExportBtn">Exportar CSV (aceptan promociones)</button>
                     </div>
                     <div class="card-body" id="cpanaPendientesBody"><!-- render JS --></div>
+                    <div class="card-body" id="cpanaCanjeadosHoyBody" hidden><!-- render JS --></div>
                 </article>
             </div>
         </section>

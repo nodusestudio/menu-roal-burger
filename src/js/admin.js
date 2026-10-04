@@ -26263,6 +26263,7 @@ let _cpanaEditingId = null;     // null = creando una nueva
 let _cpanaComposicion = [];     // [{ productoId, nombre, cantidad }]
 let _cpanaCuponesCache = {};    // campanaId -> [cupones]
 let _cpanaSelectedMetricas = '';
+let _cpanaTab = 'activos';         // 'activos' | 'hoy'
 
 // Fecha de calendario en Bogotá (UTC-5 fijo) de un Timestamp, para los <input type="date">.
 function _cpanaDateKey(ts) {
@@ -26294,6 +26295,7 @@ async function loadCuponPanaCampanas() {
     renderCuponPanaCampanas();
     renderCuponPanaMetricasSelect();
     await renderCuponPanaMetricas();
+    if (_cpanaTab === 'hoy') await renderCuponPanaCanjeadosHoy();
 }
 
 async function _ensureCuponPanaLoaded() {
@@ -26429,7 +26431,7 @@ function _cpanaRenderPendientes(camp, cupones) {
         return;
     }
     pend.innerHTML = `<div class="cpana-table-wrap"><table class="cpana-table">
-        <thead><tr><th>Código</th><th>Nombre</th><th>Instagram</th><th>WhatsApp</th><th>Toque</th><th>Emitido</th><th>Recordatorio</th><th></th></tr></thead>
+        <thead><tr><th>Código</th><th>Nombre</th><th>Instagram</th><th>WhatsApp</th><th>Toque</th><th>Emitido</th><th>Recordatorio</th><th>Historial</th><th></th></tr></thead>
         <tbody>${activos.map((c) => {
         const recordado = c.recordatorioManualAt || c.recordatorioEnviadoAt;
         return `<tr>
@@ -26440,12 +26442,141 @@ function _cpanaRenderPendientes(camp, cupones) {
             <td>${escapeHtml(c.topping)}</td>
             <td>${_cpanaFmtFecha(c.emitidoAt)}</td>
             <td>${recordado ? `<span class="cpana-recordado">✓ ${_cpanaFmtFecha(recordado)}</span>` : '<span class="admin-hint">—</span>'}</td>
+            <td>${_cpanaHistorialHtml(c)}</td>
             <td style="white-space:nowrap;">
                 <a class="pm-icon-btn" href="${escapeHtml(_cpanaRecordatorioLink(c, camp))}" target="_blank" rel="noopener">Recordar por WhatsApp</a>
                 <button type="button" class="pm-icon-btn" data-cpana-marcar="${escapeHtml(c.codigo)}" data-marcado="${c.recordatorioManualAt ? '1' : '0'}">${c.recordatorioManualAt ? 'Desmarcar' : 'Marcar recordado'}</button>
             </td>
         </tr>`;
     }).join('')}</tbody></table></div>`;
+}
+
+// ── Canjeados hoy + reversa de canje ──
+// Bitácora del cupón (historial[] lo escribe SOLO el servidor: canjearCuponPana y
+// revertirCanjeCuponPana). Se muestra tal cual, del más viejo al más nuevo.
+function _cpanaQuien(uid) {
+    const u = String(uid || '');
+    if (u.startsWith('mesero_')) {
+        const m = (_meserosState || []).find((x) => `mesero_${x.token}` === u);
+        return m?.nombre ? `mesero ${m.nombre}` : 'mesero';
+    }
+    if (u && firebaseAuth?.currentUser?.uid === u) return 'tú';
+    return u ? `admin ${u.slice(0, 6)}…` : '—';
+}
+
+function _cpanaHistorialHtml(c) {
+    const hist = Array.isArray(c.historial) ? c.historial : [];
+    if (!hist.length) return '<span class="admin-hint">—</span>';
+    return `<ul class="cpana-hist">${hist.map((h) => (h.accion === 'revertir_canje'
+        ? `<li class="cpana-hist--rev">↩️ Reversa · ${_cpanaFmtFecha(h.at)} · ${escapeHtml(_cpanaQuien(h.uid))} · “${escapeHtml(h.motivo || '')}” (canje de ${escapeHtml(_cpanaQuien(h.canjeadoPorAnterior))})</li>`
+        : `<li>✅ Canje · ${_cpanaFmtFecha(h.at)} · ${escapeHtml(_cpanaQuien(h.uid))}</li>`)).join('')}</ul>`;
+}
+
+function _cpanaInicioHoyBogota() {
+    const hoy = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+    return new Date(`${hoy}T05:00:00Z`); // 00:00 en Bogotá (UTC-5 fijo)
+}
+
+// Todas las campañas: al corregir un error, el cajero busca "lo que se canjeó hoy" sin tener que
+// acordarse de qué campaña era. Filtro de un solo campo (canjeadoAt) -> índice automático.
+async function renderCuponPanaCanjeadosHoy() {
+    const body = document.getElementById('cpanaCanjeadosHoyBody');
+    if (!body) return;
+    body.innerHTML = '<p class="admin-hint">Cargando…</p>';
+    let cupones;
+    try {
+        const snap = await firebaseDb.collection(CUPONES_PANA_COLLECTION)
+            .where('canjeadoAt', '>=', _cpanaInicioHoyBogota()).get();
+        cupones = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+            .filter((c) => c.estado === 'canjeado')
+            .sort((a, b) => (b.canjeadoAt?.toMillis?.() || 0) - (a.canjeadoAt?.toMillis?.() || 0));
+    } catch (err) {
+        console.error('canjeados hoy:', err);
+        body.innerHTML = '<p class="admin-hint">No se pudieron cargar los canjes de hoy.</p>';
+        return;
+    }
+    if (!cupones.length) {
+        body.innerHTML = '<p class="admin-hint">Hoy no se ha canjeado ningún Cupón Pana.</p>';
+        return;
+    }
+    const tituloDe = (id) => _cpanaCampanas.find((x) => x.id === id)?.titulo || id;
+    body.innerHTML = `<p class="admin-hint" style="margin:0 0 10px;">Solo un administrador puede revertir, y solo canjes de hoy. El cupón vuelve a "activo" y queda registrado quién lo revirtió y por qué.</p>
+    <div class="cpana-table-wrap"><table class="cpana-table">
+        <thead><tr><th>Código</th><th>Campaña</th><th>Nombre</th><th>Instagram</th><th>Toque</th><th>Canjeado</th><th>Historial</th><th></th></tr></thead>
+        <tbody>${cupones.map((c) => `<tr>
+            <td><strong>${escapeHtml(c.codigo)}</strong></td>
+            <td>${escapeHtml(tituloDe(c.campanaId))}</td>
+            <td>${escapeHtml(c.nombre)}</td>
+            <td>@${escapeHtml(c.igHandle)}</td>
+            <td>${escapeHtml(c.topping)}</td>
+            <td>${_cpanaFmtFecha(c.canjeadoAt)}<br><span class="admin-hint">${escapeHtml(_cpanaQuien(c.canjeadoPor))}</span></td>
+            <td>${_cpanaHistorialHtml(c)}</td>
+            <td><button type="button" class="pm-icon-btn cpana-revert-btn" data-cpana-revertir="${escapeHtml(c.codigo)}">Revertir canje</button></td>
+        </tr>`).join('')}</tbody></table></div>`;
+}
+
+function _cpanaSetTab(tab) {
+    _cpanaTab = tab === 'hoy' ? 'hoy' : 'activos';
+    document.querySelectorAll('[data-cpana-tab]').forEach((b) => {
+        const on = b.dataset.cpanaTab === _cpanaTab;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+    });
+    const activos = document.getElementById('cpanaPendientesBody');
+    const hoy = document.getElementById('cpanaCanjeadosHoyBody');
+    if (activos) activos.hidden = _cpanaTab !== 'activos';
+    if (hoy) hoy.hidden = _cpanaTab !== 'hoy';
+    const exportBtn = document.getElementById('cpanaExportBtn');
+    if (exportBtn) exportBtn.hidden = _cpanaTab !== 'activos';
+    if (_cpanaTab === 'hoy') renderCuponPanaCanjeadosHoy();
+}
+
+// Modal con el motivo (obligatorio, 5-120). Mismo estilo que la nota de ítem del POS.
+function _cpanaAbrirModalReversa(codigo) {
+    document.getElementById('cpanaRevertModal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'cpanaRevertModal';
+    modal.className = 'pos-note-modal-overlay';
+    modal.innerHTML = `
+        <div class="pos-note-modal-box">
+            <p class="pos-note-modal-title">Revertir canje del cupón <strong>${escapeHtml(codigo)}</strong></p>
+            <p class="admin-hint" style="margin:0 0 8px;">El cupón vuelve a quedar activo. Los cupos no cambian. Queda registrado tu usuario y el motivo.</p>
+            <textarea class="pos-note-modal-input" maxlength="120" placeholder="Motivo (ej. el cliente canceló el pedido)"></textarea>
+            <p class="admin-hint cpana-revert-count" style="margin:4px 0 0;text-align:right;">0/120</p>
+            <div class="pos-note-modal-actions">
+                <button type="button" class="pos-note-cancel-btn">Cancelar</button>
+                <button type="button" class="pos-note-save-btn" disabled>Revertir canje</button>
+            </div>
+        </div>`;
+    const ta = modal.querySelector('textarea');
+    const okBtn = modal.querySelector('.pos-note-save-btn');
+    const count = modal.querySelector('.cpana-revert-count');
+    const close = () => modal.remove();
+    ta.addEventListener('input', () => {
+        const len = ta.value.replace(/\s+/g, ' ').trim().length;
+        count.textContent = `${len}/120`;
+        okBtn.disabled = len < 5 || len > 120;
+    });
+    modal.querySelector('.pos-note-cancel-btn').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    okBtn.addEventListener('click', async () => {
+        okBtn.disabled = true;
+        okBtn.textContent = 'Revirtiendo…';
+        try {
+            await firebaseFunctions.httpsCallable('revertirCanjeCuponPana')({ codigo, motivo: ta.value });
+            close();
+            showNotice(`Canje del cupón ${codigo} revertido: vuelve a estar activo.`, 'ok');
+            _cpanaCuponesCache = {};
+            await renderCuponPanaCanjeadosHoy();
+            renderCuponPanaMetricas();
+        } catch (err) {
+            showNotice(err?.message || 'No se pudo revertir el canje.', 'error');
+            okBtn.disabled = false;
+            okBtn.textContent = 'Revertir canje';
+        }
+    });
+    document.body.appendChild(modal);
+    ta.focus();
 }
 
 async function _cpanaMarcarRecordatorio(codigo, marcado, btn) {
@@ -26665,6 +26796,8 @@ document.querySelector('[data-tab-panel="cuponpana"]')?.addEventListener('click'
         document.getElementById('cpanaMetricasBody')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     if (t.dataset.cpanaMarcar) _cpanaMarcarRecordatorio(t.dataset.cpanaMarcar, t.dataset.marcado !== '1', t);
+    if (t.dataset.cpanaTab) _cpanaSetTab(t.dataset.cpanaTab);
+    if (t.dataset.cpanaRevertir) _cpanaAbrirModalReversa(t.dataset.cpanaRevertir);
     if (t.dataset.cpanaCompDel !== undefined) {
         _cpanaComposicion.splice(Number(t.dataset.cpanaCompDel), 1);
         _cpanaRenderComposicion();

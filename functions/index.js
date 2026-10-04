@@ -2594,6 +2594,21 @@ exports.canjearCuponPana = onCall(
     }
 );
 
+// Reversa de un canje del mismo día (ticket cancelado, código equivocado). Callable APARTE de
+// guardarCampanaPana a propósito: es una operación financiera y queda auditada por separado
+// (historial[] del cupón). Solo admin -- un mesero no puede revertir.
+exports.revertirCanjeCuponPana = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const uid = await cuponPana.ensureAdmin(db, request);
+        return cuponPana.revertirCanjeCuponPanaTransaction(db, request.data?.codigo, {
+            uid,
+            motivo: request.data?.motivo
+        });
+    }
+);
+
 // Panel Cupón Pana de FODEXA: crear/editar/eliminar campañas y marca manual de recordatorio.
 exports.guardarCampanaPana = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
