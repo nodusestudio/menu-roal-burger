@@ -30,6 +30,11 @@ const CUPONES_PANA_INDEX_COLLECTION       = 'cupones_pana_index';
 const CODIGOS_CUPON_COLLECTION            = 'codigos_cupon'; // cupones de la app (otro sistema)
 const PRODUCTS_COLLECTION                 = 'productos';
 const COMBOS_ESPECIALES_COLLECTION        = 'combos_especiales';
+const BEBIDAS_COLLECTION                  = 'bebidas';
+const ACOMPANANTES_COLLECTION             = 'acompanantes';
+// Orden de búsqueda de un productoId de la composición: el mismo catálogo que ve el POS.
+const CATALOGO_COMPOSICION = [PRODUCTS_COLLECTION, COMBOS_ESPECIALES_COLLECTION, BEBIDAS_COLLECTION, ACOMPANANTES_COLLECTION];
+const VARIANTE_MAX = 40;
 const ADMINS_COLLECTION                   = 'admins';
 const MESEROS_COLLECTION                  = 'meseros';
 // Mismo almacén de contadores que el agente (orchestrator.js: checkRateLimit) -- ya está
@@ -517,8 +522,10 @@ function buildCuponPosView(cupon, campana) {
         campanaId: cupon.campanaId,
         titulo: String(campana?.titulo || ''),
         precio: Number(campana?.precio || 0),
+        // variante: tamaño/carnes/presentación ("Mediana · 2 carnes"); vacía en campañas viejas.
         composicion: (campana?.composicion || []).map((p) => ({
-            productoId: String(p.productoId || ''), nombre: String(p.nombre || ''), cantidad: Number(p.cantidad || 1)
+            productoId: String(p.productoId || ''), nombre: String(p.nombre || ''), cantidad: Number(p.cantidad || 1),
+            variante: String(p.variante || '')
         })),
         extrasLocal: (campana?.extrasLocal || []).map((e) => ({ id: String(e.id), nombre: String(e.nombre), precio: Number(e.precio || 0) })),
         diasValidos: campana?.diasValidos || [],
@@ -691,8 +698,9 @@ async function validateCampanaPayload(db, raw) {
 
     const composicionRaw = Array.isArray(c.composicion) ? c.composicion : [];
     if (!composicionRaw.length || composicionRaw.length > 10) throw new HttpsError('invalid-argument', 'La composición debe tener entre 1 y 10 productos.');
-    // Cada productoId debe existir de verdad (productos o combos especiales) y el nombre se toma
-    // del catálogo, no del navegador -- es lo que se imprime en el ticket de cocina.
+    // Cada productoId debe existir de verdad en el catálogo (productos, combos especiales, bebidas
+    // o acompañantes, en ese orden) y el nombre se toma del catálogo, no del navegador -- es lo que
+    // se imprime en el ticket de cocina. Las bebidas se llaman por su "marca".
     const composicion = [];
     for (const item of composicionRaw) {
         const productoId = String(item?.productoId || '').trim();
@@ -700,11 +708,19 @@ async function validateCampanaPayload(db, raw) {
         if (!productoId || productoId.includes('/') || !cantidad || cantidad > 20) {
             throw new HttpsError('invalid-argument', 'Producto de la composición inválido.');
         }
-        let snap = await db.collection(PRODUCTS_COLLECTION).doc(productoId).get();
-        if (!snap.exists) snap = await db.collection(COMBOS_ESPECIALES_COLLECTION).doc(productoId).get();
-        if (!snap.exists) throw new HttpsError('invalid-argument', `El producto ${productoId} no existe en el catálogo.`);
+        let snap = null;
+        for (const coleccion of CATALOGO_COMPOSICION) {
+            snap = await db.collection(coleccion).doc(productoId).get();
+            if (snap.exists) break;
+        }
+        if (!snap || !snap.exists) throw new HttpsError('invalid-argument', `El producto ${productoId} no existe en el catálogo.`);
         const d = snap.data() || {};
-        composicion.push({ productoId, nombre: cleanText(d.nombre || d.titulo || item.nombre, 80), cantidad });
+        const renglon = { productoId, nombre: cleanText(d.nombre || d.titulo || d.marca || item.nombre, 80), cantidad };
+        // Texto libre corto (o una opción del catálogo elegida en el panel): solo se guarda si
+        // viene algo, así una campaña sin variantes queda idéntica a como era antes.
+        const variante = cleanText(item?.variante, VARIANTE_MAX);
+        if (variante) renglon.variante = variante;
+        composicion.push(renglon);
     }
 
     // Panel nuevo manda gruposOpciones; uno viejo (o un payload a mano) puede mandar solo

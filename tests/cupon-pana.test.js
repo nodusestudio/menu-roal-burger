@@ -610,3 +610,89 @@ test('duplicar: la copia sale inactiva, 0 cupos, sin palabra clave ni fechas, co
     assert.equal((await cp.guardarCampanaPana(db, { accion: 'duplicar', campanaId: CAMPANA_ID }, 'admin-x', LUNES)).campanaId, `${CAMPANA_ID}-C3`);
     await expectHttpsError(cp.guardarCampanaPana(db, { accion: 'duplicar', campanaId: CAMPANA_ID, nuevoId: `${CAMPANA_ID}-C2` }, 'admin-x', LUNES), 'already-exists');
 });
+
+// ── Composición completa: bebidas, acompañantes y variante por renglón ──────
+
+async function sembrarCatalogoExtra() {
+    await db.collection('bebidas').doc('seed-bebida-cola').set({
+        marca: 'Coca-Cola', presentaciones: [{ id: 'p0', nombre: '400 ml', precio: 4000 }, { id: 'p1', nombre: '1.5 L', precio: 9000 }], estado: 'active'
+    });
+    await db.collection('acompanantes').doc('seed-acomp-papas').set({ nombre: 'Papas a la francesa', cantidad: '150 g', precio: 6000, estado: 'active' });
+}
+
+async function borrarCatalogoExtra() {
+    await db.collection('bebidas').doc('seed-bebida-cola').delete().catch(() => {});
+    await db.collection('acompanantes').doc('seed-acomp-papas').delete().catch(() => {});
+}
+
+test('composición: guarda una BEBIDA del catálogo (nombre = marca de la colección bebidas)', async () => {
+    await sembrarCatalogoExtra();
+    try {
+        await cp.guardarCampanaPana(db, {
+            campanaId: 'COMPBEB', esNueva: true,
+            campana: payloadCampana({ composicion: [{ productoId: 'seed-burger-pana', cantidad: 1 }, { productoId: 'seed-bebida-cola', nombre: 'inventado', cantidad: 2 }] })
+        }, 'admin-x', LUNES);
+        const c = (await db.collection('cupones_campanas').doc('COMPBEB').get()).data();
+        assert.deepEqual(c.composicion, [
+            { productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 1 },
+            { productoId: 'seed-bebida-cola', nombre: 'Coca-Cola', cantidad: 2 }
+        ]);
+    } finally { await borrarCatalogoExtra(); }
+});
+
+test('composición: guarda un ACOMPAÑANTE del catálogo', async () => {
+    await sembrarCatalogoExtra();
+    try {
+        await cp.guardarCampanaPana(db, {
+            campanaId: 'COMPACO', esNueva: true,
+            campana: payloadCampana({ composicion: [{ productoId: 'seed-acomp-papas', cantidad: 1 }] })
+        }, 'admin-x', LUNES);
+        const c = (await db.collection('cupones_campanas').doc('COMPACO').get()).data();
+        assert.deepEqual(c.composicion, [{ productoId: 'seed-acomp-papas', nombre: 'Papas a la francesa', cantidad: 1 }]);
+    } finally { await borrarCatalogoExtra(); }
+});
+
+test('composición: variante por renglón — se limpia, se recorta a 40 y llega al POS (validar y canjear)', async () => {
+    await sembrarCatalogoExtra();
+    try {
+        await cp.guardarCampanaPana(db, {
+            campanaId: CAMPANA_ID,
+            campana: payloadCampana({ composicion: [
+                { productoId: 'seed-burger-pana', cantidad: 2, variante: '  Mediana   ·  2 carnes ' },
+                { productoId: 'seed-bebida-cola', cantidad: 1, variante: 'x'.repeat(60) },
+                { productoId: 'seed-acomp-papas', cantidad: 1, variante: '   ' }
+            ] })
+        }, 'admin-x', LUNES);
+        const c = (await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data();
+        assert.equal(c.composicion[0].variante, 'Mediana · 2 carnes');
+        assert.equal(c.composicion[1].variante, 'x'.repeat(40));
+        assert.equal('variante' in c.composicion[2], false); // vacía → no se guarda
+
+        const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+        const v = await cp.validarCuponPana(db, codigo, LUNES);
+        assert.deepEqual(v.cupon.composicion[0], { productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 2, variante: 'Mediana · 2 carnes' });
+        const r = await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, LUNES);
+        assert.equal(r.couponMeta.composicion[0].variante, 'Mediana · 2 carnes');
+        assert.equal(r.couponMeta.composicion[2].variante, '');
+    } finally { await borrarCatalogoExtra(); }
+});
+
+test('composición: campaña VIEJA sin variante sigue igual (guardar, validar y canjear)', async () => {
+    // baseCampana() es una campaña guardada antes de este cambio: composición sin "variante".
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    const v = await cp.validarCuponPana(db, codigo, LUNES);
+    assert.equal(v.canjeable, true);
+    assert.deepEqual(v.cupon.composicion, [{ productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 1, variante: '' }]);
+    // Re-guardarla desde el panel sin variante no agrega el campo.
+    await cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana() }, 'admin-x', LUNES);
+    const c = (await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data();
+    assert.deepEqual(c.composicion, [{ productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 1 }]);
+    const r = await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, LUNES);
+    assert.equal(r.couponMeta.precio, 19900);
+});
+
+test('composición: un id que no está en ninguna de las 4 colecciones sigue siendo rechazado', async () => {
+    await expectHttpsError(cp.guardarCampanaPana(db, {
+        campanaId: 'COMPMALA', esNueva: true, campana: payloadCampana({ composicion: [{ productoId: 'no-existe-en-nada', cantidad: 1 }] })
+    }, 'admin-x', LUNES), 'invalid-argument', /no existe en el catálogo/);
+});

@@ -4782,7 +4782,7 @@ async function _posMostrarCuponPana(code, resultDiv, codeInput) {
         return;
     }
 
-    const comp = (c.composicion || []).map((p) => `${Number(p.cantidad) > 1 ? `${p.cantidad}× ` : ''}${escapeHtml(p.nombre)}`).join(' + ');
+    const comp = (c.composicion || []).map((p) => escapeHtml(_cpanaRenglonTexto(p))).join(' + ');
     const extrasHTML = (c.extrasLocal || []).map((e) => `
         <label class="pos-cupon-pana-extra">
             <input type="checkbox" value="${escapeHtml(e.id)}">
@@ -4821,7 +4821,7 @@ async function _posMostrarCuponPana(code, resultDiv, codeInput) {
 // del local) entra como línea hija con el precio que devolvió el servidor.
 function _posAgregarLineaCuponPana(meta) {
     const precio = Number(meta.precio || 0);
-    const comboItems = (meta.composicion || []).map((p) => (Number(p.cantidad) > 1 ? `${p.nombre} x${p.cantidad}` : p.nombre)).filter(Boolean);
+    const comboItems = (meta.composicion || []).map(_cpanaRenglonTexto).filter(Boolean);
     _cpanaSelecciones(meta).forEach((d) => comboItems.push(`${d.grupo}: ${d.opcion}`));
     if (meta.notaCocina) comboItems.push(meta.notaCocina);
     const itemKey = `pana-${meta.codigo}`;
@@ -26737,17 +26737,56 @@ async function _cpanaExportCsv() {
 
 // ── Editor ──
 
+// Mismos ids y nombres que el resto del catálogo. guardarCampanaPana busca el id en este mismo
+// orden (productos → combos especiales → bebidas → acompañantes) y toma el nombre de ahí.
 function _cpanaCatalogOptions() {
-    const prods = (productsState || []).filter((p) => p && p.id).map((p) => ({ id: p.id, nombre: p.nombre, grupo: p.categoria || 'Productos' }));
-    const combos = (combosEspecialesState || []).filter((c) => c && c.id).map((c) => ({ id: c.id, nombre: c.titulo || c.nombre || c.id, grupo: 'Combos especiales' }));
-    return [...prods, ...combos].sort((a, b) => `${a.grupo} ${a.nombre}`.localeCompare(`${b.grupo} ${b.nombre}`, 'es'));
+    const prods = (productsState || []).filter((p) => p && p.id).map((p) => ({ id: p.id, nombre: p.nombre, grupo: p.categoria || 'Productos', tipo: 'producto' }));
+    const combos = (combosEspecialesState || []).filter((c) => c && c.id).map((c) => ({ id: c.id, nombre: c.titulo || c.nombre || c.id, grupo: 'Combos especiales', tipo: 'combo' }));
+    const bebidas = (bebidasState || []).filter((b) => b && b.id && b.marca).map((b) => ({ id: b.id, nombre: b.marca, grupo: 'Bebidas', tipo: 'bebida' }));
+    const acomps = (acompanantesState || []).filter((a) => a && a.id && a.nombre).map((a) => ({ id: a.id, nombre: a.nombre, grupo: 'Acompañantes', tipo: 'acompanante' }));
+    return [...prods, ...combos, ...bebidas, ...acomps].sort((a, b) => `${a.grupo} ${a.nombre}`.localeCompare(`${b.grupo} ${b.nombre}`, 'es'));
+}
+
+// Variantes que el catálogo ya define para un renglón: variantes del producto, presentaciones de
+// la bebida, o -- para la Burger Normal de Burger Clásicas -- los mismos tamaños/carnes fijos que
+// usa el POS (POS_BURGER_CLASICAS_OPTIONS, misma condición que handlePosProductAdd). Sin opciones
+// → el editor muestra texto libre.
+function _cpanaVariantesCatalogo(id, tipo) {
+    if (tipo === 'bebida') {
+        return ((bebidasState || []).find((b) => b.id === id)?.presentaciones || []).map((p) => p.nombre).filter(Boolean);
+    }
+    if (tipo !== 'producto') return [];
+    const prod = (productsState || []).find((p) => p.id === id);
+    if (!prod) return [];
+    const propias = (prod.variantes || []).map((v) => String(v?.nombre || '').trim()).filter(Boolean);
+    if (propias.length) return propias;
+    if (normalizeCategoryKey(prod.categoria).includes('burger clasicas') && normalizeCategoryKey(prod.nombre).includes('normal')) {
+        return POS_BURGER_CLASICAS_OPTIONS.map((o) => o.label);
+    }
+    return [];
+}
+
+// "2× Burger Normal (Mediana · 2 carnes)" -- mismo texto en el ticket de cocina, el POS y el panel.
+function _cpanaRenglonTexto(p) {
+    const cant = Number(p?.cantidad || 1);
+    return `${cant > 1 ? `${cant}× ` : ''}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
+}
+
+function _cpanaRenderVarianteControl() {
+    const wrap = document.getElementById('cpanaCompVarianteWrap');
+    const opt = document.getElementById('cpanaCompProducto')?.selectedOptions?.[0];
+    if (!wrap) return;
+    const opciones = opt?.value ? _cpanaVariantesCatalogo(opt.value, opt.dataset.tipo) : [];
+    wrap.innerHTML = opciones.length
+        ? `<select id="cpanaCompVariante" aria-label="Variante"><option value="">Sin variante</option>${opciones.map((o) => `<option value="${escapeHtml(o.slice(0, 40))}">${escapeHtml(o)}</option>`).join('')}</select>`
+        : '<input type="text" id="cpanaCompVariante" maxlength="40" placeholder="Variante (opcional), ej. Mediana · 2 carnes" aria-label="Variante">';
 }
 
 function _cpanaRenderComposicion() {
     const list = document.getElementById('cpanaCompList');
     if (!list) return;
     list.innerHTML = _cpanaComposicion.length
-        ? _cpanaComposicion.map((p, i) => `<span class="cpana-chip">${p.cantidad > 1 ? `${p.cantidad}× ` : ''}${escapeHtml(p.nombre)}<button type="button" data-cpana-comp-del="${i}" aria-label="Quitar">×</button></span>`).join('')
+        ? _cpanaComposicion.map((p, i) => `<span class="cpana-chip">${escapeHtml(_cpanaRenglonTexto(p))}<button type="button" data-cpana-comp-del="${i}" aria-label="Quitar">×</button></span>`).join('')
         : '<span class="admin-hint">Agrega al menos un producto.</span>';
 }
 
@@ -26819,9 +26858,10 @@ function openCuponPanaEditor(campanaId = null) {
         <label><input type="checkbox" value="${d}"${dias.includes(d) ? ' checked' : ''}> ${CUPON_PANA_DIAS[d]}</label>`).join('');
 
     const sel = document.getElementById('cpanaCompProducto');
-    sel.innerHTML = '<option value="">Elegir producto o combo…</option>' + _cpanaCatalogOptions()
-        .map((o) => `<option value="${escapeHtml(o.id)}" data-nombre="${escapeHtml(o.nombre)}">${escapeHtml(o.grupo)} — ${escapeHtml(o.nombre)}</option>`).join('');
-    _cpanaComposicion = (c?.composicion || []).map((p) => ({ productoId: p.productoId, nombre: p.nombre, cantidad: Number(p.cantidad || 1) }));
+    sel.innerHTML = '<option value="">Elegir producto, combo, bebida o acompañante…</option>' + _cpanaCatalogOptions()
+        .map((o) => `<option value="${escapeHtml(o.id)}" data-nombre="${escapeHtml(o.nombre)}" data-tipo="${o.tipo}">${escapeHtml(o.grupo)} — ${escapeHtml(o.nombre)}</option>`).join('');
+    _cpanaRenderVarianteControl();
+    _cpanaComposicion = (c?.composicion || []).map((p) => ({ productoId: p.productoId, nombre: p.nombre, cantidad: Number(p.cantidad || 1), ...(p.variante ? { variante: p.variante } : {}) }));
     _cpanaRenderComposicion();
 
     document.getElementById('cpanaExtrasList').innerHTML = '';
@@ -26915,9 +26955,12 @@ document.getElementById('cpanaCompAddBtn')?.addEventListener('click', () => {
     const opt = sel?.selectedOptions?.[0];
     if (!opt || !opt.value) return;
     const cantidad = Math.min(20, Math.max(1, Number(document.getElementById('cpanaCompCantidad').value) || 1));
-    _cpanaComposicion.push({ productoId: opt.value, nombre: opt.dataset.nombre || opt.textContent, cantidad });
+    const variante = String(document.getElementById('cpanaCompVariante')?.value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    _cpanaComposicion.push({ productoId: opt.value, nombre: opt.dataset.nombre || opt.textContent, cantidad, ...(variante ? { variante } : {}) });
     _cpanaRenderComposicion();
+    _cpanaRenderVarianteControl(); // limpia la variante para el siguiente renglón
 });
+document.getElementById('cpanaCompProducto')?.addEventListener('change', _cpanaRenderVarianteControl);
 document.getElementById('cpanaImagenFile')?.addEventListener('change', async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;

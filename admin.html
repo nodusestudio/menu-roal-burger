@@ -5149,6 +5149,11 @@
             color: #fff; padding: 9px 10px; font-family: 'Roboto', sans-serif; max-width: 260px;
         }
         #cpanaCompProducto { max-width: none; }
+        .cpana-variante-wrap { flex: 1 1 200px; display: flex; }
+        .cpana-variante-wrap select, .cpana-variante-wrap input {
+            flex: 1; min-width: 0; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75);
+            color: #fff; padding: 9px 10px; font-family: 'Roboto', sans-serif;
+        }
         .cpana-chip-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .cpana-chip {
             display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 10px; border-radius: 999px;
@@ -14889,7 +14894,7 @@
                             </div>
                             <div class="admin-field">
                                 <label for="cpanaTitulo">Título</label>
-                                <input type="text" id="cpanaTitulo" maxlength="60" placeholder="Combo Pana" required>
+                                <input type="text" id="cpanaTitulo" maxlength="60" placeholder="La Burda" required>
                             </div>
                             <div class="admin-field">
                                 <label for="cpanaPalabra">Palabra clave del post (obligatoria)</label>
@@ -14916,9 +14921,10 @@
                                 </div>
                             </div>
                             <div class="admin-field full">
-                                <label for="cpanaCompProducto">Composición (productos o combos del catálogo)</label>
+                                <label for="cpanaCompProducto">Composición (productos, combos, bebidas o acompañantes del catálogo)</label>
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                                     <select id="cpanaCompProducto" style="flex:1 1 240px;"></select>
+                                    <span id="cpanaCompVarianteWrap" class="cpana-variante-wrap"></span>
                                     <input type="number" id="cpanaCompCantidad" min="1" max="20" value="1" style="max-width:80px;" aria-label="Cantidad">
                                     <button type="button" class="cat-new-save-btn" id="cpanaCompAddBtn">Agregar</button>
                                 </div>
