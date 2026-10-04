@@ -2425,7 +2425,9 @@ function normalizeOrder(raw) {
         voidedAt: raw.voidedAt || null,
         anulado: raw.anulado === true,
         anuladoAt: raw.anuladoAt || null,
-        paymentSplit: Array.isArray(raw.paymentSplit) ? raw.paymentSplit : null,
+        paymentSplit: Array.isArray(raw.paymentSplit)
+            ? _reconcileSplitToTotal(raw.paymentSplit, getOrderDisplayTotal({ total, subtotal, deliveryFee }))
+            : null,
         meseroId: String(raw.meseroId || '').trim() || null,
         meseroName: String(raw.meseroName || '').trim() || null,
         barrioEspecial: String(raw.barrioEspecial || '').trim() || null,
@@ -2445,6 +2447,41 @@ function normalizeOrder(raw) {
         cajero: String(raw.cajero || '').trim(),
         deliveryFeeVerified: raw.deliveryFeeVerified === true,
     };
+}
+
+// Un pago dividido se valida contra el total al cobrar (_pfSplitIsValid), pero si el pedido se
+// edita DESPUÉS de cobrado (producto agregado, empaque 2x1, domicilio) sus partes quedan con los
+// montos viejos: el cierre sumaba el total nuevo en ingresosTotal/grandTotal y solo las partes en
+// ingresosMethod/methodTotals, y la diferencia quedaba en el Total Neto sin pertenecer a ningún
+// método. Aquí las partes se cuadran contra el total: se descartan las que no tienen método o
+// monto, y la diferencia la absorbe la última parte (si sobra, se descuenta desde la última hacia
+// atrás). Todos los consumidores (Caja Diaria, cierre, tickets) leen el pedido ya normalizado.
+function _reconcileSplitToTotal(split, total) {
+    const parts = split
+        .filter((s) => s && s.method && Number(s.amount) > 0)
+        .map((s) => ({ ...s, amount: Number(s.amount) }));
+    if (!parts.length || !Number.isFinite(total) || total <= 0) return parts;
+    let diff = total - parts.reduce((sum, s) => sum + s.amount, 0);
+    if (Math.abs(diff) <= 1) return parts;
+    if (diff > 0) {
+        parts[parts.length - 1].amount += diff;
+        return parts;
+    }
+    for (let i = parts.length - 1; i >= 0 && diff < 0; i -= 1) {
+        const take = Math.min(parts[i].amount, -diff);
+        parts[i].amount -= take;
+        diff += take;
+    }
+    return parts.filter((s) => s.amount > 0);
+}
+
+// Cierres ya grabados con ese descuadre (antes del arreglo de _reconcileSplitToTotal): lo que el
+// Total Neto tiene de más (o de menos) frente a la suma de sus saldos por método. El Historial y
+// "Ajustar saldos" lo muestran en "Otro" para que las tarjetas sumen exactamente el Total Neto.
+function _cierreDescuadreSinMetodo(c) {
+    const methodSum = Object.values(c.methodTotals || {}).reduce((sum, v) => sum + Number(v || 0), 0);
+    const diff = Number(c.grandTotal || 0) - methodSum;
+    return Math.abs(diff) > 1 ? diff : 0;
 }
 
 function normalizeSalesDayState(raw) {
@@ -23083,6 +23120,7 @@ function _computeHistoricoSumMethod(includeOpenJornada = false) {
         const nM = c.methodTotals || {};
         methodKeys.forEach((k) => { sum[k] += Number(nM[k] || 0); });
         Object.entries(nM).forEach(([k, v]) => { if (!methodKeys.includes(k)) sum[OTRO] += Number(v || 0); });
+        sum[OTRO] += _cierreDescuadreSinMetodo(c); // igual que las tarjetas del Historial
     });
     _gastosExternosState.forEach((g) => {
         const mk = g.paymentMethod;
@@ -23106,9 +23144,11 @@ function _computeHistoricoSumMethod(includeOpenJornada = false) {
 }
 
 async function loadCierresCaja() {
+    // Sin limit(): las tarjetas de saldo del Historial y "Ajustar saldos" ACUMULAN todos los
+    // cierres -- con limit(100), al llegar al cierre 101 el más viejo salía de la ventana y los
+    // saldos "cambiaban solos" cada día (mismo bug que tuvo la consulta de gastos con limit(500)).
     const snap = await firebaseDb.collection(CIERRES_CAJA_COLLECTION)
         .orderBy('closedAt', 'desc')
-        .limit(100)
         .get();
     _cierresCajaState = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
@@ -23239,6 +23279,7 @@ async function renderLibroCierres() {
             Object.keys(c.ingresosMethod || c.methodTotals || {}).forEach((k) => { if (!methodKeys.includes(k)) _otroKeys.add(k); });
             Object.keys(c.gastosMethod || {}).forEach((k) => { if (!methodKeys.includes(k)) _otroKeys.add(k); });
             Object.keys(c.methodTotals || {}).forEach((k) => { if (!methodKeys.includes(k)) _otroKeys.add(k); });
+            if (_cierreDescuadreSinMetodo(c)) _otroKeys.add('_sin_metodo');
         });
         gastosExternos.forEach((g) => { if (g.paymentMethod && !methodKeys.includes(g.paymentMethod)) _otroKeys.add(g.paymentMethod); });
         trasladosHistorial.forEach((t) => {
@@ -23368,6 +23409,9 @@ async function renderLibroCierres() {
                 Object.entries(iM).forEach(([k, v]) => { if (!methodKeys.includes(k)) dg.ingOtro += Number(v || 0); });
                 Object.entries(gM).forEach(([k, v]) => { if (!methodKeys.includes(k)) dg.gasOtro += Number(v || 0); });
                 Object.entries(nM).forEach(([k, v]) => { if (!methodKeys.includes(k)) sumOtro += Number(v || 0); });
+                // Descuadre viejo (pago dividido editado después de cobrado): está en el Total
+                // Neto pero en ningún método — se muestra en "Otro" para que cuadre.
+                sumOtro += _cierreDescuadreSinMetodo(entry);
                 const gT = Number(entry.gastosTotal || 0);
                 const gNet = Number(entry.grandTotal || 0);
                 const ingT = Number(entry.ingresosTotal ?? entry.grandTotal ?? 0);
