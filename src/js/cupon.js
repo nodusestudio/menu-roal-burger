@@ -1,4 +1,5 @@
-// Landing pública de Cupón Pana (roalburger.com/cupon?k=<campanaId>).
+// Landing pública de "Fuera del Menú" (roalburger.com/cupon?k=<campanaId>). Internamente sigue
+// llamándose "cupón pana" (colecciones/funciones): el cliente nunca ve esos nombres.
 //
 // Deliberadamente SIN el SDK de Firebase: esta página la abre gente que viene de un DM de
 // Instagram con datos móviles, y el SDK completo pesa cientos de KB. Lo único que necesita es:
@@ -47,7 +48,7 @@ const fuente = String(params.get('utm_source') || 'instagram').slice(0, 40);
 const app = document.getElementById('cuponApp');
 let campana = null;
 let pollTimer = null;
-let selectedTopping = '';
+let selecciones = {}; // { grupoId: opcion }
 
 // ── Utilidades ───────────────────────────────────────────────────────────────
 
@@ -153,6 +154,21 @@ async function getRecaptchaToken() {
     return g.execute(RECAPTCHA_SITE_KEY, { action: 'cupon_pana' });
 }
 
+// La vista pública ya trae gruposOpciones; una vista vieja (antes de los grupos) solo tiene
+// toppingsOpciones, que es un único grupo "Extra" (igual que gruposDeCampana en el servidor).
+function gruposDe(c) {
+    if (Array.isArray(c.gruposOpciones) && c.gruposOpciones.length) return c.gruposOpciones;
+    return Array.isArray(c.toppingsOpciones) && c.toppingsOpciones.length
+        ? [{ id: 'extra', nombre: 'Extra', opciones: c.toppingsOpciones, requerido: true }]
+        : [];
+}
+
+// Un cupón guardado en este navegador antes de los grupos solo trae "topping".
+function seleccionesDe(r) {
+    if (Array.isArray(r.selecciones) && r.selecciones.length) return r.selecciones;
+    return r.topping ? [{ grupo: 'Extra', opcion: r.topping }] : [];
+}
+
 // ── Render ───────────────────────────────────────────────────────────────────
 
 function setView(html) {
@@ -168,9 +184,10 @@ function heroHtml(c) {
         <section class="cp-hero liquid-glass">
             ${img}
             <div class="cp-hero-body">
-                <p class="cp-kicker">🎟️ Cupón Pana · exclusivo Instagram</p>
+                <p class="cp-kicker">🎟️ Fuera del Menú · exclusivo Instagram</p>
                 <h1 class="cp-title">${esc(c.titulo)}</h1>
                 ${comp ? `<p class="cp-comp">${comp}</p>` : ''}
+                ${c.notaCocina ? `<p class="cp-nota">🧂 ${esc(c.notaCocina)}</p>` : ''}
                 ${c.descripcion ? `<p class="cp-desc">${esc(c.descripcion)}</p>` : ''}
                 <div class="cp-price-row">
                     <span class="cp-price">${money(c.precio)}</span>
@@ -182,12 +199,17 @@ function heroHtml(c) {
 }
 
 function renderFormulario(c) {
-    const chips = (c.toppingsOpciones || []).map((t) => `
-        <button type="button" class="cp-chip" data-topping="${esc(t)}" aria-pressed="false">${esc(t)}</button>`).join('');
+    // Un bloque de chips por grupo ("Extra a elegir", "Bebida", …), con su nombre como título.
+    const gruposHtml = gruposDe(c).map((g) => `
+            <fieldset class="cp-field cp-toppings" data-grupo="${esc(g.id)}">
+                <legend>${esc(g.nombre)}${g.requerido === false ? ' <em class="cp-opcional">(opcional)</em>' : ''}</legend>
+                <div class="cp-chips">${(g.opciones || []).map((o) => `
+                    <button type="button" class="cp-chip" data-grupo="${esc(g.id)}" data-opcion="${esc(o)}" aria-pressed="false">${esc(o)}</button>`).join('')}</div>
+            </fieldset>`).join('');
     setView(`
         ${heroHtml(c)}
         <form class="cp-card liquid-glass" id="cpForm" novalidate>
-            <h2 class="cp-h2">¡Epa, pana! Este cupón es pa' ti</h2>
+            <h2 class="cp-h2">¡Epa! Este cupón es pa' ti</h2>
             <p class="cp-sub">Déjanos tus datos y te damos tu código personal. Es intransferible, ¿ok?</p>
 
             <label class="cp-field">
@@ -203,10 +225,7 @@ function renderFormulario(c) {
                 <input type="tel" name="telefono" inputmode="numeric" maxlength="16" autocomplete="tel-national" placeholder="300 123 4567" required>
             </label>
 
-            <fieldset class="cp-field cp-toppings">
-                <legend>Elige tu <strong>Toque Pana</strong> 🔥</legend>
-                <div class="cp-chips">${chips}</div>
-            </fieldset>
+${gruposHtml}
 
             <label class="cp-check">
                 <input type="checkbox" name="aceptaDatos" required>
@@ -226,8 +245,13 @@ function renderFormulario(c) {
     const form = document.getElementById('cpForm');
     form.querySelectorAll('.cp-chip').forEach((chip) => {
         chip.addEventListener('click', () => {
-            selectedTopping = chip.dataset.topping;
-            form.querySelectorAll('.cp-chip').forEach((c2) => c2.setAttribute('aria-pressed', String(c2 === chip)));
+            const grupo = chip.dataset.grupo;
+            // En un grupo opcional, tocar la opción ya elegida la quita.
+            const opcional = gruposDe(c).find((g) => g.id === grupo)?.requerido === false;
+            const quitar = opcional && selecciones[grupo] === chip.dataset.opcion;
+            if (quitar) delete selecciones[grupo]; else selecciones[grupo] = chip.dataset.opcion;
+            form.querySelectorAll(`.cp-chip[data-grupo="${CSS.escape(grupo)}"]`)
+                .forEach((c2) => c2.setAttribute('aria-pressed', String(!quitar && c2 === chip)));
         });
     });
     form.addEventListener('submit', onSubmit);
@@ -261,10 +285,11 @@ async function onSubmit(e) {
     const telefono = String(fd.get('telefono') || '').replace(/\D/g, '');
 
     // Chequeo rápido para no gastar un viaje al servidor; la validación que manda es la del servidor.
-    if (nombre.length < 2) return showError('Escribe tu nombre, pana.');
+    if (nombre.length < 2) return showError('Escribe tu nombre.');
     if (!/^@?[A-Za-z0-9._]{1,30}$/.test(igHandle)) return showError('Escribe tu usuario de Instagram (ej. @tu.usuario).');
     if (!/^(57)?3\d{9}$/.test(telefono)) return showError('Escribe un celular colombiano válido (10 dígitos, empieza en 3).');
-    if (!selectedTopping) return showError('Elige tu Toque Pana 🔥');
+    const faltante = gruposDe(campana || {}).find((g) => g.requerido !== false && !selecciones[g.id]);
+    if (faltante) return showError(`Elige una opción en "${faltante.nombre}" 🔥`);
     if (!fd.get('aceptaDatos')) return showError('Necesitamos tu autorización de datos para darte el cupón.');
 
     showError('');
@@ -274,7 +299,7 @@ async function onSubmit(e) {
         const recaptchaToken = await getRecaptchaToken();
         const result = await callFunction('emitirCuponPana', {
             campanaId, nombre, igHandle, telefono,
-            topping: selectedTopping,
+            selecciones,
             aceptaDatos: true,
             aceptaMarketing: Boolean(fd.get('aceptaMarketing')),
             recaptchaToken,
@@ -325,12 +350,12 @@ function renderCupon(r) {
     const pendienteActivar = r.estado === 'emitido' && c.requiereActivacionWA;
     const waLabel = pendienteActivar ? 'ACTIVAR POR WHATSAPP' : 'PEDIR POR WHATSAPP';
     setView(`
-        ${r.yaExistia ? '<p class="cp-banner">Ya tenías tu cupón, pana 😉 Aquí está otra vez.</p>' : '<p class="cp-banner">¡Listo, pana! 🎉 Este es tu cupón.</p>'}
+        ${r.yaExistia ? '<p class="cp-banner">Ya tenías tu cupón 😉 Aquí está otra vez.</p>' : '<p class="cp-banner">¡Listo! 🎉 Este es tu cupón.</p>'}
         <article class="cp-ticket" id="cpTicket">
             <div class="cp-ticket-head">
                 <img src="/isotipo.webp" alt="" width="40" height="40">
                 <div>
-                    <p class="cp-ticket-kicker">CUPÓN PANA</p>
+                    <p class="cp-ticket-kicker">FUERA DEL MENÚ</p>
                     <p class="cp-ticket-title">${esc(c.titulo)}</p>
                 </div>
                 <span class="cp-ticket-price">${money(c.precio)}</span>
@@ -340,11 +365,11 @@ function renderCupon(r) {
                 <div>
                     <p class="cp-ticket-label">Tu código</p>
                     <p class="cp-ticket-code">${esc(r.codigo)}</p>
-                    <p class="cp-ticket-label">Toque Pana</p>
-                    <p class="cp-ticket-val">🔥 ${esc(r.topping)}</p>
+                    ${seleccionesDe(r).map((d) => `<p class="cp-ticket-label">${esc(d.grupo)}</p><p class="cp-ticket-val">🔥 ${esc(d.opcion)}</p>`).join('')}
                 </div>
                 ${qrSvg(r.codigo)}
             </div>
+            ${c.notaCocina ? `<p class="cp-ticket-nota">🧂 ${esc(c.notaCocina)}</p>` : ''}
             <p class="cp-ticket-days">📅 Válido ${esc(formatDias(c.diasValidos))}${c.fechaFin ? ` · hasta el ${esc(formatFecha(c.fechaFin))}` : ''}</p>
             ${pendienteActivar ? '<p class="cp-ticket-warn">⚠️ Actívalo por WhatsApp desde el mismo número con el que lo pediste para poder usarlo.</p>' : ''}
             <p class="cp-ticket-legal">Personal e intransferible · una vez por persona · no acumulable</p>
@@ -383,7 +408,7 @@ function renderInactiva() {
         <section class="cp-card cp-state liquid-glass">
             <p class="cp-state-emoji">🍔</p>
             <h1 class="cp-title">Este cupón ya no está disponible</h1>
-            <p class="cp-sub">Tranquilo, pana: en nuestro Instagram siempre sale algo nuevo. Mientras tanto, échale un ojo al menú.</p>
+            <p class="cp-sub">Tranquilo: en nuestro Instagram siempre sale algo nuevo. Mientras tanto, échale un ojo al menú.</p>
             <a class="cp-btn cp-btn--primary" href="/">VER EL MENÚ</a>
             <a class="cp-btn cp-btn--ghost" href="${INSTAGRAM_URL}" target="_blank" rel="noopener">IR A INSTAGRAM</a>
         </section>`);
@@ -467,21 +492,22 @@ function downloadIcs(r) {
         alert('Ya no quedan días válidos para este cupón.');
         return;
     }
-    const desc = `Tu código: ${r.codigo}\nToque Pana: ${r.topping}\nPreséntalo en caja o pide por WhatsApp: ${r.waLink}`;
+    const elegido = seleccionesDe(r).map((d) => `${d.grupo}: ${d.opcion}`).join('\n');
+    const desc = `Tu código: ${r.codigo}${elegido ? `\n${elegido}` : ''}${c.notaCocina ? `\n${c.notaCocina}` : ''}\nPreséntalo en caja o pide por WhatsApp: ${r.waLink}`;
     const ics = [
-        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ROAL BURGER//Cupon Pana//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ROAL BURGER//Fuera del Menu//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
         'BEGIN:VEVENT',
         `UID:cupon-${r.codigo}@roalburger.com`,
         `DTSTAMP:${icsDate(Date.now())}`,
         `DTSTART:${icsDate(start)}`,
         `DTEND:${icsDate(start + 3600000)}`,
-        `SUMMARY:${icsEscape(`🍔 Usa tu Cupón Pana ${r.codigo} — ROAL BURGER`)}`,
+        `SUMMARY:${icsEscape(`🍔 Usa tu cupón Fuera del Menú ${r.codigo} — ROAL BURGER`)}`,
         `DESCRIPTION:${icsEscape(desc)}`,
         'LOCATION:ROAL BURGER\\, Cl. 22 #29-59\\, Armenia',
-        'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(`Hoy puedes usar tu Cupón Pana ${r.codigo}`)}`, 'TRIGGER:-PT3H', 'END:VALARM',
+        'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(`Hoy puedes usar tu cupón Fuera del Menú ${r.codigo}`)}`, 'TRIGGER:-PT3H', 'END:VALARM',
         'END:VEVENT', 'END:VCALENDAR'
     ].join('\r\n');
-    downloadBlob(new Blob([ics], { type: 'text/calendar;charset=utf-8' }), `cupon-pana-${r.codigo}.ics`);
+    downloadBlob(new Blob([ics], { type: 'text/calendar;charset=utf-8' }), `fuera-del-menu-${r.codigo}.ics`);
 }
 
 // ── PNG del cupón ────────────────────────────────────────────────────────────
@@ -513,12 +539,19 @@ async function downloadPng(r) {
     const c = r.campana || {};
     try { await document.fonts.load('700 40px Oswald'); } catch (_) { /* fuente de respaldo */ }
     const W = 1080;
-    const H = 1520;
     const canvas = document.createElement('canvas');
     canvas.width = W;
-    canvas.height = H;
     const ctx = canvas.getContext('2d');
     const head = "'Oswald', 'Arial Narrow', sans-serif";
+    // Las líneas de selecciones + nota se miden ANTES de fijar la altura (cambiar el tamaño del
+    // canvas lo borra): con 3 grupos la tarjeta crece en vez de cortar texto.
+    ctx.font = '500 36px Roboto, Arial, sans-serif';
+    const detalle = [
+        ...seleccionesDe(r).flatMap((d) => wrapLines(ctx, `🔥 ${d.grupo}: ${d.opcion}`, W - 220)),
+        ...(c.notaCocina ? wrapLines(ctx, `🧂 ${c.notaCocina}`, W - 220) : [])
+    ];
+    const H = 1340 + detalle.length * 46 + 150;
+    canvas.height = H;
 
     ctx.fillStyle = '#f3e9d8';
     ctx.fillRect(0, 0, W, H);
@@ -535,7 +568,7 @@ async function downloadPng(r) {
     if (logo) ctx.drawImage(logo, 110, 130, 110, 110);
     ctx.fillStyle = '#FF6B00';
     ctx.font = `700 40px ${head}`;
-    ctx.fillText('CUPÓN PANA', 250, 175);
+    ctx.fillText('FUERA DEL MENÚ', 250, 175);
     ctx.fillStyle = '#ffffff';
     ctx.font = `700 52px ${head}`;
     wrapLines(ctx, String(c.titulo || '').toUpperCase(), 720).slice(0, 2).forEach((l, i) => ctx.fillText(l, 250, 240 + i * 60));
@@ -569,17 +602,18 @@ async function downloadPng(r) {
 
     ctx.fillStyle = '#ffffff';
     ctx.font = '500 36px Roboto, Arial, sans-serif';
-    ctx.fillText(`🔥 Toque Pana: ${r.topping}`, 110, 1270);
+    detalle.forEach((l, i) => ctx.fillText(l, 110, 1270 + i * 46));
+    const yDias = 1270 + detalle.length * 46 + 10;
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.font = '400 30px Roboto, Arial, sans-serif';
     wrapLines(ctx, `📅 Válido ${formatDias(c.diasValidos)}${c.fechaFin ? ` · hasta el ${formatFecha(c.fechaFin)}` : ''}`, W - 220)
-        .slice(0, 2).forEach((l, i) => ctx.fillText(l, 110, 1325 + i * 40));
+        .slice(0, 2).forEach((l, i) => ctx.fillText(l, 110, yDias + i * 40));
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.font = '400 24px Roboto, Arial, sans-serif';
-    ctx.fillText('Personal e intransferible · una vez por persona · no acumulable · roalburger.com', 110, 1410);
+    ctx.fillText('Personal e intransferible · una vez por persona · no acumulable · roalburger.com', 110, H - 110);
 
     const blob = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob'))), 'image/png'));
-    downloadBlob(blob, `cupon-pana-${r.codigo}.png`);
+    downloadBlob(blob, `fuera-del-menu-${r.codigo}.png`);
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -596,7 +630,7 @@ function roundRect(ctx, x, y, w, h, r) {
 
 async function init() {
     stopPolling();
-    selectedTopping = '';
+    selecciones = {};
     if (!/^[A-Za-z0-9_-]{2,40}$/.test(campanaId)) {
         renderInactiva();
         return;

@@ -55,6 +55,12 @@ adminHtml = adminHtml.replace(
     `caja/calculos.js?v=${stamp}`
 );
 
+// src/js/cupones/semaforo.js?v=... (semáforo de temporadas de Fuera del Menú, mismo patrón)
+adminHtml = adminHtml.replace(
+    /cupones\/semaforo\.js\?v=[\w-]+/g,
+    `cupones/semaforo.js?v=${stamp}`
+);
+
 // style.css — agrega ?v= si no existe, o reemplaza la existente
 adminHtml = adminHtml.replace(
     /href="style\.css(\?v=[\w-]+)?"/g,

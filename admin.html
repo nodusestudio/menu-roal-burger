@@ -5197,6 +5197,24 @@
         .cpana-table th { text-align: left; font-weight: 600; color: var(--admin-muted); padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); white-space: nowrap; }
         .cpana-table td { padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }
         .cpana-recordado { color: #7ee0c2; font-weight: 600; }
+        .cpana-grupo-row {
+            display: grid; grid-template-columns: minmax(130px, 1fr) minmax(180px, 2fr) auto auto; gap: 6px; align-items: center;
+            padding: 8px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+        }
+        .cpana-grupo-req { display: inline-flex !important; align-items: center; gap: 4px; font-size: 0.78rem; color: #eef4ff !important; white-space: nowrap; }
+        .cpana-grupo-req input { width: auto !important; accent-color: var(--admin-accent); }
+        @media (max-width: 640px) { .cpana-grupo-row { grid-template-columns: 1fr 1fr; } .cpana-grupo-row .cpana-grupo-opciones { grid-column: 1 / -1; grid-row: 2; } }
+        .cpana-sel { display: grid; gap: 2px; font-size: 0.76rem; }
+        .cpana-sel em { font-style: normal; color: var(--admin-muted); }
+        .cpana-temp { padding: 12px 14px; border-radius: 12px; margin-bottom: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); }
+        .cpana-temp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+        .cpana-semaforo { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 10px currentColor; }
+        .cpana-semaforo--verde { background: #34d399; color: rgba(52,211,153,0.6); }
+        .cpana-semaforo--amarillo { background: #fbbf24; color: rgba(251,191,36,0.6); }
+        .cpana-semaforo--rojo { background: #f87171; color: rgba(248,113,113,0.6); }
+        .cpana-semaforo--sin_datos { background: #8f9db7; color: transparent; box-shadow: none; }
+        .cpana-temp-aviso { font-size: 0.78rem; font-weight: 700; color: #ffb48f; }
+        .cpana-badge--warn { background: rgba(251,191,36,0.16); color: #fcd34d; }
         .cpana-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
         .cpana-tab {
             background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: var(--admin-muted);
@@ -13381,7 +13399,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="chatroal"><span class="nav-icon">📲</span><span>Chat Roal</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="finanzas"><span class="nav-icon">💰</span><span>Finanzas</span></button>
-            <button type="button" class="admin-accordion-trigger" data-accordion-target="cuponpana"><span class="nav-icon">🎟️</span><span>Cupón Pana</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="cuponpana"><span class="nav-icon">🎟️</span><span>Fuera del Menú</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
         </nav>
 
@@ -14833,7 +14851,7 @@
                 </article>
             </div>
 
-            <!-- Cupón Pana: cupones semanales para seguidores de Instagram (landing /cupon).
+            <!-- Fuera del Menú (internamente "cupón pana"): cupones semanales para seguidores de Instagram (landing /cupon).
                  Todo lo que se escribe aquí pasa por la Cloud Function guardarCampanaPana. -->
             <div class="admin-tab-panel" data-tab-panel="cuponpana">
                 <div class="section-toolbar">
@@ -14842,7 +14860,7 @@
 
                 <article class="admin-card">
                     <div class="card-head">
-                        <h2>🎟️ Campañas Cupón Pana</h2>
+                        <h2>🎟️ Campañas Fuera del Menú</h2>
                         <button type="button" class="section-action-btn primary" id="cpanaNewBtn">+ Nueva campaña</button>
                     </div>
                     <div class="card-body">
@@ -14851,6 +14869,11 @@
                         </p>
                         <div id="cpanaCampanasList"><!-- render JS --></div>
                     </div>
+                </article>
+
+                <article class="admin-card">
+                    <div class="card-head"><h2>🚦 Temporadas</h2></div>
+                    <div class="card-body" id="cpanaTemporadasBody"><!-- render JS --></div>
                 </article>
 
                 <article class="admin-card" id="cpanaEditorCard" hidden>
@@ -14869,16 +14892,21 @@
                                 <input type="text" id="cpanaTitulo" maxlength="60" placeholder="Combo Pana" required>
                             </div>
                             <div class="admin-field">
-                                <label for="cpanaPalabra">Palabra clave del post</label>
-                                <input type="text" id="cpanaPalabra" maxlength="40" placeholder="PANA">
+                                <label for="cpanaPalabra">Palabra clave del post (obligatoria)</label>
+                                <input type="text" id="cpanaPalabra" maxlength="40" placeholder="BURDA" required>
                             </div>
                             <div class="admin-field">
                                 <label for="cpanaPrecio">Precio final del cupón (COP)</label>
                                 <input type="text" inputmode="numeric" id="cpanaPrecio" placeholder="19900" required>
                             </div>
                             <div class="admin-field full">
+                                <label for="cpanaTemporada">Temporada (agrupa las campañas semanales del mismo formato)</label>
+                                <input type="text" id="cpanaTemporada" maxlength="40" placeholder="T01 · La Burda" list="cpanaTemporadasList">
+                                <datalist id="cpanaTemporadasList"></datalist>
+                            </div>
+                            <div class="admin-field full">
                                 <label for="cpanaDescripcion">Descripción (se ve en la landing)</label>
-                                <input type="text" id="cpanaDescripcion" maxlength="300" placeholder="La burger pana con papas y tu toque favorito">
+                                <input type="text" id="cpanaDescripcion" maxlength="300" placeholder="La burger que no está en la carta, con papas y tu extra favorito">
                             </div>
                             <div class="admin-field full">
                                 <label for="cpanaImagen">Imagen (URL https o ruta del sitio)</label>
@@ -14897,8 +14925,13 @@
                                 <div id="cpanaCompList" class="cpana-chip-list"></div>
                             </div>
                             <div class="admin-field full">
-                                <label for="cpanaToppings">Opciones de Toque Pana (separadas por coma; el cliente elige 1)</label>
-                                <input type="text" id="cpanaToppings" maxlength="250" placeholder="Maíz dulce, Pepinillo, Maduro">
+                                <label>Grupos de opciones (el cliente elige 1 opción por grupo)</label>
+                                <div id="cpanaGruposList" style="display:grid;gap:8px;"></div>
+                                <button type="button" class="pm-icon-btn" id="cpanaGrupoAddBtn" style="align-self:flex-start;">+ Agregar grupo</button>
+                            </div>
+                            <div class="admin-field full">
+                                <label for="cpanaNotaCocina">Nota fija para cocina (sale en la landing y en el ticket)</label>
+                                <input type="text" id="cpanaNotaCocina" maxlength="120" placeholder="Salsa de la casa: tártara">
                             </div>
                             <div class="admin-field full">
                                 <label>Extras solo en el local (opcional)</label>
@@ -15956,6 +15989,8 @@
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
     <script type="module" src="src/js/caja/calculos.js?v=20260918-2044"></script>
+    <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
+    <script type="module" src="src/js/cupones/semaforo.js?v=20260918-2044"></script>
     <script defer src="admin.js?v=20260918-2044"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
