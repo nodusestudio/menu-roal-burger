@@ -4925,11 +4925,16 @@ const POS_COMBOS_CON_PAPAS_PRICES = {
     comboperronormal:  { 1: 17000, 2: 25000, 3: 38000, 4: 49000 },
     comboburgernormal: { 1: 21000, 2: 38000, 3: 57000, 4: 73000 }
 };
+// El precio sale de "price", nunca del texto: cambiar "2 carne" → "2 carnes" (2026-10-04) no
+// tocó ningún precio. Los pedidos históricos conservan el texto viejo; el ranking de "más
+// vendidos" los une con los nuevos vía _metricsProductKey. El menú web (script-v2.js) y
+// functions/pricing.js tienen SU PROPIA copia de estas etiquetas ("Pequena | 2 carne") y la
+// comparan con includes('2 carne'), que también encaja con "2 carnes": no dependen de esta lista.
 const POS_BURGER_CLASICAS_OPTIONS = [
     { label: 'Pequeña | 1 carne', price: 14000 },
-    { label: 'Pequeña | 2 carne', price: 18000 },
+    { label: 'Pequeña | 2 carnes', price: 18000 },
     { label: 'Mediana | 1 carne', price: 17000 },
-    { label: 'Mediana | 2 carne', price: 22000 }
+    { label: 'Mediana | 2 carnes', price: 22000 }
 ];
 
 function handlePosProductAdd(productId, productName, productPrice) {
@@ -6249,6 +6254,13 @@ function openBebidaModal(bebida = null) {
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
     setTimeout(() => marcaInput.focus(), 80);
+}
+
+// Clave del ranking de "más vendidos": el nombre del ítem, con el único cambio de texto que hubo
+// en una etiqueta del POS ("… | 2 carne" → "… | 2 carnes", 2026-10-04) unificado -- si no, los
+// pedidos viejos y los nuevos del MISMO producto salían como dos filas separadas.
+function _metricsProductKey(productName) {
+    return String(productName || '').trim().replace(/(\|\s*2 carne)$/i, '$1s');
 }
 
 function openBurgerClasicasPosModal(productId, productName) {
@@ -9635,7 +9647,7 @@ function renderMetricasProductos(period) {
         if (cutoff && ts && ts < cutoff) continue;
 
         for (const item of (order.items || [])) {
-            const name = String(item.productName || '').trim();
+            const name = _metricsProductKey(item.productName);
             if (!name) continue;
             const qty = Number(item.quantity || 0);
             const rev = Number(item.subtotal || 0);

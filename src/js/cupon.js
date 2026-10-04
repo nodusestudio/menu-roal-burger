@@ -162,6 +162,17 @@ function gruposDe(c) {
         : [];
 }
 
+// "2× Burger Normal (Mediana · 2 carnes)": mismo formato que el ticket de cocina y el panel
+// (_cpanaRenglonTexto en admin.js). Un renglón sin variante se ve como siempre.
+function renglonTexto(p) {
+    const cant = Number(p?.cantidad || 1);
+    return `${cant > 1 ? `${cant}× ` : ''}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
+}
+
+function composicionTexto(composicion) {
+    return (composicion || []).map(renglonTexto).filter(Boolean).join(' + ');
+}
+
 // Un cupón guardado en este navegador antes de los grupos solo trae "topping".
 function seleccionesDe(r) {
     if (Array.isArray(r.selecciones) && r.selecciones.length) return r.selecciones;
@@ -178,7 +189,7 @@ function setView(html) {
 
 function heroHtml(c) {
     const img = c.imagenUrl ? `<img class="cp-hero-img" src="${esc(c.imagenUrl)}" alt="${esc(c.titulo)}" loading="eager">` : '';
-    const comp = (c.composicion || []).map((p) => `${p.cantidad > 1 ? `${p.cantidad}× ` : ''}${esc(p.nombre)}`).join(' + ');
+    const comp = esc(composicionTexto(c.composicion));
     return `
         <section class="cp-hero liquid-glass">
             ${img}
@@ -359,6 +370,7 @@ function renderCupon(r) {
                 </div>
                 <span class="cp-ticket-price">${money(c.precio)}</span>
             </div>
+            ${composicionTexto(c.composicion) ? `<p class="cp-ticket-comp">🍔 ${esc(composicionTexto(c.composicion))}</p>` : ''}
             <p class="cp-ticket-name">Para: <strong>${esc(r.nombre)}</strong></p>
             <div class="cp-ticket-code-row">
                 <div>
@@ -546,6 +558,7 @@ async function downloadPng(r) {
     // canvas lo borra): con 3 grupos la tarjeta crece en vez de cortar texto.
     ctx.font = '500 36px Roboto, Arial, sans-serif';
     const detalle = [
+        ...(composicionTexto(c.composicion) ? wrapLines(ctx, `🍔 ${composicionTexto(c.composicion)}`, W - 220) : []),
         ...seleccionesDe(r).flatMap((d) => wrapLines(ctx, `🔥 ${d.grupo}: ${d.opcion}`, W - 220)),
         ...(c.notaCocina ? wrapLines(ctx, `🧂 ${c.notaCocina}`, W - 220) : [])
     ];

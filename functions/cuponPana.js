@@ -300,6 +300,17 @@ async function ensureAdmin(db, request) {
 
 // ── Vista pública de la campaña ──────────────────────────────────────────────
 
+// Composición para el cliente (landing y respuesta de emisión): nombre, cantidad y la variante
+// ("Mediana · 2 carnes") solo si el renglón la tiene -- un renglón sin variante queda idéntico a
+// como era antes de existir el campo. Sin productoId: el cliente no lo necesita.
+function composicionPublica(composicion) {
+    return (composicion || []).map((p) => {
+        const renglon = { nombre: String(p.nombre || ''), cantidad: Number(p.cantidad || 1) };
+        if (p.variante) renglon.variante = String(p.variante);
+        return renglon;
+    });
+}
+
 // Solo lo que la landing necesita mostrar -- nunca waNumeroCupones/cuposEmitidos crudos ni nada
 // que no sea para el público (la landing lee esto con un get anónimo).
 function buildCampanaPublica(c) {
@@ -308,7 +319,7 @@ function buildCampanaPublica(c) {
         descripcion: String(c.descripcion || ''),
         imagenUrl: String(c.imagenUrl || ''),
         precio: Number(c.precio || 0),
-        composicion: (c.composicion || []).map((p) => ({ nombre: String(p.nombre || ''), cantidad: Number(p.cantidad || 1) })),
+        composicion: composicionPublica(c.composicion),
         gruposOpciones: gruposDeCampana(c),
         notaCocina: String(c.notaCocina || ''),
         diasValidos: Array.isArray(c.diasValidos) ? c.diasValidos.map(Number) : [],
@@ -383,6 +394,7 @@ function buildEmitResponse(campana, cupon, yaExistia) {
             titulo: String(campana.titulo || ''),
             precio: Number(campana.precio || 0),
             notaCocina: String(campana.notaCocina || ''),
+            composicion: composicionPublica(campana.composicion),
             diasValidos: Array.isArray(campana.diasValidos) ? campana.diasValidos : [],
             fechaInicio: toMs(campana.fechaInicio),
             fechaFin: toMs(campana.fechaFin),
@@ -958,6 +970,7 @@ module.exports = {
     ensureAdminOrMeseroCaller,
     ensureAdmin,
     buildCampanaPublica,
+    composicionPublica,
     syncCampanaPublica,
     validateEmitInput,
     gruposDeCampana,

@@ -725,3 +725,32 @@ test('extras eliminados: una campaña VIEJA con extrasLocal sigue cargando y can
     await cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ extrasLocal: [viejo] }) }, 'admin-x', LUNES);
     assert.equal('extrasLocal' in (await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data(), false);
 });
+
+// ── Variante visible en la landing (vista pública + respuesta de emisión) ────
+
+test('vista pública: incluye la variante de cada renglón (y la sincroniza syncCampanaPublica)', async () => {
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({
+        composicion: [
+            { productoId: 'seed-burger-pana', nombre: 'Burger Normal', cantidad: 2, variante: 'Mediana · 2 carnes' },
+            { productoId: 'seed-papas', nombre: 'Papas', cantidad: 1 }
+        ]
+    });
+    const pub = await cp.syncCampanaPublica(db, CAMPANA_ID);
+    assert.deepEqual(pub.composicion, [
+        { nombre: 'Burger Normal', cantidad: 2, variante: 'Mediana · 2 carnes' },
+        { nombre: 'Papas', cantidad: 1 }
+    ]);
+    const guardada = (await db.collection('cupones_campanas_publico').doc(CAMPANA_ID).get()).data();
+    assert.deepEqual(guardada.composicion, pub.composicion);
+    // La tarjeta del cupón emitido (estado B) y el PNG la reciben en la respuesta de emisión.
+    const r = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    assert.deepEqual(r.campana.composicion, pub.composicion);
+});
+
+test('vista pública: una campaña SIN variante se ve exactamente igual que antes', async () => {
+    // baseCampana(): composición guardada antes de existir el campo.
+    const pub = cp.buildCampanaPublica(baseCampana());
+    assert.deepEqual(pub.composicion, [{ nombre: 'Burger Pana', cantidad: 1 }]);
+    assert.equal('variante' in pub.composicion[0], false);
+    assert.equal('productoId' in pub.composicion[0], false);
+});
