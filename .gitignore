@@ -19,6 +19,7 @@ functions/.secret.local
 /script-v2.js
 /tracking.js
 /agent-chat.js
+/cupon.js
 /style.css
 
 .vercel

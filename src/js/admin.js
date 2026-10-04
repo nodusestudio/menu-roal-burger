@@ -1790,10 +1790,11 @@ function setupAccordion() {
         mensajes: ['mensajes'],
         chatroal: ['chatroal'],
         metricas: ['metricas'],
-        finanzas: ['finanzas']
+        finanzas: ['finanzas'],
+        cuponpana: ['cuponpana']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', cuponpana:'Cupón Pana' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -1836,6 +1837,10 @@ function setupAccordion() {
 
         if (target === 'finanzas') {
             _ensureFinanzasLoaded();
+        }
+
+        if (target === 'cuponpana') {
+            _ensureCuponPanaLoaded();
         }
 
         if (target === 'chatroal') {
@@ -1932,6 +1937,11 @@ function setupSectionSaveButtons() {
             } catch (_) {}
             renderFinanzasPanel();
             showNotice('Finanzas actualizado.', 'ok');
+        }
+
+        if (section === 'cuponpana') {
+            await loadCuponPanaCampanas();
+            showNotice('Cupón Pana actualizado.', 'ok');
         }
     });
 }
@@ -4529,10 +4539,10 @@ function renderPosPromocionesPanel(grid) {
         try {
             const snap = await firebaseDb.collection('codigos_cupon').doc(code).get();
             if (!snap.exists) {
-                resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
-                    <span class="pos-cupon-result-title">❌ Código no encontrado</span>
-                    <span class="pos-cupon-result-sub">Verifica que el cliente te haya dado el código correcto</span>
-                </div>`;
+                // No es un cupón de la app: puede ser un Cupón Pana (landing /cupon de Instagram).
+                // Esos viven en cupones_pana, que el navegador no puede leer -- se validan y
+                // canjean solo por Cloud Function (functions/cuponPana.js).
+                await _posMostrarCuponPana(code, resultDiv, codeInput);
                 return;
             }
             const data = snap.data();
@@ -4730,10 +4740,125 @@ function renderPosPromocionesPanel(grid) {
     grid.appendChild(wrap);
 }
 
+// ── Cupón Pana en el POS ─────────────────────────────────────────────────────
+// validarCuponPana (solo lectura) muestra el resultado con el mismo estilo que los cupones de la
+// app; "Agregar al ticket" llama a canjearCuponPana, que marca el canje en una transacción del
+// servidor y devuelve el couponMeta con el precio del SERVIDOR -- aquí no se calcula ningún precio.
+async function _posMostrarCuponPana(code, resultDiv, codeInput) {
+    let res;
+    try {
+        res = (await firebaseFunctions.httpsCallable('validarCuponPana')({ codigo: code })).data;
+    } catch (err) {
+        console.error('validarCuponPana:', err);
+        resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
+            <span class="pos-cupon-result-title">No se pudo validar el cupón</span>
+            <span class="pos-cupon-result-sub">${escapeHtml(err?.message || 'Verifica tu conexión e intenta de nuevo')}</span>
+        </div>`;
+        return;
+    }
+    const c = res?.cupon;
+    if (!c) {
+        resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
+            <span class="pos-cupon-result-title">❌ Código no encontrado</span>
+            <span class="pos-cupon-result-sub">Verifica que el cliente te haya dado el código correcto</span>
+        </div>`;
+        return;
+    }
+    const quien = `👤 ${escapeHtml(c.nombre || 'Cliente')}${c.igHandle ? ` · 📸 @${escapeHtml(c.igHandle)}` : ''}${c.topping ? ` · 🔥 ${escapeHtml(c.topping)}` : ''}`;
+    if (!res.canjeable) {
+        const cuando = res.motivo === 'canjeado' && c.canjeadoAt
+            ? ` · ${new Date(c.canjeadoAt).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'short', timeStyle: 'short' })}`
+            : '';
+        const dias = res.motivo === 'dia_no_valido' && c.diasValidosTexto ? ` · Válido: ${escapeHtml(c.diasValidosTexto)}` : '';
+        resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
+            <span class="pos-cupon-result-title">❌ ${escapeHtml(res.motivoTexto || 'Cupón no canjeable')}</span>
+            <span class="pos-cupon-result-sub">🎟️ Cupón Pana — ${escapeHtml(c.titulo)}${cuando}${dias}</span>
+            <span class="pos-cupon-result-sub">${quien}</span>
+        </div>`;
+        return;
+    }
+
+    const comp = (c.composicion || []).map((p) => `${Number(p.cantidad) > 1 ? `${p.cantidad}× ` : ''}${escapeHtml(p.nombre)}`).join(' + ');
+    const extrasHTML = (c.extrasLocal || []).map((e) => `
+        <label class="pos-cupon-pana-extra">
+            <input type="checkbox" value="${escapeHtml(e.id)}">
+            <span>${escapeHtml(e.nombre)} <strong>+${formatMoney(e.precio)}</strong></span>
+        </label>`).join('');
+    resultDiv.innerHTML = `<div class="pos-cupon-result pos-cupon-result--ok">
+        <span class="pos-cupon-result-title">✅ Cupón Pana — ${escapeHtml(c.titulo)} · ${formatMoney(c.precio)}</span>
+        <span class="pos-cupon-result-sub">${quien}</span>
+        ${comp ? `<span class="pos-cupon-result-sub">🍔 ${comp}</span>` : ''}
+        ${extrasHTML ? `<div class="pos-cupon-pana-extras">${extrasHTML}</div>` : ''}
+        <button type="button" class="pos-cupon-confirm-btn" id="posCuponConfirmBtn">Agregar al ticket →</button>
+    </div>`;
+    const confirmBtn = resultDiv.querySelector('#posCuponConfirmBtn');
+    confirmBtn?.addEventListener('click', async () => {
+        const extrasIds = Array.from(resultDiv.querySelectorAll('.pos-cupon-pana-extra input:checked')).map((i) => i.value);
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Procesando…';
+        try {
+            const out = (await firebaseFunctions.httpsCallable('canjearCuponPana')({ codigo: c.codigo, extrasIds })).data;
+            await _posConfirmarCupon(null, { couponMeta: out.couponMeta, couponTitle: out.couponMeta?.titulo });
+            codeInput.value = '';
+            resultDiv.innerHTML = '';
+            showNotice('✅ Cupón Pana canjeado y agregado al ticket', 'ok');
+        } catch (err) {
+            console.error('canjearCuponPana:', err);
+            showNotice(err?.message || 'Error al canjear el cupón. Intenta de nuevo.', 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Agregar al ticket →';
+        }
+    });
+}
+
+// Línea del Cupón Pana: mismo formato que un combo especial (lista de contenido en el POS) y el
+// Toque Pana dentro de la nota, que es lo que imprime el ticket de cocina. El refill (u otro extra
+// del local) entra como línea hija con el precio que devolvió el servidor.
+function _posAgregarLineaCuponPana(meta) {
+    const precio = Number(meta.precio || 0);
+    const comboItems = (meta.composicion || []).map((p) => (Number(p.cantidad) > 1 ? `${p.nombre} x${p.cantidad}` : p.nombre)).filter(Boolean);
+    if (meta.topping) comboItems.push(`Toque Pana: ${meta.topping}`);
+    const itemKey = `pana-${meta.codigo}`;
+    internalOrderItems.push({
+        itemKey,
+        productId: `pana-${meta.campanaId}`,
+        productName: meta.titulo || 'Cupón Pana',
+        categoryName: 'CUPONES EXCLUSIVOS',
+        quantity: 1,
+        unitPrice: precio,
+        originalUnitPrice: null,
+        subtotal: precio,
+        note: comboItems.join(' + '),
+        optionLabel: comboItems.join(' + '),
+        promoLabel: `CUPÓN PANA ${meta.codigo}`,
+        isComboEspecial: true,
+        comboItems,
+        // Viaja en orderOptions del pedido guardado: deja la traza código → pedido.
+        origOrderOptions: { cuponPanaCodigo: meta.codigo, cuponPanaCampanaId: meta.campanaId },
+        parentKey: null
+    });
+    (meta.extras || []).forEach((e) => {
+        PosCart.addItem(`pana-extra-${e.id}`, e.nombre, Number(e.precio || 0), 'Cupón Pana · solo en el local', null, {
+            forcedKey: `${itemKey}::${e.id}`,
+            parentKey: itemKey
+        });
+    });
+    renderPosOrderItems();
+    renderPosTotals();
+    renderPosBottomBar();
+}
+
 async function _posConfirmarCupon(docRef, data) {
     const meta      = data.couponMeta || {};
     const couponId  = data.couponId   || '';
     const userPhone = data.userPhone  || '';
+
+    // Cupón Pana: el canje YA quedó registrado en el servidor (canjearCuponPana); solo falta la
+    // línea del ticket. No hay doc de codigos_cupon que marcar ni perfil de cliente que bloquear.
+    if (meta.type === 'pana') {
+        _posAgregarLineaCuponPana(meta);
+        return;
+    }
 
     // 1. Agregar al ticket según tipo de cupón
     if (meta.type === 'descuento') {
@@ -26118,6 +26243,434 @@ async function _icmHandleFile(file) {
         updateAdminDocumentTitle(unread.length);
     });
 })();
+
+// ── Cupón Pana — panel de campañas, métricas y pendientes ─────────────────────
+// El navegador solo LEE (cupones_campanas y cupones_pana son de lectura admin en firestore.rules);
+// toda escritura va por la Cloud Function guardarCampanaPana (functions/cuponPana.js), que valida
+// y nunca deja tocar cuposEmitidos -- esa cuenta es solo de la transacción de emisión.
+const CUPONES_CAMPANAS_COLLECTION = 'cupones_campanas';
+const CUPONES_PANA_COLLECTION = 'cupones_pana';
+const CUPON_PANA_PUBLIC_BASE_URL = 'https://roalburger.com/cupon?k=';
+const CUPON_PANA_DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const CUPON_PANA_DEFAULTS = {
+    toppingsOpciones: ['Maíz dulce', 'Pepinillo', 'Maduro'],
+    extrasLocal: [{ id: 'refill', nombre: 'Gaseosa ilimitada (solo en local)', precio: 5000 }],
+    diasValidos: [1, 2, 4],
+    waNumeroPrincipal: '573144689509'
+};
+let _cpanaCampanas = [];
+let _cpanaEditingId = null;     // null = creando una nueva
+let _cpanaComposicion = [];     // [{ productoId, nombre, cantidad }]
+let _cpanaCuponesCache = {};    // campanaId -> [cupones]
+let _cpanaSelectedMetricas = '';
+
+// Fecha de calendario en Bogotá (UTC-5 fijo) de un Timestamp, para los <input type="date">.
+function _cpanaDateKey(ts) {
+    const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+    if (!ms) return '';
+    return new Date(ms - 5 * 3600000).toISOString().slice(0, 10);
+}
+
+function _cpanaFmtFecha(ts) {
+    const ms = ts?.toMillis ? ts.toMillis() : Number(ts || 0);
+    if (!ms) return '—';
+    return new Date(ms).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'short', timeStyle: 'short' });
+}
+
+function _cpanaDiasTexto(dias) {
+    return [1, 2, 3, 4, 5, 6, 0].filter((d) => (dias || []).includes(d)).map((d) => CUPON_PANA_DIAS[d]).join(', ');
+}
+
+async function loadCuponPanaCampanas() {
+    try {
+        const snap = await firebaseDb.collection(CUPONES_CAMPANAS_COLLECTION).get();
+        _cpanaCampanas = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (b.creadaAt?.toMillis?.() || 0) - (a.creadaAt?.toMillis?.() || 0));
+    } catch (err) {
+        console.error('loadCuponPanaCampanas:', err);
+        showNotice('No se pudieron cargar las campañas de Cupón Pana.', 'error');
+    }
+    _cpanaCuponesCache = {};
+    renderCuponPanaCampanas();
+    renderCuponPanaMetricasSelect();
+    await renderCuponPanaMetricas();
+}
+
+async function _ensureCuponPanaLoaded() {
+    await loadCuponPanaCampanas();
+}
+
+function renderCuponPanaCampanas() {
+    const wrap = document.getElementById('cpanaCampanasList');
+    if (!wrap) return;
+    if (!_cpanaCampanas.length) {
+        wrap.innerHTML = '<p class="admin-hint">Aún no hay campañas. Crea la primera con "+ Nueva campaña".</p>';
+        return;
+    }
+    wrap.innerHTML = _cpanaCampanas.map((c) => {
+        const link = `${CUPON_PANA_PUBLIC_BASE_URL}${encodeURIComponent(c.id)}`;
+        const emitidos = Number(c.cuposEmitidos || 0);
+        const total = Number(c.cuposTotales || 0);
+        return `<div class="cpana-camp" data-id="${escapeHtml(c.id)}">
+            <div class="cpana-camp-head">
+                <div>
+                    <div class="cpana-camp-title">${escapeHtml(c.titulo || c.id)} · ${formatMoney(c.precio)}</div>
+                    <div class="cpana-camp-meta">ID ${escapeHtml(c.id)}${c.palabraClave ? ` · palabra "${escapeHtml(c.palabraClave)}"` : ''} · ${_cpanaDateKey(c.fechaInicio)} → ${_cpanaDateKey(c.fechaFin)} · ${escapeHtml(_cpanaDiasTexto(c.diasValidos))}</div>
+                    <div class="cpana-camp-meta">Cupos: <strong>${emitidos}</strong> emitidos de ${total} · quedan ${Math.max(0, total - emitidos)}</div>
+                </div>
+                <div class="cpana-badges">
+                    <span class="cpana-badge ${c.activa ? 'cpana-badge--on' : 'cpana-badge--off'}">${c.activa ? 'Activa' : 'Inactiva'}</span>
+                    <span class="cpana-badge ${c.requiereActivacionWA ? 'cpana-badge--wa' : 'cpana-badge--manual'}">${c.requiereActivacionWA ? 'Activación WhatsApp' : 'Fase manual'}</span>
+                </div>
+            </div>
+            <div class="cpana-link-row">
+                <code>${escapeHtml(link)}</code>
+                <button type="button" class="pm-icon-btn" data-cpana-copy="${escapeHtml(link)}">Copiar link</button>
+            </div>
+            <div class="cpana-actions">
+                <button type="button" class="pm-icon-btn" data-cpana-edit="${escapeHtml(c.id)}">Editar</button>
+                <button type="button" class="pm-icon-btn" data-cpana-metricas="${escapeHtml(c.id)}">Ver métricas</button>
+                <a class="pm-icon-btn" href="/cupon?k=${encodeURIComponent(c.id)}" target="_blank" rel="noopener">Abrir landing</a>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function renderCuponPanaMetricasSelect() {
+    const sel = document.getElementById('cpanaMetricasSelect');
+    if (!sel) return;
+    if (!_cpanaCampanas.some((c) => c.id === _cpanaSelectedMetricas)) _cpanaSelectedMetricas = _cpanaCampanas[0]?.id || '';
+    sel.innerHTML = _cpanaCampanas.length
+        ? _cpanaCampanas.map((c) => `<option value="${escapeHtml(c.id)}"${c.id === _cpanaSelectedMetricas ? ' selected' : ''}>${escapeHtml(c.titulo || c.id)} (${escapeHtml(c.id)})</option>`).join('')
+        : '<option value="">Sin campañas</option>';
+}
+
+async function _cpanaFetchCupones(campanaId, force = false) {
+    if (!campanaId) return [];
+    if (!force && _cpanaCuponesCache[campanaId]) return _cpanaCuponesCache[campanaId];
+    const snap = await firebaseDb.collection(CUPONES_PANA_COLLECTION).where('campanaId', '==', campanaId).get();
+    _cpanaCuponesCache[campanaId] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return _cpanaCuponesCache[campanaId];
+}
+
+async function renderCuponPanaMetricas() {
+    const body = document.getElementById('cpanaMetricasBody');
+    const pend = document.getElementById('cpanaPendientesBody');
+    if (!body || !pend) return;
+    const camp = _cpanaCampanas.find((c) => c.id === _cpanaSelectedMetricas);
+    if (!camp) {
+        body.innerHTML = '<p class="admin-hint">Sin campañas todavía.</p>';
+        pend.innerHTML = '';
+        return;
+    }
+    body.innerHTML = '<p class="admin-hint">Cargando…</p>';
+    let cupones = [];
+    try {
+        cupones = await _cpanaFetchCupones(camp.id);
+    } catch (err) {
+        console.error('cupones_pana:', err);
+        body.innerHTML = '<p class="admin-hint">No se pudieron cargar los cupones.</p>';
+        return;
+    }
+    const emitidos = cupones.length;
+    const total = Number(camp.cuposTotales || 0);
+    const activados = cupones.filter((c) => c.activadoAt).length;
+    const canjeados = cupones.filter((c) => c.estado === 'canjeado');
+    const tasa = emitidos ? Math.round((canjeados.length / emitidos) * 1000) / 10 : 0;
+
+    const toppings = {};
+    cupones.forEach((c) => { toppings[c.topping || '—'] = (toppings[c.topping || '—'] || 0) + 1; });
+    const maxTop = Math.max(1, ...Object.values(toppings));
+    const toppingsHTML = Object.entries(toppings).sort((a, b) => b[1] - a[1]).map(([t, n]) => `
+        <div class="cpana-bar-row"><span>${escapeHtml(t)}</span><div class="cpana-bar"><span style="width:${Math.round((n / maxTop) * 100)}%"></span></div><strong>${n}</strong></div>`).join('');
+
+    const porDia = {};
+    canjeados.forEach((c) => {
+        const key = _cpanaDateKey(c.canjeadoAt);
+        if (key) porDia[key] = (porDia[key] || 0) + 1;
+    });
+    const maxDia = Math.max(1, ...Object.values(porDia));
+    const diasHTML = Object.keys(porDia).sort().map((k) => {
+        const dow = new Date(`${k}T12:00:00Z`).getUTCDay();
+        return `<div class="cpana-bar-row"><span>${CUPON_PANA_DIAS[dow]} ${k.slice(5)}</span><div class="cpana-bar"><span style="width:${Math.round((porDia[k] / maxDia) * 100)}%"></span></div><strong>${porDia[k]}</strong></div>`;
+    }).join('');
+
+    body.innerHTML = `
+        <div class="met-kpi-row" style="margin-bottom:16px;">
+            <div class="met-kpi-card met-kpi-card--hi"><span class="met-kpi-val">${emitidos}</span><span class="met-kpi-lbl">Emitidos</span><span class="met-kpi-sub">de ${total} cupos</span></div>
+            <div class="met-kpi-card"><span class="met-kpi-val">${Math.max(0, total - Number(camp.cuposEmitidos || 0))}</span><span class="met-kpi-lbl">Restantes</span></div>
+            <div class="met-kpi-card"><span class="met-kpi-val">${activados}</span><span class="met-kpi-lbl">Activados</span></div>
+            <div class="met-kpi-card met-kpi-card--green"><span class="met-kpi-val">${canjeados.length}</span><span class="met-kpi-lbl">Canjeados</span></div>
+            <div class="met-kpi-card met-kpi-card--purple"><span class="met-kpi-val">${tasa}%</span><span class="met-kpi-lbl">Tasa de canje</span><span class="met-kpi-sub">canjeados / emitidos</span></div>
+        </div>
+        <div class="met-section-title">Toque Pana elegido</div>
+        ${toppingsHTML || '<p class="admin-hint">Sin cupones emitidos.</p>'}
+        <div class="met-section-title" style="margin-top:16px;">Canjes por día</div>
+        ${diasHTML || '<p class="admin-hint">Aún no hay canjes.</p>'}`;
+
+    _cpanaRenderPendientes(camp, cupones);
+}
+
+function _cpanaRecordatorioLink(c, camp) {
+    const tel = String(c.telefono || '').replace(/\D/g, '');
+    const msg = `¡Epa, ${c.nombre}! 👋 Te recordamos tu Cupón Pana ${c.codigo} (${camp.titulo}). `
+        + `Es válido ${_cpanaDiasTexto(camp.diasValidos)} hasta el ${_cpanaDateKey(camp.fechaFin)}. `
+        + 'Preséntalo en caja o pídelo por aquí 🍔';
+    return `https://wa.me/57${tel}?text=${encodeURIComponent(msg)}`;
+}
+
+function _cpanaRenderPendientes(camp, cupones) {
+    const pend = document.getElementById('cpanaPendientesBody');
+    if (!pend) return;
+    const activos = cupones.filter((c) => c.estado === 'activo')
+        .sort((a, b) => (a.emitidoAt?.toMillis?.() || 0) - (b.emitidoAt?.toMillis?.() || 0));
+    if (!activos.length) {
+        pend.innerHTML = '<p class="admin-hint">No hay cupones activos sin canjear en esta campaña.</p>';
+        return;
+    }
+    pend.innerHTML = `<div class="cpana-table-wrap"><table class="cpana-table">
+        <thead><tr><th>Código</th><th>Nombre</th><th>Instagram</th><th>WhatsApp</th><th>Toque</th><th>Emitido</th><th>Recordatorio</th><th></th></tr></thead>
+        <tbody>${activos.map((c) => {
+        const recordado = c.recordatorioManualAt || c.recordatorioEnviadoAt;
+        return `<tr>
+            <td><strong>${escapeHtml(c.codigo)}</strong></td>
+            <td>${escapeHtml(c.nombre)}</td>
+            <td>@${escapeHtml(c.igHandle)}</td>
+            <td>${escapeHtml(c.telefono)}</td>
+            <td>${escapeHtml(c.topping)}</td>
+            <td>${_cpanaFmtFecha(c.emitidoAt)}</td>
+            <td>${recordado ? `<span class="cpana-recordado">✓ ${_cpanaFmtFecha(recordado)}</span>` : '<span class="admin-hint">—</span>'}</td>
+            <td style="white-space:nowrap;">
+                <a class="pm-icon-btn" href="${escapeHtml(_cpanaRecordatorioLink(c, camp))}" target="_blank" rel="noopener">Recordar por WhatsApp</a>
+                <button type="button" class="pm-icon-btn" data-cpana-marcar="${escapeHtml(c.codigo)}" data-marcado="${c.recordatorioManualAt ? '1' : '0'}">${c.recordatorioManualAt ? 'Desmarcar' : 'Marcar recordado'}</button>
+            </td>
+        </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+async function _cpanaMarcarRecordatorio(codigo, marcado, btn) {
+    btn.disabled = true;
+    try {
+        await firebaseFunctions.httpsCallable('guardarCampanaPana')({ accion: 'marcar_recordatorio', codigo, marcado });
+        await _cpanaFetchCupones(_cpanaSelectedMetricas, true);
+        await renderCuponPanaMetricas();
+    } catch (err) {
+        showNotice(err?.message || 'No se pudo marcar el recordatorio.', 'error');
+        btn.disabled = false;
+    }
+}
+
+async function _cpanaExportCsv() {
+    const camp = _cpanaCampanas.find((c) => c.id === _cpanaSelectedMetricas);
+    if (!camp) return;
+    let cupones;
+    try {
+        cupones = await _cpanaFetchCupones(camp.id, true);
+    } catch (_) {
+        showNotice('No se pudieron cargar los cupones.', 'error');
+        return;
+    }
+    // Solo quienes marcaron el checkbox OPCIONAL de promociones: el de datos obligatorio cubre la
+    // gestión del cupón, no el envío de publicidad (habeas data).
+    const rows = cupones.filter((c) => c.consentimientoMarketing === true);
+    if (!rows.length) {
+        showNotice('Nadie de esta campaña aceptó recibir promociones todavía.', 'ok');
+        return;
+    }
+    const headers = ['codigo', 'nombre', 'telefono', 'instagram', 'topping', 'estado', 'emitido', 'canjeado', 'fuente'];
+    const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers.join(','), ...rows.map((c) => [
+        c.codigo, c.nombre, c.telefono, `@${c.igHandle}`, c.topping, c.estado,
+        _cpanaFmtFecha(c.emitidoAt), c.canjeadoAt ? _cpanaFmtFecha(c.canjeadoAt) : '', c.fuente || ''
+    ].map(cell).join(','))].join('\r\n');
+    downloadExportFile(`cupon-pana-${camp.id}-marketing.csv`, `﻿${csv}`, 'text/csv;charset=utf-8');
+    showNotice(`CSV exportado (${rows.length} personas que aceptaron promociones).`, 'ok');
+}
+
+// ── Editor ──
+
+function _cpanaCatalogOptions() {
+    const prods = (productsState || []).filter((p) => p && p.id).map((p) => ({ id: p.id, nombre: p.nombre, grupo: p.categoria || 'Productos' }));
+    const combos = (combosEspecialesState || []).filter((c) => c && c.id).map((c) => ({ id: c.id, nombre: c.titulo || c.nombre || c.id, grupo: 'Combos especiales' }));
+    return [...prods, ...combos].sort((a, b) => `${a.grupo} ${a.nombre}`.localeCompare(`${b.grupo} ${b.nombre}`, 'es'));
+}
+
+function _cpanaRenderComposicion() {
+    const list = document.getElementById('cpanaCompList');
+    if (!list) return;
+    list.innerHTML = _cpanaComposicion.length
+        ? _cpanaComposicion.map((p, i) => `<span class="cpana-chip">${p.cantidad > 1 ? `${p.cantidad}× ` : ''}${escapeHtml(p.nombre)}<button type="button" data-cpana-comp-del="${i}" aria-label="Quitar">×</button></span>`).join('')
+        : '<span class="admin-hint">Agrega al menos un producto.</span>';
+}
+
+function _cpanaAddExtraRow(extra = { id: '', nombre: '', precio: '' }) {
+    const list = document.getElementById('cpanaExtrasList');
+    if (!list) return;
+    const row = document.createElement('div');
+    row.className = 'cpana-extra-row';
+    row.innerHTML = `
+        <input type="text" class="cpana-extra-id" placeholder="id (ej. refill)" maxlength="30" value="${escapeHtml(extra.id)}" style="max-width:130px;">
+        <input type="text" class="cpana-extra-nombre" placeholder="Nombre visible" maxlength="60" value="${escapeHtml(extra.nombre)}">
+        <input type="text" inputmode="numeric" class="cpana-extra-precio" placeholder="Precio" value="${escapeHtml(extra.precio)}" style="max-width:110px;">
+        <button type="button" class="pm-icon-btn" data-cpana-extra-del>Quitar</button>`;
+    list.appendChild(row);
+}
+
+function openCuponPanaEditor(campanaId = null) {
+    const card = document.getElementById('cpanaEditorCard');
+    if (!card) return;
+    _cpanaEditingId = campanaId;
+    const c = campanaId ? _cpanaCampanas.find((x) => x.id === campanaId) : null;
+    const hoy = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+    const enUnaSemana = new Date(Date.now() - 5 * 3600000 + 6 * 86400000).toISOString().slice(0, 10);
+
+    document.getElementById('cpanaEditorTitle').textContent = c ? `Editar: ${c.titulo}` : 'Nueva campaña';
+    const idInput = document.getElementById('cpanaId');
+    idInput.value = c ? c.id : '';
+    idInput.readOnly = !!c;
+    document.getElementById('cpanaTitulo').value = c?.titulo || '';
+    document.getElementById('cpanaPalabra').value = c?.palabraClave || '';
+    document.getElementById('cpanaPrecio').value = c?.precio || '';
+    document.getElementById('cpanaDescripcion').value = c?.descripcion || '';
+    document.getElementById('cpanaImagen').value = c?.imagenUrl || '';
+    document.getElementById('cpanaToppings').value = (c?.toppingsOpciones || CUPON_PANA_DEFAULTS.toppingsOpciones).join(', ');
+    document.getElementById('cpanaCupos').value = c?.cuposTotales || '';
+    document.getElementById('cpanaInicio').value = c ? _cpanaDateKey(c.fechaInicio) : hoy;
+    document.getElementById('cpanaFin').value = c ? _cpanaDateKey(c.fechaFin) : enUnaSemana;
+    document.getElementById('cpanaWaPrincipal').value = c?.waNumeroPrincipal || CUPON_PANA_DEFAULTS.waNumeroPrincipal;
+    document.getElementById('cpanaWaCupones').value = c?.waNumeroCupones || '';
+    document.getElementById('cpanaActiva').checked = c ? c.activa === true : false;
+    document.getElementById('cpanaRequiereWA').checked = c ? c.requiereActivacionWA === true : false;
+    document.getElementById('cpanaDeleteBtn').hidden = !c;
+
+    const dias = c?.diasValidos || CUPON_PANA_DEFAULTS.diasValidos;
+    document.getElementById('cpanaDias').innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `
+        <label><input type="checkbox" value="${d}"${dias.includes(d) ? ' checked' : ''}> ${CUPON_PANA_DIAS[d]}</label>`).join('');
+
+    const sel = document.getElementById('cpanaCompProducto');
+    sel.innerHTML = '<option value="">Elegir producto o combo…</option>' + _cpanaCatalogOptions()
+        .map((o) => `<option value="${escapeHtml(o.id)}" data-nombre="${escapeHtml(o.nombre)}">${escapeHtml(o.grupo)} — ${escapeHtml(o.nombre)}</option>`).join('');
+    _cpanaComposicion = (c?.composicion || []).map((p) => ({ productoId: p.productoId, nombre: p.nombre, cantidad: Number(p.cantidad || 1) }));
+    _cpanaRenderComposicion();
+
+    document.getElementById('cpanaExtrasList').innerHTML = '';
+    (c ? (c.extrasLocal || []) : CUPON_PANA_DEFAULTS.extrasLocal).forEach((e) => _cpanaAddExtraRow(e));
+
+    card.hidden = false;
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function _cpanaReadForm() {
+    const val = (id) => String(document.getElementById(id)?.value || '').trim();
+    const extras = Array.from(document.querySelectorAll('#cpanaExtrasList .cpana-extra-row')).map((row) => ({
+        id: row.querySelector('.cpana-extra-id').value.trim(),
+        nombre: row.querySelector('.cpana-extra-nombre').value.trim(),
+        precio: Number(String(row.querySelector('.cpana-extra-precio').value).replace(/\D/g, '') || 0)
+    })).filter((e) => e.id || e.nombre);
+    return {
+        campanaId: val('cpanaId'),
+        campana: {
+            titulo: val('cpanaTitulo'),
+            palabraClave: val('cpanaPalabra'),
+            descripcion: val('cpanaDescripcion'),
+            imagenUrl: val('cpanaImagen'),
+            composicion: _cpanaComposicion,
+            precio: Number(val('cpanaPrecio').replace(/\D/g, '') || 0),
+            toppingsOpciones: val('cpanaToppings').split(',').map((t) => t.trim()).filter(Boolean),
+            extrasLocal: extras,
+            cuposTotales: Number(val('cpanaCupos') || 0),
+            diasValidos: Array.from(document.querySelectorAll('#cpanaDias input:checked')).map((i) => Number(i.value)),
+            fechaInicio: val('cpanaInicio'),
+            fechaFin: val('cpanaFin'),
+            activa: document.getElementById('cpanaActiva').checked,
+            requiereActivacionWA: document.getElementById('cpanaRequiereWA').checked,
+            waNumeroPrincipal: val('cpanaWaPrincipal').replace(/\D/g, ''),
+            waNumeroCupones: val('cpanaWaCupones').replace(/\D/g, '')
+        }
+    };
+}
+
+async function _cpanaGuardar(e) {
+    e.preventDefault();
+    const btn = document.getElementById('cpanaSaveBtn');
+    const { campanaId, campana } = _cpanaReadForm();
+    btn.disabled = true;
+    try {
+        await firebaseFunctions.httpsCallable('guardarCampanaPana')({ accion: 'guardar', campanaId, esNueva: !_cpanaEditingId, campana });
+        showNotice(`Campaña "${campana.titulo}" guardada.`, 'ok');
+        _cpanaSelectedMetricas = campanaId;
+        document.getElementById('cpanaEditorCard').hidden = true;
+        await loadCuponPanaCampanas();
+    } catch (err) {
+        showNotice(err?.message || 'No se pudo guardar la campaña.', 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function _cpanaEliminar() {
+    if (!_cpanaEditingId) return;
+    if (!confirm(`¿Eliminar la campaña "${_cpanaEditingId}"? Solo se puede si aún no emitió ningún cupón.`)) return;
+    try {
+        await firebaseFunctions.httpsCallable('guardarCampanaPana')({ accion: 'eliminar', campanaId: _cpanaEditingId });
+        showNotice('Campaña eliminada.', 'ok');
+        document.getElementById('cpanaEditorCard').hidden = true;
+        await loadCuponPanaCampanas();
+    } catch (err) {
+        showNotice(err?.message || 'No se pudo eliminar la campaña.', 'error');
+    }
+}
+
+document.getElementById('cpanaNewBtn')?.addEventListener('click', () => openCuponPanaEditor(null));
+document.getElementById('cpanaEditorCloseBtn')?.addEventListener('click', () => { document.getElementById('cpanaEditorCard').hidden = true; });
+document.getElementById('cpanaForm')?.addEventListener('submit', _cpanaGuardar);
+document.getElementById('cpanaDeleteBtn')?.addEventListener('click', _cpanaEliminar);
+document.getElementById('cpanaExtraAddBtn')?.addEventListener('click', () => _cpanaAddExtraRow());
+document.getElementById('cpanaExportBtn')?.addEventListener('click', _cpanaExportCsv);
+document.getElementById('cpanaMetricasSelect')?.addEventListener('change', (e) => {
+    _cpanaSelectedMetricas = e.target.value;
+    renderCuponPanaMetricas();
+});
+document.getElementById('cpanaCompAddBtn')?.addEventListener('click', () => {
+    const sel = document.getElementById('cpanaCompProducto');
+    const opt = sel?.selectedOptions?.[0];
+    if (!opt || !opt.value) return;
+    const cantidad = Math.min(20, Math.max(1, Number(document.getElementById('cpanaCompCantidad').value) || 1));
+    _cpanaComposicion.push({ productoId: opt.value, nombre: opt.dataset.nombre || opt.textContent, cantidad });
+    _cpanaRenderComposicion();
+});
+document.getElementById('cpanaImagenFile')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+        showNotice('Subiendo imagen…', 'ok');
+        const url = await uploadImageToFirebase(file, `cupon-pana-${document.getElementById('cpanaId').value || 'campana'}`);
+        document.getElementById('cpanaImagen').value = url;
+        showNotice('Imagen subida.', 'ok');
+    } catch (err) {
+        showNotice(err?.message || 'No se pudo subir la imagen.', 'error');
+    } finally {
+        e.target.value = '';
+    }
+});
+document.querySelector('[data-tab-panel="cuponpana"]')?.addEventListener('click', (e) => {
+    const t = e.target.closest('button');
+    if (!t) return;
+    if (t.dataset.cpanaCopy) copyTextToClipboard(t.dataset.cpanaCopy);
+    if (t.dataset.cpanaEdit) openCuponPanaEditor(t.dataset.cpanaEdit);
+    if (t.dataset.cpanaMetricas) {
+        _cpanaSelectedMetricas = t.dataset.cpanaMetricas;
+        renderCuponPanaMetricasSelect();
+        renderCuponPanaMetricas();
+        document.getElementById('cpanaMetricasBody')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (t.dataset.cpanaMarcar) _cpanaMarcarRecordatorio(t.dataset.cpanaMarcar, t.dataset.marcado !== '1', t);
+    if (t.dataset.cpanaCompDel !== undefined) {
+        _cpanaComposicion.splice(Number(t.dataset.cpanaCompDel), 1);
+        _cpanaRenderComposicion();
+    }
+    if (t.hasAttribute('data-cpana-extra-del')) t.closest('.cpana-extra-row')?.remove();
+});
 
 const _meseroLinkToken = new URLSearchParams(window.location.search).get('mesero');
 if (_meseroLinkToken) {

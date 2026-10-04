@@ -91,3 +91,19 @@ indexHtml = indexHtml.replace(
 
 fs.writeFileSync(indexHtmlPath, indexHtml, 'utf8');
 console.log(`[bump] index.html   → script-v2.js?v=${stamp}  tracking.js?v=${stamp}  agent-chat.js?v=${stamp}  firebase-config.js?v=${stamp}  style.css?v=${stamp}`);
+
+// ── 4. cupon.html — ?v= en cupon.js y firebase-config.js (landing de Cupón Pana) ─────────────
+// Mismo motivo que arriba: .js con Cache-Control immutable de 1 año; sin un ?v= nuevo en cada
+// build, quien ya abrió /cupon seguiría con el cupon.js viejo para siempre.
+const cuponHtmlPath = path.join(ROOT, 'cupon.html');
+let cuponHtml = fs.readFileSync(cuponHtmlPath, 'utf8');
+cuponHtml = cuponHtml.replace(
+    /cupon\.js(\?v=[\w-]+)?(?=")/g,
+    `cupon.js?v=${stamp}`
+);
+cuponHtml = cuponHtml.replace(
+    /firebase-config\.js(\?v=[\w-]+)?(?=")/g,
+    `firebase-config.js?v=${stamp}`
+);
+fs.writeFileSync(cuponHtmlPath, cuponHtml, 'utf8');
+console.log(`[bump] cupon.html   → cupon.js?v=${stamp}  firebase-config.js?v=${stamp}`);

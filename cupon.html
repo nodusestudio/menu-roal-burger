@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Cupón Pana · ROAL BURGER</title>
+    <meta name="description" content="Tu cupón exclusivo de ROAL BURGER para seguidores de Instagram.">
+    <meta name="robots" content="noindex">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="ROAL BURGER">
+    <meta property="og:title" content="Cupón Pana · ROAL BURGER">
+    <meta property="og:description" content="Reclama tu cupón exclusivo para seguidores de Instagram. Cupos limitados.">
+    <meta property="og:image" content="https://roalburger.com/portada.png?v=20260601">
+    <meta name="theme-color" content="#f3e9d8">
+    <link rel="icon" type="image/png" href="isotipo.png">
+    <link rel="apple-touch-icon" href="isotipo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --cp-orange: #FF6B00;
+            --cp-orange-dark: #d95b00;
+            --cp-ink: #1f1f21;
+            --cp-ink-soft: rgba(31, 31, 33, 0.72);
+            --cp-cream: #f3e9d8;
+            --cp-wa: #1fa855;
+            --cp-radius: 22px;
+        }
+        * { box-sizing: border-box; }
+        html { -webkit-text-size-adjust: 100%; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: 'Roboto', system-ui, -apple-system, sans-serif;
+            color: var(--cp-ink);
+            /* Crema texturizada (regla de fondos de pantalla completa: nunca blanco puro). */
+            background-color: var(--cp-cream);
+            background-image:
+                radial-gradient(circle at 20% 10%, rgba(255, 107, 0, 0.14), transparent 45%),
+                radial-gradient(circle at 90% 85%, rgba(255, 107, 0, 0.10), transparent 40%),
+                radial-gradient(rgba(90, 58, 27, 0.07) 1px, transparent 1px);
+            background-size: auto, auto, 6px 6px;
+        }
+        a { color: var(--cp-orange-dark); }
+
+        .cp-shell { max-width: 480px; margin: 0 auto; padding: 18px 16px 48px; }
+        .cp-top { display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+        .cp-top img { height: 46px; width: auto; }
+
+        /* Tarjetas: regla global de glassmorphism del menú cliente. */
+        .liquid-glass {
+            background: rgba(255, 255, 255, 0.18);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+            border: 1.5px solid rgba(255, 255, 255, 0.28);
+            box-shadow: 0 10px 30px rgba(90, 58, 27, 0.12);
+        }
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+            .liquid-glass { background: rgba(255, 255, 255, 0.55); }
+        }
+
+        .cp-hero, .cp-card { border-radius: var(--cp-radius); overflow: hidden; margin-bottom: 16px; }
+        .cp-hero-img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #e8d9c0; }
+        .cp-hero-body, .cp-card { padding: 20px 18px; }
+        .cp-kicker {
+            margin: 0 0 6px; font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 0.82rem;
+            letter-spacing: 0.08em; text-transform: uppercase; color: var(--cp-orange-dark);
+        }
+        .cp-title, .cp-h2, .cp-h3 {
+            margin: 0; font-family: 'Oswald', 'Arial Narrow', sans-serif; font-weight: 700;
+            text-transform: uppercase; line-height: 1.05; letter-spacing: 0.01em; color: var(--cp-ink);
+        }
+        .cp-title { font-size: clamp(1.9rem, 8vw, 2.4rem); }
+        .cp-h2 { font-size: 1.45rem; }
+        .cp-h3 { font-size: 1.05rem; margin-bottom: 8px; }
+        .cp-comp { margin: 8px 0 0; font-weight: 500; color: var(--cp-ink-soft); }
+        .cp-desc, .cp-sub { margin: 8px 0 0; line-height: 1.5; color: var(--cp-ink-soft); }
+        .cp-price-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+        .cp-price { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 2.3rem; color: var(--cp-orange); line-height: 1; }
+        .cp-cupos {
+            display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+            background: var(--cp-ink); color: #fff; font-family: 'Oswald', sans-serif; font-weight: 600;
+            font-size: 1rem; letter-spacing: 0.04em; text-transform: uppercase;
+        }
+        .cp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--cp-orange); animation: cp-pulse 1.4s ease-in-out infinite; }
+        @keyframes cp-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
+        .cp-days { margin: 12px 0 0; font-weight: 500; }
+
+        .cp-field { display: grid; gap: 6px; margin: 14px 0 0; border: 0; padding: 0; min-width: 0; }
+        .cp-field > span, .cp-field legend { font-family: 'Oswald', sans-serif; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em; padding: 0; }
+        .cp-field input {
+            width: 100%; font: inherit; font-size: 16px; /* 16px: iOS no hace zoom al enfocar */
+            padding: 13px 14px; border-radius: 14px; border: 1.5px solid rgba(31, 31, 33, 0.18);
+            background: rgba(255, 255, 255, 0.75); color: var(--cp-ink);
+        }
+        .cp-field input:focus { outline: none; border-color: var(--cp-orange); box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.18); }
+        .cp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .cp-chip {
+            font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 999px; cursor: pointer;
+            border: 1.5px solid rgba(31, 31, 33, 0.22); background: rgba(255, 255, 255, 0.6); color: var(--cp-ink);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .cp-chip[aria-pressed="true"] { background: var(--cp-orange); border-color: var(--cp-orange); color: #fff; }
+        .cp-check { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 0.9rem; line-height: 1.45; }
+        .cp-check input { width: 20px; height: 20px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--cp-orange); }
+        .cp-check em { color: var(--cp-ink-soft); font-style: normal; font-size: 0.82rem; }
+        .cp-error { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(200, 40, 30, 0.12); color: #9b1c12; font-weight: 500; }
+
+        .cp-btn {
+            display: flex; align-items: center; justify-content: center; width: 100%; min-height: 54px; margin-top: 16px;
+            padding: 14px 18px; border-radius: 16px; border: 0; cursor: pointer; text-decoration: none; text-align: center;
+            font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.15rem; letter-spacing: 0.06em; text-transform: uppercase;
+            -webkit-tap-highlight-color: transparent; transition: transform 0.08s ease, filter 0.15s ease;
+        }
+        .cp-btn:active { transform: scale(0.98); }
+        .cp-btn:disabled { opacity: 0.6; cursor: progress; }
+        .cp-btn--primary { background: var(--cp-orange); color: #fff; box-shadow: 0 8px 22px rgba(255, 107, 0, 0.35); }
+        .cp-btn--wa { background: var(--cp-wa); color: #fff; box-shadow: 0 8px 22px rgba(31, 168, 85, 0.3); }
+        .cp-btn--ghost { background: rgba(255, 255, 255, 0.55); color: var(--cp-ink); border: 1.5px solid rgba(31, 31, 33, 0.2); }
+        .cp-actions .cp-btn { margin-top: 10px; }
+        .cp-recaptcha-note { margin: 12px 0 0; font-size: 0.72rem; color: var(--cp-ink-soft); text-align: center; }
+        .grecaptcha-badge { visibility: hidden !important; } /* aviso de reCAPTCHA va en texto (permitido por Google) */
+
+        .cp-cond ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 0.9rem; color: var(--cp-ink-soft); }
+
+        .cp-banner { margin: 0 0 12px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.3rem; text-transform: uppercase; text-align: center; }
+
+        /* Tarjeta del cupón: es la pieza "física" que el cliente muestra en caja. */
+        .cp-ticket {
+            position: relative; border-radius: var(--cp-radius); padding: 20px 18px 18px; margin-bottom: 6px;
+            background: var(--cp-ink); color: #fff; overflow: hidden;
+            box-shadow: 0 14px 34px rgba(31, 31, 33, 0.35); border-top: 8px solid var(--cp-orange);
+        }
+        .cp-ticket::before, .cp-ticket::after {
+            content: ''; position: absolute; top: 47%; width: 26px; height: 26px; border-radius: 50%; background: var(--cp-cream);
+        }
+        .cp-ticket::before { left: -13px; }
+        .cp-ticket::after { right: -13px; }
+        .cp-ticket-head { display: flex; align-items: center; gap: 12px; }
+        .cp-ticket-head img { border-radius: 10px; flex: 0 0 auto; }
+        .cp-ticket-head > div { flex: 1 1 auto; min-width: 0; }
+        .cp-ticket-kicker { margin: 0; font-family: 'Oswald', sans-serif; font-weight: 600; letter-spacing: 0.1em; color: var(--cp-orange); font-size: 0.85rem; }
+        .cp-ticket-title { margin: 2px 0 0; font-family: 'Oswald', sans-serif; font-weight: 700; text-transform: uppercase; font-size: 1.2rem; line-height: 1.1; }
+        .cp-ticket-price { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.4rem; color: var(--cp-orange); }
+        .cp-ticket-name { margin: 14px 0 0; color: rgba(255, 255, 255, 0.78); }
+        .cp-ticket-code-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 14px;
+            margin-top: 14px; padding-top: 14px; border-top: 2px dashed rgba(255, 255, 255, 0.22);
+        }
+        .cp-ticket-label { margin: 0; font-family: 'Oswald', sans-serif; letter-spacing: 0.08em; font-size: 0.78rem; text-transform: uppercase; color: rgba(255, 255, 255, 0.55); }
+        .cp-ticket-code { margin: 2px 0 10px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: clamp(2.2rem, 11vw, 2.8rem); letter-spacing: 0.14em; line-height: 1; }
+        .cp-ticket-val { margin: 2px 0 0; font-weight: 500; }
+        .cp-qr { width: 118px; height: 118px; flex: 0 0 auto; border-radius: 10px; }
+        .cp-ticket-days { margin: 14px 0 0; font-weight: 500; }
+        .cp-ticket-warn { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: rgba(255, 107, 0, 0.18); color: #ffd2b0; font-size: 0.88rem; }
+        .cp-ticket-legal { margin: 12px 0 0; font-size: 0.74rem; color: rgba(255, 255, 255, 0.5); }
+
+        .cp-state { text-align: center; padding: 28px 20px; }
+        .cp-state-emoji { font-size: 3rem; margin: 0 0 8px; }
+        .cp-foot { text-align: center; font-size: 0.85rem; margin: 8px 0 0; }
+
+        .cp-skeleton { height: 280px; border-radius: var(--cp-radius); background: linear-gradient(100deg, rgba(255,255,255,0.25) 30%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0.25) 70%); background-size: 200% 100%; animation: cp-shimmer 1.2s linear infinite; }
+        @keyframes cp-shimmer { to { background-position: -200% 0; } }
+        @media (prefers-reduced-motion: reduce) { .cp-dot, .cp-skeleton { animation: none; } }
+    </style>
+</head>
+<body>
+    <main class="cp-shell">
+        <header class="cp-top"><a href="/" aria-label="Ir al menú de ROAL BURGER"><img src="logo.webp" alt="ROAL BURGER" width="140" height="46"></a></header>
+        <div id="cuponApp" aria-live="polite" aria-busy="true">
+            <div class="cp-skeleton"></div>
+        </div>
+        <noscript><p style="text-align:center">Activa JavaScript para reclamar tu cupón.</p></noscript>
+    </main>
+    <script src="firebase-config.js"></script>
+    <script src="cupon.js?v=20260619"></script>
+</body>
+</html>
