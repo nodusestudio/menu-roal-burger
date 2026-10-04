@@ -366,6 +366,35 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ── Cupón Pana (functions/cuponPana.js) ──────────────────────────────────────
+    // Cupos, códigos y estados de canje son dinero: NADIE los escribe desde el navegador, ni
+    // siquiera un admin -- toda escritura pasa por Cloud Functions con transacciones (Admin
+    // SDK, que se salta estas reglas). El panel de FODEXA escribe vía guardarCampanaPana.
+    match /cupones_campanas/{campanaId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    // Vista pública que lee la landing /cupon con un get anónimo por ID (?k=<campanaId>). Sin
+    // list: nadie debe poder enumerar las campañas (incluidas las futuras) recorriendo la colección.
+    match /cupones_campanas_publico/{campanaId} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if false;
+    }
+    // Datos personales (nombre, celular, @instagram) con autorización de habeas data: solo admin.
+    match /cupones_pana/{codigo} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /cupones_pana_index/{indexId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /cupones_wa_procesados/{messageId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /admins/{uid} {
       allow read, write: if false;
     }

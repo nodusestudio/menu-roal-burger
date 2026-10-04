@@ -271,3 +271,60 @@ test('n) SEGURIDAD: meseros_credenciales/{token} no es legible por nadie (ni adm
     // El doc público del mesero sigue siendo legible sin sesión (validación del link).
     await assertSucceeds(anonDb.collection('meseros').doc('tok-p').get());
 });
+
+// Cupón Pana (functions/cuponPana.js): cupos, códigos y estados se escriben SOLO desde Cloud
+// Functions. La landing pública solo puede hacer get (nunca list) de la vista pública.
+test('o) SEGURIDAD Cupón Pana: cupones_campanas solo la lee el admin y nadie la escribe desde el cliente', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-test-uid').set({ seeded: true });
+        await context.firestore().collection('cupones_campanas').doc('TEST').set({ titulo: 'Test', cuposEmitidos: 0, cuposTotales: 10 });
+    });
+    const adminDb = testEnv.authenticatedContext('admin-test-uid').firestore();
+    const anonDb  = testEnv.unauthenticatedContext().firestore();
+    const clienteDb = testEnv.authenticatedContext('phone_3001234567').firestore();
+
+    await assertSucceeds(adminDb.collection('cupones_campanas').doc('TEST').get());
+    await assertFails(anonDb.collection('cupones_campanas').doc('TEST').get());
+    await assertFails(clienteDb.collection('cupones_campanas').doc('TEST').get());
+    // Ni siquiera el admin escribe directo: va por guardarCampanaPana.
+    await assertFails(adminDb.collection('cupones_campanas').doc('TEST').update({ cuposEmitidos: 0 }));
+    await assertFails(adminDb.collection('cupones_campanas').doc('NUEVA').set({ titulo: 'x' }));
+});
+
+test('p) SEGURIDAD Cupón Pana: cupones_campanas_publico permite get anónimo pero no list ni escritura', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-test-uid').set({ seeded: true });
+        await context.firestore().collection('cupones_campanas_publico').doc('TEST').set({ titulo: 'Test', cuposRestantes: 5 });
+    });
+    const adminDb = testEnv.authenticatedContext('admin-test-uid').firestore();
+    const anonDb  = testEnv.unauthenticatedContext().firestore();
+
+    await assertSucceeds(anonDb.collection('cupones_campanas_publico').doc('TEST').get());
+    await assertFails(anonDb.collection('cupones_campanas_publico').get());
+    await assertFails(anonDb.collection('cupones_campanas_publico').doc('TEST').update({ cuposRestantes: 999 }));
+    await assertFails(adminDb.collection('cupones_campanas_publico').doc('TEST').update({ cuposRestantes: 999 }));
+});
+
+test('q) SEGURIDAD Cupón Pana: cupones_pana / index / wa_procesados — solo lectura de admin, sin escritura de nadie', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-test-uid').set({ seeded: true });
+        await context.firestore().collection('meseros').doc('tok-c').set({ nombre: 'Caro' });
+        await context.firestore().collection('cupones_pana').doc('ABC234').set({ codigo: 'ABC234', estado: 'activo', telefono: '3001234567' });
+        await context.firestore().collection('cupones_pana_index').doc('TEST_3001234567').set({ codigo: 'ABC234' });
+        await context.firestore().collection('cupones_wa_procesados').doc('wamid.1').set({ procesadoAt: new Date() });
+    });
+    const adminDb = testEnv.authenticatedContext('admin-test-uid').firestore();
+    const anonDb  = testEnv.unauthenticatedContext().firestore();
+    const meseroDb = testEnv.authenticatedContext('mesero_tok-c', { mesero: true, meseroToken: 'tok-c' }).firestore();
+
+    for (const [col, id] of [['cupones_pana', 'ABC234'], ['cupones_pana_index', 'TEST_3001234567'], ['cupones_wa_procesados', 'wamid.1']]) {
+        await assertSucceeds(adminDb.collection(col).doc(id).get());
+        await assertFails(anonDb.collection(col).doc(id).get());
+        // El mesero valida/canjea por Cloud Function (validarCuponPana), nunca leyendo directo.
+        await assertFails(meseroDb.collection(col).doc(id).get());
+        await assertFails(adminDb.collection(col).doc(id).set({ hack: true }));
+        await assertFails(anonDb.collection(col).doc(`${id}-nuevo`).set({ hack: true }));
+    }
+    // El canje directo (saltándose la transacción) está cerrado incluso para el admin.
+    await assertFails(adminDb.collection('cupones_pana').doc('ABC234').update({ estado: 'canjeado' }));
+});

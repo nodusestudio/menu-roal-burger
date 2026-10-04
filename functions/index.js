@@ -13,6 +13,7 @@ const { buildWhatsAppOrderDraft } = require('./agent/whatsappOrderParser');
 const orderLogic = require('./agent/orderLogic');
 const { buildDeliveredOrderWhatsAppMessage } = orderLogic;
 const pricing = require('./pricing');
+const { assertRecaptchaToken } = require('./recaptcha');
 
 initializeApp();
 
@@ -39,28 +40,9 @@ const MESEROS_COLLECTION             = 'meseros';
 const MESEROS_CREDENTIALS_COLLECTION = 'meseros_credenciales';
 const ACCOUNT_DELETION_GRACE_MS      = 7 * 24 * 60 * 60 * 1000; // 7 dias antes de borrar de verdad
 
-// El placeholder del campo de telefono en el registro ("+57 300 000 0000") invita a escribir el
-// indicativo de pais, pero clientId siempre fue `phone_${phoneDigits}` sin normalizar eso -- sin
-// esto, "+57 300 1234567" y "300 1234567" generaban DOS clientId distintos para el mismo numero
-// real (phone_573001234567 vs phone_3001234567), duplicando la cuenta. Se quita el "57" solo
-// cuando sobran exactamente esos 2 digitos y lo que queda es un celular valido.
-function normalizeColombianPhoneDigits(raw) {
-    const digits = String(raw || '').replace(/\D/g, '');
-    if (digits.length === 12 && digits.startsWith('57') && digits[2] === '3') {
-        return digits.slice(2);
-    }
-    return digits;
-}
-
-// Celular colombiano valido: exactamente 10 digitos y siempre empieza en 3 (300-350 aprox, todos
-// los rangos moviles vigentes) -- un fijo (empieza en 1/4/5/6/7/8, con o sin indicativo) o
-// cualquier otra cadena de 10 digitos (ej. "0000000000", un numero a medio escribir con ceros a
-// la izquierda) pasaba el viejo chequeo generico de "al menos 10 digitos" sin ser un celular real
-// capaz de recibir WhatsApp. Se espera que digits ya haya pasado por
-// normalizeColombianPhoneDigits (o el normalizePhoneDigits del cliente, que hace lo mismo).
-function isValidColombianMobile(digits) {
-    return /^3\d{9}$/.test(String(digits || ''));
-}
+// normalizeColombianPhoneDigits / isValidColombianMobile viven en phoneUtils.js (compartidos con
+// cuponPana.js) -- ver ahí el porqué de cada regla.
+const { normalizeColombianPhoneDigits, isValidColombianMobile } = require('./phoneUtils');
 
 // Orígenes permitidos para llamadas a las Cloud Functions desde el navegador.
 // Solo estos dominios pueden invocar las funciones onCall desde un browser.
@@ -191,31 +173,8 @@ exports.verifyRecaptcha = onCall(
     { region: 'us-central1', secrets: [RECAPTCHA_SECRET], cors: ALLOWED_ORIGINS },
     async (request) => {
         const token = String(request.data?.token || '');
-        if (!token) {
-            throw new HttpsError('invalid-argument', 'Token de reCAPTCHA requerido.');
-        }
-
-        const secret = RECAPTCHA_SECRET.value();
-        if (!secret) {
-            throw new HttpsError('failed-precondition', 'Servicio de verificacion no configurado.');
-        }
-
-        const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body:    `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`
-        });
-
-        if (!resp.ok) {
-            throw new HttpsError('internal', 'No se pudo contactar el servicio de verificacion.');
-        }
-
-        const data = await resp.json();
-
-        if (!data.success || data.score < 0.5) {
-            throw new HttpsError('failed-precondition', 'Verificacion de seguridad fallida.');
-        }
-
+        // Mismo criterio (score >= 0.5) que emitirCuponPana -- ver recaptcha.js.
+        await assertRecaptchaToken(RECAPTCHA_SECRET.value(), token);
         return { success: true };
     }
 );
@@ -2575,3 +2534,95 @@ exports.ultramsgWebhook = onRequest(
         }
     }
 );
+
+// ─────────────────────────────────────────────────────────────
+// CUPÓN PANA — cupones semanales para seguidores de Instagram (landing /cupon + POS de FODEXA).
+// La lógica completa (y el porqué de cada regla) vive en cuponPana.js; aquí solo los wrappers.
+// ─────────────────────────────────────────────────────────────
+const cuponPana = require('./cuponPana');
+
+// Landing pública roalburger.com/cupon: reCAPTCHA v3 + rate limit por IP y por teléfono antes de
+// tocar la transacción de emisión (cupos, candados de unicidad y código).
+exports.emitirCuponPana = onCall(
+    { region: 'us-central1', secrets: [RECAPTCHA_SECRET], cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const input = cuponPana.validateEmitInput(request.data);
+        await assertRecaptchaToken(RECAPTCHA_SECRET.value(), String(request.data?.recaptchaToken || ''));
+
+        const clientIp = String(
+            request.rawRequest?.headers?.['x-forwarded-for']?.split(',')[0]?.trim()
+            || request.rawRequest?.ip
+            || ''
+        ).trim();
+        const checks = [cuponPana.checkRateLimit(db, `cupon_tel_${input.telefono}`, cuponPana.RATE_LIMIT_MAX_PER_PHONE)];
+        if (clientIp) checks.push(cuponPana.checkRateLimit(db, `cupon_ip_${clientIp.replace(/[^0-9a-fA-F.:]/g, '')}`, cuponPana.RATE_LIMIT_MAX_PER_IP));
+        if ((await Promise.all(checks)).some((ok) => !ok)) {
+            throw new HttpsError('resource-exhausted', 'Vamos muy rápido 🙂 Espera unos minutos e intenta de nuevo.');
+        }
+
+        try {
+            return await cuponPana.emitirCuponPanaTransaction(db, input);
+        } catch (err) {
+            if (err instanceof HttpsError) throw err;
+            console.error('emitirCuponPana error:', err);
+            throw new HttpsError('internal', 'No se pudo emitir el cupón. Intenta de nuevo.');
+        }
+    }
+);
+
+// POS (admin o mesero con sesión real): solo lectura, dice si el código se puede canjear HOY.
+exports.validarCuponPana = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        await cuponPana.ensureAdminOrMeseroCaller(db, request);
+        return cuponPana.validarCuponPana(db, request.data?.codigo);
+    }
+);
+
+// POS: canje transaccional (solo una caja gana) + couponMeta con el precio del servidor.
+exports.canjearCuponPana = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const caller = await cuponPana.ensureAdminOrMeseroCaller(db, request);
+        return cuponPana.canjearCuponPanaTransaction(db, request.data?.codigo, {
+            uid: caller.uid,
+            extrasIds: request.data?.extrasIds
+        });
+    }
+);
+
+// Panel Cupón Pana de FODEXA: crear/editar/eliminar campañas y marca manual de recordatorio.
+exports.guardarCampanaPana = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const uid = await cuponPana.ensureAdmin(db, request);
+        return cuponPana.guardarCampanaPana(db, request.data, uid);
+    }
+);
+
+// Mantiene cupones_campanas_publico (lo único que la landing puede leer) en sync con la campaña.
+exports.syncCampanaPublica = onDocumentWritten(
+    { document: 'cupones_campanas/{campanaId}', region: 'us-central1' },
+    async (event) => {
+        await cuponPana.syncCampanaPublica(getFirestore(), event.params.campanaId);
+    }
+);
+
+// 23:30 hora Colombia: vence los cupones sin canjear de campañas ya terminadas.
+exports.vencerCuponesPana = onSchedule(
+    { schedule: '30 23 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        const r = await cuponPana.vencerCuponesPana(getFirestore());
+        console.log(`vencerCuponesPana: ${r.vencidos} cupones vencidos en ${r.campanas} campañas terminadas.`);
+    }
+);
+
+// FASE 2 (activación/recordatorios por el WhatsApp dedicado, WhatsApp Cloud API): escrita y
+// testeada en cuponPanaWhatsapp.js, NO desplegada. Descomentar SOLO después de crear los
+// secretos WA_CUPONES_TOKEN, WA_CUPONES_PHONE_ID, WA_CUPONES_APP_SECRET y WA_CUPONES_VERIFY_TOKEN
+// -- con esta línea activa y sin secretos, cualquier `firebase deploy --only functions` falla.
+// Object.assign(exports, require('./cuponPanaWhatsapp').buildCuponPanaFase2Functions());
