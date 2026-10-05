@@ -72,7 +72,7 @@ const defaultButtons = [
         label: 'PIDE TU DOMICILIO AQUI',
         icon: '📱',
         actionType: 'external',
-        link: 'https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
+        link: 'https://api.whatsapp.com/send?phone=573144689509&text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
         buttonType: 'solid',
         color: '#25d366',
         size: 'lg',
@@ -143,7 +143,7 @@ const defaultBranding = {
     slogan: 'Comida rapida con acento venezolano',
     logoUrl: 'logo.png',
     whatsappNumber: '573144689509',
-    whatsappLink: 'https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
+    whatsappLink: 'https://api.whatsapp.com/send?phone=573144689509&text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
     address: 'Cl. 22 #29-59, Armenia, Quindio. Barrio Las Americas.',
     locationLink: 'https://maps.google.com/?q=Cl.+22+%2329-59,+Armenia,+Quindio',
     instagramLink: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
@@ -10443,10 +10443,20 @@ function buildOrderConfirmationMessage(order) {
     return `${saludo} Recibimos tu pedido *${codigo}*.\nAntes de mandarlo a cocina, confírmanos que todo esté correcto por favor 🙏\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n🧾 *Resumen:*\n${resumen.join('\n')}\n\n${entregaLinea}\n${pagoLinea}\n\n¿Está todo bien? Respóndenos *SÍ* para enviarlo a cocina ✅`;
 }
 
+// Enlace de WhatsApp: SIEMPRE api.whatsapp.com/send, nunca wa.me. La redirección de wa.me a
+// api.whatsapp.com convierte los emojis de 4 bytes (👋 🍔 📦 …) en "�" -- comprobado en escritorio,
+// con user agent de iPhone y en el navegador interno de Instagram (ver f48942d). El enlace directo
+// los conserva. Sin texto, abre el chat vacío. SYNC: mismo formato que waMeLink en
+// functions/cuponPana.js (este archivo no se empaqueta con imports, por eso vive aquí).
+function buildWhatsAppUrl(phoneDigits, text = '') {
+    const digits = String(phoneDigits || '').replace(/\D+/g, '');
+    return `https://api.whatsapp.com/send?phone=${digits}${text ? `&text=${encodeURIComponent(text)}` : ''}`;
+}
+
 function buildOrderWhatsAppLink(order) {
     const digits = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D+/g, '');
     if (!digits) return '';
-    return `https://wa.me/${digits}?text=${encodeURIComponent(buildOrderWhatsAppMessage(order))}`;
+    return buildWhatsAppUrl(digits, buildOrderWhatsAppMessage(order));
 }
 
 async function copyTextToClipboard(text) {
@@ -10834,7 +10844,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                             <span class="ticket-msg-menu-label">${m.icon} ${escapeHtml(m.label)}</span>
                             <span class="ticket-msg-menu-actions">
                                 <button type="button" class="ticket-msg-menu-btn" data-wa-copy="${escapeHtml(m.text)}" title="Copiar ${escapeHtml(m.label)}">📋</button>
-                                ${_waDigits ? `<a class="ticket-msg-menu-btn ticket-msg-menu-btn-wa" href="https://wa.me/${_waDigits}?text=${encodeURIComponent(m.text)}" target="_blank" rel="noopener noreferrer" title="Enviar ${escapeHtml(m.label)} por WhatsApp">💬</a>` : ''}
+                                ${_waDigits ? `<a class="ticket-msg-menu-btn ticket-msg-menu-btn-wa" href="${buildWhatsAppUrl(_waDigits, m.text)}" target="_blank" rel="noopener noreferrer" title="Enviar ${escapeHtml(m.label)} por WhatsApp">💬</a>` : ''}
                             </span>
                         </div>`).join('')}
                         <div class="ticket-msg-menu-head">Edición</div>
@@ -13298,7 +13308,7 @@ function buildCustomerContactWhatsAppUrl(name, phoneDigits, messageText) {
     }
 
     const greeting = String(messageText || `Hola ${name || 'cliente'}, te escribimos desde ${brandingState.restaurantName || 'Roal Burger'} sobre tu solicitud.`).trim();
-    return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(greeting)}`;
+    return buildWhatsAppUrl(phoneDigits, greeting);
 }
 
 function escapeXml(value) {
@@ -16018,7 +16028,7 @@ function buildWhatsAppButtonLink(number, customLink) {
         return '';
     }
 
-    return `https://wa.me/${normalizedNumber}?text=${encodeURIComponent(`Hola ${brandingState.restaurantName || 'Roal Burger'}! Quisiera realizar un pedido por favor`)}`;
+    return buildWhatsAppUrl(normalizedNumber, `Hola ${brandingState.restaurantName || 'Roal Burger'}! Quisiera realizar un pedido por favor`);
 }
 
 async function syncBrandingLinksToButtons(brandingConfig) {
@@ -24693,7 +24703,7 @@ function renderMeserosPanel() {
             const digits = normalizePhoneDigits(m.celular);
             const link = _buildMeseroLink(m.token);
             const msg = `Hola ${m.nombre}! Este es tu enlace exclusivo para crear pedidos en ROAL BURGER: ${link}`;
-            const waUrl = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+            const waUrl = buildWhatsAppUrl(digits, msg);
             window.open(waUrl, '_blank', 'noopener');
         });
     });
@@ -26455,8 +26465,7 @@ function _cpanaRecordatorioLink(c, camp) {
     const msg = `¡Epa, ${c.nombre}! 👋 Te recordamos tu cupón Fuera del Menú ${c.codigo} (${camp.titulo}). `
         + `Es válido ${_cpanaDiasTexto(camp.diasValidos)} hasta el ${_cpanaDateKey(camp.fechaFin)}. `
         + 'Preséntalo en caja o pídelo por aquí 🍔';
-    // api.whatsapp.com/send y no wa.me: la redirección de wa.me rompe los emojis (ver waMeLink en functions/cuponPana.js).
-    return `https://api.whatsapp.com/send?phone=57${tel}&text=${encodeURIComponent(msg)}`;
+    return buildWhatsAppUrl(`57${tel}`, msg);
 }
 
 function _cpanaRenderPendientes(camp, cupones) {

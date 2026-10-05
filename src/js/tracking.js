@@ -81,6 +81,8 @@ function trackVisita(db) {
         else if (ref.includes('instagram.com')) { source = 'instagram'; }
         else if (ref.includes('facebook.com') || ref.includes('fb.com') || ref.includes('fb.me')) { source = 'facebook'; }
         else if (ref.includes('tiktok.com')) { source = 'tiktok'; }
+        // "whatsapp" cubre api.whatsapp.com / web.whatsapp.com (los enlaces propios ya no usan wa.me);
+        // wa.me se mantiene para enlaces viejos o compartidos por terceros.
         else if (ref.includes('wa.me') || ref.includes('whatsapp')) { source = 'whatsapp'; }
         else if (ref.includes('google.')) { source = 'google'; }
         else if (ref) { source = 'otro'; }

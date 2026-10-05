@@ -1,6 +1,16 @@
 ﻿// Tracking functions moved to tracking.js
 
-const WHATSAPP_BASE_URL = 'https://wa.me/573144689509';
+const WHATSAPP_NUMBER = '573144689509';
+
+// Enlace de WhatsApp: SIEMPRE api.whatsapp.com/send, nunca wa.me. La redirección de wa.me a
+// api.whatsapp.com convierte los emojis de 4 bytes (👋 🍔 📦 …) en "�" -- comprobado en escritorio,
+// con user agent de iPhone y en el navegador interno de Instagram (ver f48942d). El enlace directo
+// los conserva. Sin texto, abre el chat vacío. SYNC: mismo formato que waMeLink en
+// functions/cuponPana.js (este archivo no se empaqueta con imports, por eso vive aquí).
+function buildWhatsAppUrl(phoneDigits, text = '') {
+    const digits = String(phoneDigits || '').replace(/\D+/g, '');
+    return `https://api.whatsapp.com/send?phone=${digits}${text ? `&text=${encodeURIComponent(text)}` : ''}`;
+}
 const ORDERS_COLLECTION = 'pedidos';
 const CLIENTS_COLLECTION = 'clientes';
 const CUSTOMER_CONSENT_VERSION = '2026-06-05';
@@ -1798,7 +1808,7 @@ function buildWhatsAppOrderConfirmationText(orderData = {}) {
 
 function openOrderConfirmationWhatsApp(orderData = {}) {
     const message = buildWhatsAppOrderConfirmationText(orderData);
-    const url = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(message)}`;
+    const url = buildWhatsAppUrl(WHATSAPP_NUMBER, message);
     const whatsappWindow = window.open(url, '_blank', 'noopener,noreferrer');
 
     if (!whatsappWindow) {
@@ -1815,7 +1825,7 @@ function requestDeliveryQuote() {
     const coordsPart = (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) ? `Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}` : '';
     const addressPart = address ? `Direccion: ${address}` : '';
     const text = `Hola, ${_getRestaurantName()}! Quisiera saber el costo de domicilio. ${addressPart} ${coordsPart}`.trim();
-    const url = `${WHATSAPP_BASE_URL}?text=${encodeURIComponent(text)}`;
+    const url = buildWhatsAppUrl(WHATSAPP_NUMBER, text);
     const w = window.open(url, '_blank', 'noopener,noreferrer');
     if (!w) window.location.href = url;
 }
@@ -8578,7 +8588,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
         label: 'PIDE TU DOMICILIO AQUI',
         icon: '📱',
         actionType: 'external',
-        link: 'https://wa.me/573144689509?text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
+        link: 'https://api.whatsapp.com/send?phone=573144689509&text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
         buttonType: 'solid',
         color: '#25d366',
         size: 'lg',
@@ -13648,7 +13658,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!msg) { textarea?.focus(); if (textarea) textarea.style.borderColor = 'rgba(255,96,0,0.75)'; return; }
         if (textarea) textarea.style.borderColor = '';
         const waText = msg + `\n\n_(Enviado desde el menú digital de ${_getRestaurantName()})_`;
-        window.open(WHATSAPP_BASE_URL + '?text=' + encodeURIComponent(waText), '_blank', 'noopener,noreferrer');
+        window.open(buildWhatsAppUrl(WHATSAPP_NUMBER, waText), '_blank', 'noopener,noreferrer');
         this.disabled = true; this.style.opacity = '0.6';
         if (feedback) { feedback.textContent = '¡Mensaje enviado! Será atendido a la brevedad posible.'; feedback.hidden = false; }
         setTimeout(() => closeAyudaScreen(), 3000);
