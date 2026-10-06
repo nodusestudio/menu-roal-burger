@@ -388,6 +388,7 @@ function buildCampanaPublica(c) {
         descripcion: String(c.descripcion || ''),
         imagenUrl: String(c.imagenUrl || ''),
         precio: Number(c.precio || 0),
+        precioReferencia: Number(c.precioReferencia) > 0 ? Number(c.precioReferencia) : null,
         composicion: composicionPublica(c.composicion),
         gruposOpciones: gruposDeCampana(c),
         notaCocina: String(c.notaCocina || ''),
@@ -395,6 +396,7 @@ function buildCampanaPublica(c) {
         fechaInicio: c.fechaInicio || null,
         fechaFin: c.fechaFin || null,
         cuposRestantes: cuposRestantesDe(c),
+        cuposTotales: Number(c.cuposTotales || 0), // barra "Quedan N de M" de la landing
         activa: c.activa === true,
         requiereActivacionWA: c.requiereActivacionWA === true
     };
@@ -878,6 +880,17 @@ async function validateCampanaPayload(db, raw) {
     const precio = toPositiveInt(c.precio);
     if (!precio || precio > 1000000) throw new HttpsError('invalid-argument', 'Precio inválido (entero en COP, mayor a 0).');
 
+    // Precio de referencia ("En el menú costaría $X", tachado en la landing). Opcional: vacío =
+    // no se muestra. Si viene, tiene que ser MAYOR que el precio del cupón; un "ahorro" negativo
+    // o nulo sería un ancla engañosa.
+    let precioReferencia = null;
+    if (c.precioReferencia !== undefined && c.precioReferencia !== null && String(c.precioReferencia).trim() !== '') {
+        // Solo dígitos: "38.000" (punto de miles, como se escribe en Colombia) es 38000, no 38.
+        precioReferencia = toPositiveInt(String(c.precioReferencia).replace(/\D/g, ''));
+        if (!precioReferencia || precioReferencia > 1000000) throw new HttpsError('invalid-argument', 'Precio de referencia inválido (entero en COP).');
+        if (precioReferencia <= precio) throw new HttpsError('invalid-argument', 'El precio en el menú debe ser mayor al precio del cupón.');
+    }
+
     const cuposTotales = toPositiveInt(c.cuposTotales);
     if (!cuposTotales || cuposTotales > 100000) throw new HttpsError('invalid-argument', 'Cupos totales inválidos.');
 
@@ -968,6 +981,7 @@ async function validateCampanaPayload(db, raw) {
         imagenUrl,
         composicion,
         precio,
+        precioReferencia,
         gruposOpciones,
         cuposTotales,
         diasValidos,
@@ -1075,6 +1089,7 @@ async function duplicarCampana(db, origenRef, nuevoIdRaw, adminUid, nowMs) {
         imagenUrl: String(origen.imagenUrl || ''),
         composicion: origen.composicion || [],
         precio: Number(origen.precio || 0),
+        precioReferencia: Number(origen.precioReferencia) > 0 ? Number(origen.precioReferencia) : null,
         gruposOpciones: gruposDeCampana(origen),
         cuposTotales: Number(origen.cuposTotales || 0),
         cuposEmitidos: 0,

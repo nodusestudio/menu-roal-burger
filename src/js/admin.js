@@ -26914,6 +26914,7 @@ function openCuponPanaEditor(campanaId = null) {
     document.getElementById('cpanaTitulo').value = c?.titulo || '';
     document.getElementById('cpanaPalabra').value = c?.palabraClave || '';
     document.getElementById('cpanaPrecio').value = c?.precio || '';
+    document.getElementById('cpanaPrecioRef').value = c?.precioReferencia || '';
     document.getElementById('cpanaDescripcion').value = c?.descripcion || '';
     document.getElementById('cpanaImagen').value = c?.imagenUrl || '';
     document.getElementById('cpanaGruposList').innerHTML = '';
@@ -26960,6 +26961,8 @@ function _cpanaReadForm() {
             imagenUrl: val('cpanaImagen'),
             composicion: _cpanaComposicion,
             precio: Number(val('cpanaPrecio').replace(/\D/g, '') || 0),
+            // Vacío = sin ancla de precio; el servidor valida que sea mayor al precio del cupón.
+            precioReferencia: val('cpanaPrecioRef').replace(/\D/g, ''),
             gruposOpciones: Array.from(document.querySelectorAll('#cpanaGruposList .cpana-grupo-row')).map((row) => ({
                 id: row.dataset.grupoId || '',
                 nombre: row.querySelector('.cpana-grupo-nombre').value.trim(),

@@ -935,3 +935,27 @@ test('horario: abierto / cerrado con próxima apertura, saltando cierres program
     assert.equal(r.motivo, 'Festivo');
     assert.equal(r.proximaApertura, 'mañana a las 4:00 p. m.'.replace('mañana', 'el jueves 8 de octubre'));
 });
+
+// ── Precio de referencia ("En el menú costaría $X") ──────────────────────────
+
+test('precioReferencia: se guarda, va a la vista pública (con cuposTotales) y Duplicar lo conserva', async () => {
+    await cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ precioReferencia: '38.000' }) }, 'admin-x', LUNES);
+    assert.equal((await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data().precioReferencia, 38000);
+    const pub = await cp.syncCampanaPublica(db, CAMPANA_ID);
+    assert.equal(pub.precioReferencia, 38000);
+    assert.equal(pub.cuposTotales, 50);
+    const dup = await cp.guardarCampanaPana(db, { accion: 'duplicar', campanaId: CAMPANA_ID }, 'admin-x', LUNES);
+    assert.equal((await db.collection('cupones_campanas').doc(dup.campanaId).get()).data().precioReferencia, 38000);
+});
+
+test('precioReferencia: vacío → null (no se muestra); menor o igual al precio del cupón → rechazo', async () => {
+    await cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ precioReferencia: '' }) }, 'admin-x', LUNES);
+    assert.equal((await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data().precioReferencia, null);
+    assert.equal((await cp.syncCampanaPublica(db, CAMPANA_ID)).precioReferencia, null);
+    // Campaña vieja sin el campo: la vista pública tampoco lo muestra.
+    assert.equal(cp.buildCampanaPublica(baseCampana()).precioReferencia, null);
+    await expectHttpsError(cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ precioReferencia: 19900 }) }, 'admin-x', LUNES),
+        'invalid-argument', /mayor al precio del cupón/);
+    await expectHttpsError(cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ precioReferencia: 15000 }) }, 'admin-x', LUNES),
+        'invalid-argument', /mayor al precio del cupón/);
+});

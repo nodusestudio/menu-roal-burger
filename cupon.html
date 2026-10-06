@@ -11,7 +11,7 @@
     <meta property="og:title" content="Fuera del Menú · ROAL BURGER">
     <meta property="og:description" content="Reclama tu cupón exclusivo para seguidores de Instagram. Cupos limitados.">
     <meta property="og:image" content="https://roalburger.com/portada.png?v=20260601">
-    <meta name="theme-color" content="#f3e9d8">
+    <meta name="theme-color" content="#141414">
     <link rel="icon" type="image/png" href="isotipo.png">
     <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,178 +19,263 @@
     <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
+        /* ─── "Acceso exclusivo": carbón con grano, naranja ROAL para acentos y CTA, crema (la salsa
+           del logo) para lo destacado. Contraste AA: texto crema/blanco sobre carbón; sobre el
+           naranja el texto va en carbón (blanco sobre #FF6B00 no llega a 4.5:1); sobre el ticket
+           crema, el naranja se oscurece (--cp-naranja-osc). ─── */
         :root {
-            --cp-orange: #FF6B00;
-            --cp-orange-dark: #d95b00;
-            --cp-ink: #1f1f21;
-            --cp-ink-soft: rgba(31, 31, 33, 0.72);
-            --cp-cream: #f3e9d8;
-            --cp-wa: #1fa855;
+            --cp-carbon: #141414;
+            --cp-carbon-2: #1E1E1E;
+            --cp-naranja: #FF6B00;
+            --cp-naranja-osc: #A84300;
+            --cp-crema: #F5EBDD;
+            --cp-texto: #EDE6DC;
+            --cp-texto-suave: rgba(237, 230, 220, 0.74);
+            --cp-ok: #34d399;
+            --cp-error: #ff9b8a;
             --cp-radius: 22px;
+            --cp-max: 480px;
+            --cp-cta-h: 96px;
         }
         * { box-sizing: border-box; }
-        html { -webkit-text-size-adjust: 100%; }
+        html { -webkit-text-size-adjust: 100%; background: var(--cp-carbon); }
         body {
             margin: 0;
             min-height: 100vh;
             font-family: 'Roboto', system-ui, -apple-system, sans-serif;
-            color: var(--cp-ink);
-            /* Crema texturizada (regla de fondos de pantalla completa: nunca blanco puro). */
-            background-color: var(--cp-cream);
+            color: var(--cp-texto);
+            background-color: var(--cp-carbon);
+            /* Grano sutil (SVG con ruido, inline: no viola la CSP) sobre un carbón con halo naranja. */
             background-image:
-                radial-gradient(circle at 20% 10%, rgba(255, 107, 0, 0.14), transparent 45%),
-                radial-gradient(circle at 90% 85%, rgba(255, 107, 0, 0.10), transparent 40%),
-                radial-gradient(rgba(90, 58, 27, 0.07) 1px, transparent 1px);
-            background-size: auto, auto, 6px 6px;
+                radial-gradient(120% 60% at 50% -10%, rgba(255, 107, 0, 0.16), transparent 60%),
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
         }
-        a { color: var(--cp-orange-dark); }
+        a { color: var(--cp-naranja); }
+        :focus-visible { outline: 3px solid var(--cp-naranja); outline-offset: 3px; border-radius: 6px; }
+        h1, h2, h3 { font-family: 'Oswald', 'Arial Narrow', sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: 0.01em; margin: 0; }
 
-        .cp-shell { max-width: 480px; margin: 0 auto; padding: 18px 16px 48px; }
-        .cp-top { display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
-        .cp-top img { height: 46px; width: auto; }
+        #cuponApp { min-height: 100vh; }
+        .cp-wrap { max-width: var(--cp-max); margin: 0 auto; padding: 0 16px calc(var(--cp-cta-h) + 24px); }
+        .cp-wrap--sin-cta { padding-bottom: 40px; }
 
-        /* Tarjetas: regla global de glassmorphism del menú cliente. */
+        /* ── 1. HERO ── */
+        .cp-hero { position: relative; height: 55vh; height: 55svh; min-height: 340px; max-height: 620px; overflow: hidden; background: var(--cp-carbon-2); }
+        .cp-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .cp-hero--marca {
+            background:
+                radial-gradient(80% 70% at 85% 15%, rgba(255, 107, 0, 0.55), transparent 65%),
+                radial-gradient(60% 50% at 10% 90%, rgba(255, 107, 0, 0.25), transparent 70%),
+                linear-gradient(160deg, #262626 0%, #141414 70%);
+        }
+        .cp-hero--marca .cp-hero-logo-bg { position: absolute; right: -40px; top: 6%; width: 70%; max-width: 360px; height: auto; opacity: 0.16; transform: rotate(-12deg); }
+        .cp-hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(20, 20, 20, 0.15) 0%, rgba(20, 20, 20, 0.05) 35%, rgba(20, 20, 20, 0.85) 78%, var(--cp-carbon) 100%); }
+        .cp-hero-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: center; padding: calc(14px + env(safe-area-inset-top)) 16px 0; }
+        .cp-hero-top img { height: 40px; width: auto; filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5)); }
+        .cp-hero-body { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px 22px; max-width: var(--cp-max); margin: 0 auto; }
+        .cp-sello {
+            display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px;
+            font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 0.85rem; letter-spacing: 0.14em;
+            color: var(--cp-carbon); background: var(--cp-naranja);
+            box-shadow: 0 0 0 2px rgba(255, 107, 0, 0.35), 0 8px 24px rgba(255, 107, 0, 0.35);
+            transform: rotate(-2deg);
+        }
+        .cp-titulo { margin-top: 12px; font-size: clamp(2.6rem, 13vw, 3.8rem); line-height: 0.95; color: var(--cp-crema); text-shadow: 0 4px 24px rgba(0, 0, 0, 0.6); }
+        .cp-desc { margin: 10px 0 0; color: var(--cp-texto); line-height: 1.5; font-size: 1rem; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7); }
+
+        /* ── 2. PRECIO CON ANCLA ── */
+        .cp-precio { padding: 18px 0 6px; }
+        .cp-precio-cupon { margin: 0; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 3.2rem; line-height: 1; color: var(--cp-naranja); }
+        .cp-precio-ref { margin: 6px 0 0; color: var(--cp-texto-suave); font-size: 0.98rem; }
+        .cp-precio-ref s { color: var(--cp-texto); text-decoration-thickness: 2px; text-decoration-color: rgba(255, 107, 0, 0.9); }
+
+        /* Tarjetas: glassmorphism de la marca (regla global del menú cliente), ajustado a fondo oscuro. */
         .liquid-glass {
             background: rgba(255, 255, 255, 0.18);
             -webkit-backdrop-filter: blur(14px);
             backdrop-filter: blur(14px);
             border: 1.5px solid rgba(255, 255, 255, 0.28);
-            box-shadow: 0 10px 30px rgba(90, 58, 27, 0.12);
         }
         @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-            .liquid-glass { background: rgba(255, 255, 255, 0.55); }
+            .liquid-glass { background: rgba(48, 46, 44, 0.97); }
         }
+        .cp-card { border-radius: var(--cp-radius); padding: 18px; margin-top: 14px; }
+        .cp-card.liquid-glass { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.16); }
+        .cp-h2 { font-size: 1.25rem; color: var(--cp-crema); letter-spacing: 0.04em; }
+        .cp-h3 { font-size: 1.15rem; color: var(--cp-crema); letter-spacing: 0.04em; margin-bottom: 10px; }
 
-        .cp-hero, .cp-card { border-radius: var(--cp-radius); overflow: hidden; margin-bottom: 16px; }
-        .cp-hero-img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #e8d9c0; }
-        .cp-hero-body, .cp-card { padding: 20px 18px; }
-        .cp-kicker {
-            margin: 0 0 6px; font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 0.82rem;
-            letter-spacing: 0.08em; text-transform: uppercase; color: var(--cp-orange-dark);
-        }
-        .cp-title, .cp-h2, .cp-h3 {
-            margin: 0; font-family: 'Oswald', 'Arial Narrow', sans-serif; font-weight: 700;
-            text-transform: uppercase; line-height: 1.05; letter-spacing: 0.01em; color: var(--cp-ink);
-        }
-        .cp-title { font-size: clamp(1.9rem, 8vw, 2.4rem); }
-        .cp-h2 { font-size: 1.45rem; }
-        .cp-h3 { font-size: 1.05rem; margin-bottom: 8px; }
-        .cp-comp { margin: 8px 0 0; font-weight: 500; color: var(--cp-ink-soft); }
-        .cp-desc, .cp-sub { margin: 8px 0 0; line-height: 1.5; color: var(--cp-ink-soft); }
-        .cp-price-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-        .cp-price { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 2.3rem; color: var(--cp-orange); line-height: 1; }
-        .cp-cupos {
-            display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
-            background: var(--cp-ink); color: #fff; font-family: 'Oswald', sans-serif; font-weight: 600;
-            font-size: 1rem; letter-spacing: 0.04em; text-transform: uppercase;
-        }
-        .cp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--cp-orange); animation: cp-pulse 1.4s ease-in-out infinite; }
-        @keyframes cp-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
-        .cp-days { margin: 12px 0 0; font-weight: 500; }
-        .cp-nota { margin: 6px 0 0; font-weight: 500; color: var(--cp-orange-dark); }
-        .cp-opcional { font-family: 'Roboto', sans-serif; font-style: normal; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--cp-ink-soft); }
-        .cp-ticket-nota { margin: 12px 0 0; color: #ffd2b0; font-weight: 500; }
-        /* ¿Cómo lo quieres? */
-        .cp-pedido { margin-top: 16px; }
-        .cp-modos { display: grid; gap: 8px; margin-top: 4px; }
-        .cp-modo {
-            font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.05rem; letter-spacing: 0.04em;
-            padding: 14px 16px; border-radius: 14px; cursor: pointer; text-align: left;
-            border: 1.5px solid rgba(31, 31, 33, 0.2); background: rgba(255, 255, 255, 0.6); color: var(--cp-ink);
-            -webkit-tap-highlight-color: transparent;
-        }
-        .cp-modo[aria-pressed="true"] { background: var(--cp-ink); border-color: var(--cp-ink); color: #fff; }
-        .cp-modo-msg { margin: 14px 0 0; line-height: 1.5; font-weight: 500; }
-        .cp-local-info p { margin: 8px 0 0; color: var(--cp-ink-soft); }
-        .cp-aviso { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(255, 107, 0, 0.14); color: #8a3f00; font-weight: 500; line-height: 1.45; }
+        /* ── 3. QUÉ INCLUYE ── */
+        .cp-incluye ul { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+        .cp-incluye li { display: flex; align-items: center; gap: 12px; font-size: 1.02rem; font-weight: 500; line-height: 1.3; }
+        .cp-incluye .cp-ico { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: rgba(255, 107, 0, 0.14); font-size: 1.3rem; }
+        .cp-exclusivo { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; border: 1px dashed rgba(255, 107, 0, 0.7); color: var(--cp-crema); font-weight: 500; }
+        .cp-exclusivo strong { color: var(--cp-naranja); font-family: 'Oswald', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
 
-        .cp-field { display: grid; gap: 6px; margin: 14px 0 0; border: 0; padding: 0; min-width: 0; }
-        .cp-field > span, .cp-field legend { font-family: 'Oswald', sans-serif; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em; padding: 0; }
+        /* ── 4. URGENCIA ── */
+        .cp-cupos-txt { margin: 0; display: flex; align-items: baseline; gap: 8px; font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.04em; }
+        .cp-cupos-txt strong { color: var(--cp-naranja); font-size: 1.7rem; }
+        .cp-cupos-txt span { color: var(--cp-texto-suave); font-size: 0.9rem; }
+        .cp-barra { margin-top: 10px; height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+        .cp-barra span { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff8a2a, var(--cp-naranja)); transform-origin: left center; transition: transform 0.6s ease; border-radius: 999px; }
+        .cp-vigencia { margin: 12px 0 0; color: var(--cp-texto); font-weight: 500; }
+
+        /* ── 5. FORMULARIO EN PASOS ── */
+        .cp-pasos { list-style: none; display: flex; gap: 6px; margin: 0 0 16px; padding: 0; }
+        .cp-pasos li { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--cp-texto-suave); text-align: center; }
+        .cp-pasos li span { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-family: 'Oswald', sans-serif; font-weight: 700; border: 2px solid rgba(255, 255, 255, 0.25); color: var(--cp-texto); }
+        .cp-pasos li.is-activo { color: var(--cp-crema); font-weight: 700; }
+        .cp-pasos li.is-activo span { background: var(--cp-naranja); border-color: var(--cp-naranja); color: var(--cp-carbon); }
+        .cp-pasos li.is-hecho span { background: rgba(52, 211, 153, 0.18); border-color: var(--cp-ok); color: var(--cp-ok); }
+        .cp-sub { margin: 6px 0 0; color: var(--cp-texto-suave); line-height: 1.5; }
+
+        .cp-field { display: grid; gap: 6px; margin: 16px 0 0; border: 0; padding: 0; min-width: 0; }
+        .cp-field > span, .cp-field legend { font-family: 'Oswald', sans-serif; font-weight: 600; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.05em; color: var(--cp-crema); padding: 0; }
         .cp-field input {
             width: 100%; font: inherit; font-size: 16px; /* 16px: iOS no hace zoom al enfocar */
-            padding: 13px 14px; border-radius: 14px; border: 1.5px solid rgba(31, 31, 33, 0.18);
-            background: rgba(255, 255, 255, 0.75); color: var(--cp-ink);
+            min-height: 52px; padding: 13px 14px; border-radius: 14px;
+            border: 1.5px solid rgba(255, 255, 255, 0.22); background: rgba(0, 0, 0, 0.35); color: #fff;
         }
-        .cp-field input:focus { outline: none; border-color: var(--cp-orange); box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.18); }
-        .cp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .cp-field input::placeholder { color: rgba(237, 230, 220, 0.45); }
+        .cp-field input:focus { outline: none; border-color: var(--cp-naranja); box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.3); }
+        .cp-field input[aria-invalid="true"] { border-color: var(--cp-error); }
+        .cp-field-error { margin: 0; color: var(--cp-error); font-size: 0.88rem; font-weight: 500; }
+        .cp-field-error:empty { display: none; }
+        .cp-opcional { font-family: 'Roboto', sans-serif; font-style: normal; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--cp-texto-suave); }
+
+        .cp-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
         .cp-chip {
-            font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 999px; cursor: pointer;
-            border: 1.5px solid rgba(31, 31, 33, 0.22); background: rgba(255, 255, 255, 0.6); color: var(--cp-ink);
-            -webkit-tap-highlight-color: transparent;
+            font: inherit; font-weight: 700; font-size: 1rem; min-height: 48px; padding: 12px 18px; border-radius: 999px; cursor: pointer;
+            border: 1.5px solid rgba(255, 255, 255, 0.28); background: rgba(255, 255, 255, 0.06); color: var(--cp-texto);
+            -webkit-tap-highlight-color: transparent; transition: transform 0.12s ease, background-color 0.12s ease;
         }
-        .cp-chip[aria-pressed="true"] { background: var(--cp-orange); border-color: var(--cp-orange); color: #fff; }
-        .cp-check { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 0.9rem; line-height: 1.45; }
-        .cp-check input { width: 20px; height: 20px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--cp-orange); }
-        .cp-check em { color: var(--cp-ink-soft); font-style: normal; font-size: 0.82rem; }
-        .cp-error { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(200, 40, 30, 0.12); color: #9b1c12; font-weight: 500; }
+        .cp-chip:active { transform: scale(0.97); }
+        .cp-chip[aria-pressed="true"] { background: var(--cp-naranja); border-color: var(--cp-naranja); color: var(--cp-carbon); }
+        .cp-check { display: flex; gap: 12px; align-items: flex-start; margin-top: 16px; font-size: 0.92rem; line-height: 1.45; color: var(--cp-texto); }
+        .cp-check input { width: 22px; height: 22px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--cp-naranja); }
+        .cp-check em { color: var(--cp-texto-suave); font-style: normal; font-size: 0.84rem; }
+        .cp-check a { color: var(--cp-crema); }
+        .cp-error { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(255, 120, 100, 0.14); color: var(--cp-error); font-weight: 500; }
 
         .cp-btn {
-            display: flex; align-items: center; justify-content: center; width: 100%; min-height: 54px; margin-top: 16px;
+            display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 54px; margin-top: 14px;
             padding: 14px 18px; border-radius: 16px; border: 0; cursor: pointer; text-decoration: none; text-align: center;
             font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.15rem; letter-spacing: 0.06em; text-transform: uppercase;
-            -webkit-tap-highlight-color: transparent; transition: transform 0.08s ease, filter 0.15s ease;
+            -webkit-tap-highlight-color: transparent; transition: transform 0.08s ease;
         }
         .cp-btn:active { transform: scale(0.98); }
         .cp-btn:disabled { opacity: 0.6; cursor: progress; }
-        .cp-btn--primary { background: var(--cp-orange); color: #fff; box-shadow: 0 8px 22px rgba(255, 107, 0, 0.35); }
-        .cp-btn--wa { background: var(--cp-wa); color: #fff; box-shadow: 0 8px 22px rgba(31, 168, 85, 0.3); }
-        .cp-btn--ghost { background: rgba(255, 255, 255, 0.55); color: var(--cp-ink); border: 1.5px solid rgba(31, 31, 33, 0.2); }
-        .cp-actions .cp-btn { margin-top: 10px; }
-        .cp-recaptcha-note { margin: 12px 0 0; font-size: 0.72rem; color: var(--cp-ink-soft); text-align: center; }
+        .cp-btn--primary { background: var(--cp-naranja); color: var(--cp-carbon); box-shadow: 0 10px 28px rgba(255, 107, 0, 0.35); }
+        .cp-btn--wa { background: #25d366; color: #0b1f12; box-shadow: 0 10px 26px rgba(37, 211, 102, 0.25); }
+        .cp-btn--ghost { background: transparent; color: var(--cp-crema); border: 1.5px solid rgba(245, 235, 221, 0.4); }
+        .cp-btn--secundario { min-height: 48px; font-size: 1rem; margin-top: 18px; }
+        .cp-recaptcha-note { margin: 14px 0 0; font-size: 0.74rem; color: var(--cp-texto-suave); text-align: center; }
+        .cp-recaptcha-note a { color: var(--cp-crema); }
         .grecaptcha-badge { visibility: hidden !important; } /* aviso de reCAPTCHA va en texto (permitido por Google) */
 
-        .cp-cond ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 0.9rem; color: var(--cp-ink-soft); }
+        /* ── 6. CTA FIJO (respeta el área segura del celular) ── */
+        .cp-cta {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+            padding: 22px 16px calc(14px + env(safe-area-inset-bottom));
+            background: linear-gradient(180deg, rgba(20, 20, 20, 0) 0%, rgba(20, 20, 20, 0.92) 35%, var(--cp-carbon) 100%);
+        }
+        .cp-cta .cp-btn { max-width: var(--cp-max); margin: 0 auto; }
 
-        .cp-banner { margin: 0 0 12px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.3rem; text-transform: uppercase; text-align: center; }
+        .cp-cond ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 0.9rem; color: var(--cp-texto-suave); }
+        .cp-foot { text-align: center; font-size: 0.88rem; margin: 18px 0 0; }
+        .cp-foot a { color: var(--cp-crema); }
 
-        /* Tarjeta del cupón: es la pieza "física" que el cliente muestra en caja. */
+        /* ── 7. CUPÓN EMITIDO: ticket físico ── */
+        .cp-banner { margin: 22px 0 6px; text-align: center; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.5rem; text-transform: uppercase; color: var(--cp-crema); letter-spacing: 0.04em; }
+        .cp-banner small { display: block; margin-top: 4px; font-family: 'Roboto', sans-serif; font-weight: 400; font-size: 0.95rem; text-transform: none; letter-spacing: 0; color: var(--cp-texto-suave); }
+        .cp-revelado { position: relative; margin-top: 14px; }
+        .cp-candado { position: absolute; left: 50%; top: 40px; z-index: 3; width: 92px; height: 110px; margin-left: -46px; pointer-events: none; opacity: 0; }
+        .cp-candado svg { width: 100%; height: 100%; overflow: visible; }
+        .cp-candado .cp-arco { transform-box: fill-box; transform-origin: 100% 100%; }
         .cp-ticket {
-            position: relative; border-radius: var(--cp-radius); padding: 20px 18px 18px; margin-bottom: 6px;
-            background: var(--cp-ink); color: #fff; overflow: hidden;
-            box-shadow: 0 14px 34px rgba(31, 31, 33, 0.35); border-top: 8px solid var(--cp-orange);
+            position: relative; border-radius: 20px; color: #1E1E1E; background: var(--cp-crema);
+            filter: drop-shadow(0 22px 36px rgba(0, 0, 0, 0.45));
         }
-        .cp-ticket::before, .cp-ticket::after {
-            content: ''; position: absolute; top: 47%; width: 26px; height: 26px; border-radius: 50%; background: var(--cp-cream);
-        }
-        .cp-ticket::before { left: -13px; }
-        .cp-ticket::after { right: -13px; }
+        /* Muescas a la altura de la línea perforada: círculos del color del fondo. */
+        .cp-perforado { position: relative; height: 0; margin: 0 22px; border-top: 3px dashed rgba(30, 30, 30, 0.28); }
+        .cp-perforado::before, .cp-perforado::after { content: ''; position: absolute; top: -16px; width: 30px; height: 30px; border-radius: 50%; background: var(--cp-carbon); }
+        .cp-perforado::before { left: -38px; }
+        .cp-perforado::after { right: -38px; }
+        .cp-ticket-top { padding: 20px 20px 18px; border-radius: 20px 20px 0 0; border-top: 8px solid var(--cp-naranja); }
         .cp-ticket-head { display: flex; align-items: center; gap: 12px; }
         .cp-ticket-head img { border-radius: 10px; flex: 0 0 auto; }
         .cp-ticket-head > div { flex: 1 1 auto; min-width: 0; }
-        .cp-ticket-kicker { margin: 0; font-family: 'Oswald', sans-serif; font-weight: 600; letter-spacing: 0.1em; color: var(--cp-orange); font-size: 0.85rem; }
-        .cp-ticket-title { margin: 2px 0 0; font-family: 'Oswald', sans-serif; font-weight: 700; text-transform: uppercase; font-size: 1.2rem; line-height: 1.1; }
-        .cp-ticket-price { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.4rem; color: var(--cp-orange); }
-        .cp-ticket-name { margin: 14px 0 0; color: rgba(255, 255, 255, 0.78); }
-        .cp-ticket-comp { margin: 12px 0 0; font-weight: 500; color: #fff; line-height: 1.35; }
-        .cp-ticket-code-row {
-            display: flex; align-items: center; justify-content: space-between; gap: 14px;
-            margin-top: 14px; padding-top: 14px; border-top: 2px dashed rgba(255, 255, 255, 0.22);
+        .cp-ticket-kicker { margin: 0; font-family: 'Oswald', sans-serif; font-weight: 700; letter-spacing: 0.14em; color: var(--cp-naranja-osc); font-size: 0.82rem; }
+        .cp-ticket-title { margin: 2px 0 0; font-family: 'Oswald', sans-serif; font-weight: 700; text-transform: uppercase; font-size: 1.5rem; line-height: 1.05; }
+        .cp-ticket-price { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.45rem; color: var(--cp-naranja-osc); }
+        .cp-ticket-name { margin: 12px 0 0; color: #4a4038; }
+        .cp-ticket-bottom { padding: 18px 20px 20px; }
+        .cp-ticket-code-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+        .cp-ticket-label { margin: 0; font-family: 'Oswald', sans-serif; letter-spacing: 0.1em; font-size: 0.78rem; text-transform: uppercase; color: #6a5d50; }
+        .cp-ticket-code { margin: 2px 0 0; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: clamp(2.3rem, 11vw, 2.9rem); letter-spacing: 0.14em; line-height: 1; color: #141414; }
+        .cp-qr { width: 112px; height: 112px; flex: 0 0 auto; border-radius: 10px; }
+        .cp-ticket-extras { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+        .cp-ticket-extras li { font-weight: 500; }
+        .cp-ticket-extras li span { color: #6a5d50; font-weight: 400; }
+        .cp-ticket-comp { margin: 10px 0 0; font-weight: 500; color: #2b241e; line-height: 1.45; }
+        .cp-top-plano { display: flex; justify-content: center; padding: 18px 0 6px; }
+        .cp-top-plano img { height: 40px; width: auto; display: block; }
+        .cp-actions { display: grid; gap: 10px; margin-top: 16px; }
+        .cp-ticket-nota { margin: 10px 0 0; font-weight: 500; color: var(--cp-naranja-osc); }
+        .cp-ticket-days { margin: 12px 0 0; font-weight: 500; }
+        .cp-ticket-warn { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: rgba(168, 67, 0, 0.12); color: #6b2b00; font-size: 0.9rem; }
+        .cp-ticket-legal { margin: 12px 0 0; font-size: 0.76rem; color: #6a5d50; }
+
+        /* Desbloqueo: el candado se abre y aparece el ticket (solo transform/opacity). */
+        .cp-revelado--anim .cp-candado { animation: cp-candado 1.3s ease forwards; }
+        .cp-revelado--anim .cp-candado .cp-arco { animation: cp-arco 1.3s ease forwards; }
+        .cp-revelado--anim .cp-ticket { animation: cp-ticket 0.7s 0.75s cubic-bezier(.2, .9, .3, 1.2) both; }
+        @keyframes cp-candado { 0% { opacity: 0; transform: scale(0.6); } 15% { opacity: 1; transform: scale(1); } 70% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.25) translateY(-16px); } }
+        @keyframes cp-arco { 0%, 35% { transform: translateY(0) rotate(0); } 60%, 100% { transform: translateY(-12px) rotate(28deg); } }
+        @keyframes cp-ticket { from { opacity: 0; transform: translateY(18px) scale(0.94); } to { opacity: 1; transform: none; } }
+
+        /* ── "¿Cómo lo quieres?" (misma lógica, nuevo estilo) ── */
+        .cp-pedido { margin-top: 18px; }
+        .cp-modos { display: grid; gap: 10px; margin-top: 4px; }
+        .cp-modo {
+            font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.08rem; letter-spacing: 0.05em; min-height: 56px;
+            padding: 14px 16px; border-radius: 14px; cursor: pointer; text-align: left;
+            border: 1.5px solid rgba(255, 255, 255, 0.24); background: rgba(255, 255, 255, 0.06); color: var(--cp-crema);
+            -webkit-tap-highlight-color: transparent;
         }
-        .cp-ticket-label { margin: 0; font-family: 'Oswald', sans-serif; letter-spacing: 0.08em; font-size: 0.78rem; text-transform: uppercase; color: rgba(255, 255, 255, 0.55); }
-        .cp-ticket-code { margin: 2px 0 10px; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: clamp(2.2rem, 11vw, 2.8rem); letter-spacing: 0.14em; line-height: 1; }
-        .cp-ticket-val { margin: 2px 0 0; font-weight: 500; }
-        .cp-qr { width: 118px; height: 118px; flex: 0 0 auto; border-radius: 10px; }
-        .cp-ticket-days { margin: 14px 0 0; font-weight: 500; }
-        .cp-ticket-warn { margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: rgba(255, 107, 0, 0.18); color: #ffd2b0; font-size: 0.88rem; }
-        .cp-ticket-legal { margin: 12px 0 0; font-size: 0.74rem; color: rgba(255, 255, 255, 0.5); }
+        .cp-modo[aria-pressed="true"] { background: var(--cp-naranja); border-color: var(--cp-naranja); color: var(--cp-carbon); }
+        .cp-modo-msg { margin: 14px 0 0; line-height: 1.5; font-weight: 500; color: var(--cp-texto); }
+        .cp-local-info p { margin: 8px 0 0; color: var(--cp-texto-suave); }
+        .cp-aviso { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(255, 107, 0, 0.16); color: #ffd2b0; font-weight: 500; line-height: 1.45; }
 
-        .cp-state { text-align: center; padding: 28px 20px; }
-        .cp-state-emoji { font-size: 3rem; margin: 0 0 8px; }
-        .cp-foot { text-align: center; font-size: 0.85rem; margin: 8px 0 0; }
+        /* ── Historia: vista previa cuando el navegador no comparte archivos (ej. Instagram) ── */
+        .cp-modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(10, 10, 10, 0.94); overflow-y: auto; }
+        .cp-modal-box { width: 100%; max-width: 380px; text-align: center; padding: 16px; border-radius: 22px; background: #1E1E1E; border: 1.5px solid rgba(255, 255, 255, 0.12); }
+        .cp-modal-box img { width: 100%; max-height: 60vh; object-fit: contain; border-radius: 16px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); }
+        .cp-modal-box p { color: var(--cp-crema); margin: 14px 0 0; line-height: 1.45; }
 
-        .cp-skeleton { height: 280px; border-radius: var(--cp-radius); background: linear-gradient(100deg, rgba(255,255,255,0.25) 30%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0.25) 70%); background-size: 200% 100%; animation: cp-shimmer 1.2s linear infinite; }
+        /* ── 9. ESTADOS ── */
+        .cp-estado { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; justify-content: center; text-align: center; padding: 40px 0; }
+        .cp-estado-logo { height: 40px; width: auto; margin: 0 auto 26px; }
+        .cp-estado-emoji { font-size: 3.4rem; margin: 0 0 10px; }
+        .cp-estado .cp-titulo { margin-top: 6px; font-size: clamp(2rem, 9vw, 2.6rem); }
+        .cp-estado .cp-sub { font-size: 1.05rem; margin-top: 12px; }
+
+        .cp-skeleton { height: 55vh; background: linear-gradient(100deg, #1b1b1b 30%, #262626 50%, #1b1b1b 70%); background-size: 200% 100%; animation: cp-shimmer 1.2s linear infinite; }
         @keyframes cp-shimmer { to { background-position: -200% 0; } }
-        @media (prefers-reduced-motion: reduce) { .cp-dot, .cp-skeleton { animation: none; } }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation: none !important; transition: none !important; }
+        }
+        /* Escritorio: misma columna centrada; el hero se limita para no estirar la foto. */
+        @media (min-width: 768px) {
+            .cp-hero { max-width: 760px; margin: 0 auto; border-radius: 0 0 28px 28px; }
+        }
     </style>
 </head>
 <body>
-    <main class="cp-shell">
-        <header class="cp-top"><a href="/" aria-label="Ir al menú de ROAL BURGER"><img src="logo.webp" alt="ROAL BURGER" width="140" height="46"></a></header>
-        <div id="cuponApp" aria-live="polite" aria-busy="true">
-            <div class="cp-skeleton"></div>
-        </div>
-        <noscript><p style="text-align:center">Activa JavaScript para reclamar tu cupón.</p></noscript>
-    </main>
+    <div id="cuponApp" aria-live="polite" aria-busy="true">
+        <div class="cp-skeleton"></div>
+    </div>
+    <noscript><p style="text-align:center;padding:40px 16px">Activa JavaScript para reclamar tu cupón.</p></noscript>
     <script src="firebase-config.js"></script>
     <script src="cupon.js?v=20260619"></script>
 </body>
