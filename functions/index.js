@@ -2591,6 +2591,39 @@ exports.canjearCuponPana = onCall(
     }
 );
 
+// Landing, "¿Cómo lo quieres?": guarda recoger/domicilio + pago en el cupón y devuelve el enlace
+// de WhatsApp con el pedido completo, más si el local está abierto ahora (y cuándo abre si no).
+// reCAPTCHA + rate limit por código e IP, igual que la emisión.
+exports.prepararPedidoCupon = onCall(
+    { region: 'us-central1', secrets: [RECAPTCHA_SECRET], cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const { codigo } = cuponPana.validatePedidoInput(request.data);
+        await assertRecaptchaToken(RECAPTCHA_SECRET.value(), String(request.data?.recaptchaToken || ''));
+        const clientIp = String(
+            request.rawRequest?.headers?.['x-forwarded-for']?.split(',')[0]?.trim()
+            || request.rawRequest?.ip
+            || ''
+        ).trim();
+        const checks = [cuponPana.checkRateLimit(db, `cupon_pedido_${codigo}`, cuponPana.RATE_LIMIT_MAX_PER_PHONE)];
+        if (clientIp) checks.push(cuponPana.checkRateLimit(db, `cupon_ip_${clientIp.replace(/[^0-9a-fA-F.:]/g, '')}`, cuponPana.RATE_LIMIT_MAX_PER_IP));
+        if ((await Promise.all(checks)).some((ok) => !ok)) {
+            throw new HttpsError('resource-exhausted', 'Vamos muy rápido 🙂 Espera unos minutos e intenta de nuevo.');
+        }
+        try {
+            const [resultado, horario] = await Promise.all([
+                cuponPana.prepararPedidoCuponTransaction(db, request.data),
+                cuponPana.leerEstadoHorario(db)
+            ]);
+            return { ...resultado, horario };
+        } catch (err) {
+            if (err instanceof HttpsError) throw err;
+            console.error('prepararPedidoCupon error:', err);
+            throw new HttpsError('internal', 'No se pudo preparar el pedido. Intenta de nuevo.');
+        }
+    }
+);
+
 // Reversa de un canje del mismo día (ticket cancelado, código equivocado). Callable APARTE de
 // guardarCampanaPana a propósito: es una operación financiera y queda auditada por separado
 // (historial[] del cupón). Solo admin -- un mesero no puede revertir.

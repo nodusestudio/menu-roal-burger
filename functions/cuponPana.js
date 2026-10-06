@@ -22,6 +22,8 @@ const crypto = require('crypto');
 const { FieldValue, Timestamp } = require('firebase-admin/firestore');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { normalizeColombianPhoneDigits, isValidColombianMobile } = require('./phoneUtils');
+// Misma lógica de horario y cierres programados que el agente y el menú (SYNC ya documentado ahí).
+const orderLogic = require('./agent/orderLogic');
 
 const CUPONES_CAMPANAS_COLLECTION         = 'cupones_campanas';
 const CUPONES_CAMPANAS_PUBLICO_COLLECTION = 'cupones_campanas_publico';
@@ -35,6 +37,11 @@ const ACOMPANANTES_COLLECTION             = 'acompanantes';
 // Orden de búsqueda de un productoId de la composición: el mismo catálogo que ve el POS.
 const CATALOGO_COMPOSICION = [PRODUCTS_COLLECTION, COMBOS_ESPECIALES_COLLECTION, BEBIDAS_COLLECTION, ACOMPANANTES_COLLECTION];
 const VARIANTE_MAX = 40;
+const NOMBRE_CLIENTE_MAX = 50;
+const CONFIG_HORARIO_DOC = 'config_horario';
+const MODALIDADES_PEDIDO = ['recoger', 'domicilio'];
+const PAGOS_PEDIDO = { efectivo: 'Efectivo', transferencia: 'Transferencia' };
+const DIAS_CORTOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const ADMINS_COLLECTION                   = 'admins';
 const MESEROS_COLLECTION                  = 'meseros';
 // Mismo almacén de contadores que el agente (orchestrator.js: checkRateLimit) -- ya está
@@ -185,17 +192,22 @@ function formatCop(n) {
     return '$' + String(Math.round(Number(n || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
-// "2× Burger Normal (Mediana · 2 carnes)" -- mismo formato que el ticket, el panel y la landing.
+// Lo que ve el CLIENTE de un renglón (landing, tarjeta, PNG, WhatsApp): el "nombre para el
+// cliente" si el admin lo puso ("Burger Normal Doble Carne (media libra)"); si no, el nombre del
+// catálogo + variante ("2× Burger Normal (Mediana · 2 carnes)"). Cocina y POS NO usan esto: ven
+// siempre catálogo + variante (ver _cpanaRenglonTexto en admin.js).
 function renglonTexto(p) {
     const cant = Number(p?.cantidad || 1);
-    return `${cant > 1 ? `${cant}× ` : ''}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
+    const pre = cant > 1 ? `${cant}× ` : '';
+    if (p?.nombreCliente) return `${pre}${p.nombreCliente}`;
+    return `${pre}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
 }
 
 // Mensaje prellenado de WhatsApp. Quien atiende el chat debe saber, sin abrir el panel, qué combo
 // es, qué eligió el cliente, a nombre de quién y hasta cuándo vale. Es el MISMO texto en los dos
 // modos (activación por el número de cupones o pedido directo al principal): solo cambia el
 // número. La línea "Código:" es la que el bot de la fase 2 lee primero.
-function buildMensajeWhatsApp(campana, cupon) {
+function buildMensajeWhatsApp(campana, cupon, pedido = null) {
     const c = campana || {};
     const incluye = (c.composicion || []).map(renglonTexto).filter(Boolean).join(' + ');
     const elegido = describirSelecciones(cupon).map((d) => `${d.grupo}: ${d.opcion}`).join(' · ');
@@ -211,8 +223,21 @@ function buildMensajeWhatsApp(campana, cupon) {
         elegido ? `✨ ${elegido}` : null, // sin grupos: se omite la línea
         `👤 ${cupon.nombre || ''}${cupon.igHandle ? ` · IG @${cupon.igHandle}` : ''}`,
         vigencia ? `📅 Válido: ${vigencia}` : null,
-        'Lo quiero para: recoger / comer en el local / domicilio'
+        // Con el pedido ya preparado en la landing (prepararPedidoCupon) el mensaje dice cómo lo
+        // quiere y cómo paga; sin él (enlace de la emisión) queda la pregunta abierta.
+        ...(pedido ? lineasPedido(pedido) : ['Lo quiero para: recoger / comer en el local / domicilio'])
     ].filter((l) => l !== null).join('\n');
+}
+
+function lineasPedido(pedido) {
+    const lineas = [];
+    if (pedido.modalidad === 'domicilio') {
+        lineas.push(`🛵 Domicilio: ${pedido.direccion}, ${pedido.barrio}${pedido.referencias ? ` (${pedido.referencias})` : ''}`);
+    } else {
+        lineas.push('🏃 Para recoger');
+    }
+    lineas.push(`💳 Pago: ${PAGOS_PEDIDO[pedido.pago] || pedido.pago}`);
+    return lineas;
 }
 
 // Número de destino según la fase: con activación por WhatsApp va al número de cupones (el bot
@@ -350,6 +375,7 @@ function composicionPublica(composicion) {
     return (composicion || []).map((p) => {
         const renglon = { nombre: String(p.nombre || ''), cantidad: Number(p.cantidad || 1) };
         if (p.variante) renglon.variante = String(p.variante);
+        if (p.nombreCliente) renglon.nombreCliente = String(p.nombreCliente);
         return renglon;
     });
 }
@@ -579,8 +605,11 @@ function buildCuponPosView(cupon, campana) {
         // variante: tamaño/carnes/presentación ("Mediana · 2 carnes"); vacía en campañas viejas.
         composicion: (campana?.composicion || []).map((p) => ({
             productoId: String(p.productoId || ''), nombre: String(p.nombre || ''), cantidad: Number(p.cantidad || 1),
-            variante: String(p.variante || '')
+            variante: String(p.variante || ''),
+            nombreCliente: String(p.nombreCliente || '')
         })),
+        telefono: String(cupon.telefono || ''),
+        pedidoPreparado: pedidoPreparadoView(cupon.pedidoPreparado),
         diasValidos: campana?.diasValidos || [],
         diasValidosTexto: formatDiasValidos(campana?.diasValidos || []),
         canjeadoAt: toMs(cupon.canjeadoAt)
@@ -651,7 +680,9 @@ async function canjearCuponPanaTransaction(db, codigoRaw, { uid } = {}, nowMs = 
                 selecciones: view.selecciones,
                 notaCocina: view.notaCocina,
                 nombre: view.nombre,
-                igHandle: view.igHandle
+                igHandle: view.igHandle,
+                telefono: view.telefono,
+                pedidoPreparado: view.pedidoPreparado
             }
         };
     });
@@ -714,6 +745,114 @@ async function revertirCanjeCuponPanaTransaction(db, codigoRaw, { uid, motivo } 
     });
 }
 
+// ── Pedido preparado desde la landing ("¿Cómo lo quieres?") ──────────────────
+
+function pedidoPreparadoView(p) {
+    if (!p || !p.modalidad) return null;
+    return {
+        modalidad: String(p.modalidad),
+        pago: String(p.pago || ''),
+        direccion: String(p.direccion || ''),
+        barrio: String(p.barrio || ''),
+        referencias: String(p.referencias || ''),
+        at: toMs(p.at)
+    };
+}
+
+function validatePedidoInput(raw) {
+    const d = raw || {};
+    const codigo = normalizeCodigo(d.codigo);
+    const telefono = normalizeColombianPhoneDigits(d.telefono);
+    const modalidad = String(d.modalidad || '').trim().toLowerCase();
+    const pago = String(d.pago || '').trim().toLowerCase();
+    if (!isValidCodigo(codigo)) throw new HttpsError('invalid-argument', 'Código de cupón inválido.');
+    if (!isValidColombianMobile(telefono)) throw new HttpsError('invalid-argument', 'Escribe el celular con el que reclamaste el cupón.');
+    if (!MODALIDADES_PEDIDO.includes(modalidad)) throw new HttpsError('invalid-argument', 'Elige si lo quieres para recoger o a domicilio.');
+    if (!PAGOS_PEDIDO[pago]) throw new HttpsError('invalid-argument', 'Elige el medio de pago: efectivo o transferencia.');
+    const pedido = { modalidad, pago, direccion: '', barrio: '', referencias: '' };
+    if (modalidad === 'domicilio') {
+        pedido.direccion = cleanText(d.direccion, 150);
+        pedido.barrio = cleanText(d.barrio, 60);
+        pedido.referencias = cleanText(d.referencias, 150);
+        if (pedido.direccion.length < 5) throw new HttpsError('invalid-argument', 'Escribe la dirección completa para el domicilio.');
+        if (pedido.barrio.length < 2) throw new HttpsError('invalid-argument', 'Escribe el barrio para el domicilio.');
+    }
+    return { codigo, telefono, pedido };
+}
+
+// Guarda (o actualiza) cómo quiere el cliente su pedido. Solo el dueño del cupón (mismo celular
+// con que lo reclamó), y solo mientras el cupón se pueda usar: ni canjeado, ni vencido, ni
+// "emitido" en una campaña que exige activación por WhatsApp. Se puede volver a llamar para
+// cambiar los datos hasta que la caja lo canjee.
+async function prepararPedidoCuponTransaction(db, raw, nowMs = Date.now()) {
+    const { codigo, telefono, pedido } = validatePedidoInput(raw);
+    const cuponRef = db.collection(CUPONES_PANA_COLLECTION).doc(codigo);
+    return db.runTransaction(async (tx) => {
+        const cuponSnap = await tx.get(cuponRef);
+        if (!cuponSnap.exists) throw new HttpsError('not-found', MOTIVOS.no_existe);
+        const cupon = cuponSnap.data();
+        // Mismo mensaje para "no existe" y "no es tu número": no confirmar a un extraño qué
+        // códigos existen.
+        if (cupon.telefono !== telefono) throw new HttpsError('permission-denied', 'Ese celular no corresponde a este cupón. Usa el número con el que lo reclamaste.');
+        const campSnap = await tx.get(db.collection(CUPONES_CAMPANAS_COLLECTION).doc(cupon.campanaId));
+        const campana = campSnap.exists ? campSnap.data() : null;
+        if (cupon.estado === ESTADOS.CANJEADO) throw new HttpsError('failed-precondition', MOTIVOS.canjeado);
+        const finMs = toMs(campana?.fechaFin);
+        if (!campana || cupon.estado === ESTADOS.VENCIDO || (finMs !== null && nowMs > finMs)) {
+            throw new HttpsError('failed-precondition', MOTIVOS.vencido);
+        }
+        if (cupon.estado === ESTADOS.EMITIDO && campana.requiereActivacionWA === true) {
+            throw new HttpsError('failed-precondition', 'Primero activa tu cupón por WhatsApp.');
+        }
+        const pedidoPreparado = { ...pedido, at: Timestamp.fromMillis(nowMs) };
+        tx.update(cuponRef, { pedidoPreparado });
+        const actualizado = { ...cupon, pedidoPreparado };
+        const numero = campana.requiereActivacionWA === true ? campana.waNumeroCupones : campana.waNumeroPrincipal;
+        return {
+            pedidoPreparado: pedidoPreparadoView(pedidoPreparado),
+            waLink: waMeLink(numero, buildMensajeWhatsApp(campana, actualizado, pedidoPreparado)),
+            cuponValidoHoy: (campana.diasValidos || []).map(Number).includes(bogotaParts(nowMs).dow),
+            diasValidosTexto: formatDiasValidos(campana.diasValidos || [])
+        };
+    });
+}
+
+function formatHora12(minutos) {
+    const h = Math.floor(minutos / 60) % 24;
+    const m = minutos % 60;
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${h < 12 ? 'a. m.' : 'p. m.'}`;
+}
+
+// ¿Está abierto para pedidos AHORA? y, si no, cuándo abre: con el horario y los cierres
+// programados de Configuración (configuracion/config_horario), con la misma lógica que el menú
+// y el agente. "Cuándo abre" = la primera apertura diaria (hoy si aún no llega, o los días
+// siguientes) que no caiga dentro de un cierre programado.
+function estadoHorario(configHorario, nowMs = Date.now()) {
+    const schedule = orderLogic.buildScheduleFromConfigDoc(configHorario);
+    // La etiqueta que el negocio escribió en Configuración ("Lunes a Domingo: 4:00 P.M. a 10:00 P.M."), si existe.
+    schedule.label = String(configHorario?.etiquetaHorario || '').trim() || schedule.label;
+    const ahora = orderLogic.getOrderingAvailability(schedule, new Date(nowMs));
+    if (ahora.isOpen) return { abierto: true, horarioTexto: schedule.label };
+    const hoy = bogotaParts(nowMs);
+    const medianocheHoyMs = bogotaDateKeyToMs(hoy.dateKey);
+    for (let d = 0; d <= 21; d++) {
+        const aperturaMs = medianocheHoyMs + d * 86400000 + schedule.startMinutes * 60000;
+        if (aperturaMs <= nowMs) continue;
+        // Un minuto después de abrir, para que un cierre "desde la hora de apertura" cuente.
+        if (orderLogic.getActiveScheduledClosure(schedule.cierresProgramados, schedule.timeZone, new Date(aperturaMs + 60000))) continue;
+        const p = bogotaParts(aperturaMs);
+        const dia = d === 0 ? 'hoy' : d === 1 ? 'mañana' : `el ${DIAS_CORTOS[p.dow]} ${p.d} de ${MESES[p.m - 1]}`;
+        return { abierto: false, motivo: ahora.statusLabel, proximaApertura: `${dia} a las ${formatHora12(schedule.startMinutes)}`, horarioTexto: schedule.label };
+    }
+    return { abierto: false, motivo: ahora.statusLabel, proximaApertura: null, horarioTexto: schedule.label };
+}
+
+async function leerEstadoHorario(db, nowMs = Date.now()) {
+    const snap = await db.collection('configuracion').doc(CONFIG_HORARIO_DOC).get();
+    return estadoHorario(snap.exists ? snap.data() : null, nowMs);
+}
+
 // ── Gestión de campañas desde FODEXA ─────────────────────────────────────────
 
 function cleanText(value, max) {
@@ -766,6 +905,10 @@ async function validateCampanaPayload(db, raw) {
         // viene algo, así una campaña sin variantes queda idéntica a como era antes.
         const variante = cleanText(item?.variante, VARIANTE_MAX);
         if (variante) renglon.variante = variante;
+        // "Nombre para el cliente": lo que hace especial al combo ("Papas a la francesa para
+        // compartir"). Solo se guarda si viene; cocina sigue viendo el nombre del catálogo.
+        const nombreCliente = cleanText(item?.nombreCliente, NOMBRE_CLIENTE_MAX);
+        if (nombreCliente) renglon.nombreCliente = nombreCliente;
         composicion.push(renglon);
     }
 
@@ -1026,6 +1169,10 @@ module.exports = {
     validarCuponPana,
     canjearCuponPanaTransaction,
     revertirCanjeCuponPanaTransaction,
+    prepararPedidoCuponTransaction,
+    validatePedidoInput,
+    estadoHorario,
+    leerEstadoHorario,
     validateCampanaPayload,
     guardarCampanaPana,
     vencerCuponesPana

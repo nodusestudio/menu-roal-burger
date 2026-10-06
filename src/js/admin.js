@@ -4788,8 +4788,15 @@ async function _posMostrarCuponPana(code, resultDiv, codeInput) {
         <span class="pos-cupon-result-sub">${quien}</span>
         ${eleccion ? `<span class="pos-cupon-result-sub">${eleccion}</span>` : ''}
         ${comp ? `<span class="pos-cupon-result-sub">🍔 ${comp}</span>` : ''}
-        <button type="button" class="pos-cupon-confirm-btn" id="posCuponConfirmBtn">Agregar al ticket →</button>
+        ${c.pedidoPreparado
+        // El cliente ya dijo en la landing cómo lo quiere: un clic arma el ticket completo.
+        ? `<span class="pos-cupon-result-sub pos-cupon-pedido">${_cpanaResumenPedido(c.pedidoPreparado, c.telefono)}</span>
+           <button type="button" class="pos-cupon-confirm-btn" id="posCuponCrearBtn">CREAR PEDIDO →</button>`
+        // Cliente en el local: como siempre, el cajero elige mesa o para llevar.
+        : '<button type="button" class="pos-cupon-confirm-btn" id="posCuponConfirmBtn">Agregar al ticket →</button>'}
     </div>`;
+    const crearBtn = resultDiv.querySelector('#posCuponCrearBtn');
+    crearBtn?.addEventListener('click', () => _posCrearPedidoDesdeCupon(c, crearBtn, codeInput, resultDiv));
     const confirmBtn = resultDiv.querySelector('#posCuponConfirmBtn');
     confirmBtn?.addEventListener('click', async () => {
         confirmBtn.disabled = true;
@@ -4807,6 +4814,52 @@ async function _posMostrarCuponPana(code, resultDiv, codeInput) {
             confirmBtn.textContent = 'Agregar al ticket →';
         }
     });
+}
+
+// "CREAR PEDIDO" (cupón con pedido preparado en la landing): canjea, carga el combo en el ticket
+// y llena la configuración del ticket (tipo, cliente, teléfono, dirección) por el MISMO camino que
+// usa el modal del ticket del POS. NO guarda el pedido: queda en el POS para que el cajero lo
+// revise y toque GUARDAR o COBRAR. En domicilio se abre el modal del ticket con la dirección
+// prellenada, que busca el precio del domicilio para que el cajero lo confirme. Si se cancela el
+// ticket, el canje se revierte desde "Canjeados hoy".
+async function _posCrearPedidoDesdeCupon(c, btn, codeInput, resultDiv) {
+    // Un pedido de cupón es un ticket nuevo: no se mezcla con lo que ya haya en el carrito.
+    if (internalOrderItems.length || _editingOrderData) {
+        showNotice('Termina o vacía el ticket actual antes de crear el pedido del cupón.', 'error');
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Creando…';
+    try {
+        const out = (await firebaseFunctions.httpsCallable('canjearCuponPana')({ codigo: c.codigo })).data;
+        const meta = out.couponMeta || {};
+        const ped = meta.pedidoPreparado || c.pedidoPreparado;
+        await _posConfirmarCupon(null, { couponMeta: { ...meta, pedidoPreparado: ped }, couponTitle: meta.titulo });
+        const domicilio = ped.modalidad === 'domicilio';
+        _posAplicarTicketConfig({
+            orderType: domicilio ? 'domicilio' : 'retiro',
+            mesaNumber: null,
+            // "Llamó": el cliente pidió a distancia (WhatsApp) y pasa a recoger.
+            pickupMode: domicilio ? 'llego' : 'llamo',
+            customerName: meta.nombre || c.nombre || '',
+            customerPhone: meta.telefono || c.telefono || '',
+            deliveryAddress: domicilio ? _cpanaDireccionPedido(ped) : '',
+            deliveryFee: null
+        });
+        codeInput.value = '';
+        resultDiv.innerHTML = '';
+        if (domicilio) {
+            openPosTicketSetupModal(true);
+            showNotice('Cupón canjeado. Confirma el valor del domicilio y luego GUARDA o COBRA el pedido.', 'ok');
+        } else {
+            showNotice('Cupón canjeado: pedido para recoger listo en el ticket. Revísalo y toca GUARDAR o COBRAR.', 'ok');
+        }
+    } catch (err) {
+        console.error('canjearCuponPana (crear pedido):', err);
+        showNotice(err?.message || 'No se pudo crear el pedido del cupón. Intenta de nuevo.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'CREAR PEDIDO →';
+    }
 }
 
 // Línea de Fuera del Menú: mismo formato que un combo especial (lista de contenido en el POS) y
@@ -4828,7 +4881,7 @@ function _posAgregarLineaCuponPana(meta) {
         subtotal: precio,
         note: comboItems.join(' + '),
         optionLabel: comboItems.join(' + '),
-        promoLabel: `FUERA DEL MENÚ ${meta.codigo}`,
+        promoLabel: `FUERA DEL MENÚ ${meta.codigo}${meta.pedidoPreparado?.pago ? ` · Pago: ${_CPANA_PAGOS[meta.pedidoPreparado.pago] || meta.pedidoPreparado.pago}` : ''}`,
         isComboEspecial: true,
         comboItems,
         // Viaja en orderOptions del pedido guardado: deja la traza código → pedido.
@@ -16791,6 +16844,24 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
     }
 }
 
+// Fija la configuración del ticket en construcción (tipo, mesa, cliente, dirección, domicilio) y
+// la muestra en el carrito. La usan el modal del ticket y "CREAR PEDIDO" del cupón Fuera del Menú.
+function _posAplicarTicketConfig(cfg) {
+    const { orderType, mesaNumber, customerName } = cfg;
+    posTicketConfig = {
+        orderType, mesaNumber, pickupMode: cfg.pickupMode, customerName,
+        customerPhone: cfg.customerPhone, deliveryAddress: cfg.deliveryAddress, deliveryFee: cfg.deliveryFee
+    };
+    _posEditPrefill = null;
+    const typeLabels = { mesa: 'Mesa', retiro: 'Para llevar', domicilio: 'Domicilio' };
+    const label = orderType === 'mesa' && mesaNumber
+        ? (customerName ? `Mesa ${mesaNumber} · ${customerName}` : `Mesa ${mesaNumber}`)
+        : (customerName ? `${customerName} (${typeLabels[orderType] || orderType})` : (typeLabels[orderType] || orderType));
+    const labelEl = document.getElementById('posActiveTicketLabel');
+    if (labelEl) labelEl.textContent = label;
+    renderPosCartTicketInfo();
+}
+
 function closePosTicketSetupModal() {
     document.getElementById('posTicketSetupModal')?.setAttribute('hidden', '');
 }
@@ -17072,15 +17143,7 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
 
     if (_ptsConfigOnly) {
         // Modo configuración: fijar la metadata del pedido en construcción y mostrarla en el carrito
-        posTicketConfig = { orderType: resolvedType, mesaNumber: resolvedMesa, pickupMode: resolvedPickupMode, customerName, customerPhone, deliveryAddress, deliveryFee };
-        _posEditPrefill = null;
-        const typeLabels = { mesa: 'Mesa', retiro: 'Para llevar', domicilio: 'Domicilio' };
-        const label = resolvedType === 'mesa' && resolvedMesa
-            ? (customerName ? `Mesa ${resolvedMesa} · ${customerName}` : `Mesa ${resolvedMesa}`)
-            : (customerName ? `${customerName} (${typeLabels[resolvedType] || resolvedType})` : (typeLabels[resolvedType] || resolvedType));
-        const labelEl = document.getElementById('posActiveTicketLabel');
-        if (labelEl) labelEl.textContent = label;
-        renderPosCartTicketInfo();
+        _posAplicarTicketConfig({ orderType: resolvedType, mesaNumber: resolvedMesa, pickupMode: resolvedPickupMode, customerName, customerPhone, deliveryAddress, deliveryFee });
         _ptsCobrarAfterSave = false;
         return;
     }
@@ -26774,9 +26837,32 @@ function _cpanaVariantesCatalogo(id, tipo) {
 }
 
 // "2× Burger Normal (Mediana · 2 carnes)" -- mismo texto en el ticket de cocina, el POS y el panel.
+// Cocina y caja ven SIEMPRE el nombre del catálogo + variante (lo que hay que preparar); el
+// "nombre para el cliente" del combo va aparte, entre paréntesis, solo si es distinto. El cliente
+// ve lo contrario (renglonTexto en functions/cuponPana.js y src/js/cupon.js).
 function _cpanaRenglonTexto(p) {
     const cant = Number(p?.cantidad || 1);
-    return `${cant > 1 ? `${cant}× ` : ''}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
+    const base = `${cant > 1 ? `${cant}× ` : ''}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
+    const especial = String(p?.nombreCliente || '').trim();
+    return especial && especial !== String(p?.nombre || '').trim() ? `${base} (${especial})` : base;
+}
+
+const _CPANA_PAGOS = { efectivo: 'Efectivo', transferencia: 'Transferencia' };
+
+// Dirección del pedido preparado tal como la necesita el domiciliario: completa, con barrio y
+// referencias (el ticket la imprime entera, nunca recortada).
+function _cpanaDireccionPedido(ped) {
+    return [`${ped.direccion}, ${ped.barrio}`, ped.referencias ? `Ref: ${ped.referencias}` : ''].filter(Boolean).join(' — ');
+}
+
+function _cpanaResumenPedido(ped, telefono) {
+    if (!ped) return '';
+    const partes = ped.modalidad === 'domicilio'
+        ? [`🛵 <strong>Domicilio</strong>`, `📍 ${escapeHtml(_cpanaDireccionPedido(ped))}`]
+        : [`🏃 <strong>Para recoger</strong>`];
+    partes.push(`💳 ${escapeHtml(_CPANA_PAGOS[ped.pago] || ped.pago || '—')}`);
+    if (telefono) partes.push(`📞 ${escapeHtml(telefono)}`);
+    return partes.join(' · ');
 }
 
 function _cpanaRenderVarianteControl() {
@@ -26855,7 +26941,7 @@ function openCuponPanaEditor(campanaId = null) {
     sel.innerHTML = '<option value="">Elegir producto, combo, bebida o acompañante…</option>' + _cpanaCatalogOptions()
         .map((o) => `<option value="${escapeHtml(o.id)}" data-nombre="${escapeHtml(o.nombre)}" data-tipo="${o.tipo}">${escapeHtml(o.grupo)} — ${escapeHtml(o.nombre)}</option>`).join('');
     _cpanaRenderVarianteControl();
-    _cpanaComposicion = (c?.composicion || []).map((p) => ({ productoId: p.productoId, nombre: p.nombre, cantidad: Number(p.cantidad || 1), ...(p.variante ? { variante: p.variante } : {}) }));
+    _cpanaComposicion = (c?.composicion || []).map((p) => ({ productoId: p.productoId, nombre: p.nombre, cantidad: Number(p.cantidad || 1), ...(p.variante ? { variante: p.variante } : {}), ...(p.nombreCliente ? { nombreCliente: p.nombreCliente } : {}) }));
     _cpanaRenderComposicion();
 
 
@@ -26997,7 +27083,10 @@ document.getElementById('cpanaCompAddBtn')?.addEventListener('click', () => {
     if (!opt || !opt.value) return;
     const cantidad = Math.min(20, Math.max(1, Number(document.getElementById('cpanaCompCantidad').value) || 1));
     const variante = String(document.getElementById('cpanaCompVariante')?.value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
-    _cpanaComposicion.push({ productoId: opt.value, nombre: opt.dataset.nombre || opt.textContent, cantidad, ...(variante ? { variante } : {}) });
+    const nombreClienteEl = document.getElementById('cpanaCompNombreCliente');
+    const nombreCliente = String(nombreClienteEl?.value || '').replace(/\s+/g, ' ').trim().slice(0, 50);
+    _cpanaComposicion.push({ productoId: opt.value, nombre: opt.dataset.nombre || opt.textContent, cantidad, ...(variante ? { variante } : {}), ...(nombreCliente ? { nombreCliente } : {}) });
+    if (nombreClienteEl) nombreClienteEl.value = '';
     _cpanaRenderComposicion();
     _cpanaRenderVarianteControl(); // limpia la variante para el siguiente renglón
 });

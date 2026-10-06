@@ -669,7 +669,7 @@ test('composición: variante por renglón — se limpia, se recorta a 40 y llega
 
         const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
         const v = await cp.validarCuponPana(db, codigo, LUNES);
-        assert.deepEqual(v.cupon.composicion[0], { productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 2, variante: 'Mediana · 2 carnes' });
+        assert.deepEqual(v.cupon.composicion[0], { productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 2, variante: 'Mediana · 2 carnes', nombreCliente: '' });
         const r = await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, LUNES);
         assert.equal(r.couponMeta.composicion[0].variante, 'Mediana · 2 carnes');
         assert.equal(r.couponMeta.composicion[2].variante, '');
@@ -681,7 +681,7 @@ test('composición: campaña VIEJA sin variante sigue igual (guardar, validar y 
     const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
     const v = await cp.validarCuponPana(db, codigo, LUNES);
     assert.equal(v.canjeable, true);
-    assert.deepEqual(v.cupon.composicion, [{ productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 1, variante: '' }]);
+    assert.deepEqual(v.cupon.composicion, [{ productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 1, variante: '', nombreCliente: '' }]);
     // Re-guardarla desde el panel sin variante no agrega el campo.
     await cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana() }, 'admin-x', LUNES);
     const c = (await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data();
@@ -813,4 +813,125 @@ test('whatsapp: una campaña SIN grupos omite la línea de selecciones', () => {
         '📅 Válido: lunes',
         'Lo quiero para: recoger / comer en el local / domicilio'
     ]);
+});
+
+// ── Nombre para el cliente por renglón ───────────────────────────────────────
+
+test('nombre para el cliente: se guarda limpio (≤50), va a la vista pública y al mensaje; el POS conserva catálogo + variante', async () => {
+    await cp.guardarCampanaPana(db, {
+        campanaId: CAMPANA_ID,
+        campana: payloadCampana({ composicion: [
+            { productoId: 'seed-burger-pana', cantidad: 2, variante: 'Mediana · 2 carnes', nombreCliente: '  Burger   Doble Carne (media libra) ' },
+            { productoId: 'seed-burger-pana', cantidad: 1, nombreCliente: 'x'.repeat(70) },
+            { productoId: 'seed-burger-pana', cantidad: 1, nombreCliente: '   ' }
+        ] })
+    }, 'admin-x', LUNES);
+    const c = (await db.collection('cupones_campanas').doc(CAMPANA_ID).get()).data();
+    assert.equal(c.composicion[0].nombreCliente, 'Burger Doble Carne (media libra)');
+    assert.equal(c.composicion[1].nombreCliente, 'x'.repeat(50));
+    assert.equal('nombreCliente' in c.composicion[2], false);
+
+    const pub = await cp.syncCampanaPublica(db, CAMPANA_ID);
+    assert.deepEqual(pub.composicion[0], { nombre: 'Burger Pana', cantidad: 2, variante: 'Mediana · 2 carnes', nombreCliente: 'Burger Doble Carne (media libra)' });
+
+    // Cliente (landing / WhatsApp): el nombre especial, sin la variante del catálogo.
+    assert.equal(cp.renglonTexto(c.composicion[0]), '2× Burger Doble Carne (media libra)');
+    assert.equal(cp.renglonTexto({ nombre: 'Papas', cantidad: 1, variante: 'pequeña' }), 'Papas (pequeña)');
+    const r = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    assert.ok(decodeURIComponent(r.waLink.split('&text=')[1]).includes('📦 Incluye: 2× Burger Doble Carne (media libra)'));
+
+    // POS / cocina: catálogo + variante, y el nombre para el cliente aparte.
+    const v = await cp.validarCuponPana(db, r.codigo, LUNES);
+    assert.deepEqual(v.cupon.composicion[0], { productoId: 'seed-burger-pana', nombre: 'Burger Pana', cantidad: 2, variante: 'Mediana · 2 carnes', nombreCliente: 'Burger Doble Carne (media libra)' });
+
+    // Duplicar conserva el campo.
+    const dup = await cp.guardarCampanaPana(db, { accion: 'duplicar', campanaId: CAMPANA_ID }, 'admin-x', LUNES);
+    assert.equal((await db.collection('cupones_campanas').doc(dup.campanaId).get()).data().composicion[0].nombreCliente, 'Burger Doble Carne (media libra)');
+});
+
+// ── prepararPedidoCupon ──────────────────────────────────────────────────────
+
+function pedidoInput(codigo, overrides = {}) {
+    return { codigo, telefono: '3001112233', modalidad: 'domicilio', pago: 'transferencia', direccion: 'Cra 14 #22-10 apto 301', barrio: 'Granada', referencias: 'Portón negro', ...overrides };
+}
+
+test('prepararPedido: teléfono que no coincide → rechazo y no guarda nada', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { telefono: '3109998877' }), LUNES), 'permission-denied', /no corresponde/);
+    assert.equal((await db.collection('cupones_pana').doc(codigo).get()).data().pedidoPreparado, undefined);
+});
+
+test('prepararPedido: domicilio sin dirección o sin barrio → rechazo', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { direccion: '' }), LUNES), 'invalid-argument', /dirección/);
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { barrio: ' ' }), LUNES), 'invalid-argument', /barrio/);
+});
+
+test('prepararPedido: sin medio de pago (recoger o domicilio) → rechazo', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { modalidad: 'recoger', pago: '' }), LUNES), 'invalid-argument', /medio de pago/);
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { pago: 'tarjeta' }), LUNES), 'invalid-argument', /medio de pago/);
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { modalidad: 'local' }), LUNES), 'invalid-argument', /recoger o a domicilio/);
+});
+
+test('prepararPedido: cupón ya canjeado → rechazo', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, LUNES);
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo), LUNES), 'failed-precondition', /ya fue canjeado/);
+});
+
+test('prepararPedido: cupón "emitido" en campaña que exige activación → rechazo; vencido → rechazo', async () => {
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({ requiereActivacionWA: true, waNumeroCupones: '573009998877' });
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo), LUNES), 'failed-precondition', /activa tu cupón/);
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({ requiereActivacionWA: false });
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo), cp.bogotaDateKeyToMs('2026-11-02') + HOUR), 'failed-precondition', /vencido/);
+});
+
+test('prepararPedido: guarda el pedido, el mensaje lleva modalidad/pago/dirección, y se puede actualizar antes del canje', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    const r1 = await cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo), LUNES);
+    assert.deepEqual({ ...r1.pedidoPreparado, at: null }, { modalidad: 'domicilio', pago: 'transferencia', direccion: 'Cra 14 #22-10 apto 301', barrio: 'Granada', referencias: 'Portón negro', at: null });
+    const msg1 = decodeURIComponent(r1.waLink.split('&text=')[1]);
+    assert.ok(msg1.endsWith('🛵 Domicilio: Cra 14 #22-10 apto 301, Granada (Portón negro)\n💳 Pago: Transferencia'));
+    assert.equal(msg1.includes('Lo quiero para'), false);
+    assert.equal(r1.cuponValidoHoy, true);
+
+    // Cambia de opinión: ahora para recoger y en efectivo (los datos de domicilio se limpian).
+    const r2 = await cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { modalidad: 'recoger', pago: 'efectivo' }), LUNES + HOUR);
+    const msg2 = decodeURIComponent(r2.waLink.split('&text=')[1]);
+    assert.ok(msg2.endsWith('🏃 Para recoger\n💳 Pago: Efectivo'));
+    const guardado = (await db.collection('cupones_pana').doc(codigo).get()).data().pedidoPreparado;
+    assert.equal(guardado.modalidad, 'recoger');
+    assert.equal(guardado.direccion, '');
+    assert.equal(guardado.at.toMillis(), LUNES + HOUR);
+
+    // validar y canjear devuelven el pedido preparado y el teléfono (los usa "CREAR PEDIDO").
+    const v = await cp.validarCuponPana(db, codigo, LUNES + HOUR);
+    assert.equal(v.cupon.pedidoPreparado.modalidad, 'recoger');
+    assert.equal(v.cupon.pedidoPreparado.pago, 'efectivo');
+    assert.equal(v.cupon.telefono, '3001112233');
+    const c = await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, LUNES + HOUR);
+    assert.equal(c.couponMeta.pedidoPreparado.modalidad, 'recoger');
+    assert.equal(c.couponMeta.telefono, '3001112233');
+    // Ya canjeado: no se puede cambiar más.
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo), LUNES + 2 * HOUR), 'failed-precondition', /canjeado/);
+});
+
+test('validar: un cupón sin pedido preparado devuelve pedidoPreparado null (cliente en el local)', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    assert.equal((await cp.validarCuponPana(db, codigo, LUNES)).cupon.pedidoPreparado, null);
+});
+
+test('horario: abierto / cerrado con próxima apertura, saltando cierres programados', () => {
+    const H = { aperturaHora: 16, aperturaMinuto: 0, cierreHora: 22, cierreMinuto: 0, etiquetaHorario: 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.' };
+    const t = (k, h) => cp.bogotaDateKeyToMs(k) + h * HOUR;
+    assert.deepEqual(cp.estadoHorario(H, t('2026-10-05', 18)), { abierto: true, horarioTexto: 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.' });
+    assert.equal(cp.estadoHorario(H, t('2026-10-05', 11)).proximaApertura, 'hoy a las 4:00 p. m.');
+    assert.equal(cp.estadoHorario(H, t('2026-10-05', 23)).proximaApertura, 'mañana a las 4:00 p. m.');
+    const conFestivo = { ...H, cierresProgramados: [{ fechaInicio: '2026-10-06', fechaFin: '2026-10-07', todoElDia: true, motivo: 'Festivo' }] };
+    const r = cp.estadoHorario(conFestivo, t('2026-10-06', 18));
+    assert.equal(r.abierto, false);
+    assert.equal(r.motivo, 'Festivo');
+    assert.equal(r.proximaApertura, 'mañana a las 4:00 p. m.'.replace('mañana', 'el jueves 8 de octubre'));
 });

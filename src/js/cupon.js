@@ -117,6 +117,19 @@ async function fetchCampana(id) {
     return decodeFields(json.fields || {});
 }
 
+// Documentos públicos de configuración (configuracion/* es de lectura pública salvo el PIN):
+// config_landing (dirección del local, si el negocio la guardó) y config_horario (etiqueta).
+async function fetchConfigDoc(id) {
+    try {
+        const url = `${FIRESTORE_BASE}/configuracion/${encodeURIComponent(id)}${API_KEY && !IS_LOCAL ? `?key=${API_KEY}` : ''}`;
+        const resp = await fetch(url, { cache: 'no-store' });
+        if (!resp.ok) return null;
+        return decodeFields((await resp.json()).fields || {});
+    } catch (_) {
+        return null;
+    }
+}
+
 async function callFunction(name, data) {
     const resp = await fetch(`${FUNCTIONS_BASE}/${name}`, {
         method: 'POST',
@@ -166,7 +179,10 @@ function gruposDe(c) {
 // (_cpanaRenglonTexto en admin.js). Un renglón sin variante se ve como siempre.
 function renglonTexto(p) {
     const cant = Number(p?.cantidad || 1);
-    return `${cant > 1 ? `${cant}× ` : ''}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
+    const pre = cant > 1 ? `${cant}× ` : '';
+    // "Nombre para el cliente" del panel, si existe (SYNC: renglonTexto en functions/cuponPana.js).
+    if (p?.nombreCliente) return `${pre}${p.nombreCliente}`;
+    return `${pre}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
 }
 
 function composicionTexto(composicion) {
@@ -315,7 +331,7 @@ async function onSubmit(e) {
             recaptchaToken,
             fuente
         });
-        storageSet(STORAGE_PREFIX + campanaId, { ...result, igHandle });
+        storageSet(STORAGE_PREFIX + campanaId, { ...result, igHandle, telefono });
         stopPolling();
         renderCupon(result);
     } catch (err) {
@@ -358,9 +374,6 @@ function qrSvg(text) {
 function renderCupon(r) {
     const c = r.campana || {};
     const pendienteActivar = r.estado === 'emitido' && c.requiereActivacionWA;
-    // Mismo mensaje completo en los dos modos (buildMensajeWhatsApp en el servidor); con
-    // activación por WhatsApp el enlace va al número de cupones, que activa y toma el pedido.
-    const waLabel = c.requiereActivacionWA ? 'ACTIVAR Y PEDIR POR WHATSAPP' : 'PEDIR POR WHATSAPP';
     setView(`
         ${r.yaExistia ? '<p class="cp-banner">Ya tenías tu cupón 😉 Aquí está otra vez.</p>' : '<p class="cp-banner">¡Listo! 🎉 Este es tu cupón.</p>'}
         <article class="cp-ticket" id="cpTicket">
@@ -388,14 +401,18 @@ function renderCupon(r) {
             <p class="cp-ticket-legal">Personal e intransferible · una vez por persona · no acumulable</p>
         </article>
 
+        ${pendienteActivar
+        // Fase 2 (activación por el WhatsApp de cupones): primero activar; el pedido se arma después.
+        ? `<div class="cp-actions"><a class="cp-btn cp-btn--wa" href="${esc(r.waLink)}" target="_blank" rel="noopener">ACTIVAR POR WHATSAPP</a></div>`
+        : pedidoStepHtml(r)}
         <div class="cp-actions">
-            <a class="cp-btn cp-btn--wa" href="${esc(r.waLink)}" target="_blank" rel="noopener">${waLabel}</a>
             <button type="button" class="cp-btn cp-btn--ghost" id="cpIcsBtn">⏰ RECORDÁRMELO</button>
             <button type="button" class="cp-btn cp-btn--ghost" id="cpPngBtn">⬇️ GUARDAR CUPÓN</button>
         </div>
         ${condicionesHtml()}
         <p class="cp-foot"><a href="#" id="cpOtroNumero">¿No eres tú? Reclamar con otro número</a></p>`);
 
+    if (!pendienteActivar) wirePedidoStep(r);
     document.getElementById('cpIcsBtn').addEventListener('click', () => downloadIcs(r));
     document.getElementById('cpPngBtn').addEventListener('click', () => downloadPng(r).catch(() => alert('No pudimos generar la imagen. Toma una captura de pantalla 😉')));
     document.getElementById('cpOtroNumero').addEventListener('click', (e) => {
@@ -403,6 +420,172 @@ function renderCupon(r) {
         storageDel(STORAGE_PREFIX + campanaId);
         init();
     });
+}
+
+// ── "¿Cómo lo quieres?" ─────────────────────────────────────────────────────
+
+const MODALIDADES = {
+    local: { label: '🍽️ COMER EN EL LOCAL' },
+    recoger: { label: '🏃 RECOGER' },
+    domicilio: { label: '🛵 DOMICILIO' }
+};
+
+function pedidoStepHtml(r) {
+    return `
+        <section class="cp-card cp-pedido liquid-glass" id="cpPedido">
+            <h3 class="cp-h3">¿Cómo lo quieres?</h3>
+            <div class="cp-modos" role="group" aria-label="Cómo lo quieres">
+                ${Object.entries(MODALIDADES).map(([k, m]) => `<button type="button" class="cp-modo" data-modo="${k}" aria-pressed="false">${m.label}</button>`).join('')}
+            </div>
+            <div id="cpModoPanel"></div>
+        </section>`;
+}
+
+function pagoChipsHtml(pago) {
+    return `
+        <fieldset class="cp-field cp-toppings">
+            <legend>¿Cómo vas a pagar?</legend>
+            <div class="cp-chips">
+                ${[['efectivo', 'Efectivo'], ['transferencia', 'Transferencia']].map(([v, t]) => `<button type="button" class="cp-chip" data-pago="${v}" aria-pressed="${pago === v}">${t}</button>`).join('')}
+            </div>
+        </fieldset>`;
+}
+
+function telefonoFieldHtml(r) {
+    return `
+        <label class="cp-field">
+            <span>Tu WhatsApp (el mismo con que reclamaste el cupón)</span>
+            <input type="tel" name="telefono" inputmode="numeric" maxlength="16" autocomplete="tel-national" placeholder="300 123 4567" value="${esc(r.telefono || '')}" required>
+        </label>`;
+}
+
+async function renderModoLocal(panel) {
+    panel.innerHTML = `
+        <p class="cp-modo-msg">Perfecto 🍔 Muestra este código en caja cuando llegues y lo preparamos al momento.</p>
+        <div id="cpLocalInfo" class="cp-local-info"></div>`;
+    // Dirección y horario SOLO de la configuración guardada; si no existen, no se inventan.
+    const [landing, horario] = await Promise.all([fetchConfigDoc('config_landing'), fetchConfigDoc('config_horario')]);
+    const info = document.getElementById('cpLocalInfo');
+    if (!info) return;
+    const direccion = String(landing?.address || '').trim();
+    const etiqueta = String(horario?.etiquetaHorario || '').trim();
+    info.innerHTML = [
+        direccion ? `<p>📍 ${esc(direccion)}</p>` : '',
+        etiqueta ? `<p>🕓 ${esc(etiqueta)}</p>` : ''
+    ].join('');
+}
+
+function renderModoPedido(panel, r, modo) {
+    const prev = r.pedidoPreparado && r.pedidoPreparado.modalidad === modo ? r.pedidoPreparado : {};
+    const domicilio = modo === 'domicilio';
+    panel.innerHTML = `
+        <form id="cpPedidoForm" novalidate>
+            ${domicilio ? `
+            <label class="cp-field"><span>Dirección completa</span>
+                <input type="text" name="direccion" maxlength="150" autocomplete="street-address" placeholder="Ej. Cra 14 #22-10 apto 301" value="${esc(prev.direccion || '')}" required></label>
+            <label class="cp-field"><span>Barrio</span>
+                <input type="text" name="barrio" maxlength="60" placeholder="Ej. Granada" value="${esc(prev.barrio || '')}" required></label>
+            <label class="cp-field"><span>Referencias o indicaciones <em class="cp-opcional">(opcional)</em></span>
+                <input type="text" name="referencias" maxlength="150" placeholder="Ej. portón negro, timbre 2" value="${esc(prev.referencias || '')}"></label>` : ''}
+            ${telefonoFieldHtml(r)}
+            ${pagoChipsHtml(prev.pago || '')}
+            <p class="cp-modo-msg">${domicilio
+                ? 'El valor del domicilio se suma al precio del cupón y te lo confirmamos por WhatsApp.'
+                : 'Tu pedido estará listo 25 a 30 minutos después de que te confirmemos por WhatsApp.'}</p>
+            <p class="cp-error" id="cpPedidoError" role="alert" hidden></p>
+            <div id="cpPedidoAviso"></div>
+            <button type="submit" class="cp-btn cp-btn--wa" id="cpPedidoBtn">ENVIAR PEDIDO POR WHATSAPP</button>
+        </form>`;
+    const form = document.getElementById('cpPedidoForm');
+    let pago = prev.pago || '';
+    form.querySelectorAll('[data-pago]').forEach((chip) => chip.addEventListener('click', () => {
+        pago = chip.dataset.pago;
+        form.querySelectorAll('[data-pago]').forEach((c2) => c2.setAttribute('aria-pressed', String(c2 === chip)));
+    }));
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        enviarPedido(r, modo, form, pago);
+    });
+    // Un error viejo no debe quedarse en pantalla mientras el cliente ya lo está corrigiendo.
+    form.addEventListener('input', () => pedidoError(''));
+}
+
+function pedidoError(msg) {
+    const el = document.getElementById('cpPedidoError');
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = !msg;
+}
+
+async function enviarPedido(r, modo, form, pago) {
+    const fd = new FormData(form);
+    const telefono = String(fd.get('telefono') || '').replace(/\D/g, '');
+    const datos = {
+        codigo: r.codigo, telefono, modalidad: modo, pago,
+        direccion: String(fd.get('direccion') || '').trim(),
+        barrio: String(fd.get('barrio') || '').trim(),
+        referencias: String(fd.get('referencias') || '').trim()
+    };
+    // Chequeo rápido; el que manda es el servidor (prepararPedidoCupon).
+    if (modo === 'domicilio' && datos.direccion.length < 5) return pedidoError('Escribe la dirección completa.');
+    if (modo === 'domicilio' && datos.barrio.length < 2) return pedidoError('Escribe el barrio.');
+    if (!/^(57)?3\d{9}$/.test(telefono)) return pedidoError('Escribe tu celular (10 dígitos, empieza en 3).');
+    if (!pago) return pedidoError('Elige cómo vas a pagar.');
+    pedidoError('');
+    const btn = document.getElementById('cpPedidoBtn');
+    btn.disabled = true;
+    btn.textContent = 'PREPARANDO TU PEDIDO…';
+    try {
+        const recaptchaToken = await getRecaptchaToken();
+        const res = await callFunction('prepararPedidoCupon', { ...datos, recaptchaToken });
+        // Recordar lo enviado en este navegador (prellenar si vuelve a abrir el cupón).
+        const guardado = storageGet(STORAGE_PREFIX + campanaId) || r;
+        storageSet(STORAGE_PREFIX + campanaId, { ...guardado, telefono, pedidoPreparado: res.pedidoPreparado });
+        r.telefono = telefono;
+        r.pedidoPreparado = res.pedidoPreparado;
+        mostrarListoParaEnviar(res);
+    } catch (err) {
+        pedidoError(err.message || 'No pudimos preparar tu pedido. Intenta de nuevo.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'ENVIAR PEDIDO POR WHATSAPP';
+    }
+}
+
+// Abierto y válido hoy → directo a WhatsApp. Cerrado (horario o cierre programado) o día no
+// válido → se avisa ANTES de enviar y el cliente decide; nunca se bloquea.
+function mostrarListoParaEnviar(res) {
+    const aviso = document.getElementById('cpPedidoAviso');
+    const avisos = [];
+    if (res.horario && res.horario.abierto === false) {
+        // La hora ya termina en punto ("4:00 p. m."): no duplicarlo.
+        const cerrado = `Ahora estamos cerrados${res.horario.proximaApertura ? `; abrimos ${res.horario.proximaApertura}` : ''}`;
+        avisos.push(`${cerrado}${cerrado.endsWith('.') ? '' : '.'} Puedes enviarlo y te respondemos apenas abramos.`);
+    }
+    if (res.cuponValidoHoy === false) {
+        avisos.push(`Ojo: tu cupón es válido solo ${res.diasValidosTexto}. Hoy no se puede usar.`);
+    }
+    if (!avisos.length) {
+        aviso.innerHTML = `<p class="cp-modo-msg">¡Listo! Abriendo WhatsApp… Si no se abre, toca el botón.</p>
+            <a class="cp-btn cp-btn--wa" href="${esc(res.waLink)}" target="_blank" rel="noopener">ABRIR WHATSAPP</a>`;
+        window.location.href = res.waLink;
+        return;
+    }
+    aviso.innerHTML = `${avisos.map((t) => `<p class="cp-aviso">⚠️ ${esc(t)}</p>`).join('')}
+        <a class="cp-btn cp-btn--wa" href="${esc(res.waLink)}" target="_blank" rel="noopener">ENVIAR DE TODOS MODOS POR WHATSAPP</a>`;
+    aviso.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function wirePedidoStep(r) {
+    const panel = document.getElementById('cpModoPanel');
+    const elegir = (modo) => {
+        document.querySelectorAll('.cp-modo').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.modo === modo)));
+        if (modo === 'local') renderModoLocal(panel);
+        else renderModoPedido(panel, r, modo);
+    };
+    document.querySelectorAll('.cp-modo').forEach((b) => b.addEventListener('click', () => elegir(b.dataset.modo)));
+    // Si ya había preparado un pedido en este navegador, volver a mostrarlo para editarlo.
+    if (r.pedidoPreparado && MODALIDADES[r.pedidoPreparado.modalidad]) elegir(r.pedidoPreparado.modalidad);
 }
 
 function renderAgotado() {

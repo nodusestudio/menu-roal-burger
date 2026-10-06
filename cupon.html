@@ -90,6 +90,19 @@
         .cp-nota { margin: 6px 0 0; font-weight: 500; color: var(--cp-orange-dark); }
         .cp-opcional { font-family: 'Roboto', sans-serif; font-style: normal; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--cp-ink-soft); }
         .cp-ticket-nota { margin: 12px 0 0; color: #ffd2b0; font-weight: 500; }
+        /* ¿Cómo lo quieres? */
+        .cp-pedido { margin-top: 16px; }
+        .cp-modos { display: grid; gap: 8px; margin-top: 4px; }
+        .cp-modo {
+            font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.05rem; letter-spacing: 0.04em;
+            padding: 14px 16px; border-radius: 14px; cursor: pointer; text-align: left;
+            border: 1.5px solid rgba(31, 31, 33, 0.2); background: rgba(255, 255, 255, 0.6); color: var(--cp-ink);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .cp-modo[aria-pressed="true"] { background: var(--cp-ink); border-color: var(--cp-ink); color: #fff; }
+        .cp-modo-msg { margin: 14px 0 0; line-height: 1.5; font-weight: 500; }
+        .cp-local-info p { margin: 8px 0 0; color: var(--cp-ink-soft); }
+        .cp-aviso { margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: rgba(255, 107, 0, 0.14); color: #8a3f00; font-weight: 500; line-height: 1.45; }
 
         .cp-field { display: grid; gap: 6px; margin: 14px 0 0; border: 0; padding: 0; min-width: 0; }
         .cp-field > span, .cp-field legend { font-family: 'Oswald', sans-serif; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.05em; padding: 0; }

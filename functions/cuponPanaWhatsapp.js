@@ -71,7 +71,7 @@ function formatCop(n) {
 }
 
 function buildCuponActivoText(cupon, campana) {
-    const contenido = (campana.composicion || []).map((p) => `${p.cantidad > 1 ? `${p.cantidad}x ` : ''}${p.nombre}${p.variante ? ` (${p.variante})` : ''}`).join(' + ');
+    const contenido = (campana.composicion || []).map(cuponPana.renglonTexto).join(' + ');
     const finMs = toMs(campana.fechaFin);
     const fin = finMs ? bogotaParts(finMs) : null;
     const pedir = waMeLink(campana.waNumeroPrincipal, buildMensajeWhatsApp(campana, cupon));

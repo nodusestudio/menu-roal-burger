@@ -5141,6 +5141,11 @@
         }
         #cpanaCompProducto { max-width: none; }
         .cpana-variante-wrap { flex: 1 1 200px; display: flex; }
+        .cpana-nombre-cliente {
+            flex: 2 1 260px; min-width: 0; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75);
+            color: #fff; padding: 9px 10px; font-family: 'Roboto', sans-serif;
+        }
+        .pos-cupon-pedido { color: #ffe0b8 !important; font-size: 0.8rem !important; line-height: 1.45; }
         .cpana-variante-wrap select, .cpana-variante-wrap input {
             flex: 1; min-width: 0; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75);
             color: #fff; padding: 9px 10px; font-family: 'Roboto', sans-serif;
@@ -14936,6 +14941,7 @@
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                                     <select id="cpanaCompProducto" style="flex:1 1 240px;"></select>
                                     <span id="cpanaCompVarianteWrap" class="cpana-variante-wrap"></span>
+                                    <input type="text" id="cpanaCompNombreCliente" class="cpana-nombre-cliente" maxlength="50" placeholder="Nombre para el cliente (opcional), ej. Papas para compartir" aria-label="Nombre para el cliente">
                                     <input type="number" id="cpanaCompCantidad" min="1" max="20" value="1" style="max-width:80px;" aria-label="Cantidad">
                                     <button type="button" class="cat-new-save-btn" id="cpanaCompAddBtn">Agregar</button>
                                 </div>
