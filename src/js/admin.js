@@ -4921,8 +4921,15 @@ function _posAgregarLineaCuponPana(meta) {
         promoLabel: `FUERA DEL MENÚ ${meta.codigo}${meta.pedidoPreparado?.pago ? ` · Pago: ${_CPANA_PAGOS[meta.pedidoPreparado.pago] || meta.pedidoPreparado.pago}` : ''}`,
         isComboEspecial: true,
         comboItems,
-        // Viaja en orderOptions del pedido guardado: deja la traza código → pedido.
-        origOrderOptions: { cuponPanaCodigo: meta.codigo, cuponPanaCampanaId: meta.campanaId },
+        // Viaja en orderOptions del pedido guardado: deja la traza código → pedido, y lo que el
+        // mensaje de confirmación al cliente necesita (detalle con los nombres para el cliente y,
+        // si el pedido vino armado desde la landing, el pago que ya eligió).
+        origOrderOptions: {
+            cuponPanaCodigo: meta.codigo,
+            cuponPanaCampanaId: meta.campanaId,
+            cuponPanaDetalleCliente: _cpanaDetalleCliente(meta),
+            ...(meta.pedidoPreparado?.pago ? { cuponPanaPago: meta.pedidoPreparado.pago } : {})
+        },
         parentKey: null
     });
     renderPosOrderItems();
@@ -10491,8 +10498,10 @@ function buildOrderConfirmationMessage(order) {
         const qty = Number(i.quantity || 1);
         const name = i.productName || i.name || '';
         const precio = formatMoney(Number(i.subtotal || 0));
-        const detalles = [String(i.optionLabel || '').trim()];
-        if (i.note && i.note !== i.optionLabel) detalles.push(`Nota: ${String(i.note).trim()}`);
+        // Fuera del Menú: el cliente lee los nombres que vio en la landing, no los de cocina.
+        const detalleCupon = String(i.orderOptions?.cuponPanaDetalleCliente || '').trim();
+        const detalles = [detalleCupon || String(i.optionLabel || '').trim()];
+        if (!detalleCupon && i.note && i.note !== i.optionLabel) detalles.push(`Nota: ${String(i.note).trim()}`);
         const detalleTexto = detalles.filter(Boolean).join(' | ');
         const linea = `• ${qty}x ${name} — ${Number(i.subtotal || 0) === 0 ? 'GRATIS' : precio}`;
         return detalleTexto ? `${linea}\n   ↳ ${detalleTexto}` : linea;
@@ -10521,8 +10530,14 @@ function buildOrderConfirmationMessage(order) {
     // se le pregunta al cliente en vez de afirmarlo. Si ya eligió efectivo pero falta el monto,
     // se pide con cuánto paga. Si ya está todo definido, se muestra tal cual.
     const _pm = String(order.paymentMethod || '').toLowerCase();
+    // Pedido de cupón armado en la landing: el pago ya lo eligió el cliente. Solo cede si el
+    // cajero ya registró el efectivo con el monto (ahí la etiqueta completa dice más).
+    const _cuponPago = (order.items || []).map((it) => it?.orderOptions?.cuponPanaPago).find(Boolean);
+    const _cuponPagoLinea = _cpanaPagoLineaConfirmacion(_cuponPago);
     let pagoLinea;
-    if (!_pm || _pm === 'pendiente') {
+    if (_cuponPagoLinea && !(_pm === 'efectivo' && Number(order.cashTenderAmount) > 0)) {
+        pagoLinea = _cuponPagoLinea;
+    } else if (!_pm || _pm === 'pendiente') {
         pagoLinea = '💳 *¿Cómo vas a pagar?* Efectivo o transferencia. Si es en efectivo, dinos con cuánto pagas para tenerte el cambio listo.';
     } else if (_pm === 'efectivo' && !(Number(order.cashTenderAmount) > 0)) {
         pagoLinea = '💵 *Pago en efectivo.* ¿Con cuánto pagas? Así te tenemos el cambio listo.';
@@ -26893,6 +26908,34 @@ function _cpanaRenglonTexto(p) {
 
 const _CPANA_PAGOS = { efectivo: 'Efectivo', transferencia: 'Transferencia' };
 
+// Lo que ve el CLIENTE (mensajes de WhatsApp): el "nombre para el cliente" del renglón si existe;
+// si no, nombre del catálogo + variante. Lo contrario de _cpanaRenglonTexto (cocina/caja).
+// SYNC: renglonTexto en functions/cuponPana.js y src/js/cupon.js.
+function _cpanaRenglonCliente(p) {
+    const cant = Number(p?.cantidad || 1);
+    const pre = cant > 1 ? `${cant}× ` : '';
+    const especial = String(p?.nombreCliente || '').trim();
+    if (especial) return `${pre}${especial}`;
+    return `${pre}${p?.nombre || ''}${p?.variante ? ` (${p.variante})` : ''}`;
+}
+
+function _cpanaDetalleCliente(meta) {
+    return [
+        ...(meta?.composicion || []).map(_cpanaRenglonCliente),
+        ..._cpanaSelecciones(meta || {}).map((d) => `${d.grupo}: ${d.opcion}`),
+        // La nota fija se presenta igual que en la landing ("★ Exclusivo: …").
+        String(meta?.notaCocina || '').trim() ? `★ Exclusivo: ${String(meta.notaCocina).trim()}` : ''
+    ].filter(Boolean).join(' + ');
+}
+
+// Línea de pago del mensaje "Recibimos tu pedido" cuando el cliente ya eligió cómo paga en la
+// landing (CREAR PEDIDO): no se le vuelve a preguntar. null = no es un pedido de cupón con pago.
+function _cpanaPagoLineaConfirmacion(pago) {
+    if (pago === 'efectivo') return '💵 *Pago:* Efectivo · ¿Con cuánto pagas para tenerte el cambio listo?';
+    if (pago === 'transferencia') return '💳 *Pago:* Transferencia · Te enviamos los datos para transferir.';
+    return null;
+}
+
 // Dirección del pedido preparado tal como la necesita el domiciliario: completa, con barrio y
 // referencias (el ticket la imprime entera, nunca recortada).
 function _cpanaDireccionPedido(ped) {
@@ -26919,12 +26962,320 @@ function _cpanaRenderVarianteControl() {
         : '<input type="text" id="cpanaCompVariante" maxlength="40" placeholder="Variante (opcional), ej. Mediana · 2 carnes" aria-label="Variante">';
 }
 
+// Frase-resumen de la sección "Vigencia y cupos", calculada sobre fechas de calendario
+// ('YYYY-MM-DD', las mismas que manda el formulario): "Se puede reclamar del domingo 11 al jueves
+// 15 de octubre · se canjea lunes, martes y jueves · 50 cupos". Devuelve también el error que
+// bloquea el guardado (las mismas dos reglas que valida el servidor en validateCampanaPayload).
+function _cpanaResumenVigencia({ fechaInicio, fechaFin, diasValidos, cuposTotales } = {}) {
+    const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+    const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const parse = (k) => {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(k || ''));
+        return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+    };
+    const lista = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}` : xs[0] || '');
+    const ini = parse(fechaInicio);
+    const fin = parse(fechaFin);
+    if (ini === null || fin === null) return { texto: '', error: 'Pon la fecha de inicio y la final.', diasFuera: [] };
+    if (fin < ini) return { texto: '', error: 'La fecha final es anterior a la inicial.', diasFuera: [] };
+    // Lunes primero, domingo al final: así lo dice la gente ("lunes, martes y jueves").
+    const dias = [...new Set((diasValidos || []).map(Number))].filter((d) => d >= 0 && d <= 6)
+        .sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+    if (!dias.length) return { texto: '', error: 'Elige al menos un día válido para canjear.', diasFuera: [] };
+    const enRango = new Set();
+    for (let t = ini; t <= fin && t - ini < 7 * 86400000; t += 86400000) enRango.add(new Date(t).getUTCDay());
+    const canjeables = dias.filter((d) => enRango.has(d));
+    if (!canjeables.length) {
+        return { texto: '', error: `Ningún día válido (${lista(dias.map((d) => DIAS[d]))}) cae entre esas fechas: nadie podría canjear el cupón.`, diasFuera: dias };
+    }
+    const fecha = (t, conMes) => {
+        const d = new Date(t);
+        return `${DIAS[d.getUTCDay()]} ${d.getUTCDate()}${conMes ? ` de ${MESES[d.getUTCMonth()]}` : ''}`;
+    };
+    const a = new Date(ini);
+    const b = new Date(fin);
+    const mismoMes = a.getUTCMonth() === b.getUTCMonth() && a.getUTCFullYear() === b.getUTCFullYear();
+    const cuando = ini === fin
+        ? `solo el ${fecha(ini, true)}`
+        : `del ${fecha(ini, !mismoMes)} al ${fecha(fin, true)}`;
+    const cupos = Number(cuposTotales) > 0 ? ` · ${Number(cuposTotales).toLocaleString('es-CO')} cupos` : '';
+    return {
+        texto: `Se puede reclamar ${cuando} · se canjea ${lista(canjeables.map((d) => DIAS[d]))}${cupos}`,
+        error: null,
+        diasFuera: dias.filter((d) => !enRango.has(d))
+    };
+}
+
+// Avisos que NO bloquean el guardado pero conviene resolver antes de prender la campaña.
+function _cpanaAvisosActivacion(campana = {}) {
+    const avisos = [];
+    if (!String(campana.imagenUrl || '').trim()) avisos.push('Falta la foto del combo: la landing y el cupón salen con el fondo de marca.');
+    if (!String(campana.precioReferencia || '').replace(/\D/g, '')) avisos.push('Falta el precio "En el menú costaría": sin él no se ve cuánto se ahorra.');
+    const sinNombre = (campana.composicion || []).filter((p) => !String(p?.nombreCliente || '').trim());
+    if (sinNombre.length) {
+        avisos.push(`${sinNombre.length === 1 ? 'Un renglón' : `${sinNombre.length} renglones`} sin "Nombre para el cliente": ${sinNombre.map((p) => p.nombre || p.productoId).join(', ')}.`);
+    }
+    return avisos;
+}
+
+// Un renglón editable por producto, con etiqueta visible en cada campo. Editar un campo cambia
+// _cpanaComposicion en el acto (sin volver a pintar la lista, así no se pierde el foco).
 function _cpanaRenderComposicion() {
     const list = document.getElementById('cpanaCompList');
     if (!list) return;
-    list.innerHTML = _cpanaComposicion.length
-        ? _cpanaComposicion.map((p, i) => `<span class="cpana-chip">${escapeHtml(_cpanaRenglonTexto(p))}<button type="button" data-cpana-comp-del="${i}" aria-label="Quitar">×</button></span>`).join('')
-        : '<span class="admin-hint">Agrega al menos un producto.</span>';
+    if (!_cpanaComposicion.length) {
+        list.innerHTML = '<span class="admin-hint">Todavía no hay productos: agrega al menos uno abajo.</span>';
+        return;
+    }
+    const tipos = new Map(_cpanaCatalogOptions().map((o) => [o.id, o.tipo]));
+    list.innerHTML = _cpanaComposicion.map((p, i) => {
+        const opciones = _cpanaVariantesCatalogo(p.productoId, tipos.get(p.productoId));
+        const actual = String(p.variante || '');
+        const variante = opciones.length
+            ? `<select data-cpana-comp-field="variante" data-i="${i}"><option value="">Sin variante</option>${[...new Set([...(actual && !opciones.includes(actual) ? [actual] : []), ...opciones])]
+                .map((o) => `<option value="${escapeHtml(o.slice(0, 40))}"${o === actual ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select>`
+            : `<input type="text" maxlength="40" data-cpana-comp-field="variante" data-i="${i}" value="${escapeHtml(actual)}" placeholder="ej. Mediana · 2 carnes">`;
+        const falta = !String(p.nombreCliente || '').trim();
+        return `
+            <div class="cpana-comp-row">
+                <div class="cpana-mini"><span>Producto</span><span class="cpana-comp-prod-name">${escapeHtml(p.nombre || p.productoId)}</span></div>
+                <label class="cpana-mini"><span>Cantidad</span><input type="number" min="1" max="20" data-cpana-comp-field="cantidad" data-i="${i}" value="${Number(p.cantidad || 1)}"></label>
+                <label class="cpana-mini"><span>Variante</span>${variante}</label>
+                <label class="cpana-mini${falta ? ' cpana-mini--falta' : ''}"><span>Nombre para el cliente</span><input type="text" maxlength="50" data-cpana-comp-field="nombreCliente" data-i="${i}" value="${escapeHtml(p.nombreCliente || '')}" placeholder="ej. ${escapeHtml(p.nombre || 'Papas para compartir')}"></label>
+                <button type="button" class="pm-icon-btn" data-cpana-comp-del="${i}" aria-label="Quitar ${escapeHtml(p.nombre || '')}">Quitar</button>
+            </div>`;
+    }).join('');
+    _cpanaProgramarPreview();
+}
+
+function _cpanaActualizarRenglon(el) {
+    const p = _cpanaComposicion[Number(el.dataset.i)];
+    if (!p) return;
+    const campo = el.dataset.cpanaCompField;
+    if (campo === 'cantidad') {
+        p.cantidad = Math.min(20, Math.max(1, Number(el.value) || 1));
+        return;
+    }
+    const max = campo === 'nombreCliente' ? 50 : 40;
+    const valor = String(el.value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+    if (valor) p[campo] = valor; else delete p[campo];
+    if (campo === 'nombreCliente') el.closest('.cpana-mini')?.classList.toggle('cpana-mini--falta', !valor);
+}
+
+// ── Foto del combo ──────────────────────────────────────────────────────────
+// Estado de la subida: '' (nada en curso), 'subiendo' o 'error'. Guardar se bloquea en los dos
+// últimos: antes, si la subida fallaba, la campaña se guardaba igual sin foto y nadie se enteraba.
+let _cpanaFotoEstado = '';
+let _cpanaFotoObjectUrl = '';
+
+function _cpanaMostrarFoto(src) {
+    const img = document.getElementById('cpanaFotoImg');
+    const vacia = document.getElementById('cpanaFotoVacia');
+    const quitar = document.getElementById('cpanaFotoQuitar');
+    const txt = document.getElementById('cpanaFotoSubirTxt');
+    if (!img) return;
+    if (src) {
+        img.src = src;
+        img.hidden = false;
+        vacia.hidden = true;
+    } else {
+        img.removeAttribute('src');
+        img.hidden = true;
+        vacia.hidden = false;
+        vacia.textContent = 'Sin foto todavía';
+    }
+    if (quitar) quitar.hidden = !src;
+    if (txt) txt.textContent = src ? 'Cambiar' : 'Subir foto';
+}
+
+function _cpanaFotoMensaje(texto, tipo = '') {
+    const el = document.getElementById('cpanaFotoEstado');
+    if (!el) return;
+    el.textContent = texto;
+    el.className = `cpana-foto-estado${tipo ? ` ${tipo}` : ''}`;
+}
+
+function _cpanaFotoProgreso(pct) {
+    const wrap = document.getElementById('cpanaFotoProgreso');
+    const bar = document.getElementById('cpanaFotoProgresoBar');
+    if (!wrap || !bar) return;
+    wrap.hidden = pct === null;
+    bar.style.width = `${Math.max(0, Math.min(100, pct || 0))}%`;
+}
+
+// Máximo 1600 px de ancho en webp (jpeg si el navegador no sabe codificar webp). Nunca agranda.
+async function _cpanaComprimirFoto(file) {
+    const image = await loadImageElementFromFile(file);
+    const w0 = image.naturalWidth || image.width;
+    const h0 = image.naturalHeight || image.height;
+    const escala = Math.min(1, 1600 / w0);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w0 * escala);
+    canvas.height = Math.round(h0 * escala);
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+    const aBlob = (tipo) => new Promise((resolve) => canvas.toBlob(resolve, tipo, 0.85));
+    let blob = await aBlob('image/webp');
+    if (!blob || blob.type !== 'image/webp') blob = await aBlob('image/jpeg');
+    if (!blob) throw new Error('No se pudo procesar la imagen.');
+    return { blob, ancho: canvas.width, alto: canvas.height, anchoOriginal: w0 };
+}
+
+function _cpanaMensajeErrorSubida(err) {
+    const code = String(err?.code || '');
+    if (code === 'storage/unauthorized') return 'Firebase Storage rechazó la subida (permisos del servidor).';
+    if (code === 'storage/canceled') return 'Subida cancelada.';
+    if (code === 'storage/retry-limit-exceeded') return 'Se perdió la conexión durante la subida.';
+    return err?.message || 'Error desconocido.';
+}
+
+async function _cpanaSubirFoto(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) {
+        _cpanaFotoMensaje('Ese archivo no es una imagen.', 'error');
+        return;
+    }
+    // Vista previa inmediata, antes de comprimir y subir.
+    if (_cpanaFotoObjectUrl) URL.revokeObjectURL(_cpanaFotoObjectUrl);
+    _cpanaFotoObjectUrl = URL.createObjectURL(file);
+    _cpanaMostrarFoto(_cpanaFotoObjectUrl);
+    _cpanaFotoEstado = 'subiendo';
+    _cpanaFotoMensaje('Preparando la foto…');
+    _cpanaFotoProgreso(0);
+    _cpanaProgramarPreview();
+    let task = null;
+    try {
+        const { blob, ancho, alto, anchoOriginal } = await _cpanaComprimirFoto(file);
+        const ext = blob.type === 'image/webp' ? 'webp' : 'jpg';
+        const id = slugify(document.getElementById('cpanaId').value || 'campana') || 'campana';
+        const ref = firebaseStorage.ref().child(`cupones/${id}-${Date.now()}.${ext}`);
+        task = ref.put(blob, { contentType: blob.type, cacheControl: 'public,max-age=31536000' });
+        task.on('state_changed', (snap) => {
+            if (snap.totalBytes) _cpanaFotoProgreso((snap.bytesTransferred / snap.totalBytes) * 100);
+            _cpanaFotoMensaje(`Subiendo… ${Math.round((snap.bytesTransferred / 1024))} de ${Math.round(snap.totalBytes / 1024)} KB`);
+        });
+        await withTimeout(task, 90_000, 'La subida tardó demasiado. Revisa tu conexión.');
+        const url = await withTimeout(ref.getDownloadURL(), 10_000, 'No se pudo obtener el link de la foto.');
+        document.getElementById('cpanaImagen').value = url;
+        _cpanaFotoEstado = '';
+        _cpanaFotoProgreso(null);
+        _cpanaFotoMensaje(`✓ Foto subida (${ancho}×${alto}${anchoOriginal < 1080 ? ' · ojo: es más angosta que 1080 px y puede verse borrosa' : ''}). Se guarda con la campaña al tocar Guardar.`, 'ok');
+    } catch (err) {
+        try { task?.cancel?.(); } catch (_) { /* ya terminó */ }
+        _cpanaFotoEstado = 'error';
+        _cpanaFotoProgreso(null);
+        _cpanaFotoMensaje(`✗ La foto NO se subió: ${_cpanaMensajeErrorSubida(err)} Vuelve a intentarlo o tócale "Quitar" para guardar sin foto.`, 'error');
+        console.error('Subida de foto Fuera del Menú:', err);
+    } finally {
+        _cpanaProgramarPreview();
+    }
+}
+
+// Una ruta del sitio ("promociones/x.webp") se ve desde la raíz, igual que en la landing.
+function _cpanaFotoSrc(url) {
+    const u = String(url || '').trim();
+    return u && !/^(https?:|blob:|data:|\/)/i.test(u) ? `/${u}` : u;
+}
+
+function _cpanaQuitarFoto() {
+    if (_cpanaFotoObjectUrl) URL.revokeObjectURL(_cpanaFotoObjectUrl);
+    _cpanaFotoObjectUrl = '';
+    document.getElementById('cpanaImagen').value = '';
+    _cpanaFotoEstado = '';
+    _cpanaFotoProgreso(null);
+    _cpanaFotoMensaje('Sin foto: la landing usa el fondo de marca.');
+    _cpanaMostrarFoto('');
+    _cpanaProgramarPreview();
+}
+
+// ── Resumen, avisos y vista previa en vivo ─────────────────────────────────
+
+function _cpanaRenderResumenYAvisos() {
+    const { campana } = _cpanaReadForm();
+    const r = _cpanaResumenVigencia(campana);
+    const resumen = document.getElementById('cpanaResumenVigencia');
+    if (resumen) {
+        resumen.textContent = r.error ? `⚠️ ${r.error}` : `📅 ${r.texto}`;
+        resumen.classList.toggle('error', !!r.error);
+    }
+    document.getElementById('cpanaSecVigencia')?.classList.toggle('cpana-sec--error', !!r.error);
+    const avisos = _cpanaAvisosActivacion(campana);
+    if (!r.error && r.diasFuera.length) {
+        const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+        avisos.push(`Marcaste ${r.diasFuera.map((d) => DIAS[d]).join(', ')} pero no cae entre las fechas: ese día no se podrá canjear.`);
+    }
+    const box = document.getElementById('cpanaAvisos');
+    if (box) {
+        box.innerHTML = avisos.length
+            ? `<p>Antes de activar, revisa (no impide guardar):</p><ul>${avisos.map((a) => `<li>${escapeHtml(a)}</li>`).join('')}</ul>`
+            : '<p class="cpana-avisos-ok">✓ Todo listo para activar: foto, precio de referencia y nombres para el cliente.</p>';
+    }
+}
+
+function _cpanaRenderPreview() {
+    const body = document.getElementById('cpanaPreviewBody');
+    if (!body) return;
+    const { campana: c } = _cpanaReadForm();
+    // La foto recién elegida (aunque siga subiendo) gana sobre la URL guardada.
+    const foto = _cpanaFotoObjectUrl || c.imagenUrl;
+    const fotoSrc = foto && !/^(https?:|blob:|data:|\/)/i.test(foto) ? `/${foto}` : foto;
+    const money = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`;
+    const ref = Number(String(c.precioReferencia || '').replace(/\D/g, '')) || 0;
+    const items = c.composicion.map(_cpanaRenglonCliente).filter(Boolean);
+    const grupos = (c.gruposOpciones || []).filter((g) => g.nombre && g.opciones.length);
+    const vig = _cpanaResumenVigencia(c);
+    const titulo = c.titulo || 'Título del combo';
+    body.innerHTML = `
+        <div class="cpv">
+            <div class="cpv-hero">
+                ${fotoSrc ? `<img src="${escapeHtml(fotoSrc)}" alt="">` : ''}
+                <div class="cpv-hero-body">
+                    <span class="cpv-sello">🔐 FUERA DEL MENÚ</span>
+                    <p class="cpv-titulo">${escapeHtml(titulo)}</p>
+                    ${c.descripcion ? `<p class="cpv-desc">${escapeHtml(c.descripcion)}</p>` : ''}
+                </div>
+            </div>
+            <div class="cpv-body">
+                <div>
+                    <div class="cpv-precio">${money(c.precio)}</div>
+                    ${ref > Number(c.precio || 0) ? `<div class="cpv-ref">En el menú costaría <s>${money(ref)}</s></div>` : ''}
+                </div>
+                <div class="cpv-card">
+                    <h4>Qué incluye</h4>
+                    ${items.length ? `<ul>${items.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : '<span class="cpv-vig">Agrega productos a la composición.</span>'}
+                    ${c.notaCocina ? `<p class="cpv-excl">★ Exclusivo: ${escapeHtml(c.notaCocina)}</p>` : ''}
+                </div>
+                <div class="cpv-card">
+                    <div class="cpv-cupos">Quedan <b>${Number(c.cuposTotales || 0)}</b> de ${Number(c.cuposTotales || 0)} cupos</div>
+                    <div class="cpv-vig">${escapeHtml(vig.error || vig.texto)}</div>
+                </div>
+                <p class="cpv-sep">— ASÍ SE VE SU CUPÓN —</p>
+                <div class="cpv-ticket">
+                    ${fotoSrc ? `<img class="cpv-ticket-foto" src="${escapeHtml(fotoSrc)}" alt="">` : ''}
+                    <div class="cpv-ticket-top">
+                        <div class="cpv-kicker">🔐 FUERA DEL MENÚ</div>
+                        <div class="cpv-ticket-head"><span class="cpv-ticket-title">${escapeHtml(titulo)}</span><span class="cpv-ticket-price">${money(c.precio)}</span></div>
+                        <p class="cpv-ticket-comp">Para: <strong>Tu cliente</strong><br>${escapeHtml(items.join(' + '))}</p>
+                    </div>
+                    <div class="cpv-perf"></div>
+                    <div class="cpv-ticket-bottom">
+                        <div class="cpv-label">Tu código</div>
+                        <div class="cpv-code">ABC123</div>
+                        ${grupos.map((g) => `<div>${escapeHtml(g.nombre)}: <strong>${escapeHtml(g.opciones[0])}</strong></div>`).join('')}
+                        ${c.notaCocina ? `<div class="cpv-excl-t">★ Exclusivo: ${escapeHtml(c.notaCocina)}</div>` : ''}
+                        <div>📅 ${escapeHtml(vig.error ? '—' : vig.texto.split(' · ')[0])}</div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+}
+
+let _cpanaPreviewRaf = 0;
+function _cpanaProgramarPreview() {
+    cancelAnimationFrame(_cpanaPreviewRaf);
+    _cpanaPreviewRaf = requestAnimationFrame(() => {
+        _cpanaRenderResumenYAvisos();
+        _cpanaRenderPreview();
+    });
 }
 
 // Un renglón por grupo. El id viaja oculto para que, al editar, los cupones ya emitidos sigan
@@ -26961,6 +27312,14 @@ function openCuponPanaEditor(campanaId = null) {
     document.getElementById('cpanaPrecioRef').value = c?.precioReferencia || '';
     document.getElementById('cpanaDescripcion').value = c?.descripcion || '';
     document.getElementById('cpanaImagen').value = c?.imagenUrl || '';
+    // Foto actual de la campaña (o ninguna): se descarta lo que hubiera quedado de otra campaña.
+    if (_cpanaFotoObjectUrl) URL.revokeObjectURL(_cpanaFotoObjectUrl);
+    _cpanaFotoObjectUrl = '';
+    _cpanaFotoEstado = '';
+    _cpanaFotoProgreso(null);
+    _cpanaMostrarFoto(_cpanaFotoSrc(c?.imagenUrl));
+    _cpanaFotoMensaje(c?.imagenUrl ? 'Foto actual de la campaña.' : '');
+    _cpanaCerrarPreviewMovil();
     document.getElementById('cpanaGruposList').innerHTML = '';
     (c ? _cpanaGrupos(c) : CUPON_PANA_DEFAULTS.gruposOpciones).forEach((g) => _cpanaAddGrupoRow(g));
     document.getElementById('cpanaNotaCocina').value = c?.notaCocina || '';
@@ -26988,7 +27347,7 @@ function openCuponPanaEditor(campanaId = null) {
     _cpanaRenderVarianteControl();
     _cpanaComposicion = (c?.composicion || []).map((p) => ({ productoId: p.productoId, nombre: p.nombre, cantidad: Number(p.cantidad || 1), ...(p.variante ? { variante: p.variante } : {}), ...(p.nombreCliente ? { nombreCliente: p.nombreCliente } : {}) }));
     _cpanaRenderComposicion();
-
+    _cpanaProgramarPreview();
 
     card.hidden = false;
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -27059,7 +27418,16 @@ function _cpanaPrimerError() {
     }
     if (!document.querySelector('#cpanaDias input:checked')) {
         problemas.push({ el: document.querySelector('#cpanaDias input'), msg: 'Falta elegir al menos un día válido' });
+    } else {
+        // Mismas reglas que el servidor: fin >= inicio y al menos un día de canje dentro del rango.
+        const { campana } = _cpanaReadForm();
+        const vig = _cpanaResumenVigencia(campana);
+        if (vig.error && campana.fechaInicio && campana.fechaFin) problemas.push({ el: document.getElementById('cpanaFin'), msg: vig.error });
+        const ref = Number(campana.precioReferencia || 0);
+        if (ref && campana.precio && ref <= campana.precio) problemas.push({ el: document.getElementById('cpanaPrecioRef'), msg: 'El precio "En el menú costaría" debe ser mayor al precio del cupón.' });
     }
+    if (_cpanaFotoEstado === 'subiendo') problemas.push({ el: document.getElementById('cpanaFotoSubirLbl'), msg: 'Espera a que termine de subir la foto.' });
+    if (_cpanaFotoEstado === 'error') problemas.push({ el: document.getElementById('cpanaFotoSubirLbl'), msg: 'La foto no se subió: vuelve a intentarlo o tócale "Quitar" para guardar sin foto.' });
     // El primero según su posición en el formulario (lo que el usuario encuentra primero al bajar).
     problemas.sort((a, b) => (a.el && b.el && (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1));
     return problemas[0] || null;
@@ -27080,6 +27448,7 @@ async function _cpanaGuardar(e) {
     const error = _cpanaPrimerError();
     if (error) {
         if (error.el) {
+            error.el.closest('details')?.setAttribute('open', '');
             error.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             setTimeout(() => error.el.focus({ preventScroll: true }), 350);
         }
@@ -27090,7 +27459,8 @@ async function _cpanaGuardar(e) {
     _cpanaBotonesGuardar(true);
     try {
         await firebaseFunctions.httpsCallable('guardarCampanaPana')({ accion: 'guardar', campanaId, esNueva: !_cpanaEditingId, campana });
-        showNotice('Campaña guardada', 'ok');
+        const avisos = campana.activa ? _cpanaAvisosActivacion(campana) : [];
+        showNotice(avisos.length ? `Campaña guardada y activa. Ojo: ${avisos.join(' ')}` : 'Campaña guardada', 'ok');
         _cpanaSelectedMetricas = campanaId;
         document.getElementById('cpanaEditorCard').hidden = true;
         await loadCuponPanaCampanas();
@@ -27118,7 +27488,7 @@ document.getElementById('cpanaNewBtn')?.addEventListener('click', () => openCupo
 document.getElementById('cpanaEditorCloseBtn')?.addEventListener('click', () => { document.getElementById('cpanaEditorCard').hidden = true; });
 document.getElementById('cpanaForm')?.addEventListener('submit', _cpanaGuardar);
 document.getElementById('cpanaDeleteBtn')?.addEventListener('click', _cpanaEliminar);
-document.getElementById('cpanaGrupoAddBtn')?.addEventListener('click', () => _cpanaAddGrupoRow());
+document.getElementById('cpanaGrupoAddBtn')?.addEventListener('click', () => { _cpanaAddGrupoRow(); _cpanaProgramarPreview(); });
 document.getElementById('cpanaExportBtn')?.addEventListener('click', _cpanaExportCsv);
 document.getElementById('cpanaMetricasSelect')?.addEventListener('change', (e) => {
     _cpanaSelectedMetricas = e.target.value;
@@ -27138,19 +27508,56 @@ document.getElementById('cpanaCompAddBtn')?.addEventListener('click', () => {
     _cpanaRenderVarianteControl(); // limpia la variante para el siguiente renglón
 });
 document.getElementById('cpanaCompProducto')?.addEventListener('change', _cpanaRenderVarianteControl);
-document.getElementById('cpanaImagenFile')?.addEventListener('change', async (e) => {
+document.getElementById('cpanaImagenFile')?.addEventListener('change', (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-        showNotice('Subiendo imagen…', 'ok');
-        const url = await uploadImageToFirebase(file, `cupon-pana-${document.getElementById('cpanaId').value || 'campana'}`);
-        document.getElementById('cpanaImagen').value = url;
-        showNotice('Imagen subida.', 'ok');
-    } catch (err) {
-        showNotice(err?.message || 'No se pudo subir la imagen.', 'error');
-    } finally {
-        e.target.value = '';
-    }
+    e.target.value = ''; // permite volver a elegir el mismo archivo tras un error
+    _cpanaSubirFoto(file);
+});
+document.getElementById('cpanaFotoQuitar')?.addEventListener('click', _cpanaQuitarFoto);
+document.getElementById('cpanaImagen')?.addEventListener('change', (e) => {
+    if (_cpanaFotoObjectUrl) URL.revokeObjectURL(_cpanaFotoObjectUrl);
+    _cpanaFotoObjectUrl = '';
+    _cpanaFotoEstado = '';
+    _cpanaMostrarFoto(_cpanaFotoSrc(e.target.value.trim()));
+    _cpanaFotoMensaje(e.target.value.trim() ? 'URL puesta a mano: se guarda al tocar Guardar.' : '');
+});
+document.getElementById('cpanaFotoImg')?.addEventListener('error', (e) => {
+    if (!e.target.getAttribute('src')) return;
+    _cpanaFotoMensaje('⚠️ No se puede ver la foto en ese link (no existe o no es pública).', 'error');
+});
+document.getElementById('cpanaCompList')?.addEventListener('input', (e) => {
+    if (e.target.dataset.cpanaCompField) _cpanaActualizarRenglon(e.target);
+});
+document.getElementById('cpanaCompList')?.addEventListener('change', (e) => {
+    if (e.target.dataset.cpanaCompField) _cpanaActualizarRenglon(e.target);
+});
+// Cualquier cambio del formulario refresca resumen, avisos y vista previa (una vez por cuadro).
+document.getElementById('cpanaForm')?.addEventListener('input', _cpanaProgramarPreview);
+document.getElementById('cpanaForm')?.addEventListener('change', _cpanaProgramarPreview);
+// En celular la vista previa ocupa toda la pantalla. Se mueve a <body> mientras está abierta: la
+// tarjeta del panel tiene backdrop-filter, que vuelve "fixed" relativo a ella (quedaba debajo del
+// encabezado y de la barra del POS).
+function _cpanaAbrirPreviewMovil() {
+    const aside = document.getElementById('cpanaPreview');
+    if (!aside) return;
+    _cpanaRenderPreview();
+    document.body.appendChild(aside);
+    aside.classList.add('abierta');
+    aside.scrollTop = 0;
+    document.getElementById('cpanaPreviewCerrar')?.focus();
+}
+
+function _cpanaCerrarPreviewMovil() {
+    const aside = document.getElementById('cpanaPreview');
+    if (!aside) return;
+    aside.classList.remove('abierta');
+    document.querySelector('.cpana-editor-layout')?.appendChild(aside);
+}
+
+document.getElementById('cpanaPreviewBtn')?.addEventListener('click', _cpanaAbrirPreviewMovil);
+document.getElementById('cpanaPreviewCerrar')?.addEventListener('click', () => {
+    _cpanaCerrarPreviewMovil();
+    document.getElementById('cpanaPreviewBtn')?.focus();
 });
 document.querySelector('[data-tab-panel="cuponpana"]')?.addEventListener('click', (e) => {
     const t = e.target.closest('button');
@@ -27167,7 +27574,7 @@ document.querySelector('[data-tab-panel="cuponpana"]')?.addEventListener('click'
     if (t.dataset.cpanaTab) _cpanaSetTab(t.dataset.cpanaTab);
     if (t.dataset.cpanaRevertir) _cpanaAbrirModalReversa(t.dataset.cpanaRevertir);
     if (t.dataset.cpanaDuplicar) _cpanaDuplicar(t.dataset.cpanaDuplicar, t);
-    if (t.hasAttribute('data-cpana-grupo-del')) t.closest('.cpana-grupo-row')?.remove();
+    if (t.hasAttribute('data-cpana-grupo-del')) { t.closest('.cpana-grupo-row')?.remove(); _cpanaProgramarPreview(); }
     if (t.dataset.cpanaCompDel !== undefined) {
         _cpanaComposicion.splice(Number(t.dataset.cpanaCompDel), 1);
         _cpanaRenderComposicion();

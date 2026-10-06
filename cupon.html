@@ -69,8 +69,12 @@
         }
         .cp-hero--marca .cp-hero-logo-bg { position: absolute; right: -40px; top: 6%; width: 70%; max-width: 360px; height: auto; opacity: 0.16; transform: rotate(-12deg); }
         .cp-hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(20, 20, 20, 0.15) 0%, rgba(20, 20, 20, 0.05) 35%, rgba(20, 20, 20, 0.85) 78%, var(--cp-carbon) 100%); }
-        .cp-hero-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: center; padding: calc(14px + env(safe-area-inset-top)) 16px 0; }
-        .cp-hero-top img { height: 40px; width: auto; filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5)); }
+        .cp-hero-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: center; padding: calc(14px + env(safe-area-inset-top)) 16px 26px; background: linear-gradient(180deg, rgba(10, 10, 10, 0.62), rgba(10, 10, 10, 0)); }
+        /* Marca: isotipo (la R) + "ROAL BURGER" en crema. 48 px; el webp es de 1080 px, nítido en retina. */
+        .cp-marca { display: inline-flex; align-items: center; gap: 10px; color: var(--cp-crema); text-decoration: none; min-height: 48px; border-radius: 12px; }
+        .cp-marca img { width: 48px; height: 48px; border-radius: 12px; display: block; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); }
+        .cp-marca span { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.15rem; letter-spacing: 0.08em; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); }
+        .cp-marca:focus-visible { outline: 3px solid var(--cp-naranja); outline-offset: 4px; }
         .cp-hero-body { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 16px 22px; max-width: var(--cp-max); margin: 0 auto; }
         .cp-sello {
             display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px;
@@ -199,6 +203,9 @@
         .cp-perforado::before, .cp-perforado::after { content: ''; position: absolute; top: -16px; width: 30px; height: 30px; border-radius: 50%; background: var(--cp-carbon); }
         .cp-perforado::before { left: -38px; }
         .cp-perforado::after { right: -38px; }
+        /* Foto del combo arriba de la tarjeta (16:9). Sin foto no se pinta nada: no queda hueco. */
+        .cp-ticket-foto { display: block; width: calc(100% - 24px); margin: 12px 12px 0; aspect-ratio: 16 / 9; height: auto; object-fit: cover; border-radius: 14px; background: #e8dccb; }
+        .cp-ticket-foto + .cp-ticket-top { border-top: 0; border-radius: 0; padding-top: 14px; }
         .cp-ticket-top { padding: 20px 20px 18px; border-radius: 20px 20px 0 0; border-top: 8px solid var(--cp-naranja); }
         .cp-ticket-head { display: flex; align-items: center; gap: 12px; }
         .cp-ticket-head img { border-radius: 10px; flex: 0 0 auto; }
@@ -208,16 +215,13 @@
         .cp-ticket-price { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.45rem; color: var(--cp-naranja-osc); }
         .cp-ticket-name { margin: 12px 0 0; color: #4a4038; }
         .cp-ticket-bottom { padding: 18px 20px 20px; }
-        .cp-ticket-code-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
         .cp-ticket-label { margin: 0; font-family: 'Oswald', sans-serif; letter-spacing: 0.1em; font-size: 0.78rem; text-transform: uppercase; color: #6a5d50; }
-        .cp-ticket-code { margin: 2px 0 0; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: clamp(2.3rem, 11vw, 2.9rem); letter-spacing: 0.14em; line-height: 1; color: #141414; }
-        .cp-qr { width: 112px; height: 112px; flex: 0 0 auto; border-radius: 10px; }
+        .cp-ticket-code { margin: 2px 0 0; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: clamp(3rem, 15vw, 4.2rem); letter-spacing: 0.16em; overflow-wrap: anywhere; line-height: 1; color: #141414; }
         .cp-ticket-extras { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
         .cp-ticket-extras li { font-weight: 500; }
         .cp-ticket-extras li span { color: #6a5d50; font-weight: 400; }
         .cp-ticket-comp { margin: 10px 0 0; font-weight: 500; color: #2b241e; line-height: 1.45; }
         .cp-top-plano { display: flex; justify-content: center; padding: 18px 0 6px; }
-        .cp-top-plano img { height: 40px; width: auto; display: block; }
         .cp-actions { display: grid; gap: 10px; margin-top: 16px; }
         .cp-ticket-nota { margin: 10px 0 0; font-weight: 500; color: var(--cp-naranja-osc); }
         .cp-ticket-days { margin: 12px 0 0; font-weight: 500; }
@@ -254,7 +258,7 @@
 
         /* ── 9. ESTADOS ── */
         .cp-estado { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; justify-content: center; text-align: center; padding: 40px 0; }
-        .cp-estado-logo { height: 40px; width: auto; margin: 0 auto 26px; }
+        .cp-estado-marca { display: flex; justify-content: center; margin: 0 0 22px; }
         .cp-estado-emoji { font-size: 3.4rem; margin: 0 0 10px; }
         .cp-estado .cp-titulo { margin-top: 6px; font-size: clamp(2rem, 9vw, 2.6rem); }
         .cp-estado .cp-sub { font-size: 1.05rem; margin-top: 12px; }

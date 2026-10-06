@@ -959,3 +959,25 @@ test('precioReferencia: vacío → null (no se muestra); menor o igual al precio
     await expectHttpsError(cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ precioReferencia: 15000 }) }, 'admin-x', LUNES),
         'invalid-argument', /mayor al precio del cupón/);
 });
+
+// ── Editor claro: reglas de fechas y foto en la tarjeta del cupón ───────────
+
+test('guardarCampanaPana: fecha final antes de la inicial y rango sin ningún día válido → rechazo', async () => {
+    await expectHttpsError(cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ fechaInicio: '2026-10-11', fechaFin: '2026-10-05' }) }, 'admin-x', LUNES),
+        'invalid-argument', /posterior a la inicial/);
+    // Viernes 9 a domingo 11 con canje solo lunes, martes y jueves: nadie podría canjear.
+    await expectHttpsError(cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ fechaInicio: '2026-10-09', fechaFin: '2026-10-11', diasValidos: [1, 2, 4] }) }, 'admin-x', LUNES),
+        'invalid-argument', /Ningún día válido/);
+    // BURDA1 real: domingo 11 a jueves 15, canje lunes/martes/jueves → todos caen en el rango.
+    await cp.guardarCampanaPana(db, { campanaId: CAMPANA_ID, campana: payloadCampana({ fechaInicio: '2026-10-11', fechaFin: '2026-10-15', diasValidos: [1, 2, 4] }) }, 'admin-x', LUNES);
+    const i = cp.bogotaDateKeyToMs('2026-10-11');
+    const f = cp.bogotaDateKeyToMs('2026-10-15', true);
+    assert.deepEqual(cp.diasDeCanjeEnRango(i, f, [1, 2, 4]).sort(), [1, 2, 4]);
+    assert.deepEqual(cp.diasDeCanjeEnRango(i, cp.bogotaDateKeyToMs('2026-10-11', true), [1, 2, 4]), []);
+});
+
+test('emitirCuponPana: la respuesta trae la foto de la campaña para la tarjeta del cupón', async () => {
+    await db.collection('cupones_campanas').doc(CAMPANA_ID).update({ imagenUrl: 'https://firebasestorage.googleapis.com/v0/b/x/o/cupones%2Fburda.webp?alt=media' });
+    const r = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    assert.match(r.campana.imagenUrl, /cupones%2Fburda\.webp/);
+});

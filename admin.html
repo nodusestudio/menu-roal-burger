@@ -5242,6 +5242,146 @@
         .cpana-hist li { line-height: 1.35; }
         .cpana-hist .cpana-hist--rev { color: #ffb48f; }
         .cpana-revert-btn { border-color: rgba(255,120,120,0.45) !important; color: #ffb3b3 !important; }
+        /* ── Editor de campañas por secciones + vista previa ── */
+        .cpana-form { display: block; }
+        .cpana-editor-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
+        .cpana-secciones { display: grid; gap: 12px; min-width: 0; }
+        .cpana-sec { border-radius: 14px; background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.1); }
+        .cpana-sec > summary {
+            list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px;
+        }
+        .cpana-sec > summary::-webkit-details-marker { display: none; }
+        .cpana-sec > summary::after { content: '▾'; margin-left: auto; color: var(--admin-muted); transition: transform 0.2s ease; }
+        .cpana-sec:not([open]) > summary::after { transform: rotate(-90deg); }
+        .cpana-sec > summary:focus-visible { outline: 2px solid var(--admin-accent); outline-offset: 2px; }
+        .cpana-sec-num {
+            flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+            background: var(--admin-accent); color: #141414; font-family: 'Oswald', sans-serif; font-weight: 700;
+        }
+        .cpana-sec-txt { display: grid; gap: 2px; min-width: 0; }
+        .cpana-sec-txt strong { font-family: 'Oswald', sans-serif; font-size: 1.02rem; color: #fff; letter-spacing: 0.02em; }
+        .cpana-sec-txt small { color: var(--admin-muted); font-size: 0.78rem; line-height: 1.35; }
+        .cpana-sec-body { padding: 4px 14px 16px; }
+        .cpana-sec-body.admin-form { display: grid; }
+        .cpana-field-title { color: var(--admin-muted); font-size: 0.85rem; }
+        .cpana-sec--error { border-color: rgba(248,113,113,0.6); }
+
+        /* Foto */
+        .cpana-foto { display: grid; grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); gap: 14px; align-items: start; }
+        .cpana-foto-preview {
+            position: relative; aspect-ratio: 4 / 5; border-radius: 12px; overflow: hidden; display: grid; place-items: center;
+            background: repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 10px, rgba(255,255,255,0.06) 10px 20px);
+            border: 1px dashed rgba(255,255,255,0.22);
+        }
+        .cpana-foto-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .cpana-foto-preview img[hidden], .cpana-foto-vacia[hidden] { display: none; }
+        .cpana-foto-vacia { color: var(--admin-muted); font-size: 0.8rem; text-align: center; padding: 8px; }
+        .cpana-foto-side { display: grid; gap: 10px; min-width: 0; }
+        .cpana-foto-reco { margin: 0; line-height: 1.45; }
+        .cpana-foto-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+        .cpana-foto-subir { cursor: pointer; display: inline-flex; align-items: center; }
+        .cpana-progress { height: 8px; border-radius: 6px; background: rgba(255,255,255,0.08); overflow: hidden; }
+        .cpana-progress span { display: block; height: 100%; width: 0; background: var(--admin-accent); transition: width 0.2s ease; }
+        .cpana-foto-estado { margin: 0; font-size: 0.82rem; line-height: 1.4; min-height: 1.2em; }
+        .cpana-foto-estado.ok { color: #7ee0c2; }
+        .cpana-foto-estado.error { color: #ff9b9b; font-weight: 600; }
+        .cpana-foto-url summary { cursor: pointer; color: var(--admin-muted); font-size: 0.78rem; }
+        .cpana-foto-url input { margin-top: 6px; width: 100%; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75); color: #fff; padding: 9px 10px; }
+        @media (max-width: 560px) { .cpana-foto { grid-template-columns: 1fr; } .cpana-foto-preview { max-width: 240px; } }
+
+        /* Composición: un renglón editable por producto, con etiqueta en cada campo */
+        .cpana-comp-list { display: grid; gap: 8px; }
+        .cpana-comp-row, .cpana-comp-grid {
+            display: grid; grid-template-columns: minmax(0, 1.4fr) 76px minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 8px; align-items: end;
+        }
+        .cpana-comp-row { padding: 10px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); }
+        .cpana-comp-add { margin-top: 10px; padding: 10px; border-radius: 12px; border: 1px dashed rgba(255,123,69,0.4); }
+        .cpana-comp-add-title { margin: 0 0 8px; font-size: 0.78rem; font-weight: 700; color: #ffb48f; text-transform: uppercase; letter-spacing: 0.05em; }
+        .cpana-mini { display: grid; gap: 4px; min-width: 0; }
+        .cpana-mini > span:first-child { font-size: 0.72rem; color: var(--admin-muted); }
+        .cpana-mini input, .cpana-mini select {
+            width: 100%; min-width: 0; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75);
+            color: #fff; padding: 9px 10px; font-family: 'Roboto', sans-serif;
+        }
+        .cpana-mini .cpana-variante-wrap { flex: none; }
+        .cpana-comp-prod-name { font-weight: 600; color: #fff; padding: 9px 0; overflow-wrap: anywhere; }
+        .cpana-mini--falta input { border-color: rgba(251,191,36,0.6); }
+        @media (max-width: 760px) {
+            .cpana-comp-row, .cpana-comp-grid { grid-template-columns: 1fr 76px; }
+            .cpana-comp-row > :nth-child(3), .cpana-comp-row > :nth-child(4),
+            .cpana-comp-grid > :nth-child(3), .cpana-comp-grid > :nth-child(4) { grid-column: 1 / -1; }
+        }
+        .cpana-grupo-head { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(180px, 2fr) 92px 64px; gap: 6px; font-size: 0.72rem; color: var(--admin-muted); padding: 0 9px 4px; }
+        @media (max-width: 640px) { .cpana-grupo-head { display: none; } }
+
+        .cpana-resumen { margin: 0; padding: 12px 14px; border-radius: 12px; background: rgba(67,192,156,0.1); border: 1px solid rgba(67,192,156,0.35); color: #c9f5e6; line-height: 1.45; }
+        .cpana-resumen.error { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.55); color: #ffc4c4; font-weight: 600; }
+        .cpana-avisos { display: grid; gap: 6px; }
+        .cpana-avisos:empty { display: none; }
+        .cpana-avisos p { margin: 0; font-size: 0.82rem; color: var(--admin-muted); }
+        .cpana-avisos ul { margin: 0; padding: 10px 12px 10px 28px; border-radius: 10px; background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.35); color: #fde68a; font-size: 0.84rem; line-height: 1.5; }
+        .cpana-avisos .cpana-avisos-ok { color: #7ee0c2; }
+        .cpana-actions-bar { display: flex; margin: 14px 0 0; }
+        /* .pm-icon-btn no define color: sobre el fondo oscuro del editor quedaba casi invisible. */
+        #cpanaEditorCard .pm-icon-btn, #cpanaPreview .pm-icon-btn { color: #eef4ff; opacity: 1; border: 1px solid rgba(255,255,255,0.2); padding: 8px 12px; min-height: 38px; font-size: 0.85rem; }
+        #cpanaEditorCard .pm-icon-btn:hover { background: rgba(255,255,255,0.08); }
+        #cpanaEditorCard #cpanaDeleteBtn { color: #ffb3b3; border-color: rgba(255,120,120,0.45); }
+        /* En celular la barra fija del POS (#mobPosBottomBar) se ve en todas las pestañas y tapaba la
+           barra pegajosa del editor (y su Guardar): se pega justo encima de ella. */
+        @media (max-width: 768px) { body:not(.pos-is-open) .cpana-actions-bar { bottom: calc(var(--cpana-pos-bar, 66px) + env(safe-area-inset-bottom, 0px)); } }
+        .cpana-preview-btn { display: none; }
+
+        /* Vista previa: escritorio a la derecha y pegada; celular, panel a pantalla completa. */
+        .cpana-preview { display: none; }
+        @media (min-width: 1100px) {
+            .cpana-editor-layout { grid-template-columns: minmax(0, 1fr) 340px; }
+            .cpana-preview { display: block; position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow-y: auto; border-radius: 16px; padding: 12px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.1); }
+            .cpana-preview-cerrar { display: none; }
+        }
+        @media (max-width: 1099px) {
+            .cpana-preview-btn { display: inline-flex; }
+            .cpana-preview.abierta { display: block; position: fixed; inset: 0; z-index: 2147483000; overflow-y: auto; padding: 14px 14px 30px; background: #0d0d0d; }
+        }
+        .cpana-preview-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .cpana-preview-head strong { font-family: 'Oswald', sans-serif; color: #fff; }
+        .cpana-preview-head .cpana-preview-cerrar { margin-left: auto; }
+
+        .cpv { max-width: 360px; margin: 0 auto; border-radius: 18px; overflow: hidden; background: #141414; color: #ede6dc; font-family: 'Roboto', sans-serif; }
+        .cpv-hero { position: relative; aspect-ratio: 4 / 4.2; display: flex; align-items: flex-end; overflow: hidden; background: radial-gradient(circle at 80% 15%, rgba(255,107,0,0.75), rgba(20,20,20,0) 60%), #141414; }
+        .cpv-hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .cpv-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(20,20,20,0) 35%, rgba(20,20,20,0.95)); }
+        .cpv-hero-body { position: relative; z-index: 1; padding: 14px; }
+        .cpv-sello { display: inline-block; transform: rotate(-2deg); background: #FF6B00; color: #141414; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 6px; }
+        .cpv-titulo { margin: 6px 0 0; font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.7rem; line-height: 1.05; color: #F5EBDD; text-transform: uppercase; overflow-wrap: anywhere; }
+        .cpv-desc { margin: 6px 0 0; font-size: 0.8rem; line-height: 1.4; }
+        .cpv-body { padding: 12px 14px 16px; display: grid; gap: 10px; }
+        .cpv-precio { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.9rem; color: #FF6B00; line-height: 1; }
+        .cpv-ref { font-size: 0.78rem; color: #b9b0a5; }
+        .cpv-ref s { text-decoration-color: #FF6B00; text-decoration-thickness: 2px; }
+        .cpv-card { border-radius: 14px; padding: 10px 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); }
+        .cpv-card h4 { margin: 0 0 6px; font-family: 'Oswald', sans-serif; text-transform: uppercase; font-size: 0.85rem; color: #F5EBDD; }
+        .cpv-card ul { margin: 0; padding-left: 18px; font-size: 0.8rem; line-height: 1.5; }
+        .cpv-excl { margin: 6px 0 0; font-size: 0.76rem; color: #ffb48f; }
+        .cpv-cupos { font-family: 'Oswald', sans-serif; text-transform: uppercase; font-size: 0.8rem; }
+        .cpv-cupos b { color: #FF6B00; font-size: 1.05rem; }
+        .cpv-vig { font-size: 0.75rem; color: #b9b0a5; }
+        .cpv-sep { font-family: 'Oswald', sans-serif; font-size: 0.72rem; letter-spacing: 0.1em; color: #8d857b; text-align: center; margin: 4px 0 -2px; }
+        .cpv-ticket { position: relative; border-radius: 14px; overflow: hidden; background: #F5EBDD; color: #1E1E1E; border-top: 5px solid #FF6B00; }
+        .cpv-ticket-foto { display: block; width: calc(100% - 20px); margin: 10px 10px 0; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; }
+        .cpv-ticket-top { padding: 10px 12px; }
+        .cpv-kicker { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 0.66rem; letter-spacing: 0.08em; color: #A84300; }
+        .cpv-ticket-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+        .cpv-ticket-title { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.05rem; text-transform: uppercase; }
+        .cpv-ticket-price { font-family: 'Oswald', sans-serif; font-weight: 700; color: #A84300; }
+        .cpv-ticket-comp { margin: 4px 0 0; font-size: 0.74rem; line-height: 1.4; }
+        .cpv-perf { border-top: 2px dashed rgba(30,30,30,0.3); margin: 0 12px; }
+        .cpv-ticket-bottom { padding: 10px 12px 12px; font-size: 0.74rem; line-height: 1.45; }
+        .cpv-code { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.9rem; letter-spacing: 0.14em; line-height: 1.1; }
+        /* Colores explícitos: estilos generales del panel (p, span) aclaraban el texto del ticket. */
+        #cpanaPreviewBody .cpv-ticket, #cpanaPreviewBody .cpv-ticket p, #cpanaPreviewBody .cpv-ticket span, #cpanaPreviewBody .cpv-ticket div, #cpanaPreviewBody .cpv-ticket strong { color: #1E1E1E; }
+        #cpanaPreviewBody .cpv-ticket .cpv-kicker, #cpanaPreviewBody .cpv-ticket .cpv-ticket-price, #cpanaPreviewBody .cpv-ticket .cpv-excl-t { color: #A84300; }
+        #cpanaPreviewBody .cpv-ticket .cpv-label { color: #6a5d50; }
+        .cpv-label { font-family: 'Oswald', sans-serif; font-size: 0.62rem; letter-spacing: 0.1em; color: #6a5d50; text-transform: uppercase; }
 
         /* ── Tarjeta de producto POS: imagen + label externo ── */
         .pos-product-card {
@@ -14903,93 +15043,167 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        <form class="admin-form" id="cpanaForm" autocomplete="off" novalidate>
-                            <div class="admin-field">
-                                <label for="cpanaId">ID de la campaña (va en el link, no se puede cambiar)</label>
-                                <input type="text" id="cpanaId" maxlength="40" placeholder="ej. SEMANA41" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="cpanaTitulo">Título</label>
-                                <input type="text" id="cpanaTitulo" maxlength="60" placeholder="La Burda" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="cpanaPalabra">Palabra clave del post (obligatoria)</label>
-                                <input type="text" id="cpanaPalabra" maxlength="40" placeholder="BURDA" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="cpanaPrecio">Precio final del cupón (COP)</label>
-                                <input type="text" inputmode="numeric" id="cpanaPrecio" placeholder="19900" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="cpanaPrecioRef">Precio en el menú (opcional, se muestra tachado)</label>
-                                <input type="text" inputmode="numeric" id="cpanaPrecioRef" placeholder="Ej. 38000">
-                            </div>
-                            <div class="admin-field full">
-                                <label for="cpanaTemporada">Temporada (agrupa las campañas semanales del mismo formato)</label>
-                                <input type="text" id="cpanaTemporada" maxlength="40" placeholder="T01 · La Burda" list="cpanaTemporadasList">
-                                <datalist id="cpanaTemporadasList"></datalist>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="cpanaDescripcion">Descripción (se ve en la landing)</label>
-                                <input type="text" id="cpanaDescripcion" maxlength="300" placeholder="La burger que no está en la carta, con papas y tu extra favorito">
-                            </div>
-                            <div class="admin-field full">
-                                <label for="cpanaImagen">Imagen (URL https o ruta del sitio)</label>
-                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                                    <input type="text" id="cpanaImagen" maxlength="500" placeholder="https://firebasestorage.googleapis.com/… o promociones/cupon.webp" style="flex:1 1 260px;">
-                                    <label class="pm-icon-btn" style="cursor:pointer;display:inline-flex;align-items:center;">Subir…<input type="file" id="cpanaImagenFile" accept="image/*" hidden></label>
+                        <form class="cpana-form" id="cpanaForm" autocomplete="off" novalidate>
+                          <div class="cpana-editor-layout">
+                            <div class="cpana-secciones">
+                            <details class="cpana-sec" open>
+                                <summary><span class="cpana-sec-num">1</span><span class="cpana-sec-txt"><strong>Lo básico</strong><small>Cómo se llama la campaña y con qué palabra la piden en Instagram.</small></span></summary>
+                                <div class="cpana-sec-body admin-form">
+                                    <div class="admin-field">
+                                        <label for="cpanaId">ID de la campaña (va en el link, no se puede cambiar)</label>
+                                        <input type="text" id="cpanaId" maxlength="40" placeholder="ej. SEMANA41" required>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="cpanaTitulo">Título</label>
+                                        <input type="text" id="cpanaTitulo" maxlength="60" placeholder="La Burda" required>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="cpanaTemporada">Temporada (agrupa las semanas del mismo formato)</label>
+                                        <input type="text" id="cpanaTemporada" maxlength="40" placeholder="T01 · La Burda" list="cpanaTemporadasList">
+                                        <datalist id="cpanaTemporadasList"></datalist>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="cpanaPalabra">Palabra clave del post (obligatoria)</label>
+                                        <input type="text" id="cpanaPalabra" maxlength="40" placeholder="BURDA" required>
+                                    </div>
+                                    <div class="admin-field full">
+                                        <label for="cpanaDescripcion">Descripción (se ve en la landing, debajo del título)</label>
+                                        <input type="text" id="cpanaDescripcion" maxlength="300" placeholder="La burger que no está en la carta, con papas y tu extra favorito">
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="cpanaCompProducto">Composición (productos, combos, bebidas o acompañantes del catálogo)</label>
-                                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                                    <select id="cpanaCompProducto" style="flex:1 1 240px;"></select>
-                                    <span id="cpanaCompVarianteWrap" class="cpana-variante-wrap"></span>
-                                    <input type="text" id="cpanaCompNombreCliente" class="cpana-nombre-cliente" maxlength="50" placeholder="Nombre para el cliente (opcional), ej. Papas para compartir" aria-label="Nombre para el cliente">
-                                    <input type="number" id="cpanaCompCantidad" min="1" max="20" value="1" style="max-width:80px;" aria-label="Cantidad">
-                                    <button type="button" class="cat-new-save-btn" id="cpanaCompAddBtn">Agregar</button>
+                            </details>
+
+                            <details class="cpana-sec" open id="cpanaSecFoto">
+                                <summary><span class="cpana-sec-num">2</span><span class="cpana-sec-txt"><strong>Foto del combo</strong><small>Es lo primero que ve el cliente en la landing y sale en su cupón.</small></span></summary>
+                                <div class="cpana-sec-body">
+                                    <div class="cpana-foto">
+                                        <div class="cpana-foto-preview" id="cpanaFotoPreview">
+                                            <img id="cpanaFotoImg" alt="Vista previa de la foto del combo" hidden>
+                                            <span class="cpana-foto-vacia" id="cpanaFotoVacia">Sin foto todavía</span>
+                                        </div>
+                                        <div class="cpana-foto-side">
+                                            <p class="admin-hint cpana-foto-reco">📐 Recomendado: vertical u horizontal, mínimo 1080 px de ancho, fondo oscuro. Se reduce sola a 1600 px (webp) antes de subir.</p>
+                                            <div class="cpana-foto-btns">
+                                                <label class="section-action-btn primary cpana-foto-subir" id="cpanaFotoSubirLbl">
+                                                    <span id="cpanaFotoSubirTxt">Subir foto</span>
+                                                    <input type="file" id="cpanaImagenFile" accept="image/*" hidden>
+                                                </label>
+                                                <button type="button" class="pm-icon-btn" id="cpanaFotoQuitar" hidden>Quitar</button>
+                                            </div>
+                                            <div class="cpana-progress" id="cpanaFotoProgreso" hidden><span id="cpanaFotoProgresoBar"></span></div>
+                                            <p class="cpana-foto-estado" id="cpanaFotoEstado" role="status" aria-live="polite"></p>
+                                            <details class="cpana-foto-url">
+                                                <summary>O pegar una URL / ruta del sitio</summary>
+                                                <input type="text" id="cpanaImagen" maxlength="500" placeholder="https://firebasestorage.googleapis.com/… o promociones/cupon.webp" aria-label="URL de la imagen">
+                                            </details>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div id="cpanaCompList" class="cpana-chip-list"></div>
+                            </details>
+
+                            <details class="cpana-sec" open>
+                                <summary><span class="cpana-sec-num">3</span><span class="cpana-sec-txt"><strong>El combo</strong><small>Qué trae, cuánto cuesta con el cupón y qué debe saber cocina.</small></span></summary>
+                                <div class="cpana-sec-body admin-form">
+                                    <div class="admin-field full">
+                                        <span class="cpana-field-title">Composición</span>
+                                        <div id="cpanaCompList" class="cpana-comp-list"></div>
+                                        <div class="cpana-comp-add">
+                                            <p class="cpana-comp-add-title">Agregar un producto</p>
+                                            <div class="cpana-comp-grid">
+                                                <label class="cpana-mini cpana-mini--prod"><span>Producto, combo, bebida o acompañante</span><select id="cpanaCompProducto"></select></label>
+                                                <label class="cpana-mini cpana-mini--cant"><span>Cantidad</span><input type="number" id="cpanaCompCantidad" min="1" max="20" value="1"></label>
+                                                <label class="cpana-mini"><span>Variante</span><span id="cpanaCompVarianteWrap" class="cpana-variante-wrap"></span></label>
+                                                <label class="cpana-mini cpana-mini--nombre"><span>Nombre para el cliente</span><input type="text" id="cpanaCompNombreCliente" class="cpana-nombre-cliente" maxlength="50" placeholder="ej. Papas para compartir"></label>
+                                                <button type="button" class="cat-new-save-btn" id="cpanaCompAddBtn">Agregar</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="cpanaPrecio">Precio del cupón (COP)</label>
+                                        <input type="text" inputmode="numeric" id="cpanaPrecio" placeholder="19900" required>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="cpanaPrecioRef">"En el menú costaría" (opcional, sale tachado)</label>
+                                        <input type="text" inputmode="numeric" id="cpanaPrecioRef" placeholder="Ej. 38000">
+                                    </div>
+                                    <div class="admin-field full">
+                                        <label for="cpanaNotaCocina">Nota fija para cocina (sale en la landing como "Exclusivo" y en el ticket)</label>
+                                        <input type="text" id="cpanaNotaCocina" maxlength="120" placeholder="Salsa de la casa: tártara">
+                                    </div>
+                                </div>
+                            </details>
+
+                            <details class="cpana-sec" open>
+                                <summary><span class="cpana-sec-num">4</span><span class="cpana-sec-txt"><strong>Opciones que elige el cliente</strong><small>Cada grupo es una pregunta; el cliente elige una opción por grupo.</small></span></summary>
+                                <div class="cpana-sec-body admin-form">
+                                    <div class="admin-field full">
+                                        <div class="cpana-grupo-head" aria-hidden="true"><span>Nombre del grupo</span><span>Opciones (separadas por coma)</span><span></span><span></span></div>
+                                        <div id="cpanaGruposList" style="display:grid;gap:8px;"></div>
+                                        <button type="button" class="pm-icon-btn" id="cpanaGrupoAddBtn" style="margin-top:8px;align-self:flex-start;">+ Agregar grupo</button>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <details class="cpana-sec" open id="cpanaSecVigencia">
+                                <summary><span class="cpana-sec-num">5</span><span class="cpana-sec-txt"><strong>Vigencia y cupos</strong><small>Cuándo se reclama, qué días se canjea y cuántos hay.</small></span></summary>
+                                <div class="cpana-sec-body admin-form">
+                                    <div class="admin-field">
+                                        <label for="cpanaInicio">Desde (hora Colombia, 00:00)</label>
+                                        <input type="date" id="cpanaInicio" required>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="cpanaFin">Hasta (incluye todo ese día, 23:59)</label>
+                                        <input type="date" id="cpanaFin" required>
+                                    </div>
+                                    <div class="admin-field full">
+                                        <span class="cpana-field-title">Días válidos para canjear</span>
+                                        <div id="cpanaDias" class="cpana-dias"></div>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="cpanaCupos">Cupos totales</label>
+                                        <input type="number" id="cpanaCupos" min="1" max="100000" placeholder="100" required>
+                                    </div>
+                                    <div class="admin-field full">
+                                        <p class="cpana-resumen" id="cpanaResumenVigencia" aria-live="polite"></p>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <details class="cpana-sec" open>
+                                <summary><span class="cpana-sec-num">6</span><span class="cpana-sec-txt"><strong>Publicación</strong><small>Prende la campaña cuando todo esté listo.</small></span></summary>
+                                <div class="cpana-sec-body admin-form">
+                                    <div class="admin-field full cpana-toggles">
+                                        <label class="cpana-toggle"><input type="checkbox" id="cpanaActiva"> <span><strong>Campaña activa</strong> — la landing acepta reclamos y el POS canjea. Apagada, el link muestra "Esta clave ya no está activa".</span></label>
+                                        <label class="cpana-toggle cpana-toggle--wa"><input type="checkbox" id="cpanaRequiereWA"> <span><strong>Exigir activación por WhatsApp</strong> — el cupón nace "emitido" y solo se canjea después de que el cliente escribe desde su número (fase 2).</span></label>
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="cpanaWaPrincipal">WhatsApp principal (para pedir)</label>
+                                        <input type="text" inputmode="numeric" id="cpanaWaPrincipal" placeholder="573144689509">
+                                    </div>
+                                    <div class="admin-field">
+                                        <label for="cpanaWaCupones">WhatsApp de cupones (fase 2)</label>
+                                        <input type="text" inputmode="numeric" id="cpanaWaCupones" placeholder="vacío en fase manual">
+                                    </div>
+                                    <div class="admin-field full">
+                                        <div class="cpana-avisos" id="cpanaAvisos" aria-live="polite"></div>
+                                    </div>
+                                </div>
+                            </details>
                             </div>
-                            <div class="admin-field full">
-                                <label>Grupos de opciones (el cliente elige 1 opción por grupo)</label>
-                                <div id="cpanaGruposList" style="display:grid;gap:8px;"></div>
-                                <button type="button" class="pm-icon-btn" id="cpanaGrupoAddBtn" style="align-self:flex-start;">+ Agregar grupo</button>
-                            </div>
-                            <div class="admin-field full">
-                                <label for="cpanaNotaCocina">Nota fija para cocina (sale en la landing y en el ticket)</label>
-                                <input type="text" id="cpanaNotaCocina" maxlength="120" placeholder="Salsa de la casa: tártara">
-                            </div>
-                            <div class="admin-field">
-                                <label for="cpanaCupos">Cupos totales</label>
-                                <input type="number" id="cpanaCupos" min="1" max="100000" placeholder="100" required>
-                            </div>
-                            <div class="admin-field">
-                                <label>Días válidos para canjear</label>
-                                <div id="cpanaDias" class="cpana-dias"></div>
-                            </div>
-                            <div class="admin-field">
-                                <label for="cpanaInicio">Desde (hora Colombia)</label>
-                                <input type="date" id="cpanaInicio" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="cpanaFin">Hasta (incluye todo ese día)</label>
-                                <input type="date" id="cpanaFin" required>
-                            </div>
-                            <div class="admin-field">
-                                <label for="cpanaWaPrincipal">WhatsApp principal (para pedir)</label>
-                                <input type="text" inputmode="numeric" id="cpanaWaPrincipal" placeholder="573144689509">
-                            </div>
-                            <div class="admin-field">
-                                <label for="cpanaWaCupones">WhatsApp de cupones (fase 2)</label>
-                                <input type="text" inputmode="numeric" id="cpanaWaCupones" placeholder="vacío en fase manual">
-                            </div>
-                            <div class="admin-field full cpana-toggles">
-                                <label class="cpana-toggle"><input type="checkbox" id="cpanaActiva"> <span><strong>Campaña activa</strong> — la landing acepta reclamos y el POS canjea</span></label>
-                                <label class="cpana-toggle cpana-toggle--wa"><input type="checkbox" id="cpanaRequiereWA"> <span><strong>Exigir activación por WhatsApp</strong> — el cupón nace "emitido" y solo se canjea después de activarlo desde el número de cupones (fase 2)</span></label>
-                            </div>
-                            <div class="admin-field full cpana-actions-bar">
+
+                            <aside class="cpana-preview" id="cpanaPreview" aria-label="Vista previa de la landing y el cupón">
+                                <div class="cpana-preview-head">
+                                    <strong>Vista previa</strong>
+                                    <span class="admin-hint">Así lo ve el cliente</span>
+                                    <button type="button" class="pm-icon-btn cpana-preview-cerrar" id="cpanaPreviewCerrar">Cerrar</button>
+                                </div>
+                                <div id="cpanaPreviewBody"></div>
+                            </aside>
+                          </div>
+
+                            <div class="cpana-actions-bar">
                                 <button type="submit" class="section-action-btn primary" id="cpanaSaveBtn">Guardar campaña</button>
+                                <button type="button" class="pm-icon-btn cpana-preview-btn" id="cpanaPreviewBtn">👁 Vista previa</button>
                                 <button type="button" class="pm-icon-btn" id="cpanaDeleteBtn" hidden>Eliminar</button>
                             </div>
                         </form>

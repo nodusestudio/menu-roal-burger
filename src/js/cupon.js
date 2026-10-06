@@ -8,10 +8,8 @@
 //   2. llamar al callable emitirCuponPana (protocolo HTTP de callables: POST {data} → {result}).
 // Toda la validación real (cupos, unicidad, consentimiento, precio) la hace el servidor.
 //
-// El QR se genera aquí mismo (qrcode-generator empaquetado por esbuild, sin CDN) y el .ics y el
-// PNG del cupón también se arman en el navegador: nada de esto pasa por el servidor.
-
-import qrcode from 'qrcode-generator';
+// El .ics y el PNG del cupón se arman en el navegador: nada de esto pasa por el servidor. Sin QR: el
+// POS no tiene lector, el cajero escribe el código (por eso el código va grande).
 
 const CFG = window.FIREBASE_CONFIG || {};
 const PROJECT_ID = CFG.projectId || 'roal-burger-menu';
@@ -214,7 +212,7 @@ function heroHtml(c) {
         ? `<img class="cp-hero-img" id="cpHeroImg" src="${esc(c.imagenUrl)}" alt="${esc(`Foto del combo ${c.titulo}`)}" width="1080" height="1350" loading="eager" fetchpriority="high" decoding="async">`
         : '<img class="cp-hero-logo-bg" src="/isotipo.webp" alt="" width="360" height="360" aria-hidden="true">'}
             <div class="cp-hero-shade"></div>
-            <div class="cp-hero-top"><a href="/" aria-label="Ir al menú de ROAL BURGER"><img src="/logo.webp" alt="ROAL BURGER" width="140" height="46"></a></div>
+            <div class="cp-hero-top">${MARCA_HTML}</div>
             <div class="cp-hero-body">
                 <span class="cp-sello">🔐 FUERA DEL MENÚ</span>
                 <h1 class="cp-titulo">${esc(c.titulo)}</h1>
@@ -520,29 +518,33 @@ async function onSubmit(e) {
     }
 }
 
-// SVG del QR (vectorial, nítido en cualquier pantalla) a partir de la matriz de módulos.
-function qrMatrix(text) {
-    const qr = qrcode(0, 'M');
-    qr.addData(text);
-    qr.make();
-    const n = qr.getModuleCount();
-    const rows = [];
-    for (let r = 0; r < n; r++) {
-        const row = [];
-        for (let c = 0; c < n; c++) row.push(qr.isDark(r, c));
-        rows.push(row);
-    }
-    return rows;
+// Marca del encabezado: isotipo (la R) + "ROAL BURGER". El logo horizontal se veía como un cuadro
+// naranja con letras ilegibles a ese tamaño.
+const MARCA_HTML = '<a class="cp-marca" href="/" aria-label="Ir al menú de ROAL BURGER"><img src="/isotipo.webp" alt="" width="48" height="48"><span>ROAL BURGER</span></a>';
+
+// Foto del combo para la tarjeta: la respuesta de emisión la trae; un cupón guardado antes en este
+// navegador puede no tenerla, y entonces se usa la de la campaña cargada.
+function fotoDe(r) {
+    return String((r && r.campana && r.campana.imagenUrl) || (campana && campana.imagenUrl) || '').trim();
 }
 
-function qrSvg(text) {
-    const m = qrMatrix(text);
-    const n = m.length;
-    const quiet = 2;
-    let path = '';
-    m.forEach((row, r) => row.forEach((dark, c) => { if (dark) path += `M${c + quiet} ${r + quiet}h1v1h-1z`; }));
-    const size = n + quiet * 2;
-    return `<svg class="cp-qr" viewBox="0 0 ${size} ${size}" role="img" aria-label="Código QR del cupón" shape-rendering="crispEdges"><rect width="${size}" height="${size}" fill="#fff"/><path d="${path}" fill="#151515"/></svg>`;
+function fotoTicketHtml(url) {
+    return url ? `<img class="cp-ticket-foto" src="${esc(url)}" alt="" width="1600" height="900" decoding="async">` : '';
+}
+
+// Para un cupón guardado: la campaña llega después de pintar la tarjeta; se agrega la foto sin
+// volver a pintar todo (no se pierde lo que el cliente ya eligió en "¿Cómo lo quieres?").
+function ponerFotoTicket(url) {
+    const ticket = document.getElementById('cpTicket');
+    if (!url || !ticket || ticket.querySelector('.cp-ticket-foto')) return;
+    ticket.insertAdjacentHTML('afterbegin', fotoTicketHtml(url));
+    wireFotoTicket();
+}
+
+// Foto rota (link vencido, sin red): se quita y la tarjeta queda como sin foto, sin hueco.
+function wireFotoTicket() {
+    const img = document.querySelector('#cpTicket .cp-ticket-foto');
+    if (img) img.addEventListener('error', () => img.remove(), { once: true });
 }
 
 const CANDADO_SVG = `<svg viewBox="0 0 92 110" aria-hidden="true">
@@ -558,12 +560,13 @@ function renderCupon(r, { animar = false } = {}) {
     const comp = composicionTexto(c.composicion);
     setView(`
         <div class="cp-wrap cp-wrap--sin-cta">
-            <div class="cp-top-plano"><a href="/" aria-label="Ir al menú de ROAL BURGER"><img src="/logo.webp" alt="ROAL BURGER" width="140" height="46"></a></div>
+            <div class="cp-top-plano">${MARCA_HTML}</div>
             ${pasosHtml(3)}
             <p class="cp-banner">${r.yaExistia ? 'Ya tenías tu cupón 😉' : '¡Desbloqueado! 🔓'}<small>${r.yaExistia ? 'Aquí está otra vez.' : 'Este cupón es solo tuyo: preséntalo en caja o pídelo por WhatsApp.'}</small></p>
             <div class="cp-revelado${animar ? ' cp-revelado--anim' : ''}">
                 <div class="cp-candado" aria-hidden="true">${CANDADO_SVG}</div>
                 <article class="cp-ticket" id="cpTicket" aria-label="Tu cupón">
+                    ${fotoTicketHtml(fotoDe(r))}
                     <div class="cp-ticket-top">
                         <div class="cp-ticket-head">
                             <img src="/isotipo.webp" alt="" width="44" height="44">
@@ -578,13 +581,8 @@ function renderCupon(r, { animar = false } = {}) {
                     </div>
                     <div class="cp-perforado" aria-hidden="true"></div>
                     <div class="cp-ticket-bottom">
-                        <div class="cp-ticket-code-row">
-                            <div>
-                                <p class="cp-ticket-label">Tu código</p>
-                                <p class="cp-ticket-code">${esc(r.codigo)}</p>
-                            </div>
-                            ${qrSvg(r.codigo)}
-                        </div>
+                        <p class="cp-ticket-label">Tu código · díctaselo al cajero</p>
+                        <p class="cp-ticket-code">${esc(r.codigo)}</p>
                         ${extras.length ? `<ul class="cp-ticket-extras">${extras.map((d) => `<li><span>${esc(d.grupo)}:</span> ${esc(d.opcion)}</li>`).join('')}</ul>` : ''}
                         ${c.notaCocina ? `<p class="cp-ticket-nota">★ Exclusivo: ${esc(c.notaCocina)}</p>` : ''}
                         <p class="cp-ticket-days">📅 ${esc(vigenciaTexto(c))}</p>
@@ -607,6 +605,7 @@ function renderCupon(r, { animar = false } = {}) {
             <p class="cp-foot"><a href="#" id="cpOtroNumero">¿No eres tú? Reclamar con otro número</a></p>
         </div>`);
 
+    wireFotoTicket();
     if (!pendienteActivar) wirePedidoStep(r);
     const historiaBtn = document.getElementById('cpHistoriaBtn');
     historiaBtn.addEventListener('click', () => compartirHistoria(r, historiaBtn));
@@ -789,7 +788,7 @@ function estadoHtml({ emoji, titulo, sub, botones }) {
     return `
         <div class="cp-wrap cp-wrap--sin-cta">
             <section class="cp-estado">
-                <a href="/" aria-label="Ir al menú de ROAL BURGER"><img class="cp-estado-logo" src="/logo.webp" alt="ROAL BURGER" width="140" height="46"></a>
+                <div class="cp-estado-marca">${MARCA_HTML}</div>
                 <p class="cp-estado-emoji" aria-hidden="true">${emoji}</p>
                 <div><span class="cp-sello">🔐 FUERA DEL MENÚ</span></div>
                 <h1 class="cp-titulo">${titulo}</h1>
@@ -979,11 +978,17 @@ async function downloadPng(r) {
     ctx.font = `400 24px ${BODY_FONT}`;
     const legal = wrapLines(ctx, 'Personal e intransferible · una vez por persona · no acumulable · roalburger.com', TW - 2 * PAD);
 
+    // Foto del combo como banner 16:9 arriba del ticket. Sin foto (o si no se deja usar en el
+    // canvas por CORS) el ticket queda como antes, sin hueco.
+    const fotoUrl = fotoDe(r);
+    const foto = fotoUrl ? await loadImage(fotoUrl, true) : null;
+    const fotoW = TW - 2 * 30;
+    const fotoH = foto ? Math.round(fotoW * 9 / 16) : 0;
     const top = 80;
+    const hy = top + (foto ? fotoH + 30 : 0); // donde empieza el encabezado del ticket
     const headH = 150 + titulo.length * 66;
-    const corteY = top + headH + 70 + comp.length * 44 + 40; // línea perforada
-    const qr = 360;
-    const fin = corteY + 70 + 150 + 60 + qr + 50 + detalle.length * 46 + 20 + vig.length * 40 + 30 + legal.length * 32 + 50;
+    const corteY = hy + headH + 70 + comp.length * 44 + 40; // línea perforada
+    const fin = corteY + 70 + 190 + 40 + detalle.length * 46 + 20 + vig.length * 40 + 30 + legal.length * 32 + 50;
     const H = fin + 80;
     canvas.height = H;
 
@@ -1006,22 +1011,30 @@ async function downloadPng(r) {
     ctx.beginPath(); ctx.moveTo(X + 50, corteY); ctx.lineTo(X + TW - 50, corteY); ctx.stroke();
     ctx.setLineDash([]);
 
+    if (foto) {
+        ctx.save();
+        roundRect(ctx, X + 30, top + 40, fotoW, fotoH, 24);
+        ctx.clip();
+        drawCover(ctx, foto, X + 30, top + 40, fotoW, fotoH);
+        ctx.restore();
+    }
+
     const L = X + PAD;
     const logo = await loadImage('/isotipo.webp');
-    if (logo) ctx.drawImage(logo, L, top + 60, 100, 100);
+    if (logo) ctx.drawImage(logo, L, hy + 60, 100, 100);
     ctx.fillStyle = '#A84300';
     ctx.font = `700 34px ${HEAD_FONT}`;
-    ctx.fillText('FUERA DEL MENÚ', L + 130, top + 98);
+    ctx.fillText('FUERA DEL MENÚ', L + 130, hy + 98);
     ctx.fillStyle = '#1E1E1E';
     ctx.font = `700 60px ${HEAD_FONT}`;
-    titulo.forEach((l, i) => ctx.fillText(l, L + 130, top + 162 + i * 66));
+    titulo.forEach((l, i) => ctx.fillText(l, L + 130, hy + 162 + i * 66));
     ctx.fillStyle = '#A84300';
     ctx.font = `700 64px ${HEAD_FONT}`;
     ctx.textAlign = 'right';
-    ctx.fillText(money(c.precio), X + TW - PAD, top + 132);
+    ctx.fillText(money(c.precio), X + TW - PAD, hy + 132);
     ctx.textAlign = 'left';
 
-    let y = top + headH + 40;
+    let y = hy + headH + 40;
     ctx.fillStyle = '#4a4038';
     ctx.font = `400 34px ${BODY_FONT}`;
     ctx.fillText(`Para: ${r.nombre}`, L, y);
@@ -1033,21 +1046,18 @@ async function downloadPng(r) {
     ctx.fillStyle = '#6a5d50';
     ctx.font = `600 30px ${HEAD_FONT}`;
     ctx.fillText('TU CÓDIGO', L, y);
+    // Sin QR (el POS no tiene lector): el código ocupa ese espacio, grande y espaciado para dictarlo.
     ctx.fillStyle = '#141414';
-    ctx.font = `700 128px ${HEAD_FONT}`;
-    ctx.fillText(r.codigo.split('').join(' '), L, y + 140);
+    const codigoTxt = r.codigo.split('').join(' ');
+    let codigoPx = 170;
+    ctx.font = `700 ${codigoPx}px ${HEAD_FONT}`;
+    while (ctx.measureText(codigoTxt).width > TW - 2 * PAD && codigoPx > 100) {
+        codigoPx -= 10;
+        ctx.font = `700 ${codigoPx}px ${HEAD_FONT}`;
+    }
+    ctx.fillText(codigoTxt, L, y + 180);
 
-    const qx = (W - qr) / 2;
-    const qy = y + 210;
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, qx - 22, qy - 22, qr + 44, qr + 44, 22);
-    ctx.fill();
-    const m = qrMatrix(r.codigo);
-    const cell = qr / m.length;
-    ctx.fillStyle = '#151515';
-    m.forEach((row, ri) => row.forEach((dark, ci) => { if (dark) ctx.fillRect(qx + ci * cell, qy + ri * cell, Math.ceil(cell), Math.ceil(cell)); }));
-
-    y = qy + qr + 80;
+    y += 190 + 70;
     ctx.fillStyle = '#1E1E1E';
     ctx.font = `500 34px ${BODY_FONT}`;
     detalle.forEach((l, i) => ctx.fillText(l, L, y + i * 46));
@@ -1219,7 +1229,7 @@ async function init() {
     if (saved && saved.codigo) {
         renderCupon(saved);
         // En segundo plano: la foto y los datos frescos de la campaña para la imagen de historia.
-        fetchCampana(campanaId).then((c) => { if (c) campana = c; }).catch(() => {});
+        fetchCampana(campanaId).then((c) => { if (c) { campana = c; ponerFotoTicket(fotoDe(saved)); } }).catch(() => {});
         return;
     }
     try {

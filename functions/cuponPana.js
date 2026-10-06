@@ -114,6 +114,18 @@ function bogotaDateKeyToMs(dateKey, endOfDay = false) {
     return endOfDay ? startMs + 24 * 60 * 60 * 1000 - 1 : startMs;
 }
 
+// Días de la semana (0=domingo) que sí aparecen entre dos instantes, en hora Colombia. Se recorre
+// día por día; a partir de 7 días ya están todos, así que el bucle corta solo.
+function diasDeCanjeEnRango(inicioMs, finMs, diasValidos) {
+    const quedan = new Set((diasValidos || []).map(Number));
+    const encontrados = [];
+    for (let t = inicioMs; t <= finMs && encontrados.length < quedan.size && t - inicioMs < 8 * 86400000; t += 86400000) {
+        const dow = bogotaParts(t).dow;
+        if (quedan.has(dow) && !encontrados.includes(dow)) encontrados.push(dow);
+    }
+    return encontrados;
+}
+
 function toMs(value) {
     if (!value) return null;
     if (typeof value.toMillis === 'function') return value.toMillis();
@@ -464,6 +476,8 @@ function buildEmitResponse(campana, cupon, yaExistia) {
         campana: {
             titulo: String(campana.titulo || ''),
             precio: Number(campana.precio || 0),
+            // La tarjeta del cupón (y su PNG) muestra la foto del combo arriba.
+            imagenUrl: String(campana.imagenUrl || ''),
             notaCocina: String(campana.notaCocina || ''),
             composicion: composicionPublica(campana.composicion),
             diasValidos: Array.isArray(campana.diasValidos) ? campana.diasValidos : [],
@@ -955,6 +969,11 @@ async function validateCampanaPayload(db, raw) {
     const finMs = bogotaDateKeyToMs(c.fechaFin, true);
     if (inicioMs === null || finMs === null) throw new HttpsError('invalid-argument', 'Fechas inválidas (AAAA-MM-DD).');
     if (finMs < inicioMs) throw new HttpsError('invalid-argument', 'La fecha final debe ser igual o posterior a la inicial.');
+    // Un rango sin ningún día de canje (ej. viernes a domingo con canje solo lunes) emitiría cupones
+    // que nadie podría usar nunca.
+    if (!diasDeCanjeEnRango(inicioMs, finMs, diasValidos).length) {
+        throw new HttpsError('invalid-argument', 'Ningún día válido de canje cae entre la fecha inicial y la final.');
+    }
 
     const waNumeroPrincipal = String(c.waNumeroPrincipal || '').replace(/\D/g, '');
     const waNumeroCupones = String(c.waNumeroCupones || '').replace(/\D/g, '');
@@ -1159,6 +1178,7 @@ module.exports = {
     RATE_LIMIT_MAX_PER_IP,
     bogotaParts,
     bogotaDateKeyToMs,
+    diasDeCanjeEnRango,
     toMs,
     formatDiasValidos,
     normalizeCodigo,
