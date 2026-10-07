@@ -465,9 +465,13 @@ function validateEmitInput(raw) {
     };
 }
 
-function buildEmitResponse(campana, cupon, yaExistia) {
+function buildEmitResponse(campana, cupon, yaExistia, { nowMs = Date.now(), llave = null } = {}) {
     return {
         codigo: cupon.codigo,
+        // Solo viaja aquí, una vez: el servidor guarda únicamente su hash.
+        ...(llave ? { llave } : {}),
+        // Estado real (canjeado, vencido, día válido…) para pintarlo antes de cualquier formulario.
+        estadoActual: estadoCuponView(cupon, campana, nowMs),
         estado: cupon.estado,
         nombre: cupon.nombre,
         topping: cupon.topping,
@@ -515,8 +519,14 @@ async function emitirCuponPanaTransaction(db, input, nowMs = Date.now()) {
             if (idx.igHandle && idx.igHandle !== igHandle) {
                 throw new HttpsError('already-exists', 'Este celular ya reclamó su cupón con otra cuenta de Instagram.');
             }
-            const cuponSnap = await tx.get(db.collection(CUPONES_PANA_COLLECTION).doc(idx.codigo));
-            if (cuponSnap.exists) return buildEmitResponse(campana, cuponSnap.data(), true);
+            const cuponRef = db.collection(CUPONES_PANA_COLLECTION).doc(idx.codigo);
+            const cuponSnap = await tx.get(cuponRef);
+            if (cuponSnap.exists) {
+                // Probó ser el dueño (mismo celular + mismo Instagram): llave nueva para este navegador.
+                const llave = generarLlave();
+                tx.update(cuponRef, { llavesHash: llavesConNueva(cuponSnap.data(), llave) });
+                return buildEmitResponse(campana, cuponSnap.data(), true, { nowMs, llave });
+            }
         }
         if (igIdxSnap.exists) {
             throw new HttpsError('already-exists', 'Esta cuenta ya reclamó su cupón.');
@@ -544,8 +554,10 @@ async function emitirCuponPanaTransaction(db, input, nowMs = Date.now()) {
 
         const estado = campana.requiereActivacionWA === true ? ESTADOS.EMITIDO : ESTADOS.ACTIVO;
         const now = Timestamp.fromMillis(nowMs);
+        const llave = generarLlave();
         const cupon = {
             codigo,
+            llavesHash: [hashLlave(llave)],
             campanaId,
             nombre: input.nombre,
             telefono,
@@ -579,7 +591,7 @@ async function emitirCuponPanaTransaction(db, input, nowMs = Date.now()) {
         tx.set(pubRef, { cuposRestantes: Math.max(0, Number(campana.cuposTotales || 0) - cuposEmitidos) }, { merge: true });
         tx.create(db.collection(CUPONES_PANA_COLLECTION).doc(codigo), cupon);
 
-        return buildEmitResponse({ ...campana, cuposEmitidos }, cupon, false);
+        return buildEmitResponse({ ...campana, cuposEmitidos }, cupon, false, { nowMs, llave });
     });
 }
 
@@ -761,6 +773,141 @@ async function revertirCanjeCuponPanaTransaction(db, codigoRaw, { uid, motivo } 
     });
 }
 
+// ── Prueba de dueño del cupón: llave secreta o teléfono ─────────────────────
+// Al emitir (o al devolverle su cupón a quien lo reclamó) se genera una llave aleatoria de 32
+// bytes que solo conoce el navegador del cliente; el cupón guarda su sha256, nunca la llave. Con
+// ella la landing no vuelve a pedir el WhatsApp. Sin llave (otro celular, cupón viejo), el
+// teléfono sigue sirviendo, con un tope de intentos fallidos por código para que nadie adivine.
+
+const LLAVES_MAX = 5;             // una por navegador/celular donde el cliente abrió su cupón
+const DUENO_MAX_FALLOS = 5;       // teléfonos equivocados por código en la ventana de rate limit
+const MSG_CONFIRMA_WHATSAPP = 'Confirma el WhatsApp con el que reclamaste el cupón.';
+const MSG_TELEFONO_NO_COINCIDE = 'Ese celular no corresponde a este cupón. Usa el número con el que lo reclamaste.';
+
+function generarLlave() {
+    return crypto.randomBytes(32).toString('base64url');
+}
+
+function hashLlave(llave) {
+    return crypto.createHash('sha256').update(String(llave)).digest('hex');
+}
+
+function llaveValida(cupon, llave) {
+    const l = String(llave || '');
+    if (!l || l.length > 100) return false;
+    const h = Buffer.from(hashLlave(l), 'hex');
+    return (Array.isArray(cupon?.llavesHash) ? cupon.llavesHash : []).some((x) => {
+        const b = Buffer.from(String(x || ''), 'hex');
+        return b.length === h.length && crypto.timingSafeEqual(b, h);
+    });
+}
+
+// Hashes a guardar al entregar una llave nueva: los últimos LLAVES_MAX (las más viejas caducan).
+function llavesConNueva(cupon, llave) {
+    const previas = Array.isArray(cupon?.llavesHash) ? cupon.llavesHash : [];
+    return [...previas, hashLlave(llave)].slice(-LLAVES_MAX);
+}
+
+function pruebaDeDueno(raw) {
+    return {
+        llave: String(raw?.llave || '').trim().slice(0, 100),
+        telefono: normalizeColombianPhoneDigits(raw?.telefono)
+    };
+}
+
+function duenoRateKey(codigo) {
+    return `cupon_dueno_${codigo}`;
+}
+
+// Lee (sin sumar) cuántos teléfonos equivocados lleva este código en la ventana actual.
+async function codigoBloqueado(db, codigo, nowMs, tx = null) {
+    const ref = db.collection(RATE_LIMITS_COLLECTION).doc(duenoRateKey(codigo));
+    const snap = tx ? await tx.get(ref) : await ref.get();
+    const d = snap.exists ? snap.data() : null;
+    return !!d && (nowMs - Number(d.windowStart || 0)) <= RATE_LIMIT_WINDOW_MS && Number(d.count || 0) >= DUENO_MAX_FALLOS;
+}
+
+async function registrarFalloDueno(db, codigo, nowMs) {
+    await checkRateLimit(db, duenoRateKey(codigo), DUENO_MAX_FALLOS, nowMs);
+}
+
+const ERROR_BLOQUEADO = () => new HttpsError('resource-exhausted', 'Demasiados intentos con este cupón. Espera unos minutos e intenta de nuevo.');
+
+// ── Estado del cupón tal como lo ve el cliente ──────────────────────────────
+
+// Primer día de canje desde hoy (o desde el inicio de la campaña) que no pase la fecha final.
+function proximoDiaValido(campana, nowMs) {
+    const dias = Array.isArray(campana?.diasValidos) ? campana.diasValidos.map(Number) : [];
+    if (!dias.length) return null;
+    const inicioMs = toMs(campana.fechaInicio);
+    const finMs = toMs(campana.fechaFin);
+    let t = Math.max(nowMs, inicioMs ?? nowMs);
+    for (let i = 0; i < 15; i++, t += 24 * 60 * 60 * 1000) {
+        const p = bogotaParts(t);
+        const inicioDia = bogotaDateKeyToMs(p.dateKey, false);
+        if (finMs !== null && inicioDia > finMs) return null;
+        if (dias.includes(p.dow)) return { ms: inicioDia, dateKey: p.dateKey, dow: p.dow };
+    }
+    return null;
+}
+
+// activo | canjeado | vencido | sin_activar, más si HOY se puede canjear. Mismas reglas que
+// evaluarCanjeable (el POS) y prepararPedidoCupon, que siguen siendo el respaldo real.
+function estadoCuponView(cupon, campana, nowMs) {
+    const finMs = toMs(campana?.fechaFin);
+    const inicioMs = toMs(campana?.fechaInicio);
+    const dias = Array.isArray(campana?.diasValidos) ? campana.diasValidos.map(Number) : [];
+    let estado = 'activo';
+    if (cupon.estado === ESTADOS.CANJEADO) estado = 'canjeado';
+    else if (cupon.estado === ESTADOS.VENCIDO || !campana || (finMs !== null && nowMs > finMs)) estado = 'vencido';
+    else if (cupon.estado === ESTADOS.EMITIDO && campana.requiereActivacionWA === true) estado = 'sin_activar';
+    const antesDeInicio = inicioMs !== null && nowMs < inicioMs;
+    const diaValidoHoy = estado === 'activo' && !antesDeInicio && dias.includes(bogotaParts(nowMs).dow);
+    return {
+        estado,
+        canjeadoAt: toMs(cupon.canjeadoAt),
+        vencioAt: estado === 'vencido' ? (finMs ?? toMs(cupon.vencidoAt)) : null,
+        diaValidoHoy,
+        antesDeInicio,
+        proximoDiaValido: estado === 'activo' && !diaValidoHoy ? proximoDiaValido(campana, nowMs) : null,
+        diasValidos: dias,
+        diasValidosTexto: formatDiasValidos(dias)
+    };
+}
+
+// Consulta del cupón desde la landing (estadoCuponPana): código + llave, o código + teléfono.
+// Un código que no existe responde igual que un teléfono equivocado: no se confirma a un extraño
+// qué códigos existen. Si el dueño se prueba con el teléfono, se le entrega una llave para que
+// este navegador no lo vuelva a pedir.
+async function estadoCuponPana(db, raw, nowMs = Date.now()) {
+    const codigo = normalizeCodigo(raw?.codigo);
+    const prueba = pruebaDeDueno(raw);
+    if (!isValidCodigo(codigo)) throw new HttpsError('invalid-argument', 'Código de cupón inválido.');
+    if (!prueba.llave && !isValidColombianMobile(prueba.telefono)) throw new HttpsError('invalid-argument', MSG_CONFIRMA_WHATSAPP);
+    const cuponRef = db.collection(CUPONES_PANA_COLLECTION).doc(codigo);
+    const snap = await cuponRef.get();
+    const cupon = snap.exists ? snap.data() : null;
+    let llave = null;
+    if (!(cupon && llaveValida(cupon, prueba.llave))) {
+        if (!isValidColombianMobile(prueba.telefono)) throw new HttpsError('permission-denied', MSG_CONFIRMA_WHATSAPP);
+        if (await codigoBloqueado(db, codigo, nowMs)) throw ERROR_BLOQUEADO();
+        if (!cupon || cupon.telefono !== prueba.telefono) {
+            await registrarFalloDueno(db, codigo, nowMs);
+            throw new HttpsError('permission-denied', MSG_TELEFONO_NO_COINCIDE);
+        }
+        llave = generarLlave();
+        await cuponRef.update({ llavesHash: llavesConNueva(cupon, llave) });
+    }
+    const campSnap = await db.collection(CUPONES_CAMPANAS_COLLECTION).doc(cupon.campanaId).get();
+    const campana = campSnap.exists ? campSnap.data() : null;
+    return {
+        codigo,
+        estadoActual: estadoCuponView(cupon, campana, nowMs),
+        pedidoPreparado: pedidoPreparadoView(cupon.pedidoPreparado),
+        ...(llave ? { llave } : {})
+    };
+}
+
 // ── Pedido preparado desde la landing ("¿Cómo lo quieres?") ──────────────────
 
 function pedidoPreparadoView(p) {
@@ -778,11 +925,12 @@ function pedidoPreparadoView(p) {
 function validatePedidoInput(raw) {
     const d = raw || {};
     const codigo = normalizeCodigo(d.codigo);
-    const telefono = normalizeColombianPhoneDigits(d.telefono);
+    const prueba = pruebaDeDueno(d);
     const modalidad = String(d.modalidad || '').trim().toLowerCase();
     const pago = String(d.pago || '').trim().toLowerCase();
     if (!isValidCodigo(codigo)) throw new HttpsError('invalid-argument', 'Código de cupón inválido.');
-    if (!isValidColombianMobile(telefono)) throw new HttpsError('invalid-argument', 'Escribe el celular con el que reclamaste el cupón.');
+    // Prueba de dueño: la llave del navegador, o el celular con que reclamó (otro dispositivo).
+    if (!prueba.llave && !isValidColombianMobile(prueba.telefono)) throw new HttpsError('invalid-argument', 'Escribe el celular con el que reclamaste el cupón.');
     if (!MODALIDADES_PEDIDO.includes(modalidad)) throw new HttpsError('invalid-argument', 'Elige si lo quieres para recoger o a domicilio.');
     if (!PAGOS_PEDIDO[pago]) throw new HttpsError('invalid-argument', 'Elige el medio de pago: efectivo o transferencia.');
     const pedido = { modalidad, pago, direccion: '', barrio: '', referencias: '' };
@@ -793,7 +941,7 @@ function validatePedidoInput(raw) {
         if (pedido.direccion.length < 5) throw new HttpsError('invalid-argument', 'Escribe la dirección completa para el domicilio.');
         if (pedido.barrio.length < 2) throw new HttpsError('invalid-argument', 'Escribe el barrio para el domicilio.');
     }
-    return { codigo, telefono, pedido };
+    return { codigo, prueba, pedido };
 }
 
 // Guarda (o actualiza) cómo quiere el cliente su pedido. Solo el dueño del cupón (mismo celular
@@ -801,36 +949,55 @@ function validatePedidoInput(raw) {
 // "emitido" en una campaña que exige activación por WhatsApp. Se puede volver a llamar para
 // cambiar los datos hasta que la caja lo canjee.
 async function prepararPedidoCuponTransaction(db, raw, nowMs = Date.now()) {
-    const { codigo, telefono, pedido } = validatePedidoInput(raw);
+    const { codigo, prueba, pedido } = validatePedidoInput(raw);
     const cuponRef = db.collection(CUPONES_PANA_COLLECTION).doc(codigo);
-    return db.runTransaction(async (tx) => {
-        const cuponSnap = await tx.get(cuponRef);
-        if (!cuponSnap.exists) throw new HttpsError('not-found', MOTIVOS.no_existe);
-        const cupon = cuponSnap.data();
-        // Mismo mensaje para "no existe" y "no es tu número": no confirmar a un extraño qué
-        // códigos existen.
-        if (cupon.telefono !== telefono) throw new HttpsError('permission-denied', 'Ese celular no corresponde a este cupón. Usa el número con el que lo reclamaste.');
-        const campSnap = await tx.get(db.collection(CUPONES_CAMPANAS_COLLECTION).doc(cupon.campanaId));
-        const campana = campSnap.exists ? campSnap.data() : null;
-        if (cupon.estado === ESTADOS.CANJEADO) throw new HttpsError('failed-precondition', MOTIVOS.canjeado);
-        const finMs = toMs(campana?.fechaFin);
-        if (!campana || cupon.estado === ESTADOS.VENCIDO || (finMs !== null && nowMs > finMs)) {
-            throw new HttpsError('failed-precondition', MOTIVOS.vencido);
-        }
-        if (cupon.estado === ESTADOS.EMITIDO && campana.requiereActivacionWA === true) {
-            throw new HttpsError('failed-precondition', 'Primero activa tu cupón por WhatsApp.');
-        }
-        const pedidoPreparado = { ...pedido, at: Timestamp.fromMillis(nowMs) };
-        tx.update(cuponRef, { pedidoPreparado });
-        const actualizado = { ...cupon, pedidoPreparado };
-        const numero = campana.requiereActivacionWA === true ? campana.waNumeroCupones : campana.waNumeroPrincipal;
-        return {
-            pedidoPreparado: pedidoPreparadoView(pedidoPreparado),
-            waLink: waMeLink(numero, buildMensajeWhatsApp(campana, actualizado, pedidoPreparado)),
-            cuponValidoHoy: (campana.diasValidos || []).map(Number).includes(bogotaParts(nowMs).dow),
-            diasValidosTexto: formatDiasValidos(campana.diasValidos || [])
-        };
-    });
+    let falloTelefono = false;
+    try {
+        return await db.runTransaction(async (tx) => {
+            falloTelefono = false;
+            const cuponSnap = await tx.get(cuponRef);
+            if (!cuponSnap.exists) throw new HttpsError('not-found', MOTIVOS.no_existe);
+            const cupon = cuponSnap.data();
+            // Dueño: llave válida, o el celular con que lo reclamó (con tope de intentos fallidos).
+            // Si se probó con el celular, se entrega una llave para que este navegador no lo pida más.
+            let llave = null;
+            if (!llaveValida(cupon, prueba.llave)) {
+                if (!isValidColombianMobile(prueba.telefono)) throw new HttpsError('permission-denied', MSG_CONFIRMA_WHATSAPP);
+                if (await codigoBloqueado(db, codigo, nowMs, tx)) throw ERROR_BLOQUEADO();
+                if (cupon.telefono !== prueba.telefono) {
+                    falloTelefono = true;
+                    throw new HttpsError('permission-denied', MSG_TELEFONO_NO_COINCIDE);
+                }
+                llave = generarLlave();
+            }
+            const campSnap = await tx.get(db.collection(CUPONES_CAMPANAS_COLLECTION).doc(cupon.campanaId));
+            const campana = campSnap.exists ? campSnap.data() : null;
+            if (cupon.estado === ESTADOS.CANJEADO) throw new HttpsError('failed-precondition', MOTIVOS.canjeado);
+            const finMs = toMs(campana?.fechaFin);
+            if (!campana || cupon.estado === ESTADOS.VENCIDO || (finMs !== null && nowMs > finMs)) {
+                throw new HttpsError('failed-precondition', MOTIVOS.vencido);
+            }
+            if (cupon.estado === ESTADOS.EMITIDO && campana.requiereActivacionWA === true) {
+                throw new HttpsError('failed-precondition', 'Primero activa tu cupón por WhatsApp.');
+            }
+            const pedidoPreparado = { ...pedido, at: Timestamp.fromMillis(nowMs) };
+            tx.update(cuponRef, { pedidoPreparado, ...(llave ? { llavesHash: llavesConNueva(cupon, llave) } : {}) });
+            const actualizado = { ...cupon, pedidoPreparado };
+            const numero = campana.requiereActivacionWA === true ? campana.waNumeroCupones : campana.waNumeroPrincipal;
+            return {
+                pedidoPreparado: pedidoPreparadoView(pedidoPreparado),
+                waLink: waMeLink(numero, buildMensajeWhatsApp(campana, actualizado, pedidoPreparado)),
+                cuponValidoHoy: (campana.diasValidos || []).map(Number).includes(bogotaParts(nowMs).dow),
+                diasValidosTexto: formatDiasValidos(campana.diasValidos || []),
+                estadoActual: estadoCuponView(actualizado, campana, nowMs),
+                ...(llave ? { llave } : {})
+            };
+        });
+    } catch (err) {
+        // Fuera de la transacción: un reintento de Firestore no debe contar dos veces el fallo.
+        if (falloTelefono) await registrarFalloDueno(db, codigo, nowMs);
+        throw err;
+    }
 }
 
 function formatHora12(minutos) {
@@ -1205,6 +1372,11 @@ module.exports = {
     canjearCuponPanaTransaction,
     revertirCanjeCuponPanaTransaction,
     prepararPedidoCuponTransaction,
+    estadoCuponPana,
+    estadoCuponView,
+    proximoDiaValido,
+    hashLlave,
+    DUENO_MAX_FALLOS,
     validatePedidoInput,
     estadoHorario,
     leerEstadoHorario,

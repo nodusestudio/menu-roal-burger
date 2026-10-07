@@ -553,19 +553,72 @@ const CANDADO_SVG = `<svg viewBox="0 0 92 110" aria-hidden="true">
     <circle cx="46" cy="72" r="7" fill="#141414"/><rect x="43" y="74" width="6" height="15" rx="3" fill="#141414"/>
 </svg>`;
 
+// "lunes 12 de octubre", en hora Colombia.
+function fechaLarga(ms) {
+    const p = bogotaParts(ms);
+    return `${DIAS[p.dow]} ${p.d} de ${MESES[p.m]}`;
+}
+
+// Estado real del cupón (lo manda el servidor al emitir y al reabrirlo): se avisa ARRIBA, antes
+// de cualquier formulario, para que nadie llene "¿Cómo lo quieres?" con un cupón ya usado.
+function avisoEstadoHtml(r) {
+    const e = r.estadoActual;
+    if (!e) return '';
+    if (e.estado === 'canjeado') {
+        return `<div class="cp-estado-aviso cp-estado-aviso--usado" role="status">
+            <strong>${e.canjeadoAt ? `Lo usaste el ${esc(fechaLarga(e.canjeadoAt))}` : 'Ya usaste este cupón'} 🍔</strong>
+            <span>Espera la próxima clave el domingo.</span></div>`;
+    }
+    if (e.estado === 'vencido') {
+        return `<div class="cp-estado-aviso cp-estado-aviso--vencido" role="status">
+            <strong>Este cupón venció${e.vencioAt ? ` el ${esc(fechaLarga(e.vencioAt))}` : ''}</strong>
+            <span>Espera la próxima clave el domingo en Instagram.</span></div>`;
+    }
+    if (e.estado === 'activo' && !e.diaValidoHoy) {
+        const prox = e.proximoDiaValido;
+        const detalle = prox
+            ? `Puedes dejar tu pedido listo para el próximo día válido: <strong>${esc(fechaLarga(prox.ms))}</strong>.`
+            : 'Ya no quedan días válidos antes de que termine la campaña.';
+        return `<div class="cp-estado-aviso cp-estado-aviso--dia" role="status">
+            <strong>📅 Se canjea ${esc(e.diasValidosTexto || '')}.</strong>
+            <span>${detalle}</span></div>`;
+    }
+    return '';
+}
+
+// Botón del pedido: en un día no válido dice para cuándo queda listo.
+function textoBotonPedido(r) {
+    const e = r.estadoActual;
+    if (e && e.estado === 'activo' && !e.diaValidoHoy && e.proximoDiaValido) {
+        const p = bogotaParts(e.proximoDiaValido.ms);
+        return `DEJAR LISTO PARA EL ${DIAS[p.dow].toUpperCase()} ${p.d}`;
+    }
+    return 'ENVIAR PEDIDO POR WHATSAPP';
+}
+
 function renderCupon(r, { animar = false } = {}) {
     const c = r.campana || {};
-    const pendienteActivar = r.estado === 'emitido' && c.requiereActivacionWA;
+    const est = r.estadoActual ? r.estadoActual.estado : '';
+    const pendienteActivar = est ? est === 'sin_activar' : (r.estado === 'emitido' && c.requiereActivacionWA);
+    const usado = est === 'canjeado';
+    const vencido = est === 'vencido';
+    const cerrado = usado || vencido;
     const extras = seleccionesDe(r);
     const comp = composicionTexto(c.composicion);
+    const banner = cerrado
+        ? ''
+        : `<p class="cp-banner">${r.yaExistia ? 'Ya tenías tu cupón 😉' : '¡Desbloqueado! 🔓'}<small>${r.yaExistia ? 'Aquí está otra vez.' : 'Este cupón es solo tuyo: preséntalo en caja o pídelo por WhatsApp.'}</small></p>`;
     setView(`
         <div class="cp-wrap cp-wrap--sin-cta">
             <div class="cp-top-plano">${MARCA_HTML}</div>
             ${pasosHtml(3)}
-            <p class="cp-banner">${r.yaExistia ? 'Ya tenías tu cupón 😉' : '¡Desbloqueado! 🔓'}<small>${r.yaExistia ? 'Aquí está otra vez.' : 'Este cupón es solo tuyo: preséntalo en caja o pídelo por WhatsApp.'}</small></p>
-            <div class="cp-revelado${animar ? ' cp-revelado--anim' : ''}">
+            ${banner}
+            ${avisoEstadoHtml(r)}
+            <div class="cp-revelado${animar && !cerrado ? ' cp-revelado--anim' : ''}${cerrado ? ' cp-revelado--cerrado' : ''}">
                 <div class="cp-candado" aria-hidden="true">${CANDADO_SVG}</div>
-                <article class="cp-ticket" id="cpTicket" aria-label="Tu cupón">
+                ${usado ? '<div class="cp-sello-estado" aria-hidden="true">YA USADO ✓</div>' : ''}
+                ${vencido ? '<div class="cp-sello-estado cp-sello-estado--vencido" aria-hidden="true">VENCIDO</div>' : ''}
+                <article class="cp-ticket" id="cpTicket" aria-label="Tu cupón${usado ? ' (ya usado)' : vencido ? ' (vencido)' : ''}">
                     ${fotoTicketHtml(fotoDe(r))}
                     <div class="cp-ticket-top">
                         <div class="cp-ticket-head">
@@ -592,13 +645,13 @@ function renderCupon(r, { animar = false } = {}) {
                 </article>
             </div>
 
-            ${pendienteActivar
+            ${cerrado ? '' : (pendienteActivar
         // Fase 2 (activación por el WhatsApp de cupones): primero activar; el pedido se arma después.
         ? `<div class="cp-actions"><a class="cp-btn cp-btn--wa" href="${esc(r.waLink)}" target="_blank" rel="noopener">ACTIVAR POR WHATSAPP</a></div>`
-        : pedidoStepHtml(r)}
+        : pedidoStepHtml(r))}
             <div class="cp-actions">
-                <button type="button" class="cp-btn cp-btn--primary" id="cpHistoriaBtn">📸 COMPARTIR EN MI HISTORIA</button>
-                <button type="button" class="cp-btn cp-btn--ghost" id="cpIcsBtn">⏰ RECORDÁRMELO</button>
+                <button type="button" class="cp-btn cp-btn--primary" id="cpHistoriaBtn"${usado ? ' disabled' : ''}>📸 COMPARTIR EN MI HISTORIA</button>
+                <button type="button" class="cp-btn cp-btn--ghost" id="cpIcsBtn"${cerrado ? ' disabled' : ''}>⏰ RECORDÁRMELO</button>
                 <button type="button" class="cp-btn cp-btn--ghost" id="cpPngBtn">⬇️ GUARDAR CUPÓN</button>
             </div>
             ${condicionesHtml()}
@@ -606,7 +659,7 @@ function renderCupon(r, { animar = false } = {}) {
         </div>`);
 
     wireFotoTicket();
-    if (!pendienteActivar) wirePedidoStep(r);
+    if (!pendienteActivar && !cerrado) wirePedidoStep(r);
     const historiaBtn = document.getElementById('cpHistoriaBtn');
     historiaBtn.addEventListener('click', () => compartirHistoria(r, historiaBtn));
     document.getElementById('cpIcsBtn').addEventListener('click', () => downloadIcs(r));
@@ -647,10 +700,13 @@ function pagoChipsHtml(pago) {
         </fieldset>`;
 }
 
+// Con la llave de este navegador el servidor ya sabe que es el dueño: no se vuelve a pedir el
+// WhatsApp. Solo sin llave (otro celular u otro navegador, o un cupón de antes de las llaves).
 function telefonoFieldHtml(r) {
+    if (r.llave) return '';
     return `
         <label class="cp-field">
-            <span>Tu WhatsApp (el mismo con que reclamaste el cupón)</span>
+            <span>Confirma el WhatsApp con el que reclamaste el cupón</span>
             <input type="tel" name="telefono" inputmode="numeric" maxlength="16" autocomplete="tel-national" placeholder="300 123 4567" value="${esc(r.telefono || '')}" required>
         </label>`;
 }
@@ -690,7 +746,7 @@ function renderModoPedido(panel, r, modo) {
                 : 'Tu pedido estará listo 25 a 30 minutos después de que te confirmemos por WhatsApp.'}</p>
             <p class="cp-error" id="cpPedidoError" role="alert" hidden></p>
             <div id="cpPedidoAviso"></div>
-            <button type="submit" class="cp-btn cp-btn--wa" id="cpPedidoBtn">ENVIAR PEDIDO POR WHATSAPP</button>
+            <button type="submit" class="cp-btn cp-btn--wa" id="cpPedidoBtn">${esc(textoBotonPedido(r))}</button>
         </form>`;
     const form = document.getElementById('cpPedidoForm');
     let pago = prev.pago || '';
@@ -715,9 +771,13 @@ function pedidoError(msg) {
 
 async function enviarPedido(r, modo, form, pago) {
     const fd = new FormData(form);
-    const telefono = String(fd.get('telefono') || '').replace(/\D/g, '');
+    const pideTelefono = !!form.querySelector('[name="telefono"]');
+    const telefono = pideTelefono ? String(fd.get('telefono') || '').replace(/\D/g, '') : '';
     const datos = {
-        codigo: r.codigo, telefono, modalidad: modo, pago,
+        codigo: r.codigo, modalidad: modo, pago,
+        // Prueba de dueño: la llave de este navegador o, sin ella, el celular confirmado.
+        ...(r.llave ? { llave: r.llave } : {}),
+        ...(telefono ? { telefono } : {}),
         direccion: String(fd.get('direccion') || '').trim(),
         barrio: String(fd.get('barrio') || '').trim(),
         referencias: String(fd.get('referencias') || '').trim()
@@ -725,7 +785,7 @@ async function enviarPedido(r, modo, form, pago) {
     // Chequeo rápido; el que manda es el servidor (prepararPedidoCupon).
     if (modo === 'domicilio' && datos.direccion.length < 5) return pedidoError('Escribe la dirección completa.');
     if (modo === 'domicilio' && datos.barrio.length < 2) return pedidoError('Escribe el barrio.');
-    if (!/^(57)?3\d{9}$/.test(telefono)) return pedidoError('Escribe tu celular (10 dígitos, empieza en 3).');
+    if (pideTelefono && !/^(57)?3\d{9}$/.test(telefono)) return pedidoError('Escribe tu celular (10 dígitos, empieza en 3).');
     if (!pago) return pedidoError('Elige cómo vas a pagar.');
     pedidoError('');
     const btn = document.getElementById('cpPedidoBtn');
@@ -734,17 +794,33 @@ async function enviarPedido(r, modo, form, pago) {
     try {
         const recaptchaToken = await getRecaptchaToken();
         const res = await callFunction('prepararPedidoCupon', { ...datos, recaptchaToken });
-        // Recordar lo enviado en este navegador (prellenar si vuelve a abrir el cupón).
-        const guardado = storageGet(STORAGE_PREFIX + campanaId) || r;
-        storageSet(STORAGE_PREFIX + campanaId, { ...guardado, telefono, pedidoPreparado: res.pedidoPreparado });
-        r.telefono = telefono;
+        // Recordar lo enviado en este navegador (prellenar si vuelve a abrir el cupón). Si se probó
+        // con el celular, el servidor entrega una llave: desde ahora no se vuelve a pedir.
+        if (telefono) r.telefono = telefono;
+        if (res.llave) r.llave = res.llave;
+        if (res.estadoActual) r.estadoActual = res.estadoActual;
         r.pedidoPreparado = res.pedidoPreparado;
+        const guardado = storageGet(STORAGE_PREFIX + campanaId) || r;
+        storageSet(STORAGE_PREFIX + campanaId, {
+            ...guardado, telefono: r.telefono || guardado.telefono || '', pedidoPreparado: res.pedidoPreparado,
+            ...(r.llave ? { llave: r.llave } : {}), ...(r.estadoActual ? { estadoActual: r.estadoActual } : {})
+        });
         mostrarListoParaEnviar(res);
     } catch (err) {
+        // La llave de este navegador ya no sirve (se borró del servidor o es de otro cupón): se
+        // olvida y se pide el WhatsApp, que es la otra prueba de dueño.
+        if (err.status === 'PERMISSION_DENIED' && r.llave && !telefono) {
+            delete r.llave;
+            const guardado = storageGet(STORAGE_PREFIX + campanaId);
+            if (guardado) { delete guardado.llave; storageSet(STORAGE_PREFIX + campanaId, guardado); }
+            renderModoPedido(document.getElementById('cpModoPanel'), r, modo);
+            pedidoError('Confirma el WhatsApp con el que reclamaste el cupón.');
+            return;
+        }
         pedidoError(err.message || 'No pudimos preparar tu pedido. Intenta de nuevo.');
     } finally {
         btn.disabled = false;
-        btn.textContent = 'ENVIAR PEDIDO POR WHATSAPP';
+        btn.textContent = textoBotonPedido(r);
     }
 }
 
@@ -759,7 +835,10 @@ function mostrarListoParaEnviar(res) {
         avisos.push(`${cerrado}${cerrado.endsWith('.') ? '' : '.'} Puedes enviarlo y te respondemos apenas abramos.`);
     }
     if (res.cuponValidoHoy === false) {
-        avisos.push(`Ojo: tu cupón es válido solo ${res.diasValidosTexto}. Hoy no se puede usar.`);
+        const prox = res.estadoActual && res.estadoActual.proximoDiaValido;
+        avisos.push(prox
+            ? `Tu cupón se canjea ${res.diasValidosTexto}: tu pedido queda listo para el ${fechaLarga(prox.ms)}. Envíalo y te lo confirmamos ese día.`
+            : `Ojo: tu cupón es válido solo ${res.diasValidosTexto}. Hoy no se puede usar.`);
     }
     if (!avisos.length) {
         aviso.innerHTML = `<p class="cp-modo-msg">¡Listo! Abriendo WhatsApp… Si no se abre, toca el botón.</p>
@@ -1217,6 +1296,41 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // ── Arranque ─────────────────────────────────────────────────────────────────
 
+// Cupón guardado en este navegador: antes de pintarlo se pregunta al servidor su estado REAL
+// (pudo canjearse en caja o vencer desde la última vez). Prueba de dueño: la llave guardada y/o
+// el celular con que se reclamó. Sin red se muestra el último estado conocido; el servidor igual
+// valida todo al enviar el pedido.
+async function conEstadoActual(saved) {
+    const prueba = {
+        ...(saved.llave ? { llave: saved.llave } : {}),
+        ...(saved.telefono ? { telefono: saved.telefono } : {})
+    };
+    if (!prueba.llave && !prueba.telefono) return saved;
+    try {
+        const res = await Promise.race([
+            callFunction('estadoCuponPana', { codigo: saved.codigo, ...prueba }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+        ]);
+        const r = {
+            ...saved,
+            estadoActual: res.estadoActual,
+            pedidoPreparado: res.pedidoPreparado || saved.pedidoPreparado || null,
+            ...(res.llave ? { llave: res.llave } : {})
+        };
+        storageSet(STORAGE_PREFIX + campanaId, r);
+        return r;
+    } catch (err) {
+        if (err.status === 'PERMISSION_DENIED' && saved.llave) {
+            // Llave que ya no sirve: se olvida; el paso del pedido pedirá el WhatsApp.
+            const r = { ...saved };
+            delete r.llave;
+            storageSet(STORAGE_PREFIX + campanaId, r);
+            return r;
+        }
+        return saved;
+    }
+}
+
 async function init() {
     stopPolling();
     selecciones = {};
@@ -1227,9 +1341,11 @@ async function init() {
     // Comodidad por dispositivo: quien ya reclamó y vuelve a abrir el link ve su cupón directo.
     const saved = storageGet(STORAGE_PREFIX + campanaId);
     if (saved && saved.codigo) {
-        renderCupon(saved);
         // En segundo plano: la foto y los datos frescos de la campaña para la imagen de historia.
-        fetchCampana(campanaId).then((c) => { if (c) { campana = c; ponerFotoTicket(fotoDe(saved)); } }).catch(() => {});
+        const campanaFresca = fetchCampana(campanaId).catch(() => null);
+        const r = await conEstadoActual(saved);
+        renderCupon(r);
+        campanaFresca.then((c) => { if (c) { campana = c; ponerFotoTicket(fotoDe(r)); } });
         return;
     }
     try {

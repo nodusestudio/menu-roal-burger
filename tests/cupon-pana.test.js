@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
 
 const FUNCTIONS_DIR = path.join(__dirname, '..', 'functions');
 
-const { getFirestore, Timestamp } = require(require.resolve('firebase-admin/firestore', { paths: [FUNCTIONS_DIR] }));
+const { getFirestore, Timestamp, FieldValue } = require(require.resolve('firebase-admin/firestore', { paths: [FUNCTIONS_DIR] }));
 require(path.join(FUNCTIONS_DIR, 'index.js')); // inicializa firebase-admin igual que en producción
 const cp = require(path.join(FUNCTIONS_DIR, 'cuponPana.js'));
 
@@ -980,4 +980,88 @@ test('emitirCuponPana: la respuesta trae la foto de la campaña para la tarjeta 
     await db.collection('cupones_campanas').doc(CAMPANA_ID).update({ imagenUrl: 'https://firebasestorage.googleapis.com/v0/b/x/o/cupones%2Fburda.webp?alt=media' });
     const r = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
     assert.match(r.campana.imagenUrl, /cupones%2Fburda\.webp/);
+});
+
+// ── Estado del cupón al abrirlo + llave secreta (no pedir el WhatsApp dos veces) ──
+
+test('emitir: entrega una llave de 32 bytes y el cupón guarda SOLO su sha256; trae el estado real', async () => {
+    const r = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    assert.equal(Buffer.from(r.llave, 'base64url').length, 32);
+    const doc = (await db.collection('cupones_pana').doc(r.codigo).get()).data();
+    assert.deepEqual(doc.llavesHash, [cp.hashLlave(r.llave)]);
+    assert.ok(!JSON.stringify(doc).includes(r.llave), 'la llave en claro no se guarda');
+    assert.equal(r.estadoActual.estado, 'activo');
+    assert.equal(r.estadoActual.diaValidoHoy, true); // lunes, campaña lunes/martes/jueves
+    // Mismo dueño que vuelve (mismo celular + Instagram): otra llave, y la primera sigue sirviendo.
+    const otra = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    assert.equal(otra.yaExistia, true);
+    assert.notEqual(otra.llave, r.llave);
+    assert.equal((await db.collection('cupones_pana').doc(r.codigo).get()).data().llavesHash.length, 2);
+    await cp.estadoCuponPana(db, { codigo: r.codigo, llave: r.llave }, LUNES);
+    await cp.estadoCuponPana(db, { codigo: r.codigo, llave: otra.llave }, LUNES);
+});
+
+test('prepararPedido: con llave válida funciona SIN teléfono; llave inválida sin teléfono → rechazo', async () => {
+    const { codigo, llave } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    const ok = await cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { telefono: undefined, llave }), LUNES);
+    assert.equal(ok.pedidoPreparado.modalidad, 'domicilio');
+    assert.equal(ok.llave, undefined); // ya tenía llave: no se emite otra
+    assert.equal(ok.estadoActual.estado, 'activo');
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { telefono: undefined, llave: 'x'.repeat(43) }), LUNES),
+        'permission-denied', /Confirma el WhatsApp/);
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { telefono: undefined }), LUNES), 'invalid-argument');
+    // Llave inválida pero con el teléfono correcto: pasa, y entrega una llave nueva para ese navegador.
+    const conTel = await cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { llave: 'mala' }), LUNES);
+    assert.equal(Buffer.from(conTel.llave, 'base64url').length, 32);
+});
+
+test('cupón viejo sin llave: sigue funcionando con el teléfono (y estadoCuponPana le entrega una)', async () => {
+    const { codigo } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await db.collection('cupones_pana').doc(codigo).update({ llavesHash: FieldValue.delete() });
+    const ped = await cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo), LUNES);
+    assert.equal(ped.pedidoPreparado.pago, 'transferencia');
+    const est = await cp.estadoCuponPana(db, { codigo, telefono: '3001112233' }, LUNES);
+    assert.equal(est.estadoActual.estado, 'activo');
+    assert.ok(est.llave);
+    await cp.estadoCuponPana(db, { codigo, llave: est.llave }, LUNES);
+});
+
+test('estadoCuponPana: rechaza sin llave ni teléfono correctos, sin revelar si el código existe; tope de intentos', async () => {
+    const { codigo, llave } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    await expectHttpsError(cp.estadoCuponPana(db, { codigo }, LUNES), 'invalid-argument');
+    await expectHttpsError(cp.estadoCuponPana(db, { codigo, llave: 'nope' }, LUNES), 'permission-denied', /Confirma el WhatsApp/);
+    await expectHttpsError(cp.estadoCuponPana(db, { codigo, telefono: '3109998877' }, LUNES), 'permission-denied', /no corresponde/);
+    await expectHttpsError(cp.estadoCuponPana(db, { codigo: 'ZZZZZ9', telefono: '3001112233' }, LUNES), 'permission-denied', /no corresponde/);
+    // Adivinar teléfonos: al llegar al tope, ni el correcto pasa durante la ventana…
+    for (let i = 1; i < cp.DUENO_MAX_FALLOS; i++) {
+        await expectHttpsError(cp.estadoCuponPana(db, { codigo, telefono: `31099988${String(i).padStart(2, '0')}` }, LUNES), 'permission-denied');
+    }
+    await expectHttpsError(cp.estadoCuponPana(db, { codigo, telefono: '3001112233' }, LUNES), 'resource-exhausted');
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo), LUNES), 'resource-exhausted');
+    // …pero la llave del dueño sigue sirviendo.
+    assert.equal((await cp.estadoCuponPana(db, { codigo, llave }, LUNES)).estadoActual.estado, 'activo');
+    assert.ok(await cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { telefono: undefined, llave }), LUNES));
+});
+
+test('estado al abrir: canjeado (con fecha), vencido (con fecha) y día no válido (con el próximo día)', async () => {
+    const { codigo, llave } = await cp.emitirCuponPanaTransaction(db, emitInput(), LUNES);
+    // Miércoles: no es día válido → próximo, jueves 8.
+    const mie = (await cp.estadoCuponPana(db, { codigo, llave }, MIERCOLES)).estadoActual;
+    assert.equal(mie.estado, 'activo');
+    assert.equal(mie.diaValidoHoy, false);
+    assert.equal(mie.proximoDiaValido.dateKey, '2026-10-08');
+    assert.equal(mie.diasValidosTexto, 'lunes, martes y jueves');
+    // Canjeado el jueves.
+    await cp.canjearCuponPanaTransaction(db, codigo, { uid: 'admin-x' }, JUEVES);
+    const usado = (await cp.estadoCuponPana(db, { codigo, llave }, JUEVES + HOUR)).estadoActual;
+    assert.equal(usado.estado, 'canjeado');
+    assert.equal(cp.bogotaParts(usado.canjeadoAt).dateKey, '2026-10-08');
+    // prepararPedidoCupon sigue siendo el respaldo.
+    await expectHttpsError(cp.prepararPedidoCuponTransaction(db, pedidoInput(codigo, { telefono: undefined, llave }), JUEVES + HOUR), 'failed-precondition', /canjeado/);
+    // Vencido: otro cupón, consultado después de la fecha final.
+    const otro = await cp.emitirCuponPanaTransaction(db, emitInput({ telefono: '3004445566', igHandle: '@otro.pana' }), LUNES);
+    const nov = cp.bogotaDateKeyToMs('2026-11-02') + 12 * HOUR;
+    const venc = (await cp.estadoCuponPana(db, { codigo: otro.codigo, llave: otro.llave }, nov)).estadoActual;
+    assert.equal(venc.estado, 'vencido');
+    assert.equal(cp.bogotaParts(venc.vencioAt).dateKey, '2026-10-31');
 });

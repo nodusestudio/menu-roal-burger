@@ -2624,6 +2624,31 @@ exports.prepararPedidoCupon = onCall(
     }
 );
 
+// Landing: estado real del cupón al abrirlo (canjeado, vencido, día válido…). Solo el dueño:
+// código + llave secreta del navegador, o código + teléfono (con tope de intentos fallidos por
+// código dentro de cuponPana.estadoCuponPana). Sin reCAPTCHA: es lectura y se llama al cargar.
+exports.estadoCuponPana = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const clientIp = String(
+            request.rawRequest?.headers?.['x-forwarded-for']?.split(',')[0]?.trim()
+            || request.rawRequest?.ip
+            || ''
+        ).trim();
+        if (clientIp && !(await cuponPana.checkRateLimit(db, `cupon_ip_${clientIp.replace(/[^0-9a-fA-F.:]/g, '')}`, cuponPana.RATE_LIMIT_MAX_PER_IP))) {
+            throw new HttpsError('resource-exhausted', 'Vamos muy rápido 🙂 Espera unos minutos e intenta de nuevo.');
+        }
+        try {
+            return await cuponPana.estadoCuponPana(db, request.data);
+        } catch (err) {
+            if (err instanceof HttpsError) throw err;
+            console.error('estadoCuponPana error:', err);
+            throw new HttpsError('internal', 'No pudimos consultar tu cupón. Intenta de nuevo.');
+        }
+    }
+);
+
 // Reversa de un canje del mismo día (ticket cancelado, código equivocado). Callable APARTE de
 // guardarCampanaPana a propósito: es una operación financiera y queda auditada por separado
 // (historial[] del cupón). Solo admin -- un mesero no puede revertir.
