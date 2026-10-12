@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261012-1647">
+    <link rel="stylesheet" href="style.css?v=20261012-1701">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -5239,8 +5239,18 @@
         }
         .cpana-tab.active { background: var(--admin-accent-soft); border-color: rgba(255,123,69,0.45); color: #fff; }
         /* ── Código del día (Artículos → Código del día, y su bloque en POS → Cupones) ── */
-        .cd-panel { display: grid; gap: 14px; }
+        .cd-panel { display: grid; gap: 14px; min-width: 0; }
         .cd-panel[hidden] { display: none !important; }
+        /* Los hijos de un grid no se achican por debajo de su contenido: sin esto la tabla ancha
+           (Próximos días) empujaba la tarjeta, se cortaba por la derecha y no salía la barra de scroll. */
+        .cd-panel > * { min-width: 0; max-width: 100%; }
+        /* Tabla con alto máximo: así la barra de scroll horizontal queda siempre a la vista (antes estaba
+           al pie de una tabla de ~2000 px de alto, fuera de la pantalla) y el encabezado se queda fijo. */
+        .cd-panel .cpana-table-wrap { overflow: auto; max-height: 70vh; padding-bottom: 6px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.4) rgba(255,255,255,0.06); }
+        .cd-panel .cpana-table-wrap::-webkit-scrollbar { height: 12px; width: 12px; }
+        .cd-panel .cpana-table-wrap::-webkit-scrollbar-track { background: rgba(255,255,255,0.06); border-radius: 999px; }
+        .cd-panel .cpana-table-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.4); border-radius: 999px; }
+        .cd-panel .cpana-table th { position: sticky; top: 0; z-index: 2; background: #151922; }
         .cd-btn {
             background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16); color: #eef4ff;
             border-radius: 999px; padding: 6px 12px; font-family: 'Roboto', sans-serif; font-size: 0.78rem; cursor: pointer; white-space: nowrap;
@@ -5260,7 +5270,8 @@
         .cd-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
         .cd-table td { white-space: normal; }
         .cd-table tfoot th { color: #eef4ff; border-top: 1px solid rgba(255,255,255,0.12); padding: 8px; text-align: left; }
-        .cd-acciones { display: flex; gap: 6px; flex-wrap: wrap; min-width: 220px; max-width: 420px; }
+        .cd-acciones { display: flex; gap: 5px; flex-wrap: wrap; min-width: 300px; max-width: 460px; }
+        .cd-acciones .cd-btn { padding: 4px 10px; font-size: 0.74rem; }
         .cd-ver-dias { display: inline-flex; }
         .cd-historias { display: inline-flex; gap: 6px; flex-wrap: wrap; }
         .cd-entrega-modal { position: fixed; inset: 0; z-index: 10050; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,0.6); }
@@ -16289,17 +16300,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261012-1647"></script>
+    <script defer src="firebase-config.js?v=20261012-1701"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261012-1647"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261012-1701"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-1647"></script>
-    <script defer src="admin.js?v=20261012-1647"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-1701"></script>
+    <script defer src="admin.js?v=20261012-1701"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
