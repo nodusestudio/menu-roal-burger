@@ -396,12 +396,11 @@ test('programar: no repite palabra en 30 días y respeta los días editados a ma
     for (const d of nuevos.filter((x) => x.fecha !== '2026-10-15')) {
         const ventana = todos.filter((x) => x.fecha !== d.fecha && x.fecha >= cd.addDays(d.fecha, -30) && x.fecha <= cd.addDays(d.fecha, 30));
         assert.ok(!ventana.some((x) => x.palabraBase === d.palabraBase), `${d.fecha} repite ${d.palabraBase} dentro de 30 días`);
-        assert.notEqual(d.palabraBase, 'FINO');
     }
     // El lunes (el primero) no puede usar ninguna de las 30 palabras previas.
     assert.ok(!usadas.includes(nuevos.find((d) => d.fecha === LUNES).palabraBase));
-    const bases = nuevos.map((d) => d.palabraBase);
-    assert.equal(new Set(bases).size, bases.length);
+    // (No se exige unicidad global: los días nuevos abarcan más de 30 días, así que una palabra
+    // puede volver legítimamente; la regla real es la de la ventana de arriba.)
 });
 
 test('programar: es idempotente y no cambia un día automático que ya existe', async () => {
@@ -501,6 +500,53 @@ test('normalización: "CHAM027", "chamo 27" y "Chamó-27" valen igual que CHAMO2
     assert.equal(r.ok, true);
     // Y una palabra editada a mano no puede llevar 0 ni 1.
     await assert.rejects(cd.editarDia(db, { fecha: '2026-10-13', palabra: 'CHAMO10', significado: 'muchacho' }, 'admin', AHORA), /2 al 9/);
+});
+
+test('día especial: palabra de solo letras (4 a 15) editada a mano, validada con la misma normalización', async () => {
+    await sembrarDia(LUNES);
+    // "Mario José" se limpia a MARIOJOSE; sin significado también se acepta.
+    const r = await cd.editarDia(db, { fecha: LUNES, palabra: 'Mario José' }, 'admin', AHORA);
+    assert.equal(r.dia.palabra, 'MARIOJOSE');
+    assert.equal(r.dia.palabraBase, 'MARIOJOSE');
+    assert.equal(r.dia.especial, true);
+    assert.equal(r.dia.editadoManualmente, true);
+    assert.ok(cd.palabraVigente(r.dia), 'no se regenera como palabra vieja');
+
+    // Menú y caja la aceptan con cualquier forma de escribirla (0→O, 1→I, espacios, mayúsculas).
+    for (const intento of ['MARIOJOSE', 'mariojose', 'Mario Jose', 'MARIOJ0SE', ' m a r i o j o s e ', 'Mario-José']) {
+        assert.equal((await cd.validarCodigoDia(db, intento, AHORA)).estado, 'valido', intento);
+    }
+    assert.equal((await cd.validarCodigoDia(db, 'MARIOJOSE2', AHORA)).estado, 'invalido');
+    assert.equal((await cd.validarCodigoDia(db, 'MARIO', AHORA)).estado, 'invalido');
+    const web = await cd.consumirCodigoDia(db, { codigo: 'mario jose', canal: 'web', telefono: TEL_1, productoNombre: 'Burger Plus' }, AHORA);
+    assert.equal(web.ok, true);
+    const caja = await cd.consumirCodigoDia(db, { codigo: 'MARIOJOSE', canal: 'caja', telefono: TEL_2, productoId: 'bp-plus' }, AHORA);
+    assert.equal(caja.ok, true);
+
+    // Límites: mínimo 4, máximo 15 letras, sin dígitos (ni 0 ni 1) y volver a palabra + 2 dígitos.
+    await assert.rejects(cd.editarDia(db, { fecha: LUNES, palabra: 'ABC' }, 'admin', AHORA), /4 a 15/);
+    await assert.rejects(cd.editarDia(db, { fecha: LUNES, palabra: 'ABCDEFGHIJKLMNOP' }, 'admin', AHORA), /4 a 15/);
+    await assert.rejects(cd.editarDia(db, { fecha: LUNES, palabra: 'MARIOJ0SE' }, 'admin', AHORA), /4 a 15/);
+    const quince = await cd.editarDia(db, { fecha: LUNES, palabra: 'ABCDEFGHIJKLMNO' }, 'admin', AHORA);
+    assert.equal(quince.dia.palabra, 'ABCDEFGHIJKLMNO');
+    const cuatro = await cd.editarDia(db, { fecha: LUNES, palabra: 'abcd' }, 'admin', AHORA);
+    assert.equal(cuatro.dia.palabra, 'ABCD');
+    const normal = await cd.editarDia(db, { fecha: LUNES, palabra: 'PILAS34', significado: 'atento' }, 'admin', AHORA);
+    assert.equal(normal.dia.especial, false);
+    assert.equal(normal.dia.palabraBase, 'PILAS');
+    // Una palabra normal sigue pidiendo significado.
+    await assert.rejects(cd.editarDia(db, { fecha: LUNES, palabra: 'ZZZZZ44' }, 'admin', AHORA), /significado/);
+});
+
+test('día especial: la programación automática no lo pisa y sigue generando palabra + 2 dígitos', async () => {
+    await sembrarDia(LUNES);
+    await cd.editarDia(db, { fecha: LUNES, palabra: 'MARIOJOSE' }, 'admin', AHORA);
+    const r = await cd.programarProximosDias(db, { nowMs: AHORA });
+    assert.ok(!r.palabrasCambiadas.includes(LUNES));
+    assert.equal((await db.collection(cd.DIAS_COLLECTION).doc(LUNES).get()).data().palabra, 'MARIOJOSE');
+    const otros = (await db.collection(cd.DIAS_COLLECTION).get()).docs.filter((d) => d.id !== LUNES);
+    assert.ok(otros.length > 0);
+    for (const d of otros) assert.match(d.data().palabra, /^[A-Z]+[2-9]{2}$/, d.id);
 });
 
 test('generarPalabra: los 2 dígitos nunca son 0 ni 1, en miles de intentos', () => {

@@ -4918,7 +4918,7 @@ function _posBuildCodigoDiaSection() {
     cargarHoy();
 
     codeInput.addEventListener('input', () => {
-        codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        codeInput.value = codeInput.value.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
         result.innerHTML = '';
     });
     [codeInput, telInput, nombreInput].forEach((el) => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') btn.click(); }));
@@ -15146,7 +15146,7 @@ function _cdProductoFoto(productoId) {
     return String(p?.image_url || '').trim() || 'isotipo.png';
 }
 function _cdTextoHistoria(dia, pct) {
-    return `RECOMENDADO DEL DÍA · ${dia.productoNombre} -${pct}% · Palabra venezolana del día: ${dia.palabra} = ${dia.significado} · Solo ${dia.cupos} cupos · Solo en la app`;
+    return `RECOMENDADO DEL DÍA · ${dia.productoNombre} -${pct}% · Palabra venezolana del día: ${dia.palabra}${dia.significado ? ` = ${dia.significado}` : ''} · Solo ${dia.cupos} cupos · Solo en la app`;
 }
 function _cdProductosElegibles() {
     const cats = new Set((cdState.config.categoriasElegibles || []).map((c) => String(c).trim().toUpperCase()));
@@ -15369,14 +15369,14 @@ function _cdFilaEdicion(d, pct) {
                     <label>Producto
                         <select class="cpana-select" data-cd-campo="productoId"${yaTieneCanjes ? ' disabled title="Ya hay canjes hoy"' : ''}>${opciones}</select>
                     </label>
-                    <label>Palabra (letras + 2 dígitos)
+                    <label>Palabra (letras + 2 dígitos; día especial: solo letras, 4 a 15)
                         <span class="cd-edit-palabra">
                             <input type="text" data-cd-campo="palabra" value="${escapeHtml(d.palabra)}" maxlength="16" autocapitalize="characters">
                             <button type="button" class="cd-btn" data-cd-generar>🎲 Generar otra</button>
                         </span>
                     </label>
                     <label>Significado
-                        <input type="text" data-cd-campo="significado" value="${escapeHtml(d.significado || '')}" maxlength="60">
+                        <input type="text" data-cd-campo="significado" value="${escapeHtml(d.significado || '')}" maxlength="60" placeholder="Opcional en días especiales">
                     </label>
                     <label>Cupos
                         <input type="number" data-cd-campo="cupos" value="${Number(d.cupos || 0)}" min="${Math.max(1, Number(d.canjes || 0))}" max="500">
@@ -15396,7 +15396,8 @@ function _cdBindEdicion(body, pct) {
     if (!fila) return;
     const fecha = fila.dataset.cdFecha;
     const campo = (n) => fila.querySelector(`[data-cd-campo="${n}"]`);
-    campo('palabra').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+    // Sin tildes ni espacios ("Mario José" → MARIOJOSE), igual que normaliza el servidor.
+    campo('palabra').addEventListener('input', (e) => { e.target.value = e.target.value.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, ''); });
     fila.querySelector('[data-cd-generar]').addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         btn.disabled = true;

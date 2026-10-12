@@ -231,9 +231,14 @@ async function leerDiasEnRango(db, desdeKey, hastaKey) {
 
 const BASES_VALIDAS = new Set(PALABRAS.map((p) => p.palabra));
 
+// Palabra de un día especial (solo se escribe a mano en el panel): solo letras, 4 a 15, sin dígitos.
+// La generación automática sigue siendo palabra de la lista + 2 dígitos.
+const PALABRA_ESPECIAL_RE = /^[A-Z]{4,15}$/;
+
 // ¿La palabra del día está en la lista vigente y con dígitos 2-9? (las viejas, ej. HALLACA29 o
 // VACILON12, no).
 function palabraVigente(dia) {
+    if (dia?.especial === true && PALABRA_ESPECIAL_RE.test(String(dia.palabra || ''))) return true;
     const m = /^([A-Z]+)(\d{2})$/.exec(String(dia?.palabra || ''));
     return Boolean(m) && BASES_VALIDAS.has(m[1]) && /^[2-9]{2}$/.test(m[2]);
 }
@@ -713,14 +718,17 @@ async function editarDia(db, raw, uid, nowMs = Date.now()) {
     }
     if (raw.palabra !== undefined) {
         const palabra = limpiarPalabra(raw.palabra);
-        if (!/^[A-Z]{3,14}[2-9]{2}$/.test(palabra)) {
-            throw new HttpsError('invalid-argument', 'La palabra debe ser de 3 a 14 letras seguidas de 2 dígitos del 2 al 9 (ej. CHAMO27; sin 0 ni 1, que se confunden con O e I).');
+        // Día especial: solo letras (ej. MARIOJOSE), de 4 a 15, sin dígitos. Se compara con
+        // normalizarCodigo igual que las demás, así que "Mario Jose" o "mariojose" también valen.
+        const especial = PALABRA_ESPECIAL_RE.test(palabra);
+        if (!especial && !/^[A-Z]{3,14}[2-9]{2}$/.test(palabra)) {
+            throw new HttpsError('invalid-argument', 'La palabra debe ser de 3 a 14 letras seguidas de 2 dígitos del 2 al 9 (ej. CHAMO27; sin 0 ni 1, que se confunden con O e I), o para un día especial solo letras: de 4 a 15, sin dígitos ni espacios (ej. MARIOJOSE).');
         }
-        const base = palabra.replace(/\d+$/, '');
-        const conocida = PALABRAS.find((p) => p.palabra === base);
+        const base = especial ? palabra : palabra.replace(/\d+$/, '');
+        const conocida = especial ? null : PALABRAS.find((p) => p.palabra === base);
         const significado = String(raw.significado || '').trim().slice(0, 60) || conocida?.significado || '';
-        if (!significado) throw new HttpsError('invalid-argument', 'Escribe el significado de la palabra.');
-        Object.assign(patch, { palabra, palabraBase: base, significado });
+        if (!significado && !especial) throw new HttpsError('invalid-argument', 'Escribe el significado de la palabra.');
+        Object.assign(patch, { palabra, palabraBase: base, significado, especial });
     }
     if (raw.cupos !== undefined) {
         const cupos = Math.round(Number(raw.cupos));
