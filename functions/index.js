@@ -13,6 +13,7 @@ const { buildWhatsAppOrderDraft } = require('./agent/whatsappOrderParser');
 const orderLogic = require('./agent/orderLogic');
 const { buildDeliveredOrderWhatsAppMessage } = orderLogic;
 const pricing = require('./pricing');
+const codigoDia = require('./codigoDia');
 const { assertRecaptchaToken } = require('./recaptcha');
 
 initializeApp();
@@ -1479,10 +1480,33 @@ exports._claimOrderRequestSlot = claimOrderRequestSlot;
 // firestore.rules, create de /pedidos rechaza source:'web'). Nunca rechaza el pedido por una
 // discrepancia de precio (decision explicita del negocio): siempre usa el precio "piso"
 // verificado, nunca menos, y deja un log si hay una diferencia grande para revision manual.
+// Libera el slot reclamado por claimOrderRequestSlot cuando el pedido se rechaza ANTES de crearse
+// (barrio especial sin confirmar, código del día que ya no aplica): sin esto, el reintento del
+// cliente con el mismo clientRequestId chocaba para siempre con "ya se está procesando".
+async function releaseOrderRequestSlot(orderRef, clientRequestId) {
+    if (!clientRequestId) return;
+    try {
+        const snap = await orderRef.get();
+        if (snap.exists && snap.data()?._claimed === true && !snap.data()?.code) await orderRef.delete();
+    } catch (err) {
+        console.error(`releaseOrderRequestSlot ${orderRef.id}:`, err);
+    }
+}
+
+// Error que el checkout entiende (details.codigoDia): el pedido NO se creó; el cliente quita el
+// descuento de la línea, muestra el motivo y deja confirmar de nuevo a precio normal.
+function codigoDiaRechazado(resultado) {
+    return new HttpsError('failed-precondition', `${resultado.mensaje} Tu pedido no se envió: revisa el total a precio normal y confirma de nuevo.`, {
+        codigoDia: { motivo: resultado.motivo, mensaje: resultado.mensaje }
+    });
+}
+
 exports.submitPublicOrder = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
-        const items = Array.isArray(request.data?.items) ? request.data.items : [];
+        // Código del día: a lo sumo UNA línea y UNA unidad con descuento (ver extraerLineaCodigoDia).
+        const extraido = codigoDia.extraerLineaCodigoDia(Array.isArray(request.data?.items) ? request.data.items : []);
+        const items = extraido.items;
         const customerInfo = request.data?.customerInfo || {};
 
         if (!items.length) {
@@ -1530,6 +1554,29 @@ exports.submitPublicOrder = onCall(
 
         const deliveryAddress = String(customerInfo.address || '').trim();
 
+        // Pre-chequeo del código del día (sin consumir cupo): si no aplica, se avisa ANTES de crear
+        // el pedido. La verificación definitiva (cupos, candado del celular) es la transacción de
+        // más abajo, justo antes de crear el pedido.
+        let codigoDiaPricing = null;
+        // Candado de un uso por día: el celular de la SESIÓN (clientId = phone_<dígitos>) cuando
+        // hay una, no el que se teclea en el checkout -- si no, bastaría cambiar el número.
+        const sessionPhone = /^phone_\d{10,13}$/.test(String(clientId || '')) ? String(clientId).slice(6) : '';
+        const codigoDiaPhone = sessionPhone || customerPhoneDigits;
+        if (extraido.lineIndex !== -1) {
+            const linea = items[extraido.lineIndex];
+            const pre = await codigoDia.prevalidarLineaWeb(db, {
+                codigo: extraido.codigo,
+                telefono: codigoDiaPhone,
+                productoNombre: linea.productName,
+                item: linea
+            });
+            if (!pre.ok) {
+                await releaseOrderRequestSlot(orderRef, clientRequestId);
+                throw codigoDiaRechazado(pre);
+            }
+            codigoDiaPricing = { lineIndex: extraido.lineIndex, porcentaje: pre.porcentaje };
+        }
+
         const priced = await pricing.computeServerPricedOrder(db, {
             items,
             fulfillmentType,
@@ -1538,13 +1585,15 @@ exports.submitPublicOrder = onCall(
             deliveryAddress,
             deliveryFeeSubmitted: customerInfo.deliveryFee,
             clientId,
-            pointsToRedeemRequested: customerInfo.pointsToRedeem
+            pointsToRedeemRequested: customerInfo.pointsToRedeem,
+            codigoDia: codigoDiaPricing
         });
 
         // Barrio especial (domiciliario no entra): no se puede procesar el pedido a domicilio si
         // el cliente no confirmó que puede salir a recibirlo en un punto acordado. El checkout ya
         // lo bloquea con un checkbox; esto es el candado server-side (a prueba de saltarse el front).
         if (priced.barrioEspecial && customerInfo.salirARecibirConfirmado !== true) {
+            await releaseOrderRequestSlot(orderRef, clientRequestId);
             throw new HttpsError('failed-precondition',
                 `Para pedidos a domicilio en ${priced.barrioEspecial} necesitamos que confirmes que puedes salir a un punto acordado a recibir el pedido (el domiciliario no entra al barrio).`);
         }
@@ -1563,9 +1612,31 @@ exports.submitPublicOrder = onCall(
         const cashTenderAmount = cashChangeRequired ? Number(customerInfo.cashTenderAmount || 0) : null;
         const totalItems = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
+        // Consumo REAL del cupo del código del día, en una transacción (solo uno gana el último
+        // cupo; un celular, un uso por día). Si falla, el pedido no se crea y el cliente decide.
+        let codigoDiaCanje = null;
+        if (codigoDiaPricing) {
+            const linea = priced.items[codigoDiaPricing.lineIndex];
+            const r = await codigoDia.consumirCodigoDia(db, {
+                codigo: extraido.codigo,
+                canal: 'web',
+                telefono: codigoDiaPhone,
+                nombre: customerName,
+                productoNombre: linea.productName,
+                uid: clientId
+            });
+            if (!r.ok) {
+                await releaseOrderRequestSlot(orderRef, clientRequestId);
+                throw codigoDiaRechazado(r);
+            }
+            codigoDiaCanje = r;
+        }
+
         // orderRef ya se resolvió arriba (determinista si vino clientRequestId, al azar si no) --
         // reserveNextOrderCode sobreescribe el placeholder `_claimed` con los datos reales.
-        const orderCode = await orderLogic.reserveNextOrderCode(db, orderRef, {
+        let orderCode;
+        try {
+        orderCode = await orderLogic.reserveNextOrderCode(db, orderRef, {
             status: 'pendiente',
             customerName,
             customerPhone,
@@ -1609,8 +1680,27 @@ exports.submitPublicOrder = onCall(
             summaryMessage: String(customerInfo.summaryMessage || ''),
             clientReportedTotal: Number(customerInfo.clientReportedTotal || 0),
             priceValidated: true,
-            priceMismatchDetected: Boolean(priced.mismatchDetected)
+            priceMismatchDetected: Boolean(priced.mismatchDetected),
+            codigoDia: codigoDiaCanje ? {
+                canjeId: codigoDiaCanje.canjeId,
+                codigo: extraido.codigo,
+                productoNombre: codigoDiaCanje.productoNombre,
+                porcentaje: codigoDiaCanje.porcentaje,
+                descuento: codigoDiaCanje.descuento
+            } : null
         });
+        } catch (err) {
+            // El pedido no se pudo crear: el cupo vuelve al pozo.
+            if (codigoDiaCanje) {
+                await codigoDia.revertirCanjeCodigoDia(db, codigoDiaCanje.canjeId, { motivo: 'pedido web no creado' }).catch(() => {});
+            }
+            throw err;
+        }
+        if (codigoDiaCanje) {
+            const linea = priced.items[codigoDiaPricing.lineIndex];
+            await codigoDia.adjuntarPedidoACanje(db, codigoDiaCanje.canjeId, { pedidoRef: orderRef.path, monto: Number(linea?.unitPrice || 0) })
+                .catch((err) => console.error('adjuntarPedidoACanje:', err));
+        }
 
         // Fijar el bloqueo de 24h de los cupones recien redimidos en este pedido -- mismo campo
         // que ya escribe el admin a mano (clientes/{id}.cupones_bloqueados), pero ahora lo hace el
@@ -2696,3 +2786,115 @@ exports.vencerCuponesPana = onSchedule(
 // secretos WA_CUPONES_TOKEN, WA_CUPONES_PHONE_ID, WA_CUPONES_APP_SECRET y WA_CUPONES_VERIFY_TOKEN
 // -- con esta línea activa y sin secretos, cualquier `firebase deploy --only functions` falla.
 // Object.assign(exports, require('./cuponPanaWhatsapp').buildCuponPanaFase2Functions());
+
+// ─────────────────────────────────────────────────────────────
+// CÓDIGO DEL DÍA (reemplaza el "Recomendado del día" con 20% automático). Lógica y reglas en
+// codigoDia.js; aquí solo auth, rate limit y wrappers. Nunca se aplica por WhatsApp: ni el
+// agente ni createManualWhatsAppOrder llaman nada de esto.
+// ─────────────────────────────────────────────────────────────
+const CODIGO_DIA_RATE_LIMIT_IP = 20; // intentos por IP cada 10 minutos (adivinar el código)
+
+function clientIpOf(request) {
+    return String(
+        request.rawRequest?.headers?.['x-forwarded-for']?.split(',')[0]?.trim()
+        || request.rawRequest?.ip
+        || ''
+    ).trim().replace(/[^0-9a-fA-F.:]/g, '');
+}
+
+// Menú web/app: ¿sirve este código AHORA? No consume cupo.
+exports.validarCodigoDia = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const ip = clientIpOf(request);
+        if (ip && !(await cuponPana.checkRateLimit(db, `codigo_dia_ip_${ip}`, CODIGO_DIA_RATE_LIMIT_IP))) {
+            throw new HttpsError('resource-exhausted', 'Demasiados intentos. Espera unos minutos e intenta de nuevo.');
+        }
+        return codigoDia.validarCodigoDia(db, request.data?.codigo);
+    }
+);
+
+// POS (admin o mesero): el cajero escribe el código + celular (o nombre) del cliente en el local.
+// Consume cupo con las mismas reglas que el checkout web.
+exports.canjearCodigoDiaCaja = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const caller = await cuponPana.ensureAdminOrMeseroCaller(db, request);
+        return codigoDia.consumirCodigoDia(db, {
+            codigo: request.data?.codigo,
+            canal: 'caja',
+            telefono: request.data?.telefono,
+            nombre: request.data?.nombre,
+            productoId: String(request.data?.productoId || ''),
+            productoNombre: String(request.data?.productoNombre || ''),
+            uid: caller.uid
+        });
+    }
+);
+
+// POS: quitar del ticket la línea del código del día devuelve el cupo.
+exports.revertirCanjeCodigoDia = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const caller = await cuponPana.ensureAdminOrMeseroCaller(db, request);
+        return codigoDia.revertirCanjeCodigoDia(db, request.data?.canjeId, { uid: caller.uid, motivo: request.data?.motivo });
+    }
+);
+
+// FODEXA → Código del día: configuración, edición de un día, sugerir palabra y forzar la
+// programación de los próximos 7 días.
+exports.adminCodigoDia = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const db = getFirestore();
+        const uid = await cuponPana.ensureAdmin(db, request);
+        const accion = String(request.data?.accion || '');
+        if (accion === 'guardarConfig') return codigoDia.guardarConfig(db, request.data?.config, uid);
+        if (accion === 'editarDia') return codigoDia.editarDia(db, request.data?.dia, uid);
+        if (accion === 'sugerirPalabra') return codigoDia.sugerirPalabra(Math.random, request.data?.excluir);
+        if (accion === 'programar') return codigoDia.programarProximosDias(db);
+        throw new HttpsError('invalid-argument', 'Acción desconocida.');
+    }
+);
+
+// 00:05 hora Colombia: asegura los próximos 7 días y publica el producto de hoy.
+exports.programarCodigoDia = onSchedule(
+    { schedule: '5 0 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        const r = await codigoDia.programarProximosDias(getFirestore());
+        console.log(`programarCodigoDia: hoy=${r.hoy} creados=${r.creados.join(',') || '-'} regenerados=${r.regenerados.join(',') || '-'}${r.sinProductos ? ' (SIN productos elegibles)' : ''}`);
+    }
+);
+
+// Un producto pausado/editado (precio, foto) o un cambio en la configuración se refleja en la
+// vista pública de hoy sin esperar a la medianoche.
+exports.syncCodigoDiaPublico = onDocumentWritten(
+    { document: 'codigo_dia/{fecha}', region: 'us-central1' },
+    async (event) => {
+        const nowMs = Date.now();
+        if (event.params.fecha !== codigoDia.bogotaParts(nowMs).dateKey) return;
+        // Los canjes ya actualizan cuposRestantes dentro de su transacción; esto cubre ediciones.
+        const antes = event.data?.before?.data() || {};
+        const despues = event.data?.after?.data() || {};
+        const soloCanje = ['productoId', 'palabra', 'cupos', 'precioNormal'].every((k) => antes[k] === despues[k]);
+        if (soloCanje && event.data?.before?.exists) return;
+        await codigoDia.actualizarPublicoHoy(getFirestore(), nowMs);
+    }
+);
+
+// El producto de hoy cambió (precio, foto, pausado): refrescar la vista pública al instante.
+exports.syncCodigoDiaProducto = onDocumentWritten(
+    { document: 'productos/{productoId}', region: 'us-central1' },
+    async (event) => {
+        const db = getFirestore();
+        const publico = await db.collection(codigoDia.PUBLICO_COLLECTION).doc(codigoDia.PUBLICO_DOC).get();
+        const hoy = codigoDia.bogotaParts(Date.now()).dateKey;
+        const dia = await db.collection(codigoDia.DIAS_COLLECTION).doc(hoy).get();
+        const id = event.params.productoId;
+        if (publico.data()?.productoId !== id && dia.data()?.productoId !== id) return;
+        await codigoDia.actualizarPublicoHoy(db);
+    }
+);

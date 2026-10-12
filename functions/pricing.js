@@ -20,7 +20,6 @@ const { fetchAllSellableItems, findProductByName } = require('./agent/tools');
 const orderLogic = require('./agent/orderLogic');
 
 const MISMATCH_LOG_TOLERANCE = 50; // COP — por debajo de esto, solo redondeos, no se loguea
-const RECOMMENDED_DAY_DISCOUNT_RATE = 0.2; // SYNC: script-v2.js:3648
 const LOYALTY_POINT_VALUE_COP = 10; // 100 puntos = $1.000 COP — tasa de canje de puntos de lealtad
 
 // SYNC: script-v2.js:8091-8097
@@ -201,12 +200,15 @@ function resolveCombosMixtosPrice(productName, categoryName) {
 const COMBO_EXTRA_PRICE = 7000; // SYNC: script-v2.js:3638
 const PROMO_2X1_INCREMENTO_AMOUNT = 2000; // SYNC: script-v2.js:17
 
-// Aplica el descuento de "Recomendado del día" usando SIEMPRE la constante del servidor — nunca
-// el discountRate que venga del cliente, para no permitir que alguien se auto-asigne un
-// porcentaje mayor al real (ver "Riesgos residuales aceptados" en el plan).
-function applyServerDiscount(price, orderOptions) {
-    if (!orderOptions?.recommendedDiscount) return price;
-    return Math.round(Number(price || 0) * (1 - RECOMMENDED_DAY_DISCOUNT_RATE));
+// Aplica a una línea el porcentaje de descuento que el SERVIDOR verificó para ella (ver
+// resolveServerDiscountRate) -- nunca el discountRate ni la marca recommendedDiscount que mande el
+// navegador. Antes había un 20% fijo para cualquier línea marcada recommendedDiscount, lo que
+// dejaba a cualquiera auto-asignarse el descuento en cualquier producto; el "Recomendado del día"
+// ahora es el Código del día (functions/codigoDia.js) y solo descuenta con el código de hoy.
+function applyServerDiscount(price, rate) {
+    const r = Number(rate) || 0;
+    if (r <= 0) return price;
+    return Math.round(Number(price || 0) * (1 - Math.min(r, 0.9)));
 }
 
 // Prefijos de couponId (ver script-v2.js normalizeOrderOptions) que sí tienen un descuento real
@@ -286,12 +288,13 @@ async function fetchLoyaltyPointsBalance(db, clientId) {
 // forceNoDiscount: true cuando el couponId de esta linea ya esta bloqueado (redimido hace menos
 // de 24h) -- el piso pasa a ser el precio SIN el descuento del cupon, ignorando cualquier
 // discountRate/precio_combo que traiga.
-function resolveServerLineFloor(item, catalog, combosEspeciales, forceNoDiscount = false) {
+// discountRate: el porcentaje (0..1) que el servidor verificó para esta línea, ver
+// resolveServerDiscountRate. 0 = precio normal.
+function resolveServerLineFloor(item, catalog, combosEspeciales, forceNoDiscount = false, discountRate = 0) {
     const productName = String(item?.productName || '');
     const categoryName = String(item?.categoryName || '');
-    const orderOptions = forceNoDiscount
-        ? { ...(item?.orderOptions || {}), recommendedDiscount: false }
-        : (item?.orderOptions || {});
+    const orderOptions = item?.orderOptions || {};
+    const rate = forceNoDiscount ? 0 : discountRate;
 
     // Combo especial: nunca confiar en orderOptions.staticPrice (lo pone el cliente) — buscar el
     // doc real de combos_especiales por título.
@@ -304,24 +307,24 @@ function resolveServerLineFloor(item, catalog, combosEspeciales, forceNoDiscount
     const manualImagePrice = resolveManualImagePrice(orderOptions);
     if (manualImagePrice !== null) {
         const withCombo = orderOptions?.type === 'combo' ? manualImagePrice + COMBO_EXTRA_PRICE : manualImagePrice;
-        return applyServerDiscount(withCombo, orderOptions);
+        return applyServerDiscount(withCombo, rate);
     }
 
     const combosMixtosPrice = resolveCombosMixtosPrice(productName, categoryName);
     if (combosMixtosPrice !== null) {
-        return applyServerDiscount(combosMixtosPrice, orderOptions);
+        return applyServerDiscount(combosMixtosPrice, rate);
     }
 
     const staticOptionPrice = resolveStaticOptionPrice(productName, categoryName);
     if (staticOptionPrice !== null) {
-        return applyServerDiscount(staticOptionPrice, orderOptions);
+        return applyServerDiscount(staticOptionPrice, rate);
     }
 
     const catalogMatch = findProductByName(catalog, productName);
     if (catalogMatch) {
         const base = Number(catalogMatch.precio) || 0;
         const withCombo = orderOptions?.type === 'combo' ? base + COMBO_EXTRA_PRICE : base;
-        return applyServerDiscount(withCombo, orderOptions);
+        return applyServerDiscount(withCombo, rate);
     }
 
     return null; // no se pudo verificar — ver política de "unresolved" en computeServerPricedOrder
@@ -340,6 +343,42 @@ function clampLoyaltyRedemption({ pointsToRedeemRequested, puntosDisponibles, lo
     return { pointsRedeemed, pointsDiscountAmount: pointsRedeemed * LOYALTY_POINT_VALUE_COP };
 }
 
+// Porcentaje de descuento (0..1) que el SERVIDOR reconoce para una línea:
+//   - Código del día: solo la línea que submitPublicOrder ya validó (codigoDia.lineIndex), con el
+//     porcentaje de codigo_dia_config -- nunca el del cliente.
+//   - desc_<promoId>: la promo real (promociones/{id}) activa y del mismo producto, a SU porcentaje.
+//   - ce_<comboId>: el combo especial real activo ahora, si el producto es parte del combo, con la
+//     misma fórmula del menú (1 - precio_combo / precio original).
+//   - Cualquier otra cosa (recommendedDiscount suelto, discountRate inventado): 0.
+function resolveServerDiscountRate(item, index, ctx) {
+    const oo = item?.orderOptions || {};
+    if (ctx.codigoDia && index === ctx.codigoDia.lineIndex) {
+        return Math.max(0, Math.min(90, Number(ctx.codigoDia.porcentaje) || 0)) / 100;
+    }
+    const couponId = String(oo.couponId || '');
+    const productKey = normalizeCategoryKey(item?.productName);
+    const productIsNamed = (productoId) => {
+        const p = ctx.productosById.get(String(productoId || ''));
+        return Boolean(p) && normalizeCategoryKey(p.nombre) === productKey;
+    };
+    if (couponId.startsWith('desc_')) {
+        const promo = ctx.promosById.get(couponId.slice(5));
+        if (!promo || promo.activo === false || !productIsNamed(promo.producto_id)) return 0;
+        return Math.max(0, Math.min(90, Number(promo.descuento) || 0)) / 100;
+    }
+    if (couponId.startsWith('ce_')) {
+        const combo = ctx.combosById.get(couponId.slice(3));
+        if (!combo || combo.activo === false || !orderLogic.isComboActiveNow(combo.horario)) return 0;
+        const productos = Array.isArray(combo.productos) ? combo.productos : [];
+        if (!productos.some((p) => productIsNamed(p?.id))) return 0;
+        const precioOrig = Number(combo.precio_original)
+            || productos.reduce((sum, p) => sum + (Number(ctx.productosById.get(String(p?.id || ''))?.precio) || 0), 0);
+        const precioCombo = Number(combo.precio_combo) || precioOrig;
+        return precioOrig > 0 ? Math.max(0, Math.min(0.9, 1 - precioCombo / precioOrig)) : 0;
+    }
+    return 0;
+}
+
 async function computeServerPricedOrder(db, {
     items,
     fulfillmentType,
@@ -348,8 +387,12 @@ async function computeServerPricedOrder(db, {
     deliveryAddress,
     deliveryFeeSubmitted,
     clientId,
-    pointsToRedeemRequested
+    pointsToRedeemRequested,
+    codigoDia = null
 }) {
+    const itemList = Array.isArray(items) ? items : [];
+    const needsPromos = itemList.some((i) => String(i?.orderOptions?.couponId || '').startsWith('desc_'));
+    const needsProductos = needsPromos || itemList.some((i) => String(i?.orderOptions?.couponId || '').startsWith('ce_'));
     const [catalog, combosEspecialesSnapshot, couponLocks, puntosDisponibles, barriosEspeciales] = await Promise.all([
         fetchAllSellableItems(db),
         db.collection('combos_especiales').get(),
@@ -357,6 +400,16 @@ async function computeServerPricedOrder(db, {
         fetchLoyaltyPointsBalance(db, clientId),
         orderLogic.loadBarriosEspeciales(db)
     ]);
+    const [promosSnap, productosSnap] = await Promise.all([
+        needsPromos ? db.collection('promociones').get() : null,
+        needsProductos ? db.collection('productos').get() : null
+    ]);
+    const discountCtx = {
+        codigoDia,
+        promosById: new Map((promosSnap?.docs || []).map((d) => [d.id, d.data()])),
+        productosById: new Map((productosSnap?.docs || []).map((d) => [d.id, d.data()])),
+        combosById: new Map(combosEspecialesSnapshot.docs.map((d) => [d.id, d.data()]))
+    };
 
     const combosEspeciales = combosEspecialesSnapshot.docs
         .map((doc) => ({ id: doc.id, ...doc.data() }))
@@ -373,13 +426,14 @@ async function computeServerPricedOrder(db, {
     let mismatchDetected = false;
     let mismatchDetails = [];
     const newlyRedeemedCouponIds = new Set();
-    const pricedItems = (Array.isArray(items) ? items : []).map((item) => {
+    const pricedItems = itemList.map((item, index) => {
         const quantity = Math.max(0, Number(item.quantity || 0));
         const clientUnitPrice = Number(item.unitPrice || 0);
         const couponId = String(item?.orderOptions?.couponId || '');
         const enforceCoupon = isEnforcedCouponId(couponId);
         const couponLocked = enforceCoupon && isCouponLockActive(couponLocks[couponId]);
-        const floor = resolveServerLineFloor(item, catalog, combosEspeciales, couponLocked);
+        const discountRate = resolveServerDiscountRate(item, index, discountCtx);
+        const floor = resolveServerLineFloor(item, catalog, combosEspeciales, couponLocked, discountRate);
 
         let finalUnitPrice;
         if (floor === null) {
@@ -532,6 +586,7 @@ async function computeLoyaltyRedemptionForItems(db, { items, clientId, pointsToR
 
 module.exports = {
     computeServerPricedOrder,
+    resolveServerDiscountRate,
     computeLoyaltyRedemptionForItems,
     fetchLoyaltyPointsBalance,
     LOYALTY_POINT_VALUE_COP,

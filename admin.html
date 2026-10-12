@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20260918-2044">
+    <link rel="stylesheet" href="style.css?v=20261011-2223">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -5238,6 +5238,67 @@
             border-radius: 999px; padding: 7px 14px; font-family: 'Oswald', sans-serif; font-size: 0.85rem; cursor: pointer;
         }
         .cpana-tab.active { background: var(--admin-accent-soft); border-color: rgba(255,123,69,0.45); color: #fff; }
+        /* ── Código del día (Artículos → Código del día, y su bloque en POS → Cupones) ── */
+        .cd-panel { display: grid; gap: 14px; }
+        .cd-panel[hidden] { display: none !important; }
+        .cd-btn {
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16); color: #eef4ff;
+            border-radius: 999px; padding: 6px 12px; font-family: 'Roboto', sans-serif; font-size: 0.78rem; cursor: pointer; white-space: nowrap;
+        }
+        .cd-btn:hover { border-color: rgba(255,123,69,0.5); background: var(--admin-accent-soft); }
+        .cd-btn:disabled { opacity: 0.6; cursor: wait; }
+        .cd-muted { color: var(--admin-muted); font-size: 0.78rem; }
+        .cd-aviso { margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.35); color: #fcd34d; font-size: 0.85rem; }
+        .cd-hoy { display: flex; gap: 14px; align-items: center; padding: 12px 14px; border-radius: 12px; background: rgba(255,123,69,0.08); border: 1px solid rgba(255,123,69,0.3); flex-wrap: wrap; }
+        .cd-hoy-info { display: grid; gap: 4px; flex: 1 1 260px; min-width: 0; color: #eef4ff; }
+        .cd-hoy-kicker { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; color: #ffb48f; }
+        .cd-hoy-bar { margin: 2px 0 0; grid-template-columns: auto 1fr auto; }
+        .cd-hoy-agotado { font-size: 0.8rem; color: var(--admin-muted); }
+        .cd-thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: rgba(255,255,255,0.06); display: block; }
+        .cd-thumb--lg { width: 64px; height: 64px; border-radius: 10px; }
+        .cd-palabra { font-family: 'Oswald', sans-serif; font-weight: 700; letter-spacing: 0.06em; color: #ffd9c4; }
+        .cd-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .cd-table td { white-space: normal; }
+        .cd-table tfoot th { color: #eef4ff; border-top: 1px solid rgba(255,255,255,0.12); padding: 8px; text-align: left; }
+        .cd-acciones { display: flex; gap: 6px; flex-wrap: wrap; min-width: 200px; }
+        .cd-fila-edicion td { background: rgba(255,255,255,0.03); }
+        .cd-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+        .cd-edit-grid label { min-width: 0; }
+        .cd-edit-grid label, .cd-config-grid label { display: grid; gap: 4px; font-size: 0.78rem; color: var(--admin-muted); }
+        .cd-edit-grid input, .cd-edit-grid select, .cd-config-grid input, .cd-filtro input {
+            border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75); color: #fff; padding: 8px 10px; font-family: 'Roboto', sans-serif; min-width: 0;
+        }
+        .cd-edit-palabra { display: flex; gap: 6px; min-width: 0; }
+        .cd-edit-palabra input { flex: 1 1 auto; width: 100%; min-width: 0; text-transform: uppercase; letter-spacing: 0.06em; }
+        .cd-edit-palabra .cd-btn { flex: 0 0 auto; }
+        .cd-edit-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+        .cd-filtro { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .cd-filtro-fechas { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+        .cd-filtro-fechas[hidden] { display: none; }
+        .cd-subtitulo { margin: 6px 0 0; font-family: 'Oswald', sans-serif; font-size: 1rem; color: #fff; }
+        .cd-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+        .cd-kpi { display: grid; gap: 4px; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); }
+        .cd-kpi span { font-size: 0.75rem; color: var(--admin-muted); }
+        .cd-kpi strong { font-family: 'Oswald', sans-serif; font-size: 1.35rem; color: #fff; }
+        .cd-chart-wrap { overflow-x: auto; }
+        .cd-chart { display: block; max-width: none; }
+        .cd-grid { stroke: rgba(255,255,255,0.08); stroke-width: 1; }
+        .cd-axis-label { fill: var(--admin-muted); font-size: 10px; font-family: 'Roboto', sans-serif; }
+        .cd-bar-fill { fill: rgba(255,123,69,0.55); }
+        .cd-bar-fill.is-agotado { fill: var(--admin-accent); }
+        .cd-bar:hover .cd-bar-fill { fill: #ffb48f; }
+        .cd-chart-nota { margin: 0; }
+        .cd-config { display: grid; gap: 14px; }
+        .cd-config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+        .cd-fieldset { border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 10px 12px; display: grid; gap: 8px; }
+        .cd-fieldset legend { padding: 0 6px; color: #eef4ff; font-size: 0.82rem; }
+        .pos-codigo-dia-hoy { margin: 0 0 8px; font-size: 0.82rem; color: var(--admin-muted); line-height: 1.4; }
+        .pos-codigo-dia-hoy strong { color: #fff; }
+        .pos-codigo-dia-agotado { color: #ffb48f; font-weight: 700; }
+        .pos-codigo-dia-grid { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(130px, 1fr) minmax(150px, 1.3fr) auto; gap: 8px; align-items: center; }
+        .pos-codigo-dia-grid .pos-cupon-code-input { width: 100%; min-width: 0; }
+        .pos-codigo-dia-grid .pos-codigo-dia-tel, .pos-codigo-dia-grid .pos-codigo-dia-nombre { text-transform: none; letter-spacing: normal; font-size: 0.9rem; }
+        @media (max-width: 640px) { .pos-codigo-dia-grid { grid-template-columns: 1fr 1fr; } .pos-codigo-dia-grid .pos-codigo-dia-nombre { grid-column: 1 / -1; } }
         .cpana-hist { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 0.72rem; color: var(--admin-muted); min-width: 180px; }
         .cpana-hist li { line-height: 1.35; }
         .cpana-hist .cpana-hist--rev { color: #ffb48f; }
@@ -13594,7 +13655,7 @@
                     </button>
                     <button class="menu-inner-tab" data-menu-tab="recomendado" role="tab" aria-selected="false">
                         <span class="menu-inner-tab-icon">⭐</span>
-                        <span>Recomendado del Día</span>
+                        <span>Código del día</span>
                     </button>
                     <button class="menu-inner-tab" data-menu-tab="bebidas" role="tab" aria-selected="false">
                         <span class="menu-inner-tab-icon">🥤</span>
@@ -13680,34 +13741,25 @@
                         </article>
                     </div>
 
-                    <!-- ── Panel: Recomendado del Día ── -->
+                    <!-- ── Panel: Código del día (reemplaza "Recomendado del Día") ──
+                         Todo lo escribe la Cloud Function adminCodigoDia (functions/codigoDia.js);
+                         aquí solo se leen codigo_dia / codigo_dia_canjes / codigo_dia_config. -->
                     <div class="menu-inner-panel" data-menu-panel="recomendado" role="tabpanel" hidden style="display:none;">
                         <article class="admin-card">
-                            <p class="admin-hint">El recomendado aparece en el menu publico al abrir la app. Puedes dejarlo en automatico (un producto diferente cada dia) o fijar siempre el mismo.</p>
-                            <div class="admin-field full" style="margin-top:16px;">
-                                <label>Modo de seleccion</label>
-                                <div class="recomendado-mode-radios">
-                                    <label class="recomendado-mode-option">
-                                        <input type="radio" name="recomendadoMode" id="recomendadoModeAuto" value="auto">
-                                        <span>Automatico</span>
-                                        <small>Algoritmo diario — cambia cada dia de forma determinista</small>
-                                    </label>
-                                    <label class="recomendado-mode-option">
-                                        <input type="radio" name="recomendadoMode" id="recomendadoModeManual" value="manual">
-                                        <span>Manual</span>
-                                        <small>Tu eliges cual producto aparece siempre</small>
-                                    </label>
+                            <div class="card-head">
+                                <h2>⭐ Código del día</h2>
+                                <div class="cpana-tabs" role="tablist" id="cdTabs">
+                                    <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-cd-tab="proximos">📅 Próximos 7 días</button>
+                                    <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-cd-tab="historial">🗂️ Historial</button>
+                                    <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-cd-tab="metricas">📊 Métricas</button>
+                                    <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-cd-tab="config">⚙️ Configuración</button>
                                 </div>
                             </div>
-                            <div id="recomendadoManualPanel" hidden>
-                                <div class="admin-field full" style="margin-top:14px;">
-                                    <label for="recomendadoProductSearch">Buscar producto</label>
-                                    <input type="search" id="recomendadoProductSearch" class="admin-input" placeholder="Escribe el nombre del producto...">
-                                </div>
-                                <ul id="recomendadoSearchResults" class="recomendado-results" hidden></ul>
-                            </div>
-                            <div class="recomendado-current-box" id="recomendadoCurrentBox" hidden></div>
-                            <button type="button" class="admin-button" id="saveRecomendadoDiaBtn" style="margin-top:18px;" disabled>Guardar</button>
+                            <p class="admin-hint">Todos los días a las 12:00 m se publica en las historias de Instagram una palabra venezolana + 2 dígitos. Con ese código, los primeros clientes obtienen el descuento en el producto del día, solo por el menú web/app o en caja (nunca por WhatsApp). Los próximos 7 días se programan solos; si editas un día, la programación automática ya no lo toca.</p>
+                            <div class="card-body cd-panel" data-cd-panel="proximos" id="cdProximosBody"><!-- render JS --></div>
+                            <div class="card-body cd-panel" data-cd-panel="historial" id="cdHistorialBody" hidden><!-- render JS --></div>
+                            <div class="card-body cd-panel" data-cd-panel="metricas" id="cdMetricasBody" hidden><!-- render JS --></div>
+                            <div class="card-body cd-panel" data-cd-panel="config" id="cdConfigBody" hidden><!-- render JS --></div>
                         </article>
                     </div>
 
@@ -16217,17 +16269,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20260918-2044"></script>
+    <script defer src="firebase-config.js?v=20261011-2223"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20260918-2044"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261011-2223"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20260918-2044"></script>
-    <script defer src="admin.js?v=20260918-2044"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261011-2223"></script>
+    <script defer src="admin.js?v=20261011-2223"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

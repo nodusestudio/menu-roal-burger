@@ -1472,7 +1472,7 @@ function showClosedScheduleConfirm(availability) {
     });
 }
 
-function showStatusToast(message) {
+function showStatusToast(message, durationMs = 2600) {
     let toast = document.getElementById('orderingStatusToast');
 
     if (!toast) {
@@ -1491,7 +1491,7 @@ function showStatusToast(message) {
 
     orderingStatusToastTimer = window.setTimeout(() => {
         toast.classList.remove('is-visible');
-    }, 2600);
+    }, durationMs);
 }
 
 function showOrderingClosedMessage() {
@@ -4383,15 +4383,9 @@ function getSelectedCategoryName() {
 const COMBO_EXTRA_PRICE = 7000;
 const COMBO_MEAL_SMALL_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana'];
 const COMBO_MEAL_LARGE_DRINK_OPTIONS = ['Pepsi Zero', 'Colombia', 'Manzana', 'Naranja', 'Uva', 'Toronja', 'Pepsi Original'];
-const RECOMMENDED_DAY_FALLBACK_PRODUCT = {
-    nombre: 'Caracas',
-    categoria: 'BURGER PREMIUM',
-    image_url: '',
-    estado: 'active'
-};
-const RECOMMENDED_DAY_DISCOUNT_RATE = 0.2;
+// Día (Bogotá) del último carrito visto: si cambió, se sacan las líneas con descuento del día
+// anterior (Código del día / cupones), ver checkAndPurgeStaleRecommendedCartItems.
 const RECOMMENDED_DAY_SERIAL_KEY = 'roalburger-recommended-day-serial';
-const RECOMMENDED_DAY_EXCLUDED_CATEGORY_PARTS = ['bebidas y adicionales', 'adicionales', 'bebidas', 'nuestras salsas', 'entradas'];
 const COMBOS_CON_PAPAS_IMAGE_PRICES = {
     './combosconpapasybebidas/comboburgernormal.png': { 1: 21000, 2: 38000, 3: 57000, 4: 73000 },
     './combosconpapasybebidas/comboburgerpapuda.png': { 1: 27000, 2: 48000, 3: 70000, 4: 91000 },
@@ -4762,7 +4756,10 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         // bloqueo real de 24h server-side en vez de confiar solo en localStorage (ver
         // _RDM_LOCK_PREFIX). Solo se aplica hoy para desc_/ce_ (descuento real); 2x1 no tiene
         // una fórmula de precio propia que se pueda verificar asi.
-        couponId: String(orderOptions.couponId || '').trim()
+        couponId: String(orderOptions.couponId || '').trim(),
+        // Código del día (functions/codigoDia.js): la palabra que el cliente escribió. El servidor
+        // la vuelve a validar y consume el cupo al crear el pedido; el descuento real lo pone él.
+        codigoDia: String(orderOptions.codigoDia || '').trim().toUpperCase().slice(0, 24)
     };
 }
 
@@ -4783,7 +4780,8 @@ function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo'
         allowClosedOrder: normalized.allowClosedOrder,
         promoLabel: normalized.promoLabel,
         comboGroupId: normalized.comboGroupId,
-        isComboChild: normalized.isComboChild
+        isComboChild: normalized.isComboChild,
+        codigoDia: normalized.codigoDia
     });
 }
 
@@ -4814,9 +4812,9 @@ function getWhatsAppOrderDetail(categoryName, orderOptions = { type: 'solo' }) {
         parts.push(`Sabor: ${normalized.flavor}`);
     }
 
-    if (normalized.recommendedDiscount) {
-        const discountPercent = Math.round((normalized.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE) * 100);
-        parts.push(`Recomendado -${discountPercent}%`);
+    if (normalized.recommendedDiscount && normalized.discountRate > 0) {
+        const discountPercent = Math.round(normalized.discountRate * 100);
+        parts.push(normalized.codigoDia ? `Código del día -${discountPercent}%` : `Descuento -${discountPercent}%`);
     }
 
     if (normalized.promo2x1Incremento) {
@@ -4849,7 +4847,7 @@ function checkAndPurgeStaleRecommendedCartItems() {
                 saveCartState();
                 _checkSoftLockReleases();
                 setTimeout(() => {
-                    showCartAddedToast('Carrito actualizado', 'El recomendado del día anterior fue removido');
+                    showCartAddedToast('Carrito actualizado', 'El descuento del día anterior fue removido');
                 }, 2500);
             }
         }
@@ -5083,11 +5081,10 @@ function resolveManualImagePrice(productName, orderOptions = { type: 'solo' }) {
 function resolveCartUnitPrice(productName, categoryName, orderOptions = { type: 'solo' }) {
     const normalizedOptions = normalizeOrderOptions(orderOptions);
     const applyDiscount = (price) => {
-        if (!normalizedOptions.recommendedDiscount) {
+        if (!normalizedOptions.recommendedDiscount || !(normalizedOptions.discountRate > 0)) {
             return price;
         }
-        const discountRate = normalizedOptions.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE;
-        return Math.round(Number(price || 0) * (1 - discountRate));
+        return Math.round(Number(price || 0) * (1 - normalizedOptions.discountRate));
     };
 
     if (normalizedOptions.staticPrice !== null) {
@@ -5194,9 +5191,11 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
         optionLabel = `${optionLabel} | +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} si es para llevar o domicilio`;
     }
 
-    if (normalized.recommendedDiscount) {
-        const discountPercent = Math.round((normalized.discountRate || RECOMMENDED_DAY_DISCOUNT_RATE) * 100);
-        optionLabel = `${optionLabel} | Recomendado del dia -${discountPercent}%`;
+    if (normalized.recommendedDiscount && normalized.discountRate > 0) {
+        const discountPercent = Math.round(normalized.discountRate * 100);
+        optionLabel = normalized.codigoDia
+            ? `${optionLabel} | Código del día ${normalized.codigoDia} -${discountPercent}%`
+            : `${optionLabel} | Descuento -${discountPercent}%`;
     }
 
     if (normalized.flavor) {
@@ -5517,12 +5516,36 @@ function updateCartItemQuantity(itemKey, delta) {
     }
 
     let newQty = Number(item.quantity || 0) + delta;
+    if (item.orderOptions?.codigoDia && newQty > 1) {
+        showStatusToast('El código del día aplica a 1 unidad por pedido. Si quieres más, agrégalas desde el menú a precio normal.', 5000);
+        return;
+    }
     item.quantity = newQty;
     if (newQty <= 0) shoppingCart = shoppingCart.filter((entry) => entry.parentKey !== itemKey);
     shoppingCart = shoppingCart.filter((entry) => Number(entry.quantity || 0) > 0);
     saveCartState();
     renderCartUI();
     _checkSoftLockReleases();
+}
+
+// Deja la línea del código del día a precio normal (sin código ni descuento).
+function _quitarCodigoDiaDelCarrito() {
+    const item = _codigoDiaLineaEnCarrito();
+    if (!item) return false;
+    const opts = normalizeOrderOptions({
+        ...item.orderOptions,
+        codigoDia: '',
+        recommendedDiscount: false,
+        discountRate: 0,
+        couponId: ''
+    });
+    item.orderOptions = opts;
+    item.unitPrice = resolveCartUnitPrice(item.productName, item.categoryName, opts);
+    item.itemKey = getCartItemKey(item.productName, item.categoryName, opts);
+    saveCartState();
+    renderCartUI();
+    updatePromoModalContent();
+    return true;
 }
 
 function clearCart() {
@@ -5860,6 +5883,17 @@ async function submitPaymentFlow() {
             scheduledLabel: capturedOrderData.scheduledLabel || ''
         });
     } catch (error) {
+        // El servidor rechazó el código del día (agotado en el último segundo, celular que ya lo
+        // usó hoy, código que cambió...). El pedido NO se creó: la línea vuelve a precio normal y
+        // el cliente revisa el nuevo total antes de confirmar de nuevo.
+        const codigoDiaError = error?.details?.codigoDia;
+        if (codigoDiaError) {
+            _quitarCodigoDiaDelCarrito();
+            closePaymentFlowModal();
+            openCartDrawer();
+            showStatusToast(`${codigoDiaError.mensaje || 'El código del día no se pudo aplicar.'} Tu carrito quedó a precio normal: revisa el total y confirma de nuevo.`, 9000);
+            return;
+        }
         const isNetworkOrQuota = /quota|network|offline|failed to fetch|unavailable/i.test(error.message || '');
         // El servidor detecto que este MISMO intento de checkout (mismo clientRequestId) ya se
         // esta procesando en paralelo (ver submitPublicOrder) -- no es un error de verdad, solo
@@ -10298,8 +10332,8 @@ async function renderPublicFeaturedFromAdmin() {
         applyBrandingConfig(doc.exists ? doc.data() : DEFAULT_BRANDING);
     });
 
-    recomendadoOverrideUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('configuracion').doc('recomendado_dia'), (doc) => {
-        recomendadoOverride = doc.exists ? doc.data() : null;
+    recomendadoOverrideUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('codigo_dia_publico').doc('hoy'), (doc) => {
+        _codigoDiaPublico = doc.exists ? doc.data() : null;
         if (_promoProductsReady) updatePromoModalContent();
     });
 
@@ -10523,10 +10557,14 @@ function closeMenuModal() {
 
 
 
-// ===== MODAL DE RECOMENDADO =====
-const PROMO_DAY_NAME = 'Recomendado del dia';
-let currentRecommendedProduct = null;
-let recomendadoOverride = null;
+// ===== CÓDIGO DEL DÍA (antes "Recomendado del día") =====
+// El producto del día, su precio con descuento y los cupos los decide el SERVIDOR
+// (functions/codigoDia.js) y se leen de codigo_dia_publico/hoy -- que nunca trae la palabra. El
+// cliente ya no calcula nada: sin código válido el producto se vende a precio normal, y con
+// código el servidor lo vuelve a validar y consume el cupo al crear el pedido.
+const CODIGO_DIA_INSTAGRAM_URL = 'https://www.instagram.com/roalburgerarmenia/';
+const CODIGO_DIA_INSTAGRAM_HANDLE = '@roalburgerarmenia';
+let _codigoDiaPublico = null;
 let _promoProductsReady = false;
 let _promoModalPendingOpen = false;
 let _promosData = [];
@@ -10550,167 +10588,207 @@ function getCurrentBogotaDateParts(now = new Date()) {
     };
 }
 
+// Categorías que no van en "destacados" (bebidas, adicionales, salsas, entradas y combos).
+const FEATURED_EXCLUDED_CATEGORY_PARTS = ['bebidas y adicionales', 'adicionales', 'bebidas', 'nuestras salsas', 'entradas'];
 function isExcludedRecommendedCategory(categoryName) {
     const normalizedCategory = normalizeCategoryKey(categoryName);
-    if (normalizedCategory.includes('combo')) {
-        return true;
-    }
-    return RECOMMENDED_DAY_EXCLUDED_CATEGORY_PARTS.some((part) => normalizedCategory.includes(part));
+    if (normalizedCategory.includes('combo')) return true;
+    return FEATURED_EXCLUDED_CATEGORY_PARTS.some((part) => normalizedCategory.includes(part));
 }
 
-function getRecommendedFallbackProduct() {
-    const raw = latestProducts.find((p) =>
-        String(p.nombre || p.name || '').trim().toLowerCase() === RECOMMENDED_DAY_FALLBACK_PRODUCT.nombre.toLowerCase()
-    );
+function _codigoDiaHoyKey() {
+    const { year, month, day } = getCurrentBogotaDateParts();
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+// La vista pública de HOY, o null si no hay código hoy (miércoles, cierre, inactivo, o el doc
+// quedó de ayer porque la programación de medianoche todavía no corrió).
+function getCodigoDiaHoy() {
+    const v = _codigoDiaPublico;
+    if (!v || v.activo !== true || v.fecha !== _codigoDiaHoyKey() || !v.productoNombre) return null;
+    const raw = latestProducts.find((p) => p.id === v.productoId)
+        || latestProducts.find((p) => normalizeCategoryKey(p.nombre || p.name) === normalizeCategoryKey(v.productoNombre));
+    if (raw && String(raw.estado || (raw.paused ? 'paused' : 'active')).toLowerCase() === 'paused') return null;
     return {
-        nombre: RECOMMENDED_DAY_FALLBACK_PRODUCT.nombre,
-        categoria: RECOMMENDED_DAY_FALLBACK_PRODUCT.categoria,
-        image_url: normalizeImageAssetPath(RECOMMENDED_DAY_FALLBACK_PRODUCT.image_url),
-        precio: raw ? resolveProductDisplayPrice(raw) : parseLocalizedPrice(RECOMMENDED_DAY_FALLBACK_PRODUCT.precio ?? 0),
-        estado: 'active'
+        ...v,
+        nombre: String(raw?.nombre || raw?.name || v.productoNombre).trim(),
+        categoria: String(raw?.categoria || raw?.category || v.categoria || '').trim(),
+        image_url: normalizeImageAssetPath(v.foto || (raw ? resolveProductImage(raw) : '') || _IMG_FINAL_FALLBACK),
+        precioNormal: Number(v.precioNormal) || (raw ? resolveProductDisplayPrice(raw) : 0),
+        precioConDescuento: Number(v.precioConDescuento) || 0,
+        porcentaje: Number(v.porcentaje) || 0,
+        cupos: Number(v.cupos) || 0,
+        cuposRestantes: Math.max(0, Number(v.cuposRestantes) || 0),
+        agotado: v.agotado === true || Number(v.cuposRestantes) <= 0
     };
 }
 
-function getEligibleRecommendedProducts() {
-    // El pool NO filtra por isCategoryAllowed para que sea idéntico para todos los usuarios
-    // sin importar el momento de carga (evita race condition con activeCategories).
-    const eligibleProducts = latestProducts
-        .map((product) => {
-            const nombre = String(product.nombre || product.name || '').trim();
-            const categoria = String(product.categoria || product.category || '').trim();
-            const estado = String(product.estado || (product.paused ? 'paused' : 'active')).toLowerCase();
-            return {
-                nombre,
-                categoria,
-                estado,
-                precio: resolveProductDisplayPrice(product),
-                image_url: normalizeImageAssetPath(resolveProductImage(product))
-            };
-        })
-        .filter((product) => {
-            if (!product.nombre || !product.categoria) return false;
-            if (shouldHideProductByName(product.nombre)) return false;
-            if (isExcludedRecommendedCategory(product.categoria)) return false;
-            return Boolean(product.image_url);
-        });
+function _codigoDiaLineaEnCarrito() {
+    return shoppingCart.find((item) => item.orderOptions?.codigoDia);
+}
 
-    const uniqueEligibleProducts = [];
-    const seenRecommendedProducts = new Set();
+function _codigoDiaCuposTexto(hoy) {
+    return hoy.agotado ? 'Agotado por hoy' : `Quedan ${hoy.cuposRestantes} de ${hoy.cupos}`;
+}
 
-    eligibleProducts.forEach((product) => {
-        const signature = getRecommendedProductSignature(product);
-        if (!signature || seenRecommendedProducts.has(signature)) return;
-        seenRecommendedProducts.add(signature);
-        uniqueEligibleProducts.push(product);
+// Una sola tarjeta para el inicio del menú y la pantalla Cupones.
+function buildCodigoDiaCard(hoy, origen) {
+    const card = document.createElement('article');
+    card.className = 'codigo-dia-card liquid-glass';
+    card.dataset.codigoDiaCard = origen;
+    const yaEnCarrito = Boolean(_codigoDiaLineaEnCarrito());
+    const inputId = `codigoDiaInput-${origen}`;
+
+    card.innerHTML = `
+        <div class="codigo-dia-top">
+            <span class="codigo-dia-kicker">⭐ Recomendado del día</span>
+            <span class="codigo-dia-badge">-${hoy.porcentaje}% con código</span>
+        </div>
+        <div class="codigo-dia-main">
+            <div class="codigo-dia-img-wrap"><img class="codigo-dia-img" alt="" loading="lazy"></div>
+            <div class="codigo-dia-info">
+                <strong class="codigo-dia-name"></strong>
+                <div class="codigo-dia-prices">
+                    <s class="codigo-dia-orig">${formatCurrency(hoy.precioNormal)}</s>
+                    <span class="codigo-dia-price">${formatCurrency(hoy.precioConDescuento)}</span>
+                </div>
+                <span class="codigo-dia-cupos${hoy.agotado ? ' is-agotado' : ''}">${_codigoDiaCuposTexto(hoy)}</span>
+            </div>
+        </div>
+        ${hoy.agotado ? `
+        <p class="codigo-dia-agotado" role="status">Se acabaron los de hoy ✅ Mañana a las 12, nuevo código</p>
+        ` : `
+        <form class="codigo-dia-form" novalidate>
+            <label class="codigo-dia-label" for="${inputId}">Código del día</label>
+            <div class="codigo-dia-row">
+                <input type="text" id="${inputId}" class="codigo-dia-input" maxlength="20" placeholder="Ej. CHAMO27"
+                       autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done">
+                <button type="submit" class="codigo-dia-apply">${yaEnCarrito ? 'En tu carrito ✓' : 'Aplicar'}</button>
+            </div>
+            <p class="codigo-dia-msg" role="status" aria-live="polite"></p>
+        </form>
+        <p class="codigo-dia-hint">¿Tienes el código del día? Búscalo hoy en nuestras historias de Instagram 👀</p>
+        `}
+        <div class="codigo-dia-actions">
+            <a class="codigo-dia-ig" href="${CODIGO_DIA_INSTAGRAM_URL}" target="_blank" rel="noopener">${CODIGO_DIA_INSTAGRAM_HANDLE}</a>
+            <button type="button" class="codigo-dia-normal">Pedir a precio normal</button>
+        </div>`;
+
+    const img = card.querySelector('.codigo-dia-img');
+    img.src = hoy.image_url;
+    img.alt = hoy.nombre;
+    img.addEventListener('error', () => { img.src = _IMG_FINAL_FALLBACK; }, { once: true });
+    card.querySelector('.codigo-dia-name').textContent = hoy.nombre;
+
+    card.querySelector('.codigo-dia-normal').addEventListener('click', () => {
+        _hapticTap();
+        startProductOrderFlow(hoy.nombre, hoy.categoria, `codigo-dia-normal-${origen}`);
     });
 
-    return uniqueEligibleProducts.length ? uniqueEligibleProducts : [getRecommendedFallbackProduct()];
-}
-
-function getRecommendedProductSignature(product) {
-    return `${normalizeCategoryKey(product?.categoria || '')}::${normalizeCategoryKey(product?.nombre || '')}`;
-}
-
-function _hashProductDay(key, daySerial) {
-    // Hash determinístico: resultado estable sin importar cuántos productos haya en el pool
-    let h = ((daySerial * 2654435761) >>> 0);
-    for (let i = 0; i < key.length; i++) {
-        h = (Math.imul(h ^ key.charCodeAt(i), 2246822519) >>> 0);
-        h = (Math.imul(h ^ (h >>> 13), 3266489917) >>> 0);
+    const form = card.querySelector('.codigo-dia-form');
+    if (form) {
+        const input = form.querySelector('.codigo-dia-input');
+        const btn = form.querySelector('.codigo-dia-apply');
+        const msg = form.querySelector('.codigo-dia-msg');
+        input.addEventListener('input', () => {
+            input.value = input.value.toUpperCase();
+            msg.textContent = '';
+            msg.classList.remove('is-ok', 'is-err');
+        });
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            _aplicarCodigoDia(hoy, input, btn, msg, origen);
+        });
     }
-    return h >>> 0;
+    return card;
 }
 
-function getRecommendedProductOfDay(now = new Date()) {
-    if (recomendadoOverride && recomendadoOverride.activo && recomendadoOverride.producto_id) {
-        const overrideRaw = latestProducts.find((p) => p.id === recomendadoOverride.producto_id);
-        if (overrideRaw) {
-            return {
-                nombre: String(overrideRaw.nombre || overrideRaw.name || '').trim(),
-                categoria: String(overrideRaw.categoria || overrideRaw.category || '').trim(),
-                estado: String(overrideRaw.estado || (overrideRaw.paused ? 'paused' : 'active')).toLowerCase(),
-                precio: resolveProductDisplayPrice(overrideRaw),
-                image_url: normalizeImageAssetPath(resolveProductImage(overrideRaw))
-            };
+async function _aplicarCodigoDia(hoy, input, btn, msg, origen) {
+    _hapticTap();
+    const setMsg = (text, ok) => {
+        msg.textContent = text;
+        msg.classList.toggle('is-ok', ok === true);
+        msg.classList.toggle('is-err', ok === false);
+    };
+    if (_codigoDiaLineaEnCarrito()) {
+        setMsg('Ya tienes el código del día en tu carrito ✓', true);
+        return;
+    }
+    const codigo = String(input.value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    if (codigo.length < 4) {
+        setMsg('Escribe el código que viste en nuestras historias de Instagram.', false);
+        input.focus();
+        return;
+    }
+    // Igual que los demás cupones: redimir exige cuenta (el celular de la cuenta es el que
+    // queda con el candado de un uso por día).
+    if (!activeCustomerProfile) {
+        openPromoRegistrationPrompt();
+        return;
+    }
+    const fn = getPublicFirebaseFunctions();
+    if (!fn) { setMsg('No pudimos conectar. Revisa tu conexión e intenta de nuevo.', false); return; }
+
+    btn.disabled = true;
+    const labelPrev = btn.textContent;
+    btn.textContent = 'Validando…';
+    try {
+        const res = (await fn.httpsCallable('validarCodigoDia')({ codigo })).data || {};
+        if (res.estado !== 'valido') {
+            setMsg(res.mensaje || 'Ese código no es válido hoy.', false);
+            if (res.estado === 'agotado' && _codigoDiaPublico) {
+                _codigoDiaPublico = { ..._codigoDiaPublico, agotado: true, cuposRestantes: 0 };
+                setTimeout(updatePromoModalContent, 2500);
+            }
+            return;
         }
+        const porcentaje = Number(res.porcentaje) || hoy.porcentaje;
+        addItemToCart(hoy.nombre, hoy.categoria, {
+            type: 'solo',
+            imagePath: hoy.image_url,
+            recommendedDiscount: true,
+            discountRate: porcentaje / 100,
+            couponId: 'codigo_dia',
+            codigoDia: codigo,
+            upgradeHandled: true
+        }, `codigo-dia-${origen}`);
+        if (typeof trackButtonClick === 'function') trackButtonClick('btn-codigo-dia', `Código del día - ${hoy.nombre}`);
+        setMsg(`¡Listo! ${hoy.nombre} con ${porcentaje}% quedó en tu carrito. El cupo se confirma al enviar el pedido.`, true);
+        btn.textContent = 'En tu carrito ✓';
+    } catch (err) {
+        console.error('validarCodigoDia:', err);
+        setMsg(String(err?.code || '').includes('resource-exhausted')
+            ? (err.message || 'Demasiados intentos. Espera unos minutos.')
+            : 'No pudimos validar el código. Intenta de nuevo.', false);
+    } finally {
+        btn.disabled = false;
+        if (btn.textContent === 'Validando…') btn.textContent = labelPrev;
     }
+}
 
-    const pool = getEligibleRecommendedProducts();
-    if (!pool.length) return getRecommendedFallbackProduct();
-
-    const { year, month, day } = getCurrentBogotaDateParts(now);
-    const daySerial = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
-
-    // El producto con menor hash gana hoy — estable aunque cambien otros productos del catálogo
-    let selected = pool[0];
-    let minHash = _hashProductDay(`${pool[0].nombre}::${pool[0].categoria}`, daySerial);
-    for (let i = 1; i < pool.length; i++) {
-        const h = _hashProductDay(`${pool[i].nombre}::${pool[i].categoria}`, daySerial);
-        if (h < minHash) {
-            minHash = h;
-            selected = pool[i];
-        }
+// Tarjeta fija al INICIO del menú (encima del catálogo, fuera de menuCarouselBody que se
+// reconstruye entero en cada render).
+function renderCodigoDiaHome() {
+    const slot = document.getElementById('codigoDiaHome');
+    if (!slot) return;
+    const hoy = getCodigoDiaHoy();
+    // No pisar lo que el cliente está escribiendo cuando llega un eco de Firestore (cupos).
+    const escribiendo = slot.contains(document.activeElement) && document.activeElement.classList.contains('codigo-dia-input');
+    if (escribiendo && hoy && !hoy.agotado) {
+        const cupos = slot.querySelector('.codigo-dia-cupos');
+        if (cupos) cupos.textContent = _codigoDiaCuposTexto(hoy);
+        return;
     }
-    return selected;
+    slot.innerHTML = '';
+    slot.hidden = !hoy;
+    if (hoy) slot.appendChild(buildCodigoDiaCard(hoy, 'inicio'));
 }
 
 function updatePromoModalContent() {
-    const recommendedProduct = getRecommendedProductOfDay();
-    currentRecommendedProduct = recommendedProduct;
-
-    const screen = document.getElementById('promoScreen');
-    const image = document.getElementById('promoModalImage');
-    const kicker = document.getElementById('promoModalKicker');
-    const title = document.getElementById('promoModalTitle');
-    const orderButton = document.getElementById('promoOrderButton');
-    const agotadoOverlay = document.getElementById('promoAgotadoOverlay');
-    const badge = screen ? screen.querySelector('.promo-modal-badge') : null;
-    const origPriceEl = document.getElementById('promoModalOrigPrice');
-    const discountPriceEl = document.getElementById('promoModalDiscountPrice');
-
-    const isSoldOut = recommendedProduct.estado === 'paused';
-
-    if (image) {
-        image.src = recommendedProduct.image_url || _IMG_FINAL_FALLBACK;
-        image.alt = `Recomendado del dia: ${recommendedProduct.nombre}`;
-    }
-
-    if (kicker) {
-        kicker.textContent = PROMO_DAY_NAME;
-    }
-
-    if (title) {
-        title.textContent = recommendedProduct.nombre;
-    }
-
-    if (agotadoOverlay) {
-        agotadoOverlay.hidden = !isSoldOut;
-    }
-
-    if (badge) {
-        badge.style.display = isSoldOut ? 'none' : '';
-    }
-
-    if (origPriceEl || discountPriceEl) {
-        const raw = resolveProductDisplayPrice(recommendedProduct);
-        const discounted = Math.round(raw * (1 - RECOMMENDED_DAY_DISCOUNT_RATE));
-        if (origPriceEl) origPriceEl.textContent = raw > discounted ? `$${raw.toLocaleString('es-CO')}` : '';
-        if (discountPriceEl) discountPriceEl.textContent = `$${discounted.toLocaleString('es-CO')}`;
-    }
-
-    if (orderButton) {
-        if (isSoldOut) {
-            orderButton.textContent = 'Agotado por hoy';
-            orderButton.disabled = true;
-            orderButton.style.opacity = '0.45';
-            orderButton.style.cursor = 'not-allowed';
-        } else {
-            orderButton.textContent = 'Redimir cupón 🎟️';
-            orderButton.disabled = false;
-            orderButton.style.opacity = '';
-            orderButton.style.cursor = '';
-        }
-    }
+    renderCodigoDiaHome();
+    const body = document.getElementById('promoCarouselBody');
+    const screen = document.getElementById('promoCarouselScreen');
+    if (body && screen && !screen.hidden && !body.contains(document.activeElement)) renderPromoCarousels();
 }
 
 function _applyPromoCarousel(container) {
@@ -11926,77 +12004,6 @@ function _buildPromoSection(title, cards) {
     return section;
 }
 
-function _makeRecomendadoCard(rec) {
-    const card = _makeComboCard({
-        nombre: rec.nombre || '',
-        imagen_url: rec.image_url,
-        categoria: rec.categoria || ''
-    });
-
-    // Esta tarjeta usaba el layout genérico de combo (imagen + nombre + botón), sin mostrar
-    // el descuento ni el precio — a diferencia de la tarjeta "Recomendado del día" de Inicio,
-    // que sí los muestra. Se agregan aquí para que ambas vistas digan lo mismo.
-    const imgWrap = card.querySelector('.card-image-wrapper');
-    if (imgWrap) {
-        imgWrap.style.position = 'relative';
-        const badge = document.createElement('span');
-        badge.className = 'rec-carousel-badge';
-        badge.textContent = `-${Math.round(RECOMMENDED_DAY_DISCOUNT_RATE * 100)}% HOY`;
-        imgWrap.appendChild(badge);
-    }
-
-    const nameEl = card.querySelector('.combo-card-name');
-    const rawPrice = resolveProductDisplayPrice(rec);
-    if (nameEl && rawPrice > 0) {
-        const discounted = Math.round(rawPrice * (1 - RECOMMENDED_DAY_DISCOUNT_RATE));
-        const priceRow = document.createElement('div');
-        priceRow.className = 'rec-carousel-price-row';
-        priceRow.innerHTML = rawPrice > discounted
-            ? `<span class="rec-carousel-orig">$${rawPrice.toLocaleString('es-CO')}</span><span class="rec-carousel-disc">$${discounted.toLocaleString('es-CO')}</span>`
-            : `<span class="rec-carousel-disc">$${discounted.toLocaleString('es-CO')}</span>`;
-        nameEl.insertAdjacentElement('afterend', priceRow);
-    }
-
-    const origBtn = card.querySelector('.mobile-order-btn');
-    if (origBtn) {
-        // Clonar para eliminar el listener original de startProductOrderFlow
-        const btn = origBtn.cloneNode(true);
-        origBtn.parentNode.replaceChild(btn, origBtn);
-
-        const couponId = 'rec_' + (rec.id || rec.nombre || 'dia');
-        btn.dataset.redeem = '1';
-        btn.dataset.couponId = couponId;
-        btn.textContent = 'Redimir cupón 🎟️';
-
-        const _recRem = _getRedeemRemaining(couponId);
-        if (_recRem > 0) {
-            _applyBtnLockUI(btn, _recRem);
-        } else if (_softLockedCoupons.has(couponId)) {
-            _softLockedCoupons.get(couponId).btn = btn;
-            _applyBtnSoftLockUI(btn);
-        }
-
-        btn.addEventListener('click', () => {
-            if (!activeCustomerProfile) { openPromoRegistrationPrompt(); return; }
-            _openChannelModal({
-                couponId,
-                couponTitle: rec.nombre || 'Recomendado del Día',
-                couponMeta: { type: 'recomendado', productId: rec.id, productNombre: rec.nombre, discountRate: RECOMMENDED_DAY_DISCOUNT_RATE },
-                redeemBtn: btn,
-                onDelivery: () => {
-                    addItemToCart(rec.nombre, rec.categoria || '', {
-                        type: 'solo',
-                        imagePath: rec.image_url,
-                        recommendedDiscount: true,
-                        discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
-                    }, 'carousel-rec-btn');
-                }
-            });
-        });
-    }
-    return card;
-}
-
 function _makeProductPromo2x1Card(product) {
     const card = _makeComboCard({
         nombre: product.nombre || '',
@@ -12179,20 +12186,16 @@ function renderPromoCarousels() {
     if (!body) return;
     body.innerHTML = '';
 
-    // ── 1. Recomendado del Día (siempre) ──
-    const rec = getRecommendedProductOfDay();
-    if (rec && rec.nombre && String(rec.estado || '').toLowerCase() !== 'paused') {
-        const recCard = _makeRecomendadoCard(rec);
+    // ── 1. Código del día (el "Recomendado del día" con código de Instagram) ──
+    const codigoHoy = getCodigoDiaHoy();
+    if (codigoHoy) {
         const recSection = document.createElement('section');
         recSection.className = 'combos-carousel-section';
         const recTitle = document.createElement('h3');
         recTitle.className = 'combos-section-title';
-        recTitle.textContent = '⭐ Recomendado del Día';
-        const recCarousel = document.createElement('div');
-        recCarousel.className = 'mobile-carousel';
-        recCarousel.appendChild(recCard);
+        recTitle.textContent = '⭐ Código del día';
         recSection.appendChild(recTitle);
-        recSection.appendChild(recCarousel);
+        recSection.appendChild(buildCodigoDiaCard(codigoHoy, 'cupones'));
         body.appendChild(recSection);
     }
 
@@ -12429,6 +12432,9 @@ function _updateCatalogSearchUI(total) {
     const statusEl = document.getElementById('catalogSearchStatus');
     const active = _catalogSearchActive();
     if (chipsBar) chipsBar.hidden = active;
+    // Mientras se busca, la tarjeta del código del día se esconde (vuelve al limpiar la búsqueda).
+    const codigoSlot = document.getElementById('codigoDiaHome');
+    if (codigoSlot) codigoSlot.classList.toggle('is-searching', active);
     if (!statusEl) return;
     if (!active) { statusEl.hidden = true; statusEl.innerHTML = ''; return; }
     const q = _catalogSearchQuery.trim();
@@ -12901,37 +12907,6 @@ function _showCuponRedimidoModal(couponTitle) {
     _pushGenericModal(close);
 }
 
-function orderDailyRecommendation() {
-    _hapticTap();
-    if (!activeCustomerProfile) {
-        closePromoScreen();
-        openPromoRegistrationPrompt();
-        return;
-    }
-
-    const recommendedProduct = currentRecommendedProduct || getRecommendedProductOfDay();
-    if (!recommendedProduct || recommendedProduct.estado === 'paused') return;
-
-    const _ordCouponId = 'rec_' + (recommendedProduct.id || recommendedProduct.nombre || 'dia');
-    const _ordBtn = document.getElementById('promoOrderButton');
-
-    _openChannelModal({
-        couponId: _ordCouponId,
-        couponTitle: recommendedProduct.nombre || 'Recomendado del Día',
-        couponMeta: { type: 'recomendado', productId: recommendedProduct.id, productNombre: recommendedProduct.nombre, discountRate: RECOMMENDED_DAY_DISCOUNT_RATE },
-        redeemBtn: _ordBtn,
-        onDelivery: () => {
-            trackButtonClick('btn-promo-dia-order', `${PROMO_DAY_NAME} - ${recommendedProduct.nombre}`);
-            closePromoScreen();
-            addItemToCart(recommendedProduct.nombre, recommendedProduct.categoria, {
-                type: 'solo',
-                imagePath: recommendedProduct.image_url,
-                recommendedDiscount: true,
-                discountRate: RECOMMENDED_DAY_DISCOUNT_RATE
-            }, 'btn-promo-dia-order');
-        }
-    });
-}
 document.addEventListener('click', function(event) {
     const menuModal = document.getElementById('menuModal');
     if (event.target === menuModal) {

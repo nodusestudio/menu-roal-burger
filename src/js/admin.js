@@ -165,7 +165,6 @@ const defaultBranding = {
 const CONFIG_COLLECTION = 'configuracion';
 const CONFIG_DOC_ID = 'config_landing';
 const HORARIO_DOC_ID = 'config_horario';
-const RECOMENDADO_DIA_DOC_ID = 'recomendado_dia';
 const OPENING_AD_DOC_ID = 'anuncio_apertura';
 const PROMOCIONES_COLLECTION = 'promociones';
 const COMBOS_ESPECIALES_COLLECTION = 'combos_especiales';
@@ -493,6 +492,10 @@ const PosCart = {
     incrementQuantity(itemKey, delta) {
         const item = internalOrderItems.find((i) => i.itemKey === itemKey);
         if (!item) return null;
+        if (item.codigoDiaCanjeId && delta > 0) {
+            showNotice('El código del día es 1 unidad por cliente. Agrega las demás desde el menú a precio normal.', 'error');
+            return null;
+        }
         const next = Number(item.quantity || 0) + delta;
         if (next < 1) return item;
         item.quantity = next;
@@ -504,6 +507,7 @@ const PosCart = {
     updateQuantity(itemKey, quantity) {
         const item = internalOrderItems.find((i) => i.itemKey === itemKey);
         if (!item) return null;
+        if (item.codigoDiaCanjeId) quantity = 1;
         item.quantity = Math.max(1, Number(quantity) || 1);
         item.subtotal = item.quantity * item.unitPrice;
         this._syncChildrenQuantity(item);
@@ -518,6 +522,9 @@ const PosCart = {
 
     // Elimina el ítem y sus hijos (extras/acompañantes vinculados por parentKey).
     removeItem(itemKey) {
+        const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+        // Código del día recién canjeado en esta caja: quitar la línea devuelve el cupo.
+        if (item?.codigoDiaCanjeId) _posRevertirCodigoDia(item.codigoDiaCanjeId);
         internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey && i.parentKey !== itemKey);
     },
 
@@ -578,7 +585,6 @@ const CLIENTS_PAGE_SIZE = 50;
 let expandedClientAddressIds = new Set();
 let productClicksState = [];
 let liveSubscriptions = [];
-let recomendadoDiaState = null;
 let promosState = [];
 let _promoEditingId = null;
 let _promoFormProductId = null;
@@ -615,7 +621,6 @@ const _BT_TX_CHARS = [
     '49535343-1e4d-4bd9-ba61-23c647249616',
 ];
 const _BT_PRINTER_ID_KEY = 'roal_bt_printer_id'; // recordar el dispositivo para reconectar solo al recargar
-let _recomendadoSelectedProductId = null;
 const _processedAccordionExpanded = new Set();
 let ordersRealtimeTimer = null;
 let _liveReloadTimer = null;
@@ -4517,24 +4522,6 @@ function renderPosPromocionesPanel(grid) {
         return btn;
     }
 
-    // ── Hash diario — algoritmo IDÉNTICO al menú público (_hashProductDay) ──
-    function hashDay(key, day) {
-        let h = ((day * 2654435761) >>> 0);
-        for (let i = 0; i < key.length; i++) {
-            h = (Math.imul(h ^ key.charCodeAt(i), 2246822519) >>> 0);
-            h = (Math.imul(h ^ (h >>> 13), 3266489917) >>> 0);
-        }
-        return h >>> 0;
-    }
-
-    // Categorías excluidas del recomendado — igual que menú público
-    const _REC_EXCL = ['bebidas y adicionales', 'adicionales', 'bebidas', 'nuestras salsas', 'entradas'];
-    function _recCatExcluida(cat) {
-        const k = String(cat || '').toLowerCase().trim();
-        if (k.includes('combo')) return true;
-        return _REC_EXCL.some((p) => k.includes(p));
-    }
-
     let hasAny = false;
 
     // ── 0. VALIDAR CÓDIGO DEL CLIENTE ────────────────────────────────────────
@@ -4630,57 +4617,11 @@ function renderPosPromocionesPanel(grid) {
         }
     });
 
-    // ── 1. RECOMENDADO DEL DÍA ───────────────────────────────────────────────
-    let _recProd = null;
-    if (recomendadoDiaState && recomendadoDiaState.activo && recomendadoDiaState.producto_id) {
-        _recProd = productsState.find((p) => p.id === recomendadoDiaState.producto_id) || null;
-    } else {
-        // Pool incluye pausados (igual que menú) para que el hash sea estable sin importar estado
-        const rawPool = productsState.filter((p) =>
-            String(p.image_url || '').trim() && !_recCatExcluida(p.categoria)
-        );
-        // Deduplicar por nombre+categoría (igual que menú)
-        const _recSeen = new Set();
-        const pool = [];
-        rawPool.forEach((p) => {
-            const sig = `${String(p.categoria || '').toLowerCase().trim()}::${String(p.nombre || '').toLowerCase().trim()}`;
-            if (sig && !_recSeen.has(sig)) { _recSeen.add(sig); pool.push(p); }
-        });
-
-        if (pool.length) {
-            // daySerial en hora Bogotá (idéntico al menú público)
-            const now = new Date();
-            const _bp = new Intl.DateTimeFormat('en-CA', {
-                timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit'
-            }).formatToParts(now);
-            const _by = Number(_bp.find((x) => x.type === 'year')?.value  || 0);
-            const _bm = Number(_bp.find((x) => x.type === 'month')?.value || 1);
-            const _bd = Number(_bp.find((x) => x.type === 'day')?.value   || 1);
-            const daySerial = Math.floor(Date.UTC(_by, _bm - 1, _bd) / 86400000);
-
-            let best = pool[0];
-            let minH = hashDay(`${best.nombre}::${best.categoria}`, daySerial);
-            for (let i = 1; i < pool.length; i++) {
-                const h = hashDay(`${pool[i].nombre}::${pool[i].categoria}`, daySerial);
-                if (h < minH) { minH = h; best = pool[i]; }
-            }
-            // Solo mostrar en POS si el producto está activo
-            if (String(best.estado || 'active').trim() === 'active') _recProd = best;
-        }
-    }
-
-    const recBtns = [];
-    if (_recProd) {
-        const precioOrig = Number(_recProd.precio || 0);
-        const precioFinal = Math.round(precioOrig * 0.8);
-        recBtns.push(makeBtn({
-            badgeText: '⭐ -20%', badgeColor: '#c07000',
-            nombre: _recProd.nombre, precioFinal, precioOrig,
-            onClick: () => addProductToPosOrder(_recProd.id, _recProd.nombre, precioFinal, 'Recomendado del Día', precioOrig)
-        }));
-    }
-    const recSection = buildSection('⭐ Recomendado del Día', recBtns);
-    if (recSection) { wrap.appendChild(recSection); hasAny = true; }
+    // ── 1. CÓDIGO DEL DÍA ────────────────────────────────────────────────────
+    // El cliente en el local dice el código de las historias de Instagram; el servidor lo valida
+    // con las mismas reglas del menú web y consume el cupo (canjearCodigoDiaCaja).
+    wrap.appendChild(_posBuildCodigoDiaSection());
+    hasAny = true;
 
     // ── 2. DESCUENTOS ────────────────────────────────────────────────────────
     const descBtns = [];
@@ -4937,6 +4878,138 @@ function _posAgregarLineaCuponPana(meta) {
     renderPosBottomBar();
 }
 
+// ── POS: Código del día ──────────────────────────────────────────────────────
+// El producto de hoy se muestra desde codigo_dia_publico/hoy (lectura pública, sin la palabra);
+// el mesero no puede leer codigo_dia, así que la validación y el canje van SIEMPRE por la Cloud
+// Function canjearCodigoDiaCaja, que consume el cupo en una transacción.
+function _posBuildCodigoDiaSection() {
+    const section = document.createElement('div');
+    section.className = 'pos-cupon-code-section pos-codigo-dia-section';
+    section.innerHTML = `
+        <h4 class="pos-cupon-code-title">⭐ Código del día</h4>
+        <p class="pos-codigo-dia-hoy" id="posCodigoDiaHoy">Cargando el producto de hoy…</p>
+        <div class="pos-codigo-dia-grid">
+            <input type="text" class="pos-cupon-code-input" id="posCodigoDiaInput" maxlength="20" placeholder="CHAMO27"
+                   autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" aria-label="Código del día">
+            <input type="tel" class="pos-cupon-code-input pos-codigo-dia-tel" id="posCodigoDiaTel" maxlength="16" placeholder="Celular del cliente"
+                   autocomplete="off" inputmode="tel" aria-label="Celular del cliente">
+            <input type="text" class="pos-cupon-code-input pos-codigo-dia-nombre" id="posCodigoDiaNombre" maxlength="60" placeholder="o nombre si no da el celular"
+                   autocomplete="off" aria-label="Nombre del cliente">
+            <button type="button" class="pos-cupon-validate-btn" id="posCodigoDiaBtn">Aplicar</button>
+        </div>
+        <div id="posCodigoDiaResult"></div>`;
+
+    const hoyEl = section.querySelector('#posCodigoDiaHoy');
+    const codeInput = section.querySelector('#posCodigoDiaInput');
+    const telInput = section.querySelector('#posCodigoDiaTel');
+    const nombreInput = section.querySelector('#posCodigoDiaNombre');
+    const btn = section.querySelector('#posCodigoDiaBtn');
+    const result = section.querySelector('#posCodigoDiaResult');
+
+    const cargarHoy = () => firebaseDb.collection('codigo_dia_publico').doc('hoy').get().then((snap) => {
+        const v = snap.exists ? snap.data() : null;
+        const hoyKey = _codigoDiaHoyKeyAdmin();
+        if (!v || v.activo !== true || v.fecha !== hoyKey) {
+            hoyEl.textContent = 'Hoy no hay código del día.';
+            return;
+        }
+        hoyEl.innerHTML = `Hoy: <strong>${escapeHtml(v.productoNombre)}</strong> · <s>${formatMoney(v.precioNormal)}</s> → <strong>${formatMoney(v.precioConDescuento)}</strong> (-${Number(v.porcentaje)}%) · ${v.agotado ? '<span class="pos-codigo-dia-agotado">Agotado</span>' : `quedan ${Number(v.cuposRestantes)} de ${Number(v.cupos)}`}`;
+    }).catch(() => { hoyEl.textContent = 'No se pudo leer el código de hoy.'; });
+    cargarHoy();
+
+    codeInput.addEventListener('input', () => {
+        codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        result.innerHTML = '';
+    });
+    [codeInput, telInput, nombreInput].forEach((el) => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') btn.click(); }));
+
+    const fail = (title, sub) => {
+        result.innerHTML = `<div class="pos-cupon-result pos-cupon-result--err">
+            <span class="pos-cupon-result-title">${escapeHtml(title)}</span>
+            ${sub ? `<span class="pos-cupon-result-sub">${escapeHtml(sub)}</span>` : ''}
+        </div>`;
+    };
+
+    btn.addEventListener('click', async () => {
+        const codigo = codeInput.value.trim();
+        const telefono = telInput.value.replace(/\D/g, '');
+        const nombre = nombreInput.value.trim();
+        if (codigo.length < 4) { fail('Escribe el código que te dice el cliente'); codeInput.focus(); return; }
+        if (!telefono && !nombre) { fail('Falta el celular o el nombre del cliente', 'Con eso se controla un uso por persona al día'); telInput.focus(); return; }
+        if (!firebaseFunctions) { fail('Servicio no disponible', 'Recarga la página'); return; }
+        btn.disabled = true;
+        btn.textContent = 'Validando…';
+        result.innerHTML = '';
+        try {
+            const v = (await firebaseDb.collection('codigo_dia_publico').doc('hoy').get()).data() || {};
+            const r = (await firebaseFunctions.httpsCallable('canjearCodigoDiaCaja')({
+                codigo, telefono, nombre, productoId: v.productoId || ''
+            })).data || {};
+            if (!r.ok) { fail(`❌ ${r.mensaje || 'El código no aplica'}`); return; }
+            _posAgregarLineaCodigoDia(r, codigo, telefono || nombre);
+            codeInput.value = '';
+            telInput.value = '';
+            nombreInput.value = '';
+            result.innerHTML = `<div class="pos-cupon-result pos-cupon-result--ok">
+                <span class="pos-cupon-result-title">✅ ${escapeHtml(r.productoNombre)} -${Number(r.porcentaje)}% agregado al ticket</span>
+                <span class="pos-cupon-result-sub">Quedan ${Number(r.cuposRestantes)} cupos hoy. Si quitas la línea del ticket, el cupo vuelve.</span>
+            </div>`;
+            showNotice('✅ Código del día aplicado', 'ok');
+            cargarHoy();
+        } catch (err) {
+            console.error('canjearCodigoDiaCaja:', err);
+            fail('No se pudo aplicar el código', err?.message || 'Verifica tu conexión e intenta de nuevo');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Aplicar';
+        }
+    });
+    return section;
+}
+
+function _codigoDiaHoyKeyAdmin(ms = Date.now()) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+}
+
+function _posAgregarLineaCodigoDia(r, codigo, cliente) {
+    const itemKey = `codigo-dia-${r.canjeId}`;
+    internalOrderItems.push({
+        itemKey,
+        productId: r.productoId,
+        productName: r.productoNombre,
+        categoryName: productsState.find((p) => p.id === r.productoId)?.categoria || 'Sin categoria',
+        quantity: 1,
+        unitPrice: Number(r.precioConDescuento) || 0,
+        originalUnitPrice: Number(r.precioNormal) || null,
+        subtotal: Number(r.precioConDescuento) || 0,
+        note: '',
+        optionLabel: '',
+        promoLabel: `CÓDIGO DEL DÍA -${Number(r.porcentaje)}%`,
+        codigoDiaCanjeId: r.canjeId,
+        // Traza en el pedido guardado: código → canje (y quién lo usó), para el historial.
+        origOrderOptions: {
+            codigoDia: String(codigo || '').toUpperCase(),
+            codigoDiaCanjeId: r.canjeId,
+            codigoDiaPorcentaje: Number(r.porcentaje),
+            codigoDiaCliente: String(cliente || '').slice(0, 60)
+        },
+        parentKey: null
+    });
+    renderPosOrderItems();
+    renderPosTotals();
+    renderPosBottomBar();
+}
+
+function _posRevertirCodigoDia(canjeId) {
+    if (!firebaseFunctions || !canjeId) return;
+    firebaseFunctions.httpsCallable('revertirCanjeCodigoDia')({ canjeId, motivo: 'quitado del ticket en caja' })
+        .then(() => showNotice('Cupo del código del día devuelto.', 'ok'))
+        .catch((err) => {
+            console.error('revertirCanjeCodigoDia:', err);
+            showNotice('No se pudo devolver el cupo del código del día. Revísalo en Artículos → Código del día.', 'error');
+        });
+}
+
 async function _posConfirmarCupon(docRef, data) {
     const meta      = data.couponMeta || {};
     const couponId  = data.couponId   || '';
@@ -4983,14 +5056,8 @@ async function _posConfirmarCupon(docRef, data) {
             descuento: meta.discountRate ? Math.round(meta.discountRate * 100) : 0
         });
     } else if (meta.type === 'recomendado') {
-        const prod         = productsState.find((p) => p.id === meta.productId);
-        const precioOrig   = Number(prod?.precio || 0);
-        const discountRate = Number(meta.discountRate || 0.2);
-        const precioFinal  = Math.round(precioOrig * (1 - discountRate));
-        addProductToPosOrder(
-            meta.productId || '', meta.productNombre || data.couponTitle || 'Recomendado',
-            precioFinal, `Recomendado -${Math.round(discountRate * 100)}% (cupón)`, precioOrig
-        );
+        // El "Recomendado del día" con 20% automático ya no existe: ahora es el Código del día.
+        throw new Error('Este cupón del Recomendado del día ya no aplica. Pídele al cliente el código del día de Instagram.');
     }
 
     // 2. Marcar el código como usado en Firestore
@@ -6956,7 +7023,9 @@ function renderPosOrderItems() {
                 if (item) {
                     const baseProductId = String(item.productId || '').split('::')[0];
                     const prod = productsState.find((p) => p.id === baseProductId);
-                    if (prod && Array.isArray(prod.variantes) && prod.variantes.length > 0) {
+                    if (item.codigoDiaCanjeId) {
+                        _openPosNoteModal(item, key, itemsContainer);
+                    } else if (prod && Array.isArray(prod.variantes) && prod.variantes.length > 0) {
                         openProductVariantesModal(baseProductId, item.productName, item.categoryName, prod.variantes, key);
                     } else if (prod?.bebida_incluida?.activo && prod.bebida_incluida.bebida_ref_id) {
                         openPosBebidaModal(baseProductId, item.productName, item.unitPrice, prod.bebida_incluida, key);
@@ -14971,15 +15040,6 @@ function renderBrandingForm() {
     }
 }
 
-async function fetchRecomendadoDiaConfig() {
-    try {
-        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(RECOMENDADO_DIA_DOC_ID).get();
-        recomendadoDiaState = doc.exists ? doc.data() : null;
-    } catch (error) {
-        recomendadoDiaState = null;
-    }
-}
-
 async function fetchPromos() {
     try {
         const snap = await firebaseDb.collection(PROMOCIONES_COLLECTION).get();
@@ -15022,121 +15082,602 @@ async function fetchOpeningAdConfig() {
     }
 }
 
-function renderRecomendadoDiaPanel() {
-    const autoRadio = document.getElementById('recomendadoModeAuto');
-    const manualRadio = document.getElementById('recomendadoModeManual');
-    const manualPanel = document.getElementById('recomendadoManualPanel');
-    const currentBox = document.getElementById('recomendadoCurrentBox');
-    const saveBtn = document.getElementById('saveRecomendadoDiaBtn');
-    if (!autoRadio || !manualRadio) return;
+// ===== FODEXA → CÓDIGO DEL DÍA (reemplaza "Recomendado del Día") =====
+// Lee codigo_dia (días programados, con la palabra), codigo_dia_canjes y codigo_dia_config
+// (solo admin, ver firestore.rules). Toda escritura va por la Cloud Function adminCodigoDia
+// (functions/codigoDia.js): configuración, edición de un día y la programación de 7 días.
+const CD_DEFAULT_CONFIG = {
+    porcentaje: 30, cuposPorDia: 10, horaPublicacion: '12:00', activo: true, diasCerrados: [3],
+    categoriasElegibles: ['BURGER PREMIUM', 'PERROS CALIENTES', 'SALCHIPAPAS', 'PEPITOS VENEZOLANOS']
+};
+const CD_DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const CD_DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const cdState = {
+    tab: 'proximos',
+    config: { ...CD_DEFAULT_CONFIG },
+    proximos: [],
+    hoy: null,
+    rango: '7',
+    desde: '',
+    hasta: '',
+    cargando: false,
+    editando: null
+};
 
-    const isManual = recomendadoDiaState && recomendadoDiaState.activo;
-    autoRadio.checked = !isManual;
-    manualRadio.checked = !!isManual;
-
-    if (manualPanel) manualPanel.hidden = !isManual;
-    if (saveBtn) saveBtn.disabled = false;
-
-    if (isManual && recomendadoDiaState.producto_id) {
-        _recomendadoSelectedProductId = recomendadoDiaState.producto_id;
-        const product = productsState.find((p) => p.id === recomendadoDiaState.producto_id);
-        renderRecomendadoCurrentBox(product || null);
-    } else {
-        _recomendadoSelectedProductId = null;
-        if (currentBox) currentBox.hidden = true;
-    }
+function _cdAddDays(dateKey, n) {
+    const [y, m, d] = dateKey.split('-').map(Number);
+    const t = new Date(Date.UTC(y, m - 1, d + n, 12));
+    return t.toISOString().slice(0, 10);
+}
+function _cdDow(dateKey) {
+    const [y, m, d] = dateKey.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay();
+}
+function _cdFechaLarga(dateKey) {
+    const [, m, d] = dateKey.split('-').map(Number);
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${CD_DIAS_SEMANA[_cdDow(dateKey)]} ${d} ${meses[m - 1]}`;
+}
+function _cdHora(ts) {
+    const ms = ts?.toMillis ? ts.toMillis() : (ts ? new Date(ts).getTime() : NaN);
+    if (!Number.isFinite(ms)) return '';
+    return new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(ms));
+}
+function _cdMinutosDesdePublicacion(ts, dateKey, horaPub) {
+    const ms = ts?.toMillis ? ts.toMillis() : NaN;
+    if (!Number.isFinite(ms)) return null;
+    const [h, mi] = String(horaPub || '12:00').split(':').map(Number);
+    const [y, m, d] = dateKey.split('-').map(Number);
+    const pubMs = Date.UTC(y, m - 1, d, (h || 12) + 5, mi || 0); // Bogotá = UTC-5
+    return Math.max(0, Math.round((ms - pubMs) / 60000));
+}
+function _cdDuracion(min) {
+    if (min === null || !Number.isFinite(min)) return '—';
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return h ? `${h} h ${m} min` : `${m} min`;
+}
+function _cdPrecioDesc(precio, pct) {
+    return Math.round(Number(precio || 0) * (1 - Number(pct || 0) / 100));
+}
+function _cdProductoFoto(productoId) {
+    const p = productsState.find((x) => x.id === productoId);
+    return String(p?.image_url || '').trim() || 'isotipo.png';
+}
+function _cdTextoHistoria(dia, pct) {
+    return `RECOMENDADO DEL DÍA · ${dia.productoNombre} -${pct}% · Palabra venezolana del día: ${dia.palabra} = ${dia.significado} · Solo ${dia.cupos} cupos · Solo en la app`;
+}
+function _cdProductosElegibles() {
+    const cats = new Set((cdState.config.categoriasElegibles || []).map((c) => String(c).trim().toUpperCase()));
+    return productsState
+        .filter((p) => cats.has(String(p.categoria || '').trim().toUpperCase())
+            && String(p.estado || 'active') !== 'paused' && p.paused !== true && Number(p.precio) > 0)
+        .sort((a, b) => String(a.categoria).localeCompare(String(b.categoria)) || String(a.nombre).localeCompare(String(b.nombre)));
 }
 
-function renderRecomendadoCurrentBox(product) {
-    const currentBox = document.getElementById('recomendadoCurrentBox');
-    if (!currentBox) return;
-    if (!product) {
-        currentBox.hidden = true;
-        return;
-    }
-    const img = String(product.image_url || '').trim() || 'logo.png';
-    const nombre = String(product.nombre || product.name || '').trim();
-    const categoria = String(product.categoria || product.category || '').trim();
-    currentBox.innerHTML = `
-        <img src="${img}" alt="${nombre}" onerror="this.src='logo.png'">
-        <div class="recomendado-current-info">
-            <span class="recomendado-current-label">Seleccionado</span>
-            <span class="recomendado-current-name">${nombre}</span>
-            <span class="recomendado-current-cat">${categoria}</span>
-        </div>`;
-    currentBox.hidden = false;
+async function _cdLeerDias(desde, hasta) {
+    const snap = await firebaseDb.collection('codigo_dia')
+        .where(firebase.firestore.FieldPath.documentId(), '>=', desde)
+        .where(firebase.firestore.FieldPath.documentId(), '<=', hasta)
+        .get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.id.localeCompare(b.id));
+}
+async function _cdLeerCanjes(desde, hasta) {
+    const snap = await firebaseDb.collection('codigo_dia_canjes')
+        .where(firebase.firestore.FieldPath.documentId(), '>=', `${desde}_`)
+        .where(firebase.firestore.FieldPath.documentId(), '<=', `${hasta}_`)
+        .get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-function _renderRecomendadoSearchResults(term) {
-    const resultsEl = document.getElementById('recomendadoSearchResults');
-    if (!resultsEl) return;
-    const q = String(term || '').trim().toLowerCase();
-    if (!q) {
-        resultsEl.hidden = true;
-        resultsEl.innerHTML = '';
-        return;
-    }
-    const matches = productsState
-        .filter((p) => {
-            const nombre = String(p.nombre || p.name || '').toLowerCase();
-            return nombre.includes(q);
-        })
-        .slice(0, 8);
-    if (!matches.length) {
-        resultsEl.innerHTML = '<li style="padding:10px 14px;color:var(--admin-muted)">Sin resultados</li>';
-        resultsEl.hidden = false;
-        return;
-    }
-    resultsEl.innerHTML = matches.map((p) => {
-        const img = String(p.image_url || '').trim() || 'logo.png';
-        const nombre = String(p.nombre || p.name || '').trim();
-        const categoria = String(p.categoria || p.category || '').trim();
-        const isSelected = p.id === _recomendadoSelectedProductId ? ' is-selected' : '';
-        return `<li class="recomendado-result-item${isSelected}" data-recomendado-product-id="${p.id}">
-            <img src="${img}" alt="${nombre}" onerror="this.src='logo.png'">
-            <div class="recomendado-result-info">
-                <span class="recomendado-result-name">${nombre}</span>
-                <span class="recomendado-result-cat">${categoria}</span>
-            </div>
-        </li>`;
-    }).join('');
-    resultsEl.hidden = false;
+async function _cdCargarBase() {
+    const hoy = _codigoDiaHoyKeyAdmin();
+    const [cfgSnap, dias] = await Promise.all([
+        firebaseDb.collection('codigo_dia_config').doc('general').get(),
+        _cdLeerDias(hoy, _cdAddDays(hoy, 30))
+    ]);
+    cdState.config = { ...CD_DEFAULT_CONFIG, ...(cfgSnap.exists ? cfgSnap.data() : {}) };
+    cdState.proximos = dias.slice(0, 7);
+    cdState.hoy = dias.find((d) => d.id === hoy) || null;
 }
 
-async function saveRecomendadoDiaConfig() {
-    const saveBtn = document.getElementById('saveRecomendadoDiaBtn');
-    const manualRadio = document.getElementById('recomendadoModeManual');
-    if (!manualRadio) return;
-    const isManual = manualRadio.checked;
+async function _cdLlamar(accion, payload = {}) {
+    if (!firebaseFunctions) throw new Error('Servicio no disponible. Recarga la página.');
+    return (await firebaseFunctions.httpsCallable('adminCodigoDia')({ accion, ...payload })).data;
+}
 
-    if (isManual && !_recomendadoSelectedProductId) {
-        showNotice('Selecciona un producto para el modo manual.', 'error');
-        return;
+function renderCodigoDiaPanel() {
+    const tabs = document.getElementById('cdTabs');
+    if (!tabs) return;
+    if (!tabs.dataset.bound) {
+        tabs.dataset.bound = '1';
+        tabs.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-cd-tab]');
+            if (!b) return;
+            cdState.tab = b.dataset.cdTab;
+            _cdPintarTabs();
+            _cdRenderTab();
+        });
     }
+    _cdPintarTabs();
+    _cdRenderTab();
+}
 
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+function _cdPintarTabs() {
+    document.querySelectorAll('#cdTabs [data-cd-tab]').forEach((b) => {
+        const on = b.dataset.cdTab === cdState.tab;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+    });
+    document.querySelectorAll('.cd-panel[data-cd-panel]').forEach((p) => { p.hidden = p.dataset.cdPanel !== cdState.tab; });
+}
 
+async function _cdRenderTab() {
+    const body = document.querySelector(`.cd-panel[data-cd-panel="${cdState.tab}"]`);
+    if (!body) return;
+    body.innerHTML = '<p class="admin-hint">Cargando…</p>';
     try {
-        const selectedProduct = _recomendadoSelectedProductId
-            ? productsState.find((p) => p.id === _recomendadoSelectedProductId)
-            : null;
-
-        const payload = {
-            activo: isManual,
-            producto_id: isManual && selectedProduct ? selectedProduct.id : null,
-            producto_nombre: isManual && selectedProduct ? String(selectedProduct.nombre || '').trim() : null,
-            producto_categoria: isManual && selectedProduct ? String(selectedProduct.categoria || '').trim() : null,
-            updated_at: firestoreNow()
-        };
-
-        await firebaseDb.collection(CONFIG_COLLECTION).doc(RECOMENDADO_DIA_DOC_ID).set(payload, { merge: true });
-        recomendadoDiaState = payload;
-        showNotice(isManual ? 'Recomendado manual guardado.' : 'Recomendado automatico activado.', 'ok');
-    } catch (error) {
-        showNotice(`No se pudo guardar: ${error.message || 'Error inesperado.'}`, 'error');
-    } finally {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Guardar'; }
+        await _cdCargarBase();
+        if (cdState.tab === 'proximos') _cdRenderProximos(body);
+        else if (cdState.tab === 'historial') await _cdRenderHistorial(body);
+        else if (cdState.tab === 'metricas') await _cdRenderMetricas(body);
+        else _cdRenderConfig(body);
+    } catch (err) {
+        console.error('Código del día:', err);
+        body.innerHTML = `<p class="admin-hint">No se pudo cargar: ${escapeHtml(err?.message || 'error')}.</p>`;
     }
+}
+
+// ── Pestaña: Próximos 7 días ────────────────────────────────────────────────
+function _cdRenderProximos(body) {
+    const pct = Number(cdState.config.porcentaje) || 0;
+    const hoy = cdState.hoy;
+    const hoyKey = _codigoDiaHoyKeyAdmin();
+    const inactivo = cdState.config.activo === false;
+    let hoyHtml;
+    if (hoy) {
+        const usados = Number(hoy.canjes || 0);
+        const cupos = Number(hoy.cupos || 0);
+        hoyHtml = `
+            <div class="cd-hoy">
+                <img class="cd-thumb cd-thumb--lg" src="${escapeHtml(_cdProductoFoto(hoy.productoId))}" alt="">
+                <div class="cd-hoy-info">
+                    <span class="cd-hoy-kicker">HOY · ${escapeHtml(_cdFechaLarga(hoy.id))}</span>
+                    <strong>${escapeHtml(hoy.productoNombre)} · <span class="cd-palabra">${escapeHtml(hoy.palabra)}</span></strong>
+                    <div class="cpana-bar-row cd-hoy-bar">
+                        <span>${usados} usados / ${Math.max(0, cupos - usados)} restantes</span>
+                        <div class="cpana-bar"><span style="width:${cupos ? Math.min(100, Math.round(usados / cupos * 100)) : 0}%"></span></div>
+                        <span>${usados}/${cupos}</span>
+                    </div>
+                    <span class="cd-hoy-agotado">${hoy.agotadoAt ? `⏱️ Se agotó a las ${escapeHtml(_cdHora(hoy.agotadoAt))}` : 'Aún no se agota'}</span>
+                </div>
+            </div>`;
+    } else {
+        hoyHtml = `<p class="admin-hint">Hoy (${escapeHtml(_cdFechaLarga(hoyKey))}) no hay código del día${[...(cdState.config.diasCerrados || [])].includes(_cdDow(hoyKey)) ? ' (día de descanso)' : ''}.</p>`;
+    }
+
+    const filas = cdState.proximos.map((d) => {
+        const esHoy = d.id === hoyKey;
+        const editando = cdState.editando === d.id;
+        if (editando) return _cdFilaEdicion(d, pct);
+        return `
+            <tr data-cd-fecha="${d.id}">
+                <td><strong>${escapeHtml(_cdFechaLarga(d.id))}</strong>${esHoy ? ' <span class="cpana-badge cpana-badge--on">Hoy</span>' : ''}${d.editadoManualmente ? ' <span class="cpana-badge cpana-badge--manual">Manual</span>' : ''}</td>
+                <td><img class="cd-thumb" src="${escapeHtml(_cdProductoFoto(d.productoId))}" alt=""></td>
+                <td>${escapeHtml(d.productoNombre)}</td>
+                <td class="cd-muted">${escapeHtml(d.categoria || '')}</td>
+                <td><s class="cd-muted">${formatMoney(d.precioNormal)}</s> → <strong>${formatMoney(_cdPrecioDesc(d.precioNormal, pct))}</strong></td>
+                <td><span class="cd-palabra">${escapeHtml(d.palabra)}</span><br><span class="cd-muted">${escapeHtml(d.significado || '')}</span></td>
+                <td>${esHoy ? `${Number(d.canjes || 0)}/` : ''}${Number(d.cupos || 0)}</td>
+                <td class="cd-acciones">
+                    <button type="button" class="cd-btn" data-cd-editar="${d.id}">✏️ Editar</button>
+                    <button type="button" class="cd-btn" data-cd-copiar="${d.id}">📋 Copiar texto para la historia</button>
+                </td>
+            </tr>`;
+    }).join('');
+
+    body.innerHTML = `
+        ${inactivo ? '<p class="cd-aviso">⚠️ El código del día está DESACTIVADO en Configuración: el menú no lo muestra y ningún código se acepta.</p>' : ''}
+        ${hoyHtml}
+        <div class="cd-toolbar">
+            <span class="cd-muted">${cdState.proximos.length} de 7 días programados · ${pct}% de descuento · se saltan los ${(cdState.config.diasCerrados || []).map((d) => CD_DIAS_SEMANA[d].toLowerCase()).join(', ') || '—'} y los cierres programados</span>
+            <button type="button" class="section-action-btn" id="cdProgramarBtn">🔄 Completar próximos 7 días</button>
+        </div>
+        ${cdState.proximos.length ? `
+        <div class="cpana-table-wrap">
+            <table class="cpana-table cd-table">
+                <thead><tr><th>Fecha</th><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio → con descuento</th><th>Palabra</th><th>Cupos</th><th></th></tr></thead>
+                <tbody>${filas}</tbody>
+            </table>
+        </div>` : '<p class="admin-hint">Todavía no hay días programados. Toca "Completar próximos 7 días".</p>'}`;
+
+    body.querySelector('#cdProgramarBtn')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Programando…';
+        try {
+            const r = await _cdLlamar('programar');
+            showNotice(r.sinProductos ? 'No hay productos activos en las categorías elegibles.' : `Listo: ${r.creados.length} día(s) nuevos.`, r.sinProductos ? 'error' : 'ok');
+            _cdRenderTab();
+        } catch (err) {
+            showNotice(`No se pudo programar: ${err.message}`, 'error');
+            btn.disabled = false;
+            btn.textContent = '🔄 Completar próximos 7 días';
+        }
+    });
+    body.querySelectorAll('[data-cd-editar]').forEach((b) => b.addEventListener('click', () => {
+        cdState.editando = b.dataset.cdEditar;
+        _cdRenderProximos(body);
+    }));
+    body.querySelectorAll('[data-cd-copiar]').forEach((b) => b.addEventListener('click', async () => {
+        const dia = cdState.proximos.find((d) => d.id === b.dataset.cdCopiar);
+        if (!dia) return;
+        const texto = _cdTextoHistoria(dia, pct);
+        try {
+            await navigator.clipboard.writeText(texto);
+            showNotice('Texto copiado: pégalo en la historia de Instagram.', 'ok');
+        } catch (_) {
+            window.prompt('Copia el texto para la historia:', texto);
+        }
+    }));
+    _cdBindEdicion(body, pct);
+}
+
+function _cdFilaEdicion(d, pct) {
+    const opciones = _cdProductosElegibles().map((p) =>
+        `<option value="${escapeHtml(p.id)}"${p.id === d.productoId ? ' selected' : ''}>${escapeHtml(p.nombre)} · ${escapeHtml(p.categoria)} · ${formatMoney(p.precio)}</option>`).join('');
+    const yaTieneCanjes = Number(d.canjes || 0) > 0;
+    return `
+        <tr class="cd-fila-edicion" data-cd-fecha="${d.id}">
+            <td><strong>${escapeHtml(_cdFechaLarga(d.id))}</strong></td>
+            <td colspan="7">
+                <div class="cd-edit-grid">
+                    <label>Producto
+                        <select class="cpana-select" data-cd-campo="productoId"${yaTieneCanjes ? ' disabled title="Ya hay canjes hoy"' : ''}>${opciones}</select>
+                    </label>
+                    <label>Palabra (letras + 2 dígitos)
+                        <span class="cd-edit-palabra">
+                            <input type="text" data-cd-campo="palabra" value="${escapeHtml(d.palabra)}" maxlength="16" autocapitalize="characters">
+                            <button type="button" class="cd-btn" data-cd-generar>🎲 Generar otra</button>
+                        </span>
+                    </label>
+                    <label>Significado
+                        <input type="text" data-cd-campo="significado" value="${escapeHtml(d.significado || '')}" maxlength="60">
+                    </label>
+                    <label>Cupos
+                        <input type="number" data-cd-campo="cupos" value="${Number(d.cupos || 0)}" min="${Math.max(1, Number(d.canjes || 0))}" max="500">
+                    </label>
+                </div>
+                <div class="cd-edit-actions">
+                    <button type="button" class="section-action-btn primary" data-cd-guardar>Guardar día</button>
+                    <button type="button" class="cd-btn" data-cd-cancelar>Cancelar</button>
+                    <span class="cd-muted">Al guardar, la programación automática ya no toca este día.</span>
+                </div>
+            </td>
+        </tr>`;
+}
+
+function _cdBindEdicion(body, pct) {
+    const fila = body.querySelector('.cd-fila-edicion');
+    if (!fila) return;
+    const fecha = fila.dataset.cdFecha;
+    const campo = (n) => fila.querySelector(`[data-cd-campo="${n}"]`);
+    campo('palabra').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+    fila.querySelector('[data-cd-generar]').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+            const excluir = cdState.proximos.map((d) => String(d.palabraBase || d.palabra || '').replace(/\d+$/, ''));
+            const r = await _cdLlamar('sugerirPalabra', { excluir });
+            campo('palabra').value = r.palabra;
+            campo('significado').value = r.significado;
+        } catch (err) {
+            showNotice(`No se pudo generar: ${err.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    });
+    fila.querySelector('[data-cd-cancelar]').addEventListener('click', () => {
+        cdState.editando = null;
+        _cdRenderProximos(body);
+    });
+    fila.querySelector('[data-cd-guardar]').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        const original = cdState.proximos.find((d) => d.id === fecha) || {};
+        const dia = { fecha };
+        if (!campo('productoId').disabled && campo('productoId').value !== original.productoId) dia.productoId = campo('productoId').value;
+        if (campo('palabra').value !== original.palabra || campo('significado').value !== (original.significado || '')) {
+            dia.palabra = campo('palabra').value;
+            dia.significado = campo('significado').value;
+        }
+        if (Number(campo('cupos').value) !== Number(original.cupos)) dia.cupos = Number(campo('cupos').value);
+        if (Object.keys(dia).length === 1) { cdState.editando = null; _cdRenderProximos(body); return; }
+        btn.disabled = true;
+        btn.textContent = 'Guardando…';
+        try {
+            await _cdLlamar('editarDia', { dia });
+            cdState.editando = null;
+            showNotice('Día guardado.', 'ok');
+            _cdRenderTab();
+        } catch (err) {
+            showNotice(err.message || 'No se pudo guardar.', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Guardar día';
+        }
+    });
+}
+
+// ── Rango de fechas compartido por Historial y Métricas ─────────────────────
+function _cdRango() {
+    const hoy = _codigoDiaHoyKeyAdmin();
+    if (cdState.rango === 'rango' && cdState.desde && cdState.hasta) {
+        const desde = cdState.desde <= cdState.hasta ? cdState.desde : cdState.hasta;
+        const hasta = cdState.desde <= cdState.hasta ? cdState.hasta : cdState.desde;
+        return { desde, hasta: hasta > hoy ? hoy : hasta };
+    }
+    const n = Number(cdState.rango) || 7;
+    return { desde: _cdAddDays(hoy, -(n - 1)), hasta: hoy };
+}
+
+function _cdFiltroHtml() {
+    const opt = (v, t) => `<option value="${v}"${cdState.rango === v ? ' selected' : ''}>${t}</option>`;
+    return `
+        <div class="cd-filtro">
+            <select class="cpana-select" data-cd-rango aria-label="Rango">
+                ${opt('7', 'Últimos 7 días')}${opt('15', 'Últimos 15 días')}${opt('30', 'Últimos 30 días')}${opt('rango', 'Rango de fechas')}
+            </select>
+            <span class="cd-filtro-fechas"${cdState.rango === 'rango' ? '' : ' hidden'}>
+                <input type="date" data-cd-desde value="${escapeHtml(cdState.desde)}" aria-label="Desde">
+                <input type="date" data-cd-hasta value="${escapeHtml(cdState.hasta)}" aria-label="Hasta">
+            </span>
+        </div>`;
+}
+
+function _cdBindFiltro(body) {
+    body.querySelector('[data-cd-rango]')?.addEventListener('change', (e) => {
+        cdState.rango = e.target.value;
+        if (cdState.rango === 'rango' && !cdState.desde) {
+            const hoy = _codigoDiaHoyKeyAdmin();
+            cdState.desde = _cdAddDays(hoy, -13);
+            cdState.hasta = hoy;
+        }
+        _cdRenderTab();
+    });
+    body.querySelector('[data-cd-desde]')?.addEventListener('change', (e) => { cdState.desde = e.target.value; _cdRenderTab(); });
+    body.querySelector('[data-cd-hasta]')?.addEventListener('change', (e) => { cdState.hasta = e.target.value; _cdRenderTab(); });
+}
+
+// Resumen por día: canjes, ventas con código y descuento entregado (desde codigo_dia_canjes).
+function _cdResumenPorDia(dias, canjes) {
+    const porDia = new Map();
+    canjes.forEach((c) => {
+        const r = porDia.get(c.fecha) || { ventas: 0, descuento: 0, web: 0, caja: 0 };
+        r.ventas += Number(c.monto || 0);
+        r.descuento += Number(c.descuento || 0);
+        if (c.canal === 'caja') r.caja += 1; else r.web += 1;
+        porDia.set(c.fecha, r);
+    });
+    return dias.map((d) => ({ ...d, ...(porDia.get(d.id) || { ventas: 0, descuento: 0, web: 0, caja: 0 }) }));
+}
+
+// Días que ya pasaron por la publicación (hoy cuenta desde la hora de publicación).
+function _cdDiasPublicados(dias) {
+    const hoy = _codigoDiaHoyKeyAdmin();
+    const [h, m] = String(cdState.config.horaPublicacion || '12:00').split(':').map(Number);
+    const ahora = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+    const [ah, am] = ahora.split(':').map(Number);
+    const hoyPublicado = ah * 60 + am >= (h || 12) * 60 + (m || 0);
+    return dias.filter((d) => d.id < hoy || (d.id === hoy && hoyPublicado));
+}
+
+// ── Pestaña: Historial ──────────────────────────────────────────────────────
+async function _cdRenderHistorial(body) {
+    const { desde, hasta } = _cdRango();
+    const [dias, canjes] = await Promise.all([_cdLeerDias(desde, hasta), _cdLeerCanjes(desde, hasta)]);
+    const filas = _cdResumenPorDia(dias, canjes).reverse();
+    const tot = filas.reduce((a, d) => ({ canjes: a.canjes + Number(d.canjes || 0), ventas: a.ventas + d.ventas, descuento: a.descuento + d.descuento }), { canjes: 0, ventas: 0, descuento: 0 });
+    body.innerHTML = `
+        ${_cdFiltroHtml()}
+        ${filas.length ? `
+        <div class="cpana-table-wrap">
+            <table class="cpana-table cd-table">
+                <thead><tr><th>Fecha</th><th>Producto</th><th>Palabra</th><th>Cupos</th><th>Canjeados</th><th>Se agotó</th><th>Ventas con código</th><th>Descuento entregado</th></tr></thead>
+                <tbody>
+                    ${filas.map((d) => `
+                    <tr>
+                        <td><strong>${escapeHtml(_cdFechaLarga(d.id))}</strong></td>
+                        <td>${escapeHtml(d.productoNombre)}<br><span class="cd-muted">${escapeHtml(d.categoria || '')}</span></td>
+                        <td><span class="cd-palabra">${escapeHtml(d.palabra)}</span></td>
+                        <td>${Number(d.cupos || 0)}</td>
+                        <td>${Number(d.canjes || 0)}${(d.web || d.caja) ? `<br><span class="cd-muted">web ${d.web} · caja ${d.caja}</span>` : ''}</td>
+                        <td>${d.agotadoAt ? escapeHtml(_cdHora(d.agotadoAt)) : '<span class="cd-muted">no se agotó</span>'}</td>
+                        <td>${formatMoney(d.ventas)}</td>
+                        <td>${formatMoney(d.descuento)}</td>
+                    </tr>`).join('')}
+                </tbody>
+                <tfoot><tr><th colspan="4">Total del rango</th><th>${tot.canjes}</th><th></th><th>${formatMoney(tot.ventas)}</th><th>${formatMoney(tot.descuento)}</th></tr></tfoot>
+            </table>
+        </div>` : '<p class="admin-hint">No hay días con código en este rango.</p>'}`;
+    _cdBindFiltro(body);
+}
+
+// ── Pestaña: Métricas ───────────────────────────────────────────────────────
+async function _cdRenderMetricas(body) {
+    const hoy = _codigoDiaHoyKeyAdmin();
+    const { desde, hasta } = _cdRango();
+    // "Desde el inicio": todos los días hasta hoy (un doc por día -- liviano).
+    const [todos, canjesTodos] = await Promise.all([_cdLeerDias('2000-01-01', hoy), _cdLeerCanjes('2000-01-01', hoy)]);
+    const publicadosTodos = _cdDiasPublicados(todos);
+    const totales = {
+        canjes: canjesTodos.length,
+        ventas: canjesTodos.reduce((s, c) => s + Number(c.monto || 0), 0),
+        descuento: canjesTodos.reduce((s, c) => s + Number(c.descuento || 0), 0),
+        agotados: publicadosTodos.filter((d) => d.agotadoAt).length,
+        publicados: publicadosTodos.length
+    };
+
+    const enRango = _cdResumenPorDia(todos.filter((d) => d.id >= desde && d.id <= hasta), canjesTodos.filter((c) => c.fecha >= desde && c.fecha <= hasta));
+    const publicadosRango = _cdDiasPublicados(enRango);
+    const horaPub = cdState.config.horaPublicacion || '12:00';
+
+    // Ranking por producto y por categoría.
+    const agrupar = (clave) => {
+        const m = new Map();
+        publicadosRango.forEach((d) => {
+            const k = d[clave] || '—';
+            const r = m.get(k) || { nombre: k, dias: 0, canjes: 0, agotados: 0, minutos: [] };
+            r.dias += 1;
+            r.canjes += Number(d.canjes || 0);
+            if (d.agotadoAt) {
+                r.agotados += 1;
+                const min = _cdMinutosDesdePublicacion(d.agotadoAt, d.id, horaPub);
+                if (min !== null) r.minutos.push(min);
+            }
+            m.set(k, r);
+        });
+        return [...m.values()].map((r) => ({
+            ...r,
+            tasa: r.dias ? r.agotados / r.dias : 0,
+            prom: r.minutos.length ? Math.round(r.minutos.reduce((a, b) => a + b, 0) / r.minutos.length) : null
+        })).sort((a, b) => b.canjes - a.canjes || b.tasa - a.tasa);
+    };
+    const rankingTabla = (titulo, filas) => `
+        <h3 class="cd-subtitulo">${titulo}</h3>
+        ${filas.length ? `<div class="cpana-table-wrap"><table class="cpana-table cd-table">
+            <thead><tr><th>#</th><th>Nombre</th><th>Días</th><th>Canjes</th><th>Tasa de agotamiento</th><th>Se agota en (promedio)</th></tr></thead>
+            <tbody>${filas.map((r, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(r.nombre)}</td><td>${r.dias}</td><td>${r.canjes}</td><td>${Math.round(r.tasa * 100)}% <span class="cd-muted">(${r.agotados}/${r.dias})</span></td><td>${_cdDuracion(r.prom)}</td></tr>`).join('')}</tbody>
+        </table></div>` : '<p class="admin-hint">Sin datos en el rango.</p>'}`;
+
+    const minutosAgot = publicadosRango.filter((d) => d.agotadoAt).map((d) => _cdMinutosDesdePublicacion(d.agotadoAt, d.id, horaPub)).filter((m) => m !== null);
+    const horasAgot = publicadosRango.filter((d) => d.agotadoAt).map((d) => {
+        const ms = d.agotadoAt.toMillis();
+        const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ms)).split(':').map(Number);
+        return p[0] * 60 + p[1];
+    });
+    const horaPromedio = horasAgot.length ? Math.round(horasAgot.reduce((a, b) => a + b, 0) / horasAgot.length) : null;
+    const fmtHoraMin = (min) => {
+        if (min === null) return '—';
+        const h = Math.floor(min / 60);
+        const m = String(min % 60).padStart(2, '0');
+        return `${((h + 11) % 12) + 1}:${m} ${h >= 12 ? 'p. m.' : 'a. m.'}`;
+    };
+    const web = enRango.reduce((s, d) => s + d.web, 0);
+    const caja = enRango.reduce((s, d) => s + d.caja, 0);
+
+    body.innerHTML = `
+        <h3 class="cd-subtitulo">Desde el inicio</h3>
+        <div class="cd-kpis">
+            <div class="cd-kpi"><span>Cupones canjeados</span><strong>${totales.canjes}</strong></div>
+            <div class="cd-kpi"><span>Ventas con código</span><strong>${formatMoney(totales.ventas)}</strong></div>
+            <div class="cd-kpi"><span>Descuento entregado</span><strong>${formatMoney(totales.descuento)}</strong></div>
+            <div class="cd-kpi"><span>Días agotados / publicados</span><strong>${totales.agotados} / ${totales.publicados}</strong></div>
+        </div>
+        ${_cdFiltroHtml()}
+        <div class="cd-kpis">
+            <div class="cd-kpi"><span>Hora promedio de agotamiento</span><strong>${fmtHoraMin(horaPromedio)}</strong></div>
+            <div class="cd-kpi"><span>Se agota en (promedio)</span><strong>${_cdDuracion(minutosAgot.length ? Math.round(minutosAgot.reduce((a, b) => a + b, 0) / minutosAgot.length) : null)}</strong></div>
+            <div class="cd-kpi"><span>Canjes por la web/app</span><strong>${web}</strong></div>
+            <div class="cd-kpi"><span>Canjes en caja</span><strong>${caja}</strong></div>
+        </div>
+        <h3 class="cd-subtitulo">Canjes por día</h3>
+        ${_cdGraficaCanjes(enRango)}
+        ${rankingTabla('Ranking de productos', agrupar('productoNombre'))}
+        ${rankingTabla('Ranking de categorías', agrupar('categoria'))}`;
+    _cdBindFiltro(body);
+}
+
+// Barras de una sola serie (canjes por día) en SVG: sin leyenda (el título la nombra), barras
+// finas con la punta redondeada, separación de 2px, y tooltip por barra (área de toque completa).
+function _cdGraficaCanjes(dias) {
+    if (!dias.length) return '<p class="admin-hint">Sin días con código en el rango.</p>';
+    const max = Math.max(1, ...dias.map((d) => Number(d.cupos || 0)), ...dias.map((d) => Number(d.canjes || 0)));
+    const W = Math.max(320, dias.length * 34);
+    const H = 170;
+    const pad = { top: 14, right: 8, bottom: 26, left: 26 };
+    const plotH = H - pad.top - pad.bottom;
+    const slot = (W - pad.left - pad.right) / dias.length;
+    const barW = Math.min(22, Math.max(6, slot - 2));
+    const y = (v) => pad.top + plotH - (v / max) * plotH;
+    const ticks = [0, Math.round(max / 2), max];
+    const barras = dias.map((d, i) => {
+        const v = Number(d.canjes || 0);
+        const x = pad.left + i * slot + (slot - barW) / 2;
+        const h = Math.max(0, (v / max) * plotH);
+        const r = Math.min(4, barW / 2, h);
+        const top = pad.top + plotH - h;
+        const path = h > 0
+            ? `M${x},${pad.top + plotH} V${top + r} Q${x},${top} ${x + r},${top} H${x + barW - r} Q${x + barW},${top} ${x + barW},${top + r} V${pad.top + plotH} Z`
+            : '';
+        const [, mm, dd] = d.id.split('-');
+        const label = `${CD_DIAS_CORTOS[_cdDow(d.id)]} ${Number(dd)}/${Number(mm)}`;
+        const tip = `${_cdFechaLarga(d.id)}: ${v} de ${Number(d.cupos || 0)} canjes · ${d.productoNombre}${d.agotadoAt ? ` · agotado ${_cdHora(d.agotadoAt)}` : ''}`;
+        return `<g class="cd-bar">
+            <title>${escapeHtml(tip)}</title>
+            <rect x="${pad.left + i * slot}" y="${pad.top}" width="${slot}" height="${plotH}" fill="transparent"></rect>
+            ${path ? `<path d="${path}" class="cd-bar-fill${d.agotadoAt ? ' is-agotado' : ''}"></path>` : ''}
+            ${dias.length <= 15 ? `<text x="${x + barW / 2}" y="${H - 8}" text-anchor="middle" class="cd-axis-label">${label}</text>` : ''}
+        </g>`;
+    }).join('');
+    return `
+        <div class="cd-chart-wrap" role="img" aria-label="Canjes por día del código del día">
+            <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="cd-chart">
+                ${ticks.map((t) => `<line x1="${pad.left}" x2="${W - pad.right}" y1="${y(t)}" y2="${y(t)}" class="cd-grid"></line><text x="${pad.left - 6}" y="${y(t) + 4}" text-anchor="end" class="cd-axis-label">${t}</text>`).join('')}
+                ${barras}
+            </svg>
+        </div>
+        <p class="cd-muted cd-chart-nota">Barra más intensa = ese día se agotó. Pasa el mouse o toca una barra para ver el detalle; la tabla completa está en Historial.</p>`;
+}
+
+// ── Pestaña: Configuración ──────────────────────────────────────────────────
+function _cdRenderConfig(body) {
+    const c = cdState.config;
+    const elegidas = new Set((c.categoriasElegibles || []).map((x) => String(x).trim().toUpperCase()));
+    const cats = [...new Set(categoriesState.map((x) => String(x.name || '').trim()).filter(Boolean))];
+    (c.categoriasElegibles || []).forEach((x) => { if (!cats.some((n) => n.toUpperCase() === String(x).toUpperCase())) cats.push(x); });
+    const cerrados = new Set((c.diasCerrados || []).map(Number));
+    body.innerHTML = `
+        <form class="cd-config" id="cdConfigForm">
+            <label class="cpana-toggle"><input type="checkbox" name="activo"${c.activo !== false ? ' checked' : ''}>
+                <span><strong>Código del día activo</strong><br><span class="cd-muted">Apagado: el menú no muestra el recomendado y ningún código se acepta (ni web ni caja).</span></span></label>
+            <div class="cd-config-grid">
+                <label>Porcentaje de descuento (%)<input type="number" name="porcentaje" min="1" max="90" value="${Number(c.porcentaje) || 30}"></label>
+                <label>Cupos por día<input type="number" name="cuposPorDia" min="1" max="500" value="${Number(c.cuposPorDia) || 10}"></label>
+                <label>Hora de publicación<input type="time" name="horaPublicacion" value="${escapeHtml(c.horaPublicacion || '12:00')}"></label>
+            </div>
+            <fieldset class="cd-fieldset"><legend>Categorías elegibles</legend>
+                <div class="cpana-dias">${cats.map((n) => `<label><input type="checkbox" name="cat" value="${escapeHtml(n)}"${elegidas.has(n.toUpperCase()) ? ' checked' : ''}> ${escapeHtml(n)}</label>`).join('')}</div>
+            </fieldset>
+            <fieldset class="cd-fieldset"><legend>Días sin código (el restaurante cierra)</legend>
+                <div class="cpana-dias">${CD_DIAS_SEMANA.map((n, i) => `<label><input type="checkbox" name="dia" value="${i}"${cerrados.has(i) ? ' checked' : ''}> ${n}</label>`).join('')}</div>
+            </fieldset>
+            <p class="cd-muted">Los cupos nuevos aplican a los días que se programen desde ahora; para cambiar los ya programados, edítalos en "Próximos 7 días". El porcentaje aplica de inmediato.</p>
+            <button type="submit" class="section-action-btn primary">Guardar configuración</button>
+        </form>`;
+    body.querySelector('#cdConfigForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = e.currentTarget;
+        const config = {
+            activo: f.activo.checked,
+            porcentaje: Number(f.porcentaje.value),
+            cuposPorDia: Number(f.cuposPorDia.value),
+            horaPublicacion: f.horaPublicacion.value || '12:00',
+            categoriasElegibles: [...f.querySelectorAll('input[name="cat"]:checked')].map((i) => i.value),
+            diasCerrados: [...f.querySelectorAll('input[name="dia"]:checked')].map((i) => Number(i.value))
+        };
+        if (!config.categoriasElegibles.length) { showNotice('Elige al menos una categoría.', 'error'); return; }
+        const btn = f.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        btn.textContent = 'Guardando…';
+        try {
+            await _cdLlamar('guardarConfig', { config });
+            showNotice('Configuración guardada.', 'ok');
+            _cdRenderTab();
+        } catch (err) {
+            showNotice(err.message || 'No se pudo guardar.', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Guardar configuración';
+        }
+    });
 }
 
 // ===== PANEL PROMOCIONES ADMIN =====
@@ -16314,7 +16855,6 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
         ...(skipClients ? [] : [fetchClients()]),
         fetchMessages(),
         fetchMenuUpgradesConfig(),
-        fetchRecomendadoDiaConfig(),
         fetchHorarioConfig(),
         fetchPromos(),
         fetchCombosEspeciales(),
@@ -16340,7 +16880,6 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
     renderBrandingForm();
     renderHorarioForm();
     renderCierresProgramados();
-    renderRecomendadoDiaPanel();
     renderOpeningAdPanel();
     renderCuponesUnified();
     renderOrders();
@@ -17774,6 +18313,8 @@ document.querySelectorAll('.menu-inner-tab[data-menu-tab]').forEach((tab) => {
             panel.hidden = !isActive;
             panel.style.display = isActive ? 'flex' : 'none';
         });
+        // Código del día: se carga al abrir la pestaña (no en cada recarga de datos del admin).
+        if (target === 'recomendado') renderCodigoDiaPanel();
     });
 });
 
@@ -19581,48 +20122,6 @@ if (adminSignOutBtn) {
             showNotice(`No se pudo cerrar sesion: ${error.message || 'error inesperado.'}`, 'error');
         }
     });
-}
-
-// ---- Recomendado del dia event listeners ----
-document.querySelectorAll('input[name="recomendadoMode"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-        const manualPanel = document.getElementById('recomendadoManualPanel');
-        const currentBox = document.getElementById('recomendadoCurrentBox');
-        const isManual = document.getElementById('recomendadoModeManual')?.checked;
-        if (manualPanel) manualPanel.hidden = !isManual;
-        if (!isManual) {
-            _recomendadoSelectedProductId = null;
-            if (currentBox) currentBox.hidden = true;
-        } else if (_recomendadoSelectedProductId) {
-            const product = productsState.find((p) => p.id === _recomendadoSelectedProductId);
-            renderRecomendadoCurrentBox(product || null);
-        }
-    });
-});
-
-const recomendadoSearchInput = document.getElementById('recomendadoProductSearch');
-if (recomendadoSearchInput) {
-    recomendadoSearchInput.addEventListener('input', (e) => {
-        _renderRecomendadoSearchResults(e.target.value);
-    });
-}
-
-const recomendadoResultsEl = document.getElementById('recomendadoSearchResults');
-if (recomendadoResultsEl) {
-    recomendadoResultsEl.addEventListener('click', (e) => {
-        const item = e.target.closest('[data-recomendado-product-id]');
-        if (!item) return;
-        _recomendadoSelectedProductId = item.dataset.recomendadoProductId;
-        const product = productsState.find((p) => p.id === _recomendadoSelectedProductId);
-        renderRecomendadoCurrentBox(product || null);
-        recomendadoResultsEl.hidden = true;
-        if (recomendadoSearchInput) recomendadoSearchInput.value = '';
-    });
-}
-
-const saveRecomendadoDiaBtn = document.getElementById('saveRecomendadoDiaBtn');
-if (saveRecomendadoDiaBtn) {
-    saveRecomendadoDiaBtn.addEventListener('click', saveRecomendadoDiaConfig);
 }
 
 async function initAdmin() {

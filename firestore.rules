@@ -395,6 +395,29 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Código del día (functions/codigoDia.js): la palabra del día y los cupos son dinero -- toda
+    // escritura pasa por Cloud Functions (adminCodigoDia, canjearCodigoDiaCaja, submitPublicOrder,
+    // programarCodigoDia). Solo admin lee la configuración, los días (con la palabra) y los canjes.
+    match /codigo_dia_config/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /codigo_dia/{fecha} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /codigo_dia_canjes/{canjeId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    // Lo único que lee el menú público: producto, precios y cupos de HOY. Nunca trae la palabra.
+    // Sin list: el único doc es codigo_dia_publico/hoy y se lee por id.
+    match /codigo_dia_publico/{doc} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if false;
+    }
+
     match /admins/{uid} {
       allow read, write: if false;
     }

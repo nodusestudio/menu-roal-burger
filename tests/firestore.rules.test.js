@@ -328,3 +328,35 @@ test('q) SEGURIDAD Cupón Pana: cupones_pana / index / wa_procesados — solo le
     // El canje directo (saltándose la transacción) está cerrado incluso para el admin.
     await assertFails(adminDb.collection('cupones_pana').doc('ABC234').update({ estado: 'canjeado' }));
 });
+
+test('SEGURIDAD Código del día: la palabra, cupos y canjes solo los lee admin; nadie escribe desde el navegador', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        const fs = context.firestore();
+        await fs.collection('admins').doc('admin-test-uid').set({ seeded: true });
+        await fs.collection('meseros').doc('tok-c').set({ nombre: 'Caro' });
+        await fs.collection('codigo_dia_config').doc('general').set({ porcentaje: 30 });
+        await fs.collection('codigo_dia').doc('2026-10-12').set({ palabra: 'CHAMO27', canjes: 0 });
+        await fs.collection('codigo_dia_canjes').doc('2026-10-12_3001234567').set({ canal: 'web' });
+        await fs.collection('codigo_dia_publico').doc('hoy').set({ productoNombre: 'Burger Plus', cuposRestantes: 10 });
+    });
+    const adminDb = testEnv.authenticatedContext('admin-test-uid').firestore();
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    const clienteDb = testEnv.authenticatedContext('phone_3001234567').firestore();
+    const meseroDb = testEnv.authenticatedContext('mesero_tok-c', { mesero: true, meseroToken: 'tok-c' }).firestore();
+
+    for (const [col, id] of [['codigo_dia_config', 'general'], ['codigo_dia', '2026-10-12'], ['codigo_dia_canjes', '2026-10-12_3001234567']]) {
+        await assertSucceeds(adminDb.collection(col).doc(id).get());
+        await assertFails(anonDb.collection(col).doc(id).get());
+        await assertFails(clienteDb.collection(col).doc(id).get());
+        await assertFails(meseroDb.collection(col).doc(id).get());
+        await assertFails(adminDb.collection(col).doc(id).set({ hack: true }));
+        await assertFails(clienteDb.collection(col).doc(`${id}-x`).set({ hack: true }));
+    }
+    await assertFails(anonDb.collection('codigo_dia').get());
+
+    // Vista pública: get por id sí; list y escritura no (ni siquiera admin).
+    await assertSucceeds(anonDb.collection('codigo_dia_publico').doc('hoy').get());
+    await assertFails(anonDb.collection('codigo_dia_publico').get());
+    await assertFails(anonDb.collection('codigo_dia_publico').doc('hoy').update({ cuposRestantes: 999 }));
+    await assertFails(adminDb.collection('codigo_dia_publico').doc('hoy').update({ cuposRestantes: 999 }));
+});

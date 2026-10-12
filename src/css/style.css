@@ -9040,3 +9040,235 @@ html.low-fx .support-feedback--error:not(:empty) {
     border-color: rgba(200, 40, 20, 0.3);
     color: #b91c1c;
 }
+
+/* ============================================================================
+   CÓDIGO DEL DÍA ("Recomendado del día" con el código de las historias de IG)
+   Tarjeta .liquid-glass al inicio del catálogo (#codigoDiaHome) y en Cupones.
+   Selectores con .codigo-dia-card delante para ganarle a `.liquid-glass span`.
+   ============================================================================ */
+.codigo-dia-home {
+    margin: 14px 16px 4px;
+}
+.codigo-dia-home[hidden],
+.codigo-dia-home.is-searching {
+    display: none !important;
+}
+#promoCarouselBody .codigo-dia-card {
+    margin: 10px 18px 6px;
+}
+.codigo-dia-card.liquid-glass {
+    display: grid;
+    gap: 12px;
+    padding: 14px 16px 16px;
+    margin-bottom: 0;
+    font-size: 1rem;
+    letter-spacing: 0;
+    border-color: rgba(var(--brand-orange-rgb), 0.45);
+}
+.codigo-dia-card .codigo-dia-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.codigo-dia-card .codigo-dia-kicker {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--brand-orange-light);
+}
+.codigo-dia-card .codigo-dia-badge {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-red));
+    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+    white-space: nowrap;
+    text-shadow: none;
+}
+.codigo-dia-card .codigo-dia-main {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+}
+.codigo-dia-card .codigo-dia-img-wrap {
+    width: 96px;
+    height: 96px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.25);
+}
+.codigo-dia-card .codigo-dia-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.codigo-dia-card .codigo-dia-info {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+.codigo-dia-card .codigo-dia-name {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.2rem;
+    line-height: 1.15;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+}
+.codigo-dia-card .codigo-dia-prices {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.codigo-dia-card .codigo-dia-orig {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+}
+.codigo-dia-card .codigo-dia-price {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--price-orange);
+}
+.codigo-dia-card .codigo-dia-cupos {
+    justify-self: start;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #ffd7b0;
+    background: rgba(var(--brand-orange-rgb), 0.16);
+    border: 1px solid rgba(var(--brand-orange-rgb), 0.35);
+    border-radius: var(--radius-pill);
+    padding: 2px 10px;
+}
+.codigo-dia-card .codigo-dia-cupos.is-agotado {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--glass-border);
+}
+.codigo-dia-card .codigo-dia-form {
+    display: grid;
+    gap: 6px;
+}
+.codigo-dia-card .codigo-dia-label {
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+.codigo-dia-card .codigo-dia-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+}
+.codigo-dia-card .codigo-dia-input {
+    min-width: 0;
+    height: 46px;
+    padding: 0 14px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--glass-border);
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--text-primary);
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.15rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+.codigo-dia-card .codigo-dia-input::placeholder {
+    color: rgba(243, 236, 224, 0.4);
+    letter-spacing: 0.06em;
+}
+.codigo-dia-card .codigo-dia-input:focus-visible {
+    outline: none;
+    border-color: var(--brand-orange);
+    box-shadow: 0 0 0 3px rgba(var(--brand-orange-rgb), 0.25);
+}
+.codigo-dia-card .codigo-dia-apply {
+    height: 46px;
+    padding: 0 18px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-dark));
+    color: #fff;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.codigo-dia-card .codigo-dia-apply:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+.codigo-dia-card .codigo-dia-msg {
+    min-height: 0;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.86rem;
+    line-height: 1.35;
+}
+.codigo-dia-card .codigo-dia-msg:empty {
+    display: none;
+}
+.codigo-dia-card .codigo-dia-msg.is-ok {
+    color: #8ee0b5;
+}
+.codigo-dia-card .codigo-dia-msg.is-err {
+    color: #ffb4a0;
+}
+.codigo-dia-card .codigo-dia-hint,
+.codigo-dia-card .codigo-dia-agotado {
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+.codigo-dia-card .codigo-dia-agotado {
+    color: var(--text-primary);
+    font-weight: 700;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--glass-border);
+}
+.codigo-dia-card .codigo-dia-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+}
+.codigo-dia-card .codigo-dia-ig {
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--brand-orange-light);
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: var(--radius-pill);
+    border: 1px solid rgba(var(--brand-orange-rgb), 0.4);
+}
+.codigo-dia-card .codigo-dia-normal {
+    background: none;
+    border: none;
+    padding: 6px 2px;
+    color: var(--text-secondary);
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.86rem;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+@media (max-width: 360px) {
+    .codigo-dia-card .codigo-dia-main { grid-template-columns: 76px minmax(0, 1fr); }
+    .codigo-dia-card .codigo-dia-img-wrap { width: 76px; height: 76px; }
+}
