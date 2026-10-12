@@ -15101,7 +15101,8 @@ const cdState = {
     desde: '',
     hasta: '',
     cargando: false,
-    editando: null
+    editando: null,
+    verDias: 7
 };
 
 function _cdAddDays(dateKey, n) {
@@ -15174,10 +15175,11 @@ async function _cdCargarBase() {
     const hoy = _codigoDiaHoyKeyAdmin();
     const [cfgSnap, dias] = await Promise.all([
         firebaseDb.collection('codigo_dia_config').doc('general').get(),
-        _cdLeerDias(hoy, _cdAddDays(hoy, 30))
+        _cdLeerDias(hoy, _cdAddDays(hoy, 50))
     ]);
     cdState.config = { ...CD_DEFAULT_CONFIG, ...(cfgSnap.exists ? cfgSnap.data() : {}) };
-    cdState.proximos = dias.slice(0, 7);
+    cdState.todos = dias;
+    cdState.proximos = dias.slice(0, cdState.verDias);
     cdState.hoy = dias.find((d) => d.id === hoy) || null;
 }
 
@@ -15228,7 +15230,7 @@ async function _cdRenderTab() {
     }
 }
 
-// ── Pestaña: Próximos 7 días ────────────────────────────────────────────────
+// ── Pestaña: Próximos días (7 / 15 / 30) ────────────────────────────────────
 function _cdRenderProximos(body) {
     const pct = Number(cdState.config.porcentaje) || 0;
     const hoy = cdState.hoy;
@@ -15272,6 +15274,8 @@ function _cdRenderProximos(body) {
                 <td class="cd-acciones">
                     <button type="button" class="cd-btn" data-cd-editar="${d.id}">✏️ Editar</button>
                     <button type="button" class="cd-btn" data-cd-copiar="${d.id}">📋 Copiar texto para la historia</button>
+                    <button type="button" class="cd-btn" data-cd-historia="${d.id}">🖼️ Descargar historia</button>
+                    <button type="button" class="cd-btn" data-cd-historia-agotado="${d.id}">🖼️ Descargar historia de agotado</button>
                 </td>
             </tr>`;
     }).join('');
@@ -15280,8 +15284,13 @@ function _cdRenderProximos(body) {
         ${inactivo ? '<p class="cd-aviso">⚠️ El código del día está DESACTIVADO en Configuración: el menú no lo muestra y ningún código se acepta.</p>' : ''}
         ${hoyHtml}
         <div class="cd-toolbar">
-            <span class="cd-muted">${cdState.proximos.length} de 7 días programados · ${pct}% de descuento · se saltan los ${(cdState.config.diasCerrados || []).map((d) => CD_DIAS_SEMANA[d].toLowerCase()).join(', ') || '—'} y los cierres programados</span>
-            <button type="button" class="section-action-btn" id="cdProgramarBtn">🔄 Completar próximos 7 días</button>
+            <span class="cd-ver-dias">
+                <select class="cpana-select" data-cd-ver aria-label="Días a mostrar">
+                    ${[7, 15, 30].map((n) => `<option value="${n}"${cdState.verDias === n ? ' selected' : ''}>${n} días</option>`).join('')}
+                </select>
+            </span>
+            <span class="cd-muted">${(cdState.todos || []).length} días programados · ${pct}% de descuento · se saltan los ${(cdState.config.diasCerrados || []).map((d) => CD_DIAS_SEMANA[d].toLowerCase()).join(', ') || '—'} y los cierres programados</span>
+            <button type="button" class="section-action-btn" id="cdProgramarBtn">🔄 Completar próximos 30 días</button>
         </div>
         ${cdState.proximos.length ? `
         <div class="cpana-table-wrap">
@@ -15289,7 +15298,7 @@ function _cdRenderProximos(body) {
                 <thead><tr><th>Fecha</th><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio → con descuento</th><th>Palabra</th><th>Cupos</th><th></th></tr></thead>
                 <tbody>${filas}</tbody>
             </table>
-        </div>` : '<p class="admin-hint">Todavía no hay días programados. Toca "Completar próximos 7 días".</p>'}`;
+        </div>` : '<p class="admin-hint">Todavía no hay días programados. Toca "Completar próximos 30 días".</p>'}`;
 
     body.querySelector('#cdProgramarBtn')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget;
@@ -15302,9 +15311,33 @@ function _cdRenderProximos(body) {
         } catch (err) {
             showNotice(`No se pudo programar: ${err.message}`, 'error');
             btn.disabled = false;
-            btn.textContent = '🔄 Completar próximos 7 días';
+            btn.textContent = '🔄 Completar próximos 30 días';
         }
     });
+    body.querySelector('[data-cd-ver]')?.addEventListener('change', (e) => {
+        cdState.verDias = Number(e.target.value) || 7;
+        cdState.proximos = (cdState.todos || []).slice(0, cdState.verDias);
+        cdState.editando = null;
+        _cdRenderProximos(body);
+    });
+    body.querySelectorAll('[data-cd-historia], [data-cd-historia-agotado]').forEach((b) => b.addEventListener('click', async () => {
+        const agotado = b.hasAttribute('data-cd-historia-agotado');
+        const fecha = agotado ? b.dataset.cdHistoriaAgotado : b.dataset.cdHistoria;
+        const dia = cdState.proximos.find((d) => d.id === fecha);
+        if (!dia) return;
+        const label = b.textContent;
+        b.disabled = true;
+        b.textContent = 'Generando…';
+        try {
+            await _cdDescargarHistoria(dia, agotado);
+        } catch (err) {
+            console.error('historia código del día:', err);
+            showNotice(`No se pudo generar la imagen: ${err.message || 'error'}`, 'error');
+        } finally {
+            b.disabled = false;
+            b.textContent = label;
+        }
+    }));
     body.querySelectorAll('[data-cd-editar]').forEach((b) => b.addEventListener('click', () => {
         cdState.editando = b.dataset.cdEditar;
         _cdRenderProximos(body);
@@ -15650,7 +15683,7 @@ function _cdRenderConfig(body) {
             <fieldset class="cd-fieldset"><legend>Días sin código (el restaurante cierra)</legend>
                 <div class="cpana-dias">${CD_DIAS_SEMANA.map((n, i) => `<label><input type="checkbox" name="dia" value="${i}"${cerrados.has(i) ? ' checked' : ''}> ${n}</label>`).join('')}</div>
             </fieldset>
-            <p class="cd-muted">Los cupos nuevos aplican a los días que se programen desde ahora; para cambiar los ya programados, edítalos en "Próximos 7 días". El porcentaje aplica de inmediato.</p>
+            <p class="cd-muted">Los cupos nuevos aplican a los días que se programen desde ahora; para cambiar los ya programados, edítalos en "Próximos días". El porcentaje aplica de inmediato.</p>
             <button type="submit" class="section-action-btn primary">Guardar configuración</button>
         </form>`;
     body.querySelector('#cdConfigForm').addEventListener('submit', async (e) => {
@@ -15678,6 +15711,447 @@ function _cdRenderConfig(body) {
             btn.textContent = 'Guardar configuración';
         }
     });
+}
+
+// <historia-codigo-dia>
+// Historias de Instagram del Código del día (1080x1920 PNG), dibujadas en el navegador del admin.
+// Bloque AUTOCONTENIDO (sin depender de nada más de admin.js): tests/codigo-dia-historia.test.js
+// lo extrae entre estos marcadores y lo corre en Chromium para verificar tamaño y zonas libres.
+// Zonas que Instagram tapa y quedan SIN contenido: 250 px arriba (perfil), 250 px abajo, y un
+// hueco de 600x150 para el sticker de enlace justo encima de la franja inferior.
+const HISTORIA_CD = Object.freeze({
+    W: 1080,
+    H: 1920,
+    TOP_LIBRE: 250,
+    BOTTOM_LIBRE: 250,
+    STICKER: Object.freeze({ x: 240, y: 1520, w: 600, h: 150 }),
+    CARBON: '#1A1A1A',
+    CREMA: '#F5EBDD',
+    NARANJA: '#FF6B00',
+    FUENTE: "'Oswald', 'Bebas Neue', Impact, 'Arial Narrow', sans-serif"
+});
+
+async function generarHistoriaCodigoDia(datos) {
+    const { W, H, TOP_LIBRE, STICKER, CARBON, CREMA, NARANJA, FUENTE } = HISTORIA_CD;
+    const {
+        fechaTexto = '', productoNombre = '', precioNormal = 0, precioDescuento = 0, porcentaje = 0,
+        palabra = '', cupos = 0, fotoUrl = '', agotado = false
+    } = datos || {};
+
+    // Tipografías listas antes de dibujar (si no, el canvas usa la de respaldo y no se repinta).
+    try {
+        if (document.fonts) {
+            await Promise.all([
+                document.fonts.load(`700 120px ${FUENTE}`),
+                document.fonts.load(`600 40px ${FUENTE}`),
+                document.fonts.load(`400 40px ${FUENTE}`)
+            ]);
+            await document.fonts.ready;
+        }
+    } catch (_) { /* se dibuja con la de respaldo */ }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const cajas = [];
+    const caja = (nombre, x, y, w, h) => cajas.push({ nombre, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
+    const fuente = (peso, px) => `${peso} ${px}px ${FUENTE}`;
+    const dinero = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CO')}`;
+
+    // Achica la letra hasta que el texto quepa en maxW (nunca se corta).
+    const ajustar = (texto, peso, maxPx, maxW, minPx = 24) => {
+        let px = maxPx;
+        ctx.font = fuente(peso, px);
+        while (px > minPx && ctx.measureText(texto).width > maxW) {
+            px -= 2;
+            ctx.font = fuente(peso, px);
+        }
+        return px;
+    };
+    // Texto con espaciado uniforme entre letras (ctx.letterSpacing no existe en todos los navegadores).
+    const anchoEspaciado = (texto, sp) => [...texto].reduce((w, ch) => w + ctx.measureText(ch).width + sp, -sp);
+    const textoEspaciado = (texto, xCentro, y, sp) => {
+        let x = xCentro - anchoEspaciado(texto, sp) / 2;
+        ctx.textAlign = 'left';
+        for (const ch of texto) {
+            ctx.fillText(ch, x, y);
+            x += ctx.measureText(ch).width + sp;
+        }
+        ctx.textAlign = 'center';
+    };
+    const rectRedondo = (x, y, w, h, r) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+    };
+    const cargarImagen = (url) => new Promise((resolve) => {
+        if (!url) { resolve(null); return; }
+        const img = new Image();
+        if (!/^data:/i.test(url)) img.crossOrigin = 'anonymous'; // sin CORS no se dibuja: evita "tainted canvas"
+        img.onload = () => resolve(img.naturalWidth ? img : null);
+        img.onerror = () => resolve(null);
+        img.src = url;
+    });
+
+    // ── Fondo carbón ───────────────────────────────────────────────────────
+    ctx.fillStyle = CARBON;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── Foto (40-45% del alto, desde la franja libre de arriba) ─────────────
+    const FOTO = { y: TOP_LIBRE, h: 820 }; // 820 / 1920 = 42.7%
+    const foto = await cargarImagen(fotoUrl);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, FOTO.y, W, H - FOTO.y);
+    ctx.clip();
+    // Brillo cálido detrás del producto
+    const brillo = ctx.createRadialGradient(W / 2, FOTO.y + 430, 40, W / 2, FOTO.y + 430, 560);
+    brillo.addColorStop(0, agotado ? 'rgba(200,200,200,0.12)' : 'rgba(255,107,0,0.38)');
+    brillo.addColorStop(1, 'rgba(255,107,0,0)');
+    ctx.fillStyle = brillo;
+    ctx.fillRect(0, FOTO.y, W, FOTO.h + 200);
+    if (foto) {
+        const capa = document.createElement('canvas');
+        capa.width = W;
+        capa.height = FOTO.h;
+        const c2 = capa.getContext('2d');
+        const escala = Math.max(W / foto.naturalWidth, FOTO.h / foto.naturalHeight);
+        const fw = foto.naturalWidth * escala;
+        const fh = foto.naturalHeight * escala;
+        c2.drawImage(foto, (W - fw) / 2, (FOTO.h - fh) / 2, fw, fh);
+        if (agotado) {
+            try {
+                const px = c2.getImageData(0, 0, W, FOTO.h);
+                const d = px.data;
+                for (let i = 0; i < d.length; i += 4) {
+                    const g = Math.round(d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
+                    d[i] = g; d[i + 1] = g; d[i + 2] = g;
+                }
+                c2.putImageData(px, 0, 0);
+            } catch (_) { /* imagen sin permiso de lectura: queda a color */ }
+        }
+        ctx.drawImage(capa, 0, FOTO.y);
+    } else {
+        // Sin foto: fondo de marca carbón → naranja.
+        const marca = ctx.createLinearGradient(0, FOTO.y, W, FOTO.y + FOTO.h);
+        marca.addColorStop(0, CARBON);
+        marca.addColorStop(0.55, agotado ? '#3a3a3a' : '#7a3200');
+        marca.addColorStop(1, agotado ? '#555555' : NARANJA);
+        ctx.fillStyle = marca;
+        ctx.fillRect(0, FOTO.y, W, FOTO.h);
+    }
+    // Degradados de la foto hacia el fondo (arriba suave, abajo largo)
+    const arriba = ctx.createLinearGradient(0, FOTO.y, 0, FOTO.y + 110);
+    arriba.addColorStop(0, CARBON);
+    arriba.addColorStop(1, 'rgba(26,26,26,0)');
+    ctx.fillStyle = arriba;
+    ctx.fillRect(0, FOTO.y, W, 110);
+    // Largo y fuerte: el título cae sobre esta zona y tiene que leerse sobre fondo oscuro.
+    const abajo = ctx.createLinearGradient(0, FOTO.y + FOTO.h - 420, 0, FOTO.y + FOTO.h);
+    abajo.addColorStop(0, 'rgba(26,26,26,0)');
+    abajo.addColorStop(0.45, 'rgba(26,26,26,0.72)');
+    abajo.addColorStop(0.75, 'rgba(26,26,26,0.94)');
+    abajo.addColorStop(1, CARBON);
+    ctx.fillStyle = abajo;
+    ctx.fillRect(0, FOTO.y + FOTO.h - 420, W, 420);
+    ctx.restore();
+    ctx.fillStyle = CARBON;
+    ctx.fillRect(0, FOTO.y + FOTO.h, W, H - FOTO.y - FOTO.h);
+
+    // ── Viñeta oscura ─────────────────────────────────────────────────────
+    const vineta = ctx.createRadialGradient(W / 2, H * 0.48, 320, W / 2, H * 0.48, 1250);
+    vineta.addColorStop(0, 'rgba(0,0,0,0)');
+    vineta.addColorStop(1, 'rgba(0,0,0,0.62)');
+    ctx.fillStyle = vineta;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+
+    // ── Sello "-30%" sobre la esquina derecha de la foto ─────────────────
+    if (!agotado) {
+        const sx = 880;
+        const sy = 400;
+        const r = 112;
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(-0.21);
+        ctx.shadowColor = 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = 30;
+        ctx.fillStyle = NARANJA;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(26,26,26,0.55)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 8]);
+        ctx.beginPath();
+        ctx.arc(0, 0, r - 14, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = CARBON;
+        const pctTxt = `-${Math.round(Number(porcentaje) || 0)}%`;
+        ctx.font = fuente(700, ajustar(pctTxt, 700, 84, 170));
+        ctx.fillText(pctTxt, 0, 22);
+        ctx.font = fuente(600, 26);
+        ctx.fillText('HOY', 0, 62);
+        ctx.restore();
+        caja('sello', sx - r, sy - r, r * 2, r * 2);
+    }
+
+    // ── Título "CÓDIGO DEL DÍA" + líneas de energía ──────────────────────
+    const tituloY = 985;
+    const t1 = 'CÓDIGO ';
+    const t2 = 'DEL DÍA';
+    let tpx = 116;
+    ctx.font = fuente(700, tpx);
+    while (tpx > 60 && ctx.measureText(t1 + t2).width > 800) { tpx -= 2; ctx.font = fuente(700, tpx); }
+    const w1 = ctx.measureText(t1).width;
+    const wT = ctx.measureText(t1 + t2).width;
+    const tx0 = (W - wT) / 2;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = CREMA;
+    ctx.fillText(t1, tx0, tituloY);
+    ctx.fillStyle = NARANJA;
+    ctx.fillText(t2, tx0 + w1, tituloY);
+    ctx.textAlign = 'center';
+    caja('titulo', tx0, tituloY - tpx * 0.9, wT, tpx);
+    ctx.strokeStyle = NARANJA;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 7;
+    [[-34, 46], [-6, 70], [22, 46]].forEach(([dy, largo]) => {
+        const y = tituloY - tpx * 0.38 + dy;
+        ctx.beginPath(); ctx.moveTo(tx0 - 26, y); ctx.lineTo(tx0 - 26 - largo, y - largo * 0.18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(tx0 + wT + 26, y); ctx.lineTo(tx0 + wT + 26 + largo, y - largo * 0.18); ctx.stroke();
+    });
+
+    // ── Cinta naranja con la fecha ───────────────────────────────────────
+    const cintaY = 1004;
+    const cintaH = 54;
+    ctx.font = fuente(700, 34);
+    const fechaTxt = String(fechaTexto).toUpperCase();
+    let fpx = 34;
+    while (fpx > 20 && anchoEspaciado(fechaTxt, 3) > 760) { fpx -= 2; ctx.font = fuente(700, fpx); }
+    const cintaW = anchoEspaciado(fechaTxt, 3) + 110;
+    const cx0 = (W - cintaW) / 2;
+    ctx.fillStyle = NARANJA;
+    ctx.beginPath();
+    ctx.moveTo(cx0, cintaY);
+    ctx.lineTo(cx0 + cintaW, cintaY);
+    ctx.lineTo(cx0 + cintaW - 22, cintaY + cintaH / 2);
+    ctx.lineTo(cx0 + cintaW, cintaY + cintaH);
+    ctx.lineTo(cx0, cintaY + cintaH);
+    ctx.lineTo(cx0 + 22, cintaY + cintaH / 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = CARBON;
+    textoEspaciado(fechaTxt, W / 2, cintaY + cintaH / 2 + fpx * 0.36, 3);
+    caja('cinta', cx0, cintaY, cintaW, cintaH);
+
+    // ── Nombre del producto ──────────────────────────────────────────────
+    const nombreTxt = String(productoNombre).toUpperCase().replace(/\s+/g, ' ').trim();
+    const npx = ajustar(nombreTxt, 700, 86, 940);
+    ctx.fillStyle = CREMA;
+    ctx.font = fuente(700, npx);
+    const nombreY = 1140;
+    ctx.fillText(nombreTxt, W / 2, nombreY);
+    caja('nombre', (W - ctx.measureText(nombreTxt).width) / 2, nombreY - npx * 0.9, ctx.measureText(nombreTxt).width, npx);
+
+    if (!agotado) {
+        // ── Precios: normal tachado | con descuento ─────────────────────
+        const precioY = 1222;
+        const normal = dinero(precioNormal);
+        const desc = dinero(precioDescuento);
+        ctx.font = fuente(600, 52);
+        const wN = ctx.measureText(normal).width;
+        ctx.font = fuente(700, 88);
+        const wD = ctx.measureText(desc).width;
+        const gap = 34;
+        const total = wN + gap * 2 + 2 + wD;
+        const px0 = (W - total) / 2;
+        ctx.textAlign = 'left';
+        ctx.font = fuente(600, 52);
+        ctx.fillStyle = 'rgba(245,235,221,0.62)';
+        ctx.fillText(normal, px0, precioY - 8);
+        ctx.strokeStyle = NARANJA;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(px0 - 6, precioY - 26);
+        ctx.lineTo(px0 + wN + 6, precioY - 26);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(245,235,221,0.35)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px0 + wN + gap, precioY - 70);
+        ctx.lineTo(px0 + wN + gap, precioY + 4);
+        ctx.stroke();
+        ctx.font = fuente(700, 88);
+        ctx.fillStyle = NARANJA;
+        ctx.fillText(desc, px0 + wN + gap * 2 + 2, precioY);
+        ctx.textAlign = 'center';
+        caja('precios', px0, precioY - 80, total, 90);
+
+        // ── Ticket troquelado con la palabra clave (el elemento más grande) ─
+        const T = { x: 80, y: 1238, w: 920, h: 180 };
+        const ticket = document.createElement('canvas');
+        ticket.width = T.w;
+        ticket.height = T.h;
+        const tc = ticket.getContext('2d');
+        tc.fillStyle = NARANJA;
+        tc.fillRect(0, 0, T.w, T.h);
+        tc.globalCompositeOperation = 'destination-out';
+        tc.beginPath(); tc.arc(0, T.h / 2, 30, 0, Math.PI * 2); tc.fill();
+        tc.beginPath(); tc.arc(T.w, T.h / 2, 30, 0, Math.PI * 2); tc.fill();
+        for (let x = 22; x < T.w - 10; x += 32) {
+            tc.beginPath(); tc.arc(x, 0, 7, 0, Math.PI * 2); tc.fill();
+            tc.beginPath(); tc.arc(x, T.h, 7, 0, Math.PI * 2); tc.fill();
+        }
+        tc.globalCompositeOperation = 'source-over';
+        tc.strokeStyle = 'rgba(26,26,26,0.28)';
+        tc.lineWidth = 3;
+        tc.setLineDash([12, 9]);
+        tc.strokeRect(46, 22, T.w - 92, T.h - 44);
+        ctx.save();
+        ctx.shadowColor = 'rgba(255,107,0,0.35)';
+        ctx.shadowBlur = 40;
+        ctx.drawImage(ticket, T.x, T.y);
+        ctx.restore();
+        ctx.fillStyle = CARBON;
+        ctx.font = fuente(600, 26);
+        textoEspaciado('PALABRA CLAVE DE HOY', W / 2, T.y + 50, 7);
+        const codigoTxt = String(palabra).toUpperCase();
+        const cpx = ajustar(codigoTxt, 700, 116, T.w - 160, 40);
+        ctx.font = fuente(700, cpx);
+        ctx.fillStyle = '#111111';
+        ctx.fillText(codigoTxt, W / 2, T.y + T.h - 24);
+        caja('ticket', T.x, T.y, T.w, T.h);
+
+        // ── Píldora "SOLO 10 CUPOS" con los puntos ─────────────────────
+        const pillY = 1430;
+        const pillH = 50;
+        const nPuntos = Math.max(1, Math.min(15, Math.round(Number(cupos) || 0)));
+        ctx.font = fuente(600, 28);
+        const pillTxt = `SOLO ${Math.round(Number(cupos) || 0)} CUPOS`;
+        const wTxt = anchoEspaciado(pillTxt, 2);
+        const wPuntos = nPuntos * 20 - 6;
+        const pillW = 36 + wTxt + 24 + wPuntos + 36;
+        const pl0 = (W - pillW) / 2;
+        rectRedondo(pl0, pillY, pillW, pillH, pillH / 2);
+        ctx.fillStyle = 'rgba(255,107,0,0.10)';
+        ctx.fill();
+        ctx.strokeStyle = NARANJA;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.fillStyle = CREMA;
+        textoEspaciado(pillTxt, pl0 + 36 + wTxt / 2, pillY + pillH / 2 + 10, 2);
+        ctx.fillStyle = NARANJA;
+        for (let i = 0; i < nPuntos; i++) {
+            ctx.beginPath();
+            ctx.arc(pl0 + 36 + wTxt + 24 + 7 + i * 20, pillY + pillH / 2, 7, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        caja('cupos', pl0, pillY, pillW, pillH);
+    } else {
+        // ── Agotado: sello grande + textos ──────────────────────────────
+        const S = { cx: W / 2, cy: 1300, w: 860, h: 170 };
+        ctx.save();
+        ctx.translate(S.cx, S.cy);
+        ctx.rotate(-0.07);
+        rectRedondo(-S.w / 2, -S.h / 2, S.w, S.h, 26);
+        ctx.fillStyle = 'rgba(255,107,0,0.12)';
+        ctx.fill();
+        ctx.strokeStyle = NARANJA;
+        ctx.lineWidth = 9;
+        ctx.stroke();
+        rectRedondo(-S.w / 2 + 16, -S.h / 2 + 16, S.w - 32, S.h - 32, 18);
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        const selloTxt = 'SE ACABARON ✅';
+        ctx.font = fuente(700, ajustar(selloTxt, 700, 104, S.w - 90));
+        ctx.fillStyle = CREMA;
+        ctx.fillText(selloTxt, 0, 36);
+        ctx.restore();
+        caja('sello-agotado', S.cx - S.w / 2 - 10, S.cy - S.h / 2 - 34, S.w + 20, S.h + 68);
+        const l1 = `Los ${Math.round(Number(cupos) || 0)} cupos de hoy volaron`;
+        ctx.font = fuente(600, ajustar(l1, 600, 48, 900));
+        ctx.fillStyle = CREMA;
+        ctx.fillText(l1, W / 2, 1446);
+        caja('texto-agotado', 90, 1400, 900, 56);
+    }
+
+    // ── "Pídelo en la app · roalburger.com" con ícono de celular ─────────
+    const appY = 1508;
+    const appTxt = agotado ? 'Mañana a las 12 · nueva palabra clave 👀' : 'Pídelo en la app · roalburger.com';
+    ctx.font = fuente(400, ajustar(appTxt, 400, 32, 860));
+    const wApp = ctx.measureText(appTxt).width;
+    const icono = agotado ? 0 : 34;
+    const ax0 = (W - wApp - icono) / 2;
+    if (!agotado) {
+        ctx.strokeStyle = NARANJA;
+        ctx.lineWidth = 3;
+        rectRedondo(ax0, appY - 30, 20, 34, 5);
+        ctx.stroke();
+        ctx.fillStyle = NARANJA;
+        ctx.fillRect(ax0 + 7, appY - 1, 6, 2);
+    }
+    ctx.fillStyle = agotado ? NARANJA : 'rgba(245,235,221,0.92)';
+    ctx.textAlign = 'left';
+    ctx.fillText(appTxt, ax0 + icono, appY);
+    ctx.textAlign = 'center';
+    caja('app', ax0, appY - 32, wApp + icono, 40);
+
+    return {
+        canvas,
+        cajas,
+        zonas: {
+            arriba: { x: 0, y: 0, w: W, h: TOP_LIBRE },
+            abajo: { x: 0, y: H - HISTORIA_CD.BOTTOM_LIBRE, w: W, h: HISTORIA_CD.BOTTOM_LIBRE },
+            sticker: { ...STICKER }
+        }
+    };
+}
+// </historia-codigo-dia>
+
+const _CD_MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+// "LUNES 12 DE OCTUBRE"
+function _cdFechaHistoria(dateKey) {
+    const [, m, d] = dateKey.split('-').map(Number);
+    return `${CD_DIAS_SEMANA[_cdDow(dateKey)]} ${d} de ${_CD_MESES_LARGOS[m - 1]}`.toUpperCase();
+}
+
+async function _cdDescargarHistoria(dia, agotado) {
+    const pct = Number(cdState.config.porcentaje) || 0;
+    const producto = productsState.find((p) => p.id === dia.productoId);
+    const precioNormal = Number(producto?.precio) || Number(dia.precioNormal) || 0;
+    const { canvas } = await generarHistoriaCodigoDia({
+        fechaTexto: _cdFechaHistoria(dia.id),
+        productoNombre: producto?.nombre || dia.productoNombre,
+        precioNormal,
+        precioDescuento: _cdPrecioDesc(precioNormal, pct),
+        porcentaje: pct,
+        palabra: dia.palabra,
+        cupos: Number(dia.cupos) || 0,
+        fotoUrl: String(producto?.image_url || '').trim(),
+        agotado
+    });
+    const blob = await new Promise((resolve, reject) => {
+        try { canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('el navegador no pudo crear el PNG'))), 'image/png'); } catch (err) { reject(err); }
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `codigo-del-dia-${dia.id}${agotado ? '-agotado' : ''}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
 // ===== PANEL PROMOCIONES ADMIN =====

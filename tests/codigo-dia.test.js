@@ -335,7 +335,7 @@ async function diasProgramados() {
     return snap.docs.map((d) => d.data());
 }
 
-test('programar: 7 días sin miércoles ni cierres, solo las 4 categorías y nunca productos pausados', async () => {
+test('programar: 30 días sin miércoles ni cierres, solo las 4 categorías, nunca productos pausados', async () => {
     await db.collection('configuracion').doc('config_horario').set({
         cierresProgramados: [
             { id: 'f1', fechaInicio: '2026-10-16', fechaFin: '2026-10-16', todoElDia: true, motivo: 'Festivo' },
@@ -343,17 +343,18 @@ test('programar: 7 días sin miércoles ni cierres, solo las 4 categorías y nun
         ]
     });
     const r = await cd.programarProximosDias(db, { nowMs: AHORA });
-    assert.equal(r.programados.length, 7);
+    assert.equal(r.programados.length, 30);
+    assert.ok(r.programados.every((f) => cd.dowDe(f) !== 3), 'ningún miércoles');
     assert.ok(!r.programados.includes('2026-10-14'), 'salta el miércoles');
     assert.ok(!r.programados.includes('2026-10-16'), 'salta el cierre de día completo');
     assert.ok(r.programados.includes('2026-10-17'), 'un cierre por franja NO quita el día');
-    assert.deepEqual(r.programados, ['2026-10-12', '2026-10-13', '2026-10-15', '2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20']);
+    assert.deepEqual(r.programados.slice(0, 7), ['2026-10-12', '2026-10-13', '2026-10-15', '2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20']);
     const dias = await diasProgramados();
-    assert.equal(dias.length, 7);
+    assert.equal(dias.length, 30);
     for (const d of dias) {
         assert.ok(LISTA_OK.has(d.categoria), `${d.fecha}: ${d.categoria}`);
         assert.notEqual(d.productoId, 'pausado');
-        assert.match(d.palabra, /^[A-Z]+\d{2}$/);
+        assert.match(d.palabra, /^[A-Z]+[2-9]{2}$/, `${d.fecha}: ${d.palabra} (dígitos solo 2-9)`);
         assert.ok(PALABRAS.some((p) => p.palabra === d.palabraBase));
         assert.equal(d.cupos, 10);
     }
@@ -369,7 +370,11 @@ test('programar: alterna categorías día a día y no repite producto en 7 días
     }
     // Las 4 categorías aparecen en los primeros 4 días (rotación completa).
     assert.equal(new Set(dias.slice(0, 4).map((d) => d.categoria)).size, 4);
-    assert.equal(new Set(dias.map((d) => d.productoId)).size, dias.length, 'sin productos repetidos');
+    // Ningún producto se repite dentro de 7 días de calendario, en los 30 días programados.
+    for (const d of dias) {
+        const ventana = dias.filter((x) => x.fecha > d.fecha && x.fecha <= cd.addDays(d.fecha, 6));
+        assert.ok(!ventana.some((x) => x.productoId === d.productoId), `${d.fecha}: ${d.productoNombre} se repite en 7 días`);
+    }
 });
 
 test('programar: no repite palabra en 30 días y respeta los días editados a mano', async () => {
@@ -412,7 +417,10 @@ test('programar: un día futuro automático cuyo producto se pausó cambia de pr
     const martes = (await db.collection(cd.DIAS_COLLECTION).doc('2026-10-13').get()).data();
     await db.collection('productos').doc(martes.productoId).update({ estado: 'paused' });
     const r = await cd.programarProximosDias(db, { nowMs: AHORA + HOUR });
-    assert.deepEqual(r.regenerados, ['2026-10-13']);
+    // Con 30 días, el producto pausado puede estar en varios días: todos se regeneran.
+    assert.ok(r.regenerados.includes('2026-10-13'));
+    const todos = await diasProgramados();
+    assert.ok(todos.filter((d) => d.fecha > LUNES).every((d) => d.productoId !== martes.productoId), 'ningún día futuro queda con el producto pausado');
     const nuevo = (await db.collection(cd.DIAS_COLLECTION).doc('2026-10-13').get()).data();
     assert.notEqual(nuevo.productoId, martes.productoId);
     assert.equal(nuevo.palabra, martes.palabra);
@@ -450,6 +458,60 @@ test('vista pública: miércoles o configuración inactiva → sin código', asy
     assert.equal((await cd.validarCodigoDia(db, 'CHAMO27', AHORA)).estado, 'inactivo');
 });
 
+test('palabras viejas (fuera de la lista o con 0/1) se regeneran en días futuros automáticos sin canjes; producto y cupos se conservan', async () => {
+    await sembrarDia('2026-10-13', { palabra: 'HALLACA29', palabraBase: 'HALLACA', productoId: 'per-normal', productoNombre: 'Perro Normal', categoria: 'PERROS CALIENTES', cupos: 15 });
+    await sembrarDia('2026-10-15', { palabra: 'CHAMO10', palabraBase: 'CHAMO', productoId: 'sal-normal', productoNombre: 'Salchi normal grande', categoria: 'SALCHIPAPAS' });
+    await sembrarDia('2026-10-17', { palabra: 'CHEVERITO74', palabraBase: 'CHEVERITO', editadoManualmente: true });
+    await sembrarDia('2026-10-18', { palabra: 'MONDONGO96', palabraBase: 'MONDONGO', canjes: 1 });
+    await sembrarDia('2026-10-19', { palabra: 'CAMBUR74', palabraBase: 'CAMBUR', productoId: 'pep-mix', productoNombre: 'Pepito Mix', categoria: 'PEPITOS VENEZOLANOS' });
+    await sembrarDia('2026-10-20', { palabra: 'JOROPO86', palabraBase: 'JOROPO', productoId: 'bp-caracas', productoNombre: 'Burger Caracas' });
+    // Hoy ANTES de las 12 (todavía no se publicó): también se cambia.
+    await sembrarDia(LUNES, { palabra: 'MONDONGO22', palabraBase: 'MONDONGO' });
+    const r = await cd.programarProximosDias(db, { nowMs: ANTES_DE_LAS_12 });
+    assert.deepEqual(r.palabrasCambiadas.sort(), [LUNES, '2026-10-13', '2026-10-15', '2026-10-19']);
+    const leer = async (f) => (await db.collection(cd.DIAS_COLLECTION).doc(f).get()).data();
+    const martes = await leer('2026-10-13');
+    assert.ok(cd.palabraVigente(martes), martes.palabra);
+    assert.equal(martes.productoId, 'per-normal');
+    assert.equal(martes.cupos, 15);
+    assert.ok(cd.palabraVigente(await leer('2026-10-15')));
+    assert.equal((await leer('2026-10-17')).palabra, 'CHEVERITO74', 'editado a mano: no se toca');
+    assert.equal((await leer('2026-10-18')).palabra, 'MONDONGO96', 'con canjes: no se toca');
+    assert.equal((await leer('2026-10-20')).palabra, 'JOROPO86', 'palabra vigente: no se toca');
+    assert.ok(cd.palabraVigente(await leer(LUNES)));
+});
+
+test('programar: hoy, ya publicado (después de las 12), conserva su palabra aunque sea vieja', async () => {
+    await sembrarDia(LUNES, { palabra: 'HALLACA29', palabraBase: 'HALLACA' });
+    const r = await cd.programarProximosDias(db, { nowMs: AHORA });
+    assert.ok(!r.palabrasCambiadas.includes(LUNES));
+    assert.equal((await db.collection(cd.DIAS_COLLECTION).doc(LUNES).get()).data().palabra, 'HALLACA29');
+});
+
+test('normalización: "CHAM027", "chamo 27" y "Chamó-27" valen igual que CHAMO27 (0→O, 1→I)', async () => {
+    await sembrarDia(LUNES, { palabra: 'CHAMO27' });
+    for (const intento of ['CHAMO27', 'CHAM027', 'chamo 27', 'Chamó-27', ' c h a m o 2 7 ']) {
+        assert.equal((await cd.validarCodigoDia(db, intento, AHORA)).estado, 'valido', intento);
+    }
+    await sembrarDia(LUNES, { palabra: 'PILAS34' });
+    assert.equal((await cd.validarCodigoDia(db, 'P1LAS34', AHORA)).estado, 'valido', '1 se lee como I');
+    assert.equal((await cd.validarCodigoDia(db, 'PILAS43', AHORA)).estado, 'invalido', 'los dígitos sí importan');
+    // También al consumir (checkout y caja usan la misma comparación).
+    const r = await cd.consumirCodigoDia(db, { codigo: 'p1las 34', canal: 'web', telefono: TEL_1, productoNombre: 'Burger Plus' }, AHORA);
+    assert.equal(r.ok, true);
+    // Y una palabra editada a mano no puede llevar 0 ni 1.
+    await assert.rejects(cd.editarDia(db, { fecha: '2026-10-13', palabra: 'CHAMO10', significado: 'muchacho' }, 'admin', AHORA), /2 al 9/);
+});
+
+test('generarPalabra: los 2 dígitos nunca son 0 ni 1, en miles de intentos', () => {
+    for (let i = 0; i < 5000; i++) {
+        const p = cd.generarPalabra(new Set());
+        assert.match(p.palabra, /^[A-Z]+[2-9]{2}$/, p.palabra);
+    }
+    assert.match(cd.generarPalabra(new Set(), () => 0).palabra, /[2-9]{2}$/);
+    assert.match(cd.generarPalabra(new Set(), () => 0.9999999).palabra, /[2-9]{2}$/);
+});
+
 test('lista de palabras: al menos 60, únicas, sin doble sentido conocido en Colombia', () => {
     assert.ok(PALABRAS.length >= 60);
     const bases = PALABRAS.map((p) => p.palabra);
@@ -457,6 +519,14 @@ test('lista de palabras: al menos 60, únicas, sin doble sentido conocido en Col
     for (const prohibida of ['ARRECHO', 'LADILLA', 'PEO', 'COLA', 'PERICO', 'PAPAYA', 'CUCA']) {
         assert.ok(!bases.includes(prohibida), prohibida);
     }
+    // Sin comida: ni las de la lista anterior ni otras típicas.
+    for (const comida of ['HALLACA', 'CHEVERITO', 'MONDONGO', 'CAMBUR', 'AREPA', 'TEQUENO', 'PABELLON', 'PAPELON', 'GUARAPO',
+        'COTUFAS', 'CARAOTAS', 'GUAYOYO', 'CACHITO', 'GOLFEADO', 'QUESILLO', 'CHICHARRON', 'AUYAMA', 'OCUMO', 'PARCHITA', 'PATILLA',
+        'LECHOSA', 'TOPOCHO', 'MEREY', 'JOJOTO', 'BIENMESABE', 'MAJARETE', 'CHUPETA', 'CHUCHERIA', 'TOSTONES', 'MANDOCA', 'TIZANA',
+        'COCADA', 'CHICHA', 'PASAPALO', 'MALTA', 'EMPANADA', 'CACHAPA']) {
+        assert.ok(!bases.includes(comida), `${comida} es comida`);
+    }
+    assert.equal(bases.length, 60, 'la lista aprobada tiene 60 palabras');
     for (const p of PALABRAS) {
         assert.match(p.palabra, /^[A-Z]{3,14}$/);
         assert.ok(p.significado.length > 0);

@@ -29,7 +29,7 @@ const PUBLICO_COLLECTION = 'codigo_dia_publico';
 const PUBLICO_DOC = 'hoy';
 const PRODUCTS_COLLECTION = 'productos';
 
-const DIAS_A_PROGRAMAR = 7;
+const DIAS_A_PROGRAMAR = 30;
 const NO_REPETIR_PRODUCTO_DIAS = 7;
 const NO_REPETIR_PALABRA_DIAS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -71,8 +71,16 @@ function normalizeText(value) {
         .trim();
 }
 
-// "chamo 27", "Chamo-27", "CHAMÓ27" → "CHAMO27"
+// Para COMPARAR lo que escribe el cliente con la palabra del día: "chamo 27", "Chamo-27",
+// "CHAMÓ27" y "CHAM027" → "CHAMO27". El 0 y el 1 se leen como O e I (se confunden en la historia);
+// las palabras nunca llevan dígitos y los dígitos del código nunca son 0 ni 1, así que convertir
+// los dos lados por igual no puede hacer coincidir dos códigos distintos.
 function normalizarCodigo(raw) {
+    return limpiarPalabra(raw).replace(/0/g, 'O').replace(/1/g, 'I');
+}
+
+// Mayúsculas, sin tildes ni espacios/símbolos -- SIN convertir dígitos (para guardar la palabra).
+function limpiarPalabra(raw) {
     return String(raw || '')
         .toUpperCase()
         .normalize('NFD')
@@ -221,6 +229,15 @@ async function leerDiasEnRango(db, desdeKey, hastaKey) {
     return out;
 }
 
+const BASES_VALIDAS = new Set(PALABRAS.map((p) => p.palabra));
+
+// ¿La palabra del día está en la lista vigente y con dígitos 2-9? (las viejas, ej. HALLACA29 o
+// VACILON12, no).
+function palabraVigente(dia) {
+    const m = /^([A-Z]+)(\d{2})$/.exec(String(dia?.palabra || ''));
+    return Boolean(m) && BASES_VALIDAS.has(m[1]) && /^[2-9]{2}$/.test(m[2]);
+}
+
 function palabraBase(dia) {
     return String(dia?.palabraBase || String(dia?.palabra || '').replace(/\d+$/, '')).toUpperCase();
 }
@@ -229,7 +246,9 @@ function generarPalabra(usadas, rng = Math.random) {
     const libres = PALABRAS.filter((p) => !usadas.has(p.palabra));
     const lista = libres.length ? libres : PALABRAS;
     const elegida = lista[Math.floor(rng() * lista.length) % lista.length];
-    const digitos = 10 + (Math.floor(rng() * 90) % 90); // 10..99, sin cero adelante
+    // Dígitos del 2 al 9: nunca 0 ni 1, que en la historia se confunden con la O y la I.
+    const digito = () => 2 + (Math.floor(rng() * 8) % 8);
+    const digitos = `${digito()}${digito()}`;
     return { palabra: `${elegida.palabra}${digitos}`, palabraBase: elegida.palabra, significado: elegida.significado };
 }
 
@@ -295,7 +314,34 @@ async function programarProximosDias(db, { nowMs = Date.now(), rng = Math.random
 
     const creados = [];
     const regenerados = [];
+    const palabrasCambiadas = [];
     const programados = [];
+    const usadasCerca = (f) => {
+        const desde = addDays(f, -NO_REPETIR_PALABRA_DIAS);
+        const hasta = addDays(f, NO_REPETIR_PALABRA_DIAS);
+        return new Set(Object.keys(existentes).filter((k) => k !== f && k >= desde && k <= hasta).map((k) => palabraBase(existentes[k])));
+    };
+
+    // 1) Palabras fuera de la lista vigente (o con 0/1): se cambia SOLO la palabra en los días
+    //    automáticos, sin canjes, que todavía no se publicaron (futuros, u hoy antes de la hora).
+    const yaPublicadoHoy = bogotaParts(nowMs).minutes >= horaAMinutos(config.horaPublicacion);
+    for (const f of Object.keys(existentes).filter((k) => k >= hoy).sort()) {
+        const d = existentes[f];
+        if (palabraVigente(d) || d.editadoManualmente || Number(d.canjes || 0) > 0) continue;
+        if (f === hoy && yaPublicadoHoy) continue;
+        const nueva = generarPalabra(usadasCerca(f), rng);
+        const ref = db.collection(DIAS_COLLECTION).doc(f);
+        const cambiado = await db.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            const actual = snap.data();
+            if (!snap.exists || actual.editadoManualmente || Number(actual.canjes || 0) > 0) return null;
+            const patch = { ...nueva, updatedAt: Timestamp.fromMillis(nowMs) };
+            tx.update(ref, patch);
+            return { ...actual, ...patch };
+        });
+        if (cambiado) { existentes[f] = cambiado; palabrasCambiadas.push(f); }
+    }
+
     let fecha = hoy;
     for (let i = 0; programados.length < DIAS_A_PROGRAMAR && i < 60; i++, fecha = addDays(fecha, 1)) {
         if (diaSaltado(fecha, config, cierres)) continue;
@@ -329,10 +375,7 @@ async function programarProximosDias(db, { nowMs = Date.now(), rng = Math.random
             continue;
         }
 
-        const desde = addDays(fecha, -NO_REPETIR_PALABRA_DIAS);
-        const hasta = addDays(fecha, NO_REPETIR_PALABRA_DIAS);
-        const usadas = new Set(Object.keys(existentes).filter((k) => k >= desde && k <= hasta).map((k) => palabraBase(existentes[k])));
-        const dia = construirDia(fecha, producto, generarPalabra(usadas, rng), config, nowMs);
+        const dia = construirDia(fecha, producto, generarPalabra(usadasCerca(fecha), rng), config, nowMs);
         try {
             await ref.create(dia);
             existentes[fecha] = dia;
@@ -346,7 +389,7 @@ async function programarProximosDias(db, { nowMs = Date.now(), rng = Math.random
     }
 
     await actualizarPublicoHoy(db, nowMs);
-    return { hoy, programados, creados, regenerados, sinProductos: !pool.length };
+    return { hoy, programados, creados, regenerados, palabrasCambiadas, sinProductos: !pool.length };
 }
 
 // ── Vista pública (codigo_dia_publico/hoy) ───────────────────────────────────
@@ -669,9 +712,9 @@ async function editarDia(db, raw, uid, nowMs = Date.now()) {
         });
     }
     if (raw.palabra !== undefined) {
-        const palabra = normalizarCodigo(raw.palabra);
-        if (!/^[A-Z]{3,14}\d{2}$/.test(palabra)) {
-            throw new HttpsError('invalid-argument', 'La palabra debe ser de 3 a 14 letras seguidas de 2 dígitos (ej. CHAMO27).');
+        const palabra = limpiarPalabra(raw.palabra);
+        if (!/^[A-Z]{3,14}[2-9]{2}$/.test(palabra)) {
+            throw new HttpsError('invalid-argument', 'La palabra debe ser de 3 a 14 letras seguidas de 2 dígitos del 2 al 9 (ej. CHAMO27; sin 0 ni 1, que se confunden con O e I).');
         }
         const base = palabra.replace(/\d+$/, '');
         const conocida = PALABRAS.find((p) => p.palabra === base);
@@ -727,6 +770,8 @@ module.exports = {
     NO_REPETIR_PRODUCTO_DIAS,
     NO_REPETIR_PALABRA_DIAS,
     normalizarCodigo,
+    limpiarPalabra,
+    palabraVigente,
     bogotaParts,
     dateKeyToMs,
     addDays,

@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261011-2223">
+    <link rel="stylesheet" href="style.css?v=20261012-0000">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -5260,7 +5260,8 @@
         .cd-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
         .cd-table td { white-space: normal; }
         .cd-table tfoot th { color: #eef4ff; border-top: 1px solid rgba(255,255,255,0.12); padding: 8px; text-align: left; }
-        .cd-acciones { display: flex; gap: 6px; flex-wrap: wrap; min-width: 200px; }
+        .cd-acciones { display: flex; gap: 6px; flex-wrap: wrap; min-width: 220px; max-width: 420px; }
+        .cd-ver-dias { display: inline-flex; }
         .cd-fila-edicion td { background: rgba(255,255,255,0.03); }
         .cd-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
         .cd-edit-grid label { min-width: 0; }
@@ -13749,13 +13750,13 @@
                             <div class="card-head">
                                 <h2>⭐ Código del día</h2>
                                 <div class="cpana-tabs" role="tablist" id="cdTabs">
-                                    <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-cd-tab="proximos">📅 Próximos 7 días</button>
+                                    <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-cd-tab="proximos">📅 Próximos días</button>
                                     <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-cd-tab="historial">🗂️ Historial</button>
                                     <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-cd-tab="metricas">📊 Métricas</button>
                                     <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-cd-tab="config">⚙️ Configuración</button>
                                 </div>
                             </div>
-                            <p class="admin-hint">Todos los días a las 12:00 m se publica en las historias de Instagram una palabra venezolana + 2 dígitos. Con ese código, los primeros clientes obtienen el descuento en el producto del día, solo por el menú web/app o en caja (nunca por WhatsApp). Los próximos 7 días se programan solos; si editas un día, la programación automática ya no lo toca.</p>
+                            <p class="admin-hint">Todos los días a las 12:00 m se publica en las historias de Instagram una palabra venezolana + 2 dígitos. Con ese código, los primeros clientes obtienen el descuento en el producto del día, solo por el menú web/app o en caja (nunca por WhatsApp). Los próximos 30 días se programan solos; si editas un día, la programación automática ya no lo toca. Cada día trae sus dos historias listas para descargar (normal y de agotado).</p>
                             <div class="card-body cd-panel" data-cd-panel="proximos" id="cdProximosBody"><!-- render JS --></div>
                             <div class="card-body cd-panel" data-cd-panel="historial" id="cdHistorialBody" hidden><!-- render JS --></div>
                             <div class="card-body cd-panel" data-cd-panel="metricas" id="cdMetricasBody" hidden><!-- render JS --></div>
@@ -16269,17 +16270,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261011-2223"></script>
+    <script defer src="firebase-config.js?v=20261012-0000"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261011-2223"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261012-0000"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261011-2223"></script>
-    <script defer src="admin.js?v=20261011-2223"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-0000"></script>
+    <script defer src="admin.js?v=20261012-0000"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
