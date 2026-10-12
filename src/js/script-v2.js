@@ -610,7 +610,7 @@ const LOYALTY_BANNER_DISMISSED_KEY = 'rb_loyalty_banner_dismissed_v1';
 // debe ser "para siempre" en el dispositivo, solo por esta visita.
 function initLoyaltyPointsBanner() {
     const banner = document.getElementById('loyaltyPointsBanner');
-    if (!banner) return;
+    if (!banner || !LOYALTY_UI_VISIBLE) return;
     try {
         if (window.sessionStorage.getItem(LOYALTY_BANNER_DISMISSED_KEY) === '1') {
             return;
@@ -1228,6 +1228,11 @@ function getCheckoutDiscountAmount() {
 // SYNC: functions/pricing.js LOYALTY_POINT_VALUE_COP — 100 puntos = $1.000 COP.
 const LOYALTY_POINT_VALUE_COP = 10;
 
+// Interruptor de la parte VISIBLE del programa de puntos en el menú público (banner, saldo en el
+// perfil y canje en el checkout). En false los puntos se siguen acumulando en segundo plano, pero
+// el cliente no los ve ni los puede canjear. Para volver a mostrarlos: true.
+const LOYALTY_UI_VISIBLE = false;
+
 // Los puntos solo se pueden CANJEAR en estas categorías (a pedido del negocio) -- combos,
 // promociones (Recomendado del día/cupones) y el resto de categorías no aplican. No afecta cómo
 // se GANAN los puntos, solo contra qué parte del subtotal se puede aplicar el descuento del canje.
@@ -1263,6 +1268,7 @@ function getLoyaltyEligibleCartSubtotal() {
 // Tope client-side, solo para feedback inmediato en el checkout -- el servidor (pricing.js:
 // computeServerPricedOrder) es la autoridad real y re-clampa contra el saldo fresco.
 function getCheckoutMaxRedeemablePoints() {
+    if (!LOYALTY_UI_VISIBLE) return 0;
     const available = Math.max(0, Number(activeCustomerProfile?.puntosDisponibles) || 0);
     const maxByEligibleSubtotal = Math.floor(getLoyaltyEligibleCartSubtotal() / LOYALTY_POINT_VALUE_COP);
     return Math.max(0, Math.min(available, maxByEligibleSubtotal));
@@ -4015,7 +4021,7 @@ function openCustomerAuthModal() {
                         <div class="cp-hero-info">
                             <span class="cp-hero-name">${_name}</span>
                             ${_phone ? `<span class="cp-hero-phone">${_phone}</span>` : ''}
-                            <span class="cp-hero-points">${Math.max(0, Number(profile?.puntosDisponibles) || 0).toLocaleString('es-CO')} puntos disponibles</span>
+                            ${LOYALTY_UI_VISIBLE ? `<span class="cp-hero-points">${Math.max(0, Number(profile?.puntosDisponibles) || 0).toLocaleString('es-CO')} puntos disponibles</span>` : ''}
                         </div>
                     </div>
 
