@@ -383,3 +383,42 @@ test('estado de conexión: avisa si el token ya venció y cuántos días le qued
     await conectar({ expiraEnMs: 12.5 * DAY });
     assert.equal((await ig.estadoConexion(db, AHORA)).expiraEnDias, 12);
 });
+
+// ── Historia de prueba ───────────────────────────────────────────────────────
+
+test('prueba: publica una imagen de prueba YA (sin tocar ningún día), con su propia URL con token, y no necesita el interruptor', async () => {
+    await conectar({ activo: false });
+    const meta = metaFalso();
+    const r = await ig.publicarPrueba(db, { jpeg: jpeg(), nowMs: AHORA, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera });
+    assert.equal(r.ok, true);
+    assert.equal(r.mediaId, 'media-1');
+    assert.equal(r.username, 'roalburger');
+    const crear = meta.llamadas.find((l) => /\/1784\/media$/.test(l.ruta));
+    assert.equal(crear.cuerpo.media_type, 'STORIES');
+    const status = (await db.collection(ig.HISTORIAS_COLLECTION).doc(ig.PRUEBA_ID).get()).data();
+    assert.equal(crear.cuerpo.image_url, `${BASE_URL}?id=prueba_normal&t=${status.imgToken}`);
+    // La URL pública sirve esa imagen con su token, y solo con él.
+    assert.equal((await ig.servirImagen(db, 'prueba_normal', status.imgToken)).status, 200);
+    assert.equal((await ig.servirImagen(db, 'prueba_normal', 'x')).status, 404);
+    // Ningún día quedó marcado como publicado.
+    assert.equal(await estadoDia(), undefined);
+    assert.equal((await db.collection(ig.HISTORIAS_COLLECTION).get()).docs.map((d) => d.id).join(), 'prueba');
+});
+
+test('prueba: cada prueba usa un token distinto; sin conexión o con una imagen que no es JPEG se rechaza; un error de Meta vuelve como mensaje', async () => {
+    await assert.rejects(ig.publicarPrueba(db, { jpeg: jpeg(), nowMs: AHORA, baseUrl: BASE_URL }), /conecta Instagram/);
+    await conectar();
+    const meta = metaFalso();
+    const op = { jpeg: jpeg(), nowMs: AHORA, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera };
+    await ig.publicarPrueba(db, op);
+    const t1 = (await db.collection(ig.HISTORIAS_COLLECTION).doc(ig.PRUEBA_ID).get()).data().imgToken;
+    await ig.publicarPrueba(db, op);
+    const t2 = (await db.collection(ig.HISTORIAS_COLLECTION).doc(ig.PRUEBA_ID).get()).data().imgToken;
+    assert.notEqual(t1, t2);
+    await assert.rejects(ig.publicarPrueba(db, { ...op, jpeg: Buffer.alloc(5000, 1) }), /JPEG/);
+    const malo = metaFalso({ fallas: [{ ruta: /\/media$/, status: 400, error: { message: 'Error validating access token', code: 190 } }] });
+    const r = await ig.publicarPrueba(db, { ...op, fetchFn: malo.fetchFn });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /access token/);
+    assert.match((await ig.estadoConexion(db, AHORA)).ultimoError, /reconecta la cuenta/);
+});

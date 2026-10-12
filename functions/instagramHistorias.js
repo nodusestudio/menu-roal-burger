@@ -30,6 +30,7 @@ const IMAGENES_COLLECTION = 'codigo_dia_historias_img';
 const GRAPH_URL = 'https://graph.instagram.com';
 const GRAPH_VERSION = 'v26.0';
 const TIPOS = Object.freeze(['normal', 'agotado']);
+const PRUEBA_ID = 'prueba'; // en lugar de una fecha: la historia de prueba del panel
 const MAX_JPEG_BYTES = 900 * 1024; // un doc de Firestore admite 1 MiB
 const MAX_INTENTOS = 3;
 const PUBLICANDO_VIGENCIA_MS = 10 * 60 * 1000;
@@ -284,7 +285,7 @@ async function guardarHistoria(db, { fecha, tipo, jpeg, huella }, uid, { nowMs =
 
 // Función HTTPS pública: Meta descarga la imagen con esta URL. El token impide adivinarla.
 async function servirImagen(db, id, token) {
-    const m = /^(\d{4}-\d{2}-\d{2})_(normal|agotado)$/.exec(String(id || ''));
+    const m = /^(\d{4}-\d{2}-\d{2}|prueba)_(normal|agotado)$/.exec(String(id || ''));
     if (!m) return { status: 404 };
     const status = (await db.collection(HISTORIAS_COLLECTION).doc(m[1]).get()).data();
     const esperado = Buffer.from(String(status?.imgToken || ''));
@@ -300,6 +301,54 @@ function urlImagen(baseUrl, fecha, tipo, token) {
 }
 
 // ── Publicación ──────────────────────────────────────────────────────────────
+
+// Contenedor STORIES → esperar a que Instagram procese la imagen → media_publish. Devuelve el id.
+async function publicarImagenEnInstagram(conexion, imageUrl, { fetchFn = fetch, sleep = esperar } = {}) {
+    const contenedor = await llamarGraph(fetchFn, 'POST', `${GRAPH_URL}/${GRAPH_VERSION}/${conexion.igUserId}/media`,
+        { token: conexion.accessToken, params: { image_url: imageUrl, media_type: 'STORIES' } });
+    if (!contenedor.id) throw new GraphError('Instagram no creó el contenedor de la historia.');
+    for (let i = 0; i < POLL_INTENTOS; i++) {
+        const st = await llamarGraph(fetchFn, 'GET', `${GRAPH_URL}/${GRAPH_VERSION}/${contenedor.id}?fields=status_code`, { token: conexion.accessToken });
+        if (!st.status_code || st.status_code === 'FINISHED') break;
+        if (st.status_code === 'ERROR' || st.status_code === 'EXPIRED') throw new GraphError(`Instagram no pudo procesar la imagen (${st.status_code}).`);
+        if (i === POLL_INTENTOS - 1) throw new GraphError('Instagram tardó demasiado en procesar la imagen.');
+        await sleep(POLL_ESPERA_MS);
+    }
+    const publicada = await llamarGraph(fetchFn, 'POST', `${GRAPH_URL}/${GRAPH_VERSION}/${conexion.igUserId}/media_publish`,
+        { token: conexion.accessToken, params: { creation_id: contenedor.id } });
+    return String(publicada.id || '');
+}
+
+// Historia de PRUEBA para comprobar de punta a punta que la conexión publica de verdad (imagen →
+// URL pública → Instagram). No toca ningún día: usa su propio id `prueba` y se publica YA, con la
+// cuenta real (la ven los seguidores hasta que se borre desde la app de Instagram: la API no borra).
+async function publicarPrueba(db, { jpeg, nowMs = Date.now(), fetchFn = fetch, baseUrl, sleep = esperar }) {
+    const conexion = await leerConexion(db);
+    if (!conexion?.accessToken) throw new HttpsError('failed-precondition', 'Primero conecta Instagram.');
+    if (!Buffer.isBuffer(jpeg) || jpeg.length < 1000 || jpeg[0] !== 0xFF || jpeg[1] !== 0xD8 || jpeg[2] !== 0xFF) {
+        throw new HttpsError('invalid-argument', 'La imagen debe ser un JPEG.');
+    }
+    if (jpeg.length > MAX_JPEG_BYTES) throw new HttpsError('invalid-argument', 'La imagen es demasiado pesada (máximo 900 KB).');
+    const imgToken = crypto.randomBytes(16).toString('hex'); // distinto en cada prueba
+    await db.collection(IMAGENES_COLLECTION).doc(`${PRUEBA_ID}_normal`).set({ fecha: PRUEBA_ID, tipo: 'normal', bytes: jpeg, size: jpeg.length, updatedAt: Timestamp.fromMillis(nowMs) });
+    await db.collection(HISTORIAS_COLLECTION).doc(PRUEBA_ID).set({ fecha: PRUEBA_ID, imgToken, probadaAt: Timestamp.fromMillis(nowMs) });
+    try {
+        const mediaId = await publicarImagenEnInstagram(conexion, urlImagen(baseUrl, PRUEBA_ID, 'normal', imgToken), { fetchFn, sleep });
+        let permalink = '';
+        try {
+            const m = await llamarGraph(fetchFn, 'GET', `${GRAPH_URL}/${GRAPH_VERSION}/${mediaId}?fields=permalink`, { token: conexion.accessToken });
+            permalink = String(m.permalink || '');
+        } catch (_) { /* el enlace es opcional */ }
+        await conexionRef(db).set({ ultimoError: '' }, { merge: true });
+        return { ok: true, mediaId, permalink, username: conexion.username };
+    } catch (err) {
+        const mensaje = String(err?.message || err).slice(0, 300);
+        if (err instanceof GraphError && err.esDeToken) {
+            await conexionRef(db).set({ ultimoError: `Instagram rechazó el token (reconecta la cuenta): ${mensaje}`.slice(0, 300) }, { merge: true });
+        }
+        return { ok: false, error: mensaje };
+    }
+}
 
 async function marcar(db, fecha, tipo, campos) {
     const patch = {};
@@ -348,21 +397,9 @@ async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn =
     if (!reservada) return { ok: false, motivo: 'en_curso_o_agotados_intentos' };
 
     try {
-        const imagen = urlImagen(baseUrl, fecha, tipo, status.imgToken);
-        const contenedor = await llamarGraph(fetchFn, 'POST', `${GRAPH_URL}/${GRAPH_VERSION}/${conexion.igUserId}/media`,
-            { token: conexion.accessToken, params: { image_url: imagen, media_type: 'STORIES' } });
-        if (!contenedor.id) throw new GraphError('Instagram no creó el contenedor de la historia.');
-        for (let i = 0; i < POLL_INTENTOS; i++) {
-            const st = await llamarGraph(fetchFn, 'GET', `${GRAPH_URL}/${GRAPH_VERSION}/${contenedor.id}?fields=status_code`, { token: conexion.accessToken });
-            if (!st.status_code || st.status_code === 'FINISHED') break;
-            if (st.status_code === 'ERROR' || st.status_code === 'EXPIRED') throw new GraphError(`Instagram no pudo procesar la imagen (${st.status_code}).`);
-            if (i === POLL_INTENTOS - 1) throw new GraphError('Instagram tardó demasiado en procesar la imagen.');
-            await sleep(POLL_ESPERA_MS);
-        }
-        const publicada = await llamarGraph(fetchFn, 'POST', `${GRAPH_URL}/${GRAPH_VERSION}/${conexion.igUserId}/media_publish`,
-            { token: conexion.accessToken, params: { creation_id: contenedor.id } });
-        await marcar(db, fecha, tipo, { estado: 'publicada', mediaId: String(publicada.id || ''), publicadaAt: Timestamp.fromMillis(nowMs), error: '' });
-        return { ok: true, mediaId: publicada.id };
+        const mediaId = await publicarImagenEnInstagram(conexion, urlImagen(baseUrl, fecha, tipo, status.imgToken), { fetchFn, sleep });
+        await marcar(db, fecha, tipo, { estado: 'publicada', mediaId, publicadaAt: Timestamp.fromMillis(nowMs), error: '' });
+        return { ok: true, mediaId };
     } catch (err) {
         const mensaje = String(err?.message || err).slice(0, 300);
         await marcar(db, fecha, tipo, { estado: 'error', error: mensaje });
@@ -412,5 +449,7 @@ module.exports = {
     urlImagen,
     publicarHistoria,
     publicarHistoriaDeHoy,
+    publicarPrueba,
+    PRUEBA_ID,
     vistaEstado
 };

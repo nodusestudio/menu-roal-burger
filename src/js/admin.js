@@ -15775,6 +15775,40 @@ function _cdRenderConfig(body) {
     });
 }
 
+// Imagen de la historia de PRUEBA (1080x1920 JPEG): inconfundible, para no confundirla con la del día.
+async function _cdGenerarImagenPrueba() {
+    const { W, H, CREMA, NARANJA, DISPLAY, TEXTO } = HISTORIA_CD;
+    try {
+        if (document.fonts) await Promise.all([document.fonts.load(`400 120px ${DISPLAY}`), document.fonts.load(`600 40px ${TEXTO}`)]);
+    } catch (_) { /* si no cargan, se usan las de respaldo */ }
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#14100C';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = NARANJA;
+    ctx.fillRect(0, 700, W, 14);
+    ctx.fillRect(0, 1160, W, 14);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = CREMA;
+    ctx.font = `400 300px ${DISPLAY}`;
+    ctx.fillText('PRUEBA', W / 2, 1000);
+    ctx.fillStyle = NARANJA;
+    ctx.font = `400 96px ${DISPLAY}`;
+    ctx.fillText('DE PUBLICACIÓN', W / 2, 1120);
+    ctx.fillStyle = CREMA;
+    ctx.font = `600 44px ${TEXTO}`;
+    ctx.fillText('Esta historia solo comprueba', W / 2, 1290);
+    ctx.fillText('la conexión de FODEXA.', W / 2, 1346);
+    ctx.fillText('Se borra en un momento.', W / 2, 1402);
+    ctx.fillStyle = NARANJA;
+    ctx.font = `600 38px ${TEXTO}`;
+    ctx.fillText(new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', dateStyle: 'medium', timeStyle: 'short' }).format(new Date()), W / 2, 1490);
+    return _cdCanvasABlob(canvas, 'image/jpeg', 0.9);
+}
+
 // ── Configuración → Instagram (conexión y publicación automática) ─────────
 function _cdIgConfigHtml() {
     const ig = cdState.ig;
@@ -15808,6 +15842,7 @@ function _cdIgConfigHtml() {
                 <span><strong>Publicar automáticamente</strong><br><span class="cd-muted">Apagado: no se publica nada solo (los botones "Publicar ahora" siguen funcionando). Antes de las ${escapeHtml(cdState.config.horaPublicacion || '12:00')}, deja preparadas las historias en "Próximos días → Preparar historias".</span></span></label>
             <div class="cd-ig-fila">
                 <button type="button" class="cd-btn" id="cdIgProbar">Probar conexión</button>
+                <button type="button" class="cd-btn" id="cdIgPrueba" title="Publica YA una historia de prueba en @${escapeHtml(ig.username)} para comprobar que todo funciona de punta a punta">🧪 Publicar historia de prueba</button>
                 <button type="button" class="cd-btn" id="cdIgRefrescar">Renovar token ahora</button>
                 <button type="button" class="cd-btn" id="cdIgDesconectar">Desconectar</button>
             </div>
@@ -15856,6 +15891,15 @@ function _cdBindIgConfig(body) {
         }
     });
     body.querySelector('#cdIgProbar')?.addEventListener('click', (e) => accion(e.currentTarget, 'Probando…', () => _cdLlamarIg('probar'), (r) => `Conexión OK: @${r.username}.`));
+    body.querySelector('#cdIgPrueba')?.addEventListener('click', (e) => {
+        const usuario = cdState.ig?.username || 'roalburger';
+        if (!window.confirm(`Se publicará AHORA una historia de prueba en @${usuario}.\n\nLa verán tus seguidores hasta que la borres desde la app de Instagram (abre la historia → ⋯ → Eliminar). Dura unos segundos de revisar.\n\n¿Publicarla?`)) return;
+        accion(e.currentTarget, 'Publicando…', async () => {
+            const r = await _cdLlamarIg('publicarPrueba', { imagenBase64: await _cdBlobABase64(await _cdGenerarImagenPrueba()) });
+            if (!r.ok) throw new Error(`No se publicó: ${r.error || 'error desconocido'}`);
+            return r;
+        }, (r) => `✅ Funciona: la historia de prueba ya está en @${r.username || usuario}. Ábrela en Instagram y bórrala (⋯ → Eliminar).${r.permalink ? ` ${r.permalink}` : ''}`);
+    });
     body.querySelector('#cdIgRefrescar')?.addEventListener('click', (e) => accion(e.currentTarget, 'Renovando…', () => _cdLlamarIg('refrescar'), 'Token renovado por otros 60 días.'));
     body.querySelector('#cdIgDesconectar')?.addEventListener('click', (e) => {
         if (!window.confirm('¿Desconectar Instagram? Se borra el token guardado y se deja de publicar. Las historias preparadas se conservan.')) return;

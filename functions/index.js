@@ -2942,6 +2942,10 @@ exports.adminInstagram = onCall(
                 fecha: d.fecha, tipo: d.tipo, jpeg: Buffer.from(base64, 'base64'), huella: d.huella
             }, uid);
         }
+        if (accion === 'publicarPrueba') {
+            const base64 = String(d.imagenBase64 || '').replace(/^data:image\/jpeg;base64,/, '');
+            return instagramHistorias.publicarPrueba(db, { jpeg: Buffer.from(base64, 'base64'), baseUrl: historiaImagenBaseUrl() });
+        }
         if (accion === 'publicarAhora') {
             return instagramHistorias.publicarHistoria(db, {
                 fecha: String(d.fecha || ''), tipo: String(d.tipo || ''), baseUrl: historiaImagenBaseUrl(), manual: true
