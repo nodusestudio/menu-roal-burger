@@ -15775,38 +15775,29 @@ function _cdRenderConfig(body) {
     });
 }
 
-// Imagen de la historia de PRUEBA (1080x1920 JPEG): inconfundible, para no confundirla con la del día.
+// Imagen de la historia de PRUEBA (1080x1920 JPEG): el logo de Roal centrado sobre su mismo naranja.
 async function _cdGenerarImagenPrueba() {
-    const { W, H, CREMA, NARANJA, DISPLAY, TEXTO } = HISTORIA_CD;
-    try {
-        if (document.fonts) await Promise.all([document.fonts.load(`400 120px ${DISPLAY}`), document.fonts.load(`600 40px ${TEXTO}`)]);
-    } catch (_) { /* si no cargan, se usan las de respaldo */ }
+    const { W, H } = HISTORIA_CD;
+    const logo = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('no se pudo cargar el logo'));
+        img.src = 'logo.png';
+    });
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#14100C';
+    // El logo trae su fondo naranja: se toma ese color para que el lienzo de 1080x1920 no tenga costuras.
+    const muestra = document.createElement('canvas');
+    muestra.width = muestra.height = 8;
+    const mctx = muestra.getContext('2d');
+    mctx.drawImage(logo, 0, 0); // a tamaño real: solo entra la esquina (naranja puro)
+    const [r, g, b] = mctx.getImageData(3, 3, 1, 1).data;
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = NARANJA;
-    ctx.fillRect(0, 700, W, 14);
-    ctx.fillRect(0, 1160, W, 14);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = CREMA;
-    ctx.font = `400 300px ${DISPLAY}`;
-    ctx.fillText('PRUEBA', W / 2, 1000);
-    ctx.fillStyle = NARANJA;
-    ctx.font = `400 96px ${DISPLAY}`;
-    ctx.fillText('DE PUBLICACIÓN', W / 2, 1120);
-    ctx.fillStyle = CREMA;
-    ctx.font = `600 44px ${TEXTO}`;
-    ctx.fillText('Esta historia solo comprueba', W / 2, 1290);
-    ctx.fillText('la conexión de FODEXA.', W / 2, 1346);
-    ctx.fillText('Se borra en un momento.', W / 2, 1402);
-    ctx.fillStyle = NARANJA;
-    ctx.font = `600 38px ${TEXTO}`;
-    ctx.fillText(new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', dateStyle: 'medium', timeStyle: 'short' }).format(new Date()), W / 2, 1490);
-    return _cdCanvasABlob(canvas, 'image/jpeg', 0.9);
+    ctx.drawImage(logo, 0, Math.round((H - W) / 2), W, W);
+    return _cdCanvasABlob(canvas, 'image/jpeg', 0.92);
 }
 
 // ── Configuración → Instagram (conexión y publicación automática) ─────────
