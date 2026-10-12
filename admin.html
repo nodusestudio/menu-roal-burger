@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261012-1701">
+    <link rel="stylesheet" href="style.css?v=20261012-1722">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -5270,8 +5270,23 @@
         .cd-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
         .cd-table td { white-space: normal; }
         .cd-table tfoot th { color: #eef4ff; border-top: 1px solid rgba(255,255,255,0.12); padding: 8px; text-align: left; }
-        .cd-acciones { display: flex; gap: 5px; flex-wrap: wrap; min-width: 300px; max-width: 460px; }
-        .cd-acciones .cd-btn { padding: 4px 10px; font-size: 0.74rem; }
+        .cd-table td.cd-acciones { white-space: nowrap; text-align: right; width: 1%; }
+        .cd-acciones .cd-btn { padding: 4px 10px; font-size: 0.76rem; margin-left: 4px; }
+        .cd-table td { padding: 5px 8px; }
+        .cd-table td.cd-nowrap { white-space: nowrap; }
+        .cd-prod { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+        .cd-prod .cd-thumb { width: 34px; height: 34px; border-radius: 7px; flex: 0 0 auto; }
+        .cd-prod .cd-muted { font-size: 0.7rem; }
+        .cd-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+        .cd-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; white-space: nowrap; border: 1px solid rgba(255,255,255,0.16); color: var(--admin-muted); background: rgba(255,255,255,0.04); }
+        .cd-pill--ok { color: #4ade80; border-color: rgba(74,222,128,0.4); background: rgba(74,222,128,0.08); }
+        .cd-pill--warn { color: #fbbf24; border-color: rgba(251,191,36,0.4); background: rgba(251,191,36,0.08); }
+        .cd-pill--err { color: #f87171; border-color: rgba(248,113,113,0.45); background: rgba(248,113,113,0.1); }
+        .cd-hist-msg { margin-top: 3px; font-size: 0.7rem; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cd-auto-estado { flex: 1 1 auto; }
+        .cd-menu-lista { display: grid; gap: 6px; }
+        .cd-menu-btn { display: grid; gap: 1px; text-align: left; border-radius: 12px; padding: 8px 12px; white-space: normal; }
+        .cd-menu-btn strong { color: #fff; font-size: 0.82rem; font-weight: 600; }
         .cd-ver-dias { display: inline-flex; }
         .cd-historias { display: inline-flex; gap: 6px; flex-wrap: wrap; }
         .cd-entrega-modal { position: fixed; inset: 0; z-index: 10050; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,0.6); }
@@ -13786,7 +13801,7 @@
                                     <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-cd-tab="config">⚙️ Configuración</button>
                                 </div>
                             </div>
-                            <p class="admin-hint">Todos los días a las 12:00 m se publica en las historias de Instagram una palabra venezolana + 2 dígitos. Con ese código, los primeros clientes obtienen el descuento en el producto del día, solo por el menú web/app o en caja (nunca por WhatsApp). Los próximos 30 días se programan solos; si editas un día, la programación automática ya no lo toca. Cada día trae sus dos historias listas para descargar (normal y de agotado).</p>
+                            <p class="admin-hint">Cada día a las 12:00 sale en Instagram una palabra + 2 dígitos: los primeros clientes que la usen (menú web/app o caja, nunca WhatsApp) obtienen el descuento en el producto del día. Los próximos 30 días se programan solos y las historias se preparan y se publican solas; si editas un día, la programación ya no lo toca.</p>
                             <div class="card-body cd-panel" data-cd-panel="proximos" id="cdProximosBody"><!-- render JS --></div>
                             <div class="card-body cd-panel" data-cd-panel="historial" id="cdHistorialBody" hidden><!-- render JS --></div>
                             <div class="card-body cd-panel" data-cd-panel="metricas" id="cdMetricasBody" hidden><!-- render JS --></div>
@@ -16300,17 +16315,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261012-1701"></script>
+    <script defer src="firebase-config.js?v=20261012-1722"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261012-1701"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261012-1722"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-1701"></script>
-    <script defer src="admin.js?v=20261012-1701"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-1722"></script>
+    <script defer src="admin.js?v=20261012-1722"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

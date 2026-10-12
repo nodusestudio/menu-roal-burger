@@ -60,7 +60,7 @@ test('estado por día en el panel: sin preparar, lista, rehacer, error y publica
         }
     };
     const p = panel({ productos: [PRODUCTO], config: { porcentaje: 30 }, historias });
-    assert.deepEqual({ ...p._cdEstadoHistoria(DIA, 'normal') }, { clase: 'ok', texto: 'Lista', haceFalta: false });
+    assert.deepEqual({ ...p._cdEstadoHistoria(DIA, 'normal') }, { clase: 'ok', texto: 'Lista', corto: 'lista', haceFalta: false });
     const publicada = p._cdEstadoHistoria(DIA, 'agotado');
     assert.equal(publicada.clase, 'ok');
     assert.match(publicada.texto, /^Publicada/);
@@ -71,7 +71,7 @@ test('estado por día en el panel: sin preparar, lista, rehacer, error y publica
     assert.equal(cambiado.clase, 'warn');
     assert.equal(cambiado.haceFalta, true);
     // Otro día sin nada → sin preparar.
-    assert.deepEqual({ ...p._cdEstadoHistoria({ ...DIA, id: '2026-10-14' }, 'normal') }, { clase: '', texto: 'Sin preparar', haceFalta: true });
+    assert.deepEqual({ ...p._cdEstadoHistoria({ ...DIA, id: '2026-10-14' }, 'normal') }, { clase: '', texto: 'Sin preparar', corto: 'preparando', haceFalta: true });
     // Error con la imagen vigente: se muestra el motivo y NO se rehace sola (el servidor reintenta).
     const conError = panel({ productos: [PRODUCTO], config: { porcentaje: 30 }, historias: { [DIA.id]: { normal: { estado: 'error', error: 'Instagram caído', huella: huella() } } } });
     const e = conError._cdEstadoHistoria(DIA, 'normal');

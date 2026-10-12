@@ -15271,29 +15271,23 @@ function _cdRenderProximos(body) {
 
     const filas = cdState.proximos.map((d) => {
         const esHoy = d.id === hoyKey;
-        const editando = cdState.editando === d.id;
-        if (editando) return _cdFilaEdicion(d, pct);
+        if (cdState.editando === d.id) return _cdFilaEdicion(d, pct);
         return `
             <tr data-cd-fecha="${d.id}">
-                <td><strong>${escapeHtml(_cdFechaLarga(d.id))}</strong>${esHoy ? ' <span class="cpana-badge cpana-badge--on">Hoy</span>' : ''}${d.editadoManualmente ? ' <span class="cpana-badge cpana-badge--manual">Manual</span>' : ''}</td>
-                <td><img class="cd-thumb" src="${escapeHtml(_cdProductoFoto(d.productoId))}" alt=""></td>
-                <td>${escapeHtml(d.productoNombre)}</td>
-                <td class="cd-muted">${escapeHtml(d.categoria || '')}</td>
-                <td><s class="cd-muted">${formatMoney(d.precioNormal)}</s> → <strong>${formatMoney(_cdPrecioDesc(d.precioNormal, pct))}</strong></td>
+                <td class="cd-nowrap"><strong>${escapeHtml(_cdFechaLarga(d.id))}</strong>${esHoy ? ' <span class="cpana-badge cpana-badge--on">Hoy</span>' : ''}${d.editadoManualmente ? ' <span class="cpana-badge cpana-badge--manual">Manual</span>' : ''}</td>
+                <td>
+                    <div class="cd-prod">
+                        <img class="cd-thumb" src="${escapeHtml(_cdProductoFoto(d.productoId))}" alt="">
+                        <span><strong>${escapeHtml(d.productoNombre)}</strong><br><span class="cd-muted">${escapeHtml(d.categoria || '')}</span></span>
+                    </div>
+                </td>
+                <td class="cd-nowrap"><s class="cd-muted">${formatMoney(d.precioNormal)}</s> → <strong>${formatMoney(_cdPrecioDesc(d.precioNormal, pct))}</strong></td>
                 <td><span class="cd-palabra">${escapeHtml(d.palabra)}</span><br><span class="cd-muted">${escapeHtml(d.significado || '')}</span></td>
-                <td>${esHoy ? `${Number(d.canjes || 0)}/` : ''}${Number(d.cupos || 0)}</td>
-                <td><div class="cd-hist">${_cdHistHtml(d)}</div></td>
+                <td class="cd-nowrap">${esHoy ? `${Number(d.canjes || 0)}/` : ''}${Number(d.cupos || 0)}</td>
+                <td>${_cdHistHtml(d)}</td>
                 <td class="cd-acciones">
                     <button type="button" class="cd-btn" data-cd-editar="${d.id}">✏️ Editar</button>
-                    <button type="button" class="cd-btn" data-cd-preparar="${d.id}" title="Dibuja las historias de este día y las deja listas para publicarse solas">📸 Preparar</button>
-                    ${esHoy ? `<button type="button" class="cd-btn" data-cd-publicar="normal" data-cd-fecha="${d.id}" title="Publica ahora la historia de hoy en Instagram">🚀 Publicar ahora</button>` : ''}
-                    ${esHoy && d.agotadoAt ? `<button type="button" class="cd-btn" data-cd-publicar="agotado" data-cd-fecha="${d.id}" title="Publica ahora la historia de agotado">🚀 Publicar agotado</button>` : ''}
-                    <button type="button" class="cd-btn" data-cd-copiar="${d.id}">📋 Copiar texto para la historia</button>
-                    <span class="cd-historias" role="group" aria-label="Imágenes para la historia">
-                        <button type="button" class="cd-btn" data-cd-entregar="normal" data-cd-fecha="${d.id}">🖼️ Historia</button>
-                        <button type="button" class="cd-btn" data-cd-entregar="agotado" data-cd-fecha="${d.id}">🖼️ Agotado</button>
-                        <button type="button" class="cd-btn" data-cd-entregar="ambas" data-cd-fecha="${d.id}">🖼️ Ambas</button>
-                    </span>
+                    <button type="button" class="cd-btn" data-cd-mas="${d.id}" title="Descargar las imágenes, copiar el texto o publicar ahora">⋯ Más</button>
                 </td>
             </tr>`;
     }).join('');
@@ -15308,14 +15302,14 @@ function _cdRenderProximos(body) {
                     ${[7, 15, 30].map((n) => `<option value="${n}"${cdState.verDias === n ? ' selected' : ''}>${n} días</option>`).join('')}
                 </select>
             </span>
-            <span class="cd-muted">${(cdState.todos || []).length} días programados · ${pct}% de descuento · se saltan los ${(cdState.config.diasCerrados || []).map((d) => CD_DIAS_SEMANA[d].toLowerCase()).join(', ') || '—'} y los cierres programados</span>
+            <span class="cd-muted">${(cdState.todos || []).length} días programados · ${pct}% de descuento · sin código: ${(cdState.config.diasCerrados || []).map((d) => CD_DIAS_SEMANA[d].toLowerCase()).join(', ') || '—'} y cierres programados</span>
+            <span class="cd-muted cd-auto-estado" id="cdAutoEstado" role="status"></span>
             <button type="button" class="section-action-btn" id="cdProgramarBtn">🔄 Completar próximos 30 días</button>
-            <button type="button" class="section-action-btn" id="cdPrepararBtn" title="Dibuja las historias que faltan (o cambiaron) de los días de la tabla y las deja listas para Instagram">📸 Preparar historias</button>
         </div>
         ${cdState.proximos.length ? `
         <div class="cpana-table-wrap">
             <table class="cpana-table cd-table">
-                <thead><tr><th>Fecha</th><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio → con descuento</th><th>Palabra</th><th>Cupos</th><th>Instagram</th><th></th></tr></thead>
+                <thead><tr><th>Fecha</th><th>Producto</th><th>Precio → con descuento</th><th>Palabra</th><th>Cupos</th><th>Instagram</th><th></th></tr></thead>
                 <tbody>${filas}</tbody>
             </table>
         </div>` : '<p class="admin-hint">Todavía no hay días programados. Toca "Completar próximos 30 días".</p>'}`;
@@ -15340,79 +15334,85 @@ function _cdRenderProximos(body) {
         cdState.editando = null;
         _cdRenderProximos(body);
     });
-    body.querySelectorAll('[data-cd-entregar]').forEach((b) => b.addEventListener('click', async () => {
-        const dia = cdState.proximos.find((d) => d.id === b.dataset.cdFecha);
-        if (!dia) return;
-        const label = b.textContent;
-        b.disabled = true;
-        b.textContent = 'Generando…';
-        try {
-            await _cdEntregarDia(dia, b.dataset.cdEntregar);
-        } catch (err) {
-            console.error('historia código del día:', err);
-            showNotice(`No se pudo generar la imagen: ${err.message || 'error'}`, 'error');
-        } finally {
-            b.disabled = false;
-            b.textContent = label;
-        }
-    }));
     body.querySelectorAll('[data-cd-editar]').forEach((b) => b.addEventListener('click', () => {
         cdState.editando = b.dataset.cdEditar;
         _cdRenderProximos(body);
     }));
-    // 📸 Preparar: una fila o todas las de la tabla (solo lo que falta o cambió).
-    const preparar = async (btn, dias) => {
-        const label = btn.textContent;
-        btn.disabled = true;
-        try {
-            const r = await _cdPrepararDias(dias, (hechas, total) => { btn.textContent = `Preparando ${hechas + 1}/${total}…`; });
-            if (!r.total) showNotice('Las historias de estos días ya están listas.', 'ok');
-            else if (r.errores.length) showNotice(`Se prepararon ${r.hechas} de ${r.total}. Falló: ${r.errores.join(' · ')}`, 'error');
-            else showNotice(`Listo: ${r.hechas} historia(s) preparadas para Instagram.`, 'ok');
-        } catch (err) {
-            showNotice(`No se pudo preparar: ${err.message || 'error'}`, 'error');
-        } finally {
-            btn.disabled = false;
-            btn.textContent = label;
-            _cdRenderTab();
-        }
-    };
-    body.querySelector('#cdPrepararBtn')?.addEventListener('click', (e) => preparar(e.currentTarget, cdState.proximos));
-    body.querySelectorAll('[data-cd-preparar]').forEach((b) => b.addEventListener('click', () => {
-        const dia = cdState.proximos.find((d) => d.id === b.dataset.cdPreparar);
-        if (dia) preparar(b, [dia]);
-    }));
-    // 🚀 Publicar ahora (hoy): salta el interruptor y el horario; sirve para recuperarse de un error.
-    body.querySelectorAll('[data-cd-publicar]').forEach((b) => b.addEventListener('click', async () => {
-        const tipo = b.dataset.cdPublicar;
-        if (!window.confirm(`¿Publicar AHORA la historia ${tipo === 'agotado' ? 'de agotado' : 'del código de hoy'} en Instagram (@${cdState.ig?.username || 'roalburger'})?`)) return;
-        const label = b.textContent;
-        b.disabled = true;
-        b.textContent = 'Publicando…';
-        try {
-            const r = await _cdLlamarIg('publicarAhora', { fecha: b.dataset.cdFecha, tipo });
-            if (r.ok) showNotice(r.ya ? 'Esa historia ya estaba publicada.' : 'Historia publicada en Instagram ✓', 'ok');
-            else showNotice(`No se publicó: ${r.error || r.motivo}`, 'error');
-        } catch (err) {
-            showNotice(`No se pudo publicar: ${err.message || 'error'}`, 'error');
-        } finally {
-            b.disabled = false;
-            b.textContent = label;
-            _cdRenderTab();
-        }
-    }));
-    body.querySelectorAll('[data-cd-copiar]').forEach((b) => b.addEventListener('click', async () => {
-        const dia = cdState.proximos.find((d) => d.id === b.dataset.cdCopiar);
-        if (!dia) return;
-        const texto = _cdTextoHistoria(dia, pct);
-        try {
-            await navigator.clipboard.writeText(texto);
-            showNotice('Texto copiado: pégalo en la historia de Instagram.', 'ok');
-        } catch (_) {
-            window.prompt('Copia el texto para la historia:', texto);
-        }
+    body.querySelectorAll('[data-cd-mas]').forEach((b) => b.addEventListener('click', () => {
+        const dia = cdState.proximos.find((d) => d.id === b.dataset.cdMas);
+        if (dia) _cdAbrirMenuDia(dia, pct);
     }));
     _cdBindEdicion(body, pct);
+    // Las historias para Instagram se preparan solas (lo que falte o haya cambiado).
+    _cdAutoPreparar();
+}
+
+// "⋯ Más" de un día: lo manual (subir las imágenes a mano, copiar el texto o publicar ya). Se abre
+// en una ventana para que no quede cortado por la tabla.
+function _cdAbrirMenuDia(dia, pct) {
+    document.getElementById('cdMenuDia')?.remove();
+    const esHoy = dia.id === _codigoDiaHoyKeyAdmin();
+    const puedePublicar = esHoy && cdState.ig?.conectado;
+    const boton = (id, titulo, ayuda) => `<button type="button" class="cd-btn cd-menu-btn" data-cd-menu="${id}"><strong>${titulo}</strong><span class="cd-muted">${ayuda}</span></button>`;
+    const modal = document.createElement('div');
+    modal.id = 'cdMenuDia';
+    modal.className = 'cd-entrega-modal';
+    modal.innerHTML = `
+        <div class="cd-entrega-box" role="dialog" aria-modal="true" aria-label="Más acciones del día">
+            <p class="cd-entrega-titulo">${escapeHtml(_cdFechaLarga(dia.id))} · ${escapeHtml(dia.productoNombre)}</p>
+            <p class="cd-entrega-texto">Las historias de Instagram se preparan y se publican solas. Esto es solo por si las quieres subir a mano${puedePublicar ? ' o publicar ya' : ''}.</p>
+            <div class="cd-menu-lista">
+                ${puedePublicar ? boton('pub-normal', '🚀 Publicar la historia de hoy ahora', 'Sale en @' + escapeHtml(cdState.ig.username) + ' en este momento') : ''}
+                ${puedePublicar && dia.agotadoAt ? boton('pub-agotado', '🚀 Publicar la historia de agotado ahora', 'Sale en @' + escapeHtml(cdState.ig.username) + ' en este momento') : ''}
+                ${boton('copiar', '📋 Copiar el texto', 'Para pegarlo en la historia')}
+                ${boton('img-normal', '🖼️ Descargar la historia', 'Imagen del código del día')}
+                ${boton('img-agotado', '🖼️ Descargar la de agotado', 'Imagen de "agotado por hoy"')}
+                ${boton('img-ambas', '🖼️ Descargar las dos', 'Historia + agotado')}
+            </div>
+            <div class="cd-entrega-acciones"><button type="button" class="cd-btn" data-cd-menu="cerrar">Cerrar</button></div>
+        </div>`;
+    const cerrar = () => modal.remove();
+    modal.addEventListener('click', async (e) => {
+        if (e.target === modal) { cerrar(); return; }
+        const b = e.target.closest('[data-cd-menu]');
+        if (!b) return;
+        const accion = b.dataset.cdMenu;
+        if (accion === 'cerrar') { cerrar(); return; }
+        if (accion === 'copiar') {
+            const texto = _cdTextoHistoria(dia, pct);
+            try {
+                await navigator.clipboard.writeText(texto);
+                showNotice('Texto copiado: pégalo en la historia de Instagram.', 'ok');
+            } catch (_) {
+                window.prompt('Copia el texto para la historia:', texto);
+            }
+            return;
+        }
+        const guardado = b.innerHTML;
+        b.disabled = true;
+        try {
+            if (accion.startsWith('img-')) {
+                b.textContent = 'Generando…';
+                await _cdEntregarDia(dia, accion.slice(4));
+            } else {
+                const tipo = accion === 'pub-agotado' ? 'agotado' : 'normal';
+                if (!window.confirm(`¿Publicar AHORA la historia ${tipo === 'agotado' ? 'de agotado' : 'del código de hoy'} en Instagram (@${cdState.ig?.username || 'roalburger'})?`)) return;
+                b.textContent = 'Publicando…';
+                const r = await _cdLlamarIg('publicarAhora', { fecha: dia.id, tipo });
+                if (r.ok) showNotice(r.ya ? 'Esa historia ya estaba publicada.' : 'Historia publicada en Instagram ✓', 'ok');
+                else showNotice(`No se publicó: ${r.error || r.motivo}`, 'error');
+                cerrar();
+                _cdRenderTab();
+                return;
+            }
+        } catch (err) {
+            console.error('historia código del día:', err);
+            showNotice(`No se pudo completar: ${err.message || 'error'}`, 'error');
+        } finally {
+            if (modal.isConnected) { b.disabled = false; b.innerHTML = guardado; }
+        }
+    });
+    document.body.appendChild(modal);
 }
 
 function _cdFilaEdicion(d, pct) {
@@ -15422,7 +15422,7 @@ function _cdFilaEdicion(d, pct) {
     return `
         <tr class="cd-fila-edicion" data-cd-fecha="${d.id}">
             <td><strong>${escapeHtml(_cdFechaLarga(d.id))}</strong></td>
-            <td colspan="8">
+            <td colspan="6">
                 <div class="cd-edit-grid">
                     <label>Producto
                         <select class="cpana-select" data-cd-campo="productoId"${yaTieneCanjes ? ' disabled title="Ya hay canjes hoy"' : ''}>${opciones}</select>
@@ -16535,12 +16535,12 @@ function _cdMismaHuella(a, b) {
 // { clase, texto, haceFalta } para una historia de un día ('normal' | 'agotado').
 function _cdEstadoHistoria(dia, tipo) {
     const p = cdState.historias?.[dia.id]?.[tipo];
-    if (!p) return { clase: '', texto: 'Sin preparar', haceFalta: true };
-    if (p.estado === 'publicada') return { clase: 'ok', texto: `Publicada${_cdHora(p.publicadaAt) ? ` ${_cdHora(p.publicadaAt)}` : ''}`, haceFalta: false };
-    if (p.estado === 'publicando') return { clase: '', texto: 'Publicando…', haceFalta: false };
+    if (!p) return { clase: '', texto: 'Sin preparar', corto: 'preparando', haceFalta: true };
+    if (p.estado === 'publicada') return { clase: 'ok', texto: `Publicada${_cdHora(p.publicadaAt) ? ` ${_cdHora(p.publicadaAt)}` : ''}`, corto: 'publicada', haceFalta: false };
+    if (p.estado === 'publicando') return { clase: '', texto: 'Publicando…', corto: 'publicando', haceFalta: false };
     const fresca = _cdMismaHuella(p.huella, _cdHuellaHistoria(dia, tipo === 'agotado'));
-    if (p.estado === 'error') return { clase: 'err', texto: `Error: ${p.error || 'no se pudo publicar'}${fresca ? '' : ' · rehacer'}`, haceFalta: !fresca };
-    return fresca ? { clase: 'ok', texto: 'Lista', haceFalta: false } : { clase: 'warn', texto: 'Rehacer (el día cambió)', haceFalta: true };
+    if (p.estado === 'error') return { clase: 'err', texto: `Error: ${p.error || 'no se pudo publicar'}${fresca ? '' : ' · rehacer'}`, corto: 'error', haceFalta: !fresca };
+    return fresca ? { clase: 'ok', texto: 'Lista', corto: 'lista', haceFalta: false } : { clase: 'warn', texto: 'Rehacer (el día cambió)', corto: 'actualizando', haceFalta: true };
 }
 
 async function _cdPrepararHistoria(dia, tipo) {
@@ -16551,35 +16551,88 @@ async function _cdPrepararHistoria(dia, tipo) {
     });
 }
 
-// Prepara (dibuja y sube) las historias que faltan o quedaron desactualizadas de esos días.
-// onProgreso(hechas, total) para el texto del botón. Devuelve { hechas, errores: [texto] }.
-async function _cdPrepararDias(dias, onProgreso) {
-    const pendientes = [];
-    for (const dia of dias) {
-        for (const tipo of ['normal', 'agotado']) {
-            if (_cdEstadoHistoria(dia, tipo).haceFalta) pendientes.push({ dia, tipo });
-        }
-    }
-    const errores = [];
-    let hechas = 0;
-    for (const { dia, tipo } of pendientes) {
-        if (onProgreso) onProgreso(hechas, pendientes.length);
-        try {
-            await _cdPrepararHistoria(dia, tipo);
-            hechas += 1;
-        } catch (err) {
-            console.error('preparar historia:', err);
-            errores.push(`${_cdFechaLarga(dia.id)} (${tipo === 'agotado' ? 'agotado' : 'historia'}): ${err.message || 'error'}`);
-        }
-    }
-    return { hechas, total: pendientes.length, errores };
+// ── Preparado automático de las historias ───────────────────────────────────
+// Nadie tiene que "preparar" nada: al abrir "Próximos días", después de editar un día y cada 15 min
+// (con FODEXA abierto) se dibujan y suben solas las historias de los próximos días que falten o que
+// hayan cambiado (palabra, producto, precio, cupos o %). Si una falla, se reintenta a los 10 min.
+// Limitación: las dibuja el navegador, así que FODEXA tiene que haberse abierto después de que se
+// creó o editó el día; si a las 12:00 no hay historia lista, no se publica nada y el panel avisa.
+const CD_AUTO_DIAS = 10;
+const CD_AUTO_REINTENTO_MS = 10 * 60 * 1000;
+let _cdAutoPreparando = false;
+const _cdAutoFallos = {}; // `${fecha}_${tipo}` → cuándo falló la última vez
+
+function _cdAutoTexto(texto) {
+    const el = document.getElementById('cdAutoEstado');
+    if (el) el.textContent = texto;
 }
 
+async function _cdAutoPreparar() {
+    if (_cdAutoPreparando || !cdState.ig?.conectado || !productsState.length) return;
+    const ahora = Date.now();
+    const faltan = [];
+    for (const dia of (cdState.todos || []).slice(0, CD_AUTO_DIAS)) {
+        for (const tipo of ['normal', 'agotado']) {
+            if (_cdEstadoHistoria(dia, tipo).haceFalta) faltan.push({ dia, tipo });
+        }
+    }
+    const pendientes = faltan.filter(({ dia, tipo }) => ahora - (_cdAutoFallos[`${dia.id}_${tipo}`] || 0) >= CD_AUTO_REINTENTO_MS);
+    if (!faltan.length) { _cdAutoTexto(''); return; }
+    if (!pendientes.length) { _cdAutoTexto(`⚠️ ${faltan.length} historia(s) sin preparar; se reintenta sola`); return; }
+
+    _cdAutoPreparando = true;
+    let hechas = 0;
+    let fallos = 0;
+    try {
+        for (const { dia, tipo } of pendientes) {
+            _cdAutoTexto(`📸 Preparando historias ${hechas + fallos + 1}/${pendientes.length}…`);
+            const clave = `${dia.id}_${tipo}`;
+            try {
+                await _cdPrepararHistoria(dia, tipo);
+                hechas += 1;
+                delete _cdAutoFallos[clave];
+                // Se refleja sin recargar: la tabla ya la muestra como lista.
+                (cdState.historias[dia.id] = cdState.historias[dia.id] || {})[tipo] = { estado: 'lista', huella: _cdHuellaHistoria(dia, tipo === 'agotado'), error: '' };
+            } catch (err) {
+                fallos += 1;
+                _cdAutoFallos[clave] = Date.now();
+                console.error('preparar historia:', clave, err);
+            }
+        }
+    } finally {
+        _cdAutoPreparando = false;
+    }
+    const body = document.querySelector('.cd-panel[data-cd-panel="proximos"]');
+    if (cdState.tab === 'proximos' && body && !body.hidden && !cdState.editando && !document.getElementById('cdMenuDia')) _cdRenderProximos(body);
+    _cdAutoTexto(fallos ? `⚠️ ${fallos} historia(s) no se pudieron preparar; se reintenta sola` : '');
+}
+
+// Con FODEXA abierto (aunque nadie entre a esta pestaña), revisa cada 15 min si hay historias por preparar.
+async function _cdAutoTick() {
+    try {
+        const uid = firebaseAuth?.currentUser?.uid || '';
+        if (!uid || uid.startsWith('mesero_') || document.hidden || _cdAutoPreparando || !productsState.length) return;
+        await _cdCargarBase();
+        await _cdAutoPreparar();
+    } catch (err) {
+        console.warn('preparado automático de historias:', err?.message || err);
+    }
+}
+if (typeof window !== 'undefined') {
+    setTimeout(_cdAutoTick, 60 * 1000);
+    setInterval(_cdAutoTick, 15 * 60 * 1000);
+}
+
+// Dos etiquetas cortas (Historia / Agotado) con su estado; el motivo de un error va debajo.
 function _cdHistHtml(dia) {
-    return ['normal', 'agotado'].map((tipo) => {
+    if (!cdState.ig?.conectado) return '<span class="cd-muted">—</span>';
+    const partes = ['normal', 'agotado'].map((tipo) => {
         const e = _cdEstadoHistoria(dia, tipo);
-        return `<span class="${e.clase ? `cd-hist-${e.clase}` : ''}">${tipo === 'agotado' ? 'Agotado' : 'Historia'}: ${escapeHtml(e.texto)}</span>`;
-    }).join('');
+        const icono = e.clase === 'ok' ? '✓' : e.clase === 'err' ? '⚠' : '…';
+        return { e, html: `<span class="cd-pill cd-pill--${e.clase || 'espera'}" title="${escapeHtml(e.texto)}">${tipo === 'agotado' ? 'Agotado' : 'Historia'} ${icono} ${escapeHtml(e.corto)}</span>` };
+    });
+    const error = partes.find((p) => p.e.clase === 'err');
+    return `<div class="cd-pills">${partes.map((p) => p.html).join('')}</div>${error ? `<div class="cd-hist-err cd-hist-msg" title="${escapeHtml(error.e.texto)}">${escapeHtml(error.e.texto)}</div>` : ''}`;
 }
 
 // Avisos sobre la conexión con Instagram en "Próximos días".
