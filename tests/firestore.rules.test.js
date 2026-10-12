@@ -385,4 +385,19 @@ test('SEGURIDAD Instagram: el token y las imágenes no se leen desde el navegado
     await assertFails(anonDb.collection('codigo_dia_historias').doc('2026-10-12').get());
     await assertFails(clienteDb.collection('codigo_dia_historias').doc('2026-10-12').get());
     await assertFails(adminDb.collection('codigo_dia_historias').doc('2026-10-12').update({ 'normal.estado': 'publicada' }));
+
+    // Bitácora, métricas y seguidores: los lee el admin; nadie escribe desde el navegador.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        const fs = context.firestore();
+        await fs.collection('instagram_publicaciones').doc('p1').set({ atMs: 1, ok: true });
+        await fs.collection('instagram_metricas').doc('m1').set({ mediaId: 'm1', ultimo: { reach: 5 } });
+        await fs.collection('instagram_seguidores').doc('2026-10-12').set({ seguidores: 100 });
+    });
+    for (const [col, id] of [['instagram_publicaciones', 'p1'], ['instagram_metricas', 'm1'], ['instagram_seguidores', '2026-10-12']]) {
+        await assertSucceeds(adminDb.collection(col).doc(id).get());
+        await assertFails(anonDb.collection(col).doc(id).get());
+        await assertFails(clienteDb.collection(col).doc(id).get());
+        await assertFails(adminDb.collection(col).doc(id).set({ hack: true }));
+        await assertFails(adminDb.collection(col).doc(`${id}-nuevo`).set({ hack: true }));
+    }
 });

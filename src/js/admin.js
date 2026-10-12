@@ -15234,6 +15234,7 @@ async function _cdRenderTab() {
         if (cdState.tab === 'proximos') _cdRenderProximos(body);
         else if (cdState.tab === 'historial') await _cdRenderHistorial(body);
         else if (cdState.tab === 'metricas') await _cdRenderMetricas(body);
+        else if (cdState.tab === 'instagram') await _cdRenderInstagram(body);
         else _cdRenderConfig(body);
     } catch (err) {
         console.error('Código del día:', err);
@@ -15719,6 +15720,132 @@ function _cdGraficaCanjes(dias) {
             </svg>
         </div>
         <p class="cd-muted cd-chart-nota">Barra más intensa = ese día se agotó. Pasa el mouse o toca una barra para ver el detalle; la tabla completa está en Historial.</p>`;
+}
+
+// ── Pestaña: Instagram (qué se publicó, cuándo y cómo le fue) ───────────────
+// Lee la bitácora (instagram_publicaciones), las métricas por historia (instagram_metricas, las
+// guarda el servidor cada 30 min mientras la historia vive: Instagram solo las da 24 h) y los
+// seguidores por día. Instagram NO entrega quién vio cada historia, solo cuántas cuentas.
+function _cdFechaHoraBogota(ms) {
+    if (!Number.isFinite(Number(ms))) return '';
+    return new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(Number(ms)));
+}
+const _cdNum = (n) => (Number.isFinite(Number(n)) ? Number(n).toLocaleString('es-CO') : '—');
+
+async function _cdLeerInstagram() {
+    const [pubs, mets, segs] = await Promise.all([
+        firebaseDb.collection('instagram_publicaciones').orderBy('atMs', 'desc').limit(80).get(),
+        firebaseDb.collection('instagram_metricas').orderBy('publicadaAtMs', 'desc').limit(80).get(),
+        firebaseDb.collection('instagram_seguidores').orderBy('fecha', 'desc').limit(31).get()
+    ]);
+    const publicaciones = pubs.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const metricas = Object.fromEntries(mets.docs.map((d) => [d.id, d.data()]));
+    const seguidores = segs.docs.map((d) => d.data());
+    // Canjes del código en cada día publicado (para ver qué vendió esa historia).
+    const fechas = [...new Set(publicaciones.filter((p) => p.tipo === 'normal' && /^\d{4}-\d{2}-\d{2}$/.test(p.fecha)).map((p) => p.fecha))].sort();
+    const dias = fechas.length ? Object.fromEntries((await _cdLeerDias(fechas[0], fechas[fechas.length - 1])).map((d) => [d.id, d])) : {};
+    return { publicaciones, metricas, seguidores, dias };
+}
+
+// Texto/valor de una métrica de una historia según el estado de su medición.
+function _cdCeldaMetrica(m, clave) {
+    if (!m) return '<span class="cd-muted">—</span>';
+    const v = m.ultimo?.[clave];
+    if (Number.isFinite(Number(v))) return _cdNum(v);
+    if (m.estado === 'pendiente') return '<span class="cd-muted" title="Se mide en la próxima pasada (cada 30 min)">…</span>';
+    if (m.estado === 'pocos_espectadores') return clave === 'reach' ? '<span class="cd-muted" title="Instagram no da datos con muy pocas vistas">&lt;5 vistas</span>' : '<span class="cd-muted">—</span>';
+    if (m.estado === 'sin_permiso') return '<span class="cd-hist-err" title="Falta el permiso de métricas">sin permiso</span>';
+    if (m.estado === 'error') return `<span class="cd-hist-err" title="${escapeHtml(m.error || '')}">error</span>`;
+    return '<span class="cd-muted">—</span>';
+}
+
+function _cdNavegacion(m) {
+    const n = m?.ultimo?.navigation;
+    if (!n) return '<span class="cd-muted">—</span>';
+    const adelante = (Number(n.tap_forward) || 0) + (Number(n.swipe_forward) || 0);
+    const detalle = Object.entries(n).map(([k, v]) => `${k}: ${v}`).join(' · ');
+    return `<span class="cd-nowrap" title="${escapeHtml(detalle)}">→ ${_cdNum(adelante)} · ← ${_cdNum(n.tap_back || 0)} · ✕ ${_cdNum(n.tap_exit || 0)}</span>`;
+}
+
+function _cdQueEs(p) {
+    if (p.tipo === 'prueba') return '<div class="cd-que">🧪 Historia de prueba (logo)</div>';
+    if (p.tipo === 'agotado') return '<div class="cd-que">🚫 Historia de agotado</div>';
+    return `<div class="cd-que">⭐ Historia del código<br><span class="cd-muted">${escapeHtml(p.productoNombre || '')}${p.palabra ? ` · ${escapeHtml(p.palabra)}` : ''}</span></div>`;
+}
+
+async function _cdRenderInstagram(body) {
+    const { publicaciones, metricas, seguidores, dias } = await _cdLeerInstagram();
+    const ig = cdState.ig;
+    const reales = publicaciones.filter((p) => p.tipo !== 'prueba');
+    const hace30 = Date.now() - 30 * 24 * 3600 * 1000;
+    const publicadas30 = reales.filter((p) => p.ok && p.atMs >= hace30).length;
+    const medidas = reales.filter((p) => p.ok && metricas[p.mediaId] && Number.isFinite(Number(metricas[p.mediaId].ultimo?.reach)));
+    const promedio = (clave) => (medidas.length ? Math.round(medidas.reduce((a, p) => a + (Number(metricas[p.mediaId].ultimo?.[clave]) || 0), 0) / medidas.length) : null);
+    const hoySeg = seguidores[0];
+    const antes = seguidores.find((s) => s.fecha <= _cdAddDays(hoySeg?.fecha || _codigoDiaHoyKeyAdmin(), -7));
+    const delta = hoySeg && antes ? hoySeg.seguidores - antes.seguidores : null;
+    const maxAlcance = Math.max(1, ...publicaciones.map((p) => Number(metricas[p.mediaId]?.ultimo?.reach) || 0));
+    const sinPermiso = Object.values(metricas).some((m) => m.estado === 'sin_permiso');
+
+    const filas = publicaciones.map((p) => {
+        const m = metricas[p.mediaId];
+        const dia = p.tipo === 'normal' ? dias[p.fecha] : null;
+        const alcance = Number(m?.ultimo?.reach) || 0;
+        const resultado = p.ok
+            ? '<span class="cd-pill cd-pill--ok">✓ publicada</span>'
+            : `<span class="cd-pill cd-pill--err" title="${escapeHtml(p.error || '')}">⚠ no salió</span><div class="cd-hist-err cd-hist-msg" title="${escapeHtml(p.error || '')}">${escapeHtml(p.error || '')}</div>`;
+        return `
+            <tr>
+                <td class="cd-nowrap"><strong>${escapeHtml(_cdFechaHoraBogota(p.atMs))}</strong></td>
+                <td>${_cdQueEs(p)}</td>
+                <td class="cd-nowrap cd-muted">${p.origen === 'manual' ? 'manual' : 'automática'}</td>
+                <td>${resultado}</td>
+                <td class="cd-num">${p.ok ? `${_cdCeldaMetrica(m, 'reach')}${alcance ? `<span class="cd-bar-mini" style="width:${Math.max(4, Math.round(alcance / maxAlcance * 60))}px"></span>` : ''}` : '<span class="cd-muted">—</span>'}</td>
+                <td class="cd-num">${p.ok ? _cdCeldaMetrica(m, 'views') : '<span class="cd-muted">—</span>'}</td>
+                <td class="cd-num">${p.ok ? _cdCeldaMetrica(m, 'replies') : '<span class="cd-muted">—</span>'}</td>
+                <td class="cd-num">${p.ok ? _cdCeldaMetrica(m, 'shares') : '<span class="cd-muted">—</span>'}</td>
+                <td class="cd-num">${p.ok ? _cdCeldaMetrica(m, 'total_interactions') : '<span class="cd-muted">—</span>'}</td>
+                <td class="cd-nowrap">${p.ok ? _cdNavegacion(m) : '<span class="cd-muted">—</span>'}</td>
+                <td class="cd-num">${dia ? `${Number(dia.canjes || 0)}/${Number(dia.cupos || 0)}` : '<span class="cd-muted">—</span>'}</td>
+            </tr>`;
+    }).join('');
+
+    body.innerHTML = `
+        ${!ig?.conectado ? '<p class="cd-aviso">📸 Instagram no está conectado. Conéctalo en Configuración → Instagram para publicar y medir las historias.</p>' : ''}
+        ${sinPermiso ? `<p class="cd-aviso">⚠️ Instagram no está entregando las métricas: a este token le falta el permiso <strong>instagram_business_manage_insights</strong>. En developers.facebook.com → tu app → Instagram → API con inicio de sesión de Instagram agrega ese permiso, genera un token nuevo y pégalo en Configuración → Instagram → "Reconectar con un token nuevo".</p>` : ''}
+        <div class="cd-kpis">
+            <div class="cd-kpi"><span>Seguidores</span><strong>${hoySeg ? _cdNum(hoySeg.seguidores) : (Number.isFinite(Number(ig?.seguidores)) ? _cdNum(ig.seguidores) : '—')}</strong><span>${delta === null ? 'sin comparación todavía' : `${delta >= 0 ? '+' : ''}${_cdNum(delta)} en 7 días`}</span></div>
+            <div class="cd-kpi"><span>Historias publicadas (30 días)</span><strong>${_cdNum(publicadas30)}</strong><span>${reales.filter((p) => !p.ok).length} intento(s) fallido(s) en la lista</span></div>
+            <div class="cd-kpi"><span>Alcance promedio por historia</span><strong>${promedio('reach') === null ? '—' : _cdNum(promedio('reach'))}</strong><span>cuentas distintas que la vieron</span></div>
+            <div class="cd-kpi"><span>Vistas promedio por historia</span><strong>${promedio('views') === null ? '—' : _cdNum(promedio('views'))}</strong><span>${medidas.length} historia(s) medida(s)</span></div>
+        </div>
+        <div class="cd-toolbar">
+            <span class="cd-muted">Las métricas se actualizan solas cada 30 min mientras la historia está viva (Instagram solo las da 24 h); después quedan guardadas aquí. Instagram no dice <em>quién</em> vio cada historia, solo cuántas cuentas.</span>
+            <button type="button" class="section-action-btn" id="cdIgMetricasBtn">🔄 Actualizar métricas ahora</button>
+        </div>
+        ${publicaciones.length ? `
+        <div class="cpana-table-wrap">
+            <table class="cpana-table cd-table">
+                <thead><tr><th>Publicada</th><th>Qué</th><th>Origen</th><th>Resultado</th><th title="Cuentas distintas que la vieron">Alcance</th><th title="Veces que se reprodujo">Vistas</th><th>Respuestas</th><th>Compartidas</th><th>Interacciones</th><th title="→ avanzó (toque o deslizó) · ← volvió · ✕ salió">Navegación</th><th title="Canjes del código ese día / cupos">Canjes</th></tr></thead>
+                <tbody>${filas}</tbody>
+            </table>
+        </div>` : '<p class="admin-hint">Todavía no se ha publicado ninguna historia desde FODEXA. Cuando salga la primera aparecerá aquí con sus métricas.</p>'}`;
+
+    body.querySelector('#cdIgMetricasBtn')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Actualizando…';
+        try {
+            const r = await _cdLlamarIg('actualizarMetricas');
+            if (r.motivo === 'sin_conexion') showNotice('Instagram no está conectado.', 'error');
+            else if (r.sinPermiso) showNotice('Instagram no deja leer las métricas: falta el permiso instagram_business_manage_insights (reconecta con un token nuevo).', 'error');
+            else showNotice(`Métricas actualizadas (${r.actualizadas} historia(s) medida(s)).`, 'ok');
+        } catch (err) {
+            showNotice(`No se pudieron actualizar: ${err.message || 'error'}`, 'error');
+        } finally {
+            _cdRenderTab();
+        }
+    });
 }
 
 // ── Pestaña: Configuración ──────────────────────────────────────────────────

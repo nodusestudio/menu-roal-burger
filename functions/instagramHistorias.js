@@ -31,6 +31,11 @@ const GRAPH_URL = 'https://graph.instagram.com';
 const GRAPH_VERSION = 'v26.0';
 const TIPOS = Object.freeze(['normal', 'agotado']);
 const PRUEBA_ID = 'prueba'; // en lugar de una fecha: la historia de prueba del panel
+const PUBLICACIONES_COLLECTION = 'instagram_publicaciones'; // bitácora: cuándo se publicó (o falló) qué
+const METRICAS_COLLECTION = 'instagram_metricas';           // métricas por historia (Instagram solo las da 24 h)
+const SEGUIDORES_COLLECTION = 'instagram_seguidores';       // seguidores por día
+const HORA_MS = 60 * 60 * 1000;
+const METRICAS_VIGENCIA_MS = 24 * HORA_MS; // una historia dura 24 h y sus métricas también
 const MAX_JPEG_BYTES = 900 * 1024; // un doc de Firestore admite 1 MiB
 const MAX_INTENTOS = 3;
 const PUBLICANDO_VIGENCIA_MS = 10 * 60 * 1000;
@@ -102,7 +107,8 @@ function estadoPublico(conexion, nowMs = Date.now()) {
         activo: conexion.activo === true,
         expiraEnDias: expira ? Math.floor((expira - nowMs) / DAY_MS) : null,
         vencido: expira ? expira <= nowMs : false,
-        ultimoError: conexion.ultimoError || ''
+        ultimoError: conexion.ultimoError || '',
+        seguidores: typeof conexion.seguidores === 'number' ? conexion.seguidores : null
     };
 }
 
@@ -340,9 +346,12 @@ async function publicarPrueba(db, { jpeg, nowMs = Date.now(), fetchFn = fetch, b
             permalink = String(m.permalink || '');
         } catch (_) { /* el enlace es opcional */ }
         await conexionRef(db).set({ ultimoError: '' }, { merge: true });
+        await registrarPublicacion(db, { fecha: cd.bogotaParts(nowMs).dateKey, tipo: 'prueba', origen: 'manual', ok: true, mediaId, nowMs });
+        await iniciarMetricas(db, { mediaId, fecha: cd.bogotaParts(nowMs).dateKey, tipo: 'prueba', publicadaAtMs: nowMs });
         return { ok: true, mediaId, permalink, username: conexion.username };
     } catch (err) {
         const mensaje = String(err?.message || err).slice(0, 300);
+        await registrarPublicacion(db, { fecha: cd.bogotaParts(nowMs).dateKey, tipo: 'prueba', origen: 'manual', ok: false, error: mensaje, nowMs });
         if (err instanceof GraphError && err.esDeToken) {
             await conexionRef(db).set({ ultimoError: `Instagram rechazó el token (reconecta la cuenta): ${mensaje}`.slice(0, 300) }, { merge: true });
         }
@@ -375,12 +384,18 @@ async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn =
     const parte = status[tipo];
     if (parte?.estado === 'publicada') return { ok: true, ya: true, mediaId: parte.mediaId };
     if (tipo === 'agotado' && status.normal?.estado !== 'publicada') return { ok: false, motivo: 'normal_no_publicada' };
-    if (!parte) {
-        await marcar(db, fecha, tipo, { estado: 'error', error: 'No había una historia preparada para hoy. Prepárala en "Próximos días".', intentos: 0 });
+    const detalle = { fecha, tipo, origen: manual ? 'manual' : 'automatica', palabra: dia.palabra || '', productoNombre: producto?.nombre || dia.productoNombre || '' };
+    // El cron pasa cada 5 min: el bitácora solo anota un "no se pudo" cuando el motivo es nuevo.
+    const noSePudo = async (mensaje, extra = {}) => {
+        if (parte?.estado !== 'error' || parte.error !== mensaje) await registrarPublicacion(db, { ...detalle, ok: false, error: mensaje, nowMs });
+        await marcar(db, fecha, tipo, { estado: 'error', error: mensaje, ...extra });
+    };
+    if (!parte || !parte.huella) {
+        await noSePudo('No había una historia preparada para hoy. Prepárala en "Próximos días".', { intentos: 0 });
         return { ok: false, motivo: 'sin_preparar' };
     }
     if (!mismaHuella(parte.huella, huellaDe(tipo, dia, config, producto))) {
-        await marcar(db, fecha, tipo, { estado: 'error', error: 'La historia quedó desactualizada (cambió la palabra, el producto, el precio o los cupos). Vuelve a prepararla.' });
+        await noSePudo('La historia quedó desactualizada (cambió la palabra, el producto, el precio o los cupos). Vuelve a prepararla.');
         return { ok: false, motivo: 'desactualizada' };
     }
 
@@ -399,10 +414,13 @@ async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn =
     try {
         const mediaId = await publicarImagenEnInstagram(conexion, urlImagen(baseUrl, fecha, tipo, status.imgToken), { fetchFn, sleep });
         await marcar(db, fecha, tipo, { estado: 'publicada', mediaId, publicadaAt: Timestamp.fromMillis(nowMs), error: '' });
+        await registrarPublicacion(db, { ...detalle, ok: true, mediaId, nowMs });
+        await iniciarMetricas(db, { mediaId, fecha, tipo, publicadaAtMs: nowMs });
         return { ok: true, mediaId };
     } catch (err) {
         const mensaje = String(err?.message || err).slice(0, 300);
         await marcar(db, fecha, tipo, { estado: 'error', error: mensaje });
+        await registrarPublicacion(db, { ...detalle, ok: false, error: mensaje, nowMs });
         if (err instanceof GraphError && err.esDeToken) {
             await conexionRef(db).set({ ultimoError: `Instagram rechazó el token (reconecta la cuenta): ${mensaje}`.slice(0, 300) }, { merge: true });
         }
@@ -415,6 +433,125 @@ async function publicarHistoriaDeHoy(db, opts = {}) {
     const nowMs = opts.nowMs ?? Date.now();
     const fecha = cd.bogotaParts(nowMs).dateKey;
     return publicarHistoria(db, { ...opts, fecha, tipo: 'normal', nowMs });
+}
+
+// ── Bitácora y métricas ──────────────────────────────────────────────────────
+
+// Cada intento de publicar (bien o mal) queda anotado: cuándo, qué, de dónde salió y el resultado.
+async function registrarPublicacion(db, { fecha, tipo, origen, ok, mediaId = '', error = '', palabra = '', productoNombre = '', nowMs = Date.now() }) {
+    try {
+        await db.collection(PUBLICACIONES_COLLECTION).add({
+            atMs: nowMs, at: Timestamp.fromMillis(nowMs), fecha, tipo, origen: origen || 'automatica', ok: ok === true,
+            mediaId: String(mediaId || ''), error: String(error || '').slice(0, 300), palabra, productoNombre
+        });
+    } catch (err) {
+        console.error('registrarPublicacion:', err.message); // la bitácora nunca debe tumbar una publicación
+    }
+}
+
+// Instagram solo da las métricas de una historia mientras dura (24 h): se empieza a medir al publicarla.
+async function iniciarMetricas(db, { mediaId, fecha, tipo, publicadaAtMs }) {
+    if (!mediaId) return;
+    try {
+        await db.collection(METRICAS_COLLECTION).doc(mediaId).set({
+            mediaId, fecha, tipo, publicadaAtMs, expiraAtMs: publicadaAtMs + METRICAS_VIGENCIA_MS, estado: 'pendiente', actualizadoAtMs: 0, ultimo: {}, serie: []
+        }, { merge: true });
+    } catch (err) {
+        console.error('iniciarMetricas:', err.message);
+    }
+}
+
+const METRICAS_HISTORIA = ['reach', 'views', 'replies', 'shares', 'total_interactions', 'profile_visits', 'link_clicks'];
+
+function valorDeMetrica(m) {
+    const v = m?.total_value?.value ?? m?.values?.[0]?.value;
+    return Number.isFinite(Number(v)) ? Number(v) : null;
+}
+
+// 'pocos_espectadores' (Instagram no da datos con menos de ~5 vistas), 'sin_permiso' o 'error'.
+function clasificarErrorInsights(err) {
+    const texto = String(err?.message || '');
+    if (/enough viewers/i.test(texto)) return 'pocos_espectadores';
+    if (err instanceof GraphError && (err.esDeToken || /permission|insufficient|scope|not authorized|manage_insights/i.test(texto))) return 'sin_permiso';
+    return 'error';
+}
+
+// Métricas de UNA historia. Si Instagram rechaza el lote por una métrica que no admite (código 100),
+// se piden de a una y se ignoran las que no existan.
+async function leerInsightsHistoria(fetchFn, conexion, mediaId) {
+    const base = `${GRAPH_URL}/${GRAPH_VERSION}/${mediaId}/insights`;
+    const pedir = (params) => llamarGraph(fetchFn, 'GET', `${base}?${new URLSearchParams(params)}`, { token: conexion.accessToken });
+    const valores = {};
+    try {
+        const r = await pedir({ metric: METRICAS_HISTORIA.join(',') });
+        for (const m of r.data || []) valores[m.name] = valorDeMetrica(m);
+    } catch (err) {
+        if (!(err instanceof GraphError) || err.code !== 100) throw err;
+        for (const nombre of METRICAS_HISTORIA) {
+            try {
+                const r = await pedir({ metric: nombre });
+                for (const m of r.data || []) valores[m.name] = valorDeMetrica(m);
+            } catch (e) {
+                if (!(e instanceof GraphError) || e.code !== 100) throw e;
+            }
+        }
+    }
+    // Navegación: toques hacia adelante, hacia atrás, salidas y deslizamientos.
+    try {
+        const r = await pedir({ metric: 'navigation', breakdown: 'story_navigation_action_type' });
+        const m = (r.data || [])[0];
+        const nav = {};
+        for (const b of m?.total_value?.breakdowns?.[0]?.results || []) nav[b.dimension_values?.[0] || 'otro'] = Number(b.value) || 0;
+        valores.navigation = Object.keys(nav).length ? nav : { total: valorDeMetrica(m) ?? 0 };
+    } catch (err) {
+        if (!(err instanceof GraphError) || err.code !== 100) throw err;
+    }
+    return valores;
+}
+
+// Cada 30 min: seguidores del día y métricas de las historias que aún están vivas (más 1 h de margen,
+// porque Instagram puede retrasar sus datos). Guarda una serie para ver cómo crece el alcance.
+async function actualizarMetricas(db, { nowMs = Date.now(), fetchFn = fetch } = {}) {
+    const conexion = await leerConexion(db);
+    if (!conexion?.accessToken) return { ok: false, motivo: 'sin_conexion', actualizadas: 0 };
+    const resumen = { ok: true, actualizadas: 0, sinPermiso: 0, pocosEspectadores: 0, errores: 0, seguidores: null };
+
+    try {
+        const perfil = await llamarGraph(fetchFn, 'GET', `${GRAPH_URL}/${GRAPH_VERSION}/me?${new URLSearchParams({ fields: 'followers_count,media_count' })}`, { token: conexion.accessToken });
+        const p = Array.isArray(perfil.data) ? perfil.data[0] : perfil;
+        if (Number.isFinite(Number(p?.followers_count))) {
+            resumen.seguidores = Number(p.followers_count);
+            await db.collection(SEGUIDORES_COLLECTION).doc(cd.bogotaParts(nowMs).dateKey).set({
+                fecha: cd.bogotaParts(nowMs).dateKey, seguidores: resumen.seguidores, medios: Number(p.media_count) || 0, atMs: nowMs
+            }, { merge: true });
+            await conexionRef(db).set({ seguidores: resumen.seguidores }, { merge: true });
+        }
+    } catch (err) {
+        resumen.errorSeguidores = String(err.message || err).slice(0, 200);
+    }
+
+    const snap = await db.collection(METRICAS_COLLECTION).where('expiraAtMs', '>', nowMs - HORA_MS).get();
+    for (const doc of snap.docs) {
+        const d = doc.data();
+        let patch;
+        try {
+            const v = await leerInsightsHistoria(fetchFn, conexion, d.mediaId || doc.id);
+            const ultimo = { ...(d.ultimo || {}), ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null && x !== undefined)) };
+            const punto = { atMs: nowMs, reach: ultimo.reach ?? null, views: ultimo.views ?? null };
+            const previa = (d.serie || [])[(d.serie || []).length - 1];
+            const cambio = !previa || previa.reach !== punto.reach || previa.views !== punto.views;
+            patch = { ultimo, estado: 'ok', error: '', actualizadoAtMs: nowMs, serie: cambio ? [...(d.serie || []), punto].slice(-60) : (d.serie || []) };
+            resumen.actualizadas += 1;
+        } catch (err) {
+            const estado = clasificarErrorInsights(err);
+            patch = { estado, error: String(err.message || err).slice(0, 300), actualizadoAtMs: nowMs };
+            if (estado === 'sin_permiso') resumen.sinPermiso += 1;
+            else if (estado === 'pocos_espectadores') resumen.pocosEspectadores += 1;
+            else resumen.errores += 1;
+        }
+        await doc.ref.set(patch, { merge: true });
+    }
+    return resumen;
 }
 
 // Estado por día para el panel (sin bytes ni token).
@@ -451,5 +588,11 @@ module.exports = {
     publicarHistoriaDeHoy,
     publicarPrueba,
     PRUEBA_ID,
+    PUBLICACIONES_COLLECTION,
+    METRICAS_COLLECTION,
+    SEGUIDORES_COLLECTION,
+    METRICAS_VIGENCIA_MS,
+    actualizarMetricas,
+    leerInsightsHistoria,
     vistaEstado
 };

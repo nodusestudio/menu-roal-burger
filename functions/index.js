@@ -2942,6 +2942,7 @@ exports.adminInstagram = onCall(
                 fecha: d.fecha, tipo: d.tipo, jpeg: Buffer.from(base64, 'base64'), huella: d.huella
             }, uid);
         }
+        if (accion === 'actualizarMetricas') return instagramHistorias.actualizarMetricas(db);
         if (accion === 'publicarPrueba') {
             const base64 = String(d.imagenBase64 || '').replace(/^data:image\/jpeg;base64,/, '');
             return instagramHistorias.publicarPrueba(db, { jpeg: Buffer.from(base64, 'base64'), baseUrl: historiaImagenBaseUrl() });
@@ -3011,6 +3012,19 @@ exports.refrescarTokenInstagram = onSchedule(
             console.log(`refrescarTokenInstagram: ${r.refrescado ? 'renovado' : r.motivo}`);
         } catch (err) {
             console.error('refrescarTokenInstagram:', err.message);
+        }
+    }
+);
+
+// Cada 30 min: seguidores y métricas de las historias vivas (Instagram solo las da durante 24 h).
+exports.actualizarMetricasInstagram = onSchedule(
+    { schedule: '*/30 * * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        try {
+            const r = await instagramHistorias.actualizarMetricas(getFirestore());
+            if (r.actualizadas || r.sinPermiso || r.errores) console.log(`actualizarMetricasInstagram: ${JSON.stringify(r)}`);
+        } catch (err) {
+            console.error('actualizarMetricasInstagram:', err.message);
         }
     }
 );

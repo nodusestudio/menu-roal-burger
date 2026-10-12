@@ -43,7 +43,7 @@ function jpeg(tamano = 5000) {
 }
 
 // Meta falso: registra cada llamada y responde según la ruta. `fallas` = [{ ruta: /regex/, error, veces }].
-function metaFalso({ perfil, fallas = [], statusCode = 'FINISHED' } = {}) {
+function metaFalso({ perfil, fallas = [], statusCode = 'FINISHED', insights = null } = {}) {
     const llamadas = [];
     const pendientes = fallas.map((f) => ({ ...f, veces: f.veces ?? Infinity }));
     const respuesta = (status, json) => ({ ok: status < 400, status, json: async () => json });
@@ -56,7 +56,11 @@ function metaFalso({ perfil, fallas = [], statusCode = 'FINISHED' } = {}) {
             falla.veces -= 1;
             return respuesta(falla.status || 400, { error: falla.error });
         }
-        if (/\/me$/.test(u.pathname)) return respuesta(200, perfil || { data: [{ user_id: '1784', username: 'roalburger', account_type: 'BUSINESS' }] });
+        if (/\/insights$/.test(u.pathname)) {
+            const r = insights ? insights(Object.fromEntries(u.searchParams), u.pathname) : { data: [] };
+            return r && r.error ? respuesta(r.status || 400, { error: r.error }) : respuesta(200, r);
+        }
+        if (/\/me$/.test(u.pathname)) return respuesta(200, perfil || { data: [{ user_id: '1784', username: 'roalburger', account_type: 'BUSINESS', followers_count: 1234, media_count: 58 }] });
         if (/refresh_access_token$/.test(u.pathname)) return respuesta(200, { access_token: 'TOKEN-NUEVO-RENOVADO', expires_in: 5183944 });
         if (/\/media$/.test(u.pathname)) return respuesta(200, { id: 'cont-1' });
         if (/\/cont-1$/.test(u.pathname)) return respuesta(200, { status_code: statusCode });
@@ -95,7 +99,8 @@ before(() => { db = getFirestore(); });
 beforeEach(async () => {
     await Promise.all([
         borrarColeccion('productos'), borrarColeccion(cd.DIAS_COLLECTION), borrarColeccion(cd.CONFIG_COLLECTION),
-        borrarColeccion(ig.CONFIG_COLLECTION), borrarColeccion(ig.HISTORIAS_COLLECTION), borrarColeccion(ig.IMAGENES_COLLECTION)
+        borrarColeccion(ig.CONFIG_COLLECTION), borrarColeccion(ig.HISTORIAS_COLLECTION), borrarColeccion(ig.IMAGENES_COLLECTION),
+        borrarColeccion(ig.PUBLICACIONES_COLLECTION), borrarColeccion(ig.METRICAS_COLLECTION), borrarColeccion(ig.SEGUIDORES_COLLECTION)
     ]);
     await db.collection('configuracion').doc('config_horario').set({ aperturaHora: 16, cierreHora: 22, cierresProgramados: [] });
     await db.collection('productos').doc('bp-plus').set({ estado: 'active', nombre: 'Burger Plus', categoria: 'BURGER PREMIUM', precio: 30000 });
@@ -421,4 +426,145 @@ test('prueba: cada prueba usa un token distinto; sin conexión o con una imagen 
     assert.equal(r.ok, false);
     assert.match(r.error, /access token/);
     assert.match((await ig.estadoConexion(db, AHORA)).ultimoError, /reconecta la cuenta/);
+});
+
+// ── Bitácora de publicaciones y métricas ─────────────────────────────────────
+
+const bitacora = async () => (await db.collection(ig.PUBLICACIONES_COLLECTION).orderBy('atMs').get()).docs.map((d) => d.data());
+const opPub = (meta, extra = {}) => ({ fecha: LUNES, tipo: 'normal', nowMs: AHORA, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera, ...extra });
+
+test('bitácora: una publicación automática anota cuándo, qué (producto y palabra), de dónde salió y su id; y empieza a medirla', async () => {
+    await conectar();
+    await prepararHistoria(LUNES, 'normal', HUELLA_NORMAL);
+    await ig.publicarHistoria(db, opPub(metaFalso()));
+    const [p] = await bitacora();
+    assert.deepEqual({ ok: p.ok, tipo: p.tipo, origen: p.origen, fecha: p.fecha, mediaId: p.mediaId, palabra: p.palabra, productoNombre: p.productoNombre, atMs: p.atMs },
+        { ok: true, tipo: 'normal', origen: 'automatica', fecha: LUNES, mediaId: 'media-1', palabra: 'CHAMO27', productoNombre: 'Burger Plus', atMs: AHORA });
+    const m = (await db.collection(ig.METRICAS_COLLECTION).doc('media-1').get()).data();
+    assert.equal(m.estado, 'pendiente');
+    assert.equal(m.publicadaAtMs, AHORA);
+    assert.equal(m.expiraAtMs, AHORA + ig.METRICAS_VIGENCIA_MS);
+    // Una segunda llamada (ya publicada) no duplica la bitácora.
+    await ig.publicarHistoria(db, opPub(metaFalso()));
+    assert.equal((await bitacora()).length, 1);
+});
+
+test('bitácora: el botón manual figura como "manual", un fallo de Meta queda con su motivo y la prueba como tipo "prueba"', async () => {
+    await conectar();
+    await prepararHistoria(LUNES, 'normal', HUELLA_NORMAL);
+    const malo = metaFalso({ fallas: [{ ruta: /\/media$/, status: 500, error: { message: 'Servicio no disponible', code: 2 }, veces: 1 }] });
+    await ig.publicarHistoria(db, opPub(malo, { manual: true }));
+    await ig.publicarHistoria(db, opPub(metaFalso(), { manual: true }));
+    await ig.publicarPrueba(db, { jpeg: jpeg(), nowMs: AHORA + 1000, fetchFn: metaFalso().fetchFn, baseUrl: BASE_URL, sleep: sinEspera });
+    const b = await bitacora();
+    assert.deepEqual(b.map((x) => [x.tipo, x.origen, x.ok]), [['normal', 'manual', false], ['normal', 'manual', true], ['prueba', 'manual', true]]);
+    assert.match(b[0].error, /Servicio no disponible/);
+    assert.equal(b[0].mediaId, '');
+});
+
+test('bitácora: el cron que no encuentra imagen lo anota UNA sola vez (no cada 5 minutos) y el mensaje no cambia', async () => {
+    await conectar();
+    const meta = metaFalso();
+    for (let i = 0; i < 4; i++) {
+        const r = await ig.publicarHistoriaDeHoy(db, { nowMs: AHORA + i * 5 * 60 * 1000, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera });
+        assert.equal(r.motivo, 'sin_preparar', `pasada ${i + 1}`);
+    }
+    const b = await bitacora();
+    assert.equal(b.length, 1);
+    assert.equal(b[0].ok, false);
+    assert.match(b[0].error, /No había una historia preparada/);
+    assert.match((await estadoDia()).normal.error, /No había una historia preparada/, 'el estado del día tampoco se vuelve "desactualizada"');
+});
+
+const respuestaInsights = (valores, nav) => (q) => {
+    if (q.metric === 'navigation') {
+        return { data: [{ name: 'navigation', total_value: { value: Object.values(nav).reduce((a, b) => a + b, 0), breakdowns: [{ dimension_keys: ['story_navigation_action_type'], results: Object.entries(nav).map(([k, v]) => ({ dimension_values: [k], value: v })) }] } }] };
+    }
+    return { data: String(q.metric).split(',').filter((n) => n in valores).map((n) => ({ name: n, period: 'lifetime', values: [{ value: valores[n] }] })) };
+};
+
+async function publicarYMedir(valores, nav, opcionesMeta = {}) {
+    await conectar();
+    await prepararHistoria(LUNES, 'normal', HUELLA_NORMAL);
+    await ig.publicarHistoria(db, opPub(metaFalso()));
+    const meta = metaFalso({ insights: respuestaInsights(valores, nav), ...opcionesMeta });
+    const resumen = await ig.actualizarMetricas(db, { nowMs: AHORA + 30 * 60 * 1000, fetchFn: meta.fetchFn });
+    return { meta, resumen, m: (await db.collection(ig.METRICAS_COLLECTION).doc('media-1').get()).data() };
+}
+
+test('métricas: guarda alcance, vistas, respuestas, compartidos, interacciones, visitas al perfil y la navegación; y los seguidores', async () => {
+    const valores = { reach: 320, views: 410, replies: 3, shares: 5, total_interactions: 12, profile_visits: 9, link_clicks: 0 };
+    const nav = { tap_forward: 250, tap_back: 20, tap_exit: 30, swipe_forward: 10 };
+    const { meta, resumen, m } = await publicarYMedir(valores, nav);
+    assert.equal(resumen.actualizadas, 1);
+    assert.equal(resumen.seguidores, 1234);
+    assert.equal(m.estado, 'ok');
+    const { navigation, ...planas } = m.ultimo;
+    assert.deepEqual(planas, valores);
+    assert.deepEqual(navigation, nav);
+    assert.equal(m.serie.length, 1);
+    assert.deepEqual({ reach: m.serie[0].reach, views: m.serie[0].views }, { reach: 320, views: 410 });
+    const seg = (await db.collection(ig.SEGUIDORES_COLLECTION).doc(LUNES).get()).data();
+    assert.equal(seg.seguidores, 1234);
+    assert.equal((await ig.estadoConexion(db, AHORA)).seguidores, 1234);
+    assert.equal(meta.llamadas.find((l) => l.query.metric === 'navigation').query.breakdown, 'story_navigation_action_type');
+    assert.ok(meta.llamadas.every((l) => !l.ruta.includes('/insights') || l.auth === `Bearer ${TOKEN}`));
+});
+
+test('métricas: la serie solo suma un punto cuando algo cambió, y se conserva lo ya medido', async () => {
+    const { meta, m } = await publicarYMedir({ reach: 100, views: 120 }, { tap_forward: 80 });
+    assert.equal(m.serie.length, 1);
+    await ig.actualizarMetricas(db, { nowMs: AHORA + 60 * 60 * 1000, fetchFn: meta.fetchFn });
+    assert.equal((await db.collection(ig.METRICAS_COLLECTION).doc('media-1').get()).data().serie.length, 1, 'sin cambios no se agrega');
+    const mas = metaFalso({ insights: respuestaInsights({ reach: 150, views: 200 }, { tap_forward: 120 }) });
+    await ig.actualizarMetricas(db, { nowMs: AHORA + 90 * 60 * 1000, fetchFn: mas.fetchFn });
+    const final = (await db.collection(ig.METRICAS_COLLECTION).doc('media-1').get()).data();
+    assert.deepEqual(final.serie.map((p) => p.reach), [100, 150]);
+    assert.equal(final.ultimo.reach, 150);
+    // Si luego Instagram falla, el último dato bueno se conserva.
+    const caido = metaFalso({ insights: () => ({ error: { message: 'Servicio caído', code: 2 }, status: 500 }) });
+    await ig.actualizarMetricas(db, { nowMs: AHORA + 2 * HOUR, fetchFn: caido.fetchFn });
+    const tras = (await db.collection(ig.METRICAS_COLLECTION).doc('media-1').get()).data();
+    assert.equal(tras.estado, 'error');
+    assert.equal(tras.ultimo.reach, 150);
+});
+
+test('métricas: menos de 5 espectadores y falta de permiso se distinguen, con su mensaje', async () => {
+    const pocos = await publicarYMedir({}, {}, { insights: () => ({ error: { message: '(#10) Not enough viewers for the media to show insights', code: 10 } }) });
+    assert.equal(pocos.m.estado, 'pocos_espectadores');
+    assert.equal(pocos.resumen.pocosEspectadores, 1);
+    const sinPermiso = metaFalso({ insights: () => ({ error: { message: '(#10) Application does not have permission for this action', code: 10 } }) });
+    const r = await ig.actualizarMetricas(db, { nowMs: AHORA + HOUR, fetchFn: sinPermiso.fetchFn });
+    assert.equal(r.sinPermiso, 1);
+    const m = (await db.collection(ig.METRICAS_COLLECTION).doc('media-1').get()).data();
+    assert.equal(m.estado, 'sin_permiso');
+    assert.match(m.error, /permission/);
+});
+
+test('métricas: si Instagram rechaza el lote por una métrica que no admite (código 100), pide de a una y se queda con las buenas', async () => {
+    const { m, meta } = await publicarYMedir({ reach: 50, views: 70 }, { tap_forward: 30 }, {
+        insights: (q) => {
+            if (String(q.metric).includes('link_clicks')) return { error: { message: '(#100) The following metrics are not supported: link_clicks', code: 100 } };
+            return respuestaInsights({ reach: 50, views: 70 }, { tap_forward: 30 })(q);
+        }
+    });
+    assert.equal(m.estado, 'ok');
+    assert.equal(m.ultimo.reach, 50);
+    assert.equal(m.ultimo.views, 70);
+    assert.equal(m.ultimo.link_clicks, undefined);
+    assert.ok(meta.llamadas.some((l) => l.query.metric === 'reach'), 'pidió reach por separado');
+});
+
+test('métricas: solo se miden las historias vivas (24 h + 1 h de margen) y sin conexión no se llama a Meta', async () => {
+    assert.deepEqual(await ig.actualizarMetricas(db, { nowMs: AHORA, fetchFn: metaFalso().fetchFn }), { ok: false, motivo: 'sin_conexion', actualizadas: 0 });
+    await conectar();
+    const vieja = AHORA - 3 * DAY;
+    await db.collection(ig.METRICAS_COLLECTION).doc('vieja').set({ mediaId: 'vieja', publicadaAtMs: vieja, expiraAtMs: vieja + ig.METRICAS_VIGENCIA_MS, estado: 'ok', ultimo: { reach: 9 }, serie: [] });
+    await db.collection(ig.METRICAS_COLLECTION).doc('viva').set({ mediaId: 'viva', publicadaAtMs: AHORA - 5 * HOUR, expiraAtMs: AHORA + 19 * HOUR, estado: 'pendiente', ultimo: {}, serie: [] });
+    const meta = metaFalso({ insights: respuestaInsights({ reach: 7, views: 9 }, { tap_forward: 1 }) });
+    const r = await ig.actualizarMetricas(db, { nowMs: AHORA, fetchFn: meta.fetchFn });
+    assert.equal(r.actualizadas, 1);
+    assert.ok(meta.llamadas.every((l) => !l.ruta.includes('vieja')), 'no tocó la historia de hace 3 días');
+    assert.equal((await db.collection(ig.METRICAS_COLLECTION).doc('vieja').get()).data().ultimo.reach, 9, 'la medición final se conserva');
+    assert.equal((await db.collection(ig.METRICAS_COLLECTION).doc('viva').get()).data().ultimo.reach, 7);
 });
