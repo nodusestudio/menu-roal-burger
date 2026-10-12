@@ -402,9 +402,16 @@ async function awardLoyaltyPointsTransaction(db, orderId, phoneDigits, subtotal)
     });
 }
 
+// Interruptor de la acumulación: en false los pedidos entregados ya no suman puntos (desde
+// 2026-10-12 el programa está oculto en el menú público). Los pedidos que se entreguen mientras
+// esté apagado NO se acreditan retroactivamente al volver a encenderlo (el trigger solo mira la
+// transición a 'entregado'). Los saldos existentes, el ajuste manual y la reversa no se tocan.
+const LOYALTY_ACCRUAL_ENABLED = false;
+
 exports.awardLoyaltyPoints = onDocumentWritten(
     { document: 'pedidos/{orderId}', region: 'us-central1' },
     async (event) => {
+        if (!LOYALTY_ACCRUAL_ENABLED) return;
         const before = event.data?.before?.exists ? event.data.before.data() : null;
         const after = event.data?.after?.exists ? event.data.after.data() : null;
         // anularOrder() (ver admin.js) marca un pedido pendiente como anulado escribiendo
