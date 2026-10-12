@@ -15274,8 +15274,11 @@ function _cdRenderProximos(body) {
                 <td class="cd-acciones">
                     <button type="button" class="cd-btn" data-cd-editar="${d.id}">✏️ Editar</button>
                     <button type="button" class="cd-btn" data-cd-copiar="${d.id}">📋 Copiar texto para la historia</button>
-                    <button type="button" class="cd-btn" data-cd-historia="${d.id}">🖼️ Descargar historia</button>
-                    <button type="button" class="cd-btn" data-cd-historia-agotado="${d.id}">🖼️ Descargar historia de agotado</button>
+                    <span class="cd-historias" role="group" aria-label="Imágenes para la historia">
+                        <button type="button" class="cd-btn" data-cd-entregar="normal" data-cd-fecha="${d.id}">🖼️ Historia</button>
+                        <button type="button" class="cd-btn" data-cd-entregar="agotado" data-cd-fecha="${d.id}">🖼️ Agotado</button>
+                        <button type="button" class="cd-btn" data-cd-entregar="ambas" data-cd-fecha="${d.id}">🖼️ Ambas</button>
+                    </span>
                 </td>
             </tr>`;
     }).join('');
@@ -15320,16 +15323,14 @@ function _cdRenderProximos(body) {
         cdState.editando = null;
         _cdRenderProximos(body);
     });
-    body.querySelectorAll('[data-cd-historia], [data-cd-historia-agotado]').forEach((b) => b.addEventListener('click', async () => {
-        const agotado = b.hasAttribute('data-cd-historia-agotado');
-        const fecha = agotado ? b.dataset.cdHistoriaAgotado : b.dataset.cdHistoria;
-        const dia = cdState.proximos.find((d) => d.id === fecha);
+    body.querySelectorAll('[data-cd-entregar]').forEach((b) => b.addEventListener('click', async () => {
+        const dia = cdState.proximos.find((d) => d.id === b.dataset.cdFecha);
         if (!dia) return;
         const label = b.textContent;
         b.disabled = true;
         b.textContent = 'Generando…';
         try {
-            await _cdDescargarHistoria(dia, agotado);
+            await _cdEntregarDia(dia, b.dataset.cdEntregar);
         } catch (err) {
             console.error('historia código del día:', err);
             showNotice(`No se pudo generar la imagen: ${err.message || 'error'}`, 'error');
@@ -15715,21 +15716,17 @@ function _cdRenderConfig(body) {
 
 // <historia-codigo-dia>
 // Historias de Instagram del Código del día (1080x1920 PNG), dibujadas en el navegador del admin.
-// Réplica de la referencia aprobada (docs/referencias/codigo-del-dia-ref.png), elemento por elemento y en el mismo
-// orden: logo, título, cinta con la fecha, foto, sello -30%, nombre, precios, ticket con la
-// palabra, píldora de cupos y "Pídelo en la app". Toda la composición se dibuja en las
-// coordenadas de la referencia (R: 1080 x 1914) y se escala proporcionalmente, centrada, dentro de
-// la franja y=230..1650 del lienzo; el fondo (oscuro con luces desenfocadas) cubre todo el lienzo.
-// De y=1650 a y=1800 queda libre para el sticker de enlace de Instagram.
+// Réplica 1:1 de las referencias aprobadas v2 (docs/referencias/codigo-del-dia-ref-v2.png y
+// codigo-del-dia-agotado-ref-v2.png): mismas posiciones y tamaños sobre el lienzo, sin escalar.
+// Única corrección pedida sobre la normal: la píldora de cupos y "Pídelo en la app" suben para
+// que esa línea termine en y=1650; para que no se monten sobre el ticket, nombre, precios, ticket
+// y sello suben 80 px sobre la parte baja de la foto (que ya se funde con el fondo).
 // Bloque AUTOCONTENIDO: tests/codigo-dia-historia.test.js lo extrae entre estos marcadores y lo
-// corre en Chromium para verificar tamaño y zonas libres.
+// corre en Chromium.
 const HISTORIA_CD = Object.freeze({
     W: 1080,
     H: 1920,
-    REF_W: 1080,
-    REF_H: 1914,
-    FRANJA_Y0: 230,
-    FRANJA_Y1: 1650,
+    LIMITE_ABAJO: 1650,
     STICKER: Object.freeze({ x: 240, y: 1650, w: 600, h: 150 }),
     CREMA: '#F5EBDD',
     NARANJA: '#FF6B00',
@@ -15738,19 +15735,17 @@ const HISTORIA_CD = Object.freeze({
 });
 
 async function generarHistoriaCodigoDia(datos) {
-    const { W, H, REF_W, REF_H, FRANJA_Y0, FRANJA_Y1, STICKER, CREMA, NARANJA, DISPLAY, TEXTO } = HISTORIA_CD;
+    const { W, H, STICKER, CREMA, NARANJA, DISPLAY, TEXTO } = HISTORIA_CD;
     const {
         fechaTexto = '', productoNombre = '', precioNormal = 0, precioDescuento = 0, porcentaje = 0,
-        palabra = '', cupos = 0, fotoUrl = '', logoUrl = 'isotipo.png', agotado = false
+        palabra = '', cupos = 0, fotoUrl = '', agotado = false
     } = datos || {};
 
-    // Tipografías listas antes de dibujar.
     try {
         if (document.fonts) {
             await Promise.all([
                 document.fonts.load(`400 120px ${DISPLAY}`),
-                document.fonts.load(`700 120px 'Oswald'`),
-                document.fonts.load(`400 40px ${TEXTO}`),
+                document.fonts.load(`500 40px ${TEXTO}`),
                 document.fonts.load(`600 40px ${TEXTO}`),
                 document.fonts.load(`700 40px ${TEXTO}`)
             ]);
@@ -15762,19 +15757,10 @@ async function generarHistoriaCodigoDia(datos) {
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
-
-    // Escala de la composición (referencia → franja segura).
-    const S = (FRANJA_Y1 - FRANJA_Y0) / REF_H;
-    const OX = (W - REF_W * S) / 2;
-    const OY = FRANJA_Y0;
     const cajas = [];
-    // Las cajas se guardan en coordenadas del LIENZO (para el test de zonas libres).
-    const caja = (nombre, x, y, w, h) => cajas.push({
-        nombre, x: Math.round(OX + x * S), y: Math.round(OY + y * S), w: Math.round(w * S), h: Math.round(h * S)
-    });
+    const caja = (nombre, x, y, w, h) => cajas.push({ nombre, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
 
-    // Azar determinista (texturas iguales cada vez que se descarga la misma historia).
-    let semilla = 0;
+    let semilla = 7;
     for (const ch of `${palabra}|${fechaTexto}`) semilla = (semilla * 31 + ch.charCodeAt(0)) >>> 0;
     const azar = () => {
         semilla = (semilla + 0x6D2B79F5) >>> 0;
@@ -15783,17 +15769,22 @@ async function generarHistoriaCodigoDia(datos) {
         t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-
     const fd = (px) => `400 ${px}px ${DISPLAY}`;
-    const ft = (peso, px) => `${peso} ${px}px ${TEXTO}`;
+    const ft = (peso) => (px) => `${peso} ${px}px ${TEXTO}`;
     const dinero = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CO')}`;
-    // Achica la letra hasta que quepa en maxW (nunca se corta).
-    const ajustar = (texto, fuente, maxPx, maxW, minPx = 16) => {
+    const medir = (texto, fuente) => {
+        ctx.font = fuente;
+        const m = ctx.measureText(texto);
+        return { w: m.width, asc: m.actualBoundingBoxAscent || 0, desc: m.actualBoundingBoxDescent || 0 };
+    };
+    // Tamaño máximo con el que el texto cabe en maxW y su altura de MAYÚSCULAS (medida con la "H",
+    // sin contar tildes ni el "$", que sobresalen) no pasa de maxAsc.
+    const ajustar = (texto, fuente, maxW, maxAsc, maxPx = 400, minPx = 14) => {
         let px = maxPx;
-        ctx.font = fuente(px);
-        while (px > minPx && ctx.measureText(texto).width > maxW) {
+        while (px > minPx) {
+            const m = medir(texto, fuente(px));
+            if (m.w <= maxW && (!maxAsc || medir('H', fuente(px)).asc <= maxAsc)) break;
             px -= 2;
-            ctx.font = fuente(px);
         }
         return px;
     };
@@ -15803,6 +15794,16 @@ async function generarHistoriaCodigoDia(datos) {
         ctx.textAlign = 'left';
         for (const ch of texto) { ctx.fillText(ch, x, y); x += ctx.measureText(ch).width + sp; }
         ctx.textAlign = 'center';
+    };
+    // Varios tramos de texto con colores distintos, centrados como una sola línea.
+    const textoMixto = (partes, fuente, xc, y) => {
+        ctx.font = fuente;
+        const total = partes.reduce((s, [t]) => s + ctx.measureText(t).width, 0);
+        let x = xc - total / 2;
+        ctx.textAlign = 'left';
+        partes.forEach(([t, color]) => { ctx.fillStyle = color; ctx.fillText(t, x, y); x += ctx.measureText(t).width; });
+        ctx.textAlign = 'center';
+        return total;
     };
     const rectRedondo = (c, x, y, w, h, r) => {
         c.beginPath();
@@ -15821,83 +15822,89 @@ async function generarHistoriaCodigoDia(datos) {
         img.onerror = () => resolve(null);
         img.src = url;
     });
-    // Texto con textura gastada (motas del fondo encima), dibujado en una capa aparte.
-    const textoGastado = (texto, fuente, color, xc, yBase, densidad = 0.0009) => {
-        ctx.font = fuente;
-        const m = ctx.measureText(texto);
-        const w = Math.ceil(m.width) + 20;
-        const asc = Math.ceil(m.actualBoundingBoxAscent || 0) + 10;
-        const desc = Math.ceil(m.actualBoundingBoxDescent || 0) + 10;
+    // Texto con motas de desgaste (como el título y el sello de la referencia).
+    const textoGastado = (texto, fuente, color, xc, yBase, densidad = 0.0008, sx = 1) => {
+        const m = medir(texto, fuente);
+        const w = Math.ceil(m.w) + 20;
+        const asc = Math.ceil(m.asc) + 10;
+        const alto = asc + Math.ceil(m.desc) + 10;
         const capa = document.createElement('canvas');
         capa.width = w;
-        capa.height = asc + desc;
+        capa.height = alto;
         const c = capa.getContext('2d');
         c.font = fuente;
-        c.textAlign = 'left';
-        c.textBaseline = 'alphabetic';
         c.fillStyle = color;
         c.fillText(texto, 10, asc);
         c.globalCompositeOperation = 'destination-out';
-        const n = Math.round(w * (asc + desc) * densidad);
+        const n = Math.round(w * alto * densidad);
         for (let i = 0; i < n; i++) {
-            c.globalAlpha = 0.35 + azar() * 0.55;
+            c.globalAlpha = 0.3 + azar() * 0.6;
             c.beginPath();
-            c.arc(azar() * w, azar() * (asc + desc), 0.8 + azar() * 2.6, 0, Math.PI * 2);
+            c.arc(azar() * w, azar() * alto, 0.8 + azar() * 2.2, 0, Math.PI * 2);
             c.fill();
         }
-        ctx.drawImage(capa, xc - w / 2, yBase - asc);
-        return { w: m.width, asc: asc - 10, desc: desc - 10 };
+        ctx.save();
+        ctx.translate(xc, 0);
+        ctx.scale(sx, 1);
+        ctx.drawImage(capa, -w / 2, yBase - asc);
+        ctx.restore();
+        return { ...m, w: m.w * sx };
+    };
+    // Texto "display" estirado en horizontal (la letra de la referencia es más ancha que Anton).
+    const textoD = (texto, px, x, y, align = 'center') => {
+        ctx.save();
+        ctx.font = fd(px);
+        ctx.textAlign = align;
+        ctx.translate(x, y);
+        ctx.scale(EST, 1);
+        ctx.fillText(texto, 0, 0);
+        ctx.restore();
+    };
+    const trazo = (x1, y1, x2, y2, grosor = 11) => {
+        ctx.strokeStyle = NARANJA;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = grosor;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     };
 
-    // ════ FONDO (todo el lienzo): carbón cálido + luces desenfocadas ════
-    ctx.fillStyle = '#120E0B';
+    // ════ FONDO: carbón cálido con luces desenfocadas (todo el lienzo) ════
+    ctx.fillStyle = '#100C09';
     ctx.fillRect(0, 0, W, H);
-    const centro = ctx.createRadialGradient(W / 2, OY + 800 * S, 60, W / 2, OY + 800 * S, 1100);
-    centro.addColorStop(0, 'rgba(70,38,16,0.55)');
-    centro.addColorStop(1, 'rgba(18,14,11,0)');
-    ctx.fillStyle = centro;
+    const calido = ctx.createRadialGradient(W / 2, 760, 80, W / 2, 760, 1150);
+    calido.addColorStop(0, 'rgba(78,40,14,0.55)');
+    calido.addColorStop(1, 'rgba(16,12,9,0)');
+    ctx.fillStyle = calido;
     ctx.fillRect(0, 0, W, H);
     const bokeh = (x, y, r, a) => {
         const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-        g.addColorStop(0, `rgba(255,140,40,${a})`);
-        g.addColorStop(0.55, `rgba(255,110,20,${a * 0.45})`);
+        g.addColorStop(0, `rgba(255,135,35,${a})`);
+        g.addColorStop(0.6, `rgba(255,110,20,${a * 0.45})`);
         g.addColorStop(1, 'rgba(255,100,0,0)');
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
     };
-    // Mismas luces de la referencia (arriba a la izquierda, derecha a media altura, abajo a los
-    // lados) más algunas en las franjas libres para que no queden planas. Tenues: no compiten.
-    const luces = agotado
-        ? [[60, 420, 150, 0.10], [1030, 760, 120, 0.08], [40, 1260, 110, 0.07], [980, 1500, 130, 0.07], [150, 90, 140, 0.06], [930, 1840, 150, 0.06]]
-        : [[70, 400, 170, 0.55], [1040, 720, 130, 0.48], [30, 1180, 120, 0.40], [1030, 1080, 100, 0.42], [210, 330, 70, 0.30],
-            [990, 1480, 120, 0.28], [150, 90, 140, 0.14], [880, 150, 110, 0.12], [120, 1860, 130, 0.12], [930, 1840, 150, 0.12]];
-    luces.forEach(([x, y, r, a]) => bokeh(x, y, r, a));
-    const vineta = ctx.createRadialGradient(W / 2, H * 0.45, 380, W / 2, H * 0.45, 1250);
+    const k = agotado ? 0.8 : 1;
+    [[910, 70, 95, 0.32], [700, 140, 70, 0.22], [120, 130, 90, 0.18], [40, 470, 110, 0.32], [1030, 520, 100, 0.30],
+        [60, 1240, 120, 0.22], [1040, 1180, 110, 0.24], [170, 1480, 110, 0.16], [980, 1560, 120, 0.16],
+        [200, 1770, 130, 0.16], [880, 1820, 140, 0.16], [540, 1880, 120, 0.10]].forEach(([x, y, r, a]) => bokeh(x, y, r, a * k));
+    const vineta = ctx.createRadialGradient(W / 2, H * 0.42, 420, W / 2, H * 0.42, 1250);
     vineta.addColorStop(0, 'rgba(0,0,0,0)');
-    vineta.addColorStop(1, 'rgba(0,0,0,0.55)');
+    vineta.addColorStop(1, 'rgba(0,0,0,0.5)');
     ctx.fillStyle = vineta;
     ctx.fillRect(0, 0, W, H);
 
-    // ════ COMPOSICIÓN en coordenadas de la referencia ════
-    ctx.save();
-    ctx.translate(OX, OY);
-    ctx.scale(S, S);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
 
-    // ── 4. Foto del producto, a TODO el ancho del lienzo e integrada con el fondo ──
-    // Como en la referencia, la foto llega a los bordes y se funde arriba y abajo con el fondo
-    // (sin recuadro ni óvalo). Se dibuja en coordenadas del lienzo para cubrir los 1080 px.
+    // ════ FOTO a todo el ancho, fundida con el fondo ════
+    const FOTO = agotado ? { y: 430, h: 830, fundeArriba: 0.16, fundeAbajo: 0.78 } : { y: 430, h: 640, fundeArriba: 0.2, fundeAbajo: 0.72 };
     const foto = await cargarImagen(fotoUrl);
-    const FOTO = { y: OY + 430 * S, h: 740 * S };
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (foto) {
         const capa = document.createElement('canvas');
         capa.width = W;
-        capa.height = Math.ceil(FOTO.h);
+        capa.height = FOTO.h;
         const c = capa.getContext('2d');
         const esc = Math.max(W / foto.naturalWidth, FOTO.h / foto.naturalHeight);
         const fw = foto.naturalWidth * esc;
@@ -15905,7 +15912,7 @@ async function generarHistoriaCodigoDia(datos) {
         c.drawImage(foto, (W - fw) / 2, (FOTO.h - fh) / 2, fw, fh);
         if (agotado) {
             try {
-                const px = c.getImageData(0, 0, capa.width, capa.height);
+                const px = c.getImageData(0, 0, W, FOTO.h);
                 const d = px.data;
                 for (let i = 0; i < d.length; i += 4) {
                     const g = Math.round(d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
@@ -15914,344 +15921,310 @@ async function generarHistoriaCodigoDia(datos) {
                 c.putImageData(px, 0, 0);
             } catch (_) { /* imagen sin permiso de lectura: queda a color */ }
         } else {
-            // Iluminación cálida sobre el producto.
             c.globalCompositeOperation = 'soft-light';
-            const luz = c.createRadialGradient(W * 0.4, FOTO.h * 0.3, 30, W * 0.4, FOTO.h * 0.3, W * 0.8);
-            luz.addColorStop(0, 'rgba(255,170,80,0.85)');
+            const luz = c.createRadialGradient(W * 0.45, FOTO.h * 0.3, 30, W * 0.45, FOTO.h * 0.3, W * 0.8);
+            luz.addColorStop(0, 'rgba(255,170,80,0.8)');
             luz.addColorStop(1, 'rgba(255,120,30,0)');
             c.fillStyle = luz;
             c.fillRect(0, 0, W, FOTO.h);
         }
-        // Fundido: arriba y abajo largo, en los costados apenas (la foto llega al borde).
         c.globalCompositeOperation = 'destination-in';
         const vert = c.createLinearGradient(0, 0, 0, FOTO.h);
         vert.addColorStop(0, 'rgba(0,0,0,0)');
-        vert.addColorStop(0.28, 'rgba(0,0,0,1)');
-        vert.addColorStop(0.68, 'rgba(0,0,0,1)');
+        vert.addColorStop(FOTO.fundeArriba, 'rgba(0,0,0,1)');
+        vert.addColorStop(FOTO.fundeAbajo, 'rgba(0,0,0,1)');
         vert.addColorStop(1, 'rgba(0,0,0,0)');
         c.fillStyle = vert;
         c.fillRect(0, 0, W, FOTO.h);
         const hor = c.createLinearGradient(0, 0, W, 0);
-        hor.addColorStop(0, 'rgba(0,0,0,0.55)');
-        hor.addColorStop(0.08, 'rgba(0,0,0,1)');
-        hor.addColorStop(0.92, 'rgba(0,0,0,1)');
-        hor.addColorStop(1, 'rgba(0,0,0,0.55)');
+        hor.addColorStop(0, 'rgba(0,0,0,0.5)');
+        hor.addColorStop(0.07, 'rgba(0,0,0,1)');
+        hor.addColorStop(0.93, 'rgba(0,0,0,1)');
+        hor.addColorStop(1, 'rgba(0,0,0,0.5)');
         c.fillStyle = hor;
         c.fillRect(0, 0, W, FOTO.h);
         ctx.drawImage(capa, 0, FOTO.y);
     } else {
-        // Sin foto: el mismo fondo con un brillo cálido grande donde iría el producto.
-        const cy = FOTO.y + FOTO.h / 2;
+        const cy = FOTO.y + FOTO.h * 0.5;
         const g = ctx.createRadialGradient(W / 2, cy, 30, W / 2, cy, 460);
-        g.addColorStop(0, agotado ? 'rgba(160,160,160,0.22)' : 'rgba(255,120,30,0.42)');
+        g.addColorStop(0, agotado ? 'rgba(150,150,150,0.22)' : 'rgba(255,120,30,0.42)');
         g.addColorStop(1, 'rgba(255,107,0,0)');
         ctx.fillStyle = g;
         ctx.fillRect(0, FOTO.y, W, FOTO.h);
     }
-    ctx.restore();
-    // Sombra suave arriba y abajo para que el título y el nombre lean sobre la foto.
-    // (sin cortes: cada sombra sube y baja suave, en coordenadas del lienzo a todo el ancho)
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const banda = (y0, y1, alfa) => {
-        const g = ctx.createLinearGradient(0, OY + y0 * S, 0, OY + y1 * S);
-        g.addColorStop(0, 'rgba(18,14,11,0)');
-        g.addColorStop(0.5, `rgba(18,14,11,${alfa})`);
-        g.addColorStop(1, 'rgba(18,14,11,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(0, OY + y0 * S, W, (y1 - y0) * S);
-    };
-    banda(300, 560, 0.6);
-    banda(1020, 1320, 0.8);
-    ctx.restore();
 
-    // ── 1. Logo: isotipo + ROAL BURGER + lema ──
-    const logo = await cargarImagen(logoUrl);
-    if (logo) {
-        ctx.drawImage(logo, 540 - 80, 14, 160, 160);
-    } else {
-        rectRedondo(ctx, 540 - 62, 30, 124, 124, 32);
-        ctx.fillStyle = '#2b2725';
-        ctx.fill();
-        ctx.fillStyle = NARANJA;
-        ctx.font = fd(110);
-        ctx.fillText('R', 540, 136);
-    }
-    ctx.fillStyle = CREMA;
-    ctx.font = fd(ajustar('ROAL BURGER', fd, 46, 260));
-    ctx.fillText('ROAL BURGER', 540, 208);
-    ctx.fillStyle = 'rgba(245,235,221,0.8)';
-    ctx.font = fd(ajustar('COMIDA RÁPIDA CON ACENTO VENEZOLANO', fd, 15, 250, 10));
-    textoEsp('COMIDA RÁPIDA CON ACENTO VENEZOLANO', 540, 228, 0.6);
-    caja('logo', 540 - 130, 14, 260, 220);
-
-    // ── 2. Título "CÓDIGO DEL DÍA" con trazos de energía ──
-    const t1 = 'CÓDIGO ';
+    // ════ 1. Título "CÓDIGO DEL DÍA" (mayúsculas de y=222 a y=342, x 125..979) ════
+    // El estiramiento EST se calibra aquí: misma altura de mayúsculas y mismo ancho que la
+    // referencia. Se usa igual en todos los textos display para que se vean de la misma familia.
+    const t1 = 'CÓDIGO';
     const t2 = 'DEL DÍA';
-    const tpx = ajustar(t1 + t2, fd, 176, 770, 60);
+    let tpx = ajustar(`${t1} ${t2}`, fd, 4000, 120, 260, 60);
+    // Con una letra de respaldo más ancha que la referencia, se achica en vez de estirar.
+    if (medir(`${t1} ${t2}`, fd(tpx)).w > 854) tpx = ajustar(`${t1} ${t2}`, fd, 854, 120, tpx, 40);
+    const anchoNatural = medir(`${t1} ${t2}`, fd(tpx)).w;
+    const EST = Math.max(1, Math.min(1.45, 854 / anchoNatural));
     ctx.font = fd(tpx);
-    const w1 = ctx.measureText(t1).width;
-    const wT = ctx.measureText(t1 + t2).width;
-    const tx0 = 540 - wT / 2;
-    const tituloY = 392;
-    const g1 = textoGastado(t1.trim(), fd(tpx), CREMA, tx0 + ctx.measureText(t1.trim()).width / 2, tituloY);
-    ctx.font = fd(tpx);
-    textoGastado(t2, fd(tpx), NARANJA, tx0 + w1 + ctx.measureText(t2).width / 2, tituloY);
-    caja('titulo', tx0, tituloY - g1.asc, wT, g1.asc + 6);
-    // Trazos: dos a la izquierda (abajo) y dos a la derecha, en abanico, como la referencia.
-    const trazo = (x1, y1, x2, y2, grosor) => {
-        ctx.strokeStyle = NARANJA;
-        ctx.lineCap = 'round';
-        ctx.lineWidth = grosor;
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-    };
-    trazo(tx0 - 30, tituloY - 34, tx0 - 92, tituloY - 64, 13);
-    trazo(tx0 - 30, tituloY + 14, tx0 - 80, tituloY + 36, 12);
-    trazo(tx0 + wT + 28, tituloY - 70, tx0 + wT + 70, tituloY - 132, 13);
-    trazo(tx0 + wT + 30, tituloY - 22, tx0 + wT + 84, tituloY - 30, 12);
+    const espacio = ctx.measureText(' ').width * EST;
+    const w1 = ctx.measureText(t1).width * EST;
+    const w2 = ctx.measureText(t2).width * EST;
+    const wT = w1 + espacio + w2;
+    const tx0 = W / 2 - wT / 2;
+    const tituloY = 342;
+    const mT = textoGastado(t1, fd(tpx), CREMA, tx0 + w1 / 2, tituloY, 0.0008, EST);
+    textoGastado(t2, fd(tpx), NARANJA, tx0 + w1 + espacio + w2 / 2, tituloY, 0.0008, EST);
+    caja('titulo', tx0, tituloY - mT.asc, wT, mT.asc);
+    trazo(42, 272, 98, 300);
+    trazo(46, 362, 98, 342);
+    trazo(1048, 274, 1022, 312);
+    trazo(1022, 360, 1054, 354);
 
-    // ── 3. Cinta naranja con la fecha (bordes de pincel, extremos en diagonal) ──
+    // ════ 2. Cinta naranja con la fecha (x 225..883, y 368..446, bordes de pincel) ════
     const fechaTxt = String(fechaTexto).toUpperCase();
-    const fpx = ajustar(fechaTxt, fd, 54, 500, 24);
-    ctx.font = fd(fpx);
-    const cintaW = Math.max(480, ctx.measureText(fechaTxt).width + 120);
-    const cintaY = 414;
-    const cintaH = 72;
-    const cx0 = 540 - cintaW / 2;
+    const C = { x: 225, y: 368, w: 658, h: 78 };
     ctx.fillStyle = NARANJA;
     ctx.beginPath();
-    ctx.moveTo(cx0 + 14, cintaY + 2);
-    for (let x = cx0 + 14; x <= cx0 + cintaW - 4; x += 24) ctx.lineTo(x, cintaY + (azar() * 6 - 2));
-    // extremo derecho cortado en diagonal, con desflecado
-    for (let k = 0; k <= 6; k++) {
-        const y = cintaY + (cintaH * k) / 6;
-        ctx.lineTo(cx0 + cintaW - 18 * (k / 6) + (k % 2 ? -10 * azar() : 6 * azar()), y);
-    }
-    for (let x = cx0 + cintaW - 22; x >= cx0; x -= 24) ctx.lineTo(x, cintaY + cintaH + (azar() * 6 - 4));
-    // extremo izquierdo cortado en diagonal, con desflecado
-    for (let k = 6; k >= 0; k--) {
-        const y = cintaY + (cintaH * k) / 6;
-        ctx.lineTo(cx0 + 16 * (1 - k / 6) + (k % 2 ? 10 * azar() : -6 * azar()), y);
-    }
+    ctx.moveTo(C.x + 12, C.y + 4);
+    for (let x = C.x + 12; x <= C.x + C.w - 10; x += 22) ctx.lineTo(x, C.y + azar() * 7 - 2);
+    for (let i = 0; i <= 8; i++) ctx.lineTo(C.x + C.w - (i % 2 ? 2 + azar() * 16 : azar() * 6), C.y + (C.h * i) / 8);
+    for (let x = C.x + C.w - 14; x >= C.x + 6; x -= 22) ctx.lineTo(x, C.y + C.h - azar() * 7 + 2);
+    for (let i = 8; i >= 0; i--) ctx.lineTo(C.x + (i % 2 ? azar() * 16 : 4 + azar() * 6), C.y + (C.h * i) / 8);
     ctx.closePath();
     ctx.fill();
+    const fpx = ajustar(fechaTxt, fd, (C.w - 110) / EST, 42, 70, 20);
     ctx.fillStyle = '#111111';
-    ctx.font = fd(fpx);
-    ctx.fillText(fechaTxt, 540, cintaY + cintaH / 2 + fpx * 0.36);
-    caja('cinta', cx0, cintaY, cintaW, cintaH);
+    const mF = medir(fechaTxt, fd(fpx));
+    textoD(fechaTxt, fpx, W / 2, C.y + C.h / 2 + mF.asc / 2);
+    caja('cinta', C.x, C.y, C.w, C.h);
 
-    // ── 5. Sello circular "-30%" con textura de pincel (lado derecho, mitad inferior de la foto) ──
     if (!agotado) {
-        const sx = 898;
-        const sy = 856;
-        const r = 150;
+        // ════ 3. Sello "-30%" con textura de pincel ════
+        const SL = { x: 903, y: 820, r: 136 };
         ctx.save();
         ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 30;
+        ctx.shadowBlur = 28;
         ctx.fillStyle = '#F2611A';
         ctx.beginPath();
-        for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 40) {
-            const rr = r * (0.975 + azar() * 0.05);
-            ctx.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr);
+        for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 42) {
+            const rr = SL.r * (0.975 + azar() * 0.05);
+            ctx.lineTo(SL.x + Math.cos(a) * rr, SL.y + Math.sin(a) * rr);
         }
         ctx.closePath();
         ctx.fill();
         ctx.restore();
-        // Pinceladas: borde más oscuro e irregular + trazos claros dentro.
-        for (let i = 0; i < 4; i++) {
-            ctx.strokeStyle = i % 2 ? 'rgba(120,35,0,0.45)' : 'rgba(255,140,60,0.35)';
-            ctx.lineWidth = 3 + azar() * 6;
+        for (let i = 0; i < 5; i++) {
+            ctx.strokeStyle = i % 2 ? 'rgba(110,30,0,0.45)' : 'rgba(255,140,60,0.3)';
+            ctx.lineWidth = 2 + azar() * 5;
             ctx.beginPath();
             const a0 = azar() * Math.PI * 2;
-            ctx.arc(sx, sy, r * (0.9 + azar() * 0.07), a0, a0 + Math.PI * (1 + azar()));
+            ctx.arc(SL.x, SL.y, SL.r * (0.9 + azar() * 0.08), a0, a0 + Math.PI * (0.8 + azar()));
             ctx.stroke();
         }
         const pct = `-${Math.round(Number(porcentaje) || 0)}%`;
-        const ppx = ajustar(pct, fd, 280, r * 1.74, 40);
-        ctx.font = fd(ppx);
-        const mp = ctx.measureText(pct);
-        const capPct = mp.actualBoundingBoxAscent || ppx * 0.72;
-        textoGastado(pct, fd(ppx), CREMA, sx, sy + capPct / 2, 0.0016);
-        caja('sello', sx - r, sy - r, r * 2, r * 2);
-    }
+        const ppx = ajustar(pct, fd, (SL.r * 1.6) / EST, SL.r * 0.78, 260, 40);
+        const mP = medir('H', fd(ppx));
+        textoGastado(pct, fd(ppx), CREMA, SL.x, SL.y + mP.asc / 2, 0.0014, EST);
+        caja('sello', SL.x - SL.r, SL.y - SL.r, SL.r * 2, SL.r * 2);
 
-    // ── 6. Nombre del producto ──
-    const nombreTxt = String(productoNombre).toUpperCase().replace(/\s+/g, ' ').trim();
-    const npx = ajustar(nombreTxt, fd, 150, 800, 40);
-    ctx.fillStyle = CREMA;
-    ctx.font = fd(npx);
-    const nombreY = 1212;
-    ctx.fillText(nombreTxt, 540, nombreY);
-    const mn = ctx.measureText(nombreTxt);
-    caja('nombre', 540 - mn.width / 2, nombreY - (mn.actualBoundingBoxAscent || npx * 0.75), mn.width, (mn.actualBoundingBoxAscent || npx * 0.75) + 4);
+        // ════ 4. Nombre del producto (crema, x 119..1022) ════
+        const nombreTxt = String(productoNombre).toUpperCase().replace(/\s+/g, ' ').trim();
+        const npx = ajustar(nombreTxt, fd, 903 / EST, 102, 200, 40);
+        const mN = medir(nombreTxt, fd(npx));
+        const nombreY = 1078;
+        ctx.fillStyle = CREMA;
+        textoD(nombreTxt, npx, W / 2, nombreY);
+        caja('nombre', W / 2 - (mN.w * EST) / 2, nombreY - mN.asc, mN.w * EST, mN.asc);
 
-    // Ticket naranja con muescas laterales (también para el sello de agotado).
-    const dibujarTicket = (x, y, w, h, angulo) => {
-        const capa = document.createElement('canvas');
-        capa.width = Math.ceil(w);
-        capa.height = Math.ceil(h);
-        const c = capa.getContext('2d');
-        c.fillStyle = NARANJA;
-        c.fillRect(0, 0, w, h);
-        c.globalCompositeOperation = 'destination-out';
-        const n = 6;
-        const paso = (h * 0.62) / (n - 1);
-        const y0 = h * 0.19;
-        for (let i = 0; i < n; i++) {
-            c.beginPath(); c.arc(0, y0 + i * paso, 11, 0, Math.PI * 2); c.fill();
-            c.beginPath(); c.arc(w, y0 + i * paso, 11, 0, Math.PI * 2); c.fill();
-        }
-        ctx.save();
-        ctx.translate(x + w / 2, y + h / 2);
-        ctx.rotate(angulo);
-        ctx.drawImage(capa, -w / 2, -h / 2);
-        ctx.restore();
-    };
-
-    if (!agotado) {
-        // ── 7. Precios ──
-        const precioY = 1336;
+        // ════ 5. Precios: normal tachado | con descuento ════
+        const precioY = 1210;
         const normal = dinero(precioNormal);
         const desc = dinero(precioDescuento);
-        ctx.font = fd(96);
-        const wN = ctx.measureText(normal).width;
-        ctx.font = fd(136);
-        const wD = ctx.measureText(desc).width;
-        const gap = 40;
-        let total = wN + gap * 2 + 3 + wD;
-        const k = total > 880 ? 880 / total : 1;
-        total *= k;
-        const p0 = 540 - total / 2;
-        ctx.textAlign = 'left';
-        ctx.font = fd(96 * k);
+        let pn = ajustar(normal, fd, 400 / EST, 70, 140, 30);
+        let pd = ajustar(desc, fd, 520 / EST, 96, 180, 40);
+        const sep = 38;
+        let wN = medir(normal, fd(pn)).w * EST;
+        let wD = medir(desc, fd(pd)).w * EST;
+        const maxTotal = 880;
+        const total0 = wN + sep * 2 + 3 + wD;
+        if (total0 > maxTotal) {
+            const f = maxTotal / total0;
+            pn = Math.floor(pn * f); pd = Math.floor(pd * f);
+            wN = medir(normal, fd(pn)).w * EST; wD = medir(desc, fd(pd)).w * EST;
+        }
+        const total = wN + sep * 2 + 3 + wD;
+        const p0 = 552 - total / 2;
         ctx.fillStyle = CREMA;
-        ctx.fillText(normal, p0, precioY - 4);
+        textoD(normal, pn, p0, precioY - 6, 'left');
+        const capN = medir(normal, fd(pn)).asc;
         ctx.strokeStyle = NARANJA;
-        ctx.lineWidth = 9 * k;
+        ctx.lineWidth = 8;
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(p0 - 6, precioY - 34 * k);
-        ctx.lineTo(p0 + wN * k + 6, precioY - 38 * k);
+        ctx.moveTo(p0 - 6, precioY - 6 - capN * 0.42);
+        ctx.lineTo(p0 + wN + 6, precioY - 6 - capN * 0.48);
         ctx.stroke();
-        ctx.strokeStyle = 'rgba(245,235,221,0.55)';
+        ctx.strokeStyle = 'rgba(245,235,221,0.6)';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(p0 + (wN + gap) * k, precioY - 92 * k);
-        ctx.lineTo(p0 + (wN + gap) * k, precioY + 2);
+        ctx.moveTo(p0 + wN + sep, precioY - 96);
+        ctx.lineTo(p0 + wN + sep, precioY + 2);
         ctx.stroke();
-        ctx.font = fd(136 * k);
         ctx.fillStyle = NARANJA;
-        ctx.fillText(desc, p0 + (wN + gap * 2 + 3) * k, precioY);
-        ctx.textAlign = 'center';
-        caja('precios', p0, precioY - 104 * k, total, 110 * k);
+        textoD(desc, pd, p0 + wN + sep * 2 + 3, precioY, 'left');
+        caja('precios', p0, precioY - 98, total, 100);
 
-        // ── 8. Ticket con la palabra clave ──
-        const T = { x: 142, y: 1360, w: 814, h: 262 };
-        dibujarTicket(T.x, T.y, T.w, T.h, -0.012);
-        ctx.save();
-        ctx.translate(540, T.y + T.h / 2);
-        ctx.rotate(-0.012);
+        // ════ 6. Ticket con la palabra clave: rótulo ARRIBA, código abajo, sin encimarse ════
+        const T = { x: 118, y: 1246, w: 863, h: 228 };
+        const capaT = document.createElement('canvas');
+        capaT.width = T.w;
+        capaT.height = T.h;
+        const ct = capaT.getContext('2d');
+        ct.fillStyle = NARANJA;
+        ct.fillRect(0, 0, T.w, T.h);
+        ct.globalCompositeOperation = 'destination-out';
+        [0.14, 0.24, 0.34, 0.66, 0.76, 0.86].forEach((f) => {
+            ct.beginPath(); ct.arc(0, T.h * f, 9, 0, Math.PI * 2); ct.fill();
+            ct.beginPath(); ct.arc(T.w, T.h * f, 9, 0, Math.PI * 2); ct.fill();
+        });
+        ctx.drawImage(capaT, T.x, T.y);
+        // Rótulo
         ctx.fillStyle = '#1A1A1A';
-        ctx.font = ft(600, 30);
-        textoEsp('PALABRA CLAVE DE HOY', 0, -T.h / 2 + 64, 7);
+        ctx.font = ft(600)(30);
+        const rotuloBase = T.y + 62;
+        textoEsp('PALABRA CLAVE DE HOY', W / 2, rotuloBase, 7);
+        const mR = medir('P', ft(600)(30));
+        const anchoRotulo = anchoEsp('PALABRA CLAVE DE HOY', 7);
+        caja('ticket-rotulo', W / 2 - anchoRotulo / 2, rotuloBase - mR.asc, anchoRotulo, mR.asc);
+        // Código: una sola línea, entre el rótulo (+24 de aire) y el borde inferior (-26).
         const codigoTxt = String(palabra).toUpperCase();
-        const cpx = ajustar(codigoTxt, fd, 196, T.w - 150, 50);
-        ctx.font = fd(cpx);
+        const codigoBase = T.y + T.h - 26;
+        const espacioCodigo = codigoBase - (rotuloBase + 24);
+        const cpx = ajustar(codigoTxt, fd, (T.w - 120) / EST, espacioCodigo, 260, 30);
+        const mC = medir(codigoTxt, fd(cpx));
         ctx.fillStyle = '#111111';
-        ctx.fillText(codigoTxt, 0, T.h / 2 - 34);
-        ctx.restore();
+        textoD(codigoTxt, cpx, W / 2, codigoBase);
+        caja('ticket-codigo', W / 2 - (mC.w * EST) / 2, codigoBase - mC.asc, mC.w * EST, mC.asc);
         caja('ticket', T.x, T.y, T.w, T.h);
 
-        // ── 9. Píldora "SOLO 10 CUPOS" con puntos (todos llenos) ──
-        const P = { x: 62, y: 1643, w: 946, h: 98 };
+        // ════ 7. Píldora "SOLO 10 CUPOS" + puntos (todos llenos) ════
+        const P = { x: 69, y: 1488, w: 950, h: 84 };
         rectRedondo(ctx, P.x, P.y, P.w, P.h, P.h / 2);
-        ctx.fillStyle = 'rgba(12,10,9,0.85)';
+        ctx.fillStyle = 'rgba(14,11,9,0.9)';
         ctx.fill();
         ctx.strokeStyle = NARANJA;
         ctx.lineWidth = 4;
         ctx.stroke();
         const nCupos = Math.max(0, Math.round(Number(cupos) || 0));
-        const partes = [['SOLO ', CREMA], [String(nCupos), NARANJA], [' CUPOS', CREMA]];
-        ctx.font = fd(62);
-        let px0 = P.x + 52;
-        ctx.textAlign = 'left';
-        partes.forEach(([txt, color]) => {
+        const mS = medir('S', fd(52));
+        let xs = P.x + 62;
+        [['SOLO ', CREMA], [String(nCupos), NARANJA], [' CUPOS', CREMA]].forEach(([t, color]) => {
             ctx.fillStyle = color;
-            ctx.fillText(txt, px0, P.y + P.h / 2 + 23);
-            px0 += ctx.measureText(txt).width;
+            textoD(t, 52, xs, P.y + P.h / 2 + mS.asc / 2, 'left');
+            xs += medir(t, fd(52)).w * EST;
         });
-        ctx.textAlign = 'center';
         const nPuntos = Math.max(1, Math.min(10, nCupos || 10));
-        const zonaPuntos = { x0: Math.max(px0 + 40, P.x + 432), x1: P.x + P.w - 50 };
-        const paso = Math.min(48, (zonaPuntos.x1 - zonaPuntos.x0) / nPuntos);
-        const rPunto = Math.min(20, paso * 0.42);
-        const inicio = zonaPuntos.x1 - paso * nPuntos + paso / 2;
+        const finPuntos = P.x + P.w - 56;
+        const paso = Math.min(52, (finPuntos - (xs + 60)) / nPuntos);
         ctx.fillStyle = NARANJA;
         for (let i = 0; i < nPuntos; i++) {
             ctx.beginPath();
-            ctx.arc(inicio + i * paso, P.y + P.h / 2, rPunto, 0, Math.PI * 2);
+            ctx.arc(finPuntos - paso * (nPuntos - i) + paso / 2, P.y + P.h / 2, Math.min(18, paso * 0.38), 0, Math.PI * 2);
             ctx.fill();
         }
         caja('cupos', P.x, P.y, P.w, P.h);
-    } else {
-        // ── Agotado: sello "AGOTADO POR HOY" en estilo ticket, inclinado ──
-        const T = { x: 132, y: 1270, w: 834, h: 250 };
-        dibujarTicket(T.x, T.y, T.w, T.h, -0.07);
-        ctx.save();
-        ctx.translate(540, T.y + T.h / 2);
-        ctx.rotate(-0.07);
-        ctx.fillStyle = '#111111';
-        const apx = ajustar('AGOTADO POR HOY', fd, 150, T.w - 130, 50);
-        ctx.font = fd(apx);
-        const ma = ctx.measureText('AGOTADO POR HOY');
-        ctx.fillText('AGOTADO POR HOY', 0, (ma.actualBoundingBoxAscent || apx * 0.72) / 2);
-        ctx.restore();
-        caja('sello-agotado', T.x - 20, T.y - 40, T.w + 40, T.h + 80);
-        const l1 = `Los ${Math.round(Number(cupos) || 0)} cupos de hoy volaron`;
-        ctx.fillStyle = CREMA;
-        ctx.font = fd(ajustar(l1, fd, 76, 880));
-        ctx.fillText(l1, 540, 1652);
-        const l2 = 'Mañana a las 12 · nueva palabra clave 👀';
+
+        // ════ 8. "Pídelo en la app · roalburger.com" (termina en y=1650) ════
+        const appY = 1628;
+        const a1 = 'Pídelo en la app · ';
+        const a2 = 'roalburger.com';
+        const wa1 = medir(a1, ft(500)(40)).w;
+        const wa2 = medir(a2, ft(700)(40)).w;
+        const ico = { w: 42, h: 66 };
+        const totalApp = ico.w + 24 + wa1 + wa2;
+        const ax0 = W / 2 - totalApp / 2;
+        const icoY = 1650 - ico.h;
+        ctx.strokeStyle = NARANJA;
+        ctx.lineWidth = 7;
+        rectRedondo(ctx, ax0 + 3.5, icoY + 3.5, ico.w - 7, ico.h - 7, 9);
+        ctx.stroke();
         ctx.fillStyle = NARANJA;
-        ctx.font = ft(600, ajustar(l2, (px) => ft(600, px), 42, 880));
-        ctx.fillText(l2, 540, 1722);
-        caja('texto-agotado', 100, 1580, 880, 160);
+        ctx.fillRect(ax0 + 15, icoY + 11, 12, 4);
+        ctx.beginPath(); ctx.arc(ax0 + ico.w / 2, icoY + ico.h - 14, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.textAlign = 'left';
+        ctx.font = ft(500)(40);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(a1, ax0 + ico.w + 24, appY);
+        ctx.font = ft(700)(40);
+        ctx.fillStyle = NARANJA;
+        ctx.fillText(a2, ax0 + ico.w + 24 + wa1, appY);
+        ctx.textAlign = 'center';
+        caja('app', ax0, icoY, totalApp, ico.h);
+    } else {
+        // ════ Agotado: sello "AGOTADO / POR HOY" inclinado (referencia de agotado, 1:1) ════
+        const SA = { cx: 567, cy: 1012, w: 660, h: 300, ang: -0.16 };
+        ctx.save();
+        ctx.translate(SA.cx, SA.cy);
+        ctx.rotate(SA.ang);
+        rectRedondo(ctx, -SA.w / 2, -SA.h / 2, SA.w, SA.h, 14);
+        ctx.fillStyle = 'rgba(14,11,9,0.88)';
+        ctx.fill();
+        // Borde naranja grueso e irregular (pincel)
+        ctx.strokeStyle = NARANJA;
+        ctx.lineWidth = 12;
+        ctx.stroke();
+        for (let i = 0; i < 26; i++) {
+            ctx.strokeStyle = `rgba(16,12,9,${0.4 + azar() * 0.4})`;
+            ctx.lineWidth = 1.5 + azar() * 2;
+            const lado = Math.floor(azar() * 4);
+            const t = azar();
+            ctx.beginPath();
+            if (lado < 2) {
+                const y = lado ? SA.h / 2 : -SA.h / 2;
+                const x = -SA.w / 2 + t * SA.w;
+                ctx.moveTo(x, y - 5); ctx.lineTo(x + 6 + azar() * 10, y + 5);
+            } else {
+                const x = lado === 2 ? -SA.w / 2 : SA.w / 2;
+                const y = -SA.h / 2 + t * SA.h;
+                ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y + 6 + azar() * 10);
+            }
+            ctx.stroke();
+        }
+        const apx = ajustar('AGOTADO', fd, (SA.w - 100) / EST, 130, 220, 40);
+        const mA = medir('AGOTADO', fd(apx));
+        textoGastado('AGOTADO', fd(apx), NARANJA, 0, -SA.h / 2 + 34 + mA.asc, 0.0006, EST);
+        const ppx = ajustar('POR HOY', fd, (SA.w - 240) / EST, 82, 160, 30);
+        const mPH = medir('POR HOY', fd(ppx));
+        textoGastado('POR HOY', fd(ppx), CREMA, 0, SA.h / 2 - 34, 0.0006, EST);
+        ctx.restore();
+        caja('sello-agotado', SA.cx - SA.w / 2 - 20, SA.cy - SA.h / 2 - 60, SA.w + 40, SA.h + 120);
+        // Trazos de energía alrededor del sello
+        trazo(168, 1050, 214, 1066, 10);
+        trazo(162, 1110, 210, 1098, 10);
+        trazo(190, 1160, 222, 1130, 10);
+        trazo(912, 912, 944, 878, 10);
+        trazo(918, 968, 970, 960, 10);
+        void mPH;
+
+        // ════ Textos de agotado ════
+        const n = Math.round(Number(cupos) || 0);
+        const l1 = [['Los ', CREMA], [String(n), NARANJA], [' cupos de hoy ', CREMA], ['volaron', NARANJA]];
+        const l1txt = l1.map(([t]) => t).join('');
+        const f1 = ajustar(l1txt, ft(700), 880, 0, 56, 24);
+        const w1t = textoMixto(l1, ft(700)(f1), W / 2, 1300);
+        caja('texto-agotado', W / 2 - w1t / 2, 1258, w1t, 56);
+        const l2 = 'Mañana a las 12 · nueva palabra clave 👀';
+        ctx.fillStyle = CREMA;
+        const f2 = ajustar(l2, ft(600), 900, 0, 48, 22);
+        ctx.font = ft(600)(f2);
+        ctx.fillText(l2, W / 2, 1385);
+        caja('texto-agotado-2', W / 2 - ctx.measureText(l2).width / 2, 1348, ctx.measureText(l2).width, 50);
     }
-
-    // ── 10. Ícono de celular + "Pídelo en la app · roalburger.com" ──
-    const appY = 1826;
-    const a1 = 'Pídelo en la app · ';
-    const a2 = 'roalburger.com';
-    ctx.font = ft(500, 46);
-    const wa1 = ctx.measureText(a1).width;
-    ctx.font = ft(700, 46);
-    const wa2 = ctx.measureText(a2).width;
-    const iconoW = 46;
-    const totalApp = iconoW + 26 + wa1 + wa2;
-    const ax0 = 540 - totalApp / 2;
-    ctx.strokeStyle = NARANJA;
-    ctx.lineWidth = 7;
-    rectRedondo(ctx, ax0 + 3, appY - 62, iconoW - 6, 80, 9);
-    ctx.stroke();
-    ctx.fillStyle = NARANJA;
-    ctx.fillRect(ax0 + 17, appY - 54, 12, 4);
-    ctx.beginPath(); ctx.arc(ax0 + iconoW / 2, appY + 8, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.textAlign = 'left';
-    ctx.font = ft(500, 46);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(a1, ax0 + iconoW + 26, appY);
-    ctx.font = ft(700, 46);
-    ctx.fillStyle = NARANJA;
-    ctx.fillText(a2, ax0 + iconoW + 26 + wa1, appY);
-    ctx.textAlign = 'center';
-    caja('app', ax0, appY - 66, totalApp, 90);
-
-    ctx.restore();
 
     return {
         canvas,
         cajas,
         zonas: {
-            arriba: { x: 0, y: 0, w: W, h: FRANJA_Y0 },
+            // Lo que la referencia v2 deja solo con fondo arriba (el título empieza en y≈198).
+            arriba: { x: 0, y: 0, w: W, h: 190 },
             sticker: { ...STICKER },
             abajo: { x: 0, y: STICKER.y + STICKER.h, w: W, h: H - STICKER.y - STICKER.h }
         }
@@ -16267,7 +16240,76 @@ function _cdFechaHistoria(dateKey) {
     return `${CD_DIAS_SEMANA[_cdDow(dateKey)]} ${d} de ${_CD_MESES_LARGOS[m - 1]}`.toUpperCase();
 }
 
-async function _cdDescargarHistoria(dia, agotado) {
+// <descarga-historias>
+// Cómo llegan las historias al celular. Bloque AUTOCONTENIDO (las dependencias del navegador se
+// inyectan): tests/codigo-dia-descarga.test.js lo extrae y lo prueba en Node.
+//   - iPhone/iPad: navigator.share con los PNG ("Guardar imagen(es)" las deja en Fotos). Es la
+//     única forma de llegar a la galería en iOS: la descarga normal las manda a la app Archivos.
+//   - Android: descarga directa (<a download>); aparecen solas en la galería (álbum Descargas).
+//   - Escritorio: descarga directa.
+//   - Otro celular (no Android) que sepa compartir archivos: navigator.share.
+function cdModoEntrega({ userAgent = '', platform = '', maxTouchPoints = 0, puedeCompartirArchivos = false } = {}) {
+    // iPadOS se presenta como Mac de escritorio; se reconoce por la pantalla táctil.
+    const ios = /iPad|iPhone|iPod/i.test(userAgent) || (platform === 'MacIntel' && Number(maxTouchPoints) > 1);
+    if (ios) return puedeCompartirArchivos ? 'share' : 'download';
+    if (/Android/i.test(userAgent)) return 'download';
+    if (/Mobi|Tablet/i.test(userAgent) && puedeCompartirArchivos) return 'share';
+    return 'download';
+}
+
+// archivos: [{ nombre, blob }]. entorno: { nav, File, descargar(nombre, blob), esperar(ms),
+// avisar(texto, tipo), ofrecer({ motivo, cantidad }) → 'compartir' | 'descargar' | null }.
+async function cdEntregarHistorias(archivos, entorno) {
+    const { nav, descargar, esperar, avisar, ofrecer } = entorno;
+    const ArchivoFile = entorno.File;
+    const files = archivos.map((a) => new ArchivoFile([a.blob], a.nombre, { type: 'image/png' }));
+    let puede = false;
+    try {
+        puede = typeof nav.canShare === 'function' && typeof nav.share === 'function' && nav.canShare({ files }) === true;
+    } catch (_) { puede = false; }
+    const modo = cdModoEntrega({ userAgent: nav.userAgent, platform: nav.platform, maxTouchPoints: nav.maxTouchPoints, puedeCompartirArchivos: puede });
+    const varias = archivos.length > 1;
+    const android = /Android/i.test(nav.userAgent || '');
+
+    const bajar = async () => {
+        if (varias && android) {
+            avisar('Se descargan 2 imágenes. Si el navegador pregunta si permites descargar varios archivos, toca "Permitir".', 'info');
+        }
+        for (let i = 0; i < archivos.length; i++) {
+            // Pausa entre archivos para que el navegador no bloquee la segunda descarga.
+            if (i > 0) await esperar(900);
+            descargar(archivos[i].nombre, archivos[i].blob);
+        }
+        avisar(android
+            ? 'Listo: revisa tu galería (álbum Descargas).'
+            : (varias ? 'Listo: se descargaron las 2 imágenes.' : 'Listo: se descargó la imagen.'), 'ok');
+        return { modo: 'download', entregados: archivos.length };
+    };
+    if (modo !== 'share') return bajar();
+
+    const compartir = async () => {
+        await nav.share({ files, title: 'Código del día' });
+        avisar(varias
+            ? 'Listo: si tocaste "Guardar 2 imágenes", ya están en Fotos. Revisa tu galería.'
+            : 'Listo: si tocaste "Guardar imagen", ya está en Fotos. Revisa tu galería.', 'ok');
+        return { modo: 'share', entregados: files.length };
+    };
+    try {
+        return await compartir();
+    } catch (err) {
+        // AbortError = el usuario cerró la hoja de compartir. NotAllowedError = el navegador perdió
+        // el "toque" del usuario mientras se dibujaba la imagen: hace falta un toque nuevo.
+        const accion = await ofrecer({ motivo: err && err.name === 'AbortError' ? 'cancelado' : 'error', cantidad: files.length });
+        if (accion === 'compartir') {
+            try { return await compartir(); } catch (_) { return bajar(); }
+        }
+        if (accion === 'descargar') return bajar();
+        return { modo: 'share', entregados: 0, cancelado: true };
+    }
+}
+// </descarga-historias>
+
+async function _cdGenerarBlobHistoria(dia, agotado) {
     const pct = Number(cdState.config.porcentaje) || 0;
     const producto = productsState.find((p) => p.id === dia.productoId);
     const precioNormal = Number(producto?.precio) || Number(dia.precioNormal) || 0;
@@ -16282,17 +16324,65 @@ async function _cdDescargarHistoria(dia, agotado) {
         fotoUrl: String(producto?.image_url || '').trim(),
         agotado
     });
-    const blob = await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
         try { canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('el navegador no pudo crear el PNG'))), 'image/png'); } catch (err) { reject(err); }
     });
+}
+
+function _cdDescargarBlob(nombre, blob) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `codigo-del-dia-${dia.id}${agotado ? '-agotado' : ''}.png`;
+    a.download = nombre;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+}
+
+// Respaldo cuando la hoja de compartir falla o se cancela: un toque nuevo para "Guardar en
+// Fotos" (vuelve a abrir la hoja de compartir) o la descarga normal.
+function _cdOfrecerEntrega({ motivo, cantidad }) {
+    return new Promise((resolve) => {
+        document.getElementById('cdEntregaModal')?.remove();
+        const modal = document.createElement('div');
+        modal.id = 'cdEntregaModal';
+        modal.className = 'cd-entrega-modal';
+        modal.innerHTML = `
+            <div class="cd-entrega-box" role="dialog" aria-modal="true" aria-labelledby="cdEntregaTitulo">
+                <p class="cd-entrega-titulo" id="cdEntregaTitulo">${motivo === 'cancelado' ? 'No se guardó' : 'Falta un toque'}</p>
+                <p class="cd-entrega-texto">${cantidad > 1 ? 'Las 2 imágenes están listas.' : 'La imagen está lista.'} Toca "Guardar en Fotos" y luego "${cantidad > 1 ? 'Guardar 2 imágenes' : 'Guardar imagen'}", o descárgala${cantidad > 1 ? 's' : ''} como archivo.</p>
+                <div class="cd-entrega-acciones">
+                    <button type="button" class="section-action-btn primary" data-cd-accion="compartir">Guardar en Fotos</button>
+                    <button type="button" class="cd-btn" data-cd-accion="descargar">Descargar</button>
+                    <button type="button" class="cd-btn" data-cd-accion="">Cerrar</button>
+                </div>
+            </div>`;
+        modal.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-cd-accion]');
+            if (!b && e.target !== modal) return;
+            modal.remove();
+            resolve(b ? (b.dataset.cdAccion || null) : null);
+        });
+        document.body.appendChild(modal);
+    });
+}
+
+// "Historia", "Agotado" o "Ambas": genera los PNG y los entrega según el dispositivo.
+async function _cdEntregarDia(dia, cual) {
+    const piezas = cual === 'ambas' ? [false, true] : [cual === 'agotado'];
+    const archivos = [];
+    for (const agotado of piezas) {
+        archivos.push({ nombre: `codigo-del-dia-${dia.id}${agotado ? '-agotado' : ''}.png`, blob: await _cdGenerarBlobHistoria(dia, agotado) });
+    }
+    return cdEntregarHistorias(archivos, {
+        nav: navigator,
+        File: window.File,
+        descargar: _cdDescargarBlob,
+        esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
+        avisar: (texto, tipo) => showNotice(texto, tipo === 'info' ? 'ok' : tipo),
+        ofrecer: _cdOfrecerEntrega
+    });
 }
 
 // ===== PANEL PROMOCIONES ADMIN =====

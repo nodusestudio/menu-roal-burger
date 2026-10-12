@@ -1,10 +1,9 @@
 // Test de las historias de Instagram del Código del día (src/js/admin.js, bloque
 // <historia-codigo-dia>): se extrae el bloque autocontenido y se corre en Chromium (Playwright)
-// para verificar que el PNG sale en 1080x1920, que la composición (réplica de la referencia
-// docs/referencias/codigo-del-dia-ref.png) queda dentro de la franja y=230..1650 en el MISMO orden de la referencia,
-// que el hueco del sticker de enlace (y=1650..1800) y el resto de las zonas libres no tienen
-// contenido (solo el fondo con luces tenues), también con nombres/palabras largos, sin foto y en
-// la versión de agotado.
+// para verificar que el PNG sale en 1080x1920, que los elementos quedan en las posiciones de las
+// referencias v2 (docs/referencias/codigo-del-dia-ref-v2.png y codigo-del-dia-agotado-ref-v2.png,
+// con la corrección pedida: nada baja de y=1650), que el rótulo y el código del ticket nunca se
+// encima y que las zonas libres (arriba, hueco del sticker y franja inferior) solo tienen fondo.
 //
 // No necesita el emulador (corre igual dentro de `firebase emulators:exec`).
 
@@ -68,24 +67,28 @@ async function generar(datos, conFoto = true) {
 }
 
 const BASE = {
-    fechaTexto: 'LUNES 12 DE OCTUBRE',
+    fechaTexto: 'MARTES 13 DE OCTUBRE',
     productoNombre: 'Burger Ranchera',
     precioNormal: 30000,
     precioDescuento: 21000,
     porcentaje: 30,
-    palabra: 'CHAMO27',
+    palabra: 'CAIMANERA48',
     cupos: 10
 };
 
 function seCruzan(a, b) {
     return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
+const cajaDe = (r, n) => r.cajas.find((c) => c.nombre === n);
+// Posición esperada (medida sobre la referencia v2 a 1080x1920) con tolerancia.
+function cerca(valor, esperado, tol, etiqueta) {
+    assert.ok(Math.abs(valor - esperado) <= tol, `${etiqueta}: ${valor} (esperado ${esperado} ± ${tol})`);
+}
 
 function verificarZonas(r, etiqueta) {
     assert.equal(r.w, 1080, `${etiqueta}: ancho`);
     assert.equal(r.h, 1920, `${etiqueta}: alto`);
     assert.equal(r.pngInicio, 'data:image/png;base64,');
-    assert.deepEqual(r.zonas.arriba, { x: 0, y: 0, w: 1080, h: 230 });
     assert.deepEqual(r.zonas.sticker, { x: 240, y: 1650, w: 600, h: 150 });
     assert.deepEqual(r.zonas.abajo, { x: 0, y: 1800, w: 1080, h: 120 });
     for (const c of r.cajas) {
@@ -93,57 +96,88 @@ function verificarZonas(r, etiqueta) {
             assert.ok(!seCruzan(c, z), `${etiqueta}: "${c.nombre}" invade la zona ${nombre} (${JSON.stringify(c)})`);
         }
         assert.ok(c.x >= 0 && c.x + c.w <= 1080, `${etiqueta}: "${c.nombre}" se sale del ancho (${JSON.stringify(c)})`);
+        assert.ok(c.y + c.h <= 1650, `${etiqueta}: "${c.nombre}" baja de y=1650 (${JSON.stringify(c)})`);
     }
-    // Zonas libres = solo el fondo oscuro con luces desenfocadas tenues. El texto crema (~230) y el
-    // naranja de marca (~139 de luminancia) quedan muy por encima de este tope.
-    assert.ok(r.brillo.arriba < 110, `${etiqueta}: franja superior con contenido (brillo ${r.brillo.arriba})`);
-    assert.ok(r.brillo.abajo < 110, `${etiqueta}: franja inferior con contenido (brillo ${r.brillo.abajo})`);
-    assert.ok(r.brillo.sticker < 110, `${etiqueta}: zona del sticker con contenido (brillo ${r.brillo.sticker})`);
-    // Toda la composición dentro de la franja 230..1650.
-    for (const c of r.cajas) {
-        assert.ok(c.y >= 230 && c.y + c.h <= 1650, `${etiqueta}: "${c.nombre}" fuera de la franja 230..1650 (${JSON.stringify(c)})`);
+    // Zonas libres = solo el fondo oscuro con luces desenfocadas tenues (el texto crema ~230 y el
+    // naranja de marca ~139 de luminancia quedan muy por encima de este tope).
+    for (const z of ['arriba', 'abajo', 'sticker']) {
+        assert.ok(r.brillo[z] < 110, `${etiqueta}: zona ${z} con contenido (brillo ${r.brillo[z]})`);
     }
 }
 
-test('historia normal: 1080x1920, PNG, con todos los elementos y las zonas de Instagram libres', async () => {
+function verificarTicket(r, etiqueta) {
+    const rotulo = cajaDe(r, 'ticket-rotulo');
+    const codigo = cajaDe(r, 'ticket-codigo');
+    const ticket = cajaDe(r, 'ticket');
+    assert.ok(rotulo && codigo && ticket, `${etiqueta}: faltan las cajas del ticket`);
+    assert.ok(rotulo.y + rotulo.h + 12 <= codigo.y, `${etiqueta}: el rótulo y el código se tocan (${JSON.stringify(rotulo)} / ${JSON.stringify(codigo)})`);
+    assert.ok(codigo.x >= ticket.x && codigo.x + codigo.w <= ticket.x + ticket.w, `${etiqueta}: el código se sale del ticket a lo ancho`);
+    assert.ok(codigo.y + codigo.h <= ticket.y + ticket.h, `${etiqueta}: el código se sale del ticket por abajo`);
+}
+
+test('historia normal (v2): 1080x1920, elementos en las posiciones de la referencia y zonas libres', async () => {
     const r = await generar(BASE);
     verificarZonas(r, 'normal');
+    verificarTicket(r, 'normal');
     const nombres = r.cajas.map((c) => c.nombre);
-    for (const n of ['logo', 'titulo', 'cinta', 'sello', 'nombre', 'precios', 'ticket', 'cupos', 'app']) {
+    for (const n of ['titulo', 'cinta', 'sello', 'nombre', 'precios', 'ticket', 'cupos', 'app']) {
         assert.ok(nombres.includes(n), `falta ${n}`);
     }
-    // Mismo orden de arriba a abajo que la referencia.
-    const y = (n) => r.cajas.find((c) => c.nombre === n).y;
-    const orden = ['logo', 'titulo', 'cinta', 'nombre', 'precios', 'ticket', 'cupos', 'app'];
+    assert.ok(!nombres.includes('logo'), 'la v2 no lleva logo');
+    // Arriba, 1:1 con la referencia v2.
+    const t = cajaDe(r, 'titulo');
+    cerca(t.y, 198, 12, 'titulo.y (con la tilde, como la v2)');
+    cerca(t.x, 125, 30, 'titulo.x');
+    cerca(t.w, 854, 30, 'titulo.w');
+    const c = cajaDe(r, 'cinta');
+    cerca(c.x, 225, 10, 'cinta.x');
+    cerca(c.y, 368, 10, 'cinta.y');
+    cerca(c.w, 658, 10, 'cinta.w');
+    // Abajo: referencia v2 subida (corrección pedida: "Pídelo en la app" termina en y=1650).
+    const sello = cajaDe(r, 'sello');
+    cerca(sello.x + sello.w / 2, 903, 15, 'sello.cx');
+    cerca(sello.w / 2, 136, 10, 'sello.r');
+    cerca(cajaDe(r, 'nombre').y, 976, 25, 'nombre.y');
+    assert.ok(cajaDe(r, 'nombre').w <= 903 + 2);
+    const tk = cajaDe(r, 'ticket');
+    cerca(tk.x, 118, 5, 'ticket.x');
+    cerca(tk.w, 863, 5, 'ticket.w');
+    cerca(tk.h, 228, 5, 'ticket.h');
+    cerca(cajaDe(r, 'cupos').w, 950, 5, 'cupos.w');
+    const app = cajaDe(r, 'app');
+    cerca(app.y + app.h, 1650, 2, 'app termina en 1650');
+    // Orden de arriba a abajo.
+    const orden = ['titulo', 'cinta', 'nombre', 'precios', 'ticket', 'cupos', 'app'];
     for (let i = 1; i < orden.length; i++) {
-        assert.ok(y(orden[i]) > y(orden[i - 1]), `${orden[i]} debe ir debajo de ${orden[i - 1]}`);
+        assert.ok(cajaDe(r, orden[i]).y > cajaDe(r, orden[i - 1]).y, `${orden[i]} debe ir debajo de ${orden[i - 1]}`);
     }
-    // El sello va a la derecha, entre la cinta y el nombre (sobre la foto).
-    const sello = r.cajas.find((c) => c.nombre === 'sello');
-    assert.ok(sello.x + sello.w / 2 > 540, 'sello a la derecha');
-    assert.ok(sello.y > y('cinta') && sello.y < y('nombre'), 'sello a la altura de la foto');
-    // El ticket con la palabra es el elemento más grande de la pieza.
-    const area = (c) => c.w * c.h;
-    const ticket = r.cajas.find((c) => c.nombre === 'ticket');
-    assert.ok(r.cajas.every((c) => c === ticket || area(c) < area(ticket)), 'el ticket debe ser el elemento más grande');
-    // "Pídelo en la app" es lo último y va por encima del hueco del sticker.
-    const app = r.cajas.find((c) => c.nombre === 'app');
-    assert.ok(app.y + app.h <= r.zonas.sticker.y);
 });
 
-test('historia de agotado: sin código ni precios, con sello "AGOTADO POR HOY" estilo ticket y las zonas libres', async () => {
+test('historia de agotado (v2): AGOTADO POR HOY inclinado, sin código, precios ni píldora', async () => {
     const r = await generar({ ...BASE, agotado: true });
     verificarZonas(r, 'agotado');
     const nombres = r.cajas.map((c) => c.nombre);
-    assert.ok(nombres.includes('sello-agotado'));
-    assert.ok(nombres.includes('texto-agotado'));
-    assert.ok(!nombres.includes('ticket'), 'la de agotado no lleva el código');
-    assert.ok(!nombres.includes('precios'));
-    assert.ok(!nombres.includes('cupos'), 'la de agotado no lleva la píldora de cupos');
-    assert.ok(!nombres.includes('sello'), 'la de agotado no lleva el -30%');
+    for (const n of ['titulo', 'cinta', 'sello-agotado', 'texto-agotado', 'texto-agotado-2']) {
+        assert.ok(nombres.includes(n), `falta ${n}`);
+    }
+    for (const n of ['ticket', 'precios', 'cupos', 'sello', 'app']) {
+        assert.ok(!nombres.includes(n), `la de agotado no lleva ${n}`);
+    }
+    cerca(cajaDe(r, 'titulo').y, 198, 12, 'titulo.y (con la tilde, como la v2)');
+    const s = cajaDe(r, 'sello-agotado');
+    cerca(s.x + s.w / 2, 567, 15, 'sello-agotado.cx');
+    cerca(s.y + s.h / 2, 1012, 15, 'sello-agotado.cy');
+    cerca(cajaDe(r, 'texto-agotado').y, 1258, 20, 'texto-agotado.y');
 });
 
-test('nombres y palabras muy largos se achican y caben sin cortarse; sin foto usa el fondo de marca', async () => {
+test('ticket: el rótulo y el código nunca se encima, con palabras de 11 o 12 caracteres', async () => {
+    for (const palabra of ['CAIMANERA48', 'CHALEQUEAR99', 'MACUNDALES99', 'GUACHAFITA77', 'PILAS34']) {
+        const r = await generar({ ...BASE, palabra });
+        verificarTicket(r, palabra);
+    }
+});
+
+test('nombres muy largos y sin foto: se achican y caben sin cortarse', async () => {
     const r = await generar({
         ...BASE,
         productoNombre: 'Salchipapa Súper Gigante Familiar con Todo Incluido Extra',
@@ -152,4 +186,5 @@ test('nombres y palabras muy largos se achican y caben sin cortarse; sin foto us
         cupos: 25
     }, false);
     verificarZonas(r, 'largo');
+    verificarTicket(r, 'largo');
 });
