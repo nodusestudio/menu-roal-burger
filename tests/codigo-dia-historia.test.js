@@ -188,3 +188,24 @@ test('nombres muy largos y sin foto: se achican y caben sin cortarse', async () 
     verificarZonas(r, 'largo');
     verificarTicket(r, 'largo');
 });
+
+test('JPEG para Instagram: la historia sale como JPEG real, sin píxeles transparentes (se verían negros) y cabe en 900 KB', async () => {
+    for (const agotado of [false, true]) {
+        const r = await page.evaluate(async (datos) => {
+            const g = await window.generarHistoriaCodigoDia(datos);
+            const ctx = g.canvas.getContext('2d');
+            // Transparencia: un JPEG pinta de negro lo que sea transparente. Se revisa una malla fina.
+            let transparentes = 0;
+            const d = ctx.getImageData(0, 0, g.canvas.width, g.canvas.height).data;
+            for (let i = 3; i < d.length; i += 4 * 37) if (d[i] < 255) transparentes++;
+            const blob = await new Promise((res) => g.canvas.toBlob(res, 'image/jpeg', 0.92));
+            const cabecera = Array.from(new Uint8Array(await blob.slice(0, 3).arrayBuffer()));
+            return { tipo: blob.type, tamano: blob.size, cabecera, transparentes, w: g.canvas.width, h: g.canvas.height };
+        }, { ...BASE, agotado });
+        assert.equal(r.tipo, 'image/jpeg');
+        assert.deepEqual(r.cabecera, [0xFF, 0xD8, 0xFF], 'cabecera JPEG');
+        assert.equal(r.transparentes, 0, `agotado=${agotado}: hay píxeles transparentes`);
+        assert.equal(`${r.w}x${r.h}`, '1080x1920');
+        assert.ok(r.tamano < 900 * 1024, `agotado=${agotado}: pesa ${r.tamano} bytes`);
+    }
+});

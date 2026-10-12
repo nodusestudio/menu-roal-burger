@@ -805,5 +805,7 @@ module.exports = {
     editarDia,
     sugerirPalabra,
     toMs,
-    mensajeDe
+    mensajeDe,
+    horaAMinutos,
+    leerCierresProgramados
 };

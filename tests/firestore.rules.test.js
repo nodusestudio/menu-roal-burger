@@ -360,3 +360,29 @@ test('SEGURIDAD Código del día: la palabra, cupos y canjes solo los lee admin;
     await assertFails(anonDb.collection('codigo_dia_publico').doc('hoy').update({ cuposRestantes: 999 }));
     await assertFails(adminDb.collection('codigo_dia_publico').doc('hoy').update({ cuposRestantes: 999 }));
 });
+
+test('SEGURIDAD Instagram: el token y las imágenes no se leen desde el navegador; el estado por día solo lo lee admin', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        const fs = context.firestore();
+        await fs.collection('admins').doc('admin-test-uid').set({ seeded: true });
+        await fs.collection('instagram_config').doc('conexion').set({ accessToken: 'IGQ-secreto', igUserId: '1' });
+        await fs.collection('codigo_dia_historias').doc('2026-10-12').set({ imgToken: 'abc', normal: { estado: 'lista' } });
+        await fs.collection('codigo_dia_historias_img').doc('2026-10-12_normal').set({ size: 1 });
+    });
+    const adminDb = testEnv.authenticatedContext('admin-test-uid').firestore();
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    const clienteDb = testEnv.authenticatedContext('phone_3001234567').firestore();
+
+    // Token e imágenes: ni siquiera el admin las lee ni escribe desde el navegador.
+    for (const [col, id] of [['instagram_config', 'conexion'], ['codigo_dia_historias_img', '2026-10-12_normal']]) {
+        for (const db of [adminDb, anonDb, clienteDb]) {
+            await assertFails(db.collection(col).doc(id).get());
+            await assertFails(db.collection(col).doc(id).set({ hack: true }));
+        }
+    }
+    // Estado por día: lo lee el admin; nadie escribe.
+    await assertSucceeds(adminDb.collection('codigo_dia_historias').doc('2026-10-12').get());
+    await assertFails(anonDb.collection('codigo_dia_historias').doc('2026-10-12').get());
+    await assertFails(clienteDb.collection('codigo_dia_historias').doc('2026-10-12').get());
+    await assertFails(adminDb.collection('codigo_dia_historias').doc('2026-10-12').update({ 'normal.estado': 'publicada' }));
+});

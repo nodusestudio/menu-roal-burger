@@ -418,6 +418,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Historias de Instagram del Código del día (functions/instagramHistorias.js). El token de la
+    // cuenta y los bytes de las imágenes NUNCA se leen desde el cliente: el panel recibe el estado
+    // de la conexión por la callable adminInstagram y lee solo el estado por día.
+    match /instagram_config/{doc} {
+      allow read, write: if false;
+    }
+    match /codigo_dia_historias/{fecha} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /codigo_dia_historias_img/{id} {
+      allow read, write: if false;
+    }
+
     match /admins/{uid} {
       allow read, write: if false;
     }

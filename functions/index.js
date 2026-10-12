@@ -2905,3 +2905,108 @@ exports.syncCodigoDiaProducto = onDocumentWritten(
         await codigoDia.actualizarPublicoHoy(db);
     }
 );
+
+// ─────────────────────────────────────────────────────────────
+// HISTORIAS DE INSTAGRAM DEL CÓDIGO DEL DÍA (publicación automática). Lógica en
+// instagramHistorias.js; aquí solo auth y wrappers. El token vive en instagram_config/conexion
+// (cerrado a clientes) y NUNCA sale hacia el panel.
+// ─────────────────────────────────────────────────────────────
+const instagramHistorias = require('./instagramHistorias');
+
+// URL pública desde la que Meta descarga el JPEG (la función historiaImagen de abajo).
+function historiaImagenBaseUrl() {
+    return process.env.HISTORIA_IMAGEN_URL
+        || `https://us-central1-${process.env.GCLOUD_PROJECT || 'roal-burger-menu'}.cloudfunctions.net/historiaImagen`;
+}
+
+// FODEXA → Código del día → Instagram: conexión, interruptor, historias preparadas y publicar ahora.
+exports.adminInstagram = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '512MiB', timeoutSeconds: 120 },
+    async (request) => {
+        const db = getFirestore();
+        const uid = await cuponPana.ensureAdmin(db, request);
+        const d = request.data || {};
+        const accion = String(d.accion || '');
+        if (accion === 'estado') return instagramHistorias.estadoConexion(db);
+        if (accion === 'guardarToken') return instagramHistorias.guardarToken(db, d.token, uid);
+        if (accion === 'probar') return instagramHistorias.probarConexion(db);
+        if (accion === 'activar') return instagramHistorias.setActivo(db, d.activo === true);
+        if (accion === 'desconectar') return instagramHistorias.desconectar(db);
+        if (accion === 'refrescar') {
+            await instagramHistorias.refrescarToken(db, { forzar: true });
+            return instagramHistorias.estadoConexion(db);
+        }
+        if (accion === 'guardarHistoria') {
+            const base64 = String(d.imagenBase64 || '').replace(/^data:image\/jpeg;base64,/, '');
+            return instagramHistorias.guardarHistoria(db, {
+                fecha: d.fecha, tipo: d.tipo, jpeg: Buffer.from(base64, 'base64'), huella: d.huella
+            }, uid);
+        }
+        if (accion === 'publicarAhora') {
+            return instagramHistorias.publicarHistoria(db, {
+                fecha: String(d.fecha || ''), tipo: String(d.tipo || ''), baseUrl: historiaImagenBaseUrl(), manual: true
+            });
+        }
+        throw new HttpsError('invalid-argument', 'Acción desconocida.');
+    }
+);
+
+// Pública: Meta descarga aquí la imagen de la historia. Solo responde con el token aleatorio del día.
+exports.historiaImagen = onRequest(
+    { region: 'us-central1', memory: '256MiB' },
+    async (req, res) => {
+        try {
+            const r = await instagramHistorias.servirImagen(getFirestore(), String(req.query?.id || ''), String(req.query?.t || ''));
+            if (r.status !== 200) { res.status(404).send('not found'); return; }
+            res.set('Content-Type', 'image/jpeg');
+            res.set('Cache-Control', 'private, max-age=600');
+            res.status(200).send(r.buffer);
+        } catch (err) {
+            console.error('historiaImagen:', err);
+            res.status(500).send('error');
+        }
+    }
+);
+
+// Cada 5 min entre 11:00 y 14:55 (hora Colombia): publica la historia de hoy cuando llega la hora de
+// publicación. Es idempotente; si falla, reintenta (hasta 3 veces) en las siguientes pasadas.
+exports.publicarHistoriasCodigoDia = onSchedule(
+    { schedule: '*/5 11-14 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        const r = await instagramHistorias.publicarHistoriaDeHoy(getFirestore(), { baseUrl: historiaImagenBaseUrl() });
+        if (r.ok && !r.ya) console.log(`publicarHistoriasCodigoDia: publicada ${r.mediaId}`);
+        else if (!r.ok && !['desactivado', 'sin_conexion', 'antes_de_hora', 'sin_codigo_hoy', 'en_curso_o_agotados_intentos'].includes(r.motivo)) {
+            console.error(`publicarHistoriasCodigoDia: ${r.motivo} ${r.error || ''}`);
+        }
+    }
+);
+
+// Se acabaron los cupos de hoy: sale la historia de "agotado".
+exports.publicarHistoriaAgotado = onDocumentWritten(
+    { document: 'codigo_dia/{fecha}', region: 'us-central1' },
+    async (event) => {
+        const antes = event.data?.before?.data() || {};
+        const despues = event.data?.after?.data() || {};
+        if (antes.agotadoAt || !despues.agotadoAt) return;
+        const db = getFirestore();
+        const r = await instagramHistorias.publicarHistoria(db, {
+            fecha: event.params.fecha, tipo: 'agotado', baseUrl: historiaImagenBaseUrl()
+        });
+        if (!r.ok && !['desactivado', 'sin_conexion', 'no_es_hoy', 'sin_codigo_hoy'].includes(r.motivo)) {
+            console.error(`publicarHistoriaAgotado ${event.params.fecha}: ${r.motivo} ${r.error || ''}`);
+        }
+    }
+);
+
+// Lunes 06:00: renueva el token de Instagram (dura 60 días) cuando le faltan menos de 20.
+exports.refrescarTokenInstagram = onSchedule(
+    { schedule: '0 6 * * 1', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        try {
+            const r = await instagramHistorias.refrescarToken(getFirestore());
+            console.log(`refrescarTokenInstagram: ${r.refrescado ? 'renovado' : r.motivo}`);
+        } catch (err) {
+            console.error('refrescarTokenInstagram:', err.message);
+        }
+    }
+);
