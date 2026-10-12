@@ -15715,36 +15715,44 @@ function _cdRenderConfig(body) {
 
 // <historia-codigo-dia>
 // Historias de Instagram del Código del día (1080x1920 PNG), dibujadas en el navegador del admin.
-// Bloque AUTOCONTENIDO (sin depender de nada más de admin.js): tests/codigo-dia-historia.test.js
-// lo extrae entre estos marcadores y lo corre en Chromium para verificar tamaño y zonas libres.
-// Zonas que Instagram tapa y quedan SIN contenido: 250 px arriba (perfil), 250 px abajo, y un
-// hueco de 600x150 para el sticker de enlace justo encima de la franja inferior.
+// Réplica de la referencia aprobada (docs/referencias/codigo-del-dia-ref.png), elemento por elemento y en el mismo
+// orden: logo, título, cinta con la fecha, foto, sello -30%, nombre, precios, ticket con la
+// palabra, píldora de cupos y "Pídelo en la app". Toda la composición se dibuja en las
+// coordenadas de la referencia (R: 1080 x 1914) y se escala proporcionalmente, centrada, dentro de
+// la franja y=230..1650 del lienzo; el fondo (oscuro con luces desenfocadas) cubre todo el lienzo.
+// De y=1650 a y=1800 queda libre para el sticker de enlace de Instagram.
+// Bloque AUTOCONTENIDO: tests/codigo-dia-historia.test.js lo extrae entre estos marcadores y lo
+// corre en Chromium para verificar tamaño y zonas libres.
 const HISTORIA_CD = Object.freeze({
     W: 1080,
     H: 1920,
-    TOP_LIBRE: 250,
-    BOTTOM_LIBRE: 250,
-    STICKER: Object.freeze({ x: 240, y: 1520, w: 600, h: 150 }),
-    CARBON: '#1A1A1A',
+    REF_W: 1080,
+    REF_H: 1914,
+    FRANJA_Y0: 230,
+    FRANJA_Y1: 1650,
+    STICKER: Object.freeze({ x: 240, y: 1650, w: 600, h: 150 }),
     CREMA: '#F5EBDD',
     NARANJA: '#FF6B00',
-    FUENTE: "'Oswald', 'Bebas Neue', Impact, 'Arial Narrow', sans-serif"
+    DISPLAY: "'Anton', 'Bebas Neue', 'Oswald', Impact, sans-serif",
+    TEXTO: "'Montserrat', 'Plus Jakarta Sans', 'Roboto', Arial, sans-serif"
 });
 
 async function generarHistoriaCodigoDia(datos) {
-    const { W, H, TOP_LIBRE, STICKER, CARBON, CREMA, NARANJA, FUENTE } = HISTORIA_CD;
+    const { W, H, REF_W, REF_H, FRANJA_Y0, FRANJA_Y1, STICKER, CREMA, NARANJA, DISPLAY, TEXTO } = HISTORIA_CD;
     const {
         fechaTexto = '', productoNombre = '', precioNormal = 0, precioDescuento = 0, porcentaje = 0,
-        palabra = '', cupos = 0, fotoUrl = '', agotado = false
+        palabra = '', cupos = 0, fotoUrl = '', logoUrl = 'isotipo.png', agotado = false
     } = datos || {};
 
-    // Tipografías listas antes de dibujar (si no, el canvas usa la de respaldo y no se repinta).
+    // Tipografías listas antes de dibujar.
     try {
         if (document.fonts) {
             await Promise.all([
-                document.fonts.load(`700 120px ${FUENTE}`),
-                document.fonts.load(`600 40px ${FUENTE}`),
-                document.fonts.load(`400 40px ${FUENTE}`)
+                document.fonts.load(`400 120px ${DISPLAY}`),
+                document.fonts.load(`700 120px 'Oswald'`),
+                document.fonts.load(`400 40px ${TEXTO}`),
+                document.fonts.load(`600 40px ${TEXTO}`),
+                document.fonts.load(`700 40px ${TEXTO}`)
             ]);
             await document.fonts.ready;
         }
@@ -15754,365 +15762,498 @@ async function generarHistoriaCodigoDia(datos) {
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
-    const cajas = [];
-    const caja = (nombre, x, y, w, h) => cajas.push({ nombre, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
-    const fuente = (peso, px) => `${peso} ${px}px ${FUENTE}`;
-    const dinero = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CO')}`;
 
-    // Achica la letra hasta que el texto quepa en maxW (nunca se corta).
-    const ajustar = (texto, peso, maxPx, maxW, minPx = 24) => {
+    // Escala de la composición (referencia → franja segura).
+    const S = (FRANJA_Y1 - FRANJA_Y0) / REF_H;
+    const OX = (W - REF_W * S) / 2;
+    const OY = FRANJA_Y0;
+    const cajas = [];
+    // Las cajas se guardan en coordenadas del LIENZO (para el test de zonas libres).
+    const caja = (nombre, x, y, w, h) => cajas.push({
+        nombre, x: Math.round(OX + x * S), y: Math.round(OY + y * S), w: Math.round(w * S), h: Math.round(h * S)
+    });
+
+    // Azar determinista (texturas iguales cada vez que se descarga la misma historia).
+    let semilla = 0;
+    for (const ch of `${palabra}|${fechaTexto}`) semilla = (semilla * 31 + ch.charCodeAt(0)) >>> 0;
+    const azar = () => {
+        semilla = (semilla + 0x6D2B79F5) >>> 0;
+        let t = semilla;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+
+    const fd = (px) => `400 ${px}px ${DISPLAY}`;
+    const ft = (peso, px) => `${peso} ${px}px ${TEXTO}`;
+    const dinero = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-CO')}`;
+    // Achica la letra hasta que quepa en maxW (nunca se corta).
+    const ajustar = (texto, fuente, maxPx, maxW, minPx = 16) => {
         let px = maxPx;
-        ctx.font = fuente(peso, px);
+        ctx.font = fuente(px);
         while (px > minPx && ctx.measureText(texto).width > maxW) {
             px -= 2;
-            ctx.font = fuente(peso, px);
+            ctx.font = fuente(px);
         }
         return px;
     };
-    // Texto con espaciado uniforme entre letras (ctx.letterSpacing no existe en todos los navegadores).
-    const anchoEspaciado = (texto, sp) => [...texto].reduce((w, ch) => w + ctx.measureText(ch).width + sp, -sp);
-    const textoEspaciado = (texto, xCentro, y, sp) => {
-        let x = xCentro - anchoEspaciado(texto, sp) / 2;
+    const anchoEsp = (texto, sp) => [...texto].reduce((w, ch) => w + ctx.measureText(ch).width + sp, -sp);
+    const textoEsp = (texto, xc, y, sp) => {
+        let x = xc - anchoEsp(texto, sp) / 2;
         ctx.textAlign = 'left';
-        for (const ch of texto) {
-            ctx.fillText(ch, x, y);
-            x += ctx.measureText(ch).width + sp;
-        }
+        for (const ch of texto) { ctx.fillText(ch, x, y); x += ctx.measureText(ch).width + sp; }
         ctx.textAlign = 'center';
     };
-    const rectRedondo = (x, y, w, h, r) => {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.arcTo(x + w, y, x + w, y + h, r);
-        ctx.arcTo(x + w, y + h, x, y + h, r);
-        ctx.arcTo(x, y + h, x, y, r);
-        ctx.arcTo(x, y, x + w, y, r);
-        ctx.closePath();
+    const rectRedondo = (c, x, y, w, h, r) => {
+        c.beginPath();
+        c.moveTo(x + r, y);
+        c.arcTo(x + w, y, x + w, y + h, r);
+        c.arcTo(x + w, y + h, x, y + h, r);
+        c.arcTo(x, y + h, x, y, r);
+        c.arcTo(x, y, x + w, y, r);
+        c.closePath();
     };
     const cargarImagen = (url) => new Promise((resolve) => {
         if (!url) { resolve(null); return; }
         const img = new Image();
-        if (!/^data:/i.test(url)) img.crossOrigin = 'anonymous'; // sin CORS no se dibuja: evita "tainted canvas"
+        if (!/^data:/i.test(url)) img.crossOrigin = 'anonymous';
         img.onload = () => resolve(img.naturalWidth ? img : null);
         img.onerror = () => resolve(null);
         img.src = url;
     });
+    // Texto con textura gastada (motas del fondo encima), dibujado en una capa aparte.
+    const textoGastado = (texto, fuente, color, xc, yBase, densidad = 0.0009) => {
+        ctx.font = fuente;
+        const m = ctx.measureText(texto);
+        const w = Math.ceil(m.width) + 20;
+        const asc = Math.ceil(m.actualBoundingBoxAscent || 0) + 10;
+        const desc = Math.ceil(m.actualBoundingBoxDescent || 0) + 10;
+        const capa = document.createElement('canvas');
+        capa.width = w;
+        capa.height = asc + desc;
+        const c = capa.getContext('2d');
+        c.font = fuente;
+        c.textAlign = 'left';
+        c.textBaseline = 'alphabetic';
+        c.fillStyle = color;
+        c.fillText(texto, 10, asc);
+        c.globalCompositeOperation = 'destination-out';
+        const n = Math.round(w * (asc + desc) * densidad);
+        for (let i = 0; i < n; i++) {
+            c.globalAlpha = 0.35 + azar() * 0.55;
+            c.beginPath();
+            c.arc(azar() * w, azar() * (asc + desc), 0.8 + azar() * 2.6, 0, Math.PI * 2);
+            c.fill();
+        }
+        ctx.drawImage(capa, xc - w / 2, yBase - asc);
+        return { w: m.width, asc: asc - 10, desc: desc - 10 };
+    };
 
-    // ── Fondo carbón ───────────────────────────────────────────────────────
-    ctx.fillStyle = CARBON;
+    // ════ FONDO (todo el lienzo): carbón cálido + luces desenfocadas ════
+    ctx.fillStyle = '#120E0B';
+    ctx.fillRect(0, 0, W, H);
+    const centro = ctx.createRadialGradient(W / 2, OY + 800 * S, 60, W / 2, OY + 800 * S, 1100);
+    centro.addColorStop(0, 'rgba(70,38,16,0.55)');
+    centro.addColorStop(1, 'rgba(18,14,11,0)');
+    ctx.fillStyle = centro;
+    ctx.fillRect(0, 0, W, H);
+    const bokeh = (x, y, r, a) => {
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(255,140,40,${a})`);
+        g.addColorStop(0.55, `rgba(255,110,20,${a * 0.45})`);
+        g.addColorStop(1, 'rgba(255,100,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+    };
+    // Mismas luces de la referencia (arriba a la izquierda, derecha a media altura, abajo a los
+    // lados) más algunas en las franjas libres para que no queden planas. Tenues: no compiten.
+    const luces = agotado
+        ? [[60, 420, 150, 0.10], [1030, 760, 120, 0.08], [40, 1260, 110, 0.07], [980, 1500, 130, 0.07], [150, 90, 140, 0.06], [930, 1840, 150, 0.06]]
+        : [[70, 400, 170, 0.55], [1040, 720, 130, 0.48], [30, 1180, 120, 0.40], [1030, 1080, 100, 0.42], [210, 330, 70, 0.30],
+            [990, 1480, 120, 0.28], [150, 90, 140, 0.14], [880, 150, 110, 0.12], [120, 1860, 130, 0.12], [930, 1840, 150, 0.12]];
+    luces.forEach(([x, y, r, a]) => bokeh(x, y, r, a));
+    const vineta = ctx.createRadialGradient(W / 2, H * 0.45, 380, W / 2, H * 0.45, 1250);
+    vineta.addColorStop(0, 'rgba(0,0,0,0)');
+    vineta.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = vineta;
     ctx.fillRect(0, 0, W, H);
 
-    // ── Foto (40-45% del alto, desde la franja libre de arriba) ─────────────
-    const FOTO = { y: TOP_LIBRE, h: 820 }; // 820 / 1920 = 42.7%
-    const foto = await cargarImagen(fotoUrl);
+    // ════ COMPOSICIÓN en coordenadas de la referencia ════
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, FOTO.y, W, H - FOTO.y);
-    ctx.clip();
-    // Brillo cálido detrás del producto
-    const brillo = ctx.createRadialGradient(W / 2, FOTO.y + 430, 40, W / 2, FOTO.y + 430, 560);
-    brillo.addColorStop(0, agotado ? 'rgba(200,200,200,0.12)' : 'rgba(255,107,0,0.38)');
-    brillo.addColorStop(1, 'rgba(255,107,0,0)');
-    ctx.fillStyle = brillo;
-    ctx.fillRect(0, FOTO.y, W, FOTO.h + 200);
+    ctx.translate(OX, OY);
+    ctx.scale(S, S);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+
+    // ── 4. Foto del producto, a TODO el ancho del lienzo e integrada con el fondo ──
+    // Como en la referencia, la foto llega a los bordes y se funde arriba y abajo con el fondo
+    // (sin recuadro ni óvalo). Se dibuja en coordenadas del lienzo para cubrir los 1080 px.
+    const foto = await cargarImagen(fotoUrl);
+    const FOTO = { y: OY + 430 * S, h: 740 * S };
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (foto) {
         const capa = document.createElement('canvas');
         capa.width = W;
-        capa.height = FOTO.h;
-        const c2 = capa.getContext('2d');
-        const escala = Math.max(W / foto.naturalWidth, FOTO.h / foto.naturalHeight);
-        const fw = foto.naturalWidth * escala;
-        const fh = foto.naturalHeight * escala;
-        c2.drawImage(foto, (W - fw) / 2, (FOTO.h - fh) / 2, fw, fh);
+        capa.height = Math.ceil(FOTO.h);
+        const c = capa.getContext('2d');
+        const esc = Math.max(W / foto.naturalWidth, FOTO.h / foto.naturalHeight);
+        const fw = foto.naturalWidth * esc;
+        const fh = foto.naturalHeight * esc;
+        c.drawImage(foto, (W - fw) / 2, (FOTO.h - fh) / 2, fw, fh);
         if (agotado) {
             try {
-                const px = c2.getImageData(0, 0, W, FOTO.h);
+                const px = c.getImageData(0, 0, capa.width, capa.height);
                 const d = px.data;
                 for (let i = 0; i < d.length; i += 4) {
                     const g = Math.round(d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114);
                     d[i] = g; d[i + 1] = g; d[i + 2] = g;
                 }
-                c2.putImageData(px, 0, 0);
+                c.putImageData(px, 0, 0);
             } catch (_) { /* imagen sin permiso de lectura: queda a color */ }
+        } else {
+            // Iluminación cálida sobre el producto.
+            c.globalCompositeOperation = 'soft-light';
+            const luz = c.createRadialGradient(W * 0.4, FOTO.h * 0.3, 30, W * 0.4, FOTO.h * 0.3, W * 0.8);
+            luz.addColorStop(0, 'rgba(255,170,80,0.85)');
+            luz.addColorStop(1, 'rgba(255,120,30,0)');
+            c.fillStyle = luz;
+            c.fillRect(0, 0, W, FOTO.h);
         }
+        // Fundido: arriba y abajo largo, en los costados apenas (la foto llega al borde).
+        c.globalCompositeOperation = 'destination-in';
+        const vert = c.createLinearGradient(0, 0, 0, FOTO.h);
+        vert.addColorStop(0, 'rgba(0,0,0,0)');
+        vert.addColorStop(0.28, 'rgba(0,0,0,1)');
+        vert.addColorStop(0.68, 'rgba(0,0,0,1)');
+        vert.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = vert;
+        c.fillRect(0, 0, W, FOTO.h);
+        const hor = c.createLinearGradient(0, 0, W, 0);
+        hor.addColorStop(0, 'rgba(0,0,0,0.55)');
+        hor.addColorStop(0.08, 'rgba(0,0,0,1)');
+        hor.addColorStop(0.92, 'rgba(0,0,0,1)');
+        hor.addColorStop(1, 'rgba(0,0,0,0.55)');
+        c.fillStyle = hor;
+        c.fillRect(0, 0, W, FOTO.h);
         ctx.drawImage(capa, 0, FOTO.y);
     } else {
-        // Sin foto: fondo de marca carbón → naranja.
-        const marca = ctx.createLinearGradient(0, FOTO.y, W, FOTO.y + FOTO.h);
-        marca.addColorStop(0, CARBON);
-        marca.addColorStop(0.55, agotado ? '#3a3a3a' : '#7a3200');
-        marca.addColorStop(1, agotado ? '#555555' : NARANJA);
-        ctx.fillStyle = marca;
+        // Sin foto: el mismo fondo con un brillo cálido grande donde iría el producto.
+        const cy = FOTO.y + FOTO.h / 2;
+        const g = ctx.createRadialGradient(W / 2, cy, 30, W / 2, cy, 460);
+        g.addColorStop(0, agotado ? 'rgba(160,160,160,0.22)' : 'rgba(255,120,30,0.42)');
+        g.addColorStop(1, 'rgba(255,107,0,0)');
+        ctx.fillStyle = g;
         ctx.fillRect(0, FOTO.y, W, FOTO.h);
     }
-    // Degradados de la foto hacia el fondo (arriba suave, abajo largo)
-    const arriba = ctx.createLinearGradient(0, FOTO.y, 0, FOTO.y + 110);
-    arriba.addColorStop(0, CARBON);
-    arriba.addColorStop(1, 'rgba(26,26,26,0)');
-    ctx.fillStyle = arriba;
-    ctx.fillRect(0, FOTO.y, W, 110);
-    // Largo y fuerte: el título cae sobre esta zona y tiene que leerse sobre fondo oscuro.
-    const abajo = ctx.createLinearGradient(0, FOTO.y + FOTO.h - 420, 0, FOTO.y + FOTO.h);
-    abajo.addColorStop(0, 'rgba(26,26,26,0)');
-    abajo.addColorStop(0.45, 'rgba(26,26,26,0.72)');
-    abajo.addColorStop(0.75, 'rgba(26,26,26,0.94)');
-    abajo.addColorStop(1, CARBON);
-    ctx.fillStyle = abajo;
-    ctx.fillRect(0, FOTO.y + FOTO.h - 420, W, 420);
     ctx.restore();
-    ctx.fillStyle = CARBON;
-    ctx.fillRect(0, FOTO.y + FOTO.h, W, H - FOTO.y - FOTO.h);
+    // Sombra suave arriba y abajo para que el título y el nombre lean sobre la foto.
+    // (sin cortes: cada sombra sube y baja suave, en coordenadas del lienzo a todo el ancho)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const banda = (y0, y1, alfa) => {
+        const g = ctx.createLinearGradient(0, OY + y0 * S, 0, OY + y1 * S);
+        g.addColorStop(0, 'rgba(18,14,11,0)');
+        g.addColorStop(0.5, `rgba(18,14,11,${alfa})`);
+        g.addColorStop(1, 'rgba(18,14,11,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, OY + y0 * S, W, (y1 - y0) * S);
+    };
+    banda(300, 560, 0.6);
+    banda(1020, 1320, 0.8);
+    ctx.restore();
 
-    // ── Viñeta oscura ─────────────────────────────────────────────────────
-    const vineta = ctx.createRadialGradient(W / 2, H * 0.48, 320, W / 2, H * 0.48, 1250);
-    vineta.addColorStop(0, 'rgba(0,0,0,0)');
-    vineta.addColorStop(1, 'rgba(0,0,0,0.62)');
-    ctx.fillStyle = vineta;
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-
-    // ── Sello "-30%" sobre la esquina derecha de la foto ─────────────────
-    if (!agotado) {
-        const sx = 880;
-        const sy = 400;
-        const r = 112;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(-0.21);
-        ctx.shadowColor = 'rgba(0,0,0,0.45)';
-        ctx.shadowBlur = 30;
-        ctx.fillStyle = NARANJA;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
+    // ── 1. Logo: isotipo + ROAL BURGER + lema ──
+    const logo = await cargarImagen(logoUrl);
+    if (logo) {
+        ctx.drawImage(logo, 540 - 80, 14, 160, 160);
+    } else {
+        rectRedondo(ctx, 540 - 62, 30, 124, 124, 32);
+        ctx.fillStyle = '#2b2725';
         ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = 'rgba(26,26,26,0.55)';
-        ctx.lineWidth = 4;
-        ctx.setLineDash([10, 8]);
+        ctx.fillStyle = NARANJA;
+        ctx.font = fd(110);
+        ctx.fillText('R', 540, 136);
+    }
+    ctx.fillStyle = CREMA;
+    ctx.font = fd(ajustar('ROAL BURGER', fd, 46, 260));
+    ctx.fillText('ROAL BURGER', 540, 208);
+    ctx.fillStyle = 'rgba(245,235,221,0.8)';
+    ctx.font = fd(ajustar('COMIDA RÁPIDA CON ACENTO VENEZOLANO', fd, 15, 250, 10));
+    textoEsp('COMIDA RÁPIDA CON ACENTO VENEZOLANO', 540, 228, 0.6);
+    caja('logo', 540 - 130, 14, 260, 220);
+
+    // ── 2. Título "CÓDIGO DEL DÍA" con trazos de energía ──
+    const t1 = 'CÓDIGO ';
+    const t2 = 'DEL DÍA';
+    const tpx = ajustar(t1 + t2, fd, 176, 770, 60);
+    ctx.font = fd(tpx);
+    const w1 = ctx.measureText(t1).width;
+    const wT = ctx.measureText(t1 + t2).width;
+    const tx0 = 540 - wT / 2;
+    const tituloY = 392;
+    const g1 = textoGastado(t1.trim(), fd(tpx), CREMA, tx0 + ctx.measureText(t1.trim()).width / 2, tituloY);
+    ctx.font = fd(tpx);
+    textoGastado(t2, fd(tpx), NARANJA, tx0 + w1 + ctx.measureText(t2).width / 2, tituloY);
+    caja('titulo', tx0, tituloY - g1.asc, wT, g1.asc + 6);
+    // Trazos: dos a la izquierda (abajo) y dos a la derecha, en abanico, como la referencia.
+    const trazo = (x1, y1, x2, y2, grosor) => {
+        ctx.strokeStyle = NARANJA;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = grosor;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    };
+    trazo(tx0 - 30, tituloY - 34, tx0 - 92, tituloY - 64, 13);
+    trazo(tx0 - 30, tituloY + 14, tx0 - 80, tituloY + 36, 12);
+    trazo(tx0 + wT + 28, tituloY - 70, tx0 + wT + 70, tituloY - 132, 13);
+    trazo(tx0 + wT + 30, tituloY - 22, tx0 + wT + 84, tituloY - 30, 12);
+
+    // ── 3. Cinta naranja con la fecha (bordes de pincel, extremos en diagonal) ──
+    const fechaTxt = String(fechaTexto).toUpperCase();
+    const fpx = ajustar(fechaTxt, fd, 54, 500, 24);
+    ctx.font = fd(fpx);
+    const cintaW = Math.max(480, ctx.measureText(fechaTxt).width + 120);
+    const cintaY = 414;
+    const cintaH = 72;
+    const cx0 = 540 - cintaW / 2;
+    ctx.fillStyle = NARANJA;
+    ctx.beginPath();
+    ctx.moveTo(cx0 + 14, cintaY + 2);
+    for (let x = cx0 + 14; x <= cx0 + cintaW - 4; x += 24) ctx.lineTo(x, cintaY + (azar() * 6 - 2));
+    // extremo derecho cortado en diagonal, con desflecado
+    for (let k = 0; k <= 6; k++) {
+        const y = cintaY + (cintaH * k) / 6;
+        ctx.lineTo(cx0 + cintaW - 18 * (k / 6) + (k % 2 ? -10 * azar() : 6 * azar()), y);
+    }
+    for (let x = cx0 + cintaW - 22; x >= cx0; x -= 24) ctx.lineTo(x, cintaY + cintaH + (azar() * 6 - 4));
+    // extremo izquierdo cortado en diagonal, con desflecado
+    for (let k = 6; k >= 0; k--) {
+        const y = cintaY + (cintaH * k) / 6;
+        ctx.lineTo(cx0 + 16 * (1 - k / 6) + (k % 2 ? 10 * azar() : -6 * azar()), y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#111111';
+    ctx.font = fd(fpx);
+    ctx.fillText(fechaTxt, 540, cintaY + cintaH / 2 + fpx * 0.36);
+    caja('cinta', cx0, cintaY, cintaW, cintaH);
+
+    // ── 5. Sello circular "-30%" con textura de pincel (lado derecho, mitad inferior de la foto) ──
+    if (!agotado) {
+        const sx = 898;
+        const sy = 856;
+        const r = 150;
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 30;
+        ctx.fillStyle = '#F2611A';
         ctx.beginPath();
-        ctx.arc(0, 0, r - 14, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = CARBON;
-        const pctTxt = `-${Math.round(Number(porcentaje) || 0)}%`;
-        ctx.font = fuente(700, ajustar(pctTxt, 700, 84, 170));
-        ctx.fillText(pctTxt, 0, 22);
-        ctx.font = fuente(600, 26);
-        ctx.fillText('HOY', 0, 62);
+        for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 40) {
+            const rr = r * (0.975 + azar() * 0.05);
+            ctx.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr);
+        }
+        ctx.closePath();
+        ctx.fill();
         ctx.restore();
+        // Pinceladas: borde más oscuro e irregular + trazos claros dentro.
+        for (let i = 0; i < 4; i++) {
+            ctx.strokeStyle = i % 2 ? 'rgba(120,35,0,0.45)' : 'rgba(255,140,60,0.35)';
+            ctx.lineWidth = 3 + azar() * 6;
+            ctx.beginPath();
+            const a0 = azar() * Math.PI * 2;
+            ctx.arc(sx, sy, r * (0.9 + azar() * 0.07), a0, a0 + Math.PI * (1 + azar()));
+            ctx.stroke();
+        }
+        const pct = `-${Math.round(Number(porcentaje) || 0)}%`;
+        const ppx = ajustar(pct, fd, 280, r * 1.74, 40);
+        ctx.font = fd(ppx);
+        const mp = ctx.measureText(pct);
+        const capPct = mp.actualBoundingBoxAscent || ppx * 0.72;
+        textoGastado(pct, fd(ppx), CREMA, sx, sy + capPct / 2, 0.0016);
         caja('sello', sx - r, sy - r, r * 2, r * 2);
     }
 
-    // ── Título "CÓDIGO DEL DÍA" + líneas de energía ──────────────────────
-    const tituloY = 985;
-    const t1 = 'CÓDIGO ';
-    const t2 = 'DEL DÍA';
-    let tpx = 116;
-    ctx.font = fuente(700, tpx);
-    while (tpx > 60 && ctx.measureText(t1 + t2).width > 800) { tpx -= 2; ctx.font = fuente(700, tpx); }
-    const w1 = ctx.measureText(t1).width;
-    const wT = ctx.measureText(t1 + t2).width;
-    const tx0 = (W - wT) / 2;
-    ctx.textAlign = 'left';
-    ctx.fillStyle = CREMA;
-    ctx.fillText(t1, tx0, tituloY);
-    ctx.fillStyle = NARANJA;
-    ctx.fillText(t2, tx0 + w1, tituloY);
-    ctx.textAlign = 'center';
-    caja('titulo', tx0, tituloY - tpx * 0.9, wT, tpx);
-    ctx.strokeStyle = NARANJA;
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 7;
-    [[-34, 46], [-6, 70], [22, 46]].forEach(([dy, largo]) => {
-        const y = tituloY - tpx * 0.38 + dy;
-        ctx.beginPath(); ctx.moveTo(tx0 - 26, y); ctx.lineTo(tx0 - 26 - largo, y - largo * 0.18); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(tx0 + wT + 26, y); ctx.lineTo(tx0 + wT + 26 + largo, y - largo * 0.18); ctx.stroke();
-    });
-
-    // ── Cinta naranja con la fecha ───────────────────────────────────────
-    const cintaY = 1004;
-    const cintaH = 54;
-    ctx.font = fuente(700, 34);
-    const fechaTxt = String(fechaTexto).toUpperCase();
-    let fpx = 34;
-    while (fpx > 20 && anchoEspaciado(fechaTxt, 3) > 760) { fpx -= 2; ctx.font = fuente(700, fpx); }
-    const cintaW = anchoEspaciado(fechaTxt, 3) + 110;
-    const cx0 = (W - cintaW) / 2;
-    ctx.fillStyle = NARANJA;
-    ctx.beginPath();
-    ctx.moveTo(cx0, cintaY);
-    ctx.lineTo(cx0 + cintaW, cintaY);
-    ctx.lineTo(cx0 + cintaW - 22, cintaY + cintaH / 2);
-    ctx.lineTo(cx0 + cintaW, cintaY + cintaH);
-    ctx.lineTo(cx0, cintaY + cintaH);
-    ctx.lineTo(cx0 + 22, cintaY + cintaH / 2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = CARBON;
-    textoEspaciado(fechaTxt, W / 2, cintaY + cintaH / 2 + fpx * 0.36, 3);
-    caja('cinta', cx0, cintaY, cintaW, cintaH);
-
-    // ── Nombre del producto ──────────────────────────────────────────────
+    // ── 6. Nombre del producto ──
     const nombreTxt = String(productoNombre).toUpperCase().replace(/\s+/g, ' ').trim();
-    const npx = ajustar(nombreTxt, 700, 86, 940);
+    const npx = ajustar(nombreTxt, fd, 150, 800, 40);
     ctx.fillStyle = CREMA;
-    ctx.font = fuente(700, npx);
-    const nombreY = 1140;
-    ctx.fillText(nombreTxt, W / 2, nombreY);
-    caja('nombre', (W - ctx.measureText(nombreTxt).width) / 2, nombreY - npx * 0.9, ctx.measureText(nombreTxt).width, npx);
+    ctx.font = fd(npx);
+    const nombreY = 1212;
+    ctx.fillText(nombreTxt, 540, nombreY);
+    const mn = ctx.measureText(nombreTxt);
+    caja('nombre', 540 - mn.width / 2, nombreY - (mn.actualBoundingBoxAscent || npx * 0.75), mn.width, (mn.actualBoundingBoxAscent || npx * 0.75) + 4);
+
+    // Ticket naranja con muescas laterales (también para el sello de agotado).
+    const dibujarTicket = (x, y, w, h, angulo) => {
+        const capa = document.createElement('canvas');
+        capa.width = Math.ceil(w);
+        capa.height = Math.ceil(h);
+        const c = capa.getContext('2d');
+        c.fillStyle = NARANJA;
+        c.fillRect(0, 0, w, h);
+        c.globalCompositeOperation = 'destination-out';
+        const n = 6;
+        const paso = (h * 0.62) / (n - 1);
+        const y0 = h * 0.19;
+        for (let i = 0; i < n; i++) {
+            c.beginPath(); c.arc(0, y0 + i * paso, 11, 0, Math.PI * 2); c.fill();
+            c.beginPath(); c.arc(w, y0 + i * paso, 11, 0, Math.PI * 2); c.fill();
+        }
+        ctx.save();
+        ctx.translate(x + w / 2, y + h / 2);
+        ctx.rotate(angulo);
+        ctx.drawImage(capa, -w / 2, -h / 2);
+        ctx.restore();
+    };
 
     if (!agotado) {
-        // ── Precios: normal tachado | con descuento ─────────────────────
-        const precioY = 1222;
+        // ── 7. Precios ──
+        const precioY = 1336;
         const normal = dinero(precioNormal);
         const desc = dinero(precioDescuento);
-        ctx.font = fuente(600, 52);
+        ctx.font = fd(96);
         const wN = ctx.measureText(normal).width;
-        ctx.font = fuente(700, 88);
+        ctx.font = fd(136);
         const wD = ctx.measureText(desc).width;
-        const gap = 34;
-        const total = wN + gap * 2 + 2 + wD;
-        const px0 = (W - total) / 2;
+        const gap = 40;
+        let total = wN + gap * 2 + 3 + wD;
+        const k = total > 880 ? 880 / total : 1;
+        total *= k;
+        const p0 = 540 - total / 2;
         ctx.textAlign = 'left';
-        ctx.font = fuente(600, 52);
-        ctx.fillStyle = 'rgba(245,235,221,0.62)';
-        ctx.fillText(normal, px0, precioY - 8);
+        ctx.font = fd(96 * k);
+        ctx.fillStyle = CREMA;
+        ctx.fillText(normal, p0, precioY - 4);
         ctx.strokeStyle = NARANJA;
-        ctx.lineWidth = 6;
+        ctx.lineWidth = 9 * k;
         ctx.beginPath();
-        ctx.moveTo(px0 - 6, precioY - 26);
-        ctx.lineTo(px0 + wN + 6, precioY - 26);
+        ctx.moveTo(p0 - 6, precioY - 34 * k);
+        ctx.lineTo(p0 + wN * k + 6, precioY - 38 * k);
         ctx.stroke();
-        ctx.strokeStyle = 'rgba(245,235,221,0.35)';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(245,235,221,0.55)';
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(px0 + wN + gap, precioY - 70);
-        ctx.lineTo(px0 + wN + gap, precioY + 4);
+        ctx.moveTo(p0 + (wN + gap) * k, precioY - 92 * k);
+        ctx.lineTo(p0 + (wN + gap) * k, precioY + 2);
         ctx.stroke();
-        ctx.font = fuente(700, 88);
+        ctx.font = fd(136 * k);
         ctx.fillStyle = NARANJA;
-        ctx.fillText(desc, px0 + wN + gap * 2 + 2, precioY);
+        ctx.fillText(desc, p0 + (wN + gap * 2 + 3) * k, precioY);
         ctx.textAlign = 'center';
-        caja('precios', px0, precioY - 80, total, 90);
+        caja('precios', p0, precioY - 104 * k, total, 110 * k);
 
-        // ── Ticket troquelado con la palabra clave (el elemento más grande) ─
-        const T = { x: 80, y: 1238, w: 920, h: 180 };
-        const ticket = document.createElement('canvas');
-        ticket.width = T.w;
-        ticket.height = T.h;
-        const tc = ticket.getContext('2d');
-        tc.fillStyle = NARANJA;
-        tc.fillRect(0, 0, T.w, T.h);
-        tc.globalCompositeOperation = 'destination-out';
-        tc.beginPath(); tc.arc(0, T.h / 2, 30, 0, Math.PI * 2); tc.fill();
-        tc.beginPath(); tc.arc(T.w, T.h / 2, 30, 0, Math.PI * 2); tc.fill();
-        for (let x = 22; x < T.w - 10; x += 32) {
-            tc.beginPath(); tc.arc(x, 0, 7, 0, Math.PI * 2); tc.fill();
-            tc.beginPath(); tc.arc(x, T.h, 7, 0, Math.PI * 2); tc.fill();
-        }
-        tc.globalCompositeOperation = 'source-over';
-        tc.strokeStyle = 'rgba(26,26,26,0.28)';
-        tc.lineWidth = 3;
-        tc.setLineDash([12, 9]);
-        tc.strokeRect(46, 22, T.w - 92, T.h - 44);
+        // ── 8. Ticket con la palabra clave ──
+        const T = { x: 142, y: 1360, w: 814, h: 262 };
+        dibujarTicket(T.x, T.y, T.w, T.h, -0.012);
         ctx.save();
-        ctx.shadowColor = 'rgba(255,107,0,0.35)';
-        ctx.shadowBlur = 40;
-        ctx.drawImage(ticket, T.x, T.y);
-        ctx.restore();
-        ctx.fillStyle = CARBON;
-        ctx.font = fuente(600, 26);
-        textoEspaciado('PALABRA CLAVE DE HOY', W / 2, T.y + 50, 7);
+        ctx.translate(540, T.y + T.h / 2);
+        ctx.rotate(-0.012);
+        ctx.fillStyle = '#1A1A1A';
+        ctx.font = ft(600, 30);
+        textoEsp('PALABRA CLAVE DE HOY', 0, -T.h / 2 + 64, 7);
         const codigoTxt = String(palabra).toUpperCase();
-        const cpx = ajustar(codigoTxt, 700, 116, T.w - 160, 40);
-        ctx.font = fuente(700, cpx);
+        const cpx = ajustar(codigoTxt, fd, 196, T.w - 150, 50);
+        ctx.font = fd(cpx);
         ctx.fillStyle = '#111111';
-        ctx.fillText(codigoTxt, W / 2, T.y + T.h - 24);
+        ctx.fillText(codigoTxt, 0, T.h / 2 - 34);
+        ctx.restore();
         caja('ticket', T.x, T.y, T.w, T.h);
 
-        // ── Píldora "SOLO 10 CUPOS" con los puntos ─────────────────────
-        const pillY = 1430;
-        const pillH = 50;
-        const nPuntos = Math.max(1, Math.min(15, Math.round(Number(cupos) || 0)));
-        ctx.font = fuente(600, 28);
-        const pillTxt = `SOLO ${Math.round(Number(cupos) || 0)} CUPOS`;
-        const wTxt = anchoEspaciado(pillTxt, 2);
-        const wPuntos = nPuntos * 20 - 6;
-        const pillW = 36 + wTxt + 24 + wPuntos + 36;
-        const pl0 = (W - pillW) / 2;
-        rectRedondo(pl0, pillY, pillW, pillH, pillH / 2);
-        ctx.fillStyle = 'rgba(255,107,0,0.10)';
+        // ── 9. Píldora "SOLO 10 CUPOS" con puntos (todos llenos) ──
+        const P = { x: 62, y: 1643, w: 946, h: 98 };
+        rectRedondo(ctx, P.x, P.y, P.w, P.h, P.h / 2);
+        ctx.fillStyle = 'rgba(12,10,9,0.85)';
         ctx.fill();
         ctx.strokeStyle = NARANJA;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 4;
         ctx.stroke();
-        ctx.fillStyle = CREMA;
-        textoEspaciado(pillTxt, pl0 + 36 + wTxt / 2, pillY + pillH / 2 + 10, 2);
+        const nCupos = Math.max(0, Math.round(Number(cupos) || 0));
+        const partes = [['SOLO ', CREMA], [String(nCupos), NARANJA], [' CUPOS', CREMA]];
+        ctx.font = fd(62);
+        let px0 = P.x + 52;
+        ctx.textAlign = 'left';
+        partes.forEach(([txt, color]) => {
+            ctx.fillStyle = color;
+            ctx.fillText(txt, px0, P.y + P.h / 2 + 23);
+            px0 += ctx.measureText(txt).width;
+        });
+        ctx.textAlign = 'center';
+        const nPuntos = Math.max(1, Math.min(10, nCupos || 10));
+        const zonaPuntos = { x0: Math.max(px0 + 40, P.x + 432), x1: P.x + P.w - 50 };
+        const paso = Math.min(48, (zonaPuntos.x1 - zonaPuntos.x0) / nPuntos);
+        const rPunto = Math.min(20, paso * 0.42);
+        const inicio = zonaPuntos.x1 - paso * nPuntos + paso / 2;
         ctx.fillStyle = NARANJA;
         for (let i = 0; i < nPuntos; i++) {
             ctx.beginPath();
-            ctx.arc(pl0 + 36 + wTxt + 24 + 7 + i * 20, pillY + pillH / 2, 7, 0, Math.PI * 2);
+            ctx.arc(inicio + i * paso, P.y + P.h / 2, rPunto, 0, Math.PI * 2);
             ctx.fill();
         }
-        caja('cupos', pl0, pillY, pillW, pillH);
+        caja('cupos', P.x, P.y, P.w, P.h);
     } else {
-        // ── Agotado: sello grande + textos ──────────────────────────────
-        const S = { cx: W / 2, cy: 1300, w: 860, h: 170 };
+        // ── Agotado: sello "AGOTADO POR HOY" en estilo ticket, inclinado ──
+        const T = { x: 132, y: 1270, w: 834, h: 250 };
+        dibujarTicket(T.x, T.y, T.w, T.h, -0.07);
         ctx.save();
-        ctx.translate(S.cx, S.cy);
+        ctx.translate(540, T.y + T.h / 2);
         ctx.rotate(-0.07);
-        rectRedondo(-S.w / 2, -S.h / 2, S.w, S.h, 26);
-        ctx.fillStyle = 'rgba(255,107,0,0.12)';
-        ctx.fill();
-        ctx.strokeStyle = NARANJA;
-        ctx.lineWidth = 9;
-        ctx.stroke();
-        rectRedondo(-S.w / 2 + 16, -S.h / 2 + 16, S.w - 32, S.h - 32, 18);
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        const selloTxt = 'SE ACABARON ✅';
-        ctx.font = fuente(700, ajustar(selloTxt, 700, 104, S.w - 90));
-        ctx.fillStyle = CREMA;
-        ctx.fillText(selloTxt, 0, 36);
+        ctx.fillStyle = '#111111';
+        const apx = ajustar('AGOTADO POR HOY', fd, 150, T.w - 130, 50);
+        ctx.font = fd(apx);
+        const ma = ctx.measureText('AGOTADO POR HOY');
+        ctx.fillText('AGOTADO POR HOY', 0, (ma.actualBoundingBoxAscent || apx * 0.72) / 2);
         ctx.restore();
-        caja('sello-agotado', S.cx - S.w / 2 - 10, S.cy - S.h / 2 - 34, S.w + 20, S.h + 68);
+        caja('sello-agotado', T.x - 20, T.y - 40, T.w + 40, T.h + 80);
         const l1 = `Los ${Math.round(Number(cupos) || 0)} cupos de hoy volaron`;
-        ctx.font = fuente(600, ajustar(l1, 600, 48, 900));
         ctx.fillStyle = CREMA;
-        ctx.fillText(l1, W / 2, 1446);
-        caja('texto-agotado', 90, 1400, 900, 56);
+        ctx.font = fd(ajustar(l1, fd, 76, 880));
+        ctx.fillText(l1, 540, 1652);
+        const l2 = 'Mañana a las 12 · nueva palabra clave 👀';
+        ctx.fillStyle = NARANJA;
+        ctx.font = ft(600, ajustar(l2, (px) => ft(600, px), 42, 880));
+        ctx.fillText(l2, 540, 1722);
+        caja('texto-agotado', 100, 1580, 880, 160);
     }
 
-    // ── "Pídelo en la app · roalburger.com" con ícono de celular ─────────
-    const appY = 1508;
-    const appTxt = agotado ? 'Mañana a las 12 · nueva palabra clave 👀' : 'Pídelo en la app · roalburger.com';
-    ctx.font = fuente(400, ajustar(appTxt, 400, 32, 860));
-    const wApp = ctx.measureText(appTxt).width;
-    const icono = agotado ? 0 : 34;
-    const ax0 = (W - wApp - icono) / 2;
-    if (!agotado) {
-        ctx.strokeStyle = NARANJA;
-        ctx.lineWidth = 3;
-        rectRedondo(ax0, appY - 30, 20, 34, 5);
-        ctx.stroke();
-        ctx.fillStyle = NARANJA;
-        ctx.fillRect(ax0 + 7, appY - 1, 6, 2);
-    }
-    ctx.fillStyle = agotado ? NARANJA : 'rgba(245,235,221,0.92)';
+    // ── 10. Ícono de celular + "Pídelo en la app · roalburger.com" ──
+    const appY = 1826;
+    const a1 = 'Pídelo en la app · ';
+    const a2 = 'roalburger.com';
+    ctx.font = ft(500, 46);
+    const wa1 = ctx.measureText(a1).width;
+    ctx.font = ft(700, 46);
+    const wa2 = ctx.measureText(a2).width;
+    const iconoW = 46;
+    const totalApp = iconoW + 26 + wa1 + wa2;
+    const ax0 = 540 - totalApp / 2;
+    ctx.strokeStyle = NARANJA;
+    ctx.lineWidth = 7;
+    rectRedondo(ctx, ax0 + 3, appY - 62, iconoW - 6, 80, 9);
+    ctx.stroke();
+    ctx.fillStyle = NARANJA;
+    ctx.fillRect(ax0 + 17, appY - 54, 12, 4);
+    ctx.beginPath(); ctx.arc(ax0 + iconoW / 2, appY + 8, 4, 0, Math.PI * 2); ctx.fill();
     ctx.textAlign = 'left';
-    ctx.fillText(appTxt, ax0 + icono, appY);
+    ctx.font = ft(500, 46);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(a1, ax0 + iconoW + 26, appY);
+    ctx.font = ft(700, 46);
+    ctx.fillStyle = NARANJA;
+    ctx.fillText(a2, ax0 + iconoW + 26 + wa1, appY);
     ctx.textAlign = 'center';
-    caja('app', ax0, appY - 32, wApp + icono, 40);
+    caja('app', ax0, appY - 66, totalApp, 90);
+
+    ctx.restore();
 
     return {
         canvas,
         cajas,
         zonas: {
-            arriba: { x: 0, y: 0, w: W, h: TOP_LIBRE },
-            abajo: { x: 0, y: H - HISTORIA_CD.BOTTOM_LIBRE, w: W, h: HISTORIA_CD.BOTTOM_LIBRE },
-            sticker: { ...STICKER }
+            arriba: { x: 0, y: 0, w: W, h: FRANJA_Y0 },
+            sticker: { ...STICKER },
+            abajo: { x: 0, y: STICKER.y + STICKER.h, w: W, h: H - STICKER.y - STICKER.h }
         }
     };
 }

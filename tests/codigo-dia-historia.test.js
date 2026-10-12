@@ -1,9 +1,10 @@
 // Test de las historias de Instagram del Código del día (src/js/admin.js, bloque
 // <historia-codigo-dia>): se extrae el bloque autocontenido y se corre en Chromium (Playwright)
-// para verificar que el PNG sale en 1080x1920, que ningún elemento invade las zonas que tapa
-// Instagram (250 px arriba, 250 px abajo y el hueco de 600x150 del sticker de enlace) y que esas
-// zonas quedan realmente oscuras (sin texto ni foto), también con nombres/palabras largos, sin
-// foto y en la versión de agotado.
+// para verificar que el PNG sale en 1080x1920, que la composición (réplica de la referencia
+// docs/referencias/codigo-del-dia-ref.png) queda dentro de la franja y=230..1650 en el MISMO orden de la referencia,
+// que el hueco del sticker de enlace (y=1650..1800) y el resto de las zonas libres no tienen
+// contenido (solo el fondo con luces tenues), también con nombres/palabras largos, sin foto y en
+// la versión de agotado.
 //
 // No necesita el emulador (corre igual dentro de `firebase emulators:exec`).
 
@@ -84,40 +85,53 @@ function verificarZonas(r, etiqueta) {
     assert.equal(r.w, 1080, `${etiqueta}: ancho`);
     assert.equal(r.h, 1920, `${etiqueta}: alto`);
     assert.equal(r.pngInicio, 'data:image/png;base64,');
-    assert.deepEqual(r.zonas.arriba, { x: 0, y: 0, w: 1080, h: 250 });
-    assert.deepEqual(r.zonas.abajo, { x: 0, y: 1670, w: 1080, h: 250 });
-    assert.equal(r.zonas.sticker.w, 600);
-    assert.equal(r.zonas.sticker.h, 150);
-    assert.ok(r.zonas.sticker.y + r.zonas.sticker.h <= 1670, 'el sticker queda encima de la franja inferior libre');
+    assert.deepEqual(r.zonas.arriba, { x: 0, y: 0, w: 1080, h: 230 });
+    assert.deepEqual(r.zonas.sticker, { x: 240, y: 1650, w: 600, h: 150 });
+    assert.deepEqual(r.zonas.abajo, { x: 0, y: 1800, w: 1080, h: 120 });
     for (const c of r.cajas) {
         for (const [nombre, z] of Object.entries(r.zonas)) {
             assert.ok(!seCruzan(c, z), `${etiqueta}: "${c.nombre}" invade la zona ${nombre} (${JSON.stringify(c)})`);
         }
         assert.ok(c.x >= 0 && c.x + c.w <= 1080, `${etiqueta}: "${c.nombre}" se sale del ancho (${JSON.stringify(c)})`);
     }
-    // Zonas libres = solo fondo carbón con viñeta (nada claro dibujado encima).
-    assert.ok(r.brillo.arriba < 50, `${etiqueta}: franja superior con contenido (brillo ${r.brillo.arriba})`);
-    assert.ok(r.brillo.abajo < 50, `${etiqueta}: franja inferior con contenido (brillo ${r.brillo.abajo})`);
-    assert.ok(r.brillo.sticker < 50, `${etiqueta}: zona del sticker con contenido (brillo ${r.brillo.sticker})`);
+    // Zonas libres = solo el fondo oscuro con luces desenfocadas tenues. El texto crema (~230) y el
+    // naranja de marca (~139 de luminancia) quedan muy por encima de este tope.
+    assert.ok(r.brillo.arriba < 110, `${etiqueta}: franja superior con contenido (brillo ${r.brillo.arriba})`);
+    assert.ok(r.brillo.abajo < 110, `${etiqueta}: franja inferior con contenido (brillo ${r.brillo.abajo})`);
+    assert.ok(r.brillo.sticker < 110, `${etiqueta}: zona del sticker con contenido (brillo ${r.brillo.sticker})`);
+    // Toda la composición dentro de la franja 230..1650.
+    for (const c of r.cajas) {
+        assert.ok(c.y >= 230 && c.y + c.h <= 1650, `${etiqueta}: "${c.nombre}" fuera de la franja 230..1650 (${JSON.stringify(c)})`);
+    }
 }
 
 test('historia normal: 1080x1920, PNG, con todos los elementos y las zonas de Instagram libres', async () => {
     const r = await generar(BASE);
     verificarZonas(r, 'normal');
     const nombres = r.cajas.map((c) => c.nombre);
-    for (const n of ['sello', 'titulo', 'cinta', 'nombre', 'precios', 'ticket', 'cupos', 'app']) {
+    for (const n of ['logo', 'titulo', 'cinta', 'sello', 'nombre', 'precios', 'ticket', 'cupos', 'app']) {
         assert.ok(nombres.includes(n), `falta ${n}`);
     }
+    // Mismo orden de arriba a abajo que la referencia.
+    const y = (n) => r.cajas.find((c) => c.nombre === n).y;
+    const orden = ['logo', 'titulo', 'cinta', 'nombre', 'precios', 'ticket', 'cupos', 'app'];
+    for (let i = 1; i < orden.length; i++) {
+        assert.ok(y(orden[i]) > y(orden[i - 1]), `${orden[i]} debe ir debajo de ${orden[i - 1]}`);
+    }
+    // El sello va a la derecha, entre la cinta y el nombre (sobre la foto).
+    const sello = r.cajas.find((c) => c.nombre === 'sello');
+    assert.ok(sello.x + sello.w / 2 > 540, 'sello a la derecha');
+    assert.ok(sello.y > y('cinta') && sello.y < y('nombre'), 'sello a la altura de la foto');
     // El ticket con la palabra es el elemento más grande de la pieza.
     const area = (c) => c.w * c.h;
     const ticket = r.cajas.find((c) => c.nombre === 'ticket');
     assert.ok(r.cajas.every((c) => c === ticket || area(c) < area(ticket)), 'el ticket debe ser el elemento más grande');
-    // "Pídelo en la app" va por encima del hueco del sticker.
+    // "Pídelo en la app" es lo último y va por encima del hueco del sticker.
     const app = r.cajas.find((c) => c.nombre === 'app');
     assert.ok(app.y + app.h <= r.zonas.sticker.y);
 });
 
-test('historia de agotado: sin código ni precios, con sello "SE ACABARON" y las zonas libres', async () => {
+test('historia de agotado: sin código ni precios, con sello "AGOTADO POR HOY" estilo ticket y las zonas libres', async () => {
     const r = await generar({ ...BASE, agotado: true });
     verificarZonas(r, 'agotado');
     const nombres = r.cajas.map((c) => c.nombre);
@@ -125,6 +139,8 @@ test('historia de agotado: sin código ni precios, con sello "SE ACABARON" y las
     assert.ok(nombres.includes('texto-agotado'));
     assert.ok(!nombres.includes('ticket'), 'la de agotado no lleva el código');
     assert.ok(!nombres.includes('precios'));
+    assert.ok(!nombres.includes('cupos'), 'la de agotado no lleva la píldora de cupos');
+    assert.ok(!nombres.includes('sello'), 'la de agotado no lleva el -30%');
 });
 
 test('nombres y palabras muy largos se achican y caben sin cortarse; sin foto usa el fondo de marca', async () => {
