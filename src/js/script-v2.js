@@ -8637,7 +8637,7 @@ const DEFAULT_PUBLIC_BUTTONS = {
         label: 'MOMENTOS ROAL EN INSTAGRAM',
         icon: '📷',
         actionType: 'external',
-        link: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
+        link: 'https://www.instagram.com/roalburger',
         buttonType: 'glass',
         color: '#e1306c',
         size: 'md',
@@ -10562,8 +10562,8 @@ function closeMenuModal() {
 // (functions/codigoDia.js) y se leen de codigo_dia_publico/hoy -- que nunca trae la palabra. El
 // cliente ya no calcula nada: sin código válido el producto se vende a precio normal, y con
 // código el servidor lo vuelve a validar y consume el cupo al crear el pedido.
-const CODIGO_DIA_INSTAGRAM_URL = 'https://www.instagram.com/roalburgerarmenia/';
-const CODIGO_DIA_INSTAGRAM_HANDLE = '@roalburgerarmenia';
+const CODIGO_DIA_INSTAGRAM_URL = 'https://www.instagram.com/roalburger/';
+const CODIGO_DIA_INSTAGRAM_HANDLE = '@roalburger';
 let _codigoDiaPublico = null;
 let _promoProductsReady = false;
 let _promoModalPendingOpen = false;

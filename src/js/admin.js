@@ -87,7 +87,7 @@ const defaultButtons = [
         label: 'MOMENTOS ROAL EN INSTAGRAM',
         icon: '📷',
         actionType: 'external',
-        link: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
+        link: 'https://www.instagram.com/roalburger',
         buttonType: 'glass',
         color: '#e1306c',
         size: 'md',
@@ -146,7 +146,7 @@ const defaultBranding = {
     whatsappLink: 'https://api.whatsapp.com/send?phone=573144689509&text=Hola%20ROAL%20BURGER!%20Quisiera%20realizar%20un%20pedido%20por%20favor',
     address: 'Cl. 22 #29-59, Armenia, Quindio. Barrio Las Americas.',
     locationLink: 'https://maps.google.com/?q=Cl.+22+%2329-59,+Armenia,+Quindio',
-    instagramLink: 'https://www.instagram.com/roalburgerarmenia?igsh=cWE2eGRyNnlxaXgy&utm_source=qr',
+    instagramLink: 'https://www.instagram.com/roalburger',
     tiktokLink: 'https://www.tiktok.com/@roalburger',
     facebookLink: 'https://www.facebook.com/share/17ukpFaQz3/?mibextid=wwXIfr',
     primaryColor: '#2f6fdd',
@@ -10855,7 +10855,7 @@ Gracias por preferirnos, eso nos motiva a darlo todo cada día 🙌
 📲 Síguenos y entérate de promos y novedades:
 🎵 tiktok.com/@roalburger
 📸 instagram.com/roalburger
-👍 facebook.com/roalburgerarmenia
+👍 facebook.com/roalburger
 
 ¡Buen provecho! 🔥
 ${brandingState.restaurantName || 'Roal Burger'}`;

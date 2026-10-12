@@ -15,7 +15,7 @@ const CFG = window.FIREBASE_CONFIG || {};
 const PROJECT_ID = CFG.projectId || 'roal-burger-menu';
 const API_KEY = CFG.apiKey || '';
 const RECAPTCHA_SITE_KEY = '6LdVXSotAAAAADkwGbDpxT8P8b24MEv62xTcAlu0';
-const INSTAGRAM_URL = 'https://www.instagram.com/roalburgerarmenia/';
+const INSTAGRAM_URL = 'https://www.instagram.com/roalburger/';
 const POLL_MS = 20000;
 const STORAGE_PREFIX = 'roal_cupon_pana_';
 const BOGOTA_OFFSET_MS = -5 * 60 * 60 * 1000; // Colombia: UTC-5 fijo, sin horario de verano
@@ -882,7 +882,7 @@ function renderAgotado() {
         emoji: '🔥',
         titulo: 'Se acabaron los de esta semana',
         sub: 'El domingo sale la nueva clave. Síguenos para no perdértela.',
-        botones: `<a class="cp-btn cp-btn--primary" href="${INSTAGRAM_URL}" target="_blank" rel="noopener">SEGUIR A @ROALBURGERARMENIA</a>
+        botones: `<a class="cp-btn cp-btn--primary" href="${INSTAGRAM_URL}" target="_blank" rel="noopener">SEGUIR A @ROALBURGER</a>
                 <a class="cp-btn cp-btn--ghost" href="/">VER EL MENÚ</a>`
     }));
 }
@@ -1219,7 +1219,7 @@ async function generarHistoria(r) {
     lineas.forEach((l, i) => ctx.fillText(l, 90, yPrimera + i * 150));
     ctx.fillStyle = 'rgba(237,230,220,0.9)';
     ctx.font = `500 46px ${BODY_FONT}`;
-    ctx.fillText('Fuera del Menú · @roalburgerarmenia', 90, yCuenta);
+    ctx.fillText('Fuera del Menú · @roalburger', 90, yCuenta);
     const logo = await loadImage('/isotipo.webp');
     if (logo) ctx.drawImage(logo, W - 90 - 110, 90, 110, 110);
     return canvasToBlob(canvas);
@@ -1274,7 +1274,7 @@ function mostrarVistaHistoria(dataUrl, titulo) {
     modal.innerHTML = `
         <div class="cp-modal-box">
             <img src="${dataUrl}" alt="Imagen para tu historia: Ya desbloqueé ${esc(titulo)}">
-            <p>Si no se descargó sola, <strong>mantén presionada la imagen</strong> y elige guardarla. Súbela a tu historia y etiquétanos <strong>@roalburgerarmenia</strong> 🔥</p>
+            <p>Si no se descargó sola, <strong>mantén presionada la imagen</strong> y elige guardarla. Súbela a tu historia y etiquétanos <strong>@roalburger</strong> 🔥</p>
             <button type="button" class="cp-btn cp-btn--ghost" id="cpHistoriaCerrar">CERRAR</button>
         </div>`;
     document.body.appendChild(modal);

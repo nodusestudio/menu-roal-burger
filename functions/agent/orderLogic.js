@@ -701,7 +701,7 @@ Gracias por preferirnos, eso nos motiva a darlo todo cada día 🙌
 📲 Síguenos y entérate de promos y novedades:
 🎵 tiktok.com/@roalburger
 📸 instagram.com/roalburger
-👍 facebook.com/roalburgerarmenia
+👍 facebook.com/roalburger
 
 ¡Buen provecho! 🔥
 ${restaurantName || 'Roal Burger'}`;
