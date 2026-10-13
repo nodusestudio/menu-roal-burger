@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261012-2108">
+    <link rel="stylesheet" href="style.css?v=20261012-2119">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -5371,6 +5371,24 @@
         .rd-prod { display: grid; gap: 4px; text-align: center; padding: 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #eef4ff; cursor: pointer; font-size: 0.74rem; }
         .rd-prod:hover { border-color: rgba(255,123,69,0.6); background: var(--admin-accent-soft); }
         .rd-prod img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+        .rd-sub { margin: 0; font-family: 'Oswald', sans-serif; font-size: 1.05rem; color: #fff; }
+        .rd-ia-gen { display: grid; gap: 10px; padding: 14px; border-radius: 16px; border: 1px solid rgba(255,123,69,0.3); background: linear-gradient(135deg, rgba(255,123,69,0.1), rgba(255,255,255,0.03)); }
+        .rd-ia-gen h3 { margin: 0; font-family: 'Oswald', sans-serif; font-size: 1.15rem; color: #fff; }
+        .rd-ia-form { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+        .rd-ia-form label { display: grid; gap: 4px; font-size: 0.78rem; color: var(--admin-muted); min-width: 0; }
+        .rd-ia-form input, .rd-ia-form select, .rd-config select[multiple] { border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75); color: #fff; padding: 8px 10px; font-family: 'Roboto', sans-serif; }
+        .rd-ia-lista { display: grid; gap: 10px; }
+        .rd-ia-card { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 14px; padding: 12px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.035); }
+        .rd-ia-foto { width: 130px; aspect-ratio: 4 / 5; border-radius: 12px; overflow: hidden; background: rgba(255,255,255,0.05); display: grid; place-items: center; text-align: center; font-size: 0.75rem; }
+        .rd-ia-foto img { width: 100%; height: 100%; object-fit: cover; }
+        .rd-ia-cuerpo { display: grid; gap: 6px; align-content: start; min-width: 0; }
+        .rd-ia-cab { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; color: #fff; }
+        .rd-ia-texto { margin: 0; font-size: 0.85rem; line-height: 1.45; color: #eef4ff; overflow-wrap: anywhere; }
+        .rd-ia-tags { margin: 0; font-size: 0.75rem; color: #7fb7ff; overflow-wrap: anywhere; }
+        .rd-ia-acc { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 2px; }
+        .rd-config { max-width: 860px; }
+        .rd-cat-tags { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+        @media (max-width: 640px) { .rd-ia-card { grid-template-columns: 1fr; } .rd-ia-foto { width: 100%; max-width: 220px; } }
         @media (max-width: 980px) { .rd-editor { grid-template-columns: minmax(0, 1fr); } .rd-preview { position: static; max-width: 340px; } }
         @media (max-width: 640px) { .rd-day { min-height: 74px; padding: 4px; } .rd-chip { font-size: 0.62rem; padding: 2px 4px; } }
         .cd-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -15209,11 +15227,15 @@
                         <div class="cpana-tabs" role="tablist" id="rdTabs">
                             <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-rd-tab="calendario">📅 Calendario</button>
                             <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="crear">✍️ Crear</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="ia">🤖 IA</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="contenido">⚙️ Contenido</button>
                         </div>
                     </div>
                     <p class="admin-hint">Programa las publicaciones de @roalburger por día y hora. Las historias del Código del día salen solas (se ven en el calendario); aquí se programan fotos y carruseles.</p>
                     <div class="card-body rd-panel" data-rd-panel="calendario"><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="crear" hidden><!-- render JS --></div>
+                    <div class="card-body rd-panel" data-rd-panel="ia" hidden><!-- render JS --></div>
+                    <div class="card-body rd-panel" data-rd-panel="contenido" hidden><!-- render JS --></div>
                 </article>
             </div>
 
@@ -16424,17 +16446,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261012-2108"></script>
+    <script defer src="firebase-config.js?v=20261012-2119"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261012-2108"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261012-2119"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-2108"></script>
-    <script defer src="admin.js?v=20261012-2108"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-2119"></script>
+    <script defer src="admin.js?v=20261012-2119"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

@@ -182,6 +182,24 @@ async function guardarPost(db, datos, uid, { nowMs = Date.now() } = {}) {
     return { id: d.id };
 }
 
+// Borrador con todos sus campos de una vez (lo usa la IA: ya trae texto, hashtags, producto y la hora PROPUESTA;
+// sigue siendo "borrador": nada sale hasta que alguien lo apruebe).
+async function crearBorrador(db, campos, uid, { nowMs = Date.now() } = {}) {
+    const c = campos || {};
+    const tipo = TIPOS_POST.includes(c.tipo) ? c.tipo : 'foto';
+    const hashtags = normalizarHashtags(c.hashtags || []);
+    validarTexto(c.caption || '', hashtags);
+    const ref = db.collection(POSTS).doc();
+    await ref.set({
+        tipo, estado: 'borrador', origen: c.origen === 'ia' ? 'ia' : 'manual', caption: String(c.caption || ''), hashtags,
+        altText: String(c.altText || '').slice(0, MAX_ALT), productoId: String(c.productoId || '').slice(0, 80), notaIA: String(c.notaIA || '').slice(0, 300),
+        imagenes: [], programadaAtMs: Number.isFinite(Number(c.programadaAtMs)) ? Number(c.programadaAtMs) : null,
+        imgToken: crypto.randomBytes(16).toString('hex'), mediaId: '', publicadaAtMs: null, error: '', intentos: 0,
+        creadoAtMs: nowMs, actualizadoAtMs: nowMs, creadoPor: uid || null
+    });
+    return { id: ref.id };
+}
+
 async function guardarImagen(db, { id, jpeg, reemplazaSlot = null }, uid, { nowMs = Date.now() } = {}) {
     const dim = validarImagen(jpeg);
     return db.runTransaction(async (tx) => {
@@ -438,6 +456,8 @@ module.exports = {
     validarTexto,
     validarPostCompleto,
     guardarPost,
+    crearBorrador,
+    leerPost,
     guardarImagen,
     quitarImagen,
     ordenarImagenes,

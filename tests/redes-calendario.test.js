@@ -16,7 +16,7 @@ const BLOQUE = SRC.slice(SRC.indexOf('// <redes-instagram>'), SRC.indexOf('// </
 assert.ok(BLOQUE.length > 1500, 'no se encontró el bloque <redes-instagram> en admin.js');
 const ctx = vm.createContext({});
 const NOMBRES = ['rdMsDeFechaHora', 'rdFechaDeMs', 'rdHoraDeMs', 'rdHora12', 'rdSumarDias', 'rdDiaSemana', 'rdLunesDe', 'rdGrillaMes', 'rdSemana',
-    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe'];
+    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe', 'rdPendientesIA', 'rdListoParaAprobar'];
 vm.runInContext(`${BLOQUE}\n${NOMBRES.map((n) => `this.${n} = ${n};`).join('')}`, ctx);
 const rd = ctx;
 const posts = require(path.join(__dirname, '..', 'functions', 'instagramPosts.js'));
@@ -96,4 +96,24 @@ test('momento en el calendario: programada usa su hora; publicada, la hora en qu
     assert.equal(rd.rdMomentoDe({ estado: 'publicada', programadaAtMs: 1000, publicadaAtMs: 2000 }), 2000);
     assert.equal(rd.rdMomentoDe({ estado: 'borrador', programadaAtMs: null }), null);
     assert.equal(rd.rdMomentoDe({ estado: 'error', programadaAtMs: 5000 }), 5000);
+});
+
+test('IA: solo los borradores de la IA esperan aprobación, por fecha; se aprueba solo con foto y hora futura', () => {
+    const ahora = 1_000_000;
+    const lista = [
+        { id: 'c', origen: 'ia', estado: 'borrador', programadaAtMs: ahora + 3 * 3600e3, imagenes: [{ slot: 0 }] },
+        { id: 'a', origen: 'ia', estado: 'borrador', programadaAtMs: ahora + 1 * 3600e3, imagenes: [] },
+        { id: 'sin', origen: 'ia', estado: 'borrador', programadaAtMs: null, imagenes: [{ slot: 0 }] },
+        { id: 'manual', origen: 'manual', estado: 'borrador', programadaAtMs: ahora + 100 },
+        { id: 'prog', origen: 'ia', estado: 'programada', programadaAtMs: ahora + 100 },
+        { id: 'b', origen: 'ia', estado: 'borrador', programadaAtMs: ahora + 2 * 3600e3, imagenes: [{ slot: 0 }] }
+    ];
+    assert.deepEqual(JSON.parse(JSON.stringify(rd.rdPendientesIA(lista).map((p) => p.id))), ['a', 'b', 'c', 'sin'], 'por fecha y las que no tienen fecha al final');
+    assert.equal(rd.rdPendientesIA(null).length, 0);
+    assert.equal(rd.rdListoParaAprobar(lista[0], ahora), true);
+    assert.equal(rd.rdListoParaAprobar(lista[1], ahora), false, 'sin foto');
+    assert.equal(rd.rdListoParaAprobar(lista[2], ahora), false, 'sin hora');
+    assert.equal(rd.rdListoParaAprobar({ imagenes: [{ slot: 0 }], programadaAtMs: ahora + 30 * 1000 }, ahora), false, 'la hora ya casi pasó');
+    assert.equal(rd.rdListoParaAprobar({ imagenes: [{ slot: 0 }, { slot: 1 }], programadaAtMs: ahora + 3600e3 }, ahora), false, 'la IA hace fotos de una imagen');
+    assert.equal(rd.rdListoParaAprobar(null), false);
 });

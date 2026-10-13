@@ -3084,3 +3084,30 @@ exports.publicarPostsProgramados = onSchedule(
         }
     }
 );
+
+// ─────────────────────────────────────────────────────────────
+// IA PARA PUBLICACIONES DE INSTAGRAM: propone copys/hashtags como BORRADORES; nada sale sin aprobación.
+// Lógica en instagramIA.js (cliente de Claude inyectable). Usa el secreto ANTHROPIC_API_KEY del agente.
+// ─────────────────────────────────────────────────────────────
+const instagramIA = require('./instagramIA');
+
+exports.adminInstagramIA = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, secrets: [ANTHROPIC_API_KEY], memory: '512MiB', timeoutSeconds: 300 },
+    async (request) => {
+        const db = getFirestore();
+        const uid = await cuponPana.ensureAdmin(db, request);
+        const d = request.data || {};
+        const accion = String(d.accion || '');
+        const cliente = () => {
+            const Anthropic = require('@anthropic-ai/sdk');
+            return new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+        };
+        if (accion === 'leerConfig') return instagramIA.leerConfigContenido(db);
+        if (accion === 'guardarConfig') return instagramIA.guardarConfigContenido(db, d.config, uid);
+        if (accion === 'generar') return instagramIA.generarBorradores(db, { desde: d.desde, dias: d.dias, porSemana: d.porSemana, cliente: cliente() }, uid);
+        if (accion === 'regenerar') return instagramIA.regenerarCopy(db, { id: String(d.id || ''), cliente: cliente() }, uid);
+        if (accion === 'aprobar') return instagramIA.aprobarPost(db, { id: String(d.id || '') }, uid);
+        if (accion === 'aprobarVarios') return instagramIA.aprobarVarios(db, { ids: d.ids }, uid);
+        throw new HttpsError('invalid-argument', 'Acción desconocida.');
+    }
+);

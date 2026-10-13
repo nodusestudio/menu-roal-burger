@@ -29412,6 +29412,15 @@ function rdMomentoDe(post) {
     const ms = post.estado === 'publicada' ? post.publicadaAtMs : post.programadaAtMs;
     return Number.isFinite(Number(ms)) && ms ? Number(ms) : null;
 }
+// Borradores que propuso la IA y esperan aprobación, por fecha propuesta.
+function rdPendientesIA(lista) {
+    return (lista || []).filter((p) => p.origen === 'ia' && p.estado === 'borrador')
+        .sort((a, b) => (Number(a.programadaAtMs) || Infinity) - (Number(b.programadaAtMs) || Infinity));
+}
+// ¿Se puede aprobar ya? Necesita foto y una hora propuesta que aún no pasó.
+function rdListoParaAprobar(p, ahora = Date.now()) {
+    return Boolean(p && (p.imagenes || []).length === 1 && Number(p.programadaAtMs) >= ahora + 60 * 1000);
+}
 // </redes-instagram>
 
 const rdState = {
@@ -29425,6 +29434,7 @@ const rdState = {
     codigos: {},   // codigo_dia por fecha (para mostrar la historia del código en el calendario)
     historias: {}, // estado de las historias por fecha
     ig: null,
+    config: null,  // contenido de la IA (tono, hashtags, horarios)
     ed: null       // publicación en edición
 };
 
@@ -29486,6 +29496,7 @@ async function rdCargar() {
         ]);
         rdState.posts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         rdState.ig = ig;
+        if (!rdState.config) rdState.config = await rdIALlamar('leerConfig').catch(() => null);
         await rdCargarHistorias();
         rdState.cargado = true;
     } finally {
@@ -29503,6 +29514,8 @@ function rdRender() {
     if (!body) return;
     if (rdState.tab === 'calendario') rdRenderCalendario(body);
     else if (rdState.tab === 'crear') rdRenderEditor(body);
+    else if (rdState.tab === 'ia') rdRenderIA(body);
+    else if (rdState.tab === 'contenido') rdRenderContenido(body);
 }
 
 function rdAvisosHtml() {
@@ -29539,7 +29552,7 @@ function rdChipHtml(it) {
     const p = it.post;
     const est = RD_ESTADOS[p.estado] || RD_ESTADOS.borrador;
     const texto = String(p.caption || '').replace(/\s+/g, ' ').trim().slice(0, 22) || 'Sin texto';
-    return `<button type="button" class="rd-chip rd-chip--${escapeHtml(p.estado)}" data-rd-abrir="${escapeHtml(p.id)}" title="${escapeHtml(est.etiqueta)}${p.error ? `: ${escapeHtml(p.error)}` : ''}">${p.tipo === 'carrusel' ? '🎠' : '📷'} ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} ${escapeHtml(texto)}</button>`;
+    return `<button type="button" class="rd-chip rd-chip--${escapeHtml(p.estado)}" data-rd-abrir="${escapeHtml(p.id)}" title="${escapeHtml(est.etiqueta)}${p.origen === 'ia' ? ' · propuesta por la IA' : ''}${p.error ? `: ${escapeHtml(p.error)}` : ''}">${p.origen === 'ia' ? '🤖' : (p.tipo === 'carrusel' ? '🎠' : '📷')} ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} ${escapeHtml(texto)}</button>`;
 }
 
 function rdCeldaHtml(fecha, mesActual) {
@@ -29654,7 +29667,7 @@ function rdEdDesdePost(p) {
     return {
         id: p.id, tipo: p.tipo, estado: p.estado, caption: p.caption || '', hashtags: (p.hashtags || []).map((h) => `#${h}`).join(' '), altText: p.altText || '',
         fecha: ms ? rdFechaDeMs(ms) : '', hora: ms ? rdHoraDeMs(ms) : '19:00', imagenes: (p.imagenes || []).map((i) => ({ ...i })),
-        imgToken: p.imgToken || '', error: p.error || '', actualizadoAtMs: p.actualizadoAtMs || 0, ocupado: false, mediaId: p.mediaId || ''
+        imgToken: p.imgToken || '', error: p.error || '', actualizadoAtMs: p.actualizadoAtMs || 0, ocupado: false, mediaId: p.mediaId || '', origen: p.origen || 'manual', notaIA: p.notaIA || '', productoId: p.productoId || ''
     };
 }
 
@@ -29707,10 +29720,11 @@ function rdAtajosFecha() {
 }
 
 function rdHashtagsFrecuentes() {
+    const marca = (rdState.config?.hashtagsMarca || []);
     const cuenta = new Map();
     for (const p of rdState.posts) for (const h of p.hashtags || []) cuenta.set(h, (cuenta.get(h) || 0) + 1);
     const usados = [...cuenta.entries()].sort((a, b) => b[1] - a[1]).map(([h]) => h);
-    return [...new Set([...usados, ...RD_HASHTAGS_BASE])].slice(0, 16);
+    return [...new Set([...marca, ...usados, ...RD_HASHTAGS_BASE])].slice(0, 16);
 }
 
 function rdRenderEditor(body) {
@@ -29728,6 +29742,7 @@ function rdRenderEditor(body) {
                     <span class="rd-chip rd-chip--${escapeHtml(ed.estado)}">${est.icono} ${est.etiqueta}</span>
                 </div>
                 ${ed.error ? `<p class="cd-aviso">⚠️ ${escapeHtml(ed.error)}</p>` : ''}
+                ${ed.origen === 'ia' && editable ? `<p class="cd-muted">🤖 Propuesta por la IA (${escapeHtml(String(ed.notaIA || '').replace(/^IA · /, ''))}). Revísala y edítala como quieras antes de aprobarla.</p>` : ''}
                 ${!editable ? '<p class="cd-aviso">Esta publicación ya salió. Instagram no permite editarla por API: se edita o se borra desde la app.</p>' : ''}
 
                 <div class="rd-campo">
@@ -29791,6 +29806,7 @@ function rdRenderEditor(body) {
                         <button type="button" class="section-action-btn primary" data-rd-a="programar">🗓️ Programar</button>
                         <button type="button" class="cd-btn" data-rd-a="ahora">🚀 Publicar ahora</button>` : ''}
                     ${ed.id && ed.estado === 'programada' ? '<button type="button" class="cd-btn" data-rd-a="desprogramar">↩ Volver a borrador</button>' : ''}
+                    ${ed.id && editable && ed.productoId ? '<button type="button" class="cd-btn" data-rd-a="regenerar">🔁 Otro texto con IA</button>' : ''}
                     ${ed.id ? '<button type="button" class="cd-btn" data-rd-a="duplicar">📋 Duplicar</button>' : ''}
                     ${ed.id && editable && ed.estado !== 'cancelada' && ed.estado !== 'borrador' ? '<button type="button" class="cd-btn" data-rd-a="cancelar">🚫 Cancelar</button>' : ''}
                     ${ed.id && ['borrador', 'cancelada', 'error'].includes(ed.estado) ? '<button type="button" class="cd-btn rd-peligro" data-rd-a="borrar">🗑️ Borrar</button>' : ''}
@@ -30013,6 +30029,11 @@ async function rdAccion(body, btn) {
                 if (r.ok) showNotice(r.ya ? 'Esa publicación ya estaba publicada.' : '✅ Publicada en Instagram.', 'ok');
                 else showNotice(`No se publicó: ${r.error || r.motivo}`, 'error');
             }
+        } else if (a === 'regenerar') {
+            btn.textContent = 'Escribiendo…';
+            await rdIALlamar('regenerar', { id: ed.id });
+            await rdRecargarEd();
+            showNotice('Nuevo texto de la IA listo.', 'ok');
         } else if (a === 'desprogramar') {
             await rdLlamar('desprogramar', { id: ed.id });
             await rdRecargarEd();
@@ -30042,4 +30063,224 @@ async function rdAccion(body, btn) {
         if (rdState.ed?.id) { await rdRecargarEd().catch(() => {}); }
     }
     rdRender();
+}
+
+// ── IA: borradores que la IA propone y tú apruebas ──────────────────────────
+async function rdIALlamar(accion, payload = {}) {
+    if (!firebaseFunctions) throw new Error('Servicio no disponible. Recarga la página.');
+    return (await firebaseFunctions.httpsCallable('adminInstagramIA')({ accion, ...payload })).data;
+}
+
+const _rdFotoFallos = {}; // id → cuándo falló la última vez adjuntar la foto del producto
+let _rdAdjuntando = false;
+
+function rdTextoCorto(texto, n) {
+    const t = String(texto || '').replace(/\s+/g, ' ').trim();
+    return t.length > n ? `${t.slice(0, n).trim()}…` : t;
+}
+
+// Adjunta (en el navegador) la foto del catálogo a cada borrador de la IA que aún no la tiene.
+async function rdAutoAdjuntarFotos() {
+    if (_rdAdjuntando) return;
+    const ahora = Date.now();
+    const faltan = rdPendientesIA(rdState.posts).filter((p) => !(p.imagenes || []).length && p.productoId && ahora - (_rdFotoFallos[p.id] || 0) > 10 * 60 * 1000);
+    if (!faltan.length) return;
+    _rdAdjuntando = true;
+    let hechas = 0;
+    const texto = (t) => { const el = document.getElementById('rdIaEstado'); if (el) el.textContent = t; };
+    try {
+        for (const p of faltan) {
+            texto(`📸 Preparando fotos ${hechas + 1}/${faltan.length}…`);
+            const prod = productsState.find((x) => x.id === p.productoId);
+            if (!prod || !String(prod.image_url || '').trim()) { _rdFotoFallos[p.id] = Date.now(); continue; }
+            try {
+                const imagenBase64 = await rdPrepararImagen(prod.image_url);
+                await rdLlamar('subirImagen', { id: p.id, imagenBase64 });
+                const snap = await firebaseDb.collection('instagram_posts').doc(p.id).get();
+                const i = rdState.posts.findIndex((x) => x.id === p.id);
+                if (snap.exists && i >= 0) rdState.posts[i] = { id: snap.id, ...snap.data() };
+                hechas += 1;
+            } catch (err) {
+                _rdFotoFallos[p.id] = Date.now();
+                console.warn('Redes: foto del borrador', p.id, err?.message);
+            }
+        }
+    } finally {
+        _rdAdjuntando = false;
+    }
+    texto(faltan.length > hechas ? `⚠️ ${faltan.length - hechas} foto(s) no se pudieron preparar: ábrelas y sube la imagen a mano.` : '');
+    if (rdState.tab === 'ia') rdRenderIA(document.querySelector('.rd-panel[data-rd-panel="ia"]'), { sinAdjuntar: true });
+}
+
+function rdTarjetaIAHtml(p) {
+    const ed = { id: p.id, imgToken: p.imgToken, actualizadoAtMs: p.actualizadoAtMs };
+    const im = (p.imagenes || [])[0];
+    const ms = p.programadaAtMs;
+    const pasada = ms && ms < Date.now() + 60 * 1000;
+    const listo = rdListoParaAprobar(p);
+    return `
+        <article class="rd-ia-card" data-rd-ia="${escapeHtml(p.id)}">
+            <div class="rd-ia-foto">${im ? `<img src="${escapeHtml(rdUrlImagen(ed, im))}" alt="">` : '<span class="cd-muted">⏳ Preparando foto…</span>'}</div>
+            <div class="rd-ia-cuerpo">
+                <div class="rd-ia-cab"><strong>${ms ? `${escapeHtml(_cdFechaLarga(rdFechaDeMs(ms)))} · ${escapeHtml(rdHora12(rdHoraDeMs(ms)))}` : 'Sin fecha'}</strong>${pasada ? ' <span class="rd-chip rd-chip--error">hora pasada</span>' : ''}<span class="cd-muted">${escapeHtml(String(p.notaIA || '').replace(/^IA · /, ''))}</span></div>
+                <p class="rd-ia-texto">${escapeHtml(rdTextoCorto(p.caption, 260))}</p>
+                <p class="rd-ia-tags">${(p.hashtags || []).map((h) => `#${escapeHtml(h)}`).join(' ')}</p>
+                <div class="rd-ia-acc">
+                    <button type="button" class="section-action-btn primary" data-rd-ia-a="aprobar" ${listo ? '' : 'disabled'} title="${listo ? 'Programa la publicación a la hora propuesta' : (pasada ? 'La hora propuesta ya pasó: edítala' : 'Falta la foto')}">✅ Aprobar</button>
+                    <button type="button" class="cd-btn" data-rd-ia-a="regenerar">🔁 Otro texto</button>
+                    <button type="button" class="cd-btn" data-rd-ia-a="editar">✏️ Editar</button>
+                    <button type="button" class="cd-btn rd-peligro" data-rd-ia-a="descartar">🗑 Descartar</button>
+                </div>
+            </div>
+        </article>`;
+}
+
+function rdRenderIA(body, { sinAdjuntar = false } = {}) {
+    if (!body) return;
+    const cfg = rdState.config;
+    const pendientes = rdPendientesIA(rdState.posts);
+    const listos = pendientes.filter((p) => rdListoParaAprobar(p)); // (no pasar la función directa: filter le daría el índice como 'ahora')
+    const estadoPrevio = document.getElementById('rdIaEstado')?.textContent || '';
+    const hoy = _rdHoy();
+    body.innerHTML = `
+        ${rdAvisosHtml()}
+        <section class="rd-ia-gen">
+            <h3>🤖 Generar publicaciones con IA</h3>
+            <p class="cd-muted">La IA propone el texto y los hashtags de cada producto de tu menú (sin precios ni promociones) y los deja como <strong>borradores</strong> en el calendario. <strong>Nada se publica hasta que tú lo apruebes.</strong></p>
+            <div class="rd-ia-form">
+                <label>Desde<input type="date" id="rdIaDesde" value="${hoy}" min="${hoy}"></label>
+                <label>Cuántos días
+                    <select id="rdIaDias">${[7, 14, 21, 30].map((n) => `<option value="${n}"${n === 14 ? ' selected' : ''}>${n} días</option>`).join('')}</select>
+                </label>
+                <label>Publicaciones por semana<input type="number" id="rdIaSemana" min="1" max="14" value="${Number(cfg?.postsPorSemana) || 3}"></label>
+                <button type="button" class="section-action-btn primary" id="rdIaGenerar">✨ Generar borradores</button>
+            </div>
+            <p class="cd-muted">Horarios y tono se cambian en la pestaña ⚙️ Contenido. Respeta los días de descanso y lo que ya tienes programado.</p>
+        </section>
+        <div class="rd-toolbar">
+            <h3 class="rd-sub">Pendientes de aprobar <span class="cd-muted">(${pendientes.length})</span></h3>
+            <span class="cd-muted" id="rdIaEstado" role="status">${escapeHtml(estadoPrevio)}</span>
+            <button type="button" class="section-action-btn" id="rdIaAprobarTodos" ${listos.length ? '' : 'disabled'}>✅ Aprobar los ${listos.length} listos</button>
+        </div>
+        <div class="rd-ia-lista">
+            ${pendientes.length ? pendientes.map(rdTarjetaIAHtml).join('') : '<p class="admin-hint">No hay borradores de la IA por aprobar. Pulsa "Generar borradores" para crear los de las próximas semanas.</p>'}
+        </div>`;
+
+    body.querySelector('#rdIaGenerar')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        const desde = body.querySelector('#rdIaDesde').value;
+        const dias = Number(body.querySelector('#rdIaDias').value);
+        const porSemana = Number(body.querySelector('#rdIaSemana').value);
+        btn.disabled = true;
+        btn.textContent = 'La IA está escribiendo… (puede tardar un minuto)';
+        try {
+            const r = await rdIALlamar('generar', { desde, dias, porSemana });
+            if (r.mensaje) showNotice(r.mensaje, 'error');
+            else showNotice(`Listo: ${r.creados.length} borrador(es) creados${r.fallidos.length ? `; ${r.fallidos.length} no se pudieron escribir (${r.fallidos[0].producto}: ${r.fallidos[0].error})` : ''}. Revísalos y apruébalos.`, r.fallidos.length ? 'error' : 'ok');
+            await rdCargar();
+        } catch (err) {
+            showNotice(`No se pudo generar: ${err.message || 'error'}`, 'error');
+        }
+        rdRenderIA(body);
+    });
+    body.querySelector('#rdIaAprobarTodos')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+            const r = await rdIALlamar('aprobarVarios', { ids: listos.map((p) => p.id) });
+            const malas = r.resultados.filter((x) => !x.ok);
+            showNotice(`${r.aprobadas} publicación(es) programadas${malas.length ? `; ${malas.length} no: ${malas[0].error}` : ''}.`, malas.length ? 'error' : 'ok');
+            if (rdState.ig && !rdState.ig.activo) showNotice('Ojo: la publicación automática está APAGADA, lo programado no saldrá solo.', 'error');
+            await rdCargar();
+        } catch (err) {
+            showNotice(err.message || 'No se pudo aprobar.', 'error');
+        }
+        rdRenderIA(body);
+    });
+    body.querySelectorAll('[data-rd-ia-a]').forEach((b) => b.addEventListener('click', async () => {
+        const id = b.closest('[data-rd-ia]').dataset.rdIa;
+        const a = b.dataset.rdIaA;
+        if (a === 'editar') { rdAbrirPublicacion(id); return; }
+        if (a === 'descartar' && !window.confirm('¿Descartar este borrador? Se borra con su foto.')) return;
+        b.disabled = true;
+        try {
+            if (a === 'aprobar') {
+                await rdIALlamar('aprobar', { id });
+                showNotice('Aprobada: quedó programada.', 'ok');
+            } else if (a === 'regenerar') {
+                b.textContent = 'Escribiendo…';
+                await rdIALlamar('regenerar', { id });
+                showNotice('Nuevo texto listo.', 'ok');
+            } else if (a === 'descartar') {
+                await rdLlamar('borrar', { id });
+            }
+            await rdCargar();
+        } catch (err) {
+            showNotice(err.message || 'No se pudo completar.', 'error');
+        }
+        rdRenderIA(body);
+    }));
+    if (!sinAdjuntar) rdAutoAdjuntarFotos();
+}
+
+// ── Contenido: tono, hashtags y horarios de la IA ───────────────────────────
+function rdRenderContenido(body) {
+    const c = rdState.config || {};
+    const categorias = [...new Set([...(categoriesState || []).map((x) => String(x.name || '').trim().toUpperCase()).filter(Boolean), ...Object.keys(c.hashtagsPorCategoria || {})])];
+    const excluidas = new Set((c.categoriasExcluidas || []).map((x) => String(x).toUpperCase()));
+    const noPublicar = new Set(c.productosExcluidos || []);
+    const productos = productsState.filter((p) => String(p.image_url || '').trim()).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+    body.innerHTML = `
+        <form class="rd-form rd-config" id="rdConfigForm">
+            <h3>⚙️ Contenido de las publicaciones con IA</h3>
+            <label class="rd-campo"><span class="rd-label">Sobre la marca <span class="cd-muted">(la IA lo lee para escribir)</span></span>
+                <textarea name="marca" rows="2" maxlength="300">${escapeHtml(c.marca || '')}</textarea></label>
+            <label class="rd-campo"><span class="rd-label">Tono de voz</span>
+                <textarea name="tono" rows="2" maxlength="400">${escapeHtml(c.tono || '')}</textarea></label>
+            <label class="rd-campo"><span class="rd-label">Llamado a la acción al final <span class="cd-muted">(déjalo vacío para no poner)</span></span>
+                <input type="text" name="llamadoAccion" maxlength="120" value="${escapeHtml(c.llamadoAccion || '')}"></label>
+            <label class="rd-campo"><span class="rd-label">Hashtags de la marca <span class="cd-muted">(la IA solo usa hashtags de estas listas)</span></span>
+                <textarea name="hashtagsMarca" rows="2">${escapeHtml((c.hashtagsMarca || []).map((h) => `#${h}`).join(' '))}</textarea></label>
+            <fieldset class="cd-fieldset"><legend>Hashtags por categoría</legend>
+                <div class="rd-cat-tags">${categorias.map((cat) => `
+                    <label class="rd-campo"><span class="rd-label">${escapeHtml(cat)}</span>
+                        <input type="text" data-rd-cat="${escapeHtml(cat)}" value="${escapeHtml(((c.hashtagsPorCategoria || {})[cat] || []).map((h) => `#${h}`).join(' '))}" placeholder="#hamburguesas #burgerlovers"></label>`).join('') || '<p class="cd-muted">Aún no hay categorías.</p>'}</div>
+            </fieldset>
+            <div class="rd-ia-form">
+                <label>Horarios (hora de Colombia, separados por coma)<input type="text" name="horarios" value="${escapeHtml((c.horarios || []).join(', '))}" placeholder="12:30, 19:00"></label>
+                <label>Publicaciones por semana<input type="number" name="postsPorSemana" min="1" max="14" value="${Number(c.postsPorSemana) || 3}"></label>
+                <label>No repetir un producto en (días)<input type="number" name="noRepetirDias" min="0" max="90" value="${Number.isFinite(Number(c.noRepetirDias)) ? Number(c.noRepetirDias) : 14}"></label>
+                <label>Máximo de hashtags<input type="number" name="maxHashtags" min="3" max="30" value="${Number(c.maxHashtags) || 12}"></label>
+            </div>
+            <fieldset class="cd-fieldset"><legend>Categorías que NO se publican</legend>
+                <div class="cpana-dias">${categorias.map((cat) => `<label><input type="checkbox" name="excl" value="${escapeHtml(cat)}"${excluidas.has(cat) ? ' checked' : ''}> ${escapeHtml(cat)}</label>`).join('')}</div>
+            </fieldset>
+            <label class="rd-campo"><span class="rd-label">Productos que no quieres publicar <span class="cd-muted">(Ctrl o ⌘ para elegir varios)</span></span>
+                <select name="productosExcluidos" multiple size="6">${productos.map((p) => `<option value="${escapeHtml(p.id)}"${noPublicar.has(p.id) ? ' selected' : ''}>${escapeHtml(p.nombre)} · ${escapeHtml(p.categoria || '')}</option>`).join('')}</select></label>
+            <div class="rd-acciones"><button type="submit" class="section-action-btn primary">💾 Guardar contenido</button></div>
+        </form>`;
+    body.querySelector('#rdConfigForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const f = e.currentTarget;
+        const btn = f.querySelector('button[type="submit"]');
+        const porCategoria = {};
+        f.querySelectorAll('[data-rd-cat]').forEach((i) => { const t = rdNormalizarHashtags(i.value); if (t.length) porCategoria[i.dataset.rdCat] = t; });
+        const config = {
+            marca: f.marca.value, tono: f.tono.value, llamadoAccion: f.llamadoAccion.value,
+            hashtagsMarca: rdNormalizarHashtags(f.hashtagsMarca.value), hashtagsPorCategoria: porCategoria,
+            horarios: f.horarios.value.split(/[\s,;]+/).filter(Boolean), postsPorSemana: Number(f.postsPorSemana.value),
+            noRepetirDias: Number(f.noRepetirDias.value), maxHashtags: Number(f.maxHashtags.value),
+            categoriasExcluidas: [...f.querySelectorAll('input[name="excl"]:checked')].map((i) => i.value),
+            productosExcluidos: [...f.productosExcluidos.selectedOptions].map((o) => o.value)
+        };
+        btn.disabled = true;
+        btn.textContent = 'Guardando…';
+        try {
+            rdState.config = await rdIALlamar('guardarConfig', { config });
+            showNotice('Contenido guardado.', 'ok');
+        } catch (err) {
+            showNotice(err.message || 'No se pudo guardar.', 'error');
+        }
+        rdRenderContenido(body);
+    });
 }
