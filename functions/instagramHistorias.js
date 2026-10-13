@@ -41,6 +41,7 @@ const METRICAS_VIGENCIA_MS = 24 * HORA_MS; // una historia dura 24 h y sus métr
 const METRICAS_POST_VIGENCIA_MS = 14 * 24 * HORA_MS; // un post o carrusel se sigue midiendo 14 días
 const MAX_JPEG_BYTES = 900 * 1024; // un doc de Firestore admite 1 MiB
 const MAX_INTENTOS = 3;
+const MARGEN_NORMAL_MANUAL_MIN = 60;
 const PUBLICANDO_VIGENCIA_MS = 10 * 60 * 1000;
 const UMBRAL_REFRESCO_DIAS = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -411,7 +412,12 @@ async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn =
         await espejoFacebook(db, { fecha, tipo, status, parte, baseUrl, origen, nowMs, fetchFn }); // reintenta Facebook si faltó
         return { ok: true, ya: true, mediaId: parte.mediaId };
     }
-    if (tipo === 'agotado' && status.normal?.estado !== 'publicada') return { ok: false, motivo: 'normal_no_publicada' };
+    // El agotado va después de la normal. Pero si la normal no salió por el sistema (se subió a mano o falló)
+    // y ya pasó más de una hora desde su horario, el agotado sale igual: el código sí estuvo vigente en el menú.
+    if (tipo === 'agotado' && status.normal?.estado !== 'publicada') {
+        const margen = cd.horaAMinutos(config.horaPublicacion) + MARGEN_NORMAL_MANUAL_MIN;
+        if (status.normal?.estado === 'publicando' || cd.bogotaParts(nowMs).minutes < margen) return { ok: false, motivo: 'normal_no_publicada' };
+    }
     const detalle = { fecha, tipo, origen: origen || (manual ? 'manual' : 'automatica'), palabra: dia.palabra || '', productoNombre: producto?.nombre || dia.productoNombre || '' };
     // El cron pasa cada 5 min: el bitácora solo anota un "no se pudo" cuando el motivo es nuevo.
     const noSePudo = async (mensaje, extra = {}) => {
@@ -473,15 +479,27 @@ async function publicarAgotadoPorHorario(db, opts = {}) {
     const nowMs = opts.nowMs ?? Date.now();
     const fecha = cd.bogotaParts(nowMs).dateKey;
     const conexion = await leerConexion(db);
-    if (!conexion?.accessToken || conexion.activo !== true) return { ok: false, motivo: 'desactivado' };
     const [config, snap] = await Promise.all([cd.leerConfig(db), db.collection(HISTORIAS_COLLECTION).doc(fecha).get()]);
     const status = snap.data() || {};
+    const anotarBloqueo = async (motivo) => {
+        if (status.agotado?.estado === 'publicada' || status.agotado?.bloqueo?.motivo === motivo) return;
+        try {
+            await db.collection(HISTORIAS_COLLECTION).doc(fecha).set({ agotado: { bloqueo: { motivo, atMs: nowMs } } }, { merge: true });
+        } catch (err) { console.error('bloqueo agotado:', err.message); }
+    };
+    if (!conexion?.accessToken || conexion.activo !== true) {
+        if (status.imgToken && cd.bogotaParts(nowMs).minutes >= minutoAgotadoPorHorario(status, fecha, config)) await anotarBloqueo('desactivado');
+        return { ok: false, motivo: 'desactivado' };
+    }
     if (status.agotado?.estado === 'publicada') {
         await espejoFacebook(db, { fecha, tipo: 'agotado', status, parte: status.agotado, baseUrl: opts.baseUrl, origen: 'horario', nowMs, fetchFn: opts.fetchFn });
         return { ok: true, ya: true };
     }
     if (cd.bogotaParts(nowMs).minutes < minutoAgotadoPorHorario(status, fecha, config)) return { ok: false, motivo: 'antes_de_hora' };
-    return publicarHistoria(db, { ...opts, fecha, tipo: 'agotado', nowMs, origen: 'horario' });
+    const r = await publicarHistoria(db, { ...opts, fecha, tipo: 'agotado', nowMs, origen: 'horario' });
+    // Ya pasó su hora y no salió: se deja anotado el motivo (el panel lo muestra) en vez de callar.
+    if (!r.ok && ['normal_no_publicada', 'sin_codigo_hoy', 'sin_preparar', 'desactualizada'].includes(r.motivo)) await anotarBloqueo(r.motivo);
+    return r;
 }
 
 // Cron: ¿la historia de hoy ya salió? (publicarHistoria es idempotente; esto evita lecturas de más.)

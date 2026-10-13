@@ -159,7 +159,7 @@ test('guardarHistoria: guarda el JPEG y deja el día "lista"; la URL pública ex
     assert.equal(bien.status, 200);
     assert.equal(bien.buffer.length, 5000);
     assert.equal(bien.buffer[0], 0xFF);
-    for (const mal of ['', 'x', estado.imgToken.replace(/.$/, '0'), estado.imgToken + '0']) {
+    for (const mal of ['', 'x', estado.imgToken.replace(/.$/, (c) => (c === '0' ? '1' : '0')), estado.imgToken + '0']) {
         assert.equal((await ig.servirImagen(db, `${LUNES}_normal`, mal)).status, 404, `token "${mal}"`);
     }
     assert.equal((await ig.servirImagen(db, `${LUNES}_agotado`, estado.imgToken)).status, 404, 'sin imagen de agotado');
@@ -290,7 +290,8 @@ test('agotado: solo sale si la historia normal ya se publicó, y una sola vez', 
     await prepararHistoria(LUNES, 'agotado', HUELLA_AGOTADO);
     const meta = metaFalso();
     const op = { fecha: LUNES, nowMs: AHORA, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera };
-    assert.equal((await ig.publicarHistoria(db, { ...op, tipo: 'agotado' })).motivo, 'normal_no_publicada');
+    // A las 12:30 (antes de que pase la hora de la normal + 1 h) el agotado espera a la normal.
+    assert.equal((await ig.publicarHistoria(db, { ...op, nowMs: cd.dateKeyToMs(LUNES) + 12.5 * HOUR, tipo: 'agotado' })).motivo, 'normal_no_publicada');
     assert.equal(meta.llamadas.length, 0);
     assert.equal((await ig.publicarHistoria(db, { ...op, tipo: 'normal' })).ok, true);
     const a1 = await ig.publicarHistoria(db, { ...op, tipo: 'agotado' });
@@ -613,8 +614,6 @@ test('agotado por horario: si ya salió porque se agotaron los cupos, a las 9 p.
     await prepararHistoria(LUNES, 'agotado', HUELLA_AGOTADO);
     const meta = metaFalso();
     const tarde = { nowMs: cd.dateKeyToMs(LUNES) + (21 * 60 + 50) * 60 * 1000, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera };
-    assert.equal((await ig.publicarAgotadoPorHorario(db, tarde)).motivo, 'normal_no_publicada');
-    assert.equal(meta.llamadas.length, 0);
     await prepararHistoria(LUNES, 'normal', HUELLA_NORMAL);
     await ig.publicarHistoria(db, opPub(meta));
     await ig.publicarHistoria(db, opPub(meta, { tipo: 'agotado' })); // se agotó a la 1 p. m. y salió al instante
@@ -642,4 +641,29 @@ test('agotado: queda registrado POR QUÉ salió (cupos agotados u horario) y a q
     assert.deepEqual([dia.normal.origen, dia.agotado.origen], ['automatica', 'cupos']);
     const b = (await bitacora()).filter((x) => x.tipo === 'agotado');
     assert.deepEqual(b.map((x) => x.origen), ['cupos']);
+});
+
+test('agotado por horario: si la historia normal NO salió por el sistema (se subió a mano), a su hora el agotado sale igual (caso 2026-10-12)', async () => {
+    await conectar();
+    await prepararHistoria(LUNES, 'agotado', HUELLA_AGOTADO); // la normal nunca se publicó por el sistema
+    const meta = metaFalso();
+    const tarde = { nowMs: cd.dateKeyToMs(LUNES) + (21 * 60 + 50) * 60 * 1000, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera };
+    const r = await ig.publicarAgotadoPorHorario(db, tarde);
+    assert.equal(r.ok, true);
+    assert.equal((await estadoDia()).agotado.estado, 'publicada');
+    assert.equal((await estadoDia()).normal?.estado, undefined, 'no se inventa la normal');
+});
+
+test('agotado por horario: si no puede salir, deja el motivo anotado (una sola vez) para que el panel lo muestre', async () => {
+    await conectar();
+    const meta = metaFalso();
+    const tarde = { nowMs: cd.dateKeyToMs(LUNES) + (21 * 60 + 50) * 60 * 1000, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera };
+    const r = await ig.publicarAgotadoPorHorario(db, tarde);
+    assert.equal(r.motivo, 'sin_preparar');
+    const e = await estadoDia();
+    assert.equal(e.agotado.estado, 'error');
+    await db.collection(ig.HISTORIAS_COLLECTION).doc(LUNES).set({ agotado: { estado: 'lista', huella: { x: 1 } } }, { merge: true });
+    await db.collection(ig.CONFIG_COLLECTION).doc(ig.CONFIG_DOC).set({ activo: false }, { merge: true });
+    assert.equal((await ig.publicarAgotadoPorHorario(db, tarde)).motivo, 'desactivado');
+    assert.equal(meta.llamadas.length, 0);
 });

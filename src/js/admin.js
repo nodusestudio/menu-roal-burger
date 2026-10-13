@@ -15256,6 +15256,14 @@ function _cdLineaAgotadoHoy(hoy) {
         return `📸 Historia de agotado publicada a las ${escapeHtml(_cdHora(ag.publicadaAt))} ${escapeHtml(_cdMotivoPublicacion(ag.origen))}`;
     }
     if (ag?.estado === 'error') return `📸 La historia de agotado no salió: ${escapeHtml(ag.error || 'error')}`;
+    if (ag?.bloqueo?.motivo) {
+        const textos = {
+            desactivado: 'la publicación automática estaba apagada', sin_conexion: 'Instagram no estaba conectado',
+            normal_no_publicada: 'la historia normal del día aún no salía', sin_codigo_hoy: 'no había código activo hoy',
+            sin_preparar: 'la imagen no estaba preparada', desactualizada: 'la imagen quedó desactualizada'
+        };
+        return `📸 La historia de agotado NO salió a su hora: ${escapeHtml(textos[ag.bloqueo.motivo] || ag.bloqueo.motivo)}`;
+    }
     const desde = cdState.config?.agotadoDesde || '21:00';
     const ventana = Number(cdState.config?.agotadoVentanaMin);
     return `📸 Historia de agotado: sale apenas se agoten los cupos o, si no, a una hora al azar entre las ${escapeHtml(_cdHora12Texto(desde))} y las ${escapeHtml(_cdHora12Texto(_cdSumarMin(desde, Number.isFinite(ventana) ? ventana : 45)))}`;
