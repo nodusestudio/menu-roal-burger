@@ -570,6 +570,32 @@ async function reverseLoyaltyPointsTransaction(db, orderId, orderData) {
     });
 }
 
+// Códigos del día de un pedido: el web lo guarda en `codigoDia.canjeId`; el de caja (POS) en la línea
+// (`codigoDiaCanjeId`, a veces dentro de orderOptions). Al anular o borrar el pedido, el cupo vuelve al pozo.
+function canjesCodigoDiaDePedido(orderData) {
+    const ids = new Set();
+    const add = (v) => { if (typeof v === 'string' && v.trim()) ids.add(v.trim()); };
+    add(orderData?.codigoDia?.canjeId);
+    for (const it of Array.isArray(orderData?.items) ? orderData.items : []) {
+        add(it?.codigoDiaCanjeId);
+        add(it?.orderOptions?.codigoDiaCanjeId);
+    }
+    return [...ids];
+}
+
+async function devolverCuposCodigoDia(db, orderId, orderData, motivo) {
+    const revertidos = [];
+    for (const canjeId of canjesCodigoDiaDePedido(orderData)) {
+        try {
+            const r = await codigoDia.revertirCanjeCodigoDia(db, canjeId, { motivo: `${motivo} (pedido ${orderId})` });
+            if (r.revertido) revertidos.push(canjeId);
+        } catch (err) {
+            console.error(`devolverCuposCodigoDia: no se pudo revertir ${canjeId} del pedido ${orderId}:`, err.message);
+        }
+    }
+    return revertidos;
+}
+
 // Decide si un evento de escritura sobre pedidos/{orderId} debe revertir puntos, y en tal caso
 // lo hace. Extraída del trigger para testearla directo contra el emulador de Firestore (ver
 // tests/loyalty-cancellation.test.js) -- el trigger real de Cloud Functions no es invocable a
@@ -594,7 +620,8 @@ async function handleOrderCancellationEvent(db, orderId, before, after) {
     }
 
     const result = await reverseLoyaltyPointsTransaction(db, orderId, after || before);
-    return { reversed: true, reason: becameAnulado ? 'anulado' : 'deleted', ...result };
+    const canjesRevertidos = await devolverCuposCodigoDia(db, orderId, after || before, becameAnulado ? 'pedido anulado' : 'pedido borrado');
+    return { reversed: true, reason: becameAnulado ? 'anulado' : 'deleted', ...result, canjesRevertidos };
 }
 
 exports.reverseLoyaltyPointsOnCancellation = onDocumentWritten(
@@ -621,6 +648,7 @@ exports.reverseLoyaltyPointsOnArchivedDeletion = onDocumentDeleted(
         if (!data) return;
         try {
             await reverseLoyaltyPointsTransaction(getFirestore(), event.params.orderId, data);
+            await devolverCuposCodigoDia(getFirestore(), event.params.orderId, data, 'pedido archivado borrado');
         } catch (err) {
             console.error(`reverseLoyaltyPointsOnArchivedDeletion: fallo al revertir puntos para pedido ${event.params.orderId}:`, err);
         }
