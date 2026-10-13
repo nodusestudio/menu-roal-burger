@@ -386,6 +386,11 @@ test('SEGURIDAD Instagram: el token y las imágenes no se leen desde el navegado
     await assertFails(clienteDb.collection('codigo_dia_historias').doc('2026-10-12').get());
     await assertFails(adminDb.collection('codigo_dia_historias').doc('2026-10-12').update({ 'normal.estado': 'publicada' }));
 
+    // La conexión con Facebook (token de la página): ni siquiera el admin la lee ni la escribe desde el navegador.
+    for (const db of [adminDb, anonDb, clienteDb]) {
+        await assertFails(db.collection('facebook_config').doc('conexion').get());
+        await assertFails(db.collection('facebook_config').doc('conexion').set({ hack: true }));
+    }
     // Los bytes de las imágenes de las publicaciones no los lee ni escribe nadie desde el navegador.
     for (const db of [adminDb, anonDb, clienteDb]) {
         await assertFails(db.collection('instagram_posts_img').doc('post1_0').get());
@@ -398,6 +403,7 @@ test('SEGURIDAD Instagram: el token y las imágenes no se leen desde el navegado
         await fs.collection('instagram_metricas').doc('m1').set({ mediaId: 'm1', ultimo: { reach: 5 } });
         await fs.collection('instagram_seguidores').doc('2026-10-12').set({ seguidores: 100 });
         await fs.collection('instagram_posts').doc('post1').set({ estado: 'programada', imgToken: 'abc' });
+        await fs.collection('facebook_config').doc('conexion').set({ pageToken: 'EAA-secreto', pageId: '555' });
         await fs.collection('instagram_posts_img').doc('post1_0').set({ size: 1 });
     });
     for (const [col, id] of [['instagram_publicaciones', 'p1'], ['instagram_metricas', 'm1'], ['instagram_seguidores', '2026-10-12'], ['instagram_posts', 'post1']]) {

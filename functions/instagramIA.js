@@ -277,6 +277,8 @@ async function generarBorradores(db, { desde, dias = 14, porSemana, cliente, rng
     });
     if (!elegidos.length) throw new HttpsError('failed-precondition', 'No hay productos con foto y disponibles para publicar (revisa las categorías excluidas).');
 
+    const fb = (await db.collection('facebook_config').doc('conexion').get()).data();
+    const fbConectado = Boolean(fb?.pageToken);
     const creados = [];
     const fallidos = [];
     await enLotes(slots.slice(0, elegidos.length).map((slot, i) => ({ slot, producto: elegidos[i] })), async ({ slot, producto }) => {
@@ -284,7 +286,7 @@ async function generarBorradores(db, { desde, dias = 14, porSemana, cliente, rng
             const copy = await generarCopy(cliente, producto, config);
             const { id } = await posts.crearBorrador(db, {
                 tipo: 'foto', origen: 'ia', caption: copy.caption, hashtags: copy.hashtags, productoId: producto.id,
-                notaIA: `IA · ${producto.nombre} · ${producto.categoria || ''}`, programadaAtMs: slot.ms
+                notaIA: `IA · ${producto.nombre} · ${producto.categoria || ''}`, programadaAtMs: slot.ms, facebook: fbConectado
             }, uid, { nowMs });
             creados.push({ id, fecha: slot.fecha, hora: slot.hora, productoNombre: producto.nombre });
         } catch (err) {

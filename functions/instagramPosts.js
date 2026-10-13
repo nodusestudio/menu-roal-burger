@@ -167,6 +167,9 @@ async function guardarPost(db, datos, uid, { nowMs = Date.now() } = {}) {
     if (d.altText !== undefined) campos.altText = String(d.altText || '').slice(0, MAX_ALT);
     if (d.productoId !== undefined) campos.productoId = String(d.productoId || '').slice(0, 80);
     if (d.notaIA !== undefined) campos.notaIA = String(d.notaIA || '').slice(0, 300);
+    // Casilla "También publicar en Facebook": cada publicación lleva su propio estado de Facebook.
+    const fbPedido = d.facebook === undefined ? undefined : d.facebook === true;
+    const estadoFb = (publicar) => ({ publicar, estado: publicar ? 'pendiente' : 'omitida', error: '', intentos: 0 });
 
     if (!d.id) {
         if (!TIPOS_POST.includes(d.tipo)) throw new HttpsError('invalid-argument', 'Elige si es post, carrusel o historia.');
@@ -175,7 +178,7 @@ async function guardarPost(db, datos, uid, { nowMs = Date.now() } = {}) {
             tipo: d.tipo, estado: 'borrador', origen: d.origen === 'ia' ? 'ia' : 'manual',
             caption: '', hashtags: [], altText: '', productoId: '', notaIA: '', ...campos,
             imagenes: [], programadaAtMs: null, imgToken: crypto.randomBytes(16).toString('hex'),
-            mediaId: '', publicadaAtMs: null, error: '', intentos: 0,
+            mediaId: '', publicadaAtMs: null, error: '', intentos: 0, facebook: estadoFb(fbPedido === true),
             creadoAtMs: nowMs, actualizadoAtMs: nowMs, creadoPor: uid || null
         };
         await ref.set(post);
@@ -192,6 +195,7 @@ async function guardarPost(db, datos, uid, { nowMs = Date.now() } = {}) {
     }
     // Editar una publicación ya programada la devuelve a borrador: hay que programarla de nuevo (se revalida).
     if (post.estado === 'programada' || post.estado === 'error') campos.estado = 'borrador';
+    if (fbPedido !== undefined && post.facebook?.estado !== 'publicada') campos.facebook = estadoFb(fbPedido);
     await refPost(db, d.id).set({ ...campos, actualizadoAtMs: nowMs }, { merge: true });
     return { id: d.id };
 }
@@ -209,6 +213,7 @@ async function crearBorrador(db, campos, uid, { nowMs = Date.now() } = {}) {
         altText: String(c.altText || '').slice(0, MAX_ALT), productoId: String(c.productoId || '').slice(0, 80), notaIA: String(c.notaIA || '').slice(0, 300),
         imagenes: [], programadaAtMs: Number.isFinite(Number(c.programadaAtMs)) ? Number(c.programadaAtMs) : null,
         imgToken: crypto.randomBytes(16).toString('hex'), mediaId: '', publicadaAtMs: null, error: '', intentos: 0,
+        facebook: { publicar: c.facebook === true, estado: c.facebook === true ? 'pendiente' : 'omitida', error: '', intentos: 0 },
         creadoAtMs: nowMs, actualizadoAtMs: nowMs, creadoPor: uid || null
     });
     return { id: ref.id };
@@ -281,7 +286,10 @@ async function programarPost(db, { id, programadaAtMs }, uid, { nowMs = Date.now
     const cuando = Math.round(Number(programadaAtMs));
     if (!Number.isFinite(cuando) || cuando < nowMs + 60 * 1000) throw new HttpsError('invalid-argument', 'Elige una fecha y hora futuras (al menos 1 minuto adelante).');
     if (cuando > nowMs + 180 * DAY_MS) throw new HttpsError('invalid-argument', 'Programa con máximo 6 meses de anticipación.');
-    await refPost(db, id).set({ estado: 'programada', programadaAtMs: cuando, intentos: 0, error: '', actualizadoAtMs: nowMs }, { merge: true });
+    await refPost(db, id).set({
+        estado: 'programada', programadaAtMs: cuando, intentos: 0, error: '', actualizadoAtMs: nowMs,
+        ...(post.facebook?.publicar === true && post.facebook?.estado !== 'publicada' ? { facebook: { estado: 'pendiente', error: '', intentos: 0 } } : {})
+    }, { merge: true });
     return { ok: true, programadaAtMs: cuando };
 }
 
@@ -326,6 +334,7 @@ async function duplicarPost(db, { id }, uid, { nowMs = Date.now() } = {}) {
         tipo: post.tipo, estado: 'borrador', origen: post.origen || 'manual', caption: post.caption || '', hashtags: post.hashtags || [],
         altText: post.altText || '', productoId: post.productoId || '', notaIA: '', imagenes, programadaAtMs: null,
         imgToken: crypto.randomBytes(16).toString('hex'), mediaId: '', publicadaAtMs: null, error: '', intentos: 0,
+        facebook: { publicar: post.facebook?.publicar === true, estado: post.facebook?.publicar === true ? 'pendiente' : 'omitida', error: '', intentos: 0 },
         creadoAtMs: nowMs, actualizadoAtMs: nowMs, creadoPor: uid || null
     });
     return { id: ref.id };

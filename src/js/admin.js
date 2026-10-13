@@ -15798,8 +15798,9 @@ function _cdNavegacion(m) {
 function _cdQueEs(p) {
     if (['foto', 'carrusel', 'historia'].includes(p.tipo)) {
         const nombre = { foto: '📷 Post', carrusel: '🎠 Carrusel', historia: '📱 Historia' }[p.tipo];
-        return `<div class="cd-que">${nombre}<br><span class="cd-muted">${escapeHtml(p.resumen || '')}</span></div>`;
+        return `<div class="cd-que">${p.canal === 'facebook' ? '📘 Facebook · ' : ''}${nombre}<br><span class="cd-muted">${escapeHtml(p.resumen || '')}</span></div>`;
     }
+    if (p.canal === 'facebook') return `<div class="cd-que">📘 Facebook · ${p.tipo === 'prueba' ? 'publicación de prueba' : 'historia del código'}</div>`;
     if (p.tipo === 'prueba') return '<div class="cd-que">🧪 Historia de prueba (logo)</div>';
     if (p.tipo === 'agotado') return '<div class="cd-que">🚫 Historia de agotado</div>';
     return `<div class="cd-que">⭐ Historia del código<br><span class="cd-muted">${escapeHtml(p.productoNombre || '')}${p.palabra ? ` · ${escapeHtml(p.palabra)}` : ''}</span></div>`;
@@ -29582,6 +29583,7 @@ const rdState = {
     codigos: {},   // codigo_dia por fecha (para mostrar la historia del código en el calendario)
     historias: {}, // estado de las historias por fecha
     ig: null,
+    fb: null,      // estado de la página de Facebook (sin token)
     config: null,  // contenido de la IA (tono, hashtags, horarios)
     resaltar: '',  // día a destacar un momento en el calendario (la publicación recién programada)
     ed: null       // publicación en edición
@@ -29646,6 +29648,7 @@ async function rdCargar() {
         rdState.posts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         rdState.ig = ig;
         if (!rdState.config) rdState.config = await rdIALlamar('leerConfig').catch(() => null);
+        rdState.fb = await rdFbLlamar('estado').catch(() => null);
         await rdCargarHistorias();
         rdState.cargado = true;
     } finally {
@@ -29666,6 +29669,7 @@ function rdRender() {
     else if (rdState.tab === 'ia') rdRenderIA(body);
     else if (rdState.tab === 'contenido') rdRenderContenido(body);
     else if (rdState.tab === 'metricas') rdRenderMetricas(body);
+    else if (rdState.tab === 'cuentas') rdRenderCuentas(body);
 }
 
 function rdAvisosHtml() {
@@ -29711,7 +29715,7 @@ function rdChipHtml(it) {
     const p = it.post;
     const est = RD_ESTADOS[p.estado] || RD_ESTADOS.borrador;
     const texto = String(p.caption || '').replace(/\s+/g, ' ').trim().slice(0, 22) || 'Sin texto';
-    return `<button type="button" class="rd-chip rd-chip--${escapeHtml(p.estado)}" data-rd-abrir="${escapeHtml(p.id)}" title="${escapeHtml(est.etiqueta)}${p.origen === 'ia' ? ' · propuesta por la IA' : ''}${p.error ? `: ${escapeHtml(p.error)}` : ''}">${p.origen === 'ia' ? '🤖' : rdIcono(p)} ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} ${escapeHtml(texto)}</button>`;
+    return `<button type="button" class="rd-chip rd-chip--${escapeHtml(p.estado)}" data-rd-abrir="${escapeHtml(p.id)}" title="${escapeHtml(est.etiqueta)}${p.origen === 'ia' ? ' · propuesta por la IA' : ''}${p.error ? `: ${escapeHtml(p.error)}` : ''}">${p.origen === 'ia' ? '🤖' : rdIcono(p)} ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} ${escapeHtml(texto)}${p.facebook?.publicar === true ? ' <b class="rd-fb" title="También en Facebook">f</b>' : ''}</button>`;
 }
 
 function rdCeldaHtml(fecha, mesActual) {
@@ -29818,7 +29822,7 @@ function rdAbrirDia(fecha) {
 
 // ── Editor ──────────────────────────────────────────────────────────────────
 function rdEdVacio(fecha = '') {
-    return { id: null, tipo: 'foto', estado: 'borrador', caption: '', hashtags: '', altText: '', fecha: fecha || '', hora: '19:00', imagenes: [], imgToken: '', error: '', actualizadoAtMs: 0, ocupado: false };
+    return { id: null, facebook: Boolean(rdState.fb?.conectado), fbEstado: '', fbError: '', fbPostId: '', tipo: 'foto', estado: 'borrador', caption: '', hashtags: '', altText: '', fecha: fecha || '', hora: '19:00', imagenes: [], imgToken: '', error: '', actualizadoAtMs: 0, ocupado: false };
 }
 
 function rdEdDesdePost(p) {
@@ -29826,7 +29830,8 @@ function rdEdDesdePost(p) {
     return {
         id: p.id, tipo: p.tipo, estado: p.estado, caption: p.caption || '', hashtags: (p.hashtags || []).map((h) => `#${h}`).join(' '), altText: p.altText || '',
         fecha: ms ? rdFechaDeMs(ms) : '', hora: ms ? rdHoraDeMs(ms) : '19:00', imagenes: (p.imagenes || []).map((i) => ({ ...i })),
-        imgToken: p.imgToken || '', error: p.error || '', actualizadoAtMs: p.actualizadoAtMs || 0, ocupado: false, mediaId: p.mediaId || '', origen: p.origen || 'manual', notaIA: p.notaIA || '', productoId: p.productoId || ''
+        imgToken: p.imgToken || '', error: p.error || '', actualizadoAtMs: p.actualizadoAtMs || 0, ocupado: false, mediaId: p.mediaId || '', origen: p.origen || 'manual', notaIA: p.notaIA || '', productoId: p.productoId || '',
+        facebook: p.facebook?.publicar === true, fbEstado: p.facebook?.estado || '', fbError: p.facebook?.error || '', fbPostId: p.facebook?.fbPostId || ''
     };
 }
 
@@ -29854,10 +29859,21 @@ function rdEditable(ed) {
     return !['publicada', 'publicando'].includes(ed.estado);
 }
 
+// Línea de Facebook del cuadro de estado (cada red tiene su propio estado).
+function rdFbLineaHtml(ed) {
+    if (!ed.facebook && ed.fbEstado !== 'publicada') return '';
+    const e = ed.fbEstado;
+    const txt = e === 'publicada' ? '✅ <strong>Facebook:</strong> ya publicada.'
+        : e === 'error' ? `⚠️ <strong>Facebook:</strong> no salió${ed.fbError ? ` (${escapeHtml(ed.fbError)})` : ''}.`
+            : e === 'publicando' ? '⏳ <strong>Facebook:</strong> publicando…'
+                : e === 'omitida' ? '' : '🕒 <strong>Facebook:</strong> pendiente (sale a la misma hora).';
+    return txt ? `<br><span class="rd-fb-linea">${txt}</span>` : '';
+}
+
 function rdEstadoHtml(ed, compacto = false) {
     const ms = ed.estado === 'publicada' ? rdMsDeFechaHora(ed.fecha, ed.hora) : rdMsDeFechaHora(ed.fecha, ed.hora);
     const t = rdTextoEstado(ed.estado, Number.isFinite(ms) && ed.fecha ? ms : null, ed.error);
-    return `<div class="rd-estado rd-estado--${escapeHtml(ed.estado)}${compacto ? ' rd-estado--compacto' : ''}" role="status"><span class="rd-estado-ico">${t.icono}</span><span><strong>${escapeHtml(t.titulo)}</strong><br>${escapeHtml(t.detalle)}</span></div>`;
+    return `<div class="rd-estado rd-estado--${escapeHtml(ed.estado)}${compacto ? ' rd-estado--compacto' : ''}" role="status"><span class="rd-estado-ico">${t.icono}</span><span><strong>${escapeHtml(t.titulo)}</strong><br>${escapeHtml(t.detalle)}${rdFbLineaHtml(ed)}</span></div>`;
 }
 
 function rdPhoneHtml(ed) {
@@ -29969,6 +29985,9 @@ function rdRenderEditor(body) {
                     <input type="text" id="rdAlt" maxlength="1000" value="${escapeHtml(ed.altText)}" ${editable ? '' : 'disabled'}>
                 </label>`}
 
+                ${rdState.fb?.conectado ? `
+                <label class="cpana-toggle rd-fb-casilla"><input type="checkbox" id="rdFb"${ed.facebook ? ' checked' : ''}${!editable || ed.fbEstado === 'publicada' ? ' disabled' : ''}>
+                    <span><strong>📘 También publicar en Facebook (${escapeHtml(rdState.fb.pageName)})</strong><br><span class="cd-muted">${rdState.fb.activo ? 'Sale a la misma hora, con la misma imagen y el mismo texto.' : '⚠️ La publicación automática en Facebook está APAGADA: no saldrá sola (actívala en la pestaña 🔗 Cuentas).'}</span></span></label>` : ''}
                 <div class="rd-campo">
                     <span class="rd-label">Cuándo se publica <span class="cd-muted">(hora de Colombia)</span></span>
                     <div class="rd-cuando">
@@ -29984,6 +30003,7 @@ function rdRenderEditor(body) {
                         <button type="button" class="section-action-btn primary" data-rd-a="programar">🗓️ Programar</button>
                         <button type="button" class="cd-btn" data-rd-a="ahora">🚀 Publicar ahora</button>` : ''}
                     ${ed.id && ed.estado === 'programada' ? '<button type="button" class="cd-btn" data-rd-a="desprogramar">↩ Volver a borrador</button>' : ''}
+                    ${ed.id && ed.fbEstado === 'error' ? '<button type="button" class="cd-btn" data-rd-a="fbReintentar">🔁 Reintentar en Facebook</button>' : ''}
                     ${ed.id && editable && ed.productoId ? '<button type="button" class="cd-btn" data-rd-a="regenerar">🔁 Otro texto con IA</button>' : ''}
                     ${ed.id ? '<button type="button" class="cd-btn" data-rd-a="duplicar">📋 Duplicar</button>' : ''}
                     ${ed.id && editable && ed.estado !== 'cancelada' && ed.estado !== 'borrador' ? '<button type="button" class="cd-btn" data-rd-a="cancelar">🚫 Cancelar</button>' : ''}
@@ -30013,6 +30033,8 @@ function rdLeerFormulario(body) {
     if (v('#rdCaption') !== undefined) ed.caption = v('#rdCaption');
     if (v('#rdHashtags') !== undefined) ed.hashtags = v('#rdHashtags');
     if (v('#rdAlt') !== undefined) ed.altText = v('#rdAlt');
+    const caja = body.querySelector('#rdFb');
+    if (caja && !caja.disabled) ed.facebook = caja.checked;
     if (v('#rdFecha') !== undefined) ed.fecha = v('#rdFecha');
     if (v('#rdHora') !== undefined) ed.hora = v('#rdHora');
 }
@@ -30023,7 +30045,7 @@ async function rdGuardarCampos(body) {
     const ed = rdState.ed;
     const r = rdResumenTexto(ed.caption, ed.hashtags);
     if (r.errores.length) throw new Error(r.errores[0]);
-    const post = { tipo: ed.tipo, caption: ed.caption, hashtags: rdNormalizarHashtags(ed.hashtags), altText: ed.altText };
+    const post = { tipo: ed.tipo, caption: ed.caption, hashtags: rdNormalizarHashtags(ed.hashtags), altText: ed.altText, facebook: ed.facebook === true };
     const res = await rdLlamar('guardar', { post: ed.id ? { id: ed.id, ...post } : post });
     ed.id = res.id;
     return res.id;
@@ -30227,9 +30249,16 @@ async function rdAccion(body, btn) {
                 const r = await rdLlamar('publicarAhora', { id });
                 if (r.ok) volver = rdFechaDeMs(Date.now());
                 else await rdRecargarEd();
-                if (r.ok) showNotice(r.ya ? 'Esa publicación ya estaba publicada.' : '✅ Publicada en Instagram.', 'ok');
-                else showNotice(`No se publicó: ${r.error || r.motivo}`, 'error');
+                const fbTxt = r.facebook ? (r.facebook.ok ? ' y en Facebook' : ` (Facebook no salió: ${r.facebook.error || r.facebook.motivo})`) : '';
+                if (r.ok) showNotice(r.ya ? 'Esa publicación ya estaba publicada.' : `✅ Publicada en Instagram${fbTxt}.`, r.facebook && !r.facebook.ok ? 'error' : 'ok');
+                else showNotice(`No se publicó en Instagram: ${r.error || r.motivo}${fbTxt}`, 'error');
             }
+        } else if (a === 'fbReintentar') {
+            btn.textContent = 'Publicando en Facebook…';
+            const r = await rdLlamar('publicarFacebook', { id: ed.id });
+            await rdRecargarEd();
+            if (r.ok) showNotice('✅ Publicada en Facebook.', 'ok');
+            else showNotice(`Facebook no la publicó: ${r.error || r.motivo}`, 'error');
         } else if (a === 'regenerar') {
             btn.textContent = 'Escribiendo…';
             await rdIALlamar('regenerar', { id: ed.id });
@@ -30673,5 +30702,108 @@ async function rdRenderMetricas(body) {
             showNotice(`No se pudieron actualizar: ${err.message || 'error'}`, 'error');
         }
         recargar();
+    });
+}
+
+// ── Cuentas: conexión con Instagram y con la página de Facebook ─────────────
+async function rdFbLlamar(accion, payload = {}) {
+    if (!firebaseFunctions) throw new Error('Servicio no disponible. Recarga la página.');
+    return (await firebaseFunctions.httpsCallable('adminFacebook')({ accion, ...payload })).data;
+}
+
+function rdCuentaIgHtml() {
+    const ig = rdState.ig;
+    if (!ig) return '<p class="cd-muted">No se pudo leer el estado de Instagram.</p>';
+    if (!ig.conectado) return '<p class="cd-aviso">Instagram no está conectado. Se conecta en Artículos → Código del día → Configuración → Instagram.</p>';
+    const vence = ig.vencido ? '<strong class="cd-hist-err">token VENCIDO</strong>' : (ig.expiraEnDias !== null ? `el token vence en ${ig.expiraEnDias} día(s) y se renueva solo` : '');
+    return `<p class="rd-cuenta-estado">✅ Conectado como <strong>@${escapeHtml(ig.username)}</strong> · ${vence} · publicación automática ${ig.activo ? '<strong class="cd-hist-ok">ACTIVA</strong>' : '<strong class="cd-hist-warn">APAGADA</strong>'}</p>
+        <p class="cd-muted">Se administra en Artículos → Código del día → Configuración → Instagram.</p>`;
+}
+
+function rdCuentaFbHtml() {
+    const fb = rdState.fb;
+    if (!fb) return '<p class="cd-muted">No se pudo leer el estado de Facebook. Recarga la página; si sigue igual, las funciones de Facebook aún no están desplegadas.</p>';
+    if (!fb.conectado) {
+        return `
+            <p class="cd-muted">Conecta la página de Facebook para que lo que programes en Instagram salga también allí. Se hace una sola vez:</p>
+            <ol class="cd-ig-pasos">
+                <li>En <strong>developers.facebook.com</strong> abre tu app → <strong>Herramientas → Explorador de la API Graph</strong>.</li>
+                <li>Elige tu app y, en <strong>Permisos</strong>, agrega <code>pages_show_list</code>, <code>pages_manage_posts</code> y <code>pages_read_engagement</code>. Pulsa <strong>Generate Access Token</strong>, inicia sesión y <strong>elige la página de Roal Burger</strong> cuando te lo pida.</li>
+                <li>Abre el <strong>Depurador de tokens</strong> (Herramientas → Depurador de tokens), pega ese token y pulsa <strong>Extender token de acceso</strong>. Copia el token largo.</li>
+                <li>Pégalo aquí. Se guarda en el servidor (solo el de la página, que no vence) y nunca se vuelve a mostrar.</li>
+            </ol>
+            <div class="cd-ig-fila">
+                <input type="password" id="rdFbToken" placeholder="Pega aquí el token de Facebook" autocomplete="off" spellcheck="false">
+                <button type="button" class="section-action-btn primary" id="rdFbBuscar">Buscar mis páginas</button>
+            </div>
+            <div id="rdFbPaginas"></div>`;
+    }
+    return `
+        <p class="rd-cuenta-estado">✅ Conectada la página <strong>${escapeHtml(fb.pageName)}</strong>${fb.fans !== null ? ` · ${_rdN(fb.fans)} seguidores` : ''} · publicación automática ${fb.activo ? '<strong class="cd-hist-ok">ACTIVA</strong>' : '<strong class="cd-hist-warn">APAGADA</strong>'}</p>
+        ${fb.ultimoError ? `<p class="cd-aviso">${escapeHtml(fb.ultimoError)}</p>` : ''}
+        <label class="cpana-toggle"><input type="checkbox" id="rdFbActivo"${fb.activo ? ' checked' : ''}><span><strong>Publicar automáticamente en Facebook</strong><br><span class="cd-muted">Apagado: nada sale solo en Facebook (el botón "Publicar ahora" sí funciona).</span></span></label>
+        <label class="cpana-toggle"><input type="checkbox" id="rdFbHashtags"${fb.conHashtags ? ' checked' : ''}><span><strong>Incluir los hashtags en Facebook</strong><br><span class="cd-muted">Por defecto no: en Facebook rinden poco y el texto se ve más limpio.</span></span></label>
+        <div class="cd-ig-fila">
+            <button type="button" class="cd-btn" id="rdFbProbar">Probar conexión</button>
+            <button type="button" class="cd-btn" id="rdFbPrueba" title="Publica YA el logo de Roal en la página para comprobar que todo funciona">🧪 Publicar prueba (logo)</button>
+            <button type="button" class="cd-btn" id="rdFbDesconectar">Desconectar</button>
+        </div>
+        <details class="cd-muted"><summary>Reconectar con un token nuevo</summary>
+            <div class="cd-ig-fila"><input type="password" id="rdFbToken" placeholder="Pega aquí el token de Facebook" autocomplete="off" spellcheck="false"><button type="button" class="cd-btn" id="rdFbBuscar">Buscar mis páginas</button></div>
+            <div id="rdFbPaginas"></div></details>`;
+}
+
+function rdRenderCuentas(body) {
+    body.innerHTML = `
+        <section class="cd-ig"><h4 class="cd-ig-titulo">📸 Instagram</h4>${rdCuentaIgHtml()}</section>
+        <section class="cd-ig"><h4 class="cd-ig-titulo">📘 Facebook (página)</h4>${rdCuentaFbHtml()}</section>`;
+    const refrescar = async () => { rdState.fb = await rdFbLlamar('estado').catch(() => null); rdRenderCuentas(body); };
+    const accion = async (btn, espera, fn, ok) => {
+        const label = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = espera;
+        try {
+            const r = await fn();
+            if (ok) showNotice(typeof ok === 'function' ? ok(r) : ok, 'ok');
+        } catch (err) {
+            showNotice(err.message || 'No se pudo completar.', 'error');
+        }
+        btn.disabled = false;
+        btn.textContent = label;
+        await refrescar();
+    };
+    body.querySelector('#rdFbBuscar')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        const token = String(body.querySelector('#rdFbToken')?.value || '').trim();
+        const caja = body.querySelector('#rdFbPaginas');
+        if (!token) { showNotice('Pega primero el token de Facebook.', 'error'); return; }
+        btn.disabled = true;
+        btn.textContent = 'Buscando…';
+        try {
+            const { paginas } = await rdFbLlamar('listarPaginas', { token });
+            caja.innerHTML = `<p class="cd-muted">Elige la página donde se va a publicar:</p>
+                <div class="rd-paginas">${paginas.map((p) => `<button type="button" class="cd-btn rd-pagina" data-rd-pagina="${escapeHtml(p.id)}" ${p.puedePublicar ? '' : 'disabled title="Tu usuario no puede publicar en esta página"'}>📘 ${escapeHtml(p.name)}${p.puedePublicar ? '' : ' (sin permiso)'}</button>`).join('')}</div>`;
+            caja.querySelectorAll('[data-rd-pagina]').forEach((b) => b.addEventListener('click', () => accion(b, 'Conectando…', () => rdFbLlamar('conectar', { token, pageId: b.dataset.rdPagina }), (r) => `Conectada la página ${r.pageName}. Activa la publicación automática cuando quieras.`)));
+        } catch (err) {
+            caja.innerHTML = '';
+            showNotice(err.message || 'No se pudieron leer las páginas.', 'error');
+        }
+        btn.disabled = false;
+        btn.textContent = 'Buscar mis páginas';
+    });
+    body.querySelector('#rdFbActivo')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdFbLlamar('ajustes', { activo: e.currentTarget.checked }), (r) => (r.activo ? 'Publicación automática en Facebook ACTIVADA.' : 'Publicación automática en Facebook apagada.')));
+    body.querySelector('#rdFbHashtags')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdFbLlamar('ajustes', { conHashtags: e.currentTarget.checked }), 'Ajuste guardado.'));
+    body.querySelector('#rdFbProbar')?.addEventListener('click', (e) => accion(e.currentTarget, 'Probando…', () => rdFbLlamar('probar'), (r) => `Conexión OK: ${r.pageName}.`));
+    body.querySelector('#rdFbDesconectar')?.addEventListener('click', (e) => {
+        if (!window.confirm('¿Desconectar Facebook? Se borra el token guardado y se deja de publicar allí.')) return;
+        accion(e.currentTarget, 'Desconectando…', () => rdFbLlamar('desconectar'), 'Facebook desconectado.');
+    });
+    body.querySelector('#rdFbPrueba')?.addEventListener('click', (e) => {
+        if (!window.confirm(`Se publicará AHORA una publicación de prueba (el logo de Roal) en la página ${rdState.fb?.pageName || ''}.\n\nLa verán tus seguidores hasta que la borres desde Facebook. ¿Publicarla?`)) return;
+        accion(e.currentTarget, 'Publicando…', async () => {
+            const r = await rdFbLlamar('publicarPrueba', { imagenBase64: await _cdBlobABase64(await _cdGenerarImagenPrueba()) });
+            if (!r.ok) throw new Error(`No se publicó: ${r.error || 'error desconocido'}`);
+            return r;
+        }, (r) => `✅ Funciona: la publicación de prueba ya está en ${r.pageName}. Ábrela en Facebook y bórrala.`);
     });
 }

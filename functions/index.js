@@ -3047,6 +3047,7 @@ exports.publicarAgotadoPorHorario = onSchedule(
 // instagramPosts.js; aquí solo auth y wrappers. Las imágenes se suben una por llamada (JPEG base64).
 // ─────────────────────────────────────────────────────────────
 const instagramPosts = require('./instagramPosts');
+const facebookPagina = require('./facebookPagina');
 
 exports.adminInstagramPosts = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '512MiB', timeoutSeconds: 180 },
@@ -3067,7 +3068,14 @@ exports.adminInstagramPosts = onCall(
         if (accion === 'cancelar') return instagramPosts.cancelarPost(db, { id: d.id }, uid);
         if (accion === 'borrar') return instagramPosts.borrarPost(db, { id: d.id });
         if (accion === 'duplicar') return instagramPosts.duplicarPost(db, { id: d.id }, uid);
-        if (accion === 'publicarAhora') return instagramPosts.publicarPost(db, { id: String(d.id || ''), baseUrl: historiaImagenBaseUrl(), manual: true });
+        if (accion === 'publicarAhora') {
+            const r = await instagramPosts.publicarPost(db, { id: String(d.id || ''), baseUrl: historiaImagenBaseUrl(), manual: true });
+            // Facebook va aparte: si la casilla está marcada se publica también (un fallo de uno no afecta al otro).
+            const p = await instagramPosts.leerPost(db, String(d.id || '')).catch(() => null);
+            const facebook = p?.facebook?.publicar === true ? await facebookPagina.publicarPostEnFacebook(db, { id: String(d.id || ''), baseUrl: historiaImagenBaseUrl(), manual: true }) : null;
+            return { ...r, facebook };
+        }
+        if (accion === 'publicarFacebook') return facebookPagina.publicarPostEnFacebook(db, { id: String(d.id || ''), baseUrl: historiaImagenBaseUrl(), manual: true });
         throw new HttpsError('invalid-argument', 'Acción desconocida.');
     }
 );
@@ -3079,6 +3087,8 @@ exports.publicarPostsProgramados = onSchedule(
         try {
             const r = await instagramPosts.publicarProgramados(getFirestore(), { baseUrl: historiaImagenBaseUrl() });
             if (r.revisadas) console.log(`publicarPostsProgramados: ${JSON.stringify(r)}`);
+            const f = await facebookPagina.publicarProgramados(getFirestore(), { baseUrl: historiaImagenBaseUrl() });
+            if (f.revisadas) console.log(`publicarPostsProgramados (Facebook): ${JSON.stringify(f)}`);
         } catch (err) {
             console.error('publicarPostsProgramados:', err.message);
         }
@@ -3108,6 +3118,31 @@ exports.adminInstagramIA = onCall(
         if (accion === 'regenerar') return instagramIA.regenerarCopy(db, { id: String(d.id || ''), cliente: cliente() }, uid);
         if (accion === 'aprobar') return instagramIA.aprobarPost(db, { id: String(d.id || '') }, uid);
         if (accion === 'aprobarVarios') return instagramIA.aprobarVarios(db, { ids: d.ids }, uid);
+        throw new HttpsError('invalid-argument', 'Acción desconocida.');
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// FACEBOOK (página de Roal Burger): conexión y ajustes desde Redes → Cuentas. Lógica en facebookPagina.js.
+// El token de la página vive en facebook_config/conexion (cerrado a clientes) y NUNCA sale hacia el panel.
+// ─────────────────────────────────────────────────────────────
+exports.adminFacebook = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '512MiB', timeoutSeconds: 120 },
+    async (request) => {
+        const db = getFirestore();
+        const uid = await cuponPana.ensureAdmin(db, request);
+        const d = request.data || {};
+        const accion = String(d.accion || '');
+        if (accion === 'estado') return facebookPagina.estadoConexion(db);
+        if (accion === 'listarPaginas') return { paginas: await facebookPagina.listarPaginas(d.token) };
+        if (accion === 'conectar') return facebookPagina.conectar(db, { tokenUsuario: d.token, pageId: d.pageId }, uid);
+        if (accion === 'probar') return facebookPagina.probarConexion(db);
+        if (accion === 'ajustes') return facebookPagina.setAjustes(db, { activo: d.activo, historiasCodigo: d.historiasCodigo, conHashtags: d.conHashtags });
+        if (accion === 'desconectar') return facebookPagina.desconectar(db);
+        if (accion === 'publicarPrueba') {
+            const base64 = String(d.imagenBase64 || '').replace(/^data:image\/jpeg;base64,/, '');
+            return facebookPagina.publicarPrueba(db, { jpeg: Buffer.from(base64, 'base64'), baseUrl: historiaImagenBaseUrl() });
+        }
         throw new HttpsError('invalid-argument', 'Acción desconocida.');
     }
 );

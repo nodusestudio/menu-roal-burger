@@ -443,6 +443,10 @@ service cloud.firestore {
     }
     // Publicaciones normales (foto/carrusel) de Instagram: el panel (admin) las lee; solo el servidor escribe.
     // Los bytes de las imágenes no los lee nadie desde el navegador.
+    // Conexión con la página de Facebook (token de la página): nadie la lee ni escribe desde el navegador.
+    match /facebook_config/{doc} {
+      allow read, write: if false;
+    }
     match /instagram_posts/{id} {
       allow read: if isAdmin();
       allow write: if false;

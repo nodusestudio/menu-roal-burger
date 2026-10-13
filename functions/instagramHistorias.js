@@ -474,12 +474,12 @@ async function publicarHistoriaDeHoy(db, opts = {}) {
 // ── Bitácora y métricas ──────────────────────────────────────────────────────
 
 // Cada intento de publicar (bien o mal) queda anotado: cuándo, qué, de dónde salió y el resultado.
-async function registrarPublicacion(db, { fecha, tipo, origen, ok, mediaId = '', error = '', palabra = '', productoNombre = '', postId = '', resumen = '', nowMs = Date.now() }) {
+async function registrarPublicacion(db, { fecha, tipo, origen, ok, mediaId = '', error = '', palabra = '', productoNombre = '', postId = '', resumen = '', canal = 'instagram', nowMs = Date.now() }) {
     try {
         await db.collection(PUBLICACIONES_COLLECTION).add({
             atMs: nowMs, at: Timestamp.fromMillis(nowMs), fecha, tipo, origen: origen || 'automatica', ok: ok === true,
             mediaId: String(mediaId || ''), error: String(error || '').slice(0, 300), palabra, productoNombre,
-            postId: String(postId || ''), resumen: String(resumen || '').slice(0, 120)
+            postId: String(postId || ''), resumen: String(resumen || '').slice(0, 120), canal: canal === 'facebook' ? 'facebook' : 'instagram'
         });
     } catch (err) {
         console.error('registrarPublicacion:', err.message); // la bitácora nunca debe tumbar una publicación
