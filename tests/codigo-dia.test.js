@@ -578,3 +578,29 @@ test('lista de palabras: al menos 60, únicas, sin doble sentido conocido en Col
         assert.ok(p.significado.length > 0);
     }
 });
+
+test('hora de cierre: el código se acepta hasta las 10 p. m. (web y caja) y después ya no, con el mensaje de agotado', async () => {
+    await sembrarDia(LUNES);
+    const a = (h, m = 0) => cd.dateKeyToMs(LUNES) + (h * 60 + m) * 60 * 1000;
+    assert.equal((await cd.validarCodigoDia(db, 'CHAMO27', a(21, 59))).estado, 'valido', '9:59 p. m. aún vale');
+    assert.equal((await cd.validarCodigoDia(db, 'CHAMO27', a(21, 5))).estado, 'valido', 'después del anuncio de las 9 sigue valiendo');
+    const tarde = await cd.validarCodigoDia(db, 'CHAMO27', a(22, 0));
+    assert.equal(tarde.estado, 'agotado');
+    const web = await cd.consumirCodigoDia(db, { codigo: 'CHAMO27', canal: 'web', telefono: TEL_1, productoNombre: 'Burger Plus' }, a(22, 1));
+    assert.equal(web.ok, false);
+    const caja = await cd.consumirCodigoDia(db, { codigo: 'CHAMO27', canal: 'caja', telefono: TEL_2, productoId: 'bp-plus' }, a(23, 30));
+    assert.equal(caja.ok, false);
+    const antes = await cd.consumirCodigoDia(db, { codigo: 'CHAMO27', canal: 'web', telefono: TEL_1, productoNombre: 'Burger Plus' }, a(21, 40));
+    assert.equal(antes.ok, true, 'a las 9:40 p. m. todavía se puede canjear');
+});
+
+test('hora de cierre: es configurable, la vista pública la trae y la configuración inválida vuelve a los valores por defecto', async () => {
+    const c = cd.sanitizeConfig({ horaCierre: '23:30', agotadoDesde: '20:15', agotadoVentanaMin: 30 });
+    assert.deepEqual([c.horaCierre, c.agotadoDesde, c.agotadoVentanaMin], ['23:30', '20:15', 30]);
+    const malo = cd.sanitizeConfig({ horaCierre: 'tarde', agotadoDesde: '', agotadoVentanaMin: 'x' });
+    assert.deepEqual([malo.horaCierre, malo.agotadoDesde, malo.agotadoVentanaMin], ['22:00', '21:00', 45]);
+    assert.equal(cd.sanitizeConfig({ agotadoVentanaMin: 999 }).agotadoVentanaMin, 180);
+    await sembrarDia(LUNES);
+    const v = await cd.actualizarPublicoHoy(db, AHORA);
+    assert.equal(v.horaCierre, '22:00');
+});

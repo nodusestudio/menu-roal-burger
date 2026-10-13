@@ -45,6 +45,12 @@ const DEFAULT_CONFIG = Object.freeze({
     // Nombres EXACTOS de las categorías del catálogo (colección `categorias`).
     categoriasElegibles: ['BURGER PREMIUM', 'PERROS CALIENTES', 'SALCHIPAPAS', 'PEPITOS VENEZOLANOS'],
     horaPublicacion: '12:00',
+    // El código se ACEPTA (web y caja) hasta horaCierre. En redes se anuncia que termina a las 9 p. m.
+    // (agotadoDesde): desde ahí, si no se agotó solo, sale la historia de "agotado" a una hora al azar
+    // dentro de agotadoVentanaMin minutos. La gente que lo vio tarde aún puede usarlo hasta horaCierre.
+    horaCierre: '22:00',
+    agotadoDesde: '21:00',
+    agotadoVentanaMin: 45,
     activo: true,
     // El restaurante cierra los miércoles (0=domingo … 6=sábado). Ese día no hay código.
     diasCerrados: [3]
@@ -158,12 +164,16 @@ function sanitizeConfig(raw) {
     const dias = Array.isArray(r.diasCerrados)
         ? [...new Set(r.diasCerrados.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))]
         : DEFAULT_CONFIG.diasCerrados.slice();
-    const hora = /^\d{1,2}:\d{2}$/.test(String(r.horaPublicacion || '')) ? String(r.horaPublicacion) : DEFAULT_CONFIG.horaPublicacion;
+    const horaOk = (v, def) => (/^\d{1,2}:\d{2}$/.test(String(v || '')) ? String(v) : def);
+    const hora = horaOk(r.horaPublicacion, DEFAULT_CONFIG.horaPublicacion);
     return {
         porcentaje: int(r.porcentaje, 1, 90, DEFAULT_CONFIG.porcentaje),
         cuposPorDia: int(r.cuposPorDia, 1, 500, DEFAULT_CONFIG.cuposPorDia),
         categoriasElegibles: categorias.length ? categorias : DEFAULT_CONFIG.categoriasElegibles.slice(),
         horaPublicacion: hora,
+        horaCierre: horaOk(r.horaCierre, DEFAULT_CONFIG.horaCierre),
+        agotadoDesde: horaOk(r.agotadoDesde, DEFAULT_CONFIG.agotadoDesde),
+        agotadoVentanaMin: int(r.agotadoVentanaMin, 0, 180, DEFAULT_CONFIG.agotadoVentanaMin),
         activo: r.activo === undefined ? DEFAULT_CONFIG.activo : r.activo === true,
         diasCerrados: dias
     };
@@ -419,7 +429,8 @@ function vistaPublica({ fecha, config, dia, saltado, producto }) {
         cupos,
         cuposRestantes: Math.max(0, cupos - canjes),
         agotado: canjes >= cupos,
-        horaPublicacion: config.horaPublicacion
+        horaPublicacion: config.horaPublicacion,
+        horaCierre: config.horaCierre
     };
 }
 
@@ -466,6 +477,8 @@ function evaluarCodigo({ codigo, config, dia, saltado, nowMs }) {
     if (bogotaParts(nowMs).minutes < horaAMinutos(config.horaPublicacion)) return MOTIVOS.ANTES_DE_HORA;
     if (!codigo || normalizarCodigo(codigo) !== normalizarCodigo(dia.palabra)) return MOTIVOS.INVALIDO;
     if (Number(dia.canjes || 0) >= Number(dia.cupos || 0)) return MOTIVOS.AGOTADO;
+    // Pasada la hora de cierre el código ya no se acepta (mismo mensaje que agotado).
+    if (bogotaParts(nowMs).minutes >= horaAMinutos(config.horaCierre)) return MOTIVOS.AGOTADO;
     return null;
 }
 

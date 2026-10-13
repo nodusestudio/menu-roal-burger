@@ -568,3 +568,64 @@ test('métricas: solo se miden las historias vivas (24 h + 1 h de margen) y sin 
     assert.equal((await db.collection(ig.METRICAS_COLLECTION).doc('vieja').get()).data().ultimo.reach, 9, 'la medición final se conserva');
     assert.equal((await db.collection(ig.METRICAS_COLLECTION).doc('viva').get()).data().ultimo.reach, 7);
 });
+
+// ── Historia de agotado por horario (si el código no se agotó solo) ──────────
+
+test('agotado por horario: la hora cambia cada día, cae entre las 9:00 y las 9:45 p. m. y es estable durante el día', () => {
+    const config = { agotadoDesde: '21:00', agotadoVentanaMin: 45 };
+    const minutos = new Set();
+    for (let i = 0; i < 40; i++) {
+        const fecha = cd.addDays('2026-11-01', i);
+        const m = ig.minutoAgotadoPorHorario({ imgToken: `token-${i}-abcdef` }, fecha, config);
+        assert.ok(m >= 21 * 60 && m <= 21 * 60 + 45, `${fecha}: ${m}`);
+        assert.equal(m, ig.minutoAgotadoPorHorario({ imgToken: `token-${i}-abcdef` }, fecha, config), 'estable');
+        minutos.add(m);
+    }
+    assert.ok(minutos.size >= 15, `debe variar de un día a otro (${minutos.size} horas distintas en 40 días)`);
+    assert.equal(ig.minutoAgotadoPorHorario({ imgToken: 'x' }, LUNES, { agotadoDesde: '21:00', agotadoVentanaMin: 0 }), 21 * 60, 'ventana 0 = hora fija');
+});
+
+test('agotado por horario: sale pasada la hora al azar si no se agotó solo; antes no; y no repite si ya salió', async () => {
+    await conectar();
+    await prepararHistoria(LUNES, 'normal', HUELLA_NORMAL);
+    await prepararHistoria(LUNES, 'agotado', HUELLA_AGOTADO);
+    const meta = metaFalso();
+    await ig.publicarHistoria(db, opPub(meta)); // la del código ya salió a las 12-1 p. m.
+    const status = await estadoDia();
+    const minuto = ig.minutoAgotadoPorHorario(status, LUNES, await cd.leerConfig(db));
+    const a = (min) => cd.dateKeyToMs(LUNES) + min * 60 * 1000;
+    const op = (min) => ({ nowMs: a(min), fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera });
+    assert.equal((await ig.publicarAgotadoPorHorario(db, op(20 * 60 + 59))).motivo, 'antes_de_hora');
+    assert.equal((await ig.publicarAgotadoPorHorario(db, op(minuto - 1))).motivo, 'antes_de_hora');
+    const r = await ig.publicarAgotadoPorHorario(db, op(minuto));
+    assert.equal(r.ok, true);
+    assert.equal((await estadoDia()).agotado.estado, 'publicada');
+    const b = (await bitacora()).filter((x) => x.tipo === 'agotado');
+    assert.deepEqual(b.map((x) => x.origen), ['horario']);
+    const otra = await ig.publicarAgotadoPorHorario(db, op(minuto + 3));
+    assert.equal(otra.ya, true);
+    assert.equal(meta.llamadas.filter((l) => /media_publish$/.test(l.ruta)).length, 2, 'código + agotado, nada más');
+});
+
+test('agotado por horario: si ya salió porque se agotaron los cupos, a las 9 p. m. no se publica otra vez; sin la del código tampoco sale', async () => {
+    await conectar();
+    await prepararHistoria(LUNES, 'agotado', HUELLA_AGOTADO);
+    const meta = metaFalso();
+    const tarde = { nowMs: cd.dateKeyToMs(LUNES) + (21 * 60 + 50) * 60 * 1000, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera };
+    assert.equal((await ig.publicarAgotadoPorHorario(db, tarde)).motivo, 'normal_no_publicada');
+    assert.equal(meta.llamadas.length, 0);
+    await prepararHistoria(LUNES, 'normal', HUELLA_NORMAL);
+    await ig.publicarHistoria(db, opPub(meta));
+    await ig.publicarHistoria(db, opPub(meta, { tipo: 'agotado' })); // se agotó a la 1 p. m. y salió al instante
+    const antes = meta.llamadas.length;
+    assert.equal((await ig.publicarAgotadoPorHorario(db, tarde)).ya, true);
+    assert.equal(meta.llamadas.length, antes);
+});
+
+test('agotado por horario: con la publicación automática apagada no sale nada', async () => {
+    await conectar({ activo: false });
+    const meta = metaFalso();
+    const r = await ig.publicarAgotadoPorHorario(db, { nowMs: cd.dateKeyToMs(LUNES) + 22 * HOUR, fetchFn: meta.fetchFn, baseUrl: BASE_URL, sleep: sinEspera });
+    assert.equal(r.motivo, 'desactivado');
+    assert.equal(meta.llamadas.length, 0);
+});

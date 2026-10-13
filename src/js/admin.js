@@ -15087,7 +15087,7 @@ async function fetchOpeningAdConfig() {
 // (solo admin, ver firestore.rules). Toda escritura va por la Cloud Function adminCodigoDia
 // (functions/codigoDia.js): configuración, edición de un día y la programación de 7 días.
 const CD_DEFAULT_CONFIG = {
-    porcentaje: 30, cuposPorDia: 10, horaPublicacion: '12:00', activo: true, diasCerrados: [3],
+    porcentaje: 30, cuposPorDia: 10, horaPublicacion: '12:00', horaCierre: '22:00', agotadoDesde: '21:00', agotadoVentanaMin: 45, activo: true, diasCerrados: [3],
     categoriasElegibles: ['BURGER PREMIUM', 'PERROS CALIENTES', 'SALCHIPAPAS', 'PEPITOS VENEZOLANOS']
 };
 const CD_DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -15798,7 +15798,7 @@ async function _cdRenderInstagram(body) {
             <tr>
                 <td class="cd-nowrap"><strong>${escapeHtml(_cdFechaHoraBogota(p.atMs))}</strong></td>
                 <td>${_cdQueEs(p)}</td>
-                <td class="cd-nowrap cd-muted">${p.origen === 'manual' ? 'manual' : 'automática'}</td>
+                <td class="cd-nowrap cd-muted">${p.origen === 'manual' ? 'manual' : (p.origen === 'horario' ? 'por horario' : 'automática')}</td>
                 <td>${resultado}</td>
                 <td class="cd-num">${p.ok ? `${_cdCeldaMetrica(m, 'reach')}${alcance ? `<span class="cd-bar-mini" style="width:${Math.max(4, Math.round(alcance / maxAlcance * 60))}px"></span>` : ''}` : '<span class="cd-muted">—</span>'}</td>
                 <td class="cd-num">${p.ok ? _cdCeldaMetrica(m, 'views') : '<span class="cd-muted">—</span>'}</td>
@@ -15863,6 +15863,9 @@ function _cdRenderConfig(body) {
                 <label>Porcentaje de descuento (%)<input type="number" name="porcentaje" min="1" max="90" value="${Number(c.porcentaje) || 30}"></label>
                 <label>Cupos por día<input type="number" name="cuposPorDia" min="1" max="500" value="${Number(c.cuposPorDia) || 10}"></label>
                 <label>Hora de publicación<input type="time" name="horaPublicacion" value="${escapeHtml(c.horaPublicacion || '12:00')}"></label>
+                <label title="Pasada esta hora el código ya no se acepta (menú ni caja)">El código se acepta hasta<input type="time" name="horaCierre" value="${escapeHtml(c.horaCierre || '22:00')}"></label>
+                <label title="Si el código no se agotó solo, desde esta hora sale la historia de agotado en Instagram">Historia de agotado desde<input type="time" name="agotadoDesde" value="${escapeHtml(c.agotadoDesde || '21:00')}"></label>
+                <label title="La hora exacta cambia cada día al azar dentro de esta ventana">…durante (minutos)<input type="number" name="agotadoVentanaMin" min="0" max="180" value="${Number.isFinite(Number(c.agotadoVentanaMin)) ? Number(c.agotadoVentanaMin) : 45}"></label>
             </div>
             <fieldset class="cd-fieldset"><legend>Categorías elegibles</legend>
                 <div class="cpana-dias">${cats.map((n) => `<label><input type="checkbox" name="cat" value="${escapeHtml(n)}"${elegidas.has(n.toUpperCase()) ? ' checked' : ''}> ${escapeHtml(n)}</label>`).join('')}</div>
@@ -15883,6 +15886,9 @@ function _cdRenderConfig(body) {
             porcentaje: Number(f.porcentaje.value),
             cuposPorDia: Number(f.cuposPorDia.value),
             horaPublicacion: f.horaPublicacion.value || '12:00',
+            horaCierre: f.horaCierre.value || '22:00',
+            agotadoDesde: f.agotadoDesde.value || '21:00',
+            agotadoVentanaMin: Number(f.agotadoVentanaMin.value),
             categoriasElegibles: [...f.querySelectorAll('input[name="cat"]:checked')].map((i) => i.value),
             diasCerrados: [...f.querySelectorAll('input[name="dia"]:checked')].map((i) => Number(i.value))
         };

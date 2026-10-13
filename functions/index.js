@@ -3028,3 +3028,16 @@ exports.actualizarMetricasInstagram = onSchedule(
         }
     }
 );
+
+// Cada minuto de 6 p. m. a 11:59 p. m. (hora Colombia): si el código no se agotó solo, a una hora al azar
+// entre agotadoDesde (9 p. m.) y +agotadoVentanaMin (45 min) sale la historia de "agotado".
+exports.publicarAgotadoPorHorario = onSchedule(
+    { schedule: '* 18-23 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        const r = await instagramHistorias.publicarAgotadoPorHorario(getFirestore(), { baseUrl: historiaImagenBaseUrl() });
+        if (r.ok && !r.ya) console.log(`publicarAgotadoPorHorario: publicada ${r.mediaId}`);
+        else if (!r.ok && !['desactivado', 'sin_conexion', 'antes_de_hora', 'sin_codigo_hoy', 'normal_no_publicada', 'en_curso_o_agotados_intentos'].includes(r.motivo)) {
+            console.error(`publicarAgotadoPorHorario: ${r.motivo} ${r.error || ''}`);
+        }
+    }
+);

@@ -10625,8 +10625,17 @@ function getCodigoDiaHoy() {
         porcentaje: Number(v.porcentaje) || 0,
         cupos: Number(v.cupos) || 0,
         cuposRestantes: Math.max(0, Number(v.cuposRestantes) || 0),
-        agotado: v.agotado === true || Number(v.cuposRestantes) <= 0
+        // Pasada la hora de cierre (10 p. m. por defecto, hora Colombia) el servidor ya no lo acepta: se muestra igual que agotado.
+        agotado: v.agotado === true || Number(v.cuposRestantes) <= 0 || _codigoDiaPasoElCierre(v.horaCierre)
     };
+}
+
+function _codigoDiaPasoElCierre(horaCierre) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(horaCierre || ''));
+    if (!m) return false;
+    const partes = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+    const minutosAhora = Number(partes.find((p) => p.type === 'hour').value) * 60 + Number(partes.find((p) => p.type === 'minute').value);
+    return minutosAhora >= Number(m[1]) * 60 + Number(m[2]);
 }
 
 function _codigoDiaLineaEnCarrito() {

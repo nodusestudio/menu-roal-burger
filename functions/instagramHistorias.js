@@ -367,7 +367,7 @@ async function marcar(db, fecha, tipo, campos) {
 }
 
 // Publica la historia `tipo` de HOY. `manual` salta el interruptor y el horario (botón del panel).
-async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn = fetch, baseUrl, sleep = esperar, manual = false }) {
+async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn = fetch, baseUrl, sleep = esperar, manual = false, origen = null }) {
     validarTipo(tipo);
     const conexion = await leerConexion(db);
     if (!conexion?.accessToken) return { ok: false, motivo: 'sin_conexion' };
@@ -384,7 +384,7 @@ async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn =
     const parte = status[tipo];
     if (parte?.estado === 'publicada') return { ok: true, ya: true, mediaId: parte.mediaId };
     if (tipo === 'agotado' && status.normal?.estado !== 'publicada') return { ok: false, motivo: 'normal_no_publicada' };
-    const detalle = { fecha, tipo, origen: manual ? 'manual' : 'automatica', palabra: dia.palabra || '', productoNombre: producto?.nombre || dia.productoNombre || '' };
+    const detalle = { fecha, tipo, origen: origen || (manual ? 'manual' : 'automatica'), palabra: dia.palabra || '', productoNombre: producto?.nombre || dia.productoNombre || '' };
     // El cron pasa cada 5 min: el bitácora solo anota un "no se pudo" cuando el motivo es nuevo.
     const noSePudo = async (mensaje, extra = {}) => {
         if (parte?.estado !== 'error' || parte.error !== mensaje) await registrarPublicacion(db, { ...detalle, ok: false, error: mensaje, nowMs });
@@ -426,6 +426,30 @@ async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn =
         }
         return { ok: false, motivo: 'error', error: mensaje };
     }
+}
+
+// Minuto (hora Bogotá, desde las 00:00) al que sale la historia de "agotado" si los cupos no se agotaron
+// solos: uno distinto cada día dentro de [agotadoDesde, agotadoDesde + agotadoVentanaMin]. Sale del token
+// aleatorio del día, así que es estable durante el día y no se puede adivinar.
+function minutoAgotadoPorHorario(status, fecha, config) {
+    const desde = cd.horaAMinutos(config.agotadoDesde);
+    const ventana = Math.max(0, Number(config.agotadoVentanaMin) || 0);
+    const semilla = crypto.createHash('sha256').update(`agotado|${fecha}|${status?.imgToken || ''}`).digest().readUInt32BE(0);
+    return desde + (ventana ? semilla % (ventana + 1) : 0);
+}
+
+// Cron (cada minuto de 9 a 10 p. m.): si ya pasó la hora al azar de hoy y el código no se agotó solo,
+// sale la historia de "agotado". Idempotente: si ya salió (por cupos agotados o por horario) no hace nada.
+async function publicarAgotadoPorHorario(db, opts = {}) {
+    const nowMs = opts.nowMs ?? Date.now();
+    const fecha = cd.bogotaParts(nowMs).dateKey;
+    const conexion = await leerConexion(db);
+    if (!conexion?.accessToken || conexion.activo !== true) return { ok: false, motivo: 'desactivado' };
+    const [config, snap] = await Promise.all([cd.leerConfig(db), db.collection(HISTORIAS_COLLECTION).doc(fecha).get()]);
+    const status = snap.data() || {};
+    if (status.agotado?.estado === 'publicada') return { ok: true, ya: true };
+    if (cd.bogotaParts(nowMs).minutes < minutoAgotadoPorHorario(status, fecha, config)) return { ok: false, motivo: 'antes_de_hora' };
+    return publicarHistoria(db, { ...opts, fecha, tipo: 'agotado', nowMs, origen: 'horario' });
 }
 
 // Cron: ¿la historia de hoy ya salió? (publicarHistoria es idempotente; esto evita lecturas de más.)
@@ -586,6 +610,8 @@ module.exports = {
     urlImagen,
     publicarHistoria,
     publicarHistoriaDeHoy,
+    publicarAgotadoPorHorario,
+    minutoAgotadoPorHorario,
     publicarPrueba,
     PRUEBA_ID,
     PUBLICACIONES_COLLECTION,
