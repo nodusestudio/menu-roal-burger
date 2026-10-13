@@ -232,6 +232,92 @@ async function generarCopy(cliente, producto, config, { variacion = 0 } = {}) {
     throw ultimoError;
 }
 
+// ── Texto de UNA publicación, con las instrucciones de quien la está creando ─────────────────
+// Misma marca, tono, llamado a la acción y banco de hashtags que la IA de borradores (pestaña Contenido);
+// además recibe lo que la persona pide para ESTA publicación. Lo comercial (precios, promociones…) la IA
+// solo lo escribe si las instrucciones lo traen: el negocio decide eso, no la IA.
+
+const GUIA_TIPO = {
+    foto: 'un post de una sola foto',
+    carrusel: 'un carrusel de varias fotos (puedes invitar a deslizar)',
+    reel: 'un reel (video corto): el texto es breve y con gancho, no describas el video cuadro por cuadro'
+};
+
+function hashtagsDeTexto(texto) {
+    return posts.normalizarHashtags((String(texto || '').match(/#[\p{L}\p{N}_]+/gu) || []));
+}
+
+function construirPromptLibre({ producto, config, tipo, instrucciones, captionActual, hashtagsActuales, variacion = 0 }) {
+    const comercialPedido = PROHIBIDO.test(instrucciones);
+    const banco = [...new Set([...bancoDeHashtags(config, producto?.categoria), ...hashtagsDeTexto(instrucciones), ...posts.normalizarHashtags(hashtagsActuales || [])])];
+    const system = `Eres el community manager de ${config.marca}
+Escribes el texto (caption) de UNA publicación de Instagram y Facebook: ${GUIA_TIPO[tipo] || GUIA_TIPO.foto}.
+Tono: ${config.tono}
+Reglas obligatorias:
+- Español. Entre 80 y 450 caracteres (salvo que las instrucciones pidan otra longitud). Máximo 3 emojis.
+- Sigue las instrucciones de la persona que crea la publicación: son lo más importante.
+- No inventes ingredientes, tamaños, horarios, direcciones, teléfonos ni "el mejor de la ciudad". Habla solo de lo que sabes por el producto o por las instrucciones.
+- ${comercialPedido ? 'Precios, descuentos y promociones: escríbelos SOLO tal como aparecen en las instrucciones, sin cambiar ni inventar nada.' : 'NO escribas precios, descuentos, promociones, ofertas, cupones ni "gratis".'}${config.llamadoAccion ? `\n- Termina con este llamado a la acción, tal cual (salvo que las instrucciones digan otra cosa): "${config.llamadoAccion}"` : ''}
+- Hashtags: elige entre 4 y ${config.maxHashtags} SOLO de la lista que te doy, escritos exactamente igual y sin el símbolo #.
+Responde ÚNICAMENTE con JSON válido, sin texto extra ni bloques de código: {"caption": "...", "hashtags": ["..."]}`;
+    const user = `Producto: ${producto ? `${producto.nombre} (${producto.categoria || 'sin categoría'}) — ${String(producto.descripcion || producto.description || '').trim() || 'sin descripción: habla solo de lo evidente por el nombre'}` : '(ninguno: la publicación no es de un producto en particular)'}
+Instrucciones para esta publicación: ${instrucciones || '(ninguna: escribe un texto antojador)'}${captionActual ? `\nTexto actual (mejóralo o reescríbelo según las instrucciones): ${captionActual}` : ''}
+Hashtags disponibles: ${banco.join(', ')}${variacion ? `\nEsta es la versión ${variacion + 1}: cambia el enfoque, el gancho y las palabras respecto a las anteriores.` : ''}`;
+    return { system, user, banco, comercialPedido };
+}
+
+function validarCopyLibre(json, banco, config, { comercialPedido }) {
+    const caption = String(json?.caption || '').trim();
+    if (caption.length < 10) throw new Error('El texto de la IA salió vacío o muy corto.');
+    if (caption.length > 1500) throw new Error('El texto de la IA salió demasiado largo.');
+    if (!comercialPedido && PROHIBIDO.test(caption)) throw new Error('El texto de la IA mencionaba precios, descuentos o promociones.');
+    const porClave = new Map(banco.map((h) => [h.toLowerCase(), h]));
+    const vistos = new Set();
+    const hashtags = [];
+    for (const h of Array.isArray(json?.hashtags) ? json.hashtags : []) {
+        const limpio = posts.normalizarHashtags([h])[0];
+        const canon = limpio && porClave.get(limpio.toLowerCase());
+        if (canon && !vistos.has(canon)) { vistos.add(canon); hashtags.push(canon); }
+    }
+    for (const h of config.hashtagsMarca) {
+        if (hashtags.length >= 4) break;
+        if (!vistos.has(h)) { vistos.add(h); hashtags.push(h); }
+    }
+    return { caption, hashtags: hashtags.slice(0, config.maxHashtags) };
+}
+
+async function escribirCopy(db, { instrucciones, tipo, productoId, caption, hashtags, variacion = 0, cliente }) {
+    if (!cliente) throw new HttpsError('failed-precondition', 'La IA no está configurada.');
+    const texto = String(instrucciones || '').trim().slice(0, 800);
+    const actual = String(caption || '').trim().slice(0, 1500);
+    if (!texto && !productoId && !actual) throw new HttpsError('failed-precondition', 'Cuéntale a la IA de qué trata la publicación (o elige un producto).');
+    let producto = null;
+    if (productoId) {
+        const snap = await db.collection('productos').doc(String(productoId)).get();
+        if (!snap.exists) throw new HttpsError('not-found', 'Ese producto ya no existe.');
+        producto = { id: snap.id, ...snap.data() };
+    }
+    const config = await leerConfigContenido(db);
+    const { system, user, banco, comercialPedido } = construirPromptLibre({
+        producto, config, tipo: ['foto', 'carrusel', 'reel'].includes(tipo) ? tipo : 'foto', instrucciones: texto,
+        captionActual: actual, hashtagsActuales: hashtags, variacion: Math.min(5, Math.max(0, Math.round(Number(variacion) || 0)))
+    });
+    let ultimoError;
+    for (let intento = 0; intento < 2; intento++) {
+        try {
+            const resp = await cliente.messages.create({
+                model: MODELO, max_tokens: 800, system,
+                messages: [{ role: 'user', content: intento ? `${user}\n\nIMPORTANTE: tu respuesta anterior no cumplió las reglas (${ultimoError.message}). Corrígelo.` : user }]
+            });
+            const salida = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+            return { ok: true, ...validarCopyLibre(extraerJson(salida), banco, config, { comercialPedido }) };
+        } catch (err) {
+            ultimoError = err;
+        }
+    }
+    throw new HttpsError('internal', `La IA no pudo escribir el texto: ${String(ultimoError?.message || ultimoError).slice(0, 160)}`);
+}
+
 // ── Casos de uso ─────────────────────────────────────────────────────────────
 
 async function enLotes(items, tarea) {
@@ -351,6 +437,9 @@ module.exports = {
     extraerJson,
     validarCopy,
     generarCopy,
+    construirPromptLibre,
+    validarCopyLibre,
+    escribirCopy,
     generarBorradores,
     regenerarCopy,
     aprobarPost,

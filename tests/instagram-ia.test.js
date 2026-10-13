@@ -316,3 +316,75 @@ test('aprobar: exige imagen y una hora futura; con ambas queda programada a la h
     assert.equal((await db.collection(posts.POSTS_COLLECTION).doc(otra).get()).data().estado, 'programada');
     assert.deepEqual((await ia.aprobarVarios(db, { ids: 'nada' }, 'a')).resultados, []);
 });
+
+
+// ── Texto de una publicación con instrucciones propias (escribirCopy) ───────────────────────────
+
+function clienteLibre(respuestas) {
+    const llamadas = [];
+    return {
+        llamadas,
+        messages: {
+            create: async (req) => {
+                llamadas.push({ system: req.system, user: req.messages[req.messages.length - 1].content });
+                const r = respuestas[Math.min(llamadas.length - 1, respuestas.length - 1)];
+                return { content: [{ type: 'text', text: typeof r === 'string' ? r : JSON.stringify(r) }] };
+            }
+        }
+    };
+}
+const COPY_OK = { caption: 'Este sábado te esperamos hasta las 12 de la noche, con la salsa de la casa. Pídelo en roalburger.com 🍔', hashtags: ['RoalBurger', 'Halloween', 'inventado', 'armenia'] };
+
+test('escribirCopy: el prompt lleva marca, tono, llamado a la acción, instrucciones, producto y el tipo (reel)', async () => {
+    const c = clienteLibre([COPY_OK]);
+    const r = await ia.escribirCopy(db, { instrucciones: 'anuncia que el sábado abrimos hasta las 12 de la noche', tipo: 'reel', productoId: 'p1', cliente: c });
+    assert.equal(r.ok, true);
+    const { system, user } = c.llamadas[0];
+    assert.match(system, /Roal Burger/);
+    assert.match(system, /Tono: Cercano, alegre/);
+    assert.match(system, /un reel \(video corto\)/);
+    assert.match(system, /Pídelo en roalburger\.com/);
+    assert.match(system, /NO escribas precios, descuentos/);
+    assert.match(user, /Producto: Burger Plus \(BURGER PREMIUM\) — Carne, queso y salsa de la casa/);
+    assert.match(user, /Instrucciones para esta publicación: anuncia que el sábado abrimos hasta las 12 de la noche/);
+});
+
+test('escribirCopy: hashtags solo del banco de la marca o los que la persona pidió; los inventados se descartan', async () => {
+    const c = clienteLibre([COPY_OK]);
+    const r = await ia.escribirCopy(db, { instrucciones: 'usa el hashtag #Halloween', tipo: 'foto', cliente: c });
+    assert.ok(r.hashtags.includes('Halloween'), 'el pedido en las instrucciones vale');
+    assert.ok(!r.hashtags.includes('inventado'));
+    assert.ok(r.hashtags.includes('RoalBurger') || r.hashtags.includes('roalburger'));
+    assert.ok(r.hashtags.length >= 4, 'se completa con los de la marca');
+    const sin = await ia.escribirCopy(db, { instrucciones: 'algo divertido', tipo: 'foto', cliente: clienteLibre([COPY_OK]) });
+    assert.ok(!sin.hashtags.includes('Halloween'), 'sin pedirlo no entra');
+});
+
+test('escribirCopy: precios y promos solo si las instrucciones los traen; si no, se rechazan y se reintenta', async () => {
+    const conPrecio = { caption: 'Hoy la Burger Plus a $25.000, solo hoy. Pídela en roalburger.com 🍔', hashtags: ['roalburger'] };
+    const c = clienteLibre([conPrecio, COPY_OK]);
+    const r = await ia.escribirCopy(db, { instrucciones: 'cuenta algo antojador', tipo: 'foto', cliente: c });
+    assert.equal(c.llamadas.length, 2);
+    assert.match(c.llamadas[1].user, /mencionaba precios/);
+    assert.doesNotMatch(r.caption, /\$/);
+    const pedido = clienteLibre([conPrecio]);
+    const ok = await ia.escribirCopy(db, { instrucciones: 'anuncia la Burger Plus a $25.000 solo hoy', tipo: 'foto', cliente: pedido });
+    assert.match(ok.caption, /\$25\.000/);
+    assert.match(pedido.llamadas[0].system, /SOLO tal como aparecen en las instrucciones/);
+    assert.equal(pedido.llamadas.length, 1);
+});
+
+test('escribirCopy: si ya hay un texto, la IA lo recibe para mejorarlo; la versión sube la variación', async () => {
+    const c = clienteLibre([COPY_OK]);
+    await ia.escribirCopy(db, { instrucciones: 'hazlo más corto', caption: 'Texto viejo de la publicación', variacion: 2, tipo: 'carrusel', cliente: c });
+    assert.match(c.llamadas[0].user, /Texto actual \(mejóralo o reescríbelo según las instrucciones\): Texto viejo de la publicación/);
+    assert.match(c.llamadas[0].user, /versión 3/);
+    assert.match(c.llamadas[0].system, /un carrusel/);
+});
+
+test('escribirCopy: pide algo de contexto, valida el producto, la IA debe estar configurada y falla con claridad', async () => {
+    await assert.rejects(ia.escribirCopy(db, { cliente: clienteLibre([COPY_OK]) }), /de qué trata/);
+    await assert.rejects(ia.escribirCopy(db, { instrucciones: 'x', productoId: 'no-existe', cliente: clienteLibre([COPY_OK]) }), /ya no existe/);
+    await assert.rejects(ia.escribirCopy(db, { instrucciones: 'x' }), /no está configurada/);
+    await assert.rejects(ia.escribirCopy(db, { instrucciones: 'algo', cliente: clienteLibre(['esto no es json']) }), /no pudo escribir el texto/);
+});

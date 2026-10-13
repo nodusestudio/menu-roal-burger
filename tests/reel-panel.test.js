@@ -20,9 +20,9 @@ const constantes = ['RD_VIDEO_URL', 'RD_VIDEO_MAX', 'RD_VIDEO_TROZO'].map((n) =>
     assert.ok(m, `no está ${n}`);
     return m[0];
 });
-const ctx = { escapeHtml: (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`) };
+const ctx = { escapeHtml: (t) => String(t).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`), productsState: [{ id: 'p2', nombre: 'Perro <Especial>' }, { id: 'p1', nombre: 'Burger Plus' }, { id: 'x', nombre: '  ' }] };
 vm.createContext(ctx);
-vm.runInContext(`${constantes.join('\n')}\n${['rdUrlVideo', 'rdVideoListo', 'rdMB', 'rdVideoCampoHtml'].map(extraer).join('\n')}\nthis.rd = { rdUrlVideo, rdVideoListo, rdMB, rdVideoCampoHtml, RD_VIDEO_MAX, RD_VIDEO_TROZO };`, ctx);
+vm.runInContext(`${constantes.join('\n')}\n${['rdUrlVideo', 'rdVideoListo', 'rdMB', 'rdVideoCampoHtml', 'rdIaCajaHtml'].map(extraer).join('\n')}\nthis.rd = { rdIaCajaHtml, rdUrlVideo, rdVideoListo, rdMB, rdVideoCampoHtml, RD_VIDEO_MAX, RD_VIDEO_TROZO };`, ctx);
 const rd = ctx.rd;
 
 const VIDEO = { estado: 'listo', size: 12.5 * 1048576, duracionS: 24.5, ancho: 1080, alto: 1920, nombre: 'burger<1>.mp4', subidoAtMs: 55 };
@@ -61,4 +61,14 @@ test('URL del video: la local (vista previa inmediata) gana; si no, la pública 
     assert.equal(rd.rdUrlVideo({ id: 'a1', imgToken: 'tok', video: VIDEO, videoLocal: 'blob:x' }), 'blob:x');
     assert.equal(rd.rdUrlVideo({ id: 'a1', imgToken: 'tok', video: VIDEO }), 'https://us-central1-roal-burger-menu.cloudfunctions.net/reelVideo?id=a1&t=tok&v=55');
     assert.equal(rd.RD_VIDEO_TROZO, 5 * 1024 * 1024);
+});
+
+test('caja de IA del editor: instrucciones, productos ordenados (sin vacíos, escapados) y el botón cambia si ya hay texto', () => {
+    const vacia = rd.rdIaCajaHtml({ iaInstr: 'hazlo <corto>', iaProd: 'p1', caption: '' });
+    assert.match(vacia, /id="rdIaInstr"[^>]*>hazlo &#60;corto&#62;<\/textarea>/);
+    assert.match(vacia, /Generar texto/);
+    assert.match(vacia, /<option value="p1" selected>Burger Plus<\/option>/);
+    assert.ok(vacia.indexOf('Burger Plus') < vacia.indexOf('Perro &#60;Especial&#62;'), 'orden alfabético');
+    assert.doesNotMatch(vacia, /value="x"/, 'sin productos sin nombre');
+    assert.match(rd.rdIaCajaHtml({ iaInstr: '', iaProd: '', caption: 'ya hay texto' }), /Reescribir con IA/);
 });

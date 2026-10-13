@@ -3179,6 +3179,7 @@ exports.adminInstagramIA = onCall(
             const Anthropic = require('@anthropic-ai/sdk');
             return new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
         };
+        if (accion === 'escribirCopy') return instagramIA.escribirCopy(db, { instrucciones: d.instrucciones, tipo: d.tipo, productoId: d.productoId, caption: d.caption, hashtags: d.hashtags, variacion: d.variacion, cliente: cliente() });
         if (accion === 'leerConfig') return instagramIA.leerConfigContenido(db);
         if (accion === 'guardarConfig') return instagramIA.guardarConfigContenido(db, d.config, uid);
         if (accion === 'generar') return instagramIA.generarBorradores(db, { desde: d.desde, dias: d.dias, porSemana: d.porSemana, cliente: cliente() }, uid);

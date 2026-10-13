@@ -29866,14 +29866,14 @@ function rdAbrirDia(fecha) {
 
 // ── Editor ──────────────────────────────────────────────────────────────────
 function rdEdVacio(fecha = '') {
-    return { id: null, facebook: Boolean(rdState.fb?.conectado), fbEstado: '', fbError: '', fbPostId: '', tipo: 'foto', estado: 'borrador', caption: '', hashtags: '', altText: '', fecha: fecha || '', hora: '19:00', imagenes: [], video: null, imgToken: '', error: '', actualizadoAtMs: 0, ocupado: false, subida: null };
+    return { id: null, facebook: Boolean(rdState.fb?.conectado), fbEstado: '', fbError: '', fbPostId: '', tipo: 'foto', estado: 'borrador', caption: '', hashtags: '', altText: '', fecha: fecha || '', hora: '19:00', imagenes: [], video: null, imgToken: '', error: '', actualizadoAtMs: 0, ocupado: false, subida: null, iaInstr: '', iaProd: '', iaVez: 0 };
 }
 
 function rdEdDesdePost(p) {
     const ms = rdMomentoDe(p);
     return {
         id: p.id, tipo: p.tipo, estado: p.estado, caption: p.caption || '', hashtags: (p.hashtags || []).map((h) => `#${h}`).join(' '), altText: p.altText || '',
-        fecha: ms ? rdFechaDeMs(ms) : '', hora: ms ? rdHoraDeMs(ms) : '19:00', imagenes: (p.imagenes || []).map((i) => ({ ...i })), video: p.video ? { ...p.video } : null, subida: null,
+        fecha: ms ? rdFechaDeMs(ms) : '', hora: ms ? rdHoraDeMs(ms) : '19:00', imagenes: (p.imagenes || []).map((i) => ({ ...i })), video: p.video ? { ...p.video } : null, subida: null, iaInstr: '', iaProd: p.productoId || '', iaVez: 0,
         imgToken: p.imgToken || '', error: p.error || '', actualizadoAtMs: p.actualizadoAtMs || 0, ocupado: false, mediaId: p.mediaId || '', origen: p.origen || 'manual', notaIA: p.notaIA || '', productoId: p.productoId || '',
         facebook: p.facebook?.publicar === true, fbEstado: p.facebook?.estado || '', fbError: p.facebook?.error || '', fbPostId: p.facebook?.fbPostId || ''
     };
@@ -30039,6 +30039,7 @@ function rdRenderEditor(body) {
                 </div>`}
 
                 ${historia ? '<p class="cd-muted rd-nota">📱 Las historias llevan solo la imagen: Instagram no permite texto, hashtags ni música en las historias programadas. Si quieres letras, ponlas dentro de la imagen.</p>' : `
+                ${editable ? rdIaCajaHtml(ed) : ''}
                 <div class="rd-campo rd-rel">
                     <div class="rd-label rd-label-fila"><span>Texto de la publicación <span class="cd-muted" id="rdContadorTexto"></span></span>
                         ${editable ? '<button type="button" class="cd-btn rd-emoji-btn" id="rdEmojiBtn" aria-haspopup="true" aria-expanded="false">😊 Emojis</button>' : ''}</div>
@@ -30087,6 +30088,45 @@ function rdRenderEditor(body) {
         </div>`;
     rdBindEditor(body);
     rdActualizarContadores(body);
+}
+
+// Caja "Escribir con IA": instrucciones para ESTE texto + producto opcional. La IA usa el tono, el llamado a la
+// acción y los hashtags de la pestaña Contenido; lo que genera se puede editar antes de guardar.
+function rdIaCajaHtml(ed) {
+    const productos = (typeof productsState !== 'undefined' ? productsState : []).filter((p) => String(p.nombre || '').trim())
+        .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+    return `
+                <div class="rd-ia-caja" id="rdIaCaja">
+                    <div class="rd-label-fila"><strong>✨ Escribir el texto con IA</strong><span class="cd-muted">Usa el tono, el llamado a la acción y los hashtags de tu pestaña Contenido.</span></div>
+                    <textarea id="rdIaInstr" rows="2" maxlength="800" placeholder="Instrucciones para este texto (opcional). Ej: anuncia que este sábado abrimos hasta las 12 de la noche; tono divertido; menciona la salsa de la casa; hazlo más corto…">${escapeHtml(ed.iaInstr || '')}</textarea>
+                    <div class="rd-ia-fila">
+                        <select id="rdIaProd" aria-label="Producto del que trata"><option value="">Sin producto en particular</option>${productos.map((p) => `<option value="${escapeHtml(p.id)}"${ed.iaProd === p.id ? ' selected' : ''}>${escapeHtml(p.nombre)}</option>`).join('')}</select>
+                        <button type="button" class="section-action-btn primary" id="rdIaGenerar">✨ ${String(ed.caption || '').trim() ? 'Reescribir con IA' : 'Generar texto'}</button>
+                    </div>
+                </div>`;
+}
+
+async function rdGenerarConIA(body, btn) {
+    const ed = rdState.ed;
+    rdLeerFormulario(body);
+    const etiqueta = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Escribiendo…';
+    try {
+        const r = await rdIALlamar('escribirCopy', {
+            instrucciones: ed.iaInstr, tipo: ed.tipo, productoId: ed.iaProd || '', caption: ed.caption,
+            hashtags: rdNormalizarHashtags(ed.hashtags), variacion: ed.iaVez
+        });
+        ed.caption = r.caption;
+        ed.hashtags = (r.hashtags || []).map((h) => `#${h}`).join(' ');
+        ed.iaVez += 1;
+        rdRenderEditor(body);
+        showNotice('Texto listo. Revísalo y edítalo como quieras; si quieres otra versión, cambia las instrucciones y pulsa de nuevo.', 'ok');
+    } catch (err) {
+        showNotice(err.message || 'No se pudo escribir el texto.', 'error');
+        btn.disabled = false;
+        btn.textContent = etiqueta;
+    }
 }
 
 function rdVideoCampoHtml(ed, editable) {
@@ -30166,6 +30206,8 @@ function rdLeerFormulario(body) {
     if (v('#rdCaption') !== undefined) ed.caption = v('#rdCaption');
     if (v('#rdHashtags') !== undefined) ed.hashtags = v('#rdHashtags');
     if (v('#rdAlt') !== undefined) ed.altText = v('#rdAlt');
+    if (v('#rdIaInstr') !== undefined) ed.iaInstr = v('#rdIaInstr');
+    if (v('#rdIaProd') !== undefined) ed.iaProd = v('#rdIaProd');
     const caja = body.querySelector('#rdFb');
     if (caja && !caja.disabled) ed.facebook = caja.checked;
     if (v('#rdFecha') !== undefined) ed.fecha = v('#rdFecha');
@@ -30178,7 +30220,7 @@ async function rdGuardarCampos(body) {
     const ed = rdState.ed;
     const r = rdResumenTexto(ed.caption, ed.hashtags);
     if (r.errores.length) throw new Error(r.errores[0]);
-    const post = { tipo: ed.tipo, caption: ed.caption, hashtags: rdNormalizarHashtags(ed.hashtags), altText: ed.altText, facebook: ed.facebook === true };
+    const post = { tipo: ed.tipo, caption: ed.caption, hashtags: rdNormalizarHashtags(ed.hashtags), altText: ed.altText, facebook: ed.facebook === true, ...(ed.iaProd ? { productoId: ed.iaProd } : {}) };
     const res = await rdLlamar('guardar', { post: ed.id ? { id: ed.id, ...post } : post });
     ed.id = res.id;
     return res.id;
@@ -30350,6 +30392,8 @@ function rdBindEditor(body) {
         if (archivos.length) rdAgregarImagenes(body, archivos);
     });
     body.querySelector('[data-rd-catalogo]')?.addEventListener('click', () => rdAbrirCatalogo(body));
+    body.querySelector('#rdIaGenerar')?.addEventListener('click', (e) => rdGenerarConIA(body, e.currentTarget));
+    ['#rdIaInstr', '#rdIaProd'].forEach((sel) => body.querySelector(sel)?.addEventListener('input', () => rdLeerFormulario(body)));
     body.querySelector('#rdVideo')?.addEventListener('change', (e) => {
         const archivo = e.target.files[0];
         e.target.value = '';
