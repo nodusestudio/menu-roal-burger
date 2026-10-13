@@ -8,7 +8,7 @@
 //   firebase emulators:exec --only firestore "node --test tests/facebook-pagina.test.js"
 
 const path = require('node:path');
-const { test, before, beforeEach } = require('node:test');
+const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const sharp = require('sharp');
 
@@ -84,10 +84,13 @@ const opF = (f, extra = {}) => ({ nowMs: AHORA, fetchFn: f.fetchFn, baseUrl: BAS
 
 before(() => { db = getFirestore(); });
 
+// Que otras pruebas (que comparten el emulador) no encuentren la página conectada.
+after(async () => { await borrarColeccion(fb.CONFIG_COLLECTION); });
+
 beforeEach(async () => {
     await Promise.all([
         borrarColeccion(posts.POSTS_COLLECTION), borrarColeccion(posts.POSTS_IMG_COLLECTION), borrarColeccion(fb.CONFIG_COLLECTION),
-        borrarColeccion(ig.CONFIG_COLLECTION), borrarColeccion(ig.PUBLICACIONES_COLLECTION), borrarColeccion(ig.METRICAS_COLLECTION)
+        borrarColeccion(ig.CONFIG_COLLECTION), borrarColeccion(ig.PUBLICACIONES_COLLECTION), borrarColeccion(ig.METRICAS_COLLECTION), borrarColeccion(ig.HISTORIAS_COLLECTION)
     ]);
 });
 
@@ -372,3 +375,143 @@ test('prueba: publica el logo en la página con la URL de prueba y su propio tok
     assert.equal(fallo.ok, false);
     assert.match(fallo.error, /permission denied/);
 });
+
+// ── Historias del Código del día también en la historia de la página ─────────
+
+const LUNES = '2026-10-12';
+const AHORA_CD = cd.dateKeyToMs(LUNES) + 13 * HOUR; // 1 p. m. Bogotá: ya pasó la publicación de las 12
+const HUELLA_NORMAL = { palabra: 'CHAMO27', productoId: 'bp-plus', nombre: 'Burger Plus', precioNormal: 30000, cupos: 10, porcentaje: 30 };
+const HUELLA_AGOTADO = { productoId: 'bp-plus' };
+
+async function sembrarCodigoDelDia() {
+    await Promise.all([borrarColeccion(cd.DIAS_COLLECTION), borrarColeccion(cd.CONFIG_COLLECTION), borrarColeccion(ig.HISTORIAS_COLLECTION), borrarColeccion(ig.IMAGENES_COLLECTION), borrarColeccion('productos')]);
+    await db.collection('configuracion').doc('config_horario').set({ aperturaHora: 16, cierreHora: 22, cierresProgramados: [] });
+    await db.collection('productos').doc('bp-plus').set({ estado: 'active', nombre: 'Burger Plus', categoria: 'BURGER PREMIUM', precio: 30000 });
+    await db.collection(cd.DIAS_COLLECTION).doc(LUNES).set({
+        fecha: LUNES, productoId: 'bp-plus', productoNombre: 'Burger Plus', categoria: 'BURGER PREMIUM', precioNormal: 30000,
+        palabra: 'CHAMO27', palabraBase: 'CHAMO', significado: 'muchacho', cupos: 10, canjes: 0, agotadoAt: null, editadoManualmente: false
+    });
+    await db.collection(ig.CONFIG_COLLECTION).doc(ig.CONFIG_DOC).set({ accessToken: 'IGAAtoken1234567890123456', igUserId: '1784', username: 'roalburger', accountType: 'BUSINESS', expiresAtMs: AHORA_CD + 50 * DAY, activo: true, ultimoError: '' });
+    await ig.guardarHistoria(db, { fecha: LUNES, tipo: 'normal', jpeg: await jpeg(1080, 1920), huella: HUELLA_NORMAL }, 'a', { nowMs: AHORA_CD });
+    await ig.guardarHistoria(db, { fecha: LUNES, tipo: 'agotado', jpeg: await jpeg(1080, 1920), huella: HUELLA_AGOTADO }, 'a', { nowMs: AHORA_CD });
+}
+
+// Instagram y Facebook en un solo fetch falso (se reparte por el servidor al que se llama).
+function ambosFalsos({ igFalla = false, fbFalla = false } = {}) {
+    const f = facebookFalso({ fallas: fbFalla ? [{ ruta: /\/(photos|photo_stories)$/, status: 500, error: { message: 'Facebook caído', code: 2 } }] : [] });
+    const llamadasIg = [];
+    const fetchFn = async (url, init = {}) => {
+        const u = new URL(url);
+        if (u.hostname === 'graph.facebook.com') return f.fetchFn(url, init);
+        llamadasIg.push(u.pathname);
+        const ok = (json) => ({ ok: true, status: 200, json: async () => json });
+        if (igFalla) return { ok: false, status: 500, json: async () => ({ error: { message: 'Instagram caído', code: 2 } }) };
+        if (/\/media$/.test(u.pathname)) return ok({ id: 'cont-1' });
+        if (/\/cont-1$/.test(u.pathname)) return ok({ status_code: 'FINISHED' });
+        return ok({ id: 'ig-media-1' });
+    };
+    return { fetchFn, llamadasFb: f.llamadas, llamadasIg };
+}
+
+const publicarCodigo = (a, tipo = 'normal', extra = {}) => ig.publicarHistoria(db, { fecha: LUNES, tipo, nowMs: AHORA_CD, fetchFn: a.fetchFn, baseUrl: BASE_URL, sleep: sinEspera, ...extra });
+const estadoHist = async () => (await db.collection(ig.HISTORIAS_COLLECTION).doc(LUNES).get()).data();
+
+test('Código del día: la historia sale en Instagram y, con Facebook conectado y activo, también como historia de la página (misma imagen)', async () => {
+    await sembrarCodigoDelDia();
+    await conectarPagina();
+    const a = ambosFalsos();
+    const r = await publicarCodigo(a);
+    assert.equal(r.ok, true);
+    const e = await estadoHist();
+    assert.equal(e.normal.estado, 'publicada');
+    assert.deepEqual([e.normal.facebook.estado, e.normal.facebook.fbPostId, e.normal.facebook.error], ['publicada', 'story-2', '']);
+    const subida = a.llamadasFb.find((l) => /555\/photos$/.test(l.ruta));
+    assert.equal(subida.cuerpo.url, `${BASE_URL}?id=${LUNES}_normal&t=${e.imgToken}`, 'la misma URL pública que usa Instagram');
+    assert.equal(subida.cuerpo.published, 'false');
+    assert.ok(a.llamadasFb.some((l) => /photo_stories$/.test(l.ruta)));
+    const b = (await bitacora()).filter((x) => x.canal === 'facebook');
+    assert.deepEqual(b.map((x) => [x.tipo, x.ok, x.resumen]), [['normal', true, 'Historia del código']]);
+    // Reintentar (el cron vuelve a pasar): no se publica dos veces en Facebook.
+    await publicarCodigo(a);
+    assert.equal(a.llamadasFb.filter((l) => /photo_stories$/.test(l.ruta)).length, 1);
+});
+
+test('Código del día: la de agotado también (con su origen: cupos u horario)', async () => {
+    await sembrarCodigoDelDia();
+    await conectarPagina();
+    const a = ambosFalsos();
+    await publicarCodigo(a);
+    await publicarCodigo(a, 'agotado', { origen: 'cupos', nowMs: AHORA_CD + 60000 });
+    const e = await estadoHist();
+    assert.deepEqual([e.agotado.estado, e.agotado.origen, e.agotado.facebook.estado], ['publicada', 'cupos', 'publicada']);
+    assert.equal(a.llamadasFb.filter((l) => /photo_stories$/.test(l.ruta)).length, 2);
+    assert.deepEqual((await bitacora()).filter((x) => x.canal === 'facebook').map((x) => [x.tipo, x.origen]), [['normal', 'automatica'], ['agotado', 'cupos']]);
+});
+
+test('Código del día: sin conexión, con Facebook apagado o con "historias del código" apagado no se llama a Facebook; Instagram sale igual', async () => {
+    await sembrarCodigoDelDia();
+    const sinFb = ambosFalsos();
+    assert.equal((await publicarCodigo(sinFb)).ok, true);
+    assert.equal(sinFb.llamadasFb.length, 0, 'sin conexión');
+    assert.equal((await estadoHist()).normal.facebook, undefined);
+    for (const ajuste of [{ activo: false }, { historiasCodigo: false }]) {
+        await db.collection(ig.HISTORIAS_COLLECTION).doc(LUNES).set({ normal: { estado: 'lista', facebook: null } }, { merge: true });
+        await conectarPagina();
+        await db.collection(fb.CONFIG_COLLECTION).doc(fb.CONFIG_DOC).set(ajuste, { merge: true });
+        const a = ambosFalsos();
+        await ig.guardarHistoria(db, { fecha: LUNES, tipo: 'normal', jpeg: await jpeg(1080, 1920), huella: HUELLA_NORMAL }, 'a', { nowMs: AHORA_CD });
+        assert.equal((await publicarCodigo(a)).ok, true);
+        assert.equal(a.llamadasFb.length, 0, JSON.stringify(ajuste));
+    }
+});
+
+test('Código del día: si Facebook falla, Instagram queda publicada igual; se reintenta hasta 3 veces y luego queda en error visible', async () => {
+    await sembrarCodigoDelDia();
+    await conectarPagina();
+    const caido = ambosFalsos({ fbFalla: true });
+    const r = await publicarCodigo(caido);
+    assert.equal(r.ok, true, 'Instagram salió');
+    let e = await estadoHist();
+    assert.equal(e.normal.estado, 'publicada');
+    assert.deepEqual([e.normal.facebook.estado, e.normal.facebook.intentos], ['error', 1]);
+    assert.match(e.normal.facebook.error, /Facebook caído/);
+    await publicarCodigo(caido, 'normal', { nowMs: AHORA_CD + 5 * 60000 });
+    await publicarCodigo(caido, 'normal', { nowMs: AHORA_CD + 10 * 60000 });
+    e = await estadoHist();
+    assert.equal(e.normal.facebook.intentos, 3);
+    const llamadas = caido.llamadasFb.length;
+    await publicarCodigo(caido, 'normal', { nowMs: AHORA_CD + 15 * 60000 });
+    assert.equal(caido.llamadasFb.length, llamadas, 'tras 3 intentos ya no insiste');
+    assert.equal((await bitacora()).filter((x) => x.canal === 'facebook' && !x.ok).length, 3);
+    assert.equal((await bitacora()).filter((x) => x.canal === 'instagram' && x.ok).length, 1, 'Instagram se registró una sola vez');
+});
+
+test('Código del día: si Instagram falla NO se publica en Facebook (la historia no salió); y un token rechazado queda en la conexión', async () => {
+    await sembrarCodigoDelDia();
+    await conectarPagina();
+    const igCaido = ambosFalsos({ igFalla: true });
+    const r = await publicarCodigo(igCaido);
+    assert.equal(r.ok, false);
+    assert.equal(igCaido.llamadasFb.length, 0);
+    await db.collection(ig.HISTORIAS_COLLECTION).doc(LUNES).set({ normal: { estado: 'lista', intentos: 0, error: '' } }, { merge: true });
+    const tokenMalo = ambosFalsos();
+    const f2 = facebookFalso({ fallas: [{ ruta: /\/photos$/, status: 400, error: { message: 'Error validating access token', code: 190 } }] });
+    const mezcla = async (url, init) => (new URL(url).hostname === 'graph.facebook.com' ? f2.fetchFn(url, init) : tokenMalo.fetchFn(url, init));
+    assert.equal((await publicarCodigo({ fetchFn: mezcla })).ok, true);
+    assert.match((await fb.estadoConexion(db)).ultimoError, /reconecta la página/);
+});
+
+test('agotado por horario: si la historia ya estaba publicada en Instagram y faltó Facebook, el cron de la noche lo reintenta', async () => {
+    await sembrarCodigoDelDia();
+    await conectarPagina();
+    const caido = ambosFalsos({ fbFalla: true });
+    await publicarCodigo(caido);
+    await publicarCodigo(caido, 'agotado', { origen: 'cupos', nowMs: AHORA_CD + 60000 });
+    assert.equal((await estadoHist()).agotado.facebook.estado, 'error');
+    const bien = ambosFalsos();
+    const noche = cd.dateKeyToMs(LUNES) + 22 * HOUR;
+    const r = await ig.publicarAgotadoPorHorario(db, { nowMs: noche, fetchFn: bien.fetchFn, baseUrl: BASE_URL });
+    assert.deepEqual([r.ok, r.ya], [true, true]);
+    assert.equal((await estadoHist()).agotado.facebook.estado, 'publicada');
+}
+);

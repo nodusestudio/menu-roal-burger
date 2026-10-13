@@ -100,7 +100,8 @@ beforeEach(async () => {
     await Promise.all([
         borrarColeccion('productos'), borrarColeccion(cd.DIAS_COLLECTION), borrarColeccion(cd.CONFIG_COLLECTION),
         borrarColeccion(ig.CONFIG_COLLECTION), borrarColeccion(ig.HISTORIAS_COLLECTION), borrarColeccion(ig.IMAGENES_COLLECTION),
-        borrarColeccion(ig.PUBLICACIONES_COLLECTION), borrarColeccion(ig.METRICAS_COLLECTION), borrarColeccion(ig.SEGUIDORES_COLLECTION)
+        borrarColeccion(ig.PUBLICACIONES_COLLECTION), borrarColeccion(ig.METRICAS_COLLECTION), borrarColeccion(ig.SEGUIDORES_COLLECTION),
+        borrarColeccion('facebook_config') // otra prueba pudo dejar la página conectada: aquí Facebook no participa
     ]);
     await db.collection('configuracion').doc('config_horario').set({ aperturaHora: 16, cierreHora: 22, cierresProgramados: [] });
     await db.collection('productos').doc('bp-plus').set({ estado: 'active', nombre: 'Burger Plus', categoria: 'BURGER PREMIUM', precio: 30000 });

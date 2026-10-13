@@ -250,6 +250,41 @@ async function publicarProgramados(db, opts = {}) {
     return resumen;
 }
 
+// Historia del Código del día (normal o de agotado) en la historia de la página: la MISMA imagen 1080x1920
+// que salió en Instagram. El estado vive en codigo_dia_historias/{fecha}.<tipo>.facebook y es independiente
+// del de Instagram: un fallo aquí nunca cambia lo de Instagram. Se reintenta hasta 3 veces (las vuelve a
+// llamar el cron de Instagram mientras la historia ya esté publicada allá).
+async function publicarHistoriaCodigo(db, { fecha, tipo, urlImagen, origen = 'automatica', nowMs = Date.now(), fetchFn = fetch }) {
+    const c = await leerConexion(db);
+    if (!c?.pageToken || c.activo !== true || c.historiasCodigo === false) return { ok: false, motivo: 'desactivado' };
+    const ref = db.collection(ig.HISTORIAS_COLLECTION).doc(fecha);
+    const reservada = await db.runTransaction(async (tx) => {
+        const f = ((await tx.get(ref)).data() || {})[tipo]?.facebook || {};
+        if (f.estado === 'publicada') return 'ya';
+        if (f.estado === 'publicando' && nowMs - (Number(f.publicandoAtMs) || 0) < PUBLICANDO_VIGENCIA_MS) return 'en_curso';
+        if (Number(f.intentos || 0) >= MAX_INTENTOS) return 'agotados';
+        tx.set(ref, { fecha, [tipo]: { facebook: { estado: 'publicando', publicandoAtMs: nowMs, intentos: Number(f.intentos || 0) + 1 } } }, { merge: true });
+        return 'si';
+    });
+    if (reservada === 'ya') return { ok: true, ya: true };
+    if (reservada !== 'si') return { ok: false, motivo: reservada };
+    const detalle = { fecha, tipo, canal: 'facebook', origen, resumen: tipo === 'agotado' ? 'Historia de agotado' : 'Historia del código' };
+    try {
+        const fbPostId = await publicarHistoriaFoto(c, urlImagen, { fetchFn });
+        await ref.set({ [tipo]: { facebook: { estado: 'publicada', fbPostId, publicadaAtMs: nowMs, error: '' } } }, { merge: true });
+        await ig.registrarPublicacion(db, { ...detalle, ok: true, mediaId: fbPostId, nowMs });
+        return { ok: true, fbPostId };
+    } catch (err) {
+        const mensaje = String(err?.message || err).slice(0, 300);
+        await ref.set({ [tipo]: { facebook: { estado: 'error', error: mensaje } } }, { merge: true });
+        await ig.registrarPublicacion(db, { ...detalle, ok: false, error: mensaje, nowMs });
+        if (err instanceof ig.GraphError && err.esDeToken) {
+            await conexionRef(db).set({ ultimoError: `Facebook rechazó el token (reconecta la página): ${mensaje}`.slice(0, 300) }, { merge: true });
+        }
+        return { ok: false, motivo: 'error', error: mensaje };
+    }
+}
+
 // Publicación de PRUEBA en la página (el logo): comprueba de punta a punta. Se borra desde Facebook.
 async function publicarPrueba(db, { jpeg, nowMs = Date.now(), fetchFn = fetch, baseUrl }) {
     const c = await leerConexion(db);
@@ -291,5 +326,6 @@ module.exports = {
     publicarHistoriaFoto,
     publicarPostEnFacebook,
     publicarProgramados,
+    publicarHistoriaCodigo,
     publicarPrueba
 };

@@ -378,6 +378,19 @@ async function marcar(db, fecha, tipo, campos) {
     return patch;
 }
 
+// Espejo en Facebook de una historia del Código del día. Se carga el módulo al usarlo (no al iniciar) para
+// no crear un ciclo de dependencias. Nunca lanza: un fallo de Facebook no puede afectar a Instagram.
+async function espejoFacebook(db, { fecha, tipo, status, parte, baseUrl, origen, nowMs, fetchFn }) {
+    try {
+        if (parte?.facebook?.estado === 'publicada' || !status?.imgToken) return;
+        await require('./facebookPagina').publicarHistoriaCodigo(db, {
+            fecha, tipo, urlImagen: urlImagen(baseUrl, fecha, tipo, status.imgToken), origen: parte?.origen || origen || 'automatica', nowMs, fetchFn
+        });
+    } catch (err) {
+        console.error('espejo Facebook:', err.message);
+    }
+}
+
 // Publica la historia `tipo` de HOY. `manual` salta el interruptor y el horario (botón del panel).
 async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn = fetch, baseUrl, sleep = esperar, manual = false, origen = null }) {
     validarTipo(tipo);
@@ -394,7 +407,10 @@ async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn =
     const statusRef = db.collection(HISTORIAS_COLLECTION).doc(fecha);
     const status = (await statusRef.get()).data() || {};
     const parte = status[tipo];
-    if (parte?.estado === 'publicada') return { ok: true, ya: true, mediaId: parte.mediaId };
+    if (parte?.estado === 'publicada') {
+        await espejoFacebook(db, { fecha, tipo, status, parte, baseUrl, origen, nowMs, fetchFn }); // reintenta Facebook si faltó
+        return { ok: true, ya: true, mediaId: parte.mediaId };
+    }
     if (tipo === 'agotado' && status.normal?.estado !== 'publicada') return { ok: false, motivo: 'normal_no_publicada' };
     const detalle = { fecha, tipo, origen: origen || (manual ? 'manual' : 'automatica'), palabra: dia.palabra || '', productoNombre: producto?.nombre || dia.productoNombre || '' };
     // El cron pasa cada 5 min: el bitácora solo anota un "no se pudo" cuando el motivo es nuevo.
@@ -428,6 +444,7 @@ async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn =
         await marcar(db, fecha, tipo, { estado: 'publicada', mediaId, publicadaAt: Timestamp.fromMillis(nowMs), error: '', origen: detalle.origen });
         await registrarPublicacion(db, { ...detalle, ok: true, mediaId, nowMs });
         await iniciarMetricas(db, { mediaId, fecha, tipo, publicadaAtMs: nowMs });
+        await espejoFacebook(db, { fecha, tipo, status, parte: {}, baseUrl, origen: detalle.origen, nowMs, fetchFn });
         return { ok: true, mediaId };
     } catch (err) {
         const mensaje = String(err?.message || err).slice(0, 300);
@@ -459,7 +476,10 @@ async function publicarAgotadoPorHorario(db, opts = {}) {
     if (!conexion?.accessToken || conexion.activo !== true) return { ok: false, motivo: 'desactivado' };
     const [config, snap] = await Promise.all([cd.leerConfig(db), db.collection(HISTORIAS_COLLECTION).doc(fecha).get()]);
     const status = snap.data() || {};
-    if (status.agotado?.estado === 'publicada') return { ok: true, ya: true };
+    if (status.agotado?.estado === 'publicada') {
+        await espejoFacebook(db, { fecha, tipo: 'agotado', status, parte: status.agotado, baseUrl: opts.baseUrl, origen: 'horario', nowMs, fetchFn: opts.fetchFn });
+        return { ok: true, ya: true };
+    }
     if (cd.bogotaParts(nowMs).minutes < minutoAgotadoPorHorario(status, fecha, config)) return { ok: false, motivo: 'antes_de_hora' };
     return publicarHistoria(db, { ...opts, fecha, tipo: 'agotado', nowMs, origen: 'horario' });
 }

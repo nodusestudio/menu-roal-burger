@@ -16,7 +16,7 @@ const BLOQUE = SRC.slice(SRC.indexOf('// <redes-instagram>'), SRC.indexOf('// </
 assert.ok(BLOQUE.length > 1500, 'no se encontró el bloque <redes-instagram> en admin.js');
 const ctx = vm.createContext({});
 const NOMBRES = ['rdMsDeFechaHora', 'rdFechaDeMs', 'rdHoraDeMs', 'rdHora12', 'rdSumarDias', 'rdDiaSemana', 'rdLunesDe', 'rdGrillaMes', 'rdSemana',
-    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe', 'rdPendientesIA', 'rdListoParaAprobar', 'rdLayoutHistoria', 'rdIcono', 'rdFechaCorta', 'rdTextoEstado', 'rdFranja', 'rdTasa', 'rdValorMetrica', 'rdFilasMetricas', 'rdOrdenarPor', 'rdMejoresMomentos', 'rdPromedioPorTipo'];
+    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe', 'rdPendientesIA', 'rdListoParaAprobar', 'rdLayoutHistoria', 'rdIcono', 'rdFechaCorta', 'rdTextoEstado', 'rdFranja', 'rdTasa', 'rdValorMetrica', 'rdFilasMetricas', 'rdOrdenarPor', 'rdMejoresMomentos', 'rdPromedioPorTipo', 'rdEmojiRegistrar', 'rdEmojisFrecuentes', 'RD_EMOJIS'];
 vm.runInContext(`${BLOQUE}\n${NOMBRES.map((n) => `this.${n} = ${n};`).join('')}`, ctx);
 const rd = ctx;
 const posts = require(path.join(__dirname, '..', 'functions', 'instagramPosts.js'));
@@ -222,4 +222,29 @@ test('métricas: promedio por día de la semana y por franja (hora de Colombia) 
     // Una publicación a las 11:59 p. m. (hora de Colombia) sigue siendo del día, no del siguiente.
     const tarde = rd.rdMejoresMomentos([{ ms: rdMs('2026-10-18', '23:59'), ultimo: { reach: 50 }, post: { tipo: 'foto' } }], 'reach');
     assert.equal(tarde.dias[6].n, 1, 'domingo 18 a las 11:59 p. m.');
+});
+
+test('emojis: la lista no repite ni trae vacíos, y se recuerdan los más usados (más veces primero; empate: el más reciente)', () => {
+    const todos = JSON.parse(JSON.stringify(rd.RD_EMOJIS)).flatMap((g) => g.lista);
+    assert.ok(todos.length >= 80);
+    assert.equal(new Set(todos).size, todos.length, 'sin repetidos');
+    assert.ok(todos.every((e) => typeof e === 'string' && e.trim()));
+    for (const comida of ['🍔', '🌭', '🍟', '🔥']) assert.ok(todos.includes(comida), comida);
+
+    let uso = {};
+    uso = rd.rdEmojiRegistrar(uso, '🍔', 100);
+    uso = rd.rdEmojiRegistrar(uso, '🔥', 200);
+    uso = rd.rdEmojiRegistrar(uso, '🍔', 300);
+    uso = rd.rdEmojiRegistrar(uso, '😋', 400);
+    assert.deepEqual(JSON.parse(JSON.stringify(rd.rdEmojisFrecuentes(uso))), ['🍔', '😋', '🔥'], '🍔 dos veces; entre 😋 y 🔥 (una vez) gana el más reciente');
+    assert.deepEqual(JSON.parse(JSON.stringify(rd.rdEmojisFrecuentes(uso, 2))), ['🍔', '😋'], 'respeta el máximo');
+    const antes = JSON.stringify(uso);
+    rd.rdEmojiRegistrar(uso, '🌭', 500);
+    assert.equal(JSON.stringify(uso), antes, 'no modifica el objeto recibido');
+    // Datos raros (almacenamiento dañado) no rompen nada.
+    assert.equal(rd.rdEmojisFrecuentes(null).length, 0);
+    assert.equal(rd.rdEmojisFrecuentes('x').length, 0);
+    assert.equal(rd.rdEmojisFrecuentes({ '🍔': { n: 0, t: 1 }, '🔥': null, '😋': { n: 2, t: 1 } }).join(''), '😋');
+    assert.deepEqual(JSON.parse(JSON.stringify(rd.rdEmojiRegistrar(null, ''))), {});
+    assert.deepEqual(JSON.parse(JSON.stringify(rd.rdEmojiRegistrar({}, 'x'.repeat(40)))), {});
 });

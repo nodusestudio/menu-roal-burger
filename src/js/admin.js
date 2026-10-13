@@ -16745,7 +16745,7 @@ function _cdMotivoPublicacion(origen) {
 function _cdEstadoHistoria(dia, tipo) {
     const p = cdState.historias?.[dia.id]?.[tipo];
     if (!p) return { clase: '', texto: 'Sin preparar', corto: 'preparando', haceFalta: true };
-    if (p.estado === 'publicada') return { clase: 'ok', texto: `Publicada${_cdHora(p.publicadaAt) ? ` ${_cdHora(p.publicadaAt)}` : ''}${_cdMotivoPublicacion(p.origen) ? ` · ${_cdMotivoPublicacion(p.origen)}` : ''}`, corto: 'publicada', haceFalta: false };
+    if (p.estado === 'publicada') return { clase: 'ok', texto: `Publicada${_cdHora(p.publicadaAt) ? ` ${_cdHora(p.publicadaAt)}` : ''}${_cdMotivoPublicacion(p.origen) ? ` · ${_cdMotivoPublicacion(p.origen)}` : ''}${p.facebook?.estado === 'publicada' ? ' · también en Facebook ✓' : (p.facebook?.estado === 'error' ? ` · Facebook ⚠ (${p.facebook.error || 'no salió'})` : '')}`, corto: 'publicada', haceFalta: false };
     if (p.estado === 'publicando') return { clase: '', texto: 'Publicando…', corto: 'publicando', haceFalta: false };
     const fresca = _cdMismaHuella(p.huella, _cdHuellaHistoria(dia, tipo === 'agotado'));
     if (p.estado === 'error') return { clase: 'err', texto: `Error: ${p.error || 'no se pudo publicar'}${fresca ? '' : ' · rehacer'}`, corto: 'error', haceFalta: !fresca };
@@ -29570,6 +29570,27 @@ function rdPromedioPorTipo(filas, clave) {
     }
     return Object.fromEntries(Object.entries(out).map(([k, x]) => [k, { n: x.n, promedio: x.suma / x.n }]));
 }
+// ── Emojis: lista, y "los más usados" (se guardan por navegador) ──
+const RD_EMOJIS = [
+    { titulo: 'Comida', lista: ['🍔', '🍟', '🌭', '🥪', '🌮', '🌯', '🥓', '🍖', '🍗', '🥩', '🧀', '🥬', '🍅', '🧅', '🌶️', '🔥', '🍕', '🥤', '🍺', '🍹', '🧃', '🍦', '🍩', '🍪', '🥔', '🍳', '🥚', '🧈', '🥖', '🥐', '🍞', '🥗', '🍤'] },
+    { titulo: 'Caras y manos', lista: ['😋', '🤤', '😍', '🥰', '😎', '🤩', '😁', '😂', '🤣', '😊', '😉', '😜', '🤭', '🥳', '😮', '🤯', '😱', '🙌', '👏', '👍', '👌', '🙏', '💪', '🤝', '🤙', '👋', '🫶'] },
+    { titulo: 'Símbolos', lista: ['❤️', '🧡', '💛', '💚', '💙', '🖤', '✨', '⭐', '🌟', '💥', '💫', '🎉', '🎊', '🏆', '👑', '💯', '✅', '❌', '⚡', '➡️', '👇', '👆', '👉', '👈', '📍', '📲', '📱', '🕒', '⏰', '🛵', '🛍️', '🎁'] }
+];
+// Suma un uso del emoji: { emoji: { n: veces, t: última vez } }. No modifica el objeto recibido.
+function rdEmojiRegistrar(uso, emoji, ahora = Date.now()) {
+    const base = uso && typeof uso === 'object' ? uso : {};
+    if (typeof emoji !== 'string' || !emoji.trim() || emoji.length > 16) return { ...base };
+    const previo = base[emoji] || { n: 0, t: 0 };
+    return { ...base, [emoji]: { n: (Number(previo.n) || 0) + 1, t: ahora } };
+}
+// Los más usados primero (empata el más reciente); como máximo `max`.
+function rdEmojisFrecuentes(uso, max = 12) {
+    return Object.entries(uso && typeof uso === 'object' ? uso : {})
+        .filter(([e, v]) => typeof e === 'string' && v && Number(v.n) > 0)
+        .sort((a, b) => (Number(b[1].n) - Number(a[1].n)) || (Number(b[1].t) - Number(a[1].t)))
+        .slice(0, max)
+        .map(([e]) => e);
+}
 // </redes-instagram>
 
 const rdState = {
@@ -29735,6 +29756,7 @@ function rdCeldaHtml(fecha, mesActual) {
 }
 
 function rdRenderCalendario(body) {
+    if (!rdState.mes) { rdState.mes = _rdHoy().slice(0, 7); rdState.semanaDe = rdLunesDe(_rdHoy()); }
     const semana = rdState.vista === 'semana';
     const semanas = semana ? [rdSemana(rdState.semanaDe)] : rdGrillaMes(rdState.mes);
     const titulo = semana
@@ -29969,10 +29991,12 @@ function rdRenderEditor(body) {
                 </div>
 
                 ${historia ? '<p class="cd-muted rd-nota">📱 Las historias llevan solo la imagen: Instagram no permite texto, hashtags ni música en las historias programadas. Si quieres letras, ponlas dentro de la imagen.</p>' : `
-                <label class="rd-campo">
-                    <span class="rd-label">Texto de la publicación <span class="cd-muted" id="rdContadorTexto"></span></span>
+                <div class="rd-campo rd-rel">
+                    <div class="rd-label rd-label-fila"><span>Texto de la publicación <span class="cd-muted" id="rdContadorTexto"></span></span>
+                        ${editable ? '<button type="button" class="cd-btn rd-emoji-btn" id="rdEmojiBtn" aria-haspopup="true" aria-expanded="false">😊 Emojis</button>' : ''}</div>
                     <textarea id="rdCaption" rows="6" maxlength="2200" placeholder="Escribe el texto: puedes usar emojis y @menciones…" ${editable ? '' : 'disabled'}>${escapeHtml(ed.caption)}</textarea>
-                </label>
+                    <div class="rd-emoji-pop" id="rdEmojiPop" hidden></div>
+                </div>
 
                 <div class="rd-campo">
                     <label class="rd-label" for="rdHashtags">Hashtags <span class="cd-muted" id="rdContadorHash"></span></label>
@@ -30006,7 +30030,7 @@ function rdRenderEditor(body) {
                     ${ed.id && ed.fbEstado === 'error' ? '<button type="button" class="cd-btn" data-rd-a="fbReintentar">🔁 Reintentar en Facebook</button>' : ''}
                     ${ed.id && editable && ed.productoId ? '<button type="button" class="cd-btn" data-rd-a="regenerar">🔁 Otro texto con IA</button>' : ''}
                     ${ed.id ? '<button type="button" class="cd-btn" data-rd-a="duplicar">📋 Duplicar</button>' : ''}
-                    ${ed.id && editable && ed.estado !== 'cancelada' && ed.estado !== 'borrador' ? '<button type="button" class="cd-btn" data-rd-a="cancelar">🚫 Cancelar</button>' : ''}
+                    ${ed.id && editable && ed.estado !== 'cancelada' && ed.estado !== 'borrador' ? '<button type="button" class="cd-btn rd-peligro" data-rd-a="cancelar">🚫 Cancelar y borrar</button>' : ''}
                     ${ed.id && ['borrador', 'cancelada', 'error'].includes(ed.estado) ? '<button type="button" class="cd-btn rd-peligro" data-rd-a="borrar">🗑️ Borrar</button>' : ''}
                     <button type="button" class="cd-btn" data-rd-a="volver">← Volver al calendario</button>
                 </div>
@@ -30177,6 +30201,7 @@ function rdBindEditor(body) {
     const ed = rdState.ed;
     const refrescar = () => { rdLeerFormulario(body); const ph = body.querySelector('.rd-preview'); if (ph) ph.innerHTML = rdPhoneHtml(ed); rdActualizarContadores(body); };
     ['#rdCaption', '#rdHashtags', '#rdAlt'].forEach((s) => body.querySelector(s)?.addEventListener('input', refrescar));
+    rdBindEmojis(body, refrescar);
     body.querySelectorAll('[data-rd-tag]').forEach((b) => b.addEventListener('click', () => {
         const area = body.querySelector('#rdHashtags');
         const actuales = rdNormalizarHashtags(area.value);
@@ -30228,6 +30253,7 @@ async function rdAccion(body, btn) {
     const etiqueta = btn.textContent;
     btn.disabled = true;
     let volver = null; // fecha a mostrar en el calendario cuando la publicación quedó programada o publicada
+    let alCalendario = false; // volver al calendario sin resaltar nada (por ejemplo, al cancelar y borrar)
     try {
         if (a === 'guardar') {
             await rdGuardarCampos(body);
@@ -30268,9 +30294,12 @@ async function rdAccion(body, btn) {
             await rdLlamar('desprogramar', { id: ed.id });
             await rdRecargarEd();
         } else if (a === 'cancelar') {
-            if (!window.confirm('¿Cancelar esta publicación? No saldrá.')) { btn.disabled = false; return; }
+            if (!window.confirm('¿Cancelar y borrar esta publicación? No saldrá en ninguna red y se borra con sus imágenes.')) { btn.disabled = false; return; }
             await rdLlamar('cancelar', { id: ed.id });
-            await rdRecargarEd();
+            await rdLlamar('borrar', { id: ed.id });
+            rdState.posts = rdState.posts.filter((x) => x.id !== ed.id);
+            alCalendario = true;
+            showNotice('Publicación cancelada y borrada.', 'ok');
         } else if (a === 'duplicar') {
             const r = await rdLlamar('duplicar', { id: ed.id });
             const snap = await firebaseDb.collection('instagram_posts').doc(r.id).get();
@@ -30292,13 +30321,15 @@ async function rdAccion(body, btn) {
         btn.disabled = false;
         if (rdState.ed?.id) { await rdRecargarEd().catch(() => {}); }
     }
-    if (volver) {
-        // Programada o publicada: se cierra el editor y se muestra el calendario con esa publicación.
+    if (volver || alCalendario) {
+        // Programada, publicada o cancelada: se cierra el editor y se muestra el calendario.
         rdState.ed = null;
         rdState.tab = 'calendario';
-        rdState.mes = volver.slice(0, 7);
-        rdState.semanaDe = rdLunesDe(volver);
-        rdState.resaltar = volver;
+        if (volver) {
+            rdState.mes = volver.slice(0, 7);
+            rdState.semanaDe = rdLunesDe(volver);
+            rdState.resaltar = volver;
+        }
         rdPintarTabs();
         await rdCargar().catch(() => {});
         rdRender();
@@ -30805,5 +30836,53 @@ function rdRenderCuentas(body) {
             if (!r.ok) throw new Error(`No se publicó: ${r.error || 'error desconocido'}`);
             return r;
         }, (r) => `✅ Funciona: la publicación de prueba ya está en ${r.pageName}. Ábrela en Facebook y bórrala.`);
+    });
+}
+
+// ── Selector de emojis del editor (los más usados se guardan en este navegador) ──
+const RD_EMOJI_CLAVE = 'rd_emoji_uso_v1';
+function rdEmojiLeerUso() {
+    try { return JSON.parse(window.localStorage.getItem(RD_EMOJI_CLAVE) || '{}') || {}; } catch (_) { return {}; }
+}
+function rdEmojiGuardarUso(uso) {
+    try { window.localStorage.setItem(RD_EMOJI_CLAVE, JSON.stringify(uso)); } catch (_) { /* sin almacenamiento: no pasa nada */ }
+}
+
+function rdEmojiPopHtml() {
+    const frecuentes = rdEmojisFrecuentes(rdEmojiLeerUso(), 12);
+    const grupo = (titulo, lista) => `<div class="rd-emoji-grupo"><span class="rd-emoji-titulo">${escapeHtml(titulo)}</span><div class="rd-emoji-grid">${lista.map((e) => `<button type="button" class="rd-emoji" data-rd-emoji="${e}" aria-label="${e}">${e}</button>`).join('')}</div></div>`;
+    return `${frecuentes.length ? grupo('⭐ Más usados', frecuentes) : '<p class="cd-muted rd-emoji-vacio">Los emojis que más uses aparecerán aquí arriba.</p>'}${RD_EMOJIS.map((g) => grupo(g.titulo, g.lista)).join('')}`;
+}
+
+function rdBindEmojis(body, refrescar) {
+    const btn = body.querySelector('#rdEmojiBtn');
+    const pop = body.querySelector('#rdEmojiPop');
+    const area = body.querySelector('#rdCaption');
+    if (!btn || !pop || !area) return;
+    const cerrar = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); document.removeEventListener('click', fuera, true); document.removeEventListener('keydown', tecla, true); };
+    const fuera = (e) => { if (!pop.contains(e.target) && e.target !== btn && e.target !== area) cerrar(); }; // tocar el texto no lo cierra: sirve para mover el cursor entre emojis
+    const tecla = (e) => { if (e.key === 'Escape') cerrar(); };
+    btn.addEventListener('click', () => {
+        if (!pop.hidden) { cerrar(); return; }
+        pop.innerHTML = rdEmojiPopHtml();
+        pop.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+        document.addEventListener('click', fuera, true);
+        document.addEventListener('keydown', tecla, true);
+    });
+    pop.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-rd-emoji]');
+        if (!b) return;
+        const emoji = b.dataset.rdEmoji;
+        const ini = area.selectionStart ?? area.value.length;
+        const fin = area.selectionEnd ?? ini;
+        if (area.value.length - (fin - ini) + emoji.length > Number(area.maxLength || 2200)) { showNotice('El texto ya llegó al máximo de caracteres.', 'error'); return; }
+        area.value = `${area.value.slice(0, ini)}${emoji}${area.value.slice(fin)}`;
+        area.focus();
+        area.setSelectionRange(ini + emoji.length, ini + emoji.length);
+        rdEmojiGuardarUso(rdEmojiRegistrar(rdEmojiLeerUso(), emoji));
+        refrescar();
+        // Los más usados se actualizan al instante sin cerrar el selector.
+        pop.innerHTML = rdEmojiPopHtml();
     });
 }
