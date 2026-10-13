@@ -1796,10 +1796,11 @@ function setupAccordion() {
         chatroal: ['chatroal'],
         metricas: ['metricas'],
         finanzas: ['finanzas'],
-        cuponpana: ['cuponpana']
+        cuponpana: ['cuponpana'],
+        redes: ['redes']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', cuponpana:'Fuera del Menú' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', cuponpana:'Fuera del Menú', redes:'Redes' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -1846,6 +1847,10 @@ function setupAccordion() {
 
         if (target === 'cuponpana') {
             _ensureCuponPanaLoaded();
+        }
+
+        if (target === 'redes') {
+            _ensureRedesLoaded().catch((err) => { console.error('Redes:', err); showNotice(`No se pudo cargar Redes: ${err.message || 'error'}`, 'error'); });
         }
 
         if (target === 'chatroal') {
@@ -29284,4 +29289,757 @@ if (_meseroLinkToken) {
     loadCategoriasGastos();
     loadProveedores();
     loadMeseros().then(renderMeserosPanel);
+}
+
+// <redes-instagram>
+// ===== PANEL REDES: publicaciones de Instagram (foto / carrusel) con calendario =====
+// Lee instagram_posts (solo admin, ver firestore.rules) y escribe SIEMPRE por la Cloud Function
+// adminInstagramPosts (functions/instagramPosts.js). Las imágenes se preparan aquí (recorte a la
+// proporción que acepta Instagram, JPEG ≤ 900 KB) y se suben una por llamada. Hora de Colombia (UTC-5).
+// Bloque con funciones puras al inicio: tests/redes-calendario.test.js las extrae y las prueba en Node.
+const RD_IMG_URL = 'https://us-central1-roal-burger-menu.cloudfunctions.net/historiaImagen';
+const RD_BOGOTA_MS = -5 * 60 * 60 * 1000;
+const RD_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const RD_DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const RD_ESTADOS = {
+    borrador: { etiqueta: 'Borrador', icono: '📝' },
+    programada: { etiqueta: 'Programada', icono: '🗓️' },
+    publicando: { etiqueta: 'Publicando…', icono: '⏳' },
+    publicada: { etiqueta: 'Publicada', icono: '✅' },
+    error: { etiqueta: 'Con error', icono: '⚠️' },
+    cancelada: { etiqueta: 'Cancelada', icono: '🚫' }
+};
+const RD_HASHTAGS_BASE = ['roalburger', 'armenia', 'quindio', 'comidarapida', 'hamburguesas', 'perroscalientes', 'salchipapas', 'pepitos', 'comidavenezolana', 'antojo'];
+
+// "2026-10-14" + "19:30" (hora Colombia) → milisegundos UTC.
+function rdMsDeFechaHora(fecha, hora) {
+    const f = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(fecha || ''));
+    const h = /^(\d{1,2}):(\d{2})$/.exec(String(hora || ''));
+    if (!f || !h) return NaN;
+    return Date.UTC(Number(f[1]), Number(f[2]) - 1, Number(f[3]), Number(h[1]), Number(h[2])) - RD_BOGOTA_MS;
+}
+function rdFechaDeMs(ms) {
+    const d = new Date(Number(ms) + RD_BOGOTA_MS);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+function rdHoraDeMs(ms) {
+    const d = new Date(Number(ms) + RD_BOGOTA_MS);
+    return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+function rdHora12(hhmm) {
+    const [h, m] = String(hhmm).split(':').map(Number);
+    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'p. m.' : 'a. m.'}`;
+}
+function rdSumarDias(fecha, n) {
+    const [y, m, d] = String(fecha).split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n, 12)).toISOString().slice(0, 10);
+}
+// 0 = lunes … 6 = domingo
+function rdDiaSemana(fecha) {
+    const [y, m, d] = String(fecha).split('-').map(Number);
+    return (new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay() + 6) % 7;
+}
+function rdLunesDe(fecha) {
+    return rdSumarDias(fecha, -rdDiaSemana(fecha));
+}
+// Semanas (de 7 fechas, lunes primero) que cubren el mes "YYYY-MM", con los días vecinos de relleno.
+function rdGrillaMes(ym) {
+    const primero = `${ym}-01`;
+    const [y, m] = ym.split('-').map(Number);
+    const ultimo = new Date(Date.UTC(y, m, 0, 12)).toISOString().slice(0, 10);
+    const semanas = [];
+    for (let inicio = rdLunesDe(primero); inicio <= ultimo; inicio = rdSumarDias(inicio, 7)) {
+        semanas.push(Array.from({ length: 7 }, (_, i) => rdSumarDias(inicio, i)));
+    }
+    return semanas;
+}
+function rdSemana(fecha) {
+    const lunes = rdLunesDe(fecha);
+    return Array.from({ length: 7 }, (_, i) => rdSumarDias(lunes, i));
+}
+function rdMesAnterior(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+function rdMesSiguiente(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+function rdTituloMes(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return `${RD_MESES[m - 1]} ${y}`;
+}
+// Hashtags como los guarda el servidor: sin # ni símbolos, sin repetidos.
+function rdNormalizarHashtags(texto) {
+    const lista = Array.isArray(texto) ? texto : String(texto || '').split(/[\s,]+/);
+    const vistos = new Set();
+    const out = [];
+    for (const h of lista) {
+        const limpio = String(h || '').replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '');
+        if (!limpio || vistos.has(limpio.toLowerCase())) continue;
+        vistos.add(limpio.toLowerCase());
+        out.push(limpio);
+    }
+    return out;
+}
+// Texto que verá Instagram (igual que armarCaption del servidor).
+function rdTextoFinal(caption, hashtags) {
+    const tags = rdNormalizarHashtags(hashtags).map((h) => `#${h}`).join(' ');
+    return [String(caption || '').trim(), tags].filter(Boolean).join('\n\n');
+}
+// { caracteres, hashtags, menciones, errores[] } del texto final con los límites de Instagram.
+function rdResumenTexto(caption, hashtags) {
+    const texto = rdTextoFinal(caption, hashtags);
+    const nHash = (texto.match(/#[\p{L}\p{N}_]+/gu) || []).length;
+    const nMenc = (texto.match(/@[A-Za-z0-9._]+/g) || []).length;
+    const errores = [];
+    if (texto.length > 2200) errores.push(`El texto pasa de 2200 caracteres (lleva ${texto.length}).`);
+    if (nHash > 30) errores.push(`Máximo 30 hashtags (llevas ${nHash}).`);
+    if (nMenc > 20) errores.push(`Máximo 20 menciones @ (llevas ${nMenc}).`);
+    return { caracteres: texto.length, hashtags: nHash, menciones: nMenc, errores };
+}
+// Rango de recorte para que la imagen entre en lo que acepta Instagram (4:5 a 1,91:1).
+function rdRecorte(ancho, alto) {
+    const MIN = 4 / 5;
+    const MAX = 1.91;
+    const r = ancho / alto;
+    if (r < MIN) { const sh = Math.round(ancho / MIN); return { sx: 0, sy: Math.round((alto - sh) / 2), sw: ancho, sh }; }
+    if (r > MAX) { const sw = Math.round(alto * MAX); return { sx: Math.round((ancho - sw) / 2), sy: 0, sw, sh: alto }; }
+    return { sx: 0, sy: 0, sw: ancho, sh: alto };
+}
+// Fecha-hora en la que se ve la publicación en el calendario (programada o ya publicada).
+function rdMomentoDe(post) {
+    const ms = post.estado === 'publicada' ? post.publicadaAtMs : post.programadaAtMs;
+    return Number.isFinite(Number(ms)) && ms ? Number(ms) : null;
+}
+// </redes-instagram>
+
+const rdState = {
+    tab: 'calendario',
+    cargado: false,
+    cargando: false,
+    mes: '',
+    vista: 'mes',
+    semanaDe: '',
+    posts: [],
+    codigos: {},   // codigo_dia por fecha (para mostrar la historia del código en el calendario)
+    historias: {}, // estado de las historias por fecha
+    ig: null,
+    ed: null       // publicación en edición
+};
+
+const _rdHoy = () => _codigoDiaHoyKeyAdmin();
+
+async function _ensureRedesLoaded() {
+    const nav = document.getElementById('rdTabs');
+    if (nav && !nav.dataset.bound) {
+        nav.dataset.bound = '1';
+        nav.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-rd-tab]');
+            if (!b) return;
+            rdState.tab = b.dataset.rdTab;
+            rdPintarTabs();
+            rdRender();
+        });
+    }
+    if (!rdState.mes) { rdState.mes = _rdHoy().slice(0, 7); rdState.semanaDe = rdLunesDe(_rdHoy()); }
+    rdPintarTabs();
+    await rdCargar();
+    rdRender();
+}
+
+function rdPintarTabs() {
+    document.querySelectorAll('#rdTabs [data-rd-tab]').forEach((b) => {
+        const on = b.dataset.rdTab === rdState.tab;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+    });
+    document.querySelectorAll('.rd-panel[data-rd-panel]').forEach((p) => { p.hidden = p.dataset.rdPanel !== rdState.tab; });
+}
+
+async function rdCargarHistorias() {
+    // Historia del código en el calendario: solo del rango visible (incluye los días de relleno).
+    const semanas = rdState.vista === 'semana' ? [rdSemana(rdState.semanaDe)] : rdGrillaMes(rdState.mes);
+    const desde = semanas[0][0];
+    const hasta = semanas[semanas.length - 1][6];
+    try {
+        const [dias, hist] = await Promise.all([
+            _cdLeerDias(desde, hasta),
+            firebaseDb.collection('codigo_dia_historias')
+                .where(firebase.firestore.FieldPath.documentId(), '>=', desde)
+                .where(firebase.firestore.FieldPath.documentId(), '<=', hasta).get()
+        ]);
+        rdState.codigos = Object.fromEntries(dias.map((d) => [d.id, d]));
+        rdState.historias = Object.fromEntries(hist.docs.map((d) => [d.id, d.data()]));
+    } catch (err) {
+        console.warn('Redes: historias del calendario:', err?.message);
+    }
+}
+
+async function rdCargar() {
+    if (rdState.cargando) return;
+    rdState.cargando = true;
+    try {
+        const [snap, ig] = await Promise.all([
+            firebaseDb.collection('instagram_posts').orderBy('creadoAtMs', 'desc').limit(400).get(),
+            _cdLlamarIg('estado').catch(() => null)
+        ]);
+        rdState.posts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        rdState.ig = ig;
+        await rdCargarHistorias();
+        rdState.cargado = true;
+    } finally {
+        rdState.cargando = false;
+    }
+}
+
+async function rdLlamar(accion, payload = {}) {
+    if (!firebaseFunctions) throw new Error('Servicio no disponible. Recarga la página.');
+    return (await firebaseFunctions.httpsCallable('adminInstagramPosts')({ accion, ...payload })).data;
+}
+
+function rdRender() {
+    const body = document.querySelector(`.rd-panel[data-rd-panel="${rdState.tab}"]`);
+    if (!body) return;
+    if (rdState.tab === 'calendario') rdRenderCalendario(body);
+    else if (rdState.tab === 'crear') rdRenderEditor(body);
+}
+
+function rdAvisosHtml() {
+    const ig = rdState.ig;
+    if (!ig) return '';
+    if (!ig.conectado) return '<p class="cd-aviso">📸 Instagram no está conectado: nada saldrá solo. Conéctalo en Artículos → Código del día → Configuración → Instagram.</p>';
+    const av = [];
+    if (ig.vencido) av.push('el token de Instagram venció: reconecta la cuenta');
+    if (ig.ultimoError) av.push(ig.ultimoError);
+    if (!ig.activo) av.push('la publicación automática está APAGADA: lo programado no saldrá solo (actívala en Código del día → Configuración → Instagram)');
+    return av.length ? `<p class="cd-aviso">📸 ${av.map(escapeHtml).join(' · ')}</p>` : '';
+}
+
+// ── Calendario ──────────────────────────────────────────────────────────────
+function rdItemsDelDia(fecha) {
+    const items = [];
+    for (const p of rdState.posts) {
+        const ms = rdMomentoDe(p);
+        if (ms && rdFechaDeMs(ms) === fecha && p.estado !== 'cancelada') items.push({ tipo: 'post', ms, post: p });
+    }
+    const cod = rdState.codigos[fecha];
+    if (cod) {
+        const pub = rdState.historias[fecha]?.normal?.estado === 'publicada';
+        const hora = (cdState.config?.horaPublicacion || '12:00');
+        items.push({ tipo: 'historia', ms: rdMsDeFechaHora(fecha, hora), cod, pub });
+    }
+    return items.sort((a, b) => a.ms - b.ms);
+}
+
+function rdChipHtml(it) {
+    if (it.tipo === 'historia') {
+        return `<span class="rd-chip rd-chip--historia" title="Historia del Código del día: ${escapeHtml(it.cod.productoNombre || '')}${it.pub ? ' (publicada)' : ''}">⭐ ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} Código${it.pub ? ' ✓' : ''}</span>`;
+    }
+    const p = it.post;
+    const est = RD_ESTADOS[p.estado] || RD_ESTADOS.borrador;
+    const texto = String(p.caption || '').replace(/\s+/g, ' ').trim().slice(0, 22) || 'Sin texto';
+    return `<button type="button" class="rd-chip rd-chip--${escapeHtml(p.estado)}" data-rd-abrir="${escapeHtml(p.id)}" title="${escapeHtml(est.etiqueta)}${p.error ? `: ${escapeHtml(p.error)}` : ''}">${p.tipo === 'carrusel' ? '🎠' : '📷'} ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} ${escapeHtml(texto)}</button>`;
+}
+
+function rdCeldaHtml(fecha, mesActual) {
+    const items = rdItemsDelDia(fecha);
+    const visibles = items.slice(0, rdState.vista === 'semana' ? 12 : 3);
+    const extra = items.length - visibles.length;
+    const hoy = fecha === _rdHoy();
+    const pasado = fecha < _rdHoy();
+    return `
+        <div class="rd-day${hoy ? ' is-hoy' : ''}${mesActual === false ? ' is-fuera' : ''}${pasado ? ' is-pasado' : ''}" data-rd-dia="${fecha}">
+            <div class="rd-day-top">
+                <span class="rd-day-num">${Number(fecha.slice(8))}</span>
+                ${pasado ? '' : `<button type="button" class="rd-day-add" data-rd-nueva="${fecha}" title="Nueva publicación este día" aria-label="Nueva publicación el ${fecha}">+</button>`}
+            </div>
+            <div class="rd-day-chips">${visibles.map(rdChipHtml).join('')}${extra > 0 ? `<button type="button" class="rd-mas" data-rd-dia-abrir="${fecha}">+${extra} más</button>` : ''}</div>
+        </div>`;
+}
+
+function rdRenderCalendario(body) {
+    const semana = rdState.vista === 'semana';
+    const semanas = semana ? [rdSemana(rdState.semanaDe)] : rdGrillaMes(rdState.mes);
+    const titulo = semana
+        ? `${Number(semanas[0][0].slice(8))} ${RD_MESES[Number(semanas[0][0].slice(5, 7)) - 1].slice(0, 3)} – ${Number(semanas[0][6].slice(8))} ${RD_MESES[Number(semanas[0][6].slice(5, 7)) - 1].slice(0, 3)} ${semanas[0][6].slice(0, 4)}`
+        : rdTituloMes(rdState.mes);
+    const sinFecha = rdState.posts.filter((p) => p.estado === 'borrador' && !p.programadaAtMs);
+    const proximas = rdState.posts.filter((p) => p.estado === 'programada').sort((a, b) => a.programadaAtMs - b.programadaAtMs).slice(0, 5);
+    body.innerHTML = `
+        ${rdAvisosHtml()}
+        <div class="rd-toolbar">
+            <div class="rd-nav">
+                <button type="button" class="cd-btn" data-rd-nav="-1" aria-label="Anterior">◀</button>
+                <strong class="rd-titulo">${escapeHtml(titulo)}</strong>
+                <button type="button" class="cd-btn" data-rd-nav="1" aria-label="Siguiente">▶</button>
+                <button type="button" class="cd-btn" data-rd-nav="hoy">Hoy</button>
+            </div>
+            <div class="rd-vista" role="group" aria-label="Vista">
+                <button type="button" class="cd-btn${semana ? '' : ' is-on'}" data-rd-vista="mes">Mes</button>
+                <button type="button" class="cd-btn${semana ? ' is-on' : ''}" data-rd-vista="semana">Semana</button>
+            </div>
+            <button type="button" class="section-action-btn primary" data-rd-nueva="">✍️ Nueva publicación</button>
+        </div>
+        <div class="rd-leyenda">
+            ${['programada', 'publicada', 'borrador', 'error'].map((k) => `<span class="rd-chip rd-chip--${k}">${RD_ESTADOS[k].icono} ${RD_ESTADOS[k].etiqueta}</span>`).join('')}
+            <span class="rd-chip rd-chip--historia">⭐ Historia del código (automática)</span>
+        </div>
+        <div class="rd-cal${semana ? ' rd-cal--semana' : ''}">
+            ${RD_DIAS_CORTOS.map((d) => `<div class="rd-dow">${d}</div>`).join('')}
+            ${semanas.map((sem) => sem.map((f) => rdCeldaHtml(f, semana ? true : f.startsWith(rdState.mes))).join('')).join('')}
+        </div>
+        <div class="rd-listas">
+            <section class="rd-lista"><h4>Próximas publicaciones</h4>
+                ${proximas.length ? proximas.map((p) => `<button type="button" class="rd-fila" data-rd-abrir="${escapeHtml(p.id)}"><span>${p.tipo === 'carrusel' ? '🎠' : '📷'} <strong>${escapeHtml(_cdFechaLarga(rdFechaDeMs(p.programadaAtMs)))} · ${escapeHtml(rdHora12(rdHoraDeMs(p.programadaAtMs)))}</strong></span><span class="cd-muted">${escapeHtml(String(p.caption || '').replace(/\s+/g, ' ').slice(0, 70) || 'Sin texto')}</span></button>`).join('') : '<p class="cd-muted">No hay nada programado todavía.</p>'}
+            </section>
+            <section class="rd-lista"><h4>Borradores sin fecha</h4>
+                ${sinFecha.length ? sinFecha.slice(0, 6).map((p) => `<button type="button" class="rd-fila" data-rd-abrir="${escapeHtml(p.id)}"><span>${p.tipo === 'carrusel' ? '🎠' : '📷'} Borrador</span><span class="cd-muted">${escapeHtml(String(p.caption || '').replace(/\s+/g, ' ').slice(0, 70) || 'Sin texto')}</span></button>`).join('') : '<p class="cd-muted">No tienes borradores guardados.</p>'}
+            </section>
+        </div>`;
+
+    body.querySelectorAll('[data-rd-nav]').forEach((b) => b.addEventListener('click', async () => {
+        const v = b.dataset.rdNav;
+        if (v === 'hoy') { rdState.mes = _rdHoy().slice(0, 7); rdState.semanaDe = rdLunesDe(_rdHoy()); }
+        else if (semana) rdState.semanaDe = rdSumarDias(rdState.semanaDe, Number(v) * 7);
+        else rdState.mes = Number(v) < 0 ? rdMesAnterior(rdState.mes) : rdMesSiguiente(rdState.mes);
+        await rdCargarHistorias();
+        rdRenderCalendario(body);
+    }));
+    body.querySelectorAll('[data-rd-vista]').forEach((b) => b.addEventListener('click', async () => {
+        rdState.vista = b.dataset.rdVista;
+        if (rdState.vista === 'semana') rdState.semanaDe = rdLunesDe(rdState.mes === _rdHoy().slice(0, 7) ? _rdHoy() : `${rdState.mes}-01`);
+        await rdCargarHistorias();
+        rdRenderCalendario(body);
+    }));
+    body.querySelectorAll('[data-rd-nueva]').forEach((b) => b.addEventListener('click', () => rdNuevaPublicacion(b.dataset.rdNueva || '')));
+    body.querySelectorAll('[data-rd-abrir]').forEach((b) => b.addEventListener('click', () => rdAbrirPublicacion(b.dataset.rdAbrir)));
+    body.querySelectorAll('[data-rd-dia-abrir]').forEach((b) => b.addEventListener('click', () => rdAbrirDia(b.dataset.rdDiaAbrir)));
+}
+
+function rdAbrirDia(fecha) {
+    document.getElementById('rdDiaModal')?.remove();
+    const items = rdItemsDelDia(fecha);
+    const modal = document.createElement('div');
+    modal.id = 'rdDiaModal';
+    modal.className = 'cd-entrega-modal';
+    modal.innerHTML = `
+        <div class="cd-entrega-box" role="dialog" aria-modal="true" aria-label="Publicaciones del día">
+            <p class="cd-entrega-titulo">${escapeHtml(_cdFechaLarga(fecha))}</p>
+            <div class="rd-modal-lista">${items.map(rdChipHtml).join('') || '<p class="cd-muted">Nada este día.</p>'}</div>
+            <div class="cd-entrega-acciones">
+                ${fecha >= _rdHoy() ? `<button type="button" class="section-action-btn primary" data-rd-m="nueva">✍️ Nueva publicación</button>` : ''}
+                <button type="button" class="cd-btn" data-rd-m="cerrar">Cerrar</button>
+            </div>
+        </div>`;
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) { modal.remove(); return; }
+        const abrir = e.target.closest('[data-rd-abrir]');
+        if (abrir) { modal.remove(); rdAbrirPublicacion(abrir.dataset.rdAbrir); return; }
+        const m = e.target.closest('[data-rd-m]');
+        if (!m) return;
+        modal.remove();
+        if (m.dataset.rdM === 'nueva') rdNuevaPublicacion(fecha);
+    });
+    document.body.appendChild(modal);
+}
+
+// ── Editor ──────────────────────────────────────────────────────────────────
+function rdEdVacio(fecha = '') {
+    return { id: null, tipo: 'foto', estado: 'borrador', caption: '', hashtags: '', altText: '', fecha: fecha || '', hora: '19:00', imagenes: [], imgToken: '', error: '', actualizadoAtMs: 0, ocupado: false };
+}
+
+function rdEdDesdePost(p) {
+    const ms = rdMomentoDe(p);
+    return {
+        id: p.id, tipo: p.tipo, estado: p.estado, caption: p.caption || '', hashtags: (p.hashtags || []).map((h) => `#${h}`).join(' '), altText: p.altText || '',
+        fecha: ms ? rdFechaDeMs(ms) : '', hora: ms ? rdHoraDeMs(ms) : '19:00', imagenes: (p.imagenes || []).map((i) => ({ ...i })),
+        imgToken: p.imgToken || '', error: p.error || '', actualizadoAtMs: p.actualizadoAtMs || 0, ocupado: false, mediaId: p.mediaId || ''
+    };
+}
+
+function rdNuevaPublicacion(fecha) {
+    rdState.ed = rdEdVacio(fecha);
+    rdState.tab = 'crear';
+    rdPintarTabs();
+    rdRender();
+}
+
+function rdAbrirPublicacion(id) {
+    const p = rdState.posts.find((x) => x.id === id);
+    if (!p) return;
+    rdState.ed = rdEdDesdePost(p);
+    rdState.tab = 'crear';
+    rdPintarTabs();
+    rdRender();
+}
+
+function rdUrlImagen(ed, im) {
+    return `${RD_IMG_URL}?id=post_${ed.id}_${im.slot}&t=${ed.imgToken}&v=${ed.actualizadoAtMs || 0}-${im.size || 0}`;
+}
+
+function rdEditable(ed) {
+    return !['publicada', 'publicando'].includes(ed.estado);
+}
+
+function rdPhoneHtml(ed) {
+    const resumen = rdTextoFinal(ed.caption, ed.hashtags);
+    const corto = resumen.length > 140 ? `${resumen.slice(0, 140).trim()}… más` : resumen;
+    const principal = ed.imagenes[0];
+    const html = escapeHtml(corto).replace(/#[\p{L}\p{N}_]+/gu, (m) => `<span class="rd-ht">${m}</span>`);
+    return `
+        <div class="rd-phone" aria-label="Vista previa">
+            <div class="rd-phone-head"><img src="isotipo.png" alt=""><strong>roalburger</strong></div>
+            <div class="rd-phone-img">${principal && ed.id ? `<img src="${escapeHtml(rdUrlImagen(ed, principal))}" alt="">` : '<span class="cd-muted">Sin imagen</span>'}${ed.tipo === 'carrusel' && ed.imagenes.length > 1 ? `<span class="rd-phone-count">1/${ed.imagenes.length}</span>` : ''}</div>
+            ${ed.tipo === 'carrusel' && ed.imagenes.length > 1 ? `<div class="rd-phone-dots">${ed.imagenes.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>` : ''}
+            <div class="rd-phone-acc">♡ 💬 ✈️</div>
+            <p class="rd-phone-cap"><strong>roalburger</strong> ${html || '<span class="cd-muted">Tu texto aparecerá aquí…</span>'}</p>
+        </div>`;
+}
+
+function rdAtajosFecha() {
+    const hoy = _rdHoy();
+    return [
+        { etiqueta: 'Hoy 7:00 p. m.', fecha: hoy, hora: '19:00' },
+        { etiqueta: 'Mañana 12:00 m.', fecha: rdSumarDias(hoy, 1), hora: '12:00' },
+        { etiqueta: 'Mañana 7:00 p. m.', fecha: rdSumarDias(hoy, 1), hora: '19:00' }
+    ];
+}
+
+function rdHashtagsFrecuentes() {
+    const cuenta = new Map();
+    for (const p of rdState.posts) for (const h of p.hashtags || []) cuenta.set(h, (cuenta.get(h) || 0) + 1);
+    const usados = [...cuenta.entries()].sort((a, b) => b[1] - a[1]).map(([h]) => h);
+    return [...new Set([...usados, ...RD_HASHTAGS_BASE])].slice(0, 16);
+}
+
+function rdRenderEditor(body) {
+    if (!rdState.ed) rdState.ed = rdEdVacio('');
+    const ed = rdState.ed;
+    const editable = rdEditable(ed);
+    const est = RD_ESTADOS[ed.estado] || RD_ESTADOS.borrador;
+    const maxImg = ed.tipo === 'foto' ? 1 : 10;
+    body.innerHTML = `
+        ${rdAvisosHtml()}
+        <div class="rd-editor">
+            <div class="rd-form">
+                <div class="rd-fila-titulo">
+                    <h3>${ed.id ? 'Editar publicación' : 'Nueva publicación'}</h3>
+                    <span class="rd-chip rd-chip--${escapeHtml(ed.estado)}">${est.icono} ${est.etiqueta}</span>
+                </div>
+                ${ed.error ? `<p class="cd-aviso">⚠️ ${escapeHtml(ed.error)}</p>` : ''}
+                ${!editable ? '<p class="cd-aviso">Esta publicación ya salió. Instagram no permite editarla por API: se edita o se borra desde la app.</p>' : ''}
+
+                <div class="rd-campo">
+                    <span class="rd-label">Tipo</span>
+                    <div class="rd-vista" role="group">
+                        <button type="button" class="cd-btn${ed.tipo === 'foto' ? ' is-on' : ''}" data-rd-tipo="foto" ${editable ? '' : 'disabled'}>📷 Foto</button>
+                        <button type="button" class="cd-btn${ed.tipo === 'carrusel' ? ' is-on' : ''}" data-rd-tipo="carrusel" ${editable ? '' : 'disabled'}>🎠 Carrusel (hasta 10)</button>
+                    </div>
+                </div>
+
+                <div class="rd-campo">
+                    <span class="rd-label">Imágenes <span class="cd-muted">(${ed.imagenes.length}/${maxImg}) · Instagram acepta de 4:5 a 1,91:1; se recorta sola si hace falta</span></span>
+                    <div class="rd-imgs">
+                        ${ed.imagenes.map((im, i) => `
+                            <figure class="rd-img">
+                                <img src="${escapeHtml(rdUrlImagen(ed, im))}" alt="Imagen ${i + 1}">
+                                <figcaption>${i + 1}</figcaption>
+                                ${editable ? `<div class="rd-img-acc">
+                                    <button type="button" data-rd-img-mover="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} title="Mover antes" aria-label="Mover antes">◀</button>
+                                    <button type="button" data-rd-img-mover="${i}" data-dir="1" ${i === ed.imagenes.length - 1 ? 'disabled' : ''} title="Mover después" aria-label="Mover después">▶</button>
+                                    <button type="button" data-rd-img-quitar="${im.slot}" title="Quitar" aria-label="Quitar">✕</button>
+                                </div>` : ''}
+                            </figure>`).join('')}
+                        ${editable && ed.imagenes.length < maxImg ? `
+                            <div class="rd-img rd-img--add">
+                                <label class="cd-btn rd-subir">⬆ Subir<input type="file" id="rdArchivo" accept="image/*" ${ed.tipo === 'carrusel' ? 'multiple' : ''} hidden></label>
+                                <button type="button" class="cd-btn" data-rd-catalogo>🍔 Del catálogo</button>
+                            </div>` : ''}
+                    </div>
+                    ${ed.ocupado ? '<p class="cd-muted" role="status">⏳ Procesando imágenes…</p>' : ''}
+                </div>
+
+                <label class="rd-campo">
+                    <span class="rd-label">Texto de la publicación <span class="cd-muted" id="rdContadorTexto"></span></span>
+                    <textarea id="rdCaption" rows="6" maxlength="2200" placeholder="Escribe el texto: puedes usar emojis y @menciones…" ${editable ? '' : 'disabled'}>${escapeHtml(ed.caption)}</textarea>
+                </label>
+
+                <div class="rd-campo">
+                    <label class="rd-label" for="rdHashtags">Hashtags <span class="cd-muted" id="rdContadorHash"></span></label>
+                    <textarea id="rdHashtags" rows="2" placeholder="#roalburger #armenia …" ${editable ? '' : 'disabled'}>${escapeHtml(ed.hashtags)}</textarea>
+                    ${editable ? `<div class="rd-tags">${rdHashtagsFrecuentes().map((h) => `<button type="button" class="rd-tag" data-rd-tag="${escapeHtml(h)}">#${escapeHtml(h)}</button>`).join('')}</div>` : ''}
+                </div>
+
+                <label class="rd-campo">
+                    <span class="rd-label">Texto alternativo <span class="cd-muted">(opcional, describe la imagen para personas con baja visión)</span></span>
+                    <input type="text" id="rdAlt" maxlength="1000" value="${escapeHtml(ed.altText)}" ${editable ? '' : 'disabled'}>
+                </label>
+
+                <div class="rd-campo">
+                    <span class="rd-label">Cuándo se publica <span class="cd-muted">(hora de Colombia)</span></span>
+                    <div class="rd-cuando">
+                        <input type="date" id="rdFecha" value="${escapeHtml(ed.fecha)}" min="${_rdHoy()}" ${editable ? '' : 'disabled'}>
+                        <input type="time" id="rdHora" value="${escapeHtml(ed.hora)}" ${editable ? '' : 'disabled'}>
+                        ${editable ? rdAtajosFecha().map((a, i) => `<button type="button" class="cd-btn" data-rd-atajo="${i}">${escapeHtml(a.etiqueta)}</button>`).join('') : ''}
+                    </div>
+                </div>
+
+                <div class="rd-acciones">
+                    ${editable ? `
+                        <button type="button" class="cd-btn" data-rd-a="guardar">💾 Guardar borrador</button>
+                        <button type="button" class="section-action-btn primary" data-rd-a="programar">🗓️ Programar</button>
+                        <button type="button" class="cd-btn" data-rd-a="ahora">🚀 Publicar ahora</button>` : ''}
+                    ${ed.id && ed.estado === 'programada' ? '<button type="button" class="cd-btn" data-rd-a="desprogramar">↩ Volver a borrador</button>' : ''}
+                    ${ed.id ? '<button type="button" class="cd-btn" data-rd-a="duplicar">📋 Duplicar</button>' : ''}
+                    ${ed.id && editable && ed.estado !== 'cancelada' && ed.estado !== 'borrador' ? '<button type="button" class="cd-btn" data-rd-a="cancelar">🚫 Cancelar</button>' : ''}
+                    ${ed.id && ['borrador', 'cancelada', 'error'].includes(ed.estado) ? '<button type="button" class="cd-btn rd-peligro" data-rd-a="borrar">🗑️ Borrar</button>' : ''}
+                    <button type="button" class="cd-btn" data-rd-a="volver">← Volver al calendario</button>
+                </div>
+            </div>
+            <aside class="rd-preview">${rdPhoneHtml(ed)}</aside>
+        </div>`;
+    rdBindEditor(body);
+    rdActualizarContadores(body);
+}
+
+function rdActualizarContadores(body) {
+    const ed = rdState.ed;
+    const r = rdResumenTexto(ed.caption, ed.hashtags);
+    const t = body.querySelector('#rdContadorTexto');
+    const h = body.querySelector('#rdContadorHash');
+    if (t) { t.textContent = `${r.caracteres}/2200`; t.classList.toggle('rd-malo', r.caracteres > 2200); }
+    if (h) { h.textContent = `${r.hashtags}/30`; h.classList.toggle('rd-malo', r.hashtags > 30); }
+}
+
+// Lee el formulario a rdState.ed.
+function rdLeerFormulario(body) {
+    const ed = rdState.ed;
+    const v = (id) => body.querySelector(id)?.value;
+    if (v('#rdCaption') !== undefined) ed.caption = v('#rdCaption');
+    if (v('#rdHashtags') !== undefined) ed.hashtags = v('#rdHashtags');
+    if (v('#rdAlt') !== undefined) ed.altText = v('#rdAlt');
+    if (v('#rdFecha') !== undefined) ed.fecha = v('#rdFecha');
+    if (v('#rdHora') !== undefined) ed.hora = v('#rdHora');
+}
+
+// Crea el borrador si aún no existe (hace falta un id para subir imágenes) o guarda los campos.
+async function rdGuardarCampos(body) {
+    rdLeerFormulario(body);
+    const ed = rdState.ed;
+    const r = rdResumenTexto(ed.caption, ed.hashtags);
+    if (r.errores.length) throw new Error(r.errores[0]);
+    const post = { tipo: ed.tipo, caption: ed.caption, hashtags: rdNormalizarHashtags(ed.hashtags), altText: ed.altText };
+    const res = await rdLlamar('guardar', { post: ed.id ? { id: ed.id, ...post } : post });
+    ed.id = res.id;
+    return res.id;
+}
+
+async function rdRecargarEd() {
+    const snap = await firebaseDb.collection('instagram_posts').doc(rdState.ed.id).get();
+    if (snap.exists) {
+        const fresco = { id: snap.id, ...snap.data() };
+        const i = rdState.posts.findIndex((p) => p.id === fresco.id);
+        if (i >= 0) rdState.posts[i] = fresco; else rdState.posts.unshift(fresco);
+        const fecha = rdState.ed.fecha;
+        const hora = rdState.ed.hora;
+        rdState.ed = rdEdDesdePost(fresco);
+        if (!rdMomentoDe(fresco)) { rdState.ed.fecha = fecha; rdState.ed.hora = hora; }
+    }
+}
+
+function rdCargarImagen(fuente) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        let url = null;
+        img.onload = () => { if (url) URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = () => { if (url) URL.revokeObjectURL(url); reject(new Error('No se pudo abrir la imagen')); };
+        if (typeof fuente === 'string') { img.crossOrigin = 'anonymous'; img.src = fuente; }
+        else { url = URL.createObjectURL(fuente); img.src = url; }
+    });
+}
+
+// File o URL → JPEG (≤ 880 KB) recortado a lo que acepta Instagram, en base64.
+async function rdPrepararImagen(fuente) {
+    const img = await rdCargarImagen(fuente);
+    const rec = rdRecorte(img.naturalWidth, img.naturalHeight);
+    const ancho = Math.min(1080, rec.sw);
+    const alto = Math.round(ancho * rec.sh / rec.sw);
+    if (ancho < 320) throw new Error('La imagen es muy pequeña (mínimo 320 px de ancho).');
+    const canvas = document.createElement('canvas');
+    canvas.width = ancho;
+    canvas.height = alto;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, ancho, alto);
+    ctx.drawImage(img, rec.sx, rec.sy, rec.sw, rec.sh, 0, 0, ancho, alto);
+    for (const calidad of [0.9, 0.82, 0.74, 0.66, 0.56]) {
+        const blob = await _cdCanvasABlob(canvas, 'image/jpeg', calidad);
+        if (blob.size <= 880 * 1024) return _cdBlobABase64(blob);
+    }
+    throw new Error('La imagen pesa demasiado incluso comprimida.');
+}
+
+async function rdAgregarImagenes(body, fuentes) {
+    const ed = rdState.ed;
+    const maxImg = ed.tipo === 'foto' ? 1 : 10;
+    const caben = Math.max(0, maxImg - ed.imagenes.length);
+    if (!caben) { showNotice(ed.tipo === 'foto' ? 'Una foto lleva una sola imagen: quítala o cambia a carrusel.' : 'Máximo 10 imágenes.', 'error'); return; }
+    ed.ocupado = true;
+    rdRenderEditor(body);
+    let subidas = 0;
+    try {
+        await rdGuardarCampos(body);
+        for (const f of fuentes.slice(0, caben)) {
+            const imagenBase64 = await rdPrepararImagen(f);
+            await rdLlamar('subirImagen', { id: ed.id, imagenBase64 });
+            subidas += 1;
+        }
+        if (fuentes.length > caben) showNotice(`Solo cabían ${caben} imagen(es); el resto se ignoró.`, 'ok');
+    } catch (err) {
+        showNotice(err.message || 'No se pudo subir la imagen.', 'error');
+    } finally {
+        if (ed.id) await rdRecargarEd().catch(() => {});
+        rdState.ed.ocupado = false;
+        rdRenderEditor(body);
+    }
+    return subidas;
+}
+
+function rdAbrirCatalogo(body) {
+    document.getElementById('rdCatalogoModal')?.remove();
+    const productos = productsState.filter((p) => String(p.image_url || '').trim());
+    const modal = document.createElement('div');
+    modal.id = 'rdCatalogoModal';
+    modal.className = 'cd-entrega-modal';
+    const pintar = (q) => {
+        const t = String(q || '').trim().toLowerCase();
+        const lista = productos.filter((p) => !t || `${p.nombre} ${p.categoria}`.toLowerCase().includes(t)).slice(0, 60);
+        return lista.map((p) => `<button type="button" class="rd-prod" data-rd-prod="${escapeHtml(p.id)}" title="${escapeHtml(p.nombre)}"><img src="${escapeHtml(p.image_url)}" alt="" loading="lazy"><span>${escapeHtml(p.nombre)}</span></button>`).join('') || '<p class="cd-muted">Sin resultados.</p>';
+    };
+    modal.innerHTML = `
+        <div class="cd-entrega-box rd-catalogo" role="dialog" aria-modal="true" aria-label="Elegir producto">
+            <p class="cd-entrega-titulo">Elige un producto del menú</p>
+            <input type="search" id="rdBuscarProd" class="rd-buscar" placeholder="Buscar por nombre o categoría…" autocomplete="off">
+            <div class="rd-prods" id="rdProds">${pintar('')}</div>
+            <div class="cd-entrega-acciones"><button type="button" class="cd-btn" data-rd-cat="cerrar">Cerrar</button></div>
+        </div>`;
+    modal.addEventListener('input', (e) => { if (e.target.id === 'rdBuscarProd') modal.querySelector('#rdProds').innerHTML = pintar(e.target.value); });
+    modal.addEventListener('click', async (e) => {
+        if (e.target === modal || e.target.closest('[data-rd-cat="cerrar"]')) { modal.remove(); return; }
+        const b = e.target.closest('[data-rd-prod]');
+        if (!b) return;
+        const p = productsState.find((x) => x.id === b.dataset.rdProd);
+        modal.remove();
+        if (p) await rdAgregarImagenes(body, [p.image_url]);
+    });
+    document.body.appendChild(modal);
+    modal.querySelector('#rdBuscarProd')?.focus();
+}
+
+function rdBindEditor(body) {
+    const ed = rdState.ed;
+    const refrescar = () => { rdLeerFormulario(body); const ph = body.querySelector('.rd-preview'); if (ph) ph.innerHTML = rdPhoneHtml(ed); rdActualizarContadores(body); };
+    ['#rdCaption', '#rdHashtags', '#rdAlt'].forEach((s) => body.querySelector(s)?.addEventListener('input', refrescar));
+    body.querySelectorAll('[data-rd-tag]').forEach((b) => b.addEventListener('click', () => {
+        const area = body.querySelector('#rdHashtags');
+        const actuales = rdNormalizarHashtags(area.value);
+        if (actuales.some((h) => h.toLowerCase() === b.dataset.rdTag.toLowerCase())) return;
+        area.value = [...actuales.map((h) => `#${h}`), `#${b.dataset.rdTag}`].join(' ');
+        refrescar();
+    }));
+    body.querySelectorAll('[data-rd-atajo]').forEach((b) => b.addEventListener('click', () => {
+        const a = rdAtajosFecha()[Number(b.dataset.rdAtajo)];
+        body.querySelector('#rdFecha').value = a.fecha;
+        body.querySelector('#rdHora').value = a.hora;
+        rdLeerFormulario(body);
+    }));
+    body.querySelectorAll('[data-rd-tipo]').forEach((b) => b.addEventListener('click', async () => {
+        rdLeerFormulario(body);
+        const nuevo = b.dataset.rdTipo;
+        if (nuevo === ed.tipo) return;
+        if (nuevo === 'foto' && ed.imagenes.length > 1) { showNotice('Para cambiar a foto deja una sola imagen.', 'error'); return; }
+        ed.tipo = nuevo;
+        if (ed.id) { try { await rdGuardarCampos(body); await rdRecargarEd(); } catch (err) { showNotice(err.message, 'error'); } }
+        rdRenderEditor(body);
+    }));
+    body.querySelector('#rdArchivo')?.addEventListener('change', (e) => {
+        const archivos = [...e.target.files];
+        e.target.value = '';
+        if (archivos.length) rdAgregarImagenes(body, archivos);
+    });
+    body.querySelector('[data-rd-catalogo]')?.addEventListener('click', () => rdAbrirCatalogo(body));
+    body.querySelectorAll('[data-rd-img-quitar]').forEach((b) => b.addEventListener('click', async () => {
+        try { await rdLlamar('quitarImagen', { id: ed.id, slot: Number(b.dataset.rdImgQuitar) }); await rdRecargarEd(); } catch (err) { showNotice(err.message, 'error'); }
+        rdRenderEditor(body);
+    }));
+    body.querySelectorAll('[data-rd-img-mover]').forEach((b) => b.addEventListener('click', async () => {
+        const i = Number(b.dataset.rdImgMover);
+        const j = i + Number(b.dataset.dir);
+        const orden = ed.imagenes.map((im) => im.slot);
+        [orden[i], orden[j]] = [orden[j], orden[i]];
+        try { await rdLlamar('ordenar', { id: ed.id, orden }); await rdRecargarEd(); } catch (err) { showNotice(err.message, 'error'); }
+        rdRenderEditor(body);
+    }));
+    body.querySelectorAll('[data-rd-a]').forEach((b) => b.addEventListener('click', () => rdAccion(body, b)));
+}
+
+async function rdAccion(body, btn) {
+    const ed = rdState.ed;
+    const a = btn.dataset.rdA;
+    if (a === 'volver') { rdState.tab = 'calendario'; rdPintarTabs(); await rdCargar().catch(() => {}); rdRender(); return; }
+    const etiqueta = btn.textContent;
+    btn.disabled = true;
+    try {
+        if (a === 'guardar') {
+            await rdGuardarCampos(body);
+            await rdRecargarEd();
+            showNotice('Borrador guardado.', 'ok');
+        } else if (a === 'programar' || a === 'ahora') {
+            const id = await rdGuardarCampos(body);
+            if (a === 'programar') {
+                const ms = rdMsDeFechaHora(ed.fecha, ed.hora);
+                if (!Number.isFinite(ms)) throw new Error('Elige la fecha y la hora.');
+                if (ms < Date.now() + 60 * 1000) throw new Error('Elige una fecha y hora futuras.');
+                const r = await rdLlamar('programar', { id, programadaAtMs: ms });
+                await rdRecargarEd();
+                const ig = rdState.ig;
+                showNotice(`Programada para el ${_cdFechaLarga(rdFechaDeMs(r.programadaAtMs))} a las ${rdHora12(rdHoraDeMs(r.programadaAtMs))}.${ig && !ig.activo ? ' Ojo: la publicación automática está APAGADA.' : ''}`, ig && !ig.activo ? 'error' : 'ok');
+            } else {
+                if (!window.confirm(`¿Publicar AHORA en @${rdState.ig?.username || 'roalburger'}? La verán tus seguidores.`)) { btn.disabled = false; return; }
+                btn.textContent = 'Publicando…';
+                const r = await rdLlamar('publicarAhora', { id });
+                await rdRecargarEd();
+                if (r.ok) showNotice(r.ya ? 'Esa publicación ya estaba publicada.' : '✅ Publicada en Instagram.', 'ok');
+                else showNotice(`No se publicó: ${r.error || r.motivo}`, 'error');
+            }
+        } else if (a === 'desprogramar') {
+            await rdLlamar('desprogramar', { id: ed.id });
+            await rdRecargarEd();
+        } else if (a === 'cancelar') {
+            if (!window.confirm('¿Cancelar esta publicación? No saldrá.')) { btn.disabled = false; return; }
+            await rdLlamar('cancelar', { id: ed.id });
+            await rdRecargarEd();
+        } else if (a === 'duplicar') {
+            const r = await rdLlamar('duplicar', { id: ed.id });
+            const snap = await firebaseDb.collection('instagram_posts').doc(r.id).get();
+            rdState.posts.unshift({ id: snap.id, ...snap.data() });
+            rdState.ed = rdEdDesdePost({ id: snap.id, ...snap.data() });
+            showNotice('Duplicada como borrador.', 'ok');
+        } else if (a === 'borrar') {
+            if (!window.confirm('¿Borrar esta publicación y sus imágenes? No se puede deshacer.')) { btn.disabled = false; return; }
+            await rdLlamar('borrar', { id: ed.id });
+            rdState.posts = rdState.posts.filter((p) => p.id !== ed.id);
+            rdState.ed = null;
+            rdState.tab = 'calendario';
+            rdPintarTabs();
+            showNotice('Publicación borrada.', 'ok');
+        }
+    } catch (err) {
+        showNotice(err.message || 'No se pudo completar.', 'error');
+        btn.textContent = etiqueta;
+        btn.disabled = false;
+        if (rdState.ed?.id) { await rdRecargarEd().catch(() => {}); }
+    }
+    rdRender();
 }

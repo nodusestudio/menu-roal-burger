@@ -34,6 +34,8 @@ const PRUEBA_ID = 'prueba'; // en lugar de una fecha: la historia de prueba del 
 const PUBLICACIONES_COLLECTION = 'instagram_publicaciones'; // bitácora: cuándo se publicó (o falló) qué
 const METRICAS_COLLECTION = 'instagram_metricas';           // métricas por historia (Instagram solo las da 24 h)
 const SEGUIDORES_COLLECTION = 'instagram_seguidores';       // seguidores por día
+const POSTS_COLLECTION = 'instagram_posts';             // publicaciones normales (foto / carrusel), ver instagramPosts.js
+const POSTS_IMG_COLLECTION = 'instagram_posts_img';     // bytes JPEG de esas publicaciones (nadie los lee)
 const HORA_MS = 60 * 60 * 1000;
 const METRICAS_VIGENCIA_MS = 24 * HORA_MS; // una historia dura 24 h y sus métricas también
 const MAX_JPEG_BYTES = 900 * 1024; // un doc de Firestore admite 1 MiB
@@ -291,6 +293,15 @@ async function guardarHistoria(db, { fecha, tipo, jpeg, huella }, uid, { nowMs =
 
 // Función HTTPS pública: Meta descarga la imagen con esta URL. El token impide adivinarla.
 async function servirImagen(db, id, token) {
+    const post = /^post_([A-Za-z0-9]{8,40})_(\d{1,2})$/.exec(String(id || ''));
+    if (post) {
+        const dato = (await db.collection(POSTS_COLLECTION).doc(post[1]).get()).data();
+        const esperadoP = Buffer.from(String(dato?.imgToken || ''));
+        const recibidoP = Buffer.from(String(token || ''));
+        if (!esperadoP.length || esperadoP.length !== recibidoP.length || !crypto.timingSafeEqual(esperadoP, recibidoP)) return { status: 404 };
+        const imgP = (await db.collection(POSTS_IMG_COLLECTION).doc(`${post[1]}_${post[2]}`).get()).data();
+        return imgP?.bytes ? { status: 200, buffer: Buffer.from(imgP.bytes) } : { status: 404 };
+    }
     const m = /^(\d{4}-\d{2}-\d{2}|prueba)_(normal|agotado)$/.exec(String(id || ''));
     if (!m) return { status: 404 };
     const status = (await db.collection(HISTORIAS_COLLECTION).doc(m[1]).get()).data();
@@ -462,11 +473,12 @@ async function publicarHistoriaDeHoy(db, opts = {}) {
 // ── Bitácora y métricas ──────────────────────────────────────────────────────
 
 // Cada intento de publicar (bien o mal) queda anotado: cuándo, qué, de dónde salió y el resultado.
-async function registrarPublicacion(db, { fecha, tipo, origen, ok, mediaId = '', error = '', palabra = '', productoNombre = '', nowMs = Date.now() }) {
+async function registrarPublicacion(db, { fecha, tipo, origen, ok, mediaId = '', error = '', palabra = '', productoNombre = '', postId = '', resumen = '', nowMs = Date.now() }) {
     try {
         await db.collection(PUBLICACIONES_COLLECTION).add({
             atMs: nowMs, at: Timestamp.fromMillis(nowMs), fecha, tipo, origen: origen || 'automatica', ok: ok === true,
-            mediaId: String(mediaId || ''), error: String(error || '').slice(0, 300), palabra, productoNombre
+            mediaId: String(mediaId || ''), error: String(error || '').slice(0, 300), palabra, productoNombre,
+            postId: String(postId || ''), resumen: String(resumen || '').slice(0, 120)
         });
     } catch (err) {
         console.error('registrarPublicacion:', err.message); // la bitácora nunca debe tumbar una publicación
@@ -620,5 +632,14 @@ module.exports = {
     METRICAS_VIGENCIA_MS,
     actualizarMetricas,
     leerInsightsHistoria,
+    llamarGraph,
+    leerConexion,
+    conexionRef,
+    registrarPublicacion,
+    esperar,
+    GRAPH_URL,
+    GRAPH_VERSION,
+    POSTS_COLLECTION,
+    POSTS_IMG_COLLECTION,
     vistaEstado
 };

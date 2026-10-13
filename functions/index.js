@@ -3041,3 +3041,46 @@ exports.publicarAgotadoPorHorario = onSchedule(
         }
     }
 );
+
+// ─────────────────────────────────────────────────────────────
+// PUBLICACIONES NORMALES DE INSTAGRAM (foto / carrusel) desde FODEXA → pestaña "Redes". Lógica en
+// instagramPosts.js; aquí solo auth y wrappers. Las imágenes se suben una por llamada (JPEG base64).
+// ─────────────────────────────────────────────────────────────
+const instagramPosts = require('./instagramPosts');
+
+exports.adminInstagramPosts = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '512MiB', timeoutSeconds: 180 },
+    async (request) => {
+        const db = getFirestore();
+        const uid = await cuponPana.ensureAdmin(db, request);
+        const d = request.data || {};
+        const accion = String(d.accion || '');
+        if (accion === 'guardar') return instagramPosts.guardarPost(db, d.post, uid);
+        if (accion === 'subirImagen') {
+            const base64 = String(d.imagenBase64 || '').replace(/^data:image\/jpeg;base64,/, '');
+            return instagramPosts.guardarImagen(db, { id: d.id, jpeg: Buffer.from(base64, 'base64'), reemplazaSlot: d.reemplazaSlot ?? null }, uid);
+        }
+        if (accion === 'quitarImagen') return instagramPosts.quitarImagen(db, { id: d.id, slot: d.slot }, uid);
+        if (accion === 'ordenar') return instagramPosts.ordenarImagenes(db, { id: d.id, orden: d.orden }, uid);
+        if (accion === 'programar') return instagramPosts.programarPost(db, { id: d.id, programadaAtMs: d.programadaAtMs }, uid);
+        if (accion === 'desprogramar') return instagramPosts.desprogramarPost(db, { id: d.id }, uid);
+        if (accion === 'cancelar') return instagramPosts.cancelarPost(db, { id: d.id }, uid);
+        if (accion === 'borrar') return instagramPosts.borrarPost(db, { id: d.id });
+        if (accion === 'duplicar') return instagramPosts.duplicarPost(db, { id: d.id }, uid);
+        if (accion === 'publicarAhora') return instagramPosts.publicarPost(db, { id: String(d.id || ''), baseUrl: historiaImagenBaseUrl(), manual: true });
+        throw new HttpsError('invalid-argument', 'Acción desconocida.');
+    }
+);
+
+// Cada 5 min: publica las publicaciones programadas cuya hora ya llegó.
+exports.publicarPostsProgramados = onSchedule(
+    { schedule: '*/5 * * * *', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
+    async () => {
+        try {
+            const r = await instagramPosts.publicarProgramados(getFirestore(), { baseUrl: historiaImagenBaseUrl() });
+            if (r.revisadas) console.log(`publicarPostsProgramados: ${JSON.stringify(r)}`);
+        } catch (err) {
+            console.error('publicarPostsProgramados:', err.message);
+        }
+    }
+);

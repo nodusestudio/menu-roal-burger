@@ -454,7 +454,7 @@ test('bitácora: el botón manual figura como "manual", un fallo de Meta queda c
     await prepararHistoria(LUNES, 'normal', HUELLA_NORMAL);
     const malo = metaFalso({ fallas: [{ ruta: /\/media$/, status: 500, error: { message: 'Servicio no disponible', code: 2 }, veces: 1 }] });
     await ig.publicarHistoria(db, opPub(malo, { manual: true }));
-    await ig.publicarHistoria(db, opPub(metaFalso(), { manual: true }));
+    await ig.publicarHistoria(db, opPub(metaFalso(), { manual: true, nowMs: AHORA + 500 })); // otro instante: la bitácora se ordena por hora
     await ig.publicarPrueba(db, { jpeg: jpeg(), nowMs: AHORA + 1000, fetchFn: metaFalso().fetchFn, baseUrl: BASE_URL, sleep: sinEspera });
     const b = await bitacora();
     assert.deepEqual(b.map((x) => [x.tipo, x.origen, x.ok]), [['normal', 'manual', false], ['normal', 'manual', true], ['prueba', 'manual', true]]);

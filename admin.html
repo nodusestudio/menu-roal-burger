@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261012-2035">
+    <link rel="stylesheet" href="style.css?v=20261012-2108">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -5285,6 +5285,94 @@
         .cd-hist-msg { margin-top: 3px; font-size: 0.7rem; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .cd-auto-estado { flex: 1 1 auto; }
         .cd-que { min-width: 190px; }
+        /* ── Redes: calendario y editor de publicaciones de Instagram ── */
+        .rd-panel { display: grid; gap: 14px; min-width: 0; }
+        .rd-panel[hidden] { display: none !important; }
+        .rd-panel > * { min-width: 0; max-width: 100%; }
+        .rd-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .rd-nav, .rd-vista { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .rd-titulo { font-family: 'Oswald', sans-serif; font-size: 1.15rem; color: #fff; min-width: 150px; text-align: center; letter-spacing: 0.02em; }
+        .rd-vista .cd-btn.is-on, .rd-nav .cd-btn.is-on { background: var(--admin-accent-soft); border-color: rgba(255,123,69,0.55); color: #fff; }
+        .rd-leyenda { display: flex; gap: 6px; flex-wrap: wrap; }
+        .rd-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+        .rd-dow { text-align: center; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--admin-muted); padding: 2px 0; }
+        .rd-day { min-height: 104px; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 12px; background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.08); min-width: 0; }
+        .rd-cal--semana .rd-day { min-height: 260px; }
+        .rd-day.is-fuera { opacity: 0.45; }
+        .rd-day.is-pasado:not(.is-fuera) { background: rgba(255,255,255,0.02); }
+        .rd-day.is-hoy { border-color: rgba(255,123,69,0.7); box-shadow: inset 0 0 0 1px rgba(255,123,69,0.35); background: rgba(255,123,69,0.07); }
+        .rd-day-top { display: flex; justify-content: space-between; align-items: center; }
+        .rd-day-num { font-family: 'Oswald', sans-serif; font-size: 0.95rem; color: #eef4ff; }
+        .rd-day.is-hoy .rd-day-num { color: #ffb48f; }
+        .rd-day-add { width: 22px; height: 22px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.18); background: transparent; color: var(--admin-muted); cursor: pointer; line-height: 1; opacity: 0.5; }
+        .rd-day:hover .rd-day-add, .rd-day-add:focus-visible { opacity: 1; border-color: rgba(255,123,69,0.6); color: #ffb48f; }
+        .rd-day-chips { display: grid; gap: 3px; align-content: start; min-width: 0; }
+        .rd-chip { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding: 3px 7px; border-radius: 8px; font-size: 0.7rem; font-family: 'Roboto', sans-serif; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: #eef4ff; }
+        button.rd-chip { cursor: pointer; }
+        button.rd-chip:hover { filter: brightness(1.25); }
+        .rd-leyenda .rd-chip { display: inline-block; }
+        .rd-chip--programada { background: rgba(96,165,250,0.14); border-color: rgba(96,165,250,0.45); color: #bfdbfe; }
+        .rd-chip--publicada { background: rgba(74,222,128,0.12); border-color: rgba(74,222,128,0.4); color: #bbf7d0; }
+        .rd-chip--borrador { background: rgba(255,255,255,0.06); color: var(--admin-muted); border-style: dashed; }
+        .rd-chip--publicando { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.4); color: #fde68a; }
+        .rd-chip--error { background: rgba(248,113,113,0.13); border-color: rgba(248,113,113,0.5); color: #fecaca; }
+        .rd-chip--cancelada { opacity: 0.5; text-decoration: line-through; }
+        .rd-chip--historia { background: rgba(255,123,69,0.1); border-color: rgba(255,123,69,0.35); color: #ffd9c4; }
+        .rd-mas { background: none; border: 0; color: var(--admin-muted); font-size: 0.7rem; cursor: pointer; text-align: left; padding: 0 4px; }
+        .rd-listas { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+        .rd-lista { display: grid; gap: 6px; align-content: start; padding: 12px; border-radius: 14px; background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.08); }
+        .rd-lista h4 { margin: 0 0 2px; font-family: 'Oswald', sans-serif; font-size: 0.95rem; color: #fff; }
+        .rd-fila { display: grid; gap: 1px; text-align: left; padding: 7px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: #eef4ff; cursor: pointer; font-family: 'Roboto', sans-serif; font-size: 0.8rem; }
+        .rd-fila:hover { border-color: rgba(255,123,69,0.5); background: var(--admin-accent-soft); }
+        .rd-modal-lista { display: grid; gap: 5px; }
+        .rd-modal-lista .rd-chip { font-size: 0.8rem; padding: 6px 10px; }
+        .rd-editor { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+        .rd-form { display: grid; gap: 14px; min-width: 0; }
+        .rd-fila-titulo { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .rd-fila-titulo h3 { margin: 0; font-family: 'Oswald', sans-serif; font-size: 1.2rem; color: #fff; }
+        .rd-campo { display: grid; gap: 6px; min-width: 0; }
+        .rd-label { font-size: 0.8rem; font-weight: 600; color: #eef4ff; }
+        .rd-form textarea, .rd-form input[type="text"], .rd-form input[type="date"], .rd-form input[type="time"], .rd-buscar {
+            width: 100%; box-sizing: border-box; border-radius: 12px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75); color: #fff; padding: 9px 11px; font-family: 'Roboto', sans-serif; font-size: 0.9rem; resize: vertical;
+        }
+        .rd-form textarea:focus, .rd-form input:focus, .rd-buscar:focus { outline: 2px solid rgba(255,123,69,0.55); outline-offset: 1px; }
+        .rd-malo { color: #f87171; font-weight: 700; }
+        .rd-cuando { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .rd-cuando input { width: auto !important; }
+        .rd-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+        .rd-tag { border-radius: 999px; padding: 3px 10px; font-size: 0.74rem; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); color: #ffd9c4; cursor: pointer; }
+        .rd-tag:hover { border-color: rgba(255,123,69,0.6); background: var(--admin-accent-soft); }
+        .rd-imgs { display: flex; flex-wrap: wrap; gap: 8px; }
+        .rd-img { position: relative; width: 108px; height: 108px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04); margin: 0; }
+        .rd-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .rd-img figcaption { position: absolute; left: 6px; top: 6px; background: rgba(0,0,0,0.65); border-radius: 999px; padding: 0 7px; font-size: 0.7rem; color: #fff; }
+        .rd-img-acc { position: absolute; inset: auto 0 0 0; display: flex; justify-content: center; gap: 3px; padding: 4px; background: linear-gradient(transparent, rgba(0,0,0,0.75)); }
+        .rd-img-acc button { width: 26px; height: 22px; border-radius: 7px; border: 0; background: rgba(255,255,255,0.18); color: #fff; cursor: pointer; font-size: 0.7rem; }
+        .rd-img-acc button:disabled { opacity: 0.3; cursor: default; }
+        .rd-img--add { display: grid; place-content: center; gap: 6px; border-style: dashed; padding: 6px; }
+        .rd-subir { display: inline-block; text-align: center; cursor: pointer; }
+        .rd-acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 4px; }
+        .rd-peligro { border-color: rgba(248,113,113,0.5) !important; color: #fca5a5 !important; }
+        .rd-preview { position: sticky; top: 12px; }
+        .rd-phone { border-radius: 26px; border: 1px solid rgba(255,255,255,0.16); background: #0b0d12; overflow: hidden; box-shadow: 0 14px 40px rgba(0,0,0,0.45); }
+        .rd-phone-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 0.82rem; color: #fff; }
+        .rd-phone-head img { width: 28px; height: 28px; border-radius: 999px; object-fit: cover; background: #222; }
+        .rd-phone-img { position: relative; aspect-ratio: 4 / 5; background: #14161d; display: grid; place-items: center; overflow: hidden; }
+        .rd-phone-img img { width: 100%; height: 100%; object-fit: cover; }
+        .rd-phone-count { position: absolute; right: 8px; top: 8px; background: rgba(0,0,0,0.65); border-radius: 999px; padding: 1px 8px; font-size: 0.7rem; color: #fff; }
+        .rd-phone-dots { display: flex; justify-content: center; gap: 4px; padding: 6px 0 0; }
+        .rd-phone-dots i { width: 6px; height: 6px; border-radius: 999px; background: rgba(255,255,255,0.3); }
+        .rd-phone-dots i.on { background: #4aa3ff; }
+        .rd-phone-acc { padding: 8px 12px 0; font-size: 1.05rem; letter-spacing: 0.15em; }
+        .rd-phone-cap { margin: 0; padding: 6px 12px 14px; font-size: 0.8rem; line-height: 1.4; color: #eef4ff; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .rd-ht { color: #7fb7ff; }
+        .rd-catalogo { width: min(720px, 100%); }
+        .rd-prods { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; max-height: 52vh; overflow: auto; padding: 2px; }
+        .rd-prod { display: grid; gap: 4px; text-align: center; padding: 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #eef4ff; cursor: pointer; font-size: 0.74rem; }
+        .rd-prod:hover { border-color: rgba(255,123,69,0.6); background: var(--admin-accent-soft); }
+        .rd-prod img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+        @media (max-width: 980px) { .rd-editor { grid-template-columns: minmax(0, 1fr); } .rd-preview { position: static; max-width: 340px; } }
+        @media (max-width: 640px) { .rd-day { min-height: 74px; padding: 4px; } .rd-chip { font-size: 0.62rem; padding: 2px 4px; } }
         .cd-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
         .cd-bar-mini { display: block; height: 4px; margin: 3px 0 0 auto; border-radius: 999px; background: var(--admin-accent); opacity: 0.8; }
         .cd-menu-lista { display: grid; gap: 6px; }
@@ -13667,6 +13755,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="finanzas"><span class="nav-icon">💰</span><span>Finanzas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="cuponpana"><span class="nav-icon">🎟️</span><span>Fuera del Menú</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="redes"><span class="nav-icon">📣</span><span>Redes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
         </nav>
 
@@ -15113,6 +15202,21 @@
 
             <!-- Fuera del Menú (internamente "cupón pana"): cupones semanales para seguidores de Instagram (landing /cupon).
                  Todo lo que se escribe aquí pasa por la Cloud Function guardarCampanaPana. -->
+            <div class="admin-tab-panel" data-tab-panel="redes">
+                <article class="admin-card rd-card">
+                    <div class="card-head">
+                        <h2>📣 Redes · Instagram</h2>
+                        <div class="cpana-tabs" role="tablist" id="rdTabs">
+                            <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-rd-tab="calendario">📅 Calendario</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="crear">✍️ Crear</button>
+                        </div>
+                    </div>
+                    <p class="admin-hint">Programa las publicaciones de @roalburger por día y hora. Las historias del Código del día salen solas (se ven en el calendario); aquí se programan fotos y carruseles.</p>
+                    <div class="card-body rd-panel" data-rd-panel="calendario"><!-- render JS --></div>
+                    <div class="card-body rd-panel" data-rd-panel="crear" hidden><!-- render JS --></div>
+                </article>
+            </div>
+
             <div class="admin-tab-panel" data-tab-panel="cuponpana">
                 <div class="section-toolbar">
                     <button type="button" class="section-save-btn" data-section-save="cuponpana">Actualizar</button>
@@ -16320,17 +16424,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261012-2035"></script>
+    <script defer src="firebase-config.js?v=20261012-2108"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261012-2035"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261012-2108"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-2035"></script>
-    <script defer src="admin.js?v=20261012-2035"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-2108"></script>
+    <script defer src="admin.js?v=20261012-2108"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

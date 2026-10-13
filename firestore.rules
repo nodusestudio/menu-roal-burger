@@ -441,6 +441,15 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+    // Publicaciones normales (foto/carrusel) de Instagram: el panel (admin) las lee; solo el servidor escribe.
+    // Los bytes de las imágenes no los lee nadie desde el navegador.
+    match /instagram_posts/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /instagram_posts_img/{id} {
+      allow read, write: if false;
+    }
     match /instagram_seguidores/{fecha} {
       allow read: if isAdmin();
       allow write: if false;
