@@ -29482,6 +29482,7 @@ function rdLayoutHistoria(ancho, alto) {
 }
 function rdIcono(p) {
     if (p.tipo === 'historia') return '📱';
+    if (p.tipo === 'reel') return '🎬';
     return p.tipo === 'carrusel' ? '🎠' : '📷';
 }
 function rdFechaCorta(fecha) {
@@ -29544,7 +29545,7 @@ function rdFilasMetricas(posts, metricas, { tipo = 'todos', dias = 0, ahora = Da
 // la página no se miden. La fecha es la de publicación en Facebook (puede diferir de la de Instagram).
 function rdFilasMetricasFb(posts, metricasFb, { tipo = 'todos', dias = 0, ahora = Date.now() } = {}) {
     return (posts || [])
-        .filter((p) => p.tipo !== 'historia' && p.facebook?.estado === 'publicada' && p.facebook?.fbPostId && Number(p.facebook?.publicadaAtMs))
+        .filter((p) => p.tipo !== 'historia' && p.tipo !== 'reel' && p.facebook?.estado === 'publicada' && p.facebook?.fbPostId && Number(p.facebook?.publicadaAtMs))
         .filter((p) => tipo === 'todos' || p.tipo === tipo)
         .filter((p) => !dias || Number(p.facebook.publicadaAtMs) >= ahora - dias * 24 * 3600 * 1000)
         .map((p) => {
@@ -29700,7 +29701,7 @@ async function rdCargar() {
 
 async function rdLlamar(accion, payload = {}) {
     if (!firebaseFunctions) throw new Error('Servicio no disponible. Recarga la página.');
-    return (await firebaseFunctions.httpsCallable('adminInstagramPosts')({ accion, ...payload })).data;
+    return (await firebaseFunctions.httpsCallable('adminInstagramPosts', { timeout: 300000 })({ accion, ...payload })).data;
 }
 
 function rdRender() {
@@ -29865,14 +29866,14 @@ function rdAbrirDia(fecha) {
 
 // ── Editor ──────────────────────────────────────────────────────────────────
 function rdEdVacio(fecha = '') {
-    return { id: null, facebook: Boolean(rdState.fb?.conectado), fbEstado: '', fbError: '', fbPostId: '', tipo: 'foto', estado: 'borrador', caption: '', hashtags: '', altText: '', fecha: fecha || '', hora: '19:00', imagenes: [], imgToken: '', error: '', actualizadoAtMs: 0, ocupado: false };
+    return { id: null, facebook: Boolean(rdState.fb?.conectado), fbEstado: '', fbError: '', fbPostId: '', tipo: 'foto', estado: 'borrador', caption: '', hashtags: '', altText: '', fecha: fecha || '', hora: '19:00', imagenes: [], video: null, imgToken: '', error: '', actualizadoAtMs: 0, ocupado: false, subida: null };
 }
 
 function rdEdDesdePost(p) {
     const ms = rdMomentoDe(p);
     return {
         id: p.id, tipo: p.tipo, estado: p.estado, caption: p.caption || '', hashtags: (p.hashtags || []).map((h) => `#${h}`).join(' '), altText: p.altText || '',
-        fecha: ms ? rdFechaDeMs(ms) : '', hora: ms ? rdHoraDeMs(ms) : '19:00', imagenes: (p.imagenes || []).map((i) => ({ ...i })),
+        fecha: ms ? rdFechaDeMs(ms) : '', hora: ms ? rdHoraDeMs(ms) : '19:00', imagenes: (p.imagenes || []).map((i) => ({ ...i })), video: p.video ? { ...p.video } : null, subida: null,
         imgToken: p.imgToken || '', error: p.error || '', actualizadoAtMs: p.actualizadoAtMs || 0, ocupado: false, mediaId: p.mediaId || '', origen: p.origen || 'manual', notaIA: p.notaIA || '', productoId: p.productoId || '',
         facebook: p.facebook?.publicar === true, fbEstado: p.facebook?.estado || '', fbError: p.facebook?.error || '', fbPostId: p.facebook?.fbPostId || ''
     };
@@ -29898,6 +29899,20 @@ function rdUrlImagen(ed, im) {
     return `${RD_IMG_URL}?id=post_${ed.id}_${im.slot}&t=${ed.imgToken}&v=${ed.actualizadoAtMs || 0}-${im.size || 0}`;
 }
 
+const RD_VIDEO_URL = 'https://us-central1-roal-burger-menu.cloudfunctions.net/reelVideo';
+const RD_VIDEO_MAX = 150 * 1024 * 1024;
+const RD_VIDEO_TROZO = 5 * 1024 * 1024;
+
+function rdUrlVideo(ed) {
+    return ed.videoLocal || `${RD_VIDEO_URL}?id=${ed.id}&t=${ed.imgToken}&v=${ed.video?.subidoAtMs || 0}`;
+}
+function rdVideoListo(ed) {
+    return ed.video?.estado === 'listo' && !ed.video.borrado;
+}
+function rdMB(bytes) {
+    return `${(Number(bytes) / 1048576).toLocaleString('es-CO', { maximumFractionDigits: 1 })} MB`;
+}
+
 function rdEditable(ed) {
     return !['publicada', 'publicando'].includes(ed.estado);
 }
@@ -29920,6 +29935,17 @@ function rdEstadoHtml(ed, compacto = false) {
 }
 
 function rdPhoneHtml(ed) {
+    if (ed.tipo === 'reel') {
+        const resumen = rdTextoFinal(ed.caption, ed.hashtags);
+        const corto = resumen.length > 110 ? `${resumen.slice(0, 110).trim()}… más` : resumen;
+        const html = escapeHtml(corto).replace(/#[\p{L}\p{N}_]+/gu, (m) => `<span class="rd-ht">${m}</span>`);
+        return `
+        <div class="rd-phone rd-phone--historia rd-phone--reel" aria-label="Vista previa del reel">
+            <div class="rd-story-img">${rdVideoListo(ed) && (ed.id || ed.videoLocal) ? `<video src="${escapeHtml(rdUrlVideo(ed))}" muted loop playsinline controls preload="metadata"></video>` : `<span class="cd-muted">${ed.video?.borrado ? 'El video ya se publicó' : 'Sin video'}</span>`}</div>
+            <div class="rd-story-head"><img src="isotipo.png" alt=""><strong>roalburger</strong><span>Reel</span></div>
+            <div class="rd-reel-cap"><strong>roalburger</strong> ${html || '<span class="cd-muted">Tu texto aparecerá aquí…</span>'}</div>
+        </div>`;
+    }
     if (ed.tipo === 'historia') {
         const im = ed.imagenes[0];
         return `
@@ -29986,10 +30012,11 @@ function rdRenderEditor(body) {
                         <button type="button" class="cd-btn${ed.tipo === 'foto' ? ' is-on' : ''}" data-rd-tipo="foto" ${editable ? '' : 'disabled'}>📷 Post</button>
                         <button type="button" class="cd-btn${ed.tipo === 'carrusel' ? ' is-on' : ''}" data-rd-tipo="carrusel" ${editable ? '' : 'disabled'}>🎠 Carrusel (hasta 10)</button>
                         <button type="button" class="cd-btn${ed.tipo === 'historia' ? ' is-on' : ''}" data-rd-tipo="historia" ${editable ? '' : 'disabled'}>📱 Historia</button>
+                        <button type="button" class="cd-btn${ed.tipo === 'reel' ? ' is-on' : ''}" data-rd-tipo="reel" ${editable ? '' : 'disabled'}>🎬 Reel</button>
                     </div>
                 </div>
 
-                <div class="rd-campo">
+                ${ed.tipo === 'reel' ? rdVideoCampoHtml(ed, editable) : `<div class="rd-campo">
                     <span class="rd-label">Imágenes <span class="cd-muted">(${ed.imagenes.length}/${maxImg}) · ${historia ? 'vertical 9:16; si tu foto es más ancha se acomoda sola sobre un fondo difuminado' : 'Instagram acepta de 4:5 a 1,91:1; se recorta sola si hace falta'}</span></span>
                     <div class="rd-imgs">
                         ${ed.imagenes.map((im, i) => `
@@ -30009,7 +30036,7 @@ function rdRenderEditor(body) {
                             </div>` : ''}
                     </div>
                     ${ed.ocupado ? '<p class="cd-muted" role="status">⏳ Procesando imágenes…</p>' : ''}
-                </div>
+                </div>`}
 
                 ${historia ? '<p class="cd-muted rd-nota">📱 Las historias llevan solo la imagen: Instagram no permite texto, hashtags ni música en las historias programadas. Si quieres letras, ponlas dentro de la imagen.</p>' : `
                 <div class="rd-campo rd-rel">
@@ -30025,14 +30052,14 @@ function rdRenderEditor(body) {
                     ${editable ? `<div class="rd-tags">${rdHashtagsFrecuentes().map((h) => `<button type="button" class="rd-tag" data-rd-tag="${escapeHtml(h)}">#${escapeHtml(h)}</button>`).join('')}</div>` : ''}
                 </div>
 
-                <label class="rd-campo">
+                ${ed.tipo === 'reel' ? '' : `<label class="rd-campo">
                     <span class="rd-label">Texto alternativo <span class="cd-muted">(opcional, describe la imagen para personas con baja visión)</span></span>
                     <input type="text" id="rdAlt" maxlength="1000" value="${escapeHtml(ed.altText)}" ${editable ? '' : 'disabled'}>
-                </label>`}
+                </label>`}`}
 
                 ${rdState.fb?.conectado ? `
                 <label class="cpana-toggle rd-fb-casilla"><input type="checkbox" id="rdFb"${ed.facebook ? ' checked' : ''}${!editable || ed.fbEstado === 'publicada' ? ' disabled' : ''}>
-                    <span><strong>📘 También publicar en Facebook (${escapeHtml(rdState.fb.pageName)})</strong><br><span class="cd-muted">${rdState.fb.activo ? 'Sale a la misma hora, con la misma imagen y el mismo texto.' : '⚠️ La publicación automática en Facebook está APAGADA: no saldrá sola (actívala en la pestaña 🔗 Cuentas).'}</span></span></label>` : ''}
+                    <span><strong>📘 También publicar en Facebook (${escapeHtml(rdState.fb.pageName)})</strong><br><span class="cd-muted">${rdState.fb.activo ? `Sale a la misma hora, con ${ed.tipo === 'reel' ? 'el mismo video' : 'la misma imagen'} y el mismo texto.` : '⚠️ La publicación automática en Facebook está APAGADA: no saldrá sola (actívala en la pestaña 🔗 Cuentas).'}</span></span></label>` : ''}
                 <div class="rd-campo">
                     <span class="rd-label">Cuándo se publica <span class="cd-muted">(hora de Colombia)</span></span>
                     <div class="rd-cuando">
@@ -30060,6 +30087,67 @@ function rdRenderEditor(body) {
         </div>`;
     rdBindEditor(body);
     rdActualizarContadores(body);
+}
+
+function rdVideoCampoHtml(ed, editable) {
+    const listo = rdVideoListo(ed);
+    const v = ed.video;
+    const sub = ed.subida;
+    let cuerpo;
+    if (sub) {
+        cuerpo = `<div class="rd-video-prog" role="status"><strong id="rdVideoTxt">${escapeHtml(sub.texto)}</strong><div class="rd-barra-pista"><i id="rdVideoBarra" style="width:${sub.pct}%"></i></div><span class="cd-muted">No cierres esta pantalla mientras sube.</span></div>`;
+    } else if (listo) {
+        cuerpo = `<div class="rd-video-ok"><span>🎬 <strong>${escapeHtml(v.nombre || 'Video')}</strong><br><span class="cd-muted">${Number(v.duracionS).toLocaleString('es-CO')} s · ${v.ancho}×${v.alto} · ${rdMB(v.size)}</span></span>
+            ${editable ? `<span class="rd-video-acc"><label class="cd-btn rd-subir">🔄 Cambiar<input type="file" id="rdVideo" accept="video/mp4,video/quicktime,.mp4,.mov" hidden></label><button type="button" class="cd-btn rd-peligro" data-rd-video-quitar>✕ Quitar</button></span>` : ''}</div>`;
+    } else if (v?.borrado) {
+        cuerpo = '<p class="cd-muted">✅ Este reel ya salió en todas las redes elegidas y el video se borró del servidor (no se guarda para ahorrar espacio).</p>';
+    } else {
+        cuerpo = editable ? `<div class="rd-video-vacio"><label class="cd-btn rd-subir">⬆ Subir video<input type="file" id="rdVideo" accept="video/mp4,video/quicktime,.mp4,.mov" hidden></label>
+            <span class="cd-muted">MP4 o MOV <strong>vertical 9:16</strong> (ideal 1080×1920), de 3 a 90 segundos, hasta 150 MB, con códec H.264 (el de casi todos los editores y celulares).</span></div>` : '<p class="cd-muted">Sin video.</p>';
+    }
+    return `<div class="rd-campo"><span class="rd-label">Video del reel</span>${cuerpo}</div>`;
+}
+
+function rdProgresoVideo(pct, texto) {
+    if (rdState.ed?.subida) { rdState.ed.subida.pct = pct; rdState.ed.subida.texto = texto; }
+    const b = document.getElementById('rdVideoBarra');
+    const t = document.getElementById('rdVideoTxt');
+    if (b) b.style.width = `${pct}%`;
+    if (t) t.textContent = texto;
+}
+
+// Sube el video en trozos de 5 MB (el límite de cada llamada) y lo junta en el servidor, que lo valida.
+async function rdAgregarVideo(body, archivo) {
+    const ed = rdState.ed;
+    if (!archivo) return;
+    if (!/^video\/(mp4|quicktime)$/.test(archivo.type) && !/\.(mp4|mov)$/i.test(archivo.name)) { showNotice('El video debe ser MP4 o MOV.', 'error'); return; }
+    if (archivo.size > RD_VIDEO_MAX) { showNotice(`El video pesa ${rdMB(archivo.size)}: el máximo es 150 MB. Expórtalo con menos bitrate.`, 'error'); return; }
+    const total = Math.ceil(archivo.size / RD_VIDEO_TROZO);
+    ed.subida = { pct: 0, texto: `Preparando… (${rdMB(archivo.size)})` };
+    rdRenderEditor(body);
+    try {
+        const id = await rdGuardarCampos(body);
+        for (let i = 0; i < total; i++) {
+            const base64 = await _cdBlobABase64(archivo.slice(i * RD_VIDEO_TROZO, (i + 1) * RD_VIDEO_TROZO));
+            let ultimo = null;
+            for (let intento = 0; intento < 3; intento++) {
+                try { await rdLlamar('subirParteVideo', { id, parte: i, total, base64 }); ultimo = null; break; } catch (err) { ultimo = err; await new Promise((r) => setTimeout(r, 800 * (intento + 1))); }
+            }
+            if (ultimo) throw ultimo;
+            rdProgresoVideo(Math.round(((i + 1) / total) * 95), `Subiendo… ${Math.round(((i + 1) / total) * 100)} %`);
+        }
+        rdProgresoVideo(97, 'Revisando el video…');
+        await rdLlamar('finalizarVideo', { id, total, nombre: archivo.name });
+        if (ed.videoLocal) URL.revokeObjectURL(ed.videoLocal);
+        ed.videoLocal = URL.createObjectURL(archivo); // vista previa inmediata, sin esperar la descarga
+        showNotice('Video listo.', 'ok');
+    } catch (err) {
+        showNotice(err.message || 'No se pudo subir el video.', 'error');
+    } finally {
+        rdState.ed.subida = null;
+        if (rdState.ed.id) await rdRecargarEd().catch(() => {});
+        rdRenderEditor(body);
+    }
 }
 
 function rdActualizarContadores(body) {
@@ -30220,7 +30308,16 @@ function rdAbrirCatalogo(body) {
 
 function rdBindEditor(body) {
     const ed = rdState.ed;
-    const refrescar = () => { rdLeerFormulario(body); const ph = body.querySelector('.rd-preview'); if (ph) ph.innerHTML = rdPhoneHtml(ed); rdActualizarContadores(body); };
+    const refrescar = () => {
+        rdLeerFormulario(body);
+        const ph = body.querySelector('.rd-preview');
+        if (ph) {
+            const cap = ph.querySelector('.rd-reel-cap');
+            if (ed.tipo === 'reel' && cap) { const t = document.createElement('div'); t.innerHTML = rdPhoneHtml(ed); cap.innerHTML = t.querySelector('.rd-reel-cap').innerHTML; } // el video no se recarga al teclear
+            else ph.innerHTML = rdPhoneHtml(ed);
+        }
+        rdActualizarContadores(body);
+    };
     ['#rdCaption', '#rdHashtags', '#rdAlt'].forEach((s) => body.querySelector(s)?.addEventListener('input', refrescar));
     rdBindEmojis(body, refrescar);
     body.querySelectorAll('[data-rd-tag]').forEach((b) => b.addEventListener('click', () => {
@@ -30241,6 +30338,7 @@ function rdBindEditor(body) {
         const nuevo = b.dataset.rdTipo;
         if (nuevo === ed.tipo) return;
         if (nuevo !== 'carrusel' && ed.imagenes.length > 1) { showNotice('Para cambiar de tipo deja una sola imagen.', 'error'); return; }
+        if ((nuevo === 'reel' || ed.tipo === 'reel') && (ed.imagenes.length || ed.video)) { showNotice('Un reel lleva video y los demás tipos imágenes: quita lo subido antes de cambiar el tipo.', 'error'); return; }
         if ((nuevo === 'historia' || ed.tipo === 'historia') && ed.imagenes.length) { showNotice('Las historias son verticales y los posts no: quita la imagen y vuelve a elegir el tipo.', 'error'); return; }
         ed.tipo = nuevo;
         if (ed.id) { try { await rdGuardarCampos(body); await rdRecargarEd(); } catch (err) { showNotice(err.message, 'error'); } }
@@ -30252,6 +30350,16 @@ function rdBindEditor(body) {
         if (archivos.length) rdAgregarImagenes(body, archivos);
     });
     body.querySelector('[data-rd-catalogo]')?.addEventListener('click', () => rdAbrirCatalogo(body));
+    body.querySelector('#rdVideo')?.addEventListener('change', (e) => {
+        const archivo = e.target.files[0];
+        e.target.value = '';
+        if (archivo) rdAgregarVideo(body, archivo);
+    });
+    body.querySelector('[data-rd-video-quitar]')?.addEventListener('click', async () => {
+        if (!window.confirm('¿Quitar el video de este reel?')) return;
+        try { await rdLlamar('quitarVideo', { id: ed.id }); if (ed.videoLocal) { URL.revokeObjectURL(ed.videoLocal); ed.videoLocal = ''; } await rdRecargarEd(); } catch (err) { showNotice(err.message, 'error'); }
+        rdRenderEditor(body);
+    });
     body.querySelectorAll('[data-rd-img-quitar]').forEach((b) => b.addEventListener('click', async () => {
         try { await rdLlamar('quitarImagen', { id: ed.id, slot: Number(b.dataset.rdImgQuitar) }); await rdRecargarEd(); } catch (err) { showNotice(err.message, 'error'); }
         rdRenderEditor(body);
@@ -30315,7 +30423,7 @@ async function rdAccion(body, btn) {
             await rdLlamar('desprogramar', { id: ed.id });
             await rdRecargarEd();
         } else if (a === 'cancelar') {
-            if (!window.confirm('¿Cancelar y borrar esta publicación? No saldrá en ninguna red y se borra con sus imágenes.')) { btn.disabled = false; return; }
+            if (!window.confirm('¿Cancelar y borrar esta publicación? No saldrá en ninguna red y se borra con sus imágenes o su video.')) { btn.disabled = false; return; }
             await rdLlamar('cancelar', { id: ed.id });
             await rdLlamar('borrar', { id: ed.id });
             rdState.posts = rdState.posts.filter((x) => x.id !== ed.id);
@@ -30714,7 +30822,7 @@ async function rdRenderMetricasFb(body) {
                 }).join('')}</tbody>
             </table>
         </div>` : '<p class="admin-hint">Todavía no hay publicaciones en Facebook en este período. Cuando salga una con la casilla de Facebook, aparecerá aquí (la primera medición tarda unos minutos).</p>'}
-        <p class="cd-muted">Los posts y carruseles se miden durante 14 días. Las historias de la página no se pueden medir (Facebook no entrega sus datos por esta vía). Facebook cambió "impresiones" por "vistas" en 2025.</p>`;
+        <p class="cd-muted">Los posts y carruseles se miden durante 14 días. Las historias y los reels de la página todavía no se miden (Facebook no entrega sus datos de historias por esta vía). Facebook cambió "impresiones" por "vistas" en 2025.</p>`;
 
     const recargar = () => rdRenderMetricas(body);
     rdBindRedMetricas(body);
@@ -30780,7 +30888,7 @@ function rdConclusionesHtml(filas, orden) {
     lineas.push(`🏆 La de más <strong>${escapeHtml(etq.toLowerCase())}</strong> fue ${rdIcono(top.post)} del ${escapeHtml(rdFechaCorta(rdFechaDeMs(top.ms)))}: ${(clave === 'tasa' ? _rdPct : _rdN)(rdValorMetrica(top, clave))}.`);
     const porTipo = rdPromedioPorTipo(medidas, clave);
     const tipos = Object.entries(porTipo).filter(([, x]) => x.n >= 2).sort((a, b) => b[1].promedio - a[1].promedio);
-    if (tipos.length > 1) lineas.push(`${{ foto: '📷 Los posts', carrusel: '🎠 Los carruseles', historia: '📱 Las historias' }[tipos[0][0]]} rinden más en promedio (${clave === 'tasa' ? _rdPct(tipos[0][1].promedio) : _rdN(Math.round(tipos[0][1].promedio))}).`);
+    if (tipos.length > 1) lineas.push(`${{ foto: '📷 Los posts', carrusel: '🎠 Los carruseles', historia: '📱 Las historias', reel: '🎬 Los reels' }[tipos[0][0]]} rinden más en promedio (${clave === 'tasa' ? _rdPct(tipos[0][1].promedio) : _rdN(Math.round(tipos[0][1].promedio))}).`);
     const mm = rdMejoresMomentos(medidas, clave);
     const mejorDia = mm.dias.map((d, i) => ({ ...d, i })).filter((d) => d.n >= 2).sort((a, b) => b.promedio - a.promedio)[0];
     const mejorFranja = mm.franjas.filter((f) => f.n >= 2).sort((a, b) => b.promedio - a.promedio)[0];
@@ -30814,7 +30922,7 @@ async function rdRenderMetricas(body) {
         <div class="rd-toolbar">
             <div class="rd-filtros">
                 ${rdSelectorRedHtml('instagram')}
-                <label>Tipo<select id="rdMtTipo">${[['todos', 'Todas'], ['foto', '📷 Posts'], ['carrusel', '🎠 Carruseles'], ['historia', '📱 Historias']].map(([v, e]) => `<option value="${v}"${tipo === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>
+                <label>Tipo<select id="rdMtTipo">${[['todos', 'Todas'], ['foto', '📷 Posts'], ['carrusel', '🎠 Carruseles'], ['reel', '🎬 Reels'], ['historia', '📱 Historias']].map(([v, e]) => `<option value="${v}"${tipo === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>
                 <label>Período<select id="rdMtDias">${[[7, 'Últimos 7 días'], [30, 'Últimos 30 días'], [90, 'Últimos 90 días'], [0, 'Todo']].map(([v, e]) => `<option value="${v}"${dias === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>
                 <label>Ordenar por<select id="rdMtOrden">${RD_METRICAS.map((m) => `<option value="${m.clave}"${orden === m.clave ? ' selected' : ''}>${m.etiqueta}</option>`).join('')}</select></label>
             </div>

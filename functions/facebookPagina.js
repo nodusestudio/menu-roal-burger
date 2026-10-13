@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const ig = require('./instagramHistorias');
 const posts = require('./instagramPosts');
 const cd = require('./codigoDia');
+const reels = require('./reels');
 
 const CONFIG_COLLECTION = 'facebook_config';
 const CONFIG_DOC = 'conexion';
@@ -170,6 +171,58 @@ async function publicarHistoriaFoto(c, url, { fetchFn }) {
     return String(r.post_id || fotoId);
 }
 
+// Reel de la página (Reels Publishing API): 1) iniciar sesión de subida, 2) Facebook descarga el video desde
+// nuestra URL pública (cabecera file_url en rupload.facebook.com), 3) publicar. Entre medias se consulta el
+// estado para devolver el motivo real si Facebook rechaza el video (resolución, duración, formato…).
+const RUPLOAD = 'https://rupload.facebook.com/video-upload/v26.0';
+const REEL_ESPERA_MS = 5000;
+
+function motivoDeEstado(st) {
+    const fases = ['uploading_phase', 'processing_phase', 'publishing_phase'];
+    for (const f of fases) {
+        const e = st?.[f]?.error;
+        if (e) return String(e.message || e.error_user_msg || JSON.stringify(e)).slice(0, 240);
+    }
+    return st?.video_status === 'error' ? 'Facebook no pudo procesar el video.' : '';
+}
+
+async function publicarReel(c, urlVideo, texto, { fetchFn, sleep = ig.esperar }) {
+    const inicio = await post(fetchFn, `${c.pageId}/video_reels`, { upload_phase: 'start', access_token: c.pageToken });
+    const videoId = String(inicio.video_id || '');
+    if (!videoId) throw new ig.GraphError('Facebook no abrió la sesión de subida del reel.');
+    let resp;
+    try {
+        resp = await fetchFn(`${RUPLOAD}/${videoId}`, { method: 'POST', headers: { Authorization: `OAuth ${c.pageToken}`, file_url: urlVideo } });
+    } catch (err) {
+        throw new ig.GraphError(`No se pudo conectar con Facebook: ${err?.message || err}`);
+    }
+    let json = null;
+    try { json = await resp.json(); } catch (_) { json = null; }
+    if (!resp.ok || json?.success === false || json?.error || json?.debug_info) {
+        const m = json?.debug_info?.message || json?.error?.message || `Facebook respondió ${resp.status}`;
+        throw new ig.GraphError(`Facebook no pudo descargar el video: ${String(m).slice(0, 240)}`);
+    }
+    // Espera a que termine de subirse (Facebook lo descarga de forma asíncrona) y avisa si lo rechaza.
+    for (let i = 0; i < 12; i++) {
+        const st = (await get(fetchFn, videoId, c.pageToken, { fields: 'status' })).status;
+        const motivo = motivoDeEstado(st);
+        if (motivo) throw new ig.GraphError(`Facebook rechazó el video: ${motivo}`);
+        if (!st || st.uploading_phase?.status === 'complete' || ['ready', 'upload_complete', 'published'].includes(st.video_status)) break;
+        await sleep(REEL_ESPERA_MS);
+    }
+    const fin = await post(fetchFn, `${c.pageId}/video_reels`, { upload_phase: 'finish', video_id: videoId, video_state: 'PUBLISHED', description: texto, access_token: c.pageToken });
+    if (fin.success === false) throw new ig.GraphError('Facebook no publicó el reel.');
+    // Si el procesamiento lo rechaza, se sabe unos segundos después.
+    for (let i = 0; i < 6; i++) {
+        const st = (await get(fetchFn, videoId, c.pageToken, { fields: 'status' }).catch(() => ({}))).status;
+        const motivo = motivoDeEstado(st);
+        if (motivo) throw new ig.GraphError(`Facebook rechazó el video: ${motivo}`);
+        if (!st || ['ready', 'published'].includes(st.video_status) || st.publishing_phase?.status === 'complete') break;
+        await sleep(REEL_ESPERA_MS);
+    }
+    return videoId;
+}
+
 // Texto que va a Facebook: el caption; los hashtags solo si se pidió (en Facebook rinden poco).
 function textoParaFacebook(p, c) {
     return posts.armarCaption(p.caption, c.conHashtags === true ? p.hashtags : []);
@@ -179,7 +232,7 @@ function textoParaFacebook(p, c) {
 
 const refPost = (db, id) => db.collection(posts.POSTS_COLLECTION).doc(String(id || '_'));
 
-async function publicarPostEnFacebook(db, { id, nowMs = Date.now(), fetchFn = fetch, baseUrl, manual = false }) {
+async function publicarPostEnFacebook(db, { id, nowMs = Date.now(), fetchFn = fetch, baseUrl, manual = false, sleep = ig.esperar }) {
     const c = await leerConexion(db);
     if (!c?.pageToken) return { ok: false, motivo: 'sin_conexion' };
     if (!manual && c.activo !== true) return { ok: false, motivo: 'desactivado' };
@@ -222,11 +275,13 @@ async function publicarPostEnFacebook(db, { id, nowMs = Date.now(), fetchFn = fe
         const urlDe = (im) => ig.urlImagen(baseUrl, `post_${id}`, String(im.slot), p.imgToken);
         const texto = textoParaFacebook(p, c);
         let fbPostId;
-        if (p.tipo === 'historia') fbPostId = await publicarHistoriaFoto(c, urlDe(p.imagenes[0]), { fetchFn });
+        if (p.tipo === 'reel') fbPostId = await publicarReel(c, reels.urlVideo(baseUrl, id, p.imgToken), texto, { fetchFn, sleep });
+        else if (p.tipo === 'historia') fbPostId = await publicarHistoriaFoto(c, urlDe(p.imagenes[0]), { fetchFn });
         else if (p.tipo === 'carrusel') fbPostId = await publicarVariasFotos(c, p.imagenes.map(urlDe), texto, { fetchFn });
         else fbPostId = await publicarFoto(c, urlDe(p.imagenes[0]), texto, { fetchFn });
         await refPost(db, id).set({ facebook: { estado: 'publicada', fbPostId, publicadaAtMs: nowMs, error: '' } }, { merge: true });
         await ig.registrarPublicacion(db, { ...detalle, ok: true, mediaId: fbPostId, nowMs });
+        if (p.tipo === 'reel') await reels.liberarVideoSiTermino(db, id);
         return { ok: true, fbPostId };
     } catch (err) {
         const mensaje = String(err?.message || err).slice(0, 300);
@@ -332,6 +387,7 @@ module.exports = {
     publicarFoto,
     publicarVariasFotos,
     publicarHistoriaFoto,
+    publicarReel,
     publicarPostEnFacebook,
     publicarProgramados,
     publicarHistoriaCodigo,

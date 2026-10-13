@@ -154,7 +154,7 @@ test('estado de una publicación: dice con claridad si está programada (y cuán
     assert.equal(rd.rdTextoEstado('cancelada', null, '').titulo, 'Cancelada');
     assert.equal(rd.rdTextoEstado('publicando', null, '').titulo, 'Publicando…');
     assert.equal(rd.rdFechaCorta('2026-10-12'), 'Lun 12 oct');
-    assert.deepEqual(['historia', 'carrusel', 'foto'].map((tipo) => rd.rdIcono({ tipo })).join(''), '📱🎠📷');
+    assert.deepEqual(['historia', 'carrusel', 'foto', 'reel'].map((tipo) => rd.rdIcono({ tipo })).join(''), '📱🎠📷🎬');
 });
 
 // ── Métricas ────────────────────────────────────────────────────────────────
@@ -255,6 +255,7 @@ test('métricas de Facebook: solo posts y carruseles publicados en Facebook (las
         pf('a', 'foto', '555_a', rdMs('2026-10-18', '12:00')),
         pf('b', 'carrusel', '555_b', rdMs('2026-10-12', '19:00')),
         pf('h', 'historia', 'story-1', rdMs('2026-10-14', '12:00')),
+        pf('r', 'reel', 'vid-1', rdMs('2026-10-14', '13:00')),
         pf('e', 'foto', '', rdMs('2026-10-09', '12:00')),
         pf('x', 'foto', '555_x', rdMs('2026-10-08', '12:00'), 'error'),
         pf('v', 'foto', '555_v', rdMs('2026-08-01', '12:00')),

@@ -131,7 +131,7 @@ test('crear y editar: borrador con token propio; el texto se valida; no se edita
     await posts.guardarPost(db, { id, caption: 'Nuevo texto', altText: 'Una hamburguesa' }, 'admin', { nowMs: AHORA + 1 });
     p = await leer(id);
     assert.deepEqual([p.caption, p.altText, p.hashtags], ['Nuevo texto', 'Una hamburguesa', ['uno', 'dos']], 'lo que no se manda no se toca');
-    await assert.rejects(posts.guardarPost(db, { tipo: 'reel', caption: 'x' }, 'a'), /carrusel o historia/);
+    await assert.rejects(posts.guardarPost(db, { tipo: 'podcast', caption: 'x' }, 'a'), /carrusel, historia o reel/);
     await assert.rejects(posts.guardarPost(db, { id, caption: 'a'.repeat(2201) }, 'a'), /2200/);
     await assert.rejects(posts.guardarPost(db, { id, hashtags: Array.from({ length: 31 }, (_, i) => `h${i}`) }, 'a'), /máximo 30/);
     await db.collection(posts.POSTS_COLLECTION).doc(id).set({ estado: 'publicada' }, { merge: true });

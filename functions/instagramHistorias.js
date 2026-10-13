@@ -593,8 +593,10 @@ async function leerInsightsHistoria(fetchFn, conexion, mediaId) {
 
 // Métricas de un post o carrusel del feed: no vencen a las 24 h (se miden 14 días).
 const METRICAS_POST = ['reach', 'views', 'likes', 'comments', 'shares', 'saved', 'total_interactions', 'profile_visits', 'follows'];
-async function leerInsightsPost(fetchFn, conexion, mediaId) {
-    return (await pedirMetricas(fetchFn, conexion, mediaId, METRICAS_POST)).valores;
+// Un reel suma el tiempo de reproducción (milisegundos): promedio por vista y total.
+const METRICAS_REEL = [...METRICAS_POST, 'ig_reels_avg_watch_time', 'ig_reels_video_view_total_time'];
+async function leerInsightsPost(fetchFn, conexion, mediaId, tipo = 'foto') {
+    return (await pedirMetricas(fetchFn, conexion, mediaId, tipo === 'reel' ? METRICAS_REEL : METRICAS_POST)).valores;
 }
 
 // Con qué frecuencia se vuelve a medir un post: al principio seguido (es cuando más cambia), después una vez al día.
@@ -628,11 +630,11 @@ async function actualizarMetricas(db, { nowMs = Date.now(), fetchFn = fetch } = 
     const snap = await db.collection(METRICAS_COLLECTION).where('expiraAtMs', '>', nowMs - HORA_MS).get();
     for (const doc of snap.docs) {
         const d = doc.data();
-        const esPost = d.tipo === 'foto' || d.tipo === 'carrusel';
+        const esPost = d.tipo === 'foto' || d.tipo === 'carrusel' || d.tipo === 'reel';
         if (esPost && nowMs - (Number(d.actualizadoAtMs) || 0) < intervaloMedicionPostMs(nowMs - (Number(d.publicadaAtMs) || nowMs))) continue;
         let patch;
         try {
-            const v = esPost ? await leerInsightsPost(fetchFn, conexion, d.mediaId || doc.id) : await leerInsightsHistoria(fetchFn, conexion, d.mediaId || doc.id);
+            const v = esPost ? await leerInsightsPost(fetchFn, conexion, d.mediaId || doc.id, d.tipo) : await leerInsightsHistoria(fetchFn, conexion, d.mediaId || doc.id);
             const ultimo = { ...(d.ultimo || {}), ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null && x !== undefined)) };
             const punto = { atMs: nowMs, reach: ultimo.reach ?? null, views: ultimo.views ?? null };
             const previa = (d.serie || [])[(d.serie || []).length - 1];

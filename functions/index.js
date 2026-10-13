@@ -3088,11 +3088,12 @@ exports.publicarAgotadoPorHorario = onSchedule(
 // instagramPosts.js; aquí solo auth y wrappers. Las imágenes se suben una por llamada (JPEG base64).
 // ─────────────────────────────────────────────────────────────
 const instagramPosts = require('./instagramPosts');
+const reels = require('./reels');
 const facebookPagina = require('./facebookPagina');
 const facebookMetricas = require('./facebookMetricas');
 
 exports.adminInstagramPosts = onCall(
-    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '512MiB', timeoutSeconds: 180 },
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '1GiB', timeoutSeconds: 300 },
     async (request) => {
         const db = getFirestore();
         const uid = await cuponPana.ensureAdmin(db, request);
@@ -3104,6 +3105,10 @@ exports.adminInstagramPosts = onCall(
             return instagramPosts.guardarImagen(db, { id: d.id, jpeg: Buffer.from(base64, 'base64'), reemplazaSlot: d.reemplazaSlot ?? null }, uid);
         }
         if (accion === 'quitarImagen') return instagramPosts.quitarImagen(db, { id: d.id, slot: d.slot }, uid);
+        // Reels: el video se sube en trozos de ~5 MB (límite de la llamada) y se junta al final.
+        if (accion === 'subirParteVideo') return reels.subirParte(db, { id: String(d.id || ''), parte: d.parte, total: d.total, bytes: Buffer.from(String(d.base64 || ''), 'base64') }, uid);
+        if (accion === 'finalizarVideo') return reels.finalizarVideo(db, { id: String(d.id || ''), total: d.total, nombre: d.nombre }, uid);
+        if (accion === 'quitarVideo') return reels.quitarVideo(db, { id: String(d.id || '') }, uid);
         if (accion === 'ordenar') return instagramPosts.ordenarImagenes(db, { id: d.id, orden: d.orden }, uid);
         if (accion === 'programar') return instagramPosts.programarPost(db, { id: d.id, programadaAtMs: d.programadaAtMs }, uid);
         if (accion === 'desprogramar') return instagramPosts.desprogramarPost(db, { id: d.id }, uid);
@@ -3119,6 +3124,26 @@ exports.adminInstagramPosts = onCall(
         }
         if (accion === 'publicarFacebook') return facebookPagina.publicarPostEnFacebook(db, { id: String(d.id || ''), baseUrl: historiaImagenBaseUrl(), manual: true });
         throw new HttpsError('invalid-argument', 'Acción desconocida.');
+    }
+);
+
+// Pública: Meta descarga aquí el video de un reel. Solo responde con el token aleatorio de la publicación y
+// acepta rangos de bytes (Instagram y Facebook los piden).
+exports.reelVideo = onRequest(
+    { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
+    async (req, res) => {
+        try {
+            const r = await reels.servirVideo(getFirestore(), { id: req.query?.id, token: req.query?.t, rango: req.headers.range, metodo: req.method });
+            if (r.status === 404) { res.status(404).send('not found'); return; }
+            for (const [k, v] of Object.entries(r.headers || {})) res.set(k, v);
+            res.status(r.status);
+            if (!r.stream) { res.end(); return; }
+            r.stream.on('error', (err) => { console.error('reelVideo stream:', err.message); res.destroy(err); });
+            r.stream.pipe(res);
+        } catch (err) {
+            console.error('reelVideo:', err);
+            res.status(500).send('error');
+        }
     }
 );
 
