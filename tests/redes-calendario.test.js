@@ -16,7 +16,7 @@ const BLOQUE = SRC.slice(SRC.indexOf('// <redes-instagram>'), SRC.indexOf('// </
 assert.ok(BLOQUE.length > 1500, 'no se encontró el bloque <redes-instagram> en admin.js');
 const ctx = vm.createContext({});
 const NOMBRES = ['rdMsDeFechaHora', 'rdFechaDeMs', 'rdHoraDeMs', 'rdHora12', 'rdSumarDias', 'rdDiaSemana', 'rdLunesDe', 'rdGrillaMes', 'rdSemana',
-    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe', 'rdPendientesIA', 'rdListoParaAprobar', 'rdLayoutHistoria', 'rdIcono', 'rdFechaCorta', 'rdTextoEstado'];
+    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe', 'rdPendientesIA', 'rdListoParaAprobar', 'rdLayoutHistoria', 'rdIcono', 'rdFechaCorta', 'rdTextoEstado', 'rdFranja', 'rdTasa', 'rdValorMetrica', 'rdFilasMetricas', 'rdOrdenarPor', 'rdMejoresMomentos', 'rdPromedioPorTipo'];
 vm.runInContext(`${BLOQUE}\n${NOMBRES.map((n) => `this.${n} = ${n};`).join('')}`, ctx);
 const rd = ctx;
 const posts = require(path.join(__dirname, '..', 'functions', 'instagramPosts.js'));
@@ -155,4 +155,71 @@ test('estado de una publicación: dice con claridad si está programada (y cuán
     assert.equal(rd.rdTextoEstado('publicando', null, '').titulo, 'Publicando…');
     assert.equal(rd.rdFechaCorta('2026-10-12'), 'Lun 12 oct');
     assert.deepEqual(['historia', 'carrusel', 'foto'].map((tipo) => rd.rdIcono({ tipo })).join(''), '📱🎠📷');
+});
+
+// ── Métricas ────────────────────────────────────────────────────────────────
+const DIA = 24 * 3600e3;
+const AHORA = rdMs('2026-10-20', '12:00');
+function rdMs(fecha, hora) { return rd.rdMsDeFechaHora(fecha, hora); }
+const POSTS = [
+    { id: 'a', tipo: 'foto', estado: 'publicada', mediaId: 'm-a', publicadaAtMs: rdMs('2026-10-19', '19:30') }, // lunes noche
+    { id: 'b', tipo: 'carrusel', estado: 'publicada', mediaId: 'm-b', publicadaAtMs: rdMs('2026-10-16', '12:30') }, // viernes mediodía
+    { id: 'c', tipo: 'foto', estado: 'publicada', mediaId: 'm-c', publicadaAtMs: rdMs('2026-10-12', '19:00') }, // lunes noche
+    { id: 'd', tipo: 'historia', estado: 'publicada', mediaId: 'm-d', publicadaAtMs: rdMs('2026-10-14', '08:00') }, // miércoles mañana
+    { id: 'e', tipo: 'foto', estado: 'programada', mediaId: '', programadaAtMs: AHORA + DIA },
+    { id: 'f', tipo: 'foto', estado: 'publicada', mediaId: 'm-f', publicadaAtMs: rdMs('2026-07-01', '12:00') } // vieja
+];
+const METRICAS = {
+    'm-a': { estado: 'ok', ultimo: { reach: 200, total_interactions: 20, likes: 15 } },
+    'm-b': { estado: 'ok', ultimo: { reach: 600, total_interactions: 90, saved: 30 } },
+    'm-c': { estado: 'ok', ultimo: { reach: 400, total_interactions: 20 } },
+    'm-d': { estado: 'ok', ultimo: { reach: 100, total_interactions: 3 } },
+    'm-f': { estado: 'pendiente', ultimo: {} }
+};
+const ids = (filas) => JSON.parse(JSON.stringify(filas.map((f) => f.id)));
+
+test('métricas: franjas horarias y tasa de interacción', () => {
+    assert.deepEqual(['06:00', '11:59', '12:00', '14:59', '15:00', '18:59', '19:00', '23:30', '00:30', '05:59'].map(rd.rdFranja),
+        ['manana', 'manana', 'mediodia', 'mediodia', 'tarde', 'tarde', 'noche', 'noche', 'noche', 'noche']);
+    assert.equal(rd.rdTasa({ reach: 200, total_interactions: 20 }), 10);
+    assert.equal(rd.rdTasa({ reach: 0, total_interactions: 5 }), null);
+    assert.equal(rd.rdTasa({}), null);
+    assert.equal(rd.rdValorMetrica({ ultimo: { likes: 0 } }, 'likes'), 0, 'un cero es un dato real');
+    assert.equal(rd.rdValorMetrica({ ultimo: {} }, 'likes'), null);
+});
+
+test('métricas: solo cuentan las publicadas, con filtro de tipo y de período', () => {
+    const todas = rd.rdFilasMetricas(POSTS, METRICAS, { ahora: AHORA });
+    assert.deepEqual(ids(todas), ['a', 'b', 'd', 'c', 'f'], 'la programada no cuenta; de la más nueva a la más vieja');
+    assert.deepEqual(ids(rd.rdFilasMetricas(POSTS, METRICAS, { ahora: AHORA, dias: 30 })), ['a', 'b', 'd', 'c'], 'últimos 30 días');
+    assert.deepEqual(ids(rd.rdFilasMetricas(POSTS, METRICAS, { ahora: AHORA, dias: 30, tipo: 'foto' })), ['a', 'c']);
+    assert.deepEqual(ids(rd.rdFilasMetricas(POSTS, METRICAS, { ahora: AHORA, tipo: 'historia' })), ['d']);
+    const sinMedir = rd.rdFilasMetricas(POSTS, {}, { ahora: AHORA, dias: 30 });
+    assert.deepEqual(sinMedir.map((f) => f.estado), ['sin_datos', 'sin_datos', 'sin_datos', 'sin_datos']);
+});
+
+test('métricas: ranking por la métrica elegida (los sin dato al final) y tasa de interacción', () => {
+    const filas = rd.rdFilasMetricas(POSTS, METRICAS, { ahora: AHORA });
+    assert.deepEqual(ids(rd.rdOrdenarPor(filas, 'reach')), ['b', 'c', 'a', 'd', 'f']);
+    assert.deepEqual(ids(rd.rdOrdenarPor(filas, 'tasa')), ['b', 'a', 'c', 'd', 'f'], 'b 15 %, a 10 %, c 5 %, d 3 %');
+    assert.equal(ids(rd.rdOrdenarPor(filas, 'saved'))[0], 'b');
+});
+
+test('métricas: promedio por día de la semana y por franja (hora de Colombia) y por tipo', () => {
+    const filas = rd.rdFilasMetricas(POSTS, METRICAS, { ahora: AHORA, dias: 30 });
+    const mm = rd.rdMejoresMomentos(filas, 'reach');
+    assert.deepEqual(JSON.parse(JSON.stringify(mm.dias[0])), { n: 2, promedio: 300 }, 'lunes: (200 + 400) / 2');
+    assert.deepEqual(JSON.parse(JSON.stringify(mm.dias[4])), { n: 1, promedio: 600 }, 'viernes');
+    assert.deepEqual(JSON.parse(JSON.stringify(mm.dias[2])), { n: 1, promedio: 100 }, 'miércoles');
+    assert.equal(mm.dias[1].promedio, null, 'martes sin datos');
+    const f = Object.fromEntries(mm.franjas.map((x) => [x.id, { n: x.n, promedio: x.promedio }]));
+    assert.deepEqual(JSON.parse(JSON.stringify(f.noche)), { n: 2, promedio: 300 });
+    assert.deepEqual(JSON.parse(JSON.stringify(f.mediodia)), { n: 1, promedio: 600 });
+    assert.deepEqual(JSON.parse(JSON.stringify(f.manana)), { n: 1, promedio: 100 });
+    assert.equal(f.tarde.promedio, null);
+    const tipos = JSON.parse(JSON.stringify(rd.rdPromedioPorTipo(filas, 'reach')));
+    assert.deepEqual(tipos, { foto: { n: 2, promedio: 300 }, carrusel: { n: 1, promedio: 600 }, historia: { n: 1, promedio: 100 } });
+    // Una publicación a las 11:59 p. m. (hora de Colombia) sigue siendo del día, no del siguiente.
+    const tarde = rd.rdMejoresMomentos([{ ms: rdMs('2026-10-18', '23:59'), ultimo: { reach: 50 }, post: { tipo: 'foto' } }], 'reach');
+    assert.equal(tarde.dias[6].n, 1, 'domingo 18 a las 11:59 p. m.');
 });

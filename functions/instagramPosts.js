@@ -421,8 +421,11 @@ async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseU
         const mediaId = await publicarContenido(conexion, post, id, texto, { fetchFn, sleep, baseUrl });
         await refPost(db, id).set({ estado: 'publicada', mediaId, publicadaAtMs: nowMs, error: '', actualizadoAtMs: nowMs }, { merge: true });
         await ig.registrarPublicacion(db, { ...detalle, ok: true, mediaId, nowMs });
-        // Las métricas de una historia solo existen mientras dura (24 h): se empieza a medirla ya.
-        if (post.tipo === 'historia') await ig.iniciarMetricas(db, { mediaId, fecha: detalle.fecha, tipo: 'historia', publicadaAtMs: nowMs });
+        // Se empieza a medir ya: una historia solo tiene métricas mientras dura (24 h); un post, 14 días.
+        await ig.iniciarMetricas(db, {
+            mediaId, fecha: detalle.fecha, tipo: post.tipo, publicadaAtMs: nowMs, postId: id,
+            ...(post.tipo === 'historia' ? {} : { vigenciaMs: ig.METRICAS_POST_VIGENCIA_MS })
+        });
         return { ok: true, mediaId };
     } catch (err) {
         const mensaje = String(err?.message || err).slice(0, 300);

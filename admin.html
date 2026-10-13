@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261012-2131">
+    <link rel="stylesheet" href="style.css?v=20261012-2149">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -5286,7 +5286,7 @@
         .cd-auto-estado { flex: 1 1 auto; }
         .cd-que { min-width: 190px; }
         /* ── Redes: calendario y editor de publicaciones de Instagram ── */
-        .rd-panel { display: grid; gap: 14px; min-width: 0; }
+        .rd-panel { display: grid; gap: 14px; min-width: 0; padding-top: 8px; }
         .rd-panel[hidden] { display: none !important; }
         .rd-panel > * { min-width: 0; max-width: 100%; }
         .rd-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -5406,6 +5406,29 @@
         .rd-ia-tags { margin: 0; font-size: 0.75rem; color: #7fb7ff; overflow-wrap: anywhere; }
         .rd-ia-acc { display: flex; gap: 6px; flex-wrap: wrap; padding-top: 2px; }
         .rd-config { max-width: 860px; }
+        .rd-ayuda { margin: 0; font-size: 0.78rem; line-height: 1.4; }
+        .rd-prod-lista { display: grid; gap: 4px; max-height: 260px; overflow: auto; padding: 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.14); background: rgba(6,6,6,0.5); }
+        .rd-prod-fila { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 10px; cursor: pointer; font-size: 0.8rem; color: #eef4ff; }
+        .rd-prod-fila[hidden] { display: none; }
+        .rd-prod-fila:hover { background: rgba(255,255,255,0.06); }
+        .rd-prod-fila:has(input:checked) { background: rgba(248,113,113,0.12); outline: 1px solid rgba(248,113,113,0.4); }
+        .rd-prod-fila img { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
+        .rd-prod-fila input { width: 18px; height: 18px; accent-color: #f87171; flex: 0 0 auto; }
+        .rd-filtros { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+        .rd-filtros label { display: grid; gap: 4px; font-size: 0.75rem; color: var(--admin-muted); }
+        .rd-filtros select { border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(6,6,6,0.75); color: #fff; padding: 7px 10px; font-family: 'Roboto', sans-serif; }
+        .rd-conclusion { margin: 0; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255,123,69,0.3); background: rgba(255,123,69,0.07); font-size: 0.86rem; line-height: 1.55; color: #eef4ff; }
+        .rd-graficas { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+        .rd-grafica { display: grid; gap: 8px; align-content: start; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.08); min-width: 0; }
+        .rd-grafica h4 { margin: 0; font-family: 'Oswald', sans-serif; font-size: 0.95rem; color: #fff; }
+        .rd-barras { display: grid; gap: 6px; }
+        .rd-barra { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 0.78rem; color: #eef4ff; }
+        .rd-barra-pista { height: 10px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
+        .rd-barra-pista i { display: block; height: 100%; border-radius: 999px; background: rgba(255,123,69,0.55); }
+        .rd-barra.is-mejor .rd-barra-pista i { background: var(--admin-accent); }
+        .rd-barra-val { min-width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
+        .rd-linea { width: 100%; height: auto; display: block; }
+        .rd-bar-orden { margin-left: 0; margin-top: 4px; }
         .rd-cat-tags { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
         @media (max-width: 640px) { .rd-ia-card { grid-template-columns: 1fr; } .rd-ia-foto { width: 100%; max-width: 220px; } }
         @media (max-width: 980px) { .rd-editor { grid-template-columns: minmax(0, 1fr); } .rd-preview { position: static; max-width: 340px; } }
@@ -15246,6 +15269,7 @@
                         <div class="cpana-tabs" role="tablist" id="rdTabs">
                             <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-rd-tab="calendario">📅 Calendario</button>
                             <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="crear">✍️ Crear</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="metricas">📊 Métricas</button>
                             <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="ia">🤖 IA</button>
                             <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="contenido">⚙️ Contenido</button>
                         </div>
@@ -15253,6 +15277,7 @@
                     <p class="admin-hint">Programa las publicaciones de @roalburger por día y hora. Las historias del Código del día salen solas (se ven en el calendario); aquí se programan posts, carruseles e historias.</p>
                     <div class="card-body rd-panel" data-rd-panel="calendario"><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="crear" hidden><!-- render JS --></div>
+                    <div class="card-body rd-panel" data-rd-panel="metricas" hidden><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="ia" hidden><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="contenido" hidden><!-- render JS --></div>
                 </article>
@@ -16465,17 +16490,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261012-2131"></script>
+    <script defer src="firebase-config.js?v=20261012-2149"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261012-2131"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261012-2149"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-2131"></script>
-    <script defer src="admin.js?v=20261012-2131"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-2149"></script>
+    <script defer src="admin.js?v=20261012-2149"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

@@ -29489,6 +29489,86 @@ function rdTextoEstado(estado, ms, error) {
     if (estado === 'cancelada') return { icono: '🚫', titulo: 'Cancelada', detalle: 'No saldrá.' };
     return { icono: '📝', titulo: 'Borrador', detalle: ms ? `Tiene fecha propuesta (${cuando}) pero aún no está programada.` : 'Aún no está programada.' };
 }
+// ── Métricas: cálculos puros ──
+const RD_FRANJAS = [
+    { id: 'manana', etiqueta: 'Mañana', rango: '6 a. m. – 12 m.' },
+    { id: 'mediodia', etiqueta: 'Mediodía', rango: '12 m. – 3 p. m.' },
+    { id: 'tarde', etiqueta: 'Tarde', rango: '3 – 7 p. m.' },
+    { id: 'noche', etiqueta: 'Noche', rango: '7 p. m. – 6 a. m.' }
+];
+const RD_METRICAS = [
+    { clave: 'reach', etiqueta: 'Alcance' }, { clave: 'views', etiqueta: 'Vistas' }, { clave: 'likes', etiqueta: 'Me gusta' },
+    { clave: 'comments', etiqueta: 'Comentarios' }, { clave: 'saved', etiqueta: 'Guardados' }, { clave: 'shares', etiqueta: 'Compartidas' },
+    { clave: 'total_interactions', etiqueta: 'Interacciones' }, { clave: 'tasa', etiqueta: 'Tasa de interacción' }
+];
+function rdFranja(hhmm) {
+    const h = Number(String(hhmm).split(':')[0]);
+    if (h >= 6 && h < 12) return 'manana';
+    if (h >= 12 && h < 15) return 'mediodia';
+    if (h >= 15 && h < 19) return 'tarde';
+    return 'noche';
+}
+// % de las cuentas alcanzadas que interactuaron (null si no hay alcance medido).
+function rdTasa(ultimo) {
+    const alcance = Number(ultimo?.reach);
+    const inter = Number(ultimo?.total_interactions);
+    return alcance > 0 && Number.isFinite(inter) ? (inter / alcance) * 100 : null;
+}
+function rdValorMetrica(fila, clave) {
+    if (clave === 'tasa') return rdTasa(fila.ultimo);
+    const v = fila.ultimo?.[clave];
+    return Number.isFinite(Number(v)) && v !== null && v !== undefined ? Number(v) : null;
+}
+// Publicaciones ya publicadas con su medición, filtradas por tipo y por período (dias = 0: todo).
+function rdFilasMetricas(posts, metricas, { tipo = 'todos', dias = 0, ahora = Date.now() } = {}) {
+    return (posts || [])
+        .filter((p) => p.estado === 'publicada' && p.mediaId && Number(p.publicadaAtMs))
+        .filter((p) => tipo === 'todos' || p.tipo === tipo)
+        .filter((p) => !dias || Number(p.publicadaAtMs) >= ahora - dias * 24 * 3600 * 1000)
+        .map((p) => {
+            const m = (metricas || {})[p.mediaId];
+            return { id: p.id, post: p, m: m || null, ultimo: m?.ultimo || {}, estado: m?.estado || 'sin_datos', ms: Number(p.publicadaAtMs) };
+        })
+        .sort((a, b) => b.ms - a.ms);
+}
+// De mayor a menor según la métrica elegida; las que no tienen dato van al final.
+function rdOrdenarPor(filas, clave) {
+    return [...filas].sort((a, b) => {
+        const va = rdValorMetrica(a, clave);
+        const vb = rdValorMetrica(b, clave);
+        if (va === null && vb === null) return b.ms - a.ms;
+        if (va === null) return 1;
+        if (vb === null) return -1;
+        return vb - va;
+    });
+}
+// Promedio de la métrica por día de la semana (0 = lunes) y por franja horaria (hora de Colombia).
+function rdMejoresMomentos(filas, clave) {
+    const dias = Array.from({ length: 7 }, () => ({ n: 0, suma: 0 }));
+    const franjas = Object.fromEntries(RD_FRANJAS.map((f) => [f.id, { n: 0, suma: 0 }]));
+    for (const f of filas) {
+        const v = rdValorMetrica(f, clave);
+        if (v === null) continue;
+        const d = dias[rdDiaSemana(rdFechaDeMs(f.ms))];
+        d.n += 1; d.suma += v;
+        const g = franjas[rdFranja(rdHoraDeMs(f.ms))];
+        g.n += 1; g.suma += v;
+    }
+    const prom = (x) => ({ n: x.n, promedio: x.n ? x.suma / x.n : null });
+    return { dias: dias.map(prom), franjas: RD_FRANJAS.map((f) => ({ id: f.id, ...prom(franjas[f.id]) })) };
+}
+// Promedio por tipo (post, carrusel, historia) de una métrica.
+function rdPromedioPorTipo(filas, clave) {
+    const out = {};
+    for (const f of filas) {
+        const v = rdValorMetrica(f, clave);
+        if (v === null) continue;
+        out[f.post.tipo] = out[f.post.tipo] || { n: 0, suma: 0 };
+        out[f.post.tipo].n += 1;
+        out[f.post.tipo].suma += v;
+    }
+    return Object.fromEntries(Object.entries(out).map(([k, x]) => [k, { n: x.n, promedio: x.suma / x.n }]));
+}
 // </redes-instagram>
 
 const rdState = {
@@ -29585,6 +29665,7 @@ function rdRender() {
     else if (rdState.tab === 'crear') rdRenderEditor(body);
     else if (rdState.tab === 'ia') rdRenderIA(body);
     else if (rdState.tab === 'contenido') rdRenderContenido(body);
+    else if (rdState.tab === 'metricas') rdRenderMetricas(body);
 }
 
 function rdAvisosHtml() {
@@ -30388,10 +30469,30 @@ function rdRenderContenido(body) {
             <fieldset class="cd-fieldset"><legend>Categorías que NO se publican</legend>
                 <div class="cpana-dias">${categorias.map((cat) => `<label><input type="checkbox" name="excl" value="${escapeHtml(cat)}"${excluidas.has(cat) ? ' checked' : ''}> ${escapeHtml(cat)}</label>`).join('')}</div>
             </fieldset>
-            <label class="rd-campo"><span class="rd-label">Productos que no quieres publicar <span class="cd-muted">(Ctrl o ⌘ para elegir varios)</span></span>
-                <select name="productosExcluidos" multiple size="6">${productos.map((p) => `<option value="${escapeHtml(p.id)}"${noPublicar.has(p.id) ? ' selected' : ''}>${escapeHtml(p.nombre)} · ${escapeHtml(p.categoria || '')}</option>`).join('')}</select></label>
+            <div class="rd-campo">
+                <span class="rd-label">Productos que la IA NO debe publicar <span class="cd-muted" id="rdExclContador"></span></span>
+                <p class="cd-muted rd-ayuda">Marca los productos que quieres dejar fuera de las publicaciones automáticas (por ejemplo, los que tienen mala foto o los que prefieres publicar tú a mano). Los que dejes sin marcar sí pueden salir.</p>
+                <input type="search" id="rdExclBuscar" class="rd-buscar" placeholder="Buscar producto…" autocomplete="off">
+                <div class="rd-prod-lista" id="rdExclLista">${productos.map((p) => `
+                    <label class="rd-prod-fila" data-rd-nombre="${escapeHtml(`${p.nombre} ${p.categoria || ''}`.toLowerCase())}">
+                        <input type="checkbox" name="prodExcl" value="${escapeHtml(p.id)}"${noPublicar.has(p.id) ? ' checked' : ''}>
+                        <img src="${escapeHtml(p.image_url)}" alt="" loading="lazy">
+                        <span><strong>${escapeHtml(p.nombre)}</strong><br><span class="cd-muted">${escapeHtml(p.categoria || '')}</span></span>
+                    </label>`).join('') || '<p class="cd-muted">Aún no hay productos con foto.</p>'}</div>
+            </div>
             <div class="rd-acciones"><button type="submit" class="section-action-btn primary">💾 Guardar contenido</button></div>
         </form>`;
+    const contarExcl = () => {
+        const n = body.querySelectorAll('input[name="prodExcl"]:checked').length;
+        const el = body.querySelector('#rdExclContador');
+        if (el) el.textContent = n ? `(${n} excluido${n === 1 ? '' : 's'})` : '(ninguno excluido)';
+    };
+    contarExcl();
+    body.querySelector('#rdExclLista')?.addEventListener('change', contarExcl);
+    body.querySelector('#rdExclBuscar')?.addEventListener('input', (e) => {
+        const t = e.target.value.trim().toLowerCase();
+        body.querySelectorAll('.rd-prod-fila').forEach((fila) => { fila.hidden = Boolean(t) && !fila.dataset.rdNombre.includes(t); });
+    });
     body.querySelector('#rdConfigForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const f = e.currentTarget;
@@ -30404,7 +30505,7 @@ function rdRenderContenido(body) {
             horarios: f.horarios.value.split(/[\s,;]+/).filter(Boolean), postsPorSemana: Number(f.postsPorSemana.value),
             noRepetirDias: Number(f.noRepetirDias.value), maxHashtags: Number(f.maxHashtags.value),
             categoriasExcluidas: [...f.querySelectorAll('input[name="excl"]:checked')].map((i) => i.value),
-            productosExcluidos: [...f.productosExcluidos.selectedOptions].map((o) => o.value)
+            productosExcluidos: [...f.querySelectorAll('input[name="prodExcl"]:checked')].map((i) => i.value)
         };
         btn.disabled = true;
         btn.textContent = 'Guardando…';
@@ -30415,5 +30516,162 @@ function rdRenderContenido(body) {
             showNotice(err.message || 'No se pudo guardar.', 'error');
         }
         rdRenderContenido(body);
+    });
+}
+
+// ── Pestaña Métricas: cuáles publicaciones funcionan mejor ──────────────────
+// Lee instagram_metricas (las guarda el servidor: historias 24 h, posts y carruseles 14 días) y
+// instagram_seguidores. Instagram puede tardar hasta 48 h en consolidar sus números.
+rdState.mt = { tipo: 'todos', dias: 30, orden: 'reach' };
+rdState.metricas = {};
+rdState.seguidores = [];
+
+async function rdCargarMetricas() {
+    const [mets, segs] = await Promise.all([
+        firebaseDb.collection('instagram_metricas').orderBy('publicadaAtMs', 'desc').limit(300).get(),
+        firebaseDb.collection('instagram_seguidores').orderBy('fecha', 'desc').limit(90).get()
+    ]);
+    rdState.metricas = Object.fromEntries(mets.docs.map((d) => [d.id, d.data()]));
+    rdState.seguidores = segs.docs.map((d) => d.data()).reverse(); // de la más antigua a la más nueva
+}
+
+const _rdN = (n) => (Number.isFinite(Number(n)) && n !== null ? Number(n).toLocaleString('es-CO') : '—');
+const _rdPct = (n) => (n === null || n === undefined || !Number.isFinite(Number(n)) ? '—' : `${Number(n).toLocaleString('es-CO', { maximumFractionDigits: 1 })} %`);
+
+function rdBarrasHtml(items, { etiqueta, formato = _rdN, minimo = 2 }) {
+    const conDato = items.filter((i) => i.promedio !== null && i.n >= 1);
+    const max = Math.max(1, ...conDato.map((i) => i.promedio));
+    const mejor = conDato.length > 1 ? conDato.reduce((a, b) => (b.promedio > a.promedio ? b : a)) : null;
+    return `<div class="rd-barras" role="list">${items.map((i) => `
+        <div class="rd-barra${mejor && i === mejor ? ' is-mejor' : ''}" role="listitem" title="${escapeHtml(etiqueta(i))}: ${i.promedio === null ? 'sin datos' : formato(i.promedio)} (${i.n} publicación${i.n === 1 ? '' : 'es'})">
+            <span class="rd-barra-etq">${escapeHtml(etiqueta(i))}</span>
+            <span class="rd-barra-pista"><i style="width:${i.promedio === null ? 0 : Math.max(3, Math.round(i.promedio / max * 100))}%"></i></span>
+            <span class="rd-barra-val">${i.promedio === null ? '—' : escapeHtml(formato(i.promedio))}${i.promedio !== null && i.n < minimo ? ' <small title="Pocos datos">*</small>' : ''}${mejor && i === mejor ? ' 🏆' : ''}</span>
+        </div>`).join('')}</div>`;
+}
+
+function rdLineaSeguidoresHtml(segs) {
+    if (segs.length < 2) return '<p class="cd-muted">Los seguidores se guardan cada día: la gráfica aparece cuando haya al menos 2 días.</p>';
+    const vals = segs.map((s) => Number(s.seguidores));
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const W = 520;
+    const H = 90;
+    const x = (i) => 8 + (i / (vals.length - 1)) * (W - 16);
+    const y = (v) => (max === min ? H / 2 : H - 10 - ((v - min) / (max - min)) * (H - 24));
+    const puntos = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const delta = vals[vals.length - 1] - vals[0];
+    return `
+        <svg class="rd-linea" viewBox="0 0 ${W} ${H}" role="img" aria-label="Seguidores de ${escapeHtml(segs[0].fecha)} a ${escapeHtml(segs[segs.length - 1].fecha)}: de ${_rdN(vals[0])} a ${_rdN(vals[vals.length - 1])}">
+            <polyline points="${puntos}" fill="none" stroke="var(--admin-accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            <circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="4" fill="var(--admin-accent)" stroke="#0b0d12" stroke-width="2"/>
+        </svg>
+        <p class="cd-muted">${_rdN(vals[0])} → <strong>${_rdN(vals[vals.length - 1])}</strong> seguidores · ${delta >= 0 ? '+' : ''}${_rdN(delta)} en ${vals.length} días</p>`;
+}
+
+function rdConclusionesHtml(filas, orden) {
+    const clave = orden === 'tasa' ? 'tasa' : orden;
+    const medidas = filas.filter((f) => rdValorMetrica(f, clave) !== null);
+    if (medidas.length < 3) return '<p class="rd-conclusion">ℹ️ Todavía hay pocos datos. Con 10 o más publicaciones medidas, las conclusiones son más confiables.</p>';
+    const etq = (RD_METRICAS.find((m) => m.clave === clave) || {}).etiqueta || clave;
+    const lineas = [];
+    const top = rdOrdenarPor(medidas, clave)[0];
+    lineas.push(`🏆 La de más <strong>${escapeHtml(etq.toLowerCase())}</strong> fue ${rdIcono(top.post)} del ${escapeHtml(rdFechaCorta(rdFechaDeMs(top.ms)))}: ${(clave === 'tasa' ? _rdPct : _rdN)(rdValorMetrica(top, clave))}.`);
+    const porTipo = rdPromedioPorTipo(medidas, clave);
+    const tipos = Object.entries(porTipo).filter(([, x]) => x.n >= 2).sort((a, b) => b[1].promedio - a[1].promedio);
+    if (tipos.length > 1) lineas.push(`${{ foto: '📷 Los posts', carrusel: '🎠 Los carruseles', historia: '📱 Las historias' }[tipos[0][0]]} rinden más en promedio (${clave === 'tasa' ? _rdPct(tipos[0][1].promedio) : _rdN(Math.round(tipos[0][1].promedio))}).`);
+    const mm = rdMejoresMomentos(medidas, clave);
+    const mejorDia = mm.dias.map((d, i) => ({ ...d, i })).filter((d) => d.n >= 2).sort((a, b) => b.promedio - a.promedio)[0];
+    const mejorFranja = mm.franjas.filter((f) => f.n >= 2).sort((a, b) => b.promedio - a.promedio)[0];
+    if (mejorDia) lineas.push(`📅 Mejor día: <strong>${['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'][mejorDia.i]}</strong>.`);
+    if (mejorFranja) lineas.push(`🕒 Mejor franja: <strong>${escapeHtml(RD_FRANJAS.find((f) => f.id === mejorFranja.id).etiqueta.toLowerCase())}</strong>.`);
+    if (medidas.length < 10) lineas.push('<span class="cd-muted">(Con pocas publicaciones medidas es solo una pista: junta más datos antes de decidir.)</span>');
+    return `<p class="rd-conclusion">${lineas.join(' ')}</p>`;
+}
+
+async function rdRenderMetricas(body) {
+    body.innerHTML = '<p class="admin-hint">Cargando métricas…</p>';
+    try { await rdCargarMetricas(); } catch (err) { body.innerHTML = `<p class="cd-aviso">No se pudieron leer las métricas: ${escapeHtml(err.message || 'error')}</p>`; return; }
+    const { tipo, dias, orden } = rdState.mt;
+    const filas = rdFilasMetricas(rdState.posts, rdState.metricas, { tipo, dias });
+    const conDatos = filas.filter((f) => rdValorMetrica(f, 'reach') !== null);
+    const prom = (clave) => { const v = conDatos.map((f) => rdValorMetrica(f, clave)).filter((x) => x !== null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const sinPermiso = filas.some((f) => f.estado === 'sin_permiso');
+    const ordenadas = rdOrdenarPor(filas, orden);
+    const mm = rdMejoresMomentos(filas, orden);
+    const etqOrden = (RD_METRICAS.find((m) => m.clave === orden) || {}).etiqueta || orden;
+    const fmt = orden === 'tasa' ? _rdPct : _rdN;
+    const maxValor = Math.max(1, ...ordenadas.map((f) => rdValorMetrica(f, orden) || 0));
+    const medallas = ['🥇', '🥈', '🥉'];
+    const seg = rdState.seguidores;
+    const segHoy = seg[seg.length - 1];
+
+    body.innerHTML = `
+        ${rdAvisosHtml()}
+        ${sinPermiso ? '<p class="cd-aviso">⚠️ Instagram no entrega las métricas: al token le falta el permiso <strong>instagram_business_manage_insights</strong>. Agrégalo en tu app de Meta, genera un token nuevo y reconéctalo en Código del día → Configuración → Instagram.</p>' : ''}
+        <div class="rd-toolbar">
+            <div class="rd-filtros">
+                <label>Tipo<select id="rdMtTipo">${[['todos', 'Todas'], ['foto', '📷 Posts'], ['carrusel', '🎠 Carruseles'], ['historia', '📱 Historias']].map(([v, e]) => `<option value="${v}"${tipo === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>
+                <label>Período<select id="rdMtDias">${[[7, 'Últimos 7 días'], [30, 'Últimos 30 días'], [90, 'Últimos 90 días'], [0, 'Todo']].map(([v, e]) => `<option value="${v}"${dias === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>
+                <label>Ordenar por<select id="rdMtOrden">${RD_METRICAS.map((m) => `<option value="${m.clave}"${orden === m.clave ? ' selected' : ''}>${m.etiqueta}</option>`).join('')}</select></label>
+            </div>
+            <button type="button" class="section-action-btn" id="rdMtActualizar">🔄 Actualizar métricas ahora</button>
+        </div>
+        <div class="cd-kpis">
+            <div class="cd-kpi"><span>Publicaciones medidas</span><strong>${_rdN(conDatos.length)}</strong><span>de ${_rdN(filas.length)} publicadas en el período</span></div>
+            <div class="cd-kpi"><span>Alcance promedio</span><strong>${prom('reach') === null ? '—' : _rdN(Math.round(prom('reach')))}</strong><span>cuentas distintas por publicación</span></div>
+            <div class="cd-kpi"><span>Interacciones promedio</span><strong>${prom('total_interactions') === null ? '—' : _rdN(Math.round(prom('total_interactions')))}</strong><span>me gusta, comentarios, guardados y compartidas</span></div>
+            <div class="cd-kpi"><span>Tasa de interacción</span><strong>${_rdPct(prom('tasa') === null ? rdTasa({ reach: prom('reach'), total_interactions: prom('total_interactions') }) : prom('tasa'))}</strong><span>interacciones ÷ alcance</span></div>
+            <div class="cd-kpi"><span>Seguidores</span><strong>${segHoy ? _rdN(segHoy.seguidores) : (Number.isFinite(Number(rdState.ig?.seguidores)) ? _rdN(rdState.ig.seguidores) : '—')}</strong><span>${seg.length > 1 ? `${seg[seg.length - 1].seguidores - seg[0].seguidores >= 0 ? '+' : ''}${_rdN(seg[seg.length - 1].seguidores - seg[0].seguidores)} en ${seg.length} días` : 'se guarda cada día'}</span></div>
+        </div>
+        ${rdConclusionesHtml(filas, orden)}
+        <div class="rd-graficas">
+            <section class="rd-grafica"><h4>Mejor día de la semana <span class="cd-muted">(${escapeHtml(etqOrden.toLowerCase())} promedio)</span></h4>
+                ${rdBarrasHtml(mm.dias.map((d, i) => ({ ...d, nombre: RD_DIAS_CORTOS[i] })), { etiqueta: (i) => i.nombre, formato: fmt })}
+            </section>
+            <section class="rd-grafica"><h4>Mejor franja horaria <span class="cd-muted">(${escapeHtml(etqOrden.toLowerCase())} promedio)</span></h4>
+                ${rdBarrasHtml(mm.franjas.map((f) => ({ ...f, nombre: RD_FRANJAS.find((x) => x.id === f.id).etiqueta })), { etiqueta: (i) => i.nombre, formato: fmt })}
+                <p class="cd-muted">* = solo 1 publicación: dato poco confiable.</p>
+            </section>
+            <section class="rd-grafica"><h4>Seguidores en el tiempo</h4>${rdLineaSeguidoresHtml(seg)}</section>
+        </div>
+        ${filas.length ? `
+        <div class="cpana-table-wrap">
+            <table class="cpana-table cd-table">
+                <thead><tr><th>#</th><th>Publicación</th><th>Alcance</th><th>Vistas</th><th>Me gusta</th><th>Coment.</th><th>Guardados</th><th>Compart.</th><th>Interac.</th><th>Tasa</th></tr></thead>
+                <tbody>${ordenadas.map((f, i) => {
+                    const p = f.post;
+                    const im = (p.imagenes || [])[0];
+                    const v = rdValorMetrica(f, orden);
+                    const celda = (c) => { const x = rdValorMetrica(f, c); return x === null ? (f.estado === 'sin_permiso' ? '<span class="cd-hist-err" title="Falta el permiso de métricas">sin permiso</span>' : (f.estado === 'pendiente' || f.estado === 'sin_datos' ? '<span class="cd-muted" title="Se mide en la próxima pasada">…</span>' : '<span class="cd-muted">—</span>')) : (c === 'tasa' ? _rdPct(x) : _rdN(x)); };
+                    return `<tr>
+                        <td class="cd-nowrap">${v !== null && i < 3 ? medallas[i] : i + 1}</td>
+                        <td><div class="cd-prod">${im ? `<img class="cd-thumb" src="${escapeHtml(rdUrlImagen({ id: p.id, imgToken: p.imgToken, actualizadoAtMs: p.actualizadoAtMs }, im))}" alt="">` : ''}
+                            <span>${rdIcono(p)} <strong>${escapeHtml(p.tipo === 'historia' ? 'Historia' : rdTextoCorto(p.caption, 46) || 'Sin texto')}</strong><br><span class="cd-muted">${escapeHtml(rdFechaCorta(rdFechaDeMs(f.ms)))} · ${escapeHtml(rdHora12(rdHoraDeMs(f.ms)))}</span></span></div>
+                            ${v !== null ? `<span class="cd-bar-mini rd-bar-orden" style="width:${Math.max(4, Math.round(v / maxValor * 140))}px" title="${escapeHtml(etqOrden)}: ${escapeHtml(fmt(v))}"></span>` : ''}</td>
+                        <td class="cd-num">${celda('reach')}</td><td class="cd-num">${celda('views')}</td><td class="cd-num">${celda('likes')}</td><td class="cd-num">${celda('comments')}</td>
+                        <td class="cd-num">${celda('saved')}</td><td class="cd-num">${celda('shares')}</td><td class="cd-num">${celda('total_interactions')}</td><td class="cd-num">${celda('tasa')}</td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>
+        </div>` : '<p class="admin-hint">Todavía no hay publicaciones publicadas en este período. Cuando salga una, aparecerá aquí con sus métricas (la primera medición tarda unos minutos y Instagram puede tardar hasta 48 h en consolidar sus números).</p>'}
+        <p class="cd-muted">Las historias se miden solo mientras duran (24 h); los posts y carruseles, durante 14 días. Las historias no tienen me gusta, comentarios ni guardados.</p>`;
+
+    const recargar = () => rdRenderMetricas(body);
+    body.querySelector('#rdMtTipo').addEventListener('change', (e) => { rdState.mt.tipo = e.target.value; recargar(); });
+    body.querySelector('#rdMtDias').addEventListener('change', (e) => { rdState.mt.dias = Number(e.target.value); recargar(); });
+    body.querySelector('#rdMtOrden').addEventListener('change', (e) => { rdState.mt.orden = e.target.value; recargar(); });
+    body.querySelector('#rdMtActualizar').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Actualizando…';
+        try {
+            const r = await _cdLlamarIg('actualizarMetricas');
+            if (r.sinPermiso) showNotice('Instagram no deja leer las métricas: falta el permiso instagram_business_manage_insights.', 'error');
+            else showNotice(`Métricas actualizadas (${r.actualizadas} publicación(es) medida(s)).`, 'ok');
+        } catch (err) {
+            showNotice(`No se pudieron actualizar: ${err.message || 'error'}`, 'error');
+        }
+        recargar();
     });
 }

@@ -83,7 +83,7 @@ before(() => { db = getFirestore(); });
 beforeEach(async () => {
     await Promise.all([
         borrarColeccion(posts.POSTS_COLLECTION), borrarColeccion(posts.POSTS_IMG_COLLECTION),
-        borrarColeccion(ig.CONFIG_COLLECTION), borrarColeccion(ig.PUBLICACIONES_COLLECTION)
+        borrarColeccion(ig.CONFIG_COLLECTION), borrarColeccion(ig.PUBLICACIONES_COLLECTION), borrarColeccion(ig.METRICAS_COLLECTION), borrarColeccion(ig.SEGUIDORES_COLLECTION)
     ]);
 });
 
@@ -418,4 +418,105 @@ test('historia: sin imagen no sale, y programada por el cron sigue las mismas re
     await posts.programarPost(db, { id, programadaAtMs: AHORA + 10 * 60 * 1000 }, 'a', { nowMs: AHORA });
     const r = await posts.publicarProgramados(db, op(meta, { nowMs: AHORA + 15 * 60 * 1000 }));
     assert.deepEqual([r.revisadas, r.publicadas], [1, 1]);
+});
+
+// ── Métricas de posts y carruseles (14 días) ─────────────────────────────────
+
+const valoresPost = { reach: 410, views: 520, likes: 38, comments: 4, shares: 6, saved: 12, total_interactions: 60, profile_visits: 15, follows: 3 };
+const insightsPost = (valores) => (q) => ({ data: String(q.metric).split(',').filter((n) => n in valores).map((n) => ({ name: n, period: 'lifetime', values: [{ value: valores[n] }] })) });
+const medidas = async (id) => (await db.collection(ig.METRICAS_COLLECTION).doc(id).get()).data();
+
+async function publicarPostMedido(tipo = 'foto') {
+    await conectar();
+    const id = await nuevoPost({}, tipo === 'carrusel' ? 3 : 1);
+    const meta = metaFalso();
+    await posts.publicarPost(db, { id, manual: true, ...op(meta) });
+    return id;
+}
+
+test('métricas de posts: al publicar se empieza a medir 14 días, ligado a la publicación', async () => {
+    for (const tipo of ['foto', 'carrusel']) {
+        await borrarColeccion(ig.METRICAS_COLLECTION);
+        const id = await publicarPostMedido(tipo);
+        const m = await medidas('ig-media-9');
+        assert.deepEqual([m.tipo, m.postId, m.estado, m.publicadaAtMs], [tipo, id, 'pendiente', AHORA]);
+        assert.equal(m.expiraAtMs, AHORA + ig.METRICAS_POST_VIGENCIA_MS);
+        assert.equal(ig.METRICAS_POST_VIGENCIA_MS, 14 * DAY);
+        await borrarColeccion(posts.POSTS_COLLECTION);
+        await borrarColeccion(posts.POSTS_IMG_COLLECTION);
+        await borrarColeccion(ig.PUBLICACIONES_COLLECTION);
+    }
+});
+
+test('métricas de posts: pide las del feed (alcance, vistas, likes, comentarios, compartidas, guardados…), sin las de historias', async () => {
+    await publicarPostMedido();
+    const meta = metaFalso();
+    const insights = insightsPost(valoresPost);
+    const fetchFn = async (url, init) => {
+        const u = new URL(url);
+        if (/\/insights$/.test(u.pathname)) {
+            meta.llamadas.push({ ruta: u.pathname, query: Object.fromEntries(u.searchParams) });
+            return { ok: true, status: 200, json: async () => insights(Object.fromEntries(u.searchParams)) };
+        }
+        if (/\/me$/.test(u.pathname)) return { ok: true, status: 200, json: async () => ({ data: [{ followers_count: 1500, media_count: 60 }] }) };
+        return meta.fetchFn(url, init);
+    };
+    const r = await ig.actualizarMetricas(db, { nowMs: AHORA + 2 * HOUR, fetchFn });
+    assert.equal(r.actualizadas, 1);
+    const m = await medidas('ig-media-9');
+    assert.equal(m.estado, 'ok');
+    assert.deepEqual(m.ultimo, valoresPost);
+    const pedidas = meta.llamadas.filter((l) => /insights$/.test(l.ruta)).map((l) => l.query.metric);
+    assert.deepEqual(pedidas, [ig.METRICAS_POST.join(',')], 'un solo lote, sin navigation ni link_clicks');
+    assert.ok(!pedidas.join().includes('navigation'));
+});
+
+test('métricas de posts: no se vuelven a pedir cada 30 min; al principio cada hora, luego cada ~6 h y después una vez al día', async () => {
+    await publicarPostMedido();
+    let pedidas = 0;
+    const insights = insightsPost(valoresPost);
+    const fetchFn = async (url) => {
+        const u = new URL(url);
+        if (/\/insights$/.test(u.pathname)) { pedidas += 1; return { ok: true, status: 200, json: async () => insights(Object.fromEntries(u.searchParams)) }; }
+        return { ok: true, status: 200, json: async () => ({ data: [{ followers_count: 1 }] }) };
+    };
+    const medir = (despuesMs) => ig.actualizarMetricas(db, { nowMs: AHORA + despuesMs, fetchFn });
+    await medir(2 * HOUR); assert.equal(pedidas, 1);
+    await medir(2.5 * HOUR); assert.equal(pedidas, 1, '30 min después: no');
+    await medir(3.2 * HOUR); assert.equal(pedidas, 2, 'pasó más de 55 min (primeras 24 h)');
+    await medir(30 * HOUR); assert.equal(pedidas, 3);
+    await medir(33 * HOUR); assert.equal(pedidas, 3, 'entre 24 y 72 h: cada ~5,5 h');
+    await medir(36 * HOUR); assert.equal(pedidas, 4);
+    await medir(5 * DAY); assert.equal(pedidas, 5);
+    await medir(5 * DAY + 10 * HOUR); assert.equal(pedidas, 5, 'pasados 3 días: una vez al día');
+    await medir(6.1 * DAY); assert.equal(pedidas, 6);
+    assert.equal(ig.intervaloMedicionPostMs(HOUR), 55 * 60 * 1000);
+    await medir(14 * DAY + 2 * HOUR); assert.equal(pedidas, 6, 'pasados los 14 días (+1 h de margen) ya no se mide');
+});
+
+test('métricas de posts: si Instagram no admite una métrica en el lote, se piden de a una; sin permiso queda marcado', async () => {
+    await publicarPostMedido('carrusel');
+    const insights = insightsPost(valoresPost);
+    const fetchFn = async (url) => {
+        const u = new URL(url);
+        if (/\/insights$/.test(u.pathname)) {
+            const q = Object.fromEntries(u.searchParams);
+            if (String(q.metric).includes(',') || q.metric === 'follows') return { ok: false, status: 400, json: async () => ({ error: { message: '(#100) metric not supported for carousel', code: 100 } }) };
+            return { ok: true, status: 200, json: async () => insights(q) };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: [{ followers_count: 1 }] }) };
+    };
+    await ig.actualizarMetricas(db, { nowMs: AHORA + 2 * HOUR, fetchFn });
+    const m = await medidas('ig-media-9');
+    assert.equal(m.estado, 'ok');
+    assert.equal(m.ultimo.reach, 410);
+    assert.equal(m.ultimo.saved, 12);
+    assert.equal(m.ultimo.follows, undefined, 'la que no admite se ignora');
+    const sinPermiso = async (url) => (/\/insights$/.test(new URL(url).pathname)
+        ? { ok: false, status: 400, json: async () => ({ error: { message: '(#10) Application does not have permission for this action', code: 10 } }) }
+        : { ok: true, status: 200, json: async () => ({ data: [{ followers_count: 1 }] }) });
+    const r = await ig.actualizarMetricas(db, { nowMs: AHORA + 2 * DAY, fetchFn: sinPermiso });
+    assert.equal(r.sinPermiso, 1);
+    assert.equal((await medidas('ig-media-9')).estado, 'sin_permiso');
+    assert.equal((await medidas('ig-media-9')).ultimo.reach, 410, 'lo ya medido se conserva');
 });

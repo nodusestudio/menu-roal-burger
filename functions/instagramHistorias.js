@@ -38,6 +38,7 @@ const POSTS_COLLECTION = 'instagram_posts';             // publicaciones normale
 const POSTS_IMG_COLLECTION = 'instagram_posts_img';     // bytes JPEG de esas publicaciones (nadie los lee)
 const HORA_MS = 60 * 60 * 1000;
 const METRICAS_VIGENCIA_MS = 24 * HORA_MS; // una historia dura 24 h y sus métricas también
+const METRICAS_POST_VIGENCIA_MS = 14 * 24 * HORA_MS; // un post o carrusel se sigue midiendo 14 días
 const MAX_JPEG_BYTES = 900 * 1024; // un doc de Firestore admite 1 MiB
 const MAX_INTENTOS = 3;
 const PUBLICANDO_VIGENCIA_MS = 10 * 60 * 1000;
@@ -486,11 +487,11 @@ async function registrarPublicacion(db, { fecha, tipo, origen, ok, mediaId = '',
 }
 
 // Instagram solo da las métricas de una historia mientras dura (24 h): se empieza a medir al publicarla.
-async function iniciarMetricas(db, { mediaId, fecha, tipo, publicadaAtMs }) {
+async function iniciarMetricas(db, { mediaId, fecha, tipo, publicadaAtMs, vigenciaMs = METRICAS_VIGENCIA_MS, postId = '' }) {
     if (!mediaId) return;
     try {
         await db.collection(METRICAS_COLLECTION).doc(mediaId).set({
-            mediaId, fecha, tipo, publicadaAtMs, expiraAtMs: publicadaAtMs + METRICAS_VIGENCIA_MS, estado: 'pendiente', actualizadoAtMs: 0, ultimo: {}, serie: []
+            mediaId, fecha, tipo, postId, publicadaAtMs, expiraAtMs: publicadaAtMs + vigenciaMs, estado: 'pendiente', actualizadoAtMs: 0, ultimo: {}, serie: []
         }, { merge: true });
     } catch (err) {
         console.error('iniciarMetricas:', err.message);
@@ -514,16 +515,18 @@ function clasificarErrorInsights(err) {
 
 // Métricas de UNA historia. Si Instagram rechaza el lote por una métrica que no admite (código 100),
 // se piden de a una y se ignoran las que no existan.
-async function leerInsightsHistoria(fetchFn, conexion, mediaId) {
+// Pide una lista de métricas de un medio; si Instagram rechaza el lote por una que no admite (código 100),
+// las pide de a una y se queda con las buenas.
+async function pedirMetricas(fetchFn, conexion, mediaId, lista) {
     const base = `${GRAPH_URL}/${GRAPH_VERSION}/${mediaId}/insights`;
     const pedir = (params) => llamarGraph(fetchFn, 'GET', `${base}?${new URLSearchParams(params)}`, { token: conexion.accessToken });
     const valores = {};
     try {
-        const r = await pedir({ metric: METRICAS_HISTORIA.join(',') });
+        const r = await pedir({ metric: lista.join(',') });
         for (const m of r.data || []) valores[m.name] = valorDeMetrica(m);
     } catch (err) {
         if (!(err instanceof GraphError) || err.code !== 100) throw err;
-        for (const nombre of METRICAS_HISTORIA) {
+        for (const nombre of lista) {
             try {
                 const r = await pedir({ metric: nombre });
                 for (const m of r.data || []) valores[m.name] = valorDeMetrica(m);
@@ -532,7 +535,12 @@ async function leerInsightsHistoria(fetchFn, conexion, mediaId) {
             }
         }
     }
-    // Navegación: toques hacia adelante, hacia atrás, salidas y deslizamientos.
+    return { valores, pedir };
+}
+
+// Métricas de UNA historia (+ navegación: toques hacia adelante, atrás, salidas y deslizamientos).
+async function leerInsightsHistoria(fetchFn, conexion, mediaId) {
+    const { valores, pedir } = await pedirMetricas(fetchFn, conexion, mediaId, METRICAS_HISTORIA);
     try {
         const r = await pedir({ metric: 'navigation', breakdown: 'story_navigation_action_type' });
         const m = (r.data || [])[0];
@@ -543,6 +551,19 @@ async function leerInsightsHistoria(fetchFn, conexion, mediaId) {
         if (!(err instanceof GraphError) || err.code !== 100) throw err;
     }
     return valores;
+}
+
+// Métricas de un post o carrusel del feed: no vencen a las 24 h (se miden 14 días).
+const METRICAS_POST = ['reach', 'views', 'likes', 'comments', 'shares', 'saved', 'total_interactions', 'profile_visits', 'follows'];
+async function leerInsightsPost(fetchFn, conexion, mediaId) {
+    return (await pedirMetricas(fetchFn, conexion, mediaId, METRICAS_POST)).valores;
+}
+
+// Con qué frecuencia se vuelve a medir un post: al principio seguido (es cuando más cambia), después una vez al día.
+function intervaloMedicionPostMs(edadMs) {
+    if (edadMs < 24 * HORA_MS) return 55 * 60 * 1000;
+    if (edadMs < 72 * HORA_MS) return 5.5 * HORA_MS;
+    return 23 * HORA_MS;
 }
 
 // Cada 30 min: seguidores del día y métricas de las historias que aún están vivas (más 1 h de margen,
@@ -569,9 +590,11 @@ async function actualizarMetricas(db, { nowMs = Date.now(), fetchFn = fetch } = 
     const snap = await db.collection(METRICAS_COLLECTION).where('expiraAtMs', '>', nowMs - HORA_MS).get();
     for (const doc of snap.docs) {
         const d = doc.data();
+        const esPost = d.tipo === 'foto' || d.tipo === 'carrusel';
+        if (esPost && nowMs - (Number(d.actualizadoAtMs) || 0) < intervaloMedicionPostMs(nowMs - (Number(d.publicadaAtMs) || nowMs))) continue;
         let patch;
         try {
-            const v = await leerInsightsHistoria(fetchFn, conexion, d.mediaId || doc.id);
+            const v = esPost ? await leerInsightsPost(fetchFn, conexion, d.mediaId || doc.id) : await leerInsightsHistoria(fetchFn, conexion, d.mediaId || doc.id);
             const ultimo = { ...(d.ultimo || {}), ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== null && x !== undefined)) };
             const punto = { atMs: nowMs, reach: ultimo.reach ?? null, views: ultimo.views ?? null };
             const previa = (d.serie || [])[(d.serie || []).length - 1];
@@ -632,6 +655,10 @@ module.exports = {
     METRICAS_VIGENCIA_MS,
     actualizarMetricas,
     leerInsightsHistoria,
+    leerInsightsPost,
+    METRICAS_POST,
+    METRICAS_POST_VIGENCIA_MS,
+    intervaloMedicionPostMs,
     llamarGraph,
     leerConexion,
     conexionRef,
