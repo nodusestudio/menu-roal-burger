@@ -454,6 +454,15 @@ service cloud.firestore {
     match /instagram_posts_img/{id} {
       allow read, write: if false;
     }
+    // Métricas de Facebook (publicaciones y página): las lee el panel (admin); solo las escribe el servidor.
+    match /facebook_metricas/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /facebook_pagina_dias/{fecha} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
     match /instagram_seguidores/{fecha} {
       allow read: if isAdmin();
       allow write: if false;

@@ -16,7 +16,7 @@ const BLOQUE = SRC.slice(SRC.indexOf('// <redes-instagram>'), SRC.indexOf('// </
 assert.ok(BLOQUE.length > 1500, 'no se encontró el bloque <redes-instagram> en admin.js');
 const ctx = vm.createContext({});
 const NOMBRES = ['rdMsDeFechaHora', 'rdFechaDeMs', 'rdHoraDeMs', 'rdHora12', 'rdSumarDias', 'rdDiaSemana', 'rdLunesDe', 'rdGrillaMes', 'rdSemana',
-    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe', 'rdPendientesIA', 'rdListoParaAprobar', 'rdLayoutHistoria', 'rdIcono', 'rdFechaCorta', 'rdTextoEstado', 'rdFranja', 'rdTasa', 'rdValorMetrica', 'rdFilasMetricas', 'rdOrdenarPor', 'rdMejoresMomentos', 'rdPromedioPorTipo', 'rdEmojiRegistrar', 'rdEmojisFrecuentes', 'RD_EMOJIS'];
+    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe', 'rdPendientesIA', 'rdListoParaAprobar', 'rdLayoutHistoria', 'rdIcono', 'rdFechaCorta', 'rdTextoEstado', 'rdFranja', 'rdTasa', 'rdValorMetrica', 'rdFilasMetricas', 'rdFilasMetricasFb', 'rdOrdenarPor', 'rdMejoresMomentos', 'rdPromedioPorTipo', 'rdEmojiRegistrar', 'rdEmojisFrecuentes', 'RD_EMOJIS'];
 vm.runInContext(`${BLOQUE}\n${NOMBRES.map((n) => `this.${n} = ${n};`).join('')}`, ctx);
 const rd = ctx;
 const posts = require(path.join(__dirname, '..', 'functions', 'instagramPosts.js'));
@@ -247,4 +247,24 @@ test('emojis: la lista no repite ni trae vacíos, y se recuerdan los más usados
     assert.equal(rd.rdEmojisFrecuentes({ '🍔': { n: 0, t: 1 }, '🔥': null, '😋': { n: 2, t: 1 } }).join(''), '😋');
     assert.deepEqual(JSON.parse(JSON.stringify(rd.rdEmojiRegistrar(null, ''))), {});
     assert.deepEqual(JSON.parse(JSON.stringify(rd.rdEmojiRegistrar({}, 'x'.repeat(40)))), {});
+});
+
+test('métricas de Facebook: solo posts y carruseles publicados en Facebook (las historias no se miden), con su propia fecha', () => {
+    const pf = (id, tipo, fbId, ms, estado = 'publicada') => ({ id, tipo, estado: 'publicada', facebook: { estado, fbPostId: fbId, publicadaAtMs: ms } });
+    const posts = [
+        pf('a', 'foto', '555_a', rdMs('2026-10-18', '12:00')),
+        pf('b', 'carrusel', '555_b', rdMs('2026-10-12', '19:00')),
+        pf('h', 'historia', 'story-1', rdMs('2026-10-14', '12:00')),
+        pf('e', 'foto', '', rdMs('2026-10-09', '12:00')),
+        pf('x', 'foto', '555_x', rdMs('2026-10-08', '12:00'), 'error'),
+        pf('v', 'foto', '555_v', rdMs('2026-08-01', '12:00')),
+        { id: 'solo-ig', tipo: 'foto', estado: 'publicada', mediaId: 'm-1', publicadaAtMs: rdMs('2026-10-18', '12:00') }
+    ];
+    const mf = { '555_a': { estado: 'ok', ultimo: { views: 300, likes: 10, total_interactions: 14 } } };
+    const filas = rd.rdFilasMetricasFb(posts, mf, { ahora: AHORA });
+    assert.deepEqual(ids(filas), ['a', 'b', 'v']);
+    assert.deepEqual(filas.map((f) => f.estado), ['ok', 'sin_datos', 'sin_datos']);
+    assert.deepEqual(ids(rd.rdFilasMetricasFb(posts, mf, { ahora: AHORA, dias: 30 })), ['a', 'b']);
+    assert.deepEqual(ids(rd.rdFilasMetricasFb(posts, mf, { ahora: AHORA, tipo: 'carrusel' })), ['b']);
+    assert.equal(rd.rdValorMetrica(filas[0], 'views'), 300);
 });

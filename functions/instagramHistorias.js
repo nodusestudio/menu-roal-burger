@@ -694,6 +694,7 @@ module.exports = {
     actualizarMetricas,
     leerInsightsHistoria,
     leerInsightsPost,
+    clasificarErrorInsights,
     METRICAS_POST,
     METRICAS_POST_VIGENCIA_MS,
     intervaloMedicionPostMs,

@@ -3029,6 +3029,19 @@ exports.actualizarMetricasInstagram = onSchedule(
     }
 );
 
+// Cada 30 min: métricas de las publicaciones de Facebook (14 días) y de la página. Sin página conectada no hace nada.
+exports.actualizarMetricasFacebook = onSchedule(
+    { schedule: '*/30 * * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        try {
+            const r = await facebookMetricas.actualizarMetricasFacebook(getFirestore());
+            if (r.actualizadas || r.sinPermiso || r.errores || r.errorPagina) console.log(`actualizarMetricasFacebook: ${JSON.stringify(r)}`);
+        } catch (err) {
+            console.error('actualizarMetricasFacebook:', err.message);
+        }
+    }
+);
+
 // Cada minuto de 6 p. m. a 11:59 p. m. (hora Colombia): si el código no se agotó solo, a una hora al azar
 // entre agotadoDesde (9 p. m.) y +agotadoVentanaMin (45 min) sale la historia de "agotado".
 exports.publicarAgotadoPorHorario = onSchedule(
@@ -3048,6 +3061,7 @@ exports.publicarAgotadoPorHorario = onSchedule(
 // ─────────────────────────────────────────────────────────────
 const instagramPosts = require('./instagramPosts');
 const facebookPagina = require('./facebookPagina');
+const facebookMetricas = require('./facebookMetricas');
 
 exports.adminInstagramPosts = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '512MiB', timeoutSeconds: 180 },
@@ -3139,6 +3153,7 @@ exports.adminFacebook = onCall(
         if (accion === 'probar') return facebookPagina.probarConexion(db);
         if (accion === 'ajustes') return facebookPagina.setAjustes(db, { activo: d.activo, historiasCodigo: d.historiasCodigo, conHashtags: d.conHashtags });
         if (accion === 'desconectar') return facebookPagina.desconectar(db);
+        if (accion === 'actualizarMetricas') return facebookMetricas.actualizarMetricasFacebook(db);
         if (accion === 'publicarPrueba') {
             const base64 = String(d.imagenBase64 || '').replace(/^data:image\/jpeg;base64,/, '');
             return facebookPagina.publicarPrueba(db, { jpeg: Buffer.from(base64, 'base64'), baseUrl: historiaImagenBaseUrl() });

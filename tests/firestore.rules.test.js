@@ -405,8 +405,10 @@ test('SEGURIDAD Instagram: el token y las imágenes no se leen desde el navegado
         await fs.collection('instagram_posts').doc('post1').set({ estado: 'programada', imgToken: 'abc' });
         await fs.collection('facebook_config').doc('conexion').set({ pageToken: 'EAA-secreto', pageId: '555' });
         await fs.collection('instagram_posts_img').doc('post1_0').set({ size: 1 });
+        await fs.collection('facebook_metricas').doc('555_p1').set({ ultimo: { views: 5 } });
+        await fs.collection('facebook_pagina_dias').doc('2026-10-14').set({ seguidores: 100 });
     });
-    for (const [col, id] of [['instagram_publicaciones', 'p1'], ['instagram_metricas', 'm1'], ['instagram_seguidores', '2026-10-12'], ['instagram_posts', 'post1']]) {
+    for (const [col, id] of [['instagram_publicaciones', 'p1'], ['instagram_metricas', 'm1'], ['instagram_seguidores', '2026-10-12'], ['instagram_posts', 'post1'], ['facebook_metricas', '555_p1'], ['facebook_pagina_dias', '2026-10-14']]) {
         await assertSucceeds(adminDb.collection(col).doc(id).get());
         await assertFails(anonDb.collection(col).doc(id).get());
         await assertFails(clienteDb.collection(col).doc(id).get());

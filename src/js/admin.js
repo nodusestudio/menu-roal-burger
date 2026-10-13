@@ -29540,6 +29540,19 @@ function rdFilasMetricas(posts, metricas, { tipo = 'todos', dias = 0, ahora = Da
         })
         .sort((a, b) => b.ms - a.ms);
 }
+// Publicaciones que salieron en Facebook con su medición. Solo posts de foto y carruseles: las historias de
+// la página no se miden. La fecha es la de publicación en Facebook (puede diferir de la de Instagram).
+function rdFilasMetricasFb(posts, metricasFb, { tipo = 'todos', dias = 0, ahora = Date.now() } = {}) {
+    return (posts || [])
+        .filter((p) => p.tipo !== 'historia' && p.facebook?.estado === 'publicada' && p.facebook?.fbPostId && Number(p.facebook?.publicadaAtMs))
+        .filter((p) => tipo === 'todos' || p.tipo === tipo)
+        .filter((p) => !dias || Number(p.facebook.publicadaAtMs) >= ahora - dias * 24 * 3600 * 1000)
+        .map((p) => {
+            const m = (metricasFb || {})[p.facebook.fbPostId];
+            return { id: p.id, post: p, m: m || null, ultimo: m?.ultimo || {}, estado: m?.estado || 'sin_datos', ms: Number(p.facebook.publicadaAtMs) };
+        })
+        .sort((a, b) => b.ms - a.ms);
+}
 // De mayor a menor según la métrica elegida; las que no tienen dato van al final.
 function rdOrdenarPor(filas, clave) {
     return [...filas].sort((a, b) => {
@@ -30593,6 +30606,10 @@ function rdRenderContenido(body) {
 rdState.mt = { tipo: 'todos', dias: 30, orden: 'reach' };
 rdState.metricas = {};
 rdState.seguidores = [];
+rdState.mt.red = 'instagram';
+rdState.mt.ordenFb = 'total_interactions';
+rdState.metricasFb = {};
+rdState.fbPagina = [];
 
 async function rdCargarMetricas() {
     const [mets, segs] = await Promise.all([
@@ -30601,6 +30618,122 @@ async function rdCargarMetricas() {
     ]);
     rdState.metricas = Object.fromEntries(mets.docs.map((d) => [d.id, d.data()]));
     rdState.seguidores = segs.docs.map((d) => d.data()).reverse(); // de la más antigua a la más nueva
+    if (rdState.mt.red === 'facebook') {
+        const [mf, pf] = await Promise.all([
+            firebaseDb.collection('facebook_metricas').orderBy('publicadaAtMs', 'desc').limit(300).get(),
+            firebaseDb.collection('facebook_pagina_dias').orderBy('fecha', 'desc').limit(90).get()
+        ]);
+        rdState.metricasFb = Object.fromEntries(mf.docs.map((d) => [d.id, d.data()]));
+        rdState.fbPagina = pf.docs.map((d) => d.data()).reverse();
+    }
+}
+
+// Selector de red de la pestaña Métricas (Instagram / Facebook).
+function rdSelectorRedHtml(red) {
+    return `<label>Red<select id="rdMtRed">${[['instagram', '📸 Instagram'], ['facebook', '🅕 Facebook']].map(([v, e]) => `<option value="${v}"${red === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>`;
+}
+function rdBindRedMetricas(body) {
+    body.querySelector('#rdMtRed')?.addEventListener('change', (e) => { rdState.mt.red = e.target.value; rdRenderMetricas(body); });
+}
+
+const RD_METRICAS_FB = [
+    { clave: 'reach', etiqueta: 'Alcance' }, { clave: 'views', etiqueta: 'Vistas' }, { clave: 'likes', etiqueta: 'Reacciones' },
+    { clave: 'comments', etiqueta: 'Comentarios' }, { clave: 'shares', etiqueta: 'Compartidas' }, { clave: 'clicks', etiqueta: 'Clics' },
+    { clave: 'total_interactions', etiqueta: 'Interacciones' }, { clave: 'tasa', etiqueta: 'Tasa de interacción' }
+];
+
+async function rdRenderMetricasFb(body) {
+    if (!rdState.fb?.conectado) {
+        body.innerHTML = `${rdAvisosHtml()}<div class="rd-toolbar"><div class="rd-filtros">${rdSelectorRedHtml('facebook')}</div></div><p class="cd-aviso">La página de Facebook no está conectada. Se conecta en la pestaña 🔗 Cuentas.</p>`;
+        rdBindRedMetricas(body);
+        return;
+    }
+    const { tipo, dias } = rdState.mt;
+    const orden = rdState.mt.ordenFb;
+    const filas = rdFilasMetricasFb(rdState.posts, rdState.metricasFb, { tipo, dias });
+    const conDatos = filas.filter((f) => f.estado === 'ok');
+    const prom = (clave) => { const v = conDatos.map((f) => rdValorMetrica(f, clave)).filter((x) => x !== null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const sinPermiso = filas.some((f) => f.estado === 'sin_permiso' || f.ultimo.sinInsights);
+    const ordenadas = rdOrdenarPor(filas, orden);
+    const mm = rdMejoresMomentos(filas, orden);
+    const etqOrden = (RD_METRICAS_FB.find((m) => m.clave === orden) || {}).etiqueta || orden;
+    const fmt = orden === 'tasa' ? _rdPct : _rdN;
+    const maxValor = Math.max(1, ...ordenadas.map((f) => rdValorMetrica(f, orden) || 0));
+    const medallas = ['🥇', '🥈', '🥉'];
+    const pag = rdState.fbPagina;
+    const hoy = pag[pag.length - 1];
+    const segs = pag.map((d) => ({ fecha: d.fecha, seguidores: d.seguidores }));
+
+    body.innerHTML = `
+        ${rdAvisosHtml()}
+        ${sinPermiso ? '<p class="cd-aviso">⚠️ Facebook no entrega vistas ni alcance: al token de la página le falta el permiso <strong>read_insights</strong>. Reacciones, comentarios y compartidas sí se muestran. Genera un token nuevo con ese permiso y reconecta la página en 🔗 Cuentas.</p>' : ''}
+        <div class="rd-toolbar">
+            <div class="rd-filtros">
+                ${rdSelectorRedHtml('facebook')}
+                <label>Tipo<select id="rdMtTipo">${[['todos', 'Todas'], ['foto', '📷 Posts'], ['carrusel', '🎠 Carruseles']].map(([v, e]) => `<option value="${v}"${tipo === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>
+                <label>Período<select id="rdMtDias">${[[7, 'Últimos 7 días'], [30, 'Últimos 30 días'], [90, 'Últimos 90 días'], [0, 'Todo']].map(([v, e]) => `<option value="${v}"${dias === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>
+                <label>Ordenar por<select id="rdMtOrden">${RD_METRICAS_FB.map((m) => `<option value="${m.clave}"${orden === m.clave ? ' selected' : ''}>${m.etiqueta}</option>`).join('')}</select></label>
+            </div>
+            <button type="button" class="section-action-btn" id="rdMtActualizar">🔄 Actualizar métricas ahora</button>
+        </div>
+        <div class="cd-kpis">
+            <div class="cd-kpi"><span>Publicaciones medidas</span><strong>${_rdN(conDatos.length)}</strong><span>de ${_rdN(filas.length)} publicadas en el período</span></div>
+            <div class="cd-kpi"><span>Vistas promedio</span><strong>${prom('views') === null ? '—' : _rdN(Math.round(prom('views')))}</strong><span>veces que se mostró cada publicación</span></div>
+            <div class="cd-kpi"><span>Interacciones promedio</span><strong>${prom('total_interactions') === null ? '—' : _rdN(Math.round(prom('total_interactions')))}</strong><span>reacciones, comentarios y compartidas</span></div>
+            <div class="cd-kpi"><span>Vistas de la página (28 días)</span><strong>${hoy && Number.isFinite(Number(hoy.vistas28)) ? _rdN(hoy.vistas28) : '—'}</strong><span>${hoy && Number.isFinite(Number(hoy.interacciones28)) ? `${_rdN(hoy.interacciones28)} interacciones` : 'se actualiza cada día'}</span></div>
+            <div class="cd-kpi"><span>Seguidores</span><strong>${hoy ? _rdN(hoy.seguidores) : (Number.isFinite(Number(rdState.fb?.fans)) ? _rdN(rdState.fb.fans) : '—')}</strong><span>${pag.length > 1 ? `${pag[pag.length - 1].seguidores - pag[0].seguidores >= 0 ? '+' : ''}${_rdN(pag[pag.length - 1].seguidores - pag[0].seguidores)} en ${pag.length} días` : 'se guarda cada día'}</span></div>
+        </div>
+        ${rdConclusionesHtml(filas, orden)}
+        <div class="rd-graficas">
+            <section class="rd-grafica"><h4>Mejor día de la semana <span class="cd-muted">(${escapeHtml(etqOrden.toLowerCase())} promedio)</span></h4>
+                ${rdBarrasHtml(mm.dias.map((d, i) => ({ ...d, nombre: RD_DIAS_CORTOS[i] })), { etiqueta: (i) => i.nombre, formato: fmt })}
+            </section>
+            <section class="rd-grafica"><h4>Mejor franja horaria <span class="cd-muted">(${escapeHtml(etqOrden.toLowerCase())} promedio)</span></h4>
+                ${rdBarrasHtml(mm.franjas.map((f) => ({ ...f, nombre: RD_FRANJAS.find((x) => x.id === f.id).etiqueta })), { etiqueta: (i) => i.nombre, formato: fmt })}
+                <p class="cd-muted">* = solo 1 publicación: dato poco confiable.</p>
+            </section>
+            <section class="rd-grafica"><h4>Seguidores de la página en el tiempo</h4>${rdLineaSeguidoresHtml(segs)}</section>
+        </div>
+        ${filas.length ? `
+        <div class="cpana-table-wrap">
+            <table class="cpana-table cd-table">
+                <thead><tr><th>#</th><th>Publicación</th><th>Alcance</th><th>Vistas</th><th>Reacc.</th><th>Coment.</th><th>Compart.</th><th>Clics</th><th>Interac.</th><th>Tasa</th></tr></thead>
+                <tbody>${ordenadas.map((f, i) => {
+                    const p = f.post;
+                    const im = (p.imagenes || [])[0];
+                    const v = rdValorMetrica(f, orden);
+                    const celda = (c) => { const x = rdValorMetrica(f, c); return x === null ? (f.estado === 'pendiente' || f.estado === 'sin_datos' ? '<span class="cd-muted" title="Se mide en la próxima pasada">…</span>' : '<span class="cd-muted">—</span>') : (c === 'tasa' ? _rdPct(x) : _rdN(x)); };
+                    return `<tr>
+                        <td class="cd-nowrap">${v !== null && i < 3 ? medallas[i] : i + 1}</td>
+                        <td><div class="cd-prod">${im ? `<img class="cd-thumb" src="${escapeHtml(rdUrlImagen({ id: p.id, imgToken: p.imgToken, actualizadoAtMs: p.actualizadoAtMs }, im))}" alt="">` : ''}
+                            <span>${rdIcono(p)} <strong>${escapeHtml(rdTextoCorto(p.caption, 46) || 'Sin texto')}</strong><br><span class="cd-muted">${escapeHtml(rdFechaCorta(rdFechaDeMs(f.ms)))} · ${escapeHtml(rdHora12(rdHoraDeMs(f.ms)))}</span></span></div>
+                            ${v !== null ? `<span class="cd-bar-mini rd-bar-orden" style="width:${Math.max(4, Math.round(v / maxValor * 140))}px" title="${escapeHtml(etqOrden)}: ${escapeHtml(fmt(v))}"></span>` : ''}</td>
+                        <td class="cd-num">${celda('reach')}</td><td class="cd-num">${celda('views')}</td><td class="cd-num">${celda('likes')}</td><td class="cd-num">${celda('comments')}</td>
+                        <td class="cd-num">${celda('shares')}</td><td class="cd-num">${celda('clicks')}</td><td class="cd-num">${celda('total_interactions')}</td><td class="cd-num">${celda('tasa')}</td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>
+        </div>` : '<p class="admin-hint">Todavía no hay publicaciones en Facebook en este período. Cuando salga una con la casilla de Facebook, aparecerá aquí (la primera medición tarda unos minutos).</p>'}
+        <p class="cd-muted">Los posts y carruseles se miden durante 14 días. Las historias de la página no se pueden medir (Facebook no entrega sus datos por esta vía). Facebook cambió "impresiones" por "vistas" en 2025.</p>`;
+
+    const recargar = () => rdRenderMetricas(body);
+    rdBindRedMetricas(body);
+    body.querySelector('#rdMtTipo').addEventListener('change', (e) => { rdState.mt.tipo = e.target.value; recargar(); });
+    body.querySelector('#rdMtDias').addEventListener('change', (e) => { rdState.mt.dias = Number(e.target.value); recargar(); });
+    body.querySelector('#rdMtOrden').addEventListener('change', (e) => { rdState.mt.ordenFb = e.target.value; recargar(); });
+    body.querySelector('#rdMtActualizar').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Actualizando…';
+        try {
+            const r = await rdFbLlamar('actualizarMetricas');
+            if (r.sinPermiso) showNotice('Facebook no entrega vistas ni alcance: falta el permiso read_insights en el token de la página.', 'error');
+            else showNotice(`Métricas actualizadas (${r.actualizadas} publicación(es) medida(s)).`, 'ok');
+        } catch (err) {
+            showNotice(`No se pudieron actualizar: ${err.message || 'error'}`, 'error');
+        }
+        recargar();
+    });
 }
 
 const _rdN = (n) => (Number.isFinite(Number(n)) && n !== null ? Number(n).toLocaleString('es-CO') : '—');
@@ -30660,6 +30793,7 @@ function rdConclusionesHtml(filas, orden) {
 async function rdRenderMetricas(body) {
     body.innerHTML = '<p class="admin-hint">Cargando métricas…</p>';
     try { await rdCargarMetricas(); } catch (err) { body.innerHTML = `<p class="cd-aviso">No se pudieron leer las métricas: ${escapeHtml(err.message || 'error')}</p>`; return; }
+    if (rdState.mt.red === 'facebook') { await rdRenderMetricasFb(body); return; }
     const { tipo, dias, orden } = rdState.mt;
     const filas = rdFilasMetricas(rdState.posts, rdState.metricas, { tipo, dias });
     const conDatos = filas.filter((f) => rdValorMetrica(f, 'reach') !== null);
@@ -30679,6 +30813,7 @@ async function rdRenderMetricas(body) {
         ${sinPermiso ? '<p class="cd-aviso">⚠️ Instagram no entrega las métricas: al token le falta el permiso <strong>instagram_business_manage_insights</strong>. Agrégalo en tu app de Meta, genera un token nuevo y reconéctalo en Código del día → Configuración → Instagram.</p>' : ''}
         <div class="rd-toolbar">
             <div class="rd-filtros">
+                ${rdSelectorRedHtml('instagram')}
                 <label>Tipo<select id="rdMtTipo">${[['todos', 'Todas'], ['foto', '📷 Posts'], ['carrusel', '🎠 Carruseles'], ['historia', '📱 Historias']].map(([v, e]) => `<option value="${v}"${tipo === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>
                 <label>Período<select id="rdMtDias">${[[7, 'Últimos 7 días'], [30, 'Últimos 30 días'], [90, 'Últimos 90 días'], [0, 'Todo']].map(([v, e]) => `<option value="${v}"${dias === v ? ' selected' : ''}>${e}</option>`).join('')}</select></label>
                 <label>Ordenar por<select id="rdMtOrden">${RD_METRICAS.map((m) => `<option value="${m.clave}"${orden === m.clave ? ' selected' : ''}>${m.etiqueta}</option>`).join('')}</select></label>
@@ -30726,6 +30861,7 @@ async function rdRenderMetricas(body) {
         <p class="cd-muted">Las historias se miden solo mientras duran (24 h); los posts y carruseles, durante 14 días. Las historias no tienen me gusta, comentarios ni guardados.</p>`;
 
     const recargar = () => rdRenderMetricas(body);
+    rdBindRedMetricas(body);
     body.querySelector('#rdMtTipo').addEventListener('change', (e) => { rdState.mt.tipo = e.target.value; recargar(); });
     body.querySelector('#rdMtDias').addEventListener('change', (e) => { rdState.mt.dias = Number(e.target.value); recargar(); });
     body.querySelector('#rdMtOrden').addEventListener('change', (e) => { rdState.mt.orden = e.target.value; recargar(); });
