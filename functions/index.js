@@ -2995,7 +2995,7 @@ exports.publicarHistoriaAgotado = onDocumentWritten(
         if (antes.agotadoAt || !despues.agotadoAt) return;
         const db = getFirestore();
         const r = await instagramHistorias.publicarHistoria(db, {
-            fecha: event.params.fecha, tipo: 'agotado', baseUrl: historiaImagenBaseUrl()
+            fecha: event.params.fecha, tipo: 'agotado', baseUrl: historiaImagenBaseUrl(), origen: 'cupos'
         });
         if (!r.ok && !['desactivado', 'sin_conexion', 'no_es_hoy', 'sin_codigo_hoy'].includes(r.motivo)) {
             console.error(`publicarHistoriaAgotado ${event.params.fecha}: ${r.motivo} ${r.error || ''}`);

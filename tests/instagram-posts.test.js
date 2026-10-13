@@ -131,7 +131,7 @@ test('crear y editar: borrador con token propio; el texto se valida; no se edita
     await posts.guardarPost(db, { id, caption: 'Nuevo texto', altText: 'Una hamburguesa' }, 'admin', { nowMs: AHORA + 1 });
     p = await leer(id);
     assert.deepEqual([p.caption, p.altText, p.hashtags], ['Nuevo texto', 'Una hamburguesa', ['uno', 'dos']], 'lo que no se manda no se toca');
-    await assert.rejects(posts.guardarPost(db, { tipo: 'reel', caption: 'x' }, 'a'), /foto o carrusel/);
+    await assert.rejects(posts.guardarPost(db, { tipo: 'reel', caption: 'x' }, 'a'), /carrusel o historia/);
     await assert.rejects(posts.guardarPost(db, { id, caption: 'a'.repeat(2201) }, 'a'), /2200/);
     await assert.rejects(posts.guardarPost(db, { id, hashtags: Array.from({ length: 31 }, (_, i) => `h${i}`) }, 'a'), /máximo 30/);
     await db.collection(posts.POSTS_COLLECTION).doc(id).set({ estado: 'publicada' }, { merge: true });
@@ -369,4 +369,53 @@ test('una publicación incompleta no sale aunque alguien la fuerce (se revalida 
     const r = await posts.publicarPost(db, { id, manual: true, ...op(meta) });
     assert.equal(r.motivo, 'incompleta');
     assert.equal(meta.llamadas.length, 0);
+});
+
+// ── Tipo "historia" (imagen vertical 9:16 programada) ────────────────────────
+
+test('historia: imagen vertical 9:16, sin texto; una sola imagen; una foto de feed (4:5) no vale como historia y al revés', async () => {
+    const { id } = await posts.guardarPost(db, { tipo: 'historia' }, 'a', { nowMs: AHORA });
+    await assert.rejects(posts.guardarImagen(db, { id, jpeg: await jpeg(1080, 1350) }, 'a'), /vertical \(9:16\)/);
+    await assert.rejects(posts.guardarImagen(db, { id, jpeg: await jpeg(1080, 1080) }, 'a'), /vertical \(9:16\)/);
+    await posts.guardarImagen(db, { id, jpeg: await jpeg(1080, 1920) }, 'a', { nowMs: AHORA });
+    await assert.rejects(posts.guardarImagen(db, { id, jpeg: await jpeg(1080, 1920) }, 'a'), /Una historia lleva una sola imagen/);
+    const foto = await nuevoPost();
+    await assert.rejects(posts.guardarImagen(db, { id: foto, jpeg: await jpeg(1080, 1920), reemplazaSlot: 0 }, 'a'), /proporción entre 4:5/);
+    // Cambiar de tipo con imagen cargada no se permite (las proporciones son distintas).
+    await assert.rejects(posts.guardarPost(db, { id, tipo: 'foto' }, 'a'), /quita la imagen antes de cambiar el tipo/);
+    await assert.rejects(posts.guardarPost(db, { id: foto, tipo: 'historia' }, 'a'), /quita la imagen antes de cambiar el tipo/);
+    // Programar no pide texto.
+    assert.equal((await posts.programarPost(db, { id, programadaAtMs: AHORA + HOUR }, 'a', { nowMs: AHORA })).programadaAtMs, AHORA + HOUR);
+});
+
+test('historia: se publica como STORIES con la URL de la imagen, sin texto, y empieza a medirse (24 h)', async () => {
+    await conectar();
+    const { id } = await posts.guardarPost(db, { tipo: 'historia', caption: 'esto se ignora', hashtags: ['x'] }, 'a', { nowMs: AHORA });
+    await posts.guardarImagen(db, { id, jpeg: await jpeg(1080, 1920) }, 'a', { nowMs: AHORA });
+    const meta = metaFalso();
+    const r = await posts.publicarPost(db, { id, manual: true, ...op(meta) });
+    assert.equal(r.ok, true);
+    const crear = meta.llamadas.find((l) => /\/1784\/media$/.test(l.ruta));
+    const p = await leer(id);
+    assert.equal(crear.cuerpo.media_type, 'STORIES');
+    assert.equal(crear.cuerpo.image_url, `${BASE_URL}?id=post_${id}_0&t=${p.imgToken}`);
+    assert.equal(crear.cuerpo.caption, undefined, 'las historias no llevan texto');
+    assert.equal(crear.cuerpo.is_carousel_item, undefined);
+    assert.equal(p.estado, 'publicada');
+    const [b] = await bitacora();
+    assert.deepEqual([b.tipo, b.resumen, b.ok], ['historia', 'Historia programada', true]);
+    const m = (await db.collection(ig.METRICAS_COLLECTION).doc('ig-media-9').get()).data();
+    assert.deepEqual([m.tipo, m.estado, m.expiraAtMs], ['historia', 'pendiente', AHORA + ig.METRICAS_VIGENCIA_MS]);
+});
+
+test('historia: sin imagen no sale, y programada por el cron sigue las mismas reglas que un post', async () => {
+    await conectar();
+    const { id } = await posts.guardarPost(db, { tipo: 'historia' }, 'a', { nowMs: AHORA });
+    const meta = metaFalso();
+    assert.equal((await posts.publicarPost(db, { id, manual: true, ...op(meta) })).motivo, 'incompleta');
+    assert.equal(meta.llamadas.length, 0);
+    await posts.guardarImagen(db, { id, jpeg: await jpeg(1080, 1920) }, 'a', { nowMs: AHORA });
+    await posts.programarPost(db, { id, programadaAtMs: AHORA + 10 * 60 * 1000 }, 'a', { nowMs: AHORA });
+    const r = await posts.publicarProgramados(db, op(meta, { nowMs: AHORA + 15 * 60 * 1000 }));
+    assert.deepEqual([r.revisadas, r.publicadas], [1, 1]);
 });

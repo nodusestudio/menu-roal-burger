@@ -15248,6 +15248,28 @@ async function _cdRenderTab() {
 }
 
 // ── Pestaña: Próximos días (7 / 15 / 30) ────────────────────────────────────
+// Línea de "hoy": a qué hora salió la historia de agotado y por qué (o cuándo saldrá).
+function _cdLineaAgotadoHoy(hoy) {
+    if (!cdState.ig?.conectado) return '';
+    const ag = cdState.historias?.[hoy.id]?.agotado;
+    if (ag?.estado === 'publicada') {
+        return `📸 Historia de agotado publicada a las ${escapeHtml(_cdHora(ag.publicadaAt))} ${escapeHtml(_cdMotivoPublicacion(ag.origen))}`;
+    }
+    if (ag?.estado === 'error') return `📸 La historia de agotado no salió: ${escapeHtml(ag.error || 'error')}`;
+    const desde = cdState.config?.agotadoDesde || '21:00';
+    const ventana = Number(cdState.config?.agotadoVentanaMin);
+    return `📸 Historia de agotado: sale apenas se agoten los cupos o, si no, a una hora al azar entre las ${escapeHtml(_cdHora12Texto(desde))} y las ${escapeHtml(_cdHora12Texto(_cdSumarMin(desde, Number.isFinite(ventana) ? ventana : 45)))}`;
+}
+function _cdSumarMin(hhmm, min) {
+    const [h, m] = String(hhmm).split(':').map(Number);
+    const t = (h * 60 + m + min) % (24 * 60);
+    return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
+function _cdHora12Texto(hhmm) {
+    const [h, m] = String(hhmm).split(':').map(Number);
+    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'p. m.' : 'a. m.'}`;
+}
+
 function _cdRenderProximos(body) {
     const pct = Number(cdState.config.porcentaje) || 0;
     const hoy = cdState.hoy;
@@ -15269,6 +15291,7 @@ function _cdRenderProximos(body) {
                         <span>${usados}/${cupos}</span>
                     </div>
                     <span class="cd-hoy-agotado">${hoy.agotadoAt ? `⏱️ Se agotó a las ${escapeHtml(_cdHora(hoy.agotadoAt))}` : 'Aún no se agota'}</span>
+                    <span class="cd-hoy-agotado">${_cdLineaAgotadoHoy(hoy)}</span>
                 </div>
             </div>`;
     } else {
@@ -15773,6 +15796,10 @@ function _cdNavegacion(m) {
 }
 
 function _cdQueEs(p) {
+    if (['foto', 'carrusel', 'historia'].includes(p.tipo)) {
+        const nombre = { foto: '📷 Post', carrusel: '🎠 Carrusel', historia: '📱 Historia' }[p.tipo];
+        return `<div class="cd-que">${nombre}<br><span class="cd-muted">${escapeHtml(p.resumen || '')}</span></div>`;
+    }
     if (p.tipo === 'prueba') return '<div class="cd-que">🧪 Historia de prueba (logo)</div>';
     if (p.tipo === 'agotado') return '<div class="cd-que">🚫 Historia de agotado</div>';
     return `<div class="cd-que">⭐ Historia del código<br><span class="cd-muted">${escapeHtml(p.productoNombre || '')}${p.palabra ? ` · ${escapeHtml(p.palabra)}` : ''}</span></div>`;
@@ -15803,7 +15830,7 @@ async function _cdRenderInstagram(body) {
             <tr>
                 <td class="cd-nowrap"><strong>${escapeHtml(_cdFechaHoraBogota(p.atMs))}</strong></td>
                 <td>${_cdQueEs(p)}</td>
-                <td class="cd-nowrap cd-muted">${p.origen === 'manual' ? 'manual' : (p.origen === 'horario' ? 'por horario' : 'automática')}</td>
+                <td class="cd-muted">${{ manual: 'manual', horario: 'por horario (no se agotó)', cupos: 'por cupos agotados' }[p.origen] || 'automática'}</td>
                 <td>${resultado}</td>
                 <td class="cd-num">${p.ok ? `${_cdCeldaMetrica(m, 'reach')}${alcance ? `<span class="cd-bar-mini" style="width:${Math.max(4, Math.round(alcance / maxAlcance * 60))}px"></span>` : ''}` : '<span class="cd-muted">—</span>'}</td>
                 <td class="cd-num">${p.ok ? _cdCeldaMetrica(m, 'views') : '<span class="cd-muted">—</span>'}</td>
@@ -16706,10 +16733,18 @@ function _cdMismaHuella(a, b) {
 }
 
 // { clase, texto, haceFalta } para una historia de un día ('normal' | 'agotado').
+// "por cupos agotados" / "por horario" / "a mano": POR QUÉ salió una historia.
+function _cdMotivoPublicacion(origen) {
+    if (origen === 'cupos') return 'porque se agotaron los cupos';
+    if (origen === 'horario') return 'por horario (los cupos no se habían agotado)';
+    if (origen === 'manual') return 'a mano';
+    return '';
+}
+
 function _cdEstadoHistoria(dia, tipo) {
     const p = cdState.historias?.[dia.id]?.[tipo];
     if (!p) return { clase: '', texto: 'Sin preparar', corto: 'preparando', haceFalta: true };
-    if (p.estado === 'publicada') return { clase: 'ok', texto: `Publicada${_cdHora(p.publicadaAt) ? ` ${_cdHora(p.publicadaAt)}` : ''}`, corto: 'publicada', haceFalta: false };
+    if (p.estado === 'publicada') return { clase: 'ok', texto: `Publicada${_cdHora(p.publicadaAt) ? ` ${_cdHora(p.publicadaAt)}` : ''}${_cdMotivoPublicacion(p.origen) ? ` · ${_cdMotivoPublicacion(p.origen)}` : ''}`, corto: 'publicada', haceFalta: false };
     if (p.estado === 'publicando') return { clase: '', texto: 'Publicando…', corto: 'publicando', haceFalta: false };
     const fresca = _cdMismaHuella(p.huella, _cdHuellaHistoria(dia, tipo === 'agotado'));
     if (p.estado === 'error') return { clase: 'err', texto: `Error: ${p.error || 'no se pudo publicar'}${fresca ? '' : ' · rehacer'}`, corto: 'error', haceFalta: !fresca };
@@ -29421,6 +29456,39 @@ function rdPendientesIA(lista) {
 function rdListoParaAprobar(p, ahora = Date.now()) {
     return Boolean(p && (p.imagenes || []).length === 1 && Number(p.programadaAtMs) >= ahora + 60 * 1000);
 }
+// Historia: la imagen sale SIEMPRE de 1080x1920. Si ya es casi 9:16 se recorta al centro; si es más ancha
+// (una foto de feed), va completa y centrada sobre su propio fondo (más grande y difuminado).
+function rdLayoutHistoria(ancho, alto) {
+    const W = 1080;
+    const H = 1920;
+    const objetivo = W / H;
+    const ratio = ancho / alto;
+    // Recorte centrado a 9:16 de la imagen original (sirve de imagen completa o de fondo).
+    const recorte = ratio > objetivo
+        ? { sx: Math.round((ancho - alto * objetivo) / 2), sy: 0, sw: Math.round(alto * objetivo), sh: alto }
+        : { sx: 0, sy: Math.round((alto - ancho / objetivo) / 2), sw: ancho, sh: Math.round(ancho / objetivo) };
+    if (Math.abs(ratio - objetivo) / objetivo < 0.12 || ratio < objetivo) return { modo: 'cover', W, H, fondo: recorte, frente: null };
+    const dh = Math.round(W / ratio);
+    return { modo: 'contain', W, H, fondo: recorte, frente: { dx: 0, dy: Math.round((H - dh) / 2), dw: W, dh } };
+}
+function rdIcono(p) {
+    if (p.tipo === 'historia') return '📱';
+    return p.tipo === 'carrusel' ? '🎠' : '📷';
+}
+function rdFechaCorta(fecha) {
+    const d = RD_DIAS_CORTOS[rdDiaSemana(fecha)];
+    return `${d} ${Number(fecha.slice(8))} ${RD_MESES[Number(fecha.slice(5, 7)) - 1].slice(0, 3).toLowerCase()}`;
+}
+// Qué decirle a la persona sobre el estado de una publicación: ¿ya salió o está programada?
+function rdTextoEstado(estado, ms, error) {
+    const cuando = ms ? `${rdFechaCorta(rdFechaDeMs(ms))} a las ${rdHora12(rdHoraDeMs(ms))}` : '';
+    if (estado === 'programada') return { icono: '🗓️', titulo: 'Programada', detalle: `Sale el ${cuando} (hora de Colombia). Todavía NO se ha publicado.` };
+    if (estado === 'publicada') return { icono: '✅', titulo: 'Publicada', detalle: `Ya está en Instagram desde el ${cuando}` };
+    if (estado === 'publicando') return { icono: '⏳', titulo: 'Publicando…', detalle: 'Se está subiendo a Instagram ahora mismo.' };
+    if (estado === 'error') return { icono: '⚠️', titulo: 'No salió', detalle: error || 'Hubo un error al publicar.' };
+    if (estado === 'cancelada') return { icono: '🚫', titulo: 'Cancelada', detalle: 'No saldrá.' };
+    return { icono: '📝', titulo: 'Borrador', detalle: ms ? `Tiene fecha propuesta (${cuando}) pero aún no está programada.` : 'Aún no está programada.' };
+}
 // </redes-instagram>
 
 const rdState = {
@@ -29435,6 +29503,7 @@ const rdState = {
     historias: {}, // estado de las historias por fecha
     ig: null,
     config: null,  // contenido de la IA (tono, hashtags, horarios)
+    resaltar: '',  // día a destacar un momento en el calendario (la publicación recién programada)
     ed: null       // publicación en edición
 };
 
@@ -29542,17 +29611,26 @@ function rdItemsDelDia(fecha) {
         const hora = (cdState.config?.horaPublicacion || '12:00');
         items.push({ tipo: 'historia', ms: rdMsDeFechaHora(fecha, hora), cod, pub });
     }
+    const ag = rdState.historias[fecha]?.agotado;
+    if (ag?.estado === 'publicada') {
+        const ms = ag.publicadaAt?.toMillis ? ag.publicadaAt.toMillis() : null;
+        if (ms) items.push({ tipo: 'agotado', ms, origen: ag.origen });
+    }
     return items.sort((a, b) => a.ms - b.ms);
 }
 
 function rdChipHtml(it) {
+    if (it.tipo === 'agotado') {
+        const porque = it.origen === 'horario' ? 'por horario (no se habían agotado)' : (it.origen === 'cupos' ? 'porque se agotaron los cupos' : (it.origen === 'manual' ? 'a mano' : ''));
+        return `<span class="rd-chip rd-chip--historia" title="Historia de agotado publicada ${escapeHtml(porque)}">🚫 ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} Agotado ✓</span>`;
+    }
     if (it.tipo === 'historia') {
         return `<span class="rd-chip rd-chip--historia" title="Historia del Código del día: ${escapeHtml(it.cod.productoNombre || '')}${it.pub ? ' (publicada)' : ''}">⭐ ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} Código${it.pub ? ' ✓' : ''}</span>`;
     }
     const p = it.post;
     const est = RD_ESTADOS[p.estado] || RD_ESTADOS.borrador;
     const texto = String(p.caption || '').replace(/\s+/g, ' ').trim().slice(0, 22) || 'Sin texto';
-    return `<button type="button" class="rd-chip rd-chip--${escapeHtml(p.estado)}" data-rd-abrir="${escapeHtml(p.id)}" title="${escapeHtml(est.etiqueta)}${p.origen === 'ia' ? ' · propuesta por la IA' : ''}${p.error ? `: ${escapeHtml(p.error)}` : ''}">${p.origen === 'ia' ? '🤖' : (p.tipo === 'carrusel' ? '🎠' : '📷')} ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} ${escapeHtml(texto)}</button>`;
+    return `<button type="button" class="rd-chip rd-chip--${escapeHtml(p.estado)}" data-rd-abrir="${escapeHtml(p.id)}" title="${escapeHtml(est.etiqueta)}${p.origen === 'ia' ? ' · propuesta por la IA' : ''}${p.error ? `: ${escapeHtml(p.error)}` : ''}">${p.origen === 'ia' ? '🤖' : rdIcono(p)} ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} ${escapeHtml(texto)}</button>`;
 }
 
 function rdCeldaHtml(fecha, mesActual) {
@@ -29562,7 +29640,7 @@ function rdCeldaHtml(fecha, mesActual) {
     const hoy = fecha === _rdHoy();
     const pasado = fecha < _rdHoy();
     return `
-        <div class="rd-day${hoy ? ' is-hoy' : ''}${mesActual === false ? ' is-fuera' : ''}${pasado ? ' is-pasado' : ''}" data-rd-dia="${fecha}">
+        <div class="rd-day${hoy ? ' is-hoy' : ''}${mesActual === false ? ' is-fuera' : ''}${pasado ? ' is-pasado' : ''}${rdState.resaltar === fecha ? ' is-resaltado' : ''}" data-rd-dia="${fecha}">
             <div class="rd-day-top">
                 <span class="rd-day-num">${Number(fecha.slice(8))}</span>
                 ${pasado ? '' : `<button type="button" class="rd-day-add" data-rd-nueva="${fecha}" title="Nueva publicación este día" aria-label="Nueva publicación el ${fecha}">+</button>`}
@@ -29604,10 +29682,10 @@ function rdRenderCalendario(body) {
         </div>
         <div class="rd-listas">
             <section class="rd-lista"><h4>Próximas publicaciones</h4>
-                ${proximas.length ? proximas.map((p) => `<button type="button" class="rd-fila" data-rd-abrir="${escapeHtml(p.id)}"><span>${p.tipo === 'carrusel' ? '🎠' : '📷'} <strong>${escapeHtml(_cdFechaLarga(rdFechaDeMs(p.programadaAtMs)))} · ${escapeHtml(rdHora12(rdHoraDeMs(p.programadaAtMs)))}</strong></span><span class="cd-muted">${escapeHtml(String(p.caption || '').replace(/\s+/g, ' ').slice(0, 70) || 'Sin texto')}</span></button>`).join('') : '<p class="cd-muted">No hay nada programado todavía.</p>'}
+                ${proximas.length ? proximas.map((p) => `<button type="button" class="rd-fila" data-rd-abrir="${escapeHtml(p.id)}"><span>${rdIcono(p)} <strong>${escapeHtml(_cdFechaLarga(rdFechaDeMs(p.programadaAtMs)))} · ${escapeHtml(rdHora12(rdHoraDeMs(p.programadaAtMs)))}</strong></span><span class="cd-muted">${escapeHtml(String(p.caption || '').replace(/\s+/g, ' ').slice(0, 70) || 'Sin texto')}</span></button>`).join('') : '<p class="cd-muted">No hay nada programado todavía.</p>'}
             </section>
             <section class="rd-lista"><h4>Borradores sin fecha</h4>
-                ${sinFecha.length ? sinFecha.slice(0, 6).map((p) => `<button type="button" class="rd-fila" data-rd-abrir="${escapeHtml(p.id)}"><span>${p.tipo === 'carrusel' ? '🎠' : '📷'} Borrador</span><span class="cd-muted">${escapeHtml(String(p.caption || '').replace(/\s+/g, ' ').slice(0, 70) || 'Sin texto')}</span></button>`).join('') : '<p class="cd-muted">No tienes borradores guardados.</p>'}
+                ${sinFecha.length ? sinFecha.slice(0, 6).map((p) => `<button type="button" class="rd-fila" data-rd-abrir="${escapeHtml(p.id)}"><span>${rdIcono(p)} Borrador</span><span class="cd-muted">${escapeHtml(String(p.caption || '').replace(/\s+/g, ' ').slice(0, 70) || 'Sin texto')}</span></button>`).join('') : '<p class="cd-muted">No tienes borradores guardados.</p>'}
             </section>
         </div>`;
 
@@ -29695,7 +29773,23 @@ function rdEditable(ed) {
     return !['publicada', 'publicando'].includes(ed.estado);
 }
 
+function rdEstadoHtml(ed, compacto = false) {
+    const ms = ed.estado === 'publicada' ? rdMsDeFechaHora(ed.fecha, ed.hora) : rdMsDeFechaHora(ed.fecha, ed.hora);
+    const t = rdTextoEstado(ed.estado, Number.isFinite(ms) && ed.fecha ? ms : null, ed.error);
+    return `<div class="rd-estado rd-estado--${escapeHtml(ed.estado)}${compacto ? ' rd-estado--compacto' : ''}" role="status"><span class="rd-estado-ico">${t.icono}</span><span><strong>${escapeHtml(t.titulo)}</strong><br>${escapeHtml(t.detalle)}</span></div>`;
+}
+
 function rdPhoneHtml(ed) {
+    if (ed.tipo === 'historia') {
+        const im = ed.imagenes[0];
+        return `
+        <div class="rd-phone rd-phone--historia" aria-label="Vista previa de la historia">
+            <div class="rd-story-img">${im && ed.id ? `<img src="${escapeHtml(rdUrlImagen(ed, im))}" alt="">` : '<span class="cd-muted">Sin imagen</span>'}</div>
+            <div class="rd-story-bar"><i></i></div>
+            <div class="rd-story-head"><img src="isotipo.png" alt=""><strong>roalburger</strong><span>ahora</span></div>
+            <div class="rd-story-pie">Enviar mensaje…  ♡ ✈️</div>
+        </div>`;
+    }
     const resumen = rdTextoFinal(ed.caption, ed.hashtags);
     const corto = resumen.length > 140 ? `${resumen.slice(0, 140).trim()}… más` : resumen;
     const principal = ed.imagenes[0];
@@ -29732,7 +29826,8 @@ function rdRenderEditor(body) {
     const ed = rdState.ed;
     const editable = rdEditable(ed);
     const est = RD_ESTADOS[ed.estado] || RD_ESTADOS.borrador;
-    const maxImg = ed.tipo === 'foto' ? 1 : 10;
+    const maxImg = ed.tipo === 'carrusel' ? 10 : 1;
+    const historia = ed.tipo === 'historia';
     body.innerHTML = `
         ${rdAvisosHtml()}
         <div class="rd-editor">
@@ -29741,20 +29836,21 @@ function rdRenderEditor(body) {
                     <h3>${ed.id ? 'Editar publicación' : 'Nueva publicación'}</h3>
                     <span class="rd-chip rd-chip--${escapeHtml(ed.estado)}">${est.icono} ${est.etiqueta}</span>
                 </div>
-                ${ed.error ? `<p class="cd-aviso">⚠️ ${escapeHtml(ed.error)}</p>` : ''}
+                ${ed.id ? rdEstadoHtml(ed) : ''}
                 ${ed.origen === 'ia' && editable ? `<p class="cd-muted">🤖 Propuesta por la IA (${escapeHtml(String(ed.notaIA || '').replace(/^IA · /, ''))}). Revísala y edítala como quieras antes de aprobarla.</p>` : ''}
                 ${!editable ? '<p class="cd-aviso">Esta publicación ya salió. Instagram no permite editarla por API: se edita o se borra desde la app.</p>' : ''}
 
                 <div class="rd-campo">
                     <span class="rd-label">Tipo</span>
                     <div class="rd-vista" role="group">
-                        <button type="button" class="cd-btn${ed.tipo === 'foto' ? ' is-on' : ''}" data-rd-tipo="foto" ${editable ? '' : 'disabled'}>📷 Foto</button>
+                        <button type="button" class="cd-btn${ed.tipo === 'foto' ? ' is-on' : ''}" data-rd-tipo="foto" ${editable ? '' : 'disabled'}>📷 Post</button>
                         <button type="button" class="cd-btn${ed.tipo === 'carrusel' ? ' is-on' : ''}" data-rd-tipo="carrusel" ${editable ? '' : 'disabled'}>🎠 Carrusel (hasta 10)</button>
+                        <button type="button" class="cd-btn${ed.tipo === 'historia' ? ' is-on' : ''}" data-rd-tipo="historia" ${editable ? '' : 'disabled'}>📱 Historia</button>
                     </div>
                 </div>
 
                 <div class="rd-campo">
-                    <span class="rd-label">Imágenes <span class="cd-muted">(${ed.imagenes.length}/${maxImg}) · Instagram acepta de 4:5 a 1,91:1; se recorta sola si hace falta</span></span>
+                    <span class="rd-label">Imágenes <span class="cd-muted">(${ed.imagenes.length}/${maxImg}) · ${historia ? 'vertical 9:16; si tu foto es más ancha se acomoda sola sobre un fondo difuminado' : 'Instagram acepta de 4:5 a 1,91:1; se recorta sola si hace falta'}</span></span>
                     <div class="rd-imgs">
                         ${ed.imagenes.map((im, i) => `
                             <figure class="rd-img">
@@ -29775,6 +29871,7 @@ function rdRenderEditor(body) {
                     ${ed.ocupado ? '<p class="cd-muted" role="status">⏳ Procesando imágenes…</p>' : ''}
                 </div>
 
+                ${historia ? '<p class="cd-muted rd-nota">📱 Las historias llevan solo la imagen: Instagram no permite texto, hashtags ni música en las historias programadas. Si quieres letras, ponlas dentro de la imagen.</p>' : `
                 <label class="rd-campo">
                     <span class="rd-label">Texto de la publicación <span class="cd-muted" id="rdContadorTexto"></span></span>
                     <textarea id="rdCaption" rows="6" maxlength="2200" placeholder="Escribe el texto: puedes usar emojis y @menciones…" ${editable ? '' : 'disabled'}>${escapeHtml(ed.caption)}</textarea>
@@ -29789,7 +29886,7 @@ function rdRenderEditor(body) {
                 <label class="rd-campo">
                     <span class="rd-label">Texto alternativo <span class="cd-muted">(opcional, describe la imagen para personas con baja visión)</span></span>
                     <input type="text" id="rdAlt" maxlength="1000" value="${escapeHtml(ed.altText)}" ${editable ? '' : 'disabled'}>
-                </label>
+                </label>`}
 
                 <div class="rd-campo">
                     <span class="rd-label">Cuándo se publica <span class="cd-muted">(hora de Colombia)</span></span>
@@ -29813,7 +29910,7 @@ function rdRenderEditor(body) {
                     <button type="button" class="cd-btn" data-rd-a="volver">← Volver al calendario</button>
                 </div>
             </div>
-            <aside class="rd-preview">${rdPhoneHtml(ed)}</aside>
+            <aside class="rd-preview">${ed.id ? rdEstadoHtml(ed, true) : ''}${rdPhoneHtml(ed)}</aside>
         </div>`;
     rdBindEditor(body);
     rdActualizarContadores(body);
@@ -29876,19 +29973,39 @@ function rdCargarImagen(fuente) {
 }
 
 // File o URL → JPEG (≤ 880 KB) recortado a lo que acepta Instagram, en base64.
-async function rdPrepararImagen(fuente) {
+async function rdPrepararImagen(fuente, tipo = 'foto') {
     const img = await rdCargarImagen(fuente);
-    const rec = rdRecorte(img.naturalWidth, img.naturalHeight);
-    const ancho = Math.min(1080, rec.sw);
-    const alto = Math.round(ancho * rec.sh / rec.sw);
-    if (ancho < 320) throw new Error('La imagen es muy pequeña (mínimo 320 px de ancho).');
     const canvas = document.createElement('canvas');
-    canvas.width = ancho;
-    canvas.height = alto;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, ancho, alto);
-    ctx.drawImage(img, rec.sx, rec.sy, rec.sw, rec.sh, 0, 0, ancho, alto);
+    if (tipo === 'historia') {
+        if (img.naturalWidth < 320) throw new Error('La imagen es muy pequeña (mínimo 320 px de ancho).');
+        const L = rdLayoutHistoria(img.naturalWidth, img.naturalHeight);
+        canvas.width = L.W;
+        canvas.height = L.H;
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, L.W, L.H);
+        if (L.modo === 'contain') {
+            // Fondo: la misma foto ampliada y difuminada (si el navegador no sabe difuminar, queda oscurecida).
+            try { ctx.filter = 'blur(28px)'; } catch (_) { /* sin filtro */ }
+            ctx.drawImage(img, L.fondo.sx, L.fondo.sy, L.fondo.sw, L.fondo.sh, -40, -40, L.W + 80, L.H + 80);
+            ctx.filter = 'none';
+            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+            ctx.fillRect(0, 0, L.W, L.H);
+            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, L.frente.dx, L.frente.dy, L.frente.dw, L.frente.dh);
+        } else {
+            ctx.drawImage(img, L.fondo.sx, L.fondo.sy, L.fondo.sw, L.fondo.sh, 0, 0, L.W, L.H);
+        }
+    } else {
+        const rec = rdRecorte(img.naturalWidth, img.naturalHeight);
+        const ancho = Math.min(1080, rec.sw);
+        const alto = Math.round(ancho * rec.sh / rec.sw);
+        if (ancho < 320) throw new Error('La imagen es muy pequeña (mínimo 320 px de ancho).');
+        canvas.width = ancho;
+        canvas.height = alto;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, ancho, alto);
+        ctx.drawImage(img, rec.sx, rec.sy, rec.sw, rec.sh, 0, 0, ancho, alto);
+    }
     for (const calidad of [0.9, 0.82, 0.74, 0.66, 0.56]) {
         const blob = await _cdCanvasABlob(canvas, 'image/jpeg', calidad);
         if (blob.size <= 880 * 1024) return _cdBlobABase64(blob);
@@ -29898,7 +30015,7 @@ async function rdPrepararImagen(fuente) {
 
 async function rdAgregarImagenes(body, fuentes) {
     const ed = rdState.ed;
-    const maxImg = ed.tipo === 'foto' ? 1 : 10;
+    const maxImg = ed.tipo === 'carrusel' ? 10 : 1;
     const caben = Math.max(0, maxImg - ed.imagenes.length);
     if (!caben) { showNotice(ed.tipo === 'foto' ? 'Una foto lleva una sola imagen: quítala o cambia a carrusel.' : 'Máximo 10 imágenes.', 'error'); return; }
     ed.ocupado = true;
@@ -29907,7 +30024,7 @@ async function rdAgregarImagenes(body, fuentes) {
     try {
         await rdGuardarCampos(body);
         for (const f of fuentes.slice(0, caben)) {
-            const imagenBase64 = await rdPrepararImagen(f);
+            const imagenBase64 = await rdPrepararImagen(f, ed.tipo);
             await rdLlamar('subirImagen', { id: ed.id, imagenBase64 });
             subidas += 1;
         }
@@ -29974,7 +30091,8 @@ function rdBindEditor(body) {
         rdLeerFormulario(body);
         const nuevo = b.dataset.rdTipo;
         if (nuevo === ed.tipo) return;
-        if (nuevo === 'foto' && ed.imagenes.length > 1) { showNotice('Para cambiar a foto deja una sola imagen.', 'error'); return; }
+        if (nuevo !== 'carrusel' && ed.imagenes.length > 1) { showNotice('Para cambiar de tipo deja una sola imagen.', 'error'); return; }
+        if ((nuevo === 'historia' || ed.tipo === 'historia') && ed.imagenes.length) { showNotice('Las historias son verticales y los posts no: quita la imagen y vuelve a elegir el tipo.', 'error'); return; }
         ed.tipo = nuevo;
         if (ed.id) { try { await rdGuardarCampos(body); await rdRecargarEd(); } catch (err) { showNotice(err.message, 'error'); } }
         rdRenderEditor(body);
@@ -30006,6 +30124,7 @@ async function rdAccion(body, btn) {
     if (a === 'volver') { rdState.tab = 'calendario'; rdPintarTabs(); await rdCargar().catch(() => {}); rdRender(); return; }
     const etiqueta = btn.textContent;
     btn.disabled = true;
+    let volver = null; // fecha a mostrar en el calendario cuando la publicación quedó programada o publicada
     try {
         if (a === 'guardar') {
             await rdGuardarCampos(body);
@@ -30018,14 +30137,15 @@ async function rdAccion(body, btn) {
                 if (!Number.isFinite(ms)) throw new Error('Elige la fecha y la hora.');
                 if (ms < Date.now() + 60 * 1000) throw new Error('Elige una fecha y hora futuras.');
                 const r = await rdLlamar('programar', { id, programadaAtMs: ms });
-                await rdRecargarEd();
+                volver = rdFechaDeMs(r.programadaAtMs);
                 const ig = rdState.ig;
                 showNotice(`Programada para el ${_cdFechaLarga(rdFechaDeMs(r.programadaAtMs))} a las ${rdHora12(rdHoraDeMs(r.programadaAtMs))}.${ig && !ig.activo ? ' Ojo: la publicación automática está APAGADA.' : ''}`, ig && !ig.activo ? 'error' : 'ok');
             } else {
                 if (!window.confirm(`¿Publicar AHORA en @${rdState.ig?.username || 'roalburger'}? La verán tus seguidores.`)) { btn.disabled = false; return; }
                 btn.textContent = 'Publicando…';
                 const r = await rdLlamar('publicarAhora', { id });
-                await rdRecargarEd();
+                if (r.ok) volver = rdFechaDeMs(Date.now());
+                else await rdRecargarEd();
                 if (r.ok) showNotice(r.ya ? 'Esa publicación ya estaba publicada.' : '✅ Publicada en Instagram.', 'ok');
                 else showNotice(`No se publicó: ${r.error || r.motivo}`, 'error');
             }
@@ -30061,6 +30181,19 @@ async function rdAccion(body, btn) {
         btn.textContent = etiqueta;
         btn.disabled = false;
         if (rdState.ed?.id) { await rdRecargarEd().catch(() => {}); }
+    }
+    if (volver) {
+        // Programada o publicada: se cierra el editor y se muestra el calendario con esa publicación.
+        rdState.ed = null;
+        rdState.tab = 'calendario';
+        rdState.mes = volver.slice(0, 7);
+        rdState.semanaDe = rdLunesDe(volver);
+        rdState.resaltar = volver;
+        rdPintarTabs();
+        await rdCargar().catch(() => {});
+        rdRender();
+        setTimeout(() => { rdState.resaltar = ''; document.querySelectorAll('.rd-day.is-resaltado').forEach((e) => e.classList.remove('is-resaltado')); }, 4000);
+        return;
     }
     rdRender();
 }

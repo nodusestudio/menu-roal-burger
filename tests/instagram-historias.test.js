@@ -629,3 +629,16 @@ test('agotado por horario: con la publicación automática apagada no sale nada'
     assert.equal(r.motivo, 'desactivado');
     assert.equal(meta.llamadas.length, 0);
 });
+
+test('agotado: queda registrado POR QUÉ salió (cupos agotados u horario) y a qué hora', async () => {
+    await conectar();
+    await prepararHistoria(LUNES, 'normal', HUELLA_NORMAL);
+    await prepararHistoria(LUNES, 'agotado', HUELLA_AGOTADO);
+    const meta = metaFalso();
+    await ig.publicarHistoria(db, opPub(meta));
+    await ig.publicarHistoria(db, opPub(meta, { tipo: 'agotado', origen: 'cupos', nowMs: AHORA + 60 * 1000 }));
+    const dia = await estadoDia();
+    assert.deepEqual([dia.normal.origen, dia.agotado.origen], ['automatica', 'cupos']);
+    const b = (await bitacora()).filter((x) => x.tipo === 'agotado');
+    assert.deepEqual(b.map((x) => x.origen), ['cupos']);
+});

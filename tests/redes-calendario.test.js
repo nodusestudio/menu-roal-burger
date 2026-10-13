@@ -16,7 +16,7 @@ const BLOQUE = SRC.slice(SRC.indexOf('// <redes-instagram>'), SRC.indexOf('// </
 assert.ok(BLOQUE.length > 1500, 'no se encontró el bloque <redes-instagram> en admin.js');
 const ctx = vm.createContext({});
 const NOMBRES = ['rdMsDeFechaHora', 'rdFechaDeMs', 'rdHoraDeMs', 'rdHora12', 'rdSumarDias', 'rdDiaSemana', 'rdLunesDe', 'rdGrillaMes', 'rdSemana',
-    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe', 'rdPendientesIA', 'rdListoParaAprobar'];
+    'rdMesAnterior', 'rdMesSiguiente', 'rdTituloMes', 'rdNormalizarHashtags', 'rdTextoFinal', 'rdResumenTexto', 'rdRecorte', 'rdMomentoDe', 'rdPendientesIA', 'rdListoParaAprobar', 'rdLayoutHistoria', 'rdIcono', 'rdFechaCorta', 'rdTextoEstado'];
 vm.runInContext(`${BLOQUE}\n${NOMBRES.map((n) => `this.${n} = ${n};`).join('')}`, ctx);
 const rd = ctx;
 const posts = require(path.join(__dirname, '..', 'functions', 'instagramPosts.js'));
@@ -116,4 +116,43 @@ test('IA: solo los borradores de la IA esperan aprobación, por fecha; se aprueb
     assert.equal(rd.rdListoParaAprobar({ imagenes: [{ slot: 0 }], programadaAtMs: ahora + 30 * 1000 }, ahora), false, 'la hora ya casi pasó');
     assert.equal(rd.rdListoParaAprobar({ imagenes: [{ slot: 0 }, { slot: 1 }], programadaAtMs: ahora + 3600e3 }, ahora), false, 'la IA hace fotos de una imagen');
     assert.equal(rd.rdListoParaAprobar(null), false);
+});
+
+test('historia: siempre 1080x1920; casi 9:16 se recorta al centro, una foto de feed va completa sobre su fondo', () => {
+    const casi = rd.rdLayoutHistoria(1080, 1920);
+    assert.deepEqual([casi.modo, casi.W, casi.H], ['cover', 1080, 1920]);
+    assert.deepEqual({ ...casi.fondo }, { sx: 0, sy: 0, sw: 1080, sh: 1920 });
+    const feed = rd.rdLayoutHistoria(1080, 1350); // 4:5
+    assert.equal(feed.modo, 'contain');
+    assert.deepEqual({ ...feed.frente }, { dx: 0, dy: Math.round((1920 - 1350) / 2), dw: 1080, dh: 1350 }, 'completa y centrada');
+    assert.ok(feed.fondo.sw / feed.fondo.sh > 0.55 && feed.fondo.sw / feed.fondo.sh < 0.57, 'el fondo se recorta a 9:16');
+    const ancha = rd.rdLayoutHistoria(1600, 900);
+    assert.equal(ancha.modo, 'contain');
+    assert.equal(ancha.frente.dh, Math.round(1080 / (1600 / 900)));
+    assert.ok(ancha.frente.dy > 0 && ancha.frente.dy + ancha.frente.dh <= 1920);
+    const muyAlta = rd.rdLayoutHistoria(500, 1400); // más angosta que 9:16: se recorta el alto
+    assert.equal(muyAlta.modo, 'cover');
+    assert.ok(Math.abs(muyAlta.fondo.sw / muyAlta.fondo.sh - 9 / 16) < 0.01);
+    for (const [w, h] of [[1080, 1920], [3000, 2000], [640, 480], [500, 1400], [4000, 4000]]) {
+        const L = rd.rdLayoutHistoria(w, h);
+        assert.ok(L.fondo.sx >= 0 && L.fondo.sy >= 0 && L.fondo.sx + L.fondo.sw <= w + 1 && L.fondo.sy + L.fondo.sh <= h + 1, `${w}x${h}: el recorte queda dentro de la imagen`);
+    }
+});
+
+test('estado de una publicación: dice con claridad si está programada (y cuándo) o ya salió', () => {
+    const ms = rd.rdMsDeFechaHora('2026-10-16', '19:30');
+    const prog = rd.rdTextoEstado('programada', ms, '');
+    assert.equal(prog.titulo, 'Programada');
+    assert.match(prog.detalle, /Vie 16 oct a las 7:30 p\. m\./);
+    assert.match(prog.detalle, /Todavía NO se ha publicado/);
+    const pub = rd.rdTextoEstado('publicada', ms, '');
+    assert.deepEqual([pub.icono, pub.titulo], ['✅', 'Publicada']);
+    assert.match(pub.detalle, /Ya está en Instagram desde el Vie 16 oct a las 7:30 p\. m\./);
+    assert.match(rd.rdTextoEstado('error', null, 'Instagram caído').detalle, /Instagram caído/);
+    assert.match(rd.rdTextoEstado('borrador', null, '').detalle, /Aún no está programada/);
+    assert.match(rd.rdTextoEstado('borrador', ms, '').detalle, /fecha propuesta/);
+    assert.equal(rd.rdTextoEstado('cancelada', null, '').titulo, 'Cancelada');
+    assert.equal(rd.rdTextoEstado('publicando', null, '').titulo, 'Publicando…');
+    assert.equal(rd.rdFechaCorta('2026-10-12'), 'Lun 12 oct');
+    assert.deepEqual(['historia', 'carrusel', 'foto'].map((tipo) => rd.rdIcono({ tipo })).join(''), '📱🎠📷');
 });

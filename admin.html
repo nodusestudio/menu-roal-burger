@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261012-2119">
+    <link rel="stylesheet" href="style.css?v=20261012-2131">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -5366,6 +5366,25 @@
         .rd-phone-acc { padding: 8px 12px 0; font-size: 1.05rem; letter-spacing: 0.15em; }
         .rd-phone-cap { margin: 0; padding: 6px 12px 14px; font-size: 0.8rem; line-height: 1.4; color: #eef4ff; white-space: pre-wrap; overflow-wrap: anywhere; }
         .rd-ht { color: #7fb7ff; }
+        .rd-nota { padding: 10px 12px; border-radius: 12px; border: 1px dashed rgba(255,255,255,0.2); background: rgba(255,255,255,0.03); margin: 0; }
+        .rd-estado { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); font-size: 0.82rem; line-height: 1.4; color: #eef4ff; }
+        .rd-estado-ico { font-size: 1.2rem; line-height: 1.1; }
+        .rd-estado--programada { border-color: rgba(96,165,250,0.5); background: rgba(96,165,250,0.12); }
+        .rd-estado--publicada { border-color: rgba(74,222,128,0.5); background: rgba(74,222,128,0.12); }
+        .rd-estado--error { border-color: rgba(248,113,113,0.55); background: rgba(248,113,113,0.12); }
+        .rd-estado--publicando { border-color: rgba(251,191,36,0.5); background: rgba(251,191,36,0.12); }
+        .rd-estado--compacto { margin-bottom: 10px; }
+        .rd-day.is-resaltado { animation: rdPulso 1.2s ease-in-out 3; border-color: rgba(96,165,250,0.9); }
+        @keyframes rdPulso { 0%, 100% { box-shadow: 0 0 0 0 rgba(96,165,250,0.0); } 50% { box-shadow: 0 0 0 4px rgba(96,165,250,0.45); } }
+        .rd-phone--historia { position: relative; aspect-ratio: 9 / 16; background: #000; max-width: 270px; margin: 0 auto; }
+        .rd-story-img { position: absolute; inset: 0; display: grid; place-items: center; }
+        .rd-story-img img { width: 100%; height: 100%; object-fit: cover; }
+        .rd-story-bar { position: absolute; left: 10px; right: 10px; top: 8px; height: 3px; border-radius: 999px; background: rgba(255,255,255,0.35); overflow: hidden; }
+        .rd-story-bar i { display: block; width: 40%; height: 100%; background: #fff; }
+        .rd-story-head { position: absolute; left: 10px; right: 10px; top: 18px; display: flex; align-items: center; gap: 6px; color: #fff; font-size: 0.74rem; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
+        .rd-story-head img { width: 24px; height: 24px; border-radius: 999px; }
+        .rd-story-head span { opacity: 0.8; }
+        .rd-story-pie { position: absolute; left: 10px; right: 10px; bottom: 10px; padding: 8px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.6); color: #fff; font-size: 0.74rem; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
         .rd-catalogo { width: min(720px, 100%); }
         .rd-prods { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; max-height: 52vh; overflow: auto; padding: 2px; }
         .rd-prod { display: grid; gap: 4px; text-align: center; padding: 6px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #eef4ff; cursor: pointer; font-size: 0.74rem; }
@@ -15231,7 +15250,7 @@
                             <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="contenido">⚙️ Contenido</button>
                         </div>
                     </div>
-                    <p class="admin-hint">Programa las publicaciones de @roalburger por día y hora. Las historias del Código del día salen solas (se ven en el calendario); aquí se programan fotos y carruseles.</p>
+                    <p class="admin-hint">Programa las publicaciones de @roalburger por día y hora. Las historias del Código del día salen solas (se ven en el calendario); aquí se programan posts, carruseles e historias.</p>
                     <div class="card-body rd-panel" data-rd-panel="calendario"><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="crear" hidden><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="ia" hidden><!-- render JS --></div>
@@ -16446,17 +16465,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261012-2119"></script>
+    <script defer src="firebase-config.js?v=20261012-2131"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261012-2119"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261012-2131"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-2119"></script>
-    <script defer src="admin.js?v=20261012-2119"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261012-2131"></script>
+    <script defer src="admin.js?v=20261012-2131"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

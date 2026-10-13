@@ -424,7 +424,7 @@ async function publicarHistoria(db, { fecha, tipo, nowMs = Date.now(), fetchFn =
 
     try {
         const mediaId = await publicarImagenEnInstagram(conexion, urlImagen(baseUrl, fecha, tipo, status.imgToken), { fetchFn, sleep });
-        await marcar(db, fecha, tipo, { estado: 'publicada', mediaId, publicadaAt: Timestamp.fromMillis(nowMs), error: '' });
+        await marcar(db, fecha, tipo, { estado: 'publicada', mediaId, publicadaAt: Timestamp.fromMillis(nowMs), error: '', origen: detalle.origen });
         await registrarPublicacion(db, { ...detalle, ok: true, mediaId, nowMs });
         await iniciarMetricas(db, { mediaId, fecha, tipo, publicadaAtMs: nowMs });
         return { ok: true, mediaId };
@@ -636,6 +636,7 @@ module.exports = {
     leerConexion,
     conexionRef,
     registrarPublicacion,
+    iniciarMetricas,
     esperar,
     GRAPH_URL,
     GRAPH_VERSION,

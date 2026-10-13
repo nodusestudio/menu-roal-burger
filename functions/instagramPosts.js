@@ -24,7 +24,7 @@ const cd = require('./codigoDia');
 const POSTS = ig.POSTS_COLLECTION;
 const POSTS_IMG = ig.POSTS_IMG_COLLECTION;
 
-const TIPOS_POST = Object.freeze(['foto', 'carrusel']);
+const TIPOS_POST = Object.freeze(['foto', 'carrusel', 'historia']);
 const MAX_CAPTION = 2200;
 const MAX_HASHTAGS = 30;
 const MAX_MENCIONES = 20;
@@ -63,7 +63,11 @@ function jpegDimensiones(buf) {
     return null;
 }
 
-function validarImagen(jpeg) {
+// Historia: la imagen ya viene en 9:16 desde el panel (1080x1920); se acepta un margen alrededor.
+const RATIO_HISTORIA_MIN = 0.5;
+const RATIO_HISTORIA_MAX = 0.7;
+
+function validarImagen(jpeg, tipo = 'foto') {
     if (!Buffer.isBuffer(jpeg) || jpeg.length < 100 || jpeg[0] !== 0xFF || jpeg[1] !== 0xD8 || jpeg[2] !== 0xFF) {
         throw new HttpsError('invalid-argument', 'La imagen debe ser un JPEG.');
     }
@@ -72,6 +76,10 @@ function validarImagen(jpeg) {
     if (!dim || !dim.ancho || !dim.alto) throw new HttpsError('invalid-argument', 'No se pudo leer el tamaño de la imagen.');
     if (dim.ancho < ANCHO_MIN) throw new HttpsError('invalid-argument', `La imagen es muy pequeña (mínimo ${ANCHO_MIN} px de ancho).`);
     const ratio = dim.ancho / dim.alto;
+    if (tipo === 'historia') {
+        if (ratio < RATIO_HISTORIA_MIN || ratio > RATIO_HISTORIA_MAX) throw new HttpsError('invalid-argument', 'Una historia debe ser vertical (9:16).');
+        return dim;
+    }
     if (ratio < RATIO_MIN - 0.005 || ratio > RATIO_MAX + 0.005) {
         throw new HttpsError('invalid-argument', 'Instagram solo acepta imágenes con proporción entre 4:5 (vertical) y 1,91:1 (horizontal).');
     }
@@ -113,8 +121,13 @@ function validarTexto(caption, hashtags) {
 
 // ¿La publicación está lista para programarse o publicarse? Devuelve el texto final.
 function validarPostCompleto(post) {
-    if (!TIPOS_POST.includes(post?.tipo)) throw new HttpsError('failed-precondition', 'Elige si es foto o carrusel.');
+    if (!TIPOS_POST.includes(post?.tipo)) throw new HttpsError('failed-precondition', 'Elige si es post, carrusel o historia.');
     const n = (post.imagenes || []).length;
+    // Una historia es solo la imagen: Instagram no admite texto ni hashtags en las historias por API.
+    if (post.tipo === 'historia') {
+        if (n !== 1) throw new HttpsError('failed-precondition', 'Una historia lleva exactamente 1 imagen.');
+        return '';
+    }
     if (post.tipo === 'foto' && n !== 1) throw new HttpsError('failed-precondition', 'Una foto lleva exactamente 1 imagen.');
     if (post.tipo === 'carrusel' && (n < 2 || n > MAX_IMAGENES)) throw new HttpsError('failed-precondition', `Un carrusel lleva de 2 a ${MAX_IMAGENES} imágenes (lleva ${n}).`);
     const texto = validarTexto(post.caption, post.hashtags);
@@ -156,7 +169,7 @@ async function guardarPost(db, datos, uid, { nowMs = Date.now() } = {}) {
     if (d.notaIA !== undefined) campos.notaIA = String(d.notaIA || '').slice(0, 300);
 
     if (!d.id) {
-        if (!TIPOS_POST.includes(d.tipo)) throw new HttpsError('invalid-argument', 'Elige si es foto o carrusel.');
+        if (!TIPOS_POST.includes(d.tipo)) throw new HttpsError('invalid-argument', 'Elige si es post, carrusel o historia.');
         const ref = db.collection(POSTS).doc();
         const post = {
             tipo: d.tipo, estado: 'borrador', origen: d.origen === 'ia' ? 'ia' : 'manual',
@@ -173,7 +186,8 @@ async function guardarPost(db, datos, uid, { nowMs = Date.now() } = {}) {
     sinEditarSiSalio(post);
     if (d.tipo !== undefined && d.tipo !== post.tipo) {
         if (!TIPOS_POST.includes(d.tipo)) throw new HttpsError('invalid-argument', 'Tipo inválido.');
-        if (d.tipo === 'foto' && (post.imagenes || []).length > 1) throw new HttpsError('failed-precondition', 'Para cambiar a foto deja una sola imagen.');
+        if (d.tipo !== 'carrusel' && (post.imagenes || []).length > 1) throw new HttpsError('failed-precondition', 'Para cambiar de tipo deja una sola imagen.');
+        if ((d.tipo === 'historia' || post.tipo === 'historia') && (post.imagenes || []).length) throw new HttpsError('failed-precondition', 'Las historias son verticales (9:16) y los posts no: quita la imagen antes de cambiar el tipo.');
         campos.tipo = d.tipo;
     }
     // Editar una publicación ya programada la devuelve a borrador: hay que programarla de nuevo (se revalida).
@@ -201,13 +215,13 @@ async function crearBorrador(db, campos, uid, { nowMs = Date.now() } = {}) {
 }
 
 async function guardarImagen(db, { id, jpeg, reemplazaSlot = null }, uid, { nowMs = Date.now() } = {}) {
-    const dim = validarImagen(jpeg);
     return db.runTransaction(async (tx) => {
         const ref = refPost(db, id);
         const snap = await tx.get(ref);
         if (!snap.exists) throw new HttpsError('not-found', 'Esa publicación no existe.');
         const post = snap.data();
         sinEditarSiSalio(post);
+        const dim = validarImagen(jpeg, post.tipo);
         const imagenes = [...(post.imagenes || [])];
         const meta = { size: jpeg.length, ancho: dim.ancho, alto: dim.alto };
         let slot;
@@ -217,7 +231,7 @@ async function guardarImagen(db, { id, jpeg, reemplazaSlot = null }, uid, { nowM
             slot = imagenes[idx].slot;
             imagenes[idx] = { slot, ...meta };
         } else {
-            if (post.tipo === 'foto' && imagenes.length >= 1) throw new HttpsError('failed-precondition', 'Una foto lleva una sola imagen: reemplázala o cambia a carrusel.');
+            if (post.tipo !== 'carrusel' && imagenes.length >= 1) throw new HttpsError('failed-precondition', `${post.tipo === 'historia' ? 'Una historia lleva' : 'Un post lleva'} una sola imagen: reemplázala${post.tipo === 'historia' ? '' : ' o cambia a carrusel'}.`);
             if (imagenes.length >= MAX_IMAGENES) throw new HttpsError('failed-precondition', `Un carrusel admite máximo ${MAX_IMAGENES} imágenes.`);
             slot = 0;
             while (imagenes.some((im) => im.slot === slot)) slot += 1;
@@ -335,7 +349,9 @@ async function publicarContenido(conexion, post, id, texto, { fetchFn, sleep, ba
     const urlDe = (im) => ig.urlImagen(baseUrl, `post_${id}`, String(im.slot), post.imgToken);
     const crear = (params) => ig.llamarGraph(fetchFn, 'POST', `${base}/media`, { token: conexion.accessToken, params });
     let principal;
-    if (post.tipo === 'foto') {
+    if (post.tipo === 'historia') {
+        principal = await crear({ image_url: urlDe(post.imagenes[0]), media_type: 'STORIES' });
+    } else if (post.tipo === 'foto') {
         const params = { image_url: urlDe(post.imagenes[0]), caption: texto };
         if (post.altText) params.alt_text = post.altText;
         principal = await crear(params);
@@ -370,7 +386,7 @@ async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseU
     if (!['programada', 'borrador', 'error'].includes(post.estado) && post.estado !== 'publicando') return { ok: false, motivo: 'estado_no_publicable' };
     if (!manual && post.estado !== 'programada') return { ok: false, motivo: 'no_programada' };
 
-    const detalle = { fecha: cd.bogotaParts(nowMs).dateKey, tipo: post.tipo, postId: id, resumen: String(post.caption || '').trim().slice(0, 80), origen: manual ? 'manual' : 'automatica' };
+    const detalle = { fecha: cd.bogotaParts(nowMs).dateKey, tipo: post.tipo, postId: id, resumen: post.tipo === 'historia' ? 'Historia programada' : String(post.caption || '').trim().slice(0, 80), origen: manual ? 'manual' : 'automatica' };
     const fallar = async (mensaje, motivo, estado = 'error') => {
         await refPost(db, id).set({ estado, error: mensaje, actualizadoAtMs: nowMs }, { merge: true });
         await ig.registrarPublicacion(db, { ...detalle, ok: false, error: mensaje, nowMs });
@@ -405,6 +421,8 @@ async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseU
         const mediaId = await publicarContenido(conexion, post, id, texto, { fetchFn, sleep, baseUrl });
         await refPost(db, id).set({ estado: 'publicada', mediaId, publicadaAtMs: nowMs, error: '', actualizadoAtMs: nowMs }, { merge: true });
         await ig.registrarPublicacion(db, { ...detalle, ok: true, mediaId, nowMs });
+        // Las métricas de una historia solo existen mientras dura (24 h): se empieza a medirla ya.
+        if (post.tipo === 'historia') await ig.iniciarMetricas(db, { mediaId, fecha: detalle.fecha, tipo: 'historia', publicadaAtMs: nowMs });
         return { ok: true, mediaId };
     } catch (err) {
         const mensaje = String(err?.message || err).slice(0, 300);
@@ -450,6 +468,8 @@ module.exports = {
     MAX_INTENTOS,
     LIMITE_24H,
     jpegDimensiones,
+    RATIO_HISTORIA_MIN,
+    RATIO_HISTORIA_MAX,
     validarImagen,
     normalizarHashtags,
     armarCaption,
