@@ -100,6 +100,14 @@ async function conectar(db, { tokenUsuario, pageId }, uid, { nowMs = Date.now(),
         fans: Number(info.fan_count) || 0, activo: misma && previa?.activo === true, historiasCodigo: misma ? previa?.historiasCodigo !== false : true,
         conHashtags: misma && previa?.conHashtags === true, ultimoError: '', conectadoPor: uid || null, updatedAt: Timestamp.fromMillis(nowMs)
     });
+    // Con token nuevo, las historias de hoy que fallaron en Facebook (token vencido) vuelven a intentarse.
+    try {
+        const ref = db.collection(ig.HISTORIAS_COLLECTION).doc(cd.bogotaParts(nowMs).dateKey);
+        const hoy = (await ref.get()).data() || {};
+        for (const tipo of ig.TIPOS) {
+            if (hoy[tipo]?.facebook?.estado === 'error') await ref.set({ [tipo]: { facebook: { estado: 'reintentar', intentos: 0 } } }, { merge: true });
+        }
+    } catch (err) { console.error('reiniciar intentos Facebook:', err.message); }
     return estadoConexion(db);
 }
 
