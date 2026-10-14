@@ -467,6 +467,20 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+    // Bandeja de mensajes directos y comentarios de Instagram (functions/instagramMensajes.js): el panel
+    // (admin) los lee; solo el servidor escribe (webhook de Meta y respuestas por callable).
+    match /instagram_chats/{igsid} {
+      allow read: if isAdmin();
+      allow write: if false;
+      match /mensajes/{mid} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+    match /instagram_comentarios/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
 
     match /admins/{uid} {
       allow read, write: if false;

@@ -3001,6 +3001,20 @@ exports.historiaImagen = onRequest(
     }
 );
 
+// Webhook de Meta para mensajes directos y comentarios de Instagram (lógica en instagramMensajes.js).
+// INSTAGRAM_APP_SECRET admite varios secretos separados por coma (app de Instagram y app de Meta).
+const INSTAGRAM_APP_SECRET = defineSecret('INSTAGRAM_APP_SECRET');
+const INSTAGRAM_VERIFY_TOKEN = defineSecret('INSTAGRAM_VERIFY_TOKEN');
+const instagramMensajes = require('./instagramMensajes');
+exports.instagramWebhook = onRequest(
+    { region: 'us-central1', memory: '256MiB', secrets: [INSTAGRAM_APP_SECRET, INSTAGRAM_VERIFY_TOKEN] },
+    (req, res) => instagramMensajes.manejarWebhook(req, res, {
+        db: getFirestore(),
+        appSecrets: INSTAGRAM_APP_SECRET.value(),
+        verifyToken: INSTAGRAM_VERIFY_TOKEN.value()
+    })
+);
+
 // Cada 5 min entre 11:00 y 14:55 (hora Colombia): publica la historia de hoy cuando llega la hora de
 // publicación. Es idempotente; si falla, reintenta (hasta 3 veces) en las siguientes pasadas.
 exports.publicarHistoriasCodigoDia = onSchedule(
