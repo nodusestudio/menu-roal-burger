@@ -31039,13 +31039,14 @@ async function rdRenderMetricas(body) {
 // la callable adminInstagramChats (functions/instagramChats.js). El panel nunca toca el token.
 const rdChats = {
     unsubs: [], chats: [], comentarios: [], log: [], sel: '', mensajes: [], unsubMsgs: null, vista: 'chats', config: null, cfgEdit: null,
-    filtro: 'todos', etiqueta: '', busca: '', borrador: '', borComs: {}
+    filtro: 'todos', filtroCom: 'todos', etiqueta: '', busca: '', borrador: '', borComs: {}, perfilesPedidos: false
 };
 const RD_ETIQUETAS = { pedido: '🛒 Pedido', reclamo: '⚠️ Reclamo', alianza: '🤝 Alianza', vip: '⭐ VIP', resuelto: '✅ Resuelto' };
 const RD_FILTROS = [['todos', 'Todos'], ['sin-leer', 'Sin leer'], ['persona', 'Necesitan persona'], ['sin-responder', 'Sin responder'], ['historias', 'Historias']];
 const RD_CFG_BASE = {
     autoActiva: false, iaRespaldo: true, instrucciones: '',
-    saludo: { activa: true, texto: '' }, fueraHorario: { activa: true, texto: '' }, historia: { activa: true, texto: '' }, palabras: [], rapidas: []
+    saludo: { activa: true, texto: '' }, fueraHorario: { activa: true, texto: '' }, historia: { activa: true, texto: '' }, palabras: [], rapidas: [],
+    comentarios: { activa: true, topeDia: 40, dmTopeDia: 40, reglas: [] }
 };
 
 async function rdChatsLlamar(accion, payload = {}) {
@@ -31063,8 +31064,24 @@ const _rdChatHora = (ms) => (ms ? new Date(ms).toLocaleString('es-CO', { timeZon
 const _rdChatSoloHora = (ms) => (ms ? new Date(ms).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit' }) : '');
 const _rdChatDia = (ms) => new Date(ms).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' });
 const _rdChatNorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const _rdChatNombre = (c) => (c.canal === 'facebook' ? `🅕 ${c.nombre || `Messenger ${String(c.id || c.igsid || "").slice(-6)}`}` : c.nombre && c.username ? `${c.nombre} (@${c.username})` : c.nombre || (c.username ? `@${c.username}` : `@${String(c.id || c.igsid || "").slice(-6)}`));
-const _rdChatAvatar = (nombre) => `<span class="rd-av" aria-hidden="true">${escapeHtml(String(nombre || '?').replace(/^@/, '').charAt(0).toUpperCase() || '?')}</span>`;
+// Sin nombre todavía (Meta no lo entregó): "Cliente ···1234" en vez de "@123456", que parecía un usuario real.
+const _rdChatSinNombre = (c) => `${c.canal === 'facebook' ? 'Cliente Messenger' : 'Cliente Instagram'} ···${String(c.id || c.igsid || '').slice(-4)}`;
+const _rdChatNombre = (c) => (c.canal === 'facebook' ? c.nombre || _rdChatSinNombre(c) : c.nombre && c.username ? `${c.nombre} (@${c.username})` : c.nombre || (c.username ? `@${c.username}` : _rdChatSinNombre(c)));
+const _rdChatCanalIcono = (canal) => (canal === 'facebook' ? '<span class="rd-canal fb" title="Facebook">f</span>' : '<span class="rd-canal ig" title="Instagram">IG</span>');
+const _rdChatAvatar = (nombre, canal = '') => {
+    const limpio = String(nombre || '?').replace(/^(@|🅕 )/, '').replace(/^Cliente (Instagram|Messenger) ···/, '');
+    let h = 0;
+    for (const ch of limpio) h = (h * 31 + ch.charCodeAt(0)) % 360;
+    return `<span class="rd-av" style="--rd-h:${h}" aria-hidden="true">${escapeHtml(limpio.charAt(0).toUpperCase() || '?')}${canal ? _rdChatCanalIcono(canal) : ''}</span>`;
+};
+const _rdChatRelativo = (ms) => {
+    if (!ms) return '';
+    const min = Math.floor((Date.now() - ms) / 60000);
+    if (min < 1) return 'ahora';
+    if (min < 60) return `${min} min`;
+    if (min < 1440) return `${Math.floor(min / 60)} h`;
+    return _rdChatHora(ms);
+};
 
 function rdChatsFiltrados() {
     const q = _rdChatNorm(rdChats.busca).trim();
@@ -31083,9 +31100,9 @@ function rdChatsListaHtml() {
     const items = rdChatsFiltrados();
     if (!items.length) return `<p class="cd-muted rd-vacio">${rdChats.chats.length ? 'Ningún chat coincide con el filtro.' : 'Aún no hay mensajes directos.'}</p>`;
     return items.map((c) => `<button type="button" class="rd-chat-item${c.id === rdChats.sel ? ' sel' : ''}${c.noLeidos ? ' nuevo' : ''}" data-rd-chat="${escapeHtml(c.id)}">
-            ${_rdChatAvatar(_rdChatNombre(c))}
+            ${_rdChatAvatar(_rdChatNombre(c), c.canal || 'instagram')}
             <span class="rd-chat-cuerpo">
-                <span class="rd-chat-top"><strong>${escapeHtml(_rdChatNombre(c))}</strong><small>${escapeHtml(_rdChatHora(c.ultimoAtMs))}</small></span>
+                <span class="rd-chat-top"><strong>${escapeHtml(_rdChatNombre(c))}</strong><small>${escapeHtml(_rdChatRelativo(c.ultimoAtMs))}</small></span>
                 <span class="rd-chat-prev">${c.ultimoDe === 'negocio' ? '↩ ' : ''}${escapeHtml(c.ultimoTexto || '')}</span>
                 <span class="rd-chat-marcas">${c.requiereHumano ? '<em class="rd-chat-persona">Necesita persona</em>' : ''}${(c.etiquetas || []).map((e) => `<em class="rd-etq">${escapeHtml(RD_ETIQUETAS[e] || e)}</em>`).join('')}</span>
             </span>
@@ -31121,9 +31138,10 @@ function rdChatsPanelHtml() {
     return `
         <header class="rd-chat-cab">
             <button type="button" class="rd-volver" data-rd-volver aria-label="Volver a la lista">←</button>
-            ${_rdChatAvatar(_rdChatNombre(chat))}
+            ${_rdChatAvatar(_rdChatNombre(chat), chat.canal || 'instagram')}
             <div class="rd-chat-quien"><strong>${escapeHtml(_rdChatNombre(chat))}</strong>
-                <small class="${ventana ? 'rd-ok' : 'rd-vencida'}">${ventana ? `Puedes responder ${horas ? `${horas} h ` : ''}${mins} min más` : 'Ventana de 24 h cerrada'}</small></div>
+                <small class="${ventana ? (resta < 2 * 3600000 ? 'rd-pronto' : 'rd-ok') : 'rd-vencida'}">${ventana ? `Puedes responder ${horas ? `${horas} h ` : ''}${mins} min más` : 'Ventana de 24 h cerrada'}</small>
+                ${!chat.nombre && !chat.username && chat.perfilError ? '<small class="rd-vencida" title="Meta no entregó el nombre de esta persona">Meta no entrega su nombre</small>' : ''}</div>
             <button type="button" class="cd-btn rd-bot-btn" data-rd-silenciar="${silenciado ? '0' : '1'}" title="${silenciado ? 'El bot está en pausa en este chat' : 'Evita que el bot conteste en este chat durante 12 h'}">${silenciado ? '▶ Reactivar bot' : '⏸ Silenciar bot'}</button>
         </header>
         <div class="rd-etqs">${Object.entries(RD_ETIQUETAS).map(([k, v]) => `<button type="button" class="rd-etq-btn${(chat.etiquetas || []).includes(k) ? ' on' : ''}" data-rd-etq="${k}">${escapeHtml(v)}</button>`).join('')}</div>
@@ -31133,6 +31151,7 @@ function rdChatsPanelHtml() {
             <div class="rd-compositor">
                 <textarea id="rdChatTxt" rows="2" maxlength="1000" placeholder="Escribe tu respuesta… (Enter envía, Shift+Enter salto de línea)"></textarea>
                 <div class="rd-comp-acc">
+                    <small class="rd-contador" id="rdChatCuenta">0/1000</small>
                     <button type="button" class="cd-btn" id="rdChatSugerir" title="La IA escribe un borrador que tú revisas">✨ Sugerir</button>
                     <button type="button" class="section-action-btn primary" id="rdChatEnviar">Enviar</button>
                 </div>
@@ -31140,11 +31159,20 @@ function rdChatsPanelHtml() {
 }
 
 function rdChatsComentariosHtml() {
-    return rdChats.comentarios.map((c) => `<div class="rd-chat-com${c.respondido ? ' ok' : ''}">
-            <div class="rd-chat-top">${_rdChatAvatar(c.username)}<div class="rd-chat-quien"><strong>${c.canal === 'facebook' ? '🅕 ' : '@'}${escapeHtml(c.username || 'usuario')}</strong><small>${escapeHtml(_rdChatHora(c.atMs))}</small></div></div>
+    const lista = rdChats.comentarios.filter((c) => rdChats.filtroCom !== 'pendientes' || !c.respondido);
+    const filtros = [['todos', 'Todos'], ['pendientes', 'Sin responder']].map(([k, v]) => `<button type="button" class="rd-filtro${rdChats.filtroCom === k ? ' on' : ''}" data-rd-filtro-com="${k}">${v}</button>`).join('');
+    const estadoAuto = (c) => {
+        if (c.respondidoOrigen === 'auto') return `<em class="rd-etq">🤖 Auto${c.autoRegla ? `: ${escapeHtml(c.autoRegla)}` : ''}${c.dmEstado === 'enviado' ? ' · ✉️ DM enviado' : (c.dmEstado === 'error' ? ' · ✉️ DM falló' : '')}</em>`;
+        if (c.autoEstado === 'error') return '<em class="rd-chat-persona">Auto falló: respóndelo tú</em>';
+        if (c.autoEstado === 'tope-diario') return '<em class="rd-chat-persona">Tope diario alcanzado</em>';
+        return '';
+    };
+    return `<div class="rd-filtros">${filtros}</div>` + (lista.map((c) => `<div class="rd-chat-com${c.respondido ? ' ok' : ''}">
+            <div class="rd-chat-top">${_rdChatAvatar(c.username || '?', c.canal || 'instagram')}<div class="rd-chat-quien"><strong>${c.canal === 'facebook' ? '' : '@'}${escapeHtml(c.username || 'usuario')}</strong><small>${escapeHtml(_rdChatRelativo(c.atMs))}</small></div></div>
             <p>${escapeHtml(c.texto)}</p>
+            <div class="rd-chat-marcas">${estadoAuto(c)}</div>
             ${c.respondido ? `<p class="cd-muted">↩ ${escapeHtml(c.respuesta || 'Respondido')}</p>` : `<div class="cd-ig-fila"><input type="text" maxlength="2200" placeholder="Tu respuesta pública" data-rd-com-txt="${escapeHtml(c.id)}" value="${escapeHtml(rdChats.borComs[c.id] || '')}"><button type="button" class="cd-btn" data-rd-com-sug="${escapeHtml(c.id)}" title="La IA escribe un borrador que tú revisas">✨ Sugerir</button><button type="button" class="cd-btn primary" data-rd-com-resp="${escapeHtml(c.id)}">Responder</button></div>`}
-        </div>`).join('') || '<p class="cd-muted">Aún no hay comentarios.</p>';
+        </div>`).join('') || `<p class="cd-muted">${rdChats.comentarios.length ? 'No hay comentarios sin responder. 🎉' : 'Aún no hay comentarios.'}</p>`);
 }
 
 function rdChatsReglaEditorHtml(clave, titulo, ayuda, regla) {
@@ -31153,11 +31181,32 @@ function rdChatsReglaEditorHtml(clave, titulo, ayuda, regla) {
         <textarea rows="2" maxlength="1000" data-f="texto">${escapeHtml(regla.texto)}</textarea></div>`;
 }
 
+function rdChatsComentariosEditorHtml(cfg) {
+    const com = cfg.comentarios || RD_CFG_BASE.comentarios;
+    return `<div class="rd-comentarios" data-rd-com-cfg>
+        <h4 class="cd-ig-titulo">🗨️ Comentarios en publicaciones y reels (Instagram y Facebook)</h4>
+        <p class="cd-muted">Sin IA: si el comentario contiene una palabra clave, se responde en público con tu frase fija (y, si quieres, se manda un mensaje privado <strong>una sola vez</strong> por comentario). Solo comentarios principales: no responde dentro de hilos ni a tu propia cuenta. Lo que no coincide queda en la pestaña Comentarios para ti. Requiere el interruptor general de arriba.</p>
+        <label class="cpana-toggle"><input type="checkbox" id="rdComActiva"${com.activa !== false ? ' checked' : ''}><span><strong>Responder comentarios automáticamente</strong></span></label>
+        <div class="cd-ig-fila"><label>Tope diario de respuestas públicas <input type="number" id="rdComTope" min="1" max="500" value="${Number(com.topeDia) || 40}"></label>
+            <label>Tope diario de mensajes privados <input type="number" id="rdComTopeDm" min="0" max="500" value="${com.dmTopeDia === undefined ? 40 : Number(com.dmTopeDia)}"></label></div>
+        <p class="cd-muted">Cada persona recibe como máximo 2 respuestas automáticas al día. Variables: <code>{menu}</code> <code>{horario}</code> <code>{estado}</code> <code>{nombre}</code> (su @usuario).</p>
+        ${(com.reglas || []).map((p, i) => `<div class="rd-regla" data-rd-creg="${i}" data-id="${escapeHtml(p.id)}">
+            <div class="cd-ig-fila"><input type="text" data-f="nombre" maxlength="40" placeholder="Nombre de la regla" value="${escapeHtml(p.nombre)}">
+                <label class="cpana-toggle"><input type="checkbox" data-f="activa"${p.activa !== false ? ' checked' : ''}><span>Activa</span></label>
+                <button type="button" class="cd-btn" data-rd-creg-del="${i}" aria-label="Borrar regla">🗑</button></div>
+            <input type="text" data-f="claves" maxlength="400" placeholder="Palabras separadas por coma: precio, carta, cuánto vale" value="${escapeHtml(Array.isArray(p.claves) ? p.claves.join(', ') : (p.claves || ''))}">
+            <textarea rows="2" maxlength="300" data-f="texto" placeholder="Respuesta pública (corta, máx. 300)">${escapeHtml(p.texto)}</textarea>
+            <label class="cpana-toggle"><input type="checkbox" data-f="dm"${p.dm ? ' checked' : ''}><span>También enviar mensaje privado (una vez por comentario)</span></label>
+            <textarea rows="2" maxlength="1000" data-f="textoDm" placeholder="Mensaje privado">${escapeHtml(p.textoDm || '')}</textarea></div>`).join('')}
+        <button type="button" class="cd-btn" id="rdCregAgregar">+ Agregar regla de comentarios</button>
+    </div>`;
+}
+
 function rdChatsAutomatizacionHtml() {
     const cfg = rdChats.cfgEdit || RD_CFG_BASE;
     return `
         <div class="rd-auto">
-            <label class="cpana-toggle rd-master"><input type="checkbox" id="rdAutoActiva"${cfg.autoActiva ? ' checked' : ''}><span><strong>Respuestas automáticas ${cfg.autoActiva ? '<span class="cd-hist-ok">ACTIVAS</span>' : '<span class="cd-hist-warn">APAGADAS</span>'}</strong><br><span class="cd-muted">Interruptor general. Si respondes tú en un chat, el bot se calla 12 h ahí. Máximo 6 respuestas automáticas por chat al día.</span></span></label>
+            <label class="cpana-toggle rd-master"><input type="checkbox" id="rdAutoActiva"${cfg.autoActiva ? ' checked' : ''}><span><strong>Respuestas automáticas ${cfg.autoActiva ? '<span class="cd-hist-ok">ACTIVAS</span>' : '<span class="cd-hist-warn">APAGADAS</span>'}</strong><br><span class="cd-muted">Interruptor general (mensajes directos y comentarios). Si respondes tú en un chat, el bot se calla 12 h ahí. Máximo 6 respuestas automáticas por chat al día.</span></span></label>
             <p class="cd-muted rd-orden"><strong>Orden de decisión:</strong> 1) palabras clave → 2) respuesta a historia → 3) fuera de horario → 4) saludo del primer mensaje → 5) IA de respaldo (o una persona). Cada mensaje recibe como máximo UNA respuesta.</p>
             <p class="cd-muted">Variables para tus textos: <code>{menu}</code> link del menú · <code>{horario}</code> horario de hoy · <code>{estado}</code> abierto/cerrado · <code>{nombre}</code> primer nombre.</p>
             <h4 class="cd-ig-titulo">Reglas por situación</h4>
@@ -31173,6 +31222,7 @@ function rdChatsAutomatizacionHtml() {
                 <input type="text" data-f="claves" maxlength="400" placeholder="Palabras separadas por coma: horario, abren, hora" value="${escapeHtml(Array.isArray(p.claves) ? p.claves.join(', ') : (p.claves || ''))}">
                 <textarea rows="2" maxlength="1000" data-f="texto" placeholder="Respuesta">${escapeHtml(p.texto)}</textarea></div>`).join('')}
             <button type="button" class="cd-btn" id="rdPalAgregar">+ Agregar regla de palabras</button>
+            ${rdChatsComentariosEditorHtml(cfg)}
             <h4 class="cd-ig-titulo">IA de respaldo</h4>
             <label class="cpana-toggle"><input type="checkbox" id="rdIaRespaldo"${cfg.iaRespaldo !== false ? ' checked' : ''}><span><strong>Si ninguna regla aplica, que la IA conteste lo básico</strong><br><span class="cd-muted">Apagada: lo que no cubran las reglas queda marcado "Necesita persona". La IA no responde reclamos ni toma pedidos.</span></span></label>
             <textarea id="rdInstr" rows="3" maxlength="1500" placeholder="Instrucciones extra para la IA (opcional)">${escapeHtml(cfg.instrucciones || '')}</textarea>
@@ -31187,15 +31237,15 @@ function rdChatsAutomatizacionHtml() {
 }
 
 function rdChatsActividadHtml() {
-    const via = { regla: '📏 Regla', ia: '🤖 IA', persona: '🙋 Persona' };
-    const estado = { respondido: '<span class="cd-hist-ok">Respondió</span>', 'necesita-persona': '<span class="cd-hist-warn">Necesita persona</span>', error: '<span class="cd-hist-err">Error</span>' };
+    const via = { regla: '📏 Regla', ia: '🤖 IA', persona: '🙋 Persona', comentario: '🗨️ Comentario' };
+    const estado = { respondido: '<span class="cd-hist-ok">Respondió</span>', 'necesita-persona': '<span class="cd-hist-warn">Necesita persona</span>', 'tope-diario': '<span class="cd-hist-warn">Tope diario</span>', error: '<span class="cd-hist-err">Error</span>' };
     return `<p class="cd-muted">Lo último que hizo el bot (más reciente primero). Si algo no te gusta, silencia el bot en ese chat o ajusta la regla en Automatización.</p>
         <div class="rd-log">${rdChats.log.map((l) => `<div class="rd-log-fila">
-            <div class="rd-chat-top"><strong>${escapeHtml(l.nombre || (l.username ? `@${l.username}` : `@${String(l.igsid || "").slice(-6)}`))}</strong><small>${escapeHtml(_rdChatHora(l.atMs))}</small></div>
-            <p class="cd-muted">Cliente: ${escapeHtml(l.mensaje || '')}</p>
+            <div class="rd-chat-top"><strong>${l.via === 'comentario' ? '🗨️ ' : ''}${escapeHtml(l.nombre || `Cliente ···${String(l.igsid || '').slice(-4)}`)}</strong><small>${escapeHtml(_rdChatHora(l.atMs))}</small></div>
+            <p class="cd-muted">${l.via === 'comentario' ? 'Comentó' : 'Cliente'}: ${escapeHtml(l.mensaje || '')}</p>
             ${l.respuesta ? `<p>↩ ${escapeHtml(l.respuesta)}</p>` : ''}
             <p class="rd-log-meta">${escapeHtml(via[l.via] || l.via)} · ${escapeHtml(l.regla || '')} · ${estado[l.estado] || escapeHtml(l.estado || '')}</p>
-            <div class="cd-ig-fila"><button type="button" class="cd-btn" data-rd-ir="${escapeHtml(l.igsid)}">Abrir chat</button><button type="button" class="cd-btn" data-rd-silenciar-id="${escapeHtml(l.igsid)}">⏸ Silenciar bot 12 h</button></div>
+            ${l.via === 'comentario' ? '' : `<div class="cd-ig-fila"><button type="button" class="cd-btn" data-rd-ir="${escapeHtml(l.igsid)}">Abrir chat</button><button type="button" class="cd-btn" data-rd-silenciar-id="${escapeHtml(l.igsid)}">⏸ Silenciar bot 12 h</button></div>`}
         </div>`).join('') || '<p class="cd-muted">El bot todavía no ha hecho nada.</p>'}</div>`;
 }
 
@@ -31245,6 +31295,15 @@ function rdChatsLeerEditor(body) {
         iaRespaldo: body.querySelector('#rdIaRespaldo')?.checked === true,
         instrucciones: body.querySelector('#rdInstr')?.value || '',
         saludo: regla('saludo'), fueraHorario: regla('fueraHorario'), historia: regla('historia'),
+        comentarios: {
+            activa: body.querySelector('#rdComActiva')?.checked !== false,
+            topeDia: Number(body.querySelector('#rdComTope')?.value) || 40,
+            dmTopeDia: Math.max(0, Number(body.querySelector('#rdComTopeDm')?.value) || 0),
+            reglas: [...body.querySelectorAll('[data-rd-creg]')].map((el) => ({
+                id: el.dataset.id, nombre: campo(el, 'nombre').value, activa: campo(el, 'activa').checked, claves: campo(el, 'claves').value,
+                texto: campo(el, 'texto').value, dm: campo(el, 'dm').checked, textoDm: campo(el, 'textoDm').value
+            }))
+        },
         palabras: [...body.querySelectorAll('[data-rd-pal]')].map((el) => ({
             id: el.dataset.id, nombre: campo(el, 'nombre').value, activa: campo(el, 'activa').checked, claves: campo(el, 'claves').value, texto: campo(el, 'texto').value
         })),
@@ -31260,6 +31319,10 @@ function rdRenderChats(body) {
     if (!body.dataset.chatsBound) {
         body.dataset.chatsBound = '1';
         body.addEventListener('input', (e) => {
+            if (e.target.id === 'rdChatTxt') {
+                const cuenta = body.querySelector('#rdChatCuenta');
+                if (cuenta) cuenta.textContent = `${e.target.value.length}/1000`;
+            }
             if (e.target.id === 'rdChatBusca') {
                 rdChats.busca = e.target.value;
                 const lista = body.querySelector('#rdChatLista');
@@ -31372,6 +31435,21 @@ function rdRenderChats(body) {
                 rdChatsPintar(body);
                 return;
             }
+            if (t.closest('#rdCregAgregar')) {
+                rdChats.cfgEdit = rdChatsLeerEditor(body);
+                rdChats.cfgEdit.comentarios.reglas.push({ id: `c${Date.now().toString(36)}`, nombre: 'Nueva regla', activa: true, claves: '', texto: '', dm: false, textoDm: '' });
+                rdChatsPintar(body);
+                return;
+            }
+            const cregDel = t.closest('[data-rd-creg-del]');
+            if (cregDel) {
+                rdChats.cfgEdit = rdChatsLeerEditor(body);
+                rdChats.cfgEdit.comentarios.reglas.splice(Number(cregDel.dataset.rdCregDel), 1);
+                rdChatsPintar(body);
+                return;
+            }
+            const filtroCom = t.closest('[data-rd-filtro-com]');
+            if (filtroCom) { rdChats.filtroCom = filtroCom.dataset.rdFiltroCom; rdChatsPintar(body); return; }
             if (t.closest('#rdRapAgregar')) {
                 rdChats.cfgEdit = rdChatsLeerEditor(body);
                 rdChats.cfgEdit.rapidas.push({ id: `q${Date.now().toString(36)}`, titulo: '', texto: '' });
@@ -31403,6 +31481,11 @@ function rdRenderChats(body) {
         rdChats.unsubs.push(
             firebaseDb.collection('instagram_chats').orderBy('ultimoAtMs', 'desc').limit(60).onSnapshot((snap) => {
                 rdChats.chats = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+                // Una vez por sesión: pide a Meta el nombre de los chats que aún muestran solo el número.
+                if (!rdChats.perfilesPedidos && rdChats.chats.some((c) => !c.nombre && !c.username)) {
+                    rdChats.perfilesPedidos = true;
+                    rdChatsLlamar('completarPerfiles').catch((err) => console.warn('Nombres de chats:', err?.message));
+                }
                 rdChatsPintarSeguro(body);
             }, (err) => console.warn('Chats:', err?.message)),
             firebaseDb.collection('instagram_comentarios').orderBy('atMs', 'desc').limit(40).onSnapshot((snap) => {

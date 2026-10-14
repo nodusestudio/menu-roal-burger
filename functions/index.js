@@ -3019,7 +3019,9 @@ exports.instagramWebhook = onRequest(
             alGuardarMensaje: async (msg, resultado) => {
                 const Anthropic = require('@anthropic-ai/sdk');
                 return instagramChats.alGuardarMensaje(db, msg, { cliente: new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() }), resultado });
-            }
+            },
+            // Respuesta automática a comentarios (reglas por palabra clave, sin IA; respeta el mismo interruptor general).
+            alGuardarComentario: (comentario) => instagramChats.alGuardarComentario(db, comentario)
         });
     }
 );
@@ -3038,6 +3040,7 @@ exports.adminInstagramChats = onCall(
         if (accion === 'comentarioLeido') return instagramChats.marcarComentarioLeido(db, d.id);
         if (accion === 'leerConfig') return instagramChats.leerConfigChat(db);
         if (accion === 'guardarConfig') return instagramChats.guardarConfigChat(db, d.config, uid);
+        if (accion === 'completarPerfiles') return instagramChats.completarPerfiles(db);
         if (accion === 'etiquetar') return instagramChats.etiquetar(db, d.igsid, d.etiquetas);
         if (accion === 'silenciarBot') return instagramChats.silenciarBot(db, d.igsid, d.silenciar === true);
         if (accion === 'sugerir') {

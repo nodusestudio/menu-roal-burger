@@ -250,7 +250,11 @@ async function manejarWebhook(req, res, deps) {
     }
     for (const c of comentarios) {
         try {
-            resultados.push({ comentario: c.id, ...(await guardarComentario(db, c, { nowMs })) });
+            const r = await guardarComentario(db, c, { nowMs });
+            resultados.push({ comentario: c.id, ...r });
+            if (r.guardado && deps.alGuardarComentario) {
+                try { await deps.alGuardarComentario(c, r); } catch (err) { console.error('instagramWebhook: gancho de comentarios falló:', err); }
+            }
         } catch (err) {
             console.error(`instagramWebhook: no se pudo guardar el comentario ${c.id}:`, err);
             resultados.push({ comentario: c.id, guardado: false, motivo: 'error' });

@@ -38,6 +38,10 @@ const ESPERA_HISTORIA_MS = 12 * HORA_MS;
 const ESPERA_PALABRAS_MS = 10 * 60 * 1000; // la misma regla de palabras no se repite en 10 min
 const MAX_PALABRAS = 15;
 const MAX_RAPIDAS = 20;
+const MAX_REGLAS_COMENTARIO = 15;
+const MAX_TEXTO_PUBLICO = 300; // respuesta pública corta: un comentario largo parece spam
+const USO_COMENTARIOS_DOC = 'comentarios_uso'; // contador diario en instagram_config
+const MAX_AUTO_POR_USUARIO_DIA = 2; // respuestas automáticas por persona cada 24 h (frena a quien repite la palabra)
 
 // Plantillas: {menu} = link del menú, {horario} = horario de hoy, {estado} = abierto/cerrado, {nombre} = primer nombre.
 const TEXTOS_BASE = Object.freeze({
@@ -50,6 +54,19 @@ const PALABRAS_BASE = Object.freeze([
     { id: 'carta', nombre: 'Carta y precios', activa: true, claves: ['carta', 'menu', 'precio', 'precios', 'cuanto vale', 'cuanto cuesta'], texto: '¡Mira la carta con todos los precios y pide aquí! 🍔 {menu}' }
 ]);
 
+// Comentarios públicos (Instagram y Facebook): SIN IA, solo reglas de palabra clave con frase fija.
+// `dm` = además manda un mensaje privado (una sola vez por comentario, lo permite Meta hasta 7 días después).
+const COMENTARIOS_BASE = Object.freeze({
+    activa: true,
+    topeDia: 40,
+    dmTopeDia: 40,
+    reglas: Object.freeze([
+        { id: 'c-precio', nombre: 'Precio y carta', activa: true, claves: ['precio', 'precios', 'carta', 'menu', 'cuanto vale', 'cuanto cuesta', 'valor'], texto: '¡Hola {nombre}! 🍔 Mira la carta con todos los precios aquí: {menu}', dm: false, textoDm: '' },
+        { id: 'c-horario', nombre: 'Horario', activa: true, claves: ['horario', 'abren', 'abierto', 'cierran', 'atienden', 'hasta que hora'], texto: '{estado} {horario} Pide aquí: {menu}', dm: false, textoDm: '' },
+        { id: 'c-pedido', nombre: 'Quiero pedir', activa: true, claves: ['pedido', 'pedir', 'domicilio', 'delivery', 'quiero uno', 'lo quiero'], texto: '¡Pide fácil y rápido en {menu} 🔥', dm: true, textoDm: '¡Hola {nombre}! 🍔 Para hacer tu pedido entra a {menu}: eliges, pagas y te lo llevamos.' }
+    ])
+});
+
 const DEFAULT_CONFIG = Object.freeze({
     autoActiva: false,
     iaRespaldo: true,
@@ -58,7 +75,8 @@ const DEFAULT_CONFIG = Object.freeze({
     fueraHorario: { activa: true, texto: TEXTOS_BASE.fueraHorario },
     historia: { activa: true, texto: TEXTOS_BASE.historia },
     palabras: PALABRAS_BASE,
-    rapidas: []
+    rapidas: [],
+    comentarios: COMENTARIOS_BASE
 });
 
 // ── Configuración de la respuesta automática ─────────────────────────────────
@@ -76,6 +94,34 @@ function limpiarRegla(raw, base) {
 function limpiarClaves(v) {
     const lista = Array.isArray(v) ? v : String(v || '').split(',');
     return [...new Set(lista.map((c) => normalizar(c)).filter(Boolean).map((c) => c.slice(0, 40)))].slice(0, 12);
+}
+
+function limpiarNumero(v, base, min, max) {
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : base;
+}
+
+function sanitizeComentarios(raw) {
+    const r = raw && typeof raw === 'object' ? raw : {};
+    const fuente = Array.isArray(r.reglas) ? r.reglas : COMENTARIOS_BASE.reglas;
+    const reglas = fuente.slice(0, MAX_REGLAS_COMENTARIO).map((p, i) => {
+        const textoDm = limpiarTexto(p?.textoDm, MAX_TEXTO_ENVIO);
+        return {
+            id: limpiarTexto(p?.id, 40) || `c${i}-${Math.random().toString(36).slice(2, 7)}`,
+            nombre: limpiarTexto(p?.nombre, 40) || 'Regla',
+            activa: p?.activa !== false,
+            claves: limpiarClaves(p?.claves),
+            texto: limpiarTexto(p?.texto, MAX_TEXTO_PUBLICO),
+            dm: p?.dm === true && !!textoDm,
+            textoDm
+        };
+    }).filter((p) => p.claves.length && p.texto);
+    return {
+        activa: r.activa !== false,
+        topeDia: limpiarNumero(r.topeDia, COMENTARIOS_BASE.topeDia, 1, 500),
+        dmTopeDia: limpiarNumero(r.dmTopeDia, COMENTARIOS_BASE.dmTopeDia, 0, 500),
+        reglas
+    };
 }
 
 function sanitizeConfigChat(raw) {
@@ -100,7 +146,8 @@ function sanitizeConfigChat(raw) {
         fueraHorario: limpiarRegla(r.fueraHorario, DEFAULT_CONFIG.fueraHorario),
         historia: limpiarRegla(r.historia, DEFAULT_CONFIG.historia),
         palabras,
-        rapidas
+        rapidas,
+        comentarios: sanitizeComentarios(r.comentarios)
     };
 }
 
@@ -151,6 +198,20 @@ function decidirRegla({ config, msg, nuevoChat, chat, disponibilidad, nowMs }) {
         return { tipo: 'saludo', clave: 'saludo', nombre: 'Saludo (primer mensaje)', texto: rellenar(config.saludo.texto, base) };
     }
     return null;
+}
+
+/** Regla de palabras clave para un comentario público (sin IA). Devuelve la primera regla activa que coincida, o null. */
+function decidirReglaComentario({ config, texto, username, disponibilidad }) {
+    const norm = normalizar(texto);
+    if (!norm) return null;
+    const regla = (config.comentarios?.reglas || []).find((p) => p.activa && p.claves.some((c) => contieneClave(norm, c)));
+    if (!regla) return null;
+    const base = { nombre: username ? `@${username}` : '', disponibilidad };
+    return {
+        id: regla.id, nombre: regla.nombre,
+        texto: rellenar(regla.texto, base),
+        textoDm: regla.dm && regla.textoDm ? rellenar(regla.textoDm, base) : ''
+    };
 }
 
 async function leerConfigChat(db) {
@@ -254,7 +315,7 @@ async function marcarLeido(db, igsid, { nowMs = Date.now() } = {}) {
 
 // ── Comentarios ──────────────────────────────────────────────────────────────
 
-async function responderComentario(db, { id, texto, uid = null }, { fetchFn = fetch, nowMs = Date.now() } = {}) {
+async function responderComentario(db, { id, texto, uid = null, origen = 'manual' }, { fetchFn = fetch, nowMs = Date.now() } = {}) {
     const comentarioId = String(id || '').trim();
     const cuerpo = String(texto || '').trim();
     if (!comentarioId) throw new HttpsError('invalid-argument', 'Falta el comentario.');
@@ -284,7 +345,7 @@ async function responderComentario(db, { id, texto, uid = null }, { fetchFn = fe
             throw new HttpsError('failed-precondition', `Instagram no publicó la respuesta: ${err?.message || 'error desconocido'}`);
         }
     }
-    await ref.set({ respondido: true, leido: true, respuesta: cuerpo, respuestaId: String(resp.id || ''), respondidoAtMs: nowMs, respondidoPor: uid }, { merge: true });
+    await ref.set({ respondido: true, leido: true, respuesta: cuerpo, respuestaId: String(resp.id || ''), respondidoAtMs: nowMs, respondidoPor: uid, respondidoOrigen: origen }, { merge: true });
     return { ok: true };
 }
 
@@ -337,38 +398,74 @@ function leerJsonRespuesta(resp) {
  * Gancho de manejarWebhook: decide si la IA contesta un mensaje recién guardado.
  * Nunca lanza hacia el webhook (el gancho ya está envuelto), y no hace nada si la respuesta automática está apagada.
  */
-async function registrarLog(db, { igsid, nombre, mensaje, via, regla, respuesta, estado }, nowMs) {
+async function registrarLog(db, { igsid, nombre, mensaje, via, regla, respuesta, estado, canal = '', comentarioId = '' }, nowMs) {
     try {
         await db.collection(LOG_COLLECTION).add({
             atMs: nowMs, igsid, nombre: nombre || '', mensaje: String(mensaje || '').slice(0, 200),
-            via, regla: regla || '', respuesta: String(respuesta || '').slice(0, 400), estado
+            via, regla: regla || '', respuesta: String(respuesta || '').slice(0, 400), estado, canal, comentarioId
         });
     } catch (err) { console.error('instagramChats: no se pudo guardar el registro:', err?.message); }
 }
 
-// Pide a Instagram el nombre y @usuario del cliente (el webhook solo trae el ID). Se hace una vez por chat;
-// si falla (permiso, usuario que no lo permite) se ignora y el panel sigue mostrando el ID corto.
-async function completarPerfil(db, igsid, { fetchFn = fetch } = {}) {
+// Pide el nombre y @usuario del cliente (el webhook solo trae el ID). Si Meta no lo entrega se reintenta con espera
+// (antes se intentaba UNA vez y se quedaba para siempre en "@123456") y se prueba el nombre que dejó en un comentario.
+// `perfilError` guarda la causa para diagnosticarla. Devuelve true si el chat quedó con nombre o @usuario.
+const ESPERA_PERFIL_MS = 6 * HORA_MS;
+async function completarPerfil(db, igsid, { fetchFn = fetch, nowMs = Date.now(), forzar = false } = {}) {
     const chatRef = db.collection(mensajes.CHATS_COLLECTION).doc(igsid);
     try {
         const chat = await chatRef.get().then((s) => (s.exists ? s.data() : {}));
-        if (chat.username || chat.nombre || chat.perfilIntentoAtMs) return;
+        if (chat.username || chat.nombre) return true;
+        if (!forzar && chat.perfilIntentoAtMs && nowMs - chat.perfilIntentoAtMs < ESPERA_PERFIL_MS) return false;
         const esFacebook = chat.canal === 'facebook';
-        const conexion = esFacebook ? await conexionFacebook(db) : await conexionParaEnviar(db);
-        await chatRef.set({ perfilIntentoAtMs: Date.now() }, { merge: true });
-        const p = esFacebook
-            ? await historias.llamarGraph(fetchFn, 'GET', `${FB_GRAPH_URL}/${GRAPH_VERSION}/${igsid.slice(mensajes.PREFIJO_FACEBOOK.length)}?${new URLSearchParams({ fields: 'name', access_token: conexion.pageToken })}`)
-            : await historias.llamarGraph(fetchFn, 'GET', `${GRAPH_URL}/${GRAPH_VERSION}/${igsid}?fields=name,username`, { token: conexion.accessToken });
+        const idCrudo = esFacebook ? igsid.slice(mensajes.PREFIJO_FACEBOOK.length) : igsid;
         const cambios = {};
-        if (p.username) cambios.username = String(p.username).slice(0, 60);
-        if (p.name) cambios.nombre = String(p.name).slice(0, 80);
-        if (Object.keys(cambios).length) await chatRef.set(cambios, { merge: true });
-    } catch (err) { console.error('instagramChats: no se pudo leer el perfil:', err?.message); }
+        let error = '';
+        try {
+            const conexion = esFacebook ? await conexionFacebook(db) : await conexionParaEnviar(db);
+            if (esFacebook) {
+                for (const campos of ['name', 'first_name,last_name']) {
+                    try {
+                        const p = await historias.llamarGraph(fetchFn, 'GET', `${FB_GRAPH_URL}/${GRAPH_VERSION}/${idCrudo}?${new URLSearchParams({ fields: campos, access_token: conexion.pageToken })}`);
+                        const nombre = p.name || [p.first_name, p.last_name].filter(Boolean).join(' ');
+                        if (nombre) { cambios.nombre = String(nombre).slice(0, 80); break; }
+                    } catch (err) { error = String(err?.message || err); }
+                }
+            } else {
+                const p = await historias.llamarGraph(fetchFn, 'GET', `${GRAPH_URL}/${GRAPH_VERSION}/${igsid}?fields=name,username`, { token: conexion.accessToken });
+                if (p.username) cambios.username = String(p.username).slice(0, 60);
+                if (p.name) cambios.nombre = String(p.name).slice(0, 80);
+            }
+        } catch (err) { error = String(err?.message || err); }
+        if (!cambios.nombre && !cambios.username) {
+            // Plan B: si esta persona comentó, el comentario sí trae su nombre / @usuario.
+            const coms = await db.collection(mensajes.COMENTARIOS_COLLECTION).where('clienteId', '==', idCrudo).limit(5).get();
+            const hallado = coms.docs.map((d) => d.data()).find((c) => c.username);
+            if (hallado) { if (esFacebook) cambios.nombre = hallado.username; else cambios.username = hallado.username; }
+        }
+        cambios.perfilIntentoAtMs = nowMs;
+        cambios.perfilError = cambios.nombre || cambios.username ? '' : error.slice(0, 200);
+        await chatRef.set(cambios, { merge: true });
+        return !!(cambios.nombre || cambios.username);
+    } catch (err) { console.error('instagramChats: no se pudo leer el perfil:', err?.message); return false; }
+}
+
+/** Completa los nombres de los chats que aún muestran solo el número (los más recientes primero). */
+async function completarPerfiles(db, { limite = 15, fetchFn = fetch, nowMs = Date.now() } = {}) {
+    const snap = await db.collection(mensajes.CHATS_COLLECTION).orderBy('ultimoAtMs', 'desc').limit(80).get();
+    const pendientes = snap.docs.filter((d) => !d.data().nombre && !d.data().username).slice(0, limite);
+    let completados = 0;
+    let ultimoError = '';
+    for (const d of pendientes) {
+        if (await completarPerfil(db, d.id, { fetchFn, nowMs, forzar: true })) completados++;
+        else ultimoError = (await d.ref.get()).data()?.perfilError || ultimoError;
+    }
+    return { intentados: pendientes.length, completados, ultimoError };
 }
 
 async function alGuardarMensaje(db, msg, { cliente, fetchFn = fetch, nowMs = Date.now(), resultado = {} } = {}) {
     const chatRef = db.collection(mensajes.CHATS_COLLECTION).doc(msg.clienteId);
-    if (msg.de === 'cliente') await completarPerfil(db, msg.clienteId, { fetchFn });
+    if (msg.de === 'cliente') await completarPerfil(db, msg.clienteId, { fetchFn, nowMs });
 
     // Un mensaje del negocio que NO salió por la API (lo escribió una persona en la app de Instagram) pausa la IA.
     if (msg.de === 'negocio') {
@@ -388,9 +485,7 @@ async function alGuardarMensaje(db, msg, { cliente, fetchFn = fetch, nowMs = Dat
     const auto = chat.autoRespuestas;
     if (auto?.desdeMs && nowMs - auto.desdeMs < 24 * HORA_MS && (auto.cuantas || 0) >= MAX_AUTO_POR_DIA) return { motivo: 'tope-diario' };
 
-    const horarioSnap = await db.collection('configuracion').doc('config_horario').get();
-    const disponibilidad = orderLogic.getOrderingAvailability(
-        orderLogic.buildScheduleFromConfigDoc(horarioSnap.exists ? horarioSnap.data() : null), new Date(nowMs));
+    const disponibilidad = await disponibilidadAhora(db, nowMs);
     const datosLog = { igsid: msg.clienteId, nombre: chat.nombre || (chat.username ? `@${chat.username}` : ""), mensaje: msg.texto };
 
     // 1) Reglas (sin IA): lo que el negocio escribió y controla.
@@ -449,6 +544,138 @@ async function alGuardarMensaje(db, msg, { cliente, fetchFn = fetch, nowMs = Dat
         await chatRef.set({ requiereHumano: true }, { merge: true });
         await registrarLog(db, { ...datosLog, via: 'ia', regla: 'IA de respaldo', estado: 'error' }, nowMs);
         return { motivo: 'error-envio' };
+    }
+}
+
+// ── Respuesta automática a comentarios (Instagram y Facebook, sin IA) ───────────
+
+function diaColombia(nowMs) {
+    return new Date(nowMs - 5 * HORA_MS).toISOString().slice(0, 10);
+}
+
+/** Reserva un cupo del tope diario ('publicas' o 'dms'). Devuelve false si ya se llegó al tope. */
+async function reservarCupoComentarios(db, tipo, tope, nowMs) {
+    if (tope <= 0) return false;
+    const ref = db.collection(historias.CONFIG_COLLECTION).doc(USO_COMENTARIOS_DOC);
+    const dia = diaColombia(nowMs);
+    return db.runTransaction(async (tx) => {
+        const d = (await tx.get(ref)).data() || {};
+        const uso = d.dia === dia ? d : { dia, publicas: 0, dms: 0 };
+        if ((uso[tipo] || 0) >= tope) return false;
+        tx.set(ref, { dia, publicas: uso.publicas || 0, dms: uso.dms || 0, [tipo]: (uso[tipo] || 0) + 1 });
+        return true;
+    });
+}
+
+/** Mensaje privado a quien comentó (respuesta privada de Meta: una sola vez por comentario, dentro de 7 días). */
+async function enviarRespuestaPrivada(db, comentario, texto, { fetchFn = fetch, nowMs = Date.now() } = {}) {
+    const esFacebook = comentario.canal === 'facebook';
+    const idCrudo = esFacebook ? comentario.id.slice(mensajes.PREFIJO_FACEBOOK.length) : comentario.id;
+    const cuerpo = String(texto || '').trim().slice(0, MAX_TEXTO_ENVIO);
+    if (!cuerpo) throw new HttpsError('invalid-argument', 'Falta el texto del mensaje privado.');
+    const conexion = esFacebook ? await conexionFacebook(db) : await conexionParaEnviar(db);
+    const clienteBase = String(comentario.clienteId || '');
+    const clienteId = clienteBase ? `${esFacebook ? mensajes.PREFIJO_FACEBOOK : ''}${clienteBase}` : '';
+    // Se marca ANTES de enviar: el eco del mensaje llega en segundos y no debe contarse como "una persona respondió".
+    if (clienteId) await db.collection(mensajes.CHATS_COLLECTION).doc(clienteId).set({ ultimoEnvioApiAtMs: nowMs }, { merge: true });
+    let resp;
+    try {
+        resp = esFacebook
+            ? await historias.llamarGraph(fetchFn, 'POST', `${FB_GRAPH_URL}/${GRAPH_VERSION}/me/messages`, {
+                params: { recipient: JSON.stringify({ comment_id: idCrudo }), message: JSON.stringify({ text: cuerpo }), access_token: conexion.pageToken }
+            })
+            : await historias.llamarGraph(fetchFn, 'POST', `${GRAPH_URL}/${GRAPH_VERSION}/${conexion.igUserId}/messages`, {
+                token: conexion.accessToken, params: { recipient: JSON.stringify({ comment_id: idCrudo }), message: JSON.stringify({ text: cuerpo }) }
+            });
+    } catch (err) {
+        throw new HttpsError('failed-precondition', traducirErrorGraph(err, esFacebook));
+    }
+    const mid = String(resp.message_id || `local-${nowMs}-${Math.random().toString(36).slice(2, 8)}`);
+    const destino = resp.recipient_id ? `${esFacebook ? mensajes.PREFIJO_FACEBOOK : ''}${resp.recipient_id}` : clienteId;
+    if (destino) {
+        await mensajes.guardarMensaje(db, {
+            mid, clienteId: destino, canal: comentario.canal || 'instagram', cuentaId: String(esFacebook ? conexion.pageId : conexion.igUserId), de: 'negocio',
+            texto: cuerpo, adjuntos: [], esDeHistoria: false, historiaUrl: '', atMs: nowMs, origen: 'auto'
+        }, { nowMs });
+        await db.collection(mensajes.CHATS_COLLECTION).doc(destino).set({ ultimoEnvioApiAtMs: nowMs }, { merge: true });
+    }
+    return { ok: true, mid };
+}
+
+async function disponibilidadAhora(db, nowMs) {
+    const horarioSnap = await db.collection('configuracion').doc('config_horario').get();
+    return orderLogic.getOrderingAvailability(orderLogic.buildScheduleFromConfigDoc(horarioSnap.exists ? horarioSnap.data() : null), new Date(nowMs));
+}
+
+/**
+ * Gancho del webhook para un comentario NUEVO. Solo reglas de palabra clave (sin IA). Garantías:
+ *  - respeta el interruptor general (autoActiva) y el de comentarios;
+ *  - un comentario se procesa una sola vez (se reserva con `autoEstado` en una transacción);
+ *  - no contesta respuestas dentro de un hilo ni a la propia cuenta;
+ *  - tope diario de respuestas públicas y de mensajes privados, y tope por persona;
+ *  - todo queda en instagram_auto_log. Nunca lanza hacia el webhook.
+ */
+async function alGuardarComentario(db, c, { fetchFn = fetch, nowMs = Date.now() } = {}) {
+    const comRef = db.collection(mensajes.COMENTARIOS_COLLECTION).doc(c.id);
+    const canal = c.canal || 'instagram';
+    const quien = c.username ? `${canal === 'facebook' ? '' : '@'}${c.username}` : '';
+    const datosLog = {
+        igsid: c.clienteId ? `${canal === 'facebook' ? mensajes.PREFIJO_FACEBOOK : ''}${c.clienteId}` : '',
+        nombre: quien, mensaje: c.texto, via: 'comentario', canal, comentarioId: c.id
+    };
+    try {
+        const config = await leerConfigChat(db);
+        if (!config.autoActiva) return { motivo: 'apagada' };
+        if (!config.comentarios.activa) return { motivo: 'comentarios-apagado' };
+        if (!c.texto) return { motivo: 'sin-texto' };
+        if (c.padreId) return { motivo: 'es-respuesta' }; // solo comentarios principales: no se conversa dentro de un hilo
+        if (c.cuentaId && c.clienteId === c.cuentaId) return { motivo: 'cuenta-propia' };
+
+        const reservado = await db.runTransaction(async (tx) => {
+            const d = (await tx.get(comRef)).data();
+            if (!d || d.autoEstado || d.respondido) return false;
+            tx.set(comRef, { autoEstado: 'procesando', autoAtMs: nowMs }, { merge: true });
+            return true;
+        });
+        if (!reservado) return { motivo: 'ya-procesado' };
+        const cerrar = (autoEstado, extra = {}) => comRef.set({ autoEstado, ...extra }, { merge: true });
+
+        const disponibilidad = await disponibilidadAhora(db, nowMs);
+        const regla = decidirReglaComentario({ config, texto: c.texto, username: c.username, disponibilidad });
+        if (!regla) { await cerrar('sin-regla'); return { motivo: 'sin-regla' }; }
+
+        if (c.clienteId) {
+            const previos = await db.collection(mensajes.COMENTARIOS_COLLECTION).where('clienteId', '==', c.clienteId).limit(30).get();
+            const recientes = previos.docs.map((d) => d.data()).filter((d) => d.autoEstado === 'respondido' && nowMs - (d.respondidoAtMs || 0) < 24 * HORA_MS).length;
+            if (recientes >= MAX_AUTO_POR_USUARIO_DIA) { await cerrar('limite-usuario'); return { motivo: 'limite-usuario' }; }
+        }
+        if (!(await reservarCupoComentarios(db, 'publicas', config.comentarios.topeDia, nowMs))) {
+            await cerrar('tope-diario');
+            await registrarLog(db, { ...datosLog, regla: regla.nombre, estado: 'tope-diario' }, nowMs);
+            return { motivo: 'tope-diario' };
+        }
+        try {
+            await responderComentario(db, { id: c.id, texto: regla.texto, origen: 'auto' }, { fetchFn, nowMs });
+        } catch (err) {
+            console.error('instagramChats: no se pudo responder el comentario:', err?.message);
+            await cerrar('error', { autoError: String(err?.message || err).slice(0, 200) });
+            await registrarLog(db, { ...datosLog, regla: regla.nombre, estado: 'error' }, nowMs);
+            return { motivo: 'error-envio' };
+        }
+        let dmEstado = '';
+        if (regla.textoDm) {
+            if (!(await reservarCupoComentarios(db, 'dms', config.comentarios.dmTopeDia, nowMs))) dmEstado = 'tope-diario';
+            else {
+                try { await enviarRespuestaPrivada(db, { ...c, canal }, regla.textoDm, { fetchFn, nowMs }); dmEstado = 'enviado'; }
+                catch (err) { dmEstado = 'error'; console.error('instagramChats: no se pudo mandar el mensaje privado:', err?.message); }
+            }
+        }
+        await cerrar('respondido', { autoRegla: regla.nombre, dmEstado });
+        await registrarLog(db, { ...datosLog, regla: regla.nombre, respuesta: regla.texto + (dmEstado === 'enviado' ? `\n✉️ Privado: ${regla.textoDm}` : ''), estado: 'respondido' }, nowMs);
+        return { motivo: 'respondido', dmEstado };
+    } catch (err) {
+        console.error('instagramChats: falló la respuesta a comentarios:', err?.message);
+        return { motivo: 'error' };
     }
 }
 
@@ -527,5 +754,11 @@ module.exports = {
     silenciarBot,
     sugerirRespuesta,
     LOG_COLLECTION,
-    alGuardarMensaje
+    alGuardarMensaje,
+    alGuardarComentario,
+    decidirReglaComentario,
+    enviarRespuestaPrivada,
+    completarPerfil,
+    completarPerfiles,
+    USO_COMENTARIOS_DOC
 };
