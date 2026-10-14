@@ -3016,9 +3016,9 @@ exports.instagramWebhook = onRequest(
             appSecrets: INSTAGRAM_APP_SECRET.value(),
             verifyToken: INSTAGRAM_VERIFY_TOKEN.value(),
             // Respuesta automática básica (apagada hasta que se active en Redes → Chats).
-            alGuardarMensaje: async (msg) => {
+            alGuardarMensaje: async (msg, resultado) => {
                 const Anthropic = require('@anthropic-ai/sdk');
-                return instagramChats.alGuardarMensaje(db, msg, { cliente: new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() }) });
+                return instagramChats.alGuardarMensaje(db, msg, { cliente: new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() }), resultado });
             }
         });
     }
@@ -3026,7 +3026,7 @@ exports.instagramWebhook = onRequest(
 
 // FODEXA → Redes → Chats: responder DMs y comentarios, marcar leídos y ajustar la respuesta automática.
 exports.adminInstagramChats = onCall(
-    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '256MiB', timeoutSeconds: 60 },
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '256MiB', timeoutSeconds: 60, secrets: [ANTHROPIC_API_KEY] },
     async (request) => {
         const db = getFirestore();
         const uid = await cuponPana.ensureAdmin(db, request);
@@ -3038,6 +3038,12 @@ exports.adminInstagramChats = onCall(
         if (accion === 'comentarioLeido') return instagramChats.marcarComentarioLeido(db, d.id);
         if (accion === 'leerConfig') return instagramChats.leerConfigChat(db);
         if (accion === 'guardarConfig') return instagramChats.guardarConfigChat(db, d.config, uid);
+        if (accion === 'etiquetar') return instagramChats.etiquetar(db, d.igsid, d.etiquetas);
+        if (accion === 'silenciarBot') return instagramChats.silenciarBot(db, d.igsid, d.silenciar === true);
+        if (accion === 'sugerir') {
+            const Anthropic = require('@anthropic-ai/sdk');
+            return instagramChats.sugerirRespuesta(db, { tipo: d.tipo, id: d.id }, { cliente: new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() }) });
+        }
         throw new HttpsError('invalid-argument', 'Acción desconocida.');
     }
 );

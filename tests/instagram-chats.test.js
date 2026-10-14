@@ -46,6 +46,7 @@ beforeEach(async () => {
     await borrar(im.CHATS_COLLECTION);
     await borrar(im.COMENTARIOS_COLLECTION);
     await borrar('instagram_config');
+    await borrar(ic.LOG_COLLECTION);
     await db.collection('instagram_config').doc('conexion').set({ accessToken: 'tok-de-prueba-largo-123456', igUserId: CUENTA, expiresAtMs: T0 + 30 * 86400000 });
 });
 
@@ -88,8 +89,8 @@ test('auto: apagada por defecto no responde', async () => {
 });
 
 test('auto: activa responde, y si la IA dice que no, marca "necesita persona"', async () => {
-    await db.collection('instagram_config').doc('chat').set({ autoActiva: true });
-    const msg = await clienteEscribe('m1', '¿a qué hora abren?');
+    await db.collection('instagram_config').doc('chat').set({ autoActiva: true, fueraHorario: { activa: false, texto: 'x' } });
+    const msg = await clienteEscribe('m1', 'tienen algo con pollo?');
     const llamadas = [];
     const r = await ic.alGuardarMensaje(db, msg, { cliente: claude({ responder: true, texto: 'Abrimos a las 4 pm 🍔 roalburger.com' }), fetchFn: fetchOk(llamadas), nowMs: T0 + 500 });
     assert.equal(r.motivo, 'respondido');
@@ -119,4 +120,79 @@ test('auto: un mensaje del negocio que no salió por la API (escrito en la app) 
     const r = await ic.alGuardarMensaje(db, eco, { nowMs: T0 + 5000 });
     assert.equal(r.motivo, 'mensaje-del-negocio');
     assert.equal((await db.collection('instagram_chats').doc(CLIENTE).get()).data().ultimaManualAtMs, T0 + 5000);
+});
+
+const CFG = ic.sanitizeConfigChat({ autoActiva: true });
+const ABIERTO = { isOpen: true, scheduleLabel: 'Hoy 4 pm a 11 pm.' };
+const CERRADO = { isOpen: false, scheduleLabel: 'Abrimos hoy a las 4 pm.' };
+const decidir = (o) => ic.decidirRegla({ config: CFG, msg: { texto: 'hola', esDeHistoria: false }, nuevoChat: false, chat: {}, disponibilidad: ABIERTO, nowMs: T0, ...o });
+
+test('reglas: palabra clave (sin tildes ni mayúsculas) gana al saludo y rellena {horario}', () => {
+    const r = decidir({ msg: { texto: '¿A QUÉ HORA ABREN?', esDeHistoria: false }, nuevoChat: true });
+    assert.equal(r.tipo, 'palabras');
+    assert.match(r.texto, /Hoy 4 pm a 11 pm/);
+    assert.doesNotMatch(r.texto, /\{/);
+});
+
+test('reglas: la clave no se activa dentro de otra palabra', () => {
+    assert.equal(decidir({ msg: { texto: 'horarios raros', esDeHistoria: false } }), null);
+});
+
+test('reglas: historia, fuera de horario y saludo, cada una con su límite de repetición', () => {
+    assert.equal(decidir({ msg: { texto: 'qué rico!', esDeHistoria: true } }).tipo, 'historia');
+    assert.equal(decidir({ msg: { texto: 'qué rico!', esDeHistoria: true }, chat: { reglasUso: { historia: T0 - 1000 } } }), null);
+    assert.equal(decidir({ disponibilidad: CERRADO }).tipo, 'fuera-horario');
+    assert.equal(decidir({ disponibilidad: CERRADO, chat: { reglasUso: { fueraHorario: T0 - 1000 } } }), null);
+    assert.equal(decidir({ nuevoChat: true }).tipo, 'saludo');
+    assert.equal(decidir({ nuevoChat: false }), null);
+});
+
+test('reglas: una regla apagada no responde y la config se limpia', () => {
+    const cfg = ic.sanitizeConfigChat({ autoActiva: true, saludo: { activa: false, texto: 'x' }, palabras: [{ nombre: 'A', claves: 'Envío, DOMICILIO', texto: 'ok' }, { nombre: 'sin claves', claves: '', texto: 'x' }] });
+    assert.equal(cfg.palabras.length, 1);
+    assert.deepEqual(cfg.palabras[0].claves, ['envio', 'domicilio']);
+    assert.equal(decidir({ config: cfg, nuevoChat: true }), null);
+});
+
+test('auto: una regla contesta sin llamar a la IA y deja registro', async () => {
+    await db.collection('instagram_config').doc('chat').set({ autoActiva: true, fueraHorario: { activa: false, texto: 'x' } });
+    const msg = await clienteEscribe('m1', 'hola, ¿cuál es la carta?');
+    const llamadas = [];
+    const ia = [];
+    const r = await ic.alGuardarMensaje(db, msg, { cliente: claude({ responder: true, texto: 'no debería usarse' }, ia), fetchFn: fetchOk(llamadas), nowMs: T0 + 500, resultado: { nuevoChat: true } });
+    assert.equal(r.motivo, 'regla-palabras');
+    assert.equal(llamadas.length, 1);
+    assert.equal(ia.length, 0);
+    const log = await db.collection(ic.LOG_COLLECTION).get();
+    assert.equal(log.size, 1);
+    assert.equal(log.docs[0].data().via, 'regla');
+});
+
+test('auto: sin regla y con la IA de respaldo apagada, queda "necesita persona"', async () => {
+    await db.collection('instagram_config').doc('chat').set({ autoActiva: true, iaRespaldo: false, fueraHorario: { activa: false, texto: 'x' } });
+    const msg = await clienteEscribe('m1', 'tienen algo con pollo?');
+    const llamadas = [];
+    const r = await ic.alGuardarMensaje(db, msg, { cliente: claude({ responder: true, texto: 'x' }), fetchFn: fetchOk(llamadas), nowMs: T0 + 500 });
+    assert.equal(r.motivo, 'sin-regla');
+    assert.equal(llamadas.length, 0);
+    assert.equal((await db.collection('instagram_chats').doc(CLIENTE).get()).data().requiereHumano, true);
+});
+
+test('etiquetar y silenciar el bot', async () => {
+    await clienteEscribe('m1', 'hola');
+    const r = await ic.etiquetar(db, CLIENTE, ['reclamo', 'inventada', 'reclamo']);
+    assert.deepEqual(r.etiquetas, ['reclamo']);
+    await ic.silenciarBot(db, CLIENTE, true, { nowMs: T0 });
+    assert.equal((await db.collection('instagram_chats').doc(CLIENTE).get()).data().ultimaManualAtMs, T0);
+    await ic.silenciarBot(db, CLIENTE, false);
+    assert.equal((await db.collection('instagram_chats').doc(CLIENTE).get()).data().ultimaManualAtMs, 0);
+});
+
+test('sugerir: devuelve un borrador para un comentario sin publicar nada', async () => {
+    await db.collection('instagram_comentarios').doc('c9').set({ id: 'c9', username: 'ana', texto: 'se ve buenísima' });
+    const llamadas = [];
+    const ia = { messages: { create: async (req) => { llamadas.push(req); return { content: [{ type: 'text', text: '"¡Gracias Ana! 🍔"' }] }; } } };
+    const r = await ic.sugerirRespuesta(db, { tipo: 'comentario', id: 'c9' }, { cliente: ia, nowMs: T0 });
+    assert.equal(r.texto, '¡Gracias Ana! 🍔');
+    assert.match(llamadas[0].messages[0].content, /se ve buenísima/);
 });

@@ -31037,7 +31037,16 @@ async function rdRenderMetricas(body) {
 // ── Chats: bandeja de mensajes directos y comentarios de Instagram ──────────
 // Los datos entran por el webhook (functions/instagramMensajes.js); aquí se leen en vivo y se responde con
 // la callable adminInstagramChats (functions/instagramChats.js). El panel nunca toca el token.
-const rdChats = { unsubs: [], chats: [], comentarios: [], sel: '', mensajes: [], unsubMsgs: null, vista: 'chats', config: null };
+const rdChats = {
+    unsubs: [], chats: [], comentarios: [], log: [], sel: '', mensajes: [], unsubMsgs: null, vista: 'chats', config: null, cfgEdit: null,
+    filtro: 'todos', etiqueta: '', busca: '', borrador: '', borComs: {}
+};
+const RD_ETIQUETAS = { pedido: '🛒 Pedido', reclamo: '⚠️ Reclamo', alianza: '🤝 Alianza', vip: '⭐ VIP', resuelto: '✅ Resuelto' };
+const RD_FILTROS = [['todos', 'Todos'], ['sin-leer', 'Sin leer'], ['persona', 'Necesitan persona'], ['sin-responder', 'Sin responder'], ['historias', 'Historias']];
+const RD_CFG_BASE = {
+    autoActiva: false, iaRespaldo: true, instrucciones: '',
+    saludo: { activa: true, texto: '' }, fueraHorario: { activa: true, texto: '' }, historia: { activa: true, texto: '' }, palabras: [], rapidas: []
+};
 
 async function rdChatsLlamar(accion, payload = {}) {
     if (!firebaseFunctions) throw new Error('Servicio no disponible. Recarga la página.');
@@ -31051,86 +31060,342 @@ function rdChatsParar() {
 }
 
 const _rdChatHora = (ms) => (ms ? new Date(ms).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' }) : '');
+const _rdChatSoloHora = (ms) => (ms ? new Date(ms).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit' }) : '');
+const _rdChatDia = (ms) => new Date(ms).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' });
+const _rdChatNorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const _rdChatNombre = (c) => c.nombre || `@${String(c.id || c.igsid || '').slice(-6)}`;
+const _rdChatAvatar = (nombre) => `<span class="rd-av" aria-hidden="true">${escapeHtml(String(nombre || '?').replace(/^@/, '').charAt(0).toUpperCase() || '?')}</span>`;
+
+function rdChatsFiltrados() {
+    const q = _rdChatNorm(rdChats.busca).trim();
+    return rdChats.chats.filter((c) => {
+        if (rdChats.filtro === 'sin-leer' && !c.noLeidos) return false;
+        if (rdChats.filtro === 'persona' && !c.requiereHumano) return false;
+        if (rdChats.filtro === 'sin-responder' && c.ultimoDe !== 'cliente') return false;
+        if (rdChats.filtro === 'historias' && !c.ultimaRespuestaHistoriaAtMs) return false;
+        if (rdChats.etiqueta && !(c.etiquetas || []).includes(rdChats.etiqueta)) return false;
+        if (q && !_rdChatNorm(`${c.nombre || ''} ${c.ultimoTexto || ''} ${c.id}`).includes(q)) return false;
+        return true;
+    });
+}
+
+function rdChatsListaHtml() {
+    const items = rdChatsFiltrados();
+    if (!items.length) return `<p class="cd-muted rd-vacio">${rdChats.chats.length ? 'Ningún chat coincide con el filtro.' : 'Aún no hay mensajes directos.'}</p>`;
+    return items.map((c) => `<button type="button" class="rd-chat-item${c.id === rdChats.sel ? ' sel' : ''}${c.noLeidos ? ' nuevo' : ''}" data-rd-chat="${escapeHtml(c.id)}">
+            ${_rdChatAvatar(_rdChatNombre(c))}
+            <span class="rd-chat-cuerpo">
+                <span class="rd-chat-top"><strong>${escapeHtml(_rdChatNombre(c))}</strong><small>${escapeHtml(_rdChatHora(c.ultimoAtMs))}</small></span>
+                <span class="rd-chat-prev">${c.ultimoDe === 'negocio' ? '↩ ' : ''}${escapeHtml(c.ultimoTexto || '')}</span>
+                <span class="rd-chat-marcas">${c.requiereHumano ? '<em class="rd-chat-persona">Necesita persona</em>' : ''}${(c.etiquetas || []).map((e) => `<em class="rd-etq">${escapeHtml(RD_ETIQUETAS[e] || e)}</em>`).join('')}</span>
+            </span>
+            ${c.noLeidos ? `<b class="rd-chat-badge">${c.noLeidos}</b>` : ''}
+        </button>`).join('');
+}
+
+function rdChatsHiloHtml() {
+    let diaPrevio = '';
+    return rdChats.mensajes.map((m) => {
+        const dia = _rdChatDia(m.atMs);
+        const sep = dia !== diaPrevio ? `<div class="rd-dia"><span>${escapeHtml(dia)}</span></div>` : '';
+        diaPrevio = dia;
+        const adj = (m.adjuntos || []).map((a) => (a.tipo === 'image' && /^https:\/\//.test(a.url)
+            ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener"><img class="rd-adj" src="${escapeHtml(a.url)}" alt="Imagen del cliente" loading="lazy"></a>`
+            : `<small>📎 ${escapeHtml(a.tipo || 'adjunto')}</small>`)).join('');
+        const quien = m.de === 'negocio' ? (m.origen === 'auto' ? '🤖 Automático' : (m.origen === 'manual' ? 'Tú' : 'Desde la app')) : '';
+        return `${sep}<div class="rd-msg ${m.de === 'negocio' ? 'yo' : 'el'}${m.origen === 'auto' ? ' auto' : ''}">
+            ${m.esDeHistoria ? '<small class="rd-hist">📸 Respuesta a tu historia</small>' : ''}${adj}${m.texto ? `<span>${escapeHtml(m.texto)}</span>` : ''}
+            <small>${quien ? `${escapeHtml(quien)} · ` : ''}${escapeHtml(_rdChatSoloHora(m.atMs))}</small></div>`;
+    }).join('') || '<p class="cd-muted">Sin mensajes todavía.</p>';
+}
+
+function rdChatsPanelHtml() {
+    const chat = rdChats.chats.find((c) => c.id === rdChats.sel);
+    if (!chat) return '<div class="rd-chat-vacio"><span>💬</span><p>Elige un chat de la lista para verlo y responder.</p></div>';
+    const resta = (chat.ventanaHastaMs || 0) - Date.now();
+    const ventana = resta > 0;
+    const horas = Math.floor(resta / 3600000);
+    const mins = Math.floor((resta % 3600000) / 60000);
+    const silenciado = chat.ultimaManualAtMs && Date.now() - chat.ultimaManualAtMs < 12 * 3600000;
+    const rapidas = (rdChats.config?.rapidas || []).map((q) => `<button type="button" class="rd-rapida" data-rd-rapida="${escapeHtml(q.id)}" title="${escapeHtml(q.texto)}">${escapeHtml(q.titulo)}</button>`).join('');
+    return `
+        <header class="rd-chat-cab">
+            <button type="button" class="rd-volver" data-rd-volver aria-label="Volver a la lista">←</button>
+            ${_rdChatAvatar(_rdChatNombre(chat))}
+            <div class="rd-chat-quien"><strong>${escapeHtml(_rdChatNombre(chat))}</strong>
+                <small class="${ventana ? 'rd-ok' : 'rd-vencida'}">${ventana ? `Puedes responder ${horas ? `${horas} h ` : ''}${mins} min más` : 'Ventana de 24 h cerrada'}</small></div>
+            <button type="button" class="cd-btn rd-bot-btn" data-rd-silenciar="${silenciado ? '0' : '1'}" title="${silenciado ? 'El bot está en pausa en este chat' : 'Evita que el bot conteste en este chat durante 12 h'}">${silenciado ? '▶ Reactivar bot' : '⏸ Silenciar bot'}</button>
+        </header>
+        <div class="rd-etqs">${Object.entries(RD_ETIQUETAS).map(([k, v]) => `<button type="button" class="rd-etq-btn${(chat.etiquetas || []).includes(k) ? ' on' : ''}" data-rd-etq="${k}">${escapeHtml(v)}</button>`).join('')}</div>
+        <div class="rd-chat-hilo" id="rdChatHilo">${rdChatsHiloHtml()}</div>
+        ${ventana ? `
+            ${rapidas ? `<div class="rd-rapidas" aria-label="Respuestas rápidas">${rapidas}</div>` : ''}
+            <div class="rd-compositor">
+                <textarea id="rdChatTxt" rows="2" maxlength="1000" placeholder="Escribe tu respuesta… (Enter envía, Shift+Enter salto de línea)"></textarea>
+                <div class="rd-comp-acc">
+                    <button type="button" class="cd-btn" id="rdChatSugerir" title="La IA escribe un borrador que tú revisas">✨ Sugerir</button>
+                    <button type="button" class="section-action-btn primary" id="rdChatEnviar">Enviar</button>
+                </div>
+            </div>` : '<p class="cd-aviso">Pasaron más de 24 h desde el último mensaje del cliente: Instagram no deja responderle hasta que escriba de nuevo.</p>'}`;
+}
+
+function rdChatsComentariosHtml() {
+    return rdChats.comentarios.map((c) => `<div class="rd-chat-com${c.respondido ? ' ok' : ''}">
+            <div class="rd-chat-top">${_rdChatAvatar(c.username)}<div class="rd-chat-quien"><strong>@${escapeHtml(c.username || 'usuario')}</strong><small>${escapeHtml(_rdChatHora(c.atMs))}</small></div></div>
+            <p>${escapeHtml(c.texto)}</p>
+            ${c.respondido ? `<p class="cd-muted">↩ ${escapeHtml(c.respuesta || 'Respondido')}</p>` : `<div class="cd-ig-fila"><input type="text" maxlength="2200" placeholder="Tu respuesta pública" data-rd-com-txt="${escapeHtml(c.id)}" value="${escapeHtml(rdChats.borComs[c.id] || '')}"><button type="button" class="cd-btn" data-rd-com-sug="${escapeHtml(c.id)}" title="La IA escribe un borrador que tú revisas">✨ Sugerir</button><button type="button" class="cd-btn primary" data-rd-com-resp="${escapeHtml(c.id)}">Responder</button></div>`}
+        </div>`).join('') || '<p class="cd-muted">Aún no hay comentarios.</p>';
+}
+
+function rdChatsReglaEditorHtml(clave, titulo, ayuda, regla) {
+    return `<div class="rd-regla" data-rd-regla="${clave}">
+        <label class="cpana-toggle"><input type="checkbox" data-f="activa"${regla.activa ? ' checked' : ''}><span><strong>${titulo}</strong><br><span class="cd-muted">${ayuda}</span></span></label>
+        <textarea rows="2" maxlength="1000" data-f="texto">${escapeHtml(regla.texto)}</textarea></div>`;
+}
+
+function rdChatsAutomatizacionHtml() {
+    const cfg = rdChats.cfgEdit || RD_CFG_BASE;
+    return `
+        <div class="rd-auto">
+            <label class="cpana-toggle rd-master"><input type="checkbox" id="rdAutoActiva"${cfg.autoActiva ? ' checked' : ''}><span><strong>Respuestas automáticas ${cfg.autoActiva ? '<span class="cd-hist-ok">ACTIVAS</span>' : '<span class="cd-hist-warn">APAGADAS</span>'}</strong><br><span class="cd-muted">Interruptor general. Si respondes tú en un chat, el bot se calla 12 h ahí. Máximo 6 respuestas automáticas por chat al día.</span></span></label>
+            <p class="cd-muted rd-orden"><strong>Orden de decisión:</strong> 1) palabras clave → 2) respuesta a historia → 3) fuera de horario → 4) saludo del primer mensaje → 5) IA de respaldo (o una persona). Cada mensaje recibe como máximo UNA respuesta.</p>
+            <p class="cd-muted">Variables para tus textos: <code>{menu}</code> link del menú · <code>{horario}</code> horario de hoy · <code>{estado}</code> abierto/cerrado · <code>{nombre}</code> primer nombre.</p>
+            <h4 class="cd-ig-titulo">Reglas por situación</h4>
+            ${rdChatsReglaEditorHtml('saludo', '👋 Saludo (primer mensaje de un chat nuevo)', 'Se envía solo la primera vez que alguien escribe.', cfg.saludo)}
+            ${rdChatsReglaEditorHtml('fueraHorario', '🌙 Fuera de horario / cerrados', 'Usa tu horario y cierres programados. Una vez por chat cada 6 h.', cfg.fueraHorario)}
+            ${rdChatsReglaEditorHtml('historia', '📸 Respuesta a una historia', 'Cuando reaccionan o responden a tus historias. Una vez por chat cada 12 h.', cfg.historia)}
+            <h4 class="cd-ig-titulo">Palabras clave</h4>
+            <p class="cd-muted">Si el mensaje contiene alguna de las palabras (sin importar tildes o mayúsculas), se envía ese texto.</p>
+            ${(cfg.palabras || []).map((p, i) => `<div class="rd-regla" data-rd-pal="${i}" data-id="${escapeHtml(p.id)}">
+                <div class="cd-ig-fila"><input type="text" data-f="nombre" maxlength="40" placeholder="Nombre de la regla" value="${escapeHtml(p.nombre)}">
+                    <label class="cpana-toggle"><input type="checkbox" data-f="activa"${p.activa !== false ? ' checked' : ''}><span>Activa</span></label>
+                    <button type="button" class="cd-btn" data-rd-pal-del="${i}" aria-label="Borrar regla">🗑</button></div>
+                <input type="text" data-f="claves" maxlength="400" placeholder="Palabras separadas por coma: horario, abren, hora" value="${escapeHtml(Array.isArray(p.claves) ? p.claves.join(', ') : (p.claves || ''))}">
+                <textarea rows="2" maxlength="1000" data-f="texto" placeholder="Respuesta">${escapeHtml(p.texto)}</textarea></div>`).join('')}
+            <button type="button" class="cd-btn" id="rdPalAgregar">+ Agregar regla de palabras</button>
+            <h4 class="cd-ig-titulo">IA de respaldo</h4>
+            <label class="cpana-toggle"><input type="checkbox" id="rdIaRespaldo"${cfg.iaRespaldo !== false ? ' checked' : ''}><span><strong>Si ninguna regla aplica, que la IA conteste lo básico</strong><br><span class="cd-muted">Apagada: lo que no cubran las reglas queda marcado "Necesita persona". La IA no responde reclamos ni toma pedidos.</span></span></label>
+            <textarea id="rdInstr" rows="3" maxlength="1500" placeholder="Instrucciones extra para la IA (opcional)">${escapeHtml(cfg.instrucciones || '')}</textarea>
+            <h4 class="cd-ig-titulo">Respuestas rápidas (para ti, al chatear)</h4>
+            <p class="cd-muted">Botones que insertas con un clic en la caja de respuesta.</p>
+            ${(cfg.rapidas || []).map((q, i) => `<div class="rd-regla" data-rd-rap="${i}" data-id="${escapeHtml(q.id)}">
+                <div class="cd-ig-fila"><input type="text" data-f="titulo" maxlength="40" placeholder="Título del botón" value="${escapeHtml(q.titulo)}"><button type="button" class="cd-btn" data-rd-rap-del="${i}" aria-label="Borrar respuesta rápida">🗑</button></div>
+                <textarea rows="2" maxlength="1000" data-f="texto" placeholder="Texto">${escapeHtml(q.texto)}</textarea></div>`).join('')}
+            <button type="button" class="cd-btn" id="rdRapAgregar">+ Agregar respuesta rápida</button>
+            <div class="rd-guardar"><button type="button" class="section-action-btn primary" id="rdChatGuardarCfg">Guardar cambios</button></div>
+        </div>`;
+}
+
+function rdChatsActividadHtml() {
+    const via = { regla: '📏 Regla', ia: '🤖 IA', persona: '🙋 Persona' };
+    const estado = { respondido: '<span class="cd-hist-ok">Respondió</span>', 'necesita-persona': '<span class="cd-hist-warn">Necesita persona</span>', error: '<span class="cd-hist-err">Error</span>' };
+    return `<p class="cd-muted">Lo último que hizo el bot (más reciente primero). Si algo no te gusta, silencia el bot en ese chat o ajusta la regla en Automatización.</p>
+        <div class="rd-log">${rdChats.log.map((l) => `<div class="rd-log-fila">
+            <div class="rd-chat-top"><strong>${escapeHtml(l.nombre || `@${String(l.igsid || '').slice(-6)}`)}</strong><small>${escapeHtml(_rdChatHora(l.atMs))}</small></div>
+            <p class="cd-muted">Cliente: ${escapeHtml(l.mensaje || '')}</p>
+            ${l.respuesta ? `<p>↩ ${escapeHtml(l.respuesta)}</p>` : ''}
+            <p class="rd-log-meta">${escapeHtml(via[l.via] || l.via)} · ${escapeHtml(l.regla || '')} · ${estado[l.estado] || escapeHtml(l.estado || '')}</p>
+            <div class="cd-ig-fila"><button type="button" class="cd-btn" data-rd-ir="${escapeHtml(l.igsid)}">Abrir chat</button><button type="button" class="cd-btn" data-rd-silenciar-id="${escapeHtml(l.igsid)}">⏸ Silenciar bot 12 h</button></div>
+        </div>`).join('') || '<p class="cd-muted">El bot todavía no ha hecho nada.</p>'}</div>`;
+}
 
 function rdChatsPintar(body) {
+    // Conserva lo que se está escribiendo para que un cambio en vivo no lo borre.
+    const caja = body.querySelector('#rdChatTxt');
+    if (caja) rdChats.borrador = caja.value;
+    body.querySelectorAll('[data-rd-com-txt]').forEach((i) => { rdChats.borComs[i.dataset.rdComTxt] = i.value; });
     const noLeidos = rdChats.chats.reduce((n, c) => n + (c.noLeidos || 0), 0);
     const comPend = rdChats.comentarios.filter((c) => !c.respondido).length;
-    const cfg = rdChats.config || { autoActiva: false, instrucciones: '' };
-    const lista = rdChats.vista === 'chats'
-        ? (rdChats.chats.map((c) => `<button type="button" class="rd-chat-item${c.id === rdChats.sel ? ' sel' : ''}" data-rd-chat="${escapeHtml(c.id)}">
-                <span class="rd-chat-top"><strong>${escapeHtml(c.nombre || `@${c.id.slice(-6)}`)}</strong><small>${escapeHtml(_rdChatHora(c.ultimoAtMs))}</small></span>
-                <span class="rd-chat-prev">${c.ultimoDe === 'negocio' ? '↩ ' : ''}${escapeHtml(c.ultimoTexto || '')}</span>
-                ${c.noLeidos ? `<b class="rd-chat-badge">${c.noLeidos}</b>` : ''}${c.requiereHumano ? '<em class="rd-chat-persona">Necesita persona</em>' : ''}
-            </button>`).join('') || '<p class="cd-muted">Aún no hay mensajes directos.</p>')
-        : (rdChats.comentarios.map((c) => `<div class="rd-chat-com${c.respondido ? ' ok' : ''}">
-                <div class="rd-chat-top"><strong>@${escapeHtml(c.username || 'usuario')}</strong><small>${escapeHtml(_rdChatHora(c.atMs))}</small></div>
-                <p>${escapeHtml(c.texto)}</p>
-                ${c.respondido ? `<p class="cd-muted">↩ ${escapeHtml(c.respuesta || 'Respondido')}</p>` : `<div class="cd-ig-fila"><input type="text" maxlength="2200" placeholder="Tu respuesta pública" data-rd-com-txt="${escapeHtml(c.id)}"><button type="button" class="cd-btn" data-rd-com-resp="${escapeHtml(c.id)}">Responder</button></div>`}
-            </div>`).join('') || '<p class="cd-muted">Aún no hay comentarios.</p>');
-    const chat = rdChats.chats.find((c) => c.id === rdChats.sel);
-    const ventana = chat && chat.ventanaHastaMs > Date.now();
-    const hilo = chat ? `
-        <div class="rd-chat-hilo" id="rdChatHilo">${rdChats.mensajes.map((m) => `<div class="rd-msg ${m.de === 'negocio' ? 'yo' : 'el'}">
-            ${m.esDeHistoria ? '<small>📸 Respuesta a historia</small>' : ''}${escapeHtml(m.texto || (m.adjuntos?.[0] ? `[${m.adjuntos[0].tipo}]` : ''))}
-            <small>${m.origen === 'auto' ? '🤖 ' : ''}${escapeHtml(_rdChatHora(m.atMs))}</small></div>`).join('')}</div>
-        ${ventana
-            ? `<div class="cd-ig-fila"><textarea id="rdChatTxt" rows="2" maxlength="1000" placeholder="Escribe tu respuesta…"></textarea><button type="button" class="section-action-btn primary" id="rdChatEnviar">Enviar</button></div>`
-            : '<p class="cd-aviso">Pasaron más de 24 h desde el último mensaje del cliente: Instagram ya no deja responderle hasta que escriba de nuevo.</p>'}`
-        : '<p class="cd-muted">Elige un chat de la lista.</p>';
-    body.innerHTML = `
-        <div class="cd-ig-fila rd-chat-tabs">
-            <button type="button" class="cd-btn${rdChats.vista === 'chats' ? ' active' : ''}" data-rd-cvista="chats">💬 Mensajes${noLeidos ? ` (${noLeidos})` : ''}</button>
-            <button type="button" class="cd-btn${rdChats.vista === 'comentarios' ? ' active' : ''}" data-rd-cvista="comentarios">🗨️ Comentarios${comPend ? ` (${comPend})` : ''}</button>
-        </div>
-        <div class="rd-chat-grid"><div class="rd-chat-lista">${lista}</div>${rdChats.vista === 'chats' ? `<div class="rd-chat-panel">${hilo}</div>` : ''}</div>
-        <details class="cd-ig"><summary><strong>🤖 Respuesta automática básica</strong> · ${cfg.autoActiva ? '<span class="cd-hist-ok">ACTIVA</span>' : '<span class="cd-hist-warn">APAGADA</span>'}</summary>
-            <p class="cd-muted">Contesta sola horario, carta, precios y manda el link del menú. No toma pedidos ni responde reclamos: esos quedan marcados "Necesita persona". Si respondes tú, se calla 12 h en ese chat.</p>
-            <label class="cpana-toggle"><input type="checkbox" id="rdChatAuto"${cfg.autoActiva ? ' checked' : ''}><span><strong>Activar respuesta automática</strong></span></label>
-            <textarea id="rdChatInstr" rows="3" maxlength="1500" placeholder="Instrucciones extra para la IA (opcional)">${escapeHtml(cfg.instrucciones)}</textarea>
-            <button type="button" class="cd-btn" id="rdChatGuardarCfg">Guardar</button>
-        </details>`;
+    const persona = rdChats.chats.filter((c) => c.requiereHumano).length;
+    const tabs = [['chats', `💬 Mensajes${noLeidos ? ` (${noLeidos})` : ''}`], ['comentarios', `🗨️ Comentarios${comPend ? ` (${comPend})` : ''}`],
+        ['auto', `🤖 Automatización · ${rdChats.config?.autoActiva ? 'ON' : 'OFF'}`], ['actividad', `📊 Actividad${persona ? ` (${persona})` : ''}`]];
+    let contenido;
+    if (rdChats.vista === 'chats') {
+        contenido = `<div class="rd-chat-grid${rdChats.sel ? ' tiene-sel' : ''}">
+            <aside class="rd-chat-lista-col">
+                <input type="search" id="rdChatBusca" class="rd-busca" placeholder="Buscar por nombre o mensaje" value="${escapeHtml(rdChats.busca)}">
+                <div class="rd-filtros">${RD_FILTROS.map(([k, v]) => `<button type="button" class="rd-filtro${rdChats.filtro === k ? ' on' : ''}" data-rd-filtro="${k}">${v}</button>`).join('')}</div>
+                <div class="rd-filtros">${Object.entries(RD_ETIQUETAS).map(([k, v]) => `<button type="button" class="rd-filtro${rdChats.etiqueta === k ? ' on' : ''}" data-rd-filtro-etq="${k}">${escapeHtml(v)}</button>`).join('')}</div>
+                <div class="rd-chat-lista" id="rdChatLista">${rdChatsListaHtml()}</div>
+            </aside>
+            <section class="rd-chat-panel">${rdChatsPanelHtml()}</section></div>`;
+    } else if (rdChats.vista === 'comentarios') {
+        contenido = `<div class="rd-com-lista">${rdChatsComentariosHtml()}</div>`;
+    } else if (rdChats.vista === 'auto') {
+        contenido = rdChatsAutomatizacionHtml();
+    } else {
+        contenido = rdChatsActividadHtml();
+    }
+    body.innerHTML = `<div class="rd-chat-tabs" role="tablist">${tabs.map(([k, v]) => `<button type="button" role="tab" class="rd-tab${rdChats.vista === k ? ' on' : ''}" data-rd-cvista="${k}">${v}</button>`).join('')}</div>${contenido}`;
+    const nueva = body.querySelector('#rdChatTxt');
+    if (nueva && rdChats.borrador) nueva.value = rdChats.borrador;
     const hiloEl = body.querySelector('#rdChatHilo');
     if (hiloEl) hiloEl.scrollTop = hiloEl.scrollHeight;
+}
+
+/** Lee el editor de Automatización (lo que hay en pantalla) a un objeto de configuración. */
+function rdChatsLeerEditor(body) {
+    const campo = (el, f) => el.querySelector(`[data-f="${f}"]`);
+    const regla = (clave) => {
+        const el = body.querySelector(`[data-rd-regla="${clave}"]`);
+        return { activa: campo(el, 'activa').checked, texto: campo(el, 'texto').value };
+    };
+    return {
+        autoActiva: body.querySelector('#rdAutoActiva')?.checked === true,
+        iaRespaldo: body.querySelector('#rdIaRespaldo')?.checked === true,
+        instrucciones: body.querySelector('#rdInstr')?.value || '',
+        saludo: regla('saludo'), fueraHorario: regla('fueraHorario'), historia: regla('historia'),
+        palabras: [...body.querySelectorAll('[data-rd-pal]')].map((el) => ({
+            id: el.dataset.id, nombre: campo(el, 'nombre').value, activa: campo(el, 'activa').checked, claves: campo(el, 'claves').value, texto: campo(el, 'texto').value
+        })),
+        rapidas: [...body.querySelectorAll('[data-rd-rap]')].map((el) => ({ id: el.dataset.id, titulo: campo(el, 'titulo').value, texto: campo(el, 'texto').value }))
+    };
+}
+
+function rdChatsAbrirEditor() {
+    rdChats.cfgEdit = JSON.parse(JSON.stringify(rdChats.config || RD_CFG_BASE));
 }
 
 function rdRenderChats(body) {
     if (!body.dataset.chatsBound) {
         body.dataset.chatsBound = '1';
+        body.addEventListener('input', (e) => {
+            if (e.target.id === 'rdChatBusca') {
+                rdChats.busca = e.target.value;
+                const lista = body.querySelector('#rdChatLista');
+                if (lista) lista.innerHTML = rdChatsListaHtml();
+            }
+        });
+        body.addEventListener('keydown', (e) => {
+            if (e.target.id === 'rdChatTxt' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+                e.preventDefault();
+                body.querySelector('#rdChatEnviar')?.click();
+            }
+        });
         body.addEventListener('click', async (e) => {
-            const vista = e.target.closest('[data-rd-cvista]');
-            if (vista) { rdChats.vista = vista.dataset.rdCvista; rdChatsPintar(body); return; }
-            const item = e.target.closest('[data-rd-chat]');
+            const t = e.target;
+            const vista = t.closest('[data-rd-cvista]');
+            if (vista) {
+                if (rdChats.vista === 'auto' && vista.dataset.rdCvista !== 'auto') rdChats.cfgEdit = null;
+                rdChats.vista = vista.dataset.rdCvista;
+                if (rdChats.vista === 'auto') rdChatsAbrirEditor();
+                rdChatsPintar(body);
+                return;
+            }
+            const filtro = t.closest('[data-rd-filtro]');
+            if (filtro) { rdChats.filtro = filtro.dataset.rdFiltro; rdChatsPintar(body); return; }
+            const filtroEtq = t.closest('[data-rd-filtro-etq]');
+            if (filtroEtq) { rdChats.etiqueta = rdChats.etiqueta === filtroEtq.dataset.rdFiltroEtq ? '' : filtroEtq.dataset.rdFiltroEtq; rdChatsPintar(body); return; }
+            const item = t.closest('[data-rd-chat]');
             if (item) { rdChatsElegir(body, item.dataset.rdChat); return; }
-            const resp = e.target.closest('[data-rd-com-resp]');
+            const ir = t.closest('[data-rd-ir]');
+            if (ir) { rdChats.vista = 'chats'; rdChatsElegir(body, ir.dataset.rdIr); return; }
+            if (t.closest('[data-rd-volver]')) { rdChats.sel = ''; rdChatsPintar(body); return; }
+            const etq = t.closest('[data-rd-etq]');
+            if (etq) {
+                const chat = rdChats.chats.find((c) => c.id === rdChats.sel);
+                if (!chat) return;
+                const k = etq.dataset.rdEtq;
+                const nuevas = (chat.etiquetas || []).includes(k) ? chat.etiquetas.filter((x) => x !== k) : [...(chat.etiquetas || []), k];
+                chat.etiquetas = nuevas;
+                rdChatsPintar(body);
+                rdChatsLlamar('etiquetar', { igsid: chat.id, etiquetas: nuevas }).catch((err) => showNotice(err.message || 'No se pudo etiquetar.', 'error'));
+                return;
+            }
+            const sil = t.closest('[data-rd-silenciar]');
+            const silId = t.closest('[data-rd-silenciar-id]');
+            if (sil || silId) {
+                const igsid = silId ? silId.dataset.rdSilenciarId : rdChats.sel;
+                const silenciar = silId ? true : sil.dataset.rdSilenciar === '1';
+                try {
+                    await rdChatsLlamar('silenciarBot', { igsid, silenciar });
+                    showNotice(silenciar ? 'Bot en pausa 12 h en ese chat.' : 'Bot reactivado en ese chat.', 'ok');
+                } catch (err) { showNotice(err.message || 'No se pudo cambiar.', 'error'); }
+                return;
+            }
+            const rap = t.closest('[data-rd-rapida]');
+            if (rap) {
+                const q = (rdChats.config?.rapidas || []).find((x) => x.id === rap.dataset.rdRapida);
+                const caja = body.querySelector('#rdChatTxt');
+                if (q && caja) { caja.value = caja.value ? `${caja.value}\n${q.texto}` : q.texto; caja.focus(); rdChats.borrador = caja.value; }
+                return;
+            }
+            if (t.closest('#rdChatSugerir')) {
+                const btn = t.closest('#rdChatSugerir');
+                btn.disabled = true; btn.textContent = '✨ Pensando…';
+                try {
+                    const r = await rdChatsLlamar('sugerir', { tipo: 'chat', id: rdChats.sel });
+                    const caja = body.querySelector('#rdChatTxt');
+                    if (caja) { caja.value = r.texto; rdChats.borrador = r.texto; caja.focus(); }
+                } catch (err) { showNotice(err.message || 'No se pudo sugerir.', 'error'); }
+                btn.disabled = false; btn.textContent = '✨ Sugerir';
+                return;
+            }
+            const sug = t.closest('[data-rd-com-sug]');
+            if (sug) {
+                const id = sug.dataset.rdComSug;
+                sug.disabled = true;
+                try {
+                    const r = await rdChatsLlamar('sugerir', { tipo: 'comentario', id });
+                    rdChats.borComs[id] = r.texto;
+                    const campoCom = body.querySelector(`[data-rd-com-txt="${CSS.escape(id)}"]`);
+                    if (campoCom) { campoCom.value = r.texto; campoCom.focus(); }
+                } catch (err) { showNotice(err.message || 'No se pudo sugerir.', 'error'); }
+                sug.disabled = false;
+                return;
+            }
+            const resp = t.closest('[data-rd-com-resp]');
             if (resp) {
                 const id = resp.dataset.rdComResp;
                 const texto = String(body.querySelector(`[data-rd-com-txt="${CSS.escape(id)}"]`)?.value || '').trim();
                 if (!texto) { showNotice('Escribe la respuesta.', 'error'); return; }
                 resp.disabled = true;
-                try { await rdChatsLlamar('responderComentario', { id, texto }); showNotice('Respuesta publicada.', 'ok'); }
+                try { await rdChatsLlamar('responderComentario', { id, texto }); delete rdChats.borComs[id]; showNotice('Respuesta publicada.', 'ok'); }
                 catch (err) { showNotice(err.message || 'No se pudo responder.', 'error'); resp.disabled = false; }
                 return;
             }
-            if (e.target.closest('#rdChatEnviar')) {
+            if (t.closest('#rdChatEnviar')) {
                 const caja = body.querySelector('#rdChatTxt');
                 const texto = String(caja?.value || '').trim();
                 if (!texto) return;
-                const btn = e.target.closest('#rdChatEnviar');
+                const btn = t.closest('#rdChatEnviar');
                 btn.disabled = true;
-                try { await rdChatsLlamar('enviar', { igsid: rdChats.sel, texto }); caja.value = ''; }
+                try { await rdChatsLlamar('enviar', { igsid: rdChats.sel, texto }); caja.value = ''; rdChats.borrador = ''; }
                 catch (err) { showNotice(err.message || 'No se pudo enviar.', 'error'); }
                 btn.disabled = false;
                 return;
             }
-            if (e.target.closest('#rdChatGuardarCfg')) {
+            // Editor de automatización
+            if (t.closest('#rdPalAgregar')) {
+                rdChats.cfgEdit = rdChatsLeerEditor(body);
+                rdChats.cfgEdit.palabras.push({ id: `n${Date.now().toString(36)}`, nombre: 'Nueva regla', activa: true, claves: '', texto: '' });
+                rdChatsPintar(body);
+                return;
+            }
+            if (t.closest('#rdRapAgregar')) {
+                rdChats.cfgEdit = rdChatsLeerEditor(body);
+                rdChats.cfgEdit.rapidas.push({ id: `q${Date.now().toString(36)}`, titulo: '', texto: '' });
+                rdChatsPintar(body);
+                return;
+            }
+            const palDel = t.closest('[data-rd-pal-del]');
+            const rapDel = t.closest('[data-rd-rap-del]');
+            if (palDel || rapDel) {
+                rdChats.cfgEdit = rdChatsLeerEditor(body);
+                if (palDel) rdChats.cfgEdit.palabras.splice(Number(palDel.dataset.rdPalDel), 1);
+                else rdChats.cfgEdit.rapidas.splice(Number(rapDel.dataset.rdRapDel), 1);
+                rdChatsPintar(body);
+                return;
+            }
+            if (t.closest('#rdChatGuardarCfg')) {
+                const btn = t.closest('#rdChatGuardarCfg');
+                btn.disabled = true;
                 try {
-                    rdChats.config = await rdChatsLlamar('guardarConfig', { config: {
-                        autoActiva: body.querySelector('#rdChatAuto')?.checked === true,
-                        instrucciones: body.querySelector('#rdChatInstr')?.value || ''
-                    } });
+                    rdChats.config = await rdChatsLlamar('guardarConfig', { config: rdChatsLeerEditor(body) });
+                    rdChatsAbrirEditor();
                     showNotice('Guardado.', 'ok');
                     rdChatsPintar(body);
-                } catch (err) { showNotice(err.message || 'No se pudo guardar.', 'error'); }
+                } catch (err) { showNotice(err.message || 'No se pudo guardar.', 'error'); btn.disabled = false; }
             }
         });
     }
@@ -31143,15 +31408,20 @@ function rdRenderChats(body) {
             firebaseDb.collection('instagram_comentarios').orderBy('atMs', 'desc').limit(40).onSnapshot((snap) => {
                 rdChats.comentarios = snap.docs.map((d) => d.data());
                 rdChatsPintarSeguro(body);
-            }, (err) => console.warn('Comentarios:', err?.message))
+            }, (err) => console.warn('Comentarios:', err?.message)),
+            firebaseDb.collection('instagram_auto_log').orderBy('atMs', 'desc').limit(40).onSnapshot((snap) => {
+                rdChats.log = snap.docs.map((d) => d.data());
+                rdChatsPintarSeguro(body);
+            }, (err) => console.warn('Actividad del bot:', err?.message))
         );
         rdChatsLlamar('leerConfig').then((c) => { rdChats.config = c; rdChatsPintarSeguro(body); }).catch(() => {});
     }
     rdChatsPintar(body);
 }
 
-// No repinta mientras la persona escribe (se perdería el texto): solo si no hay un campo con foco ni texto pendiente.
+// No repinta mientras la persona escribe (se perdería el texto) ni mientras edita las reglas.
 function rdChatsPintarSeguro(body) {
+    if (rdChats.vista === 'auto') return;
     const activo = document.activeElement;
     const escribiendo = activo && body.contains(activo) && /^(TEXTAREA|INPUT)$/.test(activo.tagName) && String(activo.value || '').length > 0;
     if (escribiendo) return;
@@ -31161,6 +31431,7 @@ function rdChatsPintarSeguro(body) {
 function rdChatsElegir(body, igsid) {
     rdChats.sel = igsid;
     rdChats.mensajes = [];
+    rdChats.borrador = '';
     if (rdChats.unsubMsgs) { rdChats.unsubMsgs(); rdChats.unsubMsgs = null; }
     rdChats.unsubMsgs = firebaseDb.collection('instagram_chats').doc(igsid).collection('mensajes').orderBy('atMs', 'asc').limitToLast(80)
         .onSnapshot((snap) => { rdChats.mensajes = snap.docs.map((d) => d.data()); rdChatsPintarSeguro(body); }, (err) => console.warn('Mensajes:', err?.message));
