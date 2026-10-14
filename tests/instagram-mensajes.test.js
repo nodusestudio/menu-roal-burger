@@ -145,7 +145,7 @@ test('comentarios: se guardan una vez; los del propio negocio se ignoran', async
 test('eventos ajenos (lecturas, otro objeto) se aceptan sin guardar nada', async () => {
     const lectura = { object: 'instagram', entry: [{ id: CUENTA, time: T0, messaging: [{ sender: { id: CLIENTE }, recipient: { id: CUENTA }, timestamp: T0, read: { mid: 'm1' } }] }] };
     assert.equal((await post(lectura)).code, 200);
-    assert.equal((await post({ object: 'page', entry: [] })).code, 200);
+    assert.equal((await post({ object: 'whatsapp', entry: [] })).code, 200);
     assert.equal((await db.collection(im.CHATS_COLLECTION).get()).size, 0);
 });
 
@@ -153,4 +153,20 @@ test('el gancho de respuesta automática falla sin romper el guardado', async ()
     const res = await post(dm('m1', 'hola'), { deps: { alGuardarMensaje: async () => { throw new Error('boom'); } } });
     assert.equal(res.code, 200);
     assert.equal((await db.collection(im.CHATS_COLLECTION).doc(CLIENTE).get()).exists, true);
+});
+
+test('Messenger: el mensaje de la página se guarda como chat fb_ con canal facebook; el eco va al mismo chat', async () => {
+    const PAGINA = '104500000000001';
+    const PSID = '7000111222';
+    const ev = (mid, texto, eco) => ({ object: 'page', entry: [{ id: PAGINA, time: T0, messaging: [{
+        sender: { id: eco ? PAGINA : PSID }, recipient: { id: eco ? PSID : PAGINA }, timestamp: T0,
+        message: { mid, text: texto, ...(eco ? { is_echo: true } : {}) } }] }] });
+    assert.equal((await post(ev('fb1', 'hola', false))).code, 200);
+    assert.equal((await post(ev('fb2', 'respuesta', true))).code, 200);
+    const chat = (await db.collection(im.CHATS_COLLECTION).doc(`fb_${PSID}`).get()).data();
+    assert.equal(chat.canal, 'facebook');
+    assert.equal(chat.noLeidos, 1);
+    assert.equal(chat.ultimoDe, 'negocio');
+    assert.equal((await db.collection(im.CHATS_COLLECTION).doc(PSID).get()).exists, false);
+    assert.equal((await db.collection(im.CHATS_COLLECTION).doc(`fb_${PSID}`).collection(im.MENSAJES_SUBCOLLECTION).get()).size, 2);
 });

@@ -31063,7 +31063,7 @@ const _rdChatHora = (ms) => (ms ? new Date(ms).toLocaleString('es-CO', { timeZon
 const _rdChatSoloHora = (ms) => (ms ? new Date(ms).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit' }) : '');
 const _rdChatDia = (ms) => new Date(ms).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' });
 const _rdChatNorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const _rdChatNombre = (c) => (c.nombre && c.username ? `${c.nombre} (@${c.username})` : c.nombre || (c.username ? `@${c.username}` : `@${String(c.id || c.igsid || "").slice(-6)}`));
+const _rdChatNombre = (c) => (c.canal === 'facebook' ? `🅕 ${c.nombre || `Messenger ${String(c.id || c.igsid || "").slice(-6)}`}` : c.nombre && c.username ? `${c.nombre} (@${c.username})` : c.nombre || (c.username ? `@${c.username}` : `@${String(c.id || c.igsid || "").slice(-6)}`));
 const _rdChatAvatar = (nombre) => `<span class="rd-av" aria-hidden="true">${escapeHtml(String(nombre || '?').replace(/^@/, '').charAt(0).toUpperCase() || '?')}</span>`;
 
 function rdChatsFiltrados() {
@@ -31136,7 +31136,7 @@ function rdChatsPanelHtml() {
                     <button type="button" class="cd-btn" id="rdChatSugerir" title="La IA escribe un borrador que tú revisas">✨ Sugerir</button>
                     <button type="button" class="section-action-btn primary" id="rdChatEnviar">Enviar</button>
                 </div>
-            </div>` : '<p class="cd-aviso">Pasaron más de 24 h desde el último mensaje del cliente: Instagram no deja responderle hasta que escriba de nuevo.</p>'}`;
+            </div>` : `<p class="cd-aviso">Pasaron más de 24 h desde el último mensaje del cliente: ${chat.canal === 'facebook' ? 'Facebook' : 'Instagram'} no deja responderle hasta que escriba de nuevo.</p>`}`;
 }
 
 function rdChatsComentariosHtml() {

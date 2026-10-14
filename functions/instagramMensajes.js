@@ -22,6 +22,7 @@ const MENSAJES_SUBCOLLECTION = 'mensajes';
 const COMENTARIOS_COLLECTION = 'instagram_comentarios';
 const VENTANA_RESPUESTA_MS = 24 * 60 * 60 * 1000; // Instagram solo deja responder 24 h después del último mensaje del cliente
 const MAX_TEXTO = 2000;
+const PREFIJO_FACEBOOK = 'fb_';
 
 // ── Firma de Meta ────────────────────────────────────────────────────────────
 
@@ -48,7 +49,8 @@ function textoSeguro(valor) {
 function extraerEventos(body) {
     const mensajes = [];
     const comentarios = [];
-    if (!body || body.object !== 'instagram' || !Array.isArray(body.entry)) return { mensajes, comentarios };
+    const esFacebook = body?.object === 'page'; // Messenger de la página de Facebook: mismo formato de `messaging`
+    if (!body || (body.object !== 'instagram' && !esFacebook) || !Array.isArray(body.entry)) return { mensajes, comentarios };
 
     for (const entry of body.entry) {
         const cuentaId = String(entry?.id || '');
@@ -57,14 +59,17 @@ function extraerEventos(body) {
             const m = ev?.message;
             if (!m || !m.mid) continue; // lecturas (seen), reacciones, postbacks…
             const eco = m.is_echo === true; // lo escribió la cuenta del negocio (desde la app o la API)
-            const clienteId = String(eco ? ev?.recipient?.id : ev?.sender?.id || '');
-            if (!clienteId || clienteId === cuentaId) continue;
+            const rawId = String(eco ? ev?.recipient?.id : ev?.sender?.id || '');
+            if (!rawId || rawId === cuentaId) continue;
+            // Los chats de Facebook llevan prefijo para no mezclarse con los IDs de Instagram.
+            const clienteId = esFacebook ? `${PREFIJO_FACEBOOK}${rawId}` : rawId;
             const adjuntos = (Array.isArray(m.attachments) ? m.attachments : [])
                 .map((a) => ({ tipo: String(a?.type || ''), url: String(a?.payload?.url || '') }))
                 .filter((a) => a.tipo);
             mensajes.push({
                 mid: String(m.mid),
                 clienteId,
+                canal: esFacebook ? 'facebook' : 'instagram',
                 cuentaId,
                 de: eco ? 'negocio' : 'cliente',
                 texto: textoSeguro(m.text),
@@ -130,6 +135,7 @@ async function guardarMensaje(db, msg, { nowMs = Date.now() } = {}) {
         const masNuevo = !chat.ultimoAtMs || atMs >= chat.ultimoAtMs;
         const cambios = {
             igsid: msg.clienteId,
+            canal: msg.canal || 'instagram',
             cuentaId: msg.cuentaId,
             updatedAtMs: nowMs
         };
@@ -237,6 +243,7 @@ module.exports = {
     MENSAJES_SUBCOLLECTION,
     COMENTARIOS_COLLECTION,
     VENTANA_RESPUESTA_MS,
+    PREFIJO_FACEBOOK,
     firmaValida,
     extraerEventos,
     guardarMensaje,

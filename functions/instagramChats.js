@@ -19,6 +19,7 @@ const mensajes = require('./instagramMensajes');
 const orderLogic = require('./agent/orderLogic');
 
 const GRAPH_URL = 'https://graph.instagram.com';
+const FB_GRAPH_URL = 'https://graph.facebook.com';
 const GRAPH_VERSION = 'v26.0';
 const CONFIG_DOC = 'chat';
 const MODELO = 'claude-haiku-4-5';
@@ -174,11 +175,23 @@ async function conexionParaEnviar(db) {
     return conexion;
 }
 
-function traducirErrorGraph(err) {
-    if (err?.esDeToken) return 'Instagram rechazó el token (vencido o sin permiso de mensajes). Reconecta la cuenta en Redes → Cuentas.';
-    // 10 / 551 / 2534022 = fuera de la ventana de 24 h o usuario que no admite mensajes
-    if (err?.code === 10 || err?.subcode === 2534022) return 'Pasaron más de 24 h desde el último mensaje del cliente: Instagram ya no deja responderle.';
-    return `Instagram no envió el mensaje: ${err?.message || 'error desconocido'}`;
+// Token de la PÁGINA de Facebook (facebook_config/conexion), el mismo que usa la publicación en Facebook.
+async function conexionFacebook(db) {
+    const c = await db.collection('facebook_config').doc('conexion').get().then((s) => (s.exists ? s.data() : null));
+    if (!c?.pageToken || !c?.pageId) throw new HttpsError('failed-precondition', 'Facebook no está conectado: conéctalo en Redes → Cuentas.');
+    return c;
+}
+
+function traducirErrorGraph(err, esFacebook = false) {
+    const red = esFacebook ? 'Facebook' : 'Instagram';
+    if (err?.esDeToken) {
+        return esFacebook
+            ? 'Facebook rechazó el token (vencido o sin el permiso pages_messaging). Vuelve a conectar la página en Redes → Cuentas con ese permiso.'
+            : 'Instagram rechazó el token (vencido o sin permiso de mensajes). Reconecta la cuenta en Redes → Cuentas.';
+    }
+    // 10 / 551 / 2534022 = fuera de la ventana de 24 h o usuario que no admite mensajes (Messenger: 10 con subcódigo 2018278)
+    if (err?.code === 10 || err?.subcode === 2534022 || err?.subcode === 2018278) return `Pasaron más de 24 h desde el último mensaje del cliente: ${red} ya no deja responderle.`;
+    return `${red} no envió el mensaje: ${err?.message || 'error desconocido'}`;
 }
 
 /**
@@ -199,21 +212,29 @@ async function enviarMensaje(db, { igsid, texto, origen = 'manual', uid = null }
         throw new HttpsError('failed-precondition', 'Pasaron más de 24 h desde el último mensaje del cliente: Instagram ya no deja responderle.');
     }
 
-    const conexion = await conexionParaEnviar(db);
+    const esFacebook = chat.canal === 'facebook';
+    const conexion = esFacebook ? await conexionFacebook(db) : await conexionParaEnviar(db);
     let resp;
     try {
-        resp = await historias.llamarGraph(fetchFn, 'POST', `${GRAPH_URL}/${GRAPH_VERSION}/${conexion.igUserId}/messages`, {
-            token: conexion.accessToken,
-            params: { recipient: JSON.stringify({ id: clienteId }), message: JSON.stringify({ text: cuerpo }) }
-        });
+        resp = esFacebook
+            ? await historias.llamarGraph(fetchFn, 'POST', `${FB_GRAPH_URL}/${GRAPH_VERSION}/me/messages`, {
+                params: {
+                    recipient: JSON.stringify({ id: clienteId.slice(mensajes.PREFIJO_FACEBOOK.length) }),
+                    message: JSON.stringify({ text: cuerpo }), messaging_type: 'RESPONSE', access_token: conexion.pageToken
+                }
+            })
+            : await historias.llamarGraph(fetchFn, 'POST', `${GRAPH_URL}/${GRAPH_VERSION}/${conexion.igUserId}/messages`, {
+                token: conexion.accessToken,
+                params: { recipient: JSON.stringify({ id: clienteId }), message: JSON.stringify({ text: cuerpo }) }
+            });
     } catch (err) {
-        throw new HttpsError('failed-precondition', traducirErrorGraph(err));
+        throw new HttpsError('failed-precondition', traducirErrorGraph(err, esFacebook));
     }
 
     const mid = String(resp.message_id || `local-${nowMs}-${Math.random().toString(36).slice(2, 8)}`);
     // Se registra de inmediato; si luego llega el eco del webhook con el mismo id, no se duplica.
     await mensajes.guardarMensaje(db, {
-        mid, clienteId, cuentaId: String(conexion.igUserId), de: 'negocio', texto: cuerpo, adjuntos: [],
+        mid, clienteId, canal: chat.canal || 'instagram', cuentaId: String(esFacebook ? conexion.pageId : conexion.igUserId), de: 'negocio', texto: cuerpo, adjuntos: [],
         esDeHistoria: false, historiaUrl: '', atMs: nowMs, origen, enviadoPor: uid
     }, { nowMs });
     const marcas = { ultimoEnvioApiAtMs: nowMs, noLeidos: 0 };
@@ -319,10 +340,13 @@ async function completarPerfil(db, igsid, { fetchFn = fetch } = {}) {
     const chatRef = db.collection(mensajes.CHATS_COLLECTION).doc(igsid);
     try {
         const chat = await chatRef.get().then((s) => (s.exists ? s.data() : {}));
-        if (chat.username || chat.perfilIntentoAtMs) return;
-        const conexion = await conexionParaEnviar(db);
+        if (chat.username || chat.nombre || chat.perfilIntentoAtMs) return;
+        const esFacebook = chat.canal === 'facebook';
+        const conexion = esFacebook ? await conexionFacebook(db) : await conexionParaEnviar(db);
         await chatRef.set({ perfilIntentoAtMs: Date.now() }, { merge: true });
-        const p = await historias.llamarGraph(fetchFn, 'GET', `${GRAPH_URL}/${GRAPH_VERSION}/${igsid}?fields=name,username`, { token: conexion.accessToken });
+        const p = esFacebook
+            ? await historias.llamarGraph(fetchFn, 'GET', `${FB_GRAPH_URL}/${GRAPH_VERSION}/${igsid.slice(mensajes.PREFIJO_FACEBOOK.length)}?${new URLSearchParams({ fields: 'name', access_token: conexion.pageToken })}`)
+            : await historias.llamarGraph(fetchFn, 'GET', `${GRAPH_URL}/${GRAPH_VERSION}/${igsid}?fields=name,username`, { token: conexion.accessToken });
         const cambios = {};
         if (p.username) cambios.username = String(p.username).slice(0, 60);
         if (p.name) cambios.nombre = String(p.name).slice(0, 80);
