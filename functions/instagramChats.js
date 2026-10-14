@@ -263,14 +263,26 @@ async function responderComentario(db, { id, texto, uid = null }, { fetchFn = fe
     const ref = db.collection(mensajes.COMENTARIOS_COLLECTION).doc(comentarioId);
     const snap = await ref.get();
     if (!snap.exists) throw new HttpsError('not-found', 'Ese comentario no existe.');
-    const conexion = await conexionParaEnviar(db);
+    const esFacebook = snap.data().canal === 'facebook';
     let resp;
-    try {
-        resp = await historias.llamarGraph(fetchFn, 'POST', `${GRAPH_URL}/${GRAPH_VERSION}/${encodeURIComponent(comentarioId)}/replies`, {
-            token: conexion.accessToken, params: { message: cuerpo }
-        });
-    } catch (err) {
-        throw new HttpsError('failed-precondition', `Instagram no publicó la respuesta: ${err?.message || 'error desconocido'}`);
+    if (esFacebook) {
+        const conexion = await conexionFacebook(db);
+        try {
+            resp = await historias.llamarGraph(fetchFn, 'POST', `${FB_GRAPH_URL}/${GRAPH_VERSION}/${encodeURIComponent(comentarioId.slice(mensajes.PREFIJO_FACEBOOK.length))}/comments`, {
+                params: { message: cuerpo, access_token: conexion.pageToken }
+            });
+        } catch (err) {
+            throw new HttpsError('failed-precondition', `Facebook no publicó la respuesta: ${err?.message || 'error desconocido'}`);
+        }
+    } else {
+        const conexion = await conexionParaEnviar(db);
+        try {
+            resp = await historias.llamarGraph(fetchFn, 'POST', `${GRAPH_URL}/${GRAPH_VERSION}/${encodeURIComponent(comentarioId)}/replies`, {
+                token: conexion.accessToken, params: { message: cuerpo }
+            });
+        } catch (err) {
+            throw new HttpsError('failed-precondition', `Instagram no publicó la respuesta: ${err?.message || 'error desconocido'}`);
+        }
     }
     await ref.set({ respondido: true, leido: true, respuesta: cuerpo, respuestaId: String(resp.id || ''), respondidoAtMs: nowMs, respondidoPor: uid }, { merge: true });
     return { ok: true };

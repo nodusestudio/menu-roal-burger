@@ -81,6 +81,27 @@ function extraerEventos(body) {
             });
         }
 
+        // Comentarios en publicaciones y reels de la página de Facebook (campo `feed`, solo comentarios nuevos).
+        if (esFacebook) {
+            for (const ch of Array.isArray(entry?.changes) ? entry.changes : []) {
+                const v = ch?.value;
+                if (ch?.field !== 'feed' || v?.item !== 'comment' || v?.verb !== 'add' || !v.comment_id) continue;
+                if (String(v.from?.id || '') === cuentaId) continue; // respuestas de la propia página
+                comentarios.push({
+                    id: `${PREFIJO_FACEBOOK}${v.comment_id}`,
+                    canal: 'facebook',
+                    cuentaId,
+                    texto: textoSeguro(v.message),
+                    clienteId: String(v.from?.id || ''),
+                    username: String(v.from?.name || ''),
+                    mediaId: String(v.post_id || ''),
+                    padreId: v.parent_id && v.parent_id !== v.post_id ? String(v.parent_id) : '',
+                    atMs: Number(v.created_time) ? Number(v.created_time) * 1000 : (Number(entry.time) ? Number(entry.time) * 1000 : null)
+                });
+            }
+            continue;
+        }
+
         for (const ch of Array.isArray(entry?.changes) ? entry.changes : []) {
             if (ch?.field !== 'comments' || !ch.value?.id) continue;
             const v = ch.value;
@@ -163,6 +184,7 @@ async function guardarComentario(db, c, { nowMs = Date.now() } = {}) {
     try {
         await ref.create({
             id: c.id,
+            canal: c.canal || 'instagram',
             texto: c.texto,
             clienteId: c.clienteId,
             username: c.username,

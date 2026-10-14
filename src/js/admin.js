@@ -31141,7 +31141,7 @@ function rdChatsPanelHtml() {
 
 function rdChatsComentariosHtml() {
     return rdChats.comentarios.map((c) => `<div class="rd-chat-com${c.respondido ? ' ok' : ''}">
-            <div class="rd-chat-top">${_rdChatAvatar(c.username)}<div class="rd-chat-quien"><strong>@${escapeHtml(c.username || 'usuario')}</strong><small>${escapeHtml(_rdChatHora(c.atMs))}</small></div></div>
+            <div class="rd-chat-top">${_rdChatAvatar(c.username)}<div class="rd-chat-quien"><strong>${c.canal === 'facebook' ? '🅕 ' : '@'}${escapeHtml(c.username || 'usuario')}</strong><small>${escapeHtml(_rdChatHora(c.atMs))}</small></div></div>
             <p>${escapeHtml(c.texto)}</p>
             ${c.respondido ? `<p class="cd-muted">↩ ${escapeHtml(c.respuesta || 'Respondido')}</p>` : `<div class="cd-ig-fila"><input type="text" maxlength="2200" placeholder="Tu respuesta pública" data-rd-com-txt="${escapeHtml(c.id)}" value="${escapeHtml(rdChats.borComs[c.id] || '')}"><button type="button" class="cd-btn" data-rd-com-sug="${escapeHtml(c.id)}" title="La IA escribe un borrador que tú revisas">✨ Sugerir</button><button type="button" class="cd-btn primary" data-rd-com-resp="${escapeHtml(c.id)}">Responder</button></div>`}
         </div>`).join('') || '<p class="cd-muted">Aún no hay comentarios.</p>';

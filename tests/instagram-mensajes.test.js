@@ -170,3 +170,20 @@ test('Messenger: el mensaje de la página se guarda como chat fb_ con canal face
     assert.equal((await db.collection(im.CHATS_COLLECTION).doc(PSID).get()).exists, false);
     assert.equal((await db.collection(im.CHATS_COLLECTION).doc(`fb_${PSID}`).collection(im.MENSAJES_SUBCOLLECTION).get()).size, 2);
 });
+
+test('Facebook: un comentario nuevo en la página se guarda una vez; las respuestas de la página se ignoran', async () => {
+    const PAGINA = '104500000000001';
+    const feed = (id, de, verb = 'add') => ({ object: 'page', entry: [{ id: PAGINA, time: T0 / 1000, changes: [{ field: 'feed', value: {
+        item: 'comment', verb, comment_id: id, post_id: `${PAGINA}_9`, parent_id: `${PAGINA}_9`, message: 'qué rico', from: { id: de, name: 'Ana Pérez' }, created_time: T0 / 1000 } }] }] });
+    assert.equal((await post(feed('c1', '7000111222'))).code, 200);
+    assert.equal((await post(feed('c1', '7000111222'))).code, 200);
+    assert.equal((await post(feed('c2', PAGINA))).code, 200);
+    assert.equal((await post(feed('c3', '7000111222', 'edited'))).code, 200);
+    const docs = await db.collection(im.COMENTARIOS_COLLECTION).get();
+    assert.equal(docs.size, 1);
+    const c = docs.docs[0].data();
+    assert.equal(docs.docs[0].id, 'fb_c1');
+    assert.equal(c.canal, 'facebook');
+    assert.equal(c.username, 'Ana Pérez');
+    assert.equal(c.padreId, '');
+});
