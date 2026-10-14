@@ -175,8 +175,14 @@ const DEFAULT_HORARIO = {
     aperturaHora: 16, aperturaMinuto: 0,
     cierreHora: 22, cierreMinuto: 0,
     etiquetaHorario: 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.',
-    mensajeCierre: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.'
+    mensajeCierre: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.',
+    diasAbiertos: [0, 1, 2, 3, 4, 5, 6] // 0=domingo … 6=sábado; sin marcar = cerrado ese día
 };
+// SYNC: functions/agent/orderLogic.js parseDiasAbiertos
+function _parseDiasAbiertos(raw) {
+    if (!Array.isArray(raw)) return [0, 1, 2, 3, 4, 5, 6];
+    return [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].sort((a, b) => a - b);
+}
 let horarioState = { ...DEFAULT_HORARIO };
 let horarioForm = null;
 const ORDERS_COLLECTION = 'pedidos';
@@ -15000,6 +15006,205 @@ function setButtonForm(button) {
     }
 }
 
+// ── Historia para los días cerrados ──────────────────────────────────────────
+// Servidor: functions/historiaCierre.js (acciones cierre* de adminInstagramPosts). La plantilla es una
+// publicación de Redes marcada `plantillaCierre`; sube con los mismos helpers que el editor de Redes.
+const hcState = { data: null, cargando: false, ocupado: false, progreso: null, enlazado: false };
+const HC_DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+async function hcCargar() {
+    if (hcState.cargando) return;
+    hcState.cargando = true;
+    try {
+        hcState.data = await rdLlamar('cierreEstado');
+    } catch (err) {
+        hcState.data = null;
+        showNotice(`No se pudo leer la historia de días cerrados: ${err.message || 'error inesperado.'}`, 'error');
+    } finally {
+        hcState.cargando = false;
+        hcRender();
+    }
+}
+
+// Próximo día cerrado según los días marcados en el horario (sin contar cierres programados).
+function hcProximoCierreTexto() {
+    const abiertos = _parseDiasAbiertos(horarioState.diasAbiertos);
+    if (abiertos.length >= 7) return 'Hoy no hay ningún día cerrado: desmarca arriba los días que no abres.';
+    const hoy = new Date(`${_bogotaDateKey()}T12:00:00Z`);
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(hoy.getTime() + i * 86400000);
+        if (!abiertos.includes(d.getUTCDay())) return i === 0 ? 'Hoy es un día cerrado.' : `Próximo día cerrado: ${HC_DIAS[d.getUTCDay()]}.`;
+    }
+    return '';
+}
+
+function hcMediaHtml(pl) {
+    if (!pl || !pl.tipoMedia) return '<p class="cd-muted">Todavía no hay imagen ni video cargados.</p>';
+    if (pl.tipoMedia === 'video') {
+        const v = pl.video;
+        return `<video src="${RD_VIDEO_URL}?id=${pl.id}&t=${pl.imgToken}&v=${v.subidoAtMs || 0}" controls muted playsinline preload="metadata" style="max-height:320px;max-width:100%;border-radius:12px;background:#000;"></video>
+            <p class="cd-muted">🎬 ${escapeHtml(v.nombre || 'Video')} · ${Number(v.duracionS).toLocaleString('es-CO')} s · ${v.ancho}×${v.alto} · ${rdMB(v.size)}</p>`;
+    }
+    const im = pl.imagen;
+    return `<img src="${RD_IMG_URL}?id=post_${pl.id}_${im.slot}&t=${pl.imgToken}&v=${pl.actualizadoAtMs || 0}-${im.size || 0}" alt="Historia de días cerrados" style="max-height:320px;max-width:100%;border-radius:12px;background:#000;">
+        <p class="cd-muted">🖼 Imagen ${im.ancho}×${im.alto}</p>`;
+}
+
+function hcUltimoHtml(u) {
+    if (!u) return '';
+    const hora = (ms) => (ms ? new Date(ms).toLocaleString('es-CO', { timeZone: 'America/Bogota', dateStyle: 'medium', timeStyle: 'short' }) : '');
+    const ig = u.estado === 'publicada' ? `✅ Instagram: publicada ${hora(u.publicadaAtMs)}`
+        : u.estado === 'programada' ? `⏰ Instagram: sale ${hora(u.programadaAtMs)}`
+            : u.estado === 'cancelada' ? '🚫 Instagram: cancelada'
+                : `⚠️ Instagram: ${escapeHtml(u.error || u.estado)}`;
+    const fb = u.facebook ? ` · ${u.facebook.estado === 'publicada' ? '✅ Facebook: publicada' : u.facebook.estado === 'error' ? `⚠️ Facebook: ${escapeHtml(u.facebook.error || 'error')}` : '⏰ Facebook: pendiente'}` : '';
+    return `<p class="cd-muted" style="margin:8px 0 0;">Última preparada: ${ig}${fb}</p>`;
+}
+
+function hcRender() {
+    const panel = document.getElementById('historiaCierrePanel');
+    if (!panel) return;
+    hcEnlazar(panel);
+    const d = hcState.data;
+    if (!d) { panel.innerHTML = '<p class="cd-muted">Cargando…</p>'; return; }
+    const c = d.config;
+    const bloqueado = hcState.ocupado || !!hcState.progreso;
+    const estadoHoy = d.hoy?.cerrado ? '🔴 Hoy el negocio está cerrado todo el día.' : '🟢 Hoy el negocio abre.';
+    panel.innerHTML = `
+        <div class="admin-field full">
+            <label>Imagen o video de la historia</label>
+            <div id="hcMedia">${hcMediaHtml(d.plantilla)}</div>
+            ${hcState.progreso ? `<div class="rd-video-prog" role="status"><strong>${escapeHtml(hcState.progreso.texto)}</strong><div class="rd-barra-pista"><i style="width:${hcState.progreso.pct}%"></i></div><span class="cd-muted">No cierres esta pantalla mientras sube.</span></div>` : ''}
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+                <label class="section-action-btn primary" style="cursor:pointer;${bloqueado ? 'opacity:.5;pointer-events:none;' : ''}">🖼 Cargar imagen<input type="file" id="hcImagen" accept="image/*" hidden></label>
+                <label class="section-action-btn primary" style="cursor:pointer;${bloqueado ? 'opacity:.5;pointer-events:none;' : ''}">🎬 Cargar video<input type="file" id="hcVideo" accept="video/mp4,video/quicktime,.mp4,.mov" hidden></label>
+                ${d.plantilla?.tipoMedia ? `<button type="button" class="section-action-btn" data-hc="quitar" ${bloqueado ? 'disabled' : ''}>✕ Quitar</button>` : ''}
+            </div>
+            <small style="color:var(--admin-muted);display:block;margin-top:6px;">Vertical 9:16 (ideal 1080×1920). La imagen se ajusta sola; el video debe ser MP4/MOV con H.264, de 3 a 60 s y hasta 150 MB.</small>
+        </div>
+        <div class="admin-form" style="margin-top:14px;">
+            <div class="admin-field full">
+                <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="hcActiva" ${c.activa ? 'checked' : ''} ${d.completa ? '' : 'disabled'}> Publicar automáticamente los días cerrados</label>
+                ${d.completa ? '' : '<small style="color:var(--admin-muted);">Carga primero la imagen o el video para poder activarla.</small>'}
+            </div>
+            <div class="admin-field">
+                <label for="hcHora">Hora de publicación (Colombia)</label>
+                <input type="time" id="hcHora" value="${escapeHtml(c.hora)}">
+            </div>
+            <div class="admin-field full">
+                <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="hcFacebook" ${c.facebook ? 'checked' : ''}> También publicar en la historia de Facebook</label>
+                <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="hcCierres" ${c.enCierresProgramados ? 'checked' : ''}> También en los cierres programados de día completo (feriados, vacaciones)</label>
+            </div>
+            <div class="horario-estado-badge">${estadoHoy} ${escapeHtml(hcProximoCierreTexto())}${hcUltimoHtml(d.ultimo)}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                <button type="button" class="admin-button" data-hc="guardar" ${bloqueado ? 'disabled' : ''}>Guardar</button>
+                <button type="button" class="section-action-btn" data-hc="probar" ${bloqueado || !d.completa ? 'disabled' : ''}>🧪 Publicar ahora (prueba)</button>
+            </div>
+        </div>`;
+}
+
+function hcLeerFormulario() {
+    const v = (id) => document.getElementById(id);
+    return {
+        activa: v('hcActiva')?.checked === true,
+        hora: v('hcHora')?.value || '12:00',
+        facebook: v('hcFacebook')?.checked === true,
+        enCierresProgramados: v('hcCierres')?.checked === true
+    };
+}
+
+async function hcGuardar(config) {
+    await rdLlamar('cierreGuardar', { config });
+}
+
+// Quita lo anterior, sube lo nuevo y deja la activación como estaba.
+async function hcSubir(subirFn) {
+    const activaAntes = hcState.data?.config?.activa === true;
+    hcState.ocupado = true;
+    hcRender();
+    try {
+        await rdLlamar('cierreQuitarMedia');
+        const { id } = await rdLlamar('cierrePlantilla');
+        await subirFn(id);
+        if (activaAntes) await hcGuardar({ activa: true }).catch(() => {});
+        showNotice('Historia cargada.', 'ok');
+    } catch (err) {
+        showNotice(err.message || 'No se pudo cargar el archivo.', 'error');
+    } finally {
+        hcState.ocupado = false;
+        hcState.progreso = null;
+        await hcCargar();
+    }
+}
+
+async function hcSubirImagen(archivo) {
+    await hcSubir(async (id) => {
+        const imagenBase64 = await rdPrepararImagen(archivo, 'historia');
+        await rdLlamar('subirImagen', { id, imagenBase64 });
+    });
+}
+
+async function hcSubirVideo(archivo) {
+    if (!/^video\/(mp4|quicktime)$/.test(archivo.type) && !/\.(mp4|mov)$/i.test(archivo.name)) { showNotice('El video debe ser MP4 o MOV.', 'error'); return; }
+    if (archivo.size > RD_VIDEO_MAX) { showNotice(`El video pesa ${rdMB(archivo.size)}: el máximo es 150 MB.`, 'error'); return; }
+    const total = Math.ceil(archivo.size / RD_VIDEO_TROZO);
+    await hcSubir(async (id) => {
+        hcState.progreso = { pct: 0, texto: `Preparando… (${rdMB(archivo.size)})` };
+        for (let i = 0; i < total; i++) {
+            const base64 = await _cdBlobABase64(archivo.slice(i * RD_VIDEO_TROZO, (i + 1) * RD_VIDEO_TROZO));
+            let ultimo = null;
+            for (let intento = 0; intento < 3; intento++) {
+                try { await rdLlamar('subirParteVideo', { id, parte: i, total, base64 }); ultimo = null; break; } catch (err) { ultimo = err; await new Promise((r) => setTimeout(r, 800 * (intento + 1))); }
+            }
+            if (ultimo) throw ultimo;
+            hcState.progreso = { pct: Math.round(((i + 1) / total) * 95), texto: `Subiendo… ${Math.round(((i + 1) / total) * 100)} %` };
+            hcRender();
+        }
+        hcState.progreso = { pct: 97, texto: 'Revisando el video…' };
+        hcRender();
+        await rdLlamar('finalizarVideo', { id, total, nombre: archivo.name });
+    });
+}
+
+function hcEnlazar(panel) {
+    if (hcState.enlazado) return;
+    hcState.enlazado = true;
+    panel.addEventListener('change', (e) => {
+        const f = e.target.files?.[0];
+        if (e.target.id === 'hcImagen' && f) hcSubirImagen(f);
+        else if (e.target.id === 'hcVideo' && f) hcSubirVideo(f);
+        if (e.target.type === 'file') e.target.value = '';
+    });
+    panel.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-hc]');
+        if (!b) return;
+        const accion = b.dataset.hc;
+        try {
+            if (accion === 'guardar') {
+                hcState.ocupado = true; hcRender();
+                await hcGuardar(hcLeerFormulario());
+                showNotice('Historia de días cerrados guardada.', 'ok');
+            } else if (accion === 'quitar') {
+                if (!window.confirm('¿Quitar la imagen o el video? La publicación automática se apagará.')) return;
+                hcState.ocupado = true; hcRender();
+                await rdLlamar('cierreQuitarMedia');
+            } else if (accion === 'probar') {
+                if (!window.confirm('Esto publica la historia AHORA en Instagram' + (hcLeerFormulario().facebook ? ' y en Facebook' : '') + ', con tus cuentas reales. ¿Continuar?')) return;
+                hcState.ocupado = true; hcRender();
+                await hcGuardar(hcLeerFormulario());
+                const r = await rdLlamar('cierrePublicarAhora');
+                const ok = r.instagram?.ok === true;
+                showNotice(ok ? 'Historia publicada en Instagram.' + (r.facebook ? (r.facebook.ok ? ' Y en Facebook.' : ` Facebook: ${r.facebook.error || 'no salió'}.`) : '') : `Instagram no la publicó: ${r.instagram?.error || r.instagram?.motivo || 'error'}.`, ok ? 'ok' : 'error');
+            }
+        } catch (err) {
+            showNotice(err.message || 'No se pudo completar la acción.', 'error');
+        } finally {
+            hcState.ocupado = false;
+            await hcCargar();
+        }
+    });
+}
+
 function renderHorarioForm() {
     if (!horarioForm) horarioForm = document.getElementById('horarioForm');
     if (!horarioForm) return;
@@ -15008,6 +15213,8 @@ function renderHorarioForm() {
     horarioForm.elements['horarioCierre'].value = `${pad(horarioState.cierreHora)}:${pad(horarioState.cierreMinuto)}`;
     horarioForm.elements['horarioEtiqueta'].value = horarioState.etiquetaHorario || '';
     horarioForm.elements['horarioMensajeCierre'].value = horarioState.mensajeCierre || '';
+    const diasAbiertos = _parseDiasAbiertos(horarioState.diasAbiertos);
+    horarioForm.querySelectorAll('input[name="horarioDia"]').forEach((cb) => { cb.checked = diasAbiertos.includes(Number(cb.value)); });
 
     const estadoEl = document.getElementById('horarioEstadoActual');
     if (estadoEl) {
@@ -15018,7 +15225,9 @@ function renderHorarioForm() {
         const h = Number(parts.find((p) => p.type === 'hour')?.value || 0);
         const m = Number(parts.find((p) => p.type === 'minute')?.value || 0);
         const mins = h * 60 + m;
-        const isOpen = mins >= horarioState.aperturaHora * 60 + horarioState.aperturaMinuto &&
+        const hoyDow = new Date(`${_bogotaDateKey()}T12:00:00Z`).getUTCDay();
+        const isOpen = diasAbiertos.includes(hoyDow) &&
+                       mins >= horarioState.aperturaHora * 60 + horarioState.aperturaMinuto &&
                        mins < horarioState.cierreHora * 60 + horarioState.cierreMinuto;
         estadoEl.innerHTML = `Estado actual (hora Colombia): <strong style="color:${isOpen ? '#4cda64' : '#ff6b6b'}">${isOpen ? 'ABIERTO' : 'CERRADO'}</strong>`;
     }
@@ -19589,7 +19798,7 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
         if (scope === 'configuracion') {
             if (target === 'categorias_gastos') loadCategoriasGastos().then(renderCategoriasGastosPanel);
             if (target === 'barrios_especiales') loadBarriosEspeciales().then(renderBarriosEspecialesPanel);
-            if (target === 'horario') fetchHorarioConfig().then(() => { renderHorarioForm(); renderCierresProgramados(); });
+            if (target === 'horario') fetchHorarioConfig().then(() => { renderHorarioForm(); renderCierresProgramados(); hcCargar(); });
             if (target === 'seguridad') loadSupervisorPin().then(renderSupervisorPinField);
         }
     });
@@ -21278,7 +21487,13 @@ if (horarioFormEl) {
         const fd = new FormData(horarioFormEl);
         const [aH, aM] = (fd.get('horarioApertura') || '16:00').split(':').map(Number);
         const [cH, cM] = (fd.get('horarioCierre') || '22:00').split(':').map(Number);
+        const diasMarcados = [...horarioFormEl.querySelectorAll('input[name="horarioDia"]:checked')].map((cb) => Number(cb.value));
+        if (!diasMarcados.length) {
+            showNotice('Marca al menos un día de apertura; si no, el negocio quedaría cerrado toda la semana.', 'error');
+            return;
+        }
         const payload = {
+            diasAbiertos: _parseDiasAbiertos(diasMarcados),
             aperturaHora: Number.isFinite(aH) ? aH : 16,
             aperturaMinuto: Number.isFinite(aM) ? aM : 0,
             cierreHora: Number.isFinite(cH) ? cH : 22,
@@ -29688,7 +29903,8 @@ async function rdCargar() {
             firebaseDb.collection('instagram_posts').orderBy('creadoAtMs', 'desc').limit(400).get(),
             _cdLlamarIg('estado').catch(() => null)
         ]);
-        rdState.posts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // La plantilla de la historia de días cerrados vive en Configuración → Horario, no en el calendario.
+        rdState.posts = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.plantillaCierre !== true);
         rdState.ig = ig;
         if (!rdState.config) rdState.config = await rdIALlamar('leerConfig').catch(() => null);
         rdState.fb = await rdFbLlamar('estado').catch(() => null);

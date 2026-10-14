@@ -22,6 +22,7 @@ const PARTE_SUGERIDA_BYTES = 5 * 1024 * 1024;
 const MAX_PARTES = 32; // Storage junta hasta 32 objetos de una vez
 const DURACION_MIN_S = 3;
 const DURACION_MAX_S = 90; // Facebook: 3 a 90 s
+const DURACION_MAX_HISTORIA_S = 60; // Instagram: una historia en video dura de 3 a 60 s
 const ANCHO_MIN = 540;
 const ALTO_MIN = 960;
 const RATIO_MAX = 0.8; // ancho / alto: vertical (9:16 = 0,5625); más ancho que 4:5 no es un reel
@@ -144,12 +145,15 @@ async function leerMetaMp4(leer, tamano) {
 }
 
 // Reglas de un reel. Devuelve un texto de error o '' si cumple.
-function motivoVideoInvalido(meta) {
+function motivoVideoInvalido(meta, tipo = 'reel') {
+    const esHistoria = tipo === 'historia';
+    const nombre = esHistoria ? 'La historia' : 'El reel';
+    const maxS = esHistoria ? DURACION_MAX_HISTORIA_S : DURACION_MAX_S;
     if (!meta.codec) return 'El video no usa un formato compatible. Expórtalo en MP4 con H.264 (el que sale de la mayoría de editores y celulares).';
-    if (meta.duracionS < DURACION_MIN_S) return `El reel dura ${meta.duracionS.toFixed(1)} s: debe durar al menos ${DURACION_MIN_S} s.`;
-    if (meta.duracionS > DURACION_MAX_S + 0.5) return `El reel dura ${Math.round(meta.duracionS)} s: Facebook e Instagram aceptan reels de hasta ${DURACION_MAX_S} s.`;
+    if (meta.duracionS < DURACION_MIN_S) return `${nombre} dura ${meta.duracionS.toFixed(1)} s: debe durar al menos ${DURACION_MIN_S} s.`;
+    if (meta.duracionS > maxS + 0.5) return `${nombre} dura ${Math.round(meta.duracionS)} s: ${esHistoria ? `una historia en video puede durar hasta ${maxS} s` : `Facebook e Instagram aceptan reels de hasta ${maxS} s`}.`;
     if (!meta.ancho || !meta.alto) return 'No se pudo leer el tamaño del video.';
-    if (meta.ancho / meta.alto > RATIO_MAX) return `El video es horizontal (${meta.ancho}×${meta.alto}). Un reel debe ser vertical 9:16, por ejemplo 1080×1920.`;
+    if (meta.ancho / meta.alto > RATIO_MAX) return `El video es horizontal (${meta.ancho}×${meta.alto}). Debe ser vertical 9:16, por ejemplo 1080×1920.`;
     if (meta.ancho < ANCHO_MIN || meta.alto < ALTO_MIN) return `El video es muy pequeño (${meta.ancho}×${meta.alto}). Mínimo ${ANCHO_MIN}×${ALTO_MIN}, recomendado 1080×1920.`;
     return '';
 }
@@ -162,7 +166,8 @@ async function postDeReel(db, id) {
     const snap = await refPost(db, id).get();
     if (!snap.exists) throw new HttpsError('not-found', 'Esa publicación no existe.');
     const post = snap.data();
-    if (post.tipo !== 'reel') throw new HttpsError('failed-precondition', 'Solo los reels llevan video.');
+    if (post.tipo !== 'reel' && post.tipo !== 'historia') throw new HttpsError('failed-precondition', 'Solo los reels y las historias llevan video.');
+    if (post.tipo === 'historia' && (post.imagenes || []).length) throw new HttpsError('failed-precondition', 'Esta historia ya lleva una imagen: quítala antes de subir un video.');
     if (post.estado === 'publicando') throw new HttpsError('failed-precondition', 'Esa publicación se está publicando ahora mismo.');
     if (post.estado === 'publicada') throw new HttpsError('failed-precondition', 'Esa publicación ya salió: no se puede cambiar el video.');
     return post;
@@ -203,7 +208,7 @@ async function finalizarVideo(db, { id, total, nombre = '' }, uid, { nowMs = Dat
             await descartar();
             throw new HttpsError('invalid-argument', err.message);
         }
-        const motivo = motivoVideoInvalido(meta);
+        const motivo = motivoVideoInvalido(meta, post.tipo);
         if (motivo) { await descartar(); throw new HttpsError('invalid-argument', motivo); }
         await alm.borrarPrefijo(`${prefijo(id)}partes/`);
         const video = { estado: 'listo', size, duracionS: Math.round(meta.duracionS * 10) / 10, ancho: meta.ancho, alto: meta.alto, marca: meta.marca, nombre: String(nombre || '').slice(0, 120), subidoAtMs: nowMs };
@@ -244,7 +249,7 @@ async function borrarVideo(id, { almacen: alm } = {}) {
 async function liberarVideoSiTermino(db, id, { almacen: alm } = {}) {
     try {
         const p = (await refPost(db, id).get()).data();
-        if (!p || p.tipo !== 'reel' || p.video?.estado !== 'listo' || p.video.borrado) return false;
+        if (!p || !['reel', 'historia'].includes(p.tipo) || p.video?.estado !== 'listo' || p.video.borrado) return false;
         const fbPendiente = p.facebook?.publicar === true && !['publicada', 'omitida'].includes(p.facebook?.estado);
         if (p.estado !== 'publicada' || fbPendiente) return false;
         await borrarVideo(id, { almacen: alm });
@@ -281,7 +286,7 @@ async function servirVideo(db, { id, token, rango, metodo = 'GET' }, { almacen: 
     if (!/^[A-Za-z0-9]{10,40}$/.test(idPost)) return { status: 404 };
     const post = (await refPost(db, idPost).get()).data();
     const t = String(token || '');
-    if (!post || post.tipo !== 'reel' || !t || t !== String(post.imgToken || '') || post.video?.estado !== 'listo' || post.video.borrado) return { status: 404 };
+    if (!post || !['reel', 'historia'].includes(post.tipo) || !t || t !== String(post.imgToken || '') || post.video?.estado !== 'listo' || post.video.borrado) return { status: 404 };
     const size = Number(post.video.size) || await alm.tamano(rutaVideo(idPost));
     const tipoMime = post.video.marca === 'qt  ' ? 'video/quicktime' : 'video/mp4';
     const cabeceras = { 'Content-Type': tipoMime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=300' };

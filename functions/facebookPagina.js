@@ -186,10 +186,12 @@ function motivoDeEstado(st) {
     return st?.video_status === 'error' ? 'Facebook no pudo procesar el video.' : '';
 }
 
-async function publicarReel(c, urlVideo, texto, { fetchFn, sleep = ig.esperar }) {
-    const inicio = await post(fetchFn, `${c.pageId}/video_reels`, { upload_phase: 'start', access_token: c.pageToken });
+async function publicarReel(c, urlVideo, texto, { fetchFn, sleep = ig.esperar, endpoint = 'video_reels' }) {
+    // `video_stories` (historia en video de la página) usa el mismo flujo start → rupload → finish, pero sin texto ni estado.
+    const esHistoria = endpoint === 'video_stories';
+    const inicio = await post(fetchFn, `${c.pageId}/${endpoint}`, { upload_phase: 'start', access_token: c.pageToken });
     const videoId = String(inicio.video_id || '');
-    if (!videoId) throw new ig.GraphError('Facebook no abrió la sesión de subida del reel.');
+    if (!videoId) throw new ig.GraphError(esHistoria ? 'Facebook no abrió la sesión de subida de la historia.' : 'Facebook no abrió la sesión de subida del reel.');
     let resp;
     try {
         resp = await fetchFn(`${RUPLOAD}/${videoId}`, { method: 'POST', headers: { Authorization: `OAuth ${c.pageToken}`, file_url: urlVideo } });
@@ -210,8 +212,10 @@ async function publicarReel(c, urlVideo, texto, { fetchFn, sleep = ig.esperar })
         if (!st || st.uploading_phase?.status === 'complete' || ['ready', 'upload_complete', 'published'].includes(st.video_status)) break;
         await sleep(REEL_ESPERA_MS);
     }
-    const fin = await post(fetchFn, `${c.pageId}/video_reels`, { upload_phase: 'finish', video_id: videoId, video_state: 'PUBLISHED', description: texto, access_token: c.pageToken });
-    if (fin.success === false) throw new ig.GraphError('Facebook no publicó el reel.');
+    const fin = await post(fetchFn, `${c.pageId}/${endpoint}`, esHistoria
+        ? { upload_phase: 'finish', video_id: videoId, access_token: c.pageToken }
+        : { upload_phase: 'finish', video_id: videoId, video_state: 'PUBLISHED', description: texto, access_token: c.pageToken });
+    if (fin.success === false) throw new ig.GraphError(esHistoria ? 'Facebook no publicó la historia en video.' : 'Facebook no publicó el reel.');
     // Si el procesamiento lo rechaza, se sabe unos segundos después.
     for (let i = 0; i < 6; i++) {
         const st = (await get(fetchFn, videoId, c.pageToken, { fields: 'status' }).catch(() => ({}))).status;
@@ -276,12 +280,13 @@ async function publicarPostEnFacebook(db, { id, nowMs = Date.now(), fetchFn = fe
         const texto = textoParaFacebook(p, c);
         let fbPostId;
         if (p.tipo === 'reel') fbPostId = await publicarReel(c, reels.urlVideo(baseUrl, id, p.imgToken), texto, { fetchFn, sleep });
+        else if (p.tipo === 'historia' && p.video?.estado === 'listo' && !p.video.borrado) fbPostId = await publicarReel(c, reels.urlVideo(baseUrl, id, p.imgToken), '', { fetchFn, sleep, endpoint: 'video_stories' });
         else if (p.tipo === 'historia') fbPostId = await publicarHistoriaFoto(c, urlDe(p.imagenes[0]), { fetchFn });
         else if (p.tipo === 'carrusel') fbPostId = await publicarVariasFotos(c, p.imagenes.map(urlDe), texto, { fetchFn });
         else fbPostId = await publicarFoto(c, urlDe(p.imagenes[0]), texto, { fetchFn });
         await refPost(db, id).set({ facebook: { estado: 'publicada', fbPostId, publicadaAtMs: nowMs, error: '' } }, { merge: true });
         await ig.registrarPublicacion(db, { ...detalle, ok: true, mediaId: fbPostId, nowMs });
-        if (p.tipo === 'reel') await reels.liberarVideoSiTermino(db, id);
+        if (p.tipo === 'reel' || p.video) await reels.liberarVideoSiTermino(db, id);
         return { ok: true, fbPostId };
     } catch (err) {
         const mensaje = String(err?.message || err).slice(0, 300);

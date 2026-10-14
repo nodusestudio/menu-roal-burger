@@ -133,9 +133,11 @@ function validarPostCompleto(post) {
         if (!String(post.caption || '').trim()) throw new HttpsError('failed-precondition', 'Escribe el texto (caption) del reel.');
         return textoReel;
     }
-    // Una historia es solo la imagen: Instagram no admite texto ni hashtags en las historias por API.
+    // Una historia es solo la imagen (o un video): Instagram no admite texto ni hashtags en las historias por API.
     if (post.tipo === 'historia') {
-        if (n !== 1) throw new HttpsError('failed-precondition', 'Una historia lleva exactamente 1 imagen.');
+        const conVideo = post.video?.estado === 'listo' && !post.video.borrado;
+        if (conVideo && n) throw new HttpsError('failed-precondition', 'Una historia lleva una imagen o un video, no los dos.');
+        if (!conVideo && n !== 1) throw new HttpsError('failed-precondition', 'Una historia lleva exactamente 1 imagen o 1 video.');
         return '';
     }
     if (post.tipo === 'foto' && n !== 1) throw new HttpsError('failed-precondition', 'Una foto lleva exactamente 1 imagen.');
@@ -201,6 +203,7 @@ async function guardarPost(db, datos, uid, { nowMs = Date.now() } = {}) {
         if (!TIPOS_POST.includes(d.tipo)) throw new HttpsError('invalid-argument', 'Tipo inválido.');
         if (d.tipo !== 'carrusel' && (post.imagenes || []).length > 1) throw new HttpsError('failed-precondition', 'Para cambiar de tipo deja una sola imagen.');
         if ((d.tipo === 'historia' || post.tipo === 'historia') && (post.imagenes || []).length) throw new HttpsError('failed-precondition', 'Las historias son verticales (9:16) y los posts no: quita la imagen antes de cambiar el tipo.');
+        if (post.tipo === 'historia' && post.video) throw new HttpsError('failed-precondition', 'Quita el video de la historia antes de cambiar el tipo.');
         if ((d.tipo === 'reel' || post.tipo === 'reel') && ((post.imagenes || []).length || post.video)) throw new HttpsError('failed-precondition', 'Un reel lleva video y los demás tipos imágenes: quita lo subido antes de cambiar el tipo.');
         campos.tipo = d.tipo;
     }
@@ -238,6 +241,7 @@ async function guardarImagen(db, { id, jpeg, reemplazaSlot = null }, uid, { nowM
         const post = snap.data();
         sinEditarSiSalio(post);
         if (post.tipo === 'reel') throw new HttpsError('failed-precondition', 'Un reel lleva un video, no imágenes.');
+        if (post.tipo === 'historia' && post.video) throw new HttpsError('failed-precondition', 'Esta historia ya lleva un video: quítalo antes de subir una imagen.');
         const dim = validarImagen(jpeg, post.tipo);
         const imagenes = [...(post.imagenes || [])];
         const meta = { size: jpeg.length, ancho: dim.ancho, alto: dim.alto };
@@ -328,7 +332,7 @@ async function borrarPost(db, { id }) {
     const post = await leerPost(db, id);
     if (!['borrador', 'cancelada', 'error'].includes(post.estado)) throw new HttpsError('failed-precondition', 'Solo se pueden borrar borradores, canceladas o con error. Cancela primero la publicación programada.');
     await borrarImagenesDe(db, id, post.imagenes);
-    if (post.tipo === 'reel') await reels.borrarVideo(id);
+    if (post.tipo === 'reel' || post.video) await reels.borrarVideo(id);
     await refPost(db, id).delete();
     return { ok: true };
 }
@@ -343,7 +347,7 @@ async function duplicarPost(db, { id }, uid, { nowMs = Date.now() } = {}) {
         await db.collection(POSTS_IMG).doc(`${ref.id}_${im.slot}`).set({ postId: ref.id, slot: im.slot, bytes: origen.bytes, size: origen.size, updatedAt: Timestamp.fromMillis(nowMs) });
         imagenes.push({ ...im });
     }
-    const video = post.tipo === 'reel' ? await reels.copiarVideo(db, { desdeId: id, haciaId: ref.id }, { nowMs }) : null;
+    const video = (post.tipo === 'reel' || post.tipo === 'historia') ? await reels.copiarVideo(db, { desdeId: id, haciaId: ref.id }, { nowMs }) : null;
     await ref.set({
         tipo: post.tipo, estado: 'borrador', origen: post.origen || 'manual', caption: post.caption || '', hashtags: post.hashtags || [],
         altText: post.altText || '', productoId: post.productoId || '', notaIA: '', imagenes, video, contenedorId: '', programadaAtMs: null,
@@ -372,7 +376,8 @@ async function publicarContenido(db, conexion, post, id, texto, { fetchFn, sleep
     const urlDe = (im) => ig.urlImagen(baseUrl, `post_${id}`, String(im.slot), post.imgToken);
     const crear = (params) => ig.llamarGraph(fetchFn, 'POST', `${base}/media`, { token: conexion.accessToken, params });
     let principal;
-    if (post.tipo === 'reel') {
+    const historiaVideo = post.tipo === 'historia' && post.video?.estado === 'listo' && !post.video.borrado;
+    if (post.tipo === 'reel' || historiaVideo) {
         // El contenedor se guarda en la publicación: si Instagram aún procesa el video al terminar el tiempo,
         // el siguiente intento sigue con el MISMO contenedor en vez de subir el video otra vez.
         let contenedorId = String(post.contenedorId || '');
@@ -381,8 +386,10 @@ async function publicarContenido(db, conexion, post, id, texto, { fetchFn, sleep
             if (!st || st.status_code === 'ERROR' || st.status_code === 'EXPIRED') contenedorId = '';
         }
         if (!contenedorId) {
-            const c = await crear({ media_type: 'REELS', video_url: reels.urlVideo(baseUrl, id, post.imgToken), caption: texto, share_to_feed: 'true' });
-            if (!c.id) throw new ig.GraphError('Instagram no creó el reel.');
+            const c = await crear(historiaVideo
+                ? { media_type: 'STORIES', video_url: reels.urlVideo(baseUrl, id, post.imgToken) }
+                : { media_type: 'REELS', video_url: reels.urlVideo(baseUrl, id, post.imgToken), caption: texto, share_to_feed: 'true' });
+            if (!c.id) throw new ig.GraphError(historiaVideo ? 'Instagram no creó la historia en video.' : 'Instagram no creó el reel.');
             contenedorId = String(c.id);
             await refPost(db, id).set({ contenedorId }, { merge: true });
         }
@@ -405,7 +412,7 @@ async function publicarContenido(db, conexion, post, id, texto, { fetchFn, sleep
         principal = await crear({ media_type: 'CAROUSEL', children: hijos.join(','), caption: texto });
     }
     if (!principal.id) throw new ig.GraphError('Instagram no creó la publicación.');
-    if (post.tipo !== 'reel') await esperarContenedor(conexion, principal.id, { fetchFn, sleep });
+    if (post.tipo !== 'reel' && !historiaVideo) await esperarContenedor(conexion, principal.id, { fetchFn, sleep });
     const publicada = await ig.llamarGraph(fetchFn, 'POST', `${base}/media_publish`, { token: conexion.accessToken, params: { creation_id: principal.id } });
     return String(publicada.id || '');
 }
@@ -465,7 +472,7 @@ async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseU
             mediaId, fecha: detalle.fecha, tipo: post.tipo, publicadaAtMs: nowMs, postId: id,
             ...(post.tipo === 'historia' ? {} : { vigenciaMs: ig.METRICAS_POST_VIGENCIA_MS })
         });
-        if (post.tipo === 'reel') await reels.liberarVideoSiTermino(db, id);
+        if (post.tipo === 'reel' || post.video) await reels.liberarVideoSiTermino(db, id);
         return { ok: true, mediaId };
     } catch (err) {
         const mensaje = String(err?.message || err).slice(0, 300);

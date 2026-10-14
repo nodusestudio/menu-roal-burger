@@ -3141,6 +3141,7 @@ const instagramPosts = require('./instagramPosts');
 const reels = require('./reels');
 const facebookPagina = require('./facebookPagina');
 const facebookMetricas = require('./facebookMetricas');
+const historiaCierre = require('./historiaCierre');
 
 exports.adminInstagramPosts = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '1GiB', timeoutSeconds: 300 },
@@ -3172,6 +3173,18 @@ exports.adminInstagramPosts = onCall(
             const facebook = p?.facebook?.publicar === true ? await facebookPagina.publicarPostEnFacebook(db, { id: String(d.id || ''), baseUrl: historiaImagenBaseUrl(), manual: true }) : null;
             return { ...r, facebook };
         }
+        // Historia de los días cerrados (Configuración → Horario): la plantilla es una publicación más.
+        if (accion === 'cierreEstado') return historiaCierre.estadoPanel(db);
+        if (accion === 'cierrePlantilla') return { id: await historiaCierre.asegurarPlantilla(db, uid) };
+        if (accion === 'cierreQuitarMedia') return historiaCierre.quitarMedia(db, uid);
+        if (accion === 'cierreGuardar') return historiaCierre.guardarConfig(db, d.config, uid);
+        if (accion === 'cierrePublicarAhora') {
+            const baseUrl = historiaImagenBaseUrl();
+            return historiaCierre.publicarAhora(db, {
+                publicarPost: (id) => instagramPosts.publicarPost(db, { id, baseUrl, manual: true }),
+                publicarEnFacebook: (id) => facebookPagina.publicarPostEnFacebook(db, { id, baseUrl, manual: true })
+            });
+        }
         if (accion === 'publicarFacebook') return facebookPagina.publicarPostEnFacebook(db, { id: String(d.id || ''), baseUrl: historiaImagenBaseUrl(), manual: true });
         throw new HttpsError('invalid-argument', 'Acción desconocida.');
     }
@@ -3202,6 +3215,9 @@ exports.publicarPostsProgramados = onSchedule(
     { schedule: '*/5 * * * *', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
     async () => {
         try {
+            // Primero deja lista la historia de los días cerrados (si hoy toca); luego se publica todo lo vencido.
+            const h = await historiaCierre.prepararDelDia(getFirestore()).catch((err) => { console.error('historiaCierre:', err.message); return null; });
+            if (h?.motivo === 'preparada') console.log(`historiaCierre: ${JSON.stringify(h)}`);
             const r = await instagramPosts.publicarProgramados(getFirestore(), { baseUrl: historiaImagenBaseUrl() });
             if (r.revisadas) console.log(`publicarPostsProgramados: ${JSON.stringify(r)}`);
             const f = await facebookPagina.publicarProgramados(getFirestore(), { baseUrl: historiaImagenBaseUrl() });

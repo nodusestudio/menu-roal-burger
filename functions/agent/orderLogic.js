@@ -214,11 +214,51 @@ function getActiveScheduledClosure(list, timeZone = 'America/Bogota', now = new 
     return null;
 }
 
+// ── Días de la semana abiertos ──────────────────────────────────────────────
+// SYNC: src/js/script-v2.js (parseDiasAbiertos / isWeekdayOpen) + src/js/admin.js (horarioState.diasAbiertos).
+// `diasAbiertos` en configuracion/config_horario: números 0=domingo … 6=sábado. Sin el campo (config
+// vieja) o inválido = los 7 días abiertos. Un día sin marcar queda cerrado todo el día.
+const DIAS_SEMANA_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const WEEKDAY_SHORT_TO_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function parseDiasAbiertos(raw) {
+    if (!Array.isArray(raw)) return [0, 1, 2, 3, 4, 5, 6];
+    const dias = [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].sort((a, b) => a - b);
+    return dias;
+}
+
+function getWeekdayIndex(timeZone, now = new Date()) {
+    const short = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(now);
+    return WEEKDAY_SHORT_TO_INDEX[short] ?? now.getDay();
+}
+
+function isWeekdayOpen(diasAbiertos, timeZone, now = new Date()) {
+    return diasAbiertos.includes(getWeekdayIndex(timeZone, now));
+}
+
+function describeDiasAbiertos(diasAbiertos) {
+    if (diasAbiertos.length === 7) return 'Todos los días';
+    if (!diasAbiertos.length) return 'Cerrado toda la semana';
+    // Orden de lunes a domingo para el cliente.
+    const orden = [1, 2, 3, 4, 5, 6, 0].filter((d) => diasAbiertos.includes(d));
+    const nombres = orden.map((d) => DIAS_SEMANA_ES[d].charAt(0).toUpperCase() + DIAS_SEMANA_ES[d].slice(1));
+    return nombres.length === 1 ? nombres[0] : `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`;
+}
+
 // SYNC: src/js/script-v2.js función getOrderingAvailability (línea ~1097) + loadHorarioConfig
 // (línea ~1697). `schedule` viene de leer configuracion/config_horario en Firestore (ver tools.js).
 function getOrderingAvailability(schedule, now = new Date()) {
     if (TEMP_CLOSURE_ACTIVE) {
         return { isOpen: false, scheduleLabel: schedule.label, statusLabel: TEMP_CLOSURE_MESSAGE };
+    }
+    const diasAbiertos = Array.isArray(schedule.diasAbiertos) ? schedule.diasAbiertos : [0, 1, 2, 3, 4, 5, 6];
+    if (!isWeekdayOpen(diasAbiertos, schedule.timeZone, now)) {
+        return {
+            isOpen: false,
+            scheduleLabel: schedule.label,
+            statusLabel: `Hoy ${DIAS_SEMANA_ES[getWeekdayIndex(schedule.timeZone, now)]} no abrimos. Atendemos ${describeDiasAbiertos(diasAbiertos).toLowerCase()}. ¡Te esperamos!`,
+            closedWeekday: true
+        };
     }
     const closure = getActiveScheduledClosure(schedule.cierresProgramados, schedule.timeZone, now);
     if (closure) {
@@ -252,11 +292,13 @@ function buildScheduleFromConfigDoc(configData) {
     const endMinutes = cH * 60 + cM;
     const pad = (n) => String(n).padStart(2, '0');
     const fmt = (mins) => `${pad(Math.floor(mins / 60) % 24)}:${pad(mins % 60)}`;
+    const diasAbiertos = parseDiasAbiertos(d.diasAbiertos);
     return {
         timeZone: 'America/Bogota',
         startMinutes,
         endMinutes,
-        label: `Todos los días: ${fmt(startMinutes)} a ${fmt(endMinutes)}`,
+        diasAbiertos,
+        label: `${describeDiasAbiertos(diasAbiertos)}: ${fmt(startMinutes)} a ${fmt(endMinutes)}`,
         openMessage: 'Abierto ahora. Ya puedes hacer tu pedido.',
         closedMessage: `Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de ${fmt(startMinutes)} a ${fmt(endMinutes)}.`,
         cierresProgramados: parseCierresProgramados(d.cierresProgramados)
@@ -721,6 +763,10 @@ module.exports = {
     getActiveScheduledClosure,
     parseCierresProgramados,
     buildScheduleFromConfigDoc,
+    parseDiasAbiertos,
+    getWeekdayIndex,
+    isWeekdayOpen,
+    describeDiasAbiertos,
     isComboActiveNow,
     createAgentOrder,
     flagUnsupportedPromoMention,

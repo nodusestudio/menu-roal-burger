@@ -39,8 +39,11 @@ let ORDERING_SCHEDULE = {
     endMinutes: 22 * 60,
     label: 'Lunes a Domingo: 4:00 P.M. a 10:00 P.M.',
     openMessage: 'Abierto ahora. Ya puedes hacer tu pedido.',
-    closedMessage: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.'
+    closedMessage: 'Disculpa, en este momento estamos cerrados. Nuestro horario de pedidos es de 4:00 P.M. a 10:00 P.M.',
+    // 0=domingo … 6=sábado. Sin marcar = ese día no se abre. SYNC: functions/agent/orderLogic.js.
+    diasAbiertos: [0, 1, 2, 3, 4, 5, 6]
 };
+const DIAS_SEMANA_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 // Cierres programados para fechas puntuales (feriados, vacaciones, etc.). Se cargan de
 // configuracion/config_horario campo `cierresProgramados`. SYNC: functions/agent/orderLogic.js.
 let SCHEDULED_CLOSURES = [];
@@ -1328,9 +1331,40 @@ function getActiveScheduledClosure(now = new Date()) {
     return null;
 }
 
+// SYNC: functions/agent/orderLogic.js (parseDiasAbiertos / getWeekdayIndex / describeDiasAbiertos).
+function parseDiasAbiertos(raw) {
+    if (!Array.isArray(raw)) return [0, 1, 2, 3, 4, 5, 6];
+    return [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].sort((a, b) => a - b);
+}
+
+function getWeekdayIndexForDate(dateStr) {
+    // Fecha 'YYYY-MM-DD' ya expresada en hora Colombia: el día de la semana no depende de la zona.
+    const [y, m, d] = String(dateStr || '').split('-').map(Number);
+    return new Date(Date.UTC(y, (m || 1) - 1, d || 1)).getUTCDay();
+}
+
+function getWeekdayIndexNow(now = new Date()) {
+    return getWeekdayIndexForDate(getTodayDateStringInScheduleTZ(now));
+}
+
+function describeDiasAbiertos(dias) {
+    if (dias.length === 7) return 'todos los días';
+    if (!dias.length) return 'ningún día de la semana';
+    const nombres = [1, 2, 3, 4, 5, 6, 0].filter((d) => dias.includes(d)).map((d) => DIAS_SEMANA_ES[d]);
+    return nombres.length === 1 ? nombres[0] : `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`;
+}
+
 function getOrderingAvailability(now = new Date()) {
     if (TEMP_CLOSURE_ACTIVE) {
         return { isOpen: false, scheduleLabel: ORDERING_SCHEDULE.label, statusLabel: TEMP_CLOSURE_MESSAGE };
+    }
+    if (!ORDERING_SCHEDULE.diasAbiertos.includes(getWeekdayIndexNow(now))) {
+        return {
+            isOpen: false,
+            scheduleLabel: ORDERING_SCHEDULE.label,
+            statusLabel: `Hoy ${DIAS_SEMANA_ES[getWeekdayIndexNow(now)]} no abrimos. Atendemos ${describeDiasAbiertos(ORDERING_SCHEDULE.diasAbiertos)}. ¡Te esperamos!`,
+            isClosedWeekday: true
+        };
     }
     const closure = getActiveScheduledClosure(now);
     if (closure) {
@@ -1390,6 +1424,9 @@ function validateScheduledOrderSelection(dateStr, timeStr) {
     const todayStr = getTodayDateStringInScheduleTZ();
     if (dateStr < todayStr) {
         return 'Elige una fecha válida, no puede ser en el pasado.';
+    }
+    if (!ORDERING_SCHEDULE.diasAbiertos.includes(getWeekdayIndexForDate(dateStr))) {
+        return `Ese día no abrimos. Atendemos ${describeDiasAbiertos(ORDERING_SCHEDULE.diasAbiertos)}. Elige otra fecha, por favor.`;
     }
 
     const [h, m] = timeStr.split(':').map(Number);
@@ -2027,6 +2064,7 @@ async function loadHorarioConfig() {
             ...ORDERING_SCHEDULE,
             startMinutes: aH * 60 + aM,
             endMinutes: cH * 60 + cM,
+            diasAbiertos: parseDiasAbiertos(d.diasAbiertos),
             label: String(d.etiquetaHorario || ORDERING_SCHEDULE.label),
             closedMessage: String(d.mensajeCierre || ORDERING_SCHEDULE.closedMessage)
         };

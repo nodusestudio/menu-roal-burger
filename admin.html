@@ -13526,6 +13526,16 @@
             border: 1px solid rgba(255,255,255,0.08);
             margin-bottom: 4px;
         }
+        .horario-dia-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 12px; border-radius: 999px; cursor: pointer;
+            font-size: 0.85rem; color: var(--admin-text, #fff);
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+        .horario-dia-chip:has(input:checked) {
+            background: rgba(255,154,80,0.16); border-color: rgba(255,154,80,0.5);
+        }
         /* Inbox dentro de admin-card */
         .admin-card--flush .inbox-layout {
             border-radius: 0 0 inherit inherit; overflow: hidden;
@@ -14612,6 +14622,19 @@
                                         Define el horario en que el menú público acepta pedidos. Fuera de este rango los clientes pueden ver el menú pero no agregar al carrito.
                                     </p>
                                     <form id="horarioForm" class="admin-form">
+                                        <fieldset class="admin-field full" id="horarioDiasField" style="border:0;padding:0;margin:0;">
+                                            <label>Días que abre el negocio</label>
+                                            <div id="horarioDiasChecklist" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+                                                <label class="horario-dia-chip"><input type="checkbox" name="horarioDia" value="1" checked> Lunes</label>
+                                                <label class="horario-dia-chip"><input type="checkbox" name="horarioDia" value="2" checked> Martes</label>
+                                                <label class="horario-dia-chip"><input type="checkbox" name="horarioDia" value="3" checked> Miércoles</label>
+                                                <label class="horario-dia-chip"><input type="checkbox" name="horarioDia" value="4" checked> Jueves</label>
+                                                <label class="horario-dia-chip"><input type="checkbox" name="horarioDia" value="5" checked> Viernes</label>
+                                                <label class="horario-dia-chip"><input type="checkbox" name="horarioDia" value="6" checked> Sábado</label>
+                                                <label class="horario-dia-chip"><input type="checkbox" name="horarioDia" value="0" checked> Domingo</label>
+                                            </div>
+                                            <small style="color:var(--admin-muted);display:block;margin-top:6px;">Solo los días marcados se abre. Un día sin marcar queda cerrado todo el día (menú, WhatsApp y Redes).</small>
+                                        </fieldset>
                                         <div class="admin-field">
                                             <label for="horarioApertura">Hora de apertura</label>
                                             <input type="time" id="horarioApertura" name="horarioApertura" value="16:00" required>
@@ -14646,6 +14669,23 @@
                                         cierre se borra solo cuando pasa su fecha de fin.
                                     </p>
                                     <div id="cierresProgramadosPanel">
+                                        <!-- renderizado por JS -->
+                                    </div>
+                                </div>
+                            </article>
+
+                            <article class="admin-card">
+                                <div class="card-head">
+                                    <h2>Historia para los días cerrados</h2>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-historia-cierre" aria-expanded="true">Retraer</button>
+                                </div>
+                                <div class="card-body" id="card-historia-cierre">
+                                    <p class="card-desc">
+                                        Carga una imagen o un video y FODEXA lo publica solo como historia en Instagram (y en Facebook, si lo marcas)
+                                        cada día que el negocio está cerrado: los días de la semana que dejaste sin marcar arriba y, si quieres,
+                                        también los cierres programados de día completo.
+                                    </p>
+                                    <div id="historiaCierrePanel">
                                         <!-- renderizado por JS -->
                                     </div>
                                 </div>
