@@ -20,6 +20,7 @@ let db;
 
 function fetchOk(llamadas) {
     return async (url, init) => {
+        if (init?.method === 'GET') return { ok: true, status: 200, json: async () => ({ name: 'Ana Pérez', username: 'ana.perez' }) }; // perfil del cliente
         llamadas.push({ url, init });
         return { ok: true, status: 200, json: async () => ({ message_id: `mid-out-${llamadas.length}`, id: 'reply-1' }) };
     };
@@ -176,6 +177,14 @@ test('auto: sin regla y con la IA de respaldo apagada, queda "necesita persona"'
     assert.equal(r.motivo, 'sin-regla');
     assert.equal(llamadas.length, 0);
     assert.equal((await db.collection('instagram_chats').doc(CLIENTE).get()).data().requiereHumano, true);
+});
+
+test('perfil: al llegar un mensaje se guarda el nombre y @usuario del cliente (una sola vez)', async () => {
+    const msg = await clienteEscribe('m1', 'hola');
+    await ic.alGuardarMensaje(db, msg, { fetchFn: fetchOk([]), nowMs: T0 + 500 });
+    const chat = (await db.collection('instagram_chats').doc(CLIENTE).get()).data();
+    assert.equal(chat.username, 'ana.perez');
+    assert.equal(chat.nombre, 'Ana Pérez');
 });
 
 test('etiquetar y silenciar el bot', async () => {

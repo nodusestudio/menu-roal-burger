@@ -31063,7 +31063,7 @@ const _rdChatHora = (ms) => (ms ? new Date(ms).toLocaleString('es-CO', { timeZon
 const _rdChatSoloHora = (ms) => (ms ? new Date(ms).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit' }) : '');
 const _rdChatDia = (ms) => new Date(ms).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' });
 const _rdChatNorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-const _rdChatNombre = (c) => c.nombre || `@${String(c.id || c.igsid || '').slice(-6)}`;
+const _rdChatNombre = (c) => (c.nombre && c.username ? `${c.nombre} (@${c.username})` : c.nombre || (c.username ? `@${c.username}` : `@${String(c.id || c.igsid || "").slice(-6)}`));
 const _rdChatAvatar = (nombre) => `<span class="rd-av" aria-hidden="true">${escapeHtml(String(nombre || '?').replace(/^@/, '').charAt(0).toUpperCase() || '?')}</span>`;
 
 function rdChatsFiltrados() {
@@ -31191,7 +31191,7 @@ function rdChatsActividadHtml() {
     const estado = { respondido: '<span class="cd-hist-ok">Respondió</span>', 'necesita-persona': '<span class="cd-hist-warn">Necesita persona</span>', error: '<span class="cd-hist-err">Error</span>' };
     return `<p class="cd-muted">Lo último que hizo el bot (más reciente primero). Si algo no te gusta, silencia el bot en ese chat o ajusta la regla en Automatización.</p>
         <div class="rd-log">${rdChats.log.map((l) => `<div class="rd-log-fila">
-            <div class="rd-chat-top"><strong>${escapeHtml(l.nombre || `@${String(l.igsid || '').slice(-6)}`)}</strong><small>${escapeHtml(_rdChatHora(l.atMs))}</small></div>
+            <div class="rd-chat-top"><strong>${escapeHtml(l.nombre || (l.username ? `@${l.username}` : `@${String(l.igsid || "").slice(-6)}`))}</strong><small>${escapeHtml(_rdChatHora(l.atMs))}</small></div>
             <p class="cd-muted">Cliente: ${escapeHtml(l.mensaje || '')}</p>
             ${l.respuesta ? `<p>↩ ${escapeHtml(l.respuesta)}</p>` : ''}
             <p class="rd-log-meta">${escapeHtml(via[l.via] || l.via)} · ${escapeHtml(l.regla || '')} · ${estado[l.estado] || escapeHtml(l.estado || '')}</p>

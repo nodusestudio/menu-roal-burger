@@ -313,8 +313,26 @@ async function registrarLog(db, { igsid, nombre, mensaje, via, regla, respuesta,
     } catch (err) { console.error('instagramChats: no se pudo guardar el registro:', err?.message); }
 }
 
+// Pide a Instagram el nombre y @usuario del cliente (el webhook solo trae el ID). Se hace una vez por chat;
+// si falla (permiso, usuario que no lo permite) se ignora y el panel sigue mostrando el ID corto.
+async function completarPerfil(db, igsid, { fetchFn = fetch } = {}) {
+    const chatRef = db.collection(mensajes.CHATS_COLLECTION).doc(igsid);
+    try {
+        const chat = await chatRef.get().then((s) => (s.exists ? s.data() : {}));
+        if (chat.username || chat.perfilIntentoAtMs) return;
+        const conexion = await conexionParaEnviar(db);
+        await chatRef.set({ perfilIntentoAtMs: Date.now() }, { merge: true });
+        const p = await historias.llamarGraph(fetchFn, 'GET', `${GRAPH_URL}/${GRAPH_VERSION}/${igsid}?fields=name,username`, { token: conexion.accessToken });
+        const cambios = {};
+        if (p.username) cambios.username = String(p.username).slice(0, 60);
+        if (p.name) cambios.nombre = String(p.name).slice(0, 80);
+        if (Object.keys(cambios).length) await chatRef.set(cambios, { merge: true });
+    } catch (err) { console.error('instagramChats: no se pudo leer el perfil:', err?.message); }
+}
+
 async function alGuardarMensaje(db, msg, { cliente, fetchFn = fetch, nowMs = Date.now(), resultado = {} } = {}) {
     const chatRef = db.collection(mensajes.CHATS_COLLECTION).doc(msg.clienteId);
+    if (msg.de === 'cliente') await completarPerfil(db, msg.clienteId, { fetchFn });
 
     // Un mensaje del negocio que NO salió por la API (lo escribió una persona en la app de Instagram) pausa la IA.
     if (msg.de === 'negocio') {
@@ -337,7 +355,7 @@ async function alGuardarMensaje(db, msg, { cliente, fetchFn = fetch, nowMs = Dat
     const horarioSnap = await db.collection('configuracion').doc('config_horario').get();
     const disponibilidad = orderLogic.getOrderingAvailability(
         orderLogic.buildScheduleFromConfigDoc(horarioSnap.exists ? horarioSnap.data() : null), new Date(nowMs));
-    const datosLog = { igsid: msg.clienteId, nombre: chat.nombre, mensaje: msg.texto };
+    const datosLog = { igsid: msg.clienteId, nombre: chat.nombre || (chat.username ? `@${chat.username}` : ""), mensaje: msg.texto };
 
     // 1) Reglas (sin IA): lo que el negocio escribió y controla.
     const regla = decidirRegla({ config, msg, nuevoChat: resultado.nuevoChat === true, chat, disponibilidad, nowMs });
