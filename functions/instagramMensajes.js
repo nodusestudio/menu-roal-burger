@@ -117,6 +117,8 @@ async function guardarMensaje(db, msg, { nowMs = Date.now() } = {}) {
             adjuntos: msg.adjuntos,
             esDeHistoria: msg.esDeHistoria,
             historiaUrl: msg.historiaUrl,
+            origen: msg.origen || '', // 'manual' | 'auto' cuando lo envía FODEXA; vacío si entra por el webhook
+            enviadoPor: msg.enviadoPor || null,
             atMs,
             recibidoAtMs: nowMs
         });

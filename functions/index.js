@@ -3006,13 +3006,40 @@ exports.historiaImagen = onRequest(
 const INSTAGRAM_APP_SECRET = defineSecret('INSTAGRAM_APP_SECRET');
 const INSTAGRAM_VERIFY_TOKEN = defineSecret('INSTAGRAM_VERIFY_TOKEN');
 const instagramMensajes = require('./instagramMensajes');
+const instagramChats = require('./instagramChats');
 exports.instagramWebhook = onRequest(
-    { region: 'us-central1', memory: '256MiB', secrets: [INSTAGRAM_APP_SECRET, INSTAGRAM_VERIFY_TOKEN] },
-    (req, res) => instagramMensajes.manejarWebhook(req, res, {
-        db: getFirestore(),
-        appSecrets: INSTAGRAM_APP_SECRET.value(),
-        verifyToken: INSTAGRAM_VERIFY_TOKEN.value()
-    })
+    { region: 'us-central1', memory: '256MiB', timeoutSeconds: 90, secrets: [INSTAGRAM_APP_SECRET, INSTAGRAM_VERIFY_TOKEN, ANTHROPIC_API_KEY] },
+    (req, res) => {
+        const db = getFirestore();
+        return instagramMensajes.manejarWebhook(req, res, {
+            db,
+            appSecrets: INSTAGRAM_APP_SECRET.value(),
+            verifyToken: INSTAGRAM_VERIFY_TOKEN.value(),
+            // Respuesta automática básica (apagada hasta que se active en Redes → Chats).
+            alGuardarMensaje: async (msg) => {
+                const Anthropic = require('@anthropic-ai/sdk');
+                return instagramChats.alGuardarMensaje(db, msg, { cliente: new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() }) });
+            }
+        });
+    }
+);
+
+// FODEXA → Redes → Chats: responder DMs y comentarios, marcar leídos y ajustar la respuesta automática.
+exports.adminInstagramChats = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '256MiB', timeoutSeconds: 60 },
+    async (request) => {
+        const db = getFirestore();
+        const uid = await cuponPana.ensureAdmin(db, request);
+        const d = request.data || {};
+        const accion = String(d.accion || '');
+        if (accion === 'enviar') return instagramChats.enviarMensaje(db, { igsid: d.igsid, texto: d.texto, origen: 'manual', uid });
+        if (accion === 'marcarLeido') return instagramChats.marcarLeido(db, d.igsid);
+        if (accion === 'responderComentario') return instagramChats.responderComentario(db, { id: d.id, texto: d.texto, uid });
+        if (accion === 'comentarioLeido') return instagramChats.marcarComentarioLeido(db, d.id);
+        if (accion === 'leerConfig') return instagramChats.leerConfigChat(db);
+        if (accion === 'guardarConfig') return instagramChats.guardarConfigChat(db, d.config, uid);
+        throw new HttpsError('invalid-argument', 'Acción desconocida.');
+    }
 );
 
 // Cada 5 min entre 11:00 y 14:55 (hora Colombia): publica la historia de hoy cuando llega la hora de
