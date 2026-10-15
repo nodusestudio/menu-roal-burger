@@ -64,6 +64,37 @@ function validarTokenUsuario(raw) {
     return t;
 }
 
+// Un token de usuario recién sacado del Explorador dura ~1-2 h y el token de PÁGINA que sale de él vence
+// con él (así se cayó la publicación del Código del día en Facebook). Cambiado por uno de larga duración
+// (60 días), los tokens de página que salen de él NO vencen. Si no hay app/secreto o Facebook lo rechaza,
+// se sigue con el token pegado (nunca bloquea la conexión).
+const META_APP_ID = '1077052188187626'; // app "ROAL BURGER chat ia"
+
+async function tokenLargaDuracion(fetchFn, tokenUsuario, app) {
+    const secretos = String(app?.secrets || '').split(',').map((x) => x.trim()).filter(Boolean);
+    for (const secreto of secretos) {
+        try {
+            const r = await ig.llamarGraph(fetchFn, 'GET', `${FB_GRAPH}/oauth/access_token?${new URLSearchParams({
+                grant_type: 'fb_exchange_token', client_id: app.appId || META_APP_ID, client_secret: secreto, fb_exchange_token: tokenUsuario
+            })}`);
+            if (r?.access_token) return String(r.access_token);
+        } catch (_) { /* prueba con el siguiente secreto */ }
+    }
+    return tokenUsuario;
+}
+
+// Vencimiento real del token de página (ms; 0 = no vence). null si no se pudo consultar.
+async function vencimientoToken(fetchFn, token, app) {
+    const secretos = String(app?.secrets || '').split(',').map((x) => x.trim()).filter(Boolean);
+    for (const secreto of secretos) {
+        try {
+            const r = await ig.llamarGraph(fetchFn, 'GET', `${FB_GRAPH}/debug_token?${new URLSearchParams({ input_token: token, access_token: `${app.appId || META_APP_ID}|${secreto}` })}`);
+            if (r?.data && r.data.is_valid !== undefined) return Number(r.data.expires_at) > 0 ? Number(r.data.expires_at) * 1000 : 0;
+        } catch (_) { /* siguiente */ }
+    }
+    return null;
+}
+
 async function paginasDe(fetchFn, tokenUsuario) {
     try {
         const r = await get(fetchFn, 'me/accounts', tokenUsuario, { fields: 'id,name,access_token,tasks', limit: '50' });
@@ -74,15 +105,15 @@ async function paginasDe(fetchFn, tokenUsuario) {
 }
 
 // Páginas que administra la persona (sin tokens: solo id, nombre y si puede publicar).
-async function listarPaginas(tokenUsuario, { fetchFn = fetch } = {}) {
-    const paginas = await paginasDe(fetchFn, validarTokenUsuario(tokenUsuario));
+async function listarPaginas(tokenUsuario, { fetchFn = fetch, app } = {}) {
+    const paginas = await paginasDe(fetchFn, await tokenLargaDuracion(fetchFn, validarTokenUsuario(tokenUsuario), app));
     if (!paginas.length) throw new HttpsError('failed-precondition', 'Ese token no tiene páginas. Al generarlo hay que elegir la página de Roal Burger y dar los permisos pages_show_list, pages_manage_posts y pages_read_engagement.');
     return paginas.map((p) => ({ id: String(p.id), name: String(p.name || ''), puedePublicar: !Array.isArray(p.tasks) || p.tasks.some((t) => ['CREATE_CONTENT', 'MANAGE'].includes(t)) }));
 }
 
 // Guarda el token de la PÁGINA elegida (el del usuario no se guarda). Queda con la publicación APAGADA.
-async function conectar(db, { tokenUsuario, pageId }, uid, { nowMs = Date.now(), fetchFn = fetch } = {}) {
-    const paginas = await paginasDe(fetchFn, validarTokenUsuario(tokenUsuario));
+async function conectar(db, { tokenUsuario, pageId }, uid, { nowMs = Date.now(), fetchFn = fetch, app } = {}) {
+    const paginas = await paginasDe(fetchFn, await tokenLargaDuracion(fetchFn, validarTokenUsuario(tokenUsuario), app));
     const pagina = paginas.find((p) => String(p.id) === String(pageId));
     if (!pagina || !pagina.access_token) throw new HttpsError('not-found', 'Esa página no aparece en el token. Genera el token eligiendo esa página.');
     if (Array.isArray(pagina.tasks) && !pagina.tasks.some((t) => ['CREATE_CONTENT', 'MANAGE'].includes(t))) {
@@ -96,10 +127,13 @@ async function conectar(db, { tokenUsuario, pageId }, uid, { nowMs = Date.now(),
     }
     const previa = await leerConexion(db);
     const misma = previa?.pageId === String(pagina.id);
+    const venceAtMs = await vencimientoToken(fetchFn, pagina.access_token, app);
+    const avisoVence = venceAtMs && venceAtMs - nowMs < 7 * 24 * 60 * 60 * 1000
+        ? `Ojo: este token vence ${new Date(venceAtMs).toISOString().replace('T', ' ').slice(0, 16)} UTC. Genera el token de usuario de nuevo y reconecta (con el secreto de la app se vuelve de larga duración).` : '';
     await conexionRef(db).set({
         pageId: String(pagina.id), pageName: String(info.name || pagina.name || ''), pageToken: pagina.access_token,
         fans: Number(info.fan_count) || 0, activo: misma && previa?.activo === true, historiasCodigo: misma ? previa?.historiasCodigo !== false : true,
-        conHashtags: misma && previa?.conHashtags === true, ultimoError: '', conectadoPor: uid || null, updatedAt: Timestamp.fromMillis(nowMs)
+        conHashtags: misma && previa?.conHashtags === true, ultimoError: avisoVence, tokenVenceAtMs: venceAtMs, conectadoPor: uid || null, updatedAt: Timestamp.fromMillis(nowMs)
     });
     // Con token nuevo, las historias de hoy que fallaron en Facebook (token vencido) vuelven a intentarse.
     try {

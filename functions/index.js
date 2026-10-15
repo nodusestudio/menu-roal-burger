@@ -3261,15 +3261,15 @@ exports.adminInstagramIA = onCall(
 // El token de la página vive en facebook_config/conexion (cerrado a clientes) y NUNCA sale hacia el panel.
 // ─────────────────────────────────────────────────────────────
 exports.adminFacebook = onCall(
-    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '512MiB', timeoutSeconds: 120 },
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '512MiB', timeoutSeconds: 120, secrets: [INSTAGRAM_APP_SECRET] },
     async (request) => {
         const db = getFirestore();
         const uid = await cuponPana.ensureAdmin(db, request);
         const d = request.data || {};
         const accion = String(d.accion || '');
         if (accion === 'estado') return facebookPagina.estadoConexion(db);
-        if (accion === 'listarPaginas') return { paginas: await facebookPagina.listarPaginas(d.token) };
-        if (accion === 'conectar') return facebookPagina.conectar(db, { tokenUsuario: d.token, pageId: d.pageId }, uid);
+        if (accion === 'listarPaginas') return { paginas: await facebookPagina.listarPaginas(d.token, { app: { secrets: INSTAGRAM_APP_SECRET.value() } }) };
+        if (accion === 'conectar') return facebookPagina.conectar(db, { tokenUsuario: d.token, pageId: d.pageId }, uid, { app: { secrets: INSTAGRAM_APP_SECRET.value() } });
         if (accion === 'probar') return facebookPagina.probarConexion(db);
         if (accion === 'ajustes') return facebookPagina.setAjustes(db, { activo: d.activo, historiasCodigo: d.historiasCodigo, conHashtags: d.conHashtags });
         if (accion === 'desconectar') return facebookPagina.desconectar(db);
