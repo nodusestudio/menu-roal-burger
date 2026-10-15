@@ -15180,18 +15180,20 @@ function hcEnlazar(panel) {
         if (!b) return;
         const accion = b.dataset.hc;
         try {
+            // El formulario se lee ANTES de redibujar la tarjeta (si no, se leen los valores viejos).
+            const formulario = hcLeerFormulario();
             if (accion === 'guardar') {
                 hcState.ocupado = true; hcRender();
-                await hcGuardar(hcLeerFormulario());
+                await hcGuardar(formulario);
                 showNotice('Historia de días cerrados guardada.', 'ok');
             } else if (accion === 'quitar') {
                 if (!window.confirm('¿Quitar la imagen o el video? La publicación automática se apagará.')) return;
                 hcState.ocupado = true; hcRender();
                 await rdLlamar('cierreQuitarMedia');
             } else if (accion === 'probar') {
-                if (!window.confirm('Esto publica la historia AHORA en Instagram' + (hcLeerFormulario().facebook ? ' y en Facebook' : '') + ', con tus cuentas reales. ¿Continuar?')) return;
+                if (!window.confirm('Esto publica la historia AHORA en Instagram' + (formulario.facebook ? ' y en Facebook' : '') + ', con tus cuentas reales. ¿Continuar?')) return;
                 hcState.ocupado = true; hcRender();
-                await hcGuardar(hcLeerFormulario());
+                await hcGuardar({ ...formulario, activa: undefined });
                 const r = await rdLlamar('cierrePublicarAhora');
                 const ok = r.instagram?.ok === true;
                 showNotice(ok ? 'Historia publicada en Instagram.' + (r.facebook ? (r.facebook.ok ? ' Y en Facebook.' : ` Facebook: ${r.facebook.error || 'no salió'}.`) : '') : `Instagram no la publicó: ${r.instagram?.error || r.instagram?.motivo || 'error'}.`, ok ? 'ok' : 'error');
