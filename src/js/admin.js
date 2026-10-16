@@ -32516,22 +32516,39 @@ function _asistAcciones(msg, acciones) {
         if (a.tipo === 'navegar') {
             txt = `Ir a <b>${escapeHtml(a.tab === 'costos' && a.vista ? `Costos y recetas › ${a.vista}` : a.tab)}</b>`;
             btn = 'Ir';
+        } else if (a.tipo === 'crear_pedido') {
+            const rs = a.resumen || {}, ent = { delivery: 'Domicilio', pickup: 'Recoger', mesa: 'Mesa' }[rs.entrega] || rs.entrega || '';
+            txt = `<b>🧾 Pedido listo para crear</b><br>${(rs.lineas || []).map((l) => `${l.cantidad} × ${escapeHtml(l.producto)} <small>(${dinero(l.precio_unitario)})</small>${l.nota ? ` <small>— ${escapeHtml(l.nota)}</small>` : ''}`).join('<br>')}<br><small>Productos: <b>${dinero(rs.subtotal_productos)}</b> + domicilio si aplica · ${escapeHtml(ent)}${rs.direccion ? ' · ' + escapeHtml(rs.direccion) : ''}${rs.pago ? ' · pago ' + escapeHtml(rs.pago) : ''}${rs.paga_con ? ' con ' + dinero(rs.paga_con) : ''}${rs.cliente ? '<br>Cliente: ' + escapeHtml(rs.cliente) : ''}${rs.telefono ? ' ' + escapeHtml(rs.telefono) : ''}</small>`;
+            btn = '✅ Crear pedido';
         } else if (a.tipo === 'precio_insumo') {
             txt = `Cambiar precio de <b>${escapeHtml(a.nombre)}</b>: ${dinero(a.precioActual)} → <b>${dinero(a.precioNuevo)}</b>`;
             btn = 'Confirmar cambio';
         } else continue;
         card.innerHTML = `<span style="flex:1;min-width:160px">${txt}</span><button type="button" class="cat-new-save-btn">${btn}</button>`;
-        card.querySelector('button').addEventListener('click', async (e) => {
-            const b = e.currentTarget;
+        const ejecutar = async (b) => {
             b.disabled = true;
             try {
                 await _asistEjecutarAccion(a);
                 b.textContent = a.tipo === 'navegar' ? 'Listo' : '✓ Hecho';
+                if (a.tipo === 'crear_pedido') { if (_fodiPedidoPend && _fodiPedidoPend.a === a) _fodiPedidoPend = null; b.textContent = '✓ Pedido creado'; }
             } catch (err) {
                 b.disabled = false;
                 showNotice('No se pudo: ' + (err.message || err), 'error');
             }
-        });
+        };
+        card.querySelector('button').addEventListener('click', (e) => ejecutar(e.currentTarget));
+        if (a.tipo === 'crear_pedido') {
+            _fodiPedidoPend = { a, btn: card.querySelector('button'), ejecutar };
+            let auto = false; try { auto = localStorage.getItem('waAutoCrear') === '1'; } catch (_) { /* sin storage */ }
+            if (auto) { // creación directa opcional: 5 s para cancelar
+                const b = card.querySelector('button'); let n = 5; const orig = b.textContent;
+                const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'pm-icon-btn'; cancel.textContent = 'Cancelar';
+                b.after(cancel);
+                const t = setInterval(() => { n--; b.textContent = `⚡ Creando en ${n}…`; if (n <= 0) { clearInterval(t); cancel.remove(); ejecutar(b); } }, 1000);
+                b.textContent = `⚡ Creando en ${n}…`;
+                cancel.addEventListener('click', () => { clearInterval(t); cancel.remove(); b.textContent = orig; });
+            }
+        }
         cont.appendChild(card);
     }
     if (cont.children.length) { msg.appendChild(cont); _asistScroll(false); }
@@ -32561,12 +32578,47 @@ async function _asistEjecutarAccion(a) {
         _costosRender();
         return;
     }
+    if (a.tipo === 'crear_pedido') {
+        if (!firebaseFunctions) throw new Error('No hay conexión con el servidor.');
+        const res = await firebaseFunctions.httpsCallable('createManualWhatsAppOrder')(a.payload);
+        const code = res?.data?.code || '', total = Number.isFinite(Number(res?.data?.total)) ? ` Total: ${formatMoney(Number(res.data.total))}.` : '';
+        showNotice(`Pedido ${code} creado y enviado a recepción.${total}`, 'ok');
+        if (typeof renderOrders === 'function') renderOrders();
+        return;
+    }
     throw new Error('Acción desconocida.');
 }
 
+// ── Pedidos por chat de FODI: confirmación por voz/texto ("sí, créalo") y captura adjunta ──
+let _fodiPedidoPend = null;
+const _FODI_SI = /^\s*(s[ií]|dale|listo|ok(ey)?|confirm(o|ado|a)|cr[eé]alo|gu[aá]rdalo|m[oó]ntalo|hazlo|va|de una|claro)(?=$|[\s,.!¡?])/i;
+const _FODI_NO = /^\s*(no(?=$|[\s,.!¡?])|cancel|descart|d[eé]jalo|olv[ií]dalo|para(?=$|[\s,.!¡?]))/i;
+// Devuelve la respuesta (texto) si el mensaje era una confirmación/cancelación del pedido pendiente, o null
+function _fodiPedidoInterceptar(texto) {
+    const p = _fodiPedidoPend;
+    if (!p || !p.btn || !p.btn.isConnected || p.btn.disabled) { _fodiPedidoPend = null; return null; }
+    const t = String(texto || '');
+    if (t.length > 60) return null;
+    if (_FODI_SI.test(t)) { p.ejecutar(p.btn); return 'Listo, creando el pedido… 🧾'; }
+    if (_FODI_NO.test(t)) { _fodiPedidoPend = null; p.btn.disabled = true; p.btn.textContent = 'Cancelado'; return 'Hecho, no creo el pedido. Dime si quieres cambiar algo.'; }
+    return null;
+}
+let _asistImg = null;
+
 async function _asistEnviar(texto) {
     texto = String(texto || '').trim();
-    if (!texto || _asistBusy || _meseroSession) return;
+    const imagen = _asistImg;
+    if ((!texto && !imagen) || _asistBusy || _meseroSession) return;
+    if (!texto && imagen) texto = 'Arma el pedido que aparece en esta captura.';
+    // "sí, créalo" / "cancela": confirma o descarta el pedido pendiente sin gastar una consulta
+    const atajo = !imagen ? _fodiPedidoInterceptar(texto) : null;
+    if (atajo) {
+        _asistAddUser(texto);
+        const fila0 = _asistAddBot(); const m0 = fila0.querySelector('.asist-msg'); m0.innerHTML = _asistRender(atajo);
+        _fodiCongelar(fila0.querySelector('.fodi')._fodi, 'happy'); _asistScroll(true);
+        return;
+    }
+    _asistImg = null; const prev0 = document.getElementById('asistAdjPrev'); if (prev0) prev0.style.display = 'none';
     _asistBusy = true;
     const btn = document.getElementById('asistEnviarBtn');
     if (btn) btn.disabled = true;
@@ -32581,7 +32633,7 @@ async function _asistEnviar(texto) {
     _fodiSet(av, 'thinking');
     _asistScroll(true);
     try {
-        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist });
+        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist, ...(imagen ? { imagen } : {}) });
         const resp = String(r.data?.respuesta || '');
         _asistHist.push({ role: 'assistant', content: resp });
         const reaccion = _fodiReaccion(resp, false);
@@ -32787,6 +32839,17 @@ function _asistInit() {
     chips.addEventListener('click', (e) => {
         const c = e.target.closest('.asist-card-sug');
         if (c) _asistEnviar(c.dataset.q);
+    });
+    // Adjuntar captura (botón 📎 o pegar con Ctrl+V) para que FODI arme un pedido
+    const adjFile = document.getElementById('asistAdjFile'), adjPrev = document.getElementById('asistAdjPrev');
+    const adjPoner = (b64) => { _asistImg = b64 ? { base64: b64, mediaType: 'image/jpeg' } : null; if (adjPrev) { adjPrev.style.display = b64 ? 'flex' : 'none'; adjPrev.querySelector('img').src = b64 ? `data:image/jpeg;base64,${b64}` : ''; } };
+    const adjCargar = async (f) => { try { adjPoner(await _waImgReducir(f)); } catch (e) { showNotice(e.message, 'error'); } };
+    document.getElementById('asistAdjBtn')?.addEventListener('click', () => adjFile.click());
+    adjFile?.addEventListener('change', (e) => { const f = e.target.files[0]; if (f) adjCargar(f); e.target.value = ''; });
+    document.getElementById('asistAdjQuitar')?.addEventListener('click', () => adjPoner(null));
+    document.getElementById('asistShell')?.addEventListener('paste', (e) => {
+        const it = Array.from(e.clipboardData?.items || []).find((x) => x.type.startsWith('image/'));
+        if (it) { e.preventDefault(); const f = it.getAsFile(); if (f) adjCargar(f); }
     });
     const input = document.getElementById('asistInput');
     const autoalto = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; };
@@ -33246,19 +33309,37 @@ function _fodiFlotInit() {
         set(t, 1800, 'neutral');
     }, 9000);
 
+    // Captura adjunta en el chat flotante
+    let ffImg = null;
+    const ffPrev = $('fodiFlotPrev'), ffFile = $('fodiFlotArchivo');
+    const ffPoner = (b64) => { ffImg = b64 ? { base64: b64, mediaType: 'image/jpeg' } : null; ffPrev.style.display = b64 ? 'flex' : 'none'; ffPrev.querySelector('img').src = b64 ? `data:image/jpeg;base64,${b64}` : ''; };
+    const ffCargar = async (f) => { try { ffPoner(await _waImgReducir(f)); } catch (e) { txt.placeholder = e.message; } };
+    $('fodiFlotAdj').addEventListener('click', () => ffFile.click());
+    ffFile.addEventListener('change', (e) => { const f = e.target.files[0]; if (f) ffCargar(f); e.target.value = ''; });
+    $('fodiFlotQuitar').addEventListener('click', () => ffPoner(null));
+    $('fodiFlotPanel').addEventListener('paste', (e) => {
+        const it = Array.from(e.clipboardData?.items || []).find((x) => x.type.startsWith('image/'));
+        if (it) { e.preventDefault(); const f = it.getAsFile(); if (f) ffCargar(f); }
+    });
     const enviar = async (pregunta) => {
         pregunta = String(pregunta || '').trim();
-        if (!pregunta || _ffBusy) return;
+        const imagen = ffImg;
+        if ((!pregunta && !imagen) || _ffBusy) return;
+        if (!pregunta && imagen) pregunta = 'Arma el pedido que aparece en esta captura.';
+        const atajo = !imagen ? _fodiPedidoInterceptar(pregunta) : null;
+        if (atajo) { msg('yo', pregunta); msg('bot', atajo); set('happy', 1500, 'neutral'); _fodiDecir(_asistTextoHablado(atajo), { onstart: () => hablar(true), onend: () => hablar(false) }); return; }
+        ffPoner(null);
         _ffBusy = true; callar(); mic.disabled = true;
-        msg('yo', pregunta);
+        msg('yo', imagen ? `📎 ${pregunta}` : pregunta);
         const pens = msg('bot pensando', 'Pensando… 💭');
         set('thinking');
         _ffHist.push({ role: 'user', content: pregunta });
         try {
-            const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _ffHist.slice(-10), modo: 'voz' });
+            const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _ffHist.slice(-10), modo: 'voz', ...(imagen ? { imagen } : {}) });
             const resp = String(r.data?.respuesta || 'No te escuché bien, ¿me lo repites?');
             _ffHist.push({ role: 'assistant', content: resp });
-            pens.remove(); msg('bot', resp);
+            pens.remove(); const botMsg = msg('bot', resp);
+            if (Array.isArray(r.data?.acciones) && r.data.acciones.length) { _asistAcciones(botMsg, r.data.acciones); log.scrollTop = log.scrollHeight; }
             set(_fodiReaccion(resp, false));
             _fodiDecir(_asistTextoHablado(resp), { onstart: () => hablar(true), onend: () => hablar(false) });
         } catch (err) {

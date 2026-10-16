@@ -780,6 +780,14 @@ const TOOLS = [
         } }
     },
     {
+        name: 'armar_pedido',
+        description: 'ARMA UN PEDIDO a partir de lo que el administrador pegó, dictó o adjuntó (captura de un chat de WhatsApp): extrae productos, cantidades, nombre, teléfono, tipo de entrega, dirección y pago, los compara con el menú real y, si queda completo, muestra un botón "Crear pedido" que él confirma (o dice "sí, créalo"). NUNCA crea nada por sí sola. Úsala siempre que el administrador quiera tomar/armar/montar/guardar un pedido. Si falta algún dato, pídeselo y vuelve a llamarla con TODO el texto del pedido junto.',
+        input_schema: { type: 'object', properties: {
+            texto: { type: 'string', description: 'Texto completo del pedido tal cual lo dijo/pegó el administrador (incluye los datos que ya te dio antes). Déjalo vacío si solo hay captura de pantalla.' },
+            por_voz: { type: 'boolean', description: 'true si el texto viene de dictado por voz.' }
+        } }
+    },
+    {
         name: 'buscar_conocimiento',
         description: 'Busca en la BASE DE CONOCIMIENTO: (1) lo que el dueño documentó (políticas, preguntas frecuentes, proveedores, apuntes) y (2) teoría de gerencia, marketing, finanzas, operaciones, personal, tributario Colombia, clientes y liderazgo. Úsala ANTES de aconsejar en esos temas o de responder sobre políticas/reglas del negocio. Devuelve los trozos más relevantes con su fuente; lo de "Tu base" manda sobre la teoría.',
         input_schema: { type: 'object', properties: { consulta: { type: 'string', description: 'Qué necesitas saber, con palabras clave (ej. "compensación por pedido tarde", "margen objetivo promos", "recargo nocturno").' }, max: { type: 'number', description: 'Trozos a devolver (1-6, por defecto 4).' } }, required: ['consulta'] }
@@ -963,6 +971,45 @@ ${extra}
     return { ok: true, guardados: n, usage: r.usage };
 }
 
+/** Arma un borrador de pedido (texto y/o captura) y, si está completo, una acción 'crear_pedido' para confirmar. */
+async function armarPedido(db, apiKey, args = {}, imagen = null) {
+    const { buildWhatsAppOrderDraft } = require('./agent/whatsappOrderParser');
+    const texto = String(args.texto || '').trim();
+    if (!texto && !imagen) return { error: 'No hay texto ni captura del pedido.' };
+    let d;
+    try { d = await buildWhatsAppOrderDraft(db, apiKey, texto, { image: imagen, voz: args.por_voz === true }); } catch (e) { return { error: 'No pude armar el pedido: ' + (e.message || e) }; }
+    const buenos = (d.items || []).filter((it) => !it.unmatched && it.productName && Number(it.unitPrice) > 0);
+    const sinReconocer = (d.items || []).filter((it) => it.unmatched || !it.productName).map((it) => it.productNameGuess || '(sin nombre)');
+    const subtotal = buenos.reduce((s, it) => s + (Math.max(1, Math.trunc(Number(it.quantity) || 1)) * Number(it.unitPrice)), 0);
+    const faltan = [];
+    if (!buenos.length) faltan.push('productos');
+    if (sinReconocer.length) faltan.push('productos sin reconocer: ' + sinReconocer.join(', '));
+    if (!d.fulfillmentType) faltan.push('tipo de entrega (domicilio, recoger o mesa)');
+    if (d.fulfillmentType === 'delivery' && !String(d.address || '').trim()) faltan.push('dirección del domicilio');
+    if (!String(d.paymentMethod || '').trim()) faltan.push('método de pago');
+    const resumen = {
+        lineas: buenos.map((it) => ({ cantidad: Math.max(1, Math.trunc(Number(it.quantity) || 1)), producto: it.productName, precio_unitario: Number(it.unitPrice), nota: it.note || undefined })),
+        subtotal_productos: subtotal, cliente: d.customerName || null, telefono: d.customerPhone || null,
+        entrega: d.fulfillmentType || null, direccion: d.address || null, pago: d.paymentMethod || null, paga_con: d.cashTenderAmount || null,
+        cliente_conocido: d.matchedClient ? { pedidos: d.matchedClient.totalOrders, puntos: d.matchedClient.puntosDisponibles } : null
+    };
+    const res = { listo_para_crear: !faltan.length, faltan, resumen, nota: 'El domicilio y el total final los calcula el sistema al crear. ' + (faltan.length ? 'Pídele al administrador lo que falta y vuelve a llamar armar_pedido con TODO el texto junto.' : 'Resume en 1-3 líneas lo entendido y dile que lo confirme con el botón o diciendo "sí, créalo". No digas que ya está creado.') };
+    if (faltan.length) return { resultado: res, accion: null };
+    const pay = String(d.paymentMethod).trim().toLowerCase(), cash = Number(d.cashTenderAmount);
+    return {
+        resultado: res,
+        accion: {
+            tipo: 'crear_pedido', resumen,
+            payload: {
+                items: buenos.map((it) => ({ productName: it.productName, categoryName: it.categoryName || '', quantity: Math.max(1, Math.trunc(Number(it.quantity) || 1)), unitPrice: Number(it.unitPrice) || 0, note: it.note || '' })),
+                customerName: String(d.customerName || '').trim(), customerPhone: String(d.customerPhone || '').trim(), fulfillmentType: d.fulfillmentType,
+                address: String(d.address || '').trim(), paymentMethod: pay, cashChangeRequired: pay === 'efectivo' && Number.isFinite(cash) && cash > 0,
+                cashTenderAmount: Number.isFinite(cash) && cash > 0 ? cash : null, pointsToRedeem: 0
+            }
+        }
+    };
+}
+
 function pct(a, b) {
     return b ? Math.round(((a - b) / b) * 1000) / 10 : null;
 }
@@ -1081,5 +1128,5 @@ module.exports = {
     resumenDe, resumenVentas, ventasPorDiaHora, ventasPorMetodo, ventasPorOrigenTipo, topProductos,
     variantesVendidas, analisisClientes, usoPromos, etiquetaVariante,
     esGastoReal, resumenGastos, resumenCierres, compararResumenes, recortarResultado,
-    ejecutarHerramienta, proponerAccion, leerMemoria, recordar, aprender, calcular, topPublicaciones, serieSeguidores, PESTANAS_NAVEGABLES, VISTAS_COSTOS
+    ejecutarHerramienta, proponerAccion, leerMemoria, recordar, aprender, armarPedido, calcular, topPublicaciones, serieSeguidores, PESTANAS_NAVEGABLES, VISTAS_COSTOS
 };

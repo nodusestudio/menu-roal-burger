@@ -15508,8 +15508,10 @@
                             <div class="asist-log" id="asistLog"></div>
                         </div>
                         <div class="asist-bar">
+                            <div id="asistAdjPrev" style="display:none;align-items:center;gap:8px;margin:0 0 6px"><img alt="Captura adjunta" style="max-height:70px;border-radius:8px"><button type="button" class="section-action-btn" id="asistAdjQuitar">Quitar</button><small>FODI leerá la captura. Escribe qué quieres o envía directo.</small></div>
                             <form class="asist-form" id="asistForm">
                                 <textarea id="asistInput" rows="1" maxlength="1000" placeholder="Pregúntale a FODI…"></textarea>
+                                <button type="button" class="asist-voz" id="asistAdjBtn" aria-label="Adjuntar captura de un chat" title="Adjuntar captura (o pégala con Ctrl+V) para armar un pedido">📎</button><input type="file" id="asistAdjFile" accept="image/*" hidden>
                                 <button type="button" class="asist-voz" id="asistMicBtn" aria-label="Dictar con la voz" title="Dictar con la voz" hidden>🎤</button>
                                 <button type="button" class="asist-voz" id="asistLeerBtn" aria-label="Leer respuestas en voz alta" title="Leer respuestas en voz alta" aria-pressed="false" hidden>🔇</button>
                                 <button type="submit" class="asist-send" id="asistEnviarBtn" aria-label="Enviar"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6l-.1 6.5L15 12 3.3 13.9z"/></svg></button>
@@ -16975,8 +16977,10 @@
         <div id="fodiFlotPanel" role="dialog" aria-label="Chat con FODI">
             <div class="ff-head"><div id="fodiFlotCara"></div><div class="ff-nombre">FODI<small>tu asistente 💛</small></div><button type="button" class="ff-x" id="fodiFlotCerrar" aria-label="Cerrar">✕</button></div>
             <div id="fodiFlotLog"></div>
+            <div id="fodiFlotPrev" style="display:none;align-items:center;gap:8px;padding:0 12px 4px"><img alt="Captura" style="max-height:56px;border-radius:8px"><button type="button" class="ff-b" id="fodiFlotQuitar" style="width:30px;height:30px;font-size:.8rem">✕</button></div>
             <div class="ff-pie">
-                <input id="fodiFlotTxt" type="text" maxlength="500" placeholder="Pregúntame lo que quieras…" autocomplete="off">
+                <button type="button" class="ff-b" id="fodiFlotAdj" title="Adjuntar captura de un chat para armar un pedido" aria-label="Adjuntar captura" style="background:rgba(255,255,255,.14);color:#eef4ff">📎</button><input type="file" id="fodiFlotArchivo" accept="image/*" hidden>
+                <input id="fodiFlotTxt" type="text" maxlength="500" placeholder="Pregúntame o dime un pedido…" autocomplete="off">
                 <button type="button" class="ff-b" id="fodiFlotMic" title="Hablarle" aria-label="Hablarle a FODI">🎤</button>
                 <button type="button" class="ff-b" id="fodiFlotCalla" title="Callar a FODI" aria-label="Callar a FODI">🔇</button>
             </div>

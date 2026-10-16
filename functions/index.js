@@ -3361,6 +3361,7 @@ REGLAS DE DATOS (inquebrantables):
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
 - Eres de solo lectura sobre el negocio: no puedes modificar pedidos, caja ni puntos. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
 - MEMORIA: abajo verás lo que ya sabes del negocio y del dueño; úsalo para personalizar (metas, prioridades, tono). Cuando el administrador te cuente una meta, preferencia o dato duradero, guárdalo con recordar sin que lo pida y dilo en una línea. Nunca guardes cifras de herramientas ni datos sensibles (claves, PINs). Si te dice que olvides algo, usa recordar con olvidar.
+- PEDIDOS: si el administrador pega texto de un chat, adjunta una captura o dicta/describe un pedido, llama a armar_pedido (con el texto tal cual; si solo hay captura, texto vacío). Resume en 1-3 líneas lo entendido (productos y cantidades, entrega, pago) y dile que lo confirme con el botón "Crear pedido" o diciendo "sí, créalo". Si falta algo, pídeselo de forma breve y vuelve a llamar la herramienta con TODO el texto junto. Jamás digas que el pedido ya está creado: solo se crea cuando él confirma.
 - BASE DE CONOCIMIENTO: antes de aconsejar sobre gerencia, marketing, finanzas, operación, personal, impuestos/legal Colombia o atención a clientes, y antes de responder sobre políticas o reglas del negocio, llama a buscar_conocimiento. Cita la fuente ("según tu base: …"). Lo de "Tu base" son reglas del dueño y mandan sobre la teoría. Si no hay nada, dilo y sugiere documentarlo.
 - APRENDER DE TUS SUGERENCIAS: cuando recomiendes algo concreto y medible (subir/bajar un precio, lanzar o ajustar una promo, empujar un producto), llama a registrar_sugerencia con la métrica y el plazo adecuados; el sistema la evalúa solo y te mostrará el resultado. Si en el contexto aparece "RESULTADOS DE TUS SUGERENCIAS", comenta al dueño qué funcionó y qué no, sin afirmar causalidad (estacionalidad, clima, quincena pueden influir), y ajusta tus próximas recomendaciones. Antes de recomendar, consulta sugerencias_fodi para no repetir lo que ya falló.
 - RENTABILIDAD: para decidir qué empujar, subir de precio o retirar, usa rentabilidad_menu (ventas reales × costos), no solo el food cost teórico. Las promos tienen un margen objetivo propio (menor que el de platos).
@@ -3411,6 +3412,9 @@ exports.adminAsistenteIA = onCall(
         }
         const apiKey = ANTHROPIC_API_KEY.value();
         if (!apiKey) throw new HttpsError('failed-precondition', 'Asistente no configurado.');
+        // Captura adjunta (p. ej. chat de WhatsApp con un pedido): FODI la ve en este turno y armar_pedido la reutiliza
+        const imgIn = request.data?.imagen;
+        const imagenActual = imgIn && typeof imgIn.base64 === 'string' && imgIn.base64.length < 6 * 1024 * 1024 && ['image/jpeg', 'image/png', 'image/webp'].includes(imgIn.mediaType) ? { base64: imgIn.base64, mediaType: imgIn.mediaType } : null;
 
         const { clave: modeloClave } = await asistenteModeloActivo(db);
         const M = ASISTENTE_MODELOS[modeloClave];
@@ -3441,6 +3445,10 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
         const ultimaPregunta = String(mensajes[mensajes.length - 1].content || '');
         const esSimple = ultimaPregunta.length < 90 && /^\s*(¿\s*)?(ventas|cu[aá]nt[oa]s?|top|dame|mu[eé]strame|cu[aá]l(es)? (fue|es|son)|qu[eé] (vend[ií]|gast[eé]))/i.test(ultimaPregunta) && !/(por qu[eé]|estrateg|analiza|recomi|compar|plan|c[oó]mo (subo|mejoro|bajo))/i.test(ultimaPregunta);
         const effort = M.effort ? (esSimple ? 'low' : M.effort) : null;
+        if (imagenActual) {
+            const ult = mensajes[mensajes.length - 1];
+            ult.content = [{ type: 'image', source: { type: 'base64', media_type: imagenActual.mediaType, data: imagenActual.base64 } }, { type: 'text', text: String(ult.content) }];
+        }
         let tokensIn = 0, tokensCacheR = 0, tokensCacheW = 0, llamadas = 0;
         let tokensOut = 0;
         let costo = 0;
@@ -3471,6 +3479,10 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
                         r = await adminAsistente.proponerAccion(db, u.input || {}).catch((e) => ({ error: `Falló: ${e.message || e}` }));
                         if (r.ok && acciones.length < 5) acciones.push(r.accion);
                         if (r.ok) r = { ok: true, nota: 'Propuesta mostrada al administrador como botón; aún NO se ejecutó. No digas que ya se hizo: dile que la confirme con el botón.', accion: r.accion };
+                    } else if (u.name === 'armar_pedido') {
+                        const ap = await adminAsistente.armarPedido(db, apiKey, u.input || {}, imagenActual);
+                        if (ap.accion && acciones.length < 5) acciones.push(ap.accion);
+                        r = ap.error ? { error: ap.error } : ap.resultado;
                     } else {
                         r = await adminAsistente.ejecutarHerramienta(db, u.name, u.input || {});
                     }
