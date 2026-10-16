@@ -357,6 +357,26 @@ service cloud.firestore {
     match /gastos_caja/{doc} {
       allow read, write: if isAdmin();
     }
+    // Calculadora de costos de FODEXA (reemplaza a CostoX): recetas, precios de compra y márgenes.
+    // Información del negocio: SOLO admin (nada público ni de mesero). Las functions leen con Admin SDK.
+    match /costos_insumos/{doc} {
+      allow read, write: if isAdmin();
+    }
+    match /costos_recetas/{doc} {
+      allow read, write: if isAdmin();
+    }
+    match /costos_platos/{doc} {
+      allow read, write: if isAdmin();
+    }
+    match /costos_promos/{doc} {
+      allow read, write: if isAdmin();
+    }
+    match /costos_categorias/{doc} {
+      allow read, write: if isAdmin();
+    }
+    match /costos_ajustes/{doc} {
+      allow read, write: if isAdmin();
+    }
     // Auditoria de adminAdjustLoyaltyPoints (functions/index.js) -- solo lectura desde el admin
     // (para el historial de ajustes por cliente); la escritura es EXCLUSIVA del Admin SDK dentro
     // de esa Cloud Function, nunca desde el navegador (ni siquiera un admin autenticado).
