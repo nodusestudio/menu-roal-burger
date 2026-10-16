@@ -26,7 +26,7 @@ test('recordar valida entradas y tope', async () => {
     assert.ok((await A.recordar(db, { accion: 'guardar', tema: '', texto: 'x' })).error);
     assert.ok((await A.recordar(db, { accion: 'guardar', tema: 'a', texto: '' })).error);
     assert.ok((await A.recordar(db, { accion: 'olvidar', tema: 'nada' })).error);
-    for (let i = 0; i < 40; i++) await A.recordar(db, { accion: 'guardar', tema: 't' + i, texto: 'x' });
+    for (let i = 0; i < 60; i++) await A.recordar(db, { accion: 'guardar', tema: 't' + i, texto: 'x' });
     assert.ok((await A.recordar(db, { accion: 'guardar', tema: 'extra', texto: 'x' })).error);
     assert.ok((await A.recordar(db, { accion: 'guardar', tema: 't1', texto: 'y' })).ok);
 });
