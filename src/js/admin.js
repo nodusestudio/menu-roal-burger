@@ -33297,3 +33297,29 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
         } catch (err) { estado.textContent = err?.message || 'No pude analizar. Intenta de nuevo.'; } finally { btn.disabled = false; }
     });
 })();
+
+// ── Consumo de IA (FODI): lee admin_ai_usage_daily; el saldo de la cuenta solo se ve en console.anthropic.com ──
+document.getElementById('asistUsoBtn')?.addEventListener('click', async () => {
+    const out = document.getElementById('asistUsoTxt'), btn = document.getElementById('asistUsoBtn');
+    if (!out) return;
+    btn.disabled = true; out.textContent = 'Calculando…';
+    try {
+        const snap = await firebaseDb.collection('admin_ai_usage_daily').orderBy(firebase.firestore.FieldPath.documentId(), 'desc').limit(31).get();
+        const dias = snap.docs.map((d) => ({ dia: d.id, ...d.data() }));
+        if (!dias.length) { out.textContent = 'Aún no hay consumo registrado.'; return; }
+        const TRM = 4000; // aproximado COP por USD
+        const suma = (arr, k) => arr.reduce((a, d) => a + (Number(d[k]) || 0), 0);
+        const usd = (n) => `US$${n.toFixed(2)} (~${formatMoney(Math.round(n * TRM))})`;
+        const hoy = dias[0], s7 = dias.slice(0, 7), s30 = dias;
+        const c30 = suma(s30, 'costoUsd'), prom = c30 / Math.max(1, s30.length);
+        out.textContent = `Último registro (${hoy.dia}): ${hoy.consultas || 0} consultas, ${hoy.respuestasCliente || 0} respuestas a clientes → ${usd(Number(hoy.costoUsd) || 0)}
+`
+            + `Últimos 7 días: ${suma(s7, 'consultas')} consultas → ${usd(suma(s7, 'costoUsd'))}
+`
+            + `Últimos ${s30.length} días: ${suma(s30, 'consultas')} consultas → ${usd(c30)} · promedio ${usd(prom)}/día · proyección mensual ≈ ${usd(prom * 30)}
+`
+            + `Tokens (30 d): ${Math.round(suma(s30, 'tokensIn') / 1000)}k entrada, ${Math.round(suma(s30, 'tokensOut') / 1000)}k salida.
+`
+            + 'Tu saldo en Anthropic no se puede leer desde aquí: míralo en console.anthropic.com → Plans & Billing (ahí puedes poner alerta y recarga automática).';
+    } catch (e) { out.textContent = 'No pude leer el consumo: ' + (e.message || e); } finally { btn.disabled = false; }
+});
