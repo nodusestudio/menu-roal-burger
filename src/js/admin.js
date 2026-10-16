@@ -32604,6 +32604,26 @@ function _costosPendientes() {
     return out;
 }
 
+// ESPEJO de alzasDePrecio (functions/costos.js): sincronizar si cambia.
+function _costosAlzas(dias = 30) {
+    const desdeMs = Date.now() - dias * 86400000;
+    const usa = (items, insumoId, pila = []) => (items || []).some((it) => {
+        if (it.tipo === 'insumo') return it.id === insumoId;
+        if (it.tipo !== 'receta' || pila.includes(it.id)) return false;
+        const r = _costos.recetas.find((x) => x.id === it.id);
+        return !!r && usa(r.items, insumoId, [...pila, it.id]);
+    });
+    const out = [];
+    _costos.insumos.forEach((ins) => {
+        const h = (Array.isArray(ins.historialPrecios) ? ins.historialPrecios : []).filter((e) => Date.parse(e.fecha) >= desdeMs);
+        if (!h.length) return;
+        const desde = _cNum(h[0].anterior), hasta = _cNum(h[h.length - 1].precio);
+        if (!(desde > 0) || hasta <= desde) return;
+        out.push({ id: ins.id, nombre: ins.nombre, desde, hasta, pct: Math.round(((hasta - desde) / desde) * 1000) / 10, platos: _costos.platos.filter((p) => p.activo === true && usa(p.items, ins.id)).map((p) => p.nombre) });
+    });
+    return out.sort((a, b) => b.pct - a.pct);
+}
+
 function _costosRender() {
     const body = document.getElementById('costosBody');
     if (!body) return;
@@ -32611,9 +32631,10 @@ function _costosRender() {
     const q = _costosBuscar.trim().toLowerCase();
     const filtra = (arr) => (q ? arr.filter((x) => String(x.nombre || '').toLowerCase().includes(q)) : arr);
     const pend = _costosPendientes();
+    const alzas = _costosAlzas();
     const cfgInp = (k, v) => `<input type="text" inputmode="numeric" class="cs-inp" style="width:70px" data-cs-cfg="${k}" value="${v}">`;
     const nAct = _costos.platos.filter((p) => p.activo === true).length;
-    const tabs = [['platos', `Platos activos (${nAct})`], ['ideas', `Ideas (${_costos.platos.length - nAct})`], ['insumos', `Insumos (${_costos.insumos.length})`], ['recetas', `Recetas (${_costos.recetas.length})`], ['promos', `Promos (${_costos.promos.length})`], ['conexion', `Conexión (${_costosSinVincular().length})`], ['pendientes', `Pendientes (${pend.length})`]];
+    const tabs = [['platos', `Platos activos (${nAct})`], ['ideas', `Ideas (${_costos.platos.length - nAct})`], ['insumos', `Insumos (${_costos.insumos.length})${alzas.length ? ' 📈' + alzas.length : ''}`], ['recetas', `Recetas (${_costos.recetas.length})`], ['promos', `Promos (${_costos.promos.length})`], ['conexion', `Conexión (${_costosSinVincular().length})`], ['pendientes', `Pendientes (${pend.length})`]];
     let html = `<div class="cs-bar">
         <label>Colchón % ${cfgInp('colchonPct', _costos.cfg.colchonPct)}</label>
         <label>Margen objetivo % ${cfgInp('margenObjetivoPct', _costos.cfg.margenObjetivoPct)}</label>
@@ -32638,6 +32659,9 @@ function _costosRender() {
         });
         html += `</tbody></table></div>${lista.length ? '' : '<p class="cs-muted">Nada por aquí.</p>'}`;
     } else if (_costosVista === 'insumos') {
+        if (alzas.length) {
+            html += `<div class="cs-muted" style="border:1px solid #f59e0b;border-radius:10px;padding:8px 12px;margin-bottom:8px"><strong>📈 Subieron de precio (últimos 30 días)</strong><ul style="margin:6px 0 0 18px">${alzas.map((a) => `<li><strong>${escapeHtml(a.nombre)}</strong>: ${money(a.desde)} → ${money(a.hasta)} (+${a.pct}%)${a.platos.length ? ` · afecta: ${escapeHtml(a.platos.slice(0, 6).join(', '))}${a.platos.length > 6 ? ` y ${a.platos.length - 6} más` : ''}` : ''}</li>`).join('')}</ul></div>`;
+        }
         html += `<p class="cs-muted">Cambia el precio de compra y la merma real; todo se recalcula. El historial de precios se guarda solo.</p><div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th>Precio compra</th><th>Peso empaque</th><th>Merma %</th><th>Costo/unid</th></tr></thead><tbody>`;
         filtra(_costos.insumos).forEach((i) => {
             const sin = !(_cNum(i.precioCompra) > 0 && _cNum(i.pesoEmpaque) > 0);

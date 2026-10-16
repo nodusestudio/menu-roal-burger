@@ -478,7 +478,7 @@ async function codigoDelDia(db, desde, hasta) {
 // Todo se recalcula en vivo; cada plato trae costo_real y costo con colchón (el que mide alertas/margen).
 async function costoPorPlato(args = {}, db) {
     const admin = require('firebase-admin');
-    const { calcularPlatos } = require('./costos');
+    const { calcularPlatos, alzasDePrecio } = require('./costos');
     db = db || admin.firestore();
     const lee = (c) => db.collection(c).get().then((sn) => sn.docs.map((d) => ({ ...d.data(), id: d.id })));
     let insumos, recetas, platos, promos, cfgDoc;
@@ -501,6 +501,11 @@ async function costoPorPlato(args = {}, db) {
         const d = fj.exists ? fj.data() : {};
         const items = (Array.isArray(d.items) ? d.items : []).map((i) => ({ nombre: String(i.nombre || ''), monto_mensual: Number(i.monto) || 0 }));
         return { fuente, costos_fijos: items, total_mensual: items.reduce((a, i) => a + i.monto_mensual, 0), colchon_pct: colchonPct, margen_objetivo_pct: margenObjetivoPct };
+    }
+    if (parte === 'alzas') {
+        const dias = Math.min(Math.max(Number(args.dias) || 30, 1), 365);
+        const alzas = alzasDePrecio({ insumos, recetas, platos }, { dias }).filter((a) => filtra(a.insumo));
+        return { fuente, ventana_dias: dias, total: alzas.length, alzas, nota: 'Subidas del precio de compra de insumos registradas en su historial; platos_afectados son los platos activos que los usan.' };
     }
     const calc = calcularPlatos({ insumos, recetas, platos }, { colchonPct, margenObjetivoPct });
     const porId = Object.fromEntries(calc.map((c) => [c.id, c]));
@@ -636,7 +641,8 @@ const TOOLS = [
         name: 'costo_por_plato',
         description: 'Costo real y costo con colchón (ingredientes×1,30), food cost, margen y precio sugerido por plato y por promoción, calculados en vivo desde la calculadora de costos propia (insumos → recetas → platos). Por defecto solo platos activos (los que se venden). También costos fijos mensuales.',
         input_schema: { type: 'object', properties: {
-            parte: { type: 'string', enum: ['platos', 'promociones', 'fijos'], description: 'Qué traer (por defecto platos).' },
+            parte: { type: 'string', enum: ['platos', 'promociones', 'fijos', 'alzas'], description: 'Qué traer (por defecto platos). "alzas" = insumos cuyo precio de compra subió y a qué platos activos afecta.' },
+            dias: { type: 'number', description: 'Solo con parte "alzas": ventana en días (por defecto 30).' },
             buscar: { type: 'string', description: 'Filtra por texto en el nombre (ej. "empanada", "papuda").' },
             incluir_ideas: { type: 'boolean', description: 'true para incluir también los platos aún en estudio (no activos).' }
         } }

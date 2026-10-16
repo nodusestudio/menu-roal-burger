@@ -111,3 +111,27 @@ test('importación: la merma 30 % de CostoX pasa a colchón y el costo con colch
     const [f] = c.calcularPlatos({ insumos: n.insumos, recetas: n.recetas, platos: [{ ...n.platos[0], items: [n.platos[0].items[0]] }] }, n.config);
     assert.equal(f.costo, Math.round(2 * 1560 + 1000)); // idéntico a lo que daba CostoX: 1200 × 1,30 × 2 + mano de obra
 });
+
+test('alzasDePrecio: sube dentro de la ventana, ignora bajas y viejas, y lista platos activos afectados (directo y por receta)', () => {
+    const ahora = Date.parse('2026-10-16T12:00:00Z');
+    const hace = (d) => new Date(ahora - d * 86400000).toISOString();
+    const ins = [
+        { id: 'a', nombre: 'Carne', historialPrecios: [{ fecha: hace(10), precio: 1200, anterior: 1000 }, { fecha: hace(2), precio: 1500, anterior: 1200 }] },
+        { id: 'b', nombre: 'Queso', historialPrecios: [{ fecha: hace(5), precio: 800, anterior: 1000 }] },       // baja
+        { id: 'c', nombre: 'Pan', historialPrecios: [{ fecha: hace(60), precio: 2000, anterior: 1000 }] },       // fuera de ventana
+        { id: 'd', nombre: 'Nuevo', historialPrecios: [{ fecha: hace(1), precio: 500, anterior: 0 }] }          // sin precio previo
+    ];
+    const rec = [{ id: 'r1', nombre: 'Salsa', items: [{ tipo: 'insumo', id: 'a', cantidad: 1 }] }];
+    const platos = [
+        { id: 'p1', nombre: 'Directo', activo: true, items: [{ tipo: 'insumo', id: 'a', cantidad: 1 }] },
+        { id: 'p2', nombre: 'Por receta', activo: true, items: [{ tipo: 'receta', id: 'r1', cantidad: 1 }] },
+        { id: 'p3', nombre: 'Idea', activo: false, items: [{ tipo: 'insumo', id: 'a', cantidad: 1 }] }
+    ];
+    const r = c.alzasDePrecio({ insumos: ins, recetas: rec, platos }, { dias: 30, ahora });
+    assert.equal(r.length, 1);
+    assert.equal(r[0].insumo, 'Carne');
+    assert.equal(r[0].desde, 1000);
+    assert.equal(r[0].hasta, 1500);
+    assert.equal(r[0].alza_pct, 50);
+    assert.deepEqual(r[0].platos_afectados.sort(), ['Directo', 'Por receta']);
+});

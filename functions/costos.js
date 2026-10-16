@@ -109,4 +109,34 @@ function calcularPlatos({ insumos = [], recetas = [], platos = [] }, { colchonPc
     });
 }
 
-module.exports = { costoUnitarioInsumo, costoReceta, costoPlato, precioSugerido, alertaPlato, calcularPlatos };
+// Alzas de precio de compra en los últimos `dias` días (a partir de historialPrecios).
+// Compara el precio anterior al primer cambio de la ventana contra el precio actual; solo reporta subidas.
+// platos_afectados: platos ACTIVOS que usan el insumo (directo o por receta).
+function alzasDePrecio({ insumos = [], recetas = [], platos = [] }, { dias = 30, ahora = Date.now() } = {}) {
+    const desdeMs = ahora - dias * 86400000;
+    const recetasPorId = aMapa(recetas);
+    const usa = (items, insumoId, pila = []) => (items || []).some((it) => {
+        if (it.tipo === 'insumo') return it.id === insumoId;
+        if (it.tipo !== 'receta' || pila.includes(it.id)) return false;
+        const r = recetasPorId[it.id];
+        return !!r && usa(r.items, insumoId, [...pila, it.id]);
+    });
+    const out = [];
+    for (const ins of insumos) {
+        const h = (Array.isArray(ins.historialPrecios) ? ins.historialPrecios : [])
+            .filter((e) => Date.parse(e.fecha) >= desdeMs);
+        if (!h.length) continue;
+        const desde = Number(h[0].anterior) || 0;
+        const hasta = Number(h[h.length - 1].precio) || 0;
+        if (!(desde > 0) || hasta <= desde) continue;
+        out.push({
+            id: ins.id, insumo: ins.nombre || ins.id, desde, hasta,
+            alza_pct: Math.round(((hasta - desde) / desde) * 1000) / 10,
+            fecha: h[h.length - 1].fecha,
+            platos_afectados: platos.filter((p) => p.activo === true && usa(p.items, ins.id)).map((p) => p.nombre || p.id)
+        });
+    }
+    return out.sort((a, b) => b.alza_pct - a.alza_pct);
+}
+
+module.exports = { costoUnitarioInsumo, costoReceta, costoPlato, precioSugerido, alertaPlato, calcularPlatos, alzasDePrecio };
