@@ -22,14 +22,18 @@ const orderLogic = require('./agent/orderLogic');
 const CONFIG_DOC = 'historia_cierre';
 const HORA_DEFECTO = '12:00';
 
-const configRef = (db) => db.collection('instagram_config').doc(CONFIG_DOC);
+// Además de la historia de días cerrados hay dos historias por evento de caja (abrir / cerrar), cada una con su
+// propia config y plantilla; el resto de la lógica es la misma, así que cada función recibe `doc` (por defecto el de cierre).
+const DOCS_EVENTO = { abrir: 'historia_caja_abrir', cerrar: 'historia_caja_cerrar' };
+
+const configRef = (db, doc = CONFIG_DOC) => db.collection('instagram_config').doc(doc);
 
 function configPorDefecto() {
     return { activa: false, hora: HORA_DEFECTO, facebook: true, enCierresProgramados: true, plantillaId: '', ultimaFecha: '', ultimoPostId: '', ultimoEstado: '' };
 }
 
-async function leerConfig(db) {
-    const snap = await configRef(db).get();
+async function leerConfig(db, doc = CONFIG_DOC) {
+    const snap = await configRef(db, doc).get();
     const c = { ...configPorDefecto(), ...(snap.exists ? snap.data() : {}) };
     c.hora = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(c.hora)) ? String(c.hora) : HORA_DEFECTO;
     c.activa = c.activa === true;
@@ -57,20 +61,20 @@ function estadoDelDia(horarioData, nowMs, { enCierresProgramados = true } = {}) 
 
 // ── Plantilla ────────────────────────────────────────────────────────────────
 
-async function asegurarPlantilla(db, uid, { nowMs = Date.now() } = {}) {
-    const cfg = await leerConfig(db);
+async function asegurarPlantilla(db, uid, { nowMs = Date.now(), doc = CONFIG_DOC } = {}) {
+    const cfg = await leerConfig(db, doc);
     if (cfg.plantillaId) {
         const snap = await db.collection(posts.POSTS_COLLECTION).doc(cfg.plantillaId).get();
         if (snap.exists) return cfg.plantillaId;
     }
     const ref = db.collection(posts.POSTS_COLLECTION).doc();
     await ref.set({
-        tipo: 'historia', estado: 'borrador', origen: 'manual', plantillaCierre: true, caption: '', hashtags: [], altText: '', productoId: '', notaIA: '',
+        tipo: 'historia', estado: 'borrador', origen: 'manual', plantillaCierre: true, plantillaEvento: doc === CONFIG_DOC ? '' : doc, caption: '', hashtags: [], altText: '', productoId: '', notaIA: '',
         imagenes: [], video: null, contenedorId: '', programadaAtMs: null, imgToken: crypto.randomBytes(16).toString('hex'),
         mediaId: '', publicadaAtMs: null, error: '', intentos: 0, facebook: { publicar: false, estado: 'omitida', error: '', intentos: 0 },
         creadoAtMs: nowMs, actualizadoAtMs: nowMs, creadoPor: uid || null
     });
-    await configRef(db).set({ plantillaId: ref.id }, { merge: true });
+    await configRef(db, doc).set({ plantillaId: ref.id }, { merge: true });
     return ref.id;
 }
 
@@ -93,20 +97,20 @@ function plantillaCompleta(p) {
 }
 
 // Vacía la plantilla (imagen y video) para poder subir otra cosa.
-async function quitarMedia(db, uid, { nowMs = Date.now() } = {}) {
-    const cfg = await leerConfig(db);
+async function quitarMedia(db, uid, { nowMs = Date.now(), doc = CONFIG_DOC } = {}) {
+    const cfg = await leerConfig(db, doc);
     const p = await leerPlantilla(db, cfg);
     if (!p) return { ok: true };
     for (const im of p.imagenes || []) await posts.quitarImagen(db, { id: p.id, slot: im.slot }, uid, { nowMs });
     if (p.video) await reels.quitarVideo(db, { id: p.id }, uid, { nowMs });
-    if (cfg.activa) await configRef(db).set({ activa: false }, { merge: true }); // sin contenido no puede quedar activa
+    if (cfg.activa) await configRef(db, doc).set({ activa: false }, { merge: true }); // sin contenido no puede quedar activa
     return { ok: true };
 }
 
 // ── Estado para el panel ─────────────────────────────────────────────────────
 
-async function estadoPanel(db, { nowMs = Date.now() } = {}) {
-    const cfg = await leerConfig(db);
+async function estadoPanel(db, { nowMs = Date.now(), doc = CONFIG_DOC } = {}) {
+    const cfg = await leerConfig(db, doc);
     const [plantilla, horario] = await Promise.all([leerPlantilla(db, cfg), leerHorario(db)]);
     const hoy = estadoDelDia(horario, nowMs, cfg);
     let ultimo = null;
@@ -122,9 +126,9 @@ async function estadoPanel(db, { nowMs = Date.now() } = {}) {
 
 // ── Guardar ajustes ──────────────────────────────────────────────────────────
 
-async function guardarConfig(db, datos, uid, { nowMs = Date.now() } = {}) {
+async function guardarConfig(db, datos, uid, { nowMs = Date.now(), doc = CONFIG_DOC } = {}) {
     const d = datos || {};
-    const cfg = await leerConfig(db);
+    const cfg = await leerConfig(db, doc);
     const hora = String(d.hora ?? cfg.hora);
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hora)) throw new HttpsError('invalid-argument', 'La hora de publicación no es válida.');
     const activa = d.activa === undefined ? cfg.activa : d.activa === true;
@@ -143,13 +147,13 @@ async function guardarConfig(db, datos, uid, { nowMs = Date.now() } = {}) {
     if (cfg.ultimaFecha === hoy && cfg.ultimoPostId) {
         const ref = db.collection(posts.POSTS_COLLECTION).doc(cfg.ultimoPostId);
         const snap = await ref.get();
-        if (snap.exists && snap.data().estado === 'programada' && snap.data().deCierre === true) {
+        if (snap.exists && snap.data().estado === 'programada' && (snap.data().deCierre === true || snap.data().deEvento)) {
             await ref.set({ estado: 'cancelada', actualizadoAtMs: nowMs }, { merge: true });
             nuevo.ultimaFecha = '';
             nuevo.ultimoPostId = '';
         }
     }
-    await configRef(db).set(nuevo, { merge: true });
+    await configRef(db, doc).set(nuevo, { merge: true });
     return { ok: true };
 }
 
@@ -162,10 +166,10 @@ function horaObjetivoMs(dateKey, hora) {
 }
 
 // Clona la plantilla como publicación programada. Devuelve el id nuevo.
-async function clonarPlantilla(db, cfg, { programadaAtMs, nowMs }) {
+async function clonarPlantilla(db, cfg, { programadaAtMs, nowMs, evento = '' }) {
     const { id } = await posts.duplicarPost(db, { id: cfg.plantillaId }, null, { nowMs });
     await db.collection(posts.POSTS_COLLECTION).doc(id).set({
-        estado: 'programada', programadaAtMs, deCierre: true, actualizadoAtMs: nowMs,
+        estado: 'programada', programadaAtMs, ...(evento ? { deEvento: evento } : { deCierre: true }), actualizadoAtMs: nowMs,
         facebook: { publicar: cfg.facebook === true, estado: cfg.facebook === true ? 'pendiente' : 'omitida', error: '', intentos: 0 }
     }, { merge: true });
     return id;
@@ -202,12 +206,40 @@ async function prepararDelDia(db, { nowMs = Date.now() } = {}) {
     }
 }
 
+// Historia por evento de caja (abrir / cerrar): la dispara el trigger de `configuracion/estado_caja`. Una sola vez
+// por día y por evento (se reserva el día en una transacción); sale por el cron de Redes, que ya reintenta.
+async function publicarEvento(db, evento, { nowMs = Date.now() } = {}) {
+    const doc = DOCS_EVENTO[evento];
+    if (!doc) throw new Error(`Evento de caja desconocido: ${evento}`);
+    const cfg = await leerConfig(db, doc);
+    if (!cfg.activa || !cfg.plantillaId) return { motivo: 'inactiva' };
+    const hoy = cd.bogotaParts(nowMs).dateKey;
+    if (cfg.ultimaFecha === hoy) return { motivo: 'ya_publicada' };
+    const plantilla = await leerPlantilla(db, cfg);
+    if (!plantillaCompleta(plantilla)) return { motivo: 'plantilla_incompleta' };
+    const reservada = await db.runTransaction(async (tx) => {
+        const s = (await tx.get(configRef(db, doc))).data() || {};
+        if (s.ultimaFecha === hoy) return false;
+        tx.set(configRef(db, doc), { ultimaFecha: hoy, ultimoPostId: '' }, { merge: true });
+        return true;
+    });
+    if (!reservada) return { motivo: 'ya_publicada' };
+    try {
+        const id = await clonarPlantilla(db, cfg, { programadaAtMs: nowMs, nowMs, evento: doc });
+        await configRef(db, doc).set({ ultimoPostId: id }, { merge: true });
+        return { motivo: 'preparada', postId: id };
+    } catch (err) {
+        await configRef(db, doc).set({ ultimaFecha: '' }, { merge: true });
+        throw err;
+    }
+}
+
 // Botón "Publicar ahora (prueba)": prepara una copia y la publica YA en Instagram (y Facebook si está marcado).
-async function publicarAhora(db, { nowMs = Date.now(), publicarPost, publicarEnFacebook }) {
-    const cfg = await leerConfig(db);
+async function publicarAhora(db, { nowMs = Date.now(), publicarPost, publicarEnFacebook, doc = CONFIG_DOC }) {
+    const cfg = await leerConfig(db, doc);
     const plantilla = await leerPlantilla(db, cfg);
     if (!plantillaCompleta(plantilla)) throw new HttpsError('failed-precondition', 'Carga primero la imagen o el video de la historia.');
-    const id = await clonarPlantilla(db, cfg, { programadaAtMs: nowMs, nowMs });
+    const id = await clonarPlantilla(db, cfg, { programadaAtMs: nowMs, nowMs, evento: doc === CONFIG_DOC ? '' : doc });
     const instagram = await publicarPost(id);
     const facebook = cfg.facebook ? await publicarEnFacebook(id) : null;
     return { id, instagram, facebook };
@@ -222,6 +254,8 @@ module.exports = {
     estadoPanel,
     guardarConfig,
     prepararDelDia,
+    publicarEvento,
     publicarAhora,
+    DOCS_EVENTO,
     horaObjetivoMs
 };

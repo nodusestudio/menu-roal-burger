@@ -17,6 +17,7 @@ const { HttpsError } = require('firebase-functions/v2/https');
 const historias = require('./instagramHistorias');
 const mensajes = require('./instagramMensajes');
 const orderLogic = require('./agent/orderLogic');
+const servicioCaja = require('./servicioCaja');
 
 const GRAPH_URL = 'https://graph.instagram.com';
 const FB_GRAPH_URL = 'https://graph.facebook.com';
@@ -603,8 +604,8 @@ async function enviarRespuestaPrivada(db, comentario, texto, { fetchFn = fetch, 
 }
 
 async function disponibilidadAhora(db, nowMs) {
-    const horarioSnap = await db.collection('configuracion').doc('config_horario').get();
-    return orderLogic.getOrderingAvailability(orderLogic.buildScheduleFromConfigDoc(horarioSnap.exists ? horarioSnap.data() : null), new Date(nowMs));
+    // Servicio real: caja abierta Y dentro del horario (mismo shape que getOrderingAvailability, más `motivo`).
+    return servicioCaja.estadoServicio(db, nowMs);
 }
 
 /**
@@ -713,10 +714,9 @@ async function sugerirRespuesta(db, { tipo, id }, { cliente, nowMs = Date.now() 
         contexto = `Mensaje directo. Conversación reciente (el último es del cliente):\n${recientes.docs.map((d) => d.data()).reverse()
             .map((m) => `${m.de === 'cliente' ? 'Cliente' : 'Roal'}: ${m.texto || `[${m.adjuntos?.[0]?.tipo || 'adjunto'}]`}`).join('\n')}`;
     }
-    const [menu, config, horarioSnap] = await Promise.all([
-        resumenMenu(db), leerConfigChat(db), db.collection('configuracion').doc('config_horario').get()
+    const [menu, config, disp] = await Promise.all([
+        resumenMenu(db), leerConfigChat(db), disponibilidadAhora(db, nowMs)
     ]);
-    const disp = orderLogic.getOrderingAvailability(orderLogic.buildScheduleFromConfigDoc(horarioSnap.exists ? horarioSnap.data() : null), new Date(nowMs));
     const system = [
         'Eres quien maneja el Instagram de Roal Burger (comida rápida con acento venezolano, Armenia, Quindío, Colombia).',
         `Escribe UN borrador de respuesta en español, tuteando, cálido y breve (máximo ${tipo === 'comentario' ? 2 : 3} frases, 0 a 2 emojis).`,

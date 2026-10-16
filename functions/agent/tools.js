@@ -8,6 +8,7 @@
 'use strict';
 
 const orderLogic = require('./orderLogic');
+const servicioCaja = require('../servicioCaja');
 
 const MAX_CART_LINES = 30;
 const MAX_MENU_RESULTS = 90;
@@ -390,10 +391,8 @@ function buildAgentToolHandlers({ db, state, conversationKey }) {
         },
 
         check_store_status: async () => {
-            const doc = await db.collection('configuracion').doc('config_horario').get();
-            const schedule = orderLogic.buildScheduleFromConfigDoc(doc.exists ? doc.data() : null);
-            const availability = orderLogic.getOrderingAvailability(schedule);
-            return JSON.stringify(availability);
+            // Servicio real = caja abierta Y dentro del horario. `motivo` explica por qué no hay servicio.
+            return JSON.stringify(await servicioCaja.estadoServicio(db));
         },
 
         get_payment_methods: async () => {

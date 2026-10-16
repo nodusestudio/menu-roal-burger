@@ -15207,6 +15207,156 @@ function hcEnlazar(panel) {
     });
 }
 
+// ── Historias por evento de caja (abrir / cerrar) ────────────────────────────
+// Mismo flujo que la historia de días cerrados (acciones evento* de adminInstagramPosts, con `evento`), pero cada
+// evento tiene su propia tarjeta, plantilla y config; sin hora (sale al abrir/cerrar la caja).
+const heState = {
+    abrir: { data: null, cargando: false, ocupado: false, progreso: null, enlazado: false, etiqueta: 'al abrir la caja' },
+    cerrar: { data: null, cargando: false, ocupado: false, progreso: null, enlazado: false, etiqueta: 'al cerrar la caja' }
+};
+
+async function heCargar(ev) {
+    const st = heState[ev];
+    if (st.cargando) return;
+    st.cargando = true;
+    try {
+        st.data = await rdLlamar('eventoEstado', { evento: ev });
+    } catch (err) {
+        st.data = null;
+        showNotice(`No se pudo leer la historia ${st.etiqueta}: ${err.message || 'error inesperado.'}`, 'error');
+    } finally {
+        st.cargando = false;
+        heRender(ev);
+    }
+}
+
+function heRender(ev) {
+    const panel = document.getElementById(`historiaEventoPanel-${ev}`);
+    if (!panel) return;
+    const st = heState[ev];
+    heEnlazar(ev, panel);
+    const d = st.data;
+    if (!d) { panel.innerHTML = '<p class="cd-muted">Cargando…</p>'; return; }
+    const c = d.config;
+    const bloqueado = st.ocupado || !!st.progreso;
+    panel.innerHTML = `
+        <div class="admin-field full">
+            <label>Imagen o video de la historia</label>
+            <div>${hcMediaHtml(d.plantilla)}</div>
+            ${st.progreso ? `<div class="rd-video-prog" role="status"><strong>${escapeHtml(st.progreso.texto)}</strong><div class="rd-barra-pista"><i style="width:${st.progreso.pct}%"></i></div><span class="cd-muted">No cierres esta pantalla mientras sube.</span></div>` : ''}
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+                <label class="section-action-btn primary" style="cursor:pointer;${bloqueado ? 'opacity:.5;pointer-events:none;' : ''}">🖼 Cargar imagen<input type="file" data-he-file="imagen" accept="image/*" hidden></label>
+                <label class="section-action-btn primary" style="cursor:pointer;${bloqueado ? 'opacity:.5;pointer-events:none;' : ''}">🎬 Cargar video<input type="file" data-he-file="video" accept="video/mp4,video/quicktime,.mp4,.mov" hidden></label>
+                ${d.plantilla?.tipoMedia ? `<button type="button" class="section-action-btn" data-he="quitar" ${bloqueado ? 'disabled' : ''}>✕ Quitar</button>` : ''}
+            </div>
+            <small style="color:var(--admin-muted);display:block;margin-top:6px;">Vertical 9:16 (ideal 1080×1920). El video debe ser MP4/MOV con H.264, de 3 a 60 s y hasta 150 MB.</small>
+        </div>
+        <div class="admin-form" style="margin-top:14px;">
+            <div class="admin-field full">
+                <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" data-he-campo="activa" ${c.activa ? 'checked' : ''} ${d.completa ? '' : 'disabled'}> Publicar automáticamente ${escapeHtml(st.etiqueta)}</label>
+                ${d.completa ? '' : '<small style="color:var(--admin-muted);">Carga primero la imagen o el video para poder activarla.</small>'}
+                <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" data-he-campo="facebook" ${c.facebook ? 'checked' : ''}> También publicar en la historia de Facebook</label>
+            </div>
+            <div class="horario-estado-badge">${c.ultimaFecha ? `Última vez: ${escapeHtml(c.ultimaFecha)}` : 'Todavía no se ha publicado.'}${hcUltimoHtml(d.ultimo)}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                <button type="button" class="admin-button" data-he="guardar" ${bloqueado ? 'disabled' : ''}>Guardar</button>
+                <button type="button" class="section-action-btn" data-he="probar" ${bloqueado || !d.completa ? 'disabled' : ''}>🧪 Publicar ahora (prueba)</button>
+            </div>
+        </div>`;
+}
+
+function heLeerFormulario(panel) {
+    const v = (campo) => panel.querySelector(`[data-he-campo="${campo}"]`);
+    return { activa: v('activa')?.checked === true, facebook: v('facebook')?.checked === true };
+}
+
+async function heSubir(ev, subirFn) {
+    const st = heState[ev];
+    const activaAntes = st.data?.config?.activa === true;
+    st.ocupado = true;
+    heRender(ev);
+    try {
+        await rdLlamar('eventoQuitarMedia', { evento: ev });
+        const { id } = await rdLlamar('eventoPlantilla', { evento: ev });
+        await subirFn(id);
+        if (activaAntes) await rdLlamar('eventoGuardar', { evento: ev, config: { activa: true } }).catch(() => {});
+        showNotice('Historia cargada.', 'ok');
+    } catch (err) {
+        showNotice(err.message || 'No se pudo cargar el archivo.', 'error');
+    } finally {
+        st.ocupado = false;
+        st.progreso = null;
+        await heCargar(ev);
+    }
+}
+
+async function heSubirVideo(ev, archivo) {
+    if (!/^video\/(mp4|quicktime)$/.test(archivo.type) && !/\.(mp4|mov)$/i.test(archivo.name)) { showNotice('El video debe ser MP4 o MOV.', 'error'); return; }
+    if (archivo.size > RD_VIDEO_MAX) { showNotice(`El video pesa ${rdMB(archivo.size)}: el máximo es 150 MB.`, 'error'); return; }
+    const st = heState[ev];
+    const total = Math.ceil(archivo.size / RD_VIDEO_TROZO);
+    await heSubir(ev, async (id) => {
+        st.progreso = { pct: 0, texto: `Preparando… (${rdMB(archivo.size)})` };
+        for (let i = 0; i < total; i++) {
+            const base64 = await _cdBlobABase64(archivo.slice(i * RD_VIDEO_TROZO, (i + 1) * RD_VIDEO_TROZO));
+            let ultimo = null;
+            for (let intento = 0; intento < 3; intento++) {
+                try { await rdLlamar('subirParteVideo', { id, parte: i, total, base64 }); ultimo = null; break; } catch (err) { ultimo = err; await new Promise((r) => setTimeout(r, 800 * (intento + 1))); }
+            }
+            if (ultimo) throw ultimo;
+            st.progreso = { pct: Math.round(((i + 1) / total) * 95), texto: `Subiendo… ${Math.round(((i + 1) / total) * 100)} %` };
+            heRender(ev);
+        }
+        st.progreso = { pct: 97, texto: 'Revisando el video…' };
+        heRender(ev);
+        await rdLlamar('finalizarVideo', { id, total, nombre: archivo.name });
+    });
+}
+
+function heEnlazar(ev, panel) {
+    const st = heState[ev];
+    if (st.enlazado) return;
+    st.enlazado = true;
+    panel.addEventListener('change', (e) => {
+        const f = e.target.files?.[0];
+        const tipo = e.target.dataset?.heFile;
+        if (tipo === 'imagen' && f) heSubir(ev, async (id) => { await rdLlamar('subirImagen', { id, imagenBase64: await rdPrepararImagen(f, 'historia') }); });
+        else if (tipo === 'video' && f) heSubirVideo(ev, f);
+        if (e.target.type === 'file') e.target.value = '';
+    });
+    panel.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-he]');
+        if (!b) return;
+        const accion = b.dataset.he;
+        try {
+            // El formulario se lee ANTES de redibujar la tarjeta (si no, se leen los valores viejos).
+            const formulario = heLeerFormulario(panel);
+            if (accion === 'guardar') {
+                st.ocupado = true; heRender(ev);
+                await rdLlamar('eventoGuardar', { evento: ev, config: formulario });
+                showNotice(`Historia ${st.etiqueta} guardada.`, 'ok');
+            } else if (accion === 'quitar') {
+                if (!window.confirm('¿Quitar la imagen o el video? La publicación automática se apagará.')) return;
+                st.ocupado = true; heRender(ev);
+                await rdLlamar('eventoQuitarMedia', { evento: ev });
+            } else if (accion === 'probar') {
+                if (!window.confirm('Esto publica la historia AHORA en Instagram' + (formulario.facebook ? ' y en Facebook' : '') + ', con tus cuentas reales. ¿Continuar?')) return;
+                st.ocupado = true; heRender(ev);
+                await rdLlamar('eventoGuardar', { evento: ev, config: { facebook: formulario.facebook } });
+                const r = await rdLlamar('eventoPublicarAhora', { evento: ev });
+                const ok = r.instagram?.ok === true;
+                showNotice(ok ? 'Historia publicada en Instagram.' + (r.facebook ? (r.facebook.ok ? ' Y en Facebook.' : ` Facebook: ${r.facebook.error || 'no salió'}.`) : '') : `Instagram no la publicó: ${r.instagram?.error || r.instagram?.motivo || 'error'}.`, ok ? 'ok' : 'error');
+            }
+        } catch (err) {
+            showNotice(err.message || 'No se pudo completar la acción.', 'error');
+        } finally {
+            st.ocupado = false;
+            await heCargar(ev);
+        }
+    });
+}
+
+
 function renderHorarioForm() {
     if (!horarioForm) horarioForm = document.getElementById('horarioForm');
     if (!horarioForm) return;
@@ -19800,7 +19950,7 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
         if (scope === 'configuracion') {
             if (target === 'categorias_gastos') loadCategoriasGastos().then(renderCategoriasGastosPanel);
             if (target === 'barrios_especiales') loadBarriosEspeciales().then(renderBarriosEspecialesPanel);
-            if (target === 'horario') fetchHorarioConfig().then(() => { renderHorarioForm(); renderCierresProgramados(); hcCargar(); });
+            if (target === 'horario') fetchHorarioConfig().then(() => { renderHorarioForm(); renderCierresProgramados(); hcCargar(); heCargar('abrir'); heCargar('cerrar'); });
             if (target === 'seguridad') loadSupervisorPin().then(renderSupervisorPinField);
         }
     });

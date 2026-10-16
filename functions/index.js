@@ -3142,6 +3142,7 @@ const reels = require('./reels');
 const facebookPagina = require('./facebookPagina');
 const facebookMetricas = require('./facebookMetricas');
 const historiaCierre = require('./historiaCierre');
+const servicioCaja = require('./servicioCaja');
 
 exports.adminInstagramPosts = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '1GiB', timeoutSeconds: 300 },
@@ -3174,6 +3175,23 @@ exports.adminInstagramPosts = onCall(
             return { ...r, facebook };
         }
         // Historia de los días cerrados (Configuración → Horario): la plantilla es una publicación más.
+        // Historias por evento de caja (abrir / cerrar): misma tarjeta que la de días cerrados, con su propia plantilla.
+        if (accion.startsWith('evento')) {
+            const doc = historiaCierre.DOCS_EVENTO[String(d.evento || '')];
+            if (!doc) throw new HttpsError('invalid-argument', 'Evento desconocido.');
+            if (accion === 'eventoEstado') return historiaCierre.estadoPanel(db, { doc });
+            if (accion === 'eventoPlantilla') return { id: await historiaCierre.asegurarPlantilla(db, uid, { doc }) };
+            if (accion === 'eventoQuitarMedia') return historiaCierre.quitarMedia(db, uid, { doc });
+            if (accion === 'eventoGuardar') return historiaCierre.guardarConfig(db, d.config, uid, { doc });
+            if (accion === 'eventoPublicarAhora') {
+                const baseUrl = historiaImagenBaseUrl();
+                return historiaCierre.publicarAhora(db, {
+                    doc,
+                    publicarPost: (id) => instagramPosts.publicarPost(db, { id, baseUrl, manual: true }),
+                    publicarEnFacebook: (id) => facebookPagina.publicarPostEnFacebook(db, { id, baseUrl, manual: true })
+                });
+            }
+        }
         if (accion === 'cierreEstado') return historiaCierre.estadoPanel(db);
         if (accion === 'cierrePlantilla') return { id: await historiaCierre.asegurarPlantilla(db, uid) };
         if (accion === 'cierreQuitarMedia') return historiaCierre.quitarMedia(db, uid);
@@ -3206,6 +3224,24 @@ exports.reelVideo = onRequest(
         } catch (err) {
             console.error('reelVideo:', err);
             res.status(500).send('error');
+        }
+    }
+);
+
+// Abrir / cerrar la caja en el POS (configuracion/estado_caja) deja una historia "ya hay servicio" / "ya no hay servicio".
+// La publica el cron de abajo (la deja programada para ya); una vez por día y por evento. Nunca lanza: no puede afectar al POS.
+exports.historiaPorEventoCaja = onDocumentWritten(
+    { document: 'configuracion/estado_caja', region: 'us-central1' },
+    async (event) => {
+        try {
+            const antes = event.data?.before?.exists ? event.data.before.data() : null;
+            const despues = event.data?.after?.exists ? event.data.after.data() : null;
+            const evento = servicioCaja.eventoDeTransicion(antes, despues);
+            if (!evento) return;
+            const r = await historiaCierre.publicarEvento(getFirestore(), evento);
+            console.log(`historiaPorEventoCaja (${evento}): ${JSON.stringify(r)}`);
+        } catch (err) {
+            console.error('historiaPorEventoCaja:', err.message);
         }
     }
 );
