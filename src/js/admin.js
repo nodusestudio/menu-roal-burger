@@ -32478,6 +32478,7 @@ async function _asistEnviar(texto) {
     _asistBusy = true;
     const btn = document.getElementById('asistEnviarBtn');
     if (btn) btn.disabled = true;
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
     _asistAddUser(texto);
     _asistHist.push({ role: 'user', content: texto });
     _asistActualizarHero();
@@ -32497,6 +32498,7 @@ async function _asistEnviar(texto) {
         await _asistEscribir(msg, resp);
         _asistAcciones(msg, r.data?.acciones);
         _fodiHablar(av, false);
+        _asistLeer(resp);
         setTimeout(() => _fodiCongelar(av, reaccion), 3200);
     } catch (err) {
         _asistHist.pop();
@@ -32512,6 +32514,52 @@ async function _asistEnviar(texto) {
         const inp = document.getElementById('asistInput');
         if (inp) inp.focus();
     }
+}
+
+// ── Voz de FODI: dictado (SpeechRecognition) y lectura en voz alta (speechSynthesis), 100% del navegador ──
+let _asistLeerOn = false, _asistRec = null;
+function _asistTextoHablado(md) {
+    return String(md || '').replace(/```[\s\S]*?```/g, ' (tabla o código en pantalla) ').replace(/\|/g, ' ').replace(/\[(.*?)\]\(.*?\)/g, '$1').replace(/[*_#>`~]/g, '').replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 1500);
+}
+function _asistLeer(md) {
+    if (!_asistLeerOn || !window.speechSynthesis) return;
+    const t = _asistTextoHablado(md);
+    if (!t) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(t);
+    u.lang = 'es-CO';
+    const v = window.speechSynthesis.getVoices().find((x) => /^es[-_](CO|MX|US|419)/i.test(x.lang)) || window.speechSynthesis.getVoices().find((x) => /^es/i.test(x.lang));
+    if (v) u.voice = v;
+    window.speechSynthesis.speak(u);
+}
+function _asistVozInit(input) {
+    const leerBtn = document.getElementById('asistLeerBtn'), micBtn = document.getElementById('asistMicBtn');
+    if (leerBtn && window.speechSynthesis) {
+        leerBtn.hidden = false;
+        try { _asistLeerOn = localStorage.getItem('fodiLeerVoz') === '1'; } catch (_) { /* sin storage */ }
+        const pintar = () => { leerBtn.textContent = _asistLeerOn ? '🔊' : '🔇'; leerBtn.classList.toggle('on', false); leerBtn.setAttribute('aria-pressed', String(_asistLeerOn)); leerBtn.title = _asistLeerOn ? 'FODI lee las respuestas (clic para silenciar)' : 'Leer respuestas en voz alta'; };
+        pintar();
+        leerBtn.addEventListener('click', () => {
+            _asistLeerOn = !_asistLeerOn;
+            try { localStorage.setItem('fodiLeerVoz', _asistLeerOn ? '1' : '0'); } catch (_) { /* sin storage */ }
+            if (!_asistLeerOn) window.speechSynthesis.cancel();
+            pintar();
+        });
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!micBtn || !SR) return;
+    micBtn.hidden = false;
+    micBtn.addEventListener('click', () => {
+        if (_asistRec) { _asistRec.stop(); return; }
+        const rec = new SR();
+        rec.lang = 'es-CO'; rec.interimResults = true; rec.continuous = false;
+        const base = input.value ? input.value.replace(/\s+$/, '') + ' ' : '';
+        rec.onresult = (e) => { input.value = (base + Array.from(e.results).map((r) => r[0].transcript).join('')).slice(0, 1000); input.dispatchEvent(new Event('input')); };
+        rec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') showNotice('Permite el micrófono en el navegador para dictar.', 'error'); };
+        rec.onend = () => { _asistRec = null; micBtn.classList.remove('on'); input.focus(); };
+        _asistRec = rec; micBtn.classList.add('on');
+        try { rec.start(); } catch (_) { _asistRec = null; micBtn.classList.remove('on'); }
+    });
 }
 
 function _asistInit() {
@@ -32536,6 +32584,7 @@ function _asistInit() {
     const input = document.getElementById('asistInput');
     const autoalto = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; };
     input.addEventListener('input', autoalto);
+    _asistVozInit(input);
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         const t = input.value;

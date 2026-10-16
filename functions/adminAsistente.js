@@ -507,6 +507,12 @@ async function costoPorPlato(args = {}, db) {
         const alzas = alzasDePrecio({ insumos, recetas, platos }, { dias }).filter((a) => filtra(a.insumo));
         return { fuente, ventana_dias: dias, total: alzas.length, alzas, nota: 'Subidas del precio de compra de insumos registradas en su historial; platos_afectados son los platos activos que los usan.' };
     }
+    if (parte === 'preparacion') {
+        const nombreItem = (it) => { const o = it.tipo === 'receta' ? recetas.find((r) => r.id === it.id) : insumos.find((x) => x.id === it.id); return (o && o.nombre) || it.nombre || it.id; };
+        const fila = (tipo, d) => ({ tipo, nombre: d.nombre || d.id, activo: tipo === 'plato' ? d.activo === true : undefined, ingredientes: (d.items || []).map((it) => ({ nombre: nombreItem(it), tipo: it.tipo, cantidad: Number(it.cantidad) || 0 })).slice(0, 40), preparacion: String(d.preparacion || '').slice(0, 2500) || null });
+        const todo = [...platos.filter((p) => args.incluir_ideas || p.activo === true).map((d) => fila('plato', d)), ...recetas.map((d) => fila('receta', d))].filter((f) => filtra(f.nombre));
+        return { fuente, total: todo.length, sin_preparacion: todo.filter((f) => !f.preparacion).length, items: todo.slice(0, 15), nota: 'preparacion = modo de preparación escrito por el administrador (null si no lo ha escrito). Úsalo para manuales de usuario/fichas; no inventes pasos que no estén.' };
+    }
     const calc = calcularPlatos({ insumos, recetas, platos }, { colchonPct, margenObjetivoPct });
     const porId = Object.fromEntries(calc.map((c) => [c.id, c]));
     if (parte === 'promociones') {
@@ -765,7 +771,7 @@ const TOOLS = [
         name: 'costo_por_plato',
         description: 'Costo real y costo con colchón (ingredientes×1,30), food cost, margen y precio sugerido por plato y por promoción, calculados en vivo desde la calculadora de costos propia (insumos → recetas → platos). Por defecto solo platos activos (los que se venden). También costos fijos mensuales.',
         input_schema: { type: 'object', properties: {
-            parte: { type: 'string', enum: ['platos', 'promociones', 'fijos', 'alzas'], description: 'Qué traer (por defecto platos). "alzas" = insumos cuyo precio de compra subió y a qué platos activos afecta.' },
+            parte: { type: 'string', enum: ['platos', 'promociones', 'fijos', 'alzas', 'preparacion'], description: 'Qué traer (por defecto platos). "preparacion" = modo de preparación e ingredientes de platos y recetas (para manuales). "alzas" = insumos cuyo precio de compra subió y a qué platos activos afecta.' },
             dias: { type: 'number', description: 'Solo con parte "alzas": ventana en días (por defecto 30).' },
             buscar: { type: 'string', description: 'Filtra por texto en el nombre (ej. "empanada", "papuda").' },
             incluir_ideas: { type: 'boolean', description: 'true para incluir también los platos aún en estudio (no activos).' }
