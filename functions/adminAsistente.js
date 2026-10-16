@@ -780,6 +780,11 @@ const TOOLS = [
         } }
     },
     {
+        name: 'buscar_conocimiento',
+        description: 'Busca en la BASE DE CONOCIMIENTO: (1) lo que el dueño documentó (políticas, preguntas frecuentes, proveedores, apuntes) y (2) teoría de gerencia, marketing, finanzas, operaciones, personal, tributario Colombia, clientes y liderazgo. Úsala ANTES de aconsejar en esos temas o de responder sobre políticas/reglas del negocio. Devuelve los trozos más relevantes con su fuente; lo de "Tu base" manda sobre la teoría.',
+        input_schema: { type: 'object', properties: { consulta: { type: 'string', description: 'Qué necesitas saber, con palabras clave (ej. "compensación por pedido tarde", "margen objetivo promos", "recargo nocturno").' }, max: { type: 'number', description: 'Trozos a devolver (1-6, por defecto 4).' } }, required: ['consulta'] }
+    },
+    {
         name: 'rentabilidad_menu',
         description: 'RENTABILIDAD REAL del menú: cruza lo que se VENDIÓ (unidades e ingresos) con el costo de cada plato/promo de Costos y recetas. Devuelve utilidad total y margen real por producto, ranking de aportes, productos bajo su margen objetivo, clasificación estrella/caballo/enigma/perro y productos vendidos sin costo asociado. Úsala para decidir qué empujar, subir de precio o retirar. Por defecto últimos 30 días.',
         input_schema: { type: 'object', properties: { desde: { type: 'string', description: 'YYYY-MM-DD (opcional).' }, hasta: { type: 'string', description: 'YYYY-MM-DD (opcional).' } } }
@@ -1022,6 +1027,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'tarifa_domicilio') return await tarifaDomicilio(db, args);
         if (nombre === 'puntos_lealtad') return await resumenPuntos(db);
         if (nombre === 'costo_por_plato') return await costoPorPlato(args, db);
+        if (nombre === 'buscar_conocimiento') return await require('./fodiBase').buscar(db, args.consulta, Number(args.max) || 4);
         if (nombre === 'rentabilidad_menu') return await require('./fodiInteligencia').rentabilidadMenu(db, args);
         if (nombre === 'registrar_sugerencia') return await require('./fodiInteligencia').registrarSugerencia(db, args);
         if (nombre === 'sugerencias_fodi') return await require('./fodiInteligencia').listarSugerencias(db, args);

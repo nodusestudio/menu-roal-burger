@@ -15473,6 +15473,18 @@
                     </div>
                     <div class="card-body">
                         <div id="fodiAlertasBox" style="margin:0 0 8px"></div>
+                        <details id="fodiBaseBox" style="margin:0 0 8px;padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.07)">
+                            <summary style="cursor:pointer;font-weight:700">📚 Base de conocimiento de FODI</summary>
+                            <p class="asist-hint" style="text-align:left;opacity:1">Pega aquí lo que solo tú sabes: políticas (compensaciones, devoluciones), preguntas frecuentes, proveedores, horarios, apuntes de libros o cursos. FODI lo busca solo cuando lo necesita y cita la fuente. Lo que escribas aquí manda sobre la teoría general.</p>
+                            <div id="fodiBaseSin"></div>
+                            <div id="fodiBaseLista"></div>
+                            <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+                                <input type="hidden" id="fodiBaseId">
+                                <div style="display:flex;gap:6px;flex-wrap:wrap"><input type="text" id="fodiBaseTitulo" maxlength="120" placeholder="Título (ej. Política de compensación por demora)" style="flex:3;min-width:200px"><input type="text" id="fodiBaseCat" maxlength="40" placeholder="Categoría (opcional)" style="flex:1;min-width:120px"></div>
+                                <textarea id="fodiBaseTexto" maxlength="8000" rows="5" style="width:100%;box-sizing:border-box" placeholder="Texto del documento (hasta 8.000 caracteres). Puedes separar por párrafos o viñetas."></textarea>
+                                <div style="display:flex;gap:6px"><button type="button" class="section-action-btn" id="fodiBaseGuardar">Guardar documento</button><button type="button" class="section-action-btn" id="fodiBaseNuevo">Limpiar</button></div>
+                            </div>
+                        </details>
                         <details id="fodiMemBox" style="margin:0 0 8px;padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.07)">
                             <summary style="cursor:pointer;font-weight:700">🧠 Lo que sabe FODI (memoria)</summary>
                             <p class="asist-hint" style="text-align:left;opacity:1">FODI aprende sola de tus conversaciones. Aquí ves todo lo que recuerda: edítalo (queda 📌 fijo y ya no lo cambia ella), bórralo o agrega algo tú.</p>

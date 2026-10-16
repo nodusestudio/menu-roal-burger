@@ -23,7 +23,7 @@ test('calcularMenu: promos usan su margen objetivo propio', () => {
 
 test('herramientas de inteligencia registradas', () => {
     const nombres = A.TOOLS.map((t) => t.name);
-    for (const n of ['rentabilidad_menu', 'registrar_sugerencia', 'sugerencias_fodi', 'alertas_fodi']) assert.ok(nombres.includes(n), n);
+    for (const n of ['buscar_conocimiento', 'rentabilidad_menu', 'registrar_sugerencia', 'sugerencias_fodi', 'alertas_fodi']) assert.ok(nombres.includes(n), n);
 });
 
 test('registrar_sugerencia valida entradas', async () => {

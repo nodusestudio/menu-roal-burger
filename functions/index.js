@@ -3356,6 +3356,7 @@ REGLAS DE DATOS (inquebrantables):
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
 - Eres de solo lectura sobre el negocio: no puedes modificar pedidos, caja ni puntos. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
 - MEMORIA: abajo verás lo que ya sabes del negocio y del dueño; úsalo para personalizar (metas, prioridades, tono). Cuando el administrador te cuente una meta, preferencia o dato duradero, guárdalo con recordar sin que lo pida y dilo en una línea. Nunca guardes cifras de herramientas ni datos sensibles (claves, PINs). Si te dice que olvides algo, usa recordar con olvidar.
+- BASE DE CONOCIMIENTO: antes de aconsejar sobre gerencia, marketing, finanzas, operación, personal, impuestos/legal Colombia o atención a clientes, y antes de responder sobre políticas o reglas del negocio, llama a buscar_conocimiento. Cita la fuente ("según tu base: …"). Lo de "Tu base" son reglas del dueño y mandan sobre la teoría. Si no hay nada, dilo y sugiere documentarlo.
 - APRENDER DE TUS SUGERENCIAS: cuando recomiendes algo concreto y medible (subir/bajar un precio, lanzar o ajustar una promo, empujar un producto), llama a registrar_sugerencia con la métrica y el plazo adecuados; el sistema la evalúa solo y te mostrará el resultado. Si en el contexto aparece "RESULTADOS DE TUS SUGERENCIAS", comenta al dueño qué funcionó y qué no, sin afirmar causalidad (estacionalidad, clima, quincena pueden influir), y ajusta tus próximas recomendaciones. Antes de recomendar, consulta sugerencias_fodi para no repetir lo que ya falló.
 - RENTABILIDAD: para decidir qué empujar, subir de precio o retirar, usa rentabilidad_menu (ventas reales × costos), no solo el food cost teórico. Las promos tienen un margen objetivo propio (menor que el de platos).
 - ALERTAS: la herramienta alertas_fodi trae lo que conviene atender hoy (insumos que subieron, márgenes bajos, ventas de ayer). Si el dueño pregunta "qué hay de nuevo" o "cómo vamos", empieza por ahí.
@@ -3420,7 +3421,7 @@ exports.adminAsistenteIA = onCall(
         const bloqueMemoria = memoria.length
             ? `MEMORIA (lo que sabes del negocio y del dueño, dicho por él):\n${memoria.map((m) => `- ${m.tema}: ${m.texto} (${m.actualizado})`).join('\n')}`
             : 'MEMORIA: vacía todavía. Ofrece el cuestionario gerencial con una sola pregunta.';
-        const bloqueConocimiento = fodiConocimiento.bloque(fodiConocimiento.seleccionar(mensajes.slice(-4).map((m) => m.content), 3));
+        const bloqueConocimiento = ''; // el conocimiento ya no se inyecta siempre: FODI lo busca con buscar_conocimiento cuando lo necesita
         const resultadosSug = await fodiInteligencia.evaluarVencidas(db, 2).catch((e) => { console.error('evaluarVencidas:', e && e.message); return []; });
         const bloqueSug = resultadosSug.length ? `RESULTADOS DE TUS SUGERENCIAS (recién evaluadas):
 ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días): ${r.veredicto}; ${r.metrica} ${r.antes} → ${r.despues}${r.cambio_pct != null ? ` (${r.cambio_pct}%)` : ''}`).join('\n')}` : '';
@@ -3458,8 +3459,8 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
                     break;
                 }
                 mensajes.push({ role: 'assistant', content: resp.content });
-                const resultados = [];
-                for (const u of usos) {
+                // Las herramientas de un mismo turno se ejecutan EN PARALELO (antes una tras otra); el orden de resultados se conserva
+                const resultados = await Promise.all(usos.map(async (u) => {
                     let r;
                     if (u.name === 'proponer_accion') {
                         r = await adminAsistente.proponerAccion(db, u.input || {}).catch((e) => ({ error: `Falló: ${e.message || e}` }));
@@ -3468,8 +3469,8 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
                     } else {
                         r = await adminAsistente.ejecutarHerramienta(db, u.name, u.input || {});
                     }
-                    resultados.push({ type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r, u.name === 'costo_por_plato' ? 14000 : undefined) });
-                }
+                    return { type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r, u.name === 'costo_por_plato' ? 14000 : undefined) };
+                }));
                 // Caché del historial: solo el último resultado lleva marca (máx. 4 marcas por petición)
                 for (const m of mensajes) if (Array.isArray(m.content)) for (const b of m.content) if (b && b.type === 'tool_result') delete b.cache_control;
                 if (resultados.length) resultados[resultados.length - 1].cache_control = { type: 'ephemeral' };
@@ -3538,6 +3539,8 @@ exports.adminSugerirRespuestaCliente = onCall(
         const bloqueMemoria = memoria.length ? `LO QUE SABES DEL NEGOCIO Y DEL DUEÑO (tono, políticas, preferencias):\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : '';
         const conocimiento = fodiConocimiento.bloque(['clientes']);
         const ejemplos = await estiloEjemplos(db, 8).catch(() => []);
+        const hallazgos = await require('./fodiBase').buscar(db, texto.slice(-300) + ' ' + nota, 3).catch(() => null);
+        const bloqueBase = hallazgos && hallazgos.resultados ? `REGLAS Y CONOCIMIENTO DEL NEGOCIO RELEVANTES:${String.fromCharCode(10)}${hallazgos.resultados.map((r) => `- (${r.fuente}) ${r.texto}`).join(String.fromCharCode(10))}` : '';
         const bloqueEstilo = ejemplos.length ? `EJEMPLOS DE CÓMO RESPONDE EL DUEÑO (imita su tono y criterio; los marcados "corregida" son correcciones suyas y pesan más):
 ${ejemplos.map((e) => `- [${e.tipo || 'caso'}${e.corregida ? ', corregida' : ''}] ${e.situacion ? e.situacion + ' → ' : ''}${e.texto}`).join('\n')}` : '';
         const M = ASISTENTE_MODELOS.sonnet;
@@ -3551,7 +3554,7 @@ ${ejemplos.map((e) => `- [${e.tipo || 'caso'}${e.corregida ? ', corregida' : ''}
         try {
             resp = await client.messages.create({
                 model: M.id, max_tokens: 2500,
-                system: [{ type: 'text', text: RESP_CLIENTE_SYSTEM, cache_control: { type: 'ephemeral' } }, ...(bloqueMemoria || conocimiento || bloqueEstilo ? [{ type: 'text', text: [bloqueMemoria, bloqueEstilo, conocimiento].filter(Boolean).join('\n\n') }] : [])],
+                system: [{ type: 'text', text: RESP_CLIENTE_SYSTEM, cache_control: { type: 'ephemeral' } }, ...(bloqueMemoria || conocimiento || bloqueEstilo || bloqueBase ? [{ type: 'text', text: [bloqueMemoria, bloqueBase, bloqueEstilo, conocimiento].filter(Boolean).join('\n\n') }] : [])],
                 messages: [{ role: 'user', content: contenido }]
             });
         } catch (err) {
@@ -3674,5 +3677,25 @@ exports.adminEstiloFodi = onCall(
         const H = ASISTENTE_MODELOS.haiku;
         db.collection('admin_ai_usage_daily').doc(adminAsistente.bogotaDateKey(Date.now())).set({ costoUsd: FieldValue.increment(((u.input_tokens || 0) * H.in + (u.output_tokens || 0) * H.out) / 1e6) }, { merge: true }).catch(() => {});
         return { ok: true, guia: s(j.guia_estilo, 400), memoria_guardada: guardados, ejemplos_guardados: ejemplos };
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Base de conocimiento de FODI (RAG): panel del admin para pegar/editar documentos propios.
+// ─────────────────────────────────────────────────────────────
+const fodiBase = require('./fodiBase');
+exports.adminFodiBase = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, timeoutSeconds: 30 },
+    async (request) => {
+        await ensureAdminCaller(request);
+        const db = getFirestore();
+        const d = request.data || {};
+        let r = { ok: true };
+        if (d.accion === 'guardar') r = await fodiBase.guardar(db, d);
+        else if (d.accion === 'borrar') r = await fodiBase.borrar(db, d.id);
+        else if (d.accion === 'limpiar') r = await fodiBase.limpiarSinResultado(db, d.id);
+        else if (d.accion !== 'listar') throw new HttpsError('invalid-argument', 'Acción inválida.');
+        if (r.error) throw new HttpsError('failed-precondition', r.error);
+        return await fodiBase.listar(db);
     }
 );

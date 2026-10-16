@@ -33414,3 +33414,38 @@ document.getElementById('fodiMemAgregar')?.addEventListener('click', async () =>
     if (!tema.value.trim() || !texto.value.trim()) { showNotice('Escribe el tema y lo que debe recordar.', 'error'); return; }
     try { _fodiMemPintar(await _fodiMemLlamar({ accion: 'guardar', tema: tema.value, texto: texto.value })); tema.value = ''; texto.value = ''; } catch (err) { showNotice(err.message || 'No se pudo guardar.', 'error'); }
 });
+
+// ── Base de conocimiento de FODI (RAG): documentos propios del dueño ─────────────────────────
+let _fodiBaseDocs = [];
+async function _fodiBaseLlamar(datos) { return (await firebaseFunctions.httpsCallable('adminFodiBase')(datos)).data; }
+function _fodiBasePintar(r) {
+    _fodiBaseDocs = r.docs || [];
+    const lista = document.getElementById('fodiBaseLista'), sin = document.getElementById('fodiBaseSin');
+    if (lista) lista.innerHTML = _fodiBaseDocs.length ? _fodiBaseDocs.map((d) => `<div class="fb-item" data-id="${escapeHtml(d.id)}" style="margin:6px 0;padding:8px;border-radius:10px;background:rgba(255,255,255,.06)"><strong>${escapeHtml(d.titulo)}</strong>${d.categoria ? ` <small>· ${escapeHtml(d.categoria)}</small>` : ''} <small>(${d.texto.length} car.)</small><br><small>${escapeHtml(d.texto.slice(0, 140))}…</small><div style="margin-top:4px;display:flex;gap:6px"><button type="button" class="section-action-btn fb-edit">Editar</button><button type="button" class="section-action-btn fb-del">Borrar</button></div></div>`).join('') : '<p class="asist-hint" style="text-align:left;opacity:1">Aún no hay documentos propios. Agrega el primero abajo.</p>';
+    if (sin) sin.innerHTML = (r.sinResultado || []).length ? `<div style="margin:6px 0;padding:8px;border-radius:10px;border:1px solid #f59e0b"><strong>⚠️ Cosas que FODI buscó y no encontró</strong> <small>(documéntalas para que las sepa)</small>${r.sinResultado.map((x) => `<div class="fb-sin" data-id="${escapeHtml(x.id)}" style="margin-top:4px">• ${escapeHtml(x.consulta)} <small>(${x.veces}×)</small> <button type="button" class="section-action-btn fb-sin-x" style="padding:0 8px">✕</button></div>`).join('')}</div>` : '';
+}
+async function _fodiBaseCargar() {
+    if (_meseroSession || !document.getElementById('fodiBaseLista')) return;
+    try { _fodiBasePintar(await _fodiBaseLlamar({ accion: 'listar' })); } catch (e) { document.getElementById('fodiBaseLista').textContent = 'No pude leer la base: ' + (e.message || e); }
+}
+const _fodiBaseLimpiarForm = () => { for (const id of ['fodiBaseId', 'fodiBaseTitulo', 'fodiBaseCat', 'fodiBaseTexto']) document.getElementById(id).value = ''; };
+document.getElementById('fodiBaseBox')?.addEventListener('toggle', (e) => { if (e.target.open) _fodiBaseCargar(); });
+document.getElementById('fodiBaseNuevo')?.addEventListener('click', _fodiBaseLimpiarForm);
+document.getElementById('fodiBaseGuardar')?.addEventListener('click', async () => {
+    const v = (id) => document.getElementById(id).value;
+    try {
+        _fodiBasePintar(await _fodiBaseLlamar({ accion: 'guardar', id: v('fodiBaseId'), titulo: v('fodiBaseTitulo'), categoria: v('fodiBaseCat'), texto: v('fodiBaseTexto') }));
+        _fodiBaseLimpiarForm(); showNotice('Documento guardado. FODI ya lo puede consultar.', 'ok');
+    } catch (e) { showNotice(e.message || 'No se pudo guardar.', 'error'); }
+});
+document.getElementById('fodiBaseBox')?.addEventListener('click', async (e) => {
+    const it = e.target.closest('.fb-item'), sin = e.target.closest('.fb-sin');
+    try {
+        if (it && e.target.closest('.fb-edit')) {
+            const d = _fodiBaseDocs.find((x) => x.id === it.dataset.id); if (!d) return;
+            document.getElementById('fodiBaseId').value = d.id; document.getElementById('fodiBaseTitulo').value = d.titulo; document.getElementById('fodiBaseCat').value = d.categoria; document.getElementById('fodiBaseTexto').value = d.texto;
+            document.getElementById('fodiBaseTitulo').focus();
+        } else if (it && e.target.closest('.fb-del')) { if (confirm('¿Borrar este documento de la base?')) _fodiBasePintar(await _fodiBaseLlamar({ accion: 'borrar', id: it.dataset.id })); }
+        else if (sin && e.target.closest('.fb-sin-x')) _fodiBasePintar(await _fodiBaseLlamar({ accion: 'limpiar', id: sin.dataset.id }));
+    } catch (err) { showNotice(err.message || 'No se pudo completar.', 'error'); }
+});
