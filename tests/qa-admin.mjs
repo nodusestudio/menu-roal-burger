@@ -21,7 +21,7 @@ page.on('console', (m) => { if (m.type() === 'error') errores.push('console: ' +
 
 await page.goto(`${base}/admin.html`, { waitUntil: 'domcontentloaded' });
 console.log('Si ves el login, inicia sesión como admin en la ventana (esperando hasta 5 min)…');
-await page.waitForSelector('[data-accordion-target="costos"]', { state: 'visible', timeout: 300000 });
+await page.waitForSelector('#adminAuthOverlay', { state: 'hidden', timeout: 300000 }); // el menú existe antes del login: la capa de acceso lo tapa
 console.log('Sesión admin lista.');
 
 // ── Costos y recetas ──
