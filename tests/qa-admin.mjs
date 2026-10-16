@@ -25,6 +25,7 @@ await page.waitForSelector('body.admin-unlocked', { timeout: 300000 }); // el me
 console.log('Sesión admin lista.');
 
 // ── Costos y recetas ──
+if (!process.argv.includes('--solo-fodi')) {
 await page.click('[data-accordion-target="costos"]');
 await page.waitForSelector('#costosBody .cs-tab', { timeout: 30000 });
 const vistas = await page.$$eval('#costosBody .cs-tab', (els) => els.map((e) => e.dataset.csVista));
@@ -35,6 +36,7 @@ for (const v of vistas) {
   console.log('Costos →', v, 'ok');
 }
 
+}
 // ── FODI ──
 const preguntas = (arg('q', '') ? arg('q').split('|') : [
   '¿Cuánto vendimos en agosto de 2026 por Bancolombia y cuántos pedidos fueron?',
@@ -47,10 +49,14 @@ for (const [i, q] of preguntas.entries()) {
   const antes = await page.$$eval('.asist-msg.bot', (e) => e.length);
   await page.fill('#asistInput', q);
   await page.press('#asistInput', 'Enter');
-  await page.waitForFunction((n) => {
-    const b = document.querySelectorAll('.asist-msg.bot');
-    return b.length > n && !b[b.length - 1].querySelector('.asist-think');
-  }, antes, { timeout: 120000 });
+  await page.waitForFunction((n) => document.querySelectorAll('.asist-msg.bot').length > n, antes, { timeout: 120000 });
+  // FODI escribe la respuesta de a poco: esperar a que el texto deje de crecer (4 s estable) y termine de pensar
+  let prev = '', estable = 0;
+  for (let t = 0; t < 120 && estable < 4; t++) {
+    await page.waitForTimeout(1000);
+    const cur = await page.$$eval('.asist-msg.bot', (e) => { const u = e[e.length - 1]; return u.querySelector('.asist-think') ? '' : u.innerText; });
+    estable = cur && cur === prev ? estable + 1 : 0; prev = cur;
+  }
   const txt = await page.$$eval('.asist-msg.bot', (e) => e[e.length - 1].innerText);
   console.log(`\n── FODI P${i + 1}: ${q}\n${txt.slice(0, 900)}`);
   await page.screenshot({ path: path.join(shots, `fodi-${i + 1}.png`), fullPage: true });
