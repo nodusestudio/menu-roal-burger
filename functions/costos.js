@@ -11,6 +11,10 @@
 //                     del negocio (30 %, antes llamado "merma" en CostoX): cubre alzas y eventualidades.
 //                     Alertas, margen y precio sugerido se miden sobre este costo.
 //
+// "activo": solo los platos con activo === true se venden (o se venderán); el resto son ideas en estudio de
+// costos. Ausente = idea. El importador NUNCA escribe este campo, así que reimportar no desactiva lo activado.
+// "productoMenuId": enlace progresivo al producto del menú (null = aún sin conectar).
+//
 // Esquema (colecciones costos_*): insumo {nombre, unidad, precioCompra, pesoEmpaque, mermaPct, costoRespaldo},
 // receta {nombre, pesoTotal, items[{tipo:'insumo'|'receta', id, cantidad}]}, plato {nombre, precio, manoObra, items[...]}.
 
@@ -67,7 +71,7 @@ function costoPlato(plato, ctx, colchonPct = 0) {
     const precio = num(plato.precio);
     const real = ingredientes + manoObra, conColchon = ingredientes * f + manoObra;
     return {
-        id: plato.id, plato: String(plato.nombre || '').trim(), precio,
+        id: plato.id, plato: String(plato.nombre || '').trim(), activo: plato.activo === true, precio,
         costo_ingredientes_real: redondear(ingredientes), mano_obra: redondear(manoObra),
         costo_real: redondear(real), fc_real_pct: precio ? pct1((real / precio) * 100) : null,
         costo: redondear(conColchon), fc_pct: precio ? pct1((conColchon / precio) * 100) : null,

@@ -8,8 +8,8 @@
  *                                                               y los 10 platos con más food cost. No escribe nada.
  *   node scripts/importar-costox.js [volcado.json] --apply    → ESCRIBE en roal-burger-menu.
  *
- * Sin volcado.json lo descarga de CostoX con la cuenta ACTIVA de gcloud (`gcloud auth print-access-token`,
- * header x-goog-user-project: nodus-marketing). Escribir usa el mismo token activo, vía REST.
+ * Sin volcado.json lo descarga de CostoX con la cuenta ACTIVA de gcloud (header x-goog-user-project:
+ * nodus-marketing). Escribir en FODEXA usa el token de nodusestudio@gmail.com (--account), vía REST.
  * Colecciones: costos_insumos, costos_recetas, costos_platos, costos_promos, costos_categorias y el doc
  * costos_ajustes/config (colchón y margen objetivo). Todas solo-admin en firestore.rules.
  */
@@ -25,7 +25,9 @@ const DEST = 'roal-burger-menu';
 const ORIGEN = 'costox-52134';
 const APPLY = process.argv.includes('--apply');
 const archivo = process.argv.slice(2).find((a) => !a.startsWith('--'));
-const token = () => execSync('gcloud auth print-access-token', { encoding: 'utf8' }).trim();
+// Dos cuentas de gcloud: la que lee CostoX (la activa, dueña de ese proyecto) y la que escribe en FODEXA.
+const CUENTA_DESTINO = 'nodusestudio@gmail.com';
+const token = (cuenta) => execSync('gcloud auth print-access-token' + (cuenta ? ' --account=' + cuenta : ''), { encoding: 'utf8' }).trim();
 
 const dec = (v) => {
     if ('stringValue' in v) return v.stringValue;
@@ -83,7 +85,7 @@ async function escribir(coleccion, id, datos, H) {
     calc.filter((f) => f.fc_pct).sort((a, b) => b.fc_pct - a.fc_pct).slice(0, 10).forEach((f) => console.log(` ${f.plato.padEnd(40)} ${String(f.fc_pct).padStart(5)}% → ${f.fc_real_pct}%  (precio ${f.precio})`));
     if (!APPLY) { console.log('\nNada escrito.'); return; }
 
-    const H = { Authorization: `Bearer ${token()}`, 'x-goog-user-project': DEST, 'Content-Type': 'application/json' };
+    const H = { Authorization: `Bearer ${token(CUENTA_DESTINO)}`, 'x-goog-user-project': DEST, 'Content-Type': 'application/json' };
     const grupos = [['costos_insumos', n.insumos], ['costos_recetas', n.recetas], ['costos_platos', n.platos], ['costos_promos', n.promos], ['costos_categorias', n.categorias]];
     for (const [col, docs] of grupos) {
         for (const { id, ...datos } of docs) await escribir(col, id, datos, H);

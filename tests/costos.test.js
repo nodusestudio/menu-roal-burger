@@ -48,6 +48,17 @@ test('plato: costo real y costo con colchón por separado, margen y precio suger
     assert.match(g.alerta, /margen bajo el objetivo/);
 });
 
+test('activo: solo true cuenta; ausente es idea en estudio', () => {
+    const base = { nombre: 'X', precio: 1000, items: [] };
+    const r = c.calcularPlatos({ insumos, recetas, platos: [{ id: 'a', ...base }, { id: 'b', ...base, activo: true }, { id: 'c', ...base, activo: 'si' }] });
+    assert.deepEqual(r.map((x) => x.activo), [false, true, false]);
+});
+
+test('importación no escribe el campo activo (reimportar no desactiva nada)', () => {
+    const n = normalizarCostoX({ products: [{ id: 'p', name: 'A', realSalePrice: 1, items: [] }] });
+    assert.equal('activo' in n.platos[0], false);
+});
+
 test('colchón 0 deja costo == costo_real', () => {
     const p = { id: 'p1', nombre: 'X', precio: 10000, manoObra: 0, items: [{ id: 'i1', tipo: 'insumo', cantidad: 1 }] };
     const [f] = c.calcularPlatos({ insumos, recetas, platos: [p] });
