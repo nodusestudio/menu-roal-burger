@@ -32764,18 +32764,24 @@ function _cCostoReceta(id, ctx, pila = []) {
     }
     return { porUnidad: total / (_cNum(r.pesoTotal) || 1), faltantes };
 }
-function _cCalcPlato(p, ctx) {
+function _cCalcPlato(p, ctx, pila = []) {
     const f = 1 + _cNum(_costos.cfg.colchonPct) / 100;
-    let ing = 0; const faltantes = [];
+    let ing = 0, exReal = 0, exColch = 0; const faltantes = [];
     for (const it of p.items || []) {
         const q = _cNum(it.cantidad); let c = 0;
+        if (it.tipo === 'plato') { // promos: una línea puede ser otro plato (ya trae su mano de obra y colchón)
+            const sub = ctx.platos && ctx.platos[it.id];
+            if (!sub || pila.includes(it.id)) faltantes.push(`plato:${it.id || '(vacío)'}`);
+            else { const r = _cCalcPlato(sub, ctx, [...pila, p.id]); exReal += q * r.real; exColch += q * r.colch; faltantes.push(...r.faltantes); }
+            continue;
+        }
         if (it.tipo === 'receta') { const r = _cCostoReceta(it.id, ctx); c = q * r.porUnidad; faltantes.push(...r.faltantes); }
         else if (ctx.insumos[it.id]) c = q * _cCostoInsumo(ctx.insumos[it.id]);
         else faltantes.push(`insumo:${it.id || '(vacío)'}`);
         ing += c;
     }
     const mo = _cNum(p.manoObra), precio = _cNum(p.precio);
-    const real = Math.round(ing + mo), colch = Math.round(ing * f + mo);
+    const real = Math.round(ing + mo + exReal), colch = Math.round(ing * f + mo + exColch);
     const m = _cNum(_costos.cfg.margenObjetivoPct) / 100;
     const sug = colch > 0 && m > 0 && m < 1 ? Math.ceil(colch / (1 - m) / 500) * 500 : null;
     return {
@@ -32793,7 +32799,7 @@ function _cSugerido(it) { // coincidencia exacta por nombre normalizado con un p
     return n ? _cProdMenu().find((x) => _cNorm(x.nombre) === n) || null : null;
 }
 function _cCtx() {
-    return { insumos: Object.fromEntries(_costos.insumos.map((x) => [x.id, x])), recetas: Object.fromEntries(_costos.recetas.map((x) => [x.id, x])) };
+    return { insumos: Object.fromEntries(_costos.insumos.map((x) => [x.id, x])), recetas: Object.fromEntries(_costos.recetas.map((x) => [x.id, x])), platos: Object.fromEntries(_costos.platos.map((x) => [x.id, x])) };
 }
 
 async function _costosCargar() {
@@ -32911,11 +32917,16 @@ function _costosRender() {
         });
         html += '</tbody></table></div>';
     } else if (_costosVista === 'promos') {
-        const ids = new Set([..._costos.platos, ..._costos.recetas, ..._costos.insumos].map((x) => x.id));
-        html += '<p class="cs-muted">Promos importadas. Las marcadas ⚠️ apuntan a platos que ya no existen; puedes borrarlas.</p><div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Promo</th><th>Precio</th><th>Líneas</th><th></th></tr></thead><tbody>';
+        const ctx = _cCtx();
+        html += `<p class="cs-muted">Promos y combos. El costo suma los platos/insumos de cada línea (con su mano de obra). <strong>Sugerido</strong> = precio mínimo para tu margen objetivo (${_costos.cfg.margenObjetivoPct}%). Las marcadas ⚠️ apuntan a algo que ya no existe. <strong>Toca una promo para ver sus líneas y editarla.</strong></p>
+        <div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Promo</th><th>Precio</th><th>Costo real</th><th>Con colchón</th><th>Margen</th><th title="Precio mínimo para lograr el margen objetivo">Sugerido</th><th>Líneas</th></tr></thead><tbody>`;
         filtra(_costos.promos).forEach((pr) => {
-            const rotas = (pr.items || []).filter((it) => !ids.has(it.id)).length;
-            html += `<tr><td>${escapeHtml(pr.nombre)}${rotas ? ' ⚠️' : ''}</td><td>${money(_cNum(pr.precio))}</td><td>${(pr.items || []).length}${rotas ? ` <small>(${rotas} rotas)</small>` : ''}</td><td><button type="button" class="pm-icon-btn" data-cs-act="delDoc" data-col="promos" data-id="${escapeHtml(pr.id)}">Borrar</button></td></tr>`;
+            const c = _cCalcPlato(pr, ctx);
+            const bajo = c.margen != null && c.margen < _costos.cfg.margenObjetivoPct;
+            html += `<tr data-cs-open="${escapeHtml(pr.id)}" class="cs-row"><td>${escapeHtml(pr.nombre)}${c.faltantes.length ? ` ⚠️ <small>(${c.faltantes.length} rotas)</small>` : ''}${_costosVinculoTag(pr)}</td><td>${money(c.precio)}</td>
+              <td>${money(c.real)}<small> ${c.fcReal ?? '–'}%</small></td><td>${money(c.colch)}<small> ${c.fc ?? '–'}%</small></td>
+              <td style="color:${bajo ? '#fca5a5' : '#6ee7b7'}">${c.margen ?? '–'}%</td><td>${c.sug ? money(c.sug) : '–'}</td><td>${(pr.items || []).length}</td></tr>`;
+            if (_costosAbierto === pr.id) html += `<tr><td colspan="7">${_costosEditorItems('promos', pr)}</td></tr>`;
         });
         html += '</tbody></table></div>';
     } else if (_costosVista === 'conexion') {
@@ -32929,7 +32940,7 @@ function _costosRender() {
             const pm = _cProdPorId(doc.productoMenuId), sug = !pm ? _cSugerido(doc) : null;
             const dif = pm && _cNum(pm.precio) !== _cNum(doc.precio);
             html += `<tr><td>${col === 'promos' ? 'Promo' : 'Plato'}</td><td>${escapeHtml(doc.nombre)}</td>
-              <td><select class="cs-inp" data-cs-vinc="${col}:${escapeHtml(doc.id)}" style="max-width:240px">${opts(doc.productoMenuId)}</select>${sug ? `<br><small>Sugerido: ${escapeHtml(sug.nombre)}</small>` : ''}</td>
+              <td><select class="cs-inp" data-cs-vinc="${col}:${escapeHtml(doc.id)}" style="max-width:240px">${opts(doc.productoMenuId)}</select>${sug ? `<br><button type="button" class="pm-icon-btn" style="margin-top:4px" data-cs-act="usarSug" data-vinc="${col}:${escapeHtml(doc.id)}" title="Vincular con este producto">✔ Usar sugerido: ${escapeHtml(sug.nombre)}</button>` : ''}</td>
               <td>${money(_cNum(doc.precio))}</td><td style="color:${dif ? '#fca5a5' : 'inherit'}">${pm ? money(_cNum(pm.precio)) : '–'}</td>
               <td>${dif ? `<button type="button" class="pm-icon-btn" data-cs-act="igualarPrecio" data-vinc="${col}:${escapeHtml(doc.id)}">Igualar al menú</button>` : ''}</td></tr>`;
         });
@@ -32961,15 +32972,15 @@ function _costosVincular(col, id, pid) {
 
 function _costosEditorItems(col, doc) {
     const opciones = (tipo, sel) => {
-        const arr = tipo === 'receta' ? _costos.recetas : _costos.insumos;
+        const arr = tipo === 'receta' ? _costos.recetas : tipo === 'plato' ? _costos.platos : _costos.insumos;
         return '<option value="">— elegir —</option>' + arr.map((x) => `<option value="${escapeHtml(x.id)}" ${x.id === sel ? 'selected' : ''}>${escapeHtml(x.nombre)}</option>`).join('');
     };
     const fila = (it, idx) => `<div class="cs-line">
-        <select class="cs-inp" data-cs-line="${idx}" data-k="tipo"><option value="insumo" ${it.tipo !== 'receta' ? 'selected' : ''}>Insumo</option><option value="receta" ${it.tipo === 'receta' ? 'selected' : ''}>Receta</option></select>
+        <select class="cs-inp" data-cs-line="${idx}" data-k="tipo"><option value="insumo" ${it.tipo !== 'receta' ? 'selected' : ''}>Insumo</option><option value="receta" ${it.tipo === 'receta' ? 'selected' : ''}>Receta</option>${col === 'promos' ? `<option value="plato" ${it.tipo === 'plato' ? 'selected' : ''}>Plato</option>` : ''}</select>
         <select class="cs-inp" data-cs-line="${idx}" data-k="id" style="flex:1;min-width:140px">${opciones(it.tipo, it.id)}</select>
         <input type="text" inputmode="decimal" class="cs-inp" style="width:80px" data-cs-line="${idx}" data-k="cantidad" value="${_cNum(it.cantidad)}">
         <button type="button" class="pm-icon-btn" data-cs-act="delLine" data-idx="${idx}">✕</button></div>`;
-    const extra = col === 'platos'
+    const extra = col !== 'recetas'
         ? `<label>Precio <input type="text" inputmode="numeric" class="cs-inp" style="width:90px" data-cs-campo="precio" value="${_cNum(doc.precio)}"></label>
            <label>Mano de obra <input type="text" inputmode="numeric" class="cs-inp" style="width:90px" data-cs-campo="manoObra" value="${_cNum(doc.manoObra)}"></label>`
         : `<label>Peso total <input type="text" inputmode="decimal" class="cs-inp" style="width:90px" data-cs-campo="pesoTotal" value="${_cNum(doc.pesoTotal)}"></label>`;
@@ -32980,7 +32991,7 @@ function _costosEditorItems(col, doc) {
 2. ...">${escapeHtml(doc.preparacion || '')}</textarea></label>
         <div class="cs-bar"><button type="button" class="pm-icon-btn" data-cs-act="addLine">+ Línea</button>
         <button type="button" class="cat-new-save-btn" data-cs-act="saveItems">Guardar cambios</button>
-        ${col === 'platos' ? `<button type="button" class="pm-icon-btn" data-cs-act="delDoc" data-col="platos" data-id="${escapeHtml(doc.id)}">Borrar plato</button>` : ''}</div></div>`;
+        ${col !== 'recetas' ? `<button type="button" class="pm-icon-btn" data-cs-act="delDoc" data-col="${col}" data-id="${escapeHtml(doc.id)}">Borrar ${col === 'promos' ? 'promo' : 'plato'}</button>` : ''}</div></div>`;
 }
 
 function _costosBind() {
@@ -33006,6 +33017,12 @@ function _costosBind() {
                 try { await firebaseDb.collection(COSTOS_COLS[col]).doc(doc.id).delete(); _costos[col] = _costos[col].filter((x) => x.id !== doc.id); _costosAbierto = null; showNotice('Borrado.', 'ok'); } catch (err) { showNotice('No se pudo borrar: ' + (err.message || err), 'error'); }
                 return _costosRender();
             }
+            if (a === 'usarSug') {
+                const [col, id] = act.dataset.vinc.split(':'), doc = _costos[col].find((x) => x.id === id), sug = doc && _cSugerido(doc);
+                if (!sug) return;
+                try { await _costosVincular(col, id, sug.id); showNotice(`Vinculado con ${sug.nombre}.`, 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
+                return _costosRender();
+            }
             if (a === 'linkExactas') {
                 const lista = _costosSinVincular().map((x) => ({ ...x, sug: _cSugerido(x.doc) })).filter((x) => x.sug);
                 try { await Promise.all(lista.map((x) => _costosVincular(x.col, x.doc.id, x.sug.id))); showNotice(`${lista.length} vinculados.`, 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
@@ -33021,12 +33038,12 @@ function _costosBind() {
             if (ed) {
                 const col = ed.dataset.csCol, doc = _costos[col].find((x) => x.id === ed.dataset.csDoc);
                 if (!doc) return;
-                if (a === 'addLine') { doc.items = [...(doc.items || []), { tipo: 'insumo', id: '', cantidad: 0, nombre: '' }]; return _costosRender(); }
+                if (a === 'addLine') { doc.items = [...(doc.items || []), { tipo: col === 'promos' ? 'plato' : 'insumo', id: '', cantidad: 1, nombre: '' }]; return _costosRender(); }
                 if (a === 'delLine') { doc.items = doc.items.filter((_, i) => i !== Number(act.dataset.idx)); return _costosRender(); }
                 if (a === 'saveItems') {
-                    const data = { items: (doc.items || []).map((it) => ({ tipo: it.tipo, id: it.id, cantidad: _cNum(it.cantidad), nombre: it.nombre || '' })) };
+                    const data = { items: (doc.items || []).map((it) => ({ ...it, tipo: it.tipo, id: it.id, cantidad: _cNum(it.cantidad), nombre: it.nombre || '' })) }; // ...it conserva campos de promos (precioVenta, precioOpcional)
                     data.preparacion = String(doc.preparacion || '').slice(0, 5000);
-                    if (col === 'platos') { data.precio = _cNum(doc.precio); data.manoObra = _cNum(doc.manoObra); } else data.pesoTotal = _cNum(doc.pesoTotal);
+                    if (col !== 'recetas') { data.precio = _cNum(doc.precio); data.manoObra = _cNum(doc.manoObra); } else data.pesoTotal = _cNum(doc.pesoTotal);
                     try { await _costosGuardar(COSTOS_COLS[col], doc.id, data); showNotice('Guardado.', 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
                     return _costosRender();
                 }
@@ -33074,7 +33091,7 @@ function _costosBind() {
                 const it = doc.items[Number(t.dataset.csLine)], k = t.dataset.k;
                 if (k === 'cantidad') it.cantidad = _cParse(t.value);
                 else if (k === 'tipo') { it.tipo = t.value; it.id = ''; it.nombre = ''; }
-                else { it.id = t.value; const src = (it.tipo === 'receta' ? _costos.recetas : _costos.insumos).find((x) => x.id === t.value); it.nombre = src ? src.nombre : ''; }
+                else { it.id = t.value; const src = (it.tipo === 'receta' ? _costos.recetas : it.tipo === 'plato' ? _costos.platos : _costos.insumos).find((x) => x.id === t.value); it.nombre = src ? src.nombre : ''; }
                 _costosRender();
             }
         }
