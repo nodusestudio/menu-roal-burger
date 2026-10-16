@@ -33028,7 +33028,43 @@ function _fodiFlotInit() {
         _ffRec = rec; mic.classList.add('on'); burbuja.classList.add('escuchando'); mic.textContent = '⏹ Te escucho…'; estado.textContent = 'Habla ahora…';
         try { rec.start(); } catch (_) { _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando'); }
     };
-    burbuja.addEventListener('click', () => { raiz.classList.toggle('abierto'); if (raiz.classList.contains('abierto') && SR && !_ffBusy && !_ffRec) setTimeout(escuchar, 250); });
+    // Arrastrable (mouse y dedo): la posición se recuerda; un toque sin mover abre/cierra
+    const W = 64;
+    const acomodar = () => {
+        const r = raiz.getBoundingClientRect();
+        raiz.classList.toggle('panel-abajo', r.top + W / 2 < window.innerHeight / 2);
+        raiz.classList.toggle('panel-izq', r.left + W / 2 < window.innerWidth / 2);
+    };
+    const ponerPos = (x, y) => {
+        x = Math.max(4, Math.min(window.innerWidth - W - 4, x)); y = Math.max(4, Math.min(window.innerHeight - W - 4, y));
+        raiz.style.left = x + 'px'; raiz.style.top = y + 'px'; raiz.style.right = 'auto'; raiz.style.bottom = 'auto';
+        acomodar(); return { x, y };
+    };
+    try { const g = JSON.parse(localStorage.getItem('fodiFlotPos') || 'null'); if (g && isFinite(g.x) && isFinite(g.y)) ponerPos(g.x, g.y); else acomodar(); } catch (_) { acomodar(); }
+    window.addEventListener('resize', () => { if (raiz.style.left) ponerPos(parseFloat(raiz.style.left), parseFloat(raiz.style.top)); else acomodar(); });
+    let drag = null, movido = false;
+    burbuja.addEventListener('pointerdown', (e) => {
+        const r = raiz.getBoundingClientRect();
+        drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY }; movido = false;
+        try { burbuja.setPointerCapture(e.pointerId); } catch (_) { /* sin captura */ }
+    });
+    burbuja.addEventListener('pointermove', (e) => {
+        if (!drag) return;
+        if (!movido && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 8) return;
+        movido = true; burbuja.classList.add('arrastrando');
+        ponerPos(e.clientX - drag.dx, e.clientY - drag.dy);
+    });
+    const soltar = () => {
+        if (!drag) return; drag = null; burbuja.classList.remove('arrastrando');
+        if (movido) { try { localStorage.setItem('fodiFlotPos', JSON.stringify({ x: parseFloat(raiz.style.left), y: parseFloat(raiz.style.top) })); } catch (_) { /* sin storage */ } }
+    };
+    burbuja.addEventListener('pointerup', soltar); burbuja.addEventListener('pointercancel', soltar);
+    burbuja.addEventListener('click', () => {
+        if (movido) { movido = false; return; }
+        raiz.classList.toggle('abierto');
+        // El micrófono se inicia dentro del mismo toque (móvil exige gesto del usuario)
+        if (raiz.classList.contains('abierto') && SR && !_ffBusy && !_ffRec) escuchar();
+    });
     $('fodiFlotCerrar').addEventListener('click', () => { raiz.classList.remove('abierto'); callar(); if (_ffRec) _ffRec.stop(); });
     mic.addEventListener('click', escuchar);
     $('fodiFlotCalla').addEventListener('click', callar);

@@ -16834,13 +16834,16 @@
 
     <!-- FODI flotante: burbuja + mini chat por voz (solo admin, nunca mesero) -->
     <style>
-        #fodiFlot{position:fixed;right:22px;bottom:22px;z-index:9000;display:none;flex-direction:column;align-items:flex-end;gap:10px;font-family:inherit}
+        #fodiFlot{position:fixed;right:16px;bottom:96px;width:64px;height:64px;z-index:2147483000;display:none;font-family:inherit;touch-action:none}
         body.admin-unlocked:not(.mesero-mode) #fodiFlot.on{display:flex}
-        #fodiFlotBurbuja{width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,179,92,.7);background:#1b2133;cursor:pointer;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);transition:transform .15s}
+        #fodiFlotBurbuja{touch-action:none;-webkit-user-select:none;user-select:none;width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,179,92,.7);background:#1b2133;cursor:pointer;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);transition:transform .15s}
         #fodiFlotBurbuja:hover{transform:scale(1.08)}
         #fodiFlotBurbuja.escuchando{border-color:#ef4444;box-shadow:0 0 0 6px rgba(239,68,68,.3)}
-        #fodiFlotPanel{display:none;width:min(340px,calc(100vw - 44px));background:#1b2133;color:#eef4ff;border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:14px;box-shadow:0 12px 36px rgba(0,0,0,.55)}
+        #fodiFlotPanel{display:none;position:absolute;bottom:72px;right:0;width:min(340px,calc(100vw - 24px));background:#1b2133;color:#eef4ff;border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:14px;box-shadow:0 12px 36px rgba(0,0,0,.55)}
         #fodiFlot.abierto #fodiFlotPanel{display:block}
+        #fodiFlot.panel-abajo #fodiFlotPanel{bottom:auto;top:72px}
+        #fodiFlot.panel-izq #fodiFlotPanel{right:auto;left:0}
+        #fodiFlotBurbuja.arrastrando{cursor:grabbing;transform:scale(1.1)}
         #fodiFlotPanel .ff-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-bottom:8px}
         #fodiFlotPanel .ff-x{background:none;border:0;color:#eef4ff;font-size:1.1rem;cursor:pointer}
         #fodiFlotTexto{min-height:64px;max-height:210px;overflow-y:auto;font-size:.92rem;line-height:1.5;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.08);white-space:pre-wrap}
