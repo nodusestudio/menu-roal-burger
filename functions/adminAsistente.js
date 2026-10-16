@@ -566,7 +566,128 @@ function ventasPorDiaHora(ventas) {
     return { por_dia_semana: fmt(dias), por_hora: fmt(horas).filter((x) => x.pedidos > 0) };
 }
 
-const PESTANAS_NAVEGABLES = ['pedidos', 'menu', 'informes', 'configuracion', 'clientes', 'mensajes', 'chatroal', 'metricas', 'finanzas', 'costos', 'cuponpana', 'redes'];
+// ---------- Redes sociales ----------
+
+function serieSeguidores(docs) {
+    const s = docs.map((d) => ({ fecha: String(d.fecha || ''), n: Number(d.seguidores) })).filter((x) => x.fecha && Number.isFinite(x.n)).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    if (!s.length) return null;
+    const primero = s[0];
+    const ultimo = s[s.length - 1];
+    return { primero: { fecha: primero.fecha, seguidores: primero.n }, ultimo: { fecha: ultimo.fecha, seguidores: ultimo.n }, cambio: ultimo.n - primero.n, dias_con_dato: s.length };
+}
+
+// Publicaciones medidas (Instagram y Facebook) del rango, ordenadas por alcance. `ventasDia` = { 'YYYY-MM-DD': total }.
+function topPublicaciones(items, ventasDia = {}, n = 8) {
+    const cifra = (u, k) => (Number.isFinite(Number(u?.[k])) && u[k] !== null ? Number(u[k]) : null);
+    return items.map((m) => {
+        const u = m.ultimo || {};
+        const fecha = m.publicadaAtMs ? bogotaDateKey(m.publicadaAtMs) : String(m.fecha || '');
+        return {
+            red: m.red, tipo: m.tipo || '', fecha, alcance: cifra(u, 'reach'), vistas: cifra(u, 'views'),
+            interacciones: cifra(u, 'total_interactions'), likes: cifra(u, 'likes'), comentarios: cifra(u, 'comments'), compartidas: cifra(u, 'shares'),
+            guardados: cifra(u, 'saved'), ventas_ese_dia: ventasDia[fecha] ?? null, texto: m.texto || ''
+        };
+    }).sort((a, b) => (b.alcance ?? b.vistas ?? 0) - (a.alcance ?? a.vistas ?? 0)).slice(0, Math.max(1, Math.min(20, n)));
+}
+
+async function redesSociales(db, args, r, ventas) {
+    const IG_NOTA = 'Las historias solo se miden 24 h; las publicaciones, 14 días.';
+    const leer = async (col, campo, desde, hasta) => (await db.collection(col).where(campo, '>=', desde).where(campo, '<=', hasta).get()).docs.map((d) => ({ id: d.id, ...d.data() }));
+    const [igSeg, fbSeg, igMet, fbMet] = await Promise.all([
+        leer('instagram_seguidores', 'fecha', args.desde, args.hasta),
+        leer('facebook_pagina_dias', 'fecha', args.desde, args.hasta),
+        leer('instagram_metricas', 'publicadaAtMs', r.desdeMs, r.hastaMs - 1),
+        leer('facebook_metricas', 'publicadaAtMs', r.desdeMs, r.hastaMs - 1)
+    ]);
+    const ventasDia = {};
+    for (const v of ventas) { const k = bogotaDateKey(v.ms); ventasDia[k] = (ventasDia[k] || 0) + v.total; }
+    const items = [
+        ...igMet.filter((m) => m.tipo !== 'historia').map((m) => ({ ...m, red: 'instagram' })),
+        ...fbMet.map((m) => ({ ...m, red: 'facebook' }))
+    ];
+    const top = topPublicaciones(items, ventasDia, args.n || 8);
+    // Texto de las publicaciones destacadas (una lectura por cada una, máx. 8).
+    for (const t of top) {
+        const src = items.find((m) => m.red === t.red && (m.fecha === t.fecha || (m.publicadaAtMs && bogotaDateKey(m.publicadaAtMs) === t.fecha)) && !m._leido && (m.postId));
+        if (!src) continue;
+        src._leido = true;
+        try { t.texto = String((await db.collection('instagram_posts').doc(src.postId).get()).data()?.caption || '').slice(0, 140); } catch (_) { /* sin texto */ }
+    }
+    const historias = igMet.filter((m) => m.tipo === 'historia');
+    const sumaHist = historias.reduce((a, m) => a + (Number(m.ultimo?.reach) || 0), 0);
+    return {
+        rango: { desde: args.desde, hasta: args.hasta, dias: r.dias },
+        seguidores_instagram: serieSeguidores(igSeg),
+        seguidores_facebook: serieSeguidores(fbSeg),
+        publicaciones_medidas: items.length,
+        top_publicaciones: top,
+        historias_instagram: { cantidad: historias.length, alcance_total: sumaHist },
+        nota: IG_NOTA
+    };
+}
+
+// ---------- Calculadora segura (sin eval) ----------
+
+const FUNCIONES_CALC = { round: Math.round, floor: Math.floor, ceil: Math.ceil, abs: Math.abs, sqrt: Math.sqrt, min: Math.min, max: Math.max, ln: Math.log };
+
+// Expresión aritmética: + - * / % ^ paréntesis, "12%" (=0,12), min/max/round/abs/sqrt/ceil/floor/ln. Devuelve { resultado } o { error }.
+function calcular(expr) {
+    const src = String(expr || '').replace(/[$\s]/g, '').trim();
+    if (!src) return { error: 'Falta la expresión.' };
+    if (src.length > 300) return { error: 'Expresión demasiado larga.' };
+    const tokens = src.match(/\d+(?:\.\d+)?|[a-z]+|[-+*/%^(),]|\S/gi) || [];
+    let i = 0;
+    const peek = () => tokens[i];
+    const eat = (t) => { if (tokens[i] !== t) throw new Error(`Se esperaba "${t}"`); i += 1; };
+    function primario() {
+        const t = tokens[i];
+        if (t === undefined) throw new Error('Expresión incompleta');
+        if (t === '(') { i += 1; const v = suma(); eat(')'); return v; }
+        if (t === '-') { i += 1; return -potencia(); }
+        if (t === '+') { i += 1; return potencia(); }
+        if (/^\d/.test(t)) { i += 1; return Number(t); }
+        if (/^[a-z]+$/i.test(t)) {
+            const f = FUNCIONES_CALC[t.toLowerCase()];
+            if (!f) throw new Error(`Función desconocida: ${t}`);
+            i += 1; eat('(');
+            const args = [];
+            if (peek() !== ')') { args.push(suma()); while (peek() === ',') { i += 1; args.push(suma()); } }
+            eat(')');
+            return f(...args);
+        }
+        throw new Error(`Símbolo no válido: ${t}`);
+    }
+    function potencia() {
+        let b = primario();
+        while (peek() === '%' && (tokens[i + 1] === undefined || /^[-+*/%^),]$/.test(tokens[i + 1]))) { i += 1; b /= 100; }
+        if (peek() === '^') { i += 1; return b ** potencia(); }
+        return b;
+    }
+    function producto() {
+        let v = potencia();
+        while (peek() === '*' || peek() === '/' || peek() === '%') {
+            const op = tokens[i]; i += 1;
+            const d = potencia();
+            if (op === '*') v *= d; else if (op === '/') v /= d; else v %= d;
+        }
+        return v;
+    }
+    function suma() {
+        let v = producto();
+        while (peek() === '+' || peek() === '-') { const op = tokens[i]; i += 1; const d = producto(); v = op === '+' ? v + d : v - d; }
+        return v;
+    }
+    try {
+        const v = suma();
+        if (i < tokens.length) throw new Error(`Sobra: ${tokens.slice(i).join(' ')}`);
+        if (!Number.isFinite(v)) return { error: 'El resultado no es un número finito (¿división por cero?).' };
+        return { expresion: src, resultado: Math.round(v * 1e6) / 1e6 };
+    } catch (err) {
+        return { error: err.message };
+    }
+}
+
+const PESTANAS_NAVEGABLES =['pedidos', 'menu', 'informes', 'configuracion', 'clientes', 'mensajes', 'chatroal', 'metricas', 'finanzas', 'costos', 'cuponpana', 'redes'];
 const VISTAS_COSTOS = ['platos', 'ideas', 'insumos', 'recetas', 'promos', 'conexion', 'pendientes'];
 
 const TOOLS = [
@@ -649,6 +770,16 @@ const TOOLS = [
             buscar: { type: 'string', description: 'Filtra por texto en el nombre (ej. "empanada", "papuda").' },
             incluir_ideas: { type: 'boolean', description: 'true para incluir también los platos aún en estudio (no activos).' }
         } }
+    },
+    {
+        name: 'redes_sociales',
+        description: 'Redes sociales del rango: crecimiento de seguidores (Instagram y Facebook), publicaciones mejor medidas (alcance, vistas, interacciones, texto) cruzadas con las ventas de ese mismo día, y alcance de historias de Instagram. Úsala para "¿qué publicación funcionó?", "¿crecemos?", "¿las redes mueven ventas?".',
+        input_schema: { type: 'object', properties: { ...FECHAS, n: { type: 'integer', description: 'Publicaciones a listar (1-20, por defecto 8).' } }, required: ['desde', 'hasta'] }
+    },
+    {
+        name: 'calcular',
+        description: 'Calculadora exacta para CUALQUIER operación aritmética (márgenes, punto de equilibrio, porcentajes, proyecciones, conversiones). Úsala siempre en vez de calcular de cabeza. Admite + - * / % (módulo) ^ paréntesis, "12%" (=0,12) y round/floor/ceil/abs/sqrt/min/max/ln. Números con punto decimal y sin separador de miles: "(48500-31200)/48500*100".',
+        input_schema: { type: 'object', properties: { expresion: { type: 'string' } }, required: ['expresion'] }
     },
     {
         name: 'proponer_accion',
@@ -747,6 +878,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             const items = (Array.isArray(d.items) ? d.items : []).map((i) => ({ nombre: String(i.nombre || ''), monto_mensual: Number(i.monto) || 0 }));
             return { items, total_mensual: items.reduce((a, i) => a + i.monto_mensual, 0), margen_minimo_pct: Number(d.margenMinimo) || null };
         }
+        if (nombre === 'calcular') return calcular(args.expresion);
         if (nombre === 'puntos_lealtad') return await resumenPuntos(db);
         if (nombre === 'costo_por_plato') return await costoPorPlato(args, db);
         if (nombre === 'comparar_periodos') {
@@ -773,6 +905,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             return { rango, ...resumenCierres(await cargarCierres(db, r.desdeMs, r.hastaMs), r.desdeMs, r.hastaMs) };
         }
         const ventas = await cargarPedidosRango(db, r.desdeMs, r.hastaMs);
+        if (nombre === 'redes_sociales') return await redesSociales(db, args, r, ventas);
         if (nombre === 'resumen_ventas') return { rango, ...resumenVentas(ventas, args.agrupar) };
         if (nombre === 'ventas_por_metodo_pago') return { rango, ...ventasPorMetodo(ventas) };
         if (nombre === 'top_productos') return { rango, ...topProductos(ventas, args) };
@@ -793,5 +926,5 @@ module.exports = {
     resumenDe, resumenVentas, ventasPorDiaHora, ventasPorMetodo, ventasPorOrigenTipo, topProductos,
     variantesVendidas, analisisClientes, usoPromos, etiquetaVariante,
     esGastoReal, resumenGastos, resumenCierres, compararResumenes, recortarResultado,
-    ejecutarHerramienta, proponerAccion, PESTANAS_NAVEGABLES, VISTAS_COSTOS
+    ejecutarHerramienta, proponerAccion, calcular, topPublicaciones, serieSeguidores, PESTANAS_NAVEGABLES, VISTAS_COSTOS
 };
