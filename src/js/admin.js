@@ -32591,7 +32591,7 @@ const _costosGuardar = (col, id, data) => firebaseDb.collection(col).doc(id).set
 
 function _costosPendientes() {
     const ctx = _cCtx(), out = [];
-    _costos.platos.forEach((p) => {
+    _costos.platos.filter((p) => p.activo === true).forEach((p) => { // las ideas/pruebas no generan pendientes
         const c = _cCalcPlato(p, ctx);
         if (c.faltantes.length) out.push({ k: 'Plato con referencias rotas', n: p.nombre, d: 'Un insumo o receta fue borrado o está vacío. Ábrelo y corrige las líneas.' });
         if (!_cNum(p.precio)) out.push({ k: 'Plato sin precio', n: p.nombre, d: 'Sin precio no hay margen ni precio sugerido.' });
@@ -32613,7 +32613,7 @@ function _costosRender() {
     const pend = _costosPendientes();
     const cfgInp = (k, v) => `<input type="text" inputmode="numeric" class="cs-inp" style="width:70px" data-cs-cfg="${k}" value="${v}">`;
     const nAct = _costos.platos.filter((p) => p.activo === true).length;
-    const tabs = [['platos', `Platos activos (${nAct})`], ['ideas', `Ideas (${_costos.platos.length - nAct})`], ['insumos', `Insumos (${_costos.insumos.length})`], ['recetas', `Recetas (${_costos.recetas.length})`], ['conexion', `Conexión (${_costosSinVincular().length})`], ['pendientes', `Pendientes (${pend.length})`]];
+    const tabs = [['platos', `Platos activos (${nAct})`], ['ideas', `Ideas (${_costos.platos.length - nAct})`], ['insumos', `Insumos (${_costos.insumos.length})`], ['recetas', `Recetas (${_costos.recetas.length})`], ['promos', `Promos (${_costos.promos.length})`], ['conexion', `Conexión (${_costosSinVincular().length})`], ['pendientes', `Pendientes (${pend.length})`]];
     let html = `<div class="cs-bar">
         <label>Colchón % ${cfgInp('colchonPct', _costos.cfg.colchonPct)}</label>
         <label>Margen objetivo % ${cfgInp('margenObjetivoPct', _costos.cfg.margenObjetivoPct)}</label>
@@ -32652,6 +32652,14 @@ function _costosRender() {
             const c = _cCostoReceta(r.id, ctx);
             html += `<tr class="cs-row" data-cs-open="${escapeHtml(r.id)}"><td>${escapeHtml(r.nombre)}${c.faltantes.length ? ' ⚠️' : ''}</td><td>${_cNum(r.pesoTotal)}</td><td>${Math.round(c.porUnidad * 1000) / 1000}</td></tr>`;
             if (_costosAbierto === r.id) html += `<tr><td colspan="3">${_costosEditorItems('recetas', r)}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+    } else if (_costosVista === 'promos') {
+        const ids = new Set([..._costos.platos, ..._costos.recetas, ..._costos.insumos].map((x) => x.id));
+        html += '<p class="cs-muted">Promos importadas. Las marcadas ⚠️ apuntan a platos que ya no existen; puedes borrarlas.</p><div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Promo</th><th>Precio</th><th>Líneas</th><th></th></tr></thead><tbody>';
+        filtra(_costos.promos).forEach((pr) => {
+            const rotas = (pr.items || []).filter((it) => !ids.has(it.id)).length;
+            html += `<tr><td>${escapeHtml(pr.nombre)}${rotas ? ' ⚠️' : ''}</td><td>${money(_cNum(pr.precio))}</td><td>${(pr.items || []).length}${rotas ? ` <small>(${rotas} rotas)</small>` : ''}</td><td><button type="button" class="pm-icon-btn" data-cs-act="delDoc" data-col="promos" data-id="${escapeHtml(pr.id)}">Borrar</button></td></tr>`;
         });
         html += '</tbody></table></div>';
     } else if (_costosVista === 'conexion') {
@@ -32713,7 +32721,8 @@ function _costosEditorItems(col, doc) {
         <div class="cs-bar">${extra}</div>
         ${(doc.items || []).map(fila).join('') || '<p class="cs-muted">Sin líneas.</p>'}
         <div class="cs-bar"><button type="button" class="pm-icon-btn" data-cs-act="addLine">+ Línea</button>
-        <button type="button" class="cat-new-save-btn" data-cs-act="saveItems">Guardar cambios</button></div></div>`;
+        <button type="button" class="cat-new-save-btn" data-cs-act="saveItems">Guardar cambios</button>
+        ${col === 'platos' ? `<button type="button" class="pm-icon-btn" data-cs-act="delDoc" data-col="platos" data-id="${escapeHtml(doc.id)}">Borrar plato</button>` : ''}</div></div>`;
 }
 
 function _costosBind() {
@@ -32731,6 +32740,12 @@ function _costosBind() {
                 const g = (k) => _cParse(root.querySelector(`[data-cs-cfg="${k}"]`).value);
                 _costos.cfg = { colchonPct: g('colchonPct'), margenObjetivoPct: g('margenObjetivoPct') };
                 try { await firebaseDb.collection('costos_ajustes').doc('config').set({ ..._costos.cfg, actualizadoAt: firestoreNow() }, { merge: true }); showNotice('Ajustes de costos guardados.', 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
+                return _costosRender();
+            }
+            if (a === 'delDoc') {
+                const col = act.dataset.col, doc = _costos[col].find((x) => x.id === act.dataset.id); if (!doc) return;
+                if (!confirm(`¿Borrar "${doc.nombre}"? No se puede deshacer.`)) return;
+                try { await firebaseDb.collection(COSTOS_COLS[col]).doc(doc.id).delete(); _costos[col] = _costos[col].filter((x) => x.id !== doc.id); _costosAbierto = null; showNotice('Borrado.', 'ok'); } catch (err) { showNotice('No se pudo borrar: ' + (err.message || err), 'error'); }
                 return _costosRender();
             }
             if (a === 'linkExactas') {
