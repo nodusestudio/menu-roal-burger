@@ -9291,3 +9291,19 @@ html.low-fx .support-feedback--error:not(:empty) {
 .cs-editor{padding:8px 0}
 .cs-line{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 6px}
 .cs-pi{padding:8px 10px;border:1px solid rgba(255,255,255,.14);border-radius:10px;margin:0 0 6px;font-size:.85rem}
+/* Contraste en Costos y recetas: botones/íconos legibles sobre fondo oscuro */
+#costosBody{color:#eef4ff}
+#costosBody .cs-inp{color:#f4f7ff;background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.3);color-scheme:dark}
+#costosBody .cs-inp option{background:#1b2133;color:#f4f7ff}
+#costosBody .cs-inp::placeholder{color:#9fb0d0}
+#costosBody input[type=search]::-webkit-search-cancel-button{filter:invert(1) brightness(1.6);opacity:1;cursor:pointer}
+#costosBody input[type=checkbox]{width:18px;height:18px;accent-color:#34d399;cursor:pointer}
+#costosBody .cs-tab{color:#eef4ff;border-color:rgba(255,255,255,.3)}
+#costosBody .cs-tab.on{background:#f59e0b;color:#1a1204;border-color:#f59e0b}
+#costosBody .pm-icon-btn{color:#eef4ff;opacity:1;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);padding:6px 10px;min-height:34px;border-radius:8px;cursor:pointer}
+#costosBody .pm-icon-btn:hover{background:rgba(255,255,255,.18)}
+#costosBody .cs-line .pm-icon-btn[data-cs-act=delLine]{color:#fca5a5;border-color:#fca5a5;font-weight:700}
+#costosBody .cs-muted,#costosBody .cs-tbl th,#costosBody .cs-tbl small{color:#c9d6f0}
+.cs-prep{display:flex;flex-direction:column;gap:6px;margin:10px 0;font-size:.85rem}
+.cs-prep textarea{width:100%;resize:vertical;min-height:90px}
+

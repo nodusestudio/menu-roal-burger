@@ -32707,14 +32707,14 @@ function _costosRender() {
 
     if (_costosVista === 'platos' || _costosVista === 'ideas') {
         const ctx = _cCtx();
-        const lista = filtra(_costos.platos.filter((p) => (_costosVista === 'platos') === (p.activo === true)));
-        html += `<p class="cs-muted">Costo real = precio de compra + merma real + mano de obra. Con colchón = ingredientes × ${1 + _costos.cfg.colchonPct / 100} + mano de obra. Margen y sugerido se miden sobre el costo con colchón. Toca un plato para editarlo.</p>
-        <div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Activo</th><th>Plato</th><th>Precio</th><th>Costo real</th><th>Con colchón</th><th>Margen</th><th>Sugerido</th></tr></thead><tbody>`;
+        const lista = q ? filtra(_costos.platos) : _costos.platos.filter((p) => (_costosVista === 'platos') === (p.activo === true)); // con texto en el buscador se busca en activos E ideas
+        html += `${q ? `<p class="cs-muted">Resultados de "${escapeHtml(_costosBuscar.trim())}" entre platos activos e ideas (${lista.length}).</p>` : ''}<p class="cs-muted">Costo real = precio de compra + merma real + mano de obra. Con colchón = ingredientes × ${1 + _costos.cfg.colchonPct / 100} + mano de obra. Margen = lo que te queda del precio después del costo con colchón. <strong>Sugerido</strong> = el precio mínimo de venta para lograr tu margen objetivo (${_costos.cfg.margenObjetivoPct}%): costo con colchón ÷ (1 − ${_costos.cfg.margenObjetivoPct}%), redondeado a los $500 siguientes. Si tu precio está por debajo, el margen sale en rojo. Toca un plato para editarlo.</p>
+        <div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Activo</th><th>Plato</th><th>Precio</th><th>Costo real</th><th>Con colchón</th><th>Margen</th><th title="Precio mínimo para lograr el margen objetivo">Sugerido</th></tr></thead><tbody>`;
         lista.forEach((p) => {
             const c = _cCalcPlato(p, ctx);
             const bajo = c.margen != null && c.margen < _costos.cfg.margenObjetivoPct;
             html += `<tr data-cs-open="${escapeHtml(p.id)}" class="cs-row"><td><input type="checkbox" data-cs-activo="${escapeHtml(p.id)}" ${p.activo === true ? 'checked' : ''}></td>
-              <td>${escapeHtml(p.nombre)}${c.faltantes.length ? ' ⚠️' : ''}${_costosVinculoTag(p)}</td><td>${money(c.precio)}</td>
+              <td>${escapeHtml(p.nombre)}${q && p.activo !== true ? ' <small>(idea)</small>' : ''}${c.faltantes.length ? ' ⚠️' : ''}${_costosVinculoTag(p)}</td><td>${money(c.precio)}</td>
               <td>${money(c.real)}<small> ${c.fcReal ?? '–'}%</small></td><td>${money(c.colch)}<small> ${c.fc ?? '–'}%</small></td>
               <td style="color:${bajo ? '#fca5a5' : '#6ee7b7'}">${c.margen ?? '–'}%</td><td>${c.sug ? money(c.sug) : '–'}</td></tr>`;
             if (_costosAbierto === p.id) html += `<tr><td colspan="7">${_costosEditorItems('platos', p)}</td></tr>`;
@@ -32724,20 +32724,20 @@ function _costosRender() {
         if (alzas.length) {
             html += `<div class="cs-muted" style="border:1px solid #f59e0b;border-radius:10px;padding:8px 12px;margin-bottom:8px"><strong>📈 Subieron de precio (últimos 30 días)</strong><ul style="margin:6px 0 0 18px">${alzas.map((a) => `<li><strong>${escapeHtml(a.nombre)}</strong>: ${money(a.desde)} → ${money(a.hasta)} (+${a.pct}%)${a.platos.length ? ` · afecta: ${escapeHtml(a.platos.slice(0, 6).join(', '))}${a.platos.length > 6 ? ` y ${a.platos.length - 6} más` : ''}` : ''}</li>`).join('')}</ul></div>`;
         }
-        html += `<p class="cs-muted">Cambia el precio de compra y la merma real; todo se recalcula. El historial de precios se guarda solo.</p><div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th>Precio compra</th><th>Peso empaque</th><th>Merma %</th><th>Costo/unid</th></tr></thead><tbody>`;
+        html += `<p class="cs-muted">Cambia el precio de compra y la merma real; todo se recalcula. El historial de precios se guarda solo.</p><div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th>Precio compra</th><th>Peso empaque</th><th>Merma %</th><th>Costo/unid</th><th>Con colchón ${_costos.cfg.colchonPct}%</th></tr></thead><tbody>`;
         filtra(_costos.insumos).forEach((i) => {
             const sin = !(_cNum(i.precioCompra) > 0 && _cNum(i.pesoEmpaque) > 0);
             const inp = (k, v) => `<input type="text" inputmode="decimal" class="cs-inp" style="width:90px" data-cs-ins="${escapeHtml(i.id)}" data-k="${k}" value="${v ?? 0}">`;
-            html += `<tr><td>${escapeHtml(i.nombre)}${sin ? ' ⚠️' : ''}</td><td>${escapeHtml(i.unidad || '')}</td><td>${inp('precioCompra', i.precioCompra)}</td><td>${inp('pesoEmpaque', i.pesoEmpaque)}</td><td>${inp('mermaPct', i.mermaPct)}</td><td>${Math.round(_cCostoInsumo(i) * 1000) / 1000}</td></tr>`;
+            html += `<tr><td>${escapeHtml(i.nombre)}${sin ? ' ⚠️' : ''}</td><td>${escapeHtml(i.unidad || '')}</td><td>${inp('precioCompra', i.precioCompra)}</td><td>${inp('pesoEmpaque', i.pesoEmpaque)}</td><td>${inp('mermaPct', i.mermaPct)}</td><td>${Math.round(_cCostoInsumo(i) * 1000) / 1000}</td><td>${Math.round(_cCostoInsumo(i) * (1 + _cNum(_costos.cfg.colchonPct) / 100) * 1000) / 1000}</td></tr>`;
         });
         html += '</tbody></table></div>';
     } else if (_costosVista === 'recetas') {
         const ctx = _cCtx();
-        html += '<div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Receta</th><th>Peso total</th><th>Costo/unid</th></tr></thead><tbody>';
+        html += '<div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Receta</th><th>Peso total</th><th>Costo/unid</th><th>Con colchón ${_costos.cfg.colchonPct}%</th></tr></thead><tbody>';
         filtra(_costos.recetas).forEach((r) => {
             const c = _cCostoReceta(r.id, ctx);
-            html += `<tr class="cs-row" data-cs-open="${escapeHtml(r.id)}"><td>${escapeHtml(r.nombre)}${c.faltantes.length ? ' ⚠️' : ''}</td><td>${_cNum(r.pesoTotal)}</td><td>${Math.round(c.porUnidad * 1000) / 1000}</td></tr>`;
-            if (_costosAbierto === r.id) html += `<tr><td colspan="3">${_costosEditorItems('recetas', r)}</td></tr>`;
+            html += `<tr class="cs-row" data-cs-open="${escapeHtml(r.id)}"><td>${escapeHtml(r.nombre)}${c.faltantes.length ? ' ⚠️' : ''}</td><td>${_cNum(r.pesoTotal)}</td><td>${Math.round(c.porUnidad * 1000) / 1000}</td><td>${Math.round(c.porUnidad * (1 + _cNum(_costos.cfg.colchonPct) / 100) * 1000) / 1000}</td></tr>`;
+            if (_costosAbierto === r.id) html += `<tr><td colspan="4">${_costosEditorItems('recetas', r)}</td></tr>`;
         });
         html += '</tbody></table></div>';
     } else if (_costosVista === 'promos') {
@@ -32806,6 +32806,8 @@ function _costosEditorItems(col, doc) {
     return `<div class="cs-editor" data-cs-col="${col}" data-cs-doc="${escapeHtml(doc.id)}">
         <div class="cs-bar">${extra}</div>
         ${(doc.items || []).map(fila).join('') || '<p class="cs-muted">Sin líneas.</p>'}
+        <label class="cs-prep">Modo de preparación <small>(paso a paso; sirve para manuales de usuario)</small><textarea class="cs-inp" rows="5" data-cs-texto="preparacion" placeholder="1. ...
+2. ...">${escapeHtml(doc.preparacion || '')}</textarea></label>
         <div class="cs-bar"><button type="button" class="pm-icon-btn" data-cs-act="addLine">+ Línea</button>
         <button type="button" class="cat-new-save-btn" data-cs-act="saveItems">Guardar cambios</button>
         ${col === 'platos' ? `<button type="button" class="pm-icon-btn" data-cs-act="delDoc" data-col="platos" data-id="${escapeHtml(doc.id)}">Borrar plato</button>` : ''}</div></div>`;
@@ -32853,6 +32855,7 @@ function _costosBind() {
                 if (a === 'delLine') { doc.items = doc.items.filter((_, i) => i !== Number(act.dataset.idx)); return _costosRender(); }
                 if (a === 'saveItems') {
                     const data = { items: (doc.items || []).map((it) => ({ tipo: it.tipo, id: it.id, cantidad: _cNum(it.cantidad), nombre: it.nombre || '' })) };
+                    data.preparacion = String(doc.preparacion || '').slice(0, 5000);
                     if (col === 'platos') { data.precio = _cNum(doc.precio); data.manoObra = _cNum(doc.manoObra); } else data.pesoTotal = _cNum(doc.pesoTotal);
                     try { await _costosGuardar(COSTOS_COLS[col], doc.id, data); showNotice('Guardado.', 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
                     return _costosRender();
@@ -32895,6 +32898,7 @@ function _costosBind() {
         const ed = t.closest('.cs-editor');
         if (ed) {
             const col = ed.dataset.csCol, doc = _costos[col].find((x) => x.id === ed.dataset.csDoc); if (!doc) return;
+            if (t.dataset.csTexto) { doc[t.dataset.csTexto] = t.value; return; }
             if (t.dataset.csCampo) { doc[t.dataset.csCampo] = _cParse(t.value); return _costosRender(); }
             if (t.dataset.csLine != null) {
                 const it = doc.items[Number(t.dataset.csLine)], k = t.dataset.k;
