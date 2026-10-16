@@ -32764,7 +32764,7 @@ function _cCostoReceta(id, ctx, pila = []) {
     }
     return { porUnidad: total / (_cNum(r.pesoTotal) || 1), faltantes };
 }
-function _cCalcPlato(p, ctx, pila = []) {
+function _cCalcPlato(p, ctx, pila = [], margenPct = null) { // margenPct: objetivo propio (promos); por defecto el de platos
     const f = 1 + _cNum(_costos.cfg.colchonPct) / 100;
     let ing = 0, exReal = 0, exColch = 0; const faltantes = [];
     for (const it of p.items || []) {
@@ -32782,7 +32782,7 @@ function _cCalcPlato(p, ctx, pila = []) {
     }
     const mo = _cNum(p.manoObra), precio = _cNum(p.precio);
     const real = Math.round(ing + mo + exReal), colch = Math.round(ing * f + mo + exColch);
-    const m = _cNum(_costos.cfg.margenObjetivoPct) / 100;
+    const m = _cNum(margenPct != null ? margenPct : _costos.cfg.margenObjetivoPct) / 100;
     const sug = colch > 0 && m > 0 && m < 1 ? Math.ceil(colch / (1 - m) / 500) * 500 : null;
     return {
         real, colch, precio, faltantes: [...new Set(faltantes)], sug,
@@ -32812,7 +32812,7 @@ async function _costosCargar() {
     _costos.insumos = insumos.sort(porNombre); _costos.recetas = recetas.sort(porNombre);
     _costos.platos = platos.sort(porNombre); _costos.promos = promos.sort(porNombre);
     const c = cfgDoc.exists ? cfgDoc.data() : {};
-    _costos.cfg = { colchonPct: _cNum(c.colchonPct) || 30, margenObjetivoPct: _cNum(c.margenObjetivoPct) || 30 };
+    _costos.cfg = { colchonPct: _cNum(c.colchonPct) || 30, margenObjetivoPct: _cNum(c.margenObjetivoPct) || 30, margenPromoPct: _cNum(c.margenPromoPct) || _cNum(c.margenObjetivoPct) || 30 };
     if (!_cProdMenu().length) { try { await fetchProducts(); } catch (_) { /* sin menú: la conexión queda vacía */ } }
     _costosLoaded = true;
 }
@@ -32876,6 +32876,7 @@ function _costosRender() {
     let html = `<div class="cs-bar">
         <label>Colchón % ${cfgInp('colchonPct', _costos.cfg.colchonPct)}</label>
         <label>Margen objetivo % ${cfgInp('margenObjetivoPct', _costos.cfg.margenObjetivoPct)}</label>
+        <label title="Las promos/combos suelen tener menos margen que los platos sueltos">Margen promos % ${cfgInp('margenPromoPct', _costos.cfg.margenPromoPct)}</label>
         <button type="button" class="cat-new-save-btn" data-cs-act="saveCfg">Guardar</button>
         <input type="search" class="cs-inp" id="costosBuscar" placeholder="Buscar…" value="${escapeHtml(_costosBuscar)}" style="flex:1;min-width:120px">
     </div>
@@ -32918,11 +32919,11 @@ function _costosRender() {
         html += '</tbody></table></div>';
     } else if (_costosVista === 'promos') {
         const ctx = _cCtx();
-        html += `<p class="cs-muted">Promos y combos. El costo suma los platos/insumos de cada línea (con su mano de obra). <strong>Sugerido</strong> = precio mínimo para tu margen objetivo (${_costos.cfg.margenObjetivoPct}%). Las marcadas ⚠️ apuntan a algo que ya no existe. <strong>Toca una promo para ver sus líneas y editarla.</strong></p>
+        html += `<p class="cs-muted">Promos y combos. El costo suma los platos/insumos de cada línea (con su mano de obra). <strong>Sugerido</strong> = precio mínimo para el margen objetivo de promos (${_costos.cfg.margenPromoPct}%, independiente del de platos; ajústalo arriba). Las marcadas ⚠️ apuntan a algo que ya no existe. <strong>Toca una promo para ver sus líneas y editarla.</strong></p>
         <div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Promo</th><th>Precio</th><th>Costo real</th><th>Con colchón</th><th>Margen</th><th title="Precio mínimo para lograr el margen objetivo">Sugerido</th><th>Líneas</th></tr></thead><tbody>`;
         filtra(_costos.promos).forEach((pr) => {
-            const c = _cCalcPlato(pr, ctx);
-            const bajo = c.margen != null && c.margen < _costos.cfg.margenObjetivoPct;
+            const c = _cCalcPlato(pr, ctx, [], _costos.cfg.margenPromoPct);
+            const bajo = c.margen != null && c.margen < _costos.cfg.margenPromoPct;
             html += `<tr data-cs-open="${escapeHtml(pr.id)}" class="cs-row"><td>${escapeHtml(pr.nombre)}${c.faltantes.length ? ` ⚠️ <small>(${c.faltantes.length} rotas)</small>` : ''}${_costosVinculoTag(pr)}</td><td>${money(c.precio)}</td>
               <td>${money(c.real)}<small> ${c.fcReal ?? '–'}%</small></td><td>${money(c.colch)}<small> ${c.fc ?? '–'}%</small></td>
               <td style="color:${bajo ? '#fca5a5' : '#6ee7b7'}">${c.margen ?? '–'}%</td><td>${c.sug ? money(c.sug) : '–'}</td><td>${(pr.items || []).length}</td></tr>`;
@@ -33007,7 +33008,7 @@ function _costosBind() {
             const a = act.dataset.csAct;
             if (a === 'saveCfg') {
                 const g = (k) => _cParse(root.querySelector(`[data-cs-cfg="${k}"]`).value);
-                _costos.cfg = { colchonPct: g('colchonPct'), margenObjetivoPct: g('margenObjetivoPct') };
+                _costos.cfg = { colchonPct: g('colchonPct'), margenObjetivoPct: g('margenObjetivoPct'), margenPromoPct: g('margenPromoPct') };
                 try { await firebaseDb.collection('costos_ajustes').doc('config').set({ ..._costos.cfg, actualizadoAt: firestoreNow() }, { merge: true }); showNotice('Ajustes de costos guardados.', 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
                 return _costosRender();
             }
