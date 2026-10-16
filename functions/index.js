@@ -3481,3 +3481,78 @@ exports.adminAsistenteIA = onCall(
         return { respuesta: texto || 'No obtuve una respuesta. Reformula la pregunta.', acciones };
     }
 );
+
+// ─────────────────────────────────────────────────────────────
+// RESPUESTAS A CLIENTES (admin): el dueño pega el texto de un chat o una captura y FODI diagnostica la
+// situación (cliente molesto, error nuestro/del cliente, preguntón repetitivo) y propone respuestas listas
+// para copiar. No envía nada: solo sugiere. Usa la memoria de FODI para el tono del negocio.
+// ─────────────────────────────────────────────────────────────
+const RESP_CLIENTE_TOPE_DIARIO = 60;
+const RESP_CLIENTE_SYSTEM = `Eres FODI, asesor de servicio al cliente de ROAL BURGER (hamburguesería colombiana con domicilios y pedidos por WhatsApp/web). El dueño te pega una conversación (texto o captura) con un cliente y necesita saber QUÉ responder.
+Tu trabajo:
+1) Lee la conversación completa y diagnostica: quién tiene razón o qué pasó realmente según lo que se ve (sin inventar hechos que no estén en el chat), el estado emocional del cliente y el riesgo (perder al cliente, reseña mala, escalada).
+2) Clasifica el caso: "conflictivo" (molesto/agresivo), "error_nuestro", "error_del_cliente", "preguntas_repetitivas" (pregunta mucho/indeciso), "elogio" u "otro".
+3) Propón 3 respuestas listas para copiar y pegar en WhatsApp, cada una distinta: (a) "Empática y breve", (b) "Con solución" (explica qué se hará y cuándo), (c) "Firme y cordial" (pone límites con respeto cuando el cliente se pasa o pide algo que no corresponde).
+4) Da una recomendación interna para el dueño (qué verificar antes de enviar, si conviene compensar y cuánto de forma proporcional, cómo evitar que se repita) y lista lo que NO conviene decir.
+Reglas de las respuestas: español colombiano cálido y natural, tuteo o "usted" según como trate el cliente, mensajes cortos tipo WhatsApp (máx. 4-5 líneas), sin sonar a guion corporativo, sin emojis excesivos (1-2 máx.), usa el nombre del cliente si aparece. Nunca culpes al cliente de frente; nunca prometas compensaciones, tiempos o políticas que el dueño no haya autorizado: si hace falta un dato (hora real de salida, si el pedido estaba mal armado), pon [VERIFICAR: ...] dentro del texto. No pidas datos sensibles. Si hay amenazas, insultos graves o posible fraude, dilo en la recomendación interna.
+Para clientes que preguntan mucho: responde todo en un solo mensaje ordenado y ofrece cerrar con una acción concreta (confirmar el pedido).
+Responde SOLO JSON válido, sin texto fuera: {"resumen":"qué pasó en 1-2 frases","tipo":"...","animo_cliente":"...","riesgo":"bajo|medio|alto","respuestas":[{"etiqueta":"Empática y breve","texto":"..."},{"etiqueta":"Con solución","texto":"..."},{"etiqueta":"Firme y cordial","texto":"..."}],"recomendacion_interna":"...","evitar":["..."]}`;
+
+exports.adminSugerirRespuestaCliente = onCall(
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], cors: ALLOWED_ORIGINS, timeoutSeconds: 90, memory: '512MiB' },
+    async (request) => {
+        await ensureAdminCaller(request);
+        const db = getFirestore();
+        const texto = String(request.data?.texto || '').trim().slice(0, 9000);
+        const nota = String(request.data?.nota || '').trim().slice(0, 600);
+        const img = request.data?.imagen;
+        const tipos = ['image/jpeg', 'image/png', 'image/webp'];
+        const tieneImg = !!(img && typeof img.base64 === 'string' && tipos.includes(img.mediaType));
+        if (tieneImg && img.base64.length > 6 * 1024 * 1024) throw new HttpsError('invalid-argument', 'La imagen es muy grande.');
+        if (!texto && !tieneImg) throw new HttpsError('invalid-argument', 'Pega el texto del chat o una captura.');
+        const apiKey = ANTHROPIC_API_KEY.value();
+        if (!apiKey) throw new HttpsError('failed-precondition', 'Asistente no configurado.');
+
+        const usoRef = db.collection('admin_ai_usage_daily').doc(adminAsistente.bogotaDateKey(Date.now()));
+        const uso = (await usoRef.get()).data() || {};
+        if ((uso.respuestasCliente || 0) >= RESP_CLIENTE_TOPE_DIARIO) throw new HttpsError('resource-exhausted', 'Llegaste al tope diario de respuestas a clientes.');
+
+        const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
+        const bloqueMemoria = memoria.length ? `LO QUE SABES DEL NEGOCIO Y DEL DUEÑO (tono, políticas, preferencias):\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : '';
+        const conocimiento = fodiConocimiento.bloque(['clientes']);
+        const M = ASISTENTE_MODELOS.sonnet;
+        const contenido = [];
+        if (tieneImg) contenido.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
+        contenido.push({ type: 'text', text: `${texto ? `CONVERSACIÓN:\n${texto}\n\n` : 'La conversación está en la captura adjunta.\n\n'}${nota ? `CONTEXTO QUE DA EL DUEÑO: ${nota}\n\n` : ''}Devuelve el JSON.` });
+
+        const Anthropic = require('@anthropic-ai/sdk');
+        const client = new Anthropic({ apiKey });
+        let resp;
+        try {
+            resp = await client.messages.create({
+                model: M.id, max_tokens: 2500,
+                system: [{ type: 'text', text: RESP_CLIENTE_SYSTEM, cache_control: { type: 'ephemeral' } }, ...(bloqueMemoria || conocimiento ? [{ type: 'text', text: [bloqueMemoria, conocimiento].filter(Boolean).join('\n\n') }] : [])],
+                messages: [{ role: 'user', content: contenido }]
+            });
+        } catch (err) {
+            console.error('adminSugerirRespuestaCliente error:', err && err.message);
+            throw new HttpsError('internal', 'No se pudo analizar la conversación. Intenta de nuevo.');
+        }
+        const u = resp.usage || {};
+        const costo = ((u.input_tokens || 0) * M.in + (u.cache_creation_input_tokens || 0) * M.cacheWrite + (u.cache_read_input_tokens || 0) * M.cacheRead + (u.output_tokens || 0) * M.out) / 1e6;
+        usoRef.set({ respuestasCliente: FieldValue.increment(1), tokensIn: FieldValue.increment((u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0)), tokensOut: FieldValue.increment(u.output_tokens || 0), costoUsd: FieldValue.increment(costo) }, { merge: true }).catch(() => {});
+        const raw = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+        const m = raw.match(/\{[\s\S]*\}/);
+        let j = null;
+        try { j = m ? JSON.parse(m[0]) : null; } catch (_) { j = null; }
+        if (!j || !Array.isArray(j.respuestas) || !j.respuestas.length) throw new HttpsError('internal', 'No pude armar una sugerencia. Intenta con más texto o una captura más clara.');
+        const s = (x, n) => String(x == null ? '' : x).slice(0, n);
+        return {
+            resumen: s(j.resumen, 600), tipo: s(j.tipo, 40), animo: s(j.animo_cliente, 120),
+            riesgo: ['bajo', 'medio', 'alto'].includes(j.riesgo) ? j.riesgo : 'medio',
+            respuestas: j.respuestas.slice(0, 4).map((r) => ({ etiqueta: s(r.etiqueta, 40), texto: s(r.texto, 900) })).filter((r) => r.texto),
+            recomendacion: s(j.recomendacion_interna, 900),
+            evitar: (Array.isArray(j.evitar) ? j.evitar : []).slice(0, 5).map((x) => s(x, 160))
+        };
+    }
+);

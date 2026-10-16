@@ -33136,3 +33136,63 @@ function _fodiFlotInit() {
     txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const t = txt.value; txt.value = ''; enviar(t); } });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _fodiFlotInit); else _fodiFlotInit();
+
+
+// ── Responder a un cliente: pega chat/captura y FODI sugiere respuestas ─────────────────
+(function _respClienteInit() {
+    const $ = (id) => document.getElementById(id);
+    const modal = $('respClienteModal');
+    if (!modal) return;
+    let img = null; // { base64, mediaType }
+    const prev = $('rcImgPrev'), estado = $('rcEstado'), res = $('rcResultado'), btn = $('rcSugerir');
+    const poner = (b64, tipo) => {
+        img = b64 ? { base64: b64, mediaType: tipo } : null;
+        prev.style.display = img ? 'block' : 'none'; prev.src = img ? `data:${tipo};base64,${b64}` : '';
+        $('rcQuitarImg').hidden = !img;
+    };
+    // Reduce la captura (máx. 1600 px, JPEG) para no pesar ni gastar de más
+    const procesar = (file) => new Promise((ok, mal) => {
+        const url = URL.createObjectURL(file), im = new Image();
+        im.onload = () => {
+            const k = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement('canvas');
+            c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+            c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+            URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+        };
+        im.onerror = () => { URL.revokeObjectURL(url); mal(new Error('No pude leer la imagen.')); };
+        im.src = url;
+    });
+    const cargar = async (file) => { try { poner(await procesar(file), 'image/jpeg'); } catch (e) { estado.textContent = e.message; } };
+    $('respClienteAbrir')?.addEventListener('click', () => { modal.classList.add('on'); $('rcTexto').focus(); });
+    $('rcCerrar').addEventListener('click', () => modal.classList.remove('on'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('on'); });
+    $('rcArchivo').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) cargar(f); e.target.value = ''; });
+    $('rcQuitarImg').addEventListener('click', () => poner(null));
+    modal.addEventListener('paste', (e) => {
+        const it = Array.from(e.clipboardData?.items || []).find((x) => x.type.startsWith('image/'));
+        if (it) { e.preventDefault(); const f = it.getAsFile(); if (f) cargar(f); }
+    });
+    const copiar = async (texto, b) => {
+        try { await navigator.clipboard.writeText(texto); b.textContent = '✅ Copiado'; } catch (_) { b.textContent = 'Selecciona y copia'; }
+        setTimeout(() => { b.textContent = '📋 Copiar'; }, 1800);
+    };
+    const nodo = (cls, html) => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; return d; };
+    btn.addEventListener('click', async () => {
+        const texto = $('rcTexto').value.trim();
+        if (!texto && !img) { estado.textContent = 'Pega el chat o una captura primero.'; return; }
+        btn.disabled = true; estado.textContent = 'Analizando la conversación… 💭'; res.textContent = '';
+        try {
+            const r = (await firebaseFunctions.httpsCallable('adminSugerirRespuestaCliente', { timeout: 90000 })({ texto, nota: $('rcNota').value.trim(), imagen: img })).data;
+            res.textContent = '';
+            res.appendChild(nodo('rc-panel', `<span class="rc-chip ${escapeHtml(r.riesgo)}">Riesgo ${escapeHtml(r.riesgo)}</span><span class="rc-chip">${escapeHtml(String(r.tipo).replace(/_/g, ' '))}</span><span class="rc-chip">${escapeHtml(r.animo || '')}</span><br><br><b>Qué pasó:</b> ${escapeHtml(r.resumen)}`));
+            for (const x of r.respuestas) {
+                const d = nodo('rc-panel rc-resp', `<b>${escapeHtml(x.etiqueta)}</b><span></span>`);
+                d.querySelector('span').textContent = x.texto;
+                const b = document.createElement('button'); b.type = 'button'; b.className = 'rc-btn'; b.textContent = '📋 Copiar';
+                b.addEventListener('click', () => copiar(x.texto, b)); d.appendChild(b); res.appendChild(d);
+            }
+            if (r.recomendacion || r.evitar.length) res.appendChild(nodo('rc-panel', `<b>Para ti (no se lo envíes):</b>\n${escapeHtml(r.recomendacion)}${r.evitar.length ? '\n\n<b>Evita decir:</b>\n• ' + r.evitar.map(escapeHtml).join('\n• ') : ''}`));
+            estado.textContent = 'Revisa y ajusta antes de enviar. Lo marcado [VERIFICAR] debes confirmarlo.';
+        } catch (err) { estado.textContent = err?.message || 'No pude analizar. Intenta de nuevo.'; } finally { btn.disabled = false; }
+    });
+})();
