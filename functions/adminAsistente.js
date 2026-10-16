@@ -474,23 +474,57 @@ async function codigoDelDia(db, desde, hasta) {
     return { dias_con_codigo: filas.length, cupos_totales: tcu, canjes_totales: tc, ocupacion_pct: tcu ? Math.round((tc / tcu) * 100) : null, dias: filas.slice(-31) };
 }
 
-async function costoPorPlato(db) {
-    const [recetas, prods] = await Promise.all([db.collection('recetas').get(), db.collection('productos').get()]);
-    if (recetas.empty) {
-        return {
-            registrado: false,
-            aviso: 'Aún no hay recetas/costos de insumos registrados, así que no se puede calcular food cost ni margen por plato.',
-            como_registrarlo: 'Crear la colección "recetas" con un documento por producto: { productoId o nombre, costo (COP por unidad, suma de insumos), actualizado }. Con eso FODI calcula food cost % y margen por plato.'
-        };
+// CostoX (proyecto costox-52134) es la fuente de recetas/costos. Lectura en vivo, solo lectura:
+// requiere que la cuenta de servicio de esta function tenga roles/datastore.viewer en ese proyecto.
+function costoxDb() {
+    const admin = require('firebase-admin');
+    let app = admin.apps.find((a) => a && a.name === 'costox');
+    if (!app) app = admin.initializeApp({ projectId: 'costox-52134' }, 'costox');
+    return app.firestore();
+}
+
+async function costoPorPlato() {
+    let cdb;
+    let prods, promos, cfg;
+    try {
+        cdb = costoxDb();
+        [prods, promos, cfg] = await Promise.all([
+            cdb.collection('products').get(),
+            cdb.collection('promotions').get(),
+            cdb.collection('config').limit(1).get()
+        ]);
+    } catch (e) {
+        return { registrado: false, error: 'No se pudo leer CostoX: ' + (e.message || e), aviso: 'Falta dar permiso de lectura (Cloud Datastore Viewer) a la cuenta de servicio de FODI en el proyecto costox-52134.' };
     }
-    const precios = new Map(prods.docs.map((d) => [d.id, { nombre: d.data().nombre, precio: Number(d.data().precio) || 0 }]));
-    const filas = recetas.docs.map((d) => {
-        const r = d.data();
-        const p = precios.get(r.productoId) || [...precios.values()].find((x) => x.nombre === r.nombre) || { nombre: r.nombre, precio: 0 };
-        const costo = Number(r.costo) || 0;
-        return { producto: p.nombre || r.nombre || d.id, precio: p.precio, costo, margen: p.precio - costo, food_cost_pct: p.precio ? Math.round((costo / p.precio) * 1000) / 10 : null };
+    const n = (v) => Math.round((Number(v) || 0) * 10) / 10;
+    const platos = prods.docs.map((d) => {
+        const x = d.data();
+        return {
+            producto: x.name || d.id,
+            precio_venta: Number(x.realSalePrice) || 0,
+            costo_total: n(x.totalCost),
+            costo_ingredientes: n(x.ingredientsCost),
+            costo_empaque: n(x.totalEmbalaje),
+            mano_de_obra: Number(x.laborCost) || 0,
+            food_cost_pct: n(x.foodCostPercent),
+            margen_contribucion: n(x.mContribucion),
+            margen_pct: n(x.pContribucion),
+            utilidad_real: n(x.actualProfit)
+        };
+    }).sort((a, b) => b.food_cost_pct - a.food_cost_pct);
+    const promociones = promos.docs.map((d) => {
+        const x = d.data();
+        return { promo: x.name || d.id, precio_promo: Number(x.promoPrice) || 0, precio_carta: Number(x.totalPrecioCarta) || 0, descuento_pct: n(x.porcentajeDescuento), costo: n(x.totalCosto), margen_contribucion: n(x.mContribucion), margen_pct: n(x.pContribucion) };
     });
-    return { registrado: true, platos: filas.length, items: filas.sort((a, b) => (b.food_cost_pct || 0) - (a.food_cost_pct || 0)).slice(0, 40) };
+    const c = cfg.empty ? {} : cfg.docs[0].data();
+    return {
+        registrado: true,
+        fuente: 'CostoX (en vivo)',
+        platos: platos.length,
+        items: platos.slice(0, 60),
+        promociones: promociones.slice(0, 30),
+        costos_fijos_costox: { arriendo: c.rentCost || 0, nomina: c.payrollCost || 0, servicios: c.utilitiesCost || 0, otros: c.otherFixedCosts || 0, margen_objetivo_pct: c.targetProfitMargin || null, ventas_mensuales_estimadas: c.estimatedMonthlySales || null }
+    };
 }
 
 // ---------- Herramientas ----------
@@ -590,7 +624,7 @@ const TOOLS = [
     },
     {
         name: 'costo_por_plato',
-        description: 'Food cost y margen por plato desde las recetas registradas. Si no hay recetas registradas lo indica y explica cómo registrarlas.',
+        description: 'Food cost, costo total, margen y utilidad por plato y por promoción, leídos en vivo de CostoX (recetas/costos oficiales del negocio), más costos fijos configurados allí.',
         input_schema: { type: 'object', properties: {} }
     }
 ];
@@ -655,7 +689,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             return { items, total_mensual: items.reduce((a, i) => a + i.monto_mensual, 0), margen_minimo_pct: Number(d.margenMinimo) || null };
         }
         if (nombre === 'puntos_lealtad') return await resumenPuntos(db);
-        if (nombre === 'costo_por_plato') return await costoPorPlato(db);
+        if (nombre === 'costo_por_plato') return await costoPorPlato();
         if (nombre === 'comparar_periodos') {
             const ra = parseRango(args.a_desde, args.a_hasta);
             const rb = parseRango(args.b_desde, args.b_hasta);
