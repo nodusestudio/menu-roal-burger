@@ -32484,7 +32484,7 @@ async function _asistEnviar(texto) {
     _asistBusy = true;
     const btn = document.getElementById('asistEnviarBtn');
     if (btn) btn.disabled = true;
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    _fodiParar();
     _asistAddUser(texto);
     _asistHist.push({ role: 'user', content: texto });
     _asistActualizarHero();
@@ -32543,15 +32543,82 @@ function _fodiUtterance(texto, variar) {
     if (v) { u.voice = v; u.lang = v.lang; }
     return u;
 }
+// ── Voz natural (Piper, neuronal, corre en el navegador; gratis). Si no está lista, usa la voz del navegador ──
+const _PIPER_VOZ = 'es_MX-claude-high';
+const _PIPER_LIB = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm';
+const _piper = { lib: null, estado: 'off', promesa: null, gen: 0, audio: null, url: '' };
+function _piperActivada() { try { return localStorage.getItem('fodiVozPiper') === '1'; } catch (_) { return false; } }
+function _piperPintar(txt) { const el = document.getElementById('fodiPiperEstado'); if (el) el.textContent = txt || ''; }
+function _piperPreparar() {
+    if (_piper.estado === 'listo') return Promise.resolve(true);
+    if (_piper.promesa) return _piper.promesa;
+    _piper.estado = 'cargando'; _piperPintar('Descargando voz… 0%');
+    _piper.promesa = (async () => {
+        try {
+            _piper.lib = await import(_PIPER_LIB);
+            await _piper.lib.download(_PIPER_VOZ, (p) => { if (p && p.total) _piperPintar(`Descargando voz… ${Math.round((p.loaded / p.total) * 100)}%`); });
+            _piper.estado = 'listo'; _piperPintar('✅ Voz natural lista');
+            return true;
+        } catch (e) {
+            console.warn('Piper no disponible:', e);
+            _piper.estado = 'error'; _piper.promesa = null; _piperPintar('No se pudo cargar la voz natural; uso la del navegador.');
+            return false;
+        }
+    })();
+    return _piper.promesa;
+}
+function _fodiParar() {
+    _piper.gen++;
+    if (_piper.audio) { try { _piper.audio.pause(); } catch (_) { /* ya parado */ } _piper.audio = null; }
+    if (_piper.url) { URL.revokeObjectURL(_piper.url); _piper.url = ''; }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+}
+function _fodiFrases(texto) {
+    return (String(texto).match(/[^.!?¡¿…;:\n]+[.!?…;:]?/g) || [texto]).map((x) => x.trim()).filter((x) => /[\p{L}\p{N}]/u.test(x));
+}
+// Piper: genera la frase siguiente mientras suena la actual
+async function _fodiDecirPiper(texto, cb, miGen) {
+    const frases = _fodiFrases(texto);
+    const gen = (i) => (i < frases.length ? _piper.lib.predict({ text: frases[i].replace(/[¡¿]/g, ''), voiceId: _PIPER_VOZ }) : null);
+    let sig = gen(0), primero = true;
+    for (let i = 0; i < frases.length; i++) {
+        const blob = await sig;
+        if (miGen !== _piper.gen) return;
+        sig = gen(i + 1);
+        await new Promise((ok) => {
+            const url = URL.createObjectURL(blob), au = new Audio(url);
+            _piper.audio = au; _piper.url = url;
+            au.preservesPitch = false; au.playbackRate = /\?$/.test(frases[i]) ? 1.09 : /!$/.test(frases[i]) ? 1.08 : 1.05; // un poquito más aguda = tierna
+            const fin = () => { URL.revokeObjectURL(url); if (_piper.url === url) _piper.url = ''; setTimeout(ok, 70 + Math.random() * 90); };
+            au.onended = fin; au.onerror = fin;
+            if (primero && cb.onstart) { primero = false; au.onplay = cb.onstart; }
+            au.play().catch(fin);
+        });
+        if (miGen !== _piper.gen) return;
+    }
+    if (cb.onend) cb.onend();
+}
 // Habla por frases (sin cortes de Chrome en textos largos), con prosodia variable y una pausita entre frases.
 function _fodiDecir(texto, cb = {}) {
     const ss = window.speechSynthesis;
-    if (!ss || !texto) { if (cb.onend) cb.onend(); return; }
-    ss.cancel();
-    const frases = (String(texto).match(/[^.!?¡¿…;:\n]+[.!?…;:]?/g) || [texto]).map((x) => x.trim()).filter((x) => /[\p{L}\p{N}]/u.test(x));
+    _fodiParar();
+    const miGen = _piper.gen;
+    if (!texto) { if (cb.onend) cb.onend(); return; }
+    if (_piperActivada() && _piper.estado === 'listo') {
+        _fodiDecirPiper(texto, cb, miGen).catch((e) => { console.warn('Piper falló, uso voz del navegador:', e); if (miGen === _piper.gen) { _piper.estado = 'error'; _fodiDecirNavegador(texto, cb, miGen); } });
+        return;
+    }
+    if (_piperActivada() && _piper.estado === 'off') _piperPreparar();
+    if (!ss) { if (cb.onend) cb.onend(); return; }
+    _fodiDecirNavegador(texto, cb, miGen);
+}
+function _fodiDecirNavegador(texto, cb, miGen) {
+    const ss = window.speechSynthesis;
+    if (!ss) { if (cb.onend) cb.onend(); return; }
+    const frases = _fodiFrases(texto);
     let i = 0, cancelado = false;
     const sig = () => {
-        if (cancelado) return;
+        if (cancelado || miGen !== _piper.gen) return;
         if (i >= frases.length) { if (cb.onend) cb.onend(); return; }
         const fr = frases[i];
         const u = _fodiUtterance(fr, true);
@@ -32563,6 +32630,22 @@ function _fodiDecir(texto, cb = {}) {
     };
     sig();
 }
+// Interruptor "Voz natural"
+(function _piperToggleInit() {
+    const init = () => {
+        const t = document.getElementById('fodiPiperToggle');
+        if (!t) return;
+        t.checked = _piperActivada();
+        if (t.checked) setTimeout(_piperPreparar, 4000); // descarga en segundo plano (queda en caché del navegador)
+        t.addEventListener('change', async () => {
+            try { localStorage.setItem('fodiVozPiper', t.checked ? '1' : '0'); } catch (_) { /* sin storage */ }
+            if (!t.checked) { _piperPintar(''); return; }
+            const ok = await _piperPreparar();
+            if (ok) _fodiDecir('¡Hola! Ya tengo mi voz natural. ¿Qué tal suena?', {});
+        });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
 function _asistLeer(md) {
     if (!_asistLeerOn || !window.speechSynthesis) return;
     const t = _asistTextoHablado(md);
@@ -32580,7 +32663,7 @@ function _asistVozInit(input) {
         leerBtn.addEventListener('click', () => {
             _asistLeerOn = !_asistLeerOn;
             try { localStorage.setItem('fodiLeerVoz', _asistLeerOn ? '1' : '0'); } catch (_) { /* sin storage */ }
-            if (!_asistLeerOn) window.speechSynthesis.cancel();
+            if (!_asistLeerOn) _fodiParar();
             pintar();
         });
     }
@@ -33020,7 +33103,7 @@ function _fodiFlotInit() {
     const hablar = (si) => caras().forEach((c) => _fodiHablar(c, si));
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) mic.style.display = 'none';
-    const callar = () => { if (window.speechSynthesis) window.speechSynthesis.cancel(); hablar(false); };
+    const callar = () => { _fodiParar(); hablar(false); };
     const hayGesto = () => !!(navigator.userActivation ? navigator.userActivation.hasBeenActive : true);
     const msg = (clase, texto) => {
         const d = document.createElement('div'); d.className = 'ff-m ' + clase; d.textContent = texto;
@@ -33047,7 +33130,7 @@ function _fodiFlotInit() {
         hola.textContent = fr; hola.classList.add('on'); clearTimeout(ocultaHola); ocultaHola = setTimeout(() => hola.classList.remove('on'), 2600);
         set(Math.random() < 0.5 ? 'wink' : 'giggle', 1600, 'happy');
         burbuja.classList.remove('rebota'); void burbuja.offsetWidth; burbuja.classList.add('rebota');
-        if (conVoz && window.speechSynthesis && hayGesto() && !window.speechSynthesis.speaking) {
+        if (conVoz && window.speechSynthesis && hayGesto() && !window.speechSynthesis.speaking && !_piper.audio) {
             _fodiDecir(_asistTextoHablado(fr), { onstart: () => hablar(true), onend: () => hablar(false) });
         }
     };
