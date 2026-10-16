@@ -33306,8 +33306,10 @@ document.getElementById('asistUsoBtn')?.addEventListener('click', async () => {
     if (!out) return;
     btn.disabled = true; out.textContent = 'Calculando…';
     try {
-        const snap = await firebaseDb.collection('admin_ai_usage_daily').orderBy(firebase.firestore.FieldPath.documentId(), 'desc').limit(31).get();
-        const dias = snap.docs.map((d) => ({ dia: d.id, ...d.data() }));
+        const d0 = new Date(Date.now() - 32 * 86400000), desde = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`;
+        // sin orderBy (pedía un índice compuesto): se filtra por id de documento (fecha) y se ordena aquí
+        const snap = await firebaseDb.collection('admin_ai_usage_daily').where(firebase.firestore.FieldPath.documentId(), '>=', desde).get();
+        const dias = snap.docs.map((d) => ({ dia: d.id, ...d.data() })).sort((a, b) => (a.dia < b.dia ? 1 : -1)).slice(0, 31);
         if (!dias.length) { out.textContent = 'Aún no hay consumo registrado.'; return; }
         const TRM = 4000; // aproximado COP por USD
         const suma = (arr, k) => arr.reduce((a, d) => a + (Number(d[k]) || 0), 0);
