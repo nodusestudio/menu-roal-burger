@@ -788,6 +788,11 @@ const TOOLS = [
         input_schema: { type: 'object', properties: { expresion: { type: 'string' } }, required: ['expresion'] }
     },
     {
+        name: 'tarifa_domicilio',
+        description: 'Cuánto cuesta el domicilio a un barrio o dirección. Busca (1) si es un barrio especial con tarifa fija configurada y (2) lo que se cobró en domicilios anteriores a ese lugar (valores, cuántas veces y la última vez). Úsala para "¿cuánto vale un domicilio a X?". Si no hay historial ni barrio especial, dilo: la tarifa depende de la zona GPS y no se puede inferir.',
+        input_schema: { type: 'object', properties: { lugar: { type: 'string', description: 'Barrio o parte de la dirección (ej. "villa carolina").' }, dias: { type: 'integer', description: 'Días de historial a revisar (por defecto 180, máx. 365).' } }, required: ['lugar'] }
+    },
+    {
         name: 'recordar',
         description: 'Memoria permanente de FODI sobre el negocio y el dueño (metas, preferencias, contexto, decisiones). accion "guardar": guarda o actualiza un dato bajo un tema corto (ej. "meta_ventas_mes", "prioridad", "horario_pico"); accion "olvidar": borra el tema. Guarda SOLO hechos que el administrador te dijo o confirmó, nunca cifras de las herramientas (esas cambian). No es una acción sobre pedidos, caja ni dinero.',
         input_schema: { type: 'object', properties: {
@@ -832,6 +837,37 @@ async function proponerAccion(db, args = {}) {
         return { ok: true, accion: { tipo: 'precio_insumo', insumoId: i.id, nombre: String(i.nombre || ''), precioActual: Number(i.precioCompra) || 0, precioNuevo: Math.round(nuevo * 100) / 100 } };
     }
     return { error: 'tipo desconocido.' };
+}
+
+async function tarifaDomicilio(db, args = {}) {
+    const admin = require('firebase-admin');
+    const lugar = norm(args.lugar).replace(/[^a-z0-9 ]+/g, ' ').trim();
+    if (lugar.length < 3) return { error: 'Dime el barrio o la dirección (mínimo 3 letras).' };
+    const dias = Math.min(Math.max(parseInt(args.dias, 10) || 180, 1), 365);
+    const barriosDoc = (await db.collection('configuracion').doc('barrios_especiales').get().catch(() => null));
+    const barrios = ((barriosDoc && barriosDoc.exists && barriosDoc.data().barrios) || []).filter((b) => b && b.activo !== false);
+    const especial = barrios.filter((b) => { const n = norm(b.nombre); return n && (lugar.includes(n) || n.includes(lugar)); })
+        .map((b) => ({ barrio: String(b.nombre || ''), tarifa_fija: Math.max(0, Number(b.tarifa) || 0), el_domiciliario_no_entra: true }));
+    const T = admin.firestore.Timestamp;
+    const ini = T.fromMillis(Date.now() - dias * DAY_MS);
+    const lee = (col) => db.collection(col).where('createdAt', '>=', ini).get().then((sn) => sn.docs.map((d) => d.data()));
+    const [a, b] = await Promise.all([lee('pedidos'), lee('pedidos_archivados')]);
+    const dir = (o) => { const v = o.deliveryAddress || o.customerAddress || ''; return norm(typeof v === 'string' ? v : Object.values(v || {}).filter((x) => typeof x === 'string').join(' ')).replace(/[^a-z0-9 ]+/g, ' '); };
+    const porTarifa = new Map();
+    let revisados = 0;
+    for (const o of [...a, ...b]) {
+        const fee = Number(o.deliveryFee) || 0;
+        if (!(fee > 0) || o.voided === true || o.status === 'cancelado' || !dir(o).includes(lugar)) continue;
+        revisados++;
+        const ms = toMs(o.createdAt);
+        const e = porTarifa.get(fee) || { tarifa: fee, veces: 0, ultima: 0, ejemplo: '' };
+        e.veces++;
+        if (ms >= e.ultima) { e.ultima = ms; e.ejemplo = String(typeof (o.deliveryAddress || o.customerAddress) === 'string' ? (o.deliveryAddress || o.customerAddress) : '').slice(0, 80); }
+        porTarifa.set(fee, e);
+    }
+    const historial = [...porTarifa.values()].sort((x, y) => y.ultima - x.ultima).map((e) => ({ tarifa: e.tarifa, veces: e.veces, ultima_vez: bogotaDateKey(e.ultima), direccion_ejemplo: e.ejemplo }));
+    const probable = historial.length ? [...historial].sort((x, y) => y.veces - x.veces)[0].tarifa : null;
+    return { lugar: args.lugar, dias_revisados: dias, barrio_especial: especial, domicilios_anteriores: revisados, historial, tarifa_mas_frecuente: probable, nota: historial.length || especial.length ? undefined : 'Sin barrio especial ni domicilios previos a ese lugar: no hay tarifa registrada; depende de la zona GPS.' };
 }
 
 const MEMORIA_MAX_ITEMS = 40;
@@ -924,6 +960,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         }
         if (nombre === 'calcular') return calcular(args.expresion);
         if (nombre === 'recordar') return await recordar(db, args);
+        if (nombre === 'tarifa_domicilio') return await tarifaDomicilio(db, args);
         if (nombre === 'puntos_lealtad') return await resumenPuntos(db);
         if (nombre === 'costo_por_plato') return await costoPorPlato(args, db);
         if (nombre === 'comparar_periodos') {

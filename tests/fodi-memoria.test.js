@@ -30,3 +30,24 @@ test('recordar valida entradas y tope', async () => {
     assert.ok((await A.recordar(db, { accion: 'guardar', tema: 'extra', texto: 'x' })).error);
     assert.ok((await A.recordar(db, { accion: 'guardar', tema: 't1', texto: 'y' })).ok);
 });
+
+test('tarifa_domicilio: historial por lugar y barrio especial', async () => {
+    const T = { fromMillis: (ms) => ms };
+    const hoy = Date.now();
+    const filas = {
+        pedidos: [{ createdAt: { toMillis: () => hoy - 86400000 }, deliveryFee: 8000, deliveryAddress: 'Cra 5 # 1-2 Villa Carolina' }],
+        pedidos_archivados: [
+            { createdAt: { toMillis: () => hoy - 5 * 86400000 }, deliveryFee: 8000, deliveryAddress: 'Villa Carolina mz 3' },
+            { createdAt: { toMillis: () => hoy - 9 * 86400000 }, deliveryFee: 9000, deliveryAddress: 'otro barrio' }
+        ]
+    };
+    const db = { collection: (c) => ({
+        where: () => ({ get: async () => ({ docs: (filas[c] || []).map((d) => ({ data: () => d })) }) }),
+        doc: () => ({ get: async () => ({ exists: true, data: () => ({ barrios: [{ nombre: 'Villa Carolina', tarifa: 8000, activo: true }] }) }) })
+    }) };
+    const r = await A.ejecutarHerramienta(db, 'tarifa_domicilio', { lugar: 'villa carolina' });
+    assert.strictEqual(r.domicilios_anteriores, 2);
+    assert.strictEqual(r.tarifa_mas_frecuente, 8000);
+    assert.strictEqual(r.barrio_especial[0].tarifa_fija, 8000);
+    assert.ok((await A.ejecutarHerramienta(db, 'tarifa_domicilio', { lugar: 'x' })).error);
+});

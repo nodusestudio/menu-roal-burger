@@ -32521,16 +32521,26 @@ let _asistLeerOn = false, _asistRec = null;
 function _asistTextoHablado(md) {
     return String(md || '').replace(/```[\s\S]*?```/g, ' (tabla o código en pantalla) ').replace(/\|/g, ' ').replace(/\[(.*?)\]\(.*?\)/g, '$1').replace(/[*_#>`~]/g, '').replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 1500);
 }
+// Voz de FODI: la más natural y femenina disponible en español, algo más aguda y pausada = tierna.
+function _fodiElegirVoz() {
+    const vs = (window.speechSynthesis?.getVoices() || []).filter((x) => /^es/i.test(x.lang));
+    const pref = [/natural|online/i, /sabina|dalia|paola|elena|helena|salome|valentina|maria|paulina|monica|sofia|camila|lucia/i, /google/i];
+    for (const re of pref) { const v = vs.find((x) => re.test(x.name) && /^es[-_](CO|MX|US|419)/i.test(x.lang)) || vs.find((x) => re.test(x.name)); if (v) return v; }
+    return vs.find((x) => /^es[-_](CO|MX|US|419)/i.test(x.lang)) || vs[0] || null;
+}
+function _fodiUtterance(texto) {
+    const u = new SpeechSynthesisUtterance(texto);
+    u.lang = 'es-CO'; u.pitch = 1.18; u.rate = 0.96; u.volume = 1;
+    const v = _fodiElegirVoz();
+    if (v) { u.voice = v; u.lang = v.lang; }
+    return u;
+}
 function _asistLeer(md) {
     if (!_asistLeerOn || !window.speechSynthesis) return;
     const t = _asistTextoHablado(md);
     if (!t) return;
     window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(t);
-    u.lang = 'es-CO';
-    const v = window.speechSynthesis.getVoices().find((x) => /^es[-_](CO|MX|US|419)/i.test(x.lang)) || window.speechSynthesis.getVoices().find((x) => /^es/i.test(x.lang));
-    if (v) u.voice = v;
-    window.speechSynthesis.speak(u);
+    window.speechSynthesis.speak(_fodiUtterance(t));
 }
 function _asistVozInit(input) {
     const leerBtn = document.getElementById('asistLeerBtn'), micBtn = document.getElementById('asistMicBtn');
@@ -32960,3 +32970,68 @@ function _costosBind() {
     });
 }
 document.getElementById('costosRefreshBtn')?.addEventListener('click', () => _ensureCostosLoaded(true));
+
+// ── FODI flotante: burbuja en cualquier pestaña; hablas y responde con voz ─────────────────
+let _ffHist = [], _ffBusy = false, _ffRec = null, _ffIniciado = false;
+function _fodiFlotInit() {
+    if (_ffIniciado) return;
+    const raiz = document.getElementById('fodiFlot');
+    if (!raiz) return;
+    _ffIniciado = true;
+    const $ = (id) => document.getElementById(id);
+    const burbuja = $('fodiFlotBurbuja'), mic = $('fodiFlotMic'), texto = $('fodiFlotTexto'), estado = $('fodiFlotEstado'), txt = $('fodiFlotTxt'), toggle = $('fodiFlotToggle');
+    let apagada = false;
+    try { apagada = localStorage.getItem('fodiFlotOff') === '1'; } catch (_) { /* sin storage */ }
+    const aplicar = () => { raiz.classList.toggle('on', !apagada); if (apagada) raiz.classList.remove('abierto'); if (toggle) toggle.checked = !apagada; };
+    aplicar();
+    if (toggle) toggle.addEventListener('change', () => { apagada = !toggle.checked; try { localStorage.setItem('fodiFlotOff', apagada ? '1' : '0'); } catch (_) { /* sin storage */ } aplicar(); });
+    _fodiMontar(burbuja, {});
+    const cara = burbuja._fodi || null;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) mic.textContent = '🎤 No disponible aquí (escribe abajo)';
+    const callar = () => { if (window.speechSynthesis) window.speechSynthesis.cancel(); if (cara) _fodiHablar(cara, false); };
+    const enviar = async (pregunta) => {
+        pregunta = String(pregunta || '').trim();
+        if (!pregunta || _ffBusy) return;
+        _ffBusy = true; callar(); mic.disabled = true;
+        texto.textContent = '🗣️ ' + pregunta; estado.textContent = 'Pensando…';
+        if (cara) _fodiSet(cara, 'thinking');
+        _ffHist.push({ role: 'user', content: pregunta });
+        try {
+            const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _ffHist.slice(-10), modo: 'voz' });
+            const resp = String(r.data?.respuesta || 'No te escuché bien, ¿me lo repites?');
+            _ffHist.push({ role: 'assistant', content: resp });
+            texto.textContent = resp; estado.textContent = '';
+            if (cara) _fodiSet(cara, _fodiReaccion(resp, false));
+            if (window.speechSynthesis) {
+                const u = _fodiUtterance(_asistTextoHablado(resp));
+                u.onstart = () => { if (cara) _fodiHablar(cara, true); };
+                u.onend = u.onerror = () => { if (cara) _fodiHablar(cara, false); };
+                window.speechSynthesis.speak(u);
+            }
+        } catch (err) {
+            _ffHist.pop();
+            texto.textContent = err?.message || 'No pude responderte ahora. Intenta de nuevo.'; estado.textContent = '';
+            if (cara) _fodiSet(cara, _fodiReaccion('', true));
+        } finally { _ffBusy = false; mic.disabled = false; }
+    };
+    const escuchar = () => {
+        if (!SR || _ffBusy) return;
+        if (_ffRec) { _ffRec.stop(); return; }
+        callar();
+        const rec = new SR();
+        rec.lang = 'es-CO'; rec.interimResults = true; rec.continuous = false;
+        let final = '';
+        rec.onresult = (e) => { final = Array.from(e.results).map((x) => x[0].transcript).join(''); estado.textContent = '👂 ' + final; };
+        rec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') estado.textContent = 'Permite el micrófono en el navegador para hablarme.'; };
+        rec.onend = () => { _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando'); mic.textContent = '🎤 Toca y habla'; if (final.trim()) enviar(final); else if (!estado.textContent.startsWith('Permite')) estado.textContent = 'No alcancé a escucharte. Intenta de nuevo.'; };
+        _ffRec = rec; mic.classList.add('on'); burbuja.classList.add('escuchando'); mic.textContent = '⏹ Te escucho…'; estado.textContent = 'Habla ahora…';
+        try { rec.start(); } catch (_) { _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando'); }
+    };
+    burbuja.addEventListener('click', () => { raiz.classList.toggle('abierto'); if (raiz.classList.contains('abierto') && SR && !_ffBusy && !_ffRec) setTimeout(escuchar, 250); });
+    $('fodiFlotCerrar').addEventListener('click', () => { raiz.classList.remove('abierto'); callar(); if (_ffRec) _ffRec.stop(); });
+    mic.addEventListener('click', escuchar);
+    $('fodiFlotCalla').addEventListener('click', callar);
+    txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const t = txt.value; txt.value = ''; enviar(t); } });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _fodiFlotInit); else _fodiFlotInit();

@@ -3341,6 +3341,8 @@ async function asistenteModeloActivo(db) {
     }
 }
 
+const MODO_VOZ_PROMPT = `MODO VOZ (el administrador te escucha, no te lee): habla como una amiga tierna, cálida y cercana, con diminutivos suaves y buena energía, sin exagerar. Responde en 1 a 3 frases cortas y naturales. NADA de tablas, listas, markdown, emojis ni símbolos. Di los montos como se hablan ("ocho mil quinientos pesos"). Si hay mucho detalle, da lo esencial y ofrece contar más. Para el valor de un domicilio usa tarifa_domicilio y di si ya se cobró antes y cuánto.`;
+
 function asistenteSystemPrompt() {
     const hoy = adminAsistente.bogotaDateKey(Date.now());
     return `Eres FODI, el analista de datos y consultor de gerencia/marketing del administrador de ROAL BURGER (hamburguesería en Colombia). Hablas en español colombiano neutro, cercano, claro y breve.
@@ -3415,7 +3417,8 @@ exports.adminAsistenteIA = onCall(
             : 'MEMORIA: vacía todavía. Ofrece el cuestionario gerencial con una sola pregunta.';
         const system = [
             { type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } },
-            { type: 'text', text: bloqueMemoria }
+            { type: 'text', text: bloqueMemoria },
+            ...(request.data?.modo === 'voz' ? [{ type: 'text', text: MODO_VOZ_PROMPT }] : [])
         ];
         let tokensIn = 0;
         let tokensOut = 0;
