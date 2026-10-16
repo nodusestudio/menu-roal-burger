@@ -1859,6 +1859,7 @@ function setupAccordion() {
 
         if (target === 'asistente') {
             _asistInit();
+            _fodiAlertasCargar();
         }
 
         if (target === 'cuponpana') {
@@ -33237,6 +33238,7 @@ function _fodiFlotInit() {
     txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const t = txt.value; txt.value = ''; enviar(t); } });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _fodiFlotInit); else _fodiFlotInit();
+setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_meseroSession) _fodiAlertasCargar(); }, 9000);
 
 
 // ── Responder a un cliente: pega chat/captura y FODI sugiere respuestas ─────────────────
@@ -33323,3 +33325,30 @@ document.getElementById('asistUsoBtn')?.addEventListener('click', async () => {
             + 'Tu saldo en Anthropic no se puede leer desde aquí: míralo en console.anthropic.com → Plans & Billing (ahí puedes poner alerta y recarga automática).';
     } catch (e) { out.textContent = 'No pude leer el consumo: ' + (e.message || e); } finally { btn.disabled = false; }
 });
+
+// ── Alertas proactivas de FODI (fodi_alertas, calculadas cada mañana en el servidor) ─────────────────
+async function _fodiAlertasCargar(recalcular) {
+    const box = document.getElementById('fodiAlertasBox');
+    if (!box || _meseroSession) return;
+    try {
+        let data;
+        if (recalcular) {
+            box.innerHTML = '<p class="asist-hint" style="opacity:1">Calculando alertas…</p>';
+            const r = await firebaseFunctions.httpsCallable('adminRecalcularAlertas', { timeout: 120000 })({});
+            data = r.data;
+        } else {
+            const sn = await firebaseDb.collection('fodi_alertas').orderBy('creadaMs', 'desc').limit(1).get();
+            data = sn.empty ? null : sn.docs[0].data();
+        }
+        const items = (data && data.items) || [];
+        const ic = { alta: '🔴', media: '🟠', info: '🔵' };
+        box.innerHTML = `<details ${items.some((x) => x.severidad !== 'info') ? 'open' : ''} style="padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.07)">
+            <summary style="cursor:pointer;font-weight:700">🔔 Alertas de FODI${data ? ` (${escapeHtml(data.fecha || '')}) · ${items.length}` : ''}</summary>
+            ${items.length ? items.map((x) => `<div style="margin:8px 0"><strong>${ic[x.severidad] || '🔵'} ${escapeHtml(x.titulo)}</strong><br><small>${escapeHtml(x.detalle || '')}</small></div>`).join('') : `<p class="asist-hint" style="text-align:left;opacity:1">${data ? 'Todo en orden hoy. 🎉' : 'Aún no hay alertas calculadas.'}</p>`}
+            <button type="button" class="section-action-btn" id="fodiAlertasRecalc">Recalcular ahora</button></details>`;
+        document.getElementById('fodiAlertasRecalc')?.addEventListener('click', () => _fodiAlertasCargar(true));
+        const rojas = items.filter((x) => x.severidad === 'alta').length;
+        const fl = document.getElementById('fodiFlot');
+        if (fl) fl.classList.toggle('con-alertas', rojas > 0);
+    } catch (e) { box.innerHTML = `<p class="asist-hint" style="opacity:1">No pude leer las alertas: ${escapeHtml(e.message || String(e))}</p>`; }
+}

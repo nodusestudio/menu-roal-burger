@@ -15472,6 +15472,7 @@
                         <button type="button" class="section-action-btn" id="respClienteAbrir">💬 Responder a un cliente</button> <button type="button" class="section-action-btn" id="asistNuevoBtn">Nueva conversación</button>
                     </div>
                     <div class="card-body">
+                        <div id="fodiAlertasBox" style="margin:0 0 8px"></div>
                         <details class="asist-ajustes" style="margin:0 0 8px;padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.07)">
                             <summary style="cursor:pointer;font-weight:700">⚙️ Ajustes de FODI y consumo de IA</summary>
                             <p class="asist-hint" style="text-align:left;opacity:1"><button type="button" class="section-action-btn" id="asistUsoBtn">📊 Ver consumo de IA</button></p>
@@ -16861,13 +16862,14 @@
         #respClienteModal .rc-resp .rc-btn{margin-top:8px;padding:6px 14px;font-size:.82rem}
         #fodiFlot{position:fixed;right:16px;bottom:96px;width:68px;height:68px;z-index:2147483000;display:none;font-family:inherit;touch-action:none}
         body.admin-unlocked:not(.mesero-mode) #fodiFlot.on{display:block}
-        #fodiFlotBurbuja{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;width:68px;height:68px;border-radius:50%;border:0;background:radial-gradient(circle at 35% 25%,#3a3f66,#1b2133 70%);cursor:pointer;padding:5px;box-shadow:0 8px 22px rgba(120,90,255,.35),0 0 0 3px rgba(255,255,255,.14);transition:transform .2s cubic-bezier(.3,1.6,.5,1),box-shadow .2s}
+        #fodiFlotBurbuja{position:relative;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;width:68px;height:68px;border-radius:50%;border:0;background:radial-gradient(circle at 35% 25%,#3a3f66,#1b2133 70%);cursor:pointer;padding:5px;box-shadow:0 8px 22px rgba(120,90,255,.35),0 0 0 3px rgba(255,255,255,.14);transition:transform .2s cubic-bezier(.3,1.6,.5,1),box-shadow .2s}
         #fodiFlotBurbuja:hover{transform:scale(1.1) rotate(-4deg);box-shadow:0 10px 26px rgba(255,150,200,.5),0 0 0 3px rgba(255,200,230,.35)}
         #fodiFlotBurbuja:active{transform:scale(.9)}
         #fodiFlotBurbuja.rebota{animation:ffRebota .7s cubic-bezier(.3,1.6,.5,1)}
         @keyframes ffRebota{0%{transform:scale(1)}25%{transform:scale(.85,1.15) translateY(-6px)}55%{transform:scale(1.12,.9)}80%{transform:scale(.97,1.04)}100%{transform:scale(1)}}
         #fodiFlot:not(.abierto) #fodiFlotBurbuja{animation:ffFlota 3.4s ease-in-out infinite}
         @keyframes ffFlota{0%,100%{translate:0 0}50%{translate:0 -4px}}
+        #fodiFlot.con-alertas #fodiFlotBurbuja::after{content:'';position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#ef4444;border:2px solid #1b2133}
         #fodiFlotBurbuja.escuchando{box-shadow:0 0 0 5px rgba(255,107,157,.45),0 0 26px rgba(255,107,157,.6)}
         #fodiFlotBurbuja.arrastrando{cursor:grabbing;transform:scale(1.12);animation:none}
         #fodiFlot.abierto #fodiFlotBurbuja{display:none}

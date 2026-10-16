@@ -156,8 +156,8 @@ test('recortarResultado: trunca filas, conserva totales y avisa', () => {
   assert.equal(a.recortarResultado({ a: 1 }), '{"a":1}');
 });
 
-test('definición de herramientas: 20 y con esquema válido', () => {
-  assert.equal(a.TOOLS.length, 20);
+test('definición de herramientas: 24 y con esquema válido', () => {
+  assert.equal(a.TOOLS.length, 24);
   for (const t of a.TOOLS) {
     assert.ok(t.name && t.description && t.input_schema.type === 'object');
   }

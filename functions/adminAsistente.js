@@ -492,6 +492,7 @@ async function costoPorPlato(args = {}, db) {
     }
     const cfg = cfgDoc.exists ? cfgDoc.data() : {};
     const colchonPct = Number(cfg.colchonPct) || 0, margenObjetivoPct = Number(cfg.margenObjetivoPct) || 0;
+    const margenPromoPct = Number(cfg.margenPromoPct) || margenObjetivoPct;
     const buscar = String(args.buscar || '').toLowerCase().trim();
     const filtra = (nombre) => !buscar || String(nombre).toLowerCase().includes(buscar);
     const parte = args.parte || 'platos';
@@ -526,7 +527,8 @@ async function costoPorPlato(args = {}, db) {
             }
             const precio = Number(p.precio) || 0;
             const alerta = roto ? 'referencias a platos inexistentes' : !costo ? 'sin costo' : !precio ? 'sin precio' : costo >= precio ? 'costo con colchón ≥ precio' : undefined;
-            return { id: p.id, promo: p.nombre || p.id, precio, costo_real: Math.round(real), costo: Math.round(costo), margen_pct: precio ? Math.round(((precio - costo) / precio) * 1000) / 10 : null, alerta };
+            const mP = margenPromoPct / 100, sugerido = costo > 0 && mP > 0 && mP < 1 ? Math.ceil(costo / (1 - mP) / 500) * 500 : null;
+            return { id: p.id, promo: p.nombre || p.id, precio, costo_real: Math.round(real), costo: Math.round(costo), margen_pct: precio ? Math.round(((precio - costo) / precio) * 1000) / 10 : null, margen_objetivo_promos_pct: margenPromoPct, precio_sugerido: sugerido, alerta };
         }).filter((f) => filtra(f.promo));
         return { fuente, total: filas.length, promociones: filas.sort((a, b) => (a.margen_pct ?? 999) - (b.margen_pct ?? 999)) };
     }
@@ -778,6 +780,32 @@ const TOOLS = [
         } }
     },
     {
+        name: 'rentabilidad_menu',
+        description: 'RENTABILIDAD REAL del menú: cruza lo que se VENDIÓ (unidades e ingresos) con el costo de cada plato/promo de Costos y recetas. Devuelve utilidad total y margen real por producto, ranking de aportes, productos bajo su margen objetivo, clasificación estrella/caballo/enigma/perro y productos vendidos sin costo asociado. Úsala para decidir qué empujar, subir de precio o retirar. Por defecto últimos 30 días.',
+        input_schema: { type: 'object', properties: { desde: { type: 'string', description: 'YYYY-MM-DD (opcional).' }, hasta: { type: 'string', description: 'YYYY-MM-DD (opcional).' } } }
+    },
+    {
+        name: 'registrar_sugerencia',
+        description: 'Registra una recomendación CONCRETA y medible que acabas de dar al dueño (ej. subir el precio de un plato, lanzar una promo, empujar un producto) para evaluarla automáticamente tras el plazo y APRENDER de si funcionó. Llámala cada vez que recomiendes algo cuyo efecto se pueda medir en ventas totales o en un producto.',
+        input_schema: { type: 'object', properties: {
+            titulo: { type: 'string', description: 'Qué recomendaste, corto (ej. "Subir Burger Caracas a $28.000").' },
+            detalle: { type: 'string', description: 'Contexto o razón (opcional).' },
+            metrica: { type: 'string', enum: ['ventas_total', 'producto'], description: 'Qué se medirá: ventas totales del negocio o unidades de un producto.' },
+            producto: { type: 'string', description: 'Nombre del producto si metrica es "producto".' },
+            plazo_dias: { type: 'number', description: 'Días hasta evaluar (7-45, por defecto 14).' }
+        }, required: ['titulo'] }
+    },
+    {
+        name: 'sugerencias_fodi',
+        description: 'Historial de tus propias sugerencias registradas: pendientes de evaluar y evaluadas con su resultado (mejoró / sin cambio / empeoró). Úsala para aprender de lo que funcionó y no repetir lo que no.',
+        input_schema: { type: 'object', properties: { parte: { type: 'string', enum: ['pendientes', 'evaluadas', 'todas'] } } }
+    },
+    {
+        name: 'alertas_fodi',
+        description: 'Alertas proactivas del día: insumos que subieron, productos/promos con margen bajo, caída o alza de ventas de ayer y resultados de sugerencias evaluadas. "leer" trae las últimas guardadas; "recalcular" las vuelve a calcular ahora.',
+        input_schema: { type: 'object', properties: { accion: { type: 'string', enum: ['leer', 'recalcular'] } } }
+    },
+    {
         name: 'redes_sociales',
         description: 'Redes sociales del rango: crecimiento de seguidores (Instagram y Facebook), publicaciones mejor medidas (alcance, vistas, interacciones, texto) cruzadas con las ventas de ese mismo día, y alcance de historias de Instagram. Úsala para "¿qué publicación funcionó?", "¿crecemos?", "¿las redes mueven ventas?".',
         input_schema: { type: 'object', properties: { ...FECHAS, n: { type: 'integer', description: 'Publicaciones a listar (1-20, por defecto 8).' } }, required: ['desde', 'hasta'] }
@@ -907,10 +935,13 @@ NO guardes: cifras que salen de las herramientas (ventas del día, etc.), saludo
 Reglas: temas en snake_case cortos; cada texto máx. 350 caracteres, en español, concreto y fechado si hace falta. Si un tema ya existe y hay información nueva, reescríbelo fusionando (mismo tema). Si hay 50 o más temas, consolida antes de agregar. Para borrar algo que el dueño pidió olvidar o que quedó falso, ponlo en "olvidar".
 Responde SOLO JSON: {"guardar":[{"tema":"...","texto":"..."}],"olvidar":["tema"]}. Si no hay nada que aprender: {"guardar":[],"olvidar":[]}.`;
 
-async function aprender(db, client, { modelo, memoria, pregunta, respuesta, acciones }) {
+async function aprender(db, client, { modelo, memoria, pregunta, respuesta, acciones, extra }) {
     const q = String(pregunta || '').trim();
     if (q.length < 12) return { ok: true, guardados: 0 };
-    const entrada = `MEMORIA ACTUAL:\n${memoria.length ? memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n') : '(vacía)'}\n\nDUEÑO DIJO:\n${q.slice(0, 1500)}\n\nFODI RESPONDIÓ:\n${String(respuesta || '').slice(0, 1500)}\n\nACCIONES PROPUESTAS: ${(acciones || []).map((a) => a.tipo + (a.nombre ? ' ' + a.nombre : '') + (a.tab ? ' ' + a.tab : '')).join('; ') || 'ninguna'}`;
+    const entrada = `MEMORIA ACTUAL:\n${memoria.length ? memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n') : '(vacía)'}\n\nDUEÑO DIJO:\n${q.slice(0, 1500)}\n\nFODI RESPONDIÓ:\n${String(respuesta || '').slice(0, 1500)}\n\nACCIONES PROPUESTAS: ${(acciones || []).map((a) => a.tipo + (a.nombre ? ' ' + a.nombre : '') + (a.tab ? ' ' + a.tab : '')).join('; ') || 'ninguna'}${extra ? `
+
+${extra}
+(Si hay resultados de sugerencias, guarda la LECCIÓN: qué tipo de recomendación funcionó o no.)` : ''}`;
     const r = await client.messages.create({ model: modelo, max_tokens: 700, system: APRENDER_PROMPT, messages: [{ role: 'user', content: entrada }] });
     const txt = (r.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
     const m = txt.match(/\{[\s\S]*\}/);
@@ -989,6 +1020,14 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'tarifa_domicilio') return await tarifaDomicilio(db, args);
         if (nombre === 'puntos_lealtad') return await resumenPuntos(db);
         if (nombre === 'costo_por_plato') return await costoPorPlato(args, db);
+        if (nombre === 'rentabilidad_menu') return await require('./fodiInteligencia').rentabilidadMenu(db, args);
+        if (nombre === 'registrar_sugerencia') return await require('./fodiInteligencia').registrarSugerencia(db, args);
+        if (nombre === 'sugerencias_fodi') return await require('./fodiInteligencia').listarSugerencias(db, args);
+        if (nombre === 'alertas_fodi') {
+            const FI = require('./fodiInteligencia');
+            if (args.accion === 'recalcular') return await FI.guardarAlertas(db);
+            return (await FI.leerAlertas(db)) || { items: [], nota: 'Aún no hay alertas calculadas; usa accion "recalcular".' };
+        }
         if (nombre === 'comparar_periodos') {
             const ra = parseRango(args.a_desde, args.a_hasta);
             const rb = parseRango(args.b_desde, args.b_hasta);

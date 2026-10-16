@@ -3324,6 +3324,7 @@ exports.adminFacebook = onCall(
 // ─────────────────────────────────────────────────────────────
 const adminAsistente = require('./adminAsistente');
 const fodiConocimiento = require('./fodiConocimiento');
+const fodiInteligencia = require('./fodiInteligencia');
 const ASISTENTE_MAX_ITER = 6;
 const ASISTENTE_TOPE_DIARIO = 60;
 // USD por millón de tokens. El modelo se elige en configuracion/asistente_ia { modelo: 'sonnet' | 'haiku' }
@@ -3355,6 +3356,9 @@ REGLAS DE DATOS (inquebrantables):
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
 - Eres de solo lectura sobre el negocio: no puedes modificar pedidos, caja ni puntos. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
 - MEMORIA: abajo verás lo que ya sabes del negocio y del dueño; úsalo para personalizar (metas, prioridades, tono). Cuando el administrador te cuente una meta, preferencia o dato duradero, guárdalo con recordar sin que lo pida y dilo en una línea. Nunca guardes cifras de herramientas ni datos sensibles (claves, PINs). Si te dice que olvides algo, usa recordar con olvidar.
+- APRENDER DE TUS SUGERENCIAS: cuando recomiendes algo concreto y medible (subir/bajar un precio, lanzar o ajustar una promo, empujar un producto), llama a registrar_sugerencia con la métrica y el plazo adecuados; el sistema la evalúa solo y te mostrará el resultado. Si en el contexto aparece "RESULTADOS DE TUS SUGERENCIAS", comenta al dueño qué funcionó y qué no, sin afirmar causalidad (estacionalidad, clima, quincena pueden influir), y ajusta tus próximas recomendaciones. Antes de recomendar, consulta sugerencias_fodi para no repetir lo que ya falló.
+- RENTABILIDAD: para decidir qué empujar, subir de precio o retirar, usa rentabilidad_menu (ventas reales × costos), no solo el food cost teórico. Las promos tienen un margen objetivo propio (menor que el de platos).
+- ALERTAS: la herramienta alertas_fodi trae lo que conviene atender hoy (insumos que subieron, márgenes bajos, ventas de ayer). Si el dueño pregunta "qué hay de nuevo" o "cómo vamos", empieza por ahí.
 - CUESTIONARIO GERENCIAL: si la memoria está vacía o casi vacía, o el administrador pide "conóceme"/"cuestionario", hazle UNA pregunta a la vez (no una lista), en este orden y saltando lo que ya sepas: 1) meta de ventas mensual, 2) qué le preocupa más hoy (costos, ventas, marketing, personal), 3) horas/días que quiere mover, 4) meta de margen o food cost, 5) productos que quiere empujar o retirar, 6) cada cuánto quiere un informe y cómo prefiere que le hables. Guarda cada respuesta con recordar al recibirla.
 - Para "este mes" usa desde el día 1 hasta hoy; para "ayer", la fecha de ayer.
 - Costo por plato: usa costo_por_plato (calculadora propia de FODEXA; da costo_real y costo con colchón del 30%, y por defecto solo platos activos); si no hay recetas registradas, dilo y explica cómo registrarlas, y trabaja con ventas, gastos y costos fijos reales.
@@ -3417,10 +3421,14 @@ exports.adminAsistenteIA = onCall(
             ? `MEMORIA (lo que sabes del negocio y del dueño, dicho por él):\n${memoria.map((m) => `- ${m.tema}: ${m.texto} (${m.actualizado})`).join('\n')}`
             : 'MEMORIA: vacía todavía. Ofrece el cuestionario gerencial con una sola pregunta.';
         const bloqueConocimiento = fodiConocimiento.bloque(fodiConocimiento.seleccionar(mensajes.slice(-4).map((m) => m.content), 3));
+        const resultadosSug = await fodiInteligencia.evaluarVencidas(db, 2).catch((e) => { console.error('evaluarVencidas:', e && e.message); return []; });
+        const bloqueSug = resultadosSug.length ? `RESULTADOS DE TUS SUGERENCIAS (recién evaluadas):
+${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días): ${r.veredicto}; ${r.metrica} ${r.antes} → ${r.despues}${r.cambio_pct != null ? ` (${r.cambio_pct}%)` : ''}`).join('\n')}` : '';
         const system = [
             { type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } },
             { type: 'text', text: bloqueMemoria },
             ...(bloqueConocimiento ? [{ type: 'text', text: bloqueConocimiento }] : []),
+            ...(bloqueSug ? [{ type: 'text', text: bloqueSug }] : []),
             ...(request.data?.modo === 'voz' ? [{ type: 'text', text: MODO_VOZ_PROMPT }] : [])
         ];
         let tokensIn = 0;
@@ -3468,7 +3476,7 @@ exports.adminAsistenteIA = onCall(
         try {
             if (texto && request.data?.aprender !== false) {
                 const H = ASISTENTE_MODELOS.haiku;
-                const a = await adminAsistente.aprender(db, client, { modelo: H.id, memoria, pregunta: mensajes.filter((m) => m.role === 'user' && typeof m.content === 'string').slice(-1)[0]?.content, respuesta: texto, acciones });
+                const a = await adminAsistente.aprender(db, client, { modelo: H.id, memoria, pregunta: mensajes.filter((m) => m.role === 'user' && typeof m.content === 'string').slice(-1)[0]?.content, respuesta: texto, acciones, extra: bloqueSug });
                 const u = a.usage || {};
                 costoAprender = ((u.input_tokens || 0) * H.in + (u.output_tokens || 0) * H.out) / 1e6;
             }
@@ -3554,5 +3562,26 @@ exports.adminSugerirRespuestaCliente = onCall(
             recomendacion: s(j.recomendacion_interna, 900),
             evitar: (Array.isArray(j.evitar) ? j.evitar : []).slice(0, 5).map((x) => s(x, 160))
         };
+    }
+);
+
+// Alertas proactivas de FODI: cada día 7:30 a. m. (Bogotá) calcula insumos que subieron, márgenes bajos,
+// caída/alza de ventas de ayer y resultados de sugerencias; el admin las ve en la pestaña Asistente.
+exports.fodiAlertasDiarias = onSchedule(
+    { schedule: '30 7 * * *', timeZone: 'America/Bogota', region: 'us-central1', timeoutSeconds: 180, memory: '512MiB' },
+    async () => {
+        try {
+            const r = await fodiInteligencia.guardarAlertas(getFirestore());
+            console.log('fodiAlertasDiarias', r.fecha, r.items.length, 'alertas');
+        } catch (e) { console.error('fodiAlertasDiarias error:', e); }
+    }
+);
+
+// Recalcular alertas de FODI a demanda (botón "Recalcular ahora" del admin).
+exports.adminRecalcularAlertas = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB' },
+    async (request) => {
+        await ensureAdminCaller(request);
+        try { return await fodiInteligencia.guardarAlertas(getFirestore()); } catch (e) { console.error('adminRecalcularAlertas:', e); throw new HttpsError('internal', 'No se pudieron calcular las alertas.'); }
     }
 );
