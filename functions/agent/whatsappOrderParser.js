@@ -180,16 +180,20 @@ function parseModelJson(text) {
     }
 }
 
-async function extractOrderFieldsWithClaude(apiKey, rawText) {
+async function extractOrderFieldsWithClaude(apiKey, rawText, opts = {}) {
     const client = new Anthropic({ apiKey });
+    const img = opts.image && typeof opts.image.base64 === 'string' && ['image/jpeg', 'image/png', 'image/webp'].includes(opts.image.mediaType) ? opts.image : null;
+    const contenido = [];
+    if (img) contenido.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
+    const cabecera = opts.voz
+        ? 'Texto DICTADO POR VOZ por el cajero (puede traer errores de transcripción, sin puntuación y términos mal oídos; interpreta con criterio sin inventar datos):'
+        : (img ? 'Conversación de WhatsApp en la captura de pantalla adjunta' + (rawText ? ' y texto adicional:' : '.') : 'Texto crudo de la conversación de WhatsApp:');
+    contenido.push({ type: 'text', text: rawText ? `${cabecera}\n\"\"\"\n${rawText}\n\"\"\"` : cabecera });
     const response = await client.messages.create({
         model: PARSER_MODEL,
         max_tokens: 1024,
         system: PARSE_SYSTEM_PROMPT,
-        messages: [{
-            role: 'user',
-            content: `Texto crudo de la conversación de WhatsApp:\n"""\n${rawText}\n"""`
-        }]
+        messages: [{ role: 'user', content: contenido }]
     });
     const text = (response.content || [])
         .filter((b) => b.type === 'text')
@@ -228,14 +232,14 @@ async function lookupClientByPhone(db, phoneDigits) {
  * Arma el borrador completo. NO crea nada en Firestore.
  * @returns {Promise<object>} draft para el frontend (ver JSDoc de shape abajo).
  */
-async function buildWhatsAppOrderDraft(db, apiKey, rawText) {
+async function buildWhatsAppOrderDraft(db, apiKey, rawText, opts = {}) {
     const text = String(rawText || '').trim();
-    if (!text) throw new Error('No hay texto para procesar.');
+    if (!text && !opts.image) throw new Error('No hay texto ni captura para procesar.');
 
     // El menú y la llamada al modelo son independientes -> en paralelo.
     const [menuItems, extracted] = await Promise.all([
         fetchAllSellableItems(db),
-        extractOrderFieldsWithClaude(apiKey, text)
+        extractOrderFieldsWithClaude(apiKey, text, opts)
     ]);
 
     const items = resolveDraftItemsAgainstMenu(

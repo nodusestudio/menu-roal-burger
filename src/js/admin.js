@@ -3622,10 +3622,24 @@ document.addEventListener('click', (e) => {
 // usa Reina). NADA toca Firestore hasta "Confirmar y crear pedido". Si createAgentOrder falla,
 // el error se muestra en el modal SIN perder lo que el cajero ya editó.
 let _waDraftState = null;
+let _waImg = null, _waRec = null, _waPorVoz = false, _waAutoTimer = 0;
+const _waImgReducir = (file) => new Promise((ok, mal) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => {
+        const k = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement('canvas');
+        c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); mal(new Error('No pude leer la imagen.')); };
+    im.src = url;
+});
 
 function _waCloseModal() {
+    clearInterval(_waAutoTimer);
+    if (_waRec) { try { _waRec.stop(); } catch (_) { /* ya parado */ } _waRec = null; }
     document.getElementById('waPasteOverlay')?.remove();
-    _waDraftState = null;
+    _waDraftState = null; _waImg = null; _waPorVoz = false;
 }
 
 function openWhatsAppPasteModal() {
@@ -3639,12 +3653,20 @@ function openWhatsAppPasteModal() {
         <div class="combo-modal-card wapaste-card">
             <div class="combo-modal-header">
                 <div>
-                    <h4>📋 Pegar pedido de WhatsApp</h4>
-                    <p class="combo-modal-subtitle">Pega el texto de la conversación y se arma el borrador. Nada se guarda hasta que lo confirmes.</p>
+                    <h4>📋 Pedido por texto, captura o voz</h4>
+                    <p class="combo-modal-subtitle">Pega el chat, adjunta una captura (Ctrl+V) o dicta el pedido. Se arma el borrador para que lo revises.</p>
                 </div>
                 <button type="button" class="combo-modal-close-x" aria-label="Cerrar">&times;</button>
             </div>
             <textarea class="wapaste-textarea" id="waPasteText" placeholder="Ej:&#10;Hola, quiero 2 burger ranchera y una coca cola de litro&#10;Es para domicilio, calle 10 # 5-20 barrio centro&#10;Pago con 100 en efectivo&#10;Soy Juan, 3001234567"></textarea>
+            <img id="waImgPrev" alt="Captura adjunta" style="display:none;max-height:150px;max-width:100%;border-radius:10px;margin:8px 0">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center">
+                <label class="combo-modal-cancel-btn" style="cursor:pointer;margin:0">📷 Adjuntar captura<input type="file" id="waArchivo" accept="image/*" hidden></label>
+                <button type="button" class="combo-modal-cancel-btn" id="waImgQuitar" hidden>Quitar captura</button>
+                <button type="button" class="combo-modal-cancel-btn" id="waDictar">🎤 Dictar pedido</button>
+                <span id="waVozEstado" style="font-size:.85rem;opacity:.85"></span>
+            </div>
+            <label style="display:flex;gap:6px;align-items:center;font-size:.85rem;opacity:.9;margin:4px 0"><input type="checkbox" id="waAutoCrear"> ⚡ Crear el pedido directo si queda completo (cuenta regresiva de 5 s para cancelar)</label>
             <div class="wapaste-error" id="waPasteErr" hidden></div>
             <div class="combo-modal-footer">
                 <button type="button" class="combo-modal-cancel-btn" id="waPasteCancel">Cancelar</button>
@@ -3657,7 +3679,69 @@ function openWhatsAppPasteModal() {
     overlay.querySelector('#waPasteCancel').addEventListener('click', _waCloseModal);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) _waCloseModal(); });
     overlay.querySelector('#waPasteProcess').addEventListener('click', _waProcessPastedText);
+    _waBindMultimodal(overlay);
     setTimeout(() => overlay.querySelector('#waPasteText')?.focus(), 50);
+}
+
+// Captura de pantalla (adjuntar o pegar) y dictado por voz del modal de pedido
+function _waBindMultimodal(overlay) {
+    const $ = (id) => overlay.querySelector('#' + id);
+    const prev = $('waImgPrev'), quitar = $('waImgQuitar'), estado = $('waVozEstado'), texto = $('waPasteText');
+    const poner = (b64) => { _waImg = b64 ? { base64: b64, mediaType: 'image/jpeg' } : null; prev.style.display = b64 ? 'block' : 'none'; prev.src = b64 ? `data:image/jpeg;base64,${b64}` : ''; quitar.hidden = !b64; };
+    const cargar = async (f) => { try { poner(await _waImgReducir(f)); } catch (e) { estado.textContent = e.message; } };
+    $('waArchivo').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) cargar(f); e.target.value = ''; });
+    quitar.addEventListener('click', () => poner(null));
+    overlay.addEventListener('paste', (e) => {
+        const it = Array.from(e.clipboardData?.items || []).find((x) => x.type.startsWith('image/'));
+        if (it) { e.preventDefault(); const f = it.getAsFile(); if (f) cargar(f); }
+    });
+    const auto = $('waAutoCrear');
+    try { auto.checked = localStorage.getItem('waAutoCrear') === '1'; } catch (_) { /* sin storage */ }
+    auto.addEventListener('change', () => { try { localStorage.setItem('waAutoCrear', auto.checked ? '1' : '0'); } catch (_) { /* sin storage */ } });
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const dictar = $('waDictar');
+    if (!SR) { dictar.style.display = 'none'; return; }
+    dictar.addEventListener('click', () => {
+        if (_waRec) { _waRec.stop(); return; }
+        const rec = new SR();
+        rec.lang = 'es-CO'; rec.interimResults = true; rec.continuous = true;
+        const base = texto.value ? texto.value.trim() + ' ' : '';
+        let final = '';
+        rec.onresult = (e) => {
+            let interim = '';
+            for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) final += t + ' '; else interim += t; }
+            texto.value = (base + final + interim).trim();
+        };
+        rec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') estado.textContent = 'Permite el micrófono en el navegador.'; };
+        rec.onend = () => {
+            _waRec = null; dictar.textContent = '🎤 Dictar pedido'; dictar.classList.remove('on');
+            if (texto.value.trim().length >= 4) { _waPorVoz = true; estado.textContent = 'Procesando lo que dictaste…'; _waProcessPastedText(); }
+        };
+        _waRec = rec; dictar.textContent = '⏹ Terminar y armar pedido'; estado.textContent = '🎙️ Dicta el pedido: productos, cantidades, nombre, teléfono, dirección y forma de pago…';
+        try { rec.start(); } catch (_) { _waRec = null; }
+    });
+}
+
+// Crea el pedido solo si el borrador quedó completo y el cajero activó la opción; 5 s para cancelar
+function _waAutoCrearSiCompleto(draft) {
+    let activo = false;
+    try { activo = localStorage.getItem('waAutoCrear') === '1'; } catch (_) { /* sin storage */ }
+    const card = document.querySelector('#waPasteOverlay .combo-modal-card');
+    if (!activo || !card || !draft || !(draft.items || []).length || draft.hasUnmatched) return;
+    if (!draft.fulfillmentType || !draft.paymentMethod || (draft.fulfillmentType === 'delivery' && !String(draft.address || '').trim())) return;
+    clearInterval(_waAutoTimer);
+    const bar = document.createElement('div');
+    bar.style.cssText = 'margin:8px 0;padding:10px 12px;border-radius:12px;background:rgba(245,158,11,.18);border:1px solid #f59e0b;display:flex;gap:10px;align-items:center;justify-content:space-between';
+    let n = 5;
+    bar.innerHTML = `<span>⚡ Pedido completo: se creará en <b id="waAutoN">${n}</b> s</span><button type="button" class="combo-modal-cancel-btn" id="waAutoCancel">Cancelar</button>`;
+    card.insertBefore(bar, card.children[1] || null);
+    const parar = () => { clearInterval(_waAutoTimer); bar.remove(); };
+    bar.querySelector('#waAutoCancel').addEventListener('click', parar);
+    _waAutoTimer = setInterval(() => {
+        n--;
+        const el = bar.querySelector('#waAutoN'); if (el) el.textContent = n;
+        if (n <= 0) { parar(); _waSubmitOrder(); }
+    }, 1000);
 }
 
 async function _waProcessPastedText() {
@@ -3669,8 +3753,8 @@ async function _waProcessPastedText() {
     const rawText = String(textEl.value || '').trim();
     errEl.hidden = true;
 
-    if (rawText.length < 4) {
-        errEl.textContent = 'Pega primero el texto de la conversación.';
+    if (rawText.length < 4 && !_waImg) {
+        errEl.textContent = 'Pega el texto de la conversación, adjunta una captura o dicta el pedido.';
         errEl.hidden = false;
         return;
     }
@@ -3683,10 +3767,11 @@ async function _waProcessPastedText() {
     btn.disabled = true;
     btn.textContent = 'Procesando…';
     try {
-        const res = await firebaseFunctions.httpsCallable('parseWhatsAppOrderDraft')({ rawText });
+        const res = await firebaseFunctions.httpsCallable('parseWhatsAppOrderDraft', { timeout: 90000 })({ rawText, imagen: _waImg, voz: _waPorVoz });
         const draft = res && res.data && res.data.draft;
         if (!draft) throw new Error('Respuesta vacía del servidor.');
         _waRenderReview(draft);
+        _waAutoCrearSiCompleto(draft);
     } catch (err) {
         errEl.textContent = (err && err.message) ? err.message : 'No se pudo procesar el texto.';
         errEl.hidden = false;

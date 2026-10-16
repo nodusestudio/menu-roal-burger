@@ -2043,8 +2043,13 @@ exports.parseWhatsAppOrderDraft = onCall(
         await ensureAdminCaller(request);
 
         const rawText = String(request.data?.rawText || '').trim();
-        if (!rawText) {
-            throw new HttpsError('invalid-argument', 'Pega el texto de la conversacion de WhatsApp.');
+        const imagen = request.data?.imagen;
+        const tieneImg = !!(imagen && typeof imagen.base64 === 'string' && ['image/jpeg', 'image/png', 'image/webp'].includes(imagen.mediaType));
+        if (tieneImg && imagen.base64.length > 6 * 1024 * 1024) {
+            throw new HttpsError('invalid-argument', 'La captura es muy grande.');
+        }
+        if (!rawText && !tieneImg) {
+            throw new HttpsError('invalid-argument', 'Pega el texto de la conversacion, dicta el pedido o adjunta una captura.');
         }
         if (rawText.length > 8000) {
             throw new HttpsError('invalid-argument', 'El texto es demasiado largo (maximo 8000 caracteres).');
@@ -2055,7 +2060,7 @@ exports.parseWhatsAppOrderDraft = onCall(
         }
 
         try {
-            const draft = await buildWhatsAppOrderDraft(getFirestore(), apiKey, rawText);
+            const draft = await buildWhatsAppOrderDraft(getFirestore(), apiKey, rawText, { image: tieneImg ? imagen : null, voz: request.data?.voz === true });
             return { draft };
         } catch (err) {
             if (err instanceof HttpsError) throw err;
