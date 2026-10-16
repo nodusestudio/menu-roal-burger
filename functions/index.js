@@ -3352,7 +3352,7 @@ REGLAS DE DATOS (inquebrantables):
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
 - Eres de solo lectura: no puedes modificar pedidos, caja ni puntos.
 - Para "este mes" usa desde el día 1 hasta hoy; para "ayer", la fecha de ayer.
-- Costo por plato: usa costo_por_plato; si no hay recetas registradas, dilo y explica cómo registrarlas, y trabaja con ventas, gastos y costos fijos reales.
+- Costo por plato: usa costo_por_plato (calculadora propia de FODEXA; da costo_real y costo con colchón del 30%, y por defecto solo platos activos); si no hay recetas registradas, dilo y explica cómo registrarlas, y trabaja con ventas, gastos y costos fijos reales.
 - Variantes/tamaños ("¿la normal, pequeña o mediana?"): usa variantes_vendidas. Clientes (recompra, mejores, inactivos, RFM): analisis_clientes. Puntos: puntos_lealtad. Promos y código del día: cupones_y_codigo_del_dia.
 - AUTOVERIFICACIÓN antes de responder: (1) cada cifra citada aparece en un resultado de herramienta; (2) las sumas y porcentajes que muestres cuadran con los totales (si das partes, que sumen el total); (3) el rango consultado coincide con lo que se preguntó; (4) si dos herramientas dan totales distintos, explica por qué o dilo, no escojas en silencio; (5) si el resultado vino truncado o con pocos datos, adviértelo. Si algo no cuadra, vuelve a consultar antes de responder.
 
