@@ -3431,7 +3431,7 @@ exports.adminAsistenteIA = onCall(
                 const resultados = [];
                 for (const u of usos) {
                     const r = await adminAsistente.ejecutarHerramienta(db, u.name, u.input || {});
-                    resultados.push({ type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r) });
+                    resultados.push({ type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r, u.name === 'costo_por_plato' ? 14000 : undefined) });
                 }
                 mensajes.push({ role: 'user', content: resultados });
             }
