@@ -156,8 +156,8 @@ test('recortarResultado: trunca filas, conserva totales y avisa', () => {
   assert.equal(a.recortarResultado({ a: 1 }), '{"a":1}');
 });
 
-test('definición de herramientas: 8 y con esquema válido', () => {
-  assert.equal(a.TOOLS.length, 10);
+test('definición de herramientas: 15 y con esquema válido', () => {
+  assert.equal(a.TOOLS.length, 15);
   for (const t of a.TOOLS) {
     assert.ok(t.name && t.description && t.input_schema.type === 'object');
   }
@@ -169,4 +169,61 @@ test('ventas por día de la semana y hora (Bogotá)', () => {
   const r = a.ventasPorDiaHora([{ ms, total: 30000 }, { ms, total: 20000 }]);
   assert.equal(r.por_dia_semana.find((d) => d.dia === 'viernes').pedidos, 2);
   assert.deepEqual(r.por_hora, [{ hora: '19:00', pedidos: 2, ventas: 50000 }]);
+});
+
+const venta = (id, tel, dia, total, items = []) => ({ id, tel, nombre: '', ms: ms(dia), total, items });
+
+test('variantes vendidas: reparte por optionLabel con % de participación y filtra por producto', () => {
+  const it = (name, label, q, sub) => ({ productName: name, optionLabel: label, quantity: q, subtotal: sub });
+  const r = a.variantesVendidas([
+    venta('a', '1', '2026-08-10', 1, [it('Salchipapa', 'Normal', 3, 30000), it('Salchipapa', 'Pequeña', 1, 8000), it('Perro', '', 2, 16000)]),
+    venta('b', '2', '2026-08-11', 1, [it('Salchipapa', 'Normal', 1, 10000)])
+  ], { producto: 'salchi' });
+  assert.equal(r.productos.length, 1);
+  assert.equal(r.productos[0].cantidad, 5);
+  assert.deepEqual(r.productos[0].variantes[0], { variante: 'Normal', cantidad: 4, monto: 40000, participacion_pct: 80 });
+});
+
+test('etiquetaVariante: sin optionLabel usa tipo/sabor, si no "sin variante"', () => {
+  assert.equal(a.etiquetaVariante({ orderOptions: { type: 'combo', flavor: 'Pepsi' } }), 'combo / Pepsi');
+  assert.equal(a.etiquetaVariante({}), 'sin variante');
+});
+
+test('clientes: recompra, inactivos y top enmascaran el teléfono', () => {
+  const ventas = [
+    venta('1', '3001112233', '2026-06-01', 20000), venta('2', '3001112233', '2026-06-10', 30000),
+    venta('3', '3009998877', '2026-08-10', 15000), venta('4', '', '2026-08-10', 9000)
+  ];
+  const rec = a.analisisClientes(ventas, { modo: 'recompra' });
+  assert.equal(rec.clientes_identificados, 2);
+  assert.equal(rec.tasa_recompra_pct, 50);
+  assert.equal(rec.ventas_sin_telefono, 1);
+  const ina = a.analisisClientes(ventas, { modo: 'inactivos', hastaMs: ms('2026-08-15'), dias_inactivo: 45 });
+  assert.equal(ina.total_inactivos_valiosos, 1);
+  assert.equal(ina.top[0].telefono, '***2233');
+  const top = a.analisisClientes(ventas, { modo: 'top' });
+  assert.equal(top.top[0].monto, 50000);
+});
+
+test('RFM: pocos clientes avisa; con suficientes devuelve segmentos que suman el total', () => {
+  assert.ok(a.analisisClientes([venta('1', '1', '2026-08-01', 1)], { modo: 'rfm' }).aviso);
+  const v = Array.from({ length: 9 }, (_, i) => venta(`x${i}`, `30000000${i}`, `2026-08-0${i + 1}`, (i + 1) * 1000));
+  const r = a.analisisClientes(v, { modo: 'rfm' });
+  assert.equal(r.segmentos.reduce((s, x) => s + x.clientes, 0), 9);
+});
+
+test('uso de promos: cuenta pedidos con cupón/2x1/código y descuento', () => {
+  const r = a.usoPromos([
+    venta('1', '1', '2026-08-01', 1, [{ quantity: 1, unitPrice: 8000, originalUnitPrice: 10000, subtotal: 8000, orderOptions: { recommendedDiscount: true } }]),
+    venta('2', '1', '2026-08-01', 1, [{ quantity: 2, subtotal: 20000, orderOptions: {} }])
+  ]);
+  assert.equal(r.pedidos_con_promo, 1);
+  assert.equal(r.pct_pedidos_con_promo, 50);
+  assert.equal(r.descuento_estimado_cop, 2000);
+});
+
+test('normalizarVenta conserva teléfono y nombre', () => {
+  const v = a.normalizarVenta('z', pedido({ customerPhoneDigits: '300 111', customerName: ' Ana ' }));
+  assert.equal(v.tel, '300111');
+  assert.equal(v.nombre, 'Ana');
 });

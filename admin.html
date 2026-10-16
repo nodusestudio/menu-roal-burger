@@ -15436,31 +15436,27 @@
                     .asist-send:hover{transform:scale(1.07)}
                     .asist-send:disabled{opacity:.4;cursor:not-allowed;transform:none}
                     .asist-hint{margin:6px 0 0;text-align:center;font-size:.75rem;opacity:.55}
-                    /* FODI, la mascota */
-                    .fodi-svg{width:100%;height:100%;overflow:visible}
-                    .fodi-hero-av{width:96px;height:96px}
-                    .fodi-bun{fill:#f0a64a;stroke:#b86d1c;stroke-width:2}
-                    .fodi-seed{fill:#fff1c9}
-                    .fodi-patty{fill:#6b3a1f;stroke:#3d200f;stroke-width:2}
-                    .fodi-eye{fill:#2a1608;transform-box:fill-box;transform-origin:center;animation:fodiBlink 4.5s infinite}
-                    .fodi-mouth{fill:#7a2b14;transform-box:fill-box;transform-origin:center}
-                    .fodi-body{transform-box:fill-box;transform-origin:50% 100%;animation:fodiBob 3.2s ease-in-out infinite}
-                    .fodi.thinking .fodi-body{animation:fodiThink .7s ease-in-out infinite}
-                    .fodi.thinking .fodi-eyes{animation:fodiLook 1.4s ease-in-out infinite}
-                    .fodi.talking .fodi-mouth{animation:fodiTalk .22s ease-in-out infinite}
-                    .fodi.talking .fodi-body{animation:fodiBob 1s ease-in-out infinite}
-                    .fodi.happy .fodi-body{animation:fodiJump .6s ease-out 1}
-                    .fodi.sad .fodi-body{animation:none}
-                    .fodi.sad .fodi-mouth{transform:scale(.7,.5)}
-                    @keyframes fodiBob{0%,100%{transform:translateY(0) scale(1,1)}50%{transform:translateY(-3px) scale(1.02,.98)}}
-                    @keyframes fodiThink{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg) translateY(-3px)}}
-                    @keyframes fodiLook{0%,100%{transform:translateX(-3px)}50%{transform:translateX(3px)}}
-                    @keyframes fodiTalk{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(2.4)}}
-                    @keyframes fodiJump{0%{transform:translateY(0)}35%{transform:translateY(-14px) scale(.96,1.06)}70%{transform:translateY(0) scale(1.06,.92)}100%{transform:translateY(0)}}
-                    @keyframes fodiBlink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+                    /* FODI, la mascota: mini pantalla con ojos y boca */
+                    .fodi{cursor:pointer;border-radius:30%}
+                    .fodi-svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 3px 10px rgba(197,139,255,.35))}
+                    .fodi-hero-av{width:112px;height:112px}
+                    .f-screen{fill:#14101f;stroke:rgba(255,179,92,.6);stroke-width:1.8}
+                    .f-gloss{fill:rgba(255,255,255,.08)}
+                    .f-eye{fill:#ffd9a0}
+                    .f-arc{fill:none;stroke:#ffd9a0;stroke-width:3.6;stroke-linecap:round;opacity:0}
+                    .f-mouth{fill:#ff8a5c;stroke:#ffd9a0;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+                    .f-blush{fill:#ff7a8a;opacity:0}
+                    .f-zzz,.f-stars,.f-bulb,.f-qm{opacity:0}
+                    .f-zzz text,.f-qm{fill:#c58bff;font-weight:700;font-family:system-ui,sans-serif}
+                    .f-stars path{fill:#ffe27a}
+                    .f-bulb circle{fill:#ffe27a}.f-bulb rect{fill:#c9a24a}
+                    .f-zzz{animation:fodiZ 2.4s ease-in-out infinite}
+                    .f-stars{animation:fodiTwinkle .9s ease-in-out infinite alternate}
+                    @keyframes fodiZ{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+                    @keyframes fodiTwinkle{from{transform:scale(.9)}to{transform:scale(1.08)}}
                     @keyframes fodiCaret{50%{opacity:0}}
                     @keyframes fodiDot{0%,80%,100%{transform:translateY(0);opacity:.5}40%{transform:translateY(-6px);opacity:1}}
-                    @media (prefers-reduced-motion:reduce){.fodi-body,.fodi-eye,.fodi-mouth,.fodi-eyes,.asist-think i,.asist-caret::after{animation:none!important}}
+                    @media (prefers-reduced-motion:reduce){.f-zzz,.f-stars,.asist-think i,.asist-caret::after{animation:none!important}}
                     @media (max-width:700px){#asistShell{height:calc(100vh - 150px)}}
                 </style>
                 <article class="admin-card" id="asistShell">
@@ -15471,9 +15467,7 @@
                     <div class="card-body">
                         <div class="asist-stage" id="asistStage">
                             <div class="asist-hero" id="asistHero">
-                                <div class="fodi fodi-hero-av" id="asistHeroFodi">
-                                    <svg class="fodi-svg" viewBox="0 0 100 100" aria-hidden="true"><g class="fodi-body"><path class="fodi-bun" d="M14 46 C14 18 86 18 86 46 Z"/><circle class="fodi-seed" cx="34" cy="30" r="2"/><circle class="fodi-seed" cx="50" cy="25" r="2"/><circle class="fodi-seed" cx="66" cy="30" r="2"/><rect class="fodi-patty" x="12" y="50" width="76" height="14" rx="7"/><path class="fodi-bun" d="M16 68 H84 C84 84 72 90 50 90 C28 90 16 84 16 68 Z"/><g class="fodi-eyes"><ellipse class="fodi-eye" cx="38" cy="40" rx="5" ry="6"/><ellipse class="fodi-eye" cx="62" cy="40" rx="5" ry="6"/></g><ellipse class="fodi-mouth" cx="50" cy="55" rx="7" ry="3"/></g></svg>
-                                </div>
+                                <div class="fodi fodi-hero-av" id="asistHeroFodi" title="Toca a FODI"></div>
                                 <h3>Hola, soy FODI</h3>
                                 <p>Tu analista de ventas, gastos y estrategia. Solo lectura: no modifico nada.</p>
                                 <div class="asist-cards" id="asistChips"></div>

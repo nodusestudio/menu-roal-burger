@@ -32061,7 +32061,227 @@ const _ASIST_SUGERENCIAS = [
     { ic: '📈', t: 'Comparar este mes con el anterior y dime qué hacer' },
     { ic: '⚖️', t: '¿Cuánto debo vender al mes para el punto de equilibrio?' }
 ];
-const _FODI_SVG = '<svg class="fodi-svg" viewBox="0 0 100 100" aria-hidden="true"><g class="fodi-body"><path class="fodi-bun" d="M14 46 C14 18 86 18 86 46 Z"/><circle class="fodi-seed" cx="34" cy="30" r="2"/><circle class="fodi-seed" cx="50" cy="25" r="2"/><circle class="fodi-seed" cx="66" cy="30" r="2"/><rect class="fodi-patty" x="12" y="50" width="76" height="14" rx="7"/><path class="fodi-bun" d="M16 68 H84 C84 84 72 90 50 90 C28 90 16 84 16 68 Z"/><g class="fodi-eyes"><ellipse class="fodi-eye" cx="38" cy="40" rx="5" ry="6"/><ellipse class="fodi-eye" cx="62" cy="40" rx="5" ry="6"/></g><ellipse class="fodi-mouth" cx="50" cy="55" rx="7" ry="3"/></g></svg>';
+// ───────── FODI: mini pantalla con ojos y boca (SVG + rAF, sin librerías) ─────────
+// Cada parámetro se interpola suavemente hacia la expresión objetivo; el parpadeo, el balanceo,
+// la mirada y los visemas de la boca se superponen encima. Con prefers-reduced-motion no hay bucle:
+// la expresión se pinta fija.
+const _FODI_BASE = {
+    ehL: 1, ehR: 1, ew: 1, tilt: 0, eyeY: 42, arc: 0, gx: 0, gy: 0, gk: 1,
+    mw: 6, mc: 1.2, mo: 0, mx: 0, my: 64, blush: 0, zzz: 0, stars: 0, bulb: 0, qm: 0, bob: 0.5
+};
+const _FODI_EX = {
+    neutral: {},
+    thinking: { ehL: 0.85, ehR: 0.85, tilt: -5, gx: 4, gy: -4, gk: 0, mw: 3.5, mc: -0.3, mx: 7, bob: 0.3 },
+    talking: { mc: 0.9, mw: 6 },
+    happy: { arc: 1, mw: 9, mc: 4, mo: 2, blush: 0.75 },
+    surprised: { ehL: 1.35, ehR: 1.35, ew: 1.1, eyeY: 40, mw: 3.5, mc: 0, mo: 7, my: 66, bob: 0.2 },
+    wink: { ehR: 0.08, mw: 7.5, mc: 3, mo: 1.5, blush: 0.4 },
+    sad: { ehL: 0.8, ehR: 0.8, tilt: 14, eyeY: 44, gy: 2, mw: 5, mc: -3, my: 68, bob: 0.2 },
+    confused: { ehR: 0.55, tilt: 4, gk: 0.3, mw: 5, mc: -0.8, mx: -3, qm: 1 },
+    celebrating: { arc: 1, mw: 10, mc: 5, mo: 5, blush: 1, stars: 1, bob: 2.4 },
+    sleeping: { ehL: 0.06, ehR: 0.06, eyeY: 46, gk: 0, mw: 3.5, mc: 0.2, mo: 1.2, my: 66, zzz: 1, bob: 0.4 },
+    focused: { ehL: 0.55, ehR: 0.55, ew: 1.05, tilt: -9, mw: 5, mc: -0.2, my: 65, bob: 0.1 },
+    eureka: { ehL: 1.3, ehR: 1.3, ew: 1.05, eyeY: 41, gy: -3, mw: 6, mc: 3, mo: 4, bulb: 1, bob: 0.6 }
+};
+const _FODI_VISEMAS = [
+    { mw: 6.5, mo: 1 }, { mw: 6, mo: 5.5 }, { mw: 4, mo: 4.5 }, { mw: 8, mo: 2.2 }, { mw: 5, mo: 1.4 }, { mw: 4.5, mo: 6 }
+];
+const _FODI_SVG_HTML = '<svg class="fodi-svg" viewBox="0 0 100 100" aria-hidden="true">'
+    + '<g class="f-head"><rect class="f-screen" x="5" y="13" width="90" height="74" rx="28"/>'
+    + '<path class="f-gloss" d="M20 24 Q50 14 80 24 Q50 20 20 24Z"/>'
+    + '<ellipse class="f-blush" cx="19" cy="61" rx="6" ry="3.4"/><ellipse class="f-blush" cx="81" cy="61" rx="6" ry="3.4"/>'
+    + '<rect class="f-eye" rx="5" /><rect class="f-eye" rx="5" />'
+    + '<path class="f-arc" /><path class="f-arc" />'
+    + '<path class="f-mouth" />'
+    + '<g class="f-zzz"><text x="70" y="30" font-size="10">z</text><text x="78" y="21" font-size="7">z</text></g>'
+    + '<g class="f-stars"><path d="M16 26 l2 4 4 2 -4 2 -2 4 -2 -4 -4 -2 4 -2z"/><path d="M84 24 l1.6 3.2 3.2 1.6 -3.2 1.6 -1.6 3.2 -1.6 -3.2 -3.2 -1.6 3.2 -1.6z"/><path d="M50 8 l1.3 2.7 2.7 1.3 -2.7 1.3 -1.3 2.7 -1.3 -2.7 -2.7 -1.3 2.7 -1.3z"/></g>'
+    + '<g class="f-bulb"><circle cx="50" cy="9" r="5"/><rect x="47.5" y="13" width="5" height="3" rx="1"/></g>'
+    + '<text class="f-qm" x="76" y="30" font-size="14">?</text>'
+    + '</g></svg>';
+
+const _fodiCaras = new Set();
+const _fodiPtr = { x: null, y: null, t: 0 };
+let _fodiRaf = 0;
+let _fodiUltimo = 0;
+let _fodiInicializado = false;
+const _fodiReducido = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+const _fodiParams = (nombre) => Object.assign({}, _FODI_BASE, _FODI_EX[nombre] || {});
+
+function _fodiPintar(f, p) {
+    const e = f.els;
+    const rect = f.host.getBoundingClientRect();
+    let gx = p.gx, gy = p.gy;
+    if (p.gk > 0.01 && _fodiPtr.x != null && performance.now() - _fodiPtr.t < 3500 && rect.width) {
+        const dx = _fodiPtr.x - (rect.left + rect.width / 2), dy = _fodiPtr.y - (rect.top + rect.height / 2);
+        const d = Math.hypot(dx, dy) || 1;
+        const k = Math.min(1, d / 220) * 3.2 * p.gk;
+        gx += (dx / d) * k; gy += (dy / d) * k * 0.8;
+    } else if (p.gk > 0.01) { gx += f.deriva.x * p.gk; gy += f.deriva.y * p.gk; }
+    const ew = 13 * p.ew;
+    const ojo = (el, cx, eh, giro) => {
+        const h = Math.max(1.8, 20 * eh);
+        const cy = p.eyeY + gy;
+        el.setAttribute('x', (cx + gx - ew / 2).toFixed(2));
+        el.setAttribute('y', (cy - h / 2).toFixed(2));
+        el.setAttribute('width', ew.toFixed(2));
+        el.setAttribute('height', h.toFixed(2));
+        el.setAttribute('rx', Math.min(ew, h) / 2 * 0.9);
+        el.setAttribute('transform', `rotate(${giro.toFixed(1)} ${(cx + gx).toFixed(2)} ${cy.toFixed(2)})`);
+        el.style.opacity = (1 - p.arc).toFixed(2);
+    };
+    ojo(e.eyes[0], 32, p.ehL, -p.tilt);
+    ojo(e.eyes[1], 68, p.ehR, p.tilt);
+    const arco = (el, cx) => {
+        const x = cx + gx, y = p.eyeY + gy + 3;
+        el.setAttribute('d', `M${(x - 6.5).toFixed(1)} ${y.toFixed(1)} Q${x.toFixed(1)} ${(y - 11).toFixed(1)} ${(x + 6.5).toFixed(1)} ${y.toFixed(1)}`);
+        el.style.opacity = p.arc.toFixed(2);
+    };
+    arco(e.arcs[0], 32); arco(e.arcs[1], 68);
+    const cy = -p.mc, mid = p.mc, mw = Math.max(1.5, p.mw), mo = Math.max(0, p.mo);
+    const cu = 2 * mid - cy, cl = 2 * (mid + mo) - cy;
+    const x0 = 50 + p.mx - mw, x1 = 50 + p.mx + mw, y = p.my;
+    e.mouth.setAttribute('d', `M${x0.toFixed(2)} ${(y + cy).toFixed(2)} Q${(50 + p.mx).toFixed(2)} ${(y + cu).toFixed(2)} ${x1.toFixed(2)} ${(y + cy).toFixed(2)} Q${(50 + p.mx).toFixed(2)} ${(y + cl).toFixed(2)} ${x0.toFixed(2)} ${(y + cy).toFixed(2)}Z`);
+    e.mouth.style.fillOpacity = Math.min(1, mo / 3).toFixed(2);
+    e.blush.forEach((b) => { b.style.opacity = p.blush.toFixed(2); });
+    e.zzz.style.opacity = p.zzz.toFixed(2);
+    e.stars.style.opacity = p.stars.toFixed(2);
+    e.bulb.style.opacity = p.bulb.toFixed(2);
+    e.qm.style.opacity = p.qm.toFixed(2);
+    e.head.setAttribute('transform', `translate(0 ${f.bobY.toFixed(2)})`);
+}
+
+function _fodiFrame(ahora) {
+    const dt = Math.min(0.05, (ahora - _fodiUltimo) / 1000 || 0.016);
+    _fodiUltimo = ahora;
+    let vivas = 0;
+    for (const f of _fodiCaras) {
+        if (!f.host.isConnected) { _fodiCaras.delete(f); continue; }
+        if (!f.host.offsetParent) continue; // pestaña oculta: no se anima
+        vivas++;
+        const obj = _fodiParams(f.expr);
+        const t = ahora / 1000;
+        // visemas al hablar
+        if (f.hablando) {
+            if (ahora > f.proxViseme) {
+                f.viseme = _FODI_VISEMAS[Math.floor(Math.random() * _FODI_VISEMAS.length)];
+                f.proxViseme = ahora + 80 + Math.random() * 90;
+            }
+            obj.mw = f.viseme.mw; obj.mo = f.viseme.mo;
+        }
+        if (f.expr === 'sleeping') obj.mo += Math.sin(t * 1.6) * 0.9; // respiración
+        if (f.expr === 'thinking') { obj.gx += Math.sin(t * 1.7) * 3; obj.gy += Math.cos(t * 1.1) * 1.5; }
+        // parpadeo aleatorio
+        if (ahora > f.proxParpadeo) { f.parpadeoFin = ahora + 130; f.proxParpadeo = ahora + 2200 + Math.random() * 3800; }
+        const parpadea = ahora < f.parpadeoFin && f.expr !== 'sleeping';
+        if (parpadea) { obj.ehL *= 0.08; obj.ehR *= 0.08; }
+        // micro-movimientos: deriva de la mirada y pequeño cambio de ánimo en la boca
+        if (ahora > f.proxDeriva) {
+            f.derivaObj = { x: (Math.random() - 0.5) * 3.4, y: (Math.random() - 0.5) * 2.2 };
+            f.proxDeriva = ahora + 900 + Math.random() * 2200;
+            if (!f.hablando && Math.random() < 0.25) f.microMc = (Math.random() - 0.5) * 0.9; // sonrisita/mueca leve
+        }
+        f.deriva.x += (f.derivaObj.x - f.deriva.x) * Math.min(1, dt * 4);
+        f.deriva.y += (f.derivaObj.y - f.deriva.y) * Math.min(1, dt * 4);
+        obj.mc += f.microMc || 0;
+        const amp = obj.bob;
+        f.bobY = Math.sin(t * (f.expr === 'celebrating' ? 9 : 2.2)) * amp;
+        // interpolación exponencial hacia el objetivo (los parpadeos y visemas son más rápidos)
+        const k = 1 - Math.exp(-dt * (parpadea || f.hablando ? 26 : 11));
+        for (const clave in obj) f.cur[clave] += (obj[clave] - f.cur[clave]) * k;
+        _fodiPintar(f, f.cur);
+        // sueño por inactividad (solo la cara de bienvenida)
+        if (f.dormir && f.expr !== 'sleeping' && ahora - _fodiActividad > 75000) _fodiSet(f, 'sleeping');
+    }
+    _fodiRaf = (vivas || _fodiCaras.size) && !_fodiReducido() ? requestAnimationFrame(_fodiFrame) : 0;
+}
+let _fodiActividad = performance.now();
+
+function _fodiArrancar() {
+    if (_fodiRaf || _fodiReducido()) return;
+    _fodiUltimo = performance.now();
+    _fodiRaf = requestAnimationFrame(_fodiFrame);
+}
+
+function _fodiInicializar() {
+    if (_fodiInicializado) return;
+    _fodiInicializado = true;
+    const actividad = () => {
+        _fodiActividad = performance.now();
+        _fodiCaras.forEach((f) => { if (f.expr === 'sleeping' && f.dormir) _fodiSet(f, 'surprised', 700, 'neutral'); });
+    };
+    window.addEventListener('pointermove', (ev) => { _fodiPtr.x = ev.clientX; _fodiPtr.y = ev.clientY; _fodiPtr.t = performance.now(); actividad(); }, { passive: true });
+    window.addEventListener('keydown', actividad, { passive: true });
+    window.addEventListener('pointerdown', actividad, { passive: true });
+}
+
+// Monta una cara dentro de `host`. opts.dormir: se duerme tras ~75 s sin actividad.
+function _fodiMontar(host, opts = {}) {
+    _fodiInicializar();
+    host.innerHTML = _FODI_SVG_HTML;
+    const svg = host.firstChild;
+    const q = (s) => svg.querySelector(s);
+    const f = {
+        host, expr: 'neutral', cur: _fodiParams('neutral'), hablando: false, viseme: _FODI_VISEMAS[0], proxViseme: 0,
+        proxParpadeo: performance.now() + 1500 + Math.random() * 2500, parpadeoFin: 0, proxDeriva: 0,
+        deriva: { x: 0, y: 0 }, derivaObj: { x: 0, y: 0 }, microMc: 0, bobY: 0, dormir: !!opts.dormir, temporizador: 0,
+        els: {
+            head: q('.f-head'), eyes: [...svg.querySelectorAll('.f-eye')], arcs: [...svg.querySelectorAll('.f-arc')],
+            mouth: q('.f-mouth'), blush: [...svg.querySelectorAll('.f-blush')],
+            zzz: q('.f-zzz'), stars: q('.f-stars'), bulb: q('.f-bulb'), qm: q('.f-qm')
+        }
+    };
+    host._fodi = f;
+    _fodiPintar(f, f.cur);
+    if (opts.vivo !== false) { _fodiCaras.add(f); _fodiArrancar(); }
+    return f;
+}
+
+// Cambia de expresión. `volverA` + `ms`: tras ese tiempo regresa a otra expresión.
+function _fodiSet(f, nombre, ms, volverA) {
+    if (!f) return;
+    if (!_FODI_EX[nombre]) nombre = 'neutral';
+    clearTimeout(f.temporizador);
+    f.expr = nombre;
+    if (_fodiReducido() || !_fodiCaras.has(f)) { f.cur = _fodiParams(nombre); _fodiPintar(f, f.cur); }
+    else _fodiArrancar();
+    if (ms) f.temporizador = setTimeout(() => _fodiSet(f, volverA || 'neutral'), ms);
+}
+
+function _fodiHablar(f, si) {
+    if (!f) return;
+    f.hablando = !!si;
+    if (_fodiReducido()) { f.cur = _fodiParams(f.expr); if (si) { f.cur.mo = 3; f.cur.mw = 5; } _fodiPintar(f, f.cur); }
+}
+
+// Deja la cara con una expresión final fija (avatares de respuestas ya terminadas): sin animación.
+function _fodiCongelar(f, nombre) {
+    if (!f) return;
+    clearTimeout(f.temporizador);
+    f.hablando = false;
+    _fodiCaras.delete(f);
+    f.expr = nombre;
+    f.cur = _fodiParams(nombre);
+    f.bobY = 0;
+    _fodiPintar(f, f.cur);
+}
+
+// Elige la expresión según el contenido de la respuesta (cifras buenas/malas, error, sin datos...).
+function _fodiReaccion(texto, esError) {
+    if (esError) return 'sad';
+    const t = String(texto || '').toLowerCase();
+    if (/no (tengo|hay|encontr|existe|puedo)|sin datos|no hay (datos|ventas|registros)|aún no hay|no est[aá] registrad|pocos datos|no se puede/.test(t)) return 'confused';
+    const pos = (t.match(/\+\s?\d[\d.,]*\s?%|creci|subi[óo]|aument|récord|record|super[óo]|mejor[óo]|mejor mes|al alza|📈|🎉|🏆/g) || []).length;
+    const neg = (t.match(/[-−–]\s?\d[\d.,]*\s?%|cay[óo]|ca[ií]da|baj[óo]|disminu|descend|déficit|deficit|pérdida|perdida|negativ|peor|a la baja|📉|⚠️/g) || []).length;
+    if (/an[oó]mal|inusual|at[ií]pic|inesperad|sorprend|disparó|se dispar/.test(t)) return 'surprised';
+    if (pos >= 3 && pos > neg * 2) return 'celebrating';
+    if (/💡/.test(t) && /oportunidad|hallazgo|descubr|clave|palanca|insight/.test(t) && pos >= neg) return 'eureka';
+    if (neg > pos && neg >= 2) return 'sad';
+    if (pos > neg) return 'happy';
+    if (/gracias|de nada|con gusto|listo|hola|buen[oa]s/.test(t) && t.length < 220) return 'wink';
+    if (/\|.*\|/.test(t) || /pareto|punto de equilibrio|prime cost|rfm|ingenier/.test(t)) return 'focused';
+    return 'happy';
+}
+
 
 function _asistEsc(t) {
     return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -32132,10 +32352,8 @@ function _asistRender(texto) {
 }
 
 function _asistFodiSet(estado) {
-    document.querySelectorAll('#asistShell .fodi').forEach((f) => {
-        f.classList.remove('thinking', 'talking', 'happy', 'sad');
-        if (estado) f.classList.add(estado);
-    });
+    const h = document.getElementById('asistHeroFodi');
+    if (h && h._fodi) _fodiSet(h._fodi, estado || 'neutral');
 }
 
 function _asistScroll(fuerza) {
@@ -32155,8 +32373,9 @@ function _asistAddUser(texto) {
 function _asistAddBot() {
     const row = document.createElement('div');
     row.className = 'asist-row bot';
-    row.innerHTML = `<div class="asist-av fodi">${_FODI_SVG}</div><div class="asist-msg bot"></div>`;
+    row.innerHTML = '<div class="asist-av fodi"></div><div class="asist-msg bot"></div>';
     document.getElementById('asistLog').appendChild(row);
+    _fodiMontar(row.querySelector('.asist-av'));
     return row;
 }
 
@@ -32199,23 +32418,24 @@ async function _asistEnviar(texto) {
     const fila = _asistAddBot();
     const msg = fila.querySelector('.asist-msg');
     msg.innerHTML = '<div class="asist-think"><i></i><i></i><i></i><span>Analizando tus datos…</span></div>';
-    const av = fila.querySelector('.fodi');
-    av.classList.add('thinking');
+    const av = fila.querySelector('.fodi')._fodi;
+    _fodiSet(av, 'thinking');
     _asistScroll(true);
     try {
         const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist });
         const resp = String(r.data?.respuesta || '');
         _asistHist.push({ role: 'assistant', content: resp });
-        av.classList.remove('thinking');
-        av.classList.add('talking');
+        const reaccion = _fodiReaccion(resp, false);
+        _fodiSet(av, reaccion);
+        _fodiHablar(av, true);
         await _asistEscribir(msg, resp);
-        av.classList.remove('talking');
-        av.classList.add('happy');
-        setTimeout(() => av.classList.remove('happy'), 700);
+        _fodiHablar(av, false);
+        setTimeout(() => _fodiCongelar(av, reaccion), 3200);
     } catch (err) {
         _asistHist.pop();
-        av.classList.remove('thinking', 'talking');
-        av.classList.add('sad');
+        _fodiHablar(av, false);
+        _fodiSet(av, _fodiReaccion('', true));
+        setTimeout(() => _fodiCongelar(av, 'sad'), 3200);
         msg.classList.add('err');
         msg.textContent = err?.message || 'No se pudo consultar. Intenta de nuevo.';
     } finally {
@@ -32232,6 +32452,14 @@ function _asistInit() {
     const form = document.getElementById('asistForm');
     if (!form) return;
     _asistBound = true;
+    const heroCara = document.getElementById('asistHeroFodi');
+    if (heroCara) {
+        _fodiMontar(heroCara, { dormir: true });
+        heroCara.addEventListener('click', () => {
+            const o = ['wink', 'happy', 'surprised', 'eureka', 'celebrating'];
+            _fodiSet(heroCara._fodi, o[Math.floor(Math.random() * o.length)], 1400, 'neutral');
+        });
+    }
     const chips = document.getElementById('asistChips');
     chips.innerHTML = _ASIST_SUGERENCIAS.map((s) => `<button type="button" class="asist-card-sug" data-q="${_asistEsc(s.t)}"><span class="ic">${s.ic}</span><span>${_asistEsc(s.t)}</span></button>`).join('');
     chips.addEventListener('click', (e) => {
@@ -32265,7 +32493,7 @@ function _asistInit() {
         _asistHist = [];
         document.getElementById('asistLog').innerHTML = '';
         _asistActualizarHero();
-        _asistFodiSet('happy');
-        setTimeout(() => _asistFodiSet(null), 700);
+        _asistFodiSet('wink');
+        setTimeout(() => _asistFodiSet(null), 900);
     });
 }

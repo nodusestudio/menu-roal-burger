@@ -3323,11 +3323,23 @@ exports.adminFacebook = onCall(
 // calcula functions/adminAsistente.js. Sin persistir hilos; el cliente reenvía el historial.
 // ─────────────────────────────────────────────────────────────
 const adminAsistente = require('./adminAsistente');
-const ASISTENTE_MODEL = 'claude-haiku-4-5';
 const ASISTENTE_MAX_ITER = 6;
 const ASISTENTE_TOPE_DIARIO = 60;
-// USD por millón de tokens (Haiku 4.5, vigentes desde 31/ago/2026)
-const ASISTENTE_PRECIO = { in: 3, out: 15 };
+// USD por millón de tokens. El modelo se elige en configuracion/asistente_ia { modelo: 'sonnet' | 'haiku' }
+// (por defecto 'sonnet'). Sonnet 5.5 razona mejor para consultoría; Haiku 4.5 cuesta ~la mitad.
+const ASISTENTE_MODELOS = {
+    sonnet: { id: 'claude-sonnet-5-5', in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5, effort: 'medium' },
+    haiku: { id: 'claude-haiku-4-5', in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25, effort: null }
+};
+async function asistenteModeloActivo(db) {
+    try {
+        const d = (await db.collection('configuracion').doc('asistente_ia').get()).data() || {};
+        const clave = String(d.modelo || '').toLowerCase();
+        return { clave: ASISTENTE_MODELOS[clave] ? clave : 'sonnet' };
+    } catch (_) {
+        return { clave: 'sonnet' };
+    }
+}
 
 function asistenteSystemPrompt() {
     const hoy = adminAsistente.bogotaDateKey(Date.now());
@@ -3340,7 +3352,9 @@ REGLAS DE DATOS (inquebrantables):
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
 - Eres de solo lectura: no puedes modificar pedidos, caja ni puntos.
 - Para "este mes" usa desde el día 1 hasta hoy; para "ayer", la fecha de ayer.
-- No tienes costo de insumos por producto: si piden food cost o margen por plato, dilo y trabaja con ventas, gastos y costos fijos reales.
+- Costo por plato: usa costo_por_plato; si no hay recetas registradas, dilo y explica cómo registrarlas, y trabaja con ventas, gastos y costos fijos reales.
+- Variantes/tamaños ("¿la normal, pequeña o mediana?"): usa variantes_vendidas. Clientes (recompra, mejores, inactivos, RFM): analisis_clientes. Puntos: puntos_lealtad. Promos y código del día: cupones_y_codigo_del_dia.
+- AUTOVERIFICACIÓN antes de responder: (1) cada cifra citada aparece en un resultado de herramienta; (2) las sumas y porcentajes que muestres cuadran con los totales (si das partes, que sumen el total); (3) el rango consultado coincide con lo que se preguntó; (4) si dos herramientas dan totales distintos, explica por qué o dilo, no escojas en silencio; (5) si el resultado vino truncado o con pocos datos, adviértelo. Si algo no cuadra, vuelve a consultar antes de responder.
 
 FORMATO (se muestra con markdown):
 - Empieza con la respuesta directa en 1-2 líneas. Luego detalle con viñetas o tablas markdown (| col | col |).
@@ -3356,6 +3370,9 @@ CÓMO PIENSAS (gerencia y marketing para restaurantes):
 - Canales: ventas_por_origen_tipo (web, WhatsApp, POS, domicilio vs mesa); comisiones y costo de domicilio vs margen.
 - Rentabilidad: punto de equilibrio = costos fijos mensuales / margen de contribución; con costos_fijos y gastos reales calcula cuánto hay que vender al mes y a qué día se alcanza. Prime cost (insumos+nómina) idealmente <60-65% de ventas; costo de insumos típico 28-35%.
 - Marketing: CAC, LTV, retención/recompra, RFM (recencia, frecuencia, monto), promociones con piso de margen, código del día/cupones como palanca de tráfico, redes (contenido de producto estrella, horas de publicación antes del pico), reseñas y programa de puntos.
+- Ingeniería de menú con variantes: dentro de cada producto mira qué tamaño/variante domina (variantes_vendidas); si la variante barata concentra >70% sube su precio o crea un escalón intermedio ("anclaje"); si la grande casi no se vende, revisa su precio relativo.
+- Clientes: RFM -> Campeones (cuidar, programa de puntos/beneficios), Leales (subir frecuencia), Nuevos (convertir al 2º pedido en <15 días), En riesgo (reactivar con oferta personal por WhatsApp antes de que sean Perdidos). Recompra sana en restaurante de domicilio: 25-40% en 60 días. Adquirir cuesta 5x más que retener.
+- Prime cost = costo de insumos + nómina (meta <60-65%). Punto de equilibrio diario = costos fijos del mes / días de operación / margen de contribución %. Menú: 5-7 platos fuertes por categoría, precios sin signo $ y terminados en 900/000, platos "ancla" y combos que suban el ticket.
 - Estacionalidad colombiana: quincena (15 y 30), primas (jun/dic), puentes festivos, lluvia y fines de semana impulsan domicilios.
 - Si faltan datos para concluir algo (p. ej. costos por plato o datos de clientes), dilo y sugiere qué registrar para poder medirlo; no rellenes con suposiciones disfrazadas de dato.
 - Cuando el dato sea poco para concluir (pocos días/pedidos), adviértelo.`;
@@ -3379,6 +3396,8 @@ exports.adminAsistenteIA = onCall(
         const apiKey = ANTHROPIC_API_KEY.value();
         if (!apiKey) throw new HttpsError('failed-precondition', 'Asistente no configurado.');
 
+        const { clave: modeloClave } = await asistenteModeloActivo(db);
+        const M = ASISTENTE_MODELOS[modeloClave];
         const usoRef = db.collection('admin_ai_usage_daily').doc(adminAsistente.bogotaDateKey(Date.now()));
         const uso = (await usoRef.get()).data() || {};
         if ((uso.consultas || 0) >= ASISTENTE_TOPE_DIARIO) {
@@ -3390,14 +3409,19 @@ exports.adminAsistenteIA = onCall(
         const system = [{ type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } }];
         let tokensIn = 0;
         let tokensOut = 0;
+        let costo = 0;
         let texto = '';
         try {
             for (let i = 0; i < ASISTENTE_MAX_ITER; i++) {
                 const resp = await client.messages.create({
-                    model: ASISTENTE_MODEL, max_tokens: 3000, system, tools: adminAsistente.TOOLS, messages: mensajes
+                    model: M.id, max_tokens: 8000, system, tools: adminAsistente.TOOLS, messages: mensajes,
+                    ...(M.effort ? { output_config: { effort: M.effort } } : {})
                 });
-                tokensIn += (resp.usage?.input_tokens || 0) + (resp.usage?.cache_creation_input_tokens || 0) + (resp.usage?.cache_read_input_tokens || 0);
-                tokensOut += resp.usage?.output_tokens || 0;
+                const u = resp.usage || {};
+                const nuevos = u.input_tokens || 0, escritos = u.cache_creation_input_tokens || 0, leidos = u.cache_read_input_tokens || 0;
+                tokensIn += nuevos + escritos + leidos;
+                tokensOut += u.output_tokens || 0;
+                costo += (nuevos * M.in + escritos * M.cacheWrite + leidos * M.cacheRead + (u.output_tokens || 0) * M.out) / 1e6;
                 const usos = resp.content.filter((b) => b.type === 'tool_use');
                 if (resp.stop_reason !== 'tool_use' || !usos.length) {
                     texto = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
@@ -3415,9 +3439,8 @@ exports.adminAsistenteIA = onCall(
             console.error('adminAsistenteIA error:', err);
             throw new HttpsError('internal', 'No se pudo completar la consulta. Intenta de nuevo.');
         }
-        const costo = (tokensIn * ASISTENTE_PRECIO.in + tokensOut * ASISTENTE_PRECIO.out) / 1e6;
         await usoRef.set({
-            consultas: FieldValue.increment(1), tokensIn: FieldValue.increment(tokensIn),
+            modelo: M.id, consultas: FieldValue.increment(1), [`consultas_${modeloClave}`]: FieldValue.increment(1), tokensIn: FieldValue.increment(tokensIn),
             tokensOut: FieldValue.increment(tokensOut), costoUsd: FieldValue.increment(costo)
         }, { merge: true }).catch((e) => console.error('adminAsistenteIA uso:', e));
         return { respuesta: texto || 'No obtuve una respuesta. Reformula la pregunta.' };

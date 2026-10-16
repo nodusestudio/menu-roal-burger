@@ -107,6 +107,8 @@ function normalizarVenta(id, raw) {
         partes,
         origen: String(raw.source || 'desconocido'),
         tipo: String(raw.orderType || 'sin_tipo'),
+        tel: String(raw.customerPhoneDigits || '').replace(/\D/g, ''),
+        nombre: String(raw.customerName || '').trim(),
         items: Array.isArray(raw.items) ? raw.items : []
     };
 }
@@ -288,6 +290,209 @@ function recortarResultado(obj, max = MAX_RESULT_CHARS) {
     return texto.length > max ? texto.slice(0, max) : texto;
 }
 
+// ---------- Variantes, clientes, cupones, recetas ----------
+
+// Etiqueta de variante de una línea: tamaño/sabor/combo (optionLabel) o, si no hay, el tipo de orden.
+function etiquetaVariante(it) {
+    const lab = String(it.optionLabel || '').trim();
+    if (lab) return lab;
+    const oo = it.orderOptions || {};
+    const partes = [];
+    if (oo.type && oo.type !== 'solo') partes.push(String(oo.type));
+    if (oo.flavor) partes.push(String(oo.flavor));
+    return partes.join(' / ') || 'sin variante';
+}
+
+function variantesVendidas(ventas, { producto, n = 8 } = {}) {
+    const q = producto ? String(producto).trim().toLowerCase() : '';
+    const prods = new Map();
+    for (const v of ventas) {
+        for (const it of v.items) {
+            const nombre = String(it.productName || it.name || '').trim();
+            if (!nombre || (q && !nombre.toLowerCase().includes(q))) continue;
+            const cant = Number(it.quantity) || 0;
+            if (cant <= 0) continue;
+            const monto = Number(it.subtotal) || 0;
+            const p = prods.get(nombre) || { cantidad: 0, monto: 0, vars: new Map() };
+            p.cantidad += cant; p.monto += monto;
+            const k = etiquetaVariante(it);
+            const e = p.vars.get(k) || { cantidad: 0, monto: 0 };
+            e.cantidad += cant; e.monto += monto;
+            p.vars.set(k, e);
+            prods.set(nombre, p);
+        }
+    }
+    const lim = Math.min(Math.max(Math.trunc(Number(n)) || 8, 1), 20);
+    const productos = [...prods.entries()]
+        .sort((a, b) => b[1].cantidad - a[1].cantidad)
+        .slice(0, q ? 10 : 12)
+        .map(([nombre, p]) => ({
+            producto: nombre, cantidad: p.cantidad, monto: redondear(p.monto),
+            variantes: [...p.vars.entries()]
+                .map(([variante, e]) => ({ variante, cantidad: e.cantidad, monto: redondear(e.monto), participacion_pct: Math.round((e.cantidad / p.cantidad) * 1000) / 10 }))
+                .sort((a, b) => b.cantidad - a.cantidad).slice(0, lim)
+        }));
+    return { productos };
+}
+
+const MODOS_CLIENTES = ['top', 'recompra', 'inactivos', 'rfm'];
+
+// Agrupa ventas por cliente (teléfono). Las ventas sin teléfono se cuentan aparte.
+function agruparClientes(ventas) {
+    const m = new Map();
+    let sinTelefono = 0;
+    for (const v of ventas) {
+        if (!v.tel) { sinTelefono++; continue; }
+        const c = m.get(v.tel) || { tel: v.tel, nombre: '', pedidos: 0, monto: 0, ultimo: 0 };
+        c.pedidos++; c.monto += v.total;
+        if (v.ms > c.ultimo) { c.ultimo = v.ms; if (v.nombre) c.nombre = v.nombre; }
+        m.set(v.tel, c);
+    }
+    return { clientes: [...m.values()], sinTelefono };
+}
+
+const enmascarar = (tel) => (tel.length > 4 ? `***${tel.slice(-4)}` : tel);
+
+function analisisClientes(ventas, { modo = 'top', n = 10, hastaMs = Date.now(), dias_inactivo = 45 } = {}) {
+    const { clientes, sinTelefono } = agruparClientes(ventas);
+    const lim = Math.min(Math.max(Math.trunc(Number(n)) || 10, 1), 30);
+    const fila = (c) => ({
+        cliente: c.nombre || enmascarar(c.tel), telefono: enmascarar(c.tel), pedidos: c.pedidos, monto: redondear(c.monto),
+        dias_desde_ultima_compra: Math.floor((hastaMs - c.ultimo) / DAY_MS)
+    });
+    const base = { clientes_identificados: clientes.length, ventas_sin_telefono: sinTelefono };
+    if (modo === 'recompra') {
+        const rec = clientes.filter((c) => c.pedidos >= 2);
+        return {
+            ...base, modo,
+            clientes_con_recompra: rec.length,
+            tasa_recompra_pct: clientes.length ? Math.round((rec.length / clientes.length) * 1000) / 10 : null,
+            pedidos_promedio_por_cliente: clientes.length ? Math.round((clientes.reduce((s, c) => s + c.pedidos, 0) / clientes.length) * 100) / 100 : null,
+            distribucion: { '1_pedido': clientes.filter((c) => c.pedidos === 1).length, '2_pedidos': clientes.filter((c) => c.pedidos === 2).length, '3_o_mas': clientes.filter((c) => c.pedidos >= 3).length }
+        };
+    }
+    if (modo === 'inactivos') {
+        const umbral = Math.max(7, Math.trunc(Number(dias_inactivo)) || 45);
+        const ina = clientes.filter((c) => (hastaMs - c.ultimo) / DAY_MS >= umbral && c.pedidos >= 2)
+            .sort((a, b) => b.monto - a.monto);
+        return { ...base, modo, dias_inactivo: umbral, criterio: 'clientes con 2+ pedidos en el rango que no compran hace el umbral; ordenados por monto histórico', total_inactivos_valiosos: ina.length, top: ina.slice(0, lim).map(fila) };
+    }
+    if (modo === 'rfm') {
+        if (clientes.length < 5) return { ...base, modo, aviso: 'Muy pocos clientes identificados para segmentar.' };
+        // 3 = tercil alto (más reciente / más frecuente / más gasto)
+        const rank = (key) => {
+            const s = [...clientes].sort((a, b) => b[key] - a[key]);
+            const out = new Map();
+            s.forEach((c, i) => out.set(c.tel, 3 - Math.min(2, Math.floor((i / s.length) * 3))));
+            return out;
+        };
+        const rR = rank('ultimo');
+        const rF = rank('pedidos');
+        const rM = rank('monto');
+        const seg = new Map();
+        for (const c of clientes) {
+            const r = rR.get(c.tel), f = rF.get(c.tel), mm = rM.get(c.tel);
+            let nombre = 'Ocasionales';
+            if (r === 3 && f === 3 && mm === 3) nombre = 'Campeones';
+            else if (f >= 2 && mm >= 2 && r >= 2) nombre = 'Leales';
+            else if (r === 3 && f === 1) nombre = 'Nuevos';
+            else if (r === 1 && (f >= 2 || mm >= 2)) nombre = 'En riesgo de fuga';
+            else if (r === 1) nombre = 'Perdidos';
+            const e = seg.get(nombre) || { clientes: 0, monto: 0 };
+            e.clientes++; e.monto += c.monto;
+            seg.set(nombre, e);
+        }
+        return { ...base, modo, criterio: 'terciles de recencia, frecuencia y monto dentro del rango consultado', segmentos: [...seg.entries()].map(([segmento, e]) => ({ segmento, clientes: e.clientes, monto: redondear(e.monto) })).sort((a, b) => b.monto - a.monto) };
+    }
+    const top = [...clientes].sort((a, b) => b.monto - a.monto);
+    const totalMonto = clientes.reduce((s, c) => s + c.monto, 0);
+    const topN = top.slice(0, lim);
+    return { ...base, modo: 'top', monto_clientes_identificados: redondear(totalMonto), participacion_top_pct: totalMonto ? Math.round((topN.reduce((s, c) => s + c.monto, 0) / totalMonto) * 1000) / 10 : null, top: topN.map(fila) };
+}
+
+async function resumenPuntos(db) {
+    const snap = await db.collection('clientes').get();
+    let disponibles = 0, acumulados = 0, conSaldo = 0;
+    const lista = [];
+    for (const d of snap.docs) {
+        const c = d.data();
+        const pd = Math.max(0, Number(c.puntosDisponibles) || 0);
+        disponibles += pd; acumulados += Math.max(0, Number(c.puntosAcumuladosTotal) || 0);
+        if (pd > 0) conSaldo++;
+        lista.push({ cliente: String(c.nombre || c.name || '').trim() || 'sin nombre', puntos: pd });
+    }
+    lista.sort((a, b) => b.puntos - a.puntos);
+    return {
+        clientes_registrados: snap.size, clientes_con_saldo: conSaldo,
+        puntos_disponibles_total: disponibles, puntos_acumulados_historico: acumulados,
+        pasivo_estimado_cop: disponibles * 10, nota: '100 puntos = $1.000 (1 punto = $10).',
+        top_saldos: lista.slice(0, 10)
+    };
+}
+
+function usoPromos(ventas) {
+    let lineas = 0, pedidos = 0, descuento = 0;
+    const porTipo = new Map();
+    for (const v of ventas) {
+        let tuvo = false;
+        for (const it of v.items) {
+            const oo = it.orderOptions || {};
+            let tipo = null;
+            if (oo.recommendedDiscount) tipo = 'codigo_del_dia_o_recomendado';
+            else if (oo.couponId) tipo = String(oo.couponId).startsWith('2x1') ? 'cupon_2x1' : 'cupon';
+            else if (oo.promo2x1) tipo = 'promo_2x1';
+            if (!tipo) continue;
+            tuvo = true; lineas++;
+            const orig = Number(it.originalUnitPrice);
+            const ahorro = Number.isFinite(orig) && orig > 0 ? Math.max(0, (orig - (Number(it.unitPrice) || 0)) * (Number(it.quantity) || 0)) : 0;
+            descuento += ahorro;
+            const e = porTipo.get(tipo) || { lineas: 0, monto: 0 };
+            e.lineas++; e.monto += Number(it.subtotal) || 0;
+            porTipo.set(tipo, e);
+        }
+        if (tuvo) pedidos++;
+    }
+    return {
+        pedidos_con_promo: pedidos, pedidos_total: ventas.length,
+        pct_pedidos_con_promo: ventas.length ? Math.round((pedidos / ventas.length) * 1000) / 10 : null,
+        lineas_con_promo: lineas, descuento_estimado_cop: redondear(descuento),
+        por_tipo: [...porTipo.entries()].map(([tipo, e]) => ({ tipo, lineas: e.lineas, monto: redondear(e.monto) }))
+    };
+}
+
+async function codigoDelDia(db, desde, hasta) {
+    const snap = await db.collection('codigo_dia').get();
+    const filas = [];
+    for (const d of snap.docs) {
+        if (d.id < desde || d.id > hasta) continue;
+        const x = d.data();
+        const cupos = Number(x.cupos) || 0, canjes = Number(x.canjes) || 0;
+        filas.push({ fecha: d.id, producto: x.productoNombre || x.productoId || '', cupos, canjes, ocupacion_pct: cupos ? Math.round((canjes / cupos) * 100) : null });
+    }
+    filas.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const tc = filas.reduce((s, f) => s + f.canjes, 0), tcu = filas.reduce((s, f) => s + f.cupos, 0);
+    return { dias_con_codigo: filas.length, cupos_totales: tcu, canjes_totales: tc, ocupacion_pct: tcu ? Math.round((tc / tcu) * 100) : null, dias: filas.slice(-31) };
+}
+
+async function costoPorPlato(db) {
+    const [recetas, prods] = await Promise.all([db.collection('recetas').get(), db.collection('productos').get()]);
+    if (recetas.empty) {
+        return {
+            registrado: false,
+            aviso: 'Aún no hay recetas/costos de insumos registrados, así que no se puede calcular food cost ni margen por plato.',
+            como_registrarlo: 'Crear la colección "recetas" con un documento por producto: { productoId o nombre, costo (COP por unidad, suma de insumos), actualizado }. Con eso FODI calcula food cost % y margen por plato.'
+        };
+    }
+    const precios = new Map(prods.docs.map((d) => [d.id, { nombre: d.data().nombre, precio: Number(d.data().precio) || 0 }]));
+    const filas = recetas.docs.map((d) => {
+        const r = d.data();
+        const p = precios.get(r.productoId) || [...precios.values()].find((x) => x.nombre === r.nombre) || { nombre: r.nombre, precio: 0 };
+        const costo = Number(r.costo) || 0;
+        return { producto: p.nombre || r.nombre || d.id, precio: p.precio, costo, margen: p.precio - costo, food_cost_pct: p.precio ? Math.round((costo / p.precio) * 1000) / 10 : null };
+    });
+    return { registrado: true, platos: filas.length, items: filas.sort((a, b) => (b.food_cost_pct || 0) - (a.food_cost_pct || 0)).slice(0, 40) };
+}
+
 // ---------- Herramientas ----------
 
 const FECHAS = {
@@ -362,6 +567,31 @@ const TOOLS = [
         name: 'comparar_periodos',
         description: 'Compara las ventas de dos rangos (A y B) con diferencia absoluta y porcentual.',
         input_schema: { type: 'object', properties: { a_desde: { type: 'string' }, a_hasta: { type: 'string' }, b_desde: { type: 'string' }, b_hasta: { type: 'string' } }, required: ['a_desde', 'a_hasta', 'b_desde', 'b_hasta'] }
+    },
+    {
+        name: 'variantes_vendidas',
+        description: 'Desglose por variante/tamaño/sabor/combo de lo vendido (optionLabel de cada línea): responde "¿se vende más la normal, la pequeña o la mediana?". Puede filtrar por producto (texto). Muestra cantidad, monto y % de participación por variante.',
+        input_schema: { type: 'object', properties: { ...FECHAS, producto: { type: 'string', description: 'Texto del nombre del producto (opcional).' }, n: { type: 'integer', description: 'Variantes por producto (1-20).' } }, required: ['desde', 'hasta'] }
+    },
+    {
+        name: 'analisis_clientes',
+        description: 'Análisis de clientes por teléfono en el rango: modo "top" (mejores clientes y concentración), "recompra" (tasa de recompra y distribución), "inactivos" (clientes valiosos que dejaron de comprar) o "rfm" (segmentos Campeones/Leales/Nuevos/En riesgo/Perdidos). Teléfonos enmascarados.',
+        input_schema: { type: 'object', properties: { ...FECHAS, modo: { type: 'string', enum: MODOS_CLIENTES }, n: { type: 'integer' }, dias_inactivo: { type: 'integer', description: 'Umbral de inactividad en días (modo inactivos, por defecto 45).' } }, required: ['desde', 'hasta'] }
+    },
+    {
+        name: 'puntos_lealtad',
+        description: 'Programa de puntos: clientes registrados, con saldo, puntos disponibles y acumulados, pasivo estimado en pesos y mayores saldos.',
+        input_schema: { type: 'object', properties: {} }
+    },
+    {
+        name: 'cupones_y_codigo_del_dia',
+        description: 'Uso de promociones en el rango: % de pedidos con cupón/2x1/código del día, descuento estimado, desglose por tipo, y ocupación de cupos del código del día por fecha.',
+        input_schema: { type: 'object', properties: { ...FECHAS }, required: ['desde', 'hasta'] }
+    },
+    {
+        name: 'costo_por_plato',
+        description: 'Food cost y margen por plato desde las recetas registradas. Si no hay recetas registradas lo indica y explica cómo registrarlas.',
+        input_schema: { type: 'object', properties: {} }
     }
 ];
 
@@ -415,7 +645,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             const q = String(args.buscar || '').trim().toLowerCase();
             const prods = snap.docs.map((d) => {
                 const p = d.data();
-                return { nombre: p.nombre || '', precio: Number(p.precio) || 0, categoria: p.categoria || '', estado: String(p.estado || ''), en_menu: p.activo_menu !== false && String(p.estado || '').trim() !== 'paused' };
+                return { nombre: p.nombre || '', precio: Number(p.precio) || 0, categoria: p.categoria || '', estado: String(p.estado || ''), en_menu: p.activo_menu !== false && String(p.estado || '').trim() !== 'paused', variantes: (Array.isArray(p.variantes) ? p.variantes : []).map((x) => ({ nombre: String((x && (x.nombre || x.name || x.label)) || ''), precio: Number(x && (x.precio ?? x.price)) || undefined })).filter((x) => x.nombre).slice(0, 8), sabores: (Array.isArray(p.sabores) ? p.sabores : []).map((x) => (typeof x === 'string' ? x : String((x && (x.nombre || x.name)) || ''))).filter(Boolean).slice(0, 12) };
             }).filter((p) => p.nombre && (!q || `${p.nombre} ${p.categoria}`.toLowerCase().includes(q)));
             return { total: prods.length, productos: prods.slice(0, 60) };
         }
@@ -424,6 +654,8 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             const items = (Array.isArray(d.items) ? d.items : []).map((i) => ({ nombre: String(i.nombre || ''), monto_mensual: Number(i.monto) || 0 }));
             return { items, total_mensual: items.reduce((a, i) => a + i.monto_mensual, 0), margen_minimo_pct: Number(d.margenMinimo) || null };
         }
+        if (nombre === 'puntos_lealtad') return await resumenPuntos(db);
+        if (nombre === 'costo_por_plato') return await costoPorPlato(db);
         if (nombre === 'comparar_periodos') {
             const ra = parseRango(args.a_desde, args.a_hasta);
             const rb = parseRango(args.b_desde, args.b_hasta);
@@ -440,6 +672,10 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'gastos') {
             return { rango, ...resumenGastos(await cargarGastos(db, r.desdeMs, r.hastaMs), r.desdeMs, r.hastaMs, args.agrupar) };
         }
+        if (nombre === 'cupones_y_codigo_del_dia') {
+            const ventasP = await cargarPedidosRango(db, r.desdeMs, r.hastaMs);
+            return { rango, promos: usoPromos(ventasP), codigo_del_dia: await codigoDelDia(db, args.desde, args.hasta) };
+        }
         if (nombre === 'cierres_caja') {
             return { rango, ...resumenCierres(await cargarCierres(db, r.desdeMs, r.hastaMs), r.desdeMs, r.hastaMs) };
         }
@@ -447,6 +683,8 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'resumen_ventas') return { rango, ...resumenVentas(ventas, args.agrupar) };
         if (nombre === 'ventas_por_metodo_pago') return { rango, ...ventasPorMetodo(ventas) };
         if (nombre === 'top_productos') return { rango, ...topProductos(ventas, args) };
+        if (nombre === 'variantes_vendidas') return { rango, ...variantesVendidas(ventas, args) };
+        if (nombre === 'analisis_clientes') return { rango, ...analisisClientes(ventas, { ...args, hastaMs: Math.min(r.hastaMs, Date.now()) }) };
         if (nombre === 'ventas_por_dia_hora') return { rango, ...ventasPorDiaHora(ventas) };
         if (nombre === 'ventas_por_origen_tipo') return { rango, ...ventasPorOrigenTipo(ventas) };
         return { error: `Herramienta desconocida: ${nombre}` };
@@ -460,6 +698,7 @@ module.exports = {
     toMs, bogotaDateKey, dateKeyToMs, parseRango, claveGrupo,
     totalPedido, fechaVentaMs, esPagado, normalizarVenta, unirVentas, cargarPedidosRango,
     resumenDe, resumenVentas, ventasPorDiaHora, ventasPorMetodo, ventasPorOrigenTipo, topProductos,
+    variantesVendidas, analisisClientes, usoPromos, etiquetaVariante,
     esGastoReal, resumenGastos, resumenCierres, compararResumenes, recortarResultado,
     ejecutarHerramienta
 };
