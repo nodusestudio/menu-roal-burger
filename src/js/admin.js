@@ -1802,12 +1802,13 @@ function setupAccordion() {
         chatroal: ['chatroal'],
         metricas: ['metricas'],
         finanzas: ['finanzas'],
+        costos: ['costos'],
         asistente: ['asistente'],
         cuponpana: ['cuponpana'],
         redes: ['redes']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', costos:'Costos y recetas', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -1850,6 +1851,10 @@ function setupAccordion() {
 
         if (target === 'finanzas') {
             _ensureFinanzasLoaded();
+        }
+
+        if (target === 'costos') {
+            _ensureCostosLoaded();
         }
 
         if (target === 'asistente') {
@@ -32497,3 +32502,249 @@ function _asistInit() {
         setTimeout(() => _asistFodiSet(null), 900);
     });
 }
+
+// ── Costos y recetas — calculadora propia de FODEXA (reemplaza a CostoX) ────────
+// Lee/escribe las colecciones costos_* (reglas: solo admin). El motor de cálculo es un ESPEJO de
+// functions/costos.js (mismas fórmulas; si cambia allá, cambiar aquí). Todo se recalcula en vivo.
+const COSTOS_COLS = { insumos: 'costos_insumos', recetas: 'costos_recetas', platos: 'costos_platos', promos: 'costos_promos' };
+let _costos = { insumos: [], recetas: [], platos: [], promos: [], cfg: { colchonPct: 30, margenObjetivoPct: 30 } };
+let _costosLoaded = false, _costosVista = 'platos', _costosBuscar = '', _costosAbierto = null, _costosBound = false;
+
+const _cNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+const _cPct1 = (v) => Math.round(_cNum(v) * 10) / 10;
+const _cParse = (v) => _cNum(String(v).replace(',', '.'));
+function _cCostoInsumo(i) {
+    if (!i) return 0;
+    const peso = _cNum(i.pesoEmpaque);
+    if (_cNum(i.precioCompra) > 0 && peso > 0) return (_cNum(i.precioCompra) * (1 + _cNum(i.mermaPct) / 100)) / peso;
+    return _cNum(i.costoRespaldo);
+}
+function _cCostoReceta(id, ctx, pila = []) {
+    const r = ctx.recetas[id];
+    if (!r) return { porUnidad: 0, faltantes: [`receta:${id}`] };
+    if (pila.includes(id)) return { porUnidad: 0, faltantes: [`ciclo:${r.nombre || id}`] };
+    let total = 0; const faltantes = [];
+    for (const it of r.items || []) {
+        const q = _cNum(it.cantidad);
+        if (it.tipo === 'receta') { const s = _cCostoReceta(it.id, ctx, [...pila, id]); total += q * s.porUnidad; faltantes.push(...s.faltantes); }
+        else if (ctx.insumos[it.id]) total += q * _cCostoInsumo(ctx.insumos[it.id]);
+        else faltantes.push(`insumo:${it.id || '(vacío)'}`);
+    }
+    return { porUnidad: total / (_cNum(r.pesoTotal) || 1), faltantes };
+}
+function _cCalcPlato(p, ctx) {
+    const f = 1 + _cNum(_costos.cfg.colchonPct) / 100;
+    let ing = 0; const faltantes = [];
+    for (const it of p.items || []) {
+        const q = _cNum(it.cantidad); let c = 0;
+        if (it.tipo === 'receta') { const r = _cCostoReceta(it.id, ctx); c = q * r.porUnidad; faltantes.push(...r.faltantes); }
+        else if (ctx.insumos[it.id]) c = q * _cCostoInsumo(ctx.insumos[it.id]);
+        else faltantes.push(`insumo:${it.id || '(vacío)'}`);
+        ing += c;
+    }
+    const mo = _cNum(p.manoObra), precio = _cNum(p.precio);
+    const real = Math.round(ing + mo), colch = Math.round(ing * f + mo);
+    const m = _cNum(_costos.cfg.margenObjetivoPct) / 100;
+    const sug = colch > 0 && m > 0 && m < 1 ? Math.ceil(colch / (1 - m) / 500) * 500 : null;
+    return {
+        real, colch, precio, faltantes: [...new Set(faltantes)], sug,
+        fcReal: precio ? _cPct1(real / precio * 100) : null,
+        fc: precio ? _cPct1(colch / precio * 100) : null,
+        margen: precio ? _cPct1((precio - colch) / precio * 100) : null,
+    };
+}
+function _cCtx() {
+    return { insumos: Object.fromEntries(_costos.insumos.map((x) => [x.id, x])), recetas: Object.fromEntries(_costos.recetas.map((x) => [x.id, x])) };
+}
+
+async function _costosCargar() {
+    const get = (c) => firebaseDb.collection(c).get().then((s) => s.docs.map((d) => ({ ...d.data(), id: d.id })));
+    const [insumos, recetas, platos, promos, cfgDoc] = await Promise.all([
+        get(COSTOS_COLS.insumos), get(COSTOS_COLS.recetas), get(COSTOS_COLS.platos), get(COSTOS_COLS.promos),
+        firebaseDb.collection('costos_ajustes').doc('config').get(),
+    ]);
+    const porNombre = (a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
+    _costos.insumos = insumos.sort(porNombre); _costos.recetas = recetas.sort(porNombre);
+    _costos.platos = platos.sort(porNombre); _costos.promos = promos.sort(porNombre);
+    const c = cfgDoc.exists ? cfgDoc.data() : {};
+    _costos.cfg = { colchonPct: _cNum(c.colchonPct) || 30, margenObjetivoPct: _cNum(c.margenObjetivoPct) || 30 };
+    _costosLoaded = true;
+}
+async function _ensureCostosLoaded(force = false) {
+    if (!_costosBound) _costosBind();
+    if (!_costosLoaded || force) {
+        const body = document.getElementById('costosBody');
+        if (body && !_costosLoaded) body.innerHTML = '<p class="cs-muted">Cargando costos…</p>';
+        try { await _costosCargar(); } catch (e) { if (body) body.innerHTML = `<p class="cs-muted">No se pudieron cargar los costos (${escapeHtml(e.message || e)}).</p>`; return; }
+    }
+    _costosRender();
+}
+const _costosGuardar = (col, id, data) => firebaseDb.collection(col).doc(id).set({ ...data, actualizadoAt: firestoreNow() }, { merge: true });
+
+function _costosPendientes() {
+    const ctx = _cCtx(), out = [];
+    _costos.platos.forEach((p) => {
+        const c = _cCalcPlato(p, ctx);
+        if (c.faltantes.length) out.push({ k: 'Plato con referencias rotas', n: p.nombre, d: 'Un insumo o receta fue borrado o está vacío. Ábrelo y corrige las líneas.' });
+        if (!_cNum(p.precio)) out.push({ k: 'Plato sin precio', n: p.nombre, d: 'Sin precio no hay margen ni precio sugerido.' });
+        (p.items || []).forEach((it) => { if (_cNum(it.cantidad) < 0) out.push({ k: 'Cantidad negativa', n: p.nombre, d: `${it.nombre || it.id}: ${it.cantidad}` }); });
+    });
+    _costos.recetas.forEach((r) => (r.items || []).forEach((it) => { if (_cNum(it.cantidad) < 0) out.push({ k: 'Cantidad negativa', n: r.nombre, d: `${it.nombre || it.id}: ${it.cantidad}` }); }));
+    _costos.insumos.filter((i) => !(_cNum(i.precioCompra) > 0 && _cNum(i.pesoEmpaque) > 0)).forEach((i) => out.push({ k: 'Insumo sin precio de compra', n: i.nombre, d: `Se usa el costo base guardado (${_cNum(i.costoRespaldo)}). Pon precio de compra y peso del empaque.` }));
+    const ids = new Set([..._costos.platos, ..._costos.recetas, ..._costos.insumos].map((x) => x.id));
+    _costos.promos.forEach((p) => (p.items || []).forEach((it) => { if (!ids.has(it.id)) out.push({ k: 'Promo con referencia inexistente', n: p.nombre, d: `Línea "${it.nombre || it.id}" apunta a un ${it.tipo} que ya no existe.` }); }));
+    return out;
+}
+
+function _costosRender() {
+    const body = document.getElementById('costosBody');
+    if (!body) return;
+    const money = formatMoney;
+    const q = _costosBuscar.trim().toLowerCase();
+    const filtra = (arr) => (q ? arr.filter((x) => String(x.nombre || '').toLowerCase().includes(q)) : arr);
+    const pend = _costosPendientes();
+    const cfgInp = (k, v) => `<input type="text" inputmode="numeric" class="cs-inp" style="width:70px" data-cs-cfg="${k}" value="${v}">`;
+    const nAct = _costos.platos.filter((p) => p.activo === true).length;
+    const tabs = [['platos', `Platos activos (${nAct})`], ['ideas', `Ideas (${_costos.platos.length - nAct})`], ['insumos', `Insumos (${_costos.insumos.length})`], ['recetas', `Recetas (${_costos.recetas.length})`], ['pendientes', `Pendientes (${pend.length})`]];
+    let html = `<div class="cs-bar">
+        <label>Colchón % ${cfgInp('colchonPct', _costos.cfg.colchonPct)}</label>
+        <label>Margen objetivo % ${cfgInp('margenObjetivoPct', _costos.cfg.margenObjetivoPct)}</label>
+        <button type="button" class="cat-new-save-btn" data-cs-act="saveCfg">Guardar</button>
+        <input type="search" class="cs-inp" id="costosBuscar" placeholder="Buscar…" value="${escapeHtml(_costosBuscar)}" style="flex:1;min-width:120px">
+    </div>
+    <div class="cs-tabs">${tabs.map(([k, l]) => `<button type="button" class="cs-tab${k === _costosVista ? ' on' : ''}" data-cs-vista="${k}">${l}</button>`).join('')}</div>`;
+
+    if (_costosVista === 'platos' || _costosVista === 'ideas') {
+        const ctx = _cCtx();
+        const lista = filtra(_costos.platos.filter((p) => (_costosVista === 'platos') === (p.activo === true)));
+        html += `<p class="cs-muted">Costo real = precio de compra + merma real + mano de obra. Con colchón = ingredientes × ${1 + _costos.cfg.colchonPct / 100} + mano de obra. Margen y sugerido se miden sobre el costo con colchón. Toca un plato para editarlo.</p>
+        <div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Activo</th><th>Plato</th><th>Precio</th><th>Costo real</th><th>Con colchón</th><th>Margen</th><th>Sugerido</th></tr></thead><tbody>`;
+        lista.forEach((p) => {
+            const c = _cCalcPlato(p, ctx);
+            const bajo = c.margen != null && c.margen < _costos.cfg.margenObjetivoPct;
+            html += `<tr data-cs-open="${escapeHtml(p.id)}" class="cs-row"><td><input type="checkbox" data-cs-activo="${escapeHtml(p.id)}" ${p.activo === true ? 'checked' : ''}></td>
+              <td>${escapeHtml(p.nombre)}${c.faltantes.length ? ' ⚠️' : ''}</td><td>${money(c.precio)}</td>
+              <td>${money(c.real)}<small> ${c.fcReal ?? '–'}%</small></td><td>${money(c.colch)}<small> ${c.fc ?? '–'}%</small></td>
+              <td style="color:${bajo ? '#fca5a5' : '#6ee7b7'}">${c.margen ?? '–'}%</td><td>${c.sug ? money(c.sug) : '–'}</td></tr>`;
+            if (_costosAbierto === p.id) html += `<tr><td colspan="7">${_costosEditorItems('platos', p)}</td></tr>`;
+        });
+        html += `</tbody></table></div>${lista.length ? '' : '<p class="cs-muted">Nada por aquí.</p>'}`;
+    } else if (_costosVista === 'insumos') {
+        html += `<p class="cs-muted">Cambia el precio de compra y la merma real; todo se recalcula. El historial de precios se guarda solo.</p><div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th>Precio compra</th><th>Peso empaque</th><th>Merma %</th><th>Costo/unid</th></tr></thead><tbody>`;
+        filtra(_costos.insumos).forEach((i) => {
+            const sin = !(_cNum(i.precioCompra) > 0 && _cNum(i.pesoEmpaque) > 0);
+            const inp = (k, v) => `<input type="text" inputmode="decimal" class="cs-inp" style="width:90px" data-cs-ins="${escapeHtml(i.id)}" data-k="${k}" value="${v ?? 0}">`;
+            html += `<tr><td>${escapeHtml(i.nombre)}${sin ? ' ⚠️' : ''}</td><td>${escapeHtml(i.unidad || '')}</td><td>${inp('precioCompra', i.precioCompra)}</td><td>${inp('pesoEmpaque', i.pesoEmpaque)}</td><td>${inp('mermaPct', i.mermaPct)}</td><td>${Math.round(_cCostoInsumo(i) * 1000) / 1000}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+    } else if (_costosVista === 'recetas') {
+        const ctx = _cCtx();
+        html += '<div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Receta</th><th>Peso total</th><th>Costo/unid</th></tr></thead><tbody>';
+        filtra(_costos.recetas).forEach((r) => {
+            const c = _cCostoReceta(r.id, ctx);
+            html += `<tr class="cs-row" data-cs-open="${escapeHtml(r.id)}"><td>${escapeHtml(r.nombre)}${c.faltantes.length ? ' ⚠️' : ''}</td><td>${_cNum(r.pesoTotal)}</td><td>${Math.round(c.porUnidad * 1000) / 1000}</td></tr>`;
+            if (_costosAbierto === r.id) html += `<tr><td colspan="3">${_costosEditorItems('recetas', r)}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+    } else {
+        html += pend.length ? `<div class="cs-pend">${pend.map((x) => `<div class="cs-pi"><strong>${escapeHtml(x.k)}</strong> · ${escapeHtml(x.n)}<br><small>${escapeHtml(x.d)}</small></div>`).join('')}</div>` : '<p class="cs-muted">Sin datos pendientes. 🎉</p>';
+    }
+    const hadFocus = document.activeElement && document.activeElement.id === 'costosBuscar';
+    body.innerHTML = html;
+    if (hadFocus) { const b = document.getElementById('costosBuscar'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
+}
+
+function _costosEditorItems(col, doc) {
+    const opciones = (tipo, sel) => {
+        const arr = tipo === 'receta' ? _costos.recetas : _costos.insumos;
+        return '<option value="">— elegir —</option>' + arr.map((x) => `<option value="${escapeHtml(x.id)}" ${x.id === sel ? 'selected' : ''}>${escapeHtml(x.nombre)}</option>`).join('');
+    };
+    const fila = (it, idx) => `<div class="cs-line">
+        <select class="cs-inp" data-cs-line="${idx}" data-k="tipo"><option value="insumo" ${it.tipo !== 'receta' ? 'selected' : ''}>Insumo</option><option value="receta" ${it.tipo === 'receta' ? 'selected' : ''}>Receta</option></select>
+        <select class="cs-inp" data-cs-line="${idx}" data-k="id" style="flex:1;min-width:140px">${opciones(it.tipo, it.id)}</select>
+        <input type="text" inputmode="decimal" class="cs-inp" style="width:80px" data-cs-line="${idx}" data-k="cantidad" value="${_cNum(it.cantidad)}">
+        <button type="button" class="pm-icon-btn" data-cs-act="delLine" data-idx="${idx}">✕</button></div>`;
+    const extra = col === 'platos'
+        ? `<label>Precio <input type="text" inputmode="numeric" class="cs-inp" style="width:90px" data-cs-campo="precio" value="${_cNum(doc.precio)}"></label>
+           <label>Mano de obra <input type="text" inputmode="numeric" class="cs-inp" style="width:90px" data-cs-campo="manoObra" value="${_cNum(doc.manoObra)}"></label>`
+        : `<label>Peso total <input type="text" inputmode="decimal" class="cs-inp" style="width:90px" data-cs-campo="pesoTotal" value="${_cNum(doc.pesoTotal)}"></label>`;
+    return `<div class="cs-editor" data-cs-col="${col}" data-cs-doc="${escapeHtml(doc.id)}">
+        <div class="cs-bar">${extra}</div>
+        ${(doc.items || []).map(fila).join('') || '<p class="cs-muted">Sin líneas.</p>'}
+        <div class="cs-bar"><button type="button" class="pm-icon-btn" data-cs-act="addLine">+ Línea</button>
+        <button type="button" class="cat-new-save-btn" data-cs-act="saveItems">Guardar cambios</button></div></div>`;
+}
+
+function _costosBind() {
+    const root = document.getElementById('costosBody');
+    if (!root) return;
+    _costosBound = true;
+    root.addEventListener('click', async (e) => {
+        const vista = e.target.closest('[data-cs-vista]');
+        if (vista) { _costosVista = vista.dataset.csVista; _costosAbierto = null; return _costosRender(); }
+        const act = e.target.closest('[data-cs-act]');
+        const ed = e.target.closest('.cs-editor');
+        if (act) {
+            const a = act.dataset.csAct;
+            if (a === 'saveCfg') {
+                const g = (k) => _cParse(root.querySelector(`[data-cs-cfg="${k}"]`).value);
+                _costos.cfg = { colchonPct: g('colchonPct'), margenObjetivoPct: g('margenObjetivoPct') };
+                try { await firebaseDb.collection('costos_ajustes').doc('config').set({ ..._costos.cfg, actualizadoAt: firestoreNow() }, { merge: true }); showNotice('Ajustes de costos guardados.', 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
+                return _costosRender();
+            }
+            if (ed) {
+                const col = ed.dataset.csCol, doc = _costos[col].find((x) => x.id === ed.dataset.csDoc);
+                if (!doc) return;
+                if (a === 'addLine') { doc.items = [...(doc.items || []), { tipo: 'insumo', id: '', cantidad: 0, nombre: '' }]; return _costosRender(); }
+                if (a === 'delLine') { doc.items = doc.items.filter((_, i) => i !== Number(act.dataset.idx)); return _costosRender(); }
+                if (a === 'saveItems') {
+                    const data = { items: (doc.items || []).map((it) => ({ tipo: it.tipo, id: it.id, cantidad: _cNum(it.cantidad), nombre: it.nombre || '' })) };
+                    if (col === 'platos') { data.precio = _cNum(doc.precio); data.manoObra = _cNum(doc.manoObra); } else data.pesoTotal = _cNum(doc.pesoTotal);
+                    try { await _costosGuardar(COSTOS_COLS[col], doc.id, data); showNotice('Guardado.', 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
+                    return _costosRender();
+                }
+            }
+            return;
+        }
+        if (e.target.closest('input,select,textarea,.cs-editor')) return;
+        const row = e.target.closest('[data-cs-open]');
+        if (row) { _costosAbierto = _costosAbierto === row.dataset.csOpen ? null : row.dataset.csOpen; _costosRender(); }
+    });
+    root.addEventListener('input', (e) => { if (e.target.id === 'costosBuscar') { _costosBuscar = e.target.value; _costosRender(); } });
+    root.addEventListener('change', async (e) => {
+        const t = e.target;
+        if (t.dataset.csActivo) {
+            const p = _costos.platos.find((x) => x.id === t.dataset.csActivo); if (!p) return;
+            const previo = p.activo;
+            p.activo = t.checked;
+            try { await _costosGuardar(COSTOS_COLS.platos, p.id, { activo: p.activo }); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); p.activo = previo; }
+            return _costosRender();
+        }
+        if (t.dataset.csIns) {
+            const i = _costos.insumos.find((x) => x.id === t.dataset.csIns); if (!i) return;
+            const k = t.dataset.k, nuevo = _cParse(t.value), viejo = _cNum(i[k]);
+            if (nuevo === viejo) return _costosRender();
+            i[k] = nuevo;
+            const data = { [k]: nuevo };
+            if (k === 'precioCompra') { // historial de precios (base de la alerta de alzas)
+                const h = [...(i.historialPrecios || []), { fecha: new Date().toISOString(), precio: nuevo, anterior: viejo }].slice(-30);
+                i.historialPrecios = h; data.historialPrecios = h;
+            }
+            try { await _costosGuardar(COSTOS_COLS.insumos, i.id, data); showNotice(`${i.nombre} actualizado.`, 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
+            return _costosRender();
+        }
+        const ed = t.closest('.cs-editor');
+        if (ed) {
+            const col = ed.dataset.csCol, doc = _costos[col].find((x) => x.id === ed.dataset.csDoc); if (!doc) return;
+            if (t.dataset.csCampo) { doc[t.dataset.csCampo] = _cParse(t.value); return _costosRender(); }
+            if (t.dataset.csLine != null) {
+                const it = doc.items[Number(t.dataset.csLine)], k = t.dataset.k;
+                if (k === 'cantidad') it.cantidad = _cParse(t.value);
+                else if (k === 'tipo') { it.tipo = t.value; it.id = ''; it.nombre = ''; }
+                else { it.id = t.value; const src = (it.tipo === 'receta' ? _costos.recetas : _costos.insumos).find((x) => x.id === t.value); it.nombre = src ? src.nombre : ''; }
+                _costosRender();
+            }
+        }
+    });
+}
+document.getElementById('costosRefreshBtn')?.addEventListener('click', () => _ensureCostosLoaded(true));

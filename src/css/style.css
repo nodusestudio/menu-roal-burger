@@ -9272,3 +9272,22 @@ html.low-fx .support-feedback--error:not(:empty) {
     .codigo-dia-card .codigo-dia-main { grid-template-columns: 76px minmax(0, 1fr); }
     .codigo-dia-card .codigo-dia-img-wrap { width: 76px; height: 76px; }
 }
+
+/* ── Costos y recetas (admin) ── */
+.cs-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.cs-bar label{display:flex;gap:6px;align-items:center;font-size:.85rem;color:var(--admin-muted)}
+.cs-inp{background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:6px 8px;font:inherit}
+.cs-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.cs-tab{background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:6px 12px;font:inherit;font-size:.82rem;cursor:pointer}
+.cs-tab.on{background:rgba(255,255,255,.2);font-weight:700}
+.cs-muted{font-size:.8rem;color:var(--admin-muted);line-height:1.5;margin:0 0 10px}
+.cs-scroll{overflow-x:auto}
+.cs-tbl{width:100%;border-collapse:collapse;font-size:.85rem}
+.cs-tbl th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--admin-muted);padding:6px 8px}
+.cs-tbl td{padding:7px 8px;border-top:1px solid rgba(255,255,255,.1);vertical-align:middle}
+.cs-tbl small{color:var(--admin-muted)}
+.cs-row{cursor:pointer}
+.cs-row:hover{background:rgba(255,255,255,.06)}
+.cs-editor{padding:8px 0}
+.cs-line{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 6px}
+.cs-pi{padding:8px 10px;border:1px solid rgba(255,255,255,.14);border-radius:10px;margin:0 0 6px;font-size:.85rem}
