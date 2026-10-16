@@ -3537,6 +3537,9 @@ exports.adminSugerirRespuestaCliente = onCall(
         const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
         const bloqueMemoria = memoria.length ? `LO QUE SABES DEL NEGOCIO Y DEL DUEÑO (tono, políticas, preferencias):\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : '';
         const conocimiento = fodiConocimiento.bloque(['clientes']);
+        const ejemplos = await estiloEjemplos(db, 8).catch(() => []);
+        const bloqueEstilo = ejemplos.length ? `EJEMPLOS DE CÓMO RESPONDE EL DUEÑO (imita su tono y criterio; los marcados "corregida" son correcciones suyas y pesan más):
+${ejemplos.map((e) => `- [${e.tipo || 'caso'}${e.corregida ? ', corregida' : ''}] ${e.situacion ? e.situacion + ' → ' : ''}${e.texto}`).join('\n')}` : '';
         const M = ASISTENTE_MODELOS.sonnet;
         const contenido = [];
         if (tieneImg) contenido.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } });
@@ -3548,7 +3551,7 @@ exports.adminSugerirRespuestaCliente = onCall(
         try {
             resp = await client.messages.create({
                 model: M.id, max_tokens: 2500,
-                system: [{ type: 'text', text: RESP_CLIENTE_SYSTEM, cache_control: { type: 'ephemeral' } }, ...(bloqueMemoria || conocimiento ? [{ type: 'text', text: [bloqueMemoria, conocimiento].filter(Boolean).join('\n\n') }] : [])],
+                system: [{ type: 'text', text: RESP_CLIENTE_SYSTEM, cache_control: { type: 'ephemeral' } }, ...(bloqueMemoria || conocimiento || bloqueEstilo ? [{ type: 'text', text: [bloqueMemoria, bloqueEstilo, conocimiento].filter(Boolean).join('\n\n') }] : [])],
                 messages: [{ role: 'user', content: contenido }]
             });
         } catch (err) {
@@ -3592,5 +3595,84 @@ exports.adminRecalcularAlertas = onCall(
     async (request) => {
         await ensureAdminCaller(request);
         try { return await fodiInteligencia.guardarAlertas(getFirestore()); } catch (e) { console.error('adminRecalcularAlertas:', e); throw new HttpsError('internal', 'No se pudieron calcular las alertas.'); }
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Panel "Lo que sabe FODI": el dueño ve, edita (queda FIJO), agrega y borra la memoria.
+// ─────────────────────────────────────────────────────────────
+exports.adminFodiMemoria = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, timeoutSeconds: 30 },
+    async (request) => {
+        await ensureAdminCaller(request);
+        const db = getFirestore();
+        const d = request.data || {};
+        if (d.accion === 'guardar') {
+            const r = await adminAsistente.recordar(db, { accion: 'guardar', tema: d.tema, texto: d.texto, fijo: true });
+            if (r.error) throw new HttpsError('failed-precondition', r.error);
+        } else if (d.accion === 'olvidar') {
+            const r = await adminAsistente.recordar(db, { accion: 'olvidar', tema: d.tema });
+            if (r.error) throw new HttpsError('failed-precondition', r.error);
+        } else if (d.accion !== 'listar') throw new HttpsError('invalid-argument', 'Acción inválida.');
+        return { items: await adminAsistente.leerMemoria(db) };
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Estilo con clientes: ejemplos aprobados/corregidos por el dueño y chats que salieron bien.
+// Se inyectan en adminSugerirRespuestaCliente para que las respuestas suenen a él.
+// ─────────────────────────────────────────────────────────────
+const ESTILO_MAX = 40;
+async function estiloEjemplos(db, n = 8) {
+    const sn = await db.collection('fodi_estilo').orderBy('creadaMs', 'desc').limit(ESTILO_MAX).get();
+    const todos = sn.docs.map((x) => x.data());
+    const orden = [...todos.filter((e) => e.corregida), ...todos.filter((e) => !e.corregida)];
+    return orden.slice(0, n);
+}
+async function estiloGuardar(db, ej) {
+    await db.collection('fodi_estilo').add({ ...ej, creadaMs: Date.now() });
+    const sn = await db.collection('fodi_estilo').orderBy('creadaMs', 'desc').offset(ESTILO_MAX).limit(20).get();
+    await Promise.all(sn.docs.map((x) => x.ref.delete()));
+}
+const ESTILO_CHATS_PROMPT = `Eres el módulo de aprendizaje de estilo de FODI (ROAL BURGER, Colombia). El dueño pega chats reales de WhatsApp con clientes que SALIERON BIEN. Extrae cómo responde ÉL (las respuestas del negocio) para imitarlo.
+Devuelve SOLO JSON: {"guia_estilo":"máx. 350 caracteres: tono, longitud, tratamiento (tú/usted), muletillas, uso de emojis, cómo abre y cierra","politicas":[{"tema":"snake_case","texto":"máx. 300 caracteres: una política o criterio que se deduce (cuándo compensa, qué ofrece, cómo maneja demoras)"}],"ejemplos":[{"situacion":"máx. 120 caracteres","respuesta":"respuesta real del negocio, máx. 400 caracteres, anonimiza nombres y teléfonos"}]}
+Máx. 3 políticas y 5 ejemplos. No inventes: solo lo que se ve en los chats. No guardes datos personales ni sensibles.`;
+
+exports.adminEstiloFodi = onCall(
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], cors: ALLOWED_ORIGINS, timeoutSeconds: 90, memory: '512MiB' },
+    async (request) => {
+        await ensureAdminCaller(request);
+        const db = getFirestore();
+        const d = request.data || {};
+        const s = (x, n) => String(x == null ? '' : x).trim().slice(0, n);
+        if (d.accion === 'aprobar' || d.accion === 'corregir') {
+            const texto = s(d.texto, 900);
+            if (!texto) throw new HttpsError('invalid-argument', 'Falta el texto.');
+            await estiloGuardar(db, { situacion: s(d.situacion, 200), tipo: s(d.tipo, 40), etiqueta: s(d.etiqueta, 40), texto, corregida: d.accion === 'corregir' });
+            return { ok: true };
+        }
+        if (d.accion !== 'chats') throw new HttpsError('invalid-argument', 'Acción inválida.');
+        const chats = s(d.texto, 9000);
+        if (chats.length < 40) throw new HttpsError('invalid-argument', 'Pega al menos un chat completo.');
+        const apiKey = ANTHROPIC_API_KEY.value();
+        if (!apiKey) throw new HttpsError('failed-precondition', 'Asistente no configurado.');
+        const Anthropic = require('@anthropic-ai/sdk');
+        const client = new Anthropic({ apiKey });
+        let resp;
+        try {
+            resp = await client.messages.create({ model: ASISTENTE_MODELOS.haiku.id, max_tokens: 1500, system: ESTILO_CHATS_PROMPT, messages: [{ role: 'user', content: chats }] });
+        } catch (e) { console.error('adminEstiloFodi:', e && e.message); throw new HttpsError('internal', 'No se pudo analizar. Intenta de nuevo.'); }
+        const m = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('').match(/\{[\s\S]*\}/);
+        let j = null; try { j = m ? JSON.parse(m[0]) : null; } catch (_) { j = null; }
+        if (!j) throw new HttpsError('internal', 'No pude extraer el estilo. Prueba con chats más claros.');
+        let guardados = 0;
+        if (j.guia_estilo) { const r = await adminAsistente.recordar(db, { accion: 'guardar', tema: 'estilo_con_clientes', texto: s(j.guia_estilo, 400), fijo: true }); if (r.ok) guardados++; }
+        for (const p of (Array.isArray(j.politicas) ? j.politicas : []).slice(0, 3)) { if (p && p.tema && p.texto) { const r = await adminAsistente.recordar(db, { accion: 'guardar', tema: 'politica_' + s(p.tema, 30), texto: s(p.texto, 400), origen: 'auto' }); if (r.ok) guardados++; } }
+        let ejemplos = 0;
+        for (const e of (Array.isArray(j.ejemplos) ? j.ejemplos : []).slice(0, 5)) { if (e && e.respuesta) { await estiloGuardar(db, { situacion: s(e.situacion, 200), tipo: 'chat', etiqueta: 'Chat real', texto: s(e.respuesta, 900), corregida: false }); ejemplos++; } }
+        const u = resp.usage || {};
+        const H = ASISTENTE_MODELOS.haiku;
+        db.collection('admin_ai_usage_daily').doc(adminAsistente.bogotaDateKey(Date.now())).set({ costoUsd: FieldValue.increment(((u.input_tokens || 0) * H.in + (u.output_tokens || 0) * H.out) / 1e6) }, { merge: true }).catch(() => {});
+        return { ok: true, guia: s(j.guia_estilo, 400), memoria_guardada: guardados, ejemplos_guardados: ejemplos };
     }
 );

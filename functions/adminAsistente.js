@@ -904,7 +904,7 @@ const memoriaRef = (db) => db.collection('fodi_memoria').doc('principal');
 
 async function leerMemoria(db) {
     const items = ((await memoriaRef(db).get()).data() || {}).items || {};
-    return Object.entries(items).map(([tema, v]) => ({ tema, texto: String(v.texto || ''), actualizado: v.actualizado || '' }));
+    return Object.entries(items).map(([tema, v]) => ({ tema, texto: String(v.texto || ''), actualizado: v.actualizado || '', fijo: v.fijo === true }));
 }
 
 async function recordar(db, args = {}) {
@@ -912,6 +912,8 @@ async function recordar(db, args = {}) {
     if (!tema) return { error: 'Falta el tema.' };
     const ref = memoriaRef(db);
     const items = ((await ref.get()).data() || {}).items || {};
+    // Lo que escribe el dueño (fijo) no lo pueden pisar ni borrar los aprendizajes automáticos
+    if (items[tema] && items[tema].fijo === true && args.origen === 'auto') return { error: `"${tema}" está fijado por el dueño.` };
     if (args.accion === 'olvidar') {
         if (!(tema in items)) return { error: `No hay nada guardado bajo "${tema}".` };
         delete items[tema];
@@ -922,7 +924,7 @@ async function recordar(db, args = {}) {
     const texto = String(args.texto || '').trim().slice(0, MEMORIA_MAX_CHARS);
     if (!texto) return { error: 'Falta el texto a guardar.' };
     if (!(tema in items) && Object.keys(items).length >= MEMORIA_MAX_ITEMS) return { error: `La memoria está llena (${MEMORIA_MAX_ITEMS} temas). Olvida alguno primero.` };
-    items[tema] = { texto, actualizado: bogotaDateKey(Date.now()) };
+    items[tema] = { texto, actualizado: bogotaDateKey(Date.now()), ...(args.fijo === true ? { fijo: true } : {}) };
     await ref.set({ items });
     return { ok: true, guardado: tema };
 }
@@ -938,7 +940,7 @@ Responde SOLO JSON: {"guardar":[{"tema":"...","texto":"..."}],"olvidar":["tema"]
 async function aprender(db, client, { modelo, memoria, pregunta, respuesta, acciones, extra }) {
     const q = String(pregunta || '').trim();
     if (q.length < 12) return { ok: true, guardados: 0 };
-    const entrada = `MEMORIA ACTUAL:\n${memoria.length ? memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n') : '(vacía)'}\n\nDUEÑO DIJO:\n${q.slice(0, 1500)}\n\nFODI RESPONDIÓ:\n${String(respuesta || '').slice(0, 1500)}\n\nACCIONES PROPUESTAS: ${(acciones || []).map((a) => a.tipo + (a.nombre ? ' ' + a.nombre : '') + (a.tab ? ' ' + a.tab : '')).join('; ') || 'ninguna'}${extra ? `
+    const entrada = `MEMORIA ACTUAL:\n${memoria.length ? memoria.map((m) => `- ${m.tema}${m.fijo ? ' [FIJO: no lo modifiques]' : ''}: ${m.texto}`).join('\n') : '(vacía)'}\n\nDUEÑO DIJO:\n${q.slice(0, 1500)}\n\nFODI RESPONDIÓ:\n${String(respuesta || '').slice(0, 1500)}\n\nACCIONES PROPUESTAS: ${(acciones || []).map((a) => a.tipo + (a.nombre ? ' ' + a.nombre : '') + (a.tab ? ' ' + a.tab : '')).join('; ') || 'ninguna'}${extra ? `
 
 ${extra}
 (Si hay resultados de sugerencias, guarda la LECCIÓN: qué tipo de recomendación funcionó o no.)` : ''}`;
@@ -948,10 +950,10 @@ ${extra}
     if (!m) return { ok: true, guardados: 0, usage: r.usage };
     let j; try { j = JSON.parse(m[0]); } catch (_) { return { ok: true, guardados: 0, usage: r.usage }; }
     let n = 0;
-    for (const t of Array.isArray(j.olvidar) ? j.olvidar.slice(0, 5) : []) { const x = await recordar(db, { accion: 'olvidar', tema: t }); if (x.ok) n++; }
+    for (const t of Array.isArray(j.olvidar) ? j.olvidar.slice(0, 5) : []) { const x = await recordar(db, { accion: 'olvidar', tema: t, origen: 'auto' }); if (x.ok) n++; }
     for (const g of Array.isArray(j.guardar) ? j.guardar.slice(0, 4) : []) {
         if (!g || !g.tema || !g.texto || /pin|clave|contrase/i.test(String(g.tema))) continue;
-        const x = await recordar(db, { accion: 'guardar', tema: g.tema, texto: g.texto }); if (x.ok) n++;
+        const x = await recordar(db, { accion: 'guardar', tema: g.tema, texto: g.texto, origen: 'auto' }); if (x.ok) n++;
     }
     return { ok: true, guardados: n, usage: r.usage };
 }

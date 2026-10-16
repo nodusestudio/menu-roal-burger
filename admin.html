@@ -15473,6 +15473,12 @@
                     </div>
                     <div class="card-body">
                         <div id="fodiAlertasBox" style="margin:0 0 8px"></div>
+                        <details id="fodiMemBox" style="margin:0 0 8px;padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.07)">
+                            <summary style="cursor:pointer;font-weight:700">🧠 Lo que sabe FODI (memoria)</summary>
+                            <p class="asist-hint" style="text-align:left;opacity:1">FODI aprende sola de tus conversaciones. Aquí ves todo lo que recuerda: edítalo (queda 📌 fijo y ya no lo cambia ella), bórralo o agrega algo tú.</p>
+                            <div id="fodiMemLista"></div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><input type="text" id="fodiMemTema" maxlength="40" placeholder="Tema (ej. meta_mensual)" style="flex:1;min-width:140px"><input type="text" id="fodiMemTexto" maxlength="400" placeholder="Lo que debe recordar" style="flex:3;min-width:200px"><button type="button" class="section-action-btn" id="fodiMemAgregar">Agregar 📌</button></div>
+                        </details>
                         <details class="asist-ajustes" style="margin:0 0 8px;padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.07)">
                             <summary style="cursor:pointer;font-weight:700">⚙️ Ajustes de FODI y consumo de IA</summary>
                             <p class="asist-hint" style="text-align:left;opacity:1"><button type="button" class="section-action-btn" id="asistUsoBtn">📊 Ver consumo de IA</button></p>
@@ -16903,6 +16909,9 @@
     <div id="respClienteModal" role="dialog" aria-label="Responder a un cliente">
         <div class="rc-caja">
             <div style="display:flex;justify-content:space-between;align-items:start;gap:10px"><div><h3>💬 Responder a un cliente</h3><p class="rc-sub">Pega el chat o una captura (Ctrl+V). FODI analiza qué pasó y te propone cómo responder. No envía nada.</p></div><button type="button" class="rc-btn sec" id="rcCerrar" aria-label="Cerrar">✕</button></div>
+            <details style="margin:0 0 10px"><summary style="cursor:pointer;font-size:.85rem;color:#ffd08a">🎓 Enseñarle mi estilo: pega chats que salieron bien</summary>
+                <textarea id="rcChats" maxlength="9000" style="min-height:90px;margin-top:8px" placeholder="Pega 1 a 5 chats reales con clientes que terminaron bien (con tus respuestas). FODI extrae tu tono y tus criterios."></textarea>
+                <div class="rc-fila"><button type="button" class="rc-btn sec" id="rcAprenderChats">Aprender de estos chats</button><span id="rcAprendeEstado" style="font-size:.85rem;color:#c9d6f0"></span></div></details>
             <textarea id="rcTexto" maxlength="9000" placeholder="Pega aquí la conversación de WhatsApp, o pega una captura de pantalla…"></textarea>
             <img id="rcImgPrev" alt="Captura adjunta">
             <div class="rc-fila"><label class="rc-btn sec" style="cursor:pointer">📷 Subir captura<input type="file" id="rcArchivo" accept="image/*" hidden></label><button type="button" class="rc-btn sec" id="rcQuitarImg" hidden>Quitar captura</button></div>

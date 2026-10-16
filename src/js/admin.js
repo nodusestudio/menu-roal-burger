@@ -33292,7 +33292,20 @@ setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_m
                 const d = nodo('rc-panel rc-resp', `<b>${escapeHtml(x.etiqueta)}</b><span></span>`);
                 d.querySelector('span').textContent = x.texto;
                 const b = document.createElement('button'); b.type = 'button'; b.className = 'rc-btn'; b.textContent = '📋 Copiar';
-                b.addEventListener('click', () => copiar(x.texto, b)); d.appendChild(b); res.appendChild(d);
+                b.addEventListener('click', () => copiar(x.texto, b)); d.appendChild(b);
+                const enviarEstilo = async (accion, texto, btn, msg) => {
+                    btn.disabled = true;
+                    try { await firebaseFunctions.httpsCallable('adminEstiloFodi')({ accion, texto, situacion: r.resumen, tipo: r.tipo, etiqueta: x.etiqueta }); btn.textContent = msg; } catch (e) { btn.textContent = 'No se pudo guardar'; btn.disabled = false; }
+                };
+                const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'rc-btn sec'; ok.textContent = '👍 Así me gusta';
+                ok.addEventListener('click', () => enviarEstilo('aprobar', x.texto, ok, '✅ Aprendido'));
+                const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'rc-btn sec'; ed.textContent = '✏️ Corregir y enseñar';
+                ed.addEventListener('click', () => {
+                    const span = d.querySelector('span'); span.contentEditable = 'true'; span.style.outline = '1px dashed #ffd08a'; span.focus();
+                    ed.textContent = '💾 Guardar mi versión';
+                    ed.onclick = () => { span.contentEditable = 'false'; span.style.outline = ''; ed.onclick = null; enviarEstilo('corregir', span.textContent, ed, '✅ Versión aprendida'); };
+                }, { once: true });
+                d.appendChild(ok); d.appendChild(ed); res.appendChild(d);
             }
             if (r.recomendacion || r.evitar.length) res.appendChild(nodo('rc-panel', `<b>Para ti (no se lo envíes):</b>\n${escapeHtml(r.recomendacion)}${r.evitar.length ? '\n\n<b>Evita decir:</b>\n• ' + r.evitar.map(escapeHtml).join('\n• ') : ''}`));
             estado.textContent = 'Revisa y ajusta antes de enviar. Lo marcado [VERIFICAR] debes confirmarlo.';
@@ -33354,3 +33367,50 @@ async function _fodiAlertasCargar(recalcular) {
         if (fl) fl.classList.toggle('con-alertas', rojas > 0);
     } catch (e) { box.innerHTML = `<p class="asist-hint" style="opacity:1">No pude leer las alertas: ${escapeHtml(e.message || String(e))}</p>`; }
 }
+
+// ── Enseñar estilo con chats que salieron bien ─────────────────────────────────────────
+document.getElementById('rcAprenderChats')?.addEventListener('click', async () => {
+    const btn = document.getElementById('rcAprenderChats'), est = document.getElementById('rcAprendeEstado'), t = document.getElementById('rcChats').value.trim();
+    if (t.length < 40) { est.textContent = 'Pega al menos un chat completo.'; return; }
+    btn.disabled = true; est.textContent = 'Aprendiendo de tus chats… 💭';
+    try {
+        const r = (await firebaseFunctions.httpsCallable('adminEstiloFodi', { timeout: 90000 })({ accion: 'chats', texto: t })).data;
+        est.textContent = `✅ Listo. Guardé tu estilo (${r.guia || 'ok'}), ${r.memoria_guardada} cosas en memoria y ${r.ejemplos_guardados} ejemplos.`;
+        document.getElementById('rcChats').value = '';
+        if (typeof _fodiMemCargar === 'function') _fodiMemCargar();
+    } catch (e) { est.textContent = e?.message || 'No pude aprender de esos chats.'; } finally { btn.disabled = false; }
+});
+
+// ── Panel "Lo que sabe FODI" ──────────────────────────────────────────────────────────
+async function _fodiMemLlamar(datos) {
+    return (await firebaseFunctions.httpsCallable('adminFodiMemoria')(datos)).data.items || [];
+}
+function _fodiMemPintar(items) {
+    const box = document.getElementById('fodiMemLista');
+    if (!box) return;
+    if (!items.length) { box.innerHTML = '<p class="asist-hint" style="text-align:left;opacity:1">Todavía no recuerda nada. Conversa con ella o agrega algo abajo.</p>'; return; }
+    box.innerHTML = items.sort((a, b) => (b.fijo ? 1 : 0) - (a.fijo ? 1 : 0) || a.tema.localeCompare(b.tema)).map((m) => `<div class="fm-item" data-tema="${escapeHtml(m.tema)}" style="margin:8px 0;padding:8px;border-radius:10px;background:rgba(255,255,255,.06)">
+        <strong>${m.fijo ? '📌 ' : ''}${escapeHtml(m.tema)}</strong> <small>${escapeHtml(m.actualizado || '')}</small>
+        <textarea class="fm-txt" rows="2" maxlength="400" style="width:100%;box-sizing:border-box;margin-top:4px">${escapeHtml(m.texto)}</textarea>
+        <div style="margin-top:4px;display:flex;gap:6px"><button type="button" class="section-action-btn fm-save">Guardar 📌</button><button type="button" class="section-action-btn fm-del">Olvidar</button></div></div>`).join('');
+}
+async function _fodiMemCargar() {
+    if (_meseroSession) return;
+    const box = document.getElementById('fodiMemLista');
+    if (!box) return;
+    try { _fodiMemPintar(await _fodiMemLlamar({ accion: 'listar' })); } catch (e) { box.textContent = 'No pude leer la memoria: ' + (e.message || e); }
+}
+document.getElementById('fodiMemBox')?.addEventListener('toggle', (e) => { if (e.target.open) _fodiMemCargar(); });
+document.getElementById('fodiMemLista')?.addEventListener('click', async (e) => {
+    const it = e.target.closest('.fm-item'); if (!it) return;
+    const tema = it.dataset.tema;
+    try {
+        if (e.target.closest('.fm-save')) _fodiMemPintar(await _fodiMemLlamar({ accion: 'guardar', tema, texto: it.querySelector('.fm-txt').value }));
+        else if (e.target.closest('.fm-del')) { if (confirm(`¿Olvidar "${tema}"?`)) _fodiMemPintar(await _fodiMemLlamar({ accion: 'olvidar', tema })); }
+    } catch (err) { showNotice(err.message || 'No se pudo guardar.', 'error'); }
+});
+document.getElementById('fodiMemAgregar')?.addEventListener('click', async () => {
+    const tema = document.getElementById('fodiMemTema'), texto = document.getElementById('fodiMemTexto');
+    if (!tema.value.trim() || !texto.value.trim()) { showNotice('Escribe el tema y lo que debe recordar.', 'error'); return; }
+    try { _fodiMemPintar(await _fodiMemLlamar({ accion: 'guardar', tema: tema.value, texto: texto.value })); tema.value = ''; texto.value = ''; } catch (err) { showNotice(err.message || 'No se pudo guardar.', 'error'); }
+});
