@@ -295,6 +295,23 @@ const FECHAS = {
     hasta: { type: 'string', description: 'Fecha final YYYY-MM-DD (hora Bogotá), inclusive.' }
 };
 
+
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+function ventasPorDiaHora(ventas) {
+    const dias = DIAS_SEMANA.map((nombre) => ({ dia: nombre, pedidos: 0, ventas: 0 }));
+    const horas = Array.from({ length: 24 }, (_, h) => ({ hora: `${String(h).padStart(2, '0')}:00`, pedidos: 0, ventas: 0 }));
+    for (const v of ventas) {
+        if (!v.ms) continue;
+        const d = new Date(v.ms - BOGOTA_OFFSET_MS);
+        const dd = dias[d.getUTCDay()];
+        const hh = horas[d.getUTCHours()];
+        dd.pedidos++; dd.ventas += v.total;
+        hh.pedidos++; hh.ventas += v.total;
+    }
+    const fmt = (a) => a.map((x) => ({ ...x, ventas: redondear(x.ventas) }));
+    return { por_dia_semana: fmt(dias), por_hora: fmt(horas).filter((x) => x.pedidos > 0) };
+}
+
 const TOOLS = [
     {
         name: 'resumen_ventas',
@@ -330,6 +347,16 @@ const TOOLS = [
         name: 'catalogo_productos',
         description: 'Catálogo actual de productos (nombre, precio, categoría, estado). Opcionalmente filtra por texto.',
         input_schema: { type: 'object', properties: { buscar: { type: 'string' } } }
+    },
+    {
+        name: 'ventas_por_dia_hora',
+        description: 'Distribución de ventas por día de la semana y por hora del día (hora Bogotá): sirve para horas pico, días fuertes/flojos y turnos.',
+        input_schema: { type: 'object', properties: { ...FECHAS }, required: ['desde', 'hasta'] }
+    },
+    {
+        name: 'costos_fijos',
+        description: 'Costos fijos mensuales configurados (arriendo, nómina, servicios...) y margen mínimo objetivo. Sirve para punto de equilibrio y rentabilidad.',
+        input_schema: { type: 'object', properties: {} }
     },
     {
         name: 'comparar_periodos',
@@ -392,6 +419,11 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             }).filter((p) => p.nombre && (!q || `${p.nombre} ${p.categoria}`.toLowerCase().includes(q)));
             return { total: prods.length, productos: prods.slice(0, 60) };
         }
+        if (nombre === 'costos_fijos') {
+            const d = (await db.collection('configuracion').doc('costos_fijos').get()).data() || {};
+            const items = (Array.isArray(d.items) ? d.items : []).map((i) => ({ nombre: String(i.nombre || ''), monto_mensual: Number(i.monto) || 0 }));
+            return { items, total_mensual: items.reduce((a, i) => a + i.monto_mensual, 0), margen_minimo_pct: Number(d.margenMinimo) || null };
+        }
         if (nombre === 'comparar_periodos') {
             const ra = parseRango(args.a_desde, args.a_hasta);
             const rb = parseRango(args.b_desde, args.b_hasta);
@@ -415,6 +447,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'resumen_ventas') return { rango, ...resumenVentas(ventas, args.agrupar) };
         if (nombre === 'ventas_por_metodo_pago') return { rango, ...ventasPorMetodo(ventas) };
         if (nombre === 'top_productos') return { rango, ...topProductos(ventas, args) };
+        if (nombre === 'ventas_por_dia_hora') return { rango, ...ventasPorDiaHora(ventas) };
         if (nombre === 'ventas_por_origen_tipo') return { rango, ...ventasPorOrigenTipo(ventas) };
         return { error: `Herramienta desconocida: ${nombre}` };
     } catch (err) {
@@ -426,7 +459,7 @@ module.exports = {
     MAX_RANGO_DIAS, MAX_RESULT_CHARS, TOOLS,
     toMs, bogotaDateKey, dateKeyToMs, parseRango, claveGrupo,
     totalPedido, fechaVentaMs, esPagado, normalizarVenta, unirVentas, cargarPedidosRango,
-    resumenDe, resumenVentas, ventasPorMetodo, ventasPorOrigenTipo, topProductos,
+    resumenDe, resumenVentas, ventasPorDiaHora, ventasPorMetodo, ventasPorOrigenTipo, topProductos,
     esGastoReal, resumenGastos, resumenCierres, compararResumenes, recortarResultado,
     ejecutarHerramienta
 };

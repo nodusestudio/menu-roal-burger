@@ -32053,10 +32053,73 @@ function rdBindEmojis(body, refrescar) {
 let _asistHist = [];
 let _asistBound = false;
 let _asistBusy = false;
-const _ASIST_SUGERENCIAS = ['Ventas de ayer', 'Top 10 productos del mes', 'Ventas por método de pago este mes', 'Gastos de esta semana', 'Comparar este mes con el anterior'];
+const _ASIST_SUGERENCIAS = [
+    { ic: '📅', t: 'Ventas de ayer' },
+    { ic: '🏆', t: 'Top 10 productos del mes' },
+    { ic: '⏰', t: '¿Cuáles son mis horas y días pico del último mes?' },
+    { ic: '🧭', t: 'Clasifica mi menú en estrellas, caballos, enigmas y perros este mes' },
+    { ic: '📈', t: 'Comparar este mes con el anterior y dime qué hacer' },
+    { ic: '⚖️', t: '¿Cuánto debo vender al mes para el punto de equilibrio?' }
+];
+const _FODI_SVG = '<svg class="fodi-svg" viewBox="0 0 100 100" aria-hidden="true"><g class="fodi-body"><path class="fodi-bun" d="M14 46 C14 18 86 18 86 46 Z"/><circle class="fodi-seed" cx="34" cy="30" r="2"/><circle class="fodi-seed" cx="50" cy="25" r="2"/><circle class="fodi-seed" cx="66" cy="30" r="2"/><rect class="fodi-patty" x="12" y="50" width="76" height="14" rx="7"/><path class="fodi-bun" d="M16 68 H84 C84 84 72 90 50 90 C28 90 16 84 16 68 Z"/><g class="fodi-eyes"><ellipse class="fodi-eye" cx="38" cy="40" rx="5" ry="6"/><ellipse class="fodi-eye" cx="62" cy="40" rx="5" ry="6"/></g><ellipse class="fodi-mouth" cx="50" cy="55" rx="7" ry="3"/></g></svg>';
 
 function _asistEsc(t) {
     return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _asistInline(t) {
+    return _asistEsc(t)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function _asistTabla(filas) {
+    const celdas = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+    const cab = celdas(filas[0]);
+    const cuerpo = filas.slice(2).map(celdas);
+    const esNum = (c) => /^[-+$]?[\d.,]+%?$/.test(c.replace(/\s/g, ''));
+    return `<div class="asist-tbl-wrap"><table><thead><tr>${cab.map((c) => `<th>${_asistInline(c)}</th>`).join('')}</tr></thead><tbody>${cuerpo.map((f) => `<tr>${f.map((c) => `<td${esNum(c) ? ' class="num"' : ''}>${_asistInline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+
+function _asistBloques(texto) {
+    const lineas = String(texto).split('\n');
+    const reTabla = /^\s*\|.*\|\s*$/;
+    const reSep = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+    const reVi = /^\s*[-*•]\s+/;
+    const reNum = /^\s*\d+[.)]\s+/;
+    const out = [];
+    let i = 0;
+    while (i < lineas.length) {
+        const l = lineas[i];
+        if (!l.trim()) { i++; continue; }
+        if (reTabla.test(l) && i + 1 < lineas.length && reSep.test(lineas[i + 1])) {
+            const filas = [l, lineas[i + 1]];
+            i += 2;
+            while (i < lineas.length && reTabla.test(lineas[i])) filas.push(lineas[i++]);
+            out.push(_asistTabla(filas));
+            continue;
+        }
+        const h = l.match(/^\s*#{1,4}\s+(.*)$/);
+        if (h) { out.push(`<h4>${_asistInline(h[1])}</h4>`); i++; continue; }
+        if (reVi.test(l)) {
+            const li = [];
+            while (i < lineas.length && reVi.test(lineas[i])) li.push(`<li>${_asistInline(lineas[i++].replace(reVi, ''))}</li>`);
+            out.push(`<ul>${li.join('')}</ul>`);
+            continue;
+        }
+        if (reNum.test(l)) {
+            const li = [];
+            while (i < lineas.length && reNum.test(lineas[i])) li.push(`<li>${_asistInline(lineas[i++].replace(reNum, ''))}</li>`);
+            out.push(`<ol>${li.join('')}</ol>`);
+            continue;
+        }
+        const par = [];
+        while (i < lineas.length && lineas[i].trim() && !/^\s*(#{1,4}\s|[-*•]\s|\d+[.)]\s|\|)/.test(lineas[i])) par.push(_asistInline(lineas[i++]));
+        if (!par.length) { par.push(_asistInline(l)); i++; }
+        const html = par.join('<br>');
+        out.push(/^\s*💡/.test(par[0]) ? `<div class="asist-rec">${html}</div>` : `<p>${html}</p>`);
+    }
+    return out.join('');
 }
 
 function _asistRender(texto) {
@@ -32064,19 +32127,64 @@ function _asistRender(texto) {
         if (i % 2 === 1) {
             return `<div class="asist-code"><button type="button" class="asist-copy">Copiar</button><pre>${_asistEsc(parte.replace(/\n$/, ''))}</pre></div>`;
         }
-        return _asistEsc(parte).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+        return _asistBloques(parte);
     }).join('');
 }
 
-function _asistAdd(rol, html) {
-    const log = document.getElementById('asistLog');
-    if (!log) return null;
-    const div = document.createElement('div');
-    div.className = `asist-msg ${rol}`;
-    div.innerHTML = html;
-    log.appendChild(div);
-    log.scrollTop = log.scrollHeight;
-    return div;
+function _asistFodiSet(estado) {
+    document.querySelectorAll('#asistShell .fodi').forEach((f) => {
+        f.classList.remove('thinking', 'talking', 'happy', 'sad');
+        if (estado) f.classList.add(estado);
+    });
+}
+
+function _asistScroll(fuerza) {
+    const st = document.getElementById('asistStage');
+    if (!st) return;
+    if (fuerza || st.scrollHeight - st.scrollTop - st.clientHeight < 140) st.scrollTop = st.scrollHeight;
+}
+
+function _asistAddUser(texto) {
+    const row = document.createElement('div');
+    row.className = 'asist-row user';
+    row.innerHTML = `<div class="asist-msg user">${_asistEsc(texto).replace(/\n/g, '<br>')}</div>`;
+    document.getElementById('asistLog').appendChild(row);
+    _asistScroll(true);
+}
+
+function _asistAddBot() {
+    const row = document.createElement('div');
+    row.className = 'asist-row bot';
+    row.innerHTML = `<div class="asist-av fodi">${_FODI_SVG}</div><div class="asist-msg bot"></div>`;
+    document.getElementById('asistLog').appendChild(row);
+    return row;
+}
+
+// Efecto de escritura: revela el texto por tandas (~2 s máx.) y re-renderiza el markdown en cada tanda.
+function _asistEscribir(el, texto) {
+    return new Promise((resolve) => {
+        const total = texto.length;
+        const reducido = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reducido || total < 40) { el.innerHTML = _asistRender(texto); return resolve(); }
+        const paso = Math.max(3, Math.ceil(total / 110));
+        let n = 0;
+        el.classList.add('asist-caret');
+        const tick = () => {
+            n = Math.min(total, n + paso);
+            let parcial = texto.slice(0, n);
+            if ((parcial.match(/```/g) || []).length % 2 === 1) parcial += '\n```';
+            el.innerHTML = _asistRender(parcial);
+            _asistScroll(false);
+            if (n < total) setTimeout(tick, 18);
+            else { el.classList.remove('asist-caret'); resolve(); }
+        };
+        tick();
+    });
+}
+
+function _asistActualizarHero() {
+    const hero = document.getElementById('asistHero');
+    if (hero) hero.style.display = _asistHist.length ? 'none' : '';
 }
 
 async function _asistEnviar(texto) {
@@ -32085,22 +32193,37 @@ async function _asistEnviar(texto) {
     _asistBusy = true;
     const btn = document.getElementById('asistEnviarBtn');
     if (btn) btn.disabled = true;
-    _asistAdd('user', _asistEsc(texto).replace(/\n/g, '<br>'));
+    _asistAddUser(texto);
     _asistHist.push({ role: 'user', content: texto });
-    const espera = _asistAdd('bot', 'Consultando…');
+    _asistActualizarHero();
+    const fila = _asistAddBot();
+    const msg = fila.querySelector('.asist-msg');
+    msg.innerHTML = '<div class="asist-think"><i></i><i></i><i></i><span>Analizando tus datos…</span></div>';
+    const av = fila.querySelector('.fodi');
+    av.classList.add('thinking');
+    _asistScroll(true);
     try {
         const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist });
         const resp = String(r.data?.respuesta || '');
         _asistHist.push({ role: 'assistant', content: resp });
-        if (espera) espera.innerHTML = _asistRender(resp);
+        av.classList.remove('thinking');
+        av.classList.add('talking');
+        await _asistEscribir(msg, resp);
+        av.classList.remove('talking');
+        av.classList.add('happy');
+        setTimeout(() => av.classList.remove('happy'), 700);
     } catch (err) {
         _asistHist.pop();
-        if (espera) { espera.classList.add('err'); espera.textContent = err?.message || 'No se pudo consultar. Intenta de nuevo.'; }
+        av.classList.remove('thinking', 'talking');
+        av.classList.add('sad');
+        msg.classList.add('err');
+        msg.textContent = err?.message || 'No se pudo consultar. Intenta de nuevo.';
     } finally {
         _asistBusy = false;
         if (btn) btn.disabled = false;
-        const log = document.getElementById('asistLog');
-        if (log) log.scrollTop = log.scrollHeight;
+        _asistScroll(true);
+        const inp = document.getElementById('asistInput');
+        if (inp) inp.focus();
     }
 }
 
@@ -32110,20 +32233,23 @@ function _asistInit() {
     if (!form) return;
     _asistBound = true;
     const chips = document.getElementById('asistChips');
-    chips.innerHTML = _ASIST_SUGERENCIAS.map((s) => `<button type="button" class="asist-chip">${_asistEsc(s)}</button>`).join('');
+    chips.innerHTML = _ASIST_SUGERENCIAS.map((s) => `<button type="button" class="asist-card-sug" data-q="${_asistEsc(s.t)}"><span class="ic">${s.ic}</span><span>${_asistEsc(s.t)}</span></button>`).join('');
     chips.addEventListener('click', (e) => {
-        const c = e.target.closest('.asist-chip');
-        if (c) _asistEnviar(c.textContent);
+        const c = e.target.closest('.asist-card-sug');
+        if (c) _asistEnviar(c.dataset.q);
     });
     const input = document.getElementById('asistInput');
+    const autoalto = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; };
+    input.addEventListener('input', autoalto);
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         const t = input.value;
         input.value = '';
+        autoalto();
         _asistEnviar(t);
     });
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
     });
     document.getElementById('asistLog').addEventListener('click', async (e) => {
         const b = e.target.closest('.asist-copy');
@@ -32135,7 +32261,11 @@ function _asistInit() {
         setTimeout(() => { b.textContent = 'Copiar'; }, 1500);
     });
     document.getElementById('asistNuevoBtn').addEventListener('click', () => {
+        if (_asistBusy) return;
         _asistHist = [];
         document.getElementById('asistLog').innerHTML = '';
+        _asistActualizarHero();
+        _asistFodiSet('happy');
+        setTimeout(() => _asistFodiSet(null), 700);
     });
 }

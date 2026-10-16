@@ -157,8 +157,16 @@ test('recortarResultado: trunca filas, conserva totales y avisa', () => {
 });
 
 test('definición de herramientas: 8 y con esquema válido', () => {
-  assert.equal(a.TOOLS.length, 8);
+  assert.equal(a.TOOLS.length, 10);
   for (const t of a.TOOLS) {
     assert.ok(t.name && t.description && t.input_schema.type === 'object');
   }
+});
+
+test('ventas por día de la semana y hora (Bogotá)', () => {
+  // 2026-08-14 19:30 Bogotá = 2026-08-15 00:30 UTC, viernes
+  const ms = Date.UTC(2026, 7, 15, 0, 30);
+  const r = a.ventasPorDiaHora([{ ms, total: 30000 }, { ms, total: 20000 }]);
+  assert.equal(r.por_dia_semana.find((d) => d.dia === 'viernes').pedidos, 2);
+  assert.deepEqual(r.por_hora, [{ hora: '19:00', pedidos: 2, ventas: 50000 }]);
 });
