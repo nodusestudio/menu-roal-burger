@@ -32124,6 +32124,8 @@ async function _asistEnviar(texto) {
         _fodiCongelar(fila0.querySelector('.fodi')._fodi, 'happy'); _asistScroll(true);
         return;
     }
+    const profBtn = document.getElementById('asistProfBtn'), profundo = profBtn?.getAttribute('aria-pressed') === 'true';
+    if (profBtn) profBtn.setAttribute('aria-pressed', 'false');
     _asistImg = null; const prev0 = document.getElementById('asistAdjPrev'); if (prev0) prev0.style.display = 'none';
     _asistBusy = true;
     const btn = document.getElementById('asistEnviarBtn');
@@ -32134,12 +32136,12 @@ async function _asistEnviar(texto) {
     _asistActualizarHero();
     const fila = _asistAddBot();
     const msg = fila.querySelector('.asist-msg');
-    msg.innerHTML = '<div class="asist-think"><i></i><i></i><i></i><span>Analizando tus datos…</span></div>';
+    msg.innerHTML = `<div class="asist-think"><i></i><i></i><i></i><span>${profundo ? 'Análisis profundo (puede tardar hasta un minuto)…' : 'Analizando tus datos…'}</span></div>`;
     const av = fila.querySelector('.fodi')._fodi;
     _fodiSet(av, 'thinking');
     _asistScroll(true);
     try {
-        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist, ...(imagen ? { imagen } : {}) });
+        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist, ...(imagen ? { imagen } : {}), ...(profundo ? { profundo: true } : {}) });
         const resp = String(r.data?.respuesta || '');
         _asistHist.push({ role: 'assistant', content: resp });
         const reaccion = _fodiReaccion(resp, false);
@@ -32943,7 +32945,7 @@ function _fodiFlotInit() {
     txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const t = txt.value; txt.value = ''; enviar(t); } });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _fodiFlotInit); else _fodiFlotInit();
-setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_meseroSession) _fodiAlertasCargar(); }, 9000);
+setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_meseroSession) { _fodiAlertasCargar(); _fodiInformeCargar(false); } }, 9000);
 
 
 // ── Responder a un cliente: pega chat/captura y FODI sugiere respuestas ─────────────────
@@ -33071,6 +33073,32 @@ async function _fodiAlertasCargar(recalcular) {
         const fl = document.getElementById('fodiFlot');
         if (fl) fl.classList.toggle('con-alertas', rojas > 0);
     } catch (e) { box.innerHTML = `<p class="asist-hint" style="opacity:1">No pude leer las alertas: ${escapeHtml(e.message || String(e))}</p>`; }
+}
+
+// ── Informe semanal de FODI (fodi_informes, lunes 8:00; también a demanda) ─────────────────
+document.getElementById('asistProfBtn')?.addEventListener('click', (e) => {
+    const b = e.currentTarget, on = b.getAttribute('aria-pressed') !== 'true';
+    b.setAttribute('aria-pressed', String(on));
+    if (on) showNotice('Análisis profundo activado para tu próxima pregunta (máx. 8 al día).', 'ok');
+});
+async function _fodiInformeCargar(generar) {
+    const box = document.getElementById('fodiInformeBox');
+    if (!box || _meseroSession) return;
+    try {
+        let d;
+        if (generar) {
+            box.innerHTML = '<p class="asist-hint" style="opacity:1">Generando el informe con análisis profundo… (1-2 minutos)</p>';
+            d = (await firebaseFunctions.httpsCallable('adminGenerarInformeSemanal', { timeout: 300000 })({})).data;
+        } else {
+            const sn = await firebaseDb.collection('fodi_informes').orderBy('creadaMs', 'desc').limit(1).get();
+            d = sn.empty ? null : sn.docs[0].data();
+        }
+        box.innerHTML = `<details style="padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.07)">
+            <summary style="cursor:pointer;font-weight:700">📰 Informe semanal${d ? ` (${escapeHtml(d.desde || '')} a ${escapeHtml(d.hasta || d.fecha || '')})` : ''}</summary>
+            ${d ? `<div class="asist-msg" style="margin:8px 0">${_asistRender(d.texto || '')}</div>` : '<p class="asist-hint" style="opacity:1">Aún no hay informe; se genera solo los lunes a las 8:00 a. m.</p>'}
+            <button type="button" class="section-action-btn" id="fodiInformeGen">Generar ahora (máx. 1 al día)</button></details>`;
+        document.getElementById('fodiInformeGen')?.addEventListener('click', () => _fodiInformeCargar(true));
+    } catch (e) { box.innerHTML = `<p class="asist-hint" style="opacity:1">No pude leer o generar el informe: ${escapeHtml(e.message || String(e))}</p>`; }
 }
 
 // ── Enseñar estilo con chats que salieron bien ─────────────────────────────────────────

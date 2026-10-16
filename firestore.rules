@@ -355,6 +355,10 @@ service cloud.firestore {
       allow write: if false;
     }
     // Alertas proactivas de FODI: lectura admin, escritura solo servidor.
+    match /fodi_informes/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
     match /fodi_alertas/{doc} {
       allow read: if isAdmin();
       allow write: if false;

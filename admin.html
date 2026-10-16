@@ -15309,6 +15309,7 @@
                     .asist-send:hover{transform:scale(1.07)}
                     .asist-voz{flex:0 0 42px;width:42px;height:42px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#eef4ff;font-size:1.1rem;cursor:pointer;display:grid;place-items:center}
                     .asist-voz:hover{background:rgba(255,255,255,.2)}
+                    .asist-voz[aria-pressed=true]{background:#7c5cff;border-color:#a99bff}
                     .asist-voz.on{background:#ef4444;border-color:#ef4444;animation:fodiDot 1s ease-in-out infinite}
                     .asist-voz[hidden]{display:none}
                     .asist-send:disabled{opacity:.4;cursor:not-allowed;transform:none}
@@ -15344,6 +15345,7 @@
                     </div>
                     <div class="card-body">
                         <div id="fodiAlertasBox" style="margin:0 0 8px"></div>
+                        <div id="fodiInformeBox" style="margin:0 0 8px"></div>
                         <details id="fodiBaseBox" style="margin:0 0 8px;padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.07)">
                             <summary style="cursor:pointer;font-weight:700">📚 Base de conocimiento de FODI</summary>
                             <p class="asist-hint" style="text-align:left;opacity:1">Pega aquí lo que solo tú sabes: políticas (compensaciones, devoluciones), preguntas frecuentes, proveedores, horarios, apuntes de libros o cursos. FODI lo busca solo cuando lo necesita y cita la fuente. Lo que escribas aquí manda sobre la teoría general.</p>
@@ -15383,6 +15385,7 @@
                             <form class="asist-form" id="asistForm">
                                 <textarea id="asistInput" rows="1" maxlength="1000" placeholder="Pregúntale a FODI…"></textarea>
                                 <button type="button" class="asist-voz" id="asistAdjBtn" aria-label="Adjuntar captura de un chat" title="Adjuntar captura (o pégala con Ctrl+V) para armar un pedido">📎</button><input type="file" id="asistAdjFile" accept="image/*" hidden>
+                                <button type="button" class="asist-voz" id="asistProfBtn" aria-pressed="false" aria-label="Análisis profundo con Opus" title="Análisis profundo (Opus): más lento y más caro; máx. 8 al día. Aplica a la siguiente pregunta.">🧠</button>
                                 <button type="button" class="asist-voz" id="asistMicBtn" aria-label="Dictar con la voz" title="Dictar con la voz" hidden>🎤</button>
                                 <button type="button" class="asist-voz" id="asistLeerBtn" aria-label="Leer respuestas en voz alta" title="Leer respuestas en voz alta" aria-pressed="false" hidden>🔇</button>
                                 <button type="submit" class="asist-send" id="asistEnviarBtn" aria-label="Enviar"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6l-.1 6.5L15 12 3.3 13.9z"/></svg></button>

@@ -3332,11 +3332,14 @@ const fodiConocimiento = require('./fodiConocimiento');
 const fodiInteligencia = require('./fodiInteligencia');
 const ASISTENTE_MAX_ITER = 6;
 const ASISTENTE_TOPE_DIARIO = 60;
+const ASISTENTE_TOPE_PROFUNDO = 8; // análisis profundos (Opus) por día: tope de costo
 // USD por millón de tokens. El modelo se elige en configuracion/asistente_ia { modelo: 'sonnet' | 'haiku' }
 // (por defecto 'sonnet'). Sonnet 5.5 razona mejor para consultoría; Haiku 4.5 cuesta ~la mitad.
 const ASISTENTE_MODELOS = {
     sonnet: { id: 'claude-sonnet-5-5', in: 2, out: 10, cacheRead: 0.2, cacheWrite: 2.5, effort: 'medium' },
-    haiku: { id: 'claude-haiku-4-5', in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25, effort: null }
+    haiku: { id: 'claude-haiku-4-5', in: 1, out: 5, cacheRead: 0.1, cacheWrite: 1.25, effort: null },
+    // Modo profundo e informe semanal. USD por millón de tokens: confirmar contra la tarifa vigente de Anthropic.
+    opus: { id: 'claude-opus-5-5', in: 5, out: 25, cacheRead: 0.5, cacheWrite: 6.25, effort: 'high' }
 };
 async function asistenteModeloActivo(db) {
     try {
@@ -3416,10 +3419,14 @@ exports.adminAsistenteIA = onCall(
         const imgIn = request.data?.imagen;
         const imagenActual = imgIn && typeof imgIn.base64 === 'string' && imgIn.base64.length < 6 * 1024 * 1024 && ['image/jpeg', 'image/png', 'image/webp'].includes(imgIn.mediaType) ? { base64: imgIn.base64, mediaType: imgIn.mediaType } : null;
 
-        const { clave: modeloClave } = await asistenteModeloActivo(db);
+        const profundo = request.data?.profundo === true;
+        const modeloClave = profundo ? 'opus' : (await asistenteModeloActivo(db)).clave;
         const M = ASISTENTE_MODELOS[modeloClave];
         const usoRef = db.collection('admin_ai_usage_daily').doc(adminAsistente.bogotaDateKey(Date.now()));
         const uso = (await usoRef.get()).data() || {};
+        if (profundo && (uso.consultas_opus || 0) >= ASISTENTE_TOPE_PROFUNDO) {
+            throw new HttpsError('resource-exhausted', `Llegaste al tope de ${ASISTENTE_TOPE_PROFUNDO} análisis profundos de hoy. Sigue con el modo normal; se reinicia mañana.`);
+        }
         if ((uso.consultas || 0) >= ASISTENTE_TOPE_DIARIO) {
             throw new HttpsError('resource-exhausted', `Llegaste al tope diario de ${ASISTENTE_TOPE_DIARIO} consultas. Se reinicia mañana.`);
         }
@@ -3444,7 +3451,7 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
         // Preguntas cortas de dato puntual ("ventas de ayer", "top 10 del mes") no necesitan razonamiento profundo
         const ultimaPregunta = String(mensajes[mensajes.length - 1].content || '');
         const esSimple = ultimaPregunta.length < 90 && /^\s*(¿\s*)?(ventas|cu[aá]nt[oa]s?|top|dame|mu[eé]strame|cu[aá]l(es)? (fue|es|son)|qu[eé] (vend[ií]|gast[eé]))/i.test(ultimaPregunta) && !/(por qu[eé]|estrateg|analiza|recomi|compar|plan|c[oó]mo (subo|mejoro|bajo))/i.test(ultimaPregunta);
-        const effort = M.effort ? (esSimple ? 'low' : M.effort) : null;
+        const effort = M.effort ? (esSimple && !profundo ? 'low' : M.effort) : null;
         if (imagenActual) {
             const ult = mensajes[mensajes.length - 1];
             ult.content = [{ type: 'image', source: { type: 'base64', media_type: imagenActual.mediaType, data: imagenActual.base64 } }, { type: 'text', text: String(ult.content) }];
@@ -3606,6 +3613,53 @@ exports.fodiAlertasDiarias = onSchedule(
             const r = await fodiInteligencia.guardarAlertas(getFirestore());
             console.log('fodiAlertasDiarias', r.fecha, r.items.length, 'alertas');
         } catch (e) { console.error('fodiAlertasDiarias error:', e); }
+    }
+);
+
+// Informe semanal de FODI (Opus): cada lunes 8:00 a. m. (Bogotá) analiza la semana pasada contra la anterior con
+// las mismas herramientas de datos (solo lectura) y lo guarda en fodi_informes para leerlo en la pestaña Asistente.
+async function fodiGenerarInforme(db, apiKey) {
+    const M = ASISTENTE_MODELOS.opus;
+    const Anthropic = require('@anthropic-ai/sdk');
+    const client = new Anthropic({ apiKey });
+    const DIA = 86400000;
+    const hoy = Date.now();
+    const f = (ms) => adminAsistente.bogotaDateKey(ms);
+    const desde = f(hoy - 7 * DIA), hasta = f(hoy - DIA), antDesde = f(hoy - 14 * DIA), antHasta = f(hoy - 8 * DIA);
+    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'armar_pedido', 'recordar'].includes(t.name));
+    const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
+    const system = `${asistenteSystemPrompt()}\n\nTAREA: redacta el INFORME SEMANAL para el dueño. Semana analizada: ${desde} a ${hasta}; semana anterior: ${antDesde} a ${antHasta}. Usa las herramientas para traer ventas, ticket, productos, canales, clientes, gastos/rentabilidad y redes. Estructura: 1) Titular de la semana (2 líneas), 2) Cifras clave vs semana anterior (tabla), 3) Qué funcionó, 4) Qué preocupa, 5) Tres acciones concretas para esta semana. Sé breve (máx. 450 palabras), sin inventar cifras.${memoria.length ? `\n\nMEMORIA:\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : ''}`;
+    const mensajes = [{ role: 'user', content: `Genera el informe semanal de ${desde} a ${hasta}.` }];
+    let costo = 0, texto = '';
+    for (let i = 0; i < ASISTENTE_MAX_ITER + 2; i++) {
+        const resp = await client.messages.create({ model: M.id, max_tokens: 6000, system, tools: herramientas, messages: mensajes, output_config: { effort: M.effort } });
+        const u = resp.usage || {};
+        costo += ((u.input_tokens || 0) * M.in + (u.cache_creation_input_tokens || 0) * M.cacheWrite + (u.cache_read_input_tokens || 0) * M.cacheRead + (u.output_tokens || 0) * M.out) / 1e6;
+        const usos = resp.content.filter((b) => b.type === 'tool_use');
+        if (resp.stop_reason !== 'tool_use' || !usos.length) { texto = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim(); break; }
+        mensajes.push({ role: 'assistant', content: resp.content });
+        mensajes.push({ role: 'user', content: await Promise.all(usos.map(async (t) => ({ type: 'tool_result', tool_use_id: t.id, content: adminAsistente.recortarResultado(await adminAsistente.ejecutarHerramienta(db, t.name, t.input || {}).catch((e) => ({ error: String((e && e.message) || e) }))) }))) });
+    }
+    if (!texto) throw new Error('El informe quedó vacío');
+    await db.collection('fodi_informes').doc(hasta).set({ fecha: hasta, desde, hasta, texto, costoUsd: costo, modelo: M.id, creadaMs: hoy });
+    await db.collection('admin_ai_usage_daily').doc(f(hoy)).set({ costoUsd: FieldValue.increment(costo), informesSemanales: FieldValue.increment(1) }, { merge: true }).catch(() => {});
+    return { fecha: hasta, desde, hasta, texto, costoUsd: costo };
+}
+exports.fodiInformeSemanal = onSchedule(
+    { schedule: '0 8 * * 1', timeZone: 'America/Bogota', region: 'us-central1', secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 300, memory: '512MiB' },
+    async () => {
+        try { const r = await fodiGenerarInforme(getFirestore(), ANTHROPIC_API_KEY.value()); console.log('fodiInformeSemanal', r.fecha, r.costoUsd); } catch (e) { console.error('fodiInformeSemanal error:', e); }
+    }
+);
+// Generar el informe a demanda (botón del admin); máx. 1 por día para acotar costo.
+exports.adminGenerarInformeSemanal = onCall(
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], cors: ALLOWED_ORIGINS, timeoutSeconds: 300, memory: '512MiB' },
+    async (request) => {
+        await ensureAdminCaller(request);
+        const db = getFirestore();
+        const ref = db.collection('admin_ai_usage_daily').doc(adminAsistente.bogotaDateKey(Date.now()));
+        if ((((await ref.get()).data() || {}).informesSemanales || 0) >= 1) throw new HttpsError('resource-exhausted', 'Ya se generó un informe hoy. Mañana puedes pedir otro.');
+        try { return await fodiGenerarInforme(db, ANTHROPIC_API_KEY.value()); } catch (e) { console.error('adminGenerarInformeSemanal:', e); throw new HttpsError('internal', 'No se pudo generar el informe. Intenta de nuevo.'); }
     }
 );
 
