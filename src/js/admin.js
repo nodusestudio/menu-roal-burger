@@ -32072,7 +32072,7 @@ const _ASIST_SUGERENCIAS = [
 // la expresión se pinta fija.
 const _FODI_BASE = {
     ehL: 1, ehR: 1, ew: 1, tilt: 0, eyeY: 42, arc: 0, gx: 0, gy: 0, gk: 1,
-    mw: 6, mc: 1.2, mo: 0, mx: 0, my: 64, blush: 0, zzz: 0, stars: 0, bulb: 0, qm: 0, bob: 0.5
+    mw: 6, mc: 1.2, mo: 0, mx: 0, my: 64, blush: 0, zzz: 0, stars: 0, bulb: 0, qm: 0, hearts: 0, bob: 0.5
 };
 const _FODI_EX = {
     neutral: {},
@@ -32086,6 +32086,9 @@ const _FODI_EX = {
     celebrating: { arc: 1, mw: 10, mc: 5, mo: 5, blush: 1, stars: 1, bob: 2.4 },
     sleeping: { ehL: 0.06, ehR: 0.06, eyeY: 46, gk: 0, mw: 3.5, mc: 0.2, mo: 1.2, my: 66, zzz: 1, bob: 0.4 },
     focused: { ehL: 0.55, ehR: 0.55, ew: 1.05, tilt: -9, mw: 5, mc: -0.2, my: 65, bob: 0.1 },
+    love: { arc: 1, mw: 9, mc: 4.5, mo: 2.5, blush: 1, hearts: 1, bob: 1.6 },
+    shy: { ehL: 0.9, ehR: 0.9, tilt: 7, gx: -4, gy: 3, gk: 0, mw: 4, mc: 2, blush: 1, bob: 0.9 },
+    giggle: { arc: 1, mw: 8, mc: 4, mo: 3, blush: 0.9, stars: 0.6, bob: 2.2 },
     eureka: { ehL: 1.3, ehR: 1.3, ew: 1.05, eyeY: 41, gy: -3, mw: 6, mc: 3, mo: 4, bulb: 1, bob: 0.6 }
 };
 const _FODI_VISEMAS = [
@@ -32100,6 +32103,7 @@ const _FODI_SVG_HTML = '<svg class="fodi-svg" viewBox="0 0 100 100" aria-hidden=
     + '<path class="f-mouth" />'
     + '<g class="f-zzz"><text x="70" y="30" font-size="10">z</text><text x="78" y="21" font-size="7">z</text></g>'
     + '<g class="f-stars"><path d="M16 26 l2 4 4 2 -4 2 -2 4 -2 -4 -4 -2 4 -2z"/><path d="M84 24 l1.6 3.2 3.2 1.6 -3.2 1.6 -1.6 3.2 -1.6 -3.2 -3.2 -1.6 3.2 -1.6z"/><path d="M50 8 l1.3 2.7 2.7 1.3 -2.7 1.3 -1.3 2.7 -1.3 -2.7 -2.7 -1.3 2.7 -1.3z"/></g>'
+    + '<g class="f-hearts"><path transform="translate(10 18) scale(1.5)" d="M0 2 C0 -1 4 -1 4 2 C4 -1 8 -1 8 2 C8 5 4 8 4 9 C4 8 0 5 0 2Z"/><path transform="translate(76 14) scale(1.1)" d="M0 2 C0 -1 4 -1 4 2 C4 -1 8 -1 8 2 C8 5 4 8 4 9 C4 8 0 5 0 2Z"/></g>'
     + '<g class="f-bulb"><circle cx="50" cy="9" r="5"/><rect x="47.5" y="13" width="5" height="3" rx="1"/></g>'
     + '<text class="f-qm" x="76" y="30" font-size="14">?</text>'
     + '</g></svg>';
@@ -32150,6 +32154,8 @@ function _fodiPintar(f, p) {
     e.blush.forEach((b) => { b.style.opacity = p.blush.toFixed(2); });
     e.zzz.style.opacity = p.zzz.toFixed(2);
     e.stars.style.opacity = p.stars.toFixed(2);
+    e.hearts.style.opacity = p.hearts.toFixed(2);
+    e.hearts.setAttribute('transform', `translate(0 ${(-Math.abs(f.bobY) * 2).toFixed(2)})`);
     e.bulb.style.opacity = p.bulb.toFixed(2);
     e.qm.style.opacity = p.qm.toFixed(2);
     e.head.setAttribute('transform', `translate(0 ${f.bobY.toFixed(2)})`);
@@ -32189,7 +32195,7 @@ function _fodiFrame(ahora) {
         f.deriva.y += (f.derivaObj.y - f.deriva.y) * Math.min(1, dt * 4);
         obj.mc += f.microMc || 0;
         const amp = obj.bob;
-        f.bobY = Math.sin(t * (f.expr === 'celebrating' ? 9 : 2.2)) * amp;
+        f.bobY = Math.sin(t * (f.expr === 'celebrating' || f.expr === 'giggle' ? 9 : f.expr === 'love' ? 5 : 2.2)) * amp;
         // interpolación exponencial hacia el objetivo (los parpadeos y visemas son más rápidos)
         const k = 1 - Math.exp(-dt * (parpadea || f.hablando ? 26 : 11));
         for (const clave in obj) f.cur[clave] += (obj[clave] - f.cur[clave]) * k;
@@ -32232,7 +32238,7 @@ function _fodiMontar(host, opts = {}) {
         els: {
             head: q('.f-head'), eyes: [...svg.querySelectorAll('.f-eye')], arcs: [...svg.querySelectorAll('.f-arc')],
             mouth: q('.f-mouth'), blush: [...svg.querySelectorAll('.f-blush')],
-            zzz: q('.f-zzz'), stars: q('.f-stars'), bulb: q('.f-bulb'), qm: q('.f-qm')
+            zzz: q('.f-zzz'), stars: q('.f-stars'), hearts: q('.f-hearts'), bulb: q('.f-bulb'), qm: q('.f-qm')
         }
     };
     host._fodi = f;
@@ -32528,19 +32534,41 @@ function _fodiElegirVoz() {
     for (const re of pref) { const v = vs.find((x) => re.test(x.name) && /^es[-_](CO|MX|US|419)/i.test(x.lang)) || vs.find((x) => re.test(x.name)); if (v) return v; }
     return vs.find((x) => /^es[-_](CO|MX|US|419)/i.test(x.lang)) || vs[0] || null;
 }
-function _fodiUtterance(texto) {
+function _fodiUtterance(texto, variar) {
     const u = new SpeechSynthesisUtterance(texto);
-    u.lang = 'es-CO'; u.pitch = 1.18; u.rate = 0.96; u.volume = 1;
+    // Tierna: algo más aguda y pausada; con `variar` cada frase cambia un poco de tono y ritmo (menos robótica)
+    const j = () => (variar ? (Math.random() - 0.5) * 0.12 : 0);
+    u.lang = 'es-CO'; u.pitch = 1.22 + j(); u.rate = 0.97 + j() * 0.6; u.volume = 1;
     const v = _fodiElegirVoz();
     if (v) { u.voice = v; u.lang = v.lang; }
     return u;
+}
+// Habla por frases (sin cortes de Chrome en textos largos), con prosodia variable y una pausita entre frases.
+function _fodiDecir(texto, cb = {}) {
+    const ss = window.speechSynthesis;
+    if (!ss || !texto) { if (cb.onend) cb.onend(); return; }
+    ss.cancel();
+    const frases = (String(texto).match(/[^.!?¡¿…;:\n]+[.!?…;:]?/g) || [texto]).map((x) => x.trim()).filter((x) => /[\p{L}\p{N}]/u.test(x));
+    let i = 0, cancelado = false;
+    const sig = () => {
+        if (cancelado) return;
+        if (i >= frases.length) { if (cb.onend) cb.onend(); return; }
+        const fr = frases[i];
+        const u = _fodiUtterance(fr, true);
+        if (/!$/.test(fr)) { u.pitch += 0.08; u.rate += 0.03; } else if (/\?$/.test(fr)) u.pitch += 0.12;
+        if (i === 0 && cb.onstart) u.onstart = cb.onstart;
+        u.onend = () => { i++; setTimeout(sig, 90 + Math.random() * 110); };
+        u.onerror = () => { cancelado = true; if (cb.onend) cb.onend(); };
+        ss.speak(u);
+    };
+    sig();
 }
 function _asistLeer(md) {
     if (!_asistLeerOn || !window.speechSynthesis) return;
     const t = _asistTextoHablado(md);
     if (!t) return;
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(_fodiUtterance(t));
+    _fodiDecir(t);
 }
 function _asistVozInit(input) {
     const leerBtn = document.getElementById('asistLeerBtn'), micBtn = document.getElementById('asistMicBtn');
@@ -32971,7 +32999,7 @@ function _costosBind() {
 }
 document.getElementById('costosRefreshBtn')?.addEventListener('click', () => _ensureCostosLoaded(true));
 
-// ── FODI flotante: burbuja en cualquier pestaña; hablas y responde con voz ─────────────────
+// ── FODI flotante: carita tierna y minimalista; al tocarla se abre un chat abajo ─────────────────
 let _ffHist = [], _ffBusy = false, _ffRec = null, _ffIniciado = false;
 function _fodiFlotInit() {
     if (_ffIniciado) return;
@@ -32979,40 +33007,77 @@ function _fodiFlotInit() {
     if (!raiz) return;
     _ffIniciado = true;
     const $ = (id) => document.getElementById(id);
-    const burbuja = $('fodiFlotBurbuja'), mic = $('fodiFlotMic'), texto = $('fodiFlotTexto'), estado = $('fodiFlotEstado'), txt = $('fodiFlotTxt'), toggle = $('fodiFlotToggle');
+    const burbuja = $('fodiFlotBurbuja'), mic = $('fodiFlotMic'), log = $('fodiFlotLog'), txt = $('fodiFlotTxt'), toggle = $('fodiFlotToggle'), hola = $('fodiFlotHola');
     let apagada = false;
     try { apagada = localStorage.getItem('fodiFlotOff') === '1'; } catch (_) { /* sin storage */ }
     const aplicar = () => { raiz.classList.toggle('on', !apagada); if (apagada) raiz.classList.remove('abierto'); if (toggle) toggle.checked = !apagada; };
     aplicar();
     if (toggle) toggle.addEventListener('change', () => { apagada = !toggle.checked; try { localStorage.setItem('fodiFlotOff', apagada ? '1' : '0'); } catch (_) { /* sin storage */ } aplicar(); });
     _fodiMontar(burbuja, {});
-    const cara = burbuja._fodi || null;
+    _fodiMontar($('fodiFlotCara'), {});
+    const caras = () => [burbuja._fodi, $('fodiFlotCara')._fodi].filter(Boolean);
+    const set = (nombre, ms, vuelve) => caras().forEach((c) => _fodiSet(c, nombre, ms, vuelve));
+    const hablar = (si) => caras().forEach((c) => _fodiHablar(c, si));
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) mic.textContent = '🎤 No disponible aquí (escribe abajo)';
-    const callar = () => { if (window.speechSynthesis) window.speechSynthesis.cancel(); if (cara) _fodiHablar(cara, false); };
+    if (!SR) mic.style.display = 'none';
+    const callar = () => { if (window.speechSynthesis) window.speechSynthesis.cancel(); hablar(false); };
+    const hayGesto = () => !!(navigator.userActivation ? navigator.userActivation.hasBeenActive : true);
+    const msg = (clase, texto) => {
+        const d = document.createElement('div'); d.className = 'ff-m ' + clase; d.textContent = texto;
+        log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
+    };
+    // Corazoncitos al tocarla
+    const corazones = (n) => {
+        if (_fodiReducido()) return;
+        const r = burbuja.getBoundingClientRect();
+        for (let i = 0; i < n; i++) {
+            const h = document.createElement('span'); h.className = 'ff-corazon'; h.textContent = ['💛', '💖', '✨', '💗'][i % 4];
+            h.style.left = (r.left + 10 + Math.random() * (r.width - 20)) + 'px'; h.style.top = (r.top + 4) + 'px'; h.style.animationDelay = (i * 0.12) + 's';
+            document.body.appendChild(h); setTimeout(() => h.remove(), 1700);
+        }
+    };
+    // Saludo inmediato: al pasar el ratón o tocarla dice hola (burbujita + voz + carita feliz)
+    const SALUDOS = ['¡Hola! 💛', '¡Holaaa! ¿En qué te ayudo?', '¡Qué alegría verte!', '¡Hola, jefe! ✨', '¡Aquí estoy para ti!'];
+    let ultimoSaludo = 0, ocultaHola = 0;
+    const saludar = (conVoz) => {
+        const ahora = Date.now();
+        if (raiz.classList.contains('abierto') || _ffBusy || ahora - ultimoSaludo < 6000) return;
+        ultimoSaludo = ahora;
+        const fr = SALUDOS[Math.floor(Math.random() * SALUDOS.length)];
+        hola.textContent = fr; hola.classList.add('on'); clearTimeout(ocultaHola); ocultaHola = setTimeout(() => hola.classList.remove('on'), 2600);
+        set(Math.random() < 0.5 ? 'wink' : 'giggle', 1600, 'happy');
+        burbuja.classList.remove('rebota'); void burbuja.offsetWidth; burbuja.classList.add('rebota');
+        if (conVoz && window.speechSynthesis && hayGesto() && !window.speechSynthesis.speaking) {
+            _fodiDecir(_asistTextoHablado(fr), { onstart: () => hablar(true), onend: () => hablar(false) });
+        }
+    };
+    burbuja.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') saludar(true); });
+    // Vida propia: de vez en cuando hace una monería
+    setInterval(() => {
+        if (raiz.classList.contains('abierto') || _ffBusy || document.hidden || !raiz.classList.contains('on')) return;
+        const t = ['wink', 'giggle', 'love', 'surprised', 'shy', 'happy'][Math.floor(Math.random() * 6)];
+        set(t, 1800, 'neutral');
+    }, 9000);
+
     const enviar = async (pregunta) => {
         pregunta = String(pregunta || '').trim();
         if (!pregunta || _ffBusy) return;
         _ffBusy = true; callar(); mic.disabled = true;
-        texto.textContent = '🗣️ ' + pregunta; estado.textContent = 'Pensando…';
-        if (cara) _fodiSet(cara, 'thinking');
+        msg('yo', pregunta);
+        const pens = msg('bot pensando', 'Pensando… 💭');
+        set('thinking');
         _ffHist.push({ role: 'user', content: pregunta });
         try {
             const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _ffHist.slice(-10), modo: 'voz' });
             const resp = String(r.data?.respuesta || 'No te escuché bien, ¿me lo repites?');
             _ffHist.push({ role: 'assistant', content: resp });
-            texto.textContent = resp; estado.textContent = '';
-            if (cara) _fodiSet(cara, _fodiReaccion(resp, false));
-            if (window.speechSynthesis) {
-                const u = _fodiUtterance(_asistTextoHablado(resp));
-                u.onstart = () => { if (cara) _fodiHablar(cara, true); };
-                u.onend = u.onerror = () => { if (cara) _fodiHablar(cara, false); };
-                window.speechSynthesis.speak(u);
-            }
+            pens.remove(); msg('bot', resp);
+            set(_fodiReaccion(resp, false));
+            _fodiDecir(_asistTextoHablado(resp), { onstart: () => hablar(true), onend: () => hablar(false) });
         } catch (err) {
             _ffHist.pop();
-            texto.textContent = err?.message || 'No pude responderte ahora. Intenta de nuevo.'; estado.textContent = '';
-            if (cara) _fodiSet(cara, _fodiReaccion('', true));
+            pens.remove(); msg('bot', err?.message || 'No pude responderte ahora. Intenta de nuevo.');
+            set(_fodiReaccion('', true));
         } finally { _ffBusy = false; mic.disabled = false; }
     };
     const escuchar = () => {
@@ -33022,26 +33087,21 @@ function _fodiFlotInit() {
         const rec = new SR();
         rec.lang = 'es-CO'; rec.interimResults = true; rec.continuous = false;
         let final = '';
-        rec.onresult = (e) => { final = Array.from(e.results).map((x) => x[0].transcript).join(''); estado.textContent = '👂 ' + final; };
-        rec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') estado.textContent = 'Permite el micrófono en el navegador para hablarme.'; };
-        rec.onend = () => { _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando'); mic.textContent = '🎤 Toca y habla'; if (final.trim()) enviar(final); else if (!estado.textContent.startsWith('Permite')) estado.textContent = 'No alcancé a escucharte. Intenta de nuevo.'; };
-        _ffRec = rec; mic.classList.add('on'); burbuja.classList.add('escuchando'); mic.textContent = '⏹ Te escucho…'; estado.textContent = 'Habla ahora…';
+        rec.onresult = (e) => { final = Array.from(e.results).map((x) => x[0].transcript).join(''); txt.value = final; };
+        rec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') txt.placeholder = 'Permite el micrófono en el navegador'; };
+        rec.onend = () => { _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando'); const f = final.trim(); txt.value = ''; txt.placeholder = 'Pregúntame lo que quieras…'; if (f) enviar(f); };
+        _ffRec = rec; mic.classList.add('on'); burbuja.classList.add('escuchando'); txt.placeholder = 'Te escucho… 👂'; set('surprised', 700, 'happy');
         try { rec.start(); } catch (_) { _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando'); }
     };
-    // Arrastrable (mouse y dedo): la posición se recuerda; un toque sin mover abre/cierra
-    const W = 64;
-    const acomodar = () => {
-        const r = raiz.getBoundingClientRect();
-        raiz.classList.toggle('panel-abajo', r.top + W / 2 < window.innerHeight / 2);
-        raiz.classList.toggle('panel-izq', r.left + W / 2 < window.innerWidth / 2);
-    };
+    // Arrastrable (mouse y dedo): la posición se recuerda; un toque sin mover abre el chat
+    const W = 68;
     const ponerPos = (x, y) => {
         x = Math.max(4, Math.min(window.innerWidth - W - 4, x)); y = Math.max(4, Math.min(window.innerHeight - W - 4, y));
         raiz.style.left = x + 'px'; raiz.style.top = y + 'px'; raiz.style.right = 'auto'; raiz.style.bottom = 'auto';
-        acomodar(); return { x, y };
+        return { x, y };
     };
-    try { const g = JSON.parse(localStorage.getItem('fodiFlotPos') || 'null'); if (g && isFinite(g.x) && isFinite(g.y)) ponerPos(g.x, g.y); else acomodar(); } catch (_) { acomodar(); }
-    window.addEventListener('resize', () => { if (raiz.style.left) ponerPos(parseFloat(raiz.style.left), parseFloat(raiz.style.top)); else acomodar(); });
+    try { const g = JSON.parse(localStorage.getItem('fodiFlotPos') || 'null'); if (g && isFinite(g.x) && isFinite(g.y)) ponerPos(g.x, g.y); } catch (_) { /* sin posición guardada */ }
+    window.addEventListener('resize', () => { if (raiz.style.left) ponerPos(parseFloat(raiz.style.left), parseFloat(raiz.style.top)); });
     let drag = null, movido = false;
     burbuja.addEventListener('pointerdown', (e) => {
         const r = raiz.getBoundingClientRect();
@@ -33051,21 +33111,26 @@ function _fodiFlotInit() {
     burbuja.addEventListener('pointermove', (e) => {
         if (!drag) return;
         if (!movido && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 8) return;
+        if (!movido) set('surprised');
         movido = true; burbuja.classList.add('arrastrando');
         ponerPos(e.clientX - drag.dx, e.clientY - drag.dy);
     });
     const soltar = () => {
         if (!drag) return; drag = null; burbuja.classList.remove('arrastrando');
-        if (movido) { try { localStorage.setItem('fodiFlotPos', JSON.stringify({ x: parseFloat(raiz.style.left), y: parseFloat(raiz.style.top) })); } catch (_) { /* sin storage */ } }
+        if (movido) { set('happy', 1200, 'neutral'); try { localStorage.setItem('fodiFlotPos', JSON.stringify({ x: parseFloat(raiz.style.left), y: parseFloat(raiz.style.top) })); } catch (_) { /* sin storage */ } }
     };
     burbuja.addEventListener('pointerup', soltar); burbuja.addEventListener('pointercancel', soltar);
     burbuja.addEventListener('click', () => {
         if (movido) { movido = false; return; }
-        raiz.classList.toggle('abierto');
-        // El micrófono se inicia dentro del mismo toque (móvil exige gesto del usuario)
-        if (raiz.classList.contains('abierto') && SR && !_ffBusy && !_ffRec) escuchar();
+        corazones(3); set('love', 1500, 'happy');
+        raiz.classList.add('abierto'); hola.classList.remove('on');
+        if (!log.childElementCount) {
+            msg('bot', '¡Hola! Soy FODI 💛 ¿En qué te ayudo hoy? Puedes escribirme o tocar el micrófono.');
+            _fodiDecir('¡Hola! Soy Fodi. ¿En qué te ayudo hoy?', { onstart: () => hablar(true), onend: () => hablar(false) });
+        }
+        if (window.matchMedia && window.matchMedia('(hover:hover)').matches) txt.focus();
     });
-    $('fodiFlotCerrar').addEventListener('click', () => { raiz.classList.remove('abierto'); callar(); if (_ffRec) _ffRec.stop(); });
+    $('fodiFlotCerrar').addEventListener('click', () => { raiz.classList.remove('abierto'); callar(); if (_ffRec) _ffRec.stop(); set('wink', 1200, 'neutral'); });
     mic.addEventListener('click', escuchar);
     $('fodiFlotCalla').addEventListener('click', callar);
     txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const t = txt.value; txt.value = ''; enviar(t); } });

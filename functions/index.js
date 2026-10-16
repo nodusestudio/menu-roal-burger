@@ -3460,6 +3460,17 @@ exports.adminAsistenteIA = onCall(
             console.error('adminAsistenteIA error:', err);
             throw new HttpsError('internal', 'No se pudo completar la consulta. Intenta de nuevo.');
         }
+        // Aprendizaje automático (Haiku, barato): fusiona en la memoria lo duradero de este intercambio
+        let costoAprender = 0;
+        try {
+            if (texto && request.data?.aprender !== false) {
+                const H = ASISTENTE_MODELOS.haiku;
+                const a = await adminAsistente.aprender(db, client, { modelo: H.id, memoria, pregunta: mensajes.filter((m) => m.role === 'user' && typeof m.content === 'string').slice(-1)[0]?.content, respuesta: texto, acciones });
+                const u = a.usage || {};
+                costoAprender = ((u.input_tokens || 0) * H.in + (u.output_tokens || 0) * H.out) / 1e6;
+            }
+        } catch (e) { console.error('adminAsistenteIA aprender:', e && e.message); }
+        costo += costoAprender;
         await usoRef.set({
             modelo: M.id, consultas: FieldValue.increment(1), [`consultas_${modeloClave}`]: FieldValue.increment(1), tokensIn: FieldValue.increment(tokensIn),
             tokensOut: FieldValue.increment(tokensOut), costoUsd: FieldValue.increment(costo)

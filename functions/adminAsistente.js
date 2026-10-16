@@ -870,7 +870,7 @@ async function tarifaDomicilio(db, args = {}) {
     return { lugar: args.lugar, dias_revisados: dias, barrio_especial: especial, domicilios_anteriores: revisados, historial, tarifa_mas_frecuente: probable, nota: historial.length || especial.length ? undefined : 'Sin barrio especial ni domicilios previos a ese lugar: no hay tarifa registrada; depende de la zona GPS.' };
 }
 
-const MEMORIA_MAX_ITEMS = 40;
+const MEMORIA_MAX_ITEMS = 60;
 const MEMORIA_MAX_CHARS = 400;
 const memoriaRef = (db) => db.collection('fodi_memoria').doc('principal');
 
@@ -897,6 +897,32 @@ async function recordar(db, args = {}) {
     items[tema] = { texto, actualizado: bogotaDateKey(Date.now()) };
     await ref.set({ items });
     return { ok: true, guardado: tema };
+}
+
+// Aprendizaje automático: tras cada intercambio, un modelo barato decide qué vale la pena recordar
+// (preferencias, decisiones, correcciones, lo que se hizo y lo que NO) y fusiona la memoria.
+const APRENDER_PROMPT = `Eres el módulo de aprendizaje de FODI, asistente de ROAL BURGER (hamburguesería en Colombia). Recibes la MEMORIA actual, el último intercambio con el dueño y las acciones que FODI propuso. Decide qué hecho DURADERO conviene recordar para ayudarle mejor la próxima vez.
+Guarda: metas y números que él da, preferencias de trato y de formato, decisiones tomadas, correcciones a FODI ("no, eso no"), cosas que pidió NO hacer, productos/clientes/procesos del negocio que mencione, y qué acciones aprobó o rechazó.
+NO guardes: cifras que salen de las herramientas (ventas del día, etc.), saludos, preguntas sueltas sin enseñanza, claves/PINs/datos sensibles, ni lo que ya esté en la memoria.
+Reglas: temas en snake_case cortos; cada texto máx. 350 caracteres, en español, concreto y fechado si hace falta. Si un tema ya existe y hay información nueva, reescríbelo fusionando (mismo tema). Si hay 50 o más temas, consolida antes de agregar. Para borrar algo que el dueño pidió olvidar o que quedó falso, ponlo en "olvidar".
+Responde SOLO JSON: {"guardar":[{"tema":"...","texto":"..."}],"olvidar":["tema"]}. Si no hay nada que aprender: {"guardar":[],"olvidar":[]}.`;
+
+async function aprender(db, client, { modelo, memoria, pregunta, respuesta, acciones }) {
+    const q = String(pregunta || '').trim();
+    if (q.length < 12) return { ok: true, guardados: 0 };
+    const entrada = `MEMORIA ACTUAL:\n${memoria.length ? memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n') : '(vacía)'}\n\nDUEÑO DIJO:\n${q.slice(0, 1500)}\n\nFODI RESPONDIÓ:\n${String(respuesta || '').slice(0, 1500)}\n\nACCIONES PROPUESTAS: ${(acciones || []).map((a) => a.tipo + (a.nombre ? ' ' + a.nombre : '') + (a.tab ? ' ' + a.tab : '')).join('; ') || 'ninguna'}`;
+    const r = await client.messages.create({ model: modelo, max_tokens: 700, system: APRENDER_PROMPT, messages: [{ role: 'user', content: entrada }] });
+    const txt = (r.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) return { ok: true, guardados: 0, usage: r.usage };
+    let j; try { j = JSON.parse(m[0]); } catch (_) { return { ok: true, guardados: 0, usage: r.usage }; }
+    let n = 0;
+    for (const t of Array.isArray(j.olvidar) ? j.olvidar.slice(0, 5) : []) { const x = await recordar(db, { accion: 'olvidar', tema: t }); if (x.ok) n++; }
+    for (const g of Array.isArray(j.guardar) ? j.guardar.slice(0, 4) : []) {
+        if (!g || !g.tema || !g.texto || /pin|clave|contrase/i.test(String(g.tema))) continue;
+        const x = await recordar(db, { accion: 'guardar', tema: g.tema, texto: g.texto }); if (x.ok) n++;
+    }
+    return { ok: true, guardados: n, usage: r.usage };
 }
 
 function pct(a, b) {
@@ -1008,5 +1034,5 @@ module.exports = {
     resumenDe, resumenVentas, ventasPorDiaHora, ventasPorMetodo, ventasPorOrigenTipo, topProductos,
     variantesVendidas, analisisClientes, usoPromos, etiquetaVariante,
     esGastoReal, resumenGastos, resumenCierres, compararResumenes, recortarResultado,
-    ejecutarHerramienta, proponerAccion, leerMemoria, recordar, calcular, topPublicaciones, serieSeguidores, PESTANAS_NAVEGABLES, VISTAS_COSTOS
+    ejecutarHerramienta, proponerAccion, leerMemoria, recordar, aprender, calcular, topPublicaciones, serieSeguidores, PESTANAS_NAVEGABLES, VISTAS_COSTOS
 };
