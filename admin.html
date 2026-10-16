@@ -16860,7 +16860,42 @@
 
     <!-- FODI flotante: burbuja + mini chat por voz (solo admin, nunca mesero) -->
     <style>
-                #respClienteModal{position:fixed;inset:0;z-index:2147482000;display:none;align-items:flex-start;justify-content:center;padding:16px;background:rgba(8,10,20,.72);overflow-y:auto}
+                /* Responsive de pestañas nuevas: el grid de la pestaña no debe crecer por su contenido (causaba paneles de 500-840px en móvil) */
+        .admin-tab-panel.active{grid-template-columns:minmax(0,1fr)}
+        .admin-tab-panel.active>*,.admin-card,.admin-card .card-body,.admin-card .card-head{min-width:0;max-width:100%}
+        #asistShell .card-head{flex-wrap:wrap;gap:8px}
+        #asistShell details,#asistShell .asist-hint{overflow-wrap:anywhere}
+        #fodiMemBox textarea,#fodiBaseBox textarea,#fodiBaseBox input[type=text],#fodiMemBox input[type=text]{max-width:100%;box-sizing:border-box;color:#f4f7ff;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.28);border-radius:10px;padding:8px 10px;font:inherit;font-size:16px}
+        #costosBody{min-width:0}
+        .cs-scroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+        @media (max-width:700px){
+            #asistShell .card-head{flex-direction:column;align-items:stretch}
+            #asistShell .card-head .section-action-btn{width:100%;justify-content:center}
+            #asistShell .asist-cards{display:flex;overflow-x:auto;gap:8px;scroll-snap-type:x proximity;padding-bottom:6px}
+            #asistShell .asist-cards>*{flex:0 0 72%;scroll-snap-align:start}
+            #asistShell .asist-form textarea{font-size:16px}
+            #fodiMemBox>div:last-of-type,#fodiBaseBox>div:last-of-type{flex-direction:column}
+            #fodiMemBox input[type=text],#fodiBaseBox input[type=text]{flex:1 1 100%!important;min-width:0!important;width:100%}
+            .section-toolbar{flex-wrap:wrap}
+            #costosBody .cs-bar{gap:8px}
+            #costosBody .cs-bar label{flex:1 1 44%}
+            #costosBody .cs-bar #costosBuscar{flex:1 1 100%!important}
+            #costosBody .cs-tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px;margin-right:-4px}
+            #costosBody .cs-tab{flex:0 0 auto;white-space:nowrap}
+            #costosBody .cs-tbl{font-size:.78rem;min-width:540px}
+            #costosBody .cs-tbl td,#costosBody .cs-tbl th{padding:6px 5px}
+            #costosBody .cs-line{display:grid;grid-template-columns:1fr 1fr auto;gap:6px}
+            #costosBody .cs-line select[data-k=id]{grid-column:1 / -1;min-width:0!important;width:100%}
+            #costosBody .cs-line .cs-inp{min-width:0;width:100%!important}
+            #costosBody .cs-editor .cs-bar label{flex:1 1 100%}
+            #costosBody .cs-editor textarea{width:100%;box-sizing:border-box}
+            #costosBody select.cs-inp{max-width:100%!important}
+            #respClienteModal{padding:8px}
+            #respClienteModal .rc-caja{padding:14px;border-radius:18px}
+            #respClienteModal .rc-btn{flex:1 1 auto}
+            #fodiFlotPanel{right:8px;left:8px;bottom:8px;width:auto;max-height:calc(100vh - 16px)}
+        }
+        #respClienteModal{position:fixed;inset:0;z-index:2147482000;display:none;align-items:flex-start;justify-content:center;padding:16px;background:rgba(8,10,20,.72);overflow-y:auto}
         #respClienteModal.on{display:flex}
         #respClienteModal .rc-caja{width:min(760px,100%);background:linear-gradient(160deg,#262a4a,#1b2133 60%);color:#eef4ff;border:1px solid rgba(255,255,255,.18);border-radius:22px;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.6);margin:auto 0}
         #respClienteModal h3{margin:0 0 4px}
