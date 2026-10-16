@@ -1369,19 +1369,13 @@ function speakOrderAnnouncement(order) {
     const phrase = (order && typeof order === 'object')
         ? buildOrderAnnouncementPhrase(order)
         : `Nuevo pedido de ${getSafeCustomerAnnouncementName(order)}`;
-    const utterance = new window.SpeechSynthesisUtterance(phrase);
-    utterance.lang = 'es-CO';
-    utterance.rate = 0.96;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-
+    // Misma voz que FODI (Piper si está activada, o la voz tierna del navegador)
     orderAnnouncementQueue = orderAnnouncementQueue
         .catch(() => undefined)
         .then(() => playOrderBell())
         .then(() => new Promise((resolve) => {
-            utterance.onend = () => resolve();
-            utterance.onerror = () => resolve();
-            window.speechSynthesis.speak(utterance);
+            const t = setTimeout(resolve, 30000);
+            try { _fodiDecir(phrase, { onend: () => { clearTimeout(t); resolve(); } }); } catch (_) { clearTimeout(t); resolve(); }
         }));
 }
 
@@ -7457,15 +7451,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         } else if (isEditing) {
             const editLabel = customerName !== defaultName ? customerName : getOrderTypeLabel({ orderType, mesaNumber });
             showNotice(`Pedido de ${editLabel} modificado.`, 'ok');
-            if ('speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function') {
-                const u = new window.SpeechSynthesisUtterance(`Pedido de ${editLabel} modificado`);
-                u.lang = 'es-CO';
-                u.rate = 0.96;
-                u.pitch = 1;
-                u.volume = 1;
-                window.speechSynthesis.cancel();
-                window.speechSynthesis.speak(u);
-            }
+            try { _fodiDecir(`Pedido de ${editLabel} modificado`); } catch (_) { /* sin voz */ }
         } else {
             showNotice('Pedido enviado a recepción.', 'ok');
         }
