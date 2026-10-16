@@ -32854,19 +32854,52 @@ function _fodiFlotInit() {
             set(_fodiReaccion('', true));
         } finally { _ffBusy = false; mic.disabled = false; }
     };
+    const MIC_ERR = {
+        'not-allowed': 'Permite el micrófono en el navegador (candado de la barra de direcciones)',
+        'service-not-allowed': 'Permite el micrófono en el navegador (candado de la barra de direcciones)',
+        'audio-capture': 'No encuentro el micrófono; revisa que otra app no lo esté usando',
+        'network': 'El dictado necesita internet; intenta de nuevo',
+        'language-not-supported': 'Dictado no disponible en este navegador'
+    };
     const escuchar = () => {
         if (!SR || _ffBusy) return;
-        if (_ffRec) { _ffRec.stop(); return; }
+        if (_ffRec) { try { _ffRec.stop(); } catch (_) { /* ya parado */ } return; }
         callar();
-        const rec = new SR();
-        rec.lang = 'es-CO'; rec.interimResults = true; rec.continuous = false;
-        let final = '';
-        rec.onresult = (e) => { final = Array.from(e.results).map((x) => x[0].transcript).join(''); txt.value = final; };
-        rec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') txt.placeholder = 'Permite el micrófono en el navegador'; };
-        rec.onend = () => { _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando'); const f = final.trim(); txt.value = ''; txt.placeholder = 'Pregúntame lo que quieras…'; if (f) enviar(f); };
-        _ffRec = rec; mic.classList.add('on'); burbuja.classList.add('escuchando'); txt.placeholder = 'Te escucho… 👂'; set('surprised', 700, 'happy');
-        try { rec.start(); } catch (_) { _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando'); }
+        // Android: si FODI estaba hablando, el audio retiene el micrófono; esperamos a que lo suelte
+        setTimeout(() => {
+            if (_ffRec || _ffBusy) return;
+            const rec = new SR();
+            rec.lang = 'es-CO'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+            let final = '', error = '', oyo = false;
+            rec.onaudiostart = () => { oyo = true; };
+            rec.onresult = (e) => {
+                // Android repite resultados acumulados: se toma el último de cada tramo, sin concatenar duplicados
+                let t = '';
+                for (let i = 0; i < e.results.length; i++) { const x = e.results[i][0].transcript.trim(); if (x && !t.endsWith(x)) t += (t ? ' ' : '') + x; }
+                final = t; txt.value = final;
+            };
+            rec.onerror = (e) => { error = e.error || 'error'; };
+            rec.onend = () => {
+                _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando');
+                const f = final.trim(); txt.value = '';
+                txt.placeholder = f ? 'Pregúntame lo que quieras…' : (MIC_ERR[error] || (oyo ? 'No te escuché, toca el micrófono otra vez' : 'Pregúntame lo que quieras…'));
+                if (!f && txt.placeholder !== 'Pregúntame lo que quieras…') setTimeout(() => { txt.placeholder = 'Pregúntame lo que quieras…'; }, 4500);
+                if (f) enviar(f);
+            };
+            _ffRec = rec; mic.classList.add('on'); burbuja.classList.add('escuchando'); txt.placeholder = 'Te escucho… 👂'; set('surprised', 700, 'happy');
+            try { rec.start(); } catch (_) { _ffRec = null; mic.classList.remove('on'); burbuja.classList.remove('escuchando'); txt.placeholder = 'No pude abrir el micrófono; intenta de nuevo'; }
+        }, 300);
     };
+    // Móvil: cuando sale el teclado el panel se ajusta al área visible para que el campo de texto no quede tapado
+    const panel = $('fodiFlotPanel');
+    if (window.visualViewport) {
+        const ajustarVV = () => {
+            const vv = window.visualViewport, tapado = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+            panel.style.bottom = (8 + tapado) + 'px'; panel.style.maxHeight = Math.max(220, vv.height - 16) + 'px';
+            if (tapado > 0) log.scrollTop = log.scrollHeight;
+        };
+        window.visualViewport.addEventListener('resize', ajustarVV); window.visualViewport.addEventListener('scroll', ajustarVV);
+    }
     // Arrastrable (mouse y dedo): la posición se recuerda; un toque sin mover abre el chat
     const W = 68;
     const ponerPos = (x, y) => {
