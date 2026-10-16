@@ -3323,6 +3323,7 @@ exports.adminFacebook = onCall(
 // calcula functions/adminAsistente.js. Sin persistir hilos; el cliente reenvía el historial.
 // ─────────────────────────────────────────────────────────────
 const adminAsistente = require('./adminAsistente');
+const fodiConocimiento = require('./fodiConocimiento');
 const ASISTENTE_MAX_ITER = 6;
 const ASISTENTE_TOPE_DIARIO = 60;
 // USD por millón de tokens. El modelo se elige en configuracion/asistente_ia { modelo: 'sonnet' | 'haiku' }
@@ -3415,9 +3416,11 @@ exports.adminAsistenteIA = onCall(
         const bloqueMemoria = memoria.length
             ? `MEMORIA (lo que sabes del negocio y del dueño, dicho por él):\n${memoria.map((m) => `- ${m.tema}: ${m.texto} (${m.actualizado})`).join('\n')}`
             : 'MEMORIA: vacía todavía. Ofrece el cuestionario gerencial con una sola pregunta.';
+        const bloqueConocimiento = fodiConocimiento.bloque(fodiConocimiento.seleccionar(mensajes.slice(-4).map((m) => m.content), 3));
         const system = [
             { type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } },
             { type: 'text', text: bloqueMemoria },
+            ...(bloqueConocimiento ? [{ type: 'text', text: bloqueConocimiento }] : []),
             ...(request.data?.modo === 'voz' ? [{ type: 'text', text: MODO_VOZ_PROMPT }] : [])
         ];
         let tokensIn = 0;
