@@ -3426,12 +3426,16 @@ exports.adminAsistenteIA = onCall(
 ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días): ${r.veredicto}; ${r.metrica} ${r.antes} → ${r.despues}${r.cambio_pct != null ? ` (${r.cambio_pct}%)` : ''}`).join('\n')}` : '';
         const system = [
             { type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } },
-            { type: 'text', text: bloqueMemoria },
+            { type: 'text', text: bloqueMemoria, cache_control: { type: 'ephemeral' } },
             ...(bloqueConocimiento ? [{ type: 'text', text: bloqueConocimiento }] : []),
             ...(bloqueSug ? [{ type: 'text', text: bloqueSug }] : []),
             ...(request.data?.modo === 'voz' ? [{ type: 'text', text: MODO_VOZ_PROMPT }] : [])
         ];
-        let tokensIn = 0;
+        // Preguntas cortas de dato puntual ("ventas de ayer", "top 10 del mes") no necesitan razonamiento profundo
+        const ultimaPregunta = String(mensajes[mensajes.length - 1].content || '');
+        const esSimple = ultimaPregunta.length < 90 && /^\s*(¿\s*)?(ventas|cu[aá]nt[oa]s?|top|dame|mu[eé]strame|cu[aá]l(es)? (fue|es|son)|qu[eé] (vend[ií]|gast[eé]))/i.test(ultimaPregunta) && !/(por qu[eé]|estrateg|analiza|recomi|compar|plan|c[oó]mo (subo|mejoro|bajo))/i.test(ultimaPregunta);
+        const effort = M.effort ? (esSimple ? 'low' : M.effort) : null;
+        let tokensIn = 0, tokensCacheR = 0, tokensCacheW = 0, llamadas = 0;
         let tokensOut = 0;
         let costo = 0;
         let texto = '';
@@ -3440,11 +3444,12 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
             for (let i = 0; i < ASISTENTE_MAX_ITER; i++) {
                 const resp = await client.messages.create({
                     model: M.id, max_tokens: 8000, system, tools: adminAsistente.TOOLS, messages: mensajes,
-                    ...(M.effort ? { output_config: { effort: M.effort } } : {})
+                    ...(effort ? { output_config: { effort } } : {})
                 });
+                llamadas++;
                 const u = resp.usage || {};
                 const nuevos = u.input_tokens || 0, escritos = u.cache_creation_input_tokens || 0, leidos = u.cache_read_input_tokens || 0;
-                tokensIn += nuevos + escritos + leidos;
+                tokensIn += nuevos + escritos + leidos; tokensCacheR += leidos; tokensCacheW += escritos;
                 tokensOut += u.output_tokens || 0;
                 costo += (nuevos * M.in + escritos * M.cacheWrite + leidos * M.cacheRead + (u.output_tokens || 0) * M.out) / 1e6;
                 const usos = resp.content.filter((b) => b.type === 'tool_use');
@@ -3465,6 +3470,9 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
                     }
                     resultados.push({ type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r, u.name === 'costo_por_plato' ? 14000 : undefined) });
                 }
+                // Caché del historial: solo el último resultado lleva marca (máx. 4 marcas por petición)
+                for (const m of mensajes) if (Array.isArray(m.content)) for (const b of m.content) if (b && b.type === 'tool_result') delete b.cache_control;
+                if (resultados.length) resultados[resultados.length - 1].cache_control = { type: 'ephemeral' };
                 mensajes.push({ role: 'user', content: resultados });
             }
         } catch (err) {
@@ -3484,7 +3492,8 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
         costo += costoAprender;
         await usoRef.set({
             modelo: M.id, consultas: FieldValue.increment(1), [`consultas_${modeloClave}`]: FieldValue.increment(1), tokensIn: FieldValue.increment(tokensIn),
-            tokensOut: FieldValue.increment(tokensOut), costoUsd: FieldValue.increment(costo)
+            tokensOut: FieldValue.increment(tokensOut), costoUsd: FieldValue.increment(costo),
+            cacheReadTokens: FieldValue.increment(tokensCacheR), cacheWriteTokens: FieldValue.increment(tokensCacheW), llamadasApi: FieldValue.increment(llamadas), consultasSimples: FieldValue.increment(esSimple ? 1 : 0)
         }, { merge: true }).catch((e) => console.error('adminAsistenteIA uso:', e));
         return { respuesta: texto || 'No obtuve una respuesta. Reformula la pregunta.', acciones };
     }
