@@ -566,6 +566,9 @@ function ventasPorDiaHora(ventas) {
     return { por_dia_semana: fmt(dias), por_hora: fmt(horas).filter((x) => x.pedidos > 0) };
 }
 
+const PESTANAS_NAVEGABLES = ['pedidos', 'menu', 'informes', 'configuracion', 'clientes', 'mensajes', 'chatroal', 'metricas', 'finanzas', 'costos', 'cuponpana', 'redes'];
+const VISTAS_COSTOS = ['platos', 'ideas', 'insumos', 'recetas', 'promos', 'conexion', 'pendientes'];
+
 const TOOLS = [
     {
         name: 'resumen_ventas',
@@ -646,8 +649,44 @@ const TOOLS = [
             buscar: { type: 'string', description: 'Filtra por texto en el nombre (ej. "empanada", "papuda").' },
             incluir_ideas: { type: 'boolean', description: 'true para incluir también los platos aún en estudio (no activos).' }
         } }
+    },
+    {
+        name: 'proponer_accion',
+        description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
+        input_schema: { type: 'object', properties: {
+            tipo: { type: 'string', enum: ['navegar', 'precio_insumo'] },
+            tab: { type: 'string', enum: PESTANAS_NAVEGABLES, description: 'Solo con tipo "navegar".' },
+            vista: { type: 'string', enum: VISTAS_COSTOS, description: 'Solo con tab "costos".' },
+            nombre: { type: 'string', description: 'Solo con tipo "precio_insumo": nombre del insumo (como en la pestaña Insumos).' },
+            precio_nuevo: { type: 'number', description: 'Solo con tipo "precio_insumo": nuevo precio de compra del empaque.' }
+        }, required: ['tipo'] }
     }
 ];
+
+const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+// Valida y resuelve una propuesta. Devuelve { ok, accion } (para el cliente) o { error }. Nunca escribe.
+async function proponerAccion(db, args = {}) {
+    if (args.tipo === 'navegar') {
+        if (!PESTANAS_NAVEGABLES.includes(args.tab)) return { error: `Pestaña desconocida. Opciones: ${PESTANAS_NAVEGABLES.join(', ')}.` };
+        const vista = args.tab === 'costos' && VISTAS_COSTOS.includes(args.vista) ? args.vista : null;
+        return { ok: true, accion: { tipo: 'navegar', tab: args.tab, vista } };
+    }
+    if (args.tipo === 'precio_insumo') {
+        const nuevo = Number(args.precio_nuevo);
+        if (!Number.isFinite(nuevo) || nuevo <= 0 || nuevo > 1e8) return { error: 'precio_nuevo debe ser un número mayor que 0.' };
+        const q = norm(args.nombre);
+        if (!q) return { error: 'Falta el nombre del insumo.' };
+        const todos = (await db.collection('costos_insumos').get()).docs.map((d) => ({ id: d.id, ...d.data() }));
+        let hallados = todos.filter((i) => norm(i.nombre) === q);
+        if (!hallados.length) hallados = todos.filter((i) => norm(i.nombre).includes(q));
+        if (!hallados.length) return { error: `No hay un insumo llamado "${args.nombre}".` };
+        if (hallados.length > 1) return { error: `Hay varios insumos que coinciden: ${hallados.slice(0, 8).map((i) => i.nombre).join('; ')}. Pide al administrador que elija uno.` };
+        const i = hallados[0];
+        return { ok: true, accion: { tipo: 'precio_insumo', insumoId: i.id, nombre: String(i.nombre || ''), precioActual: Number(i.precioCompra) || 0, precioNuevo: Math.round(nuevo * 100) / 100 } };
+    }
+    return { error: 'tipo desconocido.' };
+}
 
 function pct(a, b) {
     return b ? Math.round(((a - b) / b) * 1000) / 10 : null;
@@ -754,5 +793,5 @@ module.exports = {
     resumenDe, resumenVentas, ventasPorDiaHora, ventasPorMetodo, ventasPorOrigenTipo, topProductos,
     variantesVendidas, analisisClientes, usoPromos, etiquetaVariante,
     esGastoReal, resumenGastos, resumenCierres, compararResumenes, recortarResultado,
-    ejecutarHerramienta
+    ejecutarHerramienta, proponerAccion, PESTANAS_NAVEGABLES, VISTAS_COSTOS
 };

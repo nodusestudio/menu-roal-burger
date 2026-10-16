@@ -32411,9 +32411,70 @@ function _asistActualizarHero() {
     if (hero) hero.style.display = _asistHist.length ? 'none' : '';
 }
 
+// Acciones propuestas por FODI: nunca se ejecutan solas; cada una es una tarjeta con botón de confirmar.
+function _asistAcciones(msg, acciones) {
+    if (!Array.isArray(acciones) || !acciones.length || _meseroSession) return;
+    const dinero = (n) => formatMoney(Number(n) || 0);
+    const cont = document.createElement('div');
+    cont.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin:8px 0 0';
+    for (const a of acciones) {
+        const card = document.createElement('div');
+        card.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.12)';
+        let txt = '', btn = '';
+        if (a.tipo === 'navegar') {
+            txt = `Ir a <b>${escapeHtml(a.tab === 'costos' && a.vista ? `Costos y recetas › ${a.vista}` : a.tab)}</b>`;
+            btn = 'Ir';
+        } else if (a.tipo === 'precio_insumo') {
+            txt = `Cambiar precio de <b>${escapeHtml(a.nombre)}</b>: ${dinero(a.precioActual)} → <b>${dinero(a.precioNuevo)}</b>`;
+            btn = 'Confirmar cambio';
+        } else continue;
+        card.innerHTML = `<span style="flex:1;min-width:160px">${txt}</span><button type="button" class="cat-new-save-btn">${btn}</button>`;
+        card.querySelector('button').addEventListener('click', async (e) => {
+            const b = e.currentTarget;
+            b.disabled = true;
+            try {
+                await _asistEjecutarAccion(a);
+                b.textContent = a.tipo === 'navegar' ? 'Listo' : '✓ Hecho';
+            } catch (err) {
+                b.disabled = false;
+                showNotice('No se pudo: ' + (err.message || err), 'error');
+            }
+        });
+        cont.appendChild(card);
+    }
+    if (cont.children.length) { msg.appendChild(cont); _asistScroll(false); }
+}
+
+async function _asistEjecutarAccion(a) {
+    if (_meseroSession) throw new Error('No disponible en modo mesero.');
+    if (a.tipo === 'navegar') {
+        const nav = document.querySelector(`.admin-accordion-trigger[data-accordion-target="${CSS.escape(String(a.tab))}"]`);
+        if (!nav) throw new Error('Esa sección no está disponible.');
+        if (a.tab === 'costos' && a.vista) { _costosVista = a.vista; _costosAbierto = null; }
+        nav.click();
+        if (a.tab === 'costos') _costosRender();
+        return;
+    }
+    if (a.tipo === 'precio_insumo') {
+        await _ensureCostosLoaded();
+        const i = _costos.insumos.find((x) => x.id === a.insumoId);
+        if (!i) throw new Error('El insumo ya no existe.');
+        const nuevo = _cNum(a.precioNuevo), viejo = _cNum(i.precioCompra);
+        if (!(nuevo > 0)) throw new Error('Precio no válido.');
+        if (nuevo === viejo) return;
+        const h = [...(i.historialPrecios || []), { fecha: new Date().toISOString(), precio: nuevo, anterior: viejo }].slice(-30);
+        await _costosGuardar(COSTOS_COLS.insumos, i.id, { precioCompra: nuevo, historialPrecios: h });
+        i.precioCompra = nuevo; i.historialPrecios = h;
+        showNotice(`${i.nombre} actualizado a ${formatMoney(nuevo)}.`, 'ok');
+        _costosRender();
+        return;
+    }
+    throw new Error('Acción desconocida.');
+}
+
 async function _asistEnviar(texto) {
     texto = String(texto || '').trim();
-    if (!texto || _asistBusy) return;
+    if (!texto || _asistBusy || _meseroSession) return;
     _asistBusy = true;
     const btn = document.getElementById('asistEnviarBtn');
     if (btn) btn.disabled = true;
@@ -32434,6 +32495,7 @@ async function _asistEnviar(texto) {
         _fodiSet(av, reaccion);
         _fodiHablar(av, true);
         await _asistEscribir(msg, resp);
+        _asistAcciones(msg, r.data?.acciones);
         _fodiHablar(av, false);
         setTimeout(() => _fodiCongelar(av, reaccion), 3200);
     } catch (err) {

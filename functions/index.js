@@ -3350,7 +3350,7 @@ REGLAS DE DATOS (inquebrantables):
 - Las cifras salen SIEMPRE de las herramientas; nunca inventes ni estimes números. Si no hay herramienta para algo, dilo.
 - Declara el rango real consultado (desde–hasta) y avisa si el resultado vino truncado.
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
-- Eres de solo lectura: no puedes modificar pedidos, caja ni puntos.
+- Eres de solo lectura: no puedes modificar pedidos, caja ni puntos. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho.
 - Para "este mes" usa desde el día 1 hasta hoy; para "ayer", la fecha de ayer.
 - Costo por plato: usa costo_por_plato (calculadora propia de FODEXA; da costo_real y costo con colchón del 30%, y por defecto solo platos activos); si no hay recetas registradas, dilo y explica cómo registrarlas, y trabaja con ventas, gastos y costos fijos reales.
 - Variantes/tamaños ("¿la normal, pequeña o mediana?"): usa variantes_vendidas. Clientes (recompra, mejores, inactivos, RFM): analisis_clientes. Puntos: puntos_lealtad. Promos y código del día: cupones_y_codigo_del_dia.
@@ -3411,6 +3411,7 @@ exports.adminAsistenteIA = onCall(
         let tokensOut = 0;
         let costo = 0;
         let texto = '';
+        const acciones = [];
         try {
             for (let i = 0; i < ASISTENTE_MAX_ITER; i++) {
                 const resp = await client.messages.create({
@@ -3430,7 +3431,14 @@ exports.adminAsistenteIA = onCall(
                 mensajes.push({ role: 'assistant', content: resp.content });
                 const resultados = [];
                 for (const u of usos) {
-                    const r = await adminAsistente.ejecutarHerramienta(db, u.name, u.input || {});
+                    let r;
+                    if (u.name === 'proponer_accion') {
+                        r = await adminAsistente.proponerAccion(db, u.input || {}).catch((e) => ({ error: `Falló: ${e.message || e}` }));
+                        if (r.ok && acciones.length < 5) acciones.push(r.accion);
+                        if (r.ok) r = { ok: true, nota: 'Propuesta mostrada al administrador como botón; aún NO se ejecutó. No digas que ya se hizo: dile que la confirme con el botón.', accion: r.accion };
+                    } else {
+                        r = await adminAsistente.ejecutarHerramienta(db, u.name, u.input || {});
+                    }
                     resultados.push({ type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r, u.name === 'costo_por_plato' ? 14000 : undefined) });
                 }
                 mensajes.push({ role: 'user', content: resultados });
@@ -3443,6 +3451,6 @@ exports.adminAsistenteIA = onCall(
             modelo: M.id, consultas: FieldValue.increment(1), [`consultas_${modeloClave}`]: FieldValue.increment(1), tokensIn: FieldValue.increment(tokensIn),
             tokensOut: FieldValue.increment(tokensOut), costoUsd: FieldValue.increment(costo)
         }, { merge: true }).catch((e) => console.error('adminAsistenteIA uso:', e));
-        return { respuesta: texto || 'No obtuve una respuesta. Reformula la pregunta.' };
+        return { respuesta: texto || 'No obtuve una respuesta. Reformula la pregunta.', acciones };
     }
 );
