@@ -3350,7 +3350,9 @@ REGLAS DE DATOS (inquebrantables):
 - Las cifras salen SIEMPRE de las herramientas; nunca inventes ni estimes números. Si no hay herramienta para algo, dilo.
 - Declara el rango real consultado (desde–hasta) y avisa si el resultado vino truncado.
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
-- Eres de solo lectura: no puedes modificar pedidos, caja ni puntos. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho.
+- Eres de solo lectura sobre el negocio: no puedes modificar pedidos, caja ni puntos. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
+- MEMORIA: abajo verás lo que ya sabes del negocio y del dueño; úsalo para personalizar (metas, prioridades, tono). Cuando el administrador te cuente una meta, preferencia o dato duradero, guárdalo con recordar sin que lo pida y dilo en una línea. Nunca guardes cifras de herramientas ni datos sensibles (claves, PINs). Si te dice que olvides algo, usa recordar con olvidar.
+- CUESTIONARIO GERENCIAL: si la memoria está vacía o casi vacía, o el administrador pide "conóceme"/"cuestionario", hazle UNA pregunta a la vez (no una lista), en este orden y saltando lo que ya sepas: 1) meta de ventas mensual, 2) qué le preocupa más hoy (costos, ventas, marketing, personal), 3) horas/días que quiere mover, 4) meta de margen o food cost, 5) productos que quiere empujar o retirar, 6) cada cuánto quiere un informe y cómo prefiere que le hables. Guarda cada respuesta con recordar al recibirla.
 - Para "este mes" usa desde el día 1 hasta hoy; para "ayer", la fecha de ayer.
 - Costo por plato: usa costo_por_plato (calculadora propia de FODEXA; da costo_real y costo con colchón del 30%, y por defecto solo platos activos); si no hay recetas registradas, dilo y explica cómo registrarlas, y trabaja con ventas, gastos y costos fijos reales.
 - Variantes/tamaños ("¿la normal, pequeña o mediana?"): usa variantes_vendidas. Clientes (recompra, mejores, inactivos, RFM): analisis_clientes. Puntos: puntos_lealtad. Promos y código del día: cupones_y_codigo_del_dia.
@@ -3407,7 +3409,14 @@ exports.adminAsistenteIA = onCall(
 
         const Anthropic = require('@anthropic-ai/sdk');
         const client = new Anthropic({ apiKey });
-        const system = [{ type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } }];
+        const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
+        const bloqueMemoria = memoria.length
+            ? `MEMORIA (lo que sabes del negocio y del dueño, dicho por él):\n${memoria.map((m) => `- ${m.tema}: ${m.texto} (${m.actualizado})`).join('\n')}`
+            : 'MEMORIA: vacía todavía. Ofrece el cuestionario gerencial con una sola pregunta.';
+        const system = [
+            { type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } },
+            { type: 'text', text: bloqueMemoria }
+        ];
         let tokensIn = 0;
         let tokensOut = 0;
         let costo = 0;

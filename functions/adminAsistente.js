@@ -782,6 +782,15 @@ const TOOLS = [
         input_schema: { type: 'object', properties: { expresion: { type: 'string' } }, required: ['expresion'] }
     },
     {
+        name: 'recordar',
+        description: 'Memoria permanente de FODI sobre el negocio y el dueño (metas, preferencias, contexto, decisiones). accion "guardar": guarda o actualiza un dato bajo un tema corto (ej. "meta_ventas_mes", "prioridad", "horario_pico"); accion "olvidar": borra el tema. Guarda SOLO hechos que el administrador te dijo o confirmó, nunca cifras de las herramientas (esas cambian). No es una acción sobre pedidos, caja ni dinero.',
+        input_schema: { type: 'object', properties: {
+            accion: { type: 'string', enum: ['guardar', 'olvidar'] },
+            tema: { type: 'string', description: 'Etiqueta corta, minúsculas y guion bajo.' },
+            texto: { type: 'string', description: 'Solo con "guardar": el dato (máx. 400 caracteres).' }
+        }, required: ['accion', 'tema'] }
+    },
+    {
         name: 'proponer_accion',
         description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
         input_schema: { type: 'object', properties: {
@@ -817,6 +826,35 @@ async function proponerAccion(db, args = {}) {
         return { ok: true, accion: { tipo: 'precio_insumo', insumoId: i.id, nombre: String(i.nombre || ''), precioActual: Number(i.precioCompra) || 0, precioNuevo: Math.round(nuevo * 100) / 100 } };
     }
     return { error: 'tipo desconocido.' };
+}
+
+const MEMORIA_MAX_ITEMS = 40;
+const MEMORIA_MAX_CHARS = 400;
+const memoriaRef = (db) => db.collection('fodi_memoria').doc('principal');
+
+async function leerMemoria(db) {
+    const items = ((await memoriaRef(db).get()).data() || {}).items || {};
+    return Object.entries(items).map(([tema, v]) => ({ tema, texto: String(v.texto || ''), actualizado: v.actualizado || '' }));
+}
+
+async function recordar(db, args = {}) {
+    const tema = norm(args.tema).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+    if (!tema) return { error: 'Falta el tema.' };
+    const ref = memoriaRef(db);
+    const items = ((await ref.get()).data() || {}).items || {};
+    if (args.accion === 'olvidar') {
+        if (!(tema in items)) return { error: `No hay nada guardado bajo "${tema}".` };
+        delete items[tema];
+        await ref.set({ items });
+        return { ok: true, olvidado: tema };
+    }
+    if (args.accion !== 'guardar') return { error: 'accion debe ser guardar u olvidar.' };
+    const texto = String(args.texto || '').trim().slice(0, MEMORIA_MAX_CHARS);
+    if (!texto) return { error: 'Falta el texto a guardar.' };
+    if (!(tema in items) && Object.keys(items).length >= MEMORIA_MAX_ITEMS) return { error: `La memoria está llena (${MEMORIA_MAX_ITEMS} temas). Olvida alguno primero.` };
+    items[tema] = { texto, actualizado: bogotaDateKey(Date.now()) };
+    await ref.set({ items });
+    return { ok: true, guardado: tema };
 }
 
 function pct(a, b) {
@@ -879,6 +917,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             return { items, total_mensual: items.reduce((a, i) => a + i.monto_mensual, 0), margen_minimo_pct: Number(d.margenMinimo) || null };
         }
         if (nombre === 'calcular') return calcular(args.expresion);
+        if (nombre === 'recordar') return await recordar(db, args);
         if (nombre === 'puntos_lealtad') return await resumenPuntos(db);
         if (nombre === 'costo_por_plato') return await costoPorPlato(args, db);
         if (nombre === 'comparar_periodos') {
@@ -926,5 +965,5 @@ module.exports = {
     resumenDe, resumenVentas, ventasPorDiaHora, ventasPorMetodo, ventasPorOrigenTipo, topProductos,
     variantesVendidas, analisisClientes, usoPromos, etiquetaVariante,
     esGastoReal, resumenGastos, resumenCierres, compararResumenes, recortarResultado,
-    ejecutarHerramienta, proponerAccion, calcular, topPublicaciones, serieSeguidores, PESTANAS_NAVEGABLES, VISTAS_COSTOS
+    ejecutarHerramienta, proponerAccion, leerMemoria, recordar, calcular, topPublicaciones, serieSeguidores, PESTANAS_NAVEGABLES, VISTAS_COSTOS
 };
