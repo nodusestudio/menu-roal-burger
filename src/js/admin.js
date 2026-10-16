@@ -32553,6 +32553,13 @@ function _cCalcPlato(p, ctx) {
         margen: precio ? _cPct1((precio - colch) / precio * 100) : null,
     };
 }
+const _cNorm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const _cProdMenu = () => (typeof productsState !== 'undefined' && Array.isArray(productsState) ? productsState : []);
+const _cProdPorId = (id) => _cProdMenu().find((x) => x.id === id) || null;
+function _cSugerido(it) { // coincidencia exacta por nombre normalizado con un producto del menú
+    const n = _cNorm(it.nombre);
+    return n ? _cProdMenu().find((x) => _cNorm(x.nombre) === n) || null : null;
+}
 function _cCtx() {
     return { insumos: Object.fromEntries(_costos.insumos.map((x) => [x.id, x])), recetas: Object.fromEntries(_costos.recetas.map((x) => [x.id, x])) };
 }
@@ -32568,6 +32575,7 @@ async function _costosCargar() {
     _costos.platos = platos.sort(porNombre); _costos.promos = promos.sort(porNombre);
     const c = cfgDoc.exists ? cfgDoc.data() : {};
     _costos.cfg = { colchonPct: _cNum(c.colchonPct) || 30, margenObjetivoPct: _cNum(c.margenObjetivoPct) || 30 };
+    if (!_cProdMenu().length) { try { await fetchProducts(); } catch (_) { /* sin menú: la conexión queda vacía */ } }
     _costosLoaded = true;
 }
 async function _ensureCostosLoaded(force = false) {
@@ -32605,7 +32613,7 @@ function _costosRender() {
     const pend = _costosPendientes();
     const cfgInp = (k, v) => `<input type="text" inputmode="numeric" class="cs-inp" style="width:70px" data-cs-cfg="${k}" value="${v}">`;
     const nAct = _costos.platos.filter((p) => p.activo === true).length;
-    const tabs = [['platos', `Platos activos (${nAct})`], ['ideas', `Ideas (${_costos.platos.length - nAct})`], ['insumos', `Insumos (${_costos.insumos.length})`], ['recetas', `Recetas (${_costos.recetas.length})`], ['pendientes', `Pendientes (${pend.length})`]];
+    const tabs = [['platos', `Platos activos (${nAct})`], ['ideas', `Ideas (${_costos.platos.length - nAct})`], ['insumos', `Insumos (${_costos.insumos.length})`], ['recetas', `Recetas (${_costos.recetas.length})`], ['conexion', `Conexión (${_costosSinVincular().length})`], ['pendientes', `Pendientes (${pend.length})`]];
     let html = `<div class="cs-bar">
         <label>Colchón % ${cfgInp('colchonPct', _costos.cfg.colchonPct)}</label>
         <label>Margen objetivo % ${cfgInp('margenObjetivoPct', _costos.cfg.margenObjetivoPct)}</label>
@@ -32623,7 +32631,7 @@ function _costosRender() {
             const c = _cCalcPlato(p, ctx);
             const bajo = c.margen != null && c.margen < _costos.cfg.margenObjetivoPct;
             html += `<tr data-cs-open="${escapeHtml(p.id)}" class="cs-row"><td><input type="checkbox" data-cs-activo="${escapeHtml(p.id)}" ${p.activo === true ? 'checked' : ''}></td>
-              <td>${escapeHtml(p.nombre)}${c.faltantes.length ? ' ⚠️' : ''}</td><td>${money(c.precio)}</td>
+              <td>${escapeHtml(p.nombre)}${c.faltantes.length ? ' ⚠️' : ''}${_costosVinculoTag(p)}</td><td>${money(c.precio)}</td>
               <td>${money(c.real)}<small> ${c.fcReal ?? '–'}%</small></td><td>${money(c.colch)}<small> ${c.fc ?? '–'}%</small></td>
               <td style="color:${bajo ? '#fca5a5' : '#6ee7b7'}">${c.margen ?? '–'}%</td><td>${c.sug ? money(c.sug) : '–'}</td></tr>`;
             if (_costosAbierto === p.id) html += `<tr><td colspan="7">${_costosEditorItems('platos', p)}</td></tr>`;
@@ -32646,12 +32654,45 @@ function _costosRender() {
             if (_costosAbierto === r.id) html += `<tr><td colspan="3">${_costosEditorItems('recetas', r)}</td></tr>`;
         });
         html += '</tbody></table></div>';
+    } else if (_costosVista === 'conexion') {
+        const filas = filtra(_costosItemsConexion());
+        const exactas = _costosSinVincular().filter((x) => _cSugerido(x.doc)).length;
+        const opts = (sel) => '<option value="">— sin vincular —</option>' + _cProdMenu().map((x) => `<option value="${escapeHtml(x.id)}" ${x.id === sel ? 'selected' : ''}>${escapeHtml(x.nombre)}</option>`).join('');
+        html += `<p class="cs-muted">Vincula cada plato/promo de costos con su producto del menú (${_cProdMenu().length} productos). Así se compara el precio de venta real con el de costos.</p>
+        <div class="cs-bar"><button type="button" class="cat-new-save-btn" data-cs-act="linkExactas" ${exactas ? '' : 'disabled'}>Vincular coincidencias exactas (${exactas})</button></div>
+        <div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Tipo</th><th>Nombre</th><th>Producto del menú</th><th>Precio costos</th><th>Precio menú</th><th></th></tr></thead><tbody>`;
+        filas.forEach(({ col, doc }) => {
+            const pm = _cProdPorId(doc.productoMenuId), sug = !pm ? _cSugerido(doc) : null;
+            const dif = pm && _cNum(pm.precio) !== _cNum(doc.precio);
+            html += `<tr><td>${col === 'promos' ? 'Promo' : 'Plato'}</td><td>${escapeHtml(doc.nombre)}</td>
+              <td><select class="cs-inp" data-cs-vinc="${col}:${escapeHtml(doc.id)}" style="max-width:240px">${opts(doc.productoMenuId)}</select>${sug ? `<br><small>Sugerido: ${escapeHtml(sug.nombre)}</small>` : ''}</td>
+              <td>${money(_cNum(doc.precio))}</td><td style="color:${dif ? '#fca5a5' : 'inherit'}">${pm ? money(_cNum(pm.precio)) : '–'}</td>
+              <td>${dif ? `<button type="button" class="pm-icon-btn" data-cs-act="igualarPrecio" data-vinc="${col}:${escapeHtml(doc.id)}">Igualar al menú</button>` : ''}</td></tr>`;
+        });
+        html += `</tbody></table></div>${filas.length ? '' : '<p class="cs-muted">Nada por aquí.</p>'}`;
     } else {
         html += pend.length ? `<div class="cs-pend">${pend.map((x) => `<div class="cs-pi"><strong>${escapeHtml(x.k)}</strong> · ${escapeHtml(x.n)}<br><small>${escapeHtml(x.d)}</small></div>`).join('')}</div>` : '<p class="cs-muted">Sin datos pendientes. 🎉</p>';
     }
     const hadFocus = document.activeElement && document.activeElement.id === 'costosBuscar';
     body.innerHTML = html;
     if (hadFocus) { const b = document.getElementById('costosBuscar'); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }
+}
+
+function _costosItemsConexion() {
+    return [..._costos.platos.map((doc) => ({ col: 'platos', doc })), ..._costos.promos.map((doc) => ({ col: 'promos', doc }))];
+}
+function _costosSinVincular() {
+    return _costosItemsConexion().filter(({ doc }) => !_cProdPorId(doc.productoMenuId)).map(({ col, doc }) => ({ col, doc }));
+}
+function _costosVinculoTag(p) {
+    const pm = _cProdPorId(p.productoMenuId);
+    if (!pm) return '';
+    return _cNum(pm.precio) !== _cNum(p.precio) ? ` <small title="Precio en el menú: ${formatMoney(_cNum(pm.precio))}" style="color:#fca5a5">🔗 menú ${formatMoney(_cNum(pm.precio))}</small>` : ' <small>🔗</small>';
+}
+function _costosVincular(col, id, pid) {
+    const doc = _costos[col].find((x) => x.id === id); if (!doc) return Promise.resolve();
+    doc.productoMenuId = pid || '';
+    return _costosGuardar(COSTOS_COLS[col], id, { productoMenuId: doc.productoMenuId });
 }
 
 function _costosEditorItems(col, doc) {
@@ -32692,6 +32733,18 @@ function _costosBind() {
                 try { await firebaseDb.collection('costos_ajustes').doc('config').set({ ..._costos.cfg, actualizadoAt: firestoreNow() }, { merge: true }); showNotice('Ajustes de costos guardados.', 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
                 return _costosRender();
             }
+            if (a === 'linkExactas') {
+                const lista = _costosSinVincular().map((x) => ({ ...x, sug: _cSugerido(x.doc) })).filter((x) => x.sug);
+                try { await Promise.all(lista.map((x) => _costosVincular(x.col, x.doc.id, x.sug.id))); showNotice(`${lista.length} vinculados.`, 'ok'); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
+                return _costosRender();
+            }
+            if (a === 'igualarPrecio') {
+                const [col, id] = act.dataset.vinc.split(':'), doc = _costos[col].find((x) => x.id === id), pm = doc && _cProdPorId(doc.productoMenuId);
+                if (!pm) return;
+                const previo = doc.precio; doc.precio = _cNum(pm.precio);
+                try { await _costosGuardar(COSTOS_COLS[col], id, { precio: doc.precio }); showNotice('Precio igualado al menú.', 'ok'); } catch (err) { doc.precio = previo; showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
+                return _costosRender();
+            }
             if (ed) {
                 const col = ed.dataset.csCol, doc = _costos[col].find((x) => x.id === ed.dataset.csDoc);
                 if (!doc) return;
@@ -32718,6 +32771,11 @@ function _costosBind() {
             const previo = p.activo;
             p.activo = t.checked;
             try { await _costosGuardar(COSTOS_COLS.platos, p.id, { activo: p.activo }); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); p.activo = previo; }
+            return _costosRender();
+        }
+        if (t.dataset.csVinc) {
+            const [col, id] = t.dataset.csVinc.split(':');
+            try { await _costosVincular(col, id, t.value); } catch (err) { showNotice('No se pudo guardar: ' + (err.message || err), 'error'); }
             return _costosRender();
         }
         if (t.dataset.csIns) {
