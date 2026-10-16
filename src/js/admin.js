@@ -4114,12 +4114,6 @@ async function _waSubmitOrder() {
     }
 }
 
-document.getElementById('posPasteWhatsAppBtn')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    _closePosActionPopovers();
-    openWhatsAppPasteModal();
-});
-
 function renderPosAcompanantesNewPanel(grid) {
     grid.innerHTML = '';
     const activos = acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos);
