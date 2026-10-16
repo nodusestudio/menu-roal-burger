@@ -349,6 +349,11 @@ service cloud.firestore {
     match /pos_tickets/{doc} {
       allow read, write: if isAdmin();
     }
+    // Contador de uso/costo del asistente IA (adminAsistenteIA): lectura admin, escritura solo servidor.
+    match /admin_ai_usage_daily/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
     match /gastos_caja/{doc} {
       allow read, write: if isAdmin();
     }

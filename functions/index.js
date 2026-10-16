@@ -3317,3 +3317,90 @@ exports.adminFacebook = onCall(
         throw new HttpsError('invalid-argument', 'Acción desconocida.');
     }
 );
+
+// ─────────────────────────────────────────────────────────────
+// ASISTENTE DE IA DEL ADMIN (solo lectura): el modelo elige herramienta y redacta; las cifras las
+// calcula functions/adminAsistente.js. Sin persistir hilos; el cliente reenvía el historial.
+// ─────────────────────────────────────────────────────────────
+const adminAsistente = require('./adminAsistente');
+const ASISTENTE_MODEL = 'claude-haiku-4-5';
+const ASISTENTE_MAX_ITER = 6;
+const ASISTENTE_TOPE_DIARIO = 60;
+// USD por millón de tokens (Haiku 4.5, vigentes desde 31/ago/2026)
+const ASISTENTE_PRECIO = { in: 3, out: 15 };
+
+function asistenteSystemPrompt() {
+    const hoy = adminAsistente.bogotaDateKey(Date.now());
+    return `Eres el asistente de datos del administrador de ROAL BURGER. Respondes en español, claro y breve.
+Hoy es ${hoy} (hora de Bogotá). Todas las fechas y días son hora de Bogotá.
+REGLAS:
+- Las cifras salen SIEMPRE de las herramientas; nunca inventes ni estimes números. Si no hay herramienta para algo, dilo.
+- Declara el rango real consultado (desde–hasta) y avisa si el resultado vino truncado.
+- Entrega datos para copiar dentro de bloques de código (tablas de texto o CSV).
+- Montos en pesos colombianos con separador de miles (ej. $8.286.200).
+- Eres de solo lectura: no puedes modificar pedidos, caja ni puntos.
+- Para "este mes" usa desde el día 1 hasta hoy; para "ayer", la fecha de ayer.`;
+}
+
+exports.adminAsistenteIA = onCall(
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB' },
+    async (request) => {
+        const db = getFirestore();
+        await cuponPana.ensureAdmin(db, request);
+
+        const entrada = Array.isArray(request.data?.mensajes) ? request.data.mensajes : [];
+        const mensajes = entrada
+            .slice(-12)
+            .map((m) => ({ role: m?.role === 'assistant' ? 'assistant' : 'user', content: String(m?.content || '').slice(0, 4000) }))
+            .filter((m) => m.content.trim());
+        while (mensajes.length && mensajes[0].role !== 'user') mensajes.shift();
+        if (!mensajes.length || mensajes[mensajes.length - 1].role !== 'user') {
+            throw new HttpsError('invalid-argument', 'Escribe una pregunta.');
+        }
+        const apiKey = ANTHROPIC_API_KEY.value();
+        if (!apiKey) throw new HttpsError('failed-precondition', 'Asistente no configurado.');
+
+        const usoRef = db.collection('admin_ai_usage_daily').doc(adminAsistente.bogotaDateKey(Date.now()));
+        const uso = (await usoRef.get()).data() || {};
+        if ((uso.consultas || 0) >= ASISTENTE_TOPE_DIARIO) {
+            throw new HttpsError('resource-exhausted', `Llegaste al tope diario de ${ASISTENTE_TOPE_DIARIO} consultas. Se reinicia mañana.`);
+        }
+
+        const Anthropic = require('@anthropic-ai/sdk');
+        const client = new Anthropic({ apiKey });
+        const system = [{ type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } }];
+        let tokensIn = 0;
+        let tokensOut = 0;
+        let texto = '';
+        try {
+            for (let i = 0; i < ASISTENTE_MAX_ITER; i++) {
+                const resp = await client.messages.create({
+                    model: ASISTENTE_MODEL, max_tokens: 2000, system, tools: adminAsistente.TOOLS, messages: mensajes
+                });
+                tokensIn += (resp.usage?.input_tokens || 0) + (resp.usage?.cache_creation_input_tokens || 0) + (resp.usage?.cache_read_input_tokens || 0);
+                tokensOut += resp.usage?.output_tokens || 0;
+                const usos = resp.content.filter((b) => b.type === 'tool_use');
+                if (resp.stop_reason !== 'tool_use' || !usos.length) {
+                    texto = resp.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+                    break;
+                }
+                mensajes.push({ role: 'assistant', content: resp.content });
+                const resultados = [];
+                for (const u of usos) {
+                    const r = await adminAsistente.ejecutarHerramienta(db, u.name, u.input || {});
+                    resultados.push({ type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r) });
+                }
+                mensajes.push({ role: 'user', content: resultados });
+            }
+        } catch (err) {
+            console.error('adminAsistenteIA error:', err);
+            throw new HttpsError('internal', 'No se pudo completar la consulta. Intenta de nuevo.');
+        }
+        const costo = (tokensIn * ASISTENTE_PRECIO.in + tokensOut * ASISTENTE_PRECIO.out) / 1e6;
+        await usoRef.set({
+            consultas: FieldValue.increment(1), tokensIn: FieldValue.increment(tokensIn),
+            tokensOut: FieldValue.increment(tokensOut), costoUsd: FieldValue.increment(costo)
+        }, { merge: true }).catch((e) => console.error('adminAsistenteIA uso:', e));
+        return { respuesta: texto || 'No obtuve una respuesta. Reformula la pregunta.' };
+    }
+);

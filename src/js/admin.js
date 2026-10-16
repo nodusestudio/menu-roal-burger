@@ -1802,11 +1802,12 @@ function setupAccordion() {
         chatroal: ['chatroal'],
         metricas: ['metricas'],
         finanzas: ['finanzas'],
+        asistente: ['asistente'],
         cuponpana: ['cuponpana'],
         redes: ['redes']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', cuponpana:'Fuera del Menú', redes:'Redes' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -1849,6 +1850,10 @@ function setupAccordion() {
 
         if (target === 'finanzas') {
             _ensureFinanzasLoaded();
+        }
+
+        if (target === 'asistente') {
+            _asistInit();
         }
 
         if (target === 'cuponpana') {
@@ -32040,5 +32045,97 @@ function rdBindEmojis(body, refrescar) {
         refrescar();
         // Los más usados se actualizan al instante sin cerrar el selector.
         pop.innerHTML = rdEmojiPopHtml();
+    });
+}
+
+
+// ─── Asistente de datos (IA, solo lectura) ───
+let _asistHist = [];
+let _asistBound = false;
+let _asistBusy = false;
+const _ASIST_SUGERENCIAS = ['Ventas de ayer', 'Top 10 productos del mes', 'Ventas por método de pago este mes', 'Gastos de esta semana', 'Comparar este mes con el anterior'];
+
+function _asistEsc(t) {
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _asistRender(texto) {
+    return String(texto || '').split(/```[a-z]*\n?/i).map((parte, i) => {
+        if (i % 2 === 1) {
+            return `<div class="asist-code"><button type="button" class="asist-copy">Copiar</button><pre>${_asistEsc(parte.replace(/\n$/, ''))}</pre></div>`;
+        }
+        return _asistEsc(parte).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+    }).join('');
+}
+
+function _asistAdd(rol, html) {
+    const log = document.getElementById('asistLog');
+    if (!log) return null;
+    const div = document.createElement('div');
+    div.className = `asist-msg ${rol}`;
+    div.innerHTML = html;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+}
+
+async function _asistEnviar(texto) {
+    texto = String(texto || '').trim();
+    if (!texto || _asistBusy) return;
+    _asistBusy = true;
+    const btn = document.getElementById('asistEnviarBtn');
+    if (btn) btn.disabled = true;
+    _asistAdd('user', _asistEsc(texto).replace(/\n/g, '<br>'));
+    _asistHist.push({ role: 'user', content: texto });
+    const espera = _asistAdd('bot', 'Consultando…');
+    try {
+        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist });
+        const resp = String(r.data?.respuesta || '');
+        _asistHist.push({ role: 'assistant', content: resp });
+        if (espera) espera.innerHTML = _asistRender(resp);
+    } catch (err) {
+        _asistHist.pop();
+        if (espera) { espera.classList.add('err'); espera.textContent = err?.message || 'No se pudo consultar. Intenta de nuevo.'; }
+    } finally {
+        _asistBusy = false;
+        if (btn) btn.disabled = false;
+        const log = document.getElementById('asistLog');
+        if (log) log.scrollTop = log.scrollHeight;
+    }
+}
+
+function _asistInit() {
+    if (_asistBound) return;
+    const form = document.getElementById('asistForm');
+    if (!form) return;
+    _asistBound = true;
+    const chips = document.getElementById('asistChips');
+    chips.innerHTML = _ASIST_SUGERENCIAS.map((s) => `<button type="button" class="asist-chip">${_asistEsc(s)}</button>`).join('');
+    chips.addEventListener('click', (e) => {
+        const c = e.target.closest('.asist-chip');
+        if (c) _asistEnviar(c.textContent);
+    });
+    const input = document.getElementById('asistInput');
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const t = input.value;
+        input.value = '';
+        _asistEnviar(t);
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+    });
+    document.getElementById('asistLog').addEventListener('click', async (e) => {
+        const b = e.target.closest('.asist-copy');
+        if (!b) return;
+        try {
+            await navigator.clipboard.writeText(b.parentElement.querySelector('pre').textContent);
+            b.textContent = '¡Copiado!';
+        } catch (_) { b.textContent = 'No se pudo'; }
+        setTimeout(() => { b.textContent = 'Copiar'; }, 1500);
+    });
+    document.getElementById('asistNuevoBtn').addEventListener('click', () => {
+        _asistHist = [];
+        document.getElementById('asistLog').innerHTML = '';
     });
 }
