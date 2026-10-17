@@ -14498,6 +14498,9 @@ function setupLiveFirebaseSync() {
             // cada tecla -- aplicarlo aquí reconstruía la grilla en pleno tabulador/escritura.
             // Ya tenemos ese estado en memoria (lo acabamos de escribir), así que se ignora.
             if (doc.metadata.hasPendingWrites) return;
+            // Hay una edición local sin guardar (debounce en curso): aplicar el estado remoto
+            // la pisaría y el siguiente guardado perdería lo tecleado. Gana lo local.
+            if (_ccSaveTimer) return;
             const incoming = doc.exists ? doc.data() : {};
             const changed = JSON.stringify({ billetes: _ccBilletes, monedas: _ccMonedas, guardadosBilletes: _ccGuardadosBilletes, guardadasMonedas: _ccGuardadasMonedas })
                 !== JSON.stringify({ billetes: incoming.billetes || {}, monedas: incoming.monedas || {}, guardadosBilletes: Number(incoming.guardadosBilletes || 0), guardadasMonedas: Number(incoming.guardadasMonedas || 0) });
@@ -27349,11 +27352,12 @@ function _ccApplyData(data) {
     data = data || {};
     _ccBilletes = data.billetes || {};
     _ccMonedas  = data.monedas  || {};
-    _ccGuardadosBilletes = Number(data.guardadosBilletes || 0);
-    _ccGuardadasMonedas  = Number(data.guardadasMonedas  || 0);
+    _ccGuardadosBilletes = _ccCleanCount(data.guardadosBilletes);
+    _ccGuardadasMonedas  = _ccCleanCount(data.guardadasMonedas);
 }
 
 function _ccSaveNow() {
+    clearTimeout(_ccSaveTimer); _ccSaveTimer = null;
     if (!firebaseDb) return;
     firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(CC_DOC_ID).set({
         billetes: _ccBilletes, monedas: _ccMonedas,
@@ -27364,18 +27368,21 @@ function _ccSaveNow() {
 
 function _ccSaveDebounced() {
     clearTimeout(_ccSaveTimer);
-    _ccSaveTimer = setTimeout(_ccSaveNow, 500);
+    _ccSaveTimer = setTimeout(() => { _ccSaveTimer = null; _ccSaveNow(); }, 500);
 }
 
-function _ccSubB() { return CC_BILLETES.reduce((s, d) => s + d * (Number(_ccBilletes[d] || 0)), 0); }
-function _ccSubM() { return CC_MONEDAS.reduce((s, d)  => s + d * (Number(_ccMonedas[d]  || 0)), 0); }
+// Cantidad válida: entero >= 0 (ignora negativos, decimales y notación 1e3 que acepta input number).
+function _ccCleanCount(v) { const n = Math.floor(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; }
+
+function _ccSubB() { return CC_BILLETES.reduce((s, d) => s + d * _ccCleanCount(_ccBilletes[d]), 0); }
+function _ccSubM() { return CC_MONEDAS.reduce((s, d)  => s + d * _ccCleanCount(_ccMonedas[d]), 0); }
 function _ccTotal() { return _ccSubB() + _ccSubM() + _ccGuardadosBilletes + _ccGuardadasMonedas; }
 
 function _ccRenderGrid(containerId, denoms, state) {
     const el = document.getElementById(containerId);
     if (!el) return;
     el.innerHTML = denoms.map((d) => {
-        const count = Number(state[d] || 0);
+        const count = _ccCleanCount(state[d]);
         const sub = d * count;
         return `<div class="cc-denom-row">
             <span class="cc-denom-label">${formatMoney(d)}</span>
@@ -27448,15 +27455,15 @@ document.getElementById('cajaChicaModal')?.addEventListener('input', (e) => {
     const denomInput = e.target.closest('[data-cc-denom]');
     if (denomInput) {
         const d = Number(denomInput.dataset.ccDenom);
-        const count = Number(denomInput.value) || 0;
+        const count = _ccCleanCount(denomInput.value);
         if (CC_BILLETES.includes(d)) { _ccBilletes[d] = count; } else { _ccMonedas[d] = count; }
         const sub = d * count;
         const subEl = denomInput.closest('.cc-denom-row')?.querySelector(`[data-cc-sub="${d}"]`);
         if (subEl) { subEl.textContent = sub > 0 ? formatMoney(sub) : '—'; subEl.classList.toggle('has-value', sub > 0); }
         _ccSaveDebounced(); _ccRefreshTotals(); return;
     }
-    if (e.target.id === 'ccGuardadosBilletes') { _ccGuardadosBilletes = Number(e.target.value) || 0; _ccSaveDebounced(); _ccRefreshTotals(); }
-    if (e.target.id === 'ccGuardadasMonedas')  { _ccGuardadasMonedas  = Number(e.target.value) || 0; _ccSaveDebounced(); _ccRefreshTotals(); }
+    if (e.target.id === 'ccGuardadosBilletes') { _ccGuardadosBilletes = _ccCleanCount(e.target.value); _ccSaveDebounced(); _ccRefreshTotals(); }
+    if (e.target.id === 'ccGuardadasMonedas')  { _ccGuardadasMonedas  = _ccCleanCount(e.target.value); _ccSaveDebounced(); _ccRefreshTotals(); }
 });
 
 document.getElementById('ccSaveBtn')?.addEventListener('click', () => {
