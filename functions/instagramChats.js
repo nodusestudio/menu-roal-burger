@@ -29,7 +29,12 @@ const PAUSA_IA_TRAS_HUMANO_MS = 12 * HORA_MS;
 const MAX_AUTO_POR_DIA = 6;
 const MAX_TEXTO_ENVIO = 1000; // la API de mensajes admite hasta 1000 caracteres de texto
 const MAX_COMENTARIO = 2200;
-const URL_MENU = 'https://roalburger.com';
+const URL_MENU = 'https://www.roalburger.com';
+const WHATSAPP_NEGOCIO = '3144689509';
+// Cuando piden un número de contacto: corto y claro. Los pedidos NO se toman por redes ni por llamada.
+const TEXTO_CONTACTO = `Los pedidos se hacen en nuestra página/app ${URL_MENU} 🍔 (eliges, pagas y te lo llevamos). Para dudas escríbenos al WhatsApp ${WHATSAPP_NEGOCIO}: te atendemos por orden de llegada, lo más pronto posible 🙏`;
+const MAX_PALABRAS_REGLA = 6; // un mensaje más largo que esto es una pregunta concreta: la responde la IA, no una frase fija
+const MAX_PALABRAS_SALUDO = 4;
 const ECO_PROPIO_MS = 30 * 1000; // el eco de un mensaje enviado por la API llega en segundos
 
 const LOG_COLLECTION = 'instagram_auto_log';
@@ -157,6 +162,15 @@ function normalizar(s) {
     return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function numPalabras(norm) { return norm ? norm.split(' ').length : 0; }
+
+/** ¿Pide un número de teléfono/WhatsApp de contacto? (no "número de pedido/orden/mesa"). */
+function pideNumeroContacto(norm) {
+    if (!norm) return false;
+    if (/\b(pedido|orden|mesa|guia|factura|cuenta|direccion|casa|apartamento|apto|calle|carrera)\b/.test(norm) && !/\b(telefono|celular|whatsapp|cel)\b/.test(norm)) return false;
+    return /\b(numero|num|telefono|tel|celular|cel|whatsapp|wasap|wsp|contacto|llamar|llamo|llamada)\b/.test(norm);
+}
+
 function contieneClave(textoNormalizado, clave) {
     const c = normalizar(clave);
     if (!c) return false;
@@ -183,8 +197,17 @@ function decidirRegla({ config, msg, nuevoChat, chat, disponibilidad, nowMs }) {
     const libre = (clave, espera) => !usos[clave] || nowMs - usos[clave] >= espera;
     const base = { nombre: chat?.nombre, disponibilidad };
     const norm = normalizar(msg.texto);
+    const corto = numPalabras(norm) <= MAX_PALABRAS_REGLA;
 
-    for (const p of config.palabras || []) {
+    // Pedir el número es una pregunta frecuente con respuesta fija y siempre igual de importante.
+    if (!msg.esDeHistoria && numPalabras(norm) <= 12 && pideNumeroContacto(norm) && libre('b:contacto', ESPERA_PALABRAS_MS)) {
+        return { tipo: 'palabras', clave: 'b:contacto', nombre: 'Palabras: Número de contacto', texto: TEXTO_CONTACTO };
+    }
+
+    // Las frases fijas solo contestan mensajes cortos ("horario?", "carta"). Una pregunta larga o concreta
+    // ("¿qué trae el pepito?") la responde la IA con la carta y las descripciones; si no, se repetía la misma
+    // respuesta sin contestar lo que el cliente preguntó.
+    for (const p of corto ? (config.palabras || []) : []) {
         if (p.activa && libre(`p:${p.id}`, ESPERA_PALABRAS_MS) && p.claves.some((c) => contieneClave(norm, c))) {
             return { tipo: 'palabras', clave: `p:${p.id}`, nombre: `Palabras: ${p.nombre}`, texto: rellenar(p.texto, base) };
         }
@@ -192,10 +215,10 @@ function decidirRegla({ config, msg, nuevoChat, chat, disponibilidad, nowMs }) {
     if (msg.esDeHistoria && config.historia?.activa && libre('historia', ESPERA_HISTORIA_MS)) {
         return { tipo: 'historia', clave: 'historia', nombre: 'Respuesta a historia', texto: rellenar(config.historia.texto, base) };
     }
-    if (disponibilidad && !disponibilidad.isOpen && config.fueraHorario?.activa && libre('fueraHorario', ESPERA_FUERA_HORARIO_MS)) {
+    if (corto && disponibilidad && !disponibilidad.isOpen && config.fueraHorario?.activa && libre('fueraHorario', ESPERA_FUERA_HORARIO_MS)) {
         return { tipo: 'fuera-horario', clave: 'fueraHorario', nombre: 'Fuera de horario', texto: rellenar(config.fueraHorario.texto, base) };
     }
-    if (nuevoChat && config.saludo?.activa) {
+    if (nuevoChat && config.saludo?.activa && numPalabras(norm) <= MAX_PALABRAS_SALUDO && !/[?¿]/.test(String(msg.texto || ''))) {
         return { tipo: 'saludo', clave: 'saludo', nombre: 'Saludo (primer mensaje)', texto: rellenar(config.saludo.texto, base) };
     }
     return null;
@@ -364,28 +387,43 @@ async function resumenMenu(db) {
     return snap.docs.map((d) => d.data())
         .filter((p) => String(p.estado || '').trim() !== 'paused' && p.activo_menu !== false && p.nombre && Number(p.precio) > 0)
         .slice(0, 150)
-        .map((p) => `${p.nombre} (${p.categoria || 'general'}): $${Number(p.precio).toLocaleString('es-CO')}`)
+        .map((p) => {
+            const desc = String(p.descripcion || p.description || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+            return `${p.nombre} (${p.categoria || 'general'}): $${Number(p.precio).toLocaleString('es-CO')}${desc ? ` — ${desc}` : ''}`;
+        })
         .join('\n');
 }
 
-function construirPromptAuto({ menu, disponibilidad, instrucciones, historial }) {
+function construirPromptAuto({ menu, disponibilidad, instrucciones, historial, conocimiento = '', yaDichas = '' }) {
     const system = [
-        'Eres el asistente de Instagram de Roal Burger, comida rápida con acento venezolano en Armenia, Quindío (Colombia).',
-        'Respondes en español, tuteando, cálido y breve (máximo 3 frases, 0 a 2 emojis).',
-        `Solo contestas lo BÁSICO: horario, si están abiertos, qué hay en la carta y precios, y envías el link del menú: ${URL_MENU}.`,
-        `NO tomas pedidos por Instagram: si quieren pedir, diles que lo hagan en ${URL_MENU} (ahí eligen y pagan).`,
+        'Eres el asistente de Instagram/Facebook de Roal Burger, comida rápida con acento venezolano en Armenia, Quindío (Colombia).',
+        'Respondes en español, tuteando, cálido y breve (máximo 4 frases cortas, 0 a 2 emojis).',
+        'LO MÁS IMPORTANTE: responde EXACTAMENTE lo que el cliente preguntó en su último mensaje (ej. si pregunta por el pepito, cuéntale qué es y qué trae según la carta). Usa la carta, las descripciones y la información del negocio de abajo. No sueltes un texto genérico de bienvenida.',
+        `NO repitas lo que ya se le dijo antes en la conversación (ni el link ni el saludo) salvo que lo pida otra vez. Si ya diste el link del menú, no lo repitas en cada mensaje.`,
+        `Pedidos: NO se toman por Instagram, Facebook ni llamada. Se hacen en la página/app ${URL_MENU} (ahí eligen y pagan).`,
+        `Si piden un número, teléfono o WhatsApp: acláralo fácil y corto — los pedidos se hacen en ${URL_MENU}; el WhatsApp de la empresa es ${WHATSAPP_NEGOCIO}, donde se atienden dudas por orden de llegada lo más pronto posible.`,
         'NO inventes datos: si no está en la información de abajo, no lo afirmes. No prometas descuentos, promos ni tiempos de entrega.',
-        'Si el mensaje es un reclamo, un problema con un pedido, una queja, una alianza, algo ambiguo o algo que no puedes responder con la información de abajo, NO respondas: una persona lo atiende.',
+        'Si el mensaje es un reclamo, un problema con un pedido, una queja, una alianza, o algo que de verdad no puedes responder con la información de abajo, NO respondas: una persona lo atiende.',
         'Si el mensaje es solo un emoji, un "gracias", un "ok" o una reacción que no pide nada, tampoco respondas.',
         'Responde SOLO con JSON: {"responder":true|false,"texto":"..."} sin texto adicional.',
         instrucciones ? `Instrucciones del negocio: ${instrucciones}` : ''
     ].filter(Boolean).join('\n');
     const user = [
         `Estado ahora: ${disponibilidad.isOpen ? 'ABIERTO' : 'CERRADO'}. ${disponibilidad.scheduleLabel || ''}. ${disponibilidad.statusLabel || ''}`,
-        `Carta y precios:\n${menu || '(no disponible)'}`,
+        `Carta, precios y descripciones:\n${menu || '(no disponible)'}`,
+        conocimiento ? `Información del negocio (base de conocimiento de FODI):\n${conocimiento}` : '',
+        yaDichas ? `Esto ya se le dijo al cliente (NO lo repitas):\n${yaDichas}` : '',
         `Conversación reciente (el último es del cliente):\n${historial}`
-    ].join('\n\n');
+    ].filter(Boolean).join('\n\n');
     return { system, user };
+}
+
+// Lo que el dueño documentó en FODI (fodi_base, solo sus documentos, no la teoría) relacionado con la pregunta.
+async function conocimientoParaCliente(db, texto) {
+    try {
+        const r = await require('./fodiBase').buscar(db, texto, 3);
+        return (r.resultados || []).filter((x) => String(x.fuente || '').startsWith('Tu base')).map((x) => `- ${x.texto}`).join('\n').slice(0, 1800);
+    } catch (_) { return ''; }
 }
 
 function leerJsonRespuesta(resp) {
@@ -513,11 +551,14 @@ async function alGuardarMensaje(db, msg, { cliente, fetchFn = fetch, nowMs = Dat
     }
     const [menu, recientes] = await Promise.all([
         resumenMenu(db),
-        chatRef.collection(mensajes.MENSAJES_SUBCOLLECTION).orderBy('atMs', 'desc').limit(6).get()
+        chatRef.collection(mensajes.MENSAJES_SUBCOLLECTION).orderBy('atMs', 'desc').limit(10).get()
     ]);
-    const historial = recientes.docs.map((d) => d.data()).reverse()
+    const docsRecientes = recientes.docs.map((d) => d.data()).reverse();
+    const historial = docsRecientes
         .map((m) => `${m.de === 'cliente' ? 'Cliente' : 'Roal'}: ${m.texto || `[${m.adjuntos?.[0]?.tipo || 'adjunto'}]`}`).join('\n');
-    const { system, user } = construirPromptAuto({ menu, disponibilidad, instrucciones: config.instrucciones, historial });
+    const yaDichas = docsRecientes.filter((m) => m.de !== 'cliente' && m.texto).slice(-3).map((m) => `- ${m.texto.slice(0, 250)}`).join('\n');
+    const conocimiento = await conocimientoParaCliente(db, msg.texto);
+    const { system, user } = construirPromptAuto({ menu, disponibilidad, instrucciones: config.instrucciones, historial, conocimiento, yaDichas });
 
     let decision = null;
     try {
@@ -530,7 +571,9 @@ async function alGuardarMensaje(db, msg, { cliente, fetchFn = fetch, nowMs = Dat
         return { motivo: 'error-ia' };
     }
     const texto = String(decision?.texto || '').trim();
-    if (!decision || decision.responder !== true || !texto) {
+    // Nunca se manda dos veces seguidas lo mismo: si la IA repite una respuesta reciente, lo atiende una persona.
+    const repetida = texto && docsRecientes.some((m) => m.de !== 'cliente' && normalizar(m.texto) === normalizar(texto));
+    if (!decision || decision.responder !== true || !texto || repetida) {
         await chatRef.set({ requiereHumano: true }, { merge: true });
         await registrarLog(db, { ...datosLog, via: 'ia', regla: 'IA de respaldo', estado: 'necesita-persona' }, nowMs);
         return { motivo: 'necesita-persona' };
@@ -720,7 +763,7 @@ async function sugerirRespuesta(db, { tipo, id }, { cliente, nowMs = Date.now() 
     const system = [
         'Eres quien maneja el Instagram de Roal Burger (comida rápida con acento venezolano, Armenia, Quindío, Colombia).',
         `Escribe UN borrador de respuesta en español, tuteando, cálido y breve (máximo ${tipo === 'comentario' ? 2 : 3} frases, 0 a 2 emojis).`,
-        `No tomas pedidos por Instagram: para pedir, el link es ${URL_MENU}. No inventes datos ni prometas descuentos, promos o tiempos.`,
+        `No tomas pedidos por Instagram: para pedir, el link es ${URL_MENU}. Si piden un número: los pedidos se hacen en esa página/app y el WhatsApp ${WHATSAPP_NEGOCIO} atiende dudas por orden de llegada. Responde lo que preguntan, sin repetir saludos. No inventes datos ni prometas descuentos, promos o tiempos.`,
         'Si es un reclamo, discúlpate con empatía y pide que escriban por mensaje directo para resolverlo.',
         'Responde SOLO con el texto del mensaje, sin comillas ni explicaciones.',
         config.instrucciones ? `Instrucciones del negocio: ${config.instrucciones}` : ''

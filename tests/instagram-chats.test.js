@@ -205,3 +205,25 @@ test('sugerir: devuelve un borrador para un comentario sin publicar nada', async
     assert.equal(r.texto, '¡Gracias Ana! 🍔');
     assert.match(llamadas[0].messages[0].content, /se ve buenísima/);
 });
+
+test('reglas: piden el número -> aclaración corta con la web y el WhatsApp; "número de pedido" no cuenta', () => {
+    const r = decidir({ msg: { texto: 'me pasas el numero para pedir?', esDeHistoria: false } });
+    assert.equal(r.nombre, 'Palabras: Número de contacto');
+    assert.match(r.texto, /www\.roalburger\.com/);
+    assert.match(r.texto, /3144689509/);
+    assert.match(r.texto, /orden de llegada/);
+    assert.equal(decidir({ msg: { texto: 'cual es el numero de mi pedido', esDeHistoria: false } })?.nombre === 'Palabras: Número de contacto', false);
+});
+
+test('reglas: una pregunta larga y concreta NO dispara frases fijas (la responde la IA)', () => {
+    const r = decidir({ msg: { texto: 'hola que trae el pepito y a que hora abren hoy en la noche', esDeHistoria: false }, nuevoChat: true });
+    assert.equal(r, null);
+});
+
+test('prompt IA: incluye descripciones, contacto y no repetir', () => {
+    const { system, user } = ic.construirPromptAuto({ menu: 'Pepito (PEPITOS): $20.000 — carne y queso', disponibilidad: ABIERTO, historial: 'Cliente: que trae el pepito', yaDichas: '- Mira la carta' });
+    assert.match(system, /3144689509/);
+    assert.match(system, /EXACTAMENTE lo que el cliente preguntó/);
+    assert.match(user, /carne y queso/);
+    assert.match(user, /NO lo repitas/);
+});
