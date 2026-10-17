@@ -1597,6 +1597,8 @@ function notifyNewMessage(message) {
     };
 }
 
+let _resetAlarmPlaying = false;
+
 function announceNewMessages(messages) {
     const currentMessageIds = new Set(messages.map((message) => message.id));
 
@@ -1621,19 +1623,32 @@ function announceNewMessages(messages) {
         return;
     }
 
+    // Varias solicitudes de reinicio del mismo teléfono en la misma tanda (cliente que toca el
+    // botón varias veces) deben sonar y avisar UNA sola vez, no una por cada documento.
+    const resetPhonesAnnounced = new Set();
     newMessages
         .slice()
         .reverse()
         .forEach((message) => {
-            notifyNewMessage(message);
             if (message.type === 'password_reset_request') {
+                const phoneKey = String(message.customerPhoneDigits || message.customerPhone || message.id);
+                if (resetPhonesAnnounced.has(phoneKey)) return;
+                resetPhonesAnnounced.add(phoneKey);
+                notifyNewMessage(message);
                 // Reinicio de contraseña = cliente bloqueado sin poder pedir: alarma fuerte
                 // (dos veces) + aviso emergente que se queda hasta que el admin lo atienda.
-                playAlertTonePattern(CHAT_ROAL_SOUND_PRESETS.alarma_max.steps)
-                    .then(() => playAlertTonePattern(CHAT_ROAL_SOUND_PRESETS.alarma_max.steps));
+                // Si ya hay una alarma sonando (otra solicitud de la misma tanda) no se apila.
+                if (!_resetAlarmPlaying) {
+                    _resetAlarmPlaying = true;
+                    playAlertTonePattern(CHAT_ROAL_SOUND_PRESETS.alarma_max.steps)
+                        .then(() => playAlertTonePattern(CHAT_ROAL_SOUND_PRESETS.alarma_max.steps))
+                        .catch(() => undefined)
+                        .finally(() => { _resetAlarmPlaying = false; });
+                }
                 showPasswordResetRequestToast(message);
                 return;
             }
+            notifyNewMessage(message);
             playMessageAlertTone();
             showNotice(`Nuevo mensaje de ${message.customerName}.`, 'ok');
         });
@@ -1649,6 +1664,8 @@ function showPasswordResetRequestToast(message) {
         document.body.appendChild(stack);
     }
     stack.querySelector(`.chatroal-msg-toast--reset[data-message-id="${CSS.escape(message.id)}"]`)?.remove();
+    const phoneKey = String(message.customerPhoneDigits || '');
+    if (phoneKey) stack.querySelector(`.chatroal-msg-toast--reset[data-phone="${CSS.escape(phoneKey)}"]`)?.remove();
 
     const createdAt = message.createdAt && typeof message.createdAt.toDate === 'function' ? message.createdAt.toDate() : new Date();
     const timeLabel = createdAt.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
@@ -1656,6 +1673,7 @@ function showPasswordResetRequestToast(message) {
     const toast = document.createElement('div');
     toast.className = 'chatroal-msg-toast chatroal-msg-toast--reset';
     toast.dataset.messageId = message.id;
+    if (phoneKey) toast.dataset.phone = phoneKey;
     toast.setAttribute('role', 'alert');
     toast.innerHTML = `
         <button type="button" class="chatroal-msg-toast__close" aria-label="Cerrar aviso">✕</button>

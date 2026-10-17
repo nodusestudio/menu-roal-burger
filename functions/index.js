@@ -1262,6 +1262,16 @@ exports.submitPasswordResetRequest = onCall(
         const customerName = String(clientSnap.data()?.customerName || '').trim();
         const customerPhone = String(clientSnap.data()?.customerPhone || '').trim();
 
+        // Un toque repetido (o varios reintentos) no debe llenar la bandeja ni disparar la alarma
+        // del admin una vez por cada uno: si ya hay una solicitud pendiente de este número, se reutiliza.
+        const pendingSnap = await db.collection(MESSAGES_COLLECTION)
+            .where('type', '==', 'password_reset_request')
+            .where('customerPhoneDigits', '==', phoneDigits)
+            .where('status', '==', 'pending')
+            .limit(1)
+            .get();
+        if (!pendingSnap.empty) return { success: true, duplicate: true };
+
         await db.collection(MESSAGES_COLLECTION).add({
             type: 'password_reset_request',
             status: 'pending',
