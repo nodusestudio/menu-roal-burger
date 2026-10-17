@@ -41,7 +41,7 @@
     <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="manifest" href="site.webmanifest">
     <link rel="preload" as="image" href="portada.webp?v=20260615" type="image/webp" fetchpriority="high">
-    <link rel="stylesheet" href="style.css?v=20261017-1624">
+    <link rel="stylesheet" href="style.css?v=20261017-1732">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -619,10 +619,10 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script defer src="tracking.js?v=20261017-1624"></script>
-    <script defer src="firebase-config.js?v=20261017-1624"></script>
-    <script defer src="script-v2.js?v=20261017-1624"></script>
-    <script defer src="agent-chat.js?v=20261017-1624"></script>
+    <script defer src="tracking.js?v=20261017-1732"></script>
+    <script defer src="firebase-config.js?v=20261017-1732"></script>
+    <script defer src="script-v2.js?v=20261017-1732"></script>
+    <script defer src="agent-chat.js?v=20261017-1732"></script>
 
     <!-- ── Anuncio de apertura (promo destacada al abrir el menu) ── -->
     <div id="openingAdOverlay" class="opening-ad-overlay" hidden style="display:none;">
@@ -684,7 +684,6 @@
                 caches.keys().then((keys) => keys.forEach((key) => caches.delete(key))).catch(() => {});
             }
         } else if ('serviceWorker' in navigator) {
-            const hadController = Boolean(navigator.serviceWorker.controller);
             navigator.serviceWorker.register('./sw.js').then((reg) => {
                 reg.addEventListener('updatefound', () => {
                     const next = reg.installing;
@@ -696,9 +695,9 @@
                     });
                 });
             }).catch(() => {});
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (hadController) window.location.reload();
-            });
+            // Sin recargar al cambiar de Service Worker: HTML, JS y CSS ya salen de la red primero
+            // (network-first), así que la página abierta ya es la versión nueva. Recargar aquí hacía
+            // que cada cliente recurrente viera el menú cargar DOS veces tras cada deploy.
         }
     </script>
 

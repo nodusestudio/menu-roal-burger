@@ -1,8 +1,10 @@
 // Service Worker — ROAL BURGER
 // Bump CACHE_VER en cada deploy para invalidar caches viejos
-const CACHE_VER    = 'rb-20261017-1624';
+const CACHE_VER    = 'rb-20261017-1732';
 const STATIC_CACHE = `${CACHE_VER}-static`;
-const IMG_CACHE    = `${CACHE_VER}-img`;
+// Estable entre deploys: las fotos del menú casi no cambian (sus URLs llevan ?v=) y borrarlas en cada
+// deploy obligaba a todos los clientes a bajarlas otra vez (carga lenta justo tras publicar).
+const IMG_CACHE    = 'rb-img-v1';
 
 // Assets propios que se pre-cachean en la instalacion
 const PRECACHE_OWN = [
