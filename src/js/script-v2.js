@@ -5442,8 +5442,9 @@ async function createOrderFromCart(customerInfo = {}) {
     const actualPointsRedeemed = Math.max(0, Number(submitResult.data.pointsRedeemed) || 0);
 
     // Profile update is non-critical: order is already saved; don't let quota/network errors here surface as order failure
+    // Tampoco hace falta esperarla para mostrar la confirmación al cliente (antes sumaba una transacción de espera)
     try {
-        await upsertClientProfile(db, {
+        upsertClientProfile(db, {
             customerName,
             customerPhone,
             customerPhoneDigits,
@@ -5455,7 +5456,7 @@ async function createOrderFromCart(customerInfo = {}) {
             id: orderRef.id,
             code: orderCode,
             total
-        });
+        }).catch(() => {});
     } catch (_profileErr) {
         // Silently ignore — order was already saved successfully
     }

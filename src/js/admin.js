@@ -7402,7 +7402,13 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         // Solo al crear (no en cada edición, igual que el checkout público) para no
         // inflar el contador de visitas cada vez que se corrige un pedido ya guardado.
         if (!isEditing) {
-            _upsertClientStatsFromPosOrder(orderDoc).then(() => fetchClients({ force: true })).then(() => {
+            // Sin releer toda la colección de clientes por cada pedido: se actualiza el caché local (el refresco
+            // completo lo hace fetchClients() por TTL)
+            _upsertClientStatsFromPosOrder(orderDoc).then(() => {
+                const cid = `phone_${String(orderDoc.customerPhoneDigits || '').trim()}`;
+                const c = clientsState.find((x) => x.id === cid);
+                if (c) { c.totalOrders += 1; c.totalSpent += Number(orderDoc.total || 0); c.lastOrderCode = orderDoc.code; c.lastOrderTotal = Number(orderDoc.total || 0); }
+                else if (orderDoc.customerPhoneDigits) _clientsLastFetchedAt = 0; // cliente nuevo: el próximo uso recarga la lista
                 renderClients();
                 renderMetricsPos();
                 renderMetricsUsers();
