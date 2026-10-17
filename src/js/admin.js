@@ -19265,20 +19265,22 @@ async function _ptsCreateAndSelectClient({ name, phone, addr }) {
         ? buildAdminClientDocumentId({ customerName: name, customerPhone: phone, address: addr })
         : `${phoneDigits}_${name.toLowerCase().replace(/\s+/g, '_')}`;
 
-    const savedAddresses = addr ? [addr] : [];
-    await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
-        customerName: name,
-        customerPhone: phone,
-        customerPhoneDigits: phoneDigits,
-        address: addr,
-        savedAddresses,
-        totalOrders: 0,
-        totalSpent: 0,
-        createdAt: firestoreNow(),
-        source: 'admin_pos'
-    }, { merge: true });
+    const ref = firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId);
+    const prev = await ref.get().catch(() => null);
+    const existe = !!(prev && prev.exists);
+    // Si el cliente ya existe NO se pisan sus contadores (pedidos, gastado, creación): solo se suma la dirección
+    const previas = existe ? normalizeClientSavedAddresses(prev.data().savedAddresses || [], prev.data().address || '') : [];
+    const savedAddresses = addr && !previas.includes(addr) ? [...previas, addr] : previas;
+    const datos = existe
+        ? { customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, savedAddresses, ...(addr ? { address: addr } : {}) }
+        : { customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, address: addr, savedAddresses, totalOrders: 0, totalSpent: 0, createdAt: firestoreNow(), source: 'admin_pos' };
+    await ref.set(datos, { merge: true });
 
-    await fetchClients({ force: true });
+    // Sin releer toda la colección de clientes (era lo que hacía lenta la acción): se agrega al caché local y se refresca en segundo plano
+    if (!clientsState.some((c) => c.id === clientId)) {
+        clientsState.push({ id: clientId, customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, address: addr || 'Sin direccion registrada', savedAddresses, firstOrderAt: null, lastOrderCode: '', lastOrderId: '', lastOrderTotal: 0, totalOrders: 0, totalSpent: 0, puntosDisponibles: 0, puntosAcumuladosTotal: 0, lastOrderAt: null, createdAt: null, updatedAt: null, source: 'admin_pos', passwordHash: '' });
+    }
+    fetchClients({ force: true }).catch(() => {});
 
     _ptsSelectedClient = { name, phone, savedAddresses };
     _ptsShowSelectedClientChip(_ptsSelectedClient);
