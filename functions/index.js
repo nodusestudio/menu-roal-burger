@@ -1268,7 +1268,7 @@ exports.submitPasswordResetRequest = onCall(
             subject: 'Solicitud de reinicio de contraseña',
             body: [
                 '⚠️ SIN VERIFICAR POR OTP (WhatsApp automático suspendido) — confirma con el cliente por WhatsApp antes de resetear.',
-                `Numero: ${customerPhone || phoneDigits}`
+                `Número: ${customerPhone || phoneDigits}`
             ].join('\n'),
             customerName: customerName || 'Cliente sin nombre',
             customerPhone: customerPhone || phoneDigits,
@@ -1307,7 +1307,7 @@ exports.submitNewAccountRequest = onCall(
             subject: 'Solicitud de cuenta nueva',
             body: [
                 '⚠️ SIN VERIFICAR POR OTP (WhatsApp automático suspendido) — confirma con el cliente por WhatsApp antes de aprobar.',
-                `Numero: ${phoneDigits}`
+                `Número: ${phoneDigits}`
             ].join('\n'),
             customerName: customerName || 'Cliente sin nombre',
             customerPhone: phoneDigits,
@@ -1331,7 +1331,7 @@ exports.adminAuthorizeNewAccount = onCall(
     async (request) => {
         const adminUid = request.auth?.uid;
         if (!adminUid) {
-            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
         }
         const adminDoc = await getFirestore().collection('admins').doc(adminUid).get();
         if (!adminDoc.exists) {
@@ -1848,7 +1848,7 @@ exports.adminResetClientCredentials = onCall(
     async (request) => {
         const adminUid = request.auth?.uid;
         if (!adminUid) {
-            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
         }
         const adminDoc = await getFirestore().collection('admins').doc(adminUid).get();
         if (!adminDoc.exists) {
@@ -1983,7 +1983,7 @@ exports.adminAdjustLoyaltyPoints = onCall(
     async (request) => {
         const adminUid = request.auth?.uid;
         if (!adminUid) {
-            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
         }
         const adminDoc = await getFirestore().collection('admins').doc(adminUid).get();
         if (!adminDoc.exists) {
@@ -2028,7 +2028,7 @@ exports._adjustLoyaltyPointsTransaction = adjustLoyaltyPointsTransaction;
 async function ensureAdminCaller(request) {
     const uid = request.auth?.uid;
     if (!uid) {
-        throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+        throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
     }
     const adminDoc = await getFirestore().collection('admins').doc(uid).get();
     if (!adminDoc.exists) {
@@ -2320,7 +2320,7 @@ exports.agentChatAdminReply = onCall(
     async (request) => {
         const uid = request.auth?.uid;
         if (!uid) {
-            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
         }
         const adminDoc = await getFirestore().collection('admins').doc(uid).get();
         if (!adminDoc.exists) {
@@ -2418,7 +2418,7 @@ exports.chatRoalMenuList = onCall(
     async (request) => {
         const uid = request.auth?.uid;
         if (!uid) {
-            throw new HttpsError('unauthenticated', 'Debes iniciar sesion.');
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
         }
         const adminDoc = await getFirestore().collection('admins').doc(uid).get();
         if (!adminDoc.exists) {

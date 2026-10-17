@@ -3156,6 +3156,9 @@ async function submitCustomerNewPassword() {
     const pinValue = String(customerPasswordResetUI.pin?.value || '').trim();
     const confirmPinValue = String(customerPasswordResetUI.confirmPin?.value || '').trim();
     customerPasswordResetUI.feedback.textContent = '';
+    customerPasswordResetUI.feedback.className = 'support-feedback';
+    const saveBtn = customerPasswordResetUI.stepContent?.querySelector('#customerResetSaveButton');
+    if (saveBtn) { if (saveBtn.disabled) return; saveBtn.disabled = true; }
 
     try {
         const savedProfile = await saveCustomerProfile({
@@ -3184,14 +3187,19 @@ async function submitCustomerNewPassword() {
                 const fn = getPublicFirebaseFunctions();
                 if (!fn) throw new Error('Servicio no disponible.');
                 await fn.httpsCallable('submitPasswordResetRequest')({ phone: profile?.customerPhoneDigits });
-                customerPasswordResetUI.feedback.textContent = 'Necesitamos que confirmemos tu identidad primero. Ya avisamos — te contactaremos por WhatsApp para activarte el acceso.';
+                customerPasswordResetUI.feedback.textContent = 'Necesitamos confirmar tu identidad primero. Ya avisamos al restaurante: te contactaremos por WhatsApp para activarte el acceso.';
                 customerPasswordResetUI.feedback.className = 'support-feedback';
             } catch (reqError) {
                 customerPasswordResetUI.feedback.textContent = reqError.message || 'No se pudo enviar tu solicitud. Intenta de nuevo.';
+                customerPasswordResetUI.feedback.className = 'support-feedback support-feedback--error';
             }
             return;
         }
         customerPasswordResetUI.feedback.textContent = error.message || 'No se pudo actualizar la contraseña.';
+        customerPasswordResetUI.feedback.className = 'support-feedback support-feedback--error';
+    } finally {
+        // Si el modal se cerró (éxito) el botón ya no está en el DOM; si no, se rehabilita.
+        if (saveBtn && saveBtn.isConnected) saveBtn.disabled = false;
     }
 }
 
@@ -3799,6 +3807,9 @@ function openPasswordResetRequestModal(phoneDigits, onSuccess) {
     _pushGenericModal(closePasswordResetRequestModal);
 }
 
+// Evita solicitudes duplicadas al admin por doble toque en "Olvidé contraseña".
+let _passwordResetRequestBusy = false;
+
 async function requestCustomerPasswordReset() {
     if (!customerAuthUI?.feedback && !customerRegisterUI?.feedback) {
         return;
@@ -3810,6 +3821,7 @@ async function requestCustomerPasswordReset() {
     const phoneDigits = normalizePhoneDigits(phoneValue);
     feedbackTarget.textContent = '';
     phoneInput?.closest('.support-field')?.classList.remove('support-field--error');
+    if (_passwordResetRequestBusy) return;
 
     if (!isValidColombianMobile(phoneDigits)) {
         feedbackTarget.textContent = 'Escribe tu número de WhatsApp para solicitar el reinicio.';
@@ -3824,6 +3836,7 @@ async function requestCustomerPasswordReset() {
         return;
     }
 
+    _passwordResetRequestBusy = true;
     try {
         const profile = await fetchClientProfileForRecovery(phoneValue);
         if (profile && !profile.hasPassword) {
@@ -3834,7 +3847,7 @@ async function requestCustomerPasswordReset() {
 
         if (OTP_DELIVERY_ENABLED) {
             openPasswordResetRequestModal(phoneDigits, () => {
-                feedbackTarget.textContent = 'Tu solicitud fue enviada al admin. En breve te contactaremos para reiniciar la contraseña.';
+                feedbackTarget.textContent = 'Tu solicitud fue enviada al restaurante. En breve te contactaremos por WhatsApp para reiniciar tu contraseña.';
             });
         } else {
             // Sin OTP no tiene sentido pedirle un codigo que nunca va a llegar -- la solicitud se
@@ -3847,6 +3860,8 @@ async function requestCustomerPasswordReset() {
         }
     } catch (error) {
         feedbackTarget.textContent = error.message || 'No se pudo enviar la solicitud.';
+    } finally {
+        _passwordResetRequestBusy = false;
     }
 }
 

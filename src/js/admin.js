@@ -13719,7 +13719,7 @@ async function deleteClient(clientId) {
 async function resetClientPasswordByPhone(phoneDigits) {
     const normalizedPhone = normalizePhoneDigits(phoneDigits);
     if (!normalizedPhone) {
-        throw new Error('No se encontro un numero valido para resetear la contrasena.');
+        throw new Error('No se encontró un número válido para resetear la contraseña.');
     }
     if (!firebaseFunctions) {
         throw new Error('Servicio no disponible.');
@@ -13731,10 +13731,10 @@ async function resetClientPasswordByPhone(phoneDigits) {
 function buildCustomerPasswordResetClipboardMessage(message = {}, provisionalPin = '') {
     const customerName = String(message.customerName || 'cliente').trim();
     return [
-        `Hola ${customerName}, tu contrasena de ${brandingState.restaurantName || 'Roal Burger'} fue reiniciada.`,
-        `Tu contrasena provisional es: ${provisionalPin}`,
-        'Entra con tu número de WhatsApp y esa contraseña -- la app te va a pedir crear una nueva de una vez.',
-        'Esta contraseña es de un solo uso, no la compartas con nadie mas.'
+        `Hola ${customerName}, tu contraseña de ${brandingState.restaurantName || 'Roal Burger'} fue reiniciada.`,
+        `Tu contraseña provisional es: ${provisionalPin}`,
+        'Entra con tu número de WhatsApp y esa contraseña; la app te va a pedir crear una nueva de una vez.',
+        'Esta contraseña es de un solo uso, no la compartas con nadie más.'
     ].join('\n');
 }
 
@@ -19905,14 +19905,16 @@ document.addEventListener('click', async (event) => {
     if (action === 'whatsapp') {
         const whatsappMessage = message.type === 'customer_direct_message'
             ? `Hola ${message.customerName}, vimos tu mensaje en ${brandingState.restaurantName || 'Roal Burger'} y queremos ayudarte.`
-            : `Hola ${message.customerName}, te escribimos desde ${brandingState.restaurantName || 'Roal Burger'} sobre tu solicitud de reinicio de contrasena.`;
+            : message.type === 'new_account_request'
+                ? `Hola ${message.customerName}, te escribimos desde ${brandingState.restaurantName || 'Roal Burger'} sobre tu solicitud para crear una cuenta.`
+                : `Hola ${message.customerName}, te escribimos desde ${brandingState.restaurantName || 'Roal Burger'} sobre tu solicitud de reinicio de contraseña.`;
         const whatsappUrl = buildCustomerContactWhatsAppUrl(
             message.customerName,
             message.customerPhoneDigits,
             whatsappMessage
         );
         if (!whatsappUrl) {
-            showNotice('La solicitud no tiene un numero de WhatsApp valido.', 'error');
+            showNotice('La solicitud no tiene un número de WhatsApp válido.', 'error');
             return;
         }
         window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
@@ -19927,13 +19929,17 @@ document.addEventListener('click', async (event) => {
             const provisionalPin = await resetClientPasswordByPhone(message.customerPhoneDigits);
             let copied = false;
             try { copied = await copyTextToClipboard(buildCustomerPasswordResetClipboardMessage(message, provisionalPin)); } catch (_) {}
-            await updateMessageRequest(messageId, { status: 'resolved', resolvedAt: firestoreNow(), resolvedBy: adminIdentity, adminAction: 'password_reset_completed' });
+            // El PIN solo existe en texto plano en esta respuesta: se muestra ANTES de marcar el
+            // mensaje como atendido, para que no se pierda si esa escritura falla.
             if (copied) showClipboardToast('Mensaje de restablecimiento copiado');
-            // El PIN solo existe en texto plano en esta respuesta -- si el portapapeles fallo, esta
-            // es la unica oportunidad de verlo, asi que va tambien en el aviso por si acaso.
             showNotice(`Contraseña provisional: ${provisionalPin}. El cliente entra con ella y debe cambiarla de una.`, 'ok');
+            try {
+                await updateMessageRequest(messageId, { status: 'resolved', resolvedAt: firestoreNow(), resolvedBy: adminIdentity, adminAction: 'password_reset_completed' });
+            } catch (_) {
+                showNotice('La contraseña ya se reseteó, pero no se pudo marcar el mensaje como atendido. Márcalo a mano.', 'warn');
+            }
         } catch (error) {
-            showNotice(`No se pudo resetear la contrasena: ${error.message || 'error inesperado.'}`, 'error');
+            showNotice(`No se pudo resetear la contraseña: ${error.message || 'error inesperado.'}`, 'error');
         }
         return;
     }
@@ -21276,21 +21282,21 @@ if (authForgotBtn) {
         const email = String(authUsernameInput?.value || '').trim();
 
         if (!firebaseAuth) {
-            showNotice('Firebase Auth no esta disponible en este momento.', 'error');
+            showNotice('Firebase Auth no está disponible en este momento.', 'error');
             return;
         }
 
         if (!email) {
-            showNotice('Ingresa primero el correo administrador para enviar el enlace de recuperacion.', 'error');
+            showNotice('Ingresa primero el correo administrador para enviar el enlace de recuperación.', 'error');
             authUsernameInput?.focus();
             return;
         }
 
         try {
             await firebaseAuth.sendPasswordResetEmail(email);
-            showNotice('Se envio un correo de recuperacion si la cuenta existe en Firebase Auth.', 'ok');
+            showNotice('Se envió un correo de recuperación si la cuenta existe en Firebase Auth.', 'ok');
         } catch (error) {
-            showNotice(`No se pudo enviar el correo de recuperacion: ${error.message || 'error inesperado.'}`, 'error');
+            showNotice(`No se pudo enviar el correo de recuperación: ${error.message || 'error inesperado.'}`, 'error');
         }
     });
 }
