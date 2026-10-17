@@ -1654,6 +1654,84 @@ function announceNewMessages(messages) {
         });
 }
 
+// ── Avisos de redes (Instagram/Facebook) ─────────────────────────────────────
+// Un aviso por chat (el nuevo reemplaza al anterior del mismo chat) y una sola campanada por
+// ráfaga. Si la persona ya está viendo ese chat en Redes → Chats, no se avisa.
+const _redesAviso = { chatsListo: false, comListo: false, vistoChat: new Map(), vistoCom: new Set(), ultimoSonidoMs: 0 };
+
+function showRedesToast({ clave, titulo, texto, esComentario }) {
+    let stack = document.getElementById('chatRoalToastStack');
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'chatRoalToastStack';
+        document.body.appendChild(stack);
+    }
+    stack.querySelector(`.chatroal-msg-toast--redes[data-clave="${CSS.escape(clave)}"]`)?.remove();
+    const toast = document.createElement('div');
+    toast.className = 'chatroal-msg-toast chatroal-msg-toast--redes';
+    toast.dataset.clave = clave;
+    toast.innerHTML = `
+        <button type="button" class="chatroal-msg-toast__close" aria-label="Cerrar aviso">✕</button>
+        <strong>${escapeHtml(titulo)}</strong>
+        <p>${escapeHtml(String(texto || '(sin texto)').slice(0, 140))}</p>
+    `;
+    toast.querySelector('.chatroal-msg-toast__close').addEventListener('click', (e) => { e.stopPropagation(); toast.remove(); });
+    toast.addEventListener('click', () => {
+        window.focus();
+        document.querySelector('.admin-accordion-trigger[data-accordion-target="redes"]')?.click();
+        toast.remove();
+    });
+    stack.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('chatroal-msg-toast--leaving');
+        setTimeout(() => toast.remove(), 300);
+    }, 30000);
+}
+
+function sonarRedes() {
+    const ahora = Date.now();
+    if (ahora - _redesAviso.ultimoSonidoMs < 4000) return;
+    _redesAviso.ultimoSonidoMs = ahora;
+    try { playMessageAlertTone(); } catch (_) {}
+}
+
+function startRedesAlerts() {
+    if (!firebaseDb) return [];
+    const nombreCanal = (canal) => (canal === 'facebook' ? 'Facebook' : 'Instagram');
+    const unsubChats = firebaseDb.collection('instagram_chats').orderBy('ultimoAtMs', 'desc').limit(30).onSnapshot((snap) => {
+        snap.docChanges().forEach((ch) => {
+            if (ch.type === 'removed') return;
+            const c = ch.doc.data();
+            const antes = _redesAviso.vistoChat.get(ch.doc.id) || 0;
+            _redesAviso.vistoChat.set(ch.doc.id, c.ultimoAtMs || 0);
+            if (!_redesAviso.chatsListo) return; // primera carga: solo línea base
+            if (c.ultimoDe !== 'cliente' || !c.ultimoAtMs || c.ultimoAtMs <= antes) return;
+            const viendoEse = typeof rdChats !== 'undefined' && rdChats.sel === ch.doc.id && document.visibilityState === 'visible';
+            if (viendoEse) return;
+            const quien = c.nombre || (c.username ? `@${c.username}` : 'Un cliente');
+            showRedesToast({ clave: `chat-${ch.doc.id}`, titulo: `📩 ${nombreCanal(c.canal)}: ${quien}`, texto: c.ultimoTexto });
+            sonarRedes();
+        });
+        _redesAviso.chatsListo = true;
+    }, (err) => console.warn('[ADMIN] avisos de chats de redes:', err?.code || err?.message));
+
+    const unsubCom = firebaseDb.collection('instagram_comentarios').orderBy('atMs', 'desc').limit(20).onSnapshot((snap) => {
+        snap.docChanges().forEach((ch) => {
+            if (ch.type !== 'added') return;
+            const c = ch.doc.data();
+            const yaVisto = _redesAviso.vistoCom.has(ch.doc.id);
+            _redesAviso.vistoCom.add(ch.doc.id);
+            if (!_redesAviso.comListo || yaVisto) return;
+            const quien = c.username ? (c.canal === 'facebook' ? c.username : `@${c.username}`) : 'Alguien';
+            showRedesToast({ clave: `com-${ch.doc.id}`, titulo: `🗨️ Comentario en ${nombreCanal(c.canal)}`, texto: `${quien}: ${c.texto || ''}`, esComentario: true });
+            sonarRedes();
+        });
+        _redesAviso.comListo = true;
+    }, (err) => console.warn('[ADMIN] avisos de comentarios de redes:', err?.code || err?.message));
+
+    return [unsubChats, unsubCom];
+}
+
 // Mismo contenedor apilable que los avisos de Chat Roal, pero NO se autodestruye: se queda
 // hasta que el admin lo cierre, abra Mensajes o la solicitud quede resuelta (announceNewMessages).
 function showPasswordResetRequestToast(message) {
@@ -14538,6 +14616,10 @@ function setupLiveFirebaseSync() {
             _ccRefreshTotals();
         }, onErr('caja-chica'))
     );
+
+    // Redes (Instagram/Facebook): aviso en pantalla + sonido cuando entra un mensaje o comentario,
+    // aunque el admin esté en otra pestaña. La primera carga solo fija la línea base (no avisa lo viejo).
+    liveSubscriptions.push(...startRedesAlerts());
 
     // Config general: recarga completa (afecta todo el UI)
     // Catálogo (productos/categorías/botones/promos) NO tiene listener en tiempo real —

@@ -3032,11 +3032,16 @@ exports.instagramWebhook = onRequest(
             verifyToken: INSTAGRAM_VERIFY_TOKEN.value(),
             // Respuesta automática básica (apagada hasta que se active en Redes → Chats).
             alGuardarMensaje: async (msg, resultado) => {
+                // Aviso push a los admins (celular/PC) ANTES de la respuesta automática: nunca lanza.
+                await require('./pushAdmin').avisarMensaje(db, msg);
                 const Anthropic = require('@anthropic-ai/sdk');
                 return instagramChats.alGuardarMensaje(db, msg, { cliente: new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() }), resultado });
             },
             // Respuesta automática a comentarios (reglas por palabra clave, sin IA; respeta el mismo interruptor general).
-            alGuardarComentario: (comentario) => instagramChats.alGuardarComentario(db, comentario)
+            alGuardarComentario: async (comentario) => {
+                await require('./pushAdmin').avisarComentario(db, comentario);
+                return instagramChats.alGuardarComentario(db, comentario);
+            }
         });
     }
 );
