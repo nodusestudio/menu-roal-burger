@@ -1169,16 +1169,19 @@ function playOrderBell() {
     });
 }
 
-function playMessageAlertTone() {
+function playMessageAlertTone(_reintento = false) {
     const audioContext = getOrderBellAudioContext();
     if (!audioContext) {
         return Promise.resolve();
     }
 
     if (audioContext.state === 'suspended') {
+        // Un solo reintento: si el navegador sigue bloqueando el audio (pestaña en segundo plano
+        // sin interacción previa) antes se reintentaba sin fin y nunca sonaba.
+        if (_reintento) return Promise.resolve();
         return audioContext.resume()
             .catch(() => undefined)
-            .then(() => playMessageAlertTone());
+            .then(() => playMessageAlertTone(true));
     }
 
     return new Promise((resolve) => {
@@ -1686,6 +1689,34 @@ function showRedesToast({ clave, titulo, texto, esComentario }) {
         toast.classList.add('chatroal-msg-toast--leaving');
         setTimeout(() => toast.remove(), 300);
     }, 30000);
+
+    // Con otra ventana/pestaña al frente el recuadro de arriba no se ve: aviso del sistema
+    // (con su propio sonido del SO) y parpadeo del título de la pestaña.
+    if (document.visibilityState !== 'visible') {
+        try {
+            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                const n = new Notification(titulo, { body: String(texto || '(sin texto)').slice(0, 140), tag: `redes-${clave}`, renotify: true, silent: false });
+                n.onclick = () => {
+                    window.focus();
+                    document.querySelector('.admin-accordion-trigger[data-accordion-target="redes"]')?.click();
+                    n.close();
+                };
+            }
+        } catch (_) {}
+        try {
+            if (!_redesAviso.tituloOriginal) {
+                _redesAviso.tituloOriginal = document.title;
+                document.title = `🔔 ${titulo}`;
+                const restaurar = () => {
+                    if (document.visibilityState !== 'visible') return;
+                    document.title = _redesAviso.tituloOriginal;
+                    _redesAviso.tituloOriginal = null;
+                    document.removeEventListener('visibilitychange', restaurar);
+                };
+                document.addEventListener('visibilitychange', restaurar);
+            }
+        } catch (_) {}
+    }
 }
 
 function sonarRedes() {
@@ -28186,6 +28217,16 @@ async function _icmHandleFile(file) {
     // Iniciar keep-alive tras primera interacción del usuario (requisito del browser)
     document.addEventListener('click', _startKeepAlive, { once: true });
     document.addEventListener('keydown', _startKeepAlive, { once: true });
+
+    // Desbloqueo del audio: el navegador solo deja sonar si el contexto se crea/reanuda dentro
+    // de un gesto del usuario. Se hace en CADA gesto mientras siga suspendido (no solo el primero),
+    // así los avisos suenan aunque el admin esté en otra ventana.
+    function _unlockAudio() {
+        const ctx = getOrderBellAudioContext();
+        if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    }
+    ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => document.addEventListener(ev, _unlockAudio, { passive: true }));
+    document.addEventListener('visibilitychange', _unlockAudio);
 
     // Cuando el admin vuelve a primer plano, re-alertar si hay pedidos pendientes
     document.addEventListener('visibilitychange', () => {
