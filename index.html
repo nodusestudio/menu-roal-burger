@@ -147,7 +147,7 @@
     </script>
     <!-- ===== FIN PANTALLA DE INICIO ===== -->
 
-    <!-- ===== AVISO FESTIVAL (Quindío Burger) — 30/10/2026 a 08/11/2026, hora Colombia =====
+    <!-- ===== AVISO FESTIVAL (Quindío Burger) — visible en cada entrada hasta el 08/11/2026 23:59, hora Colombia =====
          Vista previa en cualquier momento: agregar ?festival=1 a la URL. Para quitarlo: borrar este bloque. -->
     <div id="festivalPromo" hidden role="dialog" aria-modal="true" aria-label="Burger Trifásica - Festival Sabe a Quindío">
         <style>
@@ -166,14 +166,11 @@
                 if (!el) return;
                 var preview = /[?&]festival=1\b/.test(location.search);
                 var now = Date.now();
-                var inWindow = now >= Date.parse('2026-10-30T00:00:00-05:00') && now <= Date.parse('2026-11-08T23:59:59-05:00');
-                var seen = false;
-                try { seen = sessionStorage.getItem('roalFestivalSeen') === '1'; } catch (e) {}
-                if (!preview && (!inWindow || seen)) return;
+                var inWindow = now <= Date.parse('2026-11-08T23:59:59-05:00');
+                if (!preview && !inWindow) return;
                 el.hidden = false;
                 document.getElementById('festivalPromoBtn').addEventListener('click', function () {
                     el.hidden = true;
-                    try { sessionStorage.setItem('roalFestivalSeen', '1'); } catch (e) {}
                 });
             } catch (e) {}
         })();
