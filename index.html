@@ -147,6 +147,39 @@
     </script>
     <!-- ===== FIN PANTALLA DE INICIO ===== -->
 
+    <!-- ===== AVISO FESTIVAL (Quindío Burger) — 30/10/2026 a 08/11/2026, hora Colombia =====
+         Vista previa en cualquier momento: agregar ?festival=1 a la URL. Para quitarlo: borrar este bloque. -->
+    <div id="festivalPromo" hidden role="dialog" aria-modal="true" aria-label="Burger Trifásica - Festival Sabe a Quindío">
+        <style>
+            #festivalPromo{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:10px 12px calc(12px + env(safe-area-inset-bottom));background:#fef7ed}
+            #festivalPromo[hidden]{display:none}
+            #festivalPromo .fp-img{flex:1 1 auto;min-height:0;width:100%;max-width:520px;object-fit:contain}
+            #festivalPromo .fp-btn{flex:0 0 auto;min-width:240px;padding:15px 32px;border:0;border-radius:999px;background:#ff5a0a;color:#fff;font:800 17px system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;box-shadow:0 6px 18px rgba(255,90,10,.35)}
+        </style>
+        <img class="fp-img" src="./festival-trifasica.webp" alt="Burger Trifásica. Participante oficial del Festival Gastronómico Sabe a Quindío. Pídela del 30 de octubre al 8 de noviembre" width="900" height="1600" decoding="async">
+        <button type="button" class="fp-btn" id="festivalPromoBtn">CONTINUAR</button>
+    </div>
+    <script>
+        (function () {
+            try {
+                var el = document.getElementById('festivalPromo');
+                if (!el) return;
+                var preview = /[?&]festival=1\b/.test(location.search);
+                var now = Date.now();
+                var inWindow = now >= Date.parse('2026-10-30T00:00:00-05:00') && now <= Date.parse('2026-11-08T23:59:59-05:00');
+                var seen = false;
+                try { seen = sessionStorage.getItem('roalFestivalSeen') === '1'; } catch (e) {}
+                if (!preview && (!inWindow || seen)) return;
+                el.hidden = false;
+                document.getElementById('festivalPromoBtn').addEventListener('click', function () {
+                    el.hidden = true;
+                    try { sessionStorage.setItem('roalFestivalSeen', '1'); } catch (e) {}
+                });
+            } catch (e) {}
+        })();
+    </script>
+    <!-- ===== FIN AVISO FESTIVAL ===== -->
+
     <!-- ===== SEGUNDA PANTALLA: HOME ===== -->
     <div id="homeScreen" hidden>
         <div class="home-inner">
