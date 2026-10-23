@@ -157,7 +157,27 @@
             #festivalPromo .fp-btn{flex:0 0 auto;min-width:240px;padding:15px 32px;border:0;border-radius:999px;background:#ff5a0a;color:#fff;font:800 17px system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;box-shadow:0 6px 18px rgba(255,90,10,.35)}
         </style>
         <img class="fp-img" src="./festival-trifasica.webp" alt="Burger Trifásica. Participante oficial del Festival Gastronómico Sabe a Quindío. Pídela del 30 de octubre al 8 de noviembre" width="900" height="1600" decoding="async">
+        <style>
+            #festivalPromo .fp-btn-info{background:#fff;color:#ff5a0a;border:2px solid #ff5a0a;box-shadow:none}
+            #festivalInfo{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.55)}
+            #festivalInfo[hidden]{display:none}
+            #festivalInfo .fi-card{background:#fff;border-radius:18px;max-width:440px;width:100%;max-height:90vh;overflow:auto;padding:22px 20px;font-family:system-ui,sans-serif;color:#2a1b12;text-align:center}
+            #festivalInfo h2{margin:0 0 10px;font-size:22px;color:#ff5a0a}
+            #festivalInfo p{margin:0 0 12px;font-size:15px;line-height:1.45}
+            #festivalInfo .fi-precio{font-size:20px;font-weight:800}
+        </style>
+        <button type="button" class="fp-btn fp-btn-info" id="festivalInfoBtn">INFORMACIÓN</button>
         <button type="button" class="fp-btn" id="festivalPromoBtn">CONTINUAR</button>
+        <div id="festivalInfo" hidden>
+            <div class="fi-card">
+                <h2>Burger Trifásica</h2>
+                <p>Una explosión de sabor con tres proteínas: res, cerdo y pollo, acompañadas de aguacate, tajadas de plátano maduro, maíz dulce, vegetales frescos y nuestras salsas tártara y especial, todo entre panes artesanales. Una combinación de sabores y texturas que une el carácter de ROAL Burger con ingredientes que saben a esta tierra.</p>
+                <p class="fi-precio">$37.000 en 2x1<br><span style="font-size:14px;font-weight:600">Pagas una y te llevas dos</span></p>
+                <p><strong>Festival Sabe a Quindío</strong><br>Del 30 de octubre al 8 de noviembre de 2026</p>
+                <p><strong>Horario</strong><br>Todos los días, de 4:00 p.m. a 10:00 p.m.</p>
+                <button type="button" class="fp-btn" id="festivalInfoContinueBtn">CONTINUAR</button>
+            </div>
+        </div>
     </div>
     <script>
         (function () {
@@ -170,6 +190,14 @@
                 if (!preview && !inWindow) return;
                 el.hidden = false;
                 document.getElementById('festivalPromoBtn').addEventListener('click', function () {
+                    el.hidden = true;
+                });
+                var info = document.getElementById('festivalInfo');
+                document.getElementById('festivalInfoBtn').addEventListener('click', function () {
+                    info.hidden = false;
+                });
+                document.getElementById('festivalInfoContinueBtn').addEventListener('click', function () {
+                    info.hidden = true;
                     el.hidden = true;
                 });
             } catch (e) {}
