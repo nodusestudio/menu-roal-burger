@@ -155,9 +155,35 @@
             #festivalPromo[hidden]{display:none}
             #festivalPromo .fp-img{flex:1 1 auto;min-height:0;width:100%;max-width:520px;object-fit:contain}
             #festivalPromo .fp-btn{flex:0 0 auto;min-width:240px;padding:15px 32px;border:0;border-radius:999px;background:#ff5a0a;color:#fff;font:800 17px system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;box-shadow:0 6px 18px rgba(255,90,10,.35)}
+            #festivalPromo .fp-btn--info{background:#fff;color:#ff5a0a;border:2px solid #ff5a0a;box-shadow:none}
+            #festivalPromo .fp-info{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.55)}
+            #festivalPromo .fp-info[hidden]{display:none}
+            #festivalPromo .fp-card{width:100%;max-width:460px;max-height:90%;overflow:auto;background:#fff;border-radius:18px;padding:22px 20px;color:#2a1b12;font:400 15px/1.45 system-ui,sans-serif;text-align:left}
+            #festivalPromo .fp-card h2{margin:0 0 4px;font:800 22px system-ui,sans-serif;color:#ff5a0a}
+            #festivalPromo .fp-card .fp-price{margin:0 0 10px;font-weight:800;font-size:20px}
+            #festivalPromo .fp-card ul{margin:8px 0 12px;padding-left:20px}
+            #festivalPromo .fp-card .fp-btn{width:100%;min-width:0;margin-top:6px}
         </style>
         <img class="fp-img" src="./festival-trifasica.webp" alt="Burger Trifásica. Participante oficial del Festival Gastronómico Sabe a Quindío. Pídela del 30 de octubre al 8 de noviembre" width="900" height="1600" decoding="async">
+        <button type="button" class="fp-btn fp-btn--info" id="festivalInfoBtn" aria-controls="festivalInfo">INFORMACIÓN DE LA TRIFÁSICA</button>
         <button type="button" class="fp-btn" id="festivalPromoBtn">CONTINUAR</button>
+        <div class="fp-info" id="festivalInfo" hidden role="dialog" aria-label="Información de la Burger Trifásica">
+            <div class="fp-card">
+                <h2>Burger Trifásica</h2>
+                <p class="fp-price">$37.000</p>
+                <p>Participante oficial del Festival Gastronómico Sabe a Quindío. Tres carnes en una sola burger: res, cerdo y pollo.</p>
+                <ul>
+                    <li>Pan de hamburguesa</li>
+                    <li>Carne trifásica de res, cerdo y pollo (150 g)</li>
+                    <li>Plátano maduro</li>
+                    <li>Aguacate, maíz y ripio de papa</li>
+                    <li>Lechuga y tomate</li>
+                    <li>Mayonesa clásica y salsa tártara</li>
+                </ul>
+                <p><strong>Pídela del 30 de octubre al 8 de noviembre.</strong></p>
+                <button type="button" class="fp-btn" id="festivalInfoClose">CERRAR</button>
+            </div>
+        </div>
     </div>
     <script>
         (function () {
@@ -171,6 +197,17 @@
                 el.hidden = false;
                 document.getElementById('festivalPromoBtn').addEventListener('click', function () {
                     el.hidden = true;
+                });
+                var info = document.getElementById('festivalInfo');
+                document.getElementById('festivalInfoBtn').addEventListener('click', function () {
+                    info.hidden = false;
+                    try { if (window.gtag) gtag('event', 'festival_info'); } catch (e2) {}
+                });
+                document.getElementById('festivalInfoClose').addEventListener('click', function () {
+                    info.hidden = true;
+                });
+                info.addEventListener('click', function (ev) {
+                    if (ev.target === info) info.hidden = true;
                 });
             } catch (e) {}
         })();
