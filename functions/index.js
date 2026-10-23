@@ -3377,7 +3377,7 @@ REGLAS DE DATOS (inquebrantables):
 - Las cifras salen SIEMPRE de las herramientas; nunca inventes ni estimes números. Si no hay herramienta para algo, dilo.
 - Declara el rango real consultado (desde–hasta) y avisa si el resultado vino truncado.
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
-- No puedes modificar pedidos, caja ni puntos por tu cuenta. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. También con gestionar_catalogo: crear insumos, recetas, platos de costos, productos del menú y combos, y pausar/reanudar/desactivar/activar productos, combos y platos; igual, solo propones y el administrador confirma con el botón. Si falta un dato obligatorio (precio, categoría, cantidades), pídelo; no inventes. Para agregar algo al menú usa entidad "producto". Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
+- No puedes modificar pedidos, caja ni puntos por tu cuenta. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. También con gestionar_catalogo: crear insumos, recetas, platos de costos, productos del menú y combos, y pausar/reanudar/desactivar/activar productos, combos y platos; igual, solo propones y el administrador confirma con el botón. Si falta un dato obligatorio (precio, categoría, cantidades), pídelo; no inventes. PEDIDOS ENTRANTES: con pedidos_activos ves qué pidió cada cliente (líneas, sabores, notas, dirección, domicilio, pago); cuando el administrador mencione un pedido o llegue uno, míralo y resúmelo claro. Con ver_imagenes_productos puedes MIRAR las fotos del menú público. Con editar_pedido propones agregar/quitar productos, cambiar cantidad, dirección o tarifa de domicilio (él confirma con botón). Para el precio de un domicilio usa tarifa_domicilio. Para agregar algo al menú usa entidad "producto". Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
 - MEMORIA: abajo verás lo que ya sabes del negocio y del dueño; úsalo para personalizar (metas, prioridades, tono). Cuando el administrador te cuente una meta, preferencia o dato duradero, guárdalo con recordar sin que lo pida y dilo en una línea. Nunca guardes cifras de herramientas ni datos sensibles (claves, PINs). Si te dice que olvides algo, usa recordar con olvidar.
 - PEDIDOS: si el administrador pega texto de un chat, adjunta una captura o dicta/describe un pedido, llama a armar_pedido (con el texto tal cual; si solo hay captura, texto vacío). Resume en 1-3 líneas lo entendido (productos y cantidades, entrega, pago) y dile que lo confirme con el botón "Crear pedido" o diciendo "sí, créalo". Si falta algo, pídeselo de forma breve y vuelve a llamar la herramienta con TODO el texto junto. Jamás digas que el pedido ya está creado: solo se crea cuando él confirma.
 - BASE DE CONOCIMIENTO: antes de aconsejar sobre gerencia, marketing, finanzas, operación, personal, impuestos/legal Colombia o atención a clientes, y antes de responder sobre políticas o reglas del negocio, llama a buscar_conocimiento. Cita la fuente ("según tu base: …"). Lo de "Tu base" son reglas del dueño y mandan sobre la teoría. Si no hay nada, dilo y sugiere documentarlo.
@@ -3512,8 +3512,8 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
                 // Las herramientas de un mismo turno se ejecutan EN PARALELO (antes una tras otra); el orden de resultados se conserva
                 const resultados = await Promise.all(usos.map(async (u) => {
                     let r;
-                    if (u.name === 'proponer_accion' || u.name === 'gestionar_catalogo') {
-                        const proponer = u.name === 'gestionar_catalogo' ? require('./fodiCatalogo').proponerCatalogo : adminAsistente.proponerAccion;
+                    if (u.name === 'proponer_accion' || u.name === 'gestionar_catalogo' || u.name === 'editar_pedido') {
+                        const proponer = u.name === 'gestionar_catalogo' ? require('./fodiCatalogo').proponerCatalogo : u.name === 'editar_pedido' ? async (d, i) => { const x = await require('./fodiPedidos').proponerEdicionPedido(d, i); return x.ok ? { ok: true, accion: { tipo: 'editar_pedido', ...x.accion } } : x; } : adminAsistente.proponerAccion;
                         r = await proponer(db, u.input || {}, { tieneImagen: !!imagenActual }).catch((e) => ({ error: `Falló: ${e.message || e}` }));
                         if (r.ok && acciones.length < 5) acciones.push(r.accion);
                         if (r.ok) r = { ok: true, nota: 'Propuesta mostrada al administrador como botón; aún NO se ejecutó. No digas que ya se hizo: dile que la confirme con el botón.', accion: r.accion };
@@ -3528,6 +3528,7 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
                     } else {
                         r = await adminAsistente.ejecutarHerramienta(db, u.name, u.input || {});
                     }
+                    if (r && Array.isArray(r.__contenido)) return { type: 'tool_result', tool_use_id: u.id, content: r.__contenido }; // fotos que FODI "ve"
                     return { type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r, u.name === 'costo_por_plato' ? 14000 : undefined) };
                 }));
                 // Caché del historial: solo el último resultado lleva marca (máx. 4 marcas por petición)
@@ -3661,7 +3662,7 @@ async function fodiGenerarInforme(db, apiKey) {
     const hoy = Date.now();
     const f = (ms) => adminAsistente.bogotaDateKey(ms);
     const desde = f(hoy - 7 * DIA), hasta = f(hoy - DIA), antDesde = f(hoy - 14 * DIA), antHasta = f(hoy - 8 * DIA);
-    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'registrar_nombre', 'armar_pedido', 'recordar'].includes(t.name));
+    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'registrar_nombre', 'editar_pedido', 'pedidos_activos', 'ver_imagenes_productos', 'armar_pedido', 'recordar'].includes(t.name));
     const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
     const system = `${asistenteSystemPrompt()}\n\nTAREA: redacta el INFORME SEMANAL para el dueño. Semana analizada: ${desde} a ${hasta}; semana anterior: ${antDesde} a ${antHasta}. Usa las herramientas para traer ventas, ticket, productos, canales, clientes, gastos/rentabilidad y redes. Estructura: 1) Titular de la semana (2 líneas), 2) Cifras clave vs semana anterior (tabla), 3) Qué funcionó, 4) Qué preocupa, 5) Tres acciones concretas para esta semana. Sé breve (máx. 450 palabras), sin inventar cifras.${memoria.length ? `\n\nMEMORIA:\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : ''}`;
     const mensajes = [{ role: 'user', content: `Genera el informe semanal de ${desde} a ${hasta}.` }];

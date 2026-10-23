@@ -1508,9 +1508,13 @@ function toggleUnreadTray() {
     }
 }
 
+let _fodiPedidosPrev = -1;
 function updateOrdersAttentionState() {
     const ordersTabButton = document.querySelector('.admin-accordion-trigger[data-accordion-target="pedidos"]');
     const unreadCount = getUnreadOrders().length;
+    // Pedido nuevo sin leer: FODI lo avisa y se ofrece a mostrar qué pidió el cliente
+    if (_fodiPedidosPrev >= 0 && unreadCount > _fodiPedidosPrev && typeof window._fodiAvisoPedido === 'function') { try { window._fodiAvisoPedido(unreadCount); } catch (_) { /* chat aún no iniciado */ } }
+    _fodiPedidosPrev = unreadCount;
 
     if (ordersTabButton instanceof HTMLButtonElement) {
         ordersTabButton.classList.toggle('has-unread', unreadCount > 0);
@@ -32189,6 +32193,9 @@ function _asistAcciones(msg, acciones) {
             const verbo = { crear: 'Crear', pausar: 'Pausar', reanudar: 'Reanudar', desactivar: 'Desactivar', activar: 'Activar', describir: 'Cambiar descripción de', foto: 'Cambiar foto de', precio: 'Cambiar precio de' }[a.operacion] || a.operacion;
             txt = `<b>${verbo} ${escapeHtml(rot)}: ${escapeHtml(a.nombre)}</b>${(a.resumen || []).length ? '<br><small>' + a.resumen.map(escapeHtml).join('<br>') + '</small>' : ''}`;
             btn = a.operacion === 'crear' ? '✅ Crear' : '✅ Confirmar';
+        } else if (a.tipo === 'editar_pedido') {
+            txt = `<b>✏️ Editar pedido ${escapeHtml(a.codigo || '')}</b><br><small>${(a.resumen || []).map(escapeHtml).join('<br>')}</small>`;
+            btn = '✅ Aplicar cambio';
         } else continue;
         const BTN = 'cursor:pointer;border:0;border-radius:10px;padding:10px 16px;min-height:40px;font:700 .9rem system-ui,sans-serif;touch-action:manipulation;';
         card.innerHTML = `<span style="flex:1 1 100%;min-width:160px">${txt}</span>`
@@ -32224,7 +32231,7 @@ function _asistAcciones(msg, acciones) {
             if (a.tipo === 'crear_pedido' && _fodiPedidoPend && _fodiPedidoPend.a === a) _fodiPedidoPend = null;
             card.querySelector('[data-acc="ok"]').disabled = true; bNo.remove(); estado.style.color = 'inherit'; estado.textContent = 'Descartado, no se hizo nada.';
         });
-        if (a.tipo === 'catalogo' || a.tipo === 'precio_insumo') { // "sí" / "no" por chat también confirma o descarta estas acciones
+        if (a.tipo === 'catalogo' || a.tipo === 'precio_insumo' || a.tipo === 'editar_pedido') { // "sí" / "no" por chat también confirma o descarta estas acciones
             _fodiPedidoPend = { a, btn: card.querySelector('[data-acc="ok"]'), ejecutar };
         }
         if (a.tipo === 'crear_pedido') {
@@ -32269,6 +32276,7 @@ async function _asistEjecutarAccion(a) {
         return;
     }
     if (a.tipo === 'catalogo') return _fodiCatalogoEjecutar(a);
+    if (a.tipo === 'editar_pedido') return _fodiEditarPedidoEjecutar(a);
     if (a.tipo === 'crear_pedido') {
         if (!firebaseFunctions) throw new Error('No hay conexión con el servidor.');
         const res = await firebaseFunctions.httpsCallable('createManualWhatsAppOrder')(a.payload);
@@ -32325,6 +32333,22 @@ async function _fodiSubirFotoProducto(nombre) {
     // Solo Storage: nunca caer a base64 dentro de Firestore (volvió lento el menú; ver fotos 2026-10-17)
     try { return await uploadImageToFirebase(file, nombre); }
     catch (e) { throw new Error('No se pudo subir la foto a Storage (' + (e.message || e) + '). Súbela desde Menú › Editar producto.'); }
+}
+
+// Edición de pedidos por chat de FODI: se relee el pedido y se aborta si cambió desde que FODI lo propuso.
+async function _fodiEditarPedidoEjecutar(a) {
+    if (!firebaseDb) throw new Error('No hay conexión con la base de datos.');
+    const ref = firebaseDb.collection(ORDERS_COLLECTION).doc(a.pedidoId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new Error('El pedido ya no está activo (pudo cerrarse o cancelarse).');
+    const o = snap.data() || {};
+    if (isOrderLockedForEdit({ ...o, id: snap.id })) throw new Error('El pedido ya fue cobrado o cerrado: no se puede editar.');
+    if (Number(o.total) !== Number(a.baseTotal) || (Array.isArray(o.items) ? o.items.length : 0) !== Number(a.baseItems)) {
+        throw new Error('El pedido cambió mientras tanto. Pídele a FODI que lo revise de nuevo.');
+    }
+    await updateOrder(a.pedidoId, a.patch);
+    showNotice(`Pedido ${a.codigo} actualizado.`, 'ok');
+    if (typeof renderOrders === 'function') renderOrders();
 }
 
 // Catálogo por chat de FODI: el servidor ya validó y resolvió ids; aquí solo se guarda, por las mismas rutas del panel.
@@ -33247,6 +33271,17 @@ function _fodiFlotInit() {
     $('fodiFlotEnviar')?.addEventListener('click', enviarTxt);
     $('fodiFlotNuevo')?.addEventListener('click', () => { if (_ffBusy) return; _ffHist = []; log.innerHTML = ''; _fodiParar(); bienvenida(); });
     // Otras partes del panel (p. ej. una acción fallida) le hacen una pregunta a FODI abriendo este chat
+    // Pedido nuevo: burbuja sobre FODI y, al abrir el chat, botón para que lo revise y diga qué pidió el cliente
+    window._fodiAvisoPedido = (n) => {
+        if (!raiz.classList.contains('on')) return;
+        const abierto = raiz.classList.contains('abierto');
+        if (!abierto) { hola.textContent = n > 1 ? `📦 ${n} pedidos nuevos` : '📦 Pedido nuevo'; hola.classList.add('on'); clearTimeout(ocultaHola); ocultaHola = setTimeout(() => hola.classList.remove('on'), 6000); set('surprised', 1500, 'happy'); }
+        if (log.querySelector('.ff-pedido-nuevo')) return;
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'ff-pedido-nuevo'; b.textContent = '📦 Ver qué pidió el pedido nuevo';
+        b.style.cssText = 'align-self:flex-start;cursor:pointer;border:0;border-radius:999px;padding:9px 14px;background:#ff6a00;color:#fff;font:700 .85rem system-ui,sans-serif;touch-action:manipulation';
+        b.addEventListener('click', () => { b.remove(); raiz.classList.add('abierto'); enviar('Entró un pedido nuevo. Revísalo y dime qué pidió el cliente, la entrega, la dirección, el domicilio y el pago, y si ves algo raro.'); });
+        log.appendChild(b); log.scrollTop = log.scrollHeight;
+    };
     window._fodiPreguntar = (t) => { raiz.classList.add('abierto'); hola.classList.remove('on'); if (!log.childElementCount) { log.innerHTML = ''; } enviar(t); };
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _fodiFlotInit); else _fodiFlotInit();
