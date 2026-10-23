@@ -63,6 +63,7 @@ const ULTRAMSG_TOKEN    = defineSecret('ULTRAMSG_TOKEN');
 const RECAPTCHA_SECRET  = defineSecret('RECAPTCHA_SECRET');
 // Agente de IA (Claude): firebase functions:secrets:set ANTHROPIC_API_KEY
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
+const GITHUB_TOKEN = defineSecret('GITHUB_TOKEN'); // FODI: leer el codigo y abrir Pull Requests (nunca publica)
 // Token compartido para validar que el webhook entrante viene de UltraMsg (UltraMsg no firma
 // sus webhooks): firebase functions:secrets:set ULTRAMSG_WEBHOOK_TOKEN
 const ULTRAMSG_WEBHOOK_TOKEN = defineSecret('ULTRAMSG_WEBHOOK_TOKEN');
@@ -3414,7 +3415,7 @@ CÓMO PIENSAS (gerencia y marketing para restaurantes):
 }
 
 exports.adminAsistenteIA = onCall(
-    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB' },
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY, GITHUB_TOKEN], cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB' },
     async (request) => {
         const db = getFirestore();
         await cuponPana.ensureAdmin(db, request);
