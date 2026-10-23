@@ -853,7 +853,9 @@ const TOOLS = [
             precio_nuevo: { type: 'number', description: 'Solo con tipo "precio_insumo": nuevo precio de compra del empaque.' }
         }, required: ['tipo'] }
     },
-    require('./fodiCatalogo').TOOL
+    require('./fodiCatalogo').TOOL,
+    require('./fodiSimulador').TOOL,
+    require('./fodiCodigo').TOOL
 ];
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -1071,6 +1073,8 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             return { items, total_mensual: items.reduce((a, i) => a + i.monto_mensual, 0), margen_minimo_pct: Number(d.margenMinimo) || null };
         }
         if (nombre === 'calcular') return calcular(args.expresion);
+        if (nombre === 'simular_costos') return await require('./fodiSimulador').simularCostos(db, args);
+        if (nombre === 'codigo_fuente') return await require('./fodiCodigo').codigoFuente(args, process.env.GITHUB_TOKEN);
         if (nombre === 'recordar') return await recordar(db, args);
         if (nombre === 'tarifa_domicilio') return await tarifaDomicilio(db, args);
         if (nombre === 'puntos_lealtad') return await resumenPuntos(db);

@@ -63,3 +63,13 @@ test('describir y foto de un producto', async () => {
     assert.ok((await proponerCatalogo(db, c, {})).error);
     assert.strictEqual((await proponerCatalogo(db, c, { tieneImagen: true })).accion.payload.conFoto, true);
 });
+
+test('precio de producto, combo y plato', async () => {
+    const dbp = dbCon({ productos: [{ nombre: 'Caracas', precio: 26000 }], combospacks: [{ nombre: 'Combo Papuda', valor: 30000 }], costos_platos: [{ nombre: 'Papuda', precio: 20000 }], costos_insumos: [] });
+    assert.deepStrictEqual((await proponerCatalogo(dbp, { accion: 'precio', entidad: 'producto', nombre: 'caracas', precio: 28000 })).accion.payload, { precio: 28000 });
+    assert.deepStrictEqual((await proponerCatalogo(dbp, { accion: 'precio', entidad: 'combo', nombre: 'papuda', precio: 32000 })).accion.payload, { valor: 32000 });
+    assert.deepStrictEqual((await proponerCatalogo(dbp, { accion: 'precio', entidad: 'plato', nombre: 'papuda', precio: 22000 })).accion.payload, { precio: 22000 });
+    assert.ok((await proponerCatalogo(dbp, { accion: 'precio', entidad: 'producto', nombre: 'caracas', precio: 26000 })).error);
+    assert.ok((await proponerCatalogo(dbp, { accion: 'precio', entidad: 'producto', nombre: 'caracas' })).error);
+    assert.ok((await proponerCatalogo(dbp, { accion: 'precio', entidad: 'insumo', nombre: 'x', precio: 5 })).error);
+});

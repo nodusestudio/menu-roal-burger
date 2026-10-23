@@ -8,13 +8,13 @@ const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : NaN; }
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 const ENTIDADES = ['insumo', 'receta', 'plato', 'producto', 'combo'];
-const ACCIONES = ['crear', 'pausar', 'reanudar', 'desactivar', 'activar', 'describir', 'foto'];
+const ACCIONES = ['crear', 'pausar', 'reanudar', 'desactivar', 'activar', 'describir', 'foto', 'precio'];
 const COL = { insumo: 'costos_insumos', receta: 'costos_recetas', plato: 'costos_platos', producto: 'productos', combo: 'combospacks' };
 const ROTULO = { insumo: 'insumo', receta: 'receta', plato: 'plato de costos', producto: 'producto del menú', combo: 'combo' };
 
 const TOOL = {
     name: 'gestionar_catalogo',
-    description: 'CREA o CAMBIA el catálogo del negocio; NO ejecuta nada: el administrador verá una tarjeta con botón y debe confirmarla. entidad: "insumo" (ingrediente de la calculadora de costos), "receta" (preparación de insumos/otras recetas), "plato" (plato de costos: receta+precio, aún no vendido), "producto" (lo que se VENDE en el menú/POS: así se "agrega al menú") o "combo". accion "crear" necesita los datos de esa entidad; "pausar"/"reanudar" (producto o combo: salen/vuelven al menú), "desactivar"/"activar" (producto o combo: además POS; plato: activo en costos). accion "describir" (solo producto): cambia la descripción de un producto existente (campo descripcion). accion "foto" (solo producto): le pone como foto la imagen que el administrador adjuntó en ESTE mensaje (si no adjuntó ninguna, pídesela); al crear un producto puedes usar con_foto=true para que use esa imagen. Antes de crear una receta/plato, los insumos o recetas que use deben existir (si faltan, créalos primero y avisa). Si falta cualquier dato obligatorio, pídeselo al administrador; no inventes precios ni cantidades.',
+    description: 'CREA o CAMBIA el catálogo del negocio; NO ejecuta nada: el administrador verá una tarjeta con botón y debe confirmarla. entidad: "insumo" (ingrediente de la calculadora de costos), "receta" (preparación de insumos/otras recetas), "plato" (plato de costos: receta+precio, aún no vendido), "producto" (lo que se VENDE en el menú/POS: así se "agrega al menú") o "combo". accion "crear" necesita los datos de esa entidad; "pausar"/"reanudar" (producto o combo: salen/vuelven al menú), "desactivar"/"activar" (producto o combo: además POS; plato: activo en costos). accion "precio" (producto, combo o plato de costos): cambia el precio de venta (campo precio; en combo es su valor). accion "describir" (solo producto): cambia la descripción de un producto existente (campo descripcion). accion "foto" (solo producto): le pone como foto la imagen que el administrador adjuntó en ESTE mensaje (si no adjuntó ninguna, pídesela); al crear un producto puedes usar con_foto=true para que use esa imagen. Antes de crear una receta/plato, los insumos o recetas que use deben existir (si faltan, créalos primero y avisa). Si falta cualquier dato obligatorio, pídeselo al administrador; no inventes precios ni cantidades.',
     input_schema: {
         type: 'object',
         properties: {
@@ -32,7 +32,7 @@ const TOOL = {
                 items: { type: 'object', properties: { tipo: { type: 'string', enum: ['insumo', 'receta'] }, nombre: { type: 'string' }, cantidad: { type: 'number' } }, required: ['tipo', 'nombre', 'cantidad'] }
             },
             mano_obra: { type: 'number', description: 'Solo plato: costo de mano de obra por unidad (por defecto 0).' },
-            precio: { type: 'number', description: 'Plato o producto: precio de venta en pesos.' },
+            precio: { type: 'number', description: 'Plato, producto o combo: precio de venta en pesos (obligatorio con accion "precio").' },
             categoria: { type: 'string', description: 'Solo producto: categoría del menú (debe existir).' },
             descripcion: { type: 'string', description: 'Producto: descripción corta (máx. 300 caracteres). Obligatoria con accion "describir"; opcional al crear.' },
             con_foto: { type: 'boolean', description: 'Solo producto al crear: true para usar como foto la imagen adjunta en este mensaje.' },
@@ -164,10 +164,21 @@ async function editarProducto(db, a, ctx) {
     return { id: x.id, nombre: String(x.nombre), payload: { conFoto: true }, resumen: ['Se reemplaza la foto actual por la imagen que adjuntaste.'] };
 }
 
+async function cambiarPrecio(db, a) {
+    if (!['producto', 'combo', 'plato'].includes(a.entidad)) return { error: 'El precio de venta se cambia en productos, combos o platos. Para insumos usa proponer_accion tipo precio_insumo.' };
+    const nuevo = num(a.precio);
+    if (a.precio == null || !(nuevo >= 0 && nuevo <= 1e8)) return { error: 'Falta el precio nuevo (en pesos).' };
+    const r = resolver(await leer(db, COL[a.entidad]), a.nombre, 'nombre', ROTULO[a.entidad]);
+    if (r.error) return r;
+    const x = r.item, campo = a.entidad === 'combo' ? 'valor' : 'precio', antes = Number(x[campo]) || 0;
+    if (antes === nuevo) return { error: `"${x.nombre}" ya tiene ese precio ($${antes}).` };
+    return { id: x.id, nombre: String(x.nombre), payload: { [campo]: nuevo }, resumen: [`Precio: $${antes} → $${nuevo}`] };
+}
+
 async function proponerCatalogo(db, args = {}, ctx = {}) {
     if (!ACCIONES.includes(args.accion)) return { error: `accion debe ser una de: ${ACCIONES.join(', ')}.` };
     if (!ENTIDADES.includes(args.entidad)) return { error: `entidad debe ser una de: ${ENTIDADES.join(', ')}.` };
-    const r = args.accion === 'crear' ? await crear(db, args, ctx) : (args.accion === 'describir' || args.accion === 'foto') ? await editarProducto(db, args, ctx) : await cambiarEstado(db, args);
+    const r = args.accion === 'crear' ? await crear(db, args, ctx) : args.accion === 'precio' ? await cambiarPrecio(db, args) : (args.accion === 'describir' || args.accion === 'foto') ? await editarProducto(db, args, ctx) : await cambiarEstado(db, args);
     if (r.error) return { error: r.error };
     return { ok: true, accion: { tipo: 'catalogo', operacion: args.accion, entidad: args.entidad, nombre: r.nombre || String(args.nombre).trim(), id: r.id || null, payload: r.payload, resumen: r.resumen || [] } };
 }

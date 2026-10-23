@@ -32179,7 +32179,7 @@ function _asistAcciones(msg, acciones) {
             btn = 'Confirmar cambio';
         } else if (a.tipo === 'catalogo') {
             const rot = { insumo: 'insumo', receta: 'receta', plato: 'plato de costos', producto: 'producto del menú', combo: 'combo' }[a.entidad] || a.entidad;
-            const verbo = { crear: 'Crear', pausar: 'Pausar', reanudar: 'Reanudar', desactivar: 'Desactivar', activar: 'Activar', describir: 'Cambiar descripción de', foto: 'Cambiar foto de' }[a.operacion] || a.operacion;
+            const verbo = { crear: 'Crear', pausar: 'Pausar', reanudar: 'Reanudar', desactivar: 'Desactivar', activar: 'Activar', describir: 'Cambiar descripción de', foto: 'Cambiar foto de', precio: 'Cambiar precio de' }[a.operacion] || a.operacion;
             txt = `<b>${verbo} ${escapeHtml(rot)}: ${escapeHtml(a.nombre)}</b>${(a.resumen || []).length ? '<br><small>' + a.resumen.map(escapeHtml).join('<br>') + '</small>' : ''}`;
             btn = a.operacion === 'crear' ? '✅ Crear' : '✅ Confirmar';
         } else continue;
