@@ -32165,7 +32165,7 @@ function _asistAcciones(msg, acciones) {
     cont.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin:8px 0 0';
     for (const a of acciones) {
         const card = document.createElement('div');
-        card.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.12)';
+        card.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.12);white-space:normal;text-align:left;font-size:.9rem;line-height:1.4;width:100%;box-sizing:border-box';
         let txt = '', btn = '';
         if (a.tipo === 'navegar') {
             txt = `Ir a <b>${escapeHtml(a.tab === 'costos' && a.vista ? `Costos y recetas › ${a.vista}` : a.tab)}</b>`;
@@ -32183,24 +32183,41 @@ function _asistAcciones(msg, acciones) {
             txt = `<b>${verbo} ${escapeHtml(rot)}: ${escapeHtml(a.nombre)}</b>${(a.resumen || []).length ? '<br><small>' + a.resumen.map(escapeHtml).join('<br>') + '</small>' : ''}`;
             btn = a.operacion === 'crear' ? '✅ Crear' : '✅ Confirmar';
         } else continue;
-        card.innerHTML = `<span style="flex:1;min-width:160px">${txt}</span><button type="button" class="cat-new-save-btn">${btn}</button>`;
+        const BTN = 'cursor:pointer;border:0;border-radius:10px;padding:10px 16px;min-height:40px;font:700 .9rem system-ui,sans-serif;touch-action:manipulation;';
+        card.innerHTML = `<span style="flex:1 1 100%;min-width:160px">${txt}</span>`
+            + `<button type="button" data-acc="ok" style="${BTN}background:#ff6a00;color:#fff">${btn}</button>`
+            + (a.tipo === 'navegar' ? '' : `<button type="button" data-acc="no" style="${BTN}background:rgba(255,255,255,.16);color:inherit">Descartar</button>`)
+            + `<span data-acc="estado" role="status" style="flex:1 1 100%;font-weight:600"></span>`;
+        const estado = card.querySelector('[data-acc="estado"]'), bNo = card.querySelector('[data-acc="no"]');
         const ejecutar = async (b) => {
-            b.disabled = true;
+            if (b.disabled) return;
+            b.disabled = true; if (bNo) bNo.disabled = true;
+            const orig = b.textContent; b.textContent = 'Trabajando…'; estado.textContent = '';
             try {
                 await _asistEjecutarAccion(a);
                 b.textContent = a.tipo === 'navegar' ? 'Listo' : '✓ Hecho';
                 if (a.tipo === 'crear_pedido') { if (_fodiPedidoPend && _fodiPedidoPend.a === a) _fodiPedidoPend = null; b.textContent = '✓ Pedido creado'; }
+                if (bNo) bNo.remove();
+                estado.style.color = '#7ee2a8'; estado.textContent = a.tipo === 'navegar' ? '' : '✅ Listo, ya quedó guardado.';
             } catch (err) {
-                b.disabled = false;
+                b.disabled = false; if (bNo) bNo.disabled = false; b.textContent = orig;
+                estado.style.color = '#ff9c9c'; estado.textContent = '⚠️ No se pudo: ' + (err.message || err);
                 showNotice('No se pudo: ' + (err.message || err), 'error');
             }
         };
-        card.querySelector('button').addEventListener('click', (e) => ejecutar(e.currentTarget));
+        card.querySelector('[data-acc="ok"]').addEventListener('click', (e) => ejecutar(e.currentTarget));
+        if (bNo) bNo.addEventListener('click', () => {
+            if (a.tipo === 'crear_pedido' && _fodiPedidoPend && _fodiPedidoPend.a === a) _fodiPedidoPend = null;
+            card.querySelector('[data-acc="ok"]').disabled = true; bNo.remove(); estado.style.color = 'inherit'; estado.textContent = 'Descartado, no se hizo nada.';
+        });
+        if (a.tipo === 'catalogo' || a.tipo === 'precio_insumo') { // "sí" / "no" por chat también confirma o descarta estas acciones
+            _fodiPedidoPend = { a, btn: card.querySelector('[data-acc="ok"]'), ejecutar };
+        }
         if (a.tipo === 'crear_pedido') {
-            _fodiPedidoPend = { a, btn: card.querySelector('button'), ejecutar };
+            _fodiPedidoPend = { a, btn: card.querySelector('[data-acc="ok"]'), ejecutar };
             let auto = false; try { auto = localStorage.getItem('waAutoCrear') === '1'; } catch (_) { /* sin storage */ }
             if (auto) { // creación directa opcional: 5 s para cancelar
-                const b = card.querySelector('button'); let n = 5; const orig = b.textContent;
+                const b = card.querySelector('[data-acc="ok"]'); let n = 5; const orig = b.textContent;
                 const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'pm-icon-btn'; cancel.textContent = 'Cancelar';
                 b.after(cancel);
                 const t = setInterval(() => { n--; b.textContent = `⚡ Creando en ${n}…`; if (n <= 0) { clearInterval(t); cancel.remove(); ejecutar(b); } }, 1000);
@@ -32315,8 +32332,8 @@ function _fodiPedidoInterceptar(texto) {
     if (!p || !p.btn || !p.btn.isConnected || p.btn.disabled) { _fodiPedidoPend = null; return null; }
     const t = String(texto || '');
     if (t.length > 60) return null;
-    if (_FODI_SI.test(t)) { p.ejecutar(p.btn); return 'Listo, creando el pedido… 🧾'; }
-    if (_FODI_NO.test(t)) { _fodiPedidoPend = null; p.btn.disabled = true; p.btn.textContent = 'Cancelado'; return 'Hecho, no creo el pedido. Dime si quieres cambiar algo.'; }
+    if (_FODI_SI.test(t)) { p.ejecutar(p.btn); return p.a && p.a.tipo === 'crear_pedido' ? 'Listo, creando el pedido… 🧾' : 'Listo, lo hago ahora… ✅'; }
+    if (_FODI_NO.test(t)) { _fodiPedidoPend = null; p.btn.disabled = true; p.btn.textContent = 'Cancelado'; return p.a && p.a.tipo === 'crear_pedido' ? 'Hecho, no creo el pedido. Dime si quieres cambiar algo.' : 'Hecho, no lo hago. Dime si quieres cambiar algo.'; }
     return null;
 }
 let _asistImg = null;
@@ -32577,6 +32594,7 @@ function _asistInit() {
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         const t = input.value;
+        if (!t.trim() || _asistBusy) return; // ocupado: se conserva lo escrito
         input.value = '';
         autoalto();
         _asistEnviar(t);
@@ -33154,7 +33172,13 @@ function _fodiFlotInit() {
     $('fodiFlotCerrar').addEventListener('click', () => { raiz.classList.remove('abierto'); callar(); if (_ffRec) _ffRec.stop(); set('wink', 1200, 'neutral'); });
     mic.addEventListener('click', escuchar);
     $('fodiFlotCalla').addEventListener('click', callar);
-    txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); const t = txt.value; txt.value = ''; enviar(t); } });
+    const enviarTxt = () => {
+        const t = txt.value;
+        if ((!t.trim() && !ffImg) || _ffBusy) return; // ocupado o vacío: se conserva lo escrito
+        txt.value = ''; enviar(t);
+    };
+    txt.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.keyCode === 13) && !(e.isComposing && e.keyCode === 229)) { e.preventDefault(); enviarTxt(); } });
+    $('fodiFlotEnviar')?.addEventListener('click', enviarTxt);
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _fodiFlotInit); else _fodiFlotInit();
 setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_meseroSession) { _fodiAlertasCargar(); _fodiInformeCargar(false); } }, 9000);
