@@ -3499,7 +3499,7 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
                     let r;
                     if (u.name === 'proponer_accion' || u.name === 'gestionar_catalogo') {
                         const proponer = u.name === 'gestionar_catalogo' ? require('./fodiCatalogo').proponerCatalogo : adminAsistente.proponerAccion;
-                        r = await proponer(db, u.input || {}).catch((e) => ({ error: `Falló: ${e.message || e}` }));
+                        r = await proponer(db, u.input || {}, { tieneImagen: !!imagenActual }).catch((e) => ({ error: `Falló: ${e.message || e}` }));
                         if (r.ok && acciones.length < 5) acciones.push(r.accion);
                         if (r.ok) r = { ok: true, nota: 'Propuesta mostrada al administrador como botón; aún NO se ejecutó. No digas que ya se hizo: dile que la confirme con el botón.', accion: r.accion };
                     } else if (u.name === 'armar_pedido') {

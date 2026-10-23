@@ -32179,7 +32179,7 @@ function _asistAcciones(msg, acciones) {
             btn = 'Confirmar cambio';
         } else if (a.tipo === 'catalogo') {
             const rot = { insumo: 'insumo', receta: 'receta', plato: 'plato de costos', producto: 'producto del menú', combo: 'combo' }[a.entidad] || a.entidad;
-            const verbo = { crear: 'Crear', pausar: 'Pausar', reanudar: 'Reanudar', desactivar: 'Desactivar', activar: 'Activar' }[a.operacion] || a.operacion;
+            const verbo = { crear: 'Crear', pausar: 'Pausar', reanudar: 'Reanudar', desactivar: 'Desactivar', activar: 'Activar', describir: 'Cambiar descripción de', foto: 'Cambiar foto de' }[a.operacion] || a.operacion;
             txt = `<b>${verbo} ${escapeHtml(rot)}: ${escapeHtml(a.nombre)}</b>${(a.resumen || []).length ? '<br><small>' + a.resumen.map(escapeHtml).join('<br>') + '</small>' : ''}`;
             btn = a.operacion === 'crear' ? '✅ Crear' : '✅ Confirmar';
         } else continue;
@@ -32249,6 +32249,19 @@ async function _asistEjecutarAccion(a) {
     throw new Error('Acción desconocida.');
 }
 
+// Última imagen adjunta en un chat de FODI (la que se usa como foto de producto al confirmar).
+let _fodiUltimaImg = null;
+async function _fodiSubirFotoProducto(nombre) {
+    const im = _fodiUltimaImg;
+    if (!im || !im.base64) throw new Error('No encuentro la imagen adjunta. Adjúntala de nuevo (📎) y vuelve a pedirlo.');
+    const bin = atob(im.base64), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const file = new File([bytes], 'foto.jpg', { type: im.mediaType || 'image/jpeg' });
+    // Solo Storage: nunca caer a base64 dentro de Firestore (volvió lento el menú; ver fotos 2026-10-17)
+    try { return await uploadImageToFirebase(file, nombre); }
+    catch (e) { throw new Error('No se pudo subir la foto a Storage (' + (e.message || e) + '). Súbela desde Menú › Editar producto.'); }
+}
+
 // Catálogo por chat de FODI: el servidor ya validó y resolvió ids; aquí solo se guarda, por las mismas rutas del panel.
 async function _fodiCatalogoEjecutar(a) {
     if (!firebaseDb) throw new Error('No hay conexión con la base de datos.');
@@ -32267,9 +32280,10 @@ async function _fodiCatalogoEjecutar(a) {
             if (!productsState.length) await fetchProducts();
             if (productsState.some((x) => normalizeCategoryKey(x.nombre) === normalizeCategoryKey(P.nombre) && normalizeCategoryKey(x.categoria) === normalizeCategoryKey(cat.name))) throw new Error('Ese producto ya existe en la categoría.');
             const id = `${slugify(P.nombre) || 'producto'}-${Date.now()}`;
+            const fotoUrl = P.conFoto ? await _fodiSubirFotoProducto(P.nombre) : buildDefaultProductImage(P.nombre, cat.name);
             await firebaseDb.collection('productos').doc(id).set({
                 id, nombre: P.nombre, precio: P.precio, categoria: cat.name, estado: P.estado === 'paused' ? 'paused' : 'active', es_destacado: false,
-                descripcion: P.descripcion || '', image_url: buildDefaultProductImage(P.nombre, cat.name), source: 'fodi', created_at: firestoreNow(), updated_at: firestoreNow()
+                descripcion: P.descripcion || '', image_url: fotoUrl, source: 'fodi', created_at: firestoreNow(), updated_at: firestoreNow()
             });
             if (P.platoId) { try { await _costosGuardar(COSTOS_COLS.platos, P.platoId, { productoMenuId: id }); } catch (_) { /* el enlace se puede hacer luego en Costos */ } }
             await reloadDataAndRender();
@@ -32286,6 +32300,7 @@ async function _fodiCatalogoEjecutar(a) {
     }
     if (!a.id) throw new Error('Falta el elemento a cambiar.');
     if (ent === 'plato') { await _costosGuardar(COSTOS_COLS.platos, a.id, P); await _costosCargar(); _costosRender(); }
+    else if (a.operacion === 'foto') { const url = await _fodiSubirFotoProducto(a.nombre); await firebaseDb.collection('productos').doc(a.id).update({ image_url: url, updated_at: firestoreNow() }); await reloadDataAndRender(); }
     else { await firebaseDb.collection(COL).doc(a.id).update({ ...P, updated_at: firestoreNow() }); await reloadDataAndRender(); }
     showNotice(`${a.nombre}: listo.`, 'ok');
 }
@@ -32321,6 +32336,7 @@ async function _asistEnviar(texto) {
     }
     const profBtn = document.getElementById('asistProfBtn'), profundo = profBtn?.getAttribute('aria-pressed') === 'true';
     if (profBtn) profBtn.setAttribute('aria-pressed', 'false');
+    if (imagen) _fodiUltimaImg = imagen;
     _asistImg = null; const prev0 = document.getElementById('asistAdjPrev'); if (prev0) prev0.style.display = 'none';
     _asistBusy = true;
     const btn = document.getElementById('asistEnviarBtn');
@@ -33031,6 +33047,7 @@ function _fodiFlotInit() {
         if (!pregunta && imagen) pregunta = 'Arma el pedido que aparece en esta captura.';
         const atajo = !imagen ? _fodiPedidoInterceptar(pregunta) : null;
         if (atajo) { msg('yo', pregunta); msg('bot', atajo); set('happy', 1500, 'neutral'); _fodiDecir(_asistTextoHablado(atajo), { onstart: () => hablar(true), onend: () => hablar(false) }); return; }
+        if (imagen) _fodiUltimaImg = imagen;
         ffPoner(null);
         _ffBusy = true; callar(); mic.disabled = true;
         msg('yo', imagen ? `📎 ${pregunta}` : pregunta);

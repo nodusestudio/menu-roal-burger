@@ -8,13 +8,13 @@ const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : NaN; }
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 const ENTIDADES = ['insumo', 'receta', 'plato', 'producto', 'combo'];
-const ACCIONES = ['crear', 'pausar', 'reanudar', 'desactivar', 'activar'];
+const ACCIONES = ['crear', 'pausar', 'reanudar', 'desactivar', 'activar', 'describir', 'foto'];
 const COL = { insumo: 'costos_insumos', receta: 'costos_recetas', plato: 'costos_platos', producto: 'productos', combo: 'combospacks' };
 const ROTULO = { insumo: 'insumo', receta: 'receta', plato: 'plato de costos', producto: 'producto del menú', combo: 'combo' };
 
 const TOOL = {
     name: 'gestionar_catalogo',
-    description: 'CREA o CAMBIA el catálogo del negocio; NO ejecuta nada: el administrador verá una tarjeta con botón y debe confirmarla. entidad: "insumo" (ingrediente de la calculadora de costos), "receta" (preparación de insumos/otras recetas), "plato" (plato de costos: receta+precio, aún no vendido), "producto" (lo que se VENDE en el menú/POS: así se "agrega al menú") o "combo". accion "crear" necesita los datos de esa entidad; "pausar"/"reanudar" (producto o combo: salen/vuelven al menú), "desactivar"/"activar" (producto o combo: además POS; plato: activo en costos). Antes de crear una receta/plato, los insumos o recetas que use deben existir (si faltan, créalos primero y avisa). Si falta cualquier dato obligatorio, pídeselo al administrador; no inventes precios ni cantidades.',
+    description: 'CREA o CAMBIA el catálogo del negocio; NO ejecuta nada: el administrador verá una tarjeta con botón y debe confirmarla. entidad: "insumo" (ingrediente de la calculadora de costos), "receta" (preparación de insumos/otras recetas), "plato" (plato de costos: receta+precio, aún no vendido), "producto" (lo que se VENDE en el menú/POS: así se "agrega al menú") o "combo". accion "crear" necesita los datos de esa entidad; "pausar"/"reanudar" (producto o combo: salen/vuelven al menú), "desactivar"/"activar" (producto o combo: además POS; plato: activo en costos). accion "describir" (solo producto): cambia la descripción de un producto existente (campo descripcion). accion "foto" (solo producto): le pone como foto la imagen que el administrador adjuntó en ESTE mensaje (si no adjuntó ninguna, pídesela); al crear un producto puedes usar con_foto=true para que use esa imagen. Antes de crear una receta/plato, los insumos o recetas que use deben existir (si faltan, créalos primero y avisa). Si falta cualquier dato obligatorio, pídeselo al administrador; no inventes precios ni cantidades.',
     input_schema: {
         type: 'object',
         properties: {
@@ -34,7 +34,8 @@ const TOOL = {
             mano_obra: { type: 'number', description: 'Solo plato: costo de mano de obra por unidad (por defecto 0).' },
             precio: { type: 'number', description: 'Plato o producto: precio de venta en pesos.' },
             categoria: { type: 'string', description: 'Solo producto: categoría del menú (debe existir).' },
-            descripcion: { type: 'string', description: 'Solo producto: descripción corta (opcional).' },
+            descripcion: { type: 'string', description: 'Producto: descripción corta (máx. 300 caracteres). Obligatoria con accion "describir"; opcional al crear.' },
+            con_foto: { type: 'boolean', description: 'Solo producto al crear: true para usar como foto la imagen adjunta en este mensaje.' },
             vender_pausado: { type: 'boolean', description: 'Solo producto: true para crearlo pausado (no visible aún).' },
             plato_costos: { type: 'string', description: 'Solo producto: nombre del plato de costos al que se enlaza (opcional).' },
             papas: { type: 'string', description: 'Solo combo: papas que incluye (texto, ej. "Papas medianas").' },
@@ -73,7 +74,7 @@ async function resolverLineas(db, items) {
     return { items: out };
 }
 
-async function crear(db, a) {
+async function crear(db, a, ctx) {
     const nombre = String(a.nombre || '').trim().slice(0, 80);
     if (nombre.length < 2) return { error: 'El nombre es muy corto.' };
     const { entidad } = a;
@@ -116,9 +117,10 @@ async function crear(db, a) {
             if (r.error) return r;
             platoId = r.item.id; platoNombre = String(r.item.nombre || '');
         }
+        if (a.con_foto === true && !ctx.tieneImagen) return { error: 'No hay imagen adjunta en este mensaje. Pídele al administrador que la adjunte (📎) y vuelve a llamar.' };
         const estado = a.vender_pausado === true ? 'paused' : 'active';
-        return { payload: { nombre, precio, categoria: catNombre, descripcion: String(a.descripcion || '').trim().slice(0, 300), estado, platoId },
-            resumen: [`Categoría: ${catNombre}`, `Precio: $${precio}`, estado === 'paused' ? 'Se crea PAUSADO (no se ve en el menú).' : 'Visible en el menú al crearlo.', ...(platoNombre ? [`Enlazado al plato de costos "${platoNombre}".`] : [])] };
+        return { payload: { nombre, precio, categoria: catNombre, descripcion: String(a.descripcion || '').trim().slice(0, 300), estado, platoId, conFoto: a.con_foto === true },
+            resumen: [`Categoría: ${catNombre}`, `Precio: $${precio}`, estado === 'paused' ? 'Se crea PAUSADO (no se ve en el menú).' : 'Visible en el menú al crearlo.', ...(a.descripcion ? [`Descripción: ${String(a.descripcion).trim().slice(0, 300)}`] : []), ...(a.con_foto === true ? ['Con la foto adjunta.'] : ['Sin foto (usa la imagen por defecto).']), ...(platoNombre ? [`Enlazado al plato de costos "${platoNombre}".`] : [])] };
     }
     // combo
     const valor = num(a.valor);
@@ -148,10 +150,24 @@ async function cambiarEstado(db, a) {
 }
 
 // Valida y resuelve la petición. Devuelve { ok, accion } (para el cliente) o { error }. Nunca escribe.
-async function proponerCatalogo(db, args = {}) {
+async function editarProducto(db, a, ctx) {
+    if (a.entidad !== 'producto') return { error: 'Descripción y foto solo se pueden cambiar en productos del menú.' };
+    const r = resolver(await leer(db, COL.producto), a.nombre, 'nombre', ROTULO.producto);
+    if (r.error) return r;
+    const x = r.item;
+    if (a.accion === 'describir') {
+        const d = String(a.descripcion || '').trim().slice(0, 300);
+        if (d.length < 3) return { error: 'Falta la descripción (mínimo 3 letras).' };
+        return { id: x.id, nombre: String(x.nombre), payload: { descripcion: d }, resumen: [`Descripción nueva: ${d}`, ...(x.descripcion ? [`Antes: ${String(x.descripcion).slice(0, 120)}`] : [])] };
+    }
+    if (!ctx.tieneImagen) return { error: 'No hay imagen adjunta en este mensaje. Pídele al administrador que la adjunte (📎) y vuelve a llamar.' };
+    return { id: x.id, nombre: String(x.nombre), payload: { conFoto: true }, resumen: ['Se reemplaza la foto actual por la imagen que adjuntaste.'] };
+}
+
+async function proponerCatalogo(db, args = {}, ctx = {}) {
     if (!ACCIONES.includes(args.accion)) return { error: `accion debe ser una de: ${ACCIONES.join(', ')}.` };
     if (!ENTIDADES.includes(args.entidad)) return { error: `entidad debe ser una de: ${ENTIDADES.join(', ')}.` };
-    const r = args.accion === 'crear' ? await crear(db, args) : await cambiarEstado(db, args);
+    const r = args.accion === 'crear' ? await crear(db, args, ctx) : (args.accion === 'describir' || args.accion === 'foto') ? await editarProducto(db, args, ctx) : await cambiarEstado(db, args);
     if (r.error) return { error: r.error };
     return { ok: true, accion: { tipo: 'catalogo', operacion: args.accion, entidad: args.entidad, nombre: r.nombre || String(args.nombre).trim(), id: r.id || null, payload: r.payload, resumen: r.resumen || [] } };
 }

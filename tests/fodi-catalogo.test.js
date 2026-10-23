@@ -51,3 +51,15 @@ test('pausar / reanudar / desactivar / activar', async () => {
     assert.ok((await proponerCatalogo(db, { accion: 'pausar', entidad: 'insumo', nombre: 'queso' })).error);
     assert.ok((await proponerCatalogo(db, { accion: 'pausar', entidad: 'producto', nombre: 'inexistente' })).error);
 });
+
+test('describir y foto de un producto', async () => {
+    const d = await proponerCatalogo(db, { accion: 'describir', entidad: 'producto', nombre: 'caracas', descripcion: 'Carne, queso y tocineta.' });
+    assert.deepStrictEqual(d.accion.payload, { descripcion: 'Carne, queso y tocineta.' }); assert.strictEqual(d.accion.id, 'productos0');
+    assert.ok((await proponerCatalogo(db, { accion: 'describir', entidad: 'producto', nombre: 'caracas', descripcion: ' ' })).error);
+    assert.ok((await proponerCatalogo(db, { accion: 'describir', entidad: 'combo', nombre: 'Combo Papuda', descripcion: 'hola mundo' })).error);
+    assert.match((await proponerCatalogo(db, { accion: 'foto', entidad: 'producto', nombre: 'caracas' }, { tieneImagen: false })).error, /imagen adjunta/);
+    assert.deepStrictEqual((await proponerCatalogo(db, { accion: 'foto', entidad: 'producto', nombre: 'caracas' }, { tieneImagen: true })).accion.payload, { conFoto: true });
+    const c = { accion: 'crear', entidad: 'producto', nombre: 'Nueva', precio: 1000, categoria: 'BEBIDAS', con_foto: true };
+    assert.ok((await proponerCatalogo(db, c, {})).error);
+    assert.strictEqual((await proponerCatalogo(db, c, { tieneImagen: true })).accion.payload.conFoto, true);
+});
