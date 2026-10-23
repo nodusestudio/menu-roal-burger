@@ -155,9 +155,54 @@
             #festivalPromo[hidden]{display:none}
             #festivalPromo .fp-img{flex:1 1 auto;min-height:0;width:100%;max-width:520px;object-fit:contain}
             #festivalPromo .fp-btn{flex:0 0 auto;min-width:240px;padding:15px 32px;border:0;border-radius:999px;background:#ff5a0a;color:#fff;font:800 17px system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;box-shadow:0 6px 18px rgba(255,90,10,.35)}
+            #festivalPromo .fp-btns{flex:0 0 auto;display:flex;flex-wrap:wrap;justify-content:center;gap:10px;width:100%}
+            #festivalPromo .fp-btns .fp-btn{min-width:150px;flex:1 1 150px;max-width:260px}
+            #festivalPromo .fp-btn--info{background:transparent;color:#c2410c;border:2px solid #ff5a0a;box-shadow:none}
+            #festivalInfo{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 16px calc(16px + env(safe-area-inset-bottom));background:#14100c;color:#fff;overflow-y:auto;-webkit-overflow-scrolling:touch}
+            #festivalInfo[hidden]{display:none}
+            #festivalInfo .fi-card{width:100%;max-width:520px;text-align:left;font:500 1rem/1.55 system-ui,sans-serif;color:#fff}
+            #festivalInfo .fi-tag{font:700 .78rem/1.3 system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#ff8a3d;margin:0 0 4px}
+            #festivalInfo h2{font:800 clamp(1.6rem,7vw,2.1rem)/1.1 system-ui,sans-serif;margin:0 0 10px;color:#fff}
+            #festivalInfo h3{font:700 .95rem/1.3 system-ui,sans-serif;color:#ff8a3d;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.06em}
+            #festivalInfo p{margin:0 0 10px}
+            #festivalInfo ul{margin:0;padding-left:20px}
+            #festivalInfo .fi-datos{list-style:none;padding-left:0}
+            #festivalInfo .fi-datos li{margin:6px 0}
+            #festivalInfo li{margin:3px 0}
+            #festivalInfo .fi-lema{margin:14px 0 0;padding-top:12px;border-top:1px solid rgba(255,255,255,.25);font:800 1.05rem/1.35 system-ui,sans-serif;text-align:center;color:#ffd9b8}
+            #festivalInfo .fi-back{flex:0 0 auto;align-self:flex-start;min-width:0;box-shadow:none;border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:999px;padding:10px 18px;font:700 .95rem system-ui,sans-serif;cursor:pointer}
         </style>
         <img class="fp-img" src="./festival-trifasica.webp" alt="Burger Trifásica. Participante oficial del Festival Gastronómico Sabe a Quindío. Pídela del 30 de octubre al 8 de noviembre" width="900" height="1600" decoding="async">
-        <button type="button" class="fp-btn" id="festivalPromoBtn">CONTINUAR</button>
+        <div class="fp-btns">
+            <button type="button" class="fp-btn fp-btn--info" id="festivalInfoBtn" aria-haspopup="dialog" aria-controls="festivalInfo">INFORMACIÓN</button>
+            <button type="button" class="fp-btn" id="festivalPromoBtn">CONTINUAR</button>
+        </div>
+        <section id="festivalInfo" hidden role="dialog" aria-label="Información de la Burger Trifásica">
+            <button type="button" class="fp-btn fi-back" id="festivalInfoBack">← Volver</button>
+            <article class="liquid-glass fi-card">
+                <p class="fi-tag">Participante oficial · Festival Sabe a Quindío</p>
+                <h2>Burger Trifásica 🍔🔥</h2>
+                <p>Triple explosión de sabores con tres proteínas: <strong>res, cerdo y pollo</strong>, acompañadas de aguacate, tajadas de plátano maduro, maíz dulce, vegetales frescos y nuestras salsas tártara y especial, todo entre panes artesanales, sellados en margarina aromatizada.</p>
+                <p>Una combinación de sabores y texturas que unen el acento venezolano que nos caracteriza con el sabor quindiano, por eso:</p>
+                <h3>Qué lleva</h3>
+                <ul>
+                    <li>Tres proteínas: res, cerdo y pollo</li>
+                    <li>Aguacate</li>
+                    <li>Tajadas de plátano maduro</li>
+                    <li>Maíz dulce</li>
+                    <li>Vegetales frescos</li>
+                    <li>Salsas tártara y especial</li>
+                    <li>Panes artesanales sellados en margarina aromatizada</li>
+                </ul>
+                <h3>Horario y ubicación</h3>
+                <ul class="fi-datos">
+                    <li>🕓 <strong>Todos los días, de 4:00 p. m. a 10:00 p. m.</strong></li>
+                    <li>📍 Cl. 22 #29-59, Armenia, Quindío (Barrio Las Américas)</li>
+                </ul>
+                <p class="fi-lema">“ROAL BURGER SABE A QUINDÍO CON ACENTO VENEZOLANO”</p>
+            </article>
+            <button type="button" class="fp-btn" id="festivalInfoContinuar">CONTINUAR AL MENÚ</button>
+        </section>
     </div>
     <script>
         (function () {
@@ -169,9 +214,12 @@
                 var inWindow = now <= Date.parse('2026-11-08T23:59:59-05:00');
                 if (!preview && !inWindow) return;
                 el.hidden = false;
-                document.getElementById('festivalPromoBtn').addEventListener('click', function () {
-                    el.hidden = true;
-                });
+                var info = document.getElementById('festivalInfo');
+                var cerrar = function () { el.hidden = true; };
+                document.getElementById('festivalPromoBtn').addEventListener('click', cerrar);
+                document.getElementById('festivalInfoContinuar').addEventListener('click', cerrar);
+                document.getElementById('festivalInfoBtn').addEventListener('click', function () { info.hidden = false; info.scrollTop = 0; document.getElementById('festivalInfoBack').focus(); });
+                document.getElementById('festivalInfoBack').addEventListener('click', function () { info.hidden = true; document.getElementById('festivalInfoBtn').focus(); });
             } catch (e) {}
         })();
     </script>
