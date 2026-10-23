@@ -3377,7 +3377,7 @@ REGLAS DE DATOS (inquebrantables):
 - Las cifras salen SIEMPRE de las herramientas; nunca inventes ni estimes números. Si no hay herramienta para algo, dilo.
 - Declara el rango real consultado (desde–hasta) y avisa si el resultado vino truncado.
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
-- Eres de solo lectura sobre el negocio: no puedes modificar pedidos, caja ni puntos. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
+- Eres de solo lectura sobre el negocio: no puedes modificar pedidos, caja ni puntos. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. También con gestionar_catalogo: crear insumos, recetas, platos de costos, productos del menú y combos, y pausar/reanudar/desactivar/activar productos, combos y platos; igual, solo propones y el administrador confirma con el botón. Si falta un dato obligatorio (precio, categoría, cantidades), pídelo; no inventes. Para agregar algo al menú usa entidad "producto". Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
 - MEMORIA: abajo verás lo que ya sabes del negocio y del dueño; úsalo para personalizar (metas, prioridades, tono). Cuando el administrador te cuente una meta, preferencia o dato duradero, guárdalo con recordar sin que lo pida y dilo en una línea. Nunca guardes cifras de herramientas ni datos sensibles (claves, PINs). Si te dice que olvides algo, usa recordar con olvidar.
 - PEDIDOS: si el administrador pega texto de un chat, adjunta una captura o dicta/describe un pedido, llama a armar_pedido (con el texto tal cual; si solo hay captura, texto vacío). Resume en 1-3 líneas lo entendido (productos y cantidades, entrega, pago) y dile que lo confirme con el botón "Crear pedido" o diciendo "sí, créalo". Si falta algo, pídeselo de forma breve y vuelve a llamar la herramienta con TODO el texto junto. Jamás digas que el pedido ya está creado: solo se crea cuando él confirma.
 - BASE DE CONOCIMIENTO: antes de aconsejar sobre gerencia, marketing, finanzas, operación, personal, impuestos/legal Colombia o atención a clientes, y antes de responder sobre políticas o reglas del negocio, llama a buscar_conocimiento. Cita la fuente ("según tu base: …"). Lo de "Tu base" son reglas del dueño y mandan sobre la teoría. Si no hay nada, dilo y sugiere documentarlo.
@@ -3497,8 +3497,9 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
                 // Las herramientas de un mismo turno se ejecutan EN PARALELO (antes una tras otra); el orden de resultados se conserva
                 const resultados = await Promise.all(usos.map(async (u) => {
                     let r;
-                    if (u.name === 'proponer_accion') {
-                        r = await adminAsistente.proponerAccion(db, u.input || {}).catch((e) => ({ error: `Falló: ${e.message || e}` }));
+                    if (u.name === 'proponer_accion' || u.name === 'gestionar_catalogo') {
+                        const proponer = u.name === 'gestionar_catalogo' ? require('./fodiCatalogo').proponerCatalogo : adminAsistente.proponerAccion;
+                        r = await proponer(db, u.input || {}).catch((e) => ({ error: `Falló: ${e.message || e}` }));
                         if (r.ok && acciones.length < 5) acciones.push(r.accion);
                         if (r.ok) r = { ok: true, nota: 'Propuesta mostrada al administrador como botón; aún NO se ejecutó. No digas que ya se hizo: dile que la confirme con el botón.', accion: r.accion };
                     } else if (u.name === 'armar_pedido') {
@@ -3641,7 +3642,7 @@ async function fodiGenerarInforme(db, apiKey) {
     const hoy = Date.now();
     const f = (ms) => adminAsistente.bogotaDateKey(ms);
     const desde = f(hoy - 7 * DIA), hasta = f(hoy - DIA), antDesde = f(hoy - 14 * DIA), antHasta = f(hoy - 8 * DIA);
-    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'armar_pedido', 'recordar'].includes(t.name));
+    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'armar_pedido', 'recordar'].includes(t.name));
     const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
     const system = `${asistenteSystemPrompt()}\n\nTAREA: redacta el INFORME SEMANAL para el dueño. Semana analizada: ${desde} a ${hasta}; semana anterior: ${antDesde} a ${antHasta}. Usa las herramientas para traer ventas, ticket, productos, canales, clientes, gastos/rentabilidad y redes. Estructura: 1) Titular de la semana (2 líneas), 2) Cifras clave vs semana anterior (tabla), 3) Qué funcionó, 4) Qué preocupa, 5) Tres acciones concretas para esta semana. Sé breve (máx. 450 palabras), sin inventar cifras.${memoria.length ? `\n\nMEMORIA:\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : ''}`;
     const mensajes = [{ role: 'user', content: `Genera el informe semanal de ${desde} a ${hasta}.` }];

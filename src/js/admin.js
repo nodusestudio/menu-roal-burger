@@ -32177,6 +32177,11 @@ function _asistAcciones(msg, acciones) {
         } else if (a.tipo === 'precio_insumo') {
             txt = `Cambiar precio de <b>${escapeHtml(a.nombre)}</b>: ${dinero(a.precioActual)} → <b>${dinero(a.precioNuevo)}</b>`;
             btn = 'Confirmar cambio';
+        } else if (a.tipo === 'catalogo') {
+            const rot = { insumo: 'insumo', receta: 'receta', plato: 'plato de costos', producto: 'producto del menú', combo: 'combo' }[a.entidad] || a.entidad;
+            const verbo = { crear: 'Crear', pausar: 'Pausar', reanudar: 'Reanudar', desactivar: 'Desactivar', activar: 'Activar' }[a.operacion] || a.operacion;
+            txt = `<b>${verbo} ${escapeHtml(rot)}: ${escapeHtml(a.nombre)}</b>${(a.resumen || []).length ? '<br><small>' + a.resumen.map(escapeHtml).join('<br>') + '</small>' : ''}`;
+            btn = a.operacion === 'crear' ? '✅ Crear' : '✅ Confirmar';
         } else continue;
         card.innerHTML = `<span style="flex:1;min-width:160px">${txt}</span><button type="button" class="cat-new-save-btn">${btn}</button>`;
         const ejecutar = async (b) => {
@@ -32232,6 +32237,7 @@ async function _asistEjecutarAccion(a) {
         _costosRender();
         return;
     }
+    if (a.tipo === 'catalogo') return _fodiCatalogoEjecutar(a);
     if (a.tipo === 'crear_pedido') {
         if (!firebaseFunctions) throw new Error('No hay conexión con el servidor.');
         const res = await firebaseFunctions.httpsCallable('createManualWhatsAppOrder')(a.payload);
@@ -32241,6 +32247,47 @@ async function _asistEjecutarAccion(a) {
         return;
     }
     throw new Error('Acción desconocida.');
+}
+
+// Catálogo por chat de FODI: el servidor ya validó y resolvió ids; aquí solo se guarda, por las mismas rutas del panel.
+async function _fodiCatalogoEjecutar(a) {
+    if (!firebaseDb) throw new Error('No hay conexión con la base de datos.');
+    const P = a.payload || {}, ent = a.entidad;
+    const COL = { insumo: COSTOS_COLS.insumos, receta: COSTOS_COLS.recetas, plato: COSTOS_COLS.platos, producto: 'productos', combo: 'combospacks' }[ent];
+    if (!COL) throw new Error('Tipo de elemento desconocido.');
+    if (a.operacion === 'crear') {
+        if (ent === 'insumo' || ent === 'receta' || ent === 'plato') {
+            const ref = firebaseDb.collection(COL).doc();
+            await ref.set({ ...P, creadoPorFodi: true, actualizadoAt: firestoreNow() });
+            await _costosCargar(); _costosRender();
+        } else if (ent === 'producto') {
+            if (!categoriesState.length) await fetchCategories();
+            const cat = categoriesState.find((c) => normalizeCategoryKey(c.name) === normalizeCategoryKey(P.categoria));
+            if (!cat) throw new Error('La categoría ya no existe.');
+            if (!productsState.length) await fetchProducts();
+            if (productsState.some((x) => normalizeCategoryKey(x.nombre) === normalizeCategoryKey(P.nombre) && normalizeCategoryKey(x.categoria) === normalizeCategoryKey(cat.name))) throw new Error('Ese producto ya existe en la categoría.');
+            const id = `${slugify(P.nombre) || 'producto'}-${Date.now()}`;
+            await firebaseDb.collection('productos').doc(id).set({
+                id, nombre: P.nombre, precio: P.precio, categoria: cat.name, estado: P.estado === 'paused' ? 'paused' : 'active', es_destacado: false,
+                descripcion: P.descripcion || '', image_url: buildDefaultProductImage(P.nombre, cat.name), source: 'fodi', created_at: firestoreNow(), updated_at: firestoreNow()
+            });
+            if (P.platoId) { try { await _costosGuardar(COSTOS_COLS.platos, P.platoId, { productoMenuId: id }); } catch (_) { /* el enlace se puede hacer luego en Costos */ } }
+            await reloadDataAndRender();
+        } else {
+            const total = (typeof combosPackState !== 'undefined' && Array.isArray(combosPackState)) ? combosPackState.length : 0;
+            await firebaseDb.collection('combospacks').add({
+                nombre: P.nombre, papas: P.papas || '', bebida_ref_id: '', bebida_pres_id: '', bebida_nombre: '', bebida_sabores: [], valor: P.valor,
+                activo_pos: true, activo_menu: true, estado: 'active', orden: total, created_at: firestoreNow(), updated_at: firestoreNow()
+            });
+            await reloadDataAndRender();
+        }
+        showNotice(`${a.nombre} creado.`, 'ok');
+        return;
+    }
+    if (!a.id) throw new Error('Falta el elemento a cambiar.');
+    if (ent === 'plato') { await _costosGuardar(COSTOS_COLS.platos, a.id, P); await _costosCargar(); _costosRender(); }
+    else { await firebaseDb.collection(COL).doc(a.id).update({ ...P, updated_at: firestoreNow() }); await reloadDataAndRender(); }
+    showNotice(`${a.nombre}: listo.`, 'ok');
 }
 
 // ── Pedidos por chat de FODI: confirmación por voz/texto ("sí, créalo") y captura adjunta ──

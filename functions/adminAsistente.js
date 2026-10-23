@@ -852,7 +852,8 @@ const TOOLS = [
             nombre: { type: 'string', description: 'Solo con tipo "precio_insumo": nombre del insumo (como en la pestaña Insumos).' },
             precio_nuevo: { type: 'number', description: 'Solo con tipo "precio_insumo": nuevo precio de compra del empaque.' }
         }, required: ['tipo'] }
-    }
+    },
+    require('./fodiCatalogo').TOOL
 ];
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
