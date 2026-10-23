@@ -34,7 +34,7 @@ const TOOL = {
             mano_obra: { type: 'number', description: 'Solo plato: costo de mano de obra por unidad (por defecto 0).' },
             precio: { type: 'number', description: 'Plato, producto o combo: precio de venta en pesos (obligatorio con accion "precio").' },
             categoria: { type: 'string', description: 'Solo producto: categoría del menú (debe existir).' },
-            descripcion: { type: 'string', description: 'Producto: descripción corta (máx. 300 caracteres). Obligatoria con accion "describir"; opcional al crear.' },
+            descripcion: { type: 'string', description: 'Producto: descripción corta (máx. 700 caracteres). Obligatoria con accion "describir"; opcional al crear.' },
             con_foto: { type: 'boolean', description: 'Solo producto al crear: true para usar como foto la imagen adjunta en este mensaje.' },
             vender_pausado: { type: 'boolean', description: 'Solo producto: true para crearlo pausado (no visible aún).' },
             plato_costos: { type: 'string', description: 'Solo producto: nombre del plato de costos al que se enlaza (opcional).' },
@@ -119,7 +119,7 @@ async function crear(db, a, ctx) {
         }
         if (a.con_foto === true && !ctx.tieneImagen) return { error: 'No hay imagen adjunta en este mensaje. Pídele al administrador que la adjunte (📎) y vuelve a llamar.' };
         const estado = a.vender_pausado === true ? 'paused' : 'active';
-        return { payload: { nombre, precio, categoria: catNombre, descripcion: String(a.descripcion || '').trim().slice(0, 300), estado, platoId, conFoto: a.con_foto === true },
+        return { payload: { nombre, precio, categoria: catNombre, descripcion: String(a.descripcion || '').trim().slice(0, 700), estado, platoId, conFoto: a.con_foto === true },
             resumen: [`Categoría: ${catNombre}`, `Precio: $${precio}`, estado === 'paused' ? 'Se crea PAUSADO (no se ve en el menú).' : 'Visible en el menú al crearlo.', ...(a.descripcion ? [`Descripción: ${String(a.descripcion).trim().slice(0, 300)}`] : []), ...(a.con_foto === true ? ['Con la foto adjunta.'] : ['Sin foto (usa la imagen por defecto).']), ...(platoNombre ? [`Enlazado al plato de costos "${platoNombre}".`] : [])] };
     }
     // combo
@@ -156,7 +156,7 @@ async function editarProducto(db, a, ctx) {
     if (r.error) return r;
     const x = r.item;
     if (a.accion === 'describir') {
-        const d = String(a.descripcion || '').trim().slice(0, 300);
+        const d = String(a.descripcion || '').trim().slice(0, 700);
         if (d.length < 3) return { error: 'Falta la descripción (mínimo 3 letras).' };
         return { id: x.id, nombre: String(x.nombre), payload: { descripcion: d }, resumen: [`Descripción nueva: ${d}`, ...(x.descripcion ? [`Antes: ${String(x.descripcion).slice(0, 120)}`] : [])] };
     }
